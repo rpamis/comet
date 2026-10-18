@@ -23,6 +23,11 @@ from pathlib import Path
 from typing import Any
 
 from scaffold.python.judge_config import build_judge_invocation, run_judge_prompt
+from scaffold.python.workspace_artifacts import (
+    iter_workspace_paths,
+    read_workspace_text,
+    require_workspace_artifact_support,
+)
 
 try:
     from dotenv import load_dotenv
@@ -53,27 +58,17 @@ _PER_FILE_LIMIT = 3000
 _TOTAL_BUDGET = 20_000
 
 
-def _read_file(path: Path, limit: int = _PER_FILE_LIMIT) -> str:
-    """Read up to *limit* chars of a file, gracefully handling missing files."""
-    try:
-        text = path.read_text(errors="ignore")
-        return text[:limit] if len(text) > limit else text
-    except Exception:
-        return f"(missing: {path.name})"
-
-
 def _collect_workspace_artifacts(test_dir: Path) -> str:
     """Walk *test_dir* and return a concatenated dump of workspace files.
 
-    Skips hidden directories, common vendor dirs, and binary-looking files.
+    Skips hidden directories, common vendor dirs, and all symbolic links.
     Total output is capped at ``_TOTAL_BUDGET`` chars.
     """
+    require_workspace_artifact_support()
     parts: list[str] = []
     total = 0
 
-    for path in sorted(test_dir.rglob("*")):
-        if not path.is_file():
-            continue
+    for path in sorted(iter_workspace_paths(test_dir)):
         if path.name in _SKIP_FILES:
             continue
         # Skip hidden paths.
@@ -82,15 +77,13 @@ def _collect_workspace_artifacts(test_dir: Path) -> str:
         # Skip known vendor / cache dirs.
         if any(part in _SKIP_DIRS for part in path.relative_to(test_dir).parts):
             continue
-        # Skip large or binary-looking files.
-        try:
-            if path.stat().st_size > 50_000:
-                continue
-        except OSError:
+        text = read_workspace_text(
+            test_dir, path, limit=_PER_FILE_LIMIT, max_bytes=50_000, errors="ignore"
+        )
+        if text is None:
             continue
 
         rel = path.relative_to(test_dir)
-        text = _read_file(path, _PER_FILE_LIMIT)
         chunk = f"\n=== {rel} ===\n{text}\n"
 
         if total + len(chunk) > _TOTAL_BUDGET:

@@ -70,6 +70,12 @@ from scaffold.python.langfuse_adapter import (
 )
 from scaffold.python.sample_quality import infer_sample_quality
 from scaffold.python.skill_parser import SCRIPT_EXTENSIONS
+from scaffold.python.workspace_artifacts import (
+    WorkspaceArtifactError,
+    iter_workspace_paths,
+    read_workspace_text,
+    require_workspace_artifact_support,
+)
 from scaffold.python.utils import (
     check_docker_available,
     run_agent_loop_in_docker,
@@ -371,6 +377,10 @@ def _normal_run_preflight(config) -> None:
 
     if _is_unit_tests_only(config) or getattr(config.option, "collectonly", False):
         return
+    try:
+        require_workspace_artifact_support()
+    except WorkspaceArtifactError as exc:
+        raise pytest.UsageError(f"Eval harness 环境错误: {exc}") from exc
     from scaffold.python.utils import load_eval_environment
 
     load_eval_environment()
@@ -2424,6 +2434,7 @@ def _save_artifacts(
     agent: str = "claude-code",
 ):
     """Save the selected Agent's generated files as artifacts."""
+    require_workspace_artifact_support()
     artifacts_dir = base_dir / "artifacts" / f"{treatment_name.lower()}_rep{rep}"
     agent_dir_name = {
         "claude-code": "claude",
@@ -2463,7 +2474,7 @@ def _save_artifacts(
     }
 
     claude_files = []
-    for item in test_dir.rglob("*"):
+    for item in iter_workspace_paths(test_dir):
         # Classic's public checkpoint is a dotfile, not private Agent config.
         # Keep this one state file while excluding all other hidden filenames.
         if item.name.startswith(".") and item.name != ".comet.yaml":
@@ -2472,14 +2483,13 @@ def _save_artifacts(
             continue
         if any(excl in item.parts for excl in exclude_dirs):
             continue
-        if not item.is_file():
-            continue
         try:
             rel_path = item.relative_to(test_dir)
             dest = agent_dir / rel_path
-            dest.parent.mkdir(parents=True, exist_ok=True)
             try:
-                content = item.read_text(encoding="utf-8")
+                content = read_workspace_text(test_dir, item)
+                if content is None:
+                    continue
             except UnicodeDecodeError:
                 import sys
 
@@ -2489,8 +2499,11 @@ def _save_artifacts(
                 )
                 continue
             else:
+                dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_text(redact_sensitive(content), encoding="utf-8")
             claude_files.append(item)
+        except WorkspaceArtifactError:
+            raise
         except Exception as e:
             import sys
 

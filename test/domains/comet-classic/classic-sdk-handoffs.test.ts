@@ -4,6 +4,14 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { parse, stringify } from 'yaml';
+import {
+  hashRuntimeValue,
+  createPortableRunCheckpoint,
+  encodePortableRunCheckpoint,
+  readPortableRunCheckpoint,
+} from '../../../domains/engine/runtime.js';
+import { CLASSIC_MANAGED_RUN_MARKER } from '../../../domains/comet-classic/classic-state.js';
 
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import {
@@ -398,6 +406,118 @@ describe('Classic SDK profile-aware handoffs', () => {
       expect((await inspectClassicSdkRun(root, 'demo')).run.definitionHashes).toEqual(
         original.definitionHashes,
       );
+    },
+  );
+});
+
+describe('approved preset upgrade portable recovery', () => {
+  async function upgraded(profile: 'hotfix' | 'tweak') {
+    const f = await fixture(profile);
+    const preview = await f.cli('guard', 'demo', 'open');
+    expect(
+      (
+        await f.cli(
+          'guard',
+          'demo',
+          'open',
+          '--apply',
+          '--approval-hash',
+          preview.data.approvalHash,
+        )
+      ).exitCode,
+    ).toBe(0);
+    const proposal = await f.cli(
+      'state',
+      'propose-escalation',
+      'demo',
+      '--reason',
+      'Require full Design approval',
+    );
+    expect(
+      (
+        await f.cli(
+          'state',
+          'decide-escalation',
+          'demo',
+          '--proposal-hash',
+          proposal.data.wait.proposalHash,
+          '--choice',
+          'upgrade',
+        )
+      ).exitCode,
+    ).toBe(0);
+    return f;
+  }
+  it.each(
+    (['hotfix', 'tweak'] as const).flatMap((profile) =>
+      (['new-checkout', 'missing-run'] as const).flatMap((loss) =>
+        (['next', 'restore'] as const).map((operation) => ({ profile, loss, operation })),
+      ),
+    ),
+  )(
+    'recovers $profile Full approval via $operation after $loss',
+    async ({ profile, loss, operation }) => {
+      const source = await upgraded(profile);
+      const before = (await inspectClassicSdkRun(source.root, 'demo')).run;
+      const expected = readPortableRunCheckpoint(
+        encodePortableRunCheckpoint(createPortableRunCheckpoint(before)),
+        'demo',
+        { preserveSourceRevision: true },
+      )!;
+      let target = source;
+      if (loss === 'new-checkout') {
+        target = await fixture(profile);
+        await fs.rm(resolveWorkspaceRuntimeRootSync(target.root), { recursive: true, force: true });
+        await fs.cp(source.changeDir, target.changeDir, { recursive: true });
+      } else {
+        await fs.rm(path.join(resolveWorkspaceRuntimeRootSync(target.root), 'sdk-runs/classic'), {
+          recursive: true,
+        });
+      }
+      const response = await target.cli(
+        'state',
+        operation,
+        'demo',
+        ...(operation === 'restore' ? ['--confirmed'] : []),
+      );
+      expect(response.exitCode, response.stderr).toBe(0);
+      const after = (await inspectClassicSdkRun(target.root, 'demo')).run;
+      expect(after).toEqual(expected);
+      expect(after.workflow.id).toBe(`comet-classic-${profile}`);
+      expect(after.state).toMatchObject({
+        workflow: 'full',
+        classicProfile: 'full',
+        phase: 'design',
+      });
+      expect(response.agent.continuation).toMatchObject({ stepId: 'full.design.handoff' });
+    },
+  );
+  it.each(['missing-wait', 'wrong-preset', 'unresolved', 'continue', 'wrong-proposal'])(
+    'rejects an upgraded checkpoint with %s approval',
+    async (damage) => {
+      const source = await upgraded('tweak');
+      const stateFile = path.join(source.changeDir, 'comet-state.yaml');
+      const document = parse(await fs.readFile(stateFile, 'utf8'));
+      const run = readPortableRunCheckpoint(document.run_checkpoint, 'demo', {
+        preserveSourceRevision: true,
+      })!;
+      const wait = run.waits.find((wait) => wait.stepId === 'tweak.build.escalation-confirm')!;
+      if (damage === 'missing-wait') run.waits = run.waits.filter((entry) => entry !== wait);
+      if (damage === 'wrong-preset') wait.stepId = 'hotfix.build.escalation-confirm';
+      if (damage === 'unresolved') wait.status = 'cancelled';
+      if (damage === 'continue') wait.decision!.choice = 'continue';
+      if (damage === 'wrong-proposal') wait.decision!.proposalHash = '0'.repeat(64);
+      run.revision = 1;
+      document.run_checkpoint = {
+        schema: 'comet.workflow-run-checkpoint.v1',
+        run,
+        hash: hashRuntimeValue(run),
+      };
+      await fs.writeFile(stateFile, CLASSIC_MANAGED_RUN_MARKER + stringify(document));
+      await fs.rm(resolveWorkspaceRuntimeRootSync(source.root), { recursive: true });
+      const response = await source.cli('state', 'next', 'demo');
+      expect(response.exitCode).not.toBe(0);
+      expect(response.stderr).toMatch(/checkpoint|proposal|decision|WorkflowRun|Wait/i);
     },
   );
 });

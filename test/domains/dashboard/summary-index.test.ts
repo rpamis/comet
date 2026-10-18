@@ -1,6 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
+import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import {
@@ -22,6 +23,44 @@ describe('Dashboard SQLite summary index', () => {
     search: key,
     status,
     payload: { id: key, status },
+  });
+  it('isolates same-origin workspaces during serial and concurrent refreshes', async () => {
+    const roots = [path.join(root, 'left'), path.join(root, 'right')];
+    for (const workspace of roots) {
+      await fs.mkdir(workspace);
+      execFileSync('git', ['init', '-q', workspace]);
+      execFileSync('git', [
+        '-C',
+        workspace,
+        'remote',
+        'add',
+        'origin',
+        'https://example.invalid/team/shared.git',
+      ]);
+    }
+    for (const namespace of ['eval-v1', 'any-v1']) {
+      const indexes = roots.map(
+        (projectRoot, index) =>
+          new DashboardSummaryIndex({
+            projectRoot,
+            cacheRoot: root,
+            namespace,
+            discover: async () => [
+              {
+                key: 'same-source',
+                fingerprint: 'same-version',
+                read: async () => [record(index === 0 ? 'left' : 'right')],
+              },
+            ],
+          }),
+      );
+      expect(indexes[0].databasePath).not.toBe(indexes[1].databasePath);
+      await indexes[0].refresh();
+      await indexes[1].refresh();
+      await Promise.all(indexes.map((index) => index.refresh()));
+      expect((await indexes[0].query()).items).toEqual([{ id: 'left', status: 'completed' }]);
+      expect((await indexes[1].query()).items).toEqual([{ id: 'right', status: 'completed' }]);
+    }
   });
   it('persists summaries and only reads changed sources after restart', async () => {
     const readA = vi.fn(async () => [record('a')]),

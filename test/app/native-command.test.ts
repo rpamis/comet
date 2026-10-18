@@ -103,6 +103,23 @@ describe('Native command facade', () => {
     );
   });
 
+  it('records a successful next without integration flags', async () => {
+    runNativeCli.mockResolvedValue({ exitCode: 0, stdout: 'advanced\n', stderr: '' });
+    const { runNativeFacade } = await import('../../app/commands/native.js');
+
+    await runNativeFacade(['next', 'change-name']);
+
+    expect(recordCometWorkflowResult).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        workflow: 'native',
+        changeId: 'change-name',
+        command: 'next',
+        eventType: 'episode.completed',
+        success: true,
+      }),
+    );
+  });
+
   it('automatically collects task context before a workflow command', async () => {
     const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     collectCometPluginContext.mockResolvedValue([

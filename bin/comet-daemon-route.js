@@ -15,6 +15,7 @@ export function resolveCometDaemonRoute(argv, environment = process.env) {
     NATIVE_READ_COMMANDS.has(argv[1]) &&
     !(argv[1] === 'root' && argv[2] && argv[2] !== 'show')
   ) {
+    if (environment.COMET_TASK?.trim() || argv.includes('--summary')) return null;
     return { runtime: 'native', commandArgs: [argv[1], ...argv.slice(2)] };
   }
   return null;

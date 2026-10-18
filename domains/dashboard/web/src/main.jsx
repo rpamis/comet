@@ -121,7 +121,6 @@ import {
   dashboardResponseError,
   isStaleNativeDashboardCursorError,
   nativeDashboardChangeKey,
-  refreshDashboardPage,
   refreshNativeDashboardPage,
   shouldAutoLoadDashboardDetail,
   shouldShowDashboardDetailLoading,
@@ -717,10 +716,12 @@ function DashboardApp({
       const controller = new AbortController();
       snapshotRequestRef.current = controller;
       if (manual) setLoading(true);
+      const refreshQuery = queryRef.current;
+      const refreshTab = tabRef.current;
       try {
         const next = useDemo
           ? await loadDemoSnapshot()
-          : await fetchDashboardOverview(activeProjectId, controller.signal, queryRef.current);
+          : await fetchDashboardOverview(activeProjectId, controller.signal, refreshQuery);
         if (snapshotRequestRef.current !== controller || controller.signal.aborted) return;
 
         if (useDemo) {
@@ -734,13 +735,34 @@ function DashboardApp({
           const currentTab = tabRef.current;
           const currentQuery = queryRef.current;
           const queryChanged = currentQuery !== lastLoadedQueryRef.current;
-          const nextPages = queryChanged
-            ? { active: initialPage, archived: null, all: null }
-            : {
-                ...pagesRef.current,
-                active: refreshDashboardPage(pagesRef.current.active, initialPage),
-              };
-          const currentPage = currentTab === 'active' ? nextPages.active : nextPages[currentTab];
+          const loadedCount = queryChanged
+            ? 5
+            : Math.max(5, pagesRef.current[currentTab]?.items.length ?? 0);
+          const freshPage =
+            currentTab === 'active' && loadedCount <= initialPage.items.length
+              ? initialPage
+              : await fetchDashboardChangePage(activeProjectId, currentTab, {
+                  query: refreshQuery,
+                  signal: controller.signal,
+                  summaryLimit: loadedCount,
+                });
+          if (
+            snapshotRequestRef.current !== controller ||
+            controller.signal.aborted ||
+            queryRef.current !== refreshQuery ||
+            tabRef.current !== refreshTab
+          )
+            return;
+          pageRequestRef.current?.abort();
+          pageRequestRef.current = null;
+          setPageLoading(null);
+          const nextPages = {
+            active: initialPage,
+            archived: null,
+            all: null,
+            [currentTab]: freshPage,
+          };
+          const currentPage = freshPage;
           setSnapshot(materializeOverview(next, initialPage));
           pagesRef.current = nextPages;
           setPages(nextPages);
@@ -799,6 +821,13 @@ function DashboardApp({
             }
             await Promise.allSettled(nativeRefreshes);
           }
+          if (
+            snapshotRequestRef.current !== controller ||
+            controller.signal.aborted ||
+            queryRef.current !== refreshQuery ||
+            tabRef.current !== refreshTab
+          )
+            return;
           const nextId = pickSelectedFromPage(
             queryChanged && currentTab !== 'active' ? nextPages[currentTab] : currentPage,
             selectedIdRef.current,
@@ -806,10 +835,38 @@ function DashboardApp({
           const previousSelectedId = selectedIdRef.current;
           setSelectedId(nextId);
           selectedIdRef.current = nextId;
-          if (nextId !== previousSelectedId) {
-            setSelectedDetail(null);
-            setDetailError(null);
-            setDetailLoading(false);
+          detailRequestRef.current?.abort();
+          detailRequestRef.current = null;
+          setDetailError(null);
+          if (nextId !== previousSelectedId || !nextId) setSelectedDetail(null);
+          setDetailLoading(Boolean(nextId));
+          if (nextId) {
+            const detailController = new AbortController();
+            detailRequestRef.current = detailController;
+            const abortDetail = () => detailController.abort();
+            controller.signal.addEventListener('abort', abortDetail, { once: true });
+            try {
+              const freshDetail = await fetchDashboardChangeDetail(
+                activeProjectId,
+                nextId,
+                detailController.signal,
+              );
+              if (
+                detailRequestRef.current === detailController &&
+                !detailController.signal.aborted &&
+                selectedIdRef.current === nextId
+              )
+                setSelectedDetail(freshDetail);
+            } catch (error) {
+              if (detailRequestRef.current === detailController && !detailController.signal.aborted)
+                setDetailError({ id: nextId, message: error.message });
+            } finally {
+              controller.signal.removeEventListener('abort', abortDetail);
+              if (detailRequestRef.current === detailController) {
+                detailRequestRef.current = null;
+                setDetailLoading(false);
+              }
+            }
           }
           lastLoadedQueryRef.current = currentQuery;
         }
@@ -4284,11 +4341,12 @@ async function fetchDashboardOverview(projectId, signal, query = '') {
 }
 
 async function fetchDashboardChangePage(projectId, status, options = {}) {
-  const params = new URLSearchParams({ status, limit: '5' });
+  const params = new URLSearchParams({ status, limit: String(options.summaryLimit ?? 5) });
+  const endpoint = options.summaryLimit ? 'change-summary' : 'changes';
   if (options.cursor) params.set('cursor', options.cursor);
   if (options.query?.trim()) params.set('q', options.query.trim());
   const res = await fetch(
-    `/api/dashboard/projects/${encodeURIComponent(projectId)}/changes?${params.toString()}`,
+    `/api/dashboard/projects/${encodeURIComponent(projectId)}/${endpoint}?${params.toString()}`,
     { cache: 'no-store', signal: options.signal },
   );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);

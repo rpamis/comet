@@ -492,7 +492,11 @@ describe('daemon invocation startup budget', () => {
         });
       }
       expect(send).not.toHaveBeenCalled();
-      expect(resolveCometDaemonRoute(['native', 'status', '--json'])).not.toBeNull();
+      expect(resolveCometDaemonRoute(['native', 'status', '--json'])).toBeNull();
+      expect(resolveCometDaemonRoute(['native', 'status', '--json'], { COMET_TASK: '' })).toEqual({
+        runtime: 'native',
+        commandArgs: ['status', '--json'],
+      });
     },
   );
 

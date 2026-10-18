@@ -56,6 +56,9 @@ export function currentChangeFile(projectRoot: string): string {
 
 async function sdkSelectionBranch(projectRoot: string, changeName: string): Promise<string | null> {
   const { run, state } = await inspectHookSdkRun(projectRoot, changeName);
+  if (run.status === 'cancelled') {
+    throw new Error(`Cannot select current change '${changeName}': Run is cancelled`);
+  }
   if (state.archived || run.status === 'completed') {
     throw new Error(`Cannot select current change '${changeName}': change is archived`);
   }

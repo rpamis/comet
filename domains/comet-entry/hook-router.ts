@@ -436,7 +436,8 @@ export async function inspectCometHook(
         };
       if (
         ['completed', 'cancelled'].includes(run.status) &&
-        !(application.manifest.base === 'standalone' && application.implementation.inspectHook)
+        !(application.manifest.base === 'standalone' && application.implementation.inspectHook) &&
+        !(run.status === 'cancelled' && application.manifest.base.startsWith('classic-'))
       )
         return { allowed: true, reason: '当前应用运行已结束', ...identity };
       if (!application.implementation.inspectHook)

@@ -204,6 +204,67 @@ jobs:
       - run: uv run ruff check local/tests scaffold local/scripts langsmith
       - run: uv run pytest -q local/tests/scaffold local/tests/tasks/test_validation_scripts.py
 
+  eval-windows:
+    name: Eval Windows artifact safety
+    runs-on: windows-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: eval
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: '0.11.29'
+          enable-cache: true
+          cache-dependency-glob: eval/uv.lock
+      - run: uv sync --locked --no-default-groups
+      - name: Exercise offline artifact collection on native Windows
+        id: artifact-tests
+        run: >-
+          uv run --locked --no-sync pytest -q
+          local/tests/scaffold/test_workspace_artifacts.py
+          local/tests/scaffold/test_workspace_artifacts_windows.py
+          local/tests/scaffold/test_logging.py
+          local/tests/scaffold/test_profiles.py
+          --junitxml=windows-artifacts.xml
+      - name: Require Windows safety cases to execute
+        shell: python {0}
+        run: |
+          import sys
+          import xml.etree.ElementTree as ET
+
+          assert sys.platform == "win32", "Windows artifact checks require a native Windows runner"
+          cases = ET.parse("windows-artifacts.xml").findall(".//testcase")
+          required = (
+              "test_windows_reads_unicode_nested_text",
+              "test_windows_reads_long_path",
+              "test_windows_skips_junctions",
+              "test_windows_releases_handles",
+              "test_windows_rejects_junction_root",
+              "test_windows_skips_sharing_conflict",
+              "test_windows_api_errors_are_environment_failures",
+          )
+          for name in required:
+              matches = [case for case in cases if case.get("name", "").split("[", 1)[0] == name]
+              assert matches, f"Missing required Windows test: {name}"
+              assert all(
+                  case.find("skipped") is None
+                  and case.find("failure") is None
+                  and case.find("error") is None
+                  for case in matches
+              ), f"Required Windows test did not pass: {name}"
+      - name: Upload Windows artifact test results
+        if: always() && steps.artifact-tests.outcome != 'skipped'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: eval-windows-artifacts
+          path: eval/windows-artifacts.xml
+          if-no-files-found: error
+
   dashboard-e2e:
     name: Dashboard browser E2E
     runs-on: ubuntu-latest
@@ -347,6 +408,7 @@ jobs:
       - runtime-smoke
       - package-e2e
       - eval-static
+      - eval-windows
       - dashboard-e2e
       - sdk-api
       - sdk-contracts

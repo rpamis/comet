@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from scaffold.python.agents import normalize_skill_invocations
+from scaffold.python.workspace_artifacts import WorkspaceArtifactError
 
 GENERIC_RUBRIC_DIMENSIONS = (
     "completion",
@@ -201,6 +202,8 @@ def generic_rubric_validator(test_dir: Path, outputs: dict[str, Any]) -> tuple[l
                 for result in judge_results
             ):
                 passed.append("[RUBRIC-JUDGE] status: enabled_and_successful")
+        except WorkspaceArtifactError:
+            raise
         except Exception as e:
             passed.append(f"[RUBRIC-JUDGE] status: failed - {e}")
 

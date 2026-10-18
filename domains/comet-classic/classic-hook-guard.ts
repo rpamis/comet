@@ -1,3 +1,4 @@
+import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
 import { isClassicStateFileName } from './classic-state-file.js';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -149,6 +150,8 @@ interface GoverningChange {
   phase: ClassicPhase;
   classic: ClassicState | null;
   archived: boolean;
+  cancelled?: boolean;
+  cancellationPending?: boolean;
   invalidState?: boolean;
   superpowersArtifact?: 'matched' | 'unmatched';
   superpowersSlot?: SuperpowersArtifactSlot;
@@ -203,12 +206,14 @@ async function loadSdkGoverningChange(
   changeName: string,
   changeDir: string,
 ): Promise<GoverningChange> {
-  const { state } = await inspectHookSdkRun(projectRoot, changeName);
+  const { run, state } = await inspectHookSdkRun(projectRoot, changeName);
   return {
     changeDir,
     phase: state.phase,
     classic: state,
     archived: state.archived,
+    cancelled: isClassicSdkCancellationComplete(run),
+    cancellationPending: run.status === 'cancelled' && !isClassicSdkCancellationComplete(run),
   };
 }
 
@@ -234,7 +239,7 @@ async function activeChangesImpl(projectRoot: string): Promise<GoverningChange[]
       : active.stateExists
         ? await loadGoverningChange(active.directory)
         : null;
-    if (!governing || governing.archived) continue;
+    if (!governing || governing.archived || governing.cancelled) continue;
     governingChanges.push(governing);
   }
   return governingChanges;
@@ -252,11 +257,11 @@ const activeGoverningChange = memoizedHookRead(
     const active = await inspectClassicActiveChangeDirectory(changeName, projectRoot);
     if (await readSdkChangeOwner(projectRoot, 'classic', changeName, { readOnly: true })) {
       const governing = await loadSdkGoverningChange(projectRoot, changeName, active.directory);
-      return governing.archived ? null : governing;
+      return governing.archived || governing.cancelled ? null : governing;
     }
     if (!active.exists || !active.stateExists) return null;
     const governing = await loadGoverningChange(active.directory);
-    return !governing || governing.archived ? null : governing;
+    return !governing || governing.archived || governing.cancelled ? null : governing;
   },
 );
 const hookPlanReadiness = memoizedHookRead('classicPlanReadiness', inspectClassicPlanReadiness);
@@ -1094,6 +1099,11 @@ async function inspectClassicHookTarget(
   }
   if (!governing) return allowed('no active comet change');
   if ('blockedResult' in governing) return governing.blockedResult;
+  if (governing.cancellationPending)
+    return result(
+      2,
+      'Classic Run cancellation is incomplete: the original host must confirm that its execution and child tasks have stopped before writing.',
+    );
   if (governing.archived) return allowed(`${relativePath} (own change archived)`);
 
   const phase = governing.phase;

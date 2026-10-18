@@ -1,5 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
+import { createHash } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
@@ -89,7 +91,20 @@ export function resolveDashboardIndexPath(
 ): string {
   const repositoryId = resolveStableProjectId(projectRoot);
   const productDirectory = process.platform === 'linux' ? 'comet' : 'Comet';
-  return path.join(cacheRoot, productDirectory, 'dashboard', repositoryId + '.sqlite');
+  // 同一个 origin 的克隆和 worktree 有不同的当前目录与 Eval 数据。
+  let workspaceRoot = path.resolve(projectRoot);
+  try {
+    workspaceRoot = realpathSync.native(workspaceRoot);
+  } catch {
+    // 尚不存在的目录也保留独立缓存身份。
+  }
+  const workspaceId = createHash('sha256').update(workspaceRoot).digest('hex').slice(0, 24);
+  return path.join(
+    cacheRoot,
+    productDirectory,
+    'dashboard',
+    `${repositoryId}-${workspaceId}.sqlite`,
+  );
 }
 
 export class DashboardIndexStore {

@@ -45,6 +45,8 @@ describe('personal memory Dashboard callbacks', () => {
       selectedIdRef: { current: null },
       lastLoadedQueryRef: { current: '' },
       query: '',
+      queryRef: { current: '' },
+      tabRef: { current: 'active' },
       loadDemoSnapshot: async () => snapshot,
       pickSelected: () => 'demo-change',
       findChange: () => snapshot.changes[0],

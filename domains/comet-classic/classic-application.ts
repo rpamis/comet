@@ -1,3 +1,4 @@
+import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
 import { isClassicStateFileName } from './classic-state-file.js';
 import path from 'node:path';
 import {
@@ -791,6 +792,13 @@ export function createClassicApplication(
           return { allowed: false, reason: error instanceof Error ? error.message : String(error) };
         }
       }
+      if (run.status === 'cancelled')
+        return {
+          allowed: isClassicSdkCancellationComplete(run),
+          reason: isClassicSdkCancellationComplete(run)
+            ? 'Classic Run 已取消，原执行已确认停止'
+            : 'Classic Run 取消尚未完成；原宿主必须确认原执行及子任务停止并提交 stoppedActions 证据',
+        };
       const allowed =
         request.intent === 'write' &&
         request.targets.length > 0 &&

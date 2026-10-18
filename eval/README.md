@@ -43,6 +43,8 @@ eval/
 - 一个受支持的评估 Agent CLI：Claude Code、Codex、Qoder 或 CodeBuddy（运行时会在 Docker 镜像中准备对应 CLI）
 - `uv`（推荐）或 pip
 
+工作区根路径及其上级由 harness 提供并保持可信。工件评分与报告复制仅收集工作区内的普通文件，跳过所有文件和目录符号链接，包括指向工作区内部的链接，以及 Windows junction 等 reparse point。Linux/macOS 使用目录描述符逐级读取，原生 Windows 使用系统文件句柄逐级读取，不需要 WSL 或额外依赖。安全读取 API 不可用时 Eval 会报环境错误，不能继续生成空工件评分；文件消失或共享访问冲突时跳过该工件。
+
 ### 安装
 
 ```bash

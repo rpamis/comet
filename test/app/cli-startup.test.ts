@@ -110,6 +110,16 @@ describe('CLI startup routing', () => {
     },
   );
 
+  it.each([
+    ['native', 'status'],
+    ['native', 'show'],
+    ['native', 'root'],
+  ])('keeps Native task context out of the daemon for %j', (...args) => {
+    const result = run(args, { COMET_TASK: 'repair', TEST_FAST_HANDLED: '1' });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe('loaded:fast\n');
+  });
+
   it('keeps daemon controls available when automatic routing is off', () => {
     const result = run(['daemon', 'status'], { COMET_DAEMON: 'off', COMET_DAEMON_SERVER: '1' });
     expect(result.status, result.stderr).toBe(64);
@@ -131,7 +141,9 @@ describe('CLI startup routing', () => {
 
   it('uses the same conservative context and option restrictions as the daemon route', () => {
     expect(shouldTryCometDaemon(['state', 'next'], { COMET_TASK: '  ' })).toBe(true);
-    expect(shouldTryCometDaemon(['native', 'show'], { COMET_TASK: 'repair' })).toBe(true);
+    expect(shouldTryCometDaemon(['native', 'show'], { COMET_TASK: 'repair' })).toBe(false);
+    expect(shouldTryCometDaemon(['native', 'show'], { COMET_TASK: '  ' })).toBe(true);
+    expect(shouldTryCometDaemon(['native', 'status', '--summary', 'repair'], {})).toBe(false);
     expect(shouldTryCometDaemon(['state', 'current', '--comet-phase=build'], {})).toBe(false);
     expect(shouldTryCometDaemon(['classic', 'state', 'current', '-h'], {})).toBe(false);
   });

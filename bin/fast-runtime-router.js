@@ -28,7 +28,7 @@ function hasHelpFlag(args) {
  * the same argv contract. Returning null preserves Commander for all other
  * commands, including help and unknown-command diagnostics.
  */
-export function resolveFastRuntime(argv) {
+export function resolveFastRuntime(argv, environment = process.env) {
   if (argv.length === 0 || hasHelpFlag(argv)) return null;
 
   const [group, command, ...tail] = argv;
@@ -80,6 +80,19 @@ export function resolveFastRuntime(argv) {
   }
 
   if (group === 'native' && command && NATIVE_COMMANDS.has(command)) {
+    // 保留上下文注入和学习记录；普通只读命令继续使用独立 bundle。
+    if (
+      ['next', 'archive'].includes(command) ||
+      environment.COMET_TASK?.trim() ||
+      tail.includes('--summary') ||
+      tail.some((arg) => arg.startsWith('--comet-'))
+    ) {
+      return {
+        assetPath: 'dist/app/commands/native.js',
+        args: [command, ...tail],
+        nativeFacade: true,
+      };
+    }
     return {
       assetPath: `assets/skills/comet-native/scripts/comet-native-${command}.mjs`,
       args: tail,
@@ -113,6 +126,11 @@ export async function tryRunFastRuntime(argv = process.argv.slice(2)) {
       import(classicRuntimeUrl.href),
     ]);
     process.exitCode = await runClassicFacade(route.classicCommand, route.args, runClassicCli);
+    return true;
+  }
+  if (route.nativeFacade) {
+    const { runNativeFacade } = await import(runtimeUrl.href);
+    process.exitCode = await runNativeFacade(route.args);
     return true;
   }
   if (route.runtimeDispatch) {

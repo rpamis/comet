@@ -198,6 +198,26 @@ export async function collectDashboardChangePage(
   );
 }
 
+/** 统计与筛选一次读取完整活跃摘要，避免每页重复校验全部文件。 */
+export async function collectDashboardChangeSummary(
+  projectPath: string,
+  options: { status?: DashboardChangeTab; query?: string; limit?: number } = {},
+): Promise<DashboardChangePage> {
+  return withDashboardReadScope(projectPath, async () => {
+    const collection = await collectClassicChangeCandidates(path.resolve(projectPath));
+    if (collection.errors.length > 0)
+      throw new DashboardChangeQueryError(collection.errors.join('\n'));
+    const limit = options.limit ?? Number.MAX_SAFE_INTEGER;
+    if (!Number.isSafeInteger(limit) || limit < 1)
+      throw new DashboardChangeQueryError('Change summary limit must be a positive integer');
+    return buildDashboardChangePage(
+      collection,
+      { ...options, status: options.status ?? 'active' },
+      limit,
+    );
+  });
+}
+
 async function collectDashboardChangePageUncached(
   projectPath: string,
   options: DashboardChangePageOptions,
@@ -716,8 +736,8 @@ async function buildChangeCandidate(
 function buildDashboardChangePage(
   collection: ClassicCandidateCollection,
   options: DashboardChangePageOptions,
+  limit = normalizeChangePageLimit(options.limit),
 ): DashboardChangePage {
-  const limit = normalizeChangePageLimit(options.limit);
   const active = filterAndSortCandidates(collection.active, options.query, 'active');
   const archived = filterAndSortCandidates(collection.archived, options.query, 'archived');
   const candidates =

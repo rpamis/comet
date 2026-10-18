@@ -5414,6 +5414,162 @@ test('fills the change explorer from five-row pages and continues on scroll', as
   await expect(list.locator('.dashboard-change-list-item')).toHaveCount(13);
 });
 
+test('refreshes expanded Classic lists and details while ignoring a delayed old selection', async ({
+  page,
+}) => {
+  const items = Array.from({ length: 70 }, (_, index) => ({
+    id: `change-${index + 1}`,
+    name: `change-${index + 1}`,
+    displayName: `change-${index + 1}`,
+    status: 'active',
+    relativePath: `openspec/changes/change-${index + 1}`,
+    workflow: 'feature',
+    phase: 'build',
+    updatedAt: '2026-08-03T00:00:00.000Z',
+    tasks: { completed: 0, total: 1 },
+    verify: { result: 'pending' },
+  }));
+  let revision = 'before-refresh';
+  let releaseOldDetail = () => {};
+  let holdSelectedDetail = true;
+  const oldDetailGate = new Promise<void>((resolve) => {
+    releaseOldDetail = resolve;
+  });
+  const detailFor = (item) => ({
+    ...item,
+    dir: item.relativePath,
+    changesRelative: 'openspec/changes',
+    tasks: { ...item.tasks, incomplete: [], sections: [] },
+    artifacts: {
+      proposal: false,
+      design: false,
+      tasks: false,
+      plan: false,
+      verifyReport: false,
+      cometYaml: false,
+      grouped: [],
+    },
+    artifactPreviews: [],
+    verify: { ...item.verify, reportExists: false },
+    next: { command: 'comet status', reason: '', description: revision },
+    risks: [],
+  });
+  const pageRequests: string[] = [];
+
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects') {
+      await route.fulfill({
+        json: {
+          currentProjectId: 'fixture-project',
+          projects: [
+            {
+              id: 'fixture-project',
+              name: 'Fixture',
+              path: '/fixture',
+              lastSeenAt: null,
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/overview')) {
+      await route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture', generatedAt: '2026-08-03T00:00:00.000Z' },
+          summary: {
+            activeChanges: items.length,
+            archivedChanges: 0,
+            verifyFailed: 0,
+            tasksIncomplete: 36,
+            dirtyFiles: 0,
+          },
+          initialChanges: {
+            status: 'active',
+            items: items.slice(0, 5),
+            total: items.length,
+            nextCursor: '5',
+          },
+          git: {
+            branch: 'main',
+            head: 'abc1234',
+            dirtyFiles: 0,
+            dirtyFileList: [],
+            recentCommits: [],
+          },
+          risks: [],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/changes') || url.pathname.endsWith('/change-summary')) {
+      pageRequests.push(url.search);
+      const status = url.searchParams.get('status') ?? 'active';
+      const offset = Number(url.searchParams.get('cursor') ?? 0);
+      const limit = Number(url.searchParams.get('limit') ?? items.length);
+      await route.fulfill({
+        json: {
+          status,
+          items: items.slice(offset, offset + limit),
+          total: items.length,
+          nextCursor: offset + limit < items.length ? String(offset + limit) : null,
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/change')) {
+      const selected = url.searchParams.get('changeLocator') ?? url.searchParams.get('changeId');
+      const item = items.find((entry) => entry.id === selected) ?? items[0];
+      const detail = detailFor(item);
+      if (item.id === 'change-60' && holdSelectedDetail) {
+        holdSelectedDetail = false;
+        await oldDetailGate;
+      }
+      await route.fulfill({ json: detail }).catch(() => undefined);
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/');
+  await expect(page.locator('.dashboard-workspace-center')).toBeVisible();
+  await page.getByRole('tab', { name: '全部' }).click();
+
+  const list = page.getByRole('tabpanel', { name: '全部' }).locator('.dashboard-change-list');
+  await expect(list.locator('.dashboard-change-list-item')).toHaveCount(10);
+  await expect
+    .poll(() => pageRequests.filter((request) => request.includes('status=all')).length)
+    .toBeGreaterThanOrEqual(2);
+
+  for (let count = 10; count < 70; count += 5) {
+    await list.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect(list.locator('.dashboard-change-list-item')).toHaveCount(Math.min(count + 5, 70));
+  }
+  await list.getByText('change-60', { exact: true }).click();
+  await expect.poll(() => holdSelectedDetail).toBe(false);
+  revision = 'after-refresh';
+  await page.getByRole('button', { name: '立即刷新', exact: true }).click();
+  await expect(page.locator('.change-detail')).toContainText('after-refresh');
+  await expect(page.locator('.change-detail')).toContainText('change-60');
+  await expect(list.locator('.dashboard-change-list-item')).toHaveCount(70);
+  expect(
+    pageRequests.some((request) => request.includes('status=all') && request.includes('limit=70')),
+  ).toBe(true);
+  releaseOldDetail();
+  await expect(page.locator('.change-detail')).not.toContainText('before-refresh');
+  await page.getByRole('tab', { name: '已归档', exact: true }).click();
+  await expect(list).toBeHidden();
+  revision = 'archived-refresh';
+  await page.getByRole('button', { name: '立即刷新', exact: true }).click();
+  await expect(page.locator('.change-detail')).toContainText('archived-refresh');
+});
+
 test('keeps the Native change list scrollable on a narrow viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/?demo');

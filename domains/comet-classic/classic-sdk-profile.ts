@@ -5,17 +5,23 @@ import type { ClassicProfile, ClassicState } from './classic-state.js';
 export function classicSdkRunMatchesProfile(run: WorkflowRun, profile: ClassicProfile): boolean {
   if (run.workflow.id === `comet-classic-${profile}`) return true;
   const original = /^comet-classic-(hotfix|tweak)$/u.exec(run.workflow.id)?.[1];
-  const state = run.state as unknown as ClassicState;
+  return profile === 'full' && Boolean(original) && isClassicSdkApprovedUpgrade(run, original!);
+}
+
+/** 升级改变领域阶段，原 Run 定义及其审批记录仍保留 preset 身份。 */
+export function isClassicSdkApprovedUpgrade(run: WorkflowRun, profile: string): boolean {
+  const state = run.state as ClassicState | undefined;
   return (
-    profile === 'full' &&
-    Boolean(original) &&
-    state.workflow === 'full' &&
+    (profile === 'hotfix' || profile === 'tweak') &&
+    run.workflow.id === `comet-classic-${profile}` &&
+    state?.workflow === 'full' &&
     state.classicProfile === 'full' &&
     run.waits.some(
       (wait) =>
-        wait.stepId === `${original}.build.escalation-confirm` &&
+        wait.stepId === `${profile}.build.escalation-confirm` &&
         wait.status === 'resolved' &&
-        wait.decision?.choice === 'upgrade',
+        wait.decision?.choice === 'upgrade' &&
+        wait.decision.proposalHash === wait.proposalHash,
     )
   );
 }

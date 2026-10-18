@@ -1,3 +1,6 @@
+import { isClassicSdkApprovedUpgrade } from './classic-sdk-profile.js';
+import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
+import { clearCometCurrentSelectionIf } from '../workflow-contract/current-selection.js';
 import { observeWorkflowRunStore } from '../workflow-application/run-trace.js';
 import { resolveClassicStateFile } from './classic-state-file.js';
 import {
@@ -191,7 +194,7 @@ export function createClassicSdkStateStore(
       (archivedLocation && !state.archived && !archiveMoveIsUnresolved(saved)) ||
       !['full', 'hotfix', 'tweak'].includes(profile) ||
       saved.workflow.id !== `comet-classic-${profile}` ||
-      state.workflow !== profile ||
+      (state.workflow !== profile && !isClassicSdkApprovedUpgrade(saved, profile)) ||
       (state.boundBranch !== null && state.boundBranch !== liveGitBranch(projectRoot))
     ) {
       throw new Error(`Classic portable Run checkpoint for ${runId} does not match its state`);
@@ -485,6 +488,10 @@ export function createClassicSdkStateStore(
         await atomicWriteContainedText(markerFile, projectionSource, {
           containedRoot: runtimeRoot,
         });
+      }
+      if (isClassicSdkCancellationComplete(run)) {
+        if (!options.identity)
+          await clearCometCurrentSelectionIf(projectRoot, 'classic', run.runId);
       }
       return run;
     };

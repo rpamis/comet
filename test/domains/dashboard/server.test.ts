@@ -77,6 +77,43 @@ describe('startDashboardServer', () => {
     await fs.rm(webDir, { recursive: true, force: true });
   });
 
+  it.skipIf(process.platform !== 'linux')(
+    'closes static file descriptors after aborted responses',
+    async () => {
+      const asset = path.join(webDir, 'large.js');
+      await fs.writeFile(asset, Buffer.alloc(4 * 1024 * 1024, 120));
+      const handle = await startDashboardServer({
+        projectPath: projectDir,
+        webRoot: webDir,
+        port: 0,
+      });
+      handles.push(handle);
+      const countOpen = async () => {
+        const descriptors = await fs.readdir('/proc/self/fd');
+        const targets = await Promise.all(
+          descriptors.map((fd) => fs.readlink('/proc/self/fd/' + fd).catch(() => '')),
+        );
+        return targets.filter((target) => target === asset).length;
+      };
+      expect(await countOpen()).toBe(0);
+      for (let index = 0; index < 5; index++) {
+        await new Promise<void>((resolve, reject) => {
+          const req = http.get(
+            { host: '127.0.0.1', port: handle.port, path: '/large.js' },
+            (res) => {
+              res.once('data', () => res.destroy());
+              res.once('close', resolve);
+            },
+          );
+          req.once('error', reject);
+        });
+        await vi.waitFor(async () => expect(await countOpen()).toBe(0));
+      }
+      expect((await request(handle.port, '/large.js', { method: 'HEAD' })).status).toBe(200);
+      expect((await request(handle.port, '/app.js')).body).toBe('console.log(1);');
+    },
+  );
+
   it('removes a missing project only through a trusted JSON POST without deleting files', async () => {
     const missing = path.join(webDir, 'missing-project');
     await upsertProjectInstallation(missing, [], 'init');
@@ -372,6 +409,10 @@ describe('startDashboardServer', () => {
     });
     expect(JSON.parse(overviewResponse.body)).not.toHaveProperty('changes');
 
+    const summaryResponse = await request(handle.port, `${base}/change-summary`);
+    expect(summaryResponse.status).toBe(200);
+    expect(JSON.parse(summaryResponse.body)).toMatchObject({ total: 6, nextCursor: null });
+    expect(JSON.parse(summaryResponse.body).items).toHaveLength(6);
     const pageResponse = await request(handle.port, `${base}/changes?status=active&limit=5`);
     expect(pageResponse.status).toBe(200);
     const page = JSON.parse(pageResponse.body) as {
@@ -397,6 +438,7 @@ describe('startDashboardServer', () => {
   });
 
   it('serves Native changes from a paginated endpoint instead of embedding them in overview', async () => {
+    execFileSync('git', ['init', '-q', projectDir]);
     await writeProjectConfig(projectDir, defaultProjectConfig('docs'));
     const paths = await nativeProjectPaths(projectDir, 'docs');
     for (let index = 0; index < 6; index += 1) {

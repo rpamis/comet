@@ -1,3 +1,5 @@
+import * as applications from '../../../domains/workflow-application/index.js';
+import { inspectCometHook } from '../../../domains/comet-entry/hook-router.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { getCurrentVersion } from '../../../platform/version/version.js';
 import { createHash } from 'node:crypto';
@@ -1176,3 +1178,60 @@ it('rejects changed full Design sources before continuation and renews the confi
     status: 'pending',
   });
 }, 90000);
+
+it.each([false, true])(
+  'guards a cancelled composed Classic Run until claimed=%s work is stopped',
+  async (claimed) => {
+    const f = await fixture('tweak');
+    const action = f.run.actions.find((action) => action.status === 'pending')!;
+    if (claimed) {
+      await f.runtime.claim({
+        runId: 'example',
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        executorId: 'fixture-host',
+        claimToken: 'composition-claim',
+      });
+    }
+    let run = await f.runtime.cancel({ runId: 'example', reason: 'User cancelled composed work' });
+    // Keep discovery isolated from generated package loading; exercise the real factory, Run and router.
+    const selected = vi
+      .spyOn(applications, 'readSelectedWorkflowApplication')
+      .mockImplementation(async () => ({
+        application: { ...f.context, implementation: f.implementation, store: f.store } as never,
+        run,
+      }));
+    const request = {
+      intent: 'write' as const,
+      toolName: 'Write',
+      targets: [path.join(f.projectRoot, 'source.js')],
+    };
+    expect((await inspectCometHook(f.projectRoot, request)).allowed).toBe(!claimed);
+    if (claimed) {
+      run = await f.runtime.cancel({
+        runId: 'example',
+        reason: 'User cancelled composed work',
+        stoppedActions: [
+          {
+            actionId: action.id,
+            attempt: action.attempt,
+            inputHash: action.inputHash,
+            claimToken: 'composition-claim',
+            evidence: 'Original host and its child tasks stopped',
+          },
+        ],
+      });
+      expect((await inspectCometHook(f.projectRoot, request)).allowed).toBe(true);
+    }
+    expect(
+      (
+        await inspectCometHook(f.projectRoot, {
+          ...request,
+          targets: [path.join(f.projectRoot, 'docs/openspec/changes/example/comet-state.yaml')],
+        })
+      ).allowed,
+    ).toBe(false);
+    selected.mockRestore();
+  },
+);

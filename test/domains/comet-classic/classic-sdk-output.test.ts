@@ -284,6 +284,14 @@ describe('Classic next-step source projection', () => {
     (status) => {
       const run = fixture();
       run.status = status;
+      if (status === 'cancelled') {
+        run.actions = run.actions.map((action) => ({
+          ...action,
+          status: 'cancelled',
+          reason: 'User cancelled',
+        }));
+        run.ready = [];
+      }
       const result = classicSdkContinuation(run, root, 'demo');
       expect(result.mode).toBe(status === 'failed' ? 'reconcile' : 'done');
       expect(result.commandArgs).toBeNull();

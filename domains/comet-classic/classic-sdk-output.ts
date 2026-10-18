@@ -1,3 +1,4 @@
+import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
 import type { RuntimeAction, RuntimeValue, WorkflowRun } from '../engine/runtime.js';
 import type { CliActionContinuation } from '../workflow-contract/output-envelope.js';
 import { classicRecoveryContext } from './classic-recovery.js';
@@ -293,6 +294,14 @@ export function classicSdkContinuation(
     ...args,
     '--json',
   ];
+  if (run.status === 'cancelled' && !isClassicSdkCancellationComplete(run))
+    return result({
+      mode: 'reconcile',
+      commandArgs: null,
+      requiredInputs: ['original-execution-stop-evidence'],
+      instruction:
+        'Run 已停止派发；原宿主必须确认原执行及子任务已经停止，再通过 runtime dispatch cancel 的 stoppedActions 回报原领取身份与停止证据。此前工作区仍保持占用。',
+    });
   if (run.status === 'completed' || run.status === 'cancelled')
     return result({
       mode: 'done',

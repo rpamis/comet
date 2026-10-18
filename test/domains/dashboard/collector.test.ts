@@ -9,6 +9,7 @@ import { snapshotCometRuntimeMetrics } from '../../../platform/process/runtime-m
 import {
   collectDashboardChangeDetail,
   collectDashboardChangePage,
+  collectDashboardChangeSummary,
   collectDashboardOverview,
   collectDashboardSnapshot,
 } from '../../../domains/dashboard/collector.js';
@@ -85,6 +86,53 @@ describe('collectDashboardSnapshot', () => {
     vi.unstubAllEnvs();
     await fs.rm(root, { recursive: true, force: true });
     await fs.rm(cacheRoot, { recursive: true, force: true });
+  });
+
+  it('reads complete Classic summary once beyond page limits and checks external edits', async () => {
+    await Promise.all(
+      Array.from({ length: 70 }, (_, index) =>
+        writeChange(root, {
+          name: `change-${String(index).padStart(3, '0')}`,
+          tasks: '- [ ] Work\n',
+          yaml: { phase: 'build', workflow: 'full' },
+        }),
+      ),
+    );
+    await writeChange(root, { name: '2026-01-01-old', status: 'archived' });
+    const summary = await collectDashboardChangeSummary(root);
+    expect(summary.total).toBe(70);
+    expect(summary.items).toHaveLength(70);
+    expect(summary.nextCursor).toBeNull();
+    const expanded = await collectDashboardChangeSummary(root, { limit: 60 });
+    expect(expanded.items).toHaveLength(60);
+    const tail = await collectDashboardChangePage(root, {
+      status: 'active',
+      cursor: expanded.nextCursor!,
+      limit: 50,
+    });
+    expect([...expanded.items, ...tail.items].map((item) => item.id)).toEqual(
+      summary.items.map((item) => item.id),
+    );
+    const filtered = await collectDashboardChangeSummary(root, {
+      status: 'all',
+      query: 'change-06',
+    });
+    expect(filtered.total).toBe(10);
+    const page = await collectDashboardChangePage(root, { status: 'active', limit: 50 });
+    const second = await collectDashboardChangePage(root, {
+      status: 'active',
+      limit: 50,
+      cursor: page.nextCursor!,
+    });
+    expect(summary.items.map((item) => item.id)).toEqual(
+      [...page.items, ...second.items].map((item) => item.id),
+    );
+    await fs.writeFile(path.join(root, 'openspec/changes/change-000/tasks.md'), '- [x] Work\n');
+    await fs.rm(path.join(root, 'openspec/changes/change-001'), { recursive: true });
+    const refreshed = await collectDashboardChangeSummary(root);
+    expect(refreshed.total).toBe(69);
+    expect(refreshed.items.find((item) => item.name === 'change-000')?.tasks.completed).toBe(1);
+    expect(refreshed.items.some((item) => item.name === 'change-001')).toBe(false);
   });
 
   it('bounds selected Classic detail path inspection independently of overview', async () => {

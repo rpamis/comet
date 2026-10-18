@@ -149,6 +149,57 @@ describe('CI workflows', () => {
     );
   });
 
+  it('requires native Windows Eval artifact safety with locked base dependencies and non-skipped cases', async () => {
+    const ci = parse(await readWorkflow('ci.yml'));
+    const job = ci.jobs['eval-windows'];
+    expect(job['runs-on']).toBe('windows-latest');
+    expect(job.if).toBeUndefined();
+    expect(job['continue-on-error']).toBeUndefined();
+    expect(job.defaults.run['working-directory']).toBe('eval');
+    expect(job.steps.map((step: { run?: string }) => step.run)).toContain(
+      'uv sync --locked --no-default-groups',
+    );
+    const tests = job.steps.find((step: { id?: string }) => step.id === 'artifact-tests');
+    expect(tests.run).toContain('uv run --locked --no-sync pytest -q');
+    for (const file of [
+      'test_workspace_artifacts.py',
+      'test_workspace_artifacts_windows.py',
+      'test_logging.py',
+      'test_profiles.py',
+    ]) {
+      expect(tests.run).toContain(`local/tests/scaffold/${file}`);
+    }
+    expect(tests.run).toContain('--junitxml=windows-artifacts.xml');
+    const guard = job.steps.find((step: { shell?: string }) => step.shell === 'python {0}');
+    expect(guard.run).toContain('sys.platform == "win32"');
+    expect(guard.run).toContain('ET.parse("windows-artifacts.xml")');
+    for (const name of [
+      'test_windows_reads_unicode_nested_text',
+      'test_windows_reads_long_path',
+      'test_windows_skips_junctions',
+      'test_windows_releases_handles',
+      'test_windows_rejects_junction_root',
+      'test_windows_skips_sharing_conflict',
+      'test_windows_api_errors_are_environment_failures',
+    ]) {
+      expect(guard.run).toContain(name);
+    }
+    expect(guard.run).toContain('assert matches');
+    expect(guard.run).toContain('case.find("skipped") is None');
+    expect(guard.run).toContain('case.find("failure") is None');
+    expect(guard.run).toContain('case.find("error") is None');
+    expect(guard.if).toBeUndefined();
+    expect(guard['continue-on-error']).toBeUndefined();
+    expect(job.steps.indexOf(guard)).toBeGreaterThan(job.steps.indexOf(tests));
+    const report = job.steps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/upload-artifact@'),
+    );
+    expect(report.if).toContain('always()');
+    expect(report.with.path).toBe('eval/windows-artifacts.xml');
+    expect(report.with['if-no-files-found']).toBe('error');
+    expect(ci.jobs['ci-required'].needs).toContain('eval-windows');
+  });
+
   it('pins third-party actions to immutable commit SHAs', async () => {
     const names = await fs.readdir('.github/workflows');
     for (const name of names.filter((entry) => entry.endsWith('.yml'))) {

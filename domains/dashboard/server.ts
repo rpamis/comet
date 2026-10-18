@@ -1,11 +1,13 @@
 import { createReadStream, promises as fs } from 'fs';
 import http from 'http';
+import { pipeline } from 'node:stream/promises';
 import net from 'net';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import {
   collectDashboardChangeDetail,
   collectDashboardChangePage,
+  collectDashboardChangeSummary,
   collectDashboardOverview,
   collectDashboardSnapshot,
   DashboardChangeQueryError,
@@ -470,6 +472,16 @@ async function handleRequest(
       return;
     }
 
+    if (subpath === '/change-summary') {
+      const summary = await collectDashboardChangeSummary(project.path, {
+        status: parseChangeTab(url.searchParams.get('status')),
+        query: url.searchParams.get('q') ?? undefined,
+        limit: parseChangeLimit(url.searchParams.get('limit')),
+      });
+      respondJson(res, req.method, 200, summary);
+      return;
+    }
+
     if (subpath === '/changes') {
       const page = await collectDashboardChangePage(project.path, {
         status: parseChangeTab(url.searchParams.get('status')),
@@ -753,14 +765,9 @@ async function serveStatic(
       res.end();
       return;
     }
-    await new Promise<void>((resolve, reject) => {
-      const stream = createReadStream(targetPath);
-      stream.on('error', reject);
-      stream.on('end', resolve);
-      stream.pipe(res);
-    });
+    await pipeline(createReadStream(targetPath), res);
   } catch {
-    respondError(res, 404, 'Not found');
+    if (!res.destroyed) respondError(res, 404, 'Not found');
   }
 }
 

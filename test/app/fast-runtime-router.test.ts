@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 import { resolveFastRuntime } from '../../bin/fast-runtime-router.js';
@@ -61,6 +61,81 @@ describe('CLI fast runtime router', () => {
       }
     },
   );
+  it.each(['--comet-task', '--comet-path', '--comet-phase', '--comet-workflow'])(
+    'routes Native integration option %s through the public facade',
+    (option) => {
+      const args = ['status', '--project-root', 'project', option, 'value', '--json'];
+      expect(resolveFastRuntime(['native', ...args], {})).toEqual({
+        assetPath: 'dist/app/commands/native.js',
+        nativeFacade: true,
+        args,
+      });
+    },
+  );
+
+  it('preserves implicit Native context without disabling ordinary read fast paths', () => {
+    expect(resolveFastRuntime(['native', 'status'], { COMET_TASK: 'repair' })).toHaveProperty(
+      'nativeFacade',
+      true,
+    );
+    expect(resolveFastRuntime(['native', 'new', 'demo', '--summary', 'repair'], {})).toHaveProperty(
+      'nativeFacade',
+      true,
+    );
+    for (const command of ['status', 'show', 'root']) {
+      expect(resolveFastRuntime(['native', command], { COMET_TASK: '  ' })).toHaveProperty(
+        'assetPath',
+        `assets/skills/comet-native/scripts/comet-native-${command}.mjs`,
+      );
+    }
+  });
+
+  it.each([
+    ['next', 'demo'],
+    ['archive', 'demo'],
+    ['archive', 'demo', '--dry-run'],
+    ['status', '--comet-task', 'repair', '--json'],
+  ])('executes the Native facade from the real bin for %j', async (...args) => {
+    const fixture = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-fast-entry-'));
+    try {
+      await fs.mkdir(path.join(fixture, 'bin'), { recursive: true });
+      await fs.mkdir(path.join(fixture, 'dist/app/commands'), { recursive: true });
+      await fs.writeFile(path.join(fixture, 'package.json'), '{"type":"module"}');
+      for (const name of ['comet.js', 'comet-daemon-route.js', 'fast-runtime-router.js']) {
+        await fs.copyFile(
+          fileURLToPath(new URL(`../../bin/${name}`, import.meta.url)),
+          path.join(fixture, 'bin', name),
+        );
+      }
+      await fs.writeFile(
+        path.join(fixture, 'dist/app/commands/native.js'),
+        `
+        export async function runNativeFacade(args) {
+          process.stdout.write(JSON.stringify({facade: 'native', args}));
+          process.stderr.write('facade diagnostic');
+          return 73;
+        }
+      `,
+      );
+      const result = spawnSync(process.execPath, ['bin/comet.js', 'native', ...args], {
+        cwd: fixture,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          HOME: fixture,
+          USERPROFILE: fixture,
+          COMET_DAEMON: 'off',
+          COMET_TASK: '',
+        },
+      });
+      expect(result.status, result.stderr).toBe(73);
+      expect(JSON.parse(result.stdout)).toEqual({ facade: 'native', args });
+      expect(result.stderr).toBe('facade diagnostic');
+    } finally {
+      await fs.rm(fixture, { recursive: true, force: true });
+    }
+  });
+
   it.each(['--task', '--path', '--phase', '--task=repair'])(
     'keeps contextual option %s on the full public CLI',
     (option) => {
@@ -126,8 +201,9 @@ describe('CLI fast runtime router', () => {
     expect(
       resolveFastRuntime(['native', 'next', 'change', '--summary', 'ready', '--confirmed']),
     ).toEqual({
-      assetPath: 'assets/skills/comet-native/scripts/comet-native-next.mjs',
-      args: ['change', '--summary', 'ready', '--confirmed'],
+      assetPath: 'dist/app/commands/native.js',
+      nativeFacade: true,
+      args: ['next', 'change', '--summary', 'ready', '--confirmed'],
     });
   });
 

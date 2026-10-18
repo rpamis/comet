@@ -70,9 +70,10 @@ export function useWorkflowSummary({ projectId, workflow, snapshot, demo, enable
       const seen = new Set();
       let cursor;
       do {
-        const params = new URLSearchParams({ status: 'active', limit: '50' });
+        const params = new URLSearchParams({ status: 'active' });
+        if (workflow === 'native') params.set('limit', '50');
         if (cursor) params.set('cursor', cursor);
-        const endpoint = workflow === 'native' ? 'native-changes' : 'changes';
+        const endpoint = workflow === 'native' ? 'native-changes' : 'change-summary';
         const response = await fetch(
           '/api/dashboard/projects/' +
             encodeURIComponent(projectId) +

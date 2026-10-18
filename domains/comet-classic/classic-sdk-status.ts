@@ -1,3 +1,4 @@
+import { isClassicSdkApprovedUpgrade } from './classic-sdk-profile.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
@@ -132,16 +133,7 @@ export async function inspectClassicSdkRun(
         path.dirname(directory) === archiveDir &&
         /^\d{4}-\d{2}-\d{2}-/u.test(path.basename(directory)) &&
         path.basename(directory).slice(11) === name));
-  const upgradedFromPreset =
-    profile !== 'full' &&
-    state?.workflow === 'full' &&
-    state.classicProfile === 'full' &&
-    run.waits.some(
-      (wait) =>
-        wait.stepId === `${profile}.build.escalation-confirm` &&
-        wait.status === 'resolved' &&
-        wait.decision?.choice === 'upgrade',
-    );
+  const upgradedFromPreset = isClassicSdkApprovedUpgrade(run, profile);
   if (
     run.workflow.id !== application.workflow.id ||
     run.workflow.version !== application.workflow.version ||
