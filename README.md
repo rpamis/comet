@@ -25,7 +25,11 @@
 
 ## 💎 Sponsorship
 
-This project is supported by sponsors including [PackyCode](https://www.packyapi.ai/register?aff=DIId) and [RunAPI](https://runapi.host).
+> 中文版：[README-zh.md](README-zh.md)
+> [Bilibili video](https://www.bilibili.com/video/BV1y4Gi6CEo1/?spm_id_from=333.1387.homepage.video_card.click&vd_source=d22726fe6b108647dbebf1c5d8817377)
+> [DouYin](https://www.douyin.com/search/comet?aid=cd8fcc82-498b-4d59-8860-617deb719412&modal_id=7646429015808936293&type=general)
+
+This project is supported by sponsors including [PackyCode](https://www.packyapi.ai/register?aff=DIId)、[RunAPI](https://runapi.host)、[Cubence](https://cubence.com?source=comet).
 
 > [Want to be featured here?](mailto:benyuanming@gmail.com)
 
@@ -47,13 +51,24 @@ This project is supported by sponsors including [PackyCode](https://www.packyapi
   </tr>
   <tr>
     <td width="25%" align="center" valign="middle">
-      <a href="https://runapi.host">
+      <a href="https://runapi.host/register?aff=u7wr">
         <img src="https://github.com/rpamis/comet/blob/master/img/RunApi.jpg" alt="RunAPI Sponsor" width="180">
       </a>
     </td>
     <td width="75%" align="left" valign="middle">
       <p>RunAPI is a fast, reliable AI model API gateway. Access over 150 leading models, including OpenAI, Claude, Gemini, DeepSeek, and Grok, with a single API key and discounts of up to 90%. It works seamlessly with tools such as Claude Code and OpenClaw.</p>
-      <p><a href="https://runapi.host">Sign up through the link and get started today.</a></p>
+      <p><a href="https://runapi.host/register?aff=u7wr">Registry in here</a></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="25%" align="center" valign="middle">
+      <a href="https://cubence.com?source=comet">
+        <img src="https://github.com/rpamis/comet/blob/master/img/Cubence.png" alt="Cubence Sponsor" width="180">
+      </a>
+    </td>
+    <td width="75%" align="left" valign="middle">
+      <p>Cubence is a stable and efficient model aggregation gateway that supports API calls to mainstream large models, as well as dedicated groups for popular development tools such as Claude Code and Codex. It offers affordable pricing and stable, efficient service.</p>
+      <p><a href="https://cubence.com?source=comet">Use the `COMET` coupon to enjoy a 10% discount on top-ups.</a></p>
     </td>
   </tr>
 </table>
@@ -70,10 +85,6 @@ This project is supported by sponsors including [PackyCode](https://www.packyapi
 ╚██████╗╚██████╔╝██║ ╚═╝ ██║███████╗   ██║
  ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝   ╚═╝
 ```
-
-> 中文版：[README-zh.md](README-zh.md)
-> [Bilibili video](https://www.bilibili.com/video/BV1y4Gi6CEo1/?spm_id_from=333.1387.homepage.video_card.click&vd_source=d22726fe6b108647dbebf1c5d8817377)
-> [DouYin](https://www.douyin.com/search/comet?aid=cd8fcc82-498b-4d59-8860-617deb719412&modal_id=7646429015808936293&type=general)
 
 **Comet is a resumable long-running task workflow and Skill platform for coding.**
 
