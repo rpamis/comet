@@ -255,6 +255,7 @@ function displayStatus(status: CometProjectStatus, locale: CliOutputLocale): voi
 
 interface StatusOptions {
   json?: boolean;
+  includeHistory?: boolean;
 }
 
 export async function statusCommand(
@@ -262,7 +263,9 @@ export async function statusCommand(
   options: StatusOptions = {},
 ): Promise<void> {
   const projectPath = path.resolve(targetPath);
-  const status = await inspectCometProjectStatus(projectPath);
+  const status = await inspectCometProjectStatus(projectPath, {
+    includeHistory: options.includeHistory === true,
+  });
   const changes = [...status.workflows.classic.changes, ...status.unmanagedOpenSpec].sort((a, b) =>
     a.name.localeCompare(b.name),
   );

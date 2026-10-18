@@ -26,6 +26,7 @@ import {
   readSdkChangeOwner,
   readSdkChangeOwners,
 } from '../workflow-contract/change-runtime-owner.js';
+import { inspectNativeSdkClosedHistory } from '../comet-native/native-sdk-history-discovery.js';
 import { inspectNativeSdkStatus } from '../comet-native/native-sdk-status.js';
 import { hasNativeManagedRunMarker } from '../comet-native/native-sdk-state-store.js';
 import {
@@ -126,11 +127,25 @@ function invalidClassicChange(name: string, error: unknown, done = 0, total = 0)
 async function listConfiguredNativeStatus(
   paths: Awaited<ReturnType<typeof nativeProjectPaths>>,
   options: { clarificationMode: 'sequential' | 'batch'; maxVerifyFailures: number },
+  includeHistory: boolean,
 ): Promise<CometProjectStatus['workflows']['native']['changes']> {
   const names = await listNativeChangeNames(paths);
-  const owners = await readSdkChangeOwners(paths.projectRoot, 'native', names);
-  return inspectChanges(names, async (name) => {
+  const history = includeHistory
+    ? new Map<string, PromiseSettledResult<boolean>>()
+    : await inspectNativeSdkClosedHistory(paths.projectRoot, names);
+  const visible = names.filter((name) => {
+    const result = history.get(name);
+    return result?.status !== 'fulfilled' || !result.value;
+  });
+  const owners = await readSdkChangeOwners(
+    paths.projectRoot,
+    'native',
+    visible.filter((name) => history.get(name)?.status !== 'rejected'),
+  );
+  return inspectChanges(visible, async (name) => {
     try {
+      const partition = history.get(name);
+      if (partition?.status === 'rejected') throw partition.reason;
       const owner = owners.get(name);
       if (!owner) throw new Error(`Missing Native owner inspection for ${name}`);
       if (owner.status === 'rejected') throw owner.reason;
@@ -405,14 +420,20 @@ async function inspectOpenSpecChanges(
   return { classic, unmanaged };
 }
 
-export function inspectCometProjectStatus(startPath: string): Promise<CometProjectStatus> {
+export function inspectCometProjectStatus(
+  startPath: string,
+  options: { includeHistory?: boolean } = {},
+): Promise<CometProjectStatus> {
   return withGitWorktreeReadScope(() =>
-    runWithHookReadCache(() => inspectCometProjectStatusWithinScope(startPath)),
+    runWithHookReadCache(() =>
+      inspectCometProjectStatusWithinScope(startPath, options.includeHistory !== false),
+    ),
   );
 }
 
 async function inspectCometProjectStatusWithinScope(
   startPath: string,
+  includeHistory: boolean,
 ): Promise<CometProjectStatus> {
   const projectRoot = await discoverNativeProject(startPath);
   let defaultEntry: CometEntryResolution | { error: string };
@@ -448,10 +469,14 @@ async function inspectCometProjectStatusWithinScope(
         readOnly: true,
       });
       native = {
-        changes: await listConfiguredNativeStatus(paths, {
-          clarificationMode: config.native.clarification_mode,
-          maxVerifyFailures: config.native.max_verify_failures,
-        }),
+        changes: await listConfiguredNativeStatus(
+          paths,
+          {
+            clarificationMode: config.native.clarification_mode,
+            maxVerifyFailures: config.native.max_verify_failures,
+          },
+          includeHistory,
+        ),
       };
     } catch (error) {
       native = { changes: [], error: error instanceof Error ? error.message : String(error) };

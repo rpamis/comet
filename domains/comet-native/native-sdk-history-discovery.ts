@@ -2,6 +2,7 @@ import path from 'node:path';
 import { createFileRuntimeStore, type WorkflowRun } from '../engine/runtime.js';
 import {
   listSdkChangePartitions,
+  inspectSdkChangeOwnerPartitions,
   readSdkChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
 import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
@@ -35,4 +36,24 @@ export async function listNativeSdkHistoryPartitions(
       );
   });
   return partitions;
+}
+
+/** 项目总览只排除当前文档范围内已严格封存的内置 Native Run。 */
+export function inspectNativeSdkClosedHistory(
+  projectRoot: string,
+  names: readonly string[],
+): Promise<Map<string, PromiseSettledResult<boolean>>> {
+  return inspectSdkChangeOwnerPartitions(projectRoot, 'native', names, async (owner, partition) => {
+    if (partition !== 'history' || owner?.format !== 'sdk' || owner.application !== 'native')
+      return false;
+    const store = createFileRuntimeStore<WorkflowRun>({
+      rootDir: path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'sdk-runs', 'native'),
+    });
+    const disposition = await store.readPartitionMetadata(owner.runId);
+    if (disposition !== 'closed')
+      throw new Error(
+        `Native history partition for ${owner.change} is ${disposition}; run comet native doctor ${owner.change} --migrate-history --json to inspect and finish migration`,
+      );
+    return true;
+  });
 }

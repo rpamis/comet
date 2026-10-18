@@ -63,6 +63,10 @@ program
 program
   .command('status [path]')
   .description('Show active changes and workflow status for a project')
+  .option(
+    '--include-history',
+    'Include closed Native history in the existing project discovery scope',
+  )
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
     const { statusCommand } = await import('../commands/status.js');

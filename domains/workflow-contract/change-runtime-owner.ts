@@ -386,6 +386,87 @@ export async function readSdkChangeOwners(
   }
 }
 
+/** 只检查调用方发现的身份；只读回调与分区校验共享稳定代次，回调不得写入。 */
+export async function inspectSdkChangeOwnerPartitions<T>(
+  projectRoot: string,
+  workflow: CometProjectWorkflow,
+  names: readonly string[],
+  inspect: (owner: ChangeRuntimeOwner | null, partition: OwnerPartition | null) => Promise<T>,
+): Promise<Map<string, PromiseSettledResult<T>>> {
+  const requested = [...new Set(names)];
+  if (requested.length === 0) return new Map();
+  try {
+    const roots = await ownerRuntimeRoots(projectRoot);
+    return await withStableOwnerPartitions(
+      roots,
+      async () => {
+        ownerReadBatches.getStore()?.runtimeRoots.set(projectRoot, roots);
+        for (const root of roots) {
+          const volume = path.parse(root).root;
+          await inspectProtectedProjectPath(
+            volume,
+            path.relative(volume, root).replaceAll('\\', '/'),
+            {
+              label: 'read-only workspace Runtime',
+              expected: 'directory',
+            },
+          );
+        }
+        const results = new Array<PromiseSettledResult<T>>(requested.length);
+        let next = 0;
+        await Promise.all(
+          Array.from({ length: Math.min(8, requested.length) }, async () => {
+            for (;;) {
+              const index = next++;
+              if (index >= requested.length) return;
+              const name = requested[index];
+              try {
+                let owner: ChangeRuntimeOwner | null = null;
+                let partition: OwnerPartition | null = null;
+                for (const root of roots) {
+                  const active = await readOwnerFile(
+                    root,
+                    ownerRef(workflow, name),
+                    workflow,
+                    name,
+                  );
+                  const history = await readOwnerFile(
+                    root,
+                    ownerRef(workflow, name, 'history'),
+                    workflow,
+                    name,
+                  );
+                  if (active && history)
+                    throw new Error(
+                      `Conflicting active and history Runtime owners for ${workflow}/${name}`,
+                    );
+                  const found = active ?? history;
+                  const foundPartition = active ? 'active' : history ? 'history' : null;
+                  if (found && owner && (!sameOwner(found, owner) || partition !== foundPartition))
+                    throw new Error(
+                      `Conflicting current and legacy Runtime owners for ${workflow}/${name}`,
+                    );
+                  if (found) {
+                    owner = found;
+                    partition = foundPartition;
+                  }
+                }
+                results[index] = { status: 'fulfilled', value: await inspect(owner, partition) };
+              } catch (reason) {
+                results[index] = { status: 'rejected', reason };
+              }
+            }
+          }),
+        );
+        return new Map(requested.map((name, index) => [name, results[index]]));
+      },
+      true,
+    );
+  } catch (reason) {
+    return new Map(requested.map((name) => [name, { status: 'rejected', reason }]));
+  }
+}
+
 async function discoverOwnerPartitions(
   projectRoot: string,
   workflow: CometProjectWorkflow,

@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import * as historyClosure from '../../../domains/comet-native/native-sdk-history.js';
 import { withCometRuntimeMetrics } from '../../../platform/process/runtime-metrics.js';
 import { execFileSync } from 'node:child_process';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
@@ -54,6 +56,170 @@ describe('SDK ownership in shared project status', () => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
     await fs.rm(root, { recursive: true, force: true });
+  });
+
+  async function cancelled(name: string) {
+    expect((await runNativeCli(['new', name, '--project-root', root, '--json'])).exitCode).toBe(0);
+    expect((await runNativeCli(['cancel', name, '--project-root', root, '--json'])).exitCode).toBe(
+      0,
+    );
+  }
+
+  it('excludes only closed discovered history, preserves domain defaults, and defers body corruption', async () => {
+    await cancelled('closed-change');
+    expect(
+      (await runNativeCli(['new', 'active-change', '--project-root', root, '--json'])).exitCode,
+    ).toBe(0);
+    const runtime = resolveWorkspaceRuntimeRootSync(root);
+    await fs.writeFile(path.join(runtime, 'change-owner-history/native/unrequested.json'), '{}');
+    const key = createHash('sha256').update(JSON.stringify('closed-change')).digest('hex');
+    const checkpoint = path.join(
+      runtime,
+      'sdk-runs/native/.runtime-store-history',
+      key,
+      'checkpoint.json',
+    );
+    const files = vi.spyOn(protectedOwnerFiles, 'readProtectedProjectFile');
+    const active = await inspectCometProjectStatus(root, { includeHistory: false });
+    expect(active.workflows.native.changes.map((c) => c.name)).toEqual(['active-change']);
+    expect(files.mock.calls.some((args) => args[1].includes('.runtime-store-history'))).toBe(false);
+    expect(files.mock.calls.some((args) => args[1].includes('unrequested'))).toBe(false);
+    for (const options of [undefined, { includeHistory: true }]) {
+      const full = await inspectCometProjectStatus(root, options);
+      expect(full.workflows.native.changes.map((c) => c.name)).toEqual([
+        'active-change',
+        'closed-change',
+      ]);
+      expect(full.workflows.native.changes.every((c) => !('error' in c))).toBe(true);
+    }
+    await fs.writeFile(checkpoint, '{broken');
+    expect(
+      (
+        await inspectCometProjectStatus(root, { includeHistory: false })
+      ).workflows.native.changes.map((c) => c.name),
+    ).toEqual(['active-change']);
+    expect(
+      (await inspectCometProjectStatus(root, { includeHistory: true })).workflows.native.changes[1],
+    ).toMatchObject({ name: 'closed-change', error: expect.any(String) });
+  });
+
+  it.each([
+    'dual-owner',
+    'bad-owner',
+    'active-checkpoint',
+    'bad-marker',
+    'pending-marker',
+    'missing-checkpoint',
+    'symlink-checkpoint',
+    'bad-fence',
+  ])('retains a per-change error for %s without hiding other changes', async (failure) => {
+    await cancelled('closed-change');
+    expect(
+      (await runNativeCli(['new', 'active-change', '--project-root', root, '--json'])).exitCode,
+    ).toBe(0);
+    const runtime = resolveWorkspaceRuntimeRootSync(root);
+    const key = createHash('sha256').update(JSON.stringify('closed-change')).digest('hex');
+    const store = path.join(runtime, 'sdk-runs/native');
+    const checkpoint = path.join(store, '.runtime-store-history', key, 'checkpoint.json');
+    const owner = path.join(runtime, 'change-owner-history/native/closed-change.json');
+    if (failure === 'dual-owner')
+      await fs.copyFile(owner, path.join(runtime, 'change-owners/native/closed-change.json'));
+    if (failure === 'bad-owner') await fs.writeFile(owner, '{}');
+    if (failure === 'active-checkpoint') {
+      const active = path.join(store, '.runtime-store-v2', key, 'checkpoint.json');
+      await fs.mkdir(path.dirname(active), { recursive: true });
+      await fs.copyFile(checkpoint, active);
+    }
+    const marker = path.join(store, key);
+    if (failure === 'bad-marker') await fs.writeFile(marker, '{}');
+    if (failure === 'pending-marker') {
+      const value = JSON.parse(await fs.readFile(marker, 'utf8'));
+      await fs.writeFile(marker, JSON.stringify({ ...value, state: 'reopening' }));
+    }
+    if (failure === 'missing-checkpoint') await fs.unlink(checkpoint);
+    if (failure === 'symlink-checkpoint') {
+      const moved = path.join(root, 'moved-checkpoint');
+      await fs.rename(checkpoint, moved);
+      await fs.symlink(moved, checkpoint);
+    }
+    if (failure === 'bad-fence') await fs.writeFile(path.join(root, '.comet/runtime'), '{bad');
+    const result = await inspectCometProjectStatus(root, { includeHistory: false });
+    expect(result.workflows.native.changes.map((c) => c.name)).toEqual([
+      'active-change',
+      'closed-change',
+    ]);
+    expect(result.workflows.native.changes[1]).toMatchObject({ error: expect.any(String) });
+    expect('error' in result.workflows.native.changes[0]).toBe(failure === 'bad-fence');
+  });
+
+  it.each(['active-owner', 'custom-owner', 'pending-active-owner'])(
+    'never filters a closed checkpoint with %s',
+    async (kind) => {
+      await cancelled('retained-change');
+      const runtime = resolveWorkspaceRuntimeRootSync(root);
+      const history = path.join(runtime, 'change-owner-history/native/retained-change.json');
+      if (kind === 'custom-owner') {
+        const owner = JSON.parse(await fs.readFile(history, 'utf8'));
+        await fs.writeFile(history, JSON.stringify({ ...owner, application: 'custom-native' }));
+      } else {
+        await fs.rename(history, path.join(runtime, 'change-owners/native/retained-change.json'));
+        if (kind === 'pending-active-owner') {
+          const key = createHash('sha256').update(JSON.stringify('retained-change')).digest('hex');
+          const file = path.join(runtime, 'sdk-runs/native', key);
+          const marker = JSON.parse(await fs.readFile(file, 'utf8'));
+          await fs.writeFile(file, JSON.stringify({ ...marker, state: 'reopening' }));
+        }
+      }
+      const result = await inspectCometProjectStatus(root, { includeHistory: false });
+      expect(result.workflows.native.changes.map((c) => c.name)).toEqual(['retained-change']);
+    },
+  );
+
+  it('keeps unmigrated cancelled runs visible without migrating on status', async () => {
+    const close = vi.spyOn(historyClosure, 'closeNativeSdkHistory').mockResolvedValue(false);
+    await cancelled('legacy-history');
+    close.mockRestore();
+    const result = await inspectCometProjectStatus(root, { includeHistory: false });
+    expect(result.workflows.native.changes).toHaveLength(1);
+    expect(result.workflows.native.changes[0]).toMatchObject({
+      name: 'legacy-history',
+      status: 'cancelled',
+    });
+    expect(
+      await fs.readFile(
+        path.join(
+          resolveWorkspaceRuntimeRootSync(root),
+          'change-owners/native/legacy-history.json',
+        ),
+        'utf8',
+      ),
+    ).toContain('legacy-history');
+  });
+
+  it('retries closed-history metadata when a writer changes the owner generation', async () => {
+    await cancelled('closed-race');
+    const original = protectedOwnerFiles.readProtectedProjectFile;
+    let reads = 0;
+    vi.spyOn(protectedOwnerFiles, 'readProtectedProjectFile').mockImplementation(
+      async (...args) => {
+        const result = await original(...args);
+        if (args[1] === 'change-owner-history/native/closed-race.json' && ++reads === 1) {
+          await registerSdkChangeOwner(root, {
+            schema: 'comet.change-owner.v1',
+            workflow: 'native',
+            change: 'unrequested',
+            runId: 'unrequested',
+            application: 'native',
+            format: 'sdk',
+          });
+        }
+        return result;
+      },
+    );
+    expect(
+      (await inspectCometProjectStatus(root, { includeHistory: false })).workflows.native.changes,
+    ).toEqual([]);
+    expect(reads).toBe(2);
   });
 
   it('batches only actual global Native change names and isolates a corrupt owner', async () => {
@@ -145,55 +311,58 @@ describe('SDK ownership in shared project status', () => {
     expect(reads).toBe(2);
   });
 
-  it('batches current Classic names in real global status and isolates corrupt owners', async () => {
-    for (const name of ['classic-first', 'classic-second']) {
-      const created = await runClassicCli(
-        ['state', 'init', name, 'full', '--isolation', 'current'],
-        undefined,
-        { projectRoot: root, invocationCwd: root },
+  it.each([true, false])(
+    'batches current Classic names and isolates corrupt owners (includeHistory=%s)',
+    async (includeHistory) => {
+      for (const name of ['classic-first', 'classic-second']) {
+        const created = await runClassicCli(
+          ['state', 'init', name, 'full', '--isolation', 'current'],
+          undefined,
+          { projectRoot: root, invocationCwd: root },
+        );
+        expect(created.exitCode, created.stderr).toBe(0);
+      }
+      const runtimeRoot = resolveWorkspaceRuntimeRootSync(root);
+      const owners = path.join(runtimeRoot, 'change-owners/classic');
+      await fs.writeFile(path.join(owners, 'unrequested-history.json'), '{}');
+      const original = protectedOwnerFiles.readProtectedProjectFile;
+      const bodies: string[] = [];
+      let tokens = 0;
+      vi.spyOn(protectedOwnerFiles, 'readProtectedProjectFile').mockImplementation(
+        async (...args) => {
+          const result = await original(...args);
+          if (args[1] === '.change-owner-partitions.json') tokens += 1;
+          if (args[1].startsWith('change-owners/classic/')) bodies.push(args[1]);
+          return result;
+        },
       );
-      expect(created.exitCode, created.stderr).toBe(0);
-    }
-    const runtimeRoot = resolveWorkspaceRuntimeRootSync(root);
-    const owners = path.join(runtimeRoot, 'change-owners/classic');
-    await fs.writeFile(path.join(owners, 'unrequested-history.json'), '{}');
-    const original = protectedOwnerFiles.readProtectedProjectFile;
-    const bodies: string[] = [];
-    let tokens = 0;
-    vi.spyOn(protectedOwnerFiles, 'readProtectedProjectFile').mockImplementation(
-      async (...args) => {
-        const result = await original(...args);
-        if (args[1] === '.change-owner-partitions.json') tokens += 1;
-        if (args[1].startsWith('change-owners/classic/')) bodies.push(args[1]);
-        return result;
-      },
-    );
-    const status = await inspectCometProjectStatus(root);
-    expect(status.workflows.classic.changes.map((change) => change.name)).toEqual([
-      'classic-first',
-      'classic-second',
-    ]);
-    expect(status.workflows.classic.changes.every((change) => change.runtimeMode === 'sdk')).toBe(
-      true,
-    );
-    expect(tokens).toBe(2);
-    expect(bodies).toHaveLength(2);
-    expect(bodies.some((ref) => ref.includes('unrequested-history'))).toBe(false);
-    await fs.writeFile(path.join(owners, 'classic-first.json'), '{}');
-    tokens = 0;
-    bodies.length = 0;
-    const corrupt = await inspectCometProjectStatus(root);
-    expect(corrupt.workflows.classic.changes[0]).toMatchObject({
-      name: 'classic-first',
-      error: expect.stringContaining('Invalid change runtime owner'),
-    });
-    expect(corrupt.workflows.classic.changes[1]).toMatchObject({
-      name: 'classic-second',
-      runtimeMode: 'sdk',
-    });
-    expect(tokens).toBe(2);
-    expect(bodies).toHaveLength(2);
-  });
+      const status = await inspectCometProjectStatus(root, { includeHistory });
+      expect(status.workflows.classic.changes.map((change) => change.name)).toEqual([
+        'classic-first',
+        'classic-second',
+      ]);
+      expect(status.workflows.classic.changes.every((change) => change.runtimeMode === 'sdk')).toBe(
+        true,
+      );
+      expect(tokens).toBe(2);
+      expect(bodies).toHaveLength(2);
+      expect(bodies.some((ref) => ref.includes('unrequested-history'))).toBe(false);
+      await fs.writeFile(path.join(owners, 'classic-first.json'), '{}');
+      tokens = 0;
+      bodies.length = 0;
+      const corrupt = await inspectCometProjectStatus(root, { includeHistory });
+      expect(corrupt.workflows.classic.changes[0]).toMatchObject({
+        name: 'classic-first',
+        error: expect.stringContaining('Invalid change runtime owner'),
+      });
+      expect(corrupt.workflows.classic.changes[1]).toMatchObject({
+        name: 'classic-second',
+        runtimeMode: 'sdk',
+      });
+      expect(tokens).toBe(2);
+      expect(bodies).toHaveLength(2);
+    },
+  );
 
   it('shares Git worktree reads within each global status request, never across requests', async () => {
     for (const name of ['first-run', 'second-run', 'third-run']) {
@@ -294,53 +463,56 @@ describe('SDK ownership in shared project status', () => {
     expect(await snapshot(root)).toEqual(missing);
   });
 
-  it('discovers the selected standalone Run and surfaces pinned package drift', async () => {
-    const application = await createDiskApplication(root);
-    const request = path.join(root, 'request.json');
-    await fs.writeFile(
-      request,
-      JSON.stringify({
-        operation: 'start',
-        runId: 'report',
-        workflow: { id: 'editorial', version: '1' },
-        input: { topic: 'Local report' },
-      }),
-    );
-    const started = await runtimeDispatchCommand({
-      projectRoot: root,
-      applicationFile: application.file,
-      request,
-    });
-    expect(started.exitCode, JSON.stringify(started.response)).toBe(0);
-    const before = await inspectCometProjectStatus(root);
-    expect(before).toMatchObject({
-      applications: {
-        changes: [
-          {
-            applicationId: 'editorial',
-            name: 'report',
-            healthy: true,
-            run: { runId: 'report', revision: 1, status: 'running' },
-          },
-        ],
-      },
-    });
-    await fs.appendFile(
-      path.join(application.packageRoot, 'SKILL.md'),
-      '\nChanged fixed package.\n',
-    );
-    const changed = await inspectCometProjectStatus(root);
-    expect(changed).toMatchObject({
-      applications: {
-        changes: [
-          {
-            applicationId: 'editorial',
-            name: 'report',
-            healthy: false,
-            error: { code: 'WORKFLOW_CHANGED' },
-          },
-        ],
-      },
-    });
-  });
+  it.each([true, false])(
+    'discovers standalone Run and pinned package drift (includeHistory=%s)',
+    async (includeHistory) => {
+      const application = await createDiskApplication(root);
+      const request = path.join(root, 'request.json');
+      await fs.writeFile(
+        request,
+        JSON.stringify({
+          operation: 'start',
+          runId: 'report',
+          workflow: { id: 'editorial', version: '1' },
+          input: { topic: 'Local report' },
+        }),
+      );
+      const started = await runtimeDispatchCommand({
+        projectRoot: root,
+        applicationFile: application.file,
+        request,
+      });
+      expect(started.exitCode, JSON.stringify(started.response)).toBe(0);
+      const before = await inspectCometProjectStatus(root, { includeHistory });
+      expect(before).toMatchObject({
+        applications: {
+          changes: [
+            {
+              applicationId: 'editorial',
+              name: 'report',
+              healthy: true,
+              run: { runId: 'report', revision: 1, status: 'running' },
+            },
+          ],
+        },
+      });
+      await fs.appendFile(
+        path.join(application.packageRoot, 'SKILL.md'),
+        '\nChanged fixed package.\n',
+      );
+      const changed = await inspectCometProjectStatus(root, { includeHistory });
+      expect(changed).toMatchObject({
+        applications: {
+          changes: [
+            {
+              applicationId: 'editorial',
+              name: 'report',
+              healthy: false,
+              error: { code: 'WORKFLOW_CHANGED' },
+            },
+          ],
+        },
+      });
+    },
+  );
 });

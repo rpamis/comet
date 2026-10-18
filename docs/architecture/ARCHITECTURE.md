@@ -158,7 +158,7 @@ Resolver 的 step/evidence 判断；`.comet.yaml` 保持用户可见投影，`.c
 
 对用户来说，`status` 和 `doctor` 不再只是“列命令”和“查安装”：
 
-- `comet status` 面向正在推进中的 change，输出下一条建议命令之外，还会暴露 `current step`、`runtime mode`、runtime eval 缺口，以及畸形状态的恢复提示。
+- `comet status` 面向正在推进中的 change，输出下一条建议命令之外，还会暴露 `current step`、`runtime mode`、runtime eval 缺口，以及畸形状态的恢复提示。默认跳过当前文档发现范围内已完成严格封存的内置 Native 历史；`comet status --include-history` 保留原查询范围并完整校验这些历史，不会扩大到所有 Archive 目录。`--json` 的字段与 `comet.status.v2` schema 不变，但依赖旧版历史行的脚本需要改用 `comet status --json --include-history`。Classic、自定义应用和未迁移的终态保持原行为；封存元数据异常仍显示错误。此默认值仅适用于顶层 CLI，Dashboard、Doctor 和共享查询 API 的默认范围不变。
 - `comet doctor` 面向更广的健康检查，既看安装与目录完整性，也看 active change 的 diagnostic 结果；有效 change 会给出 step/mode，失效 change 会明确指出 `.comet.yaml` 的问题和下一步修复方向。
 
 这两个入口之所以能说同一种话，是因为它们共享 `inspectClassicChange` 的诊断与证据判定，而不是各自拼一套展示逻辑。
