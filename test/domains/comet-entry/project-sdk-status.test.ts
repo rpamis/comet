@@ -17,6 +17,9 @@ import { resolveHookWorkflowOwner } from '../../../domains/comet-entry/hook-rout
 import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
 import { createDiskApplication } from '../../helpers/workflow-application.js';
 
+import * as protectedOwnerFiles from '../../../domains/workflow-contract/protected-project-path.js';
+import { registerSdkChangeOwner } from '../../../domains/workflow-contract/change-runtime-owner.js';
+
 async function snapshot(root: string): Promise<Record<string, string>> {
   const files: Record<string, string> = {};
   async function visit(directory: string) {
@@ -51,6 +54,145 @@ describe('SDK ownership in shared project status', () => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
     await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it('batches only actual global Native change names and isolates a corrupt owner', async () => {
+    for (const name of ['batch-first', 'batch-second']) {
+      const created = await runNativeCli(['new', name, '--project-root', root, '--json']);
+      expect(created.exitCode, created.stderr).toBe(0);
+      const cancelled = await runNativeCli(['cancel', name, '--project-root', root, '--json']);
+      expect(cancelled.exitCode, cancelled.stderr).toBe(0);
+    }
+    const runtimeRoot = resolveWorkspaceRuntimeRootSync(root);
+    const history = path.join(runtimeRoot, 'change-owner-history/native');
+    await fs.writeFile(path.join(history, 'unrequested-history.json'), '{}');
+    const original = protectedOwnerFiles.readProtectedProjectFile;
+    const bodies: string[] = [];
+    let tokens = 0;
+    vi.spyOn(protectedOwnerFiles, 'readProtectedProjectFile').mockImplementation(
+      async (...args) => {
+        const result = await original(...args);
+        if (args[1] === '.change-owner-partitions.json') tokens += 1;
+        if (/^change-(?:owners|owner-history)\/native\//u.test(args[1])) bodies.push(args[1]);
+        return result;
+      },
+    );
+    const status = await inspectCometProjectStatus(root);
+    expect(status.workflows.native.changes.map((change) => change.name)).toEqual([
+      'batch-first',
+      'batch-second',
+    ]);
+    expect(status.workflows.native.changes.every((change) => !('error' in change))).toBe(true);
+    expect(tokens).toBe(2);
+    expect(bodies).toHaveLength(2);
+    expect(bodies.some((ref) => ref.includes('unrequested-history'))).toBe(false);
+    await fs.writeFile(path.join(history, 'batch-first.json'), '{}');
+    tokens = 0;
+    bodies.length = 0;
+    const corrupt = await inspectCometProjectStatus(root);
+    expect(corrupt.workflows.native.changes[0]).toMatchObject({
+      name: 'batch-first',
+      error: expect.stringContaining('Invalid change runtime owner'),
+    });
+    expect(corrupt.workflows.native.changes[1]).toMatchObject({
+      name: 'batch-second',
+      schema: 'comet.native.sdk-status.v1',
+    });
+    expect(tokens).toBe(2);
+    expect(bodies).toHaveLength(2);
+    await fs.writeFile(path.join(runtimeRoot, '.change-owner-partitions.json'), '{bad');
+    const fenced = await inspectCometProjectStatus(root);
+    expect(fenced.workflows.native.changes.map((change) => change.name)).toEqual([
+      'batch-first',
+      'batch-second',
+    ]);
+    for (const change of fenced.workflows.native.changes) {
+      expect(change).toMatchObject({
+        error: expect.stringContaining('Invalid change owner partition token'),
+      });
+    }
+  });
+
+  it('retries the real global owner batch when a writer completes during prefetch', async () => {
+    const created = await runNativeCli(['new', 'batch-race', '--project-root', root, '--json']);
+    expect(created.exitCode, created.stderr).toBe(0);
+    const original = protectedOwnerFiles.readProtectedProjectFile;
+    let reads = 0;
+    vi.spyOn(protectedOwnerFiles, 'readProtectedProjectFile').mockImplementation(
+      async (...args) => {
+        const result = await original(...args);
+        if (args[1] === 'change-owners/native/batch-race.json') {
+          reads += 1;
+          if (reads === 1)
+            await registerSdkChangeOwner(root, {
+              schema: 'comet.change-owner.v1',
+              workflow: 'native',
+              change: 'outside-added',
+              runId: 'outside-added',
+              application: 'native',
+              format: 'sdk',
+            });
+        }
+        return result;
+      },
+    );
+    const status = await inspectCometProjectStatus(root);
+    expect(status.workflows.native.changes).toHaveLength(1);
+    expect(status.workflows.native.changes[0]).toMatchObject({
+      name: 'batch-race',
+      schema: 'comet.native.sdk-status.v1',
+    });
+    expect(reads).toBe(2);
+  });
+
+  it('batches current Classic names in real global status and isolates corrupt owners', async () => {
+    for (const name of ['classic-first', 'classic-second']) {
+      const created = await runClassicCli(
+        ['state', 'init', name, 'full', '--isolation', 'current'],
+        undefined,
+        { projectRoot: root, invocationCwd: root },
+      );
+      expect(created.exitCode, created.stderr).toBe(0);
+    }
+    const runtimeRoot = resolveWorkspaceRuntimeRootSync(root);
+    const owners = path.join(runtimeRoot, 'change-owners/classic');
+    await fs.writeFile(path.join(owners, 'unrequested-history.json'), '{}');
+    const original = protectedOwnerFiles.readProtectedProjectFile;
+    const bodies: string[] = [];
+    let tokens = 0;
+    vi.spyOn(protectedOwnerFiles, 'readProtectedProjectFile').mockImplementation(
+      async (...args) => {
+        const result = await original(...args);
+        if (args[1] === '.change-owner-partitions.json') tokens += 1;
+        if (args[1].startsWith('change-owners/classic/')) bodies.push(args[1]);
+        return result;
+      },
+    );
+    const status = await inspectCometProjectStatus(root);
+    expect(status.workflows.classic.changes.map((change) => change.name)).toEqual([
+      'classic-first',
+      'classic-second',
+    ]);
+    expect(status.workflows.classic.changes.every((change) => change.runtimeMode === 'sdk')).toBe(
+      true,
+    );
+    expect(tokens).toBe(2);
+    expect(bodies).toHaveLength(2);
+    expect(bodies.some((ref) => ref.includes('unrequested-history'))).toBe(false);
+    await fs.writeFile(path.join(owners, 'classic-first.json'), '{}');
+    tokens = 0;
+    bodies.length = 0;
+    const corrupt = await inspectCometProjectStatus(root);
+    expect(corrupt.workflows.classic.changes[0]).toMatchObject({
+      name: 'classic-first',
+      error: expect.stringContaining('Invalid change runtime owner'),
+    });
+    expect(corrupt.workflows.classic.changes[1]).toMatchObject({
+      name: 'classic-second',
+      runtimeMode: 'sdk',
+    });
+    expect(tokens).toBe(2);
+    expect(bodies).toHaveLength(2);
   });
 
   it('shares Git worktree reads within each global status request, never across requests', async () => {

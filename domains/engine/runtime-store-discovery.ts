@@ -74,7 +74,7 @@ async function discoverFileRuntimeStoreRunSources(
       !entry.isSymbolicLink()
     )
       continue;
-    if (entry.name === '.runtime-store-v2') {
+    if (['.runtime-store-v2', '.runtime-store-history'].includes(entry.name)) {
       await inspectProtectedProjectPath(root, entry.name, {
         label: 'RuntimeStore checkpoint directory',
         expected: 'directory',
@@ -88,7 +88,11 @@ async function discoverFileRuntimeStoreRunSources(
       let identity: unknown;
       if (entry.isFile()) {
         const marker = await json(entry.name);
-        if (marker.schema !== 'comet.runtime-store-format.v2')
+        if (
+          !['comet.runtime-store-format.v2', 'comet.runtime-store-format.v3'].includes(
+            marker.schema,
+          )
+        )
           throw new RuntimeProtocolError('STORE_CORRUPT_RECORD', 'RuntimeStore 格式标记无效');
         identity = marker.runId;
       } else if (entry.isDirectory()) {
@@ -117,7 +121,11 @@ async function discoverFileRuntimeStoreRunSources(
       const refs = !withFingerprint
         ? []
         : entry.isFile()
-          ? [entry.name, `.runtime-store-v2/${entry.name}/checkpoint.json`]
+          ? [
+              entry.name,
+              `.runtime-store-v2/${entry.name}/checkpoint.json`,
+              `.runtime-store-history/${entry.name}/checkpoint.json`,
+            ]
           : (await fs.readdir(path.join(root, entry.name)))
               .filter((name) => /^[0-9]{16}\.json$/u.test(name))
               .sort()

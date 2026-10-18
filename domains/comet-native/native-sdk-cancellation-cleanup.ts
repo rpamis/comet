@@ -1,3 +1,4 @@
+import { closeNativeSdkHistory } from './native-sdk-history.js';
 import type { WorkflowRun } from '../engine/runtime.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 import {
@@ -17,7 +18,11 @@ export async function settleNativeSdkCancellation(options: {
   if (options.run.status !== 'cancelled') return;
   await terminateNativeSdkCheckExecutions(options);
   const cancellation = await inspectNativeSdkCancellation(options);
-  if (!cancellation?.quiescent || !cancellation.cleanupRequired) return;
+  if (!cancellation?.quiescent) return;
+  if (!cancellation.cleanupRequired) {
+    await closeNativeSdkHistory(options);
+    return;
+  }
   const input = options.run.input as { artifactRootRef?: unknown } | null;
   if (typeof input?.artifactRootRef !== 'string') return;
   const paths = await nativeProjectPaths(options.projectRoot, input.artifactRootRef);
@@ -43,4 +48,5 @@ export async function settleNativeSdkCancellation(options: {
       { cause: error },
     );
   });
+  await closeNativeSdkHistory(options);
 }

@@ -146,7 +146,7 @@ export async function assertNativePortableChangeNotOrphaned(
 
 export async function listNativeSdkChangeNames(
   projectRoot: string,
-  options: { readOnly?: boolean } = {},
+  options: { readOnly?: boolean; partition?: 'all' | 'active' | 'history' } = {},
 ): Promise<string[]> {
   return listSdkChangeNames(projectRoot, 'native', options);
 }

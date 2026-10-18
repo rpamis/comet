@@ -47,7 +47,7 @@ export interface ClaimRuntimeRunAction extends RunCommand {
 }
 
 // @public
-export function createFileRuntimeStore<T extends RuntimeRecord>(options: FileRuntimeStoreOptions): RuntimeStore<T>;
+export function createFileRuntimeStore<T extends RuntimeRecord>(options: FileRuntimeStoreOptions): FileRuntimeStore<T>;
 
 // @public (undocumented)
 export function createMemoryRuntimeStore<T extends RuntimeRecord>(): RuntimeStore<T>;
@@ -210,6 +210,18 @@ export interface ExternalWorkflowStepOptions extends WorkflowStepOptions {
     // (undocumented)
     type: 'invoke_skill' | 'call_tool' | 'handoff';
 }
+
+// @public
+export interface FileRuntimeStore<T extends RuntimeRecord> extends RuntimeStore<T> {
+    closeRun(runId: string, expectedRevision: number): Promise<boolean>;
+    // (undocumented)
+    readDisposition(runId: string): Promise<FileRuntimeStoreDisposition>;
+    readPartitionMetadata(runId: string): Promise<FileRuntimeStoreDisposition>;
+    reopenRun(runId: string, expectedRevision: number): Promise<boolean>;
+}
+
+// @public (undocumented)
+export type FileRuntimeStoreDisposition = 'active' | 'closing' | 'closed' | 'reopening' | 'missing';
 
 // @public (undocumented)
 export interface FileRuntimeStoreOptions {

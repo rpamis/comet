@@ -1,3 +1,4 @@
+import { listNativeSdkHistoryPartitions } from './native-sdk-history-discovery.js';
 import { promises as fs } from 'fs';
 import {
   runWithHookReadCache,
@@ -12,10 +13,7 @@ import {
   samePath,
 } from '../../platform/paths/git-worktree.js';
 import { createFileRuntimeStore, createRuntime, type WorkflowRun } from '../engine/runtime.js';
-import {
-  listSdkChangeNames,
-  readSdkChangeOwner,
-} from '../workflow-contract/change-runtime-owner.js';
+import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 
 import { readWorkflowApplicationRun } from '../workflow-application/index.js';
 import { isNativeSdkCancellationComplete } from './native-sdk-cancellation.js';
@@ -574,9 +572,11 @@ async function inspectActiveNativeChangesOwnedByWorkspace(
   paths: NativeProjectPaths,
 ): Promise<string[]> {
   let workspace: ReturnType<typeof inspectGitWorktree> | undefined;
+  const partitions = await listNativeSdkHistoryPartitions(paths.projectRoot);
+  const historyNames = new Set(partitions.history);
   const names = new Set([
-    ...(await listNativeChangeNames(paths)),
-    ...(await listSdkChangeNames(paths.projectRoot, 'native', { readOnly: true })),
+    ...(await listNativeChangeNames(paths)).filter((name) => !historyNames.has(name)),
+    ...partitions.active,
   ]);
   const results = await mapWithConcurrency(
     [...names].sort(),

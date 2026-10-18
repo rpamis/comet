@@ -1038,6 +1038,7 @@ export async function inspectNativeSdkArchiveFinalization(options: {
   state: NativePortableState;
   runId: string;
   archiveRef?: string;
+  history?: boolean;
 }): Promise<NativeSdkArchiveReceipt> {
   const { paths, state, runId } = options;
   let receipt: NativeSdkArchiveReceipt;
@@ -1086,7 +1087,8 @@ export async function inspectNativeSdkArchiveFinalization(options: {
   ) {
     throw new Error('Native SDK Archive report changed after finalization');
   }
-  for (const spec of receipt.specs) {
+  // 历史校验保留归档当时的证据；后续需求可以合法更新公共 Spec。
+  for (const spec of options.history ? [] : receipt.specs) {
     if (
       !spec ||
       typeof spec.capability !== 'string' ||

@@ -1,3 +1,4 @@
+import * as history from '../../../domains/comet-native/native-sdk-history-discovery.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -24,7 +25,10 @@ afterEach(async () => {
 it('bounds creation discovery, settles errors in name order and reads owners without migration', async () => {
   const paths = await nativeProjectPaths(root, 'docs');
   const names = Array.from({ length: 10 }, (_, i) => `history-${i}`);
-  vi.spyOn(owners, 'listSdkChangeNames').mockResolvedValue(names);
+  vi.spyOn(history, 'listNativeSdkHistoryPartitions').mockResolvedValue({
+    active: names,
+    history: [],
+  });
   const owner = vi
     .spyOn(owners, 'readSdkChangeOwner')
     .mockImplementation(async (_root, _workflow, name) => ({

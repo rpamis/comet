@@ -1,3 +1,4 @@
+import { listNativeSdkHistoryPartitions } from './native-sdk-history-discovery.js';
 import { readNativeTextFilePrefix } from './native-bounded-file.js';
 import { NATIVE_MANAGED_RUN_MARKER } from './native-state-document.js';
 import { runWithHookReadCache } from '../../platform/process/hook-read-cache.js';
@@ -70,6 +71,7 @@ interface NativeWorkspaceSource {
   paths: NativeProjectPaths;
   gitContext: GitWorktreeContext;
   sdkNames?: string[];
+  sdkActiveNames?: string[];
   changes: Array<{ name: string; kind: 'portable' | 'legacy' }>;
   archives?: NativeStatusRecord[];
   archiveErrors?: Array<{ name: string; message: string }>;
@@ -213,9 +215,10 @@ async function discoverChanges(
   paths: NativeProjectPaths,
   targetName?: string,
   sdkNames?: ReadonlySet<string>,
+  historyNames?: ReadonlySet<string>,
 ): Promise<NativeWorkspaceSource['changes']> {
   const names = (await listNativeChangeNames(paths)).filter(
-    (name) => targetName === undefined || name === targetName,
+    (name) => (targetName === undefined || name === targetName) && !historyNames?.has(name),
   );
   const results = await mapWithConcurrency(
     names,
@@ -289,8 +292,12 @@ async function discoverSources(
     if (seen.has(key)) continue;
     seen.add(key);
     const configured = await readProjectConfig(candidate);
-    const sdkNames =
-      !configured || omitSdkProjections
+    const partitions = omitSdkProjections
+      ? await listNativeSdkHistoryPartitions(candidate)
+      : undefined;
+    const sdkNames = partitions
+      ? [...partitions.active, ...partitions.history]
+      : !configured
         ? await listNativeSdkChangeNames(candidate, { readOnly: true })
         : undefined;
     if (!configured && sdkNames?.length === 0) continue;
@@ -303,12 +310,14 @@ async function discoverSources(
       config,
       paths,
       sdkNames,
+      sdkActiveNames: partitions?.active,
       gitContext:
         gitWorktreeContextFromEntries(candidate, worktrees) ?? inspectGitWorktree(candidate),
       changes: await discoverChanges(
         paths,
         targetName,
         omitSdkProjections ? new Set(sdkNames) : undefined,
+        partitions ? new Set(partitions.history) : undefined,
       ),
     });
   }
@@ -981,11 +990,11 @@ async function listDiscoveredNativeStatusPageWithinScope(options: {
     sources.map(async (source) => {
       const names =
         source.sdkNames ?? (await listNativeSdkChangeNames(source.projectRoot, { readOnly: true }));
-      return { source, names, kept: [] as string[] };
+      return { source, names, activeNames: source.sdkActiveNames ?? names, kept: [] as string[] };
     }),
   );
   const cancellationCandidates = sdkDiscoveries.flatMap((discovery) =>
-    discovery.names.map((name) => ({ discovery, name })),
+    discovery.activeNames.map((name) => ({ discovery, name })),
   );
   // 所有工作区合计最多四路；逐项失败保留候选，收齐结果后按原顺序过滤。
   const completed = await mapWithConcurrency(cancellationCandidates, 4, ({ discovery, name }) =>

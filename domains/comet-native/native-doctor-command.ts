@@ -1,3 +1,4 @@
+import { closeNativeSdkHistory } from './native-sdk-history.js';
 import { readWorkflowApplicationRun } from '../workflow-application/index.js';
 import type { RuntimeStoppedAction } from '../engine/runtime.js';
 import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
@@ -8,6 +9,9 @@ import {
   readSdkChangeOwner,
   registerSdkChangeOwner,
   COMET_CHANGE_OWNER_SCHEMA,
+  listSdkChangeNames,
+  listSdkChangeOwnerRecoveryNames,
+  recoverSdkChangeOwnerToActive,
 } from '../workflow-contract/change-runtime-owner.js';
 import {
   inspectNativeSdkRun,
@@ -494,6 +498,7 @@ export async function nativeDoctorCommand(
   projectRoot: string,
 ): Promise<DispatchResult> {
   const repair = takeFlag(args, '--repair');
+  const migrateHistory = takeFlag(args, '--migrate-history');
   const confirmed = takeFlag(args, '--confirmed');
   const lockToken = takeOption(args, '--lock-token');
   const stoppedActionsFile = takeOption(args, '--stopped-actions');
@@ -507,6 +512,87 @@ export async function nativeDoctorCommand(
   }
   const name = args[0]?.startsWith('--') ? undefined : args.shift();
   assertNoArguments(args);
+  if (migrateHistory) {
+    if (
+      repair ||
+      confirmed ||
+      lockToken !== undefined ||
+      stoppedActionsFile !== undefined ||
+      recoveryStrategy !== undefined
+    )
+      throw new NativeUsageError(
+        '--migrate-history 不能与修复、停止证据或事务选项合用；先完成 doctor 修复，再迁移已结束的任务。',
+      );
+    const recoveryNames = await listSdkChangeOwnerRecoveryNames(projectRoot, 'native');
+    const names = name ? [name] : recoveryNames;
+    const migrated: string[] = [];
+    const active: string[] = [];
+    const findings: Array<{ change: string; message: string }> = [];
+    const startedAt = Date.now();
+    let reportedAt = startedAt;
+    let processed = 0;
+    const reportProgress = (finished = false) => {
+      const now = Date.now();
+      if (!finished && processed > 0 && now - reportedAt < 5_000) return;
+      reportedAt = now;
+      try {
+        process.stderr.write(
+          `[Comet] Native 历史迁移${finished ? '结束' : '进度'}：${processed}/${names.length} 项，已封存 ${migrated.length}，保留活动 ${active.length}，失败 ${findings.length}，已用 ${Math.floor((now - startedAt) / 1_000)} 秒\n`,
+        );
+      } catch {
+        // 诊断输出失败不能改变迁移结果或留下未处理的任务。
+      }
+    };
+    reportProgress();
+    for (const change of names) {
+      try {
+        // 仅显式迁移可以收尾同身份 owner 双份；普通查看始终报告冲突。
+        let migrationOwner;
+        try {
+          migrationOwner = await readChangeRuntimeOwner(projectRoot, 'native', change, {
+            readOnly: true,
+          });
+        } catch {
+          migrationOwner = await recoverSdkChangeOwnerToActive(projectRoot, 'native', change);
+        }
+        if (
+          migrationOwner &&
+          (migrationOwner.format !== 'sdk' || migrationOwner.application !== 'native')
+        ) {
+          active.push(change);
+          continue;
+        }
+        const commandRoot = await resolveNativeSdkCommandRoot(projectRoot, change, {
+          readOnly: true,
+        });
+        const inspection = await inspectNativeSdkRun(commandRoot, change, { readOnly: true });
+        if (
+          await closeNativeSdkHistory({
+            projectRoot: commandRoot,
+            run: inspection.run,
+            recover: true,
+          })
+        )
+          migrated.push(change);
+        else active.push(change);
+      } catch (error) {
+        findings.push({ change, message: error instanceof Error ? error.message : String(error) });
+      } finally {
+        processed += 1;
+        if (processed < names.length) reportProgress();
+      }
+    }
+    reportProgress(true);
+    const data = {
+      healthy: findings.length === 0,
+      migrated,
+      active,
+      findings,
+      message:
+        '已结束且完成清理的内置 Native Run 已移入历史分区，文档、checkpoint 和恢复材料均保留。未完成或无法验证的任务仍保持活动。迁移中断可重跑；旧版本 Runtime 无法写入新格式，请同步升级 CLI 与平台 Hook。普通只读命令不会执行迁移。',
+    };
+    return data.healthy ? success('doctor', data) : unhealthyDoctor(data);
+  }
   if (confirmed && (!repair || !name)) {
     throw new NativeUsageError('--confirmed requires a named change and --repair');
   }
@@ -1244,7 +1330,12 @@ export async function nativeDoctorCommand(
       },
     };
   }
-  const activeNames = await listActiveChangeNames(paths);
+  const activeNames = [
+    ...new Set([
+      ...(await listActiveChangeNames(paths)),
+      ...(await listSdkChangeNames(projectRoot, 'native', { readOnly: true })),
+    ]),
+  ].sort();
   const sdkNames = new Set<string>();
   const sdkResults: Array<Record<string, unknown>> = [];
   for (const change of activeNames) {

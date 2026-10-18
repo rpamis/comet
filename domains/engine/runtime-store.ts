@@ -3,7 +3,7 @@ import { types as utilTypes } from 'node:util';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import { sameFileObject } from '../../platform/fs/file-identity.js';
+import { hasComparableFileObject, sameFileObject } from '../../platform/fs/file-identity.js';
 import { RaceSafeReadError } from '../../platform/fs/race-safe-read.js';
 import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
 
@@ -22,6 +22,7 @@ import {
   hashRuntimeValue,
   validateRuntimeValue,
 } from './runtime-json.js';
+import { runWithoutHookReadCache } from '../../platform/process/hook-read-cache.js';
 import { RuntimeProtocolError } from './runtime-errors.js';
 import { encodeRuntimeHistory } from './runtime-history-storage.js';
 import { decodeJsonValueMaps } from '../../platform/fs/json-value-pool.js';
@@ -185,6 +186,26 @@ export function createMemoryRuntimeStore<T extends RuntimeRecord>(): RuntimeStor
   };
 }
 
+export type FileRuntimeStoreDisposition = 'active' | 'closing' | 'closed' | 'reopening' | 'missing';
+
+/** 文件存储的显式历史生命周期；业务终态与资源清理由调用方先验证。 */
+export interface FileRuntimeStore<T extends RuntimeRecord> extends RuntimeStore<T> {
+  /**
+   * 将固定 expectedRevision 的 checkpoint 封存到历史分区，不改变记录内容或 revision。
+   * 调用方须先确认业务已结束、所有执行及子任务已停止，且必要清理已完成。
+   * 此操作只管理存储布局，不取消进程、不执行业务清理；版本失配返回 false。
+   */
+  closeRun(runId: string, expectedRevision: number): Promise<boolean>;
+  /**
+   * 将固定 expectedRevision 的历史 checkpoint 恢复到可写分区，版本失配返回 false。
+   * 此操作不启动执行或批准业务重试；调用方仍须完成 owner、恢复资格和 Runtime 校验。
+   */
+  reopenRun(runId: string, expectedRevision: number): Promise<boolean>;
+  readDisposition(runId: string): Promise<FileRuntimeStoreDisposition>;
+  /** 仅校验布局/小型事务标记，不校验历史正文；未知和冲突抛错。 */
+  readPartitionMetadata(runId: string): Promise<FileRuntimeStoreDisposition>;
+}
+
 export interface FileRuntimeStoreOptions {
   rootDir: string;
   /** 与顶层 revision 镜像的嵌套字段，例如固定应用记录的 run.revision。读取和写入都必须一致。 */
@@ -198,7 +219,7 @@ export interface FileRuntimeStoreOptions {
  */
 export function createFileRuntimeStore<T extends RuntimeRecord>(
   options: FileRuntimeStoreOptions,
-): RuntimeStore<T> {
+): FileRuntimeStore<T> {
   if (typeof options.rootDir !== 'string' || options.rootDir.trim().length === 0) {
     throw new RuntimeProtocolError('STORE_INVALID_ROOT', 'rootDir 必须是非空路径');
   }
@@ -240,6 +261,8 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
   const formatSchema = 'comet.runtime-store-format.v2';
   const compactDirectory = '.runtime-store-v2';
   const compactRunDirectory = (runId: string) => `${compactDirectory}/${runDirectory(runId)}`;
+  const historyRunDirectory = (runId: string) => `.runtime-store-history/${runDirectory(runId)}`;
+  const lifecycleSchema = 'comet.runtime-store-format.v3';
   const compactSchema = 'comet.runtime-store-snapshot.v2';
   const lockName = '.write.lock';
   const revisionPattern = /^[0-9]{16}\.json$/u;
@@ -359,11 +382,14 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
       latestRevision = Math.max(latestRevision, revision);
     }
     const formatPresent = false;
-    if (runRef === compactRunDirectory(runId) && legacyNames.length > 0) {
+    if (
+      [compactRunDirectory(runId), historyRunDirectory(runId)].includes(runRef) &&
+      legacyNames.length > 0
+    ) {
       throw new RuntimeProtocolError('STORE_INVALID_ENTRY', 'checkpoint 目录不能包含旧版本文件');
     }
     if (names.has(currentName)) {
-      if (runRef !== compactRunDirectory(runId)) {
+      if (![compactRunDirectory(runId), historyRunDirectory(runId)].includes(runRef)) {
         throw new RuntimeProtocolError('STORE_INVALID_ENTRY', '旧版本目录包含未知 checkpoint');
       }
       const snapshot = (await readJson(runRef, currentName)) as {
@@ -520,7 +546,9 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
   interface FormatMarker {
     schema: string;
     runId: string;
-    state: 'pending' | 'ready';
+    state: 'pending' | 'ready' | 'closing' | 'closed' | 'reopening';
+    revision?: number;
+    recordHash?: string;
   }
 
   async function layout(runId: string) {
@@ -553,10 +581,19 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
       const value = (await readJson('', runDirectory(runId))) as FormatMarker | null;
       if (
         !value ||
-        value.schema !== formatSchema ||
         value.runId !== runId ||
-        !['pending', 'ready'].includes(value.state) ||
-        Object.keys(value).some((key) => !['schema', 'runId', 'state'].includes(key))
+        (value.schema === formatSchema
+          ? !['pending', 'ready'].includes(value.state) ||
+            Object.keys(value).some((key) => !['schema', 'runId', 'state'].includes(key))
+          : value.schema !== lifecycleSchema ||
+            !['closing', 'closed', 'reopening'].includes(value.state) ||
+            !Number.isSafeInteger(value.revision) ||
+            value.revision! < 1 ||
+            typeof value.recordHash !== 'string' ||
+            !/^[a-f0-9]{64}$/u.test(value.recordHash) ||
+            Object.keys(value).some(
+              (key) => !['schema', 'runId', 'state', 'revision', 'recordHash'].includes(key),
+            ))
       ) {
         throw new RuntimeProtocolError('STORE_CORRUPT_RECORD', 'RuntimeStore 格式标记损坏');
       }
@@ -565,11 +602,175 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
     return { original, staged, marker };
   }
 
+  async function readLifecycle(runId: string, marker: FormatMarker) {
+    const active = await readState(runId, false, compactRunDirectory(runId));
+    const history = await readState(runId, false, historyRunDirectory(runId));
+    if (
+      (!active.record && !history.record) ||
+      (marker.state === 'closed' && (active.record || !history.record))
+    ) {
+      throw new RuntimeProtocolError('STORE_HISTORY_CONFLICT', '历史事务与 checkpoint 位置不一致');
+    }
+    if (active.record && history.record) {
+      const first = await fs.lstat(path.join(rootDir, compactRunDirectory(runId), currentName));
+      const second = await fs.lstat(path.join(rootDir, historyRunDirectory(runId), currentName));
+      const firstIdentity = { dev: first.dev, ino: first.ino, birthtime: first.birthtimeMs };
+      const secondIdentity = { dev: second.dev, ino: second.ino, birthtime: second.birthtimeMs };
+      if (
+        !hasComparableFileObject(firstIdentity, secondIdentity) ||
+        !sameFileObject(firstIdentity, secondIdentity)
+      ) {
+        throw new RuntimeProtocolError(
+          'STORE_HISTORY_CONFLICT',
+          '活动与历史分区含两份独立 checkpoint，已保留现场',
+        );
+      }
+    }
+    const record = history.record ?? active.record!;
+    if (
+      record.revision !== marker.revision ||
+      hashRuntimeValue(record) !== marker.recordHash ||
+      (active.record && hashRuntimeValue(active.record) !== marker.recordHash)
+    ) {
+      throw new RuntimeProtocolError(
+        'STORE_HISTORY_CONFLICT',
+        '历史事务的固定版本与 checkpoint 不一致',
+      );
+    }
+    return { record, active: !!active.record, history: !!history.record };
+  }
+
+  async function readPartitionMetadata(runId: string): Promise<FileRuntimeStoreDisposition> {
+    assertRunId(runId);
+    if (!(await inspectProtectedProjectPath(volumeRoot, rootRelative, rootOptions)).exists)
+      return 'missing';
+    const state = await layout(runId);
+    const active = await inspectProtectedProjectPath(
+      rootDir,
+      `${compactRunDirectory(runId)}/${currentName}`,
+      { label: 'RuntimeStore 活动 checkpoint', expected: 'file' },
+    );
+    const history = await inspectProtectedProjectPath(
+      rootDir,
+      `${historyRunDirectory(runId)}/${currentName}`,
+      { label: 'RuntimeStore 历史 checkpoint', expected: 'file' },
+    );
+    if (state.marker?.schema === lifecycleSchema) {
+      if (
+        (!active.exists && !history.exists) ||
+        (state.marker.state === 'closed' && (active.exists || !history.exists))
+      )
+        throw new RuntimeProtocolError('STORE_HISTORY_CONFLICT', '历史分区与存储事务不一致');
+      return state.marker.state as 'closing' | 'closed' | 'reopening';
+    }
+    if (history.exists)
+      throw new RuntimeProtocolError('STORE_HISTORY_CONFLICT', '历史分区缺少存储事务');
+    if (state.marker || active.exists || state.original.kind === 'directory' || state.staged.exists)
+      return 'active';
+    return 'missing';
+  }
+
+  async function writeLifecycle(
+    runId: string,
+    state: 'closing' | 'closed' | 'reopening',
+    record: T,
+  ) {
+    await atomicWriteContainedText(
+      path.join(rootDir, runDirectory(runId)),
+      JSON.stringify({
+        schema: lifecycleSchema,
+        runId,
+        state,
+        revision: record.revision,
+        recordHash: hashRuntimeValue(record),
+      }) + '\n',
+      { containedRoot: rootDir, requireAtomicPublication: true },
+    );
+  }
+
+  async function transitionRun(
+    runId: string,
+    expectedRevision: number,
+    closing: boolean,
+  ): Promise<boolean> {
+    assertRunId(runId);
+    assertRevision(expectedRevision);
+    return withWriter(runId, async () => {
+      let marker = (await layout(runId)).marker;
+      let record: T | null;
+      if (marker?.schema === lifecycleSchema) {
+        if (closing && marker.state === 'reopening')
+          throw new RuntimeProtocolError('STORE_HISTORY_CONFLICT', '请先完成正在进行的恢复事务');
+        if (!closing && marker.state === 'closing')
+          throw new RuntimeProtocolError('STORE_HISTORY_CONFLICT', '请先完成正在进行的封存事务');
+        record = (await readLifecycle(runId, marker)).record;
+        if (record.revision !== expectedRevision) return false;
+        if (closing && marker.state === 'closed') return true;
+      } else {
+        record = (await prepareWriter(runId)).record;
+        if (!record || record.revision !== expectedRevision) return false;
+        if (!closing) return true;
+      }
+      await writeLifecycle(runId, closing ? 'closing' : 'reopening', record);
+      marker = (await layout(runId)).marker!;
+      const observed = await readLifecycle(runId, marker);
+      const sourceRef = closing ? compactRunDirectory(runId) : historyRunDirectory(runId);
+      const targetRef = closing ? historyRunDirectory(runId) : compactRunDirectory(runId);
+      await ensureProtectedProjectDirectory(rootDir, targetRef, { label: 'RuntimeStore 历史目标' });
+      const source = path.join(rootDir, sourceRef, currentName);
+      const target = path.join(rootDir, targetRef, currentName);
+      const sourceExists = closing ? observed.active : observed.history;
+      const targetExists = closing ? observed.history : observed.active;
+      if (!targetExists) {
+        // 独占硬链接发布不会覆盖目标；中断时两个名字仍指向同一份 authority。
+        await inspectProtectedProjectPath(rootDir, `${sourceRef}/${currentName}`, {
+          label: 'RuntimeStore 历史源',
+          expected: 'file',
+        });
+        await inspectProtectedProjectPath(rootDir, targetRef, {
+          label: 'RuntimeStore 历史目标',
+          expected: 'directory',
+        });
+        await fs.link(source, target);
+        await readLifecycle(runId, marker);
+      }
+      await syncDirectory(path.dirname(target));
+      // 新历史目录的父目录项也必须先持久化，不能仅同步 checkpoint 所在目录。
+      await syncDirectory(path.dirname(path.dirname(target)));
+      await syncDirectory(rootDir);
+      if (sourceExists) {
+        await readLifecycle(runId, marker);
+        await removeContainedFile(source, {
+          containedRoot: rootDir,
+          beforeRemove: async () => {
+            await readLifecycle(runId, marker!);
+          },
+        });
+        await syncDirectory(path.dirname(source));
+      }
+      if (closing) await writeLifecycle(runId, 'closed', record);
+      else await writeMarker(runId, 'ready', false);
+      const committed = await readCurrent(runId);
+      if (
+        !committed ||
+        committed.revision !== expectedRevision ||
+        hashRuntimeValue(committed) !== hashRuntimeValue(record)
+      )
+        throw new RuntimeProtocolError('STORE_HISTORY_CONFLICT', '历史转换提交后固定版本发生变化');
+      return true;
+    });
+  }
+
   async function readCurrent(runId: string): Promise<T | null> {
     assertRunId(runId);
     if (!(await inspectProtectedProjectPath(volumeRoot, rootRelative, rootOptions)).exists)
       return null;
     const state = await layout(runId);
+    if (state.marker?.schema === lifecycleSchema)
+      return (await readLifecycle(runId, state.marker)).record;
+    const history = await readState(runId, false, historyRunDirectory(runId));
+    if (history.record)
+      throw new RuntimeProtocolError('STORE_HISTORY_CONFLICT', '历史 checkpoint 缺少对应存储事务');
     const compact = await readState(runId, false, compactRunDirectory(runId));
     if (compact.record) {
       if (!state.marker && !(await layout(runId)).marker) {
@@ -746,6 +947,14 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
 
   async function prepareWriter(runId: string): Promise<StoreState> {
     let inspected = await layout(runId);
+    if (inspected.marker?.schema === lifecycleSchema)
+      throw new RuntimeProtocolError(
+        'STORE_RUN_CLOSED',
+        'Run 已封存或正在转换历史分区；请显式恢复后再写入',
+      );
+    const history = await readState(runId, false, historyRunDirectory(runId));
+    if (history.record)
+      throw new RuntimeProtocolError('STORE_HISTORY_CONFLICT', '历史 checkpoint 缺少对应存储事务');
     const existing = await readState(runId, false, compactRunDirectory(runId));
     if (existing.record && !inspected.marker) {
       throw new RuntimeProtocolError(
@@ -818,6 +1027,19 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
 
   return {
     read,
+    readPartitionMetadata,
+    closeRun: (runId, expectedRevision) =>
+      runWithoutHookReadCache(() => transitionRun(runId, expectedRevision, true)),
+    reopenRun: (runId, expectedRevision) =>
+      runWithoutHookReadCache(() => transitionRun(runId, expectedRevision, false)),
+    async readDisposition(runId) {
+      const record = await read(runId);
+      if (!record) return 'missing';
+      const marker = (await layout(runId)).marker;
+      return marker?.schema === lifecycleSchema
+        ? (marker.state as 'closing' | 'closed' | 'reopening')
+        : 'active';
+    },
     async restoreCheckpoint(runId, expectedRevision, checkpoint) {
       const snapshot = JSON.parse(serializeCheckpoint(runId, expectedRevision, checkpoint)) as T;
       assertMirroredRevisions(snapshot);

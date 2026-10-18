@@ -573,6 +573,7 @@
           "domains/comet-native/native-sdk-create.ts",
           "domains/comet-native/native-sdk-cancellation-cleanup.ts",
           "domains/comet-native/native-sdk-completion-cleanup.ts",
+          "domains/comet-native/native-sdk-history.ts",
           "domains/comet-native/native-sdk-disassociate.ts",
           "domains/comet-native/native-selection.ts",
           "domains/comet-native/native-specs.ts",

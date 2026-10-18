@@ -14,11 +14,10 @@ import type { NativePortableState } from './native-portable-types.js';
 import { inspectNativeSdkCheckExecutions } from './native-sdk-check-execution.js';
 
 /** Run 取消只终止调度；原领取方或 Runtime 进程凭据还必须证明执行已停止。 */
-export async function inspectNativeSdkCancellation(options: {
+export async function inspectNativeSdkQuiescence(options: {
   projectRoot: string;
   run: WorkflowRun;
 }) {
-  if (options.run.status !== 'cancelled') return null;
   const outstandingActions: Array<{
     runId: string;
     actionId: string;
@@ -54,8 +53,12 @@ export async function inspectNativeSdkCancellation(options: {
     const executions = await inspectNativeSdkCheckExecutions({
       projectRoot: options.projectRoot,
       run,
+      includeSettled: true,
     });
     for (const action of run.actions) {
+      if (['pending', 'running', 'unknown'].includes(action.status)) {
+        outstandingRuns.push(run.runId);
+      }
       const managed = executions.filter(
         (execution) => execution.actionId === action.id && execution.attempt === action.attempt,
       );
@@ -129,6 +132,19 @@ export async function inspectNativeSdkCancellation(options: {
   }
   await inspect(options.run);
   const quiescent = outstandingActions.length === 0 && outstandingRuns.length === 0;
+  return { quiescent, outstandingActions, outstandingRuns };
+}
+
+export async function inspectNativeSdkCancellation(options: {
+  projectRoot: string;
+  run: WorkflowRun;
+}) {
+  if (options.run.status !== 'cancelled') return null;
+  const { quiescent, outstandingActions, outstandingRuns } =
+    await inspectNativeSdkQuiescence(options);
+  const owner = await readSdkChangeOwner(options.projectRoot, 'native', options.run.runId, {
+    readOnly: true,
+  });
   const selected = quiescent ? await readCometCurrentSelection(options.projectRoot) : null;
   const cleanupRequired = Boolean(
     selected?.status === 'selected' &&

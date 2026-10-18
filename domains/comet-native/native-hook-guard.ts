@@ -1,3 +1,4 @@
+import { listNativeSdkHistoryPartitions } from './native-sdk-history-discovery.js';
 import { mapWithConcurrency } from './native-concurrency.js';
 import {
   isNativeSdkChangeCancellationComplete,
@@ -22,7 +23,7 @@ import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js
 import { nativeChangeDir, readNativeChange } from './native-change.js';
 import { readProjectConfig } from './native-config.js';
 import { nativeProjectPaths } from './native-paths.js';
-import { inspectNativeSdkRun, listNativeSdkChangeNames } from './native-runtime-ownership.js';
+import { inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { configuredHookWritePath } from '../workflow-contract/hook-write-policy.js';
 import { isNeutralDocumentPath } from '../workflow-contract/neutral-document-path.js';
 import { resolveSelectedNativeChange } from './native-selection.js';
@@ -664,7 +665,9 @@ async function activeNativeContextImpl(projectRoot: string): Promise<ActiveNativ
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root, {
     readOnly: true,
   });
-  const sdkNames = new Set(await listNativeSdkChangeNames(projectRoot, { readOnly: true }));
+  const partitions = await listNativeSdkHistoryPartitions(projectRoot);
+  const sdkNames = new Set(partitions.active);
+  const historyNames = new Set(partitions.history);
   let entries: Dirent[];
   try {
     entries = await fs.readdir(paths.changesDir, { withFileTypes: true });
@@ -675,7 +678,7 @@ async function activeNativeContextImpl(projectRoot: string): Promise<ActiveNativ
 
   const candidates: Array<{ name: string; sdk: boolean }> = [];
   for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    if (!entry.isDirectory() || entry.isSymbolicLink() || historyNames.has(entry.name)) continue;
     candidates.push({ name: entry.name, sdk: sdkNames.delete(entry.name) });
   }
   for (const name of sdkNames) candidates.push({ name, sdk: true });
