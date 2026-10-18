@@ -86,14 +86,28 @@ This project is supported by sponsors including [PackyCode](https://www.packyapi
  ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝   ╚═╝
 ```
 
-**Comet is a resumable long-running task workflow and Skill platform for coding.**
+**Comet is a resumable long-running task workflow and Skill platform for agents.**
 
-It provides two independent requirements workflows: Native for strong models, powered only by Comet's own runtime, and Classic, which preserves the full OpenSpec + Superpowers phase-governance model. Comet also covers Skill creation, evaluation, and release.
+It provides two independent requirements workflows: Native for strong models, powered only by Comet's own runtime, and Classic, which preserves the full OpenSpec + Superpowers phase-governance model.
 
-It allows you to use a toolchain to handle everything from requirements to archiving, combine any skill to make it like Comet, evolving your skills based on scientific **Rubric**, **Pass@k**, and **Pass^k** scoring.
+Use Native or Classic directly to complete development tasks from requirements through acceptance and archive.
+
+Use Comet Any or the SDK to combine existing Skills and tools into workflows with user confirmation, outcome validation, and interruption recovery. Give your Skills the same workflow capabilities as Comet, while Comet SDK handles state, execution records, and recovery.
+
+Use Comet Eval to evolve your Skills with scientific **Rubric**, **Pass@k**, and **Pass^k** scoring.
+
+Use Personal Memory and Project Knowledge to learn your preferences over time and retain project knowledge that helps with future tasks.
 
 > [!IMPORTANT]
-> **Comet 0.4.0 stable release** — Building on 0.3.9, this release adds Native workflows, multi-agent collaboration, memory and knowledge management, and a complete toolchain for creating, distributing, and evaluating Skills.
+> **Comet 0.5.0: Create, run, and evaluate Skill workflows with the SDK.**
+>
+> - **Comet SDK**: Combine tools, Skills, user confirmation, parallel tasks, and subflows through public JavaScript / TypeScript APIs, with persistent execution progress. See [SDK getting started](docs/architecture/sdk-getting-started.md).
+> - **Comet Any**: Describe your goal and the Skills you need, confirm the complete plan, and create a Native extension, Classic composition, or standalone workflow application. See the [creation and delivery guide](docs/operations/SKILL-CREATION.md).
+> - **Full-application evaluation**: Evaluate the workflow and its pinned dependencies, reuse the same cases to compare revisions, and inspect actual execution coverage. See [application Eval](https://docs.comet.rpamis.com/en/eval/applications).
+> - **Application distribution**: Preview and confirm local exports, project or user installation, and upgrades. Active runs retain their pinned application version. See [application distribution](https://docs.comet.rpamis.com/en/sdk/distribution).
+> - **Dashboard**: Inspect creation progress, application runs, artifacts, and execution traces; start and manage Eval; and preview installation or export for ready applications. See the [Dashboard guide](https://docs.comet.rpamis.com/en/dashboard/overview).
+>
+> **Comet 0.4.0** — Building on 0.3.9, this release adds Native workflows, multi-agent collaboration, memory and knowledge management, and a complete toolchain for creating, distributing, and evaluating Skills.
 >
 > - **Native workflows for strong models**: After requirements are confirmed, the Agent chooses how to plan, implement, test, and review. Comet handles state checks, acceptance, and resumable archive. Native runs independently of Classic, which retains the OpenSpec + Superpowers five-phase methodology; both share configuration, status, Dashboard, and Eval entry points.
 > - **Parallel delivery for complex requirements**: Supervisor Changes split a goal into dependency-aware child changes. Independent Codex sessions or Claude Code Agent Teams implement and verify them in isolated worktrees, then integrate them in dependency order before the parent change's final acceptance.
@@ -104,16 +118,15 @@ It allows you to use a toolchain to handle everything from requirements to archi
 >
 > In the existing aligned Native vs. 0.4.0 Classic experiment (16 tasks, 48 runs per treatment), the 41 paired samples where both passed showed **76.8% fewer total tokens**, **57.4% fewer Agent rounds**, and **47.4% less time** for Native. Across the full sample, Native achieved **87.5% pass^3 (+12.5 percentage points)**, while both treatments reached **100% pass@3**. See the [evaluation report](https://docs.comet.rpamis.com/en/eval/comet-native-vs-040-experiment) for conditions and limitations, and the [Changelog](https://docs.comet.rpamis.com/en/changelog) for all changes.
 
-> Native and Classic are not lightweight and heavyweight tiers, and neither upgrades into the other. Native is for strong models that can plan and verify autonomously; Classic is for scenarios that benefit from a complete phased methodology and stronger constraints.
-
 ## Why Comet
 
 - **Native workflow for strong models** — `/comet-native` uses a detailed brief with a directory-structure outline of the change scope, complete target specifications, phase checks, and recoverable archive to constrain outcomes while leaving planning, implementation, testing, and review methods to the model. User-readable artifacts live under `docs/comet/` by default, fully separate from Classic. See the [Native workflow guide](https://docs.comet.rpamis.com/en/native/quickstart).
 - **One-way, resumable Native archive** — Archive first returns a single dry-run continuation command, with explicit isolated-workspace finish choices and blocker paths; continuing the workflow lets Runtime own the archive commit without repeated status queries or manual runtime-file commits.
 - **Supervisor Changes for complex requirements** — Native can split work along real delivery boundaries, manage dependencies and readiness as a DAG, let multiple agents implement and verify in Runtime-created worktrees, and then integrate the results before the parent change's final acceptance.
 - **The stable core for long-running tasks** — Comet's Classic Spec mode combines OpenSpec and Superpowers into a five-phase flow with a state machine, phase checks, and scripts. It suits work that needs an explicit method and strong constraints; its permanent entry point is `/comet-classic`.
-- **Archive documents outside Git** — When Classic documents live in a non-Git coordination root and product code lives in independent child repositories, explicitly choose document-only archive. Runtime records file digests for the archived change and main spec snapshots; deliver each child repository separately.
 - **A configuration-driven shared entry point** — `/comet` reads only the project's `.comet/config.yaml` and deterministically forwards to `/comet-native` or `/comet-classic`. It does not guess from task size or mix changes, state, or directories across workflows. `comet resume-probe` uses the same configuration to resume through the correct permanent entry point.
+- **Personal Memory, with less repetition** — Retain your language, output preferences, and stable collaboration habits across tasks, and supply context relevant to the current task so you spend less time repeating instructions in new sessions. Inspect, correct, forget, or pause memory in Dashboard. See the [Personal Memory guide](docs/operations/PERSONAL-MEMORY.md).
+- **Project Knowledge for reusable experience** — Retain project structure, module dependencies, confirmed decisions, and verified solutions so agents can understand the project and locate the scope of changes faster in future tasks, with less repeated exploration and fewer recurring mistakes. Knowledge retains sources and verification details; check it against current code and tests when applying it. See the [Project Knowledge guide](docs/operations/PROJECT-KNOWLEDGE.md).
 - **Skill platform** — `/comet-any` turns a goal and real Skills into Native extensions, Classic compositions, or standalone SDK workflows, with plan confirmation, complete local exports, and project or user installation. See the [creation and delivery guide](docs/operations/SKILL-CREATION.md).
 - **Composable Skill Runtime SDK** — `@rpamis/comet/runtime` orchestrates Skill/tool steps, approval, outcome validation, and interruption recovery as persistent workflows. Native and Classic are two built-in applications: new changes use SDK Runs by default, while existing changes keep their original Runtime. The Agent platform still provides model, MCP, Hooks, Rules, and tool calls. See the [Runtime SDK guide](docs/architecture/runtime-sdk.md).
 - **Eval platform** — Comet assesses your skills using scientific Rubric, Pass@k, and Pass^k scoring, ensuring skill evolution is based on scientific evidence rather than intuition. It supports integration with LangSmith assessments, bringing evaluation to real-world enterprise production environments. Its dual-agent architecture automates the assessment process in your production environment.
@@ -134,13 +147,13 @@ https://github.com/user-attachments/assets/41428669-a49a-46e3-a0ae-0775e4f4bb6f
 
 ## Extremely low memory threshold
 
-With Comet, you only need to remember two skills and one command, covering coding, creation, and evaluation with an extremely low barrier to entry：
+With Comet, you only need to remember two Skills and one command to turn ideas into results, create Skills, and evaluate them:
 
 - Use `/comet` to enter the project's configured Native or Classic workflow
 - Use `/comet-any` to create workflow applications
 - Use `comet eval` to evaluate any Skill
 
-## Comet 0.4.0 Baseline Comparison
+## Historical Comet 0.4.0 Baseline Comparison
 
 The following charts are from 16 Comet workflow tasks, with 5 samples per treatment, comparing no Comet, Comet 0.3.9, and Comet 0.4.0.
 
@@ -158,7 +171,7 @@ The core observations were the differences in Pass@5, Pass^5, and Rubric scores.
 
 Many Comet capabilities have parallels in current industry practice. 
 
-> To compare Comet with those patterns, see [Comet Docs](https://docs.comet.rpamis.com/zh/tech-blog/comet-vs-industry).
+> To compare Comet with those patterns, see [Comet Docs](https://docs.comet.rpamis.com/en/tech-blog/comet-vs-industry).
 
 ## What You Can Learn
 
@@ -217,52 +230,6 @@ comet init --workflow classic
 comet init --workflow both
 ```
 
-### Project configuration
-
-After deleting a project directory, run `comet uninstall <original-project-path> --force --json` to remove its remaining index entry. Dashboard marks missing projects and offers confirmed removal through its missing-project manager. Other missing projects are retained until explicitly removed.
-
-`comet init` generates `.comet/config.yaml` with field-level comments in the selected language. `comet update` fills new managed defaults while preserving user values and unknown extensions.
-
-<details>
-<summary>View the compact config shape when Native and Classic are both enabled</summary>
-
-```yaml
-schema: comet.project.v1
-default_workflow: native
-workflows: [native, classic]
-ambient_resume: true
-
-memory:
-  learning: true
-  retrieval: true
-knowledge:
-  provider: local
-hook:
-  allow_paths: []
-
-native:
-  artifact_root: docs
-  language: en
-  clarification_mode: batch
-  archive_confirmation: automatic
-  max_verify_failures: 5
-
-classic:
-  artifact_layout: docs
-  language: en
-  context_compression: off
-  review_mode: standard
-  auto_transition: true
-```
-
-- `default_workflow` selects the default `/comet` entry and must be present in `workflows`. `ambient_resume`, `memory`, `knowledge`, and `hook` are shared by both workflows.
-- `memory.learning` / `retrieval` control personal-memory learning and injection. `knowledge.local.include` can append project-relative Markdown globs. `hook.allow_paths` is empty by default; add project-relative directories only when guarded phases must write shared files. It cannot bypass protection for `.comet` or workflow artifacts.
-- Native stores user-readable artifacts under `docs/comet/` by default. Machine-local execution data is stored in the user Comet data directory, with `~/.comet` as the default root and separate storage for each checkout and Git worktree. Set `COMET_DATA_DIR` to an absolute path outside the workspace to override it. New changes use SDK Runs; existing changes retain their original Runtime format. Use `comet init --workflow native --root artifacts` to move the user-artifact root to `artifacts/comet/`. Classic-only defaults stay under `classic:`; `comet init` / `comet update` migrate legacy top-level fields. See the [Runtime SDK guide](docs/architecture/runtime-sdk.md) for storage and recovery boundaries.
-
-Cloud Knowledge and self-hosted PR providers remain advanced settings; see [Native configuration](https://docs.comet.rpamis.com/en/native/configuration) and [Classic configuration](https://docs.comet.rpamis.com/en/classic/configuration). Native v4 no longer persists the legacy `snapshot` budgets in user configuration.
-
-</details>
-
 ## Support for OpenClaw and Hermes, and other AI platforms
 
 For platforms that use the generic `skills` CLI directly, you can install the Comet skill package with:
@@ -273,14 +240,13 @@ npx skills add rpamis/comet
 
 ## Screenshots
 
-### Classic Spec Skill
+### Comet Dashboard
 
 <p align="center">
-  <img src="https://github.com/rpamis/comet/blob/master/img/runner.png" alt="runner">
+  <img src="https://github.com/rpamis/comet/blob/master/img/dashboard-workflow-en.png" alt="Dashboard en" width="920">
 </p>
 
-<p align="center">Auto-install OpenSpec & Superpowers, one-click dev environment setup</p>
-<p align="center">Multi-phase Skill entry, auto-detects current Spec stage, auto-triggers core flow, manual review at key nodes</p>
+Explore more live demos in the [Docs](https://docs.comet.rpamis.com/).
 
 ### Integration with LangSmith/LangFuse
 

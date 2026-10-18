@@ -22,9 +22,8 @@ describe('README assets', () => {
       expect(readmeZh).not.toContain(heading);
     }
 
-    const quickStartEn =
-      readmeEn.split('## Quick Start')[1]?.split('### Project configuration')[0] ?? '';
-    const quickStartZh = readmeZh.split('## 快速开始')[1]?.split('### 项目配置')[0] ?? '';
+    const quickStartEn = readmeEn.split('## Quick Start')[1]?.split('## Support')[0] ?? '';
+    const quickStartZh = readmeZh.split('## 快速开始')[1]?.split('## 对OpenClaw')[0] ?? '';
     expect(quickStartEn).toContain('cd your-project');
     expect(quickStartEn).toContain('comet init');
     expect(quickStartEn).not.toContain('comet init --scope global');
@@ -74,12 +73,25 @@ describe('README assets', () => {
     expect(contributingZh).toContain(`Node.js \`${developmentRange}\``);
   });
 
-  it('highlights the stable release without retaining prerelease announcements', async () => {
+  it('highlights the SDK release without retaining prerelease announcements', async () => {
     const readmeEn = await fs.readFile('README.md', 'utf-8');
     const readmeZh = await fs.readFile('README-zh.md', 'utf-8');
 
-    expect(readmeEn).toContain('**Comet 0.4.0 stable release**');
-    expect(readmeZh).toContain('**Comet 0.4.0 正式版**');
+    expect(readmeEn).toContain('**Comet 0.5.0:');
+    expect(readmeZh).toContain('**Comet 0.5.0：');
+    for (const [readme, language] of [
+      [readmeEn, 'en'],
+      [readmeZh, 'zh'],
+    ]) {
+      const announcement = readme.split('> [!IMPORTANT]')[1]?.split('> **Comet 0.4.0**')[0];
+      expect(announcement).toContain('**Comet SDK**');
+      expect(announcement).toContain('**Comet Any**');
+      expect(announcement).toContain(`https://docs.comet.rpamis.com/${language}/eval/applications`);
+      expect(announcement).toContain(`https://docs.comet.rpamis.com/${language}/sdk/distribution`);
+      expect(announcement).toContain(
+        `https://docs.comet.rpamis.com/${language}/dashboard/overview`,
+      );
+    }
     for (const version of ['0.4.0-rc.1', '0.4.0-beta.7', '0.4.0-beta.1', '0.3.9']) {
       expect(readmeEn).not.toContain(`**${version}**`);
       expect(readmeZh).not.toContain(`**${version}**`);
@@ -88,49 +100,24 @@ describe('README assets', () => {
     expect(readmeZh).toContain('https://docs.comet.rpamis.com/zh/changelog');
   });
 
-  it('documents the compact current project configuration in both languages', async () => {
+  it('links memory and knowledge guides and uses the localized Dashboard screenshots', async () => {
     const readmeEn = await fs.readFile('README.md', 'utf-8');
     const readmeZh = await fs.readFile('README-zh.md', 'utf-8');
-    const configEn = readmeEn.split('### Project configuration')[1]?.split('## Support')[0] ?? '';
-    const configZh = readmeZh.split('### 项目配置')[1]?.split('## 对OpenClaw')[0] ?? '';
-    const managedFields = [
-      'schema: comet.project.v1',
-      'default_workflow: native',
-      'workflows: [native, classic]',
-      'ambient_resume: true',
-      'memory:',
-      'learning: true',
-      'retrieval: true',
-      'knowledge:',
-      'provider: local',
-      'hook:',
-      'allow_paths: []',
-      'native:',
-      'artifact_root: docs',
-      'clarification_mode: batch',
-      'archive_confirmation: automatic',
-      'max_verify_failures: 5',
-      'classic:',
-      'artifact_layout: docs',
-      'context_compression: off',
-      'review_mode: standard',
-      'auto_transition: true',
-    ];
-
-    for (const field of managedFields) {
-      expect(configEn).toContain(field);
-      expect(configZh).toContain(field);
+    for (const [readme, language, suffix, heading] of [
+      [readmeEn, 'en', '', '## Why Comet'],
+      [readmeZh, 'zh', '-ZH', '## 为什么需要 Comet'],
+    ]) {
+      const features = readme.split(heading)[1]?.split('## Supervisor Change')[0] ?? '';
+      for (const guide of ['PERSONAL-MEMORY', 'PROJECT-KNOWLEDGE']) {
+        const guidePath = `docs/operations/${guide}${suffix}.md`;
+        expect(features).toContain(guidePath);
+        await expect(fs.stat(guidePath)).resolves.toBeDefined();
+      }
+      expect(readme).toContain('### Comet Dashboard');
+      const screenshot = `img/dashboard-workflow-${language}.png`;
+      expect(readme).toContain(`https://github.com/rpamis/comet/blob/master/${screenshot}`);
+      await expect(fs.stat(screenshot)).resolves.toBeDefined();
     }
-    expect(configEn).toContain('language: en');
-    expect(configZh).toContain('language: zh-CN');
-    expect(configEn).toContain('Cloud Knowledge and self-hosted PR');
-    expect(configZh).toContain('云端知识、私有化 PR');
-    expect(configEn).toContain('<summary>View the compact config shape');
-    expect(configZh).toContain('<summary>查看同时启用 Native 与 Classic 时的精简配置骨架');
-    expect(configEn).not.toContain('snapshot:');
-    expect(configZh).not.toContain('snapshot:');
-    expect(configZh).not.toContain('远端知识');
-    expect(configZh).not.toContain('仓库自有 PR');
   });
 
   it('keeps the bilingual Supervisor showcase backed by repository assets', async () => {
