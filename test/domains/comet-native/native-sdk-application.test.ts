@@ -1,3 +1,4 @@
+import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { execFileSync, spawn } from 'node:child_process';
@@ -66,6 +67,7 @@ import {
 import {
   COMET_CHANGE_OWNER_SCHEMA,
   registerSdkChangeOwner,
+  recoverSdkChangeOwnerToActive,
 } from '../../../domains/workflow-contract/change-runtime-owner.js';
 
 type NativeApplication = {
@@ -4609,154 +4611,270 @@ children:
     ).toEqual(failedCheck);
   });
 
-  it('requires user confirmation before Archiving an independently verified Skill-coordinated pass', async () => {
-    const { root, paths, changeDir, runtime, run: ready } = await dispatchedVerifier();
-    let run = ready;
-    const candidateId = (run.state as NativePortableState).builder_handoff!.candidate_id;
-    run = await succeedLatestAction(
-      runtime,
-      run,
-      {
-        candidateId,
-        verifierExecutionRef: 'verifier-session-1',
-        response: {
-          kind: 'final-result',
-          result: {
-            iteration: 1,
-            attempt: 1,
-            verdict: 'pass',
-            acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified the selected workflow.' }],
-            risks: [],
-            summary: 'All acceptance scenarios passed.',
+  it.each(['memory', 'sdk'] as const)(
+    'requires user confirmation before Archiving an independently verified Skill-coordinated pass (%s)',
+    async (storeKind) => {
+      const {
+        root,
+        paths,
+        changeDir,
+        runtime,
+        run: ready,
+      } = await dispatchedVerifier([], storeKind);
+      let run = ready;
+      const candidateId = (run.state as NativePortableState).builder_handoff!.candidate_id;
+      run = await succeedLatestAction(
+        runtime,
+        run,
+        {
+          candidateId,
+          verifierExecutionRef: 'verifier-session-1',
+          response: {
+            kind: 'final-result',
+            result: {
+              iteration: 1,
+              attempt: 1,
+              verdict: 'pass',
+              acceptance: [
+                { id: 'A1', result: 'passed', reason: 'Verified the selected workflow.' },
+              ],
+              risks: [],
+              summary: 'All acceptance scenarios passed.',
+            },
           },
         },
-      },
-      root,
-      'verifier-result',
-      'verifier-session-1',
-    );
-    expect(run.state).toMatchObject({
-      phase: 'verify',
-      status: 'await-user',
-      verification_result: 'pass',
-      verification: {
-        assurance: 'skill-coordinated',
-        verifier_execution_ref: 'verifier-session-1',
-        verdict: 'pass',
-      },
-    });
-    expect(run.actions.at(-1)).toMatchObject({
-      stepId: 'verify.report',
-      type: 'call_tool',
-    });
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-report',
-      context: { requestId: 'native-report', projectRoot: root },
-    });
-    expect(await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8')).toContain(
-      'All acceptance scenarios passed.',
-    );
-    expect(run.waits.at(-1)).toMatchObject({
-      stepId: 'verify.confirm',
-      status: 'pending',
-    });
-    const approvedReport = await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8');
-    const approvedReportHash = createHash('sha256').update(approvedReport).digest('hex');
-    const approvedReportStateVersion = (run.state as NativePortableState).state_version;
-    expect(run.outputs['verify.report'].value).toMatchObject({
-      reportSha256: approvedReportHash,
-      stateVersion: approvedReportStateVersion,
-    });
-    const confirmation = run.waits.at(-1)!;
-    expect(confirmation.proposal).toMatchObject({
-      outputs: { 'verify.report': { reportSha256: approvedReportHash } },
-    });
-    run = await runtime.resolveWait({
-      runId: run.runId,
-      waitId: confirmation.id,
-      proposalHash: confirmation.proposalHash,
-      decisionId: 'verification-approved',
-      choice: 'approved',
-    });
-    expect(run.state).toMatchObject({ phase: 'verify', status: 'await-user' });
-    expect(run.actions.at(-1)).toMatchObject({
-      stepId: 'verify.revalidate',
-      type: 'call_tool',
-    });
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-report-revalidate',
-      context: { requestId: 'native-report-revalidate', projectRoot: root },
-    });
-    expect(run.state).toMatchObject({ phase: 'archive', status: 'active' });
-    expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.prepare', type: 'call_tool' });
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-archive-preflight',
-      context: { requestId: 'native-archive-preflight', projectRoot: root },
-    });
-    expect(run.outputs['archive.prepare'].value).toMatchObject({
-      ready: true,
-      reportSha256: approvedReportHash,
-      reportStateVersion: approvedReportStateVersion,
-    });
-    expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.execute', type: 'call_tool' });
-    // 预检保持用户确认的报告不变，最终报告在 committed done state 后生成。
-    expect((run.state as NativePortableState).state_version).toBeGreaterThan(
-      approvedReportStateVersion,
-    );
-    expect(await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8')).toBe(approvedReport);
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-archive-apply',
-      context: { requestId: 'native-archive-apply', projectRoot: root },
-    });
-    expect(run.state).toMatchObject({ phase: 'archive', status: 'done', archived: true });
-    expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.finalize', type: 'call_tool' });
-    expect(await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8')).toBe(approvedReport);
-    expect(run.waits.find((wait) => wait.id === confirmation.id)).toMatchObject({
-      status: 'resolved',
-      proposalHash: confirmation.proposalHash,
-      proposal: { outputs: { 'verify.report': { reportSha256: approvedReportHash } } },
-      decision: { choice: 'approved' },
-    });
-    expect(await fs.readFile(path.join(paths.specsDir, 'workflow', 'spec.md'), 'utf8')).toContain(
-      'The selected workflow resumes without losing confirmed work.',
-    );
-    const archiveRef = (run.outputs['archive.execute'].value as { archiveRef: string }).archiveRef;
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-archive-finalize',
-      context: { requestId: 'native-archive-finalize', projectRoot: root },
-    });
-    expect(run.status).toBe('completed');
-    expect(await fs.stat(path.join(paths.archiveDir, archiveRef))).toBeDefined();
-    await expect(fs.stat(changeDir)).rejects.toMatchObject({ code: 'ENOENT' });
-    const finalReport = await fs.readFile(
-      path.join(paths.archiveDir, archiveRef, 'verification.md'),
-      'utf8',
-    );
-    expect(finalReport).toContain(
-      `generated_from_state_version: ${(run.state as NativePortableState).state_version}`,
-    );
-    const finalReceipt = await inspectNativeSdkArchiveFinalization({
-      paths,
-      state: run.state as NativePortableState,
-      runId: run.runId,
-      archiveRef,
-    });
-    expect(finalReceipt).toMatchObject({
-      stateVersion: (run.state as NativePortableState).state_version,
-      reportSha256: createHash('sha256').update(finalReport).digest('hex'),
-    });
-    expect(run.outputs['archive.finalize'].value).toEqual(finalReceipt);
-  });
+        root,
+        'verifier-result',
+        'verifier-session-1',
+      );
+      expect(run.state).toMatchObject({
+        phase: 'verify',
+        status: 'await-user',
+        verification_result: 'pass',
+        verification: {
+          assurance: 'skill-coordinated',
+          verifier_execution_ref: 'verifier-session-1',
+          verdict: 'pass',
+        },
+      });
+      expect(run.actions.at(-1)).toMatchObject({
+        stepId: 'verify.report',
+        type: 'call_tool',
+      });
+      run = await runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId: 'comet-native-report',
+        context: { requestId: 'native-report', projectRoot: root },
+      });
+      expect(await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8')).toContain(
+        'All acceptance scenarios passed.',
+      );
+      expect(run.waits.at(-1)).toMatchObject({
+        stepId: 'verify.confirm',
+        status: 'pending',
+      });
+      const approvedReport = await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8');
+      const approvedReportHash = createHash('sha256').update(approvedReport).digest('hex');
+      const approvedReportStateVersion = (run.state as NativePortableState).state_version;
+      expect(run.outputs['verify.report'].value).toMatchObject({
+        reportSha256: approvedReportHash,
+        stateVersion: approvedReportStateVersion,
+      });
+      const confirmation = run.waits.at(-1)!;
+      expect(confirmation.proposal).toMatchObject({
+        outputs: { 'verify.report': { reportSha256: approvedReportHash } },
+      });
+      run = await runtime.resolveWait({
+        runId: run.runId,
+        waitId: confirmation.id,
+        proposalHash: confirmation.proposalHash,
+        decisionId: 'verification-approved',
+        choice: 'approved',
+      });
+      expect(run.state).toMatchObject({ phase: 'verify', status: 'await-user' });
+      expect(run.actions.at(-1)).toMatchObject({
+        stepId: 'verify.revalidate',
+        type: 'call_tool',
+      });
+      run = await runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId: 'comet-native-report-revalidate',
+        context: { requestId: 'native-report-revalidate', projectRoot: root },
+      });
+      expect(run.state).toMatchObject({ phase: 'archive', status: 'active' });
+      expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.prepare', type: 'call_tool' });
+      run = await runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId: 'comet-native-archive-preflight',
+        context: { requestId: 'native-archive-preflight', projectRoot: root },
+      });
+      expect(run.outputs['archive.prepare'].value).toMatchObject({
+        ready: true,
+        reportSha256: approvedReportHash,
+        reportStateVersion: approvedReportStateVersion,
+      });
+      expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.execute', type: 'call_tool' });
+      // 预检保持用户确认的报告不变，最终报告在 committed done state 后生成。
+      expect((run.state as NativePortableState).state_version).toBeGreaterThan(
+        approvedReportStateVersion,
+      );
+      expect(await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8')).toBe(
+        approvedReport,
+      );
+      run = await runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId: 'comet-native-archive-apply',
+        context: { requestId: 'native-archive-apply', projectRoot: root },
+      });
+      expect(run.state).toMatchObject({ phase: 'archive', status: 'done', archived: true });
+      expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.finalize', type: 'call_tool' });
+      expect(await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8')).toBe(
+        approvedReport,
+      );
+      expect(run.waits.find((wait) => wait.id === confirmation.id)).toMatchObject({
+        status: 'resolved',
+        proposalHash: confirmation.proposalHash,
+        proposal: { outputs: { 'verify.report': { reportSha256: approvedReportHash } } },
+        decision: { choice: 'approved' },
+      });
+      expect(await fs.readFile(path.join(paths.specsDir, 'workflow', 'spec.md'), 'utf8')).toContain(
+        'The selected workflow resumes without losing confirmed work.',
+      );
+      const archiveRef = (run.outputs['archive.execute'].value as { archiveRef: string })
+        .archiveRef;
+      run = await runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId: 'comet-native-archive-finalize',
+        context: { requestId: 'native-archive-finalize', projectRoot: root },
+      });
+      expect(run.status).toBe('completed');
+      expect(await fs.stat(path.join(paths.archiveDir, archiveRef))).toBeDefined();
+      await expect(fs.stat(changeDir)).rejects.toMatchObject({ code: 'ENOENT' });
+      const finalReport = await fs.readFile(
+        path.join(paths.archiveDir, archiveRef, 'verification.md'),
+        'utf8',
+      );
+      expect(finalReport).toContain(
+        `generated_from_state_version: ${(run.state as NativePortableState).state_version}`,
+      );
+      const finalReceipt = await inspectNativeSdkArchiveFinalization({
+        paths,
+        state: run.state as NativePortableState,
+        runId: run.runId,
+        archiveRef,
+      });
+      expect(finalReceipt).toMatchObject({
+        stateVersion: (run.state as NativePortableState).state_version,
+        reportSha256: createHash('sha256').update(finalReport).digest('hex'),
+      });
+      expect(run.outputs['archive.finalize'].value).toEqual(finalReceipt);
+      if (storeKind === 'sdk') {
+        const fileStore = createFileRuntimeStore<WorkflowRun>({
+          rootDir: path.join(resolveWorkspaceRuntimeRootSync(root), 'sdk-runs/native'),
+        });
+        expect(await fileStore.readDisposition(run.runId)).toBe('closed');
+        expect((await nativeDoctorCommand([run.runId], root)).exitCode).toBe(0);
+        const target = await fs.mkdtemp(path.join(os.tmpdir(), 'native-archive-other-device-'));
+        const data = await fs.mkdtemp(path.join(os.tmpdir(), 'native-archive-other-home-'));
+        roots.push(target, data);
+        execFileSync('git', ['init', '-b', 'main'], { cwd: target, stdio: 'ignore' });
+        await fs.cp(path.join(root, 'docs'), path.join(target, 'docs'), { recursive: true });
+        await fs.mkdir(path.join(target, '.comet'));
+        await fs.copyFile(
+          path.join(root, '.comet/config.yaml'),
+          path.join(target, '.comet/config.yaml'),
+        );
+        const previousData = process.env.COMET_DATA_DIR;
+        process.env.COMET_DATA_DIR = data;
+        try {
+          const restoredStore = createFileRuntimeStore<WorkflowRun>({
+            rootDir: path.join(resolveWorkspaceRuntimeRootSync(target), 'sdk-runs/native'),
+          });
+          expect(await restoredStore.read(run.runId)).toBeNull();
+          expect((await nativeDoctorCommand([run.runId], target)).exitCode).not.toBe(0);
+          expect(await restoredStore.read(run.runId)).toBeNull();
+          const recovered = await nativeDoctorCommand(
+            [run.runId, '--repair', '--confirmed'],
+            target,
+          );
+          expect(recovered.exitCode, JSON.stringify(recovered)).toBe(0);
+          expect((await restoredStore.read(run.runId))!.status).toBe('completed');
+          expect((await restoredStore.read(run.runId))!.revision).toBe(run.revision);
+          expect((await restoredStore.read(run.runId))!.actions).toEqual(
+            readPortableRunCheckpoint(createPortableRunCheckpoint(run), run.runId, {
+              preserveSourceRevision: true,
+            })!.actions,
+          );
+          expect(await restoredStore.readDisposition(run.runId)).toBe('active');
+          const sealed = await nativeDoctorCommand([run.runId, '--migrate-history'], target);
+          expect(sealed.exitCode, JSON.stringify(sealed)).toBe(0);
+          expect(sealed.data).toMatchObject({ migrated: [], active: [run.runId], findings: [] });
+          // 新设备没有原检查进程登记，恢复保留正确终态，但不假造静止证据重新封存。
+          expect(await restoredStore.readDisposition(run.runId)).toBe('active');
+          const continued = await advanceNativeSdkChange(target, run.runId);
+          expect(continued.exitCode, JSON.stringify(continued)).toBe(0);
+          expect((await restoredStore.read(run.runId))!.status).toBe('completed');
+          expect((await restoredStore.read(run.runId))!.revision).toBe(run.revision);
+          const newChange = JSON.parse(
+            (
+              await runNativeCli([
+                'new',
+                'after-restored-archive',
+                '--isolation',
+                'current',
+                '--project-root',
+                target,
+                '--json',
+              ])
+            ).stdout!,
+          );
+          expect(newChange.exitCode, JSON.stringify(newChange)).toBe(0);
+          expect((await restoredStore.read('after-restored-archive'))!.status).not.toBe(
+            'completed',
+          );
+
+          expect((await restoredStore.read(run.runId))!.actions).toEqual(
+            readPortableRunCheckpoint(createPortableRunCheckpoint(run), run.runId, {
+              preserveSourceRevision: true,
+            })!.actions,
+          );
+        } finally {
+          if (previousData === undefined) delete process.env.COMET_DATA_DIR;
+          else process.env.COMET_DATA_DIR = previousData;
+        }
+        // 模拟旧终态布局后，迁移必须校验保存的 receipt；后续合法 Spec 更新不影响历史。
+        await recoverSdkChangeOwnerToActive(root, 'native', run.runId);
+        expect(await fileStore.reopenRun(run.runId, run.revision)).toBe(true);
+        const receiptFile = path.join(
+          paths.runtimeDir,
+          'sdk-archive-receipts',
+          `${createHash('sha256').update(run.runId).digest('hex')}.json`,
+        );
+        const receiptSource = await fs.readFile(receiptFile, 'utf8');
+        await fs.writeFile(
+          receiptFile,
+          JSON.stringify({ ...finalReceipt, transactionId: 'changed-receipt' }),
+        );
+        expect(
+          (await nativeDoctorCommand([run.runId, '--migrate-history'], root)).exitCode,
+        ).not.toBe(0);
+        expect(await fileStore.readDisposition(run.runId)).toBe('active');
+        await fs.writeFile(receiptFile, receiptSource);
+        await fs.writeFile(
+          path.join(paths.specsDir, 'workflow', 'spec.md'),
+          '# Workflow\nA later change updated this capability.\n',
+        );
+        const migration = await nativeDoctorCommand([run.runId, '--migrate-history'], root);
+        expect(migration.exitCode, JSON.stringify(migration)).toBe(0);
+        expect(await fileStore.readDisposition(run.runId)).toBe('closed');
+      }
+    },
+  );
 
   it('recovers a completed Archive move after restart without executing it again', async () => {
     const {

@@ -1,3 +1,4 @@
+import * as history from '../../../domains/comet-native/native-sdk-history-discovery.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -42,7 +43,10 @@ afterEach(async () => {
 });
 
 function mockChanges(names: string[], complete: (name: string) => boolean = () => true) {
-  vi.spyOn(ownership, 'listNativeSdkChangeNames').mockResolvedValue(names);
+  vi.spyOn(history, 'listNativeSdkHistoryPartitions').mockResolvedValue({
+    active: names,
+    history: [],
+  });
   vi.spyOn(cancellation, 'isNativeSdkChangeCancellationComplete').mockResolvedValue(false);
   vi.spyOn(cancellation, 'isNativeSdkCancellationComplete').mockImplementation(async ({ run }) =>
     complete(run.runId),

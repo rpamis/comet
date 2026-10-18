@@ -256,12 +256,13 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   doctor: {
     usage:
-      'comet native doctor [<change-name>] [--repair] [--confirmed] [--stopped-actions <json-file>]',
+      'comet native doctor [<change-name>] [--repair] [--confirmed] [--stopped-actions <json-file>] [--migrate-history]',
     purpose:
       'Inspect portable state, migrate a compat Runtime active change, or rebuild its local execution overlay.',
     options: [
       '--stopped-actions <json-file>  With --repair --confirmed, submit original Action/attempt/inputHash/claimToken and actual evidence that its execution and all descendants, including detached processes, stopped; retained results remain unknown and require a fresh repair candidate.',
       '--repair  Apply deterministic migration or rebuild from the portable stable boundary.',
+      '--migrate-history  Validate and close fully stopped built-in Native terminal Runs. Preserve documents and checkpoints; unfinished or invalid Runs remain active. Safe to rerun after interruption. Upgrade CLI and platform Hooks together: older Runtime versions cannot write the new storage format. Ordinary inspection never migrates.',
       '--confirmed  With --repair and a named managed change whose local Run history is missing, recover its saved Run checkpoint after confirming the original process stopped. Older states without a checkpoint restart at Shape and require fresh approvals and checks.',
     ],
     output:

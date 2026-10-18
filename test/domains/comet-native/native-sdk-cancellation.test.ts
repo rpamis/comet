@@ -1,3 +1,5 @@
+import { createFileRuntimeStore } from '../../../domains/engine/runtime.js';
+import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import {
   listActiveNativeHookChanges,
   inspectNativeHookGuard,
@@ -93,6 +95,10 @@ describe('Native cancellation lifecycle', () => {
     });
     await f.runtime.cancel({ runId: f.name, reason: 'Stop scheduling' });
     expect(await isNativeSdkChangeCancellationComplete(f.root, f.name)).toBe(false);
+    const store = createFileRuntimeStore({
+      rootDir: path.join(resolveWorkspaceRuntimeRootSync(f.root), 'sdk-runs', 'native'),
+    });
+    expect(await store.readDisposition(f.name)).toBe('active');
     for (const command of [
       `comet native doctor ${f.name} --repair --json`,
       'comet runtime dispatch --application native --request stop-confirmation.json',
@@ -133,6 +139,7 @@ describe('Native cancellation lifecycle', () => {
       ],
     });
     expect(await isNativeSdkChangeCancellationComplete(f.root, f.name)).toBe(true);
+    expect(await store.readDisposition(f.name)).toBe('closed');
     expect(await listActiveNativeHookChanges(f.root)).toEqual([]);
   });
 

@@ -1016,7 +1016,7 @@ export async function listCreatorRuns(projectRoot: string) {
       if (!entry.isFile() || entry.isSymbolicLink()) throw new Error('创作存储临时文件类型无效');
       continue;
     }
-    if (entry.name === '.runtime-store-v2') {
+    if (['.runtime-store-v2', '.runtime-store-history'].includes(entry.name)) {
       if (!entry.isDirectory() || entry.isSymbolicLink())
         throw new Error('创作存储目录含异常项目；保留现场后修正');
       continue;
@@ -1027,7 +1027,9 @@ export async function listCreatorRuns(projectRoot: string) {
     let record: { runId?: unknown };
     if (entry.isFile()) {
       const marker = JSON.parse(await fs.readFile(target, 'utf8'));
-      if (marker.schema !== 'comet.runtime-store-format.v2')
+      if (
+        !['comet.runtime-store-format.v2', 'comet.runtime-store-format.v3'].includes(marker.schema)
+      )
         throw new Error('创作存储格式标记无效；保留现场后修正');
       record = marker;
     } else if (entry.isDirectory()) {

@@ -7,7 +7,7 @@ import {
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
-import * as ownership from '../../../domains/comet-native/native-runtime-ownership.js';
+import * as history from '../../../domains/comet-native/native-sdk-history-discovery.js';
 import * as cancellation from '../../../domains/comet-native/native-sdk-cancellation.js';
 import * as status from '../../../domains/comet-native/native-sdk-status.js';
 import { listDiscoveredNativeStatusPage } from '../../../domains/comet-native/native-status-discovery.js';
@@ -40,9 +40,10 @@ it('limits cancellation checks to four across workspaces and waits for every che
     { root: secondary, branch: 'secondary', detached: false },
   ]);
   const names = ['a', 'b', 'c', 'd', 'e', 'f'];
-  vi.spyOn(ownership, 'listNativeSdkChangeNames').mockImplementation(async (projectRoot) =>
-    projectRoot === root ? names.slice(0, 3) : names.slice(3),
-  );
+  vi.spyOn(history, 'listNativeSdkHistoryPartitions').mockImplementation(async (projectRoot) => ({
+    active: projectRoot === root ? names.slice(0, 3) : names.slice(3),
+    history: [],
+  }));
   const gates = new Map(names.map((name) => [name, deferred()]));
   let active = 0;
   let peak = 0;
@@ -88,7 +89,10 @@ it.each([false, true])(
   'retains failed probes in stable candidate order for full inspection (corrupt: %s)',
   async (corrupt) => {
     const names = ['e', 'd', 'c', 'b', 'a'];
-    vi.spyOn(ownership, 'listNativeSdkChangeNames').mockResolvedValue(names);
+    vi.spyOn(history, 'listNativeSdkHistoryPartitions').mockResolvedValue({
+      active: names,
+      history: [],
+    });
     const gates = new Map(names.map((name) => [name, deferred()]));
     let active = 0;
     const probe = vi

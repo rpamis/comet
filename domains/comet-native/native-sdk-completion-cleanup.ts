@@ -1,3 +1,4 @@
+import { closeNativeSdkHistory } from './native-sdk-history.js';
 import type { WorkflowRun } from '../engine/runtime.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 import {
@@ -38,4 +39,5 @@ export async function settleNativeSdkCompletion(options: {
       { cause: error },
     );
   });
+  await closeNativeSdkHistory(options);
 }

@@ -49,7 +49,13 @@ export {
 } from './runtime-store-discovery.js';
 export type { FileRuntimeStoreRun, FileRuntimeStoreRunSource } from './runtime-store-discovery.js';
 export { parseWorkflowRun } from './workflow-run-validation.js';
-export type { RuntimeStore, RuntimeRecord, FileRuntimeStoreOptions } from './runtime-store.js';
+export type {
+  RuntimeStore,
+  RuntimeRecord,
+  FileRuntimeStoreOptions,
+  FileRuntimeStore,
+  FileRuntimeStoreDisposition,
+} from './runtime-store.js';
 export { RuntimeProtocolError } from './runtime-errors.js';
 export type { RuntimeErrorCode, RuntimeErrorRecovery } from './runtime-errors.js';
 export { hashRuntimeValue } from './runtime-json.js';

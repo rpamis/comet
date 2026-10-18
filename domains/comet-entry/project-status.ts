@@ -22,7 +22,10 @@ import { discoverNativeProject, nativeProjectPaths } from '../comet-native/nativ
 import { inspectNativePortableStatus } from '../comet-native/native-portable-status.js';
 import { isNativePortableChange } from '../comet-native/native-portable-runtime.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
-import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import {
+  readSdkChangeOwner,
+  readSdkChangeOwners,
+} from '../workflow-contract/change-runtime-owner.js';
 import { inspectNativeSdkStatus } from '../comet-native/native-sdk-status.js';
 import { hasNativeManagedRunMarker } from '../comet-native/native-sdk-state-store.js';
 import {
@@ -125,9 +128,13 @@ async function listConfiguredNativeStatus(
   options: { clarificationMode: 'sequential' | 'batch'; maxVerifyFailures: number },
 ): Promise<CometProjectStatus['workflows']['native']['changes']> {
   const names = await listNativeChangeNames(paths);
+  const owners = await readSdkChangeOwners(paths.projectRoot, 'native', names);
   return inspectChanges(names, async (name) => {
     try {
-      if (await readSdkChangeOwner(paths.projectRoot, 'native', name, { readOnly: true }))
+      const owner = owners.get(name);
+      if (!owner) throw new Error(`Missing Native owner inspection for ${name}`);
+      if (owner.status === 'rejected') throw owner.reason;
+      if (owner.value)
         return await inspectNativeSdkStatus({
           projectRoot: paths.projectRoot,
           name,
@@ -258,6 +265,11 @@ async function inspectOpenSpecChanges(
     label: 'Classic changes root',
     expected: 'directory',
   });
+  const owners = await readSdkChangeOwners(
+    projectRoot,
+    'classic',
+    names.filter((name) => name !== 'archive' && !openSpecChangeNameError(name)),
+  );
   await inspectChanges(names, async (name) => {
     if (name === 'archive') return;
     if (openSpecChangeNameError(name)) return;
@@ -279,6 +291,9 @@ async function inspectOpenSpecChanges(
       return;
     }
     try {
+      const owner = owners.get(name);
+      if (!owner) throw new Error(`Missing Classic owner inspection for ${name}`);
+      if (owner.status === 'rejected') throw owner.reason;
       const sdk = await inspectClassicSdkChangeStatus(projectRoot, name, done, total);
       if (sdk) {
         if (!sdk.archived) classic.push(sdk);
