@@ -675,3 +675,94 @@ test('Any self-source links retain detail and Eval returns to the originating ev
   );
   expect(await page.evaluate(() => window.history.state.cometDashboard)).toEqual(origin);
 });
+
+test('Any ignores a delayed old search page after the new search has loaded', async ({ page }) => {
+  const demoList = readApplicationDemo('application-runs', {});
+  const base = demoList.items.find((item: any) => item.applicationId)!;
+  const item = (id: string) => ({
+    ...base,
+    locator: id,
+    applicationId: id,
+    application: { ...base.application, id },
+  });
+  await page.addInitScript(() => {
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = new URL(String(input), location.href);
+      if (url.pathname.endsWith('/application-runs') && url.searchParams.has('cursor')) {
+        (window as any).oldPaginationStarted = true;
+        init?.signal?.addEventListener('abort', () => {
+          (window as any).oldPaginationAborted = true;
+        });
+        // 模拟已经接收响应、取消后仍完成的传输，验证状态层也拒绝旧结果。
+        return new Promise((resolve) => {
+          (window as any).releaseOldPagination = (body: unknown) =>
+            resolve(new Response(JSON.stringify(body), { status: 200 }));
+        });
+      }
+      return originalFetch(input, init);
+    };
+  });
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects')
+      return route.fulfill({
+        json: {
+          currentProjectId: 'fixture',
+          projects: [
+            {
+              id: 'fixture',
+              name: 'Fixture',
+              path: '/fixture',
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+    if (url.pathname.endsWith('/overview'))
+      return route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture' },
+          summary: {},
+          initialChanges: { items: [], total: 0 },
+          git: {},
+        },
+      });
+    if (url.pathname.endsWith('/application-runs')) {
+      const fresh = url.searchParams.get('q') === 'new';
+      return route.fulfill({
+        json: {
+          ...demoList,
+          fingerprint: fresh ? 'new' : 'old',
+          items: [item(fresh ? 'new-only' : 'old-first')],
+          total: fresh ? 1 : 2,
+          nextCursor: fresh ? null : 'old-next',
+        },
+      });
+    }
+    if (url.pathname.endsWith('/application-run')) {
+      const detail = readApplicationDemo('application-run', { locator: base.locator });
+      return route.fulfill({ json: { ...detail, locator: url.searchParams.get('locator') } });
+    }
+    return route.fulfill({ json: { items: [], pages: [] } });
+  });
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await expect(page.locator('.any-app-row')).toContainText(['old-first']);
+  await page.getByRole('button', { name: '加载更多记录', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).oldPaginationStarted)).toBe(true);
+  await page.getByPlaceholder('搜索目标或应用…').fill('new');
+  await expect(page.locator('.any-app-row')).toContainText(['new-only']);
+  await expect.poll(() => page.evaluate(() => (window as any).oldPaginationAborted)).toBe(true);
+  await page.evaluate((late) => (window as any).releaseOldPagination(late), {
+    ...demoList,
+    fingerprint: 'old',
+    items: [item('old-second')],
+    total: 2,
+    nextCursor: null,
+  });
+  await expect(page.locator('.any-app-row')).toHaveCount(1);
+  await expect(page.locator('.any-app-row')).toContainText(['new-only']);
+  await expect(page.getByRole('button', { name: '加载更多记录', exact: true })).toHaveCount(0);
+});

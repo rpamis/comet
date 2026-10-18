@@ -90,6 +90,8 @@ comet eval ./application/application.json --project . --agent codex --model <mod
 
 应用评估读取实际流程定义、固定 Skills 和执行模块，不只读取入口 `SKILL.md`。`--collect` 只预览，不生成用例或调用模型；应用评估不接受 `--quick` 或单任务替代。报告绑定当前应用内容、依赖、配置和用例集，列出失败和未覆盖的 SDK 步骤。重试复用原用例；Creator 修订后优先沿用原用例，而不是重新出题掩盖失败。
 
+应用评估 CLI 在 stdout 保留完整 JSON：`passed` 退出码为 `0`，`failed` 或 `incomplete` 为 `1`。成功的 `--collect` 返回 `0`，即使预览列出阻塞原因。与 Skill 评估一致，退出码反映执行和验证结果，不单凭评分高低判定。运行历史中的 `completed` 表示运行已结束，评估结论仍以报告的 `status` 为准。领域 API 继续返回结果，供 Creator 等调用方处理。
+
 Eval 不负责发布。后续使用 `comet application distribute` 分发，预览会显示当前内容的评估状态和报告。未评估或失败仍允许用户明确选择安装；报告改变或缺失时显示证据失效。仅在一个 Agent 上评估通过，不代表其他安装平台、真实 Hook 或外部系统已经验收。
 
 有外部副作用的 Skill 必须先提供固定的测试替身；没有隔离实现时报告保持未完成，不执行真实外部操作。超时或结果未知时，先核对原实验和容器，不能直接重复启动。

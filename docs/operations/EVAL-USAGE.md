@@ -98,6 +98,8 @@ comet eval ./application/application.json --project . --agent codex --model <mod
 
 Application Eval reads actual workflow definitions, fixed Skills, and execution modules rather than only the entry `SKILL.md`. `--collect` previews without generating cases or calling models; application evaluation does not accept `--quick` or a single-task replacement. Reports bind current application content, dependencies, settings, and cases, and list failures and uncovered SDK steps. Retries reuse cases; Creator revisions prefer the original cases instead of generating easier replacements.
 
+The application Eval CLI preserves the full JSON on stdout: `passed` exits with `0`; `failed` or `incomplete` exits with `1`. A successful `--collect` exits with `0`, even when its preview lists blockers. As with Skill evaluation, exit codes reflect execution and validation results, not scores alone. `completed` in run history means execution has ended; the report's `status` remains the evaluation outcome. The domain API continues returning results for callers such as Creator to handle.
+
 Eval does not publish. Use `comet application distribute` afterward; its preview shows the current content's evaluation status and report. Users may explicitly choose installation without evaluation or after failure. Changed or missing reports invalidate evidence. A pass on one Agent does not establish acceptance on other installation platforms, real Hooks, or external systems.
 
 Skills with external side effects require fixed test replacements. Without an isolated implementation, evaluation remains incomplete and does not perform real external operations. After timeout or uncertain results, reconcile the original experiment and containers before restarting.

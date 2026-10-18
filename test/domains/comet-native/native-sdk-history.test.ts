@@ -1,3 +1,9 @@
+import { runWithHookReadCache } from '../../../platform/process/hook-read-cache.js';
+import {
+  listNativeSdkHistoryPartitions,
+  inspectNativeSdkClosedHistory,
+} from '../../../domains/comet-native/native-sdk-history-discovery.js';
+import * as workspaceRuntime from '../../../domains/workflow-contract/workspace-runtime.js';
 import * as ownerStorage from '../../../domains/workflow-contract/change-runtime-owner.js';
 import { createHash } from 'node:crypto';
 import { listActiveNativeHookChanges } from '../../../domains/comet-native/native-hook-guard.js';
@@ -40,6 +46,36 @@ async function fixture() {
 }
 
 describe('Native terminal history lifecycle', () => {
+  it('shares one Store root per project history inspection and rechecks each scan after metadata changes', async () => {
+    const f = await fixture();
+    await f.runtime.cancel({ runId: f.name, reason: 'Stop this task' });
+    const other = 'second-history';
+    expect((await f.cli(['new', other])).exitCode).toBe(0);
+    await f.runtime.cancel({ runId: other, reason: 'Stop the second task' });
+    const rootSpy = vi.spyOn(workspaceRuntime, 'resolveWorkspaceRuntimeRootSync');
+    const inspected = await inspectNativeSdkClosedHistory(f.root, [f.name, other]);
+    expect([...inspected.values()]).toEqual([
+      { status: 'fulfilled', value: true },
+      { status: 'fulfilled', value: true },
+    ]);
+    // 一次发现 Runtime 根，另一次为整批构造 Store；不能按 history 数量增长。
+    expect(rootSpy.mock.calls.length).toBeLessThanOrEqual(2);
+    rootSpy.mockRestore();
+    const key = createHash('sha256').update(JSON.stringify(f.name)).digest('hex');
+    const markerFile = path.join(resolveWorkspaceRuntimeRootSync(f.root), 'sdk-runs/native', key);
+    const marker = await fs.readFile(markerFile, 'utf8');
+    await runWithHookReadCache(async () => {
+      expect((await listNativeSdkHistoryPartitions(f.root)).history).toEqual([f.name, other]);
+      await fs.writeFile(markerFile, '{broken marker');
+      await expect(listNativeSdkHistoryPartitions(f.root)).rejects.toThrow();
+      await fs.writeFile(markerFile, marker);
+      expect((await listNativeSdkHistoryPartitions(f.root)).history).toHaveLength(2);
+      await recoverSdkChangeOwnerToActive(f.root, 'native', f.name);
+      await fs.writeFile(markerFile, JSON.stringify({ ...JSON.parse(marker), state: 'reopening' }));
+      await expect(listNativeSdkHistoryPartitions(f.root)).rejects.toThrow(/unfinished reopening/);
+    });
+  });
+
   it('closes a fully cancelled Run while retaining readable history and portable documents', async () => {
     const f = await fixture();
     await f.runtime.cancel({ runId: f.name, reason: 'User stopped this task' });

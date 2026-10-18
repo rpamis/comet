@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import { createServer } from 'node:http';
 import os from 'node:os';
@@ -473,3 +473,61 @@ test('cancels checkpoint learning after one budget and preserves all queued even
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 }, 20_000);
+
+test('workflow learning resolves a canonical Git root once across both durable capture and full recording', async () => {
+  const { home, project } = await fixture('learning-git-root');
+  await execFileAsync('git', ['init', project]);
+  const trace = path.join(home, 'git-trace.jsonl');
+  const result = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+    const child = spawn(process.execPath, [path.join(root, 'comet-task-context-worker.js')], {
+      env: {
+        ...process.env,
+        HOME: home,
+        USERPROFILE: home,
+        XDG_CACHE_HOME: path.join(home, 'cache'),
+        LOCALAPPDATA: path.join(home, 'AppData', 'Local'),
+        GIT_TRACE2_EVENT: trace,
+      },
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 18_000,
+      killSignal: 'SIGKILL',
+      windowsHide: true,
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
+    child.on('error', reject);
+    child.on('close', (code) =>
+      code === 0
+        ? resolve({ stdout, stderr })
+        : reject(new Error(`worker exit ${code}: ${stderr}`)),
+    );
+    child.stdin.end(
+      JSON.stringify({
+        projectRoot: project,
+        workflowResults: [
+          {
+            projectRoot: project,
+            workflow: 'native',
+            changeId: 'git-count',
+            command: 'next',
+            success: true,
+          },
+        ],
+      }),
+    );
+  });
+  expect(result.stderr).not.toContain('checkpoint is unavailable');
+  expect(JSON.parse(result.stdout)).toHaveLength(1);
+  const starts = (await fs.readFile(trace, 'utf8'))
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line))
+    .filter((event) => event.event === 'start');
+  expect(starts.filter((event) => event.argv.includes('--show-toplevel'))).toHaveLength(1);
+});

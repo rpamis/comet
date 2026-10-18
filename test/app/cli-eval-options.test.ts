@@ -1,9 +1,10 @@
 import path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const evalFacadeCommand = vi.fn(async () => undefined);
+const evalFacadeCommand = vi.fn(async () => 0);
 const repositoryRoot = path.resolve('.');
 const originalArgv = process.argv;
+const originalExitCode = process.exitCode;
 
 vi.mock('../../app/commands/eval.js', () => ({
   evalCommand: evalFacadeCommand,
@@ -20,7 +21,14 @@ async function runEvalCli(...args: string[]): Promise<unknown[]> {
 describe('eval CLI options', () => {
   afterEach(() => {
     process.argv = originalArgv;
+    process.exitCode = originalExitCode;
     evalFacadeCommand.mockReset();
+  });
+
+  it.each([0, 1])('propagates Eval command exit code %i', async (code) => {
+    evalFacadeCommand.mockResolvedValue(code);
+    await runEvalCli('application.json');
+    expect(process.exitCode).toBe(code);
   });
 
   it('leaves project undefined unless --project is explicitly passed', async () => {

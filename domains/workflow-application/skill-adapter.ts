@@ -1,7 +1,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { Ajv } from 'ajv';
+import { Ajv, type ValidateFunction } from 'ajv';
+import { Lexer, walkTokens } from 'marked';
 import { hashRuntimeValue, RuntimeProtocolError, type RuntimeValue } from '../engine/runtime.js';
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 import type { AdaptedSkill, ApplicationSkillDependency, InspectedSkill } from './types.js';
@@ -58,30 +59,36 @@ function textFiles(files: Record<string, string>): Record<string, string> {
   );
 }
 
-/** 代码块中的路径属于示例；完整原文仍参与依赖摘要。 */
-function markdownOutsideCodeBlocks(content: string): string {
-  let fence: { marker: string; length: number } | undefined;
-  return content
-    .split(/\r?\n/u)
-    .map((line) => {
-      const match = /^ {0,3}(`{3,}|~{3,})(.*)$/u.exec(line);
-      if (fence) {
-        if (
-          match &&
-          match[1][0] === fence.marker &&
-          match[1].length >= fence.length &&
-          !match[2].trim()
-        )
-          fence = undefined;
-        return '';
-      }
-      if (match && (match[1][0] !== '`' || !match[2].includes('`'))) {
-        fence = { marker: match[1][0], length: match[1].length };
-        return '';
-      }
-      return line;
-    })
-    .join('\n');
+// 缓存只绑定 Schema 值；文件、审查证据和副作用契约仍在每次适配时核对。
+const schemaValidators = new Map<
+  string,
+  { ajv: Ajv; input: ValidateFunction; output: ValidateFunction }
+>();
+function compileAdapterSchemas(inputSchema: RuntimeValue, outputSchema: RuntimeValue) {
+  for (const [schema, label] of [
+    [inputSchema, '输入'],
+    [outputSchema, '输出'],
+  ] as const) {
+    if (!schema || typeof schema !== 'object' || Array.isArray(schema))
+      applicationError(`${label} 必须提供可检查的 JSON Schema`);
+    if (schema.$async === true)
+      applicationError(`${label} 不支持异步 Schema，请注册实际 SDK 验证器`);
+  }
+  const key = JSON.stringify([inputSchema, outputSchema]);
+  const cached = schemaValidators.get(key);
+  if (cached) return cached;
+  // 编译快照，避免调用方原地修改 Schema 后影响已返回的验证器。
+  const [input, output] = JSON.parse(key);
+  const ajv = new Ajv({ strict: true, allErrors: true });
+  const inputValidator = ajv.compile(input);
+  const compiled = {
+    ajv,
+    input: inputValidator,
+    output: JSON.stringify(input) === JSON.stringify(output) ? inputValidator : ajv.compile(output),
+  };
+  if (schemaValidators.size >= 64) schemaValidators.delete(schemaValidators.keys().next().value!);
+  schemaValidators.set(key, compiled);
+  return compiled;
 }
 
 /** 能力判定交给有内容证据的审查；文件发现不根据 Skill 名称猜能力。 */
@@ -93,15 +100,21 @@ export async function inspectApplicationSkill(root: string): Promise<InspectedSk
   for (const [ref, content] of Object.entries(files)) {
     if (!ref.endsWith('.md')) continue;
     // 本地 Markdown 引用必须可读取；完整目录摘要同时固定未直接链接的脚本和资源。
-    const links = [
-      ...markdownOutsideCodeBlocks(content).matchAll(/\]\(([^\s)]+)(?:\s+[^)]*)?\)/gu),
-    ].map((match) => match[1]);
+    const links: string[] = [];
+    walkTokens(Lexer.lex(content), (token) => {
+      if (token.type === 'link' || token.type === 'image') links.push(token.href);
+    });
     for (const link of links) {
-      if (/^(?:[a-z][a-z\d+.-]*:|#)/iu.test(link)) continue;
-      const target = path.posix.normalize(
-        path.posix.join(path.posix.dirname(ref), decodeURIComponent(link.split('#')[0])),
-      );
-      if (target.startsWith('../') || path.posix.isAbsolute(target))
+      if (/^(?:[a-z][a-z\d+.-]*:|#|\/\/)/iu.test(link)) continue;
+      let resource: string;
+      try {
+        resource = decodeURIComponent(link.split(/[?#]/u)[0]);
+      } catch {
+        applicationError(`Skill 引用路径编码无效：${ref} -> ${link}`);
+      }
+      if (!resource) continue;
+      const target = path.posix.normalize(path.posix.join(path.posix.dirname(ref), resource));
+      if (target === '..' || target.startsWith('../') || path.posix.isAbsolute(resource))
         applicationError(`Skill 引用越过依赖目录：${ref} -> ${link}`);
       if (
         !Object.hasOwn(files, target) &&
@@ -182,23 +195,18 @@ export async function adaptApplicationSkill(
     )
   )
     applicationError(`Skill 能力证据缺少身份：${dependency.id}`);
-  const ajv = new Ajv({ strict: true, allErrors: true });
-  const compile = (schema: RuntimeValue, label: string) => {
-    if (!schema || typeof schema !== 'object' || Array.isArray(schema))
-      applicationError(`${label} 必须提供可检查的 JSON Schema`);
-    if (schema.$async === true)
-      applicationError(`${label} 不支持异步 Schema，请注册实际 SDK 验证器`);
-    const validate = ajv.compile(schema);
-    return (value: RuntimeValue) => {
-      if (!validate(value))
-        applicationError(`${dependency.id} ${label} 不匹配：${ajv.errorsText(validate.errors)}`);
-    };
+  const validators = compileAdapterSchemas(adapter.inputSchema, adapter.outputSchema);
+  const validate = (validator: ValidateFunction, label: string) => (value: RuntimeValue) => {
+    if (!validator(value))
+      applicationError(
+        `${dependency.id} ${label} 不匹配：${validators.ajv.errorsText(validator.errors)}`,
+      );
   };
   return {
     ...inspected,
     id: dependency.id,
     adapter,
-    validateInput: compile(adapter.inputSchema, '输入'),
-    validateOutput: compile(adapter.outputSchema, '输出'),
+    validateInput: validate(validators.input, '输入'),
+    validateOutput: validate(validators.output, '输出'),
   };
 }

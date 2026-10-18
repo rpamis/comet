@@ -643,7 +643,7 @@ program
   .option('--collect', 'Collect targets without executing Claude or Docker workloads')
   .action(async (target, options) => {
     const { evalCommand: evalFacadeCommand } = await import('../commands/eval.js');
-    await evalFacadeCommand(target, options);
+    process.exitCode = await evalFacadeCommand(target, options);
   });
 
 const classicDescriptions: Record<PublicClassicCommand, string> = {

@@ -562,7 +562,7 @@ export async function evalCollectCommand(options: EvalCommandOptions = {}): Prom
 export async function evalCommand(
   target?: string,
   options: EvalCommandOptions = {},
-): Promise<void> {
+): Promise<number> {
   if (target && path.basename(target) === 'application.json') {
     if (
       options.manifest ||
@@ -592,7 +592,7 @@ export async function evalCommand(
     const preview = await previewWorkflowApplicationEval(input);
     if (options.collect) {
       console.log(JSON.stringify(preview, null, 2));
-      return;
+      return 0;
     }
     const experimentId = `comet-eval-${randomUUID()}`;
     const trackCli = process.env.COMET_EVAL_MANAGED !== '1';
@@ -631,20 +631,21 @@ export async function evalCommand(
           : undefined,
       });
       console.log(JSON.stringify(result, null, 2));
+      return result.status === 'passed' ? 0 : 1;
     } catch (error) {
       executionError = error;
       throw error;
     } finally {
       if (trackCli) await finishCliEvalTracking(input.projectRoot, experimentId, executionError);
     }
-    return;
   }
   const resolvedOptions = optionsWithTarget(target, options);
   if (resolvedOptions.collect) {
     await evalCollectCommand(resolvedOptions);
-    return;
+    return 0;
   }
   await evalRunCommand(resolvedOptions);
+  return 0;
 }
 
 export type { EvalAgent, EvalCommandOptions, EvalSuite };

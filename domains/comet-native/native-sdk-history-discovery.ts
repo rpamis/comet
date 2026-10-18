@@ -1,4 +1,8 @@
 import path from 'node:path';
+import {
+  runWithHookReadCache,
+  runWithoutHookReadCache,
+} from '../../platform/process/hook-read-cache.js';
 import { createFileRuntimeStore, type WorkflowRun } from '../engine/runtime.js';
 import {
   listSdkChangePartitions,
@@ -16,8 +20,12 @@ export async function listNativeSdkHistoryPartitions(
   const store = createFileRuntimeStore<WorkflowRun>({
     rootDir: path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'sdk-runs', 'native'),
   });
-  const dispositions = await mapWithConcurrency(partitions.history, 4, (name) =>
-    store.readPartitionMetadata(name),
+  // 每次重新观察封存元数据，仅在本批内部共享路径校验。owner 的已验证结果仍
+  // 留在调用方请求中供后续活动任务检查复用，不把整次发现隔离到另一个缓存。
+  const dispositions = await runWithoutHookReadCache(() =>
+    runWithHookReadCache(() =>
+      mapWithConcurrency(partitions.history, 4, (name) => store.readPartitionMetadata(name)),
+    ),
   );
   for (const [index, name] of partitions.history.entries()) {
     if (dispositions[index] !== 'closed')
@@ -43,10 +51,12 @@ export function inspectNativeSdkClosedHistory(
   projectRoot: string,
   names: readonly string[],
 ): Promise<Map<string, PromiseSettledResult<boolean>>> {
+  let store: ReturnType<typeof createFileRuntimeStore<WorkflowRun>> | undefined;
   return inspectSdkChangeOwnerPartitions(projectRoot, 'native', names, async (owner, partition) => {
     if (partition !== 'history' || owner?.format !== 'sdk' || owner.application !== 'native')
       return false;
-    const store = createFileRuntimeStore<WorkflowRun>({
+    // 根解析与 Store 构造只做一次；各条记录仍在 owner 的稳定代次内独立校验。
+    store ??= createFileRuntimeStore<WorkflowRun>({
       rootDir: path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'sdk-runs', 'native'),
     });
     const disposition = await store.readPartitionMetadata(owner.runId);

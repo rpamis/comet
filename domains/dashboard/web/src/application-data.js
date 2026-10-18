@@ -46,7 +46,13 @@ export function initialApplicationRecord(detail) {
     null
   );
 }
+export function refreshApplicationRunPage(previous, next) {
+  if (!previous?.fingerprint || previous.fingerprint !== next.fingerprint) return next;
+  return { ...mergeApplicationRunPages(previous, next), nextCursor: previous.nextCursor };
+}
 export function mergeApplicationRunPages(previous, next) {
+  if (!previous || !previous.fingerprint || previous.fingerprint !== next.fingerprint)
+    return previous;
   return {
     ...next,
     items: [

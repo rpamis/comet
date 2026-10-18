@@ -6,6 +6,7 @@ import { execFile } from 'node:child_process';
 import { afterEach, beforeAll, expect, it } from 'vitest';
 import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
 import { createDiskApplication } from '../helpers/workflow-application.js';
+import { readManagedEvalRun } from '../../domains/eval/eval-run-manager.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../domains/workflow-contract/workspace-runtime.js';
 
 const execute = promisify(execFile);
@@ -126,4 +127,29 @@ it('rejects credential-bearing Eval configuration before creating a Run', async 
   expect(
     await fs.stat(path.join(resolveWorkspaceRuntimeRootSync(root), 'creator')).catch(() => null),
   ).toBeNull();
+});
+
+it('exits nonzero with complete JSON when an external Skill has no test replacement', async () => {
+  const { root, env } = await workspace();
+  delete env.COMET_EVAL_MANAGED;
+  const app = await createDiskApplication(root, { external: true });
+  await fs.cp(app.skillRoot, path.join(app.packageRoot, 'skills/writer'), { recursive: true });
+  app.manifest.skills[0].root = 'skills/writer';
+  await fs.writeFile(app.file, JSON.stringify(app.manifest));
+  const preview = JSON.parse(
+    (await cli(root, env, 'eval', app.file, '--project', root, '--collect')).stdout,
+  );
+  expect(preview.blockedReasons.join(' ')).toContain('测试替身');
+  const outcome = await cli(root, env, 'eval', app.file, '--project', root).then(
+    (result) => ({ ...result, code: 0 }),
+    (error: { code: number; stdout: string; stderr: string }) => error,
+  );
+  expect(outcome.code).toBe(1);
+  const result = JSON.parse(outcome.stdout);
+  expect(result).toMatchObject({ status: 'incomplete', passed: 0, total: 0 });
+  expect(result.failures.join(' ')).toContain('测试替身');
+  expect(await readManagedEvalRun(root, result.experimentId)).toMatchObject({
+    origin: 'cli',
+    status: 'completed',
+  });
 });

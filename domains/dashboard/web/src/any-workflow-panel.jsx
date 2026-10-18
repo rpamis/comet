@@ -37,6 +37,7 @@ import {
   groupApplicationSteps,
   initialApplicationRecord,
   mergeApplicationRunPages,
+  refreshApplicationRunPage,
   fetchApplicationObservation,
 } from './application-data.js';
 import {
@@ -136,7 +137,29 @@ export function AnyWorkflowPanel({
     [rosterLoading, setRosterLoading] = useState(false);
   const [goalExpanded, setGoalExpanded] = useDashboardViewState(viewScope, 'goalExpanded', false);
   const pageRequest = useRef(null),
-    latestRefreshToken = useRef(refreshToken),
+    moreRequest = useRef(null),
+    rosterRequest = useRef(null),
+    rosterMoreRequest = useRef(null),
+    pageContext = useRef(null),
+    rosterContext = useRef(null),
+    pageKey = useRef(null);
+  const listKey = JSON.stringify([projectId, demo, search, scope, filter]);
+  const listContext = useMemo(
+    () => ({}),
+    [projectId, demo, query, search, scope, filter, refreshToken, tick],
+  );
+  const currentListContext = useRef(listContext);
+  useLayoutEffect(() => {
+    currentListContext.current = listContext;
+    pageRequest.current?.abort();
+    moreRequest.current?.abort();
+    setMoreLoading(false);
+    return () => {
+      pageRequest.current?.abort();
+      moreRequest.current?.abort();
+    };
+  }, [listContext]);
+  const latestRefreshToken = useRef(refreshToken),
     detailRequest = useRef(null),
     parentStack = useRef([]),
     anchor = useRef(null),
@@ -218,6 +241,7 @@ export function AnyWorkflowPanel({
   }, [route, demo, projectId, locator]);
   useEffect(() => {
     pageRequest.current?.abort();
+    if (search !== query) return;
     const controller = new AbortController();
     pageRequest.current = controller;
     setPageLoading(!pageRef.current);
@@ -232,7 +256,16 @@ export function AnyWorkflowPanel({
         if (controller.signal.aborted) return;
         setPageError(null);
         if (pageRef.current && pageRef.current.fingerprint !== next.fingerprint) setNews(true);
-        setPage(next);
+        const sameList = pageKey.current === listKey;
+        setPage((previous) =>
+          controller.signal.aborted
+            ? previous
+            : sameList
+              ? refreshApplicationRunPage(previous, next)
+              : next,
+        );
+        pageKey.current = listKey;
+        pageContext.current = listContext;
         if (!locator && next.items.length) {
           const first = preferred(next.items);
           chooseRun(first.locator);
@@ -245,7 +278,7 @@ export function AnyWorkflowPanel({
         if (!controller.signal.aborted) setPageLoading(false);
       });
     return () => controller.abort();
-  }, [request, search, scope, filter, refreshToken, tick]);
+  }, [request, listContext]);
   useEffect(() => {
     if (!locator) return;
     detailRequest.current?.abort();
@@ -313,16 +346,41 @@ export function AnyWorkflowPanel({
   const selectedSummary = detail ?? page?.items.find((r) => r.locator === locator);
   const mode = selectedSummary?.kind ?? 'creator';
   const applicationId = selectedSummary?.applicationId;
+  const rosterGeneration = useMemo(() => ({}), [applicationId, listContext]);
+  const currentRosterGeneration = useRef(rosterGeneration);
+  useLayoutEffect(() => {
+    currentRosterGeneration.current = rosterGeneration;
+    rosterRequest.current?.abort();
+    rosterMoreRequest.current?.abort();
+    setRosterLoading(false);
+    return () => {
+      rosterRequest.current?.abort();
+      rosterMoreRequest.current?.abort();
+    };
+  }, [rosterGeneration]);
+  useLayoutEffect(() => {
+    setRosters({});
+  }, [request]);
   useEffect(() => {
     if (!applicationId) return;
     const controller = new AbortController();
+    rosterRequest.current = controller;
     request('application-runs', { applicationId, limit: 100 }, controller.signal)
       .then((next) => {
-        if (!controller.signal.aborted) setRosters((v) => ({ ...v, [applicationId]: next }));
+        if (controller.signal.aborted) return;
+        setRosters((v) =>
+          controller.signal.aborted
+            ? v
+            : {
+                ...v,
+                [applicationId]: refreshApplicationRunPage(v[applicationId], next),
+              },
+        );
+        rosterContext.current = rosterGeneration;
       })
       .catch(() => undefined);
     return () => controller.abort();
-  }, [applicationId, request, refreshToken, tick]);
+  }, [applicationId, request, rosterGeneration]);
   const roster = applicationId ? rosters[applicationId] : null;
   const selectedGroup = selectedSummary
     ? groupApplicationRuns([
@@ -507,44 +565,96 @@ export function AnyWorkflowPanel({
     }
   };
   const loadMore = async () => {
-    if (!page?.nextCursor || moreLoading) return;
+    if (
+      !page?.nextCursor ||
+      moreLoading ||
+      pageContext.current !== listContext ||
+      currentListContext.current !== listContext ||
+      (moreRequest.current && !moreRequest.current.signal.aborted)
+    )
+      return;
+    const controller = new AbortController();
+    moreRequest.current = controller;
+    const isCurrent = () =>
+      !controller.signal.aborted &&
+      currentListContext.current === listContext &&
+      moreRequest.current === controller;
     setMoreLoading(true);
     try {
-      const next = await request('application-runs', {
-        q: search,
-        scope,
-        status: 'all',
-        limit: 100,
-        cursor: page.nextCursor,
-      });
-      setPage((p) => mergeApplicationRunPages(p, next));
+      const next = await request(
+        'application-runs',
+        {
+          q: search,
+          scope,
+          status: 'all',
+          limit: 100,
+          cursor: page.nextCursor,
+        },
+        controller.signal,
+      );
+      if (!isCurrent()) return;
+      setPage((p) =>
+        !controller.signal.aborted && currentListContext.current === listContext
+          ? mergeApplicationRunPages(p, next)
+          : p,
+      );
     } catch (error) {
+      if (!isCurrent()) return;
       if (error.code === 'STALE_APPLICATION_CURSOR') {
         setNews(true);
         setTick((v) => v + 1);
       } else setPageError(error);
     } finally {
-      setMoreLoading(false);
+      if (isCurrent()) {
+        moreRequest.current = null;
+        setMoreLoading(false);
+      }
     }
   };
   const loadRoster = async () => {
-    if (!roster?.nextCursor || rosterLoading) return;
+    if (
+      !roster?.nextCursor ||
+      rosterLoading ||
+      rosterContext.current !== rosterGeneration ||
+      currentRosterGeneration.current !== rosterGeneration ||
+      (rosterMoreRequest.current && !rosterMoreRequest.current.signal.aborted)
+    )
+      return;
+    const controller = new AbortController();
+    rosterMoreRequest.current = controller;
+    const isCurrent = () =>
+      !controller.signal.aborted &&
+      currentRosterGeneration.current === rosterGeneration &&
+      rosterMoreRequest.current === controller;
     setRosterLoading(true);
     try {
-      const next = await request('application-runs', {
-        applicationId,
-        limit: 100,
-        cursor: roster.nextCursor,
-      });
-      setRosters((v) => ({
-        ...v,
-        [applicationId]: mergeApplicationRunPages(v[applicationId], next),
-      }));
+      const next = await request(
+        'application-runs',
+        {
+          applicationId,
+          limit: 100,
+          cursor: roster.nextCursor,
+        },
+        controller.signal,
+      );
+      if (!isCurrent()) return;
+      setRosters((v) =>
+        !controller.signal.aborted && currentRosterGeneration.current === rosterGeneration
+          ? {
+              ...v,
+              [applicationId]: mergeApplicationRunPages(v[applicationId], next),
+            }
+          : v,
+      );
     } catch (error) {
+      if (!isCurrent()) return;
       setDrawer({ title: t('历史列表读取失败'), runId: detail?.runId, message: error.message });
       if (error.code === 'STALE_APPLICATION_CURSOR') setTick((v) => v + 1);
     } finally {
-      setRosterLoading(false);
+      if (isCurrent()) {
+        rosterMoreRequest.current = null;
+        setRosterLoading(false);
+      }
     }
   };
   const inspector = (

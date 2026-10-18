@@ -4,6 +4,7 @@ import {
   groupApplicationSteps,
   initialApplicationRecord,
   mergeApplicationRunPages,
+  refreshApplicationRunPage,
 } from '../../../domains/dashboard/web/src/application-data.js';
 
 describe('Comet Any workspace identity', () => {
@@ -44,8 +45,9 @@ describe('Comet Any workspace identity', () => {
   it('replaces revised summaries by stable locator when loading more pages', () => {
     expect(
       mergeApplicationRunPages(
-        { items: [{ locator: 'one', revision: 1 }] },
+        { fingerprint: 'same', items: [{ locator: 'one', revision: 1 }] },
         {
+          fingerprint: 'same',
           items: [
             { locator: 'one', revision: 2 },
             { locator: 'two', revision: 1 },
@@ -57,5 +59,38 @@ describe('Comet Any workspace identity', () => {
       { locator: 'one', revision: 2 },
       { locator: 'two', revision: 1 },
     ]);
+  });
+});
+
+describe('Any page snapshot boundaries', () => {
+  const previous = {
+    fingerprint: 'old',
+    items: [{ locator: 'first' }, { locator: 'second' }],
+    nextCursor: 'third',
+    total: 3,
+  };
+  it('rejects another snapshot rather than mixing or replacing the current query', () => {
+    expect(
+      mergeApplicationRunPages(previous, {
+        fingerprint: 'new',
+        items: [{ locator: 'unrelated' }],
+        nextCursor: null,
+      }),
+    ).toBe(previous);
+    expect(mergeApplicationRunPages(null, previous)).toBeNull();
+  });
+  it('preserves loaded pages and their cursor when an unchanged snapshot refreshes', () => {
+    expect(
+      refreshApplicationRunPage(previous, {
+        fingerprint: 'old',
+        items: [{ locator: 'first', revision: 2 }],
+        nextCursor: 'second',
+        total: 3,
+      }),
+    ).toEqual({ ...previous, items: [{ locator: 'first', revision: 2 }, { locator: 'second' }] });
+  });
+  it('restarts pagination when a refresh changes the snapshot', () => {
+    const next = { fingerprint: 'new', items: [{ locator: 'replacement' }], nextCursor: null };
+    expect(refreshApplicationRunPage(previous, next)).toBe(next);
   });
 });
