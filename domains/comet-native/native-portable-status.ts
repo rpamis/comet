@@ -262,7 +262,7 @@ function verifierStartupProjection(
 }
 
 export function projectNativePortableWorkspace(
-  paths: NativeProjectPaths,
+  paths: Pick<NativeProjectPaths, 'projectRoot'>,
   state: NativePortableState,
   context: GitWorktreeContext = inspectGitWorktree(paths.projectRoot),
 ) {

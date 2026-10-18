@@ -6,6 +6,8 @@ import { projectNativePortableWorkspace } from './native-portable-status.js';
 import { projectNativeSdkContinuation } from './native-sdk-continuation.js';
 import { nativePortableStateSummary } from './native-portable-summary.js';
 
+export { isNativeSdkCancellationComplete } from './native-sdk-cancellation.js';
+
 const SDK_STATUS_SETTLED_LIMIT = 12;
 
 /** 保留全部未完成工作和最近的终态记录，历史不影响当前任务可见性。 */
@@ -43,8 +45,7 @@ export async function projectNativeSdkStatus(
   options: { projectRoot: string; name: string; details?: boolean },
   { run, state, artifactRootRef, application }: Awaited<ReturnType<typeof inspectNativeSdkRun>>,
 ) {
-  const paths = await nativeProjectPaths(options.projectRoot, artifactRootRef);
-  const summary = nativePortableStateSummary(state, paths);
+  const summary = nativePortableStateSummary(state);
   const cancellation = await inspectNativeSdkCancellation({
     projectRoot: options.projectRoot,
     run,
@@ -53,7 +54,12 @@ export async function projectNativeSdkStatus(
   const waits = statusRecords(run.waits, options.details);
   const evidenceWaits = statusRecords(run.evidenceWaits ?? [], options.details);
   const editReviews = state.builder_handoff
-    ? await inspectEditReviews(nativeEditReviewScope(paths, state))
+    ? await inspectEditReviews(
+        nativeEditReviewScope(
+          await nativeProjectPaths(options.projectRoot, artifactRootRef, { readOnly: true }),
+          state,
+        ),
+      )
     : [];
   return {
     schema: 'comet.native.sdk-status.v1' as const,
@@ -71,7 +77,7 @@ export async function projectNativeSdkStatus(
     unresolvedAcceptanceIds: summary.unresolved_acceptance_ids,
     verificationResult: state.verification_result,
     blockers: summary.blockers,
-    workspace: projectNativePortableWorkspace(paths, state),
+    workspace: projectNativePortableWorkspace({ projectRoot: options.projectRoot }, state),
     run: {
       id: run.runId,
       revision: run.revision,
@@ -130,6 +136,7 @@ export async function projectNativeSdkStatus(
       applicationId: application?.identity.id,
       skillExecutors: application?.implementation.executors,
       editReviews,
+      cancellationObservation: cancellation,
     })),
     ...(options.details ? { details: { state } } : {}),
   };

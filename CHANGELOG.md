@@ -13,7 +13,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Any and Eval workspaces**: Browse creation and application runs, artifacts, decisions, and read-only experiment archives in Dashboard. Start and stop evaluations, retry failed cases, inspect logs and reports, manage settings and baselines, and distribute ready applications from an installation preview.
 - **Observability**: Inspect Runtime latency, command outcomes, check results, and individual change execution traces. Explore memory and knowledge retrieval and feedback over a selected time range, with direct access to the underlying records and explicit limits for missing or historical data.
 - **Native cancellation**: Use `comet native cancel` to stop an unfinished SDK change while retaining code, commits, branches, and the workspace. Preview the cancellation before applying it and inspect outstanding executions before the current selection is released.
-- **Task learning and memory maintenance**: Save reusable personal preferences and verified project lessons when completing a task, with review and actual-use feedback. Merge duplicates, compress records, resolve conflicts, and forget selected memory while retaining the relevant evidence and recovery history.
+- **Task learning and memory maintenance**: Save reusable personal preferences and verified project lessons when completing a task, with review and actual-use feedback. Search and page through personal memory, merge duplicates, compress records, resolve conflicts, and forget selected memory while retaining the relevant evidence and recovery history.
 - **Prime Agent**: Install and manage Native and Classic Skills in Prime Agent's project and user directories. Skill-only platforms keep their documented protection limits.
 
 ### Changed
@@ -27,7 +27,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Memory and knowledge retrieval**: Preserve applicable preferences, precise project matches, source freshness, and valid results when indexing or remote retrieval is delayed or unavailable. Large histories load incrementally so record management remains responsive.
-- **Project initialization and worktrees**: Respect the selected language, distinguish missing CodeGraph configuration from unavailable services, and retain the correct Classic workspace when continuing a change or before the first Git commit.
+- **Project initialization and worktrees**: Show the setup hint after package installation, respect the selected language, distinguish missing CodeGraph configuration from unavailable services, and retain the correct Classic workspace when continuing a change or before the first Git commit.
+- **Classic project discovery**: Report malformed or unsafe project configuration without falling back to a parent project, while keeping user-level configuration separate from project boundaries.
 - **Skill evaluation reliability**: Preserve complete task instructions, stop timed-out execution and its owned containers, and retain generated cases, partial results, and failure details for diagnosis and retry.
 
 ## What's Changed [0.4.5] - 2026-10-10

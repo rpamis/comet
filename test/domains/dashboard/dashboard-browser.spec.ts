@@ -58,6 +58,106 @@ async function stubContextPages(page: Page, load: (pluginId: string) => unknown)
   });
 }
 
+test('searches all personal memories, pages beyond the byte budget and ignores stale search responses', async ({
+  page,
+}) => {
+  const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
+  const pages = structuredClone(DEMO_PLUGIN_PAGES);
+  const memoryPage = pages.find((entry) => entry.pluginId === 'comet.personal-memory')!;
+  const template = memoryPage.data.management.records[0];
+  let records = Array.from({ length: 125 }, (_, index) => ({
+    ...template,
+    id: `memory-${index}`,
+    text: `Searchable memory ${String(index).padStart(4, '0')}`,
+    memoryType: 'core-profile',
+    status: 'proven',
+    scope: 'global',
+    category: '偏好',
+  })).reverse();
+  const pageOf = (query = '', offset = 0) => {
+    const matching = records.filter((entry) => entry.text.includes(query));
+    return {
+      records: matching.slice(offset, offset + 5),
+      conflicts: [],
+      total: matching.length,
+      offset,
+      truncated: offset + 5 < matching.length,
+      ...(offset + 5 < matching.length ? { nextOffset: offset + 5 } : {}),
+    };
+  };
+  let pageReads = 0;
+  await stubContextPages(page, (pluginId) => {
+    const result = pages.find((entry) => entry.pluginId === pluginId)!;
+    if (pluginId === 'comet.personal-memory') {
+      pageReads += 1;
+      return {
+        ...result,
+        data: {
+          ...result.data,
+          management: pageOf(),
+          status: {
+            ...result.data.status,
+            counts: { active: records.length, history: 0, tombstones: 0 },
+          },
+        },
+      };
+    }
+    return result;
+  });
+  const queries: string[] = [];
+  await page.route('**/plugins/comet.personal-memory/invoke', async (route) => {
+    const { capability, input } = route.request().postDataJSON();
+    if (capability === 'remove') {
+      records = records.filter((record) => record.id !== input.id);
+      return route.fulfill({ json: { result: null } });
+    }
+    expect(capability).toBe('manage');
+    queries.push(input.query ?? '');
+    if (input.query === 'slow') {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      return route.fulfill({
+        json: {
+          result: {
+            records: [{ ...template, id: 'stale', text: 'Stale search result' }],
+            conflicts: [],
+            total: 1,
+            offset: 0,
+            truncated: false,
+          },
+        },
+      });
+    }
+    return route.fulfill({ json: { result: pageOf(input.query, input.offset) } });
+  });
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  const registry = page.getByLabel('个人记忆列表', { exact: true });
+  await expect(registry).toContainText('共 125 条');
+  await expect(registry).toContainText('后续记录可继续查看');
+  const initialReads = pageReads;
+  await registry.getByRole('button', { name: '下一页', exact: true }).click();
+  await expect(registry).toContainText('Searchable memory 0119');
+  await expect(registry).toContainText('当前显示 6–10 条');
+  expect(pageReads).toBe(initialReads);
+  await registry.getByRole('button', { name: '上一页', exact: true }).click();
+  await expect(registry).toContainText('Searchable memory 0124');
+  const search = page.getByRole('textbox', { name: '搜索个人记忆', exact: true });
+  await search.fill('slow');
+  await expect.poll(() => queries.includes('slow')).toBe(true);
+  await search.fill('0000');
+  await expect(registry).toContainText('Searchable memory 0000');
+  await page.waitForTimeout(700);
+  await expect(registry).not.toContainText('Stale search result');
+  await registry.getByRole('button', { name: '删除记忆', exact: true }).click();
+  await expect(registry).toContainText('共 0 条');
+  await expect(registry).not.toContainText('Searchable memory 0000');
+  await search.fill('');
+  await expect(registry).toContainText('共 124 条');
+  await page.setViewportSize({ width: 820, height: 900 });
+  await expect(registry.getByRole('button', { name: '下一页', exact: true })).toBeVisible();
+});
+
 test('pages application history without rendering or reloading the complete ledger', async ({
   page,
 }) => {

@@ -11,6 +11,7 @@ describe('Eval summary list', () => {
   beforeEach(async () => {
     project = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-summary-'));
     vi.stubEnv('LOCALAPPDATA', path.join(project, 'cache'));
+    vi.stubEnv('XDG_CACHE_HOME', path.join(project, 'cache'));
   });
   afterEach(async () => {
     vi.restoreAllMocks();

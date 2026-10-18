@@ -351,31 +351,16 @@ async function createModule(
           ),
         ]);
         const managed = management as MemoryManagementView;
-        const dashboardManagement = {
-          ...managed,
-          records: await Promise.all(
-            managed.records.map(async (record) => {
-              const history = await section(
-                'applicationHistory',
-                readApplications({ candidateId: record.id, limit: 6 }),
-                {
-                  items: [],
-                  total: 0,
-                } as import('../agent-learning/index.js').AgentContextApplicationPage,
-              );
-              return {
-                ...record,
-                ...contextApplicationProjection(
-                  record.id,
-                  history.items,
-                  PERSONAL_MEMORY_PLUGIN_ID,
-                ),
-                contextApplicationCount: history.total,
-                ...(history.nextCursor ? { applicationHistoryCursor: history.nextCursor } : {}),
-              };
-            }),
-          ),
-        };
+        const dashboardManagement = managed;
+        if (managed.records.some((record) => 'applicationHistoryUnavailable' in record)) {
+          sectionErrors.push({
+            section: 'applicationHistory',
+            message:
+              options.language === 'en'
+                ? 'This section is temporarily unavailable.'
+                : '此部分暂不可用。',
+          });
+        }
         const currentManifest = latestApplicationBatch(
           applications ?? [],
           PERSONAL_MEMORY_PLUGIN_ID,
@@ -591,7 +576,7 @@ async function createModule(
           limit: 20,
         });
       }
-      return invokeCapability(
+      const result = await invokeCapability(
         provider,
         service,
         capability,
@@ -604,6 +589,30 @@ async function createModule(
         options.configureProvider,
         context.projectId ?? options.projectId,
       );
+      if (capability !== 'manage') return result;
+      const managed = result as MemoryManagementView;
+      return {
+        ...managed,
+        records: await Promise.all(
+          managed.records.map(async (record) => {
+            try {
+              const history = await readApplications({ candidateId: record.id, limit: 6 });
+              return {
+                ...record,
+                ...contextApplicationProjection(
+                  record.id,
+                  history.items,
+                  PERSONAL_MEMORY_PLUGIN_ID,
+                ),
+                contextApplicationCount: history.total,
+                ...(history.nextCursor ? { applicationHistoryCursor: history.nextCursor } : {}),
+              };
+            } catch {
+              return { ...record, applicationHistoryUnavailable: true };
+            }
+          }),
+        ),
+      };
     },
   };
 }

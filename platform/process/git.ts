@@ -125,8 +125,26 @@ export function assertValidGitBranchName(cwd: string, branch: string): void {
   runGitCommand(cwd, ['check-ref-format', '--branch', branch]);
 }
 
+export function readGitStatusPorcelain(cwd: string, pathspecs: readonly string[] = []): string {
+  return executeGitCommand(cwd, [
+    'status',
+    '--porcelain=v1',
+    '-z',
+    '--untracked-files=all',
+    '--ignore-submodules=none',
+    '--',
+    ...pathspecs,
+  ]);
+}
+
 export function gitStatusPaths(cwd: string): string[] {
-  const raw = executeGitCommand(cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
+  return parseGitStatusPaths(
+    executeGitCommand(cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all']),
+  );
+}
+
+/** Parse the same untrimmed NUL-delimited observation used by the caller. */
+export function parseGitStatusPaths(raw: string): string[] {
   if (!raw) return [];
   const records = raw.split('\0').filter(Boolean);
   const paths: string[] = [];

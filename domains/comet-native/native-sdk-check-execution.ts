@@ -1,4 +1,7 @@
-import { resolveWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
+import {
+  resolveWorkspaceRuntimeRoot,
+  resolveWorkspaceRuntimeRootSync,
+} from '../workflow-contract/workspace-runtime.js';
 import path from 'node:path';
 
 import {
@@ -75,7 +78,7 @@ async function readExecution(
   run: Readonly<WorkflowRun>,
   action: Readonly<RuntimeAction>,
 ) {
-  const runtimeRoot = await resolveWorkspaceRuntimeRoot(projectRoot);
+  const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
   const ref = executionRef(run, action);
   const file = await inspectProtectedProjectPath(runtimeRoot, ref, {
     label: 'Native 检查执行记录',
@@ -289,7 +292,7 @@ export async function hasNativeSdkCheckStopRequest(options: {
   action: Readonly<RuntimeAction>;
 }): Promise<boolean> {
   const { projectRoot, run, action } = options;
-  const runtimeRoot = await resolveWorkspaceRuntimeRoot(projectRoot);
+  const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
   const ref = `${executionRef(run, action)}.stop`;
   if (
     !(

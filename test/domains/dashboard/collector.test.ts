@@ -170,16 +170,16 @@ describe('collectDashboardSnapshot', () => {
       expect(overview.summary).toMatchObject({ activeChanges: 24, archivedChanges: 120 });
       const calls = { lstat: lstat.mock.calls.length, realpath: realpath.mock.calls.length };
       console.info('Dashboard overview filesystem calls', calls);
-      expect(calls.lstat + calls.realpath).toBeLessThan(8000);
+      // 活跃与归档摘要均须校验可变依赖。
+      expect(calls.lstat + calls.realpath).toBeLessThan(10000);
       lstat.mockClear();
       realpath.mockClear();
       await collectDashboardOverview(root);
       const warm = { lstat: lstat.mock.calls.length, realpath: realpath.mock.calls.length };
       console.info('Unchanged Dashboard overview filesystem calls', warm);
       expect(warm.lstat + warm.realpath).toBeLessThan(1500);
-      expect(
-        lstat.mock.calls.some(([file]) => String(file).replaceAll('\\', '/').includes('/archive/')),
-      ).toBe(false);
+      // 归档也检查元数据，避免遗漏文件原地修改。
+      expect(lstat.mock.calls.some(([file]) => String(file).includes('archived-'))).toBe(true);
     } finally {
       lstat.mockRestore();
       realpath.mockRestore();
@@ -205,6 +205,50 @@ describe('collectDashboardSnapshot', () => {
     expect((await collectDashboardOverview(root)).initialChanges.items[0].phase).toBe('verify');
   });
 
+  it('rereads only changed active or archived summaries and discovers additions and removals', async () => {
+    await writeChange(root, { name: 'one', yaml: { phase: 'build' }, tasks: '- [ ] Work\n' });
+    await writeChange(root, { name: 'two', yaml: { phase: 'build' }, tasks: '- [ ] Work\n' });
+    await writeChange(root, {
+      name: '2026-10-15-old',
+      status: 'archived',
+      yaml: { phase: 'archive' },
+      tasks: '- [ ] Work\n',
+    });
+    await collectDashboardOverview(root);
+    const open = vi.spyOn(fs, 'open');
+    try {
+      await fs.writeFile(path.join(root, 'openspec/changes/one/tasks.md'), '- [x] Work\n');
+      expect((await collectDashboardOverview(root)).summary.tasksIncomplete).toBe(1);
+      const reads = open.mock.calls.map(([file]) => String(file));
+      expect(reads.some((file) => file.includes('/one/'))).toBe(true);
+      expect(reads.some((file) => file.includes('/two/') || file.includes('/archive/'))).toBe(
+        false,
+      );
+      open.mockClear();
+      await fs.writeFile(
+        path.join(root, 'openspec/changes/archive/2026-10-15-old/tasks.md'),
+        '- [x] Work\n',
+      );
+      const page = await collectDashboardChangePage(root, { status: 'archived' });
+      expect(page.items[0].tasks.completed).toBe(1);
+      expect(
+        open.mock.calls.some(
+          ([file]) => String(file).includes('/one/') || String(file).includes('/two/'),
+        ),
+      ).toBe(false);
+      await writeChange(root, {
+        name: '2026-10-16-new',
+        status: 'archived',
+        yaml: { phase: 'archive' },
+      });
+      expect((await collectDashboardOverview(root)).summary.archivedChanges).toBe(2);
+      await fs.rm(path.join(root, 'openspec/changes/archive/2026-10-15-old'), { recursive: true });
+      expect((await collectDashboardOverview(root)).summary.archivedChanges).toBe(1);
+    } finally {
+      open.mockRestore();
+    }
+  });
+
   it('rejects a change directory replaced by a junction after a cached overview', async () => {
     await writeChange(root, { name: 'cached', yaml: { phase: 'build' } });
     expect((await collectDashboardOverview(root)).summary.activeChanges).toBe(1);
@@ -220,6 +264,28 @@ describe('collectDashboardSnapshot', () => {
     } finally {
       await fs.rm(outside, { recursive: true, force: true });
     }
+  });
+
+  it('invalidates archived summaries when a cached report becomes a symlink', async () => {
+    await writeChange(root, {
+      name: '2026-10-15-guarded',
+      status: 'archived',
+      yaml: { phase: 'archive', verification_report: 'reports/result.md' },
+    });
+    const report = path.join(root, 'reports/result.md');
+    await fs.mkdir(path.dirname(report), { recursive: true });
+    await fs.writeFile(report, '# Verification failed\n');
+    const page = () => collectDashboardChangePage(root, { status: 'archived' });
+    expect((await page()).items[0].verify.result).toBe('fail');
+    await fs.rm(report);
+    await fs.symlink(
+      path.join(root, 'openspec/changes/archive/2026-10-15-guarded/.comet.yaml'),
+      report,
+    );
+    expect((await page()).items[0].verify.result).toBe('unknown');
+    await fs.rm(report);
+    await fs.writeFile(report, '# Repaired\n');
+    expect((await page()).items[0].verify.result).toBe('fail');
   });
 
   it('shows Classic checkpoint and progress from user Runtime without recreating project records', async () => {

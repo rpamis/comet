@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 
 import type { AgentExperienceEvidence } from '../agent-learning/index.js';
 import {
@@ -105,6 +106,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
   private readonly profileMaxChars: number;
   private readonly taskMaxChars: number;
   private readonly language: MemoryLanguage;
+  private readonly loadedStates = new WeakMap<MutableMemoryState, string>();
 
   public constructor(options: PersonalMemoryOptions) {
     this.repository = options.repository;
@@ -1480,9 +1482,28 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       );
       await this.persist(state);
 
-      const candidates = state.records
+      const matchingRecords = state.records
         .filter((entry) => scopeMatches(entry, query))
-        .filter((entry) => attributesMatch(entry, query, true))
+        .filter((entry) => attributesMatch(entry, query, true));
+      const counts = { all: matchingRecords.length, profile: 0, policy: 0, episode: 0, history: 0 };
+      for (const entry of matchingRecords) {
+        if (!isVisibleMemoryRecord(state, entry)) counts.history += 1;
+        else if (entry.memoryType === 'core-profile') counts.profile += 1;
+        else if (entry.memoryType === 'collaboration-policy') counts.policy += 1;
+        else counts.episode += 1;
+      }
+      const candidates = matchingRecords
+        .filter((entry) => {
+          if (!query.managementFilter || query.managementFilter === 'all') return true;
+          const active = isVisibleMemoryRecord(state, entry);
+          if (query.managementFilter === 'history') return !active;
+          const type = {
+            profile: 'core-profile',
+            policy: 'collaboration-policy',
+            episode: 'personal-episode',
+          }[query.managementFilter];
+          return active && entry.memoryType === type;
+        })
         .sort(
           (left, right) =>
             right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id),
@@ -1496,44 +1517,46 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         DEFAULT_MANAGEMENT_MAX_BYTES,
       );
       const candidateIds = new Set(candidates.map((record) => record.id));
+      const matchingConflicts = state.conflicts.flatMap((conflict) => {
+        const projected = projectManagementConflict(conflict, candidateIds);
+        return projected === null ? [] : [projected];
+      });
+      const total = candidates.length + matchingConflicts.length;
+      const offset =
+        Number.isSafeInteger(query.offset) && query.offset! >= 0
+          ? Math.min(query.offset!, total)
+          : 0;
       const records: MemoryManagementRecord[] = [];
-      let bytes = 0;
-      let entryCount = 0;
-      let truncated = false;
-      for (const record of candidates) {
-        if (entryCount >= maxEntries) {
-          truncated = true;
-          break;
-        }
-        const next = projectManagementRecord(state, record);
-        const nextBytes = Buffer.byteLength(JSON.stringify(next), 'utf8');
-        if (bytes + nextBytes > maxBytes) {
-          truncated = true;
-          break;
-        }
-        records.push(next);
-        bytes += nextBytes;
-        entryCount += 1;
-      }
-
       const conflicts: MemoryManagementConflict[] = [];
-      for (const conflict of state.conflicts) {
-        const next = projectManagementConflict(conflict, candidateIds);
-        if (next === null) continue;
-        if (entryCount >= maxEntries) {
-          truncated = true;
-          break;
-        }
+      let bytes = 0;
+      let nextOffset = offset;
+      let requiredBytes: number | undefined;
+      while (nextOffset < total && records.length + conflicts.length < maxEntries) {
+        const record = candidates[nextOffset];
+        const next =
+          record === undefined
+            ? matchingConflicts[nextOffset - candidates.length]!
+            : projectManagementRecord(state, record);
         const nextBytes = Buffer.byteLength(JSON.stringify(next), 'utf8');
         if (bytes + nextBytes > maxBytes) {
-          truncated = true;
+          if (nextOffset === offset) requiredBytes = nextBytes;
           break;
         }
-        conflicts.push(next);
+        if (record === undefined) conflicts.push(next as MemoryManagementConflict);
+        else records.push(next as MemoryManagementRecord);
         bytes += nextBytes;
-        entryCount += 1;
+        nextOffset += 1;
       }
-      return { records, conflicts, truncated };
+      return {
+        records,
+        conflicts,
+        total,
+        counts,
+        offset,
+        truncated: nextOffset < total,
+        ...(nextOffset < total ? { nextOffset } : {}),
+        ...(requiredBytes === undefined ? {} : { requiredBytes }),
+      };
     });
   }
 
@@ -1680,6 +1703,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
   ): Promise<MutableMemoryState> {
     const raw = await this.repository.readState();
     const state = mutableState(raw);
+    if (isDeepStrictEqual(raw, state)) this.loadedStates.set(state, JSON.stringify(state));
     if (recordId !== undefined) {
       const record = state.records.find((entry) => entry.id === recordId);
       if (!record) return state;
@@ -1747,7 +1771,15 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
   }
 
   private async persist(state: MutableMemoryState): Promise<void> {
+    // 空仓库仍需初始化；迁移、Markdown 编辑和使用记录变化仍会落盘。
+    if (
+      state.records.length > 0 &&
+      this.repository.needsStateWrite?.() !== true &&
+      this.loadedStates.get(state) === JSON.stringify(state)
+    )
+      return;
     await this.repository.writeState(state as MemoryRuntimeState);
+    this.loadedStates.set(state, JSON.stringify(state));
   }
 
   private resolveMemoryFilePath(

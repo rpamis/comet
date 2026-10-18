@@ -1,3 +1,4 @@
+import { isNativeSdkChangeCancellationComplete } from './native-sdk-cancellation.js';
 import { assertNativeEditReviewsComplete } from './native-edit-review.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
@@ -255,7 +256,9 @@ async function otherPortableCapabilityOwners(options: {
   for (const root of roots) {
     const config = await readProjectConfig(root);
     if (!config) continue;
-    const sourcePaths = await nativeProjectPaths(root, config.native.artifact_root);
+    const sourcePaths = await nativeProjectPaths(root, config.native.artifact_root, {
+      readOnly: true,
+    });
     if (!workspacePaths.some((entry) => samePath(entry.changesDir, sourcePaths.changesDir))) {
       workspacePaths.push(sourcePaths);
     }
@@ -275,6 +278,8 @@ async function otherPortableCapabilityOwners(options: {
       if (!entry.isDirectory() || entry.isSymbolicLink() || entry.name === options.state.name) {
         continue;
       }
+      if (await isNativeSdkChangeCancellationComplete(sourcePaths.projectRoot, entry.name))
+        continue;
       try {
         const peer = await readNativePortableState(
           path.join(sourcePaths.changesDir, entry.name, 'comet-state.yaml'),
@@ -670,6 +675,8 @@ export async function inspectNativePortableArchive(options: {
   state?: NativePortableState;
   /** Confirmed SDK candidates must stay current even during transaction recovery. */
   requireCurrentAcceptance?: boolean;
+  /** SDK 已校验用户确认报告的 hash，沿用该报告的版本，不在预检中改写。 */
+  verificationReportStateVersion?: number;
 }): Promise<{
   ready: boolean;
   blockers: string[];
@@ -767,7 +774,7 @@ export async function inspectNativePortableArchive(options: {
       ? 'missing'
       : await inspectNativeVerificationReportAlignment({
           file: path.join(nativePortableChangeDir(options.paths, state.name), 'verification.md'),
-          stateVersion: state.state_version,
+          stateVersion: options.verificationReportStateVersion ?? state.state_version,
         });
   if (alignment !== 'aligned') blockers.push(`verification.md is ${alignment}`);
   const peers = await otherPortableCapabilityOwners({ paths: options.paths, state });
@@ -787,6 +794,7 @@ export async function inspectNativePortableArchive(options: {
 export async function applyNativeSdkArchiveSpecs(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
+  verificationReportStateVersion?: number;
 }): Promise<NativePortableArchiveTransaction> {
   const { paths, state } = options;
   return withNativeMutationLock(
@@ -797,7 +805,12 @@ export async function applyNativeSdkArchiveSpecs(options: {
       await assertNativeEditReviewsComplete(paths, state);
       let transaction = await readTransaction(paths, state.name);
       if (!transaction) {
-        const preflight = await inspectNativePortableArchive({ paths, name: state.name, state });
+        const preflight = await inspectNativePortableArchive({
+          paths,
+          name: state.name,
+          state,
+          verificationReportStateVersion: options.verificationReportStateVersion,
+        });
         if (!preflight.ready) {
           throw new Error(
             `Native SDK Archive preflight is blocked: ${preflight.blockers.join('; ')}`,

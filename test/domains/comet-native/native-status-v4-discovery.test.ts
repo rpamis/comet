@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -59,6 +61,44 @@ describe('Native v4 registered-worktree status discovery', () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
+  });
+
+  it('omits completed cancellations but rejects corrupted authoritative Runs', async () => {
+    const repository = await createRepository();
+    roots.push(repository.root);
+    for (const name of ['cancelled-first', 'cancelled-second']) {
+      const created = await runNativeCli([
+        'new',
+        name,
+        '--project-root',
+        repository.root,
+        '--json',
+      ]);
+      expect(created.exitCode, created.stderr).toBe(0);
+      const cancelled = await runNativeCli([
+        'cancel',
+        name,
+        '--project-root',
+        repository.root,
+        '--json',
+      ]);
+      expect(cancelled.exitCode, cancelled.stderr).toBe(0);
+    }
+    expect((await listDiscoveredNativeStatusPage({ projectRoot: repository.root })).items).toEqual(
+      [],
+    );
+    const id = createHash('sha256').update(JSON.stringify('cancelled-second')).digest('hex');
+    const checkpoint = path.join(
+      resolveWorkspaceRuntimeRootSync(repository.root),
+      'sdk-runs/native/.runtime-store-v2',
+      id,
+      'checkpoint.json',
+    );
+    await fs.writeFile(checkpoint, '{invalid');
+    await expect(listDiscoveredNativeStatusPage({ projectRoot: repository.root })).rejects.toThrow(
+      'STORE_CORRUPT_RECORD',
+    );
+    expect(await fs.readFile(checkpoint, 'utf8')).toBe('{invalid');
   });
 
   it('filters named discovery before inspecting unrelated Runtime and shares worktree observations', async () => {

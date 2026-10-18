@@ -36,6 +36,14 @@ SDK Skill 应用包含完整入口 Skill 与由 SDK 推进的 Runtime。宿主 A
 
 本地验收失败进入 `review-verification`，可以 retry、revise 或 rejected，没有 skip。通过后才进入可选模型 Eval；安装预览再次核对验收报告是否属于当前固定包。实际应用在完成阶段、领取下游动作及接受下游结果时复验文件与原 Action 证据。修复步骤通过同一流程的 `replaces` 声明重做的产物，接受新结果后替代旧证据；未声明的文件变化保持阻塞。完整字段与样例见发布包 `comet-any/reference/sdk-creation.md`。
 
+## 预发布 Creator Run 的恢复
+
+新创作使用 v6。Eval 重试先重新预览已收集的固定用例，用户确认新摘要后才启动下一次评估；原实验仍有容器运行时继续阻塞。
+
+0.4.5 不含 Creator Run。开发候选曾创建的 v3/v4/v5 Run 保留原固定定义，仍可读取和沿原定义处理，不修改其摘要或自动迁移。旧 Run 的 incomplete Eval 重试会保留待决定状态并提示创建 v6 Run；不要删除旧 Run、`.comet/eval/runs/<experimentId>` 报告或结果中 `taskSet` 指向的固定用例及输入快照。
+
+重新创作时保留旧方案和应用包用于核对。Creator 新 Run 不会自动导入旧 Eval；若需要严格复用旧用例，可通过应用 Eval 的公开接口传入原 `taskSet` 作为 `reuseTaskSet`，重新预览并确认。原用例与输入快照的摘要必须匹配，不能把旧报告改成新 Run 的评估结果。
+
 ## 证据范围
 
 定向测试、生成 Runtime、真实 npm 包消费者、真实宿主 Skill/交接与模型执行分别记录。本地加载通过只能证明当前包和注册实现满足本地契约；用户可见报告明确真实宿主、模型及完整业务样本中尚未执行的部分。凭据仅从执行上下文注入，不写入包、Run、报告或生成配置。

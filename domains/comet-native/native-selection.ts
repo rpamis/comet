@@ -29,7 +29,9 @@ export async function readNativeSelectionRecord(
   if (current.status === 'missing') return null;
   if (current.selection.workflow !== 'native') {
     if (current.selection.workflow !== 'application') return null;
-    const owner = await readSdkChangeOwner(paths.projectRoot, 'native', current.selection.change);
+    const owner = await readSdkChangeOwner(paths.projectRoot, 'native', current.selection.change, {
+      readOnly: true,
+    });
     if (!owner || owner.application !== current.selection.applicationId) return null;
   }
   assertNativeName(current.selection.change);

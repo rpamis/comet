@@ -14,7 +14,10 @@ export function applicationError(message: string): never {
 }
 
 /** 读取整个依赖目录，固定所有脚本和资源；不改写第三方文件。 */
-export async function readApplicationFiles(root: string): Promise<Record<string, string>> {
+export async function readApplicationFiles(
+  root: string,
+  options: { allowEmpty?: boolean } = {},
+): Promise<Record<string, string>> {
   const files: Record<string, string> = {};
   const walk = async (relative: string) => {
     const entries = await fs.readdir(path.join(root, relative), { withFileTypes: true });
@@ -31,7 +34,7 @@ export async function readApplicationFiles(root: string): Promise<Record<string,
     }
   };
   await walk('');
-  if (Object.keys(files).length === 0) applicationError('依赖目录为空');
+  if (!options.allowEmpty && Object.keys(files).length === 0) applicationError('依赖目录为空');
   return files;
 }
 

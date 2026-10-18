@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { promises as fs } from 'fs';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { spawnSync } from 'child_process';
@@ -83,6 +85,8 @@ async function writeFile(file: string, content: string): Promise<void> {
 }
 
 async function createNative(projectRoot: string, name: string, artifactRoot = '.'): Promise<void> {
+  const initialized = spawnSync('git', ['init', '-q', projectRoot]);
+  expect(initialized.status).toBe(0);
   const paths = await nativeProjectPaths(projectRoot, artifactRoot);
   const state = await createNativeChange({ paths, name, language: 'en' });
   await fs.writeFile(path.join(nativeChangeDir(paths, name), state.brief), VALID_BRIEF, 'utf8');
@@ -378,6 +382,68 @@ describe('Comet entry resume probe v2', () => {
     });
   });
 
+  it('does not initialize Runtime storage for an empty Native resume probe', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
+    const before = await snapshot(projectRoot);
+    await expect(resolveCometEntryResumeProbe(projectRoot, input('继续'))).resolves.toMatchObject({
+      action: 'none',
+      reasonCode: 'no-active-native-changes',
+    });
+    expect(await snapshot(projectRoot)).toEqual(before);
+    await expect(fs.access(runtimeRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('does not repair a missing Native SDK Run during a resume probe', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    await createNativeSdkChange({
+      paths,
+      name: 'missing-run',
+      language: 'en',
+      workspaceBinding: { isolation: 'current', changeBranch: null, targetBranch: null },
+    });
+    const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
+    await fs.rm(path.join(runtimeRoot, 'sdk-runs/native'), { recursive: true });
+    const beforeProject = await snapshot(projectRoot);
+    const beforeRuntime = await snapshot(runtimeRoot);
+    const result = await resolveCometEntryResumeProbe(projectRoot, input('继续 missing-run'));
+    expect(result.action).toBe('ask_user');
+    expect(result.nextCommand).toBeNull();
+    expect(await snapshot(projectRoot)).toEqual(beforeProject);
+    expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);
+  });
+
+  it('inspects only the explicitly named SDK target and retains unscoped corruption diagnostics', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    for (const name of ['unrelated-run', 'target-run']) {
+      await createNativeSdkChange({
+        paths,
+        name,
+        language: 'en',
+        workspaceBinding: { isolation: 'current', changeBranch: null, targetBranch: null },
+      });
+      if (name === 'unrelated-run')
+        expect(
+          (await runNativeCli(['cancel', name, '--project-root', projectRoot, '--json'])).exitCode,
+        ).toBe(0);
+    }
+    const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
+    const id = createHash('sha256').update(JSON.stringify('unrelated-run')).digest('hex');
+    await fs.writeFile(
+      path.join(runtimeRoot, 'sdk-runs/native/.runtime-store-v2', id, 'checkpoint.json'),
+      '{bad',
+    );
+    await expect(
+      resolveCometEntryResumeProbe(projectRoot, input('继续 target-run')),
+    ).resolves.toMatchObject({ action: 'auto_resume', changeName: 'target-run' });
+    await expect(resolveCometEntryResumeProbe(projectRoot, input('继续'))).resolves.toMatchObject({
+      action: 'ask_user',
+      reasonCode: 'native-state-invalid',
+    });
+  });
+
   it('auto-resumes an untouched SDK state file without creating its Run during probing', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const paths = await nativeProjectPaths(projectRoot, '.');
@@ -445,18 +511,36 @@ describe('Comet entry resume probe v2', () => {
   });
 
   it('routes configured Classic through its permanent entry and rejects missing config', async () => {
-    await writeProjectConfig(projectRoot, {
-      ...defaultProjectConfig('.'),
-      default_workflow: 'classic',
-    });
-    await createClassic(projectRoot, 'classic-change');
+    expect(spawnSync('git', ['init', '-q', projectRoot]).status).toBe(0);
+    await prepareClassicLegacyProject(projectRoot);
+    const created = await withClassicCommandContext(
+      { projectRoot, invocationCwd: projectRoot },
+      () =>
+        runClassicCli(['state', 'init', 'classic-change', 'full', '--runtime', 'sdk', '--json']),
+    );
+    expect(created.exitCode, created.stderr).toBe(0);
     await createNative(projectRoot, 'native-ignored');
+
+    expect(spawnSync('git', ['-C', projectRoot, 'add', '.']).status).toBe(0);
+    expect(
+      spawnSync('git', [
+        '-C',
+        projectRoot,
+        '-c',
+        'user.name=Resume Test',
+        '-c',
+        'user.email=resume@example.test',
+        'commit',
+        '-qm',
+        'seed routing fixture',
+      ]).status,
+    ).toBe(0);
 
     const configured = await resolveCometEntryResumeProbe(
       projectRoot,
       input('继续 classic-change'),
     );
-    expect(configured).toMatchObject({
+    expect(configured, JSON.stringify(configured)).toMatchObject({
       workflow: 'classic',
       skill: 'comet-classic',
       entrySource: 'project-config',

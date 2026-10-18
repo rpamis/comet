@@ -1,4 +1,8 @@
 import { promises as fs } from 'fs';
+import {
+  runWithHookReadCache,
+  runWithoutHookReadCache,
+} from '../../platform/process/hook-read-cache.js';
 import path from 'path';
 import { parseDocument, stringify } from 'yaml';
 
@@ -14,7 +18,8 @@ import {
 } from '../workflow-contract/change-runtime-owner.js';
 
 import { readWorkflowApplicationRun } from '../workflow-application/index.js';
-import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
+import { isNativeSdkCancellationComplete } from './native-sdk-cancellation.js';
+import { mapWithConcurrency } from './native-concurrency.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { atomicWriteText } from './native-atomic-file.js';
 import { nativeBriefTemplate } from './native-artifact-language.js';
@@ -559,13 +564,42 @@ async function listNativeChangeNames(paths: NativeProjectPaths): Promise<string[
 export async function listActiveNativeChangesOwnedByWorkspace(
   paths: NativeProjectPaths,
 ): Promise<string[]> {
-  const owned: string[] = [];
+  // Keep this observation fresh and discard its reads before the caller creates a change.
+  return runWithoutHookReadCache(() =>
+    runWithHookReadCache(() => inspectActiveNativeChangesOwnedByWorkspace(paths)),
+  );
+}
+
+async function inspectActiveNativeChangesOwnedByWorkspace(
+  paths: NativeProjectPaths,
+): Promise<string[]> {
+  let workspace: ReturnType<typeof inspectGitWorktree> | undefined;
   const names = new Set([
     ...(await listNativeChangeNames(paths)),
-    ...(await listSdkChangeNames(paths.projectRoot, 'native')),
+    ...(await listSdkChangeNames(paths.projectRoot, 'native', { readOnly: true })),
   ]);
-  for (const name of [...names].sort()) {
-    const sdkOwner = await readSdkChangeOwner(paths.projectRoot, 'native', name);
+  const results = await mapWithConcurrency(
+    [...names].sort(),
+    4,
+    async (name): Promise<PromiseSettledResult<string | null>> => {
+      try {
+        return { status: 'fulfilled', value: await inspect(name) };
+      } catch (reason) {
+        return { status: 'rejected', reason };
+      }
+    },
+  );
+  const owned: string[] = [];
+  for (const result of results) {
+    if (result.status === 'rejected') throw result.reason;
+    if (result.value) owned.push(result.value);
+  }
+  return owned;
+
+  async function inspect(name: string): Promise<string | null> {
+    const sdkOwner = await readSdkChangeOwner(paths.projectRoot, 'native', name, {
+      readOnly: true,
+    });
     if (sdkOwner) {
       const runtime = createRuntime({
         store:
@@ -585,44 +619,47 @@ export async function listActiveNativeChangesOwnedByWorkspace(
         throw new Error(`Native SDK Run ${name} does not match its change ownership`);
       }
       const state = parseNativePortableState(run.state);
-      if (state.name !== name) {
-        throw new Error(`Native SDK Run ${name} has a different state name`);
+      const input = run.input as { name?: unknown; artifactRootRef?: unknown } | null;
+      if (
+        state.name !== name ||
+        run.runId !== name ||
+        input?.name !== name ||
+        typeof input?.artifactRootRef !== 'string'
+      ) {
+        throw new Error(`Native SDK Run ${name} does not match its change identity`);
       }
       if (
         state.archived ||
-        (await inspectNativeSdkCancellation({ projectRoot: paths.projectRoot, run }))?.quiescent
+        (await isNativeSdkCancellationComplete({ projectRoot: paths.projectRoot, run }))
       )
-        continue;
-      const workspace = inspectGitWorktree(paths.projectRoot);
+        return null;
+      workspace ??= inspectGitWorktree(paths.projectRoot);
       if (
         (state.workspace.change_branch !== null &&
           workspace.currentBranch !== state.workspace.change_branch) ||
         (state.workspace.isolation === 'worktree' && !workspace.isSecondaryWorktree)
       ) {
-        continue;
+        return null;
       }
-      owned.push(name);
-      continue;
+      return name;
     }
     const inspection = await inspectNativeChangeStateDocument(paths, name);
     if (!inspection.state) {
-      if (await hasForeignRegisteredWorkspaceOwner(paths, name)) continue;
-      owned.push(name);
-      continue;
+      if (await hasForeignRegisteredWorkspaceOwner(paths, name)) return null;
+      return name;
     }
-    if (inspection.state.archived) continue;
+    if (inspection.state.archived) return null;
     const identity = await readNativeWorkspaceIdentity(paths, name);
-    if (!identity && (await hasForeignRegisteredWorkspaceOwner(paths, name))) continue;
+    if (!identity && (await hasForeignRegisteredWorkspaceOwner(paths, name))) return null;
     if (identity?.schema === 'comet.native.workspace.v3') {
       const binding = await inspectNativeWorkspaceBinding({ paths, identity });
-      if (binding.code === 'workspace-binding-root-changed') continue;
+      if (binding.code === 'workspace-binding-root-changed') return null;
     } else if (identity) {
       const advisory = await inspectNativeWorkspaceAdvisory({ paths, identity });
-      if (advisory.state === 'drifted') continue;
+      if (advisory.state === 'drifted') return null;
     }
-    owned.push(name);
+    return name;
   }
-  return owned;
 }
 
 async function hasForeignRegisteredWorkspaceOwner(
@@ -634,7 +671,9 @@ async function hasForeignRegisteredWorkspaceOwner(
     try {
       const config = await readProjectConfig(root);
       if (!config) continue;
-      const candidatePaths = await nativeProjectPaths(root, config.native.artifact_root);
+      const candidatePaths = await nativeProjectPaths(root, config.native.artifact_root, {
+        readOnly: true,
+      });
       const changeDir = path.join(candidatePaths.changesDir, name);
       const portableStateFile = path.join(changeDir, 'comet-state.yaml');
       try {

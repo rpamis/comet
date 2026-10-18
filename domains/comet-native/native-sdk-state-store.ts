@@ -267,7 +267,7 @@ export function createNativeSdkStateStore(
     };
     // 旧 handle 不能初始化新 namespace，更不能继续读写它捕获的旧 authority。
     rejectChangedRoot(resolveWorkspaceRuntimeRootSync(projectRoot));
-    rejectChangedRoot(await resolveWorkspaceRuntimeRoot(projectRoot));
+    if (!options.readOnly) rejectChangedRoot(await resolveWorkspaceRuntimeRoot(projectRoot));
   }
 
   const projectionDir = 'state-projections/native';
@@ -295,7 +295,7 @@ export function createNativeSdkStateStore(
   ): Promise<WorkflowRun | null> {
     const config = await readProjectConfig(projectRoot);
     if (!config) return null;
-    const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
+    const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root, options);
     const activeFile = nativePortableStateFile(paths, runId);
     let file = activeFile;
     let source: string;
@@ -439,7 +439,7 @@ export function createNativeSdkStateStore(
       if (config && config.native.artifact_root !== input.artifactRootRef) {
         throw new Error('Native artifact root changed after Run creation');
       }
-      const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef);
+      const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, options);
       let file = nativePortableStateFile(paths, runId);
       try {
         await fs.access(path.dirname(file));

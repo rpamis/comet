@@ -3,7 +3,7 @@ import { t, localized } from './dashboard-i18n.js';
 
 /** Safe URI schemes only; blocks javascript:/data:/vbscript: etc. */
 const ALLOWED_URI_REGEXP =
-  /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
+  /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i;
 
 const PURIFY_CONFIG = {
   USE_PROFILES: { html: true },

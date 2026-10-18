@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
 import type { WorkflowRun } from '../engine/runtime.js';
+import type { ClassicState } from './classic-state.js';
 import type { ClassicCommandResult } from './classic-cli.js';
 import {
   classicSdkEntryData,
@@ -14,7 +15,7 @@ import { classicIssue } from './classic-issues.js';
 import { classicOpenContentProblem } from './classic-open-content.js';
 import { assertClassicBuildReady, classicOpenEvidenceReceipt } from './classic-sdk-application.js';
 import { completeClassicSdkBuild } from './classic-sdk-build.js';
-import { classicCheckCommand } from './classic-check-command.js';
+import { executeClassicSdkCheckCommand } from './classic-check-command.js';
 import { inspectAndCompleteClassicSdkDesign } from './classic-sdk-design.js';
 import { inspectClassicSdkRun } from './classic-sdk-status.js';
 import { classicVerificationReportReceipt } from './classic-verification-report.js';
@@ -40,16 +41,19 @@ async function guardResult(
   issue?: string,
   run?: WorkflowRun,
   attempted?: ClassicSdkGuardAttempt,
+  observedEntry?: Awaited<ReturnType<typeof classicSdkEntryData>>,
 ): Promise<ClassicCommandResult> {
   const blocked = issue !== undefined;
-  const entry = run
-    ? await classicSdkEntryData(
-        change,
-        { run, projectRoot },
-        false,
-        !blocked && phase === 'open' && approvalHash ? { openApprovalHash: approvalHash } : {},
-      )
-    : null;
+  const entry =
+    observedEntry ??
+    (run
+      ? await classicSdkEntryData(
+          change,
+          { run, projectRoot },
+          false,
+          !blocked && phase === 'open' && approvalHash ? { openApprovalHash: approvalHash } : {},
+        )
+      : null);
   return {
     exitCode: blocked ? 1 : 0,
     data: {
@@ -460,27 +464,24 @@ export async function classicSdkBuildGuard(options: {
   if (buildPending)
     await completeClassicSdkBuild({ projectRoot, change, sessionId: options.sessionId });
   const cwd = sdkCheckCwd(projectRoot, invocationCwd, options.checkCwd);
-  const checked = await classicCheckCommand(
-    [
-      'run',
-      change,
-      'build',
-      '--cwd',
-      cwd,
-      ...(options.checkTimeoutMs === undefined
-        ? []
-        : ['--timeout-ms', String(options.checkTimeoutMs)]),
-      ...(options.reusable ? ['--local'] : []),
-      '--',
-      ...argv,
-    ],
+  // 检查前仍重新读取；检查返回后只投影刚提交的 Run，不再同步一次状态。
+  const {
+    run: finishedRun,
+    entry,
+    result: checked,
+  } = await executeClassicSdkCheckCommand(
+    await inspectClassicSdkRun(projectRoot, change),
+    change,
+    'build',
     {
-      json: false,
-      invocationCwd,
       projectRoot,
+      argv,
+      cwd,
+      timeoutMs: options.checkTimeoutMs,
+      reusable: options.reusable,
     },
   );
-  const finished = await inspectClassicSdkRun(projectRoot, change);
+  const finished = { run: finishedRun, state: finishedRun.state as unknown as ClassicState };
   if (checked.exitCode !== 0) {
     const failed = await guardResult(
       change,
@@ -490,6 +491,7 @@ export async function classicSdkBuildGuard(options: {
       checked.stderr?.trim() || checked.stdout?.trim() || 'Classic Build check failed',
       finished.run,
       guardAttempt,
+      entry,
     );
     return {
       ...failed,
@@ -501,7 +503,7 @@ export async function classicSdkBuildGuard(options: {
     };
   }
   const result = await (finished.state.phase === 'verify'
-    ? guardResult(change, 'verify', projectRoot, null, undefined, finished.run, guardAttempt)
+    ? guardResult(change, 'verify', projectRoot, null, undefined, finished.run, guardAttempt, entry)
     : guardResult(
         change,
         'build',
@@ -510,6 +512,7 @@ export async function classicSdkBuildGuard(options: {
         'Classic SDK Build check remains pending',
         finished.run,
         guardAttempt,
+        entry,
       ));
   return {
     ...result,
@@ -691,27 +694,24 @@ export async function classicSdkVerifyGuard(options: {
     });
   }
   const cwd = sdkCheckCwd(projectRoot, invocationCwd, options.checkCwd);
-  const checked = await classicCheckCommand(
-    [
-      'run',
-      change,
-      'verify',
-      '--cwd',
-      cwd,
-      ...(options.checkTimeoutMs === undefined
-        ? []
-        : ['--timeout-ms', String(options.checkTimeoutMs)]),
-      ...(options.reusable ? ['--local'] : []),
-      '--',
-      ...argv,
-    ],
+  // 检查前仍重新读取；检查返回后只投影刚提交的 Run，不再同步一次状态。
+  const {
+    run: finishedRun,
+    entry,
+    result: checked,
+  } = await executeClassicSdkCheckCommand(
+    await inspectClassicSdkRun(projectRoot, change),
+    change,
+    'verify',
     {
-      json: false,
-      invocationCwd,
       projectRoot,
+      argv,
+      cwd,
+      timeoutMs: options.checkTimeoutMs,
+      reusable: options.reusable,
     },
   );
-  const finished = await inspectClassicSdkRun(projectRoot, change);
+  const finished = { run: finishedRun, state: finishedRun.state as unknown as ClassicState };
   if (checked.exitCode !== 0) {
     const failed = await guardResult(
       change,
@@ -721,6 +721,7 @@ export async function classicSdkVerifyGuard(options: {
       checked.stderr?.trim() || checked.stdout?.trim() || 'Classic Verify check failed',
       finished.run,
       guardAttempt,
+      entry,
     );
     return {
       ...failed,
@@ -732,7 +733,16 @@ export async function classicSdkVerifyGuard(options: {
     };
   }
   const result = await (finished.state.phase === 'archive'
-    ? guardResult(change, 'archive', projectRoot, null, undefined, finished.run, guardAttempt)
+    ? guardResult(
+        change,
+        'archive',
+        projectRoot,
+        null,
+        undefined,
+        finished.run,
+        guardAttempt,
+        entry,
+      )
     : guardResult(
         change,
         'verify',
@@ -741,6 +751,7 @@ export async function classicSdkVerifyGuard(options: {
         'Classic SDK Verify check remains pending',
         finished.run,
         guardAttempt,
+        entry,
       ));
   return {
     ...result,

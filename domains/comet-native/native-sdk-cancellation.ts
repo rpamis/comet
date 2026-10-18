@@ -1,4 +1,4 @@
-import { resolveWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
+import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
 import path from 'node:path';
 
 import { createFileRuntimeStore, createRuntime, type WorkflowRun } from '../engine/runtime.js';
@@ -9,6 +9,7 @@ import { inspectProtectedProjectPath } from '../workflow-contract/protected-proj
 import { diagnoseNativeLock, NATIVE_LOCK_UNKNOWN_TAKEOVER_MS } from './native-lock.js';
 import { nativeProjectPaths } from './native-paths.js';
 import type { NativePortableContinuation } from './native-portable-continuation.js';
+import { parseNativePortableState } from './native-portable-state.js';
 import type { NativePortableState } from './native-portable-types.js';
 import { inspectNativeSdkCheckExecutions } from './native-sdk-check-execution.js';
 
@@ -41,9 +42,11 @@ export async function inspectNativeSdkCancellation(options: {
   }> = [];
   const outstandingRuns: string[] = [];
   const visited = new Set<string>();
-  const owner = await readSdkChangeOwner(options.projectRoot, 'native', options.run.runId);
+  const owner = await readSdkChangeOwner(options.projectRoot, 'native', options.run.runId, {
+    readOnly: true,
+  });
   const store = createFileRuntimeStore<WorkflowRun>({
-    rootDir: path.join(await resolveWorkspaceRuntimeRoot(options.projectRoot), 'sdk-runs/native'),
+    rootDir: path.join(resolveWorkspaceRuntimeRootSync(options.projectRoot), 'sdk-runs/native'),
   });
   async function inspect(run: WorkflowRun): Promise<void> {
     if (visited.has(run.runId)) return;
@@ -160,7 +163,9 @@ export async function inspectNativeSdkCancellation(options: {
     try {
       const input = options.run.input as { artifactRootRef?: unknown } | null;
       if (typeof input?.artifactRootRef === 'string') {
-        const paths = await nativeProjectPaths(options.projectRoot, input.artifactRootRef);
+        const paths = await nativeProjectPaths(options.projectRoot, input.artifactRootRef, {
+          readOnly: true,
+        });
         const file = path.join(paths.locksDir, 'root-move.lock');
         await inspectProtectedProjectPath(
           paths.workspaceRuntimeRoot,
@@ -203,8 +208,13 @@ export async function projectNativeSdkCancellationContinuation(options: {
   run: WorkflowRun;
   state: NativePortableState;
   base: NativePortableContinuation;
+  cancellationObservation?: Awaited<ReturnType<typeof inspectNativeSdkCancellation>>;
 }) {
-  const cancellation = await inspectNativeSdkCancellation(options);
+  // 只复用同一次状态输出的观察；独立调用仍重新检查原执行和清理状态。
+  const cancellation =
+    options.cancellationObservation === undefined
+      ? await inspectNativeSdkCancellation(options)
+      : options.cancellationObservation;
   if (!cancellation) return null;
   const chinese = options.state.language === 'zh-CN';
   const continuation: NativePortableContinuation = {
@@ -242,4 +252,43 @@ export async function projectNativeSdkCancellationContinuation(options: {
     },
   };
   return { continuation, cancellation };
+}
+
+/** 只有原执行与选择清理都已完成的取消任务才退出活动集合。 */
+export async function isNativeSdkCancellationComplete(options: {
+  projectRoot: string;
+  run: WorkflowRun;
+}): Promise<boolean> {
+  return (await inspectNativeSdkCancellation(options))?.status === 'cancelled';
+}
+
+/** 从权威存储只读检查取消；保留历史投影不能证明任务仍在执行。 */
+export async function isNativeSdkChangeCancellationComplete(
+  projectRoot: string,
+  name: string,
+): Promise<boolean> {
+  const owner = await readSdkChangeOwner(projectRoot, 'native', name, { readOnly: true });
+  if (!owner) return false;
+  const record =
+    owner.application === 'native'
+      ? await createFileRuntimeStore<WorkflowRun>({
+          rootDir: path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'sdk-runs/native'),
+        }).read(owner.runId)
+      : await readWorkflowApplicationRun(projectRoot, owner.application, owner.runId);
+  if (!record || record.status !== 'cancelled') return false;
+  const run = await createRuntime({
+    workflows: [],
+    store: { read: async () => record, compareAndSwap: async () => false },
+  }).inspect(owner.runId);
+  if (
+    run.workflow.id !== 'comet-native' ||
+    run.workflow.version !== '1' ||
+    run.runId !== name ||
+    parseNativePortableState(run.state).name !== name ||
+    (run.input as { name?: unknown; artifactRootRef?: unknown } | null)?.name !== name ||
+    typeof (run.input as { artifactRootRef?: unknown }).artifactRootRef !== 'string'
+  ) {
+    throw new Error('Native cancellation Run does not match its change ownership');
+  }
+  return isNativeSdkCancellationComplete({ projectRoot, run });
 }

@@ -82,7 +82,17 @@ let guardModule: Promise<CometHookGuardModule> | undefined;
 // rewrites the specifier to the sibling bundle `comet-hook-router-guard.mjs`,
 // so the guard graph is only parsed when a decision actually needs it.
 function loadCometHookGuard(): Promise<CometHookGuardModule> {
-  guardModule ??= import('./hook-router-guard-entry.js');
+  guardModule ??= (async () => {
+    try {
+      // Match the CLI startup optimization for standalone Hook processes.
+      // Missing support or an unwritable cache never changes the decision.
+      const { enableCompileCache } = await import('node:module');
+      enableCompileCache?.();
+    } catch {
+      // Continue with the same fresh Runtime reads when caching is unavailable.
+    }
+    return import('./hook-router-guard-entry.js');
+  })();
   return guardModule;
 }
 

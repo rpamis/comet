@@ -14,6 +14,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { executeClassicSdkCommandCheck } from '../../../domains/comet-classic/classic-sdk-check.js';
+import * as sdkOutput from '../../../domains/comet-classic/classic-sdk-output.js';
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
 import { classicVerificationReportReceipt } from '../../../domains/comet-classic/classic-verification-report.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
@@ -22,6 +23,7 @@ import { requireFileSymlink } from '../../helpers/file-symlink.js';
 
 const roots: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
@@ -320,6 +322,7 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
     await f.put('.gitignore', 'node_modules/\n');
     await f.put('node_modules/.modules.yaml', 'layoutVersion: 5\n');
     const probe = vi.spyOn(fs, 'lstat');
+    const entryReads = vi.spyOn(sdkOutput, 'classicSdkEntryData');
     await f.put(
       '.comet/check-policy.json',
       JSON.stringify({
@@ -330,6 +333,8 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
     expect(
       (await f.invoke('guard', 'example', 'build', '--apply', '--local', '--', ...argv)).exitCode,
     ).toBe(0);
+    expect(entryReads).toHaveBeenCalledTimes(1);
+    entryReads.mockClear();
     const result = await f.invoke(
       'guard',
       'example',
@@ -342,6 +347,11 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
       ...argv,
     );
     expect(result.exitCode, result.stdout).toBe(0);
+    expect(entryReads).toHaveBeenCalledTimes(1);
+    const committed = entryReads.mock.calls[0][1].run;
+    expect(result.response.data.run.revision).toBe(committed.revision);
+    expect(result.response.data.phase).toBe((committed.state as { phase: string }).phase);
+    entryReads.mockRestore();
     const pathChecks = probe.mock.calls.length;
     probe.mockRestore();
     expect(pathChecks).toBeLessThan(profile === 'full' ? 19_000 : 17_000);

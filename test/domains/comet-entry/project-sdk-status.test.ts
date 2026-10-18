@@ -1,3 +1,4 @@
+import { withCometRuntimeMetrics } from '../../../platform/process/runtime-metrics.js';
 import { execFileSync } from 'node:child_process';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { promises as fs } from 'node:fs';
@@ -50,6 +51,21 @@ describe('SDK ownership in shared project status', () => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
     await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it('shares Git worktree reads within each global status request, never across requests', async () => {
+    for (const name of ['first-run', 'second-run', 'third-run']) {
+      const created = await runNativeCli(['new', name, '--project-root', root, '--json']);
+      expect(created.exitCode, created.stderr).toBe(0);
+      const cancelled = await runNativeCli(['cancel', name, '--project-root', root, '--json']);
+      expect(cancelled.exitCode, cancelled.stderr).toBe(0);
+    }
+    const first = await withCometRuntimeMetrics(() => inspectCometProjectStatus(root));
+    const second = await withCometRuntimeMetrics(() => inspectCometProjectStatus(root));
+    expect(first.result.workflows.native.changes).toHaveLength(3);
+    expect(first.metrics.gitCommands).toBe(2);
+    expect(second.metrics.gitCommands).toBe(2);
+    expect(second.result).toEqual(first.result);
   });
 
   it('uses the same SDK validation as named Native status and preserves other changes', async () => {

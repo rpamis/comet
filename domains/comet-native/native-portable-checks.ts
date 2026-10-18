@@ -10,7 +10,12 @@ import {
 import type { Dirent } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { gitStatusPaths, runGitCommand, readGitBlobs } from '../../platform/process/git.js';
+import {
+  parseGitStatusPaths,
+  readGitStatusPorcelain,
+  runGitCommand,
+  readGitBlobs,
+} from '../../platform/process/git.js';
 import {
   approvedEditFingerprint,
   inspectEditReviews,
@@ -852,15 +857,7 @@ async function readNativeCheckInputObservation(options: NativeCheckInputGateOpti
     ];
     const head = runGitCommand(options.projectRoot, ['rev-parse', 'HEAD']);
     const branch = runGitCommand(options.projectRoot, ['branch', '--show-current']);
-    const status = runGitCommand(options.projectRoot, [
-      'status',
-      '--porcelain=v1',
-      '-z',
-      '--untracked-files=all',
-      '--ignore-submodules=none',
-      '--',
-      ...exclusions,
-    ]);
+    const status = readGitStatusPorcelain(options.projectRoot, exclusions);
     const staged = runGitCommand(options.projectRoot, [
       'ls-files',
       '--stage',
@@ -870,7 +867,7 @@ async function readNativeCheckInputObservation(options: NativeCheckInputGateOpti
     ]);
     if (head === null || status === null) return null;
     const workingTree: Array<{ path: string; digest: string | null }> = [];
-    for (const changedPath of gitStatusPaths(options.projectRoot).filter(
+    for (const changedPath of parseGitStatusPaths(status).filter(
       (changedPath) =>
         !runnerInputs.has(changedPath) &&
         !isNativeRuntimeInputPath(changedPath, options.projectRoot, options.managedArtifactRoot),

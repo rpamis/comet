@@ -737,6 +737,19 @@ function normalizeManagement(value: unknown, projectKey?: string): MemoryManagem
       return entry as unknown as MemoryManagementView['conflicts'][number];
     }),
     truncated: value.truncated === true,
+    ...(isRecord(value.counts) &&
+    ['all', 'profile', 'policy', 'episode', 'history'].every(
+      (key) =>
+        Number.isSafeInteger((value.counts as Record<string, unknown>)[key]) &&
+        ((value.counts as Record<string, number>)[key] ?? -1) >= 0,
+    )
+      ? { counts: value.counts as MemoryManagementView['counts'] }
+      : {}),
+    ...Object.fromEntries(
+      ['total', 'offset', 'nextOffset', 'requiredBytes'].flatMap((key) =>
+        Number.isSafeInteger(value[key]) && (value[key] as number) >= 0 ? [[key, value[key]]] : [],
+      ),
+    ),
   };
 }
 

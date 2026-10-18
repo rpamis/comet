@@ -340,6 +340,9 @@ it('keeps failed Eval visible, retries the original frozen cases and permits an 
   expect(run.waits.at(-1)?.stepId).toBe('review-eval');
   expect(creatorSummary(run).evaluation).toMatchObject({ status: 'failed' });
   run = await choose(run, 'retry');
+  expect(run.waits.at(-1)?.stepId).toBe('confirm-eval');
+  expect(runExternalCommandAsync).toHaveBeenCalledTimes(1);
+  run = await choose(run, 'evaluate');
   expect(run.waits.at(-1)?.stepId).toBe('review-eval');
   expect(runExternalCommandAsync).toHaveBeenCalledTimes(2);
   run = await choose(run, 'skip');
@@ -430,10 +433,53 @@ it('does not start another model session while a previous incomplete experiment 
     args[0] === 'docker' ? 'active-container-id' : launch(...args),
   );
   run = await choose(run, 'retry');
+  expect(run.waits.at(-1)?.stepId).toBe('confirm-eval');
+  run = await choose(run, 'evaluate');
   expect(run.actions.at(-1)?.status).toBe('unknown');
+  expect(run.actions.at(-1)?.reason).toMatch(/容器/);
+  expect(runExternalCommandAsync.mock.calls.filter((call) => call[0] === 'docker')).toHaveLength(1);
   expect(
     runExternalCommandAsync.mock.calls.filter((call) => call[0] === process.execPath),
   ).toHaveLength(1);
+});
+
+it('keeps an incomplete legacy Run pending with explicit recovery guidance', async () => {
+  fakeEval('incomplete');
+  const run = await choose(await compile('3'), 'evaluate');
+  await expect(choose(run, 'retry')).rejects.toThrow(/保留原 Run.*v6 Run/);
+  const resumed = await createCreatorRuntime(root).inspect(run.runId);
+  expect(resumed.waits.at(-1)?.status).toBe('pending');
+  expect(resumed.workflow.hash).toBe(run.workflow.hash);
+  expect(
+    runExternalCommandAsync.mock.calls.filter((call) => call[0] === process.execPath),
+  ).toHaveLength(1);
+});
+
+it('reconfirms collected cases after incomplete Eval and resumes when old containers stopped', async () => {
+  fakeEval('incomplete');
+  let run = await choose(await compile(), 'evaluate');
+  const original = run.outputs.evaluate.value as { taskSet: unknown; confirmationHash: string };
+  fakeEval('passed');
+  const launch = runExternalCommandAsync.getMockImplementation()!;
+  runExternalCommandAsync.mockImplementation(async (...args) =>
+    args[0] === 'docker' ? '' : launch(...args),
+  );
+  run = await choose(run, 'retry');
+  expect(run.waits.at(-1)?.stepId).toBe('confirm-eval');
+  expect(run.outputs['eval-preview'].value).toMatchObject({ taskSet: original.taskSet });
+  expect(
+    (run.outputs['eval-preview'].value as { confirmationHash: string }).confirmationHash,
+  ).not.toBe(original.confirmationHash);
+  expect(
+    runExternalCommandAsync.mock.calls.filter((call) => call[0] === process.execPath),
+  ).toHaveLength(1);
+  run = await choose(run, 'evaluate');
+  expect(run.waits.at(-1)?.stepId).toBe('confirm-install');
+  expect(creatorSummary(run).evaluation).toMatchObject({ status: 'passed', passed: 2, total: 2 });
+  expect(runExternalCommandAsync.mock.calls.filter((call) => call[0] === 'docker')).toHaveLength(1);
+  expect(
+    runExternalCommandAsync.mock.calls.filter((call) => call[0] === process.execPath),
+  ).toHaveLength(2);
 });
 
 it('rejects changed frozen cases before approving installation', async () => {
@@ -496,11 +542,11 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   await fs.rm(root, { recursive: true, force: true });
 });
-async function compile() {
+async function compile(version = '6') {
   const runtime = createCreatorRuntime(root);
   let run = await runtime.start({
     runId: 'eval-creation',
-    workflow: { id: 'comet-creator', version: '3' },
+    workflow: { id: 'comet-creator', version },
     input: {
       goal: '报告审批后发布',
       host: 'codex',

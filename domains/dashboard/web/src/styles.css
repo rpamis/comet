@@ -7446,6 +7446,20 @@ body {
   background: var(--color-bg);
 }
 
+.dashboard-memory-pagination {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--color-border-soft);
+}
+
+.dashboard-memory-pagination > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .dashboard-memory-registry-toolbar {
   display: flex;
   align-items: center;

@@ -1,3 +1,5 @@
+import { runWithHookReadCache } from '../../platform/process/hook-read-cache.js';
+import { withGitWorktreeReadScope } from '../../platform/paths/git-worktree.js';
 import { promises as fs } from 'fs';
 import path from 'path';
 
@@ -388,7 +390,15 @@ async function inspectOpenSpecChanges(
   return { classic, unmanaged };
 }
 
-export async function inspectCometProjectStatus(startPath: string): Promise<CometProjectStatus> {
+export function inspectCometProjectStatus(startPath: string): Promise<CometProjectStatus> {
+  return withGitWorktreeReadScope(() =>
+    runWithHookReadCache(() => inspectCometProjectStatusWithinScope(startPath)),
+  );
+}
+
+async function inspectCometProjectStatusWithinScope(
+  startPath: string,
+): Promise<CometProjectStatus> {
   const projectRoot = await discoverNativeProject(startPath);
   let defaultEntry: CometEntryResolution | { error: string };
   let configError: string | null = null;
@@ -419,7 +429,9 @@ export async function inspectCometProjectStatus(startPath: string): Promise<Come
   } else if (nativeEnabled && config?.native) {
     try {
       await assertNoPendingNativeRootMove(projectRoot);
-      const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
+      const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root, {
+        readOnly: true,
+      });
       native = {
         changes: await listConfiguredNativeStatus(paths, {
           clarificationMode: config.native.clarification_mode,

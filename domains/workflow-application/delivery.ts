@@ -250,11 +250,13 @@ export async function previewWorkflowApplicationInstall(
       const previousEntry = previousEntries.find((entry) => entry.root === skillRoot);
       let operation: 'create' | 'replace' | 'unchanged' = 'create';
       if ((await inspectStorage(skillsRoot, skill.name, 'directory')).exists) {
-        const actualFiles = await readApplicationFiles(skillRoot);
-        const actual = applicationFilesHash(actualFiles);
         const intendedEntry = intent?.hostSkills.find(
           (entry) => entry.root === skillRoot && entry.contentHash === expected,
         );
+        const actualFiles = await readApplicationFiles(skillRoot, {
+          allowEmpty: intendedEntry !== undefined,
+        });
+        const actual = applicationFilesHash(actualFiles);
         const approvedPartial =
           intendedEntry !== undefined &&
           Object.entries(actualFiles).every(([ref, bytes]) => skill.files[ref] === bytes);
@@ -361,9 +363,7 @@ async function copyPackage(files: Record<string, string>, destination: string) {
 
 async function completeOwnedPackage(files: Record<string, string>, destination: string) {
   await ensureStorage(destination, '.');
-  const actual = (await fs.readdir(destination)).length
-    ? await readApplicationFiles(destination)
-    : {};
+  const actual = await readApplicationFiles(destination, { allowEmpty: true });
   if (Object.entries(actual).some(([ref, bytes]) => files[ref] !== bytes))
     applicationError('部分安装包含非原批准字节；保留现场，不覆盖已有文件');
   for (const [ref, bytes] of Object.entries(files)) {

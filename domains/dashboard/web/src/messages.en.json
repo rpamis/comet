@@ -2379,5 +2379,13 @@
   "自定义时间范围": "Custom time range",
   "应用时间范围": "Apply time range",
   "选择最近 7 天内的时间。时间筛选不影响实时状态快照。": "Choose a range within the last 7 days. Live state snapshots are independent of this filter.",
-  "按执行开始时间筛选，计时记录保留最近 7 天；没有开始时间的历史快照不参与时间筛选。未采集的模型、工具、Token 与费用保持未知。": "Filter by execution start time. Timed records are retained for 7 days; historical snapshots without a start time are excluded. Uncollected model, tool, token, and cost data remains unknown."
+  "按执行开始时间筛选，计时记录保留最近 7 天；没有开始时间的历史快照不参与时间筛选。未采集的模型、工具、Token 与费用保持未知。": "Filter by execution start time. Timed records are retained for 7 days; historical snapshots without a start time are excluded. Uncollected model, tool, token, and cost data remains unknown.",
+  "正在搜索个人记忆…": "Searching personal memories…",
+  "个人记忆加载失败，请重试搜索或刷新页面": "Could not load personal memories. Retry the search or refresh the page.",
+  "记忆证据存在冲突": "Memory evidence conflicts",
+  "个人记忆分页": "Personal memory pagination",
+  "当前显示 {0}–{1} 条，共 {2} 条": "Showing {0}–{1} of {2} entries",
+  "已加载 {0} 条": "Loaded {0} entries",
+  "本页受条数或字节预算限制，后续记录可继续查看": "This page is limited by its entry or byte budget. Continue to view more entries.",
+  "读取大记录（{0} KB）": "Load large entry ({0} KB)"
 }

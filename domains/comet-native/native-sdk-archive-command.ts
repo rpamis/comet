@@ -1,5 +1,9 @@
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
-import { recoverNativeSdkArchiveOutcome, NATIVE_SDK_ARCHIVE_STEPS } from './native-sdk-archive.js';
+import {
+  recoverNativeSdkArchiveOutcome,
+  NATIVE_SDK_ARCHIVE_STEPS,
+  nativeSdkRetryableArchivePreflight,
+} from './native-sdk-archive.js';
 import { recoverNativeSdkSupervisorCleanupOutcome } from './native-sdk-supervisor-cleanup.js';
 import {
   inspectNativeSdkSupervisorDelivery,
@@ -140,6 +144,16 @@ export async function archiveNativeSdkChange(options: {
     };
   }
   const { runtime, executors } = await loadOwnedNativeSdkRuntime(options.projectRoot, options.name);
+  const failedPreflight = nativeSdkRetryableArchivePreflight(run);
+  if (failedPreflight) {
+    run = await runtime.retry({
+      runId: run.runId,
+      expectedRevision: run.revision,
+      actionId: failedPreflight.id,
+      attempt: failedPreflight.attempt,
+    });
+    state = parseNativePortableState(run.state);
+  }
   const completedActions: { id: string; stepId: string; status: string }[] = [];
   let previousStep = -1;
   // 每次 execute 都独立提交原 Action 和 CAS 检查点；不跨越扩展、审批或未知执行。

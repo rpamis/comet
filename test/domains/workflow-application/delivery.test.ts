@@ -83,6 +83,39 @@ it('completes a partially copied host Skill only with its sealed install intent'
   await expect(fs.stat(pending)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
+it.each(['empty', 'empty-nested'])(
+  'resumes a sealed host Skill interrupted before its first file (%s)',
+  async (kind) => {
+    const options = {
+      file: source.file,
+      projectRoot: root,
+      scope: 'project' as const,
+      platforms: ['codex'],
+    };
+    const preview = await previewWorkflowApplicationInstall(options);
+    const dependency = preview.hostSkills.find((entry) => entry.kind === 'dependency')!;
+    await fs.mkdir(kind === 'empty' ? dependency.root : path.join(dependency.root, 'scripts'), {
+      recursive: true,
+    });
+    await expect(previewWorkflowApplicationInstall(options)).rejects.toThrow('依赖目录为空');
+    const pending = path.join(preview.target, preview.id, 'pending-install.json');
+    await fs.mkdir(path.dirname(pending), { recursive: true });
+    await fs.writeFile(
+      pending,
+      JSON.stringify({ schema: 'comet.workflow.application.install.intent.v1', preview }),
+    );
+    const resumed = await installWorkflowApplication({
+      ...options,
+      confirmationHash: preview.confirmationHash,
+    });
+    expect(resumed.contentHash).toBe(preview.contentHash);
+    expect((await inspectApplicationSkill(dependency.root)).contentHash).toBe(
+      dependency.contentHash,
+    );
+    await expect(fs.stat(pending)).rejects.toMatchObject({ code: 'ENOENT' });
+  },
+);
+
 it.each(['project', 'user'] as const)(
   'distributes one immutable application to every registered platform in %s scope',
   async (scope) => {

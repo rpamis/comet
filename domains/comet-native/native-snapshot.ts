@@ -2509,6 +2509,36 @@ export async function createNativeContentSnapshot(
       !isInsidePath(physicalProjectRoot, realTarget) ||
       sameOrInside(physicalNativeRoot, realTarget)
     ) {
+      // 稳定的目录别名仍按路径排除；已观测的普通文件若被替换，必须记录竞态。
+      // 这里只读取链接自身的元数据，绝不打开排除边界外的目标内容。
+      try {
+        const current = await fs.lstat(target);
+        if (!nativeSnapshotExecutionHasBudget(execution)) return;
+        if (
+          !current.isFile() ||
+          current.isSymbolicLink() ||
+          !sameFileIdentity(before, current) ||
+          current.size !== before.size ||
+          current.mtimeMs !== before.mtimeMs ||
+          current.ctimeMs !== before.ctimeMs
+        ) {
+          publishOmission({
+            path: relative,
+            size: current.isFile() ? current.size : null,
+            type: current.isFile() ? 'file' : current.isDirectory() ? 'directory' : 'other',
+            reason: 'changed-during-read',
+          });
+        }
+      } catch (error) {
+        if (!nativeSnapshotExecutionHasBudget(execution)) return;
+        if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+        publishOmission({
+          path: relative,
+          size: null,
+          type: 'file',
+          reason: isChangedDuringReadError(error) ? 'changed-during-read' : 'unreadable',
+        });
+      }
       return;
     }
     if (entries.length >= limits.maxFiles) {
@@ -3048,22 +3078,53 @@ export async function createNativeContentSnapshot(
     }
     const reusedTrackedPaths = new Set<string>();
     const boundObjectIdPaths = new Set<string>();
-    try {
-      for (const relative of selectionPaths(gitSelection)) {
-        if (capturedEntryValidations.has(relative)) continue;
-        if (!isSnapshotProjectRef(paths, relative)) continue;
-        if (remainingNativeSnapshotTime(execution) < 1) break;
-        if (!snapshotPolicyIncludes(policy, relative, execution)) continue;
-        if (remainingNativeSnapshotTime(execution) < 1) break;
-        const target = path.resolve(projectRoot, ...relative.split('/'));
-        if (
-          target === configFile ||
-          target === selectionFile ||
-          sameOrInside(runtimeRoot, target) ||
-          denylist.some((denied) => sameOrInside(denied, target))
-        ) {
-          continue;
+    // 只预读已通过路径和策略检查的元数据；不缓存真实路径，也不跳过内容复查。
+    // 每批全部完成后才发布，提前退出或异常不会留下未结束的文件系统操作。
+    const selectedTargets = selectionPaths(gitSelection).flatMap((relative) => {
+      if (!nativeSnapshotExecutionHasBudget(execution)) return [];
+      if (capturedEntryValidations.has(relative)) return [];
+      if (!isSnapshotProjectRef(paths, relative)) return [];
+      if (!snapshotPolicyIncludes(policy, relative, execution)) return [];
+      const target = path.resolve(projectRoot, ...relative.split('/'));
+      if (
+        target === configFile ||
+        target === selectionFile ||
+        sameOrInside(runtimeRoot, target) ||
+        denylist.some((denied) => sameOrInside(denied, target))
+      )
+        return [];
+      return [{ relative, target }];
+    });
+    async function* selectedTargetObservations() {
+      for (let offset = 0; offset < selectedTargets.length;) {
+        if (!nativeSnapshotExecutionHasBudget(execution)) return;
+        // 首条 Hook 执行前不预读后续文件，以保留调用方的竞态注入边界。
+        const width =
+          offset === 0 ||
+          (!notifiedFirstEntry && options.gitSelectionHooks?.afterFirstEntryCaptured)
+            ? 1
+            : 16;
+        const batch = selectedTargets.slice(offset, offset + width);
+        offset += batch.length;
+        const observations = await Promise.all(
+          batch.map(async ({ relative, target }) => {
+            if (gitSelection!.gitlinks.has(relative)) return { relative, target, stat: null };
+            try {
+              return { relative, target, stat: await fs.lstat(target) };
+            } catch (error) {
+              return { relative, target, stat: null, error };
+            }
+          }),
+        );
+        for (const observation of observations) {
+          if (!nativeSnapshotExecutionHasBudget(execution)) return;
+          yield observation;
         }
+      }
+    }
+    try {
+      for await (const observation of selectedTargetObservations()) {
+        const { relative, target } = observation;
         if (gitSelection.gitlinks.has(relative)) {
           await flushCaptures();
           if (entries.length >= limits.maxFiles) {
@@ -3138,7 +3199,9 @@ export async function createNativeContentSnapshot(
         }
         let before;
         try {
-          before = await fs.lstat(target);
+          if ('error' in observation) throw observation.error;
+          before = observation.stat;
+          if (before === null) throw new Error('Native snapshot file observation is missing');
         } catch (error) {
           await flushCaptures();
           if (isChangedDuringReadError(error) && gitSelection.tracked.has(relative)) {

@@ -33,6 +33,20 @@ afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
 });
 
+it.each([
+  ['3', 'f931df9b2afd0aa20239fe999c72f201187a2689f0074c26431be374bab45179'],
+  ['4', '2aa9f8407e3676f93c2777b2b77f7858dda4f8cfeca1a12e3cd9a669a7938077'],
+  ['5', 'f3d6d8fd99532d8fdbfed356434cf7912a4c9d049ab339696ddbd425b34d8d58'],
+])('preserves the fixed legacy Creator v%s definition', async (version, hash) => {
+  const run = await createCreatorRuntime(root).start({
+    runId: `legacy-${version}`,
+    workflow: { id: 'comet-creator', version },
+    input: { goal: '报告', host: 'codex', installTarget: 'result' },
+  });
+  expect(run.workflow.hash).toBe(hash);
+  expect((await createCreatorRuntime(root).inspect(run.runId)).workflow.hash).toBe(hash);
+});
+
 const analysis = () => ({
   summary: '生成报告，审批后在项目中发布。',
   limitations: ['本地发布；不会发送邮件。'],

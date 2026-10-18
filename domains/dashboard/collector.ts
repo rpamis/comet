@@ -5,7 +5,7 @@ import { runWithHookReadCache } from '../../platform/process/hook-read-cache.js'
 import path from 'path';
 import os from 'node:os';
 import { collectGitSnapshot } from './git.js';
-import { fingerprintDashboardFiles } from './source-version.js';
+import { fingerprintDashboardFiles, fingerprintDashboardFileGroups } from './source-version.js';
 import {
   collectNativeDashboardOverview,
   collectNativeDashboardProjection,
@@ -176,7 +176,7 @@ interface ClassicChangeCandidate {
 }
 
 interface ClassicCandidateCollection {
-  observations?: Array<{ paths: string[]; fingerprint: string | null }>;
+  candidates?: ClassicChangeCandidate[];
   refreshStable?: boolean;
   active: ClassicChangeCandidate[];
   archived: ClassicChangeCandidate[];
@@ -338,17 +338,26 @@ async function collectCachedClassicCandidates(root: string): Promise<ClassicCand
     runtimeDataRoot: process.env.COMET_DATA_DIR ?? path.join(os.homedir(), '.comet'),
   });
   const cached = classicCandidateCache.get(root);
-  if (
-    cached?.identity === identity &&
-    (await fingerprintDashboardFiles(cached.discoveryPaths, identity)) === cached.fingerprint
-  ) {
-    const current = await mapWithConcurrency(
-      cached.collection.observations ?? [],
-      16,
-      async ({ paths, fingerprint }) =>
-        fingerprint !== null && (await fingerprintDashboardFiles(paths, '')) === fingerprint,
+  const reusable = new Map<string, ClassicChangeCandidate>();
+  if (cached?.identity === identity) {
+    const candidates = cached.collection.candidates ?? [];
+    const fingerprints = await fingerprintDashboardFileGroups(
+      candidates.map((candidate) => candidate.refreshPaths),
+      '',
     );
-    if (current.every(Boolean)) return cached.collection;
+    candidates.forEach((candidate, index) => {
+      if (
+        candidate.refreshStable &&
+        candidate.refreshFingerprint !== null &&
+        fingerprints[index] === candidate.refreshFingerprint
+      )
+        reusable.set(candidate.dir, candidate);
+    });
+    if (
+      reusable.size === cached.collection.candidates?.length &&
+      (await fingerprintDashboardFiles(cached.discoveryPaths, identity)) === cached.fingerprint
+    )
+      return cached.collection;
   }
   const discoveryPaths = [
     ...new Set(
@@ -366,7 +375,7 @@ async function collectCachedClassicCandidates(root: string): Promise<ClassicCand
     ),
   ].sort();
   const before = await fingerprintDashboardFiles(discoveryPaths, identity);
-  const collection = await collectClassicChangeCandidatesUncached(root, sources);
+  const collection = await collectClassicChangeCandidatesUncached(root, sources, reusable);
   if (
     before !== null &&
     collection.refreshStable &&
@@ -403,6 +412,7 @@ function collectClassicChangeCandidates(projectRoot: string): Promise<ClassicCan
 async function collectClassicChangeCandidatesUncached(
   projectRoot: string,
   sources = collectDashboardWorkspaceSources(projectRoot),
+  reusable = new Map<string, ClassicChangeCandidate>(),
 ): Promise<ClassicCandidateCollection> {
   const collections = (
     await Promise.all(
@@ -417,6 +427,7 @@ async function collectClassicChangeCandidatesUncached(
                 changesRelative,
                 status: 'active',
                 source,
+                reusable,
               }),
               collectCandidatesWithError({
                 changesRoot: path.join(changesRoot, ARCHIVE_SEGMENT),
@@ -424,6 +435,7 @@ async function collectClassicChangeCandidatesUncached(
                 changesRelative,
                 status: 'archived',
                 source,
+                reusable,
               }),
             ]);
             return {
@@ -445,14 +457,9 @@ async function collectClassicChangeCandidatesUncached(
   );
 
   return {
-    observations: collections.flatMap(({ active }) =>
-      active.map(({ refreshPaths, refreshFingerprint }) => ({
-        paths: refreshPaths,
-        fingerprint: refreshFingerprint,
-      })),
-    ),
-    refreshStable: collections.every(({ active }) =>
-      active.every(({ refreshStable }) => refreshStable),
+    candidates: collections.flatMap(({ active, archived }) => [...active, ...archived]),
+    refreshStable: collections.every(({ active, archived }) =>
+      [...active, ...archived].every(({ refreshStable }) => refreshStable),
     ),
     active,
     archived,
@@ -514,6 +521,7 @@ interface CollectCandidatesInput {
   changesRelative: string;
   status: 'active' | 'archived';
   source: DashboardWorkspaceSource;
+  reusable?: Map<string, ClassicChangeCandidate>;
 }
 
 async function collectChangeCandidatesFromRoot(
@@ -542,6 +550,8 @@ async function collectChangeCandidatesFromRoot(
     CHANGE_INDEX_CONCURRENCY,
     async (entry) => {
       const dir = path.join(input.changesRoot, entry);
+      const cached = input.reusable?.get(dir);
+      if (cached) return cached;
       if (!(await safeProjectDirectoryExists(input.projectRoot, dir, `Classic change ${entry}`))) {
         return null;
       }
@@ -572,7 +582,7 @@ async function buildChangeCandidate(
   const yamlPath = await resolveClassicStateFile(input.dir);
   const tasksPath = path.join(input.dir, 'tasks.md');
   const basePaths = [input.dir, yamlPath, tasksPath];
-  const before = input.status === 'active' ? await fingerprintDashboardFiles(basePaths, '') : null;
+  const before = await fingerprintDashboardFiles(basePaths, '');
   const proposalPath = path.join(input.dir, 'proposal.md');
   const designPath = path.join(input.dir, 'design.md');
   const localPlanPath = path.join(input.dir, 'plan.md');
@@ -596,19 +606,19 @@ async function buildChangeCandidate(
     )
       pointerParents.push(parent);
   }
-  const refreshPaths =
-    input.status === 'active'
-      ? [
-          ...basePaths,
-          proposalPath,
-          designPath,
-          resolvedPlanPath,
-          ...(resolvedReportPath ? [resolvedReportPath] : []),
-          ...pointerParents,
-          path.join(input.dir, '.comet'),
-          path.join(input.dir, '.comet', 'verify-result.md'),
-        ].filter((value, index, values) => values.indexOf(value) === index)
-      : [];
+  const refreshPaths = [
+    ...basePaths,
+    input.projectRoot,
+    path.join(input.projectRoot, '.comet'),
+    path.join(input.projectRoot, '.comet', 'config.yaml'),
+    proposalPath,
+    designPath,
+    resolvedPlanPath,
+    ...(resolvedReportPath ? [resolvedReportPath] : []),
+    ...pointerParents,
+    path.join(input.dir, '.comet'),
+    path.join(input.dir, '.comet', 'verify-result.md'),
+  ].filter((value, index, values) => values.indexOf(value) === index);
   const refreshFingerprint = await fingerprintDashboardFiles(refreshPaths, '');
   const [tasks, verify, proposal, design, hasTasks, plan, cometYamlExists, updatedAt] =
     await Promise.all([
@@ -661,13 +671,12 @@ async function buildChangeCandidate(
     refreshPaths,
     refreshFingerprint,
     refreshStable:
-      input.status === 'archived' ||
-      (before !== null &&
-        refreshFingerprint !== null &&
-        (!yamlPlanPath || explicitPlanPath !== null) &&
-        (!reportPointer || resolvedReportPath !== null) &&
-        before === (await fingerprintDashboardFiles(basePaths, '')) &&
-        refreshFingerprint === (await fingerprintDashboardFiles(refreshPaths, ''))),
+      before !== null &&
+      refreshFingerprint !== null &&
+      (!yamlPlanPath || explicitPlanPath !== null) &&
+      (!reportPointer || resolvedReportPath !== null) &&
+      before === (await fingerprintDashboardFiles(basePaths, '')) &&
+      refreshFingerprint === (await fingerprintDashboardFiles(refreshPaths, '')),
     id,
     locator: encodeDashboardChangeLocator(input.source.id, `classic:${id}`),
     name: input.name,

@@ -1211,6 +1211,7 @@ function DashboardApp({
       if (
         (requestedPluginId === 'comet.project-knowledge' && capability === 'read-source') ||
         capability === 'memory-get' ||
+        (requestedPluginId === 'comet.personal-memory' && capability === 'manage') ||
         capability === 'application-history'
       ) {
         return result;
@@ -1242,6 +1243,32 @@ function DashboardApp({
     async (pluginId, capability, input, surface = 'page') => {
       try {
         if (useDemo) {
+          if (pluginId === 'comet.personal-memory' && capability === 'manage') {
+            const terms = String(input?.query ?? '')
+              .trim()
+              .toLocaleLowerCase()
+              .split(/\s+/u)
+              .filter(Boolean);
+            const records = (pluginPage?.data?.management?.records ?? []).filter((record) => {
+              const text = [record.text, record.category, record.memoryClass, record.reason]
+                .filter(Boolean)
+                .join(' ')
+                .toLocaleLowerCase();
+              if (!terms.every((term) => text.includes(term))) return false;
+              if (!input?.managementFilter || input.managementFilter === 'all') return true;
+              if (input.managementFilter === 'history') return !isActiveMemoryRecord(record);
+              return (
+                isActiveMemoryRecord(record) &&
+                record.memoryType ===
+                  {
+                    profile: 'core-profile',
+                    policy: 'collaboration-policy',
+                    episode: 'personal-episode',
+                  }[input.managementFilter]
+              );
+            });
+            return { records, conflicts: [], total: records.length, offset: 0, truncated: false };
+          }
           if (pluginId === 'comet.project-knowledge' && capability === 'read-source') {
             const source = isDashboardRecord(input) ? input.source : null;
             const preview = Array.isArray(pluginPage?.data?.sourcePreviews)
@@ -1343,7 +1370,9 @@ function DashboardApp({
                   ? t('来源或验证入口已变化，记录已替代并停止应用')
                   : t('项目知识已刷新'),
           );
-        } else if (!['read-source', 'memory-get', 'application-history'].includes(capability)) {
+        } else if (
+          !['read-source', 'memory-get', 'application-history', 'manage'].includes(capability)
+        ) {
           toast(capability === 'lifecycle' ? t('插件状态已更新') : t('操作已完成'));
         }
         return result;
@@ -2980,6 +3009,7 @@ function KeyValue({ k, v }) {
 
 function ArtifactDrawer({ artifact, embedded = false, onClose }) {
   const dashboardLanguage = useDashboardLanguage();
+  const { message: messageApi } = AntApp.useApp();
   const [loadState, setLoadState] = useState({ status: 'idle' });
   const { fullscreen: requestedFullscreen, requestClose } = useDashboardModalState(
     Boolean(artifact),
@@ -3170,9 +3200,9 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(preview.path);
-                      toast(t('路径已复制'));
+                      messageApi.success(t('路径已复制'));
                     } catch {
-                      toast(t('复制失败'), 'error');
+                      messageApi.error(t('复制失败'));
                     }
                   }}
                 >
@@ -8731,10 +8761,89 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
     'selectedMemoryId',
     null,
   );
+  const [memoryOffset, setMemoryOffset] = useState(0);
+  const [memoryPageOffsets, setMemoryPageOffsets] = useState([]);
+  const [memoryMaxBytes, setMemoryMaxBytes] = useState(undefined);
+  const [memoryPage, setMemoryPage] = useState(null);
+  const [memoryLoading, setMemoryLoading] = useState(false);
+  const [memoryLoadError, setMemoryLoadError] = useState(false);
+  const invokeRef = useRef(onInvoke);
+  invokeRef.current = onInvoke;
+  const requestKey = JSON.stringify([
+    data?.projectKey,
+    memoryQuery.trim(),
+    memoryFilter,
+    memoryOffset,
+    memoryMaxBytes,
+  ]);
+  const resetMemoryPage = () => {
+    setMemoryOffset(0);
+    setMemoryPageOffsets([]);
+    setMemoryMaxBytes(undefined);
+    setMemoryPage(null);
+  };
+  const invokeMemoryMutation = async (capability, input) => {
+    const result = await onInvoke(capability, input);
+    resetMemoryPage();
+    return result;
+  };
+  useEffect(() => {
+    let current = true;
+    if (
+      readOnly ||
+      (!memoryQuery.trim() &&
+        memoryFilter === 'all' &&
+        memoryOffset === 0 &&
+        memoryMaxBytes === undefined)
+    ) {
+      setMemoryLoading(false);
+      setMemoryLoadError(false);
+      setMemoryPage(null);
+      return;
+    }
+    setMemoryLoading(true);
+    setMemoryLoadError(false);
+    const timer = setTimeout(async () => {
+      const result = await invokeRef.current('manage', {
+        query: memoryQuery.trim() || undefined,
+        managementFilter: memoryFilter,
+        offset: memoryOffset,
+        ...(memoryMaxBytes === undefined ? {} : { maxBytes: memoryMaxBytes }),
+      });
+      if (!current) return;
+      setMemoryLoading(false);
+      if (!result || !Array.isArray(result.records)) {
+        setMemoryLoadError(true);
+        return;
+      }
+      if (
+        (memoryOffset > 0 && result.total === 0) ||
+        (memoryOffset > 0 && result.offset >= result.total)
+      ) {
+        resetMemoryPage();
+        return;
+      }
+      setMemoryPage({ requestKey, result });
+    }, 200);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [requestKey, data?.management, readOnly]);
   const status = data?.status ?? {};
   const retrieval = data?.retrieval ?? {};
-  const management = data?.management ?? {};
-  const managedRecords = management.records ?? retrieval.records ?? [];
+  const defaultMemoryPage =
+    readOnly ||
+    (!memoryQuery.trim() &&
+      memoryFilter === 'all' &&
+      memoryOffset === 0 &&
+      memoryMaxBytes === undefined);
+  const management = defaultMemoryPage
+    ? (data?.management ?? {})
+    : memoryPage?.requestKey === requestKey
+      ? memoryPage.result
+      : {};
+  const managedRecords = management.records ?? (defaultMemoryPage ? retrieval.records : []) ?? [];
   const liveRecords = managedRecords.filter(isActiveMemoryRecord);
   const coreRecords = liveRecords.filter((record) => record.memoryType === 'core-profile');
   const policyRecords = liveRecords.filter(
@@ -8769,6 +8878,7 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
       : t('0 / 2000 字符');
   const normalizedMemoryQuery = memoryQuery.trim().toLocaleLowerCase();
   const matchesMemoryQuery = (record) =>
+    !readOnly ||
     normalizedMemoryQuery.length === 0 ||
     [record.text, record.category, record.memoryClass, record.reason]
       .filter(Boolean)
@@ -8924,7 +9034,7 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
                 disabled={readOnly}
                 onClick={(event) => {
                   event.stopPropagation();
-                  onInvoke('rollback', { id: record.id });
+                  invokeMemoryMutation('rollback', { id: record.id });
                 }}
               />
             </Tooltip>
@@ -8940,7 +9050,7 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
                 disabled={readOnly}
                 onClick={(event) => {
                   event.stopPropagation();
-                  onInvoke('remove', { id: record.id, permanent: true });
+                  invokeMemoryMutation('remove', { id: record.id, permanent: true });
                 }}
               />
             </Tooltip>
@@ -9054,13 +9164,17 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
               allowClear
               placeholder={t('搜索记忆…')}
               aria-label={t('搜索个人记忆')}
-              onChange={(event) => setMemoryQuery(event.target.value)}
+              onChange={(event) => {
+                setMemoryQuery(event.target.value);
+                resetMemoryPage();
+              }}
             />
           </div>
           <nav>
             {PERSONAL_MEMORY_FILTERS.map((item) => {
               const count =
-                item.key === 'all'
+                management.counts?.[item.key] ??
+                (item.key === 'all'
                   ? totalMemoryRecordCount
                   : item.key === 'profile'
                     ? coreRecords.length
@@ -9068,14 +9182,17 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
                       ? policyRecords.length
                       : item.key === 'episode'
                         ? episodeRecords.length
-                        : historyRecords.length;
+                        : historyRecords.length);
               return (
                 <Tooltip key={item.key} title={item.description} placement="right">
                   <button
                     type="button"
                     className={memoryFilter === item.key ? 'is-active' : ''}
                     aria-pressed={memoryFilter === item.key}
-                    onClick={() => setMemoryFilter(item.key)}
+                    onClick={() => {
+                      setMemoryFilter(item.key);
+                      resetMemoryPage();
+                    }}
                   >
                     <span>{item.label}</span>
                     <strong>{count}</strong>
@@ -9168,7 +9285,20 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
             className="dashboard-memory-table-body"
             data-dashboard-scroll="personal-memory-list"
           >
-            {visibleMemoryRecords.length === 0 ? (
+            {memoryLoading && <p role="status">{t('正在搜索个人记忆…')}</p>}
+            {memoryLoadError && (
+              <Alert type="error" showIcon message={t('个人记忆加载失败，请重试搜索或刷新页面')} />
+            )}
+            {(management.conflicts ?? []).map((conflict, index) => (
+              <Alert
+                key={`${conflict.updatedAt}:${index}`}
+                type="warning"
+                showIcon
+                message={t('记忆证据存在冲突')}
+                description={conflict.texts.join(' / ')}
+              />
+            ))}
+            {!memoryLoading && visibleMemoryRecords.length === 0 ? (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={memoryEmptyDescription} />
             ) : (
               memoryGroups.map((group) => (
@@ -9181,6 +9311,62 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
                 </section>
               ))
             )}
+          </div>
+          <div className="dashboard-memory-pagination" aria-label={t('个人记忆分页')}>
+            <span role="status">
+              {Number.isInteger(management.total)
+                ? t('当前显示 {0}–{1} 条，共 {2} 条', [
+                    (management.records?.length ?? 0) + (management.conflicts?.length ?? 0) === 0
+                      ? 0
+                      : (management.offset ?? 0) + 1,
+                    (management.offset ?? 0) +
+                      (management.records?.length ?? 0) +
+                      (management.conflicts?.length ?? 0),
+                    management.total,
+                  ])
+                : t('已加载 {0} 条', [managedRecords.length])}
+            </span>
+            {management.truncated && (
+              <span>{t('本页受条数或字节预算限制，后续记录可继续查看')}</span>
+            )}
+            <div>
+              <Button
+                size="small"
+                disabled={readOnly || memoryLoading || memoryPageOffsets.length === 0}
+                onClick={() => {
+                  setMemoryOffset(memoryPageOffsets.at(-1) ?? 0);
+                  setMemoryPageOffsets((offsets) => offsets.slice(0, -1));
+                  setMemoryMaxBytes(undefined);
+                }}
+              >
+                {t('上一页')}
+              </Button>
+              <Button
+                size="small"
+                disabled={
+                  readOnly ||
+                  memoryLoading ||
+                  !Number.isInteger(management.nextOffset) ||
+                  management.nextOffset <= memoryOffset
+                }
+                onClick={() => {
+                  setMemoryPageOffsets((offsets) => [...offsets, memoryOffset]);
+                  setMemoryOffset(management.nextOffset);
+                  setMemoryMaxBytes(undefined);
+                }}
+              >
+                {t('下一页')}
+              </Button>
+              {management.requiredBytes > 0 && (
+                <Button
+                  size="small"
+                  disabled={memoryLoading}
+                  onClick={() => setMemoryMaxBytes(management.requiredBytes)}
+                >
+                  {t('读取大记录（{0} KB）', [Math.ceil(management.requiredBytes / 1024)])}
+                </Button>
+              )}
+            </div>
           </div>
         </section>
         <aside
@@ -9368,7 +9554,7 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
           if (newProfileSaving) return;
           setNewProfileSaving(true);
           try {
-            const result = await onInvoke('remember', {
+            const result = await invokeMemoryMutation('remember', {
               scope: 'global',
               memoryClass: 'user-preference',
               category: newProfileCategory.trim() || t('沟通偏好'),
@@ -9436,7 +9622,7 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
           if (newProjectMemorySaving) return;
           setNewProjectMemorySaving(true);
           try {
-            const result = await onInvoke('remember', {
+            const result = await invokeMemoryMutation('remember', {
               scope: 'project',
               projectKey,
               memoryClass: 'project-convention',
@@ -9499,7 +9685,7 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
           if (!editingRecord || correctionText.trim().length === 0) return;
           setCorrectionSaving(true);
           try {
-            const corrected = await onInvoke('correct', {
+            const corrected = await invokeMemoryMutation('correct', {
               id: editingRecord.id,
               correction: { text: correctionText.trim() },
             });
@@ -9847,6 +10033,7 @@ function DashboardChangeList({ visible, selectedId, onSelect, hasMore, pageLoadi
 
 function AntChangeDetail({ change, onPreview }) {
   useDashboardLanguage();
+  const { message: messageApi } = AntApp.useApp();
   const [copied, setCopied] = useState(false);
   const statusPresentation = classicChangeStatusPresentation(change);
   const current = change.status === 'archived' ? 'archive' : change.phase;
@@ -9870,10 +10057,10 @@ function AntChangeDetail({ change, onPreview }) {
                 copyText(change.name)
                   .then(() => {
                     setCopied(true);
-                    toast(t('Change 名称已复制'));
+                    messageApi.success(t('Change 名称已复制'));
                     window.setTimeout(() => setCopied(false), 1600);
                   })
-                  .catch(() => toast(t('复制 Change 名称失败'), 'error'))
+                  .catch(() => messageApi.error(t('复制 Change 名称失败')))
               }
             />
           </Tooltip>

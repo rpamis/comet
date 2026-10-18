@@ -37,24 +37,21 @@ export function validateEvalRunId(id: string): void {
 export function evalValueHash(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
-/** All persisted paths belong to the selected workspace; links outside it are rejected. */
+/** Eval 存储路径固定在当前工作区，拒绝符号链接串用其他运行的证据。 */
 export async function evalStoragePath(projectRoot: string, ...segments: string[]): Promise<string> {
   const project = await fs.realpath(projectRoot);
   const target = path.resolve(project, '.comet', 'eval', ...segments);
   if (!isPathWithin(path.join(project, '.comet', 'eval'), target))
     throw new EvalRunError('Eval 路径越界');
-  let parent = target;
-  for (;;) {
+  let current = project;
+  for (const segment of path.relative(project, target).split(path.sep)) {
+    current = path.join(current, segment);
     try {
-      const actual = await fs.realpath(parent);
-      if (!isPathWithin(project, actual))
-        throw new EvalRunError('Eval 目录不能引用当前工作区以外的路径');
-      break;
+      const stat = await fs.lstat(current);
+      if (stat.isSymbolicLink()) throw new EvalRunError('Eval 路径不允许符号链接');
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      const next = path.dirname(parent);
-      if (next === parent) throw error;
-      parent = next;
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') break;
+      throw error;
     }
   }
   return target;
@@ -65,7 +62,7 @@ export async function evalRunPath(
   ...segments: string[]
 ): Promise<string> {
   validateEvalRunId(id);
-  const root = await evalStoragePath(project, 'runs', id);
+  const root = path.resolve(project, '.comet', 'eval', 'runs', id);
   const target = path.resolve(root, ...segments);
   if (!isPathWithin(root, target)) throw new EvalRunError('运行产物路径越界');
   return evalStoragePath(project, 'runs', id, ...segments);
@@ -76,7 +73,9 @@ export async function readEvalJson(file: string): Promise<Json | null> {
     if (!stat.isFile() || stat.size > MAX_JSON_BYTES)
       throw new EvalRunError('Eval JSON 超过读取限制');
     const value = JSON.parse(await fs.readFile(file, 'utf8'));
-    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      throw new EvalRunError('Eval JSON 必须为对象');
+    return value;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
@@ -133,6 +132,42 @@ export function redactEvalOutput(
   }
   return result;
 }
+function validExpectedMatrix(matrix: Json, declaredHash: unknown): boolean {
+  if (
+    Object.keys(matrix).sort().join(',') !== 'cases,matrix_hash,schema' ||
+    matrix.schema !== 'comet.eval.expected-case-matrix.v1' ||
+    !Array.isArray(matrix.cases)
+  )
+    return false;
+  const identifier = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/u;
+  const cases: Array<{ rep: number; task: string; treatment: string }> = [];
+  for (const raw of matrix.cases) {
+    const item = object(raw);
+    if (
+      Object.keys(item).sort().join(',') !== 'rep,task,treatment' ||
+      typeof item.task !== 'string' ||
+      !identifier.test(item.task) ||
+      typeof item.treatment !== 'string' ||
+      !identifier.test(item.treatment) ||
+      typeof item.rep !== 'number' ||
+      !Number.isSafeInteger(item.rep) ||
+      item.rep < 1
+    )
+      return false;
+    cases.push({ rep: item.rep, task: item.task, treatment: item.treatment });
+  }
+  const compare = (a: (typeof cases)[number], b: (typeof cases)[number]) =>
+    (a.task < b.task ? -1 : a.task > b.task ? 1 : 0) ||
+    (a.treatment < b.treatment ? -1 : a.treatment > b.treatment ? 1 : 0) ||
+    a.rep - b.rep;
+  if (cases.some((item, index) => index > 0 && compare(cases[index - 1], item) >= 0)) return false;
+  // 与 Python json.dumps(sort_keys=True, separators=(',', ':')) 保持字段顺序一致。
+  const hash = `sha256:${createHash('sha256')
+    .update(JSON.stringify({ cases, schema: matrix.schema }))
+    .digest('hex')}`;
+  return matrix.matrix_hash === hash && (declaredHash === undefined || declaredHash === hash);
+}
+
 function normalizeCase(id: string, raw: Json, root: string): EvalCaseResult {
   const events = object(raw.events_summary);
   const manifest = object(events.case_manifest);
@@ -223,6 +258,30 @@ async function optionalJson(
     return null;
   }
 }
+async function readRunJsonFiles(
+  project: string,
+  id: string,
+  names: readonly string[],
+  diagnostics: string[],
+): Promise<Array<Json | null>> {
+  const values: Array<Json | null> = [];
+  // 每个文件仍完整校验路径；并发读取只共享顺序，不复用安全检查结果。
+  for (let offset = 0; offset < names.length; offset += 4) {
+    const batch = await Promise.all(
+      names.slice(offset, offset + 4).map(async (name) => {
+        const messages: string[] = [];
+        const value = await optionalJson(project, id, name, messages);
+        return { value, messages };
+      }),
+    );
+    for (const result of batch) {
+      values.push(result.value);
+      diagnostics.push(...result.messages);
+    }
+  }
+  return values;
+}
+
 async function baselineMap(project: string): Promise<Record<string, string>> {
   const data = await readEvalJson(await evalStoragePath(project, 'baselines.json'));
   return data?.schema === 'comet.eval.baselines.v1'
@@ -286,26 +345,42 @@ export async function readEvalRun(project: string, id: string): Promise<EvalRunD
     throw new EvalRunError('Eval 运行不存在', 404);
   }
   const diagnostics: string[] = [];
-  const [metadata, application, record, matrix, progress] = await Promise.all([
-    optionalJson(project, id, 'metadata.json', diagnostics),
-    optionalJson(project, id, 'application-result.json', diagnostics),
-    optionalJson(project, id, 'dashboard-run.json', diagnostics),
-    optionalJson(project, id, 'expected-case-matrix.json', diagnostics),
-    optionalJson(project, id, 'progress.json', diagnostics),
-  ]);
+  const [metadata, application, record, matrix, progress] = await readRunJsonFiles(
+    project,
+    id,
+    [
+      'metadata.json',
+      'application-result.json',
+      'dashboard-run.json',
+      'expected-case-matrix.json',
+      'progress.json',
+    ],
+    diagnostics,
+  );
   const managed =
     record?.schema === 'comet.eval.managed-run.v1' ? (record as unknown as EvalManagedRun) : null;
-  const entries = await fs.readdir(path.join(root, 'reports')).catch(() => [] as string[]);
+  const entries = await evalRunPath(project, id, 'reports')
+    .then((directory) => fs.readdir(directory))
+    .catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') diagnostics.push(`用例报告不可读取：${error.message}`);
+      return [] as string[];
+    });
   const cases: EvalCaseResult[] = [];
   let firstReport: Json | null = null;
-  for (const file of entries
+  const reportFiles = entries
     .filter((file) => /^[\w.-]+_report\.json$/u.test(file))
     .sort()
-    .slice(0, 2000)) {
-    const raw = await optionalJson(project, id, `reports/${file}`, diagnostics);
+    .slice(0, 2000);
+  const reports = await readRunJsonFiles(
+    project,
+    id,
+    reportFiles.map((file) => `reports/${file}`),
+    diagnostics,
+  );
+  for (const [index, raw] of reports.entries()) {
     if (raw) {
       firstReport ??= raw;
-      cases.push(normalizeCase(file, raw, root));
+      cases.push(normalizeCase(reportFiles[index], raw, root));
     }
   }
   const events = object(firstReport?.events_summary);
@@ -333,14 +408,43 @@ export async function readEvalRun(project: string, id: string): Promise<EvalRunD
   const completedAt = text(metadata?.completed_at);
   const executionStatus =
     managed?.status ?? (completedAt ? 'completed' : application?.status ? 'completed' : 'unknown');
+  const caseKey = (task: unknown, treatment: unknown, repetition: unknown) =>
+    JSON.stringify([task, treatment, repetition]);
+  const actualKeys = new Set(
+    cases.map((item) => caseKey(item.task, item.treatment, item.repetition)),
+  );
+  const expectedCases = Array.isArray(matrix?.cases) ? matrix.cases : null;
+  const matrixComplete =
+    (expectedCases === null &&
+      matrix === null &&
+      !Object.hasOwn(object(metadata?.expected_case_matrix), 'matrix_hash') &&
+      !diagnostics.some((message) => message.startsWith('expected-case-matrix.json：'))) ||
+    (matrix !== null &&
+      validExpectedMatrix(matrix, object(metadata?.expected_case_matrix).matrix_hash) &&
+      expectedCases !== null &&
+      expectedCases.length === cases.length &&
+      new Set(
+        expectedCases.map((item) => {
+          const expected = object(item);
+          return caseKey(expected.task, expected.treatment, expected.rep);
+        }),
+      ).size === expectedCases.length &&
+      expectedCases.every((item) => {
+        const expected = object(item);
+        return actualKeys.has(caseKey(expected.task, expected.treatment, expected.rep));
+      }));
   const complete =
+    actualKeys.size === cases.length &&
+    matrixComplete &&
     cases.length > 0 &&
     cases.every((item) => item.passed !== null) &&
     expectedTotal !== null &&
     cases.length === expectedTotal;
+  if (!complete)
+    diagnostics.push('用例报告未覆盖完整的预期用例矩阵；保留已有结果，不允许设为基线。');
   const excluded = cases.some((item) => item.quality === 'excluded');
   let conclusion: EvalRunDetail['conclusion'] = 'incomplete';
-  if (executionStatus === 'completed' && !excluded) {
+  if (executionStatus === 'completed' && complete && !excluded) {
     if (
       application &&
       (application.status === 'passed' ||
@@ -384,7 +488,7 @@ export async function readEvalRun(project: string, id: string): Promise<EvalRunD
     ? '此记录仅包含失败用例重跑，不能作为完整评估基线'
     : executionStatus !== 'completed'
       ? '运行尚未完整结束'
-      : conclusion === 'incomplete'
+      : !complete || conclusion === 'incomplete'
         ? '结果不完整或存在环境异常'
         : cases.some((item) => item.quality !== 'included')
           ? '样本质量有风险标记或缺少有效证据'

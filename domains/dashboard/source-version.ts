@@ -6,22 +6,40 @@ export async function fingerprintDashboardFiles(
   files: readonly string[],
   identity: string,
 ): Promise<string | null> {
-  const hash = createHash('sha256').update(identity);
+  return (await fingerprintDashboardFileGroups([files], identity))[0];
+}
+
+/** 同一轮校验共享元数据读取；采集前后两轮校验不能共享。 */
+export async function fingerprintDashboardFileGroups(
+  groups: readonly (readonly string[])[],
+  identity: string,
+): Promise<(string | null)[]> {
+  const files = [...new Set(groups.flat())];
+  const stamps = new Map<string, unknown[] | null>();
   for (let offset = 0; offset < files.length; offset += 64) {
-    const stamps = await Promise.all(
+    await Promise.all(
       files.slice(offset, offset + 64).map(async (file) => {
         try {
           const stat = await fs.lstat(file);
-          return [file, stat.ino, stat.mode, stat.size, stat.mtimeMs, stat.ctimeMs];
+          stamps.set(file, [file, stat.ino, stat.mode, stat.size, stat.mtimeMs, stat.ctimeMs]);
         } catch (error) {
-          if (['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? ''))
-            return [file, 'missing'];
-          return null;
+          stamps.set(
+            file,
+            ['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')
+              ? [file, 'missing']
+              : null,
+          );
         }
       }),
     );
-    if (stamps.some((stamp) => stamp === null)) return null;
-    hash.update(JSON.stringify(stamps));
   }
-  return hash.digest('hex');
+  return groups.map((group) => {
+    const hash = createHash('sha256').update(identity);
+    for (let offset = 0; offset < group.length; offset += 64) {
+      const values = group.slice(offset, offset + 64).map((file) => stamps.get(file));
+      if (values.some((value) => value == null)) return null;
+      hash.update(JSON.stringify(values));
+    }
+    return hash.digest('hex');
+  });
 }

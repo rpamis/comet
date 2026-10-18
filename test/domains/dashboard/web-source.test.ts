@@ -207,6 +207,26 @@ describe('dashboard web source contracts', () => {
     );
   });
 
+  it('uses server-side memory search and bounded pagination with stale-response protection', async () => {
+    const source = await readDashboardSource();
+    const page =
+      source.match(/function PersonalMemoryCenter\([\s\S]*?\n}\n\nfunction AntSummaryCards/)?.[0] ??
+      '';
+    expect(page).toContain("invokeRef.current('manage'");
+    expect(page).toContain('managementFilter: memoryFilter');
+    expect(page).toContain('offset: memoryOffset');
+    expect(page).toContain('if (!current) return');
+    expect(page).toContain('memoryPage?.requestKey === requestKey');
+    expect(page).toContain('management.nextOffset');
+    expect(page).toContain('management.requiredBytes');
+    expect(page).toContain('management.total');
+    expect(page).toContain("invokeMemoryMutation('remove'");
+    expect(page).toContain('resetMemoryPage();');
+    expect(source).toContain(
+      "requestedPluginId === 'comet.personal-memory' && capability === 'manage'",
+    );
+  });
+
   it('explains personal memory budgets in plain language', async () => {
     const source = await readDashboardSource();
 

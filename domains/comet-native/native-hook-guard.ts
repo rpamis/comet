@@ -1,3 +1,8 @@
+import { mapWithConcurrency } from './native-concurrency.js';
+import {
+  isNativeSdkChangeCancellationComplete,
+  isNativeSdkCancellationComplete,
+} from './native-sdk-cancellation.js';
 import { promises as fs, type Dirent } from 'fs';
 import path from 'path';
 
@@ -236,7 +241,8 @@ interface ActiveNativeContext {
   paths: NativeProjectPaths;
   changes: Array<
     | { kind: 'legacy'; state: NativeChangeState }
-    | { kind: 'portable' | 'sdk'; state: NativePortableState }
+    | { kind: 'portable'; state: NativePortableState }
+    | { kind: 'sdk'; state: NativePortableState; cancelling: boolean }
   >;
 }
 
@@ -655,8 +661,10 @@ async function activeNativeContextImpl(projectRoot: string): Promise<ActiveNativ
   const config = await readHookProjectConfig(projectRoot);
   if (!config || !(config.workflows ?? [config.default_workflow]).includes('native')) return null;
 
-  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
-  const sdkNames = new Set(await listNativeSdkChangeNames(projectRoot));
+  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root, {
+    readOnly: true,
+  });
+  const sdkNames = new Set(await listNativeSdkChangeNames(projectRoot, { readOnly: true }));
   let entries: Dirent[];
   try {
     entries = await fs.readdir(paths.changesDir, { withFileTypes: true });
@@ -665,24 +673,51 @@ async function activeNativeContextImpl(projectRoot: string): Promise<ActiveNativ
     else throw error;
   }
 
-  const changes: ActiveNativeContext['changes'] = [];
+  const candidates: Array<{ name: string; sdk: boolean }> = [];
   for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
-    if (sdkNames.has(entry.name)) {
-      const { state } = await inspectHookSdkRun(projectRoot, entry.name);
-      if (!state.archived) changes.push({ kind: 'sdk', state });
-      sdkNames.delete(entry.name);
-    } else if (await isNativePortableChange(paths, entry.name)) {
-      const state = await readNativePortableChange(paths, entry.name);
-      if (!state.archived) changes.push({ kind: 'portable', state });
-    } else {
-      const state = await readNativeChange(paths, entry.name);
-      if (!state.archived) changes.push({ kind: 'legacy', state });
-    }
+    candidates.push({ name: entry.name, sdk: sdkNames.delete(entry.name) });
   }
-  for (const name of sdkNames) {
-    const { state } = await inspectHookSdkRun(projectRoot, name);
-    if (!state.archived) changes.push({ kind: 'sdk', state });
+  for (const name of sdkNames) candidates.push({ name, sdk: true });
+
+  // 单次 Hook 内最多同时读取四个任务。先收齐结果，再按原枚举顺序报告错误，
+  // 避免并行完成顺序改变歧义诊断，或拒绝返回后仍留有未完成的读取。
+  type Change = ActiveNativeContext['changes'][number];
+  const results = await mapWithConcurrency(
+    candidates,
+    4,
+    async ({ name, sdk }): Promise<PromiseSettledResult<Change | null>> => {
+      try {
+        if (sdk) {
+          if (await isNativeSdkChangeCancellationComplete(projectRoot, name)) {
+            return { status: 'fulfilled', value: null };
+          }
+          const { state, run } = await inspectHookSdkRun(projectRoot, name);
+          const inactive =
+            state.archived || (await isNativeSdkCancellationComplete({ projectRoot, run }));
+          return {
+            status: 'fulfilled',
+            value: inactive ? null : { kind: 'sdk', state, cancelling: run.status === 'cancelled' },
+          };
+        }
+        if (await isNativePortableChange(paths, name)) {
+          const state = await readNativePortableChange(paths, name);
+          return {
+            status: 'fulfilled',
+            value: state.archived ? null : { kind: 'portable', state },
+          };
+        }
+        const state = await readNativeChange(paths, name);
+        return { status: 'fulfilled', value: state.archived ? null : { kind: 'legacy', state } };
+      } catch (reason) {
+        return { status: 'rejected', reason };
+      }
+    },
+  );
+  const changes: ActiveNativeContext['changes'] = [];
+  for (const result of results) {
+    if (result.status === 'rejected') throw result.reason;
+    if (result.value) changes.push(result.value);
   }
   return { paths, changes };
 }
@@ -693,11 +728,20 @@ async function selectedNativeContextImpl(
 ): Promise<ActiveNativeContext | null> {
   const config = await readHookProjectConfig(projectRoot);
   if (!config || !(config.workflows ?? [config.default_workflow]).includes('native')) return null;
-  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
+  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root, {
+    readOnly: true,
+  });
   try {
-    if (await readSdkChangeOwner(projectRoot, 'native', name)) {
-      const { state } = await inspectHookSdkRun(projectRoot, name);
-      return { paths, changes: state.archived ? [] : [{ kind: 'sdk', state }] };
+    if (await readSdkChangeOwner(projectRoot, 'native', name, { readOnly: true })) {
+      if (await isNativeSdkChangeCancellationComplete(projectRoot, name))
+        return { paths, changes: [] };
+      const { state, run } = await inspectHookSdkRun(projectRoot, name);
+      const inactive =
+        state.archived || (await isNativeSdkCancellationComplete({ projectRoot, run }));
+      return {
+        paths,
+        changes: inactive ? [] : [{ kind: 'sdk', state, cancelling: run.status === 'cancelled' }],
+      };
     }
     if (await isNativePortableChange(paths, name)) {
       const state = await readNativePortableChange(paths, name);
@@ -946,6 +990,15 @@ export async function inspectNativeHookGuard(
       workflow: 'native',
       phase: state.phase,
       change: state.name,
+    };
+  }
+  if (change.kind === 'sdk' && change.cancelling) {
+    return {
+      allowed: false,
+      reason: `Native change ${state.name} is cancelling; confirm the original executions stopped and finish cancellation cleanup before writing`,
+      workflow: 'native',
+      change: state.name,
+      phase: state.phase,
     };
   }
   if (change.kind !== 'legacy') {

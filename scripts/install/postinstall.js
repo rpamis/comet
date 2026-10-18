@@ -24,7 +24,7 @@ function shouldSkip() {
 
 async function distExists() {
   try {
-    const stat = await fs.stat(path.join(__dirname, '..', 'dist'));
+    const stat = await fs.stat(path.join(__dirname, '..', '..', 'dist'));
     return stat.isDirectory();
   } catch {
     return false;

@@ -1,3 +1,15 @@
+import {
+  listActiveNativeHookChanges,
+  inspectNativeHookGuard,
+  parseNativeHookRequest,
+} from '../../../domains/comet-native/native-hook-guard.js';
+import {
+  createNativeChange,
+  listActiveNativeChangesOwnedByWorkspace,
+} from '../../../domains/comet-native/native-change.js';
+import { createNativePortableChange } from '../../../domains/comet-native/native-portable-requirements.js';
+import { createNativeSdkChange } from '../../../domains/comet-native/native-sdk-create.js';
+import { isNativeSdkChangeCancellationComplete } from '../../../domains/comet-native/native-sdk-cancellation.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -67,6 +79,63 @@ async function fixture(stage: 'unstarted' | 'approval' | 'builder' = 'unstarted'
 }
 
 describe('Native cancellation lifecycle', () => {
+  it('keeps a cancelled claimed execution active until the original host proves it stopped', async () => {
+    const f = await fixture('builder');
+    const before = await f.runtime.inspect(f.name);
+    const action = before.actions.at(-1)!;
+    const claimed = await f.runtime.claim({
+      runId: f.name,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'original-host',
+      claimToken: 'retained-host-claim',
+    });
+    await f.runtime.cancel({ runId: f.name, reason: 'Stop scheduling' });
+    expect(await isNativeSdkChangeCancellationComplete(f.root, f.name)).toBe(false);
+    for (const command of [
+      `comet native doctor ${f.name} --repair --json`,
+      'comet runtime dispatch --application native --request stop-confirmation.json',
+    ]) {
+      const request = parseNativeHookRequest(
+        JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
+      );
+      expect(await inspectNativeHookGuard(f.root, request, f.name)).toMatchObject({
+        allowed: true,
+      });
+    }
+
+    expect(
+      await inspectNativeHookGuard(f.root, { intent: 'write', targets: ['src/replacement.ts'] }),
+    ).toMatchObject({ allowed: false, reason: expect.stringContaining('cancelling') });
+    expect(
+      await inspectNativeHookGuard(
+        f.root,
+        { intent: 'write', targets: ['src/replacement.ts'] },
+        f.name,
+      ),
+    ).toMatchObject({ allowed: false, reason: expect.stringContaining('cancelling') });
+
+    expect(await listActiveNativeHookChanges(f.root)).toEqual([
+      expect.objectContaining({ name: f.name }),
+    ]);
+    await f.runtime.cancel({
+      runId: f.name,
+      reason: 'Original host stopped',
+      stoppedActions: [
+        {
+          actionId: action.id,
+          attempt: action.attempt,
+          inputHash: action.inputHash,
+          claimToken: claimed.actions.at(-1)!.claim!.token,
+          evidence: 'The original execution and all of its child tasks stopped.',
+        },
+      ],
+    });
+    expect(await isNativeSdkChangeCancellationComplete(f.root, f.name)).toBe(true);
+    expect(await listActiveNativeHookChanges(f.root)).toEqual([]);
+  });
+
   it('reports pending selection cleanup and the retained root lock age gate instead of declaring cancellation complete', async () => {
     const f = await fixture('unstarted');
     const before = await f.runtime.inspect(f.name);
@@ -100,6 +169,33 @@ describe('Native cancellation lifecycle', () => {
         commandArgs: ['comet', 'native', 'doctor', '--json', '--project-root', f.root],
       },
     });
+    expect(await isNativeSdkChangeCancellationComplete(f.root, f.name)).toBe(false);
+    for (const command of [
+      `comet native doctor ${f.name} --repair --json`,
+      'comet runtime dispatch --application native --request stop-confirmation.json',
+    ]) {
+      const request = parseNativeHookRequest(
+        JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
+      );
+      expect(await inspectNativeHookGuard(f.root, request, f.name)).toMatchObject({
+        allowed: true,
+      });
+    }
+
+    expect(
+      await inspectNativeHookGuard(f.root, { intent: 'write', targets: ['src/replacement.ts'] }),
+    ).toMatchObject({ allowed: false, reason: expect.stringContaining('cancelling') });
+    expect(
+      await inspectNativeHookGuard(
+        f.root,
+        { intent: 'write', targets: ['src/replacement.ts'] },
+        f.name,
+      ),
+    ).toMatchObject({ allowed: false, reason: expect.stringContaining('cancelling') });
+
+    expect(await listActiveNativeHookChanges(f.root)).toEqual([
+      expect.objectContaining({ name: f.name }),
+    ]);
     expect(status.data.cancellation.cleanup.rootMoveLock.remainingMs).toBeGreaterThan(850000);
     const doctor = await f.cli(['doctor', f.name]);
     expect(doctor.data.healthy).toBe(false);
@@ -111,6 +207,21 @@ describe('Native cancellation lifecycle', () => {
     expect(JSON.parse(await fs.readFile(lock, 'utf8'))).toEqual(owner);
     // 受控假持有者自行释放它创建的锁；不是让 Runtime 绕过未知 owner 的保护。
     await fs.unlink(lock);
+    // 锁已由原持有者释放，但选择清理尚未完成，三种创建入口都必须保留阻塞。
+    expect(await listActiveNativeChangesOwnedByWorkspace(paths)).toEqual([f.name]);
+    const creation = {
+      paths,
+      name: 'blocked-replacement',
+      language: 'en' as const,
+      workspaceBinding: { isolation: 'current' as const, changeBranch: null, targetBranch: null },
+    };
+    for (const create of [createNativeSdkChange, createNativePortableChange, createNativeChange]) {
+      await expect(create(creation)).rejects.toThrow(/active|workspace|isolation/i);
+    }
+    expect(await readCometCurrentSelection(f.root)).toMatchObject({
+      status: 'selected',
+      selection: { change: f.name },
+    });
     expect((await f.cli(['doctor', f.name, '--repair'])).exitCode).toBe(0);
     expect((await f.cli(['status', f.name])).data.status).toBe('cancelled');
     expect((await f.cli(['new', 'after-root-release'])).exitCode).toBe(0);
@@ -259,6 +370,11 @@ describe('Native cancellation lifecycle', () => {
         findings: [],
         status: 'cancelled',
       });
+      expect(await isNativeSdkChangeCancellationComplete(f.root, f.name)).toBe(true);
+      expect(await listActiveNativeHookChanges(f.root)).toEqual([]);
+      expect(
+        await inspectNativeHookGuard(f.root, { intent: 'write', targets: ['src/replacement.ts'] }),
+      ).toMatchObject({ allowed: true });
       expect(await readCometCurrentSelection(f.root)).toEqual({ status: 'missing' });
       expect(await f.runtime.cancel({ runId: f.name, reason: 'Cancel again' })).toEqual(cancelled);
       expect(await fs.readFile(path.join(f.change, 'brief.md'), 'utf8')).toBe(originalBrief);

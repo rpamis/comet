@@ -18,6 +18,7 @@ const id = (value) =>
   typeof value === 'string' &&
   value.length > 0 &&
   value.length <= 512 &&
+  // eslint-disable-next-line no-control-regex -- Route identifiers must reject control characters.
   !/[\u0000-\u001f]/u.test(value)
     ? value
     : null;

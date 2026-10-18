@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { constants as fsConstants, promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -97,6 +98,8 @@ export class FileMemoryRepository implements MemoryRepository {
   private readonly lockRetryMs: number;
   private readonly projectKey?: string;
   private readonly projectName?: string;
+  private stateWriteNeeded = true;
+  private stateCache?: { signature: string; state: MemoryRuntimeState; content: string };
 
   public constructor(root: string, options: FileMemoryRepositoryOptions = {}) {
     this.root = path.resolve(root);
@@ -144,7 +147,38 @@ export class FileMemoryRepository implements MemoryRepository {
     await fs.rename(temporary, target);
   }
 
+  private async stateSignature(): Promise<string | null> {
+    try {
+      const stat = await fs.stat(this.resolve('.comet/runtime/memory-state.json'), {
+        bigint: true,
+      });
+      if (
+        typeof stat.dev !== 'bigint' ||
+        stat.dev < 0n ||
+        typeof stat.ino !== 'bigint' ||
+        stat.ino <= 0n ||
+        typeof stat.size !== 'bigint' ||
+        stat.size < 0n ||
+        typeof stat.mtimeNs !== 'bigint' ||
+        stat.mtimeNs <= 0n ||
+        typeof stat.ctimeNs !== 'bigint' ||
+        stat.ctimeNs <= 0n
+      )
+        return null;
+      return `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+  }
+
   public async readState(): Promise<MemoryRuntimeState> {
+    const signature = await this.stateSignature();
+    if (signature !== null && this.stateCache?.signature === signature) {
+      return structuredClone(this.stateCache.state);
+    }
+    this.stateCache = undefined;
+    this.stateWriteNeeded = true;
     const content = await this.readText('.comet/runtime/memory-state.json');
     if (content === null || content.trim().length === 0) return emptyMemoryState();
     let parsed: unknown;
@@ -155,11 +189,29 @@ export class FileMemoryRepository implements MemoryRepository {
         cause: error,
       });
     }
-    return validateState(parsed);
+    const state = validateState(parsed);
+    this.stateWriteNeeded = !isDeepStrictEqual(parsed, state);
+    // 仅缓存读取期间未被其他进程替换的文件；返回副本，调用者不能修改缓存。
+    if (signature !== null && signature === (await this.stateSignature())) {
+      this.stateCache = { signature, state: structuredClone(state), content };
+    }
+    return state;
+  }
+
+  public needsStateWrite(): boolean {
+    return this.stateWriteNeeded;
   }
 
   public async writeState(state: MemoryRuntimeState): Promise<void> {
-    await this.writeText('.comet/runtime/memory-state.json', `${JSON.stringify(state, null, 2)}\n`);
+    const content = `${JSON.stringify(state, null, 2)}\n`;
+    if (
+      this.stateCache?.content === content &&
+      this.stateCache.signature === (await this.stateSignature())
+    )
+      return;
+    this.stateCache = undefined;
+    await this.writeText('.comet/runtime/memory-state.json', content);
+    this.stateWriteNeeded = false;
   }
 
   public async withLock<T>(operation: () => Promise<T>): Promise<T> {

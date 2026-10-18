@@ -27,8 +27,14 @@ export const NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH =
 export const NATIVE_SDK_PRE_EDIT_REVIEW_HASH =
   'a4fa2f7ad12c5c7dd37374f9cb5f1154f2c686e3b3b5473533154c01fdcdd9ea';
 
-export function nativeSdkBeforeEditReview(workflow: DefineWorkflowOptions) {
+export function nativeSdkBeforeReadOnlyArchivePreflight(workflow: DefineWorkflowOptions) {
   const previous = structuredClone(workflow);
+  delete previous.steps['archive.prepare'].retry;
+  return previous;
+}
+
+export function nativeSdkBeforeEditReview(workflow: DefineWorkflowOptions) {
+  const previous = nativeSdkBeforeReadOnlyArchivePreflight(workflow);
   const confirmation = previous.steps['verify.confirm'];
   if (confirmation?.type === 'ask_user' && Array.isArray(confirmation.choices))
     confirmation.choices = confirmation.choices.filter((choice) => choice !== 'reverify');
@@ -79,6 +85,7 @@ export function nativeSdkLegacyDefinitions(workflow: DefineWorkflowOptions) {
     NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH,
   ];
   return [
+    nativeSdkBeforeReadOnlyArchivePreflight(workflow),
     ...(hashRuntimeValue(defineWorkflow(beforeEditReview)) === NATIVE_SDK_PRE_EDIT_REVIEW_HASH
       ? [beforeEditReview]
       : []),

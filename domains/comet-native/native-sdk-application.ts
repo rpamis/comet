@@ -160,6 +160,8 @@ export function nativeSdkApplicationForRun(
   run: Pick<WorkflowRun, 'workflow'> | null,
   application = defineNativeWorkflowApplication(),
 ) {
+  // 当前定义精确匹配时无需构造历史变体；未知 hash 仍交给 Runtime 拒绝。
+  if (run && nativeSdkMatchesRun(application.workflow, run)) return application;
   const workflow = nativeSdkLegacyDefinitions(application.workflow).find((candidate) =>
     nativeSdkMatchesRun(candidate, run),
   );
@@ -1205,6 +1207,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         'archive.prepare': {
           type: 'call_tool',
           ref: 'native-archive-preflight',
+          retry: 'idempotent',
           validator: {
             id: nativeSdkArchivePreflightValidator.id,
             version: nativeSdkArchivePreflightValidator.version,

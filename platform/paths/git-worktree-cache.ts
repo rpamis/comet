@@ -9,8 +9,10 @@ export async function gitWorktreeMetadataStamp(
 ): Promise<string | null> {
   try {
     const parts: string[] = [];
+    const directories = new Set<string>();
     let bytes = 0;
     const file = async (target: string): Promise<string | null> => {
+      directories.delete(target);
       let stat;
       try {
         stat = await fs.lstat(target, { bigint: true });
@@ -22,7 +24,10 @@ export async function gitWorktreeMetadataStamp(
       if (stat.isSymbolicLink() || stat.ino === 0n || !(stat.isFile() || stat.isDirectory()))
         throw new Error('Unstable Git metadata');
       parts.push(`${target}:${stat.dev}:${stat.ino}:${stat.ctimeNs}:${stat.mtimeNs}:${stat.size}`);
-      if (stat.isDirectory()) return null;
+      if (stat.isDirectory()) {
+        directories.add(target);
+        return null;
+      }
       if (stat.size > 65536n || (bytes += Number(stat.size)) > 262144)
         throw new Error('Git metadata exceeds cache budget');
       const content = await fs.readFile(target, 'utf8');
@@ -43,13 +48,9 @@ export async function gitWorktreeMetadataStamp(
         gitDir = path.resolve(root, match[1]);
         break;
       }
-      try {
-        if ((await fs.lstat(marker)).isDirectory()) {
-          gitDir = marker;
-          break;
-        }
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      if (directories.has(marker)) {
+        gitDir = marker;
+        break;
       }
       const parent = path.dirname(root);
       if (parent === root) return null;
@@ -71,10 +72,10 @@ export async function gitWorktreeMetadataStamp(
     ])
       await file(target);
     const registry = path.join(common, 'worktrees');
-    await file(registry);
+    if ((await file(registry)) !== null) return null;
     let names: string[];
     try {
-      names = (await fs.readdir(registry)).sort();
+      names = directories.has(registry) ? (await fs.readdir(registry)).sort() : [];
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       names = [];

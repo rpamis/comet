@@ -2478,6 +2478,187 @@ describe('Native incremental content snapshots', () => {
     return createNativeCurrentContentSnapshot(paths, legacyPolicyBaseline);
   }
 
+  it.each([false, true])(
+    'rejects a file replaced after metadata prefetch (incremental: %s)',
+    async (incremental) => {
+      await initGitRepo();
+      const refs = ['a.ts', 'b.ts', 'c.ts', 'd.ts'];
+      await Promise.all(refs.map((ref) => fs.writeFile(path.join(projectRoot, ref), ref)));
+      await execFileAsync('git', ['add', '-A'], { cwd: projectRoot });
+      const baseline = await createNativeContentSnapshot(paths);
+      const lstat = fs.lstat.bind(fs);
+      let observedB!: () => void;
+      const bReady = new Promise<void>((resolve) => {
+        observedB = resolve;
+      });
+      let replaced = false;
+      const spy = vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+        const stat = await lstat(...args);
+        if (String(args[0]) === path.join(projectRoot, 'b.ts')) observedB();
+        if (String(args[0]) === path.join(projectRoot, 'd.ts') && !replaced) {
+          await bReady;
+          replaced = true;
+          await fs.unlink(path.join(projectRoot, 'b.ts'));
+          await fs.writeFile(path.join(projectRoot, 'b.ts'), 'replacement content');
+        }
+        return stat;
+      });
+      try {
+        const snapshot = await createNativeContentSnapshot(paths, {
+          ...(incremental ? { incrementalBaseline: baseline } : {}),
+        });
+        expect(replaced).toBe(true);
+        expect(snapshot.complete).toBe(false);
+        expect(snapshot.entries.some((entry) => entry.path === 'b.ts')).toBe(false);
+        expect(snapshot.omitted).toContainEqual(
+          expect.objectContaining({
+            path: 'b.ts',
+            reason: 'changed-during-read',
+          }),
+        );
+      } finally {
+        spy.mockRestore();
+      }
+    },
+  );
+
+  it.runIf(process.platform !== 'win32').each([
+    { incremental: false, destination: 'outside' },
+    { incremental: true, destination: 'outside' },
+    { incremental: false, destination: 'native' },
+    { incremental: true, destination: 'native' },
+  ])(
+    'rejects a prefetched file replaced by a $destination symlink (incremental: $incremental)',
+    async ({ incremental, destination }) => {
+      await initGitRepo();
+      const refs = ['a.ts', 'b.ts', 'c.ts', 'd.ts'];
+      await Promise.all(refs.map((ref) => fs.writeFile(path.join(projectRoot, ref), ref)));
+      await execFileAsync('git', ['add', '-A'], { cwd: projectRoot });
+      const baseline = await createNativeContentSnapshot(paths);
+      const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-snapshot-link-'));
+      const excludedFile = path.join(
+        destination === 'outside' ? outside : paths.nativeRoot,
+        'secret.txt',
+      );
+      await fs.writeFile(excludedFile, 'must never be opened');
+      const lstat = fs.lstat.bind(fs);
+      let observedB!: () => void;
+      const bReady = new Promise<void>((resolve) => {
+        observedB = resolve;
+      });
+      let replaced = false;
+      const spy = vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+        const stat = await lstat(...args);
+        if (String(args[0]) === path.join(projectRoot, 'b.ts')) observedB();
+        if (String(args[0]) === path.join(projectRoot, 'd.ts') && !replaced) {
+          await bReady;
+          replaced = true;
+          await fs.unlink(path.join(projectRoot, 'b.ts'));
+          await fs.symlink(excludedFile, path.join(projectRoot, 'b.ts'), 'file');
+        }
+        return stat;
+      });
+      const openSpy = vi.spyOn(fs, 'open');
+      try {
+        const snapshot = await createNativeContentSnapshot(paths, {
+          ...(incremental ? { incrementalBaseline: baseline } : {}),
+        });
+        expect(replaced).toBe(true);
+        expect(snapshot.complete).toBe(false);
+        expect(snapshot.entries.map((entry) => entry.path)).toEqual(['a.ts', 'c.ts', 'd.ts']);
+        expect(snapshot.omitted).toContainEqual(
+          expect.objectContaining({
+            path: 'b.ts',
+            reason: 'changed-during-read',
+          }),
+        );
+        expect(
+          openSpy.mock.calls.some(([file]) =>
+            [excludedFile, path.join(projectRoot, 'b.ts')].includes(String(file)),
+          ),
+        ).toBe(false);
+      } finally {
+        spy.mockRestore();
+        openSpy.mockRestore();
+        await fs.rm(outside, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.runIf(process.platform !== 'win32').each(['outside', 'native'])(
+    'preserves stable excluded directory aliases into %s paths',
+    async (destination) => {
+      await initGitRepo();
+      const alias = path.join(projectRoot, 'alias');
+      await fs.mkdir(alias);
+      await fs.writeFile(path.join(alias, 'file.ts'), 'tracked file');
+      await fs.writeFile(path.join(projectRoot, 'a.ts'), 'included');
+      await execFileAsync('git', ['add', '-A'], { cwd: projectRoot });
+      const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-snapshot-alias-'));
+      const excludedRoot = destination === 'outside' ? outside : paths.nativeRoot;
+      await fs.writeFile(path.join(excludedRoot, 'file.ts'), 'excluded content');
+      await fs.rm(alias, { recursive: true });
+      await fs.symlink(excludedRoot, alias, 'dir');
+      const openSpy = vi.spyOn(fs, 'open');
+      try {
+        const snapshot = await createNativeContentSnapshot(paths);
+        expect(snapshot.complete).toBe(true);
+        expect(snapshot.entries.some((entry) => entry.path === 'alias/file.ts')).toBe(false);
+        expect(snapshot.entries.some((entry) => entry.path === 'a.ts')).toBe(true);
+        expect(snapshot.omitted).toEqual([]);
+        expect(openSpy.mock.calls.some(([file]) => String(file).endsWith('file.ts'))).toBe(false);
+      } finally {
+        openSpy.mockRestore();
+        await fs.rm(outside, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it('preloads clean tracked metadata with bounded concurrency and no content reads', async () => {
+    await initGitRepo();
+    const refs = Array.from(
+      { length: 24 },
+      (_, index) => `file-${String(index).padStart(2, '0')}.ts`,
+    );
+    await Promise.all(refs.map((ref) => fs.writeFile(path.join(projectRoot, ref), ref)));
+    await execFileAsync('git', ['add', '-A'], { cwd: projectRoot });
+    const baseline = await createNativeContentSnapshot(paths);
+    const lstat = fs.lstat.bind(fs);
+    let active = 0;
+    let peak = 0;
+    const statSpy = vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+      if (!String(args[0]).endsWith('.ts')) return lstat(...args);
+      active += 1;
+      peak = Math.max(peak, active);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return await lstat(...args);
+      } finally {
+        active -= 1;
+      }
+    });
+    const openSpy = vi.spyOn(fs, 'open');
+    try {
+      const snapshot = await createNativeContentSnapshot(paths, { incrementalBaseline: baseline });
+      expect(snapshot.complete).toBe(true);
+      expect(snapshot.entries).toEqual(baseline.entries);
+      expect(peak).toBeGreaterThan(1);
+      expect(peak).toBeLessThanOrEqual(16);
+      expect(active).toBe(0);
+      expect(openSpy.mock.calls.some(([file]) => String(file).endsWith('.ts'))).toBe(false);
+      const limited = await createNativeContentSnapshot(paths, {
+        incrementalBaseline: baseline,
+        limits: { maxFiles: 3 },
+      });
+      expect(limited.entries.map((entry) => entry.path)).toEqual(refs.slice(0, 3));
+      expect(limited.omittedCount).toBe(21);
+      expect(active).toBe(0);
+    } finally {
+      statSpy.mockRestore();
+      openSpy.mockRestore();
+    }
+  });
+
   it('produces an identical projection hash when no files changed since baseline', async () => {
     await initGitRepo();
     await fs.writeFile(path.join(projectRoot, 'a.ts'), 'export const a = 1;\n');

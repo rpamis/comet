@@ -1,15 +1,30 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import {
   readEvalRun,
+  evalRunPath,
   listEvalRuns,
   setEvalBaseline,
   clearEvalBaseline,
   compareEvalRuns,
   readEvalArtifact,
 } from '../../../domains/eval/eval-run-store.js';
+
+function expectedMatrix(
+  cases = [
+    { rep: 1, task: 'task-0', treatment: 'task-0' },
+    { rep: 1, task: 'task-1', treatment: 'task-1' },
+  ],
+) {
+  const value = { cases, schema: 'comet.eval.expected-case-matrix.v1' };
+  return {
+    ...value,
+    matrix_hash: `sha256:${createHash('sha256').update(JSON.stringify(value)).digest('hex')}`,
+  };
+}
 
 describe('Eval run history and baselines', () => {
   let project: string;
@@ -64,6 +79,67 @@ describe('Eval run history and baselines', () => {
     await fs.writeFile(path.join(root, 'summary.md'), '# Eval report');
     return root;
   }
+  it('checks every path component once and never reuses a previous symlink check', async () => {
+    const root = await report('paths', [true]);
+    const canonicalProject = await fs.realpath(project);
+    const inspected: string[] = [];
+    const lstat = fs.lstat;
+    const spy = vi.spyOn(fs, 'lstat').mockImplementation((...args: Parameters<typeof fs.lstat>) => {
+      inspected.push(String(args[0]));
+      return lstat(...args);
+    });
+    try {
+      await evalRunPath(project, 'paths', 'reports/case-0_report.json');
+      expect(inspected).toEqual(
+        [
+          '.comet',
+          '.comet/eval',
+          '.comet/eval/runs',
+          '.comet/eval/runs/paths',
+          '.comet/eval/runs/paths/reports',
+          '.comet/eval/runs/paths/reports/case-0_report.json',
+        ].map((relative) => path.join(canonicalProject, relative)),
+      );
+    } finally {
+      spy.mockRestore();
+    }
+    await expect(evalRunPath(project, 'paths', '../other/metadata.json')).rejects.toThrow(/越界/);
+    const file = path.join(root, 'reports/case-0_report.json');
+    await fs.rm(file);
+    await fs.symlink(path.join(root, 'metadata.json'), file);
+    await expect(evalRunPath(project, 'paths', 'reports/case-0_report.json')).rejects.toThrow(
+      /符号链接/,
+    );
+  });
+
+  it('keeps bounded parallel report reads and diagnostics in sorted file order', async () => {
+    const root = await report(
+      'ordered',
+      Array.from({ length: 12 }, () => true),
+    );
+    for (const index of [2, 10])
+      await fs.writeFile(path.join(root, `reports/case-${index}_report.json`), '{broken');
+    const run = await readEvalRun(project, 'ordered');
+    expect(run.cases.map((item) => item.task)).toEqual([
+      'task-0',
+      'task-11',
+      'task-1',
+      'task-3',
+      'task-4',
+      'task-5',
+      'task-6',
+      'task-7',
+      'task-8',
+      'task-9',
+    ]);
+    expect(
+      run.diagnostics
+        .filter((message) => message.startsWith('reports/'))
+        .map((message) => message.split('：')[0]),
+    ).toEqual(['reports/case-10_report.json', 'reports/case-2_report.json']);
+    expect(run.baselineEligible).toBe(false);
+  });
+
   it('discovers completed CLI reports without treating missing cost as zero', async () => {
     await report('run-a', [true, false]);
     const runs = await listEvalRuns(project);
@@ -84,6 +160,112 @@ describe('Eval run history and baselines', () => {
       finalResponse: '请先提供本周数据',
     });
   });
+  it('accepts complete matrix identities and rejects a missing declared matrix', async () => {
+    // Python aligned_comparison 的 canonical JSON 摘要。
+    expect(expectedMatrix().matrix_hash).toBe(
+      'sha256:1df97462f707cd25cdc31ecea8c11e8b9e7e97ec1eeb9e735fb62fd178ba5fe7',
+    );
+    const root = await report('matrix', [true, true]);
+    const metadataFile = path.join(root, 'metadata.json');
+    const metadata = JSON.parse(await fs.readFile(metadataFile, 'utf8'));
+    metadata.expected_case_matrix.matrix_hash = expectedMatrix().matrix_hash;
+    await fs.writeFile(metadataFile, JSON.stringify(metadata));
+    expect((await readEvalRun(project, 'matrix')).baselineEligible).toBe(false);
+    await fs.writeFile(
+      path.join(root, 'expected-case-matrix.json'),
+      JSON.stringify(expectedMatrix()),
+    );
+    expect((await readEvalRun(project, 'matrix')).baselineEligible).toBe(true);
+    expect((await setEvalBaseline(project, 'matrix')).isBaseline).toBe(true);
+  });
+
+  it.each(['null', '[]', '{broken'])(
+    'rejects unreadable matrix JSON %s without falling back to the case count',
+    async (contents) => {
+      const root = await report('invalid-json', [true, true]);
+      await fs.writeFile(path.join(root, 'expected-case-matrix.json'), contents);
+      const run = await readEvalRun(project, 'invalid-json');
+      expect(run.baselineEligible).toBe(false);
+      expect(run.cases).toHaveLength(2);
+      expect(run.diagnostics.join(' ')).toContain('expected-case-matrix.json');
+    },
+  );
+
+  it.each(['hash', 'schema', 'metadata-binding', 'order', 'extra-field', 'rep'])(
+    'rejects invalid matrix %s even when all reports pass',
+    async (damage) => {
+      const root = await report('invalid-matrix', [true, true]);
+      const matrix = expectedMatrix();
+      const metadataFile = path.join(root, 'metadata.json');
+      const metadata = JSON.parse(await fs.readFile(metadataFile, 'utf8'));
+      metadata.expected_case_matrix.matrix_hash =
+        damage === 'metadata-binding' ? 'sha256:original' : matrix.matrix_hash;
+      await fs.writeFile(metadataFile, JSON.stringify(metadata));
+      if (damage === 'hash') matrix.matrix_hash = 'sha256:changed';
+      if (damage === 'schema') matrix.schema = 'wrong-schema';
+      if (damage === 'order') matrix.cases.reverse();
+      if (damage === 'extra-field') Object.assign(matrix, { unexpected: true });
+      if (damage === 'rep') matrix.cases[0].rep = 1.5;
+      await fs.writeFile(path.join(root, 'expected-case-matrix.json'), JSON.stringify(matrix));
+      const run = await readEvalRun(project, 'invalid-matrix');
+      expect(run.cases).toHaveLength(2);
+      expect(run.conclusion).toBe('incomplete');
+      expect(run.baselineEligible).toBe(false);
+      await expect(setEvalBaseline(project, 'invalid-matrix')).rejects.toThrow(/完整/);
+    },
+  );
+
+  it.each(['missing', 'duplicate', 'wrong-case'])(
+    'rejects a passed application summary with %s case evidence',
+    async (damage) => {
+      const root = await report('application', [true, true]);
+      await fs.writeFile(
+        path.join(root, 'application-result.json'),
+        JSON.stringify({ status: 'passed', application: { id: 'app' }, passed: 2, total: 2 }),
+      );
+      const first = path.join(root, 'reports/case-0_report.json');
+      const second = path.join(root, 'reports/case-1_report.json');
+      if (damage === 'missing') await fs.rm(second);
+      if (damage === 'duplicate') await fs.copyFile(first, second);
+      if (damage === 'wrong-case')
+        await fs.writeFile(
+          path.join(root, 'expected-case-matrix.json'),
+          JSON.stringify({
+            cases: [
+              { task: 'task-0', treatment: 'task-0', rep: 1 },
+              { task: 'missing-task', treatment: 'missing-task', rep: 1 },
+            ],
+          }),
+        );
+      const run = await readEvalRun(project, 'application');
+      expect(run.conclusion).toBe('incomplete');
+      expect(run.baselineEligible).toBe(false);
+      expect(run.availableActions.setBaseline).toBe(false);
+      await expect(setEvalBaseline(project, 'application')).rejects.toThrow(/完整/);
+    },
+  );
+
+  it.each(['reports', 'report-file'])(
+    'rejects cross-run evidence through a %s symlink',
+    async (kind) => {
+      const root = await report('linked', [true]);
+      const other = await report('other', [true]);
+      const ref = kind === 'reports' ? 'reports' : 'reports/case-0_report.json';
+      await fs.rm(path.join(root, ref), { recursive: true });
+      await fs.symlink(
+        path.join(other, ref),
+        path.join(root, ref),
+        kind === 'reports' ? 'junction' : 'file',
+      );
+      const run = await readEvalRun(project, 'linked');
+      expect(run.cases).toHaveLength(0);
+      expect(run.conclusion).toBe('incomplete');
+      expect(run.baselineEligible).toBe(false);
+      expect(run.diagnostics.join(' ')).toMatch(/符号链接/);
+      await expect(setEvalBaseline(project, 'linked')).rejects.toThrow(/完整/);
+    },
+  );
+
   it('permits complete failed evidence as baseline and requires explicit replacement', async () => {
     await report('baseline', [true, false]);
     await report('candidate', [true, true]);

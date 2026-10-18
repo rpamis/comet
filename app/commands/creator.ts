@@ -101,7 +101,7 @@ export async function creatorStartCommand(
   const runtime = createCreatorRuntime(projectRoot(options));
   const run = await runtime.start({
     runId: name,
-    workflow: { id: 'comet-creator', version: '5' },
+    workflow: { id: 'comet-creator', version: '6' },
     input: {
       goal: options.goal,
       installTarget: options.installTarget,

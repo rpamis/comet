@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'fs';
+import { execFileSync } from 'child_process';
 import os from 'os';
 import path from 'path';
 
@@ -41,6 +42,7 @@ async function config(root: string, classic: string): Promise<void> {
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
@@ -244,5 +246,212 @@ describe('Classic artifact layout', () => {
     await fs.mkdir(nested, { recursive: true });
 
     await expect(discoverClassicProject(nested)).resolves.toBe(root);
+  });
+});
+
+describe('Classic project discovery boundaries', () => {
+  it.each(['.', 'src'])(
+    'rejects malformed child project YAML from %s instead of selecting its parent',
+    async (start) => {
+      const parent = await project();
+      execFileSync('git', ['init'], { cwd: parent, stdio: 'ignore' });
+      await config(parent, '  artifact_layout: docs\n');
+      const child = path.join(parent, 'child');
+      await config(child, '  artifact_layout: docs\nextension: [unterminated\n');
+      const cwd = path.join(child, start);
+      await fs.mkdir(cwd, { recursive: true });
+
+      await expect(discoverClassicProject(cwd)).rejects.toThrow('Invalid .comet/config.yaml');
+      await expect(fs.access(path.join(child, '.git'))).rejects.toMatchObject({ code: 'ENOENT' });
+    },
+  );
+
+  it.each(['"comet.project.v1" # project', "'comet.project.v1'"])(
+    'retains malformed ancestor boundaries with schema %s',
+    async (schema) => {
+      const parent = await project();
+      const child = path.join(parent, 'child');
+      const nested = path.join(child, 'src');
+      await fs.mkdir(nested, { recursive: true });
+      await fs.mkdir(path.join(child, '.comet'));
+      await fs.writeFile(
+        path.join(child, '.comet', 'config.yaml'),
+        `schema: ${schema}\nextension: [\n`,
+      );
+
+      await expect(discoverClassicProject(nested)).rejects.toThrow('Invalid .comet/config.yaml');
+    },
+  );
+
+  it.each([
+    '"schema": comet.project.v1\nclassic: { artifact_layout: invalid }\n',
+    '{ schema: comet.project.v1, classic: { artifact_layout: invalid } }',
+    '"schema": comet.project.v1\nextension: [',
+    '{ schema: comet.project.v1, extension: [',
+  ])('retains declared ancestor boundaries across YAML syntax: %s', async (source) => {
+    const parent = await project();
+    const child = path.join(parent, 'child');
+    const nested = path.join(child, 'src');
+    await fs.mkdir(nested, { recursive: true });
+    await fs.mkdir(path.join(child, '.comet'));
+    await fs.writeFile(path.join(child, '.comet', 'config.yaml'), source);
+
+    await expect(discoverClassicProject(nested)).rejects.toThrow(
+      /Invalid \.comet\/config.yaml|classic.artifact_layout must be/,
+    );
+  });
+
+  it.each([
+    'schema: other\nschema: comet.project.v1\n',
+    'schema: comet.project.v1\nschema: other\n',
+  ])('preserves duplicate schema errors regardless of key order: %s', async (source) => {
+    const parent = await project();
+    const child = path.join(parent, 'child');
+    const nested = path.join(child, 'src');
+    await fs.mkdir(nested, { recursive: true });
+    await fs.mkdir(path.join(child, '.comet'));
+    await fs.writeFile(path.join(child, '.comet', 'config.yaml'), source);
+
+    await expect(discoverClassicProject(nested)).rejects.toThrow('Map keys must be unique');
+  });
+
+  it.each([
+    ['value', 'value: &s comet.project.v1\nschema: *s\n'],
+    ['key', 'key: &k schema\n*k : comet.project.v1\n'],
+  ])(
+    'validates schema %s aliases at invocation and ancestor project roots',
+    async (_kind, declaration) => {
+      const parent = await project();
+      const child = path.join(parent, 'child');
+      const nested = path.join(child, 'src');
+      await fs.mkdir(nested, { recursive: true });
+      await fs.mkdir(path.join(child, '.comet'));
+      const file = path.join(child, '.comet', 'config.yaml');
+      const source =
+        declaration + 'default_workflow: classic\nclassic: { artifact_layout: docs }\n';
+      await fs.writeFile(file, source);
+      await expect(readClassicArtifactLayout(child)).resolves.toBe('docs');
+      await expect(discoverClassicProject(nested)).resolves.toBe(child);
+      await fs.writeFile(file, source.replace('artifact_layout: docs', 'artifact_layout: invalid'));
+
+      for (const cwd of [child, nested]) {
+        await expect(discoverClassicProject(cwd)).rejects.toThrow(
+          'classic.artifact_layout must be legacy or docs',
+        );
+      }
+    },
+  );
+
+  it.each(['schema: *missing\n', 'value: &s [comet.project.v1]\nschema: *s\n'])(
+    'does not infer an ancestor project from an unresolved or non-scalar alias: %s',
+    async (source) => {
+      const parent = await project();
+      const child = path.join(parent, 'child');
+      const nested = path.join(child, 'src');
+      await fs.mkdir(nested, { recursive: true });
+      await fs.mkdir(path.join(child, '.comet'));
+      await fs.writeFile(path.join(child, '.comet', 'config.yaml'), source);
+
+      await expect(discoverClassicProject(nested)).resolves.toBe(parent);
+    },
+  );
+
+  it.each(['.comet', '.comet/config.yaml'])(
+    'rejects a dangling %s link instead of selecting a parent project',
+    async (relative) => {
+      const parent = await project();
+      const child = path.join(parent, 'child');
+      const nested = path.join(child, 'src');
+      await fs.mkdir(nested, { recursive: true });
+      const target = path.join(parent, 'missing');
+      const link = path.join(child, relative);
+      await fs.mkdir(path.dirname(link), { recursive: true });
+      if (relative === '.comet') await directoryLink(target, link);
+      else await fs.symlink(target, link, 'file');
+
+      await expect(discoverClassicProject(nested)).rejects.toThrow(/symbolic link or junction/u);
+    },
+  );
+
+  it('does not mistake schema text inside a block scalar for a project declaration', async () => {
+    const parent = await project();
+    const child = path.join(parent, 'child');
+    const nested = path.join(child, 'src');
+    await fs.mkdir(nested, { recursive: true });
+    await fs.mkdir(path.join(child, '.comet'));
+    await fs.writeFile(
+      path.join(child, '.comet', 'config.yaml'),
+      'description: |\n  schema: comet.project.v1\nclassic: { artifact_layout: invalid }\n',
+    );
+
+    await expect(discoverClassicProject(nested)).resolves.toBe(parent);
+  });
+
+  it('still validates HOME configuration when HOME is the invocation root', async () => {
+    const home = await externalDirectory();
+    await config(home, '  artifact_layout: invalid\n');
+    vi.spyOn(os, 'homedir').mockReturnValue(home);
+
+    await expect(discoverClassicProject(home)).rejects.toThrow(
+      'classic.artifact_layout must be legacy or docs',
+    );
+  });
+
+  it('preserves the original validation error for a declared ancestor project', async () => {
+    const parent = await project();
+    const child = path.join(parent, 'child');
+    await config(child, '  artifact_layout: invalid\n');
+    const nested = path.join(child, 'src');
+    await fs.mkdir(nested);
+
+    await expect(discoverClassicProject(nested)).rejects.toThrow(
+      'classic.artifact_layout must be legacy or docs',
+    );
+  });
+
+  it('rejects malformed invocation config even without a readable schema declaration', async () => {
+    const parent = await project();
+    const child = path.join(parent, 'child');
+    await fs.mkdir(path.join(child, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(child, '.comet', 'config.yaml'), 'schema: [');
+
+    await expect(discoverClassicProject(child)).rejects.toThrow('Invalid .comet/config.yaml');
+  });
+
+  it.each(['classic:\n  language: en\n', 'schema: comet.project.v1\nextension: ['])(
+    'does not select ancestor HOME configuration: %s',
+    async (source) => {
+      const parent = await project();
+      const home = path.join(parent, 'home');
+      const nested = path.join(home, 'unconfigured', 'src');
+      await fs.mkdir(nested, { recursive: true });
+      await fs.mkdir(path.join(home, '.comet'));
+      await fs.writeFile(path.join(home, '.comet', 'config.yaml'), source);
+      vi.spyOn(os, 'homedir').mockReturnValue(home);
+
+      await expect(discoverClassicProject(nested)).resolves.toBe(parent);
+    },
+  );
+
+  it('does not treat an undeclared malformed ancestor configuration as a project', async () => {
+    const parent = await project();
+    const ancestor = path.join(parent, 'ancestor');
+    const nested = path.join(ancestor, 'src');
+    await fs.mkdir(nested, { recursive: true });
+    await fs.mkdir(path.join(ancestor, '.comet'));
+    await fs.writeFile(path.join(ancestor, '.comet', 'config.yaml'), 'classic: [');
+
+    await expect(discoverClassicProject(nested)).resolves.toBe(parent);
+  });
+
+  it('does not swallow unsafe child configuration paths while discovering a parent', async () => {
+    const parent = await project();
+    const child = path.join(parent, 'child');
+    const outside = await externalDirectory();
+    await fs.mkdir(child);
+    await fs.writeFile(path.join(outside, 'config.yaml'), 'schema: comet.project.v1\n');
+    await directoryLink(outside, path.join(child, '.comet'));
+
+    await expect(discoverClassicProject(child)).rejects.toThrow(/symbolic link or junction/u);
   });
 });

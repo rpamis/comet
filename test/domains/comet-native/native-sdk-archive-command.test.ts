@@ -85,6 +85,66 @@ beforeEach(() => {
 });
 
 describe('Native Archive command stop boundaries', () => {
+  it.each(['manual', 'unknown', 'pending-approval'] as const)(
+    'does not replay Archive preflight with %s evidence',
+    async (kind) => {
+      const current = inspection();
+      current.run.status = 'failed';
+      current.run.reason = 'ACTION_FAILED: archive.prepare';
+      current.run.actions[0] = {
+        ...current.run.actions[0],
+        status: kind === 'unknown' ? 'unknown' : 'failed',
+        retry: kind === 'manual' ? 'manual' : 'idempotent',
+      };
+      if (kind === 'pending-approval')
+        current.run.waits.push({
+          id: 'approval',
+          stepId: 'custom.approval',
+          status: 'pending',
+        } as never);
+      mocked.inspect.mockResolvedValue(current);
+      await archiveNativeSdkChange(options);
+      expect(mocked.retry).not.toHaveBeenCalled();
+      expect(mocked.execute).not.toHaveBeenCalled();
+    },
+  );
+
+  it('retries only a failed idempotent Archive preflight without claiming it never executed', async () => {
+    const current = inspection();
+    current.run.status = 'failed';
+    current.run.reason = 'ACTION_FAILED: archive.prepare';
+    current.run.actions[0] = { ...current.run.actions[0], status: 'failed', retry: 'idempotent' };
+    mocked.inspect.mockResolvedValue(current);
+    const retried = structuredClone(current.run);
+    retried.status = 'running';
+    retried.actions[0] = { ...retried.actions[0], status: 'pending', attempt: 2 };
+    mocked.retry.mockResolvedValue(retried);
+    const executed = structuredClone(retried);
+    executed.status = 'failed';
+    executed.actions[0].status = 'failed';
+    mocked.execute.mockResolvedValue(executed);
+    expect(
+      (await projectNativeSdkContinuation({ ...current, projectRoot: options.projectRoot }))
+        .continuation.commandArgs,
+    ).toEqual([
+      'comet',
+      'native',
+      'archive',
+      options.name,
+      '--project-root',
+      options.projectRoot,
+      '--json',
+    ]);
+    await archiveNativeSdkChange(options);
+    expect(mocked.retry).toHaveBeenCalledWith({
+      runId: current.run.runId,
+      expectedRevision: current.run.revision,
+      actionId: current.run.actions[0].id,
+      attempt: 1,
+    });
+    expect(mocked.execute).toHaveBeenCalledOnce();
+  });
+
   it.each(['recorded-host-result', 'runtime-action'] as const)(
     'never offers not-executed retry for %s',
     async (kind) => {

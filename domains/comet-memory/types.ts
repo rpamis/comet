@@ -193,6 +193,8 @@ export interface MemoryQuery {
   readonly category?: string;
   readonly tags?: readonly string[];
   readonly query?: string;
+  readonly offset?: number;
+  readonly managementFilter?: 'all' | 'profile' | 'policy' | 'episode' | 'history';
   readonly maxEntries?: number;
   readonly maxBytes?: number;
   readonly maxChars?: number;
@@ -283,6 +285,11 @@ export interface MemoryManagementConflict {
 }
 
 export interface MemoryManagementView {
+  readonly counts?: Readonly<Record<'all' | 'profile' | 'policy' | 'episode' | 'history', number>>;
+  readonly total?: number;
+  readonly offset?: number;
+  readonly nextOffset?: number;
+  readonly requiredBytes?: number;
   readonly records: readonly MemoryManagementRecord[];
   readonly conflicts: readonly MemoryManagementConflict[];
   readonly truncated: boolean;
@@ -548,6 +555,7 @@ export interface MemoryRepository {
   writeText(relativePath: string, content: string): Promise<void>;
   readState(): Promise<MemoryRuntimeState>;
   writeState(state: MemoryRuntimeState): Promise<void>;
+  needsStateWrite?(): boolean;
   withLock<T>(operation: () => Promise<T>): Promise<T>;
   sync(): Promise<MemorySyncResult>;
   remote?(): Promise<string | null>;

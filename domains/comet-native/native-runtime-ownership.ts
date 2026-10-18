@@ -143,8 +143,11 @@ export async function assertNativePortableChangeNotOrphaned(
   }
 }
 
-export async function listNativeSdkChangeNames(projectRoot: string): Promise<string[]> {
-  return listSdkChangeNames(projectRoot, 'native');
+export async function listNativeSdkChangeNames(
+  projectRoot: string,
+  options: { readOnly?: boolean } = {},
+): Promise<string[]> {
+  return listSdkChangeNames(projectRoot, 'native', options);
 }
 
 export function createNativeSdkRuntime(projectRoot: string): WorkflowRuntime {
@@ -403,7 +406,9 @@ async function readNativeApplicationCheckpoint(
 ): Promise<ApplicationIdentity | null> {
   const config = await readProjectConfig(projectRoot);
   if (!config) return null;
-  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
+  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root, {
+    readOnly: true,
+  });
   let file = nativePortableStateFile(paths, name);
   try {
     await fs.access(file);
@@ -430,7 +435,7 @@ export async function loadOwnedNativeSdkRuntime(
   executors: readonly RuntimeExecutor[];
   application: LoadedWorkflowApplication | null;
 }> {
-  const owner = await readSdkChangeOwner(projectRoot, 'native', name);
+  const owner = await readSdkChangeOwner(projectRoot, 'native', name, options);
   const checkpoint =
     owner?.application === 'native'
       ? null
@@ -490,7 +495,7 @@ export async function inspectNativeSdkRun(
   artifactRootRef: string;
   application: LoadedWorkflowApplication | null;
 }> {
-  const owner = await readSdkChangeOwner(projectRoot, 'native', name);
+  const owner = await readSdkChangeOwner(projectRoot, 'native', name, options);
   if (!owner) throw new Error(`Native change ${name} is not owned by an SDK Run`);
   const { runtime, application } = await loadOwnedNativeSdkRuntime(projectRoot, name, options);
   const run = await runtime.inspect(owner.runId);

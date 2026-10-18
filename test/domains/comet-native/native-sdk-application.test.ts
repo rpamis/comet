@@ -825,6 +825,97 @@ describe('Native SDK Workflow Application', () => {
       expect(await inspectNativeSdkDefinitionUpgrade(root, run.runId, true)).toBeNull();
     },
   );
+  it('keeps blocked Archive preflight read-only and retries without not-executed evidence', async () => {
+    const prepared = await awaitingArchiveApplication('sdk', undefined, true);
+    const { root, runtime, paths } = prepared;
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
+    const peerName = 'capability-peer';
+    const peerDir = path.join(paths.changesDir, peerName);
+    await fs.mkdir(peerDir, { recursive: true });
+    await fs.copyFile(path.join(prepared.changeDir, 'brief.md'), path.join(peerDir, 'brief.md'));
+    await fs.mkdir(path.join(peerDir, 'specs/workflow'), { recursive: true });
+    await fs.copyFile(
+      path.join(prepared.changeDir, 'specs/workflow/spec.md'),
+      path.join(peerDir, 'specs/workflow/spec.md'),
+    );
+    const peerApplication = nativeApplication();
+    const peerRuntime = createRuntime({
+      ...peerApplication,
+      workflows: [peerApplication.workflow],
+      transitionHandlers: [peerApplication.transitionHandler],
+      store: createNativeSdkStateStore(root),
+    });
+    const peerInitial = createNativePortableState({
+      name: peerName,
+      language: 'en',
+      createdAt: '2026-09-24T00:00:00.000Z',
+      nextAction: 'prepare-shape-confirmation',
+    });
+    const peerRun = await peerRuntime.start({
+      runId: peerName,
+      workflow: { id: peerApplication.workflow.id, version: peerApplication.workflow.version },
+      input: { name: peerName, artifactRootRef: 'docs' },
+      initialState: peerInitial,
+    });
+    await registerSdkChangeOwner(root, {
+      schema: COMET_CHANGE_OWNER_SCHEMA,
+      workflow: 'native',
+      change: peerName,
+      format: 'sdk',
+      application: 'native',
+      runId: peerName,
+    });
+    await succeedLatestAction(
+      peerRuntime,
+      peerRun,
+      await collectProposal(paths, peerInitial),
+      root,
+      'peer-shape',
+    );
+    const reportFile = path.join(prepared.changeDir, 'verification.md');
+    const reportBefore = await fs.readFile(reportFile, 'utf8');
+    let run = await runtime.execute({
+      runId: prepared.run.runId,
+      actionId: prepared.run.actions.at(-1)!.id,
+      executorId: 'comet-native-archive-preflight',
+      context: { requestId: 'blocked-preflight', projectRoot: root },
+    });
+    const failed = run.actions.at(-1)!;
+    expect(failed.status).toBe('failed');
+    expect(failed.outcome?.output).toMatchObject({ ready: false, capabilityPeers: [peerName] });
+    expect(await fs.readFile(reportFile, 'utf8')).toBe(reportBefore);
+    const peerBefore = await peerRuntime.inspect(peerName);
+    const cancelled = await peerRuntime.cancel({
+      runId: peerName,
+      reason: 'The user cancelled the competing requirement',
+    });
+    expect(cancelled.status).toBe('cancelled');
+    run = await runtime.retry({ runId: run.runId, actionId: failed.id, attempt: failed.attempt });
+    expect(run.actions.at(-1)!.reconciliations).toEqual([]);
+    run = await runtime.execute({
+      runId: run.runId,
+      actionId: failed.id,
+      executorId: 'comet-native-archive-preflight',
+      context: { requestId: 'retry-preflight', projectRoot: root },
+    });
+    expect(run.outputs['archive.prepare'].value).toMatchObject({
+      ready: true,
+      capabilityPeers: [],
+    });
+    expect(await fs.readFile(reportFile, 'utf8')).toBe(reportBefore);
+    expect((await peerRuntime.inspect(peerName)).state).toEqual(peerBefore.state);
+    expect(await fs.readFile(path.join(peerDir, 'brief.md'), 'utf8')).toBe(
+      await fs.readFile(path.join(prepared.changeDir, 'brief.md'), 'utf8'),
+    );
+    run = await runtime.execute({
+      runId: run.runId,
+      actionId: run.actions.at(-1)!.id,
+      executorId: 'comet-native-archive-apply',
+      context: { requestId: 'apply-after-retry', projectRoot: root },
+    });
+    expect(run.outputs['archive.execute']).toBeDefined();
+  });
+
   it('checks Archive acceptance once at each preparation, execution, and commit boundary', async () => {
     let calls = 0;
     const inspect = nativeRequirements.inspectNativePortableAcceptanceDrift;
@@ -837,7 +928,7 @@ describe('Native SDK Workflow Application', () => {
       );
     });
     expect(run.outputs['archive.prepare'].value).toMatchObject({ ready: true });
-    expect(calls).toBe(3);
+    expect(calls).toBe(2);
   });
 
   it('rejects Archive document drift before overwriting the confirmed report', async () => {

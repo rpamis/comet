@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import path from 'node:path';
 
 import { hashProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
@@ -20,13 +19,8 @@ import {
   inspectNativeSdkArchiveFinalization,
   inspectNativeSdkArchiveSpecs,
 } from './native-portable-archive.js';
-import { inspectNativePortableAcceptanceDrift } from './native-portable-requirements.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { readNativePortableTransaction } from './native-portable-transactions.js';
-import {
-  renderNativeVerificationReport,
-  writeNativeVerificationReport,
-} from './native-verification-report-v2.js';
 
 export const NATIVE_SDK_ARCHIVE_STEPS = [
   ['supervisor.parent.deliver', 'native-supervisor-parent-deliver'],
@@ -35,6 +29,24 @@ export const NATIVE_SDK_ARCHIVE_STEPS = [
   ['archive.finalize', 'native-archive-finalize'],
   ['supervisor.cleanup', 'native-supervisor-cleanup'],
 ] as const;
+
+/** 只重试明确失败的只读预检；旧定义、未知执行和其他待处理工作保持阻塞。 */
+export function nativeSdkRetryableArchivePreflight(run: Readonly<WorkflowRun>) {
+  const action = run.actions.at(-1);
+  return run.status === 'failed' &&
+    run.reason === 'ACTION_FAILED: archive.prepare' &&
+    action?.stepId === 'archive.prepare' &&
+    action.ref === 'native-archive-preflight' &&
+    action.type === 'call_tool' &&
+    action.status === 'failed' &&
+    action.retry === 'idempotent' &&
+    !action.rejectedOutcomes?.some((entry) => entry.outcome.attempt === action.attempt) &&
+    !run.actions.some((entry) => ['running', 'unknown', 'pending'].includes(entry.status)) &&
+    !run.waits.some((wait) => wait.status === 'pending') &&
+    !run.evidenceWaits?.some((wait) => wait.status === 'pending')
+    ? action
+    : undefined;
+}
 
 async function archivePreflightBinding(
   run: Readonly<WorkflowRun>,
@@ -68,7 +80,7 @@ async function archivePreflightBinding(
   if (!config || config.native.artifact_root !== input.artifactRootRef) {
     throw new Error('Native artifact root changed after Run creation');
   }
-  const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef);
+  const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, { readOnly: true });
   const reportFile = path.join(paths.changesDir, state.name, 'verification.md');
   const reportRef = path.relative(projectRoot, reportFile).replaceAll('\\', '/');
   const prior = run.outputs['verify.report']?.value as Record<string, unknown> | undefined;
@@ -82,7 +94,14 @@ async function archivePreflightBinding(
   ) {
     throw new Error('Native Archive preflight lacks the confirmed verification report');
   }
-  return { state, paths, reportFile, reportRef, priorReportSha256: prior.reportSha256 };
+  return {
+    state,
+    paths,
+    reportFile,
+    reportRef,
+    priorReportSha256: prior.reportSha256,
+    reportStateVersion: prior.stateVersion as number,
+  };
 }
 
 async function archivePreflightOutput(
@@ -94,10 +113,7 @@ async function archivePreflightOutput(
   const report = await hashProtectedProjectFile(projectRoot, bound.reportRef, {
     label: 'Native SDK verification report',
   });
-  const expected = createHash('sha256')
-    .update(renderNativeVerificationReport(bound.state))
-    .digest('hex');
-  if (report.digest !== expected) {
+  if (report.digest !== bound.priorReportSha256) {
     throw new Error('Native verification report changed after Archive confirmation');
   }
   const inspected = await inspectNativePortableArchive({
@@ -105,6 +121,7 @@ async function archivePreflightOutput(
     name: bound.state.name,
     state: bound.state,
     requireCurrentAcceptance: true,
+    verificationReportStateVersion: bound.reportStateVersion,
   });
   const archiveDirRef = path.relative(projectRoot, inspected.archiveDir).replaceAll('\\', '/');
   if (archiveDirRef.startsWith('../') || path.isAbsolute(archiveDirRef)) {
@@ -115,6 +132,7 @@ async function archivePreflightOutput(
     stateVersion: bound.state.state_version,
     reportRef: bound.reportRef,
     reportSha256: report.digest,
+    reportStateVersion: bound.reportStateVersion,
     archiveDirRef,
     ready: inspected.ready,
     blockers: inspected.blockers,
@@ -132,16 +150,6 @@ export const nativeSdkArchivePreflightExecutor: RuntimeExecutor = {
     if (!context?.projectRoot || !run) {
       throw new Error('Native Archive preflight requires a bound SDK Run');
     }
-    const bound = await archivePreflightBinding(run, action, context.projectRoot);
-    const drift = await inspectNativePortableAcceptanceDrift(bound);
-    if (drift.drifted) throw new Error(drift.reason ?? 'Native acceptance changed');
-    const previous = await hashProtectedProjectFile(context.projectRoot, bound.reportRef, {
-      label: 'Native SDK verification report',
-    });
-    if (previous.digest !== bound.priorReportSha256) {
-      throw new Error('Native verification report changed after user confirmation');
-    }
-    await writeNativeVerificationReport({ file: bound.reportFile, state: bound.state });
     const output = await archivePreflightOutput(run, action, context.projectRoot);
     return {
       status: output.ready ? 'succeeded' : 'failed',
@@ -203,8 +211,30 @@ async function archiveApplyBinding(
   if (!config || config.native.artifact_root !== input.artifactRootRef) {
     throw new Error('Native artifact root changed after Run creation');
   }
-  const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef);
-  return { state, paths };
+  const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, { readOnly: true });
+  const reportRef = path
+    .relative(projectRoot, path.join(paths.changesDir, state.name, 'verification.md'))
+    .replaceAll('\\', '/');
+  const preparedAction = [...run.actions]
+    .reverse()
+    .find((entry) => entry.stepId === 'archive.prepare' && entry.status === 'succeeded');
+  const legacyReport =
+    preflight.reportStateVersion === undefined && preparedAction?.retry === 'manual';
+  const reportStateVersion = legacyReport ? state.state_version : preflight.reportStateVersion;
+  if (
+    preflight.reportRef !== reportRef ||
+    !Number.isSafeInteger(reportStateVersion) ||
+    (reportStateVersion as number) > state.state_version ||
+    (!legacyReport && reportStateVersion === state.state_version)
+  ) {
+    throw new Error('Native SDK Archive preflight lacks the confirmed report binding');
+  }
+  const report = await hashProtectedProjectFile(projectRoot, reportRef, {
+    label: 'Native SDK verification report',
+  });
+  if (report.digest !== preflight.reportSha256)
+    throw new Error('Native verification report changed after Archive preflight');
+  return { state, paths, verificationReportStateVersion: reportStateVersion as number };
 }
 
 export const nativeSdkArchiveApplyExecutor: RuntimeExecutor = {
@@ -213,8 +243,9 @@ export const nativeSdkArchiveApplyExecutor: RuntimeExecutor = {
   supports: (action) => action.type === 'call_tool' && action.ref === 'native-archive',
   async execute(action, context, run) {
     if (!context?.projectRoot || !run) throw new Error('Native Archive requires a bound SDK Run');
-    const { state, paths } = await archiveApplyBinding(run, action, context.projectRoot);
-    await applyNativeSdkArchiveSpecs({ paths, state });
+    const bound = await archiveApplyBinding(run, action, context.projectRoot);
+    const { state, paths } = bound;
+    await applyNativeSdkArchiveSpecs(bound);
     return {
       status: 'succeeded',
       output: (await inspectNativeSdkArchiveSpecs({ paths, state })) as unknown as RuntimeValue,
@@ -273,7 +304,7 @@ async function archiveFinalizeBinding(
   if (!config || config.native.artifact_root !== input.artifactRootRef) {
     throw new Error('Native artifact root changed after Run creation');
   }
-  const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef);
+  const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, { readOnly: true });
   return { state, paths, applied };
 }
 
@@ -360,7 +391,8 @@ export async function recoverNativeSdkArchiveOutcome(options: {
     if (action.claim.executorId !== nativeSdkArchiveApplyExecutor.id) {
       throw new Error('Native SDK Archive recovery belongs to another executor');
     }
-    const { state, paths } = await archiveApplyBinding(run, action, options.projectRoot);
+    const bound = await archiveApplyBinding(run, action, options.projectRoot);
+    const { state, paths } = bound;
     const transaction = await readNativePortableTransaction(paths, {
       kind: 'archive',
       change: state.name,
@@ -369,7 +401,7 @@ export async function recoverNativeSdkArchiveOutcome(options: {
       throw new Error('Native SDK Archive recovery has no frozen Spec transaction');
     }
     if (transaction.journal.status === 'prepared') {
-      await applyNativeSdkArchiveSpecs({ paths, state });
+      await applyNativeSdkArchiveSpecs(bound);
     }
     output = (await inspectNativeSdkArchiveSpecs({ paths, state })) as unknown as RuntimeValue;
   } else {

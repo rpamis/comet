@@ -12,7 +12,7 @@ import { resolveClassicChangeDirectory } from './classic-paths.js';
 import { ensureClassicRuntimeRun } from './classic-runtime-run.js';
 import { resolveClassicChangeRuntimeOwner } from './classic-runtime-ownership.js';
 import { executeClassicSdkCommandCheck } from './classic-sdk-check.js';
-import { findClassicSdkWorkspace } from './classic-sdk-status.js';
+import { findClassicSdkWorkspace, type inspectClassicSdkRun } from './classic-sdk-status.js';
 import { classicSdkEntryData } from './classic-sdk-output.js';
 import {
   executeCommandCheck,
@@ -33,6 +33,130 @@ function unstableInputDiagnostic(record: RecordedCommandCheck): string {
     `Changed inputs: ${shown.join(', ')}${remainder > 0 ? ` (+${remainder} more)` : ''}.`,
     'If these paths are generated artifacts, add them to the matching command outputs in .comet/check-policy.json; otherwise stabilize the inputs before rerunning.',
   ].join('\n');
+}
+
+/** 共享检查执行与已提交的响应视图；返回的 Run 仅用于本次输出。 */
+export async function executeClassicSdkCheckCommand(
+  inspected: Awaited<ReturnType<typeof inspectClassicSdkRun>>,
+  name: string,
+  scope: 'build' | 'verify',
+  options: {
+    projectRoot: string;
+    argv: string[];
+    cwd?: string;
+    timeoutMs?: number;
+    reusable?: boolean;
+  },
+) {
+  const {
+    projectRoot,
+    argv: requestedArgv,
+    cwd = '.',
+    timeoutMs = 300_000,
+    reusable = false,
+  } = options;
+  if (inspected.state.phase !== scope) {
+    throw new Error(`Classic SDK change ${name} is in ${inspected.state.phase}, not ${scope}`);
+  }
+  const pendingEvidence = inspected.run.evidenceWaits?.find(
+    (candidate) =>
+      candidate.stepId === `${inspected.profile}.${scope}.check.evidence` &&
+      candidate.status === 'pending',
+  );
+  const checked = pendingEvidence
+    ? inspected.run
+    : await executeClassicSdkCommandCheck(
+        inspected.runtime,
+        {
+          runId: inspected.run.runId,
+          projectRoot,
+          argv: requestedArgv,
+          cwd,
+          timeoutMs,
+          reusable,
+        },
+        inspected.run,
+      );
+  const action = checked.actions
+    .slice()
+    .reverse()
+    .find((candidate) => candidate.stepId === `${inspected.profile}.${scope}.check`);
+  const result = action?.outcome?.output as
+    | {
+        argv?: string[];
+        cwd?: string;
+        timeoutMs?: number;
+        reusable?: boolean;
+        exitCode?: number;
+        inputBefore?: string;
+        inputAfter?: string;
+        receiptRef?: string;
+        contentHash?: string;
+      }
+    | undefined;
+  if (!result || typeof result.exitCode !== 'number') {
+    throw new Error('Classic SDK check did not record an outcome');
+  }
+  if (
+    pendingEvidence &&
+    (action?.status !== 'succeeded' ||
+      JSON.stringify(result.argv) !== JSON.stringify(requestedArgv) ||
+      result.cwd !== cwd ||
+      result.timeoutMs !== timeoutMs ||
+      (result.reusable === true) !== reusable)
+  ) {
+    throw new Error('Classic SDK check recovery does not match the recorded command');
+  }
+  let finished = checked;
+  if (action?.status === 'succeeded') {
+    const evidence = checked.evidenceWaits?.find(
+      (candidate) =>
+        candidate.stepId === `${inspected.profile}.${scope}.check.evidence` &&
+        candidate.status === 'pending',
+    );
+    if (!evidence || !result.receiptRef || !result.contentHash) {
+      throw new Error('Classic SDK check has no verified receipt to submit');
+    }
+    const submission = {
+      runId: checked.runId,
+      expectedRevision: checked.revision,
+      evidenceId: evidence.id,
+      kind: evidence.kind,
+      ref: result.receiptRef,
+      contentHash: result.contentHash,
+      submissionId: randomUUID(),
+      context: { requestId: randomUUID(), projectRoot },
+    };
+    try {
+      finished = await inspected.runtime.recordEvidence(submission);
+    } catch (error) {
+      if (
+        error instanceof RuntimeProtocolError &&
+        error.code === 'EVIDENCE_REJECTED' &&
+        inspected.profile === 'full' &&
+        scope === 'build'
+      ) {
+        await inspected.runtime.invalidateEvidence(submission);
+      }
+      throw error;
+    }
+  }
+  const entry = await classicSdkEntryData(name, { run: finished, projectRoot });
+  return {
+    run: finished,
+    entry,
+    result: {
+      exitCode: result.exitCode || (result.inputBefore === result.inputAfter ? 0 : 1),
+      data: {
+        ...result,
+        ...entry,
+      },
+      stdout: `Check ${scope}: exit=${result.exitCode}; tier=full; log=${result.receiptRef ?? 'unavailable'}\n`,
+      ...(result.inputBefore !== result.inputAfter
+        ? { stderr: 'Inputs changed during check; rerun after the workspace is stable.' }
+        : {}),
+    },
+  };
 }
 
 export const classicCheckCommand: ClassicCommandHandler = withProjectContext(async (args) => {
@@ -68,108 +192,15 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
         throw new Error(`Classic SDK checks require full execution; ${option} is not supported`);
       else throw new Error(`Unknown or incomplete check option: ${option}`);
     }
-    const inspected = sdkWorkspace;
-    if (inspected.state.phase !== scope) {
-      throw new Error(`Classic SDK change ${name} is in ${inspected.state.phase}, not ${scope}`);
-    }
-    const pendingEvidence = inspected.run.evidenceWaits?.find(
-      (candidate) =>
-        candidate.stepId === `${inspected.profile}.${scope}.check.evidence` &&
-        candidate.status === 'pending',
-    );
-    const requestedArgv = args.slice(separator + 1);
-    const checked = pendingEvidence
-      ? inspected.run
-      : await executeClassicSdkCommandCheck(
-          inspected.runtime,
-          {
-            runId: inspected.run.runId,
-            projectRoot: sdkWorkspace.projectRoot,
-            argv: requestedArgv,
-            cwd,
-            timeoutMs,
-            reusable,
-          },
-          inspected.run,
-        );
-    const action = checked.actions
-      .slice()
-      .reverse()
-      .find((candidate) => candidate.stepId === `${inspected.profile}.${scope}.check`);
-    const result = action?.outcome?.output as
-      | {
-          argv?: string[];
-          cwd?: string;
-          timeoutMs?: number;
-          reusable?: boolean;
-          exitCode?: number;
-          inputBefore?: string;
-          inputAfter?: string;
-          receiptRef?: string;
-          contentHash?: string;
-        }
-      | undefined;
-    if (!result || typeof result.exitCode !== 'number') {
-      throw new Error('Classic SDK check did not record an outcome');
-    }
-    if (
-      pendingEvidence &&
-      (action?.status !== 'succeeded' ||
-        JSON.stringify(result.argv) !== JSON.stringify(requestedArgv) ||
-        result.cwd !== cwd ||
-        result.timeoutMs !== timeoutMs ||
-        (result.reusable === true) !== reusable)
-    ) {
-      throw new Error('Classic SDK check recovery does not match the recorded command');
-    }
-    let finished = checked;
-    if (action?.status === 'succeeded') {
-      const evidence = checked.evidenceWaits?.find(
-        (candidate) =>
-          candidate.stepId === `${inspected.profile}.${scope}.check.evidence` &&
-          candidate.status === 'pending',
-      );
-      if (!evidence || !result.receiptRef || !result.contentHash) {
-        throw new Error('Classic SDK check has no verified receipt to submit');
-      }
-      const submission = {
-        runId: checked.runId,
-        expectedRevision: checked.revision,
-        evidenceId: evidence.id,
-        kind: evidence.kind,
-        ref: result.receiptRef,
-        contentHash: result.contentHash,
-        submissionId: randomUUID(),
-        context: { requestId: randomUUID(), projectRoot: sdkWorkspace.projectRoot },
-      };
-      try {
-        finished = await inspected.runtime.recordEvidence(submission);
-      } catch (error) {
-        if (
-          error instanceof RuntimeProtocolError &&
-          error.code === 'EVIDENCE_REJECTED' &&
-          inspected.profile === 'full' &&
-          scope === 'build'
-        ) {
-          await inspected.runtime.invalidateEvidence(submission);
-        }
-        throw error;
-      }
-    }
-    return {
-      exitCode: result.exitCode || (result.inputBefore === result.inputAfter ? 0 : 1),
-      data: {
-        ...result,
-        ...(await classicSdkEntryData(name, {
-          run: finished,
-          projectRoot: sdkWorkspace.projectRoot,
-        })),
-      },
-      stdout: `Check ${scope}: exit=${result.exitCode}; tier=full; log=${result.receiptRef ?? 'unavailable'}\n`,
-      ...(result.inputBefore !== result.inputAfter
-        ? { stderr: 'Inputs changed during check; rerun after the workspace is stable.' }
-        : {}),
-    };
+    return (
+      await executeClassicSdkCheckCommand(sdkWorkspace, name, scope as 'build' | 'verify', {
+        projectRoot: sdkWorkspace.projectRoot,
+        argv: args.slice(separator + 1),
+        cwd,
+        timeoutMs,
+        reusable,
+      })
+    ).result;
   }
   const layout = await assertClassicLayoutWritable(root);
   const change = await resolveClassicChangeDirectory(name, root);

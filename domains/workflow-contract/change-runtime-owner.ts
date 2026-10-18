@@ -11,6 +11,7 @@ import {
 import type { CometProjectWorkflow } from './types.js';
 import {
   resolveWorkspaceRuntimeRoot,
+  readWorkspaceRuntimeRoots,
   resolveWorkspaceRuntimeRootSync,
   isWorkspaceRuntimeMigrationFence,
 } from './workspace-runtime.js';
@@ -186,24 +187,38 @@ export async function readSdkChangeOwner(
 export async function listSdkChangeNames(
   projectRoot: string,
   workflow: CometProjectWorkflow,
+  options: { readOnly?: boolean } = {},
 ): Promise<string[]> {
-  const runtimeRoot = await resolveWorkspaceRuntimeRoot(projectRoot);
-  const directory = await inspectProtectedProjectPath(runtimeRoot, `change-owners/${workflow}`, {
-    label: `${workflow} change runtime owners`,
-    expected: 'directory',
-  });
-  if (!directory.exists) return [];
-  const entries = await fs.readdir(directory.target, { withFileTypes: true });
-  const names: string[] = [];
-  for (const entry of entries) {
-    if (!entry.name.endsWith('.json')) continue;
-    const name = entry.name.slice(0, -'.json'.length);
-    if (!entry.isFile() || !NAME_PATTERN.test(name)) {
-      throw new Error(`Invalid ${workflow} change runtime owner entry: ${entry.name}`);
+  const roots = options.readOnly
+    ? await readWorkspaceRuntimeRoots(projectRoot)
+    : [await resolveWorkspaceRuntimeRoot(projectRoot)];
+  const discovered = new Set<string>();
+  for (const runtimeRoot of roots) {
+    const volume = path.parse(runtimeRoot).root;
+    const directory = await inspectProtectedProjectPath(
+      volume,
+      path.relative(volume, path.join(runtimeRoot, 'change-owners', workflow)),
+      {
+        label: `${workflow} change runtime owners`,
+        expected: 'directory',
+      },
+    );
+    if (!directory.exists) continue;
+    const entries = await fs.readdir(directory.target, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.name.endsWith('.json')) continue;
+      const name = entry.name.slice(0, -'.json'.length);
+      if (!entry.isFile() || !NAME_PATTERN.test(name))
+        throw new Error(`Invalid ${workflow} change runtime owner entry: ${entry.name}`);
+      discovered.add(name);
     }
-    const owner = await readChangeRuntimeOwner(projectRoot, workflow, name);
-    if (!owner) throw new Error(`${workflow} change runtime owner disappeared: ${name}`);
-    if (owner.format === 'sdk') names.push(name);
+  }
+  const names: string[] = [];
+  for (const name of discovered) {
+    const owner = await readSdkChangeOwner(projectRoot, workflow, name, options);
+    if (owner) names.push(name);
+    else if (!(await readChangeRuntimeOwner(projectRoot, workflow, name, options)))
+      throw new Error(`${workflow} change runtime owner disappeared: ${name}`);
   }
   return names.sort((left, right) => left.localeCompare(right, 'en'));
 }

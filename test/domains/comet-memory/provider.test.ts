@@ -436,6 +436,45 @@ describe('personal memory provider', () => {
     expect(operations).toEqual(['manifest', 'get', 'experience-delta']);
   });
 
+  test('preserves bounded management paging metadata and forwards server search', async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body));
+      expect(request.payload.query).toMatchObject({
+        query: 'old preference',
+        offset: 120,
+        managementFilter: 'profile',
+      });
+      return new Response(
+        JSON.stringify({
+          result: {
+            records: [],
+            conflicts: [],
+            total: 150,
+            offset: 120,
+            nextOffset: 120,
+            requiredBytes: 40000,
+            truncated: true,
+            counts: { all: 150, profile: 150, policy: 0, episode: 0, history: 0 },
+          },
+        }),
+      );
+    });
+    const service = new RemotePersonalMemoryService({
+      endpoint: 'https://memory.example.test/provider',
+      fetchImpl,
+    });
+    await expect(
+      service.manage({ query: 'old preference', offset: 120, managementFilter: 'profile' }),
+    ).resolves.toMatchObject({
+      total: 150,
+      offset: 120,
+      nextOffset: 120,
+      requiredBytes: 40000,
+      truncated: true,
+      counts: { all: 150, profile: 150 },
+    });
+  });
+
   test('rejects a Remote Provider management record that is not normalized', async () => {
     const fetchImpl = vi.fn(
       async () =>

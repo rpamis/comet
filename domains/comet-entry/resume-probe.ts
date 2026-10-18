@@ -1,3 +1,4 @@
+import { isNativeSdkCancellationComplete } from '../comet-native/native-sdk-status.js';
 import { measureCometGitCommandAsync } from '../../platform/process/runtime-metrics.js';
 import { execFile } from 'child_process';
 import { promises as fs } from 'fs';
@@ -225,45 +226,62 @@ function namesInUtterance(utterance: string, names: readonly string[]): string[]
   });
 }
 
+async function inspectCandidates<T, R>(
+  items: readonly T[],
+  inspect: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(8, items.length) }, async () => {
+      for (;;) {
+        const index = next++;
+        if (index >= items.length) return;
+        results[index] = await inspect(items[index]);
+      }
+    }),
+  );
+  return results;
+}
+
 async function nativeResumeCandidates(
   paths: NativeProjectPaths,
   names: readonly string[],
   selectedName: string | null,
   targetName: string | null,
+  inspectSdk: (name: string) => ReturnType<typeof inspectNativeSdkRun>,
 ): Promise<CometEntryResumeProbeCandidate[]> {
   const displayedNames = names.slice(0, NATIVE_STATUS_PAGE_LIMITS.maxItems);
   if (targetName && !displayedNames.includes(targetName)) {
     if (displayedNames.length === NATIVE_STATUS_PAGE_LIMITS.maxItems) displayedNames.pop();
     displayedNames.push(targetName);
   }
-  return Promise.all(
-    displayedNames.map(async (name) => {
-      try {
-        if (await readSdkChangeOwner(paths.projectRoot, 'native', name)) {
-          const { state } = await inspectNativeSdkRun(paths.projectRoot, name);
-          return { name, phase: state.phase, selected: name === selectedName };
-        }
-        if (await isNativePortableChange(paths, name)) {
-          const recoverable = await inspectPristineNativeSdkChange(paths, name);
-          if (!recoverable) await assertNativePortableChangeNotOrphaned(paths, name);
-          const state = recoverable ?? (await readNativePortableChange(paths, name));
-          return {
-            name,
-            phase: state.phase,
-            selected: name === selectedName,
-          };
-        }
-        const inspection = await inspectNativeChangeStateDocument(paths, name);
+  return inspectCandidates(displayedNames, async (name) => {
+    try {
+      if (await readSdkChangeOwner(paths.projectRoot, 'native', name, { readOnly: true })) {
+        const { state } = await inspectSdk(name);
+        return { name, phase: state.phase, selected: name === selectedName };
+      }
+      if (await isNativePortableChange(paths, name)) {
+        const recoverable = await inspectPristineNativeSdkChange(paths, name);
+        if (!recoverable) await assertNativePortableChangeNotOrphaned(paths, name);
+        const state = recoverable ?? (await readNativePortableChange(paths, name));
         return {
           name,
-          phase: inspection.state?.phase ?? 'invalid',
+          phase: state.phase,
           selected: name === selectedName,
         };
-      } catch {
-        return { name, phase: 'invalid', selected: name === selectedName };
       }
-    }),
-  );
+      const inspection = await inspectNativeChangeStateDocument(paths, name);
+      return {
+        name,
+        phase: inspection.state?.phase ?? 'invalid',
+        selected: name === selectedName,
+      };
+    } catch {
+      return { name, phase: 'invalid', selected: name === selectedName };
+    }
+  });
 }
 
 async function nativeRelatedEvidence(
@@ -381,21 +399,38 @@ async function resolveNativeResumeProbe(
     throw new Error('.comet/config.yaml has no Native configuration after resolving Native entry');
   }
   await assertNoPendingNativeRootMove(projectRoot);
-  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
-  const sdkNames = await listNativeSdkChangeNames(projectRoot);
-  const resumableSdkNames = (
-    await Promise.all(
-      sdkNames.map(async (name) => {
-        const { run, state } = await inspectNativeSdkRun(projectRoot, name);
-        return (run.status === 'running' || run.status === 'waiting') && state.status !== 'done'
-          ? name
-          : null;
-      }),
-    )
-  ).filter((name): name is string => name !== null);
-  const names = [...new Set([...(await listNativeChangeNames(paths)), ...resumableSdkNames])].sort(
-    (left, right) => left.localeCompare(right, 'en'),
+  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root, {
+    readOnly: true,
+  });
+  const sdkNames = await listNativeSdkChangeNames(projectRoot, { readOnly: true });
+  const legacyNames = await listNativeChangeNames(paths);
+  const knownNames = [...new Set([...legacyNames, ...sdkNames])].sort((left, right) =>
+    left.localeCompare(right, 'en'),
   );
+  const explicitlyNamed = namesInUtterance(input.utterance, knownNames);
+  // A named request needs the named Run, not every unrelated historical Run.
+  const inspectedNames = explicitlyNamed.length > 0 ? explicitlyNamed : knownNames;
+  const sdkObservations = new Map<string, ReturnType<typeof inspectNativeSdkRun>>();
+  const inspectSdk = (name: string) => {
+    let observation = sdkObservations.get(name);
+    if (!observation) {
+      observation = inspectNativeSdkRun(projectRoot, name, { readOnly: true });
+      sdkObservations.set(name, observation);
+    }
+    return observation;
+  };
+  const sdkNameSet = new Set(sdkNames);
+  const names = (
+    await inspectCandidates(inspectedNames, async (name) => {
+      if (!sdkNameSet.has(name)) return name;
+      const { run, state } = await inspectSdk(name);
+      if (run.status === 'cancelled')
+        return (await isNativeSdkCancellationComplete({ projectRoot, run })) ? null : name;
+      return (run.status === 'running' || run.status === 'waiting') && state.status !== 'done'
+        ? name
+        : null;
+    })
+  ).filter((name): name is string => name !== null);
   let selectedName: string | null = null;
   let selectionError: string | null = null;
   try {
@@ -426,7 +461,13 @@ async function resolveNativeResumeProbe(
   const resumeLike = includesAny(lower, RESUME_WORDS);
   const named = namesInUtterance(utterance, names);
   const targetName = named[0] ?? selectedName ?? (names.length === 1 ? names[0] : null);
-  const candidates = await nativeResumeCandidates(paths, names, selectedName, targetName);
+  const candidates = await nativeResumeCandidates(
+    paths,
+    names,
+    selectedName,
+    targetName,
+    inspectSdk,
+  );
   if (!input.agent_context.non_trivial_work && !resumeLike) {
     return result({
       workflow: 'native',
@@ -478,8 +519,13 @@ async function resolveNativeResumeProbe(
   let targetStateError: string | null = null;
   if (target) {
     try {
-      if (await readSdkChangeOwner(projectRoot, 'native', target.name)) {
-        targetState = (await inspectNativeSdkRun(projectRoot, target.name)).state;
+      if (await readSdkChangeOwner(projectRoot, 'native', target.name, { readOnly: true })) {
+        const inspected = await inspectSdk(target.name);
+        if (inspected.run.status === 'cancelled')
+          throw new Error(
+            'Native cancellation is incomplete; confirm the original execution has stopped with comet native doctor before continuing',
+          );
+        targetState = inspected.state;
       } else if (await isNativePortableChange(paths, target.name)) {
         const recoverable = await inspectPristineNativeSdkChange(paths, target.name);
         if (!recoverable) await assertNativePortableChangeNotOrphaned(paths, target.name);

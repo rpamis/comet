@@ -5,7 +5,12 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { gitStatusPaths, readGitBlobs } from '../../platform/process/git.js';
+import {
+  gitStatusPaths,
+  parseGitStatusPaths,
+  readGitStatusPorcelain,
+  readGitBlobs,
+} from '../../platform/process/git.js';
 
 describe('Git process helpers', () => {
   let projectRoot: string;
@@ -41,6 +46,28 @@ describe('Git process helpers', () => {
     await fs.rm(path.join(projectRoot, '.comet', 'current-change.json'));
 
     expect(gitStatusPaths(projectRoot)).toEqual(['.comet/current-change.json']);
+  });
+
+  it('parses both rename paths and preserves leading status whitespace and path whitespace', () => {
+    expect(parseGitStatusPaths(' M .hidden\0R  new name\0old name\0?? trailing \0')).toEqual([
+      '.hidden',
+      'new name',
+      'old name',
+      'trailing ',
+    ]);
+    expect(() => parseGitStatusPaths('R  target\0')).toThrow('incomplete rename');
+  });
+
+  it('reuses the excluded porcelain observation without dropping renamed source paths', async () => {
+    await fs.writeFile(path.join(projectRoot, '.comet', 'current-change.json'), 'changed\n');
+    await fs.writeFile(path.join(projectRoot, 'excluded'), 'ignored\n');
+    const raw = readGitStatusPorcelain(projectRoot, ['.', ':(exclude,literal)excluded']);
+    expect(raw.startsWith(' M ')).toBe(true);
+    expect(parseGitStatusPaths(raw)).toEqual(['.comet/current-change.json']);
+    execFileSync('git', ['mv', '.comet/current-change.json', 'renamed'], { cwd: projectRoot });
+    expect(
+      parseGitStatusPaths(readGitStatusPorcelain(projectRoot, ['.', ':(exclude,literal)excluded'])),
+    ).toEqual(['.comet/current-change.json', 'renamed']);
   });
 
   it('preserves UTF-8, empty content, and newlines while omitting oversized or missing blobs', () => {

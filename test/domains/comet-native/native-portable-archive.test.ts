@@ -1715,6 +1715,8 @@ children:
   });
 
   it('requires serial ordering when a legacy active change owns the capability', async () => {
+    execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
+    await refreshRuntimePathsAfterGitInit();
     const portable = await archiveReady('portable-owner');
     const legacy = await createNativeChange({
       paths,

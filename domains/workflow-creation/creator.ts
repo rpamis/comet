@@ -359,7 +359,7 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
         } catch (error) {
           if (
             action.stepId !== 'preview' &&
-            !(action.stepId === 'verify' && ['4', '5'].includes(run?.workflow.version ?? ''))
+            !(action.stepId === 'verify' && ['4', '5', '6'].includes(run?.workflow.version ?? ''))
           )
             throw error;
           return {
@@ -879,7 +879,15 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
   const legacyRouter = runtimeOptions.transitionHandlers![0];
   const workflowTested = structuredClone(current);
   workflowTested.version = '5';
-  runtimeOptions.workflows = [legacy, current, workflowTested];
+  const reconfirmedEval = structuredClone(workflowTested);
+  reconfirmedEval.version = '6';
+  reconfirmedEval.transitionHandler = { id: 'creator-decisions', version: '3' };
+  reconfirmedEval.transitions = reconfirmedEval.transitions?.map((transition) =>
+    transition.from === 'review-eval' && transition.on === 'retry'
+      ? { ...transition, to: 'eval-preview' }
+      : transition,
+  );
+  runtimeOptions.workflows = [legacy, current, workflowTested, reconfirmedEval];
   runtimeOptions.transitionHandlers = [
     legacyRouter,
     {
@@ -904,18 +912,46 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
       },
     },
   ];
+  const verificationRouter = runtimeOptions.transitionHandlers[1];
+  runtimeOptions.transitionHandlers = [
+    ...runtimeOptions.transitionHandlers,
+    {
+      id: 'creator-decisions',
+      version: '3',
+      apply(input) {
+        if (
+          input.event.kind === 'wait-resolved' &&
+          input.event.stepId === 'review-eval' &&
+          input.event.choice === 'retry'
+        ) {
+          assertPackage(input.run);
+          return { state: {}, next: ['eval-preview'] };
+        }
+        return verificationRouter.apply(input);
+      },
+    },
+  ];
   const runtime = createRuntime(runtimeOptions);
   return {
     ...runtime,
     async resolveWait(command) {
       const run = await runtime.inspect(command.runId);
       const wait = run.waits.find((entry) => entry.id === command.waitId);
+      if (
+        run.workflow.version !== '6' &&
+        wait?.stepId === 'review-eval' &&
+        command.choice === 'retry' &&
+        object(run.outputs.evaluate?.value).status === 'incomplete'
+      )
+        throw new Error(
+          '此预发布 Creator Run 使用旧版评估重试定义；保留原 Run、评估报告与固定用例，使用 comet creator start 创建 v6 Run 后重新确认评估，不修改旧 Run 摘要',
+        );
       if (wait?.stepId === 'confirm-install' && command.choice === 'approved')
         await assertDistributionPreview(root, run);
       return runtime.resolveWait(command);
     },
     start(command) {
-      if (!['3', '4', '5'].includes(command.workflow.version))
+      if (!['3', '4', '5', '6'].includes(command.workflow.version))
         throw new Error('当前 Creator 只支持新创作定义；保留旧 Run 与工件，重新创建创作');
       const input = object(command.input);
       text(input.goal, '自然语言目标');
@@ -930,8 +966,10 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
         ...command,
         input: {
           ...input,
-          ...(['4', '5'].includes(command.workflow.version) ? { artifactContractsVersion: 1 } : {}),
-          ...(command.workflow.version === '5' ? { workflowTestsVersion: 1 } : {}),
+          ...(['4', '5', '6'].includes(command.workflow.version)
+            ? { artifactContractsVersion: 1 }
+            : {}),
+          ...(['5', '6'].includes(command.workflow.version) ? { workflowTestsVersion: 1 } : {}),
         },
       });
     },

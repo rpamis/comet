@@ -1,8 +1,9 @@
+import { runWithHookReadCache } from '../../platform/process/hook-read-cache.js';
+import { isNativeSdkChangeCancellationComplete } from './native-sdk-cancellation.js';
+import { mapWithConcurrency } from './native-concurrency.js';
 import path from 'node:path';
 import { realpathSync } from 'node:fs';
 
-import { createFileRuntimeStore, type WorkflowRun } from '../engine/runtime.js';
-import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import {
@@ -241,10 +242,14 @@ async function discoverSources(
     if (seen.has(key)) continue;
     seen.add(key);
     const configured = await readProjectConfig(candidate);
-    const sdkNames = !configured ? await listNativeSdkChangeNames(candidate) : undefined;
+    const sdkNames = !configured
+      ? await listNativeSdkChangeNames(candidate, { readOnly: true })
+      : undefined;
     if (!configured && sdkNames?.length === 0) continue;
     const config = configured ?? defaultProjectConfig();
-    const paths = await nativeProjectPaths(candidate, config.native.artifact_root);
+    const paths = await nativeProjectPaths(candidate, config.native.artifact_root, {
+      readOnly: true,
+    });
     sources.push({
       projectRoot: candidate,
       config,
@@ -258,7 +263,9 @@ async function discoverSources(
   if (sources.length === 0) {
     const config = await readProjectConfig(projectRoot);
     if (!config) throw new Error('.comet/config.yaml was not found in any registered worktree');
-    const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
+    const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root, {
+      readOnly: true,
+    });
     sources.push({
       projectRoot: path.resolve(projectRoot),
       config,
@@ -780,7 +787,9 @@ export async function inspectDiscoveredNativeStatus(options: {
   const sdkSources = (
     await Promise.all(
       sources.map(async (source) =>
-        (await readSdkChangeOwner(source.projectRoot, 'native', options.name)) ? source : null,
+        (await readSdkChangeOwner(source.projectRoot, 'native', options.name, { readOnly: true }))
+          ? source
+          : null,
       ),
     )
   ).filter((source): source is NativeWorkspaceSource => source !== null);
@@ -900,36 +909,66 @@ export async function discoverNativeChangeProjectRoot(options: {
     .projectRoot;
 }
 
-export async function listDiscoveredNativeStatusPage(options: {
+export function listDiscoveredNativeStatusPage(options: {
+  projectRoot: string;
+  cursor?: string | null;
+}): Promise<NativeDiscoveredStatusPageProjection> {
+  return runWithHookReadCache(() => listDiscoveredNativeStatusPageWithinScope(options));
+}
+
+async function listDiscoveredNativeStatusPageWithinScope(options: {
   projectRoot: string;
   cursor?: string | null;
 }): Promise<NativeDiscoveredStatusPageProjection> {
   const sources = await discoverSources(options.projectRoot);
-  const legacyCandidates = await discoverCandidates(options.projectRoot, sources);
-  // Cancelled SDK changes left the active lifecycle. Skip them with a cheap
-  // Run-file status probe so paging keeps inspecting only requested pages;
-  // application-owned runs are not probed here and stay listed. The full name
-  // set is still used for ownership and conflict checks, so a cancelled SDK
-  // change cannot resurface as a legacy portable candidate.
+
+  // Check authoritative cancellation before portable discovery. Unknown or
+  // incomplete cancellation remains visible; the complete owner name set is
+  // retained for cross-workspace and legacy ownership conflict checks.
   const sdkDiscoveries = await Promise.all(
     sources.map(async (source) => {
-      const names = source.sdkNames ?? (await listNativeSdkChangeNames(source.projectRoot));
-      const store = createFileRuntimeStore<WorkflowRun>({
-        rootDir: path.join(
-          resolveWorkspaceRuntimeRootSync(source.projectRoot),
-          'sdk-runs',
-          'native',
-        ),
-      });
-      const kept: string[] = [];
-      for (const name of names) {
-        const run = await store.read(name).catch(() => null);
-        if (run?.status === 'cancelled') continue;
-        kept.push(name);
-      }
-      return { source, names, kept };
+      const names =
+        source.sdkNames ?? (await listNativeSdkChangeNames(source.projectRoot, { readOnly: true }));
+      return { source, names, kept: [] as string[] };
     }),
   );
+  const cancellationCandidates = sdkDiscoveries.flatMap((discovery) =>
+    discovery.names.map((name) => ({ discovery, name })),
+  );
+  // 所有工作区合计最多四路；逐项失败保留候选，收齐结果后按原顺序过滤。
+  const completed = await mapWithConcurrency(cancellationCandidates, 4, ({ discovery, name }) =>
+    isNativeSdkChangeCancellationComplete(discovery.source.projectRoot, name).catch(() => false),
+  );
+  for (const [index, { discovery, name }] of cancellationCandidates.entries()) {
+    if (!completed[index]) discovery.kept.push(name);
+  }
+  // A same-workspace SDK projection is not a second legacy Run. Check its
+  // ownership boundary before expensive portable discovery, retaining every
+  // other workspace copy for the conflict checks below.
+  for (const { source, names } of sdkDiscoveries) {
+    const owned = new Set(names);
+    const retained: NativeWorkspaceSource['changes'] = [];
+    for (const change of source.changes) {
+      if (!owned.has(change.name) || change.kind !== 'portable') {
+        retained.push(change);
+        continue;
+      }
+      const stateFile = nativePortableStateFile(source.paths, change.name);
+      const marked = await hasNativeManagedRunMarker(stateFile);
+      const localFile = nativeLocalExecutionFile(source.paths, change.name);
+      const local = await inspectProtectedProjectPath(
+        source.paths.workspaceRuntimeRoot,
+        path.relative(source.paths.workspaceRuntimeRoot, localFile),
+        {
+          label: 'Native local execution state',
+          expected: 'file',
+        },
+      );
+      if (!marked || local.exists) retained.push(change);
+    }
+    source.changes = retained;
+  }
+  const legacyCandidates = await discoverCandidates(options.projectRoot, sources);
   const sdkCandidates = sdkDiscoveries.flatMap(({ source, kept }) =>
     kept.map((name) => ({
       kind: 'sdk' as const,
