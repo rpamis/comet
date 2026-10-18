@@ -193,6 +193,9 @@ function copyWorkflowRun(run: WorkflowRun): WorkflowRun {
   };
 }
 
+// 键只来自 defineWorkflow 的内部规范化产物，磁盘 Run 仍逐次验证。
+const normalizedDefinitionHashes = new WeakMap<WorkflowDefinition, string>();
+
 export function createRuntime(options: CreateRuntimeOptions) {
   const definitions = new Map<string, WorkflowDefinition>();
   const definitionHashes = new Map<WorkflowDefinition, string>();
@@ -202,7 +205,12 @@ export function createRuntime(options: CreateRuntimeOptions) {
     if (definitions.has(key))
       throw new RuntimeProtocolError('DUPLICATE_WORKFLOW', '不能重复注册同一工作流版本');
     definitions.set(key, definition);
-    definitionHashes.set(definition, hashRuntimeValue(definition));
+    let hash = normalizedDefinitionHashes.get(definition);
+    if (hash === undefined) {
+      hash = hashRuntimeValue(definition);
+      normalizedDefinitionHashes.set(definition, hash);
+    }
+    definitionHashes.set(definition, hash);
   }
   const validators = new Map<string, RuntimeValidator>();
   for (const validator of options.validators ?? []) {

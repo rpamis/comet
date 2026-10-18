@@ -79,3 +79,19 @@ it('leaves an unknown hash rejected by Runtime inspection', async () => {
   });
   await expect(reader.inspect(run.runId)).rejects.toMatchObject({ code: 'WORKFLOW_CHANGED' });
 });
+
+it('keeps canonical hashes and legacy selection when reusing a normalized builtin', () => {
+  const compiled = { ...application, workflow: defineWorkflow(application.workflow) };
+  expect(nativeSdkApplicationForRun(reference(currentHash), compiled)).toBe(compiled);
+  for (const workflow of legacy) {
+    const hash = hashRuntimeValue(defineWorkflow(workflow));
+    const selected = nativeSdkApplicationForRun(reference(hash), compiled);
+    expect(hashRuntimeValue(defineWorkflow(selected.workflow))).toBe(hash);
+    expect(selected.transitionHandler).not.toBe(compiled.transitionHandler);
+  }
+  const fresh = defineNativeWorkflowApplication();
+  fresh.workflow.steps['shape.prepare'].ref = 'changed';
+  expect(definitions.nativeSdkMatchesRun(fresh.workflow, reference(currentHash))).toBe(false);
+  expect(definitions.nativeSdkMatchesRun(compiled.workflow, reference(currentHash))).toBe(true);
+  expect(defineNativeWorkflowApplication().workflow.steps['shape.prepare'].ref).not.toBe('changed');
+});

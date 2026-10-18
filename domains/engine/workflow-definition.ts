@@ -242,7 +242,12 @@ function buildStep(options: unknown, type: WorkflowStep['type']): WorkflowStep {
   return freeze(normalizeStep({ ...fields, type }));
 }
 
+// 仅复用本模块已完成规范化和递归冻结的产物。外部冻结对象仍须完整验证。
+const normalizedDefinitions = new WeakSet<WorkflowDefinition>();
+
 export function defineWorkflow(options: DefineWorkflowOptions): WorkflowDefinition {
+  if (normalizedDefinitions.has(options as WorkflowDefinition))
+    return options as WorkflowDefinition;
   const fields = object(cloneRuntimeValue(options), 'workflow');
   onlyFields(
     fields,
@@ -352,7 +357,7 @@ export function defineWorkflow(options: DefineWorkflowOptions): WorkflowDefiniti
   ) {
     invalid('workflow.maxTransitions 必须是正安全整数');
   }
-  return freeze({
+  const definition = freeze({
     id,
     version,
     entry,
@@ -369,6 +374,8 @@ export function defineWorkflow(options: DefineWorkflowOptions): WorkflowDefiniti
       ? {}
       : { transitionHandler: reference(fields.transitionHandler, 'workflow.transitionHandler') }),
   });
+  normalizedDefinitions.add(definition);
+  return definition;
 }
 
 export function skill(options: Omit<ExternalWorkflowStepOptions, 'type'>): WorkflowStep {

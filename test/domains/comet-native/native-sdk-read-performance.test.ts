@@ -1,3 +1,4 @@
+import { runWithHookReadCache } from '../../../platform/process/hook-read-cache.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { constants as fsConstants, promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -16,6 +17,7 @@ import {
 import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
 import {
   createNativeSdkRuntime,
+  loadOwnedNativeSdkRuntime,
   inspectNativeSdkRun,
 } from '../../../domains/comet-native/native-runtime-ownership.js';
 import { advanceNativeSdkChange } from '../../../domains/comet-native/native-sdk-next.js';
@@ -104,6 +106,41 @@ async function preparedChange(name = 'read-budget', existingRoot?: string) {
 }
 
 describe('Native SDK read work budgets', () => {
+  it('shares only normalized definitions within one read scope and keeps Run state independent', async () => {
+    const { root, name, stateFile } = await preparedChange();
+    const peer = await preparedChange('independent-peer', root);
+    const definitions = vi.spyOn(sdkApplication, 'defineNativeWorkflowApplication');
+    await runWithHookReadCache(async () => {
+      const first = await loadOwnedNativeSdkRuntime(root, name, { readOnly: true });
+      const second = await loadOwnedNativeSdkRuntime(root, peer.name, { readOnly: true });
+      expect(definitions).toHaveBeenCalledTimes(1);
+      expect(first.executors).not.toBe(second.executors);
+      expect(first.executors[0]).not.toBe(second.executors[0]);
+      const run = await first.runtime.inspect(name);
+      const other = await second.runtime.inspect(peer.name);
+      expect(run.runId).toBe(name);
+      expect(other.runId).toBe(peer.name);
+      expect(run.state).not.toBe(other.state);
+    });
+    await runWithHookReadCache(() => inspectNativeSdkRun(root, name, { readOnly: true }));
+    expect(definitions).toHaveBeenCalledTimes(2);
+    await runWithHookReadCache(async () => {
+      await inspectNativeSdkRun(root, name, { readOnly: true });
+      const source = await fs.readFile(stateFile, 'utf8');
+      const edited = source.replace('language: en', 'language: zh-CN');
+      expect(edited).not.toBe(source);
+      await fs.writeFile(stateFile, edited);
+      // 既有 protected read 在同次决策内保持快照；新 scope 必须重读磁盘。
+      expect((await inspectNativeSdkRun(root, name, { readOnly: true })).state.language).toBe('en');
+      expect((await inspectNativeSdkRun(root, peer.name, { readOnly: true })).run.runId).toBe(
+        peer.name,
+      );
+    });
+    await expect(
+      runWithHookReadCache(() => inspectNativeSdkRun(root, name, { readOnly: true })),
+    ).rejects.toThrow(/differs from SDK Run/u);
+  });
+
   it('returns the first executable continuation when creating an SDK change', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-new-contract-'));
     roots.push(root);

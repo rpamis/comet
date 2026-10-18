@@ -9,7 +9,7 @@ import {
   type RaceSafeReadResult,
 } from '../../platform/fs/race-safe-read.js';
 import { normalizeWorkflowRelativePath } from './project-config.js';
-import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
+import { memoizedHookRead, memoizedHookReadSync } from '../../platform/process/hook-read-cache.js';
 
 export type ProtectedProjectPathKind = 'missing' | 'file' | 'directory';
 
@@ -90,6 +90,9 @@ const cachedChainLstat = memoizedHookRead('protectedChainLstat', (target: string
 const cachedChainRealpath = memoizedHookRead('protectedChainRealpath', (target: string) =>
   fs.realpath(target),
 );
+// 两个参数均为 realpath 返回的完整绝对路径，不含 NUL。
+// 只复用字符串比较；调用者仍逐个检查路径链节点。
+const cachedChainInside = memoizedHookReadSync('protectedChainInside', isInside);
 
 async function assertRealProjectRoot(projectRoot: string, label: string): Promise<string> {
   const lexicalRoot = path.resolve(projectRoot);
@@ -116,12 +119,13 @@ async function inspectExistingChain(
       if (isMissingPath(error)) return { exists: false, kind: 'missing' };
       throw error;
     }
-    const display = path.relative(lexicalRoot, cursor).replaceAll('\\', '/');
     if (stat.isSymbolicLink()) {
+      const display = path.relative(lexicalRoot, cursor).replaceAll('\\', '/');
       throw new Error(`${options.label} crosses a symbolic link or junction at ${display}`);
     }
     const final = index === segments.length - 1;
     if (!final && !stat.isDirectory()) {
+      const display = path.relative(lexicalRoot, cursor).replaceAll('\\', '/');
       throw new Error(`${options.label} ancestor ${display} must be a real directory`);
     }
     if (
@@ -133,7 +137,7 @@ async function inspectExistingChain(
       throw new Error(`${options.label} must be a real ${options.expected}`);
     }
     const realCursor = await cachedChainRealpath(cursor);
-    if (!isInside(realRoot, realCursor)) {
+    if (!cachedChainInside(realRoot, realCursor)) {
       throw new Error(`${options.label} resolves outside the project root`);
     }
     if (final) {
