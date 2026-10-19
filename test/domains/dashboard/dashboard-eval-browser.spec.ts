@@ -1586,10 +1586,12 @@ test.describe('Dashboard Eval', () => {
     await expect(
       page.locator('.dashboard-eval-masthead').getByText('准备环境', { exact: true }),
     ).toBeVisible();
-    await page.getByRole('button', { name: '停止评估', exact: true }).click();
+    const stop = page.getByRole('button', { name: /停止评估$/u });
+    await stop.click();
     await expect(page.getByText('停止中', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: '停止评估', exact: true })).toBeEnabled();
-    await page.getByRole('button', { name: '停止评估', exact: true }).click();
+    await expect(stop).not.toHaveClass(/\bant-btn-loading\b/u);
+    await expect(stop).toBeEnabled();
+    await stop.click();
     await expect(page.getByText('已停止', { exact: true })).toBeVisible();
     expect(stopCount).toBe(2);
     expect(launchCount).toBe(1);
