@@ -12,10 +12,16 @@ import {
 import { t, getDashboardLocale } from './dashboard-i18n.js';
 import { useDashboardLanguage } from './dashboard-language.jsx';
 import { useDashboardViewState } from './dashboard-view-state.js';
-import { DEMO_CHANGE_TRACES, DEMO_CHANGE_TRACE_INDEX } from './change-trace-demo.js';
+import {
+  DEMO_CHANGE_TRACES as RAW_TRACES,
+  DEMO_CHANGE_TRACE_INDEX as RAW_INDEX,
+} from './change-trace-demo.js';
+import { localizedDemo } from './demo-locale.js';
 import { DashboardModal } from './dashboard-modal.jsx';
 import './change-trace-panel.css';
 import { inObservabilityRange, observabilityRangeQuery } from './observability-time-range.js';
+const DEMO_CHANGE_TRACES = localizedDemo(RAW_TRACES);
+const DEMO_CHANGE_TRACE_INDEX = localizedDemo(RAW_INDEX);
 
 const statusLabel = (status) =>
   t(

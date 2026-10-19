@@ -66,6 +66,19 @@ async function readWorkspaceLayoutSource(): Promise<string> {
 }
 
 describe('dashboard web source contracts', () => {
+  it.runIf(websiteCheckoutAvailable)(
+    'passes the homepage language through to the embedded Dashboard',
+    async () => {
+      const snippet = await readWebsiteDemoSnippet();
+      expect(snippet).toContain('window.location.href, language');
+      expect(snippet).toContain('}, [language]);');
+      for (const language of ['zh', 'en']) {
+        const home = await fs.readFile(path.resolve('website', language, 'home.mdx'), 'utf8');
+        expect(home).toContain(`<DashboardWebsiteDemo language="${language}" />`);
+      }
+    },
+  );
+
   it('builds the JSON-wrapped assets consumed by the website demo', async () => {
     const source = await readWebsiteDemoBuildScript();
 
@@ -583,7 +596,7 @@ describe('dashboard web source contracts', () => {
     );
     expect(demoPluginEffect?.[0]).not.toContain('setPluginLoading(');
     expect(websiteEntry).toContain("import { DEMO_PLUGIN_PAGES } from '../demo.js'");
-    expect(websiteEntry).toContain('demoPluginPages={DEMO_PLUGIN_PAGES}');
+    expect(websiteEntry).toContain('demoPluginPages={localizedDemo(DEMO_PLUGIN_PAGES)}');
   });
 
   it.skipIf(!websiteCheckoutAvailable)(

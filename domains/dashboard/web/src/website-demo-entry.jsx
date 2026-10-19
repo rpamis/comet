@@ -5,6 +5,8 @@ import 'antd/dist/reset.css';
 import { DEMO_PLUGIN_PAGES } from '../demo.js';
 import './styles.css';
 import { App } from './main.jsx';
+import { setDashboardLanguage } from './dashboard-i18n.js';
+import { localizedDemo } from './demo-locale.js';
 
 const mountedRoots = new WeakMap();
 
@@ -26,7 +28,7 @@ function createShadowSurface(container, stylesheetUrl) {
   return { appRoot, portalRoot, shadow };
 }
 
-function mount(container, { stylesheetUrl } = {}) {
+function mount(container, { stylesheetUrl, language = 'zh' } = {}) {
   if (!(container instanceof HTMLElement)) {
     throw new TypeError('Dashboard website demo requires an HTMLElement mount point.');
   }
@@ -35,13 +37,14 @@ function mount(container, { stylesheetUrl } = {}) {
   }
 
   mountedRoots.get(container)?.unmount();
+  setDashboardLanguage(language, { persist: false });
   const { appRoot, portalRoot } = createShadowSurface(container, stylesheetUrl);
   const root = createRoot(appRoot);
   root.render(
     <StyleProvider container={appRoot.getRootNode()}>
       <App
         forceDemo
-        demoPluginPages={DEMO_PLUGIN_PAGES}
+        demoPluginPages={localizedDemo(DEMO_PLUGIN_PAGES)}
         embedded
         themeRoot={container}
         portalContainer={portalRoot}

@@ -1,5 +1,6 @@
 // 仅现有 ?demo 展示模式使用；真实工作区始终请求只读 API。
 // SHA-256 从固定示例身份预计算，保持版本及关联记录一致，不代表真实包验收。
+import { localizedDemo, demoText } from './demo-locale.js';
 const locatorHashes = [
   'f1b2ddfe2ed6828c90cfd1580574fa83346b002685fbc6e9947a1acb5c0dd867',
   '44a7f2927bf7a939be02ad773b3a53e2edcb975c3117a1d73eda34aabeaf11bf',
@@ -193,9 +194,10 @@ function detail(summary) {
   };
 }
 export function readApplicationDemo(endpoint, query = {}) {
+  const examples = localizedDemo(summaries);
   if (endpoint === 'application-runs') {
     const search = String(query.q ?? '').toLowerCase();
-    const items = summaries.filter(
+    const items = examples.filter(
       (s) =>
         `${s.title} ${s.goal} ${s.runId}`.toLowerCase().includes(search) &&
         (query.status === 'attention'
@@ -214,8 +216,8 @@ export function readApplicationDemo(endpoint, query = {}) {
     };
   }
   const item = summaries.find((s) => s.locator === query.locator);
-  if (!item) throw Object.assign(new Error('示例记录不存在'), { status: 404 });
-  if (endpoint === 'application-run') return detail(item);
+  if (!item) throw Object.assign(new Error(demoText('示例记录不存在')), { status: 404 });
+  if (endpoint === 'application-run') return localizedDemo(detail(item));
   if (endpoint === 'application-run-artifact')
     return {
       key: 'demo-output',
@@ -225,5 +227,9 @@ export function readApplicationDemo(endpoint, query = {}) {
       content: '{\n  "example": true\n}',
       status: 'recorded',
     };
-  return { items: detail(item).records, total: detail(item).records.length, nextCursor: null };
+  return localizedDemo({
+    items: detail(item).records,
+    total: detail(item).records.length,
+    nextCursor: null,
+  });
 }

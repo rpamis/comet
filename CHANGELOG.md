@@ -32,6 +32,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Project initialization and worktrees**: Show the setup hint after package installation, respect the selected language, distinguish missing CodeGraph configuration from unavailable services, and retain the correct Classic workspace when continuing a change or before the first Git commit.
 - **Classic project discovery**: Report malformed or unsafe project configuration without falling back to a parent project, while keeping user-level configuration separate from project boundaries.
 - **Skill evaluation reliability**: Preserve complete task instructions, stop timed-out execution and its owned containers, and retain generated cases, partial results, and failure details for diagnosis and retry.
+- **Website language**: Open the embedded Dashboard in the homepage language without replacing the saved Dashboard preference. Show English example records, task details, artifacts, and evaluation reports in the English demo while preserving Chinese examples and original project content. Keep the English homepage's setup example, copy feedback, and accessibility descriptions in English.
 
 ### Security
 

@@ -1,4 +1,5 @@
 // 仅用于 Dashboard 展示，不连接真实评估服务或保存运行。
+import { localizedDemo, demoText } from './demo-locale.js';
 const run = {
   id: 'demo-eval-report',
   origin: 'cli',
@@ -74,24 +75,23 @@ const run = {
 };
 
 export async function readEvalDemo(suffix, { body } = {}) {
-  if (body !== undefined) throw new Error('示例数据只支持读取');
+  if (body !== undefined) throw new Error(demoText('示例数据只支持读取'));
   const url = new URL(suffix, 'https://demo.invalid');
+  const example = localizedDemo(structuredClone(run));
   if (url.pathname === '/runs') {
     const query = url.searchParams.get('q')?.toLowerCase() ?? '';
     return {
-      items: `${run.target.name} ${run.id}`.toLowerCase().includes(query)
-        ? [structuredClone(run)]
-        : [],
+      items: `${example.target.name} ${example.id}`.toLowerCase().includes(query) ? [example] : [],
     };
   }
-  if (url.pathname === `/runs/${run.id}`) return structuredClone(run);
+  if (url.pathname === `/runs/${run.id}`) return example;
   if (url.pathname === `/runs/${run.id}/artifact` && url.searchParams.get('ref') === 'summary.md')
-    return {
+    return localizedDemo({
       format: 'markdown',
       content:
         '# 报告工作流评估示例\n\n两项示例用例中，一项通过，一项未通过来源检查。\n\n此记录仅展示界面交互，不证明真实模型或宿主已通过验收。',
-    };
-  throw new Error('示例记录不存在');
+    });
+  throw new Error(demoText('示例记录不存在'));
 }
 
 export function readEvalDemoSettings() {

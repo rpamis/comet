@@ -131,6 +131,7 @@ import {
   resolveDashboardProjectWorkflow,
 } from './dashboard-data.js';
 import './styles.css';
+import { localizedDemo } from './demo-locale.js';
 
 const AUTO_REFRESH_MS = 30_000;
 const MEMORY_COLLAPSE_THRESHOLD = 240;
@@ -4399,17 +4400,17 @@ async function fetchDashboardChangeDetail(projectId, changeId, signal) {
 
 async function loadDemoSnapshot() {
   const module = await import('../demo.js');
-  return withDemoArtifactPreviews(module.DEMO_SNAPSHOT);
+  return localizedDemo(withDemoArtifactPreviews(module.DEMO_SNAPSHOT));
 }
 
 async function loadDemoPluginPages() {
   const module = await import('../demo.js');
-  return module.DEMO_PLUGIN_PAGES;
+  return localizedDemo(module.DEMO_PLUGIN_PAGES);
 }
 
 async function loadDemoProjectConfig() {
   const module = await import('../demo.js');
-  return structuredClone(module.DEMO_PROJECT_CONFIG);
+  return localizedDemo(structuredClone(module.DEMO_PROJECT_CONFIG));
 }
 
 function withDemoArtifactPreviews(snapshot) {
