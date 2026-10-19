@@ -82,7 +82,11 @@ export async function runOwnedCommand(
     failure = { error };
   }
   // Windows 监管器等待此处的单次整树终止；先 disconnect 会让自清理与 taskkill 竞争。
-  const confirmed = await terminateProcessTreeConfirmed(owned.child).catch(() => false);
+  let terminationError: unknown;
+  const confirmed = await terminateProcessTreeConfirmed(owned.child).catch((error: unknown) => {
+    terminationError = error;
+    return false;
+  });
   if (confirmed) await closed;
   else {
     owned.child.stdout.destroy();
@@ -91,7 +95,11 @@ export async function runOwnedCommand(
     owned.child.unref();
   }
   if (registered && instance) await options.onTerminated?.(instance, confirmed);
-  if (!confirmed) throw new Error('执行进程树的停止尚未确认');
+  if (!confirmed)
+    throw new Error(
+      `执行进程树的停止尚未确认（${process.platform}; pid=${owned.child.pid}; exitCode=${owned.child.exitCode}; signal=${owned.child.signalCode}）`,
+      { cause: terminationError },
+    );
   if (failure) throw failure.error;
   return Buffer.concat(output).toString('utf8');
 }

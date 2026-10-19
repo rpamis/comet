@@ -132,10 +132,24 @@ it('does not transfer the previous check receipt to a newly registered check wit
 });
 
 it('keeps legacy POSIX process-group confirmation compatible', async () => {
-  const { run } = await registration('completed');
-  Object.defineProperty(process, 'platform', { ...originalPlatform, value: 'linux' });
-  expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0].quiescent).toBe(
-    true,
+  const { run, registered } = await registration('completed');
+  vi.mocked(processIdentity.inspectProcessTreeLiveness).mockImplementationOnce(async () => {
+    // 先按真实宿主读取原登记，再切换纯终止判定；不能改变 Windows 路径身份解析。
+    expect(process.platform).toBe(originalPlatform.value);
+    Object.defineProperty(process, 'platform', { ...originalPlatform, value: 'linux' });
+    return 'dead';
+  });
+  expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0]).toMatchObject({
+    owner: 'dead',
+    process: 'dead',
+    processBoundary: 'process-group',
+    phase: 'completed',
+    execution: registered.execution,
+    quiescent: true,
+  });
+  expect(processIdentity.inspectProcessTreeLiveness).toHaveBeenCalledWith(
+    123456,
+    'original-identity',
   );
 });
 

@@ -3,8 +3,9 @@ import { once } from 'node:events';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runOwnedCommand } from '../../../platform/process/run-owned-command.js';
+import * as termination from '../../../platform/process/terminate-process-tree.js';
 import { terminateProcessTreeConfirmed } from '../../../platform/process/terminate-process-tree.js';
 import type { OwnedProcessInstance } from '../../../platform/process/owned-command.js';
 
@@ -59,6 +60,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   Object.defineProperty(process, 'platform', platform);
   if (systemRoot === undefined) delete process.env.SystemRoot;
   else process.env.SystemRoot = systemRoot;
@@ -75,14 +77,100 @@ afterEach(async () => {
 });
 
 describe('受管命令的整树终止证明', () => {
-  it('taskkill 失败只杀监管器时返回未确认，实际后代仍存活', async () => {
+  it('POSIX 自清理后的短暂 EPERM 只有在整组消失后才能确认停止', async () => {
+    Object.defineProperty(process, 'platform', { ...platform, value: 'darwin' });
+    const pid = 2147483002;
+    const denied = Object.assign(new Error('kill EPERM'), { code: 'EPERM' });
+    const missing = Object.assign(new Error('kill ESRCH'), { code: 'ESRCH' });
+    let probes = 0;
+    const kill = vi.spyOn(process, 'kill').mockImplementation((target, signal) => {
+      expect(target).toBe(-pid);
+      if (signal === 'SIGKILL') throw denied;
+      expect(signal).toBe(0);
+      if (++probes === 1) throw denied;
+      throw missing;
+    });
+    const child = { pid, kill: vi.fn(() => false) } as unknown as ChildProcess;
+    await expect(terminateProcessTreeConfirmed(child)).resolves.toBe(true);
+    expect(probes).toBe(2);
+    expect(kill.mock.calls.filter(([, signal]) => signal === 'SIGKILL')).toHaveLength(1);
+  });
+
+  it.each(['alive', 'unknown'] as const)(
+    'POSIX kill 被拒绝且整组仍为 %s 时不能只凭组长退出确认',
+    async (state) => {
+      Object.defineProperty(process, 'platform', { ...platform, value: 'darwin' });
+      const pid = 2147483002;
+      const denied = Object.assign(new Error('kill EPERM'), { code: 'EPERM' });
+      vi.spyOn(process, 'kill').mockImplementation((target, signal) => {
+        expect(target).toBe(-pid);
+        if (signal === 'SIGKILL' || state === 'unknown') throw denied;
+        expect(signal).toBe(0);
+        return true;
+      });
+      const child = {
+        pid,
+        exitCode: 0,
+        signalCode: null,
+        kill: vi.fn(() => false),
+      } as unknown as ChildProcess;
+      await expect(terminateProcessTreeConfirmed(child)).rejects.toBe(denied);
+      expect(child.kill).not.toHaveBeenCalled();
+    },
+  );
+
+  it('POSIX 整组已消失的 ESRCH 可确认，不再探测或重发组信号', async () => {
+    Object.defineProperty(process, 'platform', { ...platform, value: 'darwin' });
+    const pid = 2147483002;
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => {
+      throw Object.assign(new Error('kill ESRCH'), { code: 'ESRCH' });
+    });
+    const child = { pid, kill: vi.fn(() => false) } as unknown as ChildProcess;
+    await expect(terminateProcessTreeConfirmed(child)).resolves.toBe(true);
+    expect(kill).toHaveBeenCalledExactlyOnceWith(-pid, 'SIGKILL');
+  });
+
+  it.each(['signal', 'probe'] as const)(
+    'POSIX %s 遇到不明错误时保留原信号失败，不生成停止证明',
+    async (stage) => {
+      Object.defineProperty(process, 'platform', { ...platform, value: 'darwin' });
+      const pid = 2147483002;
+      const original = Object.assign(new Error(`kill ${stage}`), {
+        code: stage === 'signal' ? 'EIO' : 'EPERM',
+      });
+      const kill = vi.spyOn(process, 'kill').mockImplementation((_target, signal) => {
+        if (signal === 'SIGKILL') throw original;
+        throw Object.assign(new Error('probe EIO'), { code: 'EIO' });
+      });
+      const child = { pid, kill: vi.fn(() => false) } as unknown as ChildProcess;
+      await expect(terminateProcessTreeConfirmed(child)).rejects.toBe(original);
+      expect(kill).toHaveBeenCalledTimes(stage === 'signal' ? 1 : 2);
+      expect(child.kill).not.toHaveBeenCalled();
+    },
+  );
+
+  it('taskkill 失败时真实父子进程的清理保持未确认', async () => {
     const { child, grandchild } = await tree();
+    expect(await alive(grandchild)).toBe(true);
     const closed = once(child, 'close');
     Object.defineProperty(process, 'platform', { ...platform, value: 'win32' });
     process.env.SystemRoot = 'C:\\comet-missing-taskkill-test';
     expect(await terminateProcessTreeConfirmed(child)).toBe(false);
     await closed;
     Object.defineProperty(process, 'platform', platform);
+    // Windows 的 Node 子进程可能随所属 Job 退出；不能把这种退出反推成 taskkill 成功。
+    // POSIX 保留“组长已死、真实后代仍活”的故障证据。
+    if (platform.value !== 'win32') expect(await alive(grandchild)).toBe(true);
+  });
+
+  it('taskkill 与单进程兜底都未停止真实父子进程时不能确认成功', async () => {
+    const { child, grandchild } = await tree();
+    Object.defineProperty(process, 'platform', { ...platform, value: 'win32' });
+    process.env.SystemRoot = 'C:\\comet-missing-taskkill-test';
+    vi.spyOn(child, 'kill').mockReturnValue(false);
+    expect(await terminateProcessTreeConfirmed(child)).toBe(false);
+    Object.defineProperty(process, 'platform', platform);
+    expect(await alive(child.pid!)).toBe(true);
     expect(await alive(grandchild)).toBe(true);
   });
 
@@ -111,6 +199,29 @@ describe('受管命令的整树终止证明', () => {
       }),
     ).rejects.toThrow('停止尚未确认');
     expect(confirmed).toBe(false);
+  }, 20000);
+
+  it('runOwnedCommand 保留终止错误 cause 和原进程上下文', async () => {
+    const original = Object.assign(new Error('kill EIO'), { code: 'EIO' });
+    vi.spyOn(termination, 'terminateProcessTreeConfirmed').mockRejectedValue(original);
+    let registered: OwnedProcessInstance | undefined;
+    let failure: unknown;
+    try {
+      await runOwnedCommand(process.execPath, ['-e', ''], {
+        cwd: directory,
+        env: process.env,
+        timeoutMs: 10000,
+        onRegistered: async (instance) => {
+          registered = instance;
+        },
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).cause).toBe(original);
+    expect((failure as Error).message).toContain(`${platform.value}; pid=${registered!.pid}`);
+    await untilDead(registered!.pid);
   }, 20000);
 
   it('实际成功终止整树时返回确认且后代停止', async () => {

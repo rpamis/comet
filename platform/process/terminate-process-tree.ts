@@ -3,6 +3,22 @@ import path from 'node:path';
 
 const WINDOWS_TASKKILL_ATTEMPT_MS = 1_000;
 const WINDOWS_TASKKILL_ATTEMPTS = 2;
+const POSIX_GROUP_EXIT_WAIT_MS = 1_000;
+
+async function waitForPosixGroupExit(pid: number): Promise<boolean> {
+  const deadline = Date.now() + POSIX_GROUP_EXIT_WAIT_MS;
+  for (;;) {
+    try {
+      process.kill(-pid, 0);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ESRCH') return true;
+      if (code !== 'EPERM') return false;
+    }
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
 
 /** 保留既有 best-effort 调用契约；需要清理证明的调用方使用确认版。 */
 export async function terminateProcessTree(child: ChildProcess): Promise<void> {
@@ -66,7 +82,14 @@ export async function terminateProcessTreeConfirmed(child: ChildProcess): Promis
   try {
     process.kill(-pid, 'SIGKILL');
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+    const code = (error as NodeJS.ErrnoException).code;
+    // Darwin 的自清理进程组只剩僵尸时也可能返回 EPERM。仅复核整组消失，
+    // 不按死亡组长推断成功，也不重发信号给可能复用的 PGID。
+    if (
+      code !== 'ESRCH' &&
+      !(process.platform === 'darwin' && code === 'EPERM' && (await waitForPosixGroupExit(pid)))
+    )
+      throw error;
   }
   child.kill('SIGKILL');
   return true;
