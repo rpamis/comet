@@ -1,3 +1,4 @@
+import type { RuntimeAction } from '../engine/runtime.js';
 import type { ClassicState } from './classic-state.js';
 
 export interface ClassicConfigurationReadiness {
@@ -33,6 +34,18 @@ export function classicConfigurationReadiness(
   if (state.buildMode === 'subagent-driven-development' && state.subagentDispatch !== 'confirmed') {
     missingFields.push('subagent_dispatch');
   }
+  if (state.buildMode !== 'subagent-driven-development' && state.subagentDispatch === 'confirmed') {
+    invalidFields.push({
+      field: 'subagent_dispatch',
+      reason: 'subagent_dispatch=confirmed 仅适用于 build_mode=subagent-driven-development',
+    });
+  }
+  if (state.buildMode !== 'direct' && state.directOverride === true) {
+    invalidFields.push({
+      field: 'direct_override',
+      reason: 'direct_override=true 仅适用于 build_mode=direct',
+    });
+  }
   if (state.buildMode === 'autonomous' && state.reviewMode === 'off') {
     invalidFields.push({
       field: 'review_mode',
@@ -52,4 +65,24 @@ export function classicConfigurationReadiness(
 export function classicConfigurationReady(state: ClassicBuildConfigurationState): boolean {
   const readiness = classicConfigurationReadiness(state);
   return readiness.missingFields.length === 0 && readiness.invalidFields.length === 0;
+}
+
+/** 仅内置配置提案可修正已拒结果；执行任务与未回传的领取仍须核对原执行器。 */
+export function isClassicSdkRejectedBuildProposal(action: Readonly<RuntimeAction>): boolean {
+  return (
+    action.stepId === 'full.build.configure' &&
+    action.type === 'invoke_skill' &&
+    action.ref === 'comet-build' &&
+    (action.status === 'running' || action.status === 'unknown') &&
+    action.claim?.executorId === 'comet-classic-state' &&
+    !!action.rejectedOutcomes?.some(
+      ({ outcome, code }) =>
+        (code === 'OUTCOME_REJECTED' || code === 'OUTPUT_INVALID') &&
+        outcome.status === 'succeeded' &&
+        outcome.actionId === action.id &&
+        outcome.attempt === action.attempt &&
+        outcome.inputHash === action.inputHash &&
+        outcome.claimToken === action.claim?.token,
+    )
+  );
 }

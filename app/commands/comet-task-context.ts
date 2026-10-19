@@ -11,23 +11,54 @@ import type {
   ProjectLearningRequest,
   ProjectLearningStatus,
 } from '../../domains/project-knowledge/index.js';
-import type { recordCometWorkflowResult } from '../../domains/comet-entry/plugin-context.js';
+import {
+  areCometWorkflowResultsProcessed,
+  type CometWorkflowResult,
+} from '../../domains/comet-entry/workflow-learning-receipt.js';
 
-type WorkflowResult = Parameters<typeof recordCometWorkflowResult>[0];
-type WorkflowLearningStatus = Awaited<ReturnType<typeof recordCometWorkflowResult>>;
+type WorkflowResult = CometWorkflowResult;
+type WorkflowLearningStatus =
+  import('../../domains/comet-memory/index.js').MemoryLearningStatus | undefined;
 
 /** One process deadline covers the whole checkpoint batch, including Provider I/O. */
 export async function recordCometTaskWorkflowResults(
   workflowResults: readonly WorkflowResult[],
+  options: { readonly reuseProcessed?: boolean } = {},
 ): Promise<readonly WorkflowLearningStatus[]> {
   if (workflowResults.length === 0) return [];
+  const started = performance.now();
   try {
+    if (
+      options.reuseProcessed &&
+      workflowResults.every(
+        (result) =>
+          result.command === 'next' && result.learningCheck === undefined && !result.captureOnly,
+      )
+    ) {
+      const controller = new AbortController();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const processed = await Promise.race([
+          areCometWorkflowResultsProcessed(workflowResults, controller.signal).catch(() => false),
+          new Promise<false>((resolve) => {
+            timer = setTimeout(() => {
+              controller.abort();
+              resolve(false);
+            }, 100);
+          }),
+        ]);
+        if (processed) return workflowResults.map(() => undefined);
+      } finally {
+        clearTimeout(timer);
+        controller.abort();
+      }
+    }
     const output = await runExternalCommandAsync(
       process.execPath,
       [fileURLToPath(new URL('./comet-task-context-worker.js', import.meta.url))],
       {
         input: JSON.stringify({ workflowResults }),
-        timeoutMs: 5_000,
+        timeoutMs: Math.max(1, Math.ceil(5_000 - (performance.now() - started))),
         maxBufferBytes: 1024 * 1024,
         onStderr: (chunk) => process.stderr.write(chunk),
       },

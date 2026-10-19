@@ -89,7 +89,7 @@
     "build:classic-runtime": "node scripts/build/build-classic-runtime.mjs",
     "build:native-runtime": "node scripts/build/build-native-runtime.mjs",
     "build:entry-runtime": "node scripts/build/build-entry-runtime.mjs",
-    "check:generated": "node scripts/build/build-classic-runtime.mjs --check && node scripts/build/build-native-runtime.mjs --check && node scripts/build/build-entry-runtime.mjs --check",
+    "check:generated": "node scripts/build/build-runtime-schemas.mjs --check && node scripts/build/build-classic-runtime.mjs --check && node scripts/build/build-native-runtime.mjs --check && node scripts/build/build-entry-runtime.mjs --check",
     "check:sdk-api": "node scripts/release/check-sdk-api.mjs",
     "check:sdk-fixtures": "node scripts/release/check-sdk-fixtures.mjs",
     "update:sdk-api": "node scripts/release/check-sdk-api.mjs --update",

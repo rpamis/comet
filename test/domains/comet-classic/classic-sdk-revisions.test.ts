@@ -190,6 +190,207 @@ async function fixture(
 }
 
 describe('Classic candidate revisions', () => {
+  it('rejects invalid Build semantics before claiming, then accepts a corrected proposal', async () => {
+    const f = await fixture();
+    await f.finishDesign(await f.design());
+    const before = (await f.inspect()).run;
+    await f.put(
+      'configuration.json',
+      JSON.stringify({
+        build_mode: 'autonomous',
+        tdd_mode: 'direct',
+        review_mode: 'standard',
+        subagent_dispatch: null,
+        direct_override: true,
+      }),
+    );
+    const invalid = await f.cli(
+      'state',
+      'propose-build',
+      'example',
+      '--file',
+      'configuration.json',
+    );
+    expect(invalid.exitCode).not.toBe(0);
+    expect(JSON.stringify(invalid)).toContain('direct_override');
+    expect((await f.inspect()).run).toEqual(before);
+    await f.put(
+      'configuration.json',
+      JSON.stringify({
+        build_mode: 'autonomous',
+        tdd_mode: 'direct',
+        review_mode: 'standard',
+        subagent_dispatch: null,
+        direct_override: false,
+      }),
+    );
+    const proposed = await f.ok(
+      'state',
+      'propose-build',
+      'example',
+      '--file',
+      'configuration.json',
+    );
+    expect(proposed.wait.proposalHash).toEqual(expect.any(String));
+  });
+
+  it('repairs a rejected builtin Build proposal with its original claim and a new user decision', async () => {
+    const f = await fixture();
+    await f.finishDesign(await f.design());
+    const { run, runtime } = await f.inspect();
+    const action = run.actions.find((entry) => entry.stepId === 'full.build.configure')!;
+    const claimToken = 'rejected-build-claim';
+    const claimed = await runtime.claim({
+      runId: run.runId,
+      expectedRevision: run.revision,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'comet-classic-state',
+      claimToken,
+    });
+    const output = {
+      buildMode: 'autonomous',
+      tddMode: 'direct',
+      reviewMode: 'standard',
+      subagentDispatch: null,
+      directOverride: true,
+      isolation: 'current',
+      boundBranch: 'main',
+    };
+    const outcome = {
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken,
+      outcomeId: 'rejected-build-outcome',
+      status: 'succeeded' as const,
+      output,
+    };
+    await expect(
+      runtime.recordOutcome({
+        runId: run.runId,
+        expectedRevision: claimed.revision,
+        outcome,
+        context: { projectRoot: f.projectRoot, requestId: 'reject-build' },
+      }),
+    ).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
+    const rejected = (await f.inspect()).run;
+    const next = await f.ok('state', 'next', 'example');
+    expect(next.continuation).toMatchObject({ mode: 'reconcile' });
+    expect(next.continuation.commandArgs).toContain('propose-build');
+    const recovery = await f.cli('state', 'check', 'example', 'build', '--recover');
+    expect(recovery.exitCode).toBe(1);
+    expect(JSON.stringify(recovery)).toContain('outcome-rejected');
+    await f.put(
+      'configuration.json',
+      JSON.stringify({
+        build_mode: 'autonomous',
+        tdd_mode: 'direct',
+        review_mode: 'standard',
+        subagent_dispatch: null,
+        direct_override: false,
+      }),
+    );
+    expect(
+      (
+        await f.cli(
+          'state',
+          'propose-build',
+          'example',
+          '--file',
+          'configuration.json',
+          '--confirmed',
+        )
+      ).exitCode,
+    ).not.toBe(0);
+    expect((await f.inspect()).run).toEqual(rejected);
+    const proposed = await f.ok(
+      'state',
+      'propose-build',
+      'example',
+      '--file',
+      'configuration.json',
+    );
+    const repaired = (await f.inspect()).run;
+    const repairedAction = repaired.actions.find((entry) => entry.id === action.id)!;
+    expect(repairedAction).toMatchObject({
+      status: 'succeeded',
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claim: { token: claimToken },
+      rejectedOutcomes: [{ outcome }],
+    });
+    expect(repairedAction.outcome?.outcomeId).not.toBe(outcome.outcomeId);
+    expect(repaired.waits.at(-1)).toMatchObject({
+      status: 'pending',
+      proposalHash: proposed.wait.proposalHash,
+    });
+    // 旧 revision 的并发回传不能覆盖修正后的提案。
+    await expect(
+      runtime.recordOutcome({
+        runId: run.runId,
+        expectedRevision: rejected.revision,
+        outcome: {
+          ...outcome,
+          outcomeId: 'stale-build-outcome',
+          output: { ...output, directOverride: false },
+        },
+        context: { projectRoot: f.projectRoot, requestId: 'stale-build' },
+      }),
+    ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+    expect(
+      (await f.cli('state', 'propose-build', 'example', '--file', 'configuration.json')).exitCode,
+    ).not.toBe(0);
+    expect((await f.inspect()).run).toEqual(repaired);
+    await f.ok(
+      'state',
+      'decide-build',
+      'example',
+      '--proposal-hash',
+      proposed.wait.proposalHash,
+      '--choice',
+      'approved',
+    );
+    const approved = (await f.inspect()).run;
+    expect(
+      (await f.cli('state', 'propose-build', 'example', '--file', 'configuration.json')).exitCode,
+    ).not.toBe(0);
+    expect((await f.inspect()).run).toEqual(approved);
+  });
+
+  it.each(['comet-classic-state', 'external-executor'])(
+    'does not take over an unreturned Build claim (%s)',
+    async (executorId) => {
+      const f = await fixture();
+      await f.finishDesign(await f.design());
+      const { run, runtime } = await f.inspect();
+      const action = run.actions.find((entry) => entry.stepId === 'full.build.configure')!;
+      const claimed = await runtime.claim({
+        runId: run.runId,
+        expectedRevision: run.revision,
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        executorId,
+        claimToken: 'running-build-claim',
+      });
+      await f.put(
+        'configuration.json',
+        JSON.stringify({
+          build_mode: 'autonomous',
+          tdd_mode: 'direct',
+          review_mode: 'standard',
+          subagent_dispatch: null,
+        }),
+      );
+      expect(
+        (await f.cli('state', 'propose-build', 'example', '--file', 'configuration.json')).exitCode,
+      ).not.toBe(0);
+      expect((await f.inspect()).run).toEqual(claimed);
+    },
+  );
+
   it('allows the approved Design document to grow in place and retains Open approval history', async () => {
     const f = await fixture();
     const before = (await f.inspect()).run;
@@ -580,7 +781,7 @@ describe('Classic candidate revisions', () => {
     const source = await fs.readFile(path.join(f.projectRoot, archiveRef, 'design.md'), 'utf8');
     expect(source).toContain('status: final');
     expect(source).toContain(`archived-with: ${path.posix.basename(archiveRef)}`);
-    execFileSync('git', ['add', '--', 'openspec', f.plan], { cwd: f.projectRoot });
+    execFileSync('git', ['add', '--', 'openspec', f.plan, report], { cwd: f.projectRoot });
     execFileSync(
       'git',
       ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'archive'],

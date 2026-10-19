@@ -1,3 +1,5 @@
+import { compactCliStdout } from '../../domains/workflow-contract/compact-output.js';
+import { splitCompactOutputArgs } from './compact-output.js';
 import type { ClassicCommandResult } from '../../domains/comet-classic/classic-cli.js';
 import { withProjectIdentityScope } from '../../platform/paths/project-identity.js';
 
@@ -10,9 +12,10 @@ export async function runClassicFacade(
   args: readonly string[],
   executor?: (argv: readonly string[]) => Promise<ClassicCommandResult>,
 ): Promise<number> {
+  const outputArgs = splitCompactOutputArgs(args, args[0] !== 'openspec');
   let integration: ClassicIntegrationArgs;
   try {
-    integration = splitIntegrationArgs(args);
+    integration = splitIntegrationArgs(outputArgs.args);
   } catch (error) {
     return reportIntegrationFailure(command, args, error);
   }
@@ -26,7 +29,7 @@ export async function runClassicFacade(
       recordClassicResult(command, integration.cliArgs, result, integration.workflow, projectRoot),
     );
   }
-  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stdout) process.stdout.write(compactCliStdout(result.stdout, outputArgs.compact)!);
   if (result.stderr) process.stderr.write(result.stderr);
   return result.exitCode;
 }
@@ -62,9 +65,10 @@ export async function runClassicGroupFacade(args: readonly string[]): Promise<nu
     return 0;
   }
   const command = args[0] ?? 'classic';
+  const outputArgs = splitCompactOutputArgs(args, args[0] !== 'openspec');
   let integration: ClassicIntegrationArgs;
   try {
-    integration = splitIntegrationArgs(args.slice(1));
+    integration = splitIntegrationArgs(outputArgs.args.slice(1));
   } catch (error) {
     return reportIntegrationFailure(command, args.slice(1), error);
   }
@@ -82,7 +86,7 @@ export async function runClassicGroupFacade(args: readonly string[]): Promise<nu
       ),
     );
   }
-  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stdout) process.stdout.write(compactCliStdout(result.stdout, outputArgs.compact)!);
   if (result.stderr) process.stderr.write(result.stderr);
   return result.exitCode;
 }

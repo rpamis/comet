@@ -5,6 +5,7 @@ import {
 } from '../workflow-contract/workspace-runtime.js';
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import path from 'node:path';
 import { stringify } from 'yaml';
 import { NATIVE_MANAGED_RUN_MARKER, parseNativeStateDocument } from './native-state-document.js';
@@ -22,7 +23,6 @@ import {
   createFileRuntimeStore,
   createPortableRunCheckpoint,
   encodePortableRunCheckpoint,
-  portableRunCheckpointMatches,
   PORTABLE_RUN_CHECKPOINT_KEY,
   readPortableRunCheckpoint,
   type RuntimeStore,
@@ -52,7 +52,7 @@ import type { NativePortableState } from './native-portable-types.js';
 import type { ApplicationIdentity } from '../workflow-application/index.js';
 import { hashRuntimeValue } from '../engine/runtime.js';
 
-type PortableRunCheckpoint = ReturnType<typeof createPortableRunCheckpoint>;
+type EncodedPortableRunCheckpoint = ReturnType<typeof encodePortableRunCheckpoint>;
 
 /** A validated portable checkpoint still requires an explicit mutating recovery. */
 export class NativeSdkRunRecoveryRequiredError extends Error {
@@ -208,7 +208,7 @@ export async function writeNativeManagedRunState(
     file,
     state,
     containedRoot,
-    run ? createPortableRunCheckpoint(run) : undefined,
+    run ? encodePortableRunCheckpoint(createPortableRunCheckpoint(run)) : undefined,
     archiveReceipt,
     applicationIdentity,
   );
@@ -216,7 +216,7 @@ export async function writeNativeManagedRunState(
 
 function serializeNativeManagedRunProjection(
   state: NativePortableState,
-  checkpoint?: PortableRunCheckpoint,
+  checkpoint?: EncodedPortableRunCheckpoint,
   archiveReceipt?: unknown,
   applicationIdentity?: ApplicationIdentity,
 ): string {
@@ -227,9 +227,7 @@ function serializeNativeManagedRunProjection(
       ...(archiveReceipt === undefined ? {} : { archive_receipt: archiveReceipt }),
       ...(applicationIdentity ? { application_checkpoint: applicationIdentity } : {}),
     }) +
-    (checkpoint
-      ? `${PORTABLE_RUN_CHECKPOINT_KEY}: ${JSON.stringify(encodePortableRunCheckpoint(checkpoint))}\n`
-      : '')
+    (checkpoint ? `${PORTABLE_RUN_CHECKPOINT_KEY}: ${JSON.stringify(checkpoint)}\n` : '')
   );
 }
 
@@ -237,7 +235,7 @@ async function writeNativeManagedRunProjection(
   file: string,
   state: NativePortableState,
   containedRoot: string,
-  checkpoint?: PortableRunCheckpoint,
+  checkpoint?: EncodedPortableRunCheckpoint,
   archiveReceipt?: unknown,
   applicationIdentity?: ApplicationIdentity,
 ): Promise<void> {
@@ -485,6 +483,8 @@ export function createNativeSdkStateStore(
         file = archivedFile;
       }
       const expectedCheckpoint = createPortableRunCheckpoint(run);
+      // 仅在本次已校验快照内复用编码；后续读取仍重新核对磁盘和 Run。
+      const encodedCheckpoint = encodePortableRunCheckpoint(expectedCheckpoint);
       let current: NativePortableState | null = null;
       let currentSource: string | null = null;
       let currentDocument: Record<string, unknown> | null = null;
@@ -495,11 +495,11 @@ export function createNativeSdkStateStore(
           options.readOnly &&
           !options.identity &&
           !state.archived &&
-          currentSource === serializeNativeManagedRunProjection(state, expectedCheckpoint);
+          currentSource === serializeNativeManagedRunProjection(state, encodedCheckpoint);
         currentDocument = canonical
           ? {
               ...state,
-              [PORTABLE_RUN_CHECKPOINT_KEY]: encodePortableRunCheckpoint(expectedCheckpoint),
+              [PORTABLE_RUN_CHECKPOINT_KEY]: encodedCheckpoint,
             }
           : parseProjection(file, currentSource);
         current = parseNativePortableState(currentDocument);
@@ -536,7 +536,8 @@ export function createNativeSdkStateStore(
         !current ||
         !sameState(current, state) ||
         !currentSource?.startsWith(NATIVE_MANAGED_RUN_MARKER) ||
-        !portableRunCheckpointMatches(currentCheckpoint, expectedCheckpoint)
+        (!isDeepStrictEqual(currentCheckpoint, expectedCheckpoint) &&
+          !isDeepStrictEqual(currentCheckpoint, encodedCheckpoint))
       ) {
         if (options.readOnly)
           throw new Error(
@@ -546,7 +547,7 @@ export function createNativeSdkStateStore(
           file,
           state,
           paths.nativeRoot,
-          expectedCheckpoint,
+          encodedCheckpoint,
           unresolvedFinalization ? archiveReceipt : undefined,
           options.identity,
         );

@@ -190,6 +190,37 @@ describe('Classic command facade', () => {
     }
   });
 
+  it('records full evidence before compacting JSON stdout', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const paths = Array.from(
+      { length: 20 },
+      (_, index) => `src/feature-${index}/implementation.ts`,
+    );
+    runClassicCli.mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        data: { artifacts: paths, changedPaths: paths, artifactRefs: paths },
+      }),
+    });
+    const { runClassicFacade } = await import('../../app/commands/classic.js');
+    await runClassicFacade('archive', [
+      'change-name',
+      '--comet-workflow',
+      'full',
+      '--json',
+      '--compact',
+    ]);
+    expect(runClassicCli).toHaveBeenCalledWith(['archive', 'change-name', '--json']);
+    expect(recordCometWorkflowResult).toHaveBeenCalledWith(
+      expect.objectContaining({ changedPaths: paths, artifactRefs: paths }),
+    );
+    const shown = JSON.parse(String(stdout.mock.calls[0][0]));
+    expect(shown.outputView.references).toMatchObject({
+      '/data/changedPaths': '/data/artifacts',
+      '/data/artifactRefs': '/data/artifacts',
+    });
+  });
+
   it('records a successful Classic archive through the shared plugin bridge', async () => {
     runClassicCli.mockResolvedValue({ exitCode: 0, stdout: 'archived\n', stderr: '' });
     const { runClassicFacade } = await import('../../app/commands/classic.js');

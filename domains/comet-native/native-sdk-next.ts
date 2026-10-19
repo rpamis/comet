@@ -1,3 +1,4 @@
+import { recoverNativeSdkReportRevalidation } from './native-sdk-report.js';
 import { randomUUID } from 'node:crypto';
 import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
 import { settleNativeSdkCompletion } from './native-sdk-completion-cleanup.js';
@@ -73,6 +74,11 @@ export async function advanceNativeSdkChange(
   let { run, state, artifactRootRef, application } = await inspectNativeSdkRun(projectRoot, name);
   if (run.actions.some((action) => ['running', 'unknown'].includes(action.status))) {
     run = await recoverNativeSdkChecks(
+      projectRoot,
+      run,
+      (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime,
+    );
+    run = await recoverNativeSdkReportRevalidation(
       projectRoot,
       run,
       (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime,

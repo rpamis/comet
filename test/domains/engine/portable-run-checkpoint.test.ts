@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as runtimeJson from '../../../domains/engine/runtime-json.js';
 import { createRuntime } from '../../../domains/engine/runtime-service.js';
 import { createMemoryRuntimeStore } from '../../../domains/engine/runtime-store.js';
 import {
@@ -36,7 +37,20 @@ async function checkpoint() {
   return { claimed, saved: createPortableRunCheckpoint(claimed) };
 }
 
+afterEach(() => vi.restoreAllMocks());
+
 describe('portable Run revision identity', () => {
+  it('hashes a v1 Run once per read and rechecks edits with the same revision', async () => {
+    const { saved } = await checkpoint();
+    const hashes = vi.spyOn(runtimeJson, 'hashRuntimeValue');
+    expect(readPortableRunCheckpoint(saved, 'demo')).toEqual(saved.run);
+    expect(hashes.mock.calls.filter(([value]) => value === saved.run)).toHaveLength(1);
+    saved.run.input = { edited: true };
+    hashes.mockClear();
+    expect(() => readPortableRunCheckpoint(saved, 'demo')).toThrow(/invalid or changed/);
+    expect(hashes.mock.calls.filter(([value]) => value === saved.run)).toHaveLength(1);
+  });
+
   it('keeps default portable semantics while explicitly restoring the bound source revision', async () => {
     const { claimed, saved } = await checkpoint();
     expect(saved.run.revision).toBe(1);

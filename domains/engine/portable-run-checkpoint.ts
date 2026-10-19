@@ -125,10 +125,9 @@ export function readPortableRunCheckpoint(
             : []),
         ].includes(key),
     ) ||
-    (checkpoint.schema === 'comet.workflow-run-checkpoint.v2'
-      ? hashRuntimeValue({ record: checkpoint.run, pool: checkpoint.pool }) !==
-        checkpoint.storageHash
-      : hashRuntimeValue(checkpoint.run) !== checkpoint.hash)
+    (checkpoint.schema === 'comet.workflow-run-checkpoint.v2' &&
+      hashRuntimeValue({ record: checkpoint.run, pool: checkpoint.pool }) !==
+        checkpoint.storageHash)
   ) {
     throw new Error(`Portable Run checkpoint for ${runId} is invalid or changed`);
   }

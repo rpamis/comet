@@ -2,6 +2,9 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { execFile, execFileSync } from 'node:child_process';
+import { promisify } from 'node:util';
+import { build } from 'esbuild';
 import { describe, expect, it } from 'vitest';
 
 import { JsonFileTextStore, withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
@@ -154,3 +157,67 @@ describe('JsonFileTextStore locking', () => {
     }
   });
 });
+
+describe('bounded receipt reads', () => {
+  it.skipIf(process.platform === 'win32')(
+    'reads exact UTF-8 byte limits and rejects oversized or invalid limits',
+    async () => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-read-limit-'));
+      try {
+        const store = new JsonFileTextStore(path.join(root, 'state.json'));
+        await expect(store.read(3)).resolves.toBeNull();
+        await store.write('中');
+        await expect(store.read(3)).resolves.toBe('中');
+        await expect(store.read(2)).rejects.toThrow('size limit');
+        await expect(store.read(0)).rejects.toThrow('size limit');
+        await expect(store.read()).resolves.toBe('中');
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+it.skipIf(process.platform !== 'linux')(
+  'bounded reads reject a FIFO and exit without a blocked filesystem worker',
+  async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-fifo-'));
+    try {
+      const fifo = path.join(root, 'journal.json');
+      execFileSync('mkfifo', [fifo]);
+      const bundle = path.join(root, 'store.cjs');
+      await build({
+        entryPoints: ['platform/fs/plugin-store.ts'],
+        outfile: bundle,
+        bundle: true,
+        platform: 'node',
+        format: 'cjs',
+      });
+      const { stdout } = await promisify(execFile)(
+        process.execPath,
+        [
+          '-e',
+          `
+      const { JsonFileTextStore } = require(process.argv[1]);
+      new JsonFileTextStore(process.argv[2]).read(1024).then(
+        () => { process.exitCode = 1; },
+        error => { console.log(error.message); }
+      );
+    `,
+          bundle,
+          fifo,
+        ],
+        { timeout: 2_000 },
+      );
+      expect(stdout).toContain('regular file');
+      const target = path.join(root, 'actual.json');
+      const link = path.join(root, 'link.json');
+      await fs.writeFile(target, '{}');
+      await fs.symlink(target, link);
+      await expect(new JsonFileTextStore(link).read(1024)).rejects.toMatchObject({ code: 'ELOOP' });
+      await expect(new JsonFileTextStore(root).read(1024)).rejects.toThrow('regular file');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  },
+);

@@ -138,6 +138,39 @@ export class StorageAgentExperienceJournalStore implements AgentExperienceJourna
   }
 }
 
+/** 只读核对完整事件回执；未完成的学习仍须交给原执行路径重试。 */
+export async function areAgentExperienceEventsProcessed(
+  store: AgentExperienceJournalStore,
+  events: readonly AgentExperienceEvent[],
+): Promise<boolean> {
+  const state = await store.read();
+  if (
+    Object.values(state.reflections).some((reflection) => reflection.status !== 'processed') ||
+    state.events.some((event) => state.reflections[event.eventId]?.status !== 'processed')
+  )
+    return false;
+  return events.every((expected) => {
+    const actual = state.events.find((event) => event.eventId === expected.eventId);
+    if (!actual || state.reflections[expected.eventId]?.status !== 'processed') return false;
+    // 沿用现有去重规则，时间戳和本地化摘要不属于事件身份。
+    const identity = (event: AgentExperienceEvent) =>
+      JSON.stringify({
+        schema: event.schema,
+        eventId: event.eventId,
+        episodeId: event.episodeId,
+        type: event.type,
+        actor: event.actor,
+        scope: event.scope,
+        projectId: event.projectId,
+        source: event.source,
+        context: event.context,
+        evidence: event.evidence,
+        outcome: event.outcome?.status,
+      });
+    return identity(actual) === identity(expected);
+  });
+}
+
 export class AgentExperienceJournal {
   private queue = Promise.resolve();
 

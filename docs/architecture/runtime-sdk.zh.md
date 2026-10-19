@@ -240,6 +240,12 @@ Native 会分别展示 `cancelling`（原执行尚未确认停止，或当前选
 
 Native 应用的 CLI `claim` 和 `record-outcome` 默认返回 `data.schema: "comet.native.dispatch-result.v1"`：保留 Run 身份、revision、完整 `state`、当前完整 `action`（含输入、领取信息和结果收据）及 `continuation`，不重复输出其它 Action 历史。领取结果还提供 `outcomeRequest`，宿主必须填入真实执行状态、结果和唯一 outcome ID，再按原身份提交；模板不代表执行已成功。需要旧版完整 Run 的 CLI 调用方应加 `--details`；`inspect` 始终返回完整 Run，紧凑结果的 `inspection.request` 可直接用于查看。JavaScript SDK 与程序化 `runtimeDispatchCommand` 的 `response.data` 仍是完整 Run。
 
+内置 Native 的 CLI 收到当前独立 Verifier 的最终通过回报后，会继续执行唯一待处理的报告生成步骤，并停在用户接受结果的确认处；不会自动批准或归档。定制应用和 JavaScript SDK 的单操作语义不变。报告生成失败时，已经保存的 Verifier 回报仍返回成功，同时给出 `NATIVE_REPORT_PENDING` 警告；应按当前状态恢复报告，不要重做独立验收或把旧回报当成未提交。
+
+Native 和 Classic 命令还可显式加 `--json --compact`，例如 `comet native status <change> --json --compact`、`comet state next <change> --json --compact`。默认 `--json` 保持原字段。只有实际减少输出字节时才生成精简视图；没有收益时逐字返回原响应，不添加 `outputView`。精简视图使用 `outputView.schema: "comet.cli.compact.v1"`；`outputView.references` 把省略字段的 JSON Pointer 映射到本响应内相同值的位置（RFC 6901）。消费方递归解析这些引用即可恢复完整响应。可提交的 Request 模板、执行身份和审批字段保留原位。需要旧协议时去掉 `--compact`，不能用引用文本替代真实输入计算哈希或提交结果。
+
+恢复时优先读取返回的具体原因与续行命令。Native 报告接受前发现检查环境变化，会重新安排必要检查和独立验收；实现内容变化仍要求用户决定如何修订。Classic Build 配置在领取前核对字段组合；已有被拒的内置配置提案可以按当前提示修正后重新提交，保留原 Action 绑定，并等待新的配置确认。不得把被拒结果声明为“未执行”来绕过检查。
+
 Native 和 Classic 的内置 Workflow Application 可以使用 `--application native|classic-full|classic-hotfix|classic-tweak` 注册。Run 固定写入用户级工作区目录 `~/.comet/workspaces/<workspace-id>/runtime/sdk-runs/native` 或对应的 `classic` 子目录，`COMET_DATA_DIR` 可替换用户数据根；两个 workflow 可以使用相同的 change 名称，但不能指定另一处 `--root-dir`，也不能与 `--workflow` 混用。旧本机目录会经过校验后迁移，项目状态文件保持可移植，具体边界见[本机 Runtime 存储](./runtime-local-storage.zh.md)。每次推进同一 Run 时都传入对应的 `--application`；除了上面的通用操作，还可用 `execute` 领取并执行应用已注册的 Executor，用 `record-evidence` 提交已声明的证据等待，用 `invalidate-evidence` 恢复经验证失效且声明了恢复转移的证据。宿主仍须提供真实的初始状态、工件和外部 Agent 执行结果。Native `new` 与 Classic `state init` 已默认创建 SDK Run，并在 change 原路径保留 `comet-state.yaml`（Classic 历史 `.comet.yaml` 原地兼容）；已有原 Runtime change 继续按 `compat` 路径恢复。
 
 ## Comet 自身的接入方式
@@ -251,6 +257,8 @@ SDK 所有的 Classic full/hotfix/tweak change 可以用 `comet guard <change> b
 SDK 所有的 Classic change 也可以用 `comet guard <change> verify --report <ref>` 只读检查验证报告，再用 `--apply -- <program> [args...]` 提交报告证据、执行真实验证检查并提交收据；成功后进入 Archive。报告内容或语言不合格、已接受报告发生变化、检查失败或结果未明时不会进入 Archive。成功检查仅在收据提交中断时可用不带程序的 `--apply` 恢复，且不会重跑检查。
 
 SDK 所有的 Classic change 进入 Archive 后，可用 `comet state propose-archive` 记录交付提案，再用绑定提案哈希的 `decide-archive` 提交用户决定。已批准时，`comet guard <change> archive --apply` 或 `comet archive <change>` 会重验分支和 Verify 证据，执行 OpenSpec 文件归档一次。Agent 仍负责按决定完成 Git 提交、推送或 PR；`comet state complete-delivery` 核验实际提交及相应远端结果后结束 Run。Archive 命令不会自行创建提交或扩大用户授权。
+
+交付提交需要包含本次验收已绑定的验证报告，内容必须与原报告收据一致。报告路径可在 change 目录之外，但只允许该精确路径，不能顺带提交相邻的无关文件。报告遗漏、内容变化或提交越界时，错误会指出对应路径；先修正提交范围或重新验收，不要扩大白名单。
 
 此外，Native 普通 change 与 Classic full/hotfix/tweak 已各自定义独立的 SDK Workflow Application，可通过 `comet runtime dispatch --application` 创建和推进 Run；它们保留各自的阶段与验收规则，SDK 负责通用调度和提交。新 change 的默认入口已选择 SDK，现有 `compat` change 仍按原 Runtime 继续；尚未覆盖的旧命令入口和真实平台执行不能由 SDK 单测代替验收。
 

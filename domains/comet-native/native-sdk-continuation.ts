@@ -1046,6 +1046,25 @@ export async function projectNativeSdkContinuation(options: {
           : null,
       ),
     };
+  } else if (
+    active.length === 1 &&
+    active[0].status === 'unknown' &&
+    active[0].stepId === 'verify.revalidate' &&
+    active[0].ref === 'native-report-revalidate' &&
+    active[0].claim?.executorId === 'comet-native-report-revalidate'
+  ) {
+    continuation = {
+      ...base,
+      disposition: 'continue',
+      mode: 'execute',
+      commandArgs: ['comet', 'native', 'next', state.name],
+      userCommunication: communication(
+        localized(
+          `Report revalidation stopped: ${active[0].reason ?? 'unknown result'}. Run next to repeat only the read-only validation with the original claim. Changed checks require fresh verification; unresolved storage or permission errors remain blocked.`,
+          `报告复核停止：${active[0].reason ?? '结果未知'}。执行 next，只重读校验并保留原领取记录；检查失效后重新验收，未解决的存储或权限错误仍保持阻塞。`,
+        ),
+      ),
+    };
   } else if (active.some((action) => action.status === 'unknown')) {
     continuation = {
       ...base,
@@ -1282,6 +1301,7 @@ export async function projectNativeSdkContinuation(options: {
             type: action.type,
             ref: action.ref,
             claim: action.claim,
+            ...(action.reason ? { reason: action.reason } : {}),
             ...(action.type === 'handoff' ? { contextRequest: actionContextRequest(action) } : {}),
             commandArgs: dispatchCommandArgs,
             outcomeRequest: nativeSdkOutcomeRequest(run, action, state),

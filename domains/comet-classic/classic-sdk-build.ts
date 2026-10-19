@@ -3,7 +3,10 @@ import { randomUUID } from 'node:crypto';
 
 import type { WorkflowRun } from '../engine/runtime.js';
 import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
-import { classicConfigurationReadiness } from './classic-build-configuration.js';
+import {
+  classicConfigurationReadiness,
+  isClassicSdkRejectedBuildProposal,
+} from './classic-build-configuration.js';
 import { readClassicProjectFile } from './classic-protected-path.js';
 import {
   assertClassicBuildReady,
@@ -94,11 +97,19 @@ export async function proposeClassicSdkBuild(options: {
     throw new Error('Classic Build configuration requires a full SDK change in Build');
   }
   assertBuildBranchBinding(projectRoot, state);
-  if (run.actions.some((action) => action.status === 'running' || action.status === 'unknown')) {
+  if (
+    run.actions.some(
+      (action) =>
+        (action.status === 'running' || action.status === 'unknown') &&
+        !isClassicSdkRejectedBuildProposal(action),
+    )
+  ) {
     throw new Error('Classic SDK has a claimed Action with an unknown outcome');
   }
   const action = run.actions.find(
-    (candidate) => candidate.stepId === 'full.build.configure' && candidate.status === 'pending',
+    (candidate) =>
+      candidate.stepId === 'full.build.configure' &&
+      (candidate.status === 'pending' || isClassicSdkRejectedBuildProposal(candidate)),
   );
   if (!action) throw new Error('Classic SDK Run has no pending Build configuration Action');
   const configuration = parseBuildConfiguration(
@@ -120,16 +131,25 @@ export async function proposeClassicSdkBuild(options: {
       ].join('\n'),
     );
   }
-  const claimToken = randomUUID();
-  const claimed = await runtime.claim({
-    runId: run.runId,
-    expectedRevision: run.revision,
-    actionId: action.id,
-    attempt: action.attempt,
-    inputHash: action.inputHash,
-    executorId: 'comet-classic-state',
-    claimToken,
-  });
+  // 已拒的配置提案沿用原领取身份补交，保留拒绝历史，不声明原工作未执行。
+  const recovering = isClassicSdkRejectedBuildProposal(action);
+  if (recovering && options.confirmed) {
+    throw new Error(
+      '修正已拒的 Build 配置后必须重新确认：请去掉 --confirmed 重提，再用新 proposalHash 执行 decide-build',
+    );
+  }
+  const claimToken = recovering ? action.claim!.token : randomUUID();
+  const claimed = recovering
+    ? run
+    : await runtime.claim({
+        runId: run.runId,
+        expectedRevision: run.revision,
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        executorId: 'comet-classic-state',
+        claimToken,
+      });
   const proposed = await runtime.recordOutcome({
     runId: run.runId,
     expectedRevision: claimed.revision,

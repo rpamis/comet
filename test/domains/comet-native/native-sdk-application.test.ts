@@ -1,3 +1,9 @@
+import { nativeCandidateInputGate } from '../../../domains/comet-native/native-portable-checks.js';
+import { nativeEditReviewScope } from '../../../domains/comet-native/native-edit-review.js';
+import {
+  nativeSdkAutomaticReportAction,
+  recoverNativeSdkReportRevalidation,
+} from '../../../domains/comet-native/native-sdk-report.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
@@ -10,6 +16,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { pathToFileURL } from 'node:url';
 import { waitForCondition, waitForProcessExit } from '../../helpers/native-portable-process.js';
 import {
+  assertNativeSdkCandidateUnchanged,
   nativeSdkCheckExecutor,
   nativeSdkCurrentCheckSummaries,
   recoverNativeSdkChecks,
@@ -42,7 +49,11 @@ import {
   loadOwnedNativeSdkRuntime,
 } from '../../../domains/comet-native/native-runtime-ownership.js';
 import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
-import { nativeSdkBeforeVerifierRecovery } from '../../../domains/comet-native/native-sdk-definition.js';
+import {
+  nativeSdkBeforeReportRecovery,
+  nativeSdkLegacyTransitionHandler,
+  nativeSdkBeforeVerifierRecovery,
+} from '../../../domains/comet-native/native-sdk-definition.js';
 import {
   nativeSdkArchivePreflightExecutor,
   nativeSdkArchiveFinalizeExecutor,
@@ -81,6 +92,7 @@ type NativeApplication = {
 const roots: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
@@ -5916,6 +5928,244 @@ children:
     expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.report', type: 'call_tool' });
     expect(run.actions.some((action) => action.stepId === 'archive.prepare')).toBe(false);
   });
+
+  it('accepts a legacy candidate binding only while its original environment and source remain current', async () => {
+    const { root, paths, run } = await dispatchedVerifier();
+    const state = run.state as NativePortableState;
+    const check = run.actions.find((action) => action.stepId === 'verify.checks')!;
+    const legacy = await nativeCandidateInputGate({
+      projectRoot: root,
+      candidateId: state.builder_handoff!.candidate_id,
+      plans: [],
+      managedArtifactRoot: paths.artifactRoot,
+      editReviewScope: nativeEditReviewScope(paths, state),
+      legacyExecutionBinding: true,
+    });
+    const legacyRun = structuredClone(run);
+    (
+      legacyRun.actions.find((action) => action.id === check.id)!.outcome!.output as Record<
+        string,
+        unknown
+      >
+    ).candidateInputFingerprintGate = legacy;
+    await expect(
+      assertNativeSdkCandidateUnchanged({ run: legacyRun, projectRoot: root }),
+    ).resolves.toBeUndefined();
+    vi.stubEnv('NODE_ENV', 'legacy-context-changed');
+    await expect(
+      assertNativeSdkCandidateUnchanged({ run: legacyRun, projectRoot: root }),
+    ).rejects.toThrow('候选实现已变化');
+  });
+
+  it.each([
+    'environment',
+    'input',
+    'non-repeatable',
+    'unknown-revalidation',
+    'missing-report',
+    'legacy-definition',
+  ] as const)(
+    'refreshes checks and independent verification after approved report %s drift',
+    async (kind) => {
+      const application = nativeApplication();
+      if (kind === 'legacy-definition') {
+        application.workflow = nativeSdkBeforeReportRecovery(application.workflow);
+        application.transitionHandler = nativeSdkLegacyTransitionHandler(
+          application.workflow,
+          application.transitionHandler,
+        );
+      }
+      const {
+        root,
+        changeDir,
+        runtime,
+        run: ready,
+      } = await dispatchedVerifier(
+        [
+          {
+            id: 'required',
+            name: 'Runtime check',
+            executable: process.execPath,
+            argv: ['-e', 'process.stdout.write("ok")'],
+            cwdRef: '.',
+            timeoutMs: 5000,
+            repeatable: kind !== 'non-repeatable',
+          },
+        ],
+        kind === 'legacy-definition' ? 'sdk' : 'memory',
+        application,
+      );
+      let run = await succeedLatestAction(
+        runtime,
+        ready,
+        {
+          candidateId: (ready.state as NativePortableState).builder_handoff!.candidate_id,
+          verifierExecutionRef: 'verifier-session-1',
+          response: {
+            kind: 'final-result',
+            result: {
+              iteration: 1,
+              attempt: 1,
+              verdict: 'pass',
+              acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified.' }],
+              risks: [],
+              summary: 'Passed.',
+            },
+          },
+        },
+        root,
+        'verifier-result',
+        'verifier-session-1',
+      );
+      const submitted = { actionId: ready.actions.at(-1)!.id, outcomeId: 'verifier-result' };
+      expect(nativeSdkAutomaticReportAction(run, submitted)?.stepId).toBe('verify.report');
+      expect(nativeSdkAutomaticReportAction(run, { ...submitted, outcomeId: 'wrong' })).toBeNull();
+      run = await runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId: 'comet-native-report',
+        context: { requestId: 'native-report', projectRoot: root },
+      });
+      if (kind === 'missing-report') await fs.rm(path.join(changeDir, 'verification.md'));
+      else if (kind !== 'input') vi.stubEnv('NODE_ENV', 'changed-after-approval');
+      else await fs.writeFile(path.join(root, 'changed-input.txt'), 'new input');
+      const confirmation = run.waits.at(-1)!;
+      run = await runtime.resolveWait({
+        runId: run.runId,
+        waitId: confirmation.id,
+        proposalHash: confirmation.proposalHash,
+        decisionId: 'verification-approved',
+        choice: 'approved',
+      });
+      if (kind === 'missing-report') {
+        await expect(
+          runtime.execute({
+            runId: run.runId,
+            actionId: run.actions.at(-1)!.id,
+            executorId: 'comet-native-report-revalidate',
+            context: { requestId: 'missing-report', projectRoot: root },
+          }),
+        ).rejects.toThrow('EXECUTION_UNKNOWN');
+        const unknown = await runtime.inspect(run.runId);
+        expect(await recoverNativeSdkReportRevalidation(root, unknown, runtime)).toEqual(unknown);
+        expect(unknown.actions.at(-1)).toMatchObject({ status: 'unknown', reconciliations: [] });
+        return;
+      }
+      if (kind === 'unknown-revalidation') {
+        const action = run.actions.at(-1)!;
+        run = await runtime.claim({
+          runId: run.runId,
+          actionId: action.id,
+          attempt: action.attempt,
+          inputHash: action.inputHash,
+          executorId: 'comet-native-report-revalidate',
+          claimToken: 'old-check',
+          context: { requestId: 'old-check', projectRoot: root },
+        });
+        run = await runtime.markUnknown({
+          runId: run.runId,
+          actionId: action.id,
+          attempt: action.attempt,
+          reason: 'Native 检查输入已变化',
+        });
+        run = await recoverNativeSdkReportRevalidation(root, run, runtime);
+        expect(run.actions.find((entry) => entry.id === action.id)).toMatchObject({
+          attempt: 1,
+          reconciliations: [],
+          claim: { token: 'old-check' },
+        });
+      } else
+        run = await runtime.execute({
+          runId: run.runId,
+          actionId: run.actions.at(-1)!.id,
+          executorId: 'comet-native-report-revalidate',
+          context: { requestId: 'native-report-revalidate', projectRoot: root },
+        });
+      if (kind === 'legacy-definition') {
+        expect(run.status).toBe('failed');
+        expect(await nativeDoctorCommand([run.runId, '--repair'], root)).toMatchObject({
+          exitCode: 0,
+        });
+        const next = await advanceNativeSdkChange(root, run.runId);
+        expect(next.exitCode).toBe(0);
+        const loaded = await loadOwnedNativeSdkRuntime(root, run.runId);
+        const recovered = await loaded.runtime.inspect(run.runId);
+        expect(recovered.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier' });
+        expect(recovered.waits.find((wait) => wait.id === confirmation.id)).toMatchObject({
+          status: 'resolved',
+        });
+        return;
+      }
+      expect(run.state).toMatchObject({
+        phase: 'verify',
+        status: ['input', 'non-repeatable'].includes(kind) ? 'await-user' : 'active',
+        verification_result: 'pending',
+      });
+      expect(run.actions.find((action) => action.stepId === 'verify.revalidate')).toMatchObject({
+        status: 'failed',
+        outcome: { output: { reason: 'check-input-drift' } },
+      });
+      expect(run.actions.some((action) => action.stepId === 'archive.prepare')).toBe(false);
+      if (['input', 'non-repeatable'].includes(kind)) {
+        expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
+        return;
+      }
+      expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.checks', type: 'call_tool' });
+      run = await runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId: 'comet-native-checks',
+        context: { requestId: 'refreshed-checks', projectRoot: root },
+      });
+      expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
+      expect((run.state as NativePortableState).builder_handoff).toEqual(
+        (ready.state as NativePortableState).builder_handoff,
+      );
+      expect(run.waits.find((wait) => wait.id === confirmation.id)).toMatchObject({
+        status: 'resolved',
+        decision: { choice: 'approved' },
+      });
+      expect(
+        run.actions.filter(
+          (action) => action.stepId === 'verify.checks' && action.status === 'succeeded',
+        ),
+      ).toHaveLength(2);
+      const freshState = run.state as NativePortableState;
+      run = await succeedLatestAction(
+        runtime,
+        run,
+        {
+          candidateId: freshState.builder_handoff!.candidate_id,
+          verifierExecutionRef: 'verifier-session-2',
+          response: {
+            kind: 'final-result',
+            result: {
+              iteration: freshState.loop.iteration,
+              attempt: freshState.loop.attempt,
+              verdict: 'pass',
+              acceptance: [{ id: 'A1', result: 'passed', reason: 'Rechecked current context.' }],
+              risks: [],
+              summary: 'Fresh independent verification.',
+            },
+          },
+        },
+        root,
+        'fresh-verifier-result',
+        'verifier-session-2',
+      );
+      expect(nativeSdkAutomaticReportAction(run, submitted)).toBeNull();
+      run = await runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId: 'comet-native-report',
+        context: { requestId: 'fresh-report', projectRoot: root },
+      });
+      expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.confirm', status: 'pending' });
+      expect(run.waits.at(-1)!.proposalHash).not.toBe(confirmation.proposalHash);
+      expect(run.actions.some((action) => action.stepId === 'archive.prepare')).toBe(false);
+      vi.unstubAllEnvs();
+    },
+  );
 
   it('rejects a Verifier pass when a required check log changed after dispatch', async () => {
     const { root, runtime, run } = await dispatchedVerifier([

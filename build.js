@@ -50,6 +50,7 @@ if (existsSync('dist')) {
 
 console.log('Building Classic runtime...');
 try {
+  execFileSync(process.execPath, ['scripts/build/build-runtime-schemas.mjs'], { stdio: 'inherit' });
   buildClassicRuntime();
   console.log('Building Native runtime...');
   buildNativeRuntime();
@@ -58,6 +59,8 @@ try {
   console.log('Compiling TypeScript...');
   runTsc(['--version']);
   runTsc();
+  console.log('Bundling Native CLI facade...');
+  execFileSync(process.execPath, ['scripts/build/build-native-facade.mjs'], { stdio: 'inherit' });
 
   console.log('Building Dashboard frontend...');
   buildDashboardFrontend();

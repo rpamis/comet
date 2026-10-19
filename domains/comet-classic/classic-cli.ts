@@ -1,3 +1,4 @@
+import { compactCliStdout } from '../workflow-contract/compact-output.js';
 import { pathToFileURL } from 'url';
 import { withCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
 import { observeRuntimeOperation } from '../../platform/process/runtime-performance.js';
@@ -258,7 +259,13 @@ export async function runClassicCli(
   const boundary = argv.indexOf('--');
   const owns = (index: number) => boundary < 0 || index < boundary;
   const json = argv[0] !== 'openspec' && argv.some((arg, index) => owns(index) && arg === '--json');
-  const args = argv.filter((argument, index) => !json || !owns(index) || argument !== '--json');
+  const compact =
+    argv[0] !== 'openspec' && argv.some((arg, index) => owns(index) && arg === '--compact');
+  if (compact && !json) return { exitCode: 64, stderr: '--compact requires --json\n' };
+  const args = argv.filter(
+    (argument, index) =>
+      !owns(index) || !((json && argument === '--json') || (compact && argument === '--compact')),
+  );
   const command = args.shift();
   const invoke = () =>
     dispatch(
@@ -273,7 +280,8 @@ export async function runClassicCli(
     );
   const result = command === 'hook-guard' ? await invoke() : await withCometRuntimeProgress(invoke);
   const projected = withSdkContinuation(result);
-  return json ? jsonResult(command, projected) : projected;
+  const rendered = json ? jsonResult(command, projected) : projected;
+  return compact ? { ...rendered, stdout: compactCliStdout(rendered.stdout, true) } : rendered;
 }
 
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<number> {

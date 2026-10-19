@@ -8,6 +8,8 @@ import { runNativeCli } from '../../domains/comet-native/native-cli.js';
 import { advanceNativeSdkChange } from '../../domains/comet-native/native-sdk-next.js';
 import { inspectNativeSdkRun } from '../../domains/comet-native/native-runtime-ownership.js';
 import { nativeProjectPaths } from '../../domains/comet-native/native-paths.js';
+import { fixtureAcceptanceReview } from '../helpers/native-builder-acceptance-review.js';
+import { nativeSdkReportExecutor } from '../../domains/comet-native/native-sdk-report.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -91,7 +93,140 @@ async function cli(root: string, request: string, details = false) {
   }
 }
 
+async function verifierOutcomeFixture() {
+  const fixture = await builderFixture();
+  const { root, name } = fixture;
+  await cli(root, fixture.requestFile);
+  const requestRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-verifier-request-'));
+  roots.push(requestRoot);
+  const requestFile = path.join(requestRoot, 'request.json');
+  const submit = async (request: unknown) => {
+    await fs.writeFile(requestFile, JSON.stringify(request));
+    const result = await runtimeDispatchCommand({
+      application: 'native',
+      projectRoot: root,
+      request: requestFile,
+    });
+    expect(result.response.status, JSON.stringify(result.response)).toBe('succeeded');
+    return result;
+  };
+  await submit({
+    operation: 'record-outcome',
+    runId: name,
+    outcome: {
+      actionId: fixture.request.actionId,
+      attempt: fixture.request.attempt,
+      inputHash: fixture.request.inputHash,
+      claimToken: fixture.request.claimToken,
+      outcomeId: 'builder-candidate',
+      status: 'succeeded',
+      output: {
+        summary: 'Implemented the fixture.',
+        addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
+        checks: [],
+        knownLimits: [],
+        review: null,
+        submittedAt: new Date().toISOString(),
+        verificationChecks: [],
+      },
+    },
+  });
+  await advanceNativeSdkChange(root, name);
+  const { run, state } = await inspectNativeSdkRun(root, name);
+  const action = run.actions.find(
+    (entry) => entry.stepId === 'verify.verifier' && entry.status === 'pending',
+  )!;
+  expect(action).toBeDefined();
+  await submit({
+    operation: 'claim',
+    runId: name,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: 'native-host',
+    sessionId: 'independent-verifier',
+    claimToken: 'verifier-token',
+  });
+  const request = {
+    operation: 'record-outcome',
+    runId: name,
+    outcome: {
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken: 'verifier-token',
+      outcomeId: 'verifier-final',
+      status: 'succeeded',
+      output: {
+        candidateId: state.builder_handoff!.candidate_id,
+        verifierExecutionRef: 'independent-verifier',
+        response: {
+          kind: 'final-result',
+          result: {
+            iteration: state.loop.iteration,
+            attempt: state.loop.attempt,
+            verdict: 'pass',
+            acceptance: [{ id: 'A1', result: 'passed', reason: 'Fixture independently checked.' }],
+            risks: [],
+            summary: 'Fixture acceptance passed.',
+          },
+        },
+      },
+    },
+  };
+  await fs.writeFile(requestFile, JSON.stringify(request));
+  return { root, name, requestFile, action };
+}
+
 describe('Native dispatch CLI presentation', () => {
+  it('generates the report after a CLI Verifier outcome but still requires explicit acceptance', async () => {
+    const { root, name, requestFile } = await verifierOutcomeFixture();
+    const result = await cli(root, requestFile);
+    expect(result.status).toBe('succeeded');
+    const first = (await inspectNativeSdkRun(root, name)).run;
+    expect(first.actions.find((action) => action.stepId === 'verify.report')?.status).toBe(
+      'succeeded',
+    );
+    expect(first.waits.find((wait) => wait.stepId === 'verify.confirm')?.status).toBe('pending');
+    expect(first.actions.some((action) => action.stepId.startsWith('archive.'))).toBe(false);
+    await cli(root, requestFile);
+    expect((await inspectNativeSdkRun(root, name)).run.revision).toBe(first.revision);
+  });
+
+  it('preserves the SDK single-operation default and also completes reports in CLI details mode', async () => {
+    const { root, name, requestFile } = await verifierOutcomeFixture();
+    const result = await runtimeDispatchCommand({
+      application: 'native',
+      projectRoot: root,
+      request: requestFile,
+    });
+    expect(result.response.status).toBe('succeeded');
+    expect(
+      (await inspectNativeSdkRun(root, name)).run.actions.find(
+        (action) => action.stepId === 'verify.report',
+      )?.status,
+    ).toBe('pending');
+    const details = await cli(root, requestFile, true);
+    expect(
+      details.data.waits.find((wait: { stepId: string }) => wait.stepId === 'verify.confirm')
+        .status,
+    ).toBe('pending');
+  });
+
+  it('keeps an accepted Verifier result successful when automatic report execution fails', async () => {
+    const { root, name, requestFile, action } = await verifierOutcomeFixture();
+    vi.spyOn(nativeSdkReportExecutor, 'execute').mockRejectedValueOnce(
+      new Error('Fixture report write interrupted'),
+    );
+    const result = await cli(root, requestFile);
+    expect(result.status).toBe('succeeded');
+    expect(result.warning.code).toBe('NATIVE_REPORT_PENDING');
+    const run = (await inspectNativeSdkRun(root, name)).run;
+    expect(run.actions.find((entry) => entry.id === action.id)?.status).toBe('succeeded');
+    expect(run.actions.find((entry) => entry.stepId === 'verify.report')?.status).toBe('unknown');
+    expect(run.waits.some((wait) => wait.stepId === 'verify.confirm')).toBe(false);
+  });
   it('preserves complete claimed inputs, state, identity and result template without repeating the Run history', async () => {
     const { root, requestFile, name } = await builderFixture();
     const compact = await cli(root, requestFile);

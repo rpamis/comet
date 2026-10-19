@@ -1,4 +1,5 @@
 import { Ajv, type ValidateFunction } from 'ajv';
+import { precompiledRuntimeSchemas } from './runtime-schema.generated.js';
 import { canonicalRuntimeJson, type RuntimeValue } from './runtime-json.js';
 
 interface RuntimeSchemaValidator {
@@ -22,9 +23,11 @@ export function compileRuntimeSchema(schema: RuntimeValue): RuntimeSchemaValidat
   }
 
   // 独立编译器避免不同工作流重用 $id 时互相注册或解析外部引用。
-  const ajv = new Ajv({ strict: true, allErrors: true });
-  const validate = ajv.compile(JSON.parse(content) as boolean | object);
-  const compiled = { validate, errorsText: () => ajv.errorsText(validate.errors) };
+  const precompiled = precompiledRuntimeSchemas.get(content) as ValidateFunction | undefined;
+  const validate =
+    precompiled ??
+    new Ajv({ strict: true, allErrors: true }).compile(JSON.parse(content) as boolean | object);
+  const compiled = { validate, errorsText: () => Ajv.prototype.errorsText(validate.errors) };
   if (content.length <= MAX_CACHED_SCHEMA_CHARACTERS) {
     while (
       validators.size >= MAX_CACHED_SCHEMAS ||

@@ -8,6 +8,7 @@ import {
 } from '../engine/runtime.js';
 
 export const NATIVE_SDK_RECOVERABLE_FAILURE_STEPS: readonly string[] = [
+  'verify.revalidate',
   'verify.checks',
   'verify.requested-checks',
   'supervisor.child.checks',
@@ -28,8 +29,17 @@ export const NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH =
 export const NATIVE_SDK_PRE_EDIT_REVIEW_HASH =
   'a4fa2f7ad12c5c7dd37374f9cb5f1154f2c686e3b3b5473533154c01fdcdd9ea';
 
-export function nativeSdkBeforeReadOnlyArchivePreflight(workflow: DefineWorkflowOptions) {
+export function nativeSdkBeforeReportRecovery(workflow: DefineWorkflowOptions) {
   const previous = structuredClone(workflow);
+  previous.transitions = previous.transitions?.filter(
+    (edge) =>
+      !(edge.from === 'verify.revalidate' && ['verify.checks', 'verify.stop'].includes(edge.to)),
+  );
+  return previous;
+}
+
+export function nativeSdkBeforeReadOnlyArchivePreflight(workflow: DefineWorkflowOptions) {
+  const previous = nativeSdkBeforeReportRecovery(workflow);
   delete previous.steps['archive.prepare'].retry;
   return previous;
 }
@@ -86,6 +96,7 @@ export function nativeSdkLegacyDefinitions(workflow: DefineWorkflowOptions) {
     NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH,
   ];
   return [
+    nativeSdkBeforeReportRecovery(workflow),
     nativeSdkBeforeReadOnlyArchivePreflight(workflow),
     ...(hashRuntimeValue(defineWorkflow(beforeEditReview)) === NATIVE_SDK_PRE_EDIT_REVIEW_HASH
       ? [beforeEditReview]
@@ -105,6 +116,17 @@ export function nativeSdkLegacyTransitionHandler(
     ...transitionHandler,
     apply(input) {
       const { run, event } = input;
+      if (
+        event.kind === 'action-outcome' &&
+        event.stepId === 'verify.revalidate' &&
+        event.outcome.status === 'failed' &&
+        (event.outcome.output as { reason?: string } | null)?.reason === 'check-input-drift' &&
+        !(workflow.transitions ?? []).some(
+          (edge) => edge.from === 'verify.revalidate' && edge.to === 'verify.checks',
+        )
+      )
+        return { state: run.state!, next: [] };
+
       if (
         event.kind === 'action-outcome' &&
         event.outcome.status === 'failed' &&

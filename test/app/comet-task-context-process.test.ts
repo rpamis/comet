@@ -74,20 +74,25 @@ async function fixture(name: string) {
   const home = path.join(root, name, 'home');
   const project = path.join(root, name, 'project');
   await fs.mkdir(path.join(home, '.comet'), { recursive: true });
+  await fs.mkdir(path.join(home, '.cache'), { recursive: true });
   await fs.mkdir(project, { recursive: true });
   return { home, project };
+}
+function fixtureEnvironment(home: string): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    HOME: home,
+    USERPROFILE: home,
+    XDG_CACHE_HOME: path.join(home, '.cache'),
+    LOCALAPPDATA: path.join(home, 'AppData', 'Local'),
+  };
 }
 async function run(home: string, project: string, options = {}) {
   return execFileAsync(
     process.execPath,
     [path.join(root, 'runner.mjs'), project, JSON.stringify(options)],
     {
-      env: {
-        ...process.env,
-        USERPROFILE: home,
-        HOME: home,
-        LOCALAPPDATA: path.join(home, 'AppData', 'Local'),
-      },
+      env: fixtureEnvironment(home),
       timeout: 18_000,
       killSignal: 'SIGKILL',
       windowsHide: true,
@@ -168,12 +173,7 @@ test('completes a task with one learning file and reuses durable receipts after 
 
 test('reports a real waiting lifecycle review and closes only the reviewed change after application', async () => {
   const { home, project } = await fixture('review-lifecycle');
-  const env = {
-    ...process.env,
-    HOME: home,
-    USERPROFILE: home,
-    LOCALAPPDATA: path.join(home, 'AppData', 'Local'),
-  };
+  const env = fixtureEnvironment(home);
   await fs.writeFile(path.join(project, 'retry.ts'), 'retry(1);');
   await execFileAsync(process.execPath, ['--check', path.join(project, 'retry.ts')], {
     env,
@@ -282,12 +282,7 @@ test('checks completion receipts in the real helper process and refuses stale-so
     process.execPath,
     [path.join(root, 'remember.mjs'), project],
     {
-      env: {
-        ...process.env,
-        HOME: home,
-        USERPROFILE: home,
-        LOCALAPPDATA: path.join(home, 'AppData', 'Local'),
-      },
+      env: fixtureEnvironment(home),
       timeout: 18_000,
       windowsHide: true,
     },
@@ -428,12 +423,7 @@ test('cancels checkpoint learning after one budget and preserves all queued even
       process.execPath,
       [path.join(root, 'checkpoint-runner.mjs'), project],
       {
-        env: {
-          ...process.env,
-          USERPROFILE: home,
-          HOME: home,
-          LOCALAPPDATA: path.join(home, 'AppData', 'Local'),
-        },
+        env: fixtureEnvironment(home),
         timeout: 15_000,
         windowsHide: true,
       },
@@ -481,11 +471,7 @@ test('workflow learning resolves a canonical Git root once across both durable c
   const result = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(root, 'comet-task-context-worker.js')], {
       env: {
-        ...process.env,
-        HOME: home,
-        USERPROFILE: home,
-        XDG_CACHE_HOME: path.join(home, 'cache'),
-        LOCALAPPDATA: path.join(home, 'AppData', 'Local'),
+        ...fixtureEnvironment(home),
         GIT_TRACE2_EVENT: trace,
       },
       stdio: ['pipe', 'pipe', 'pipe'],

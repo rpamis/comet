@@ -768,6 +768,7 @@ it.each(['full', 'hotfix', 'tweak'] as const)(
     const paths = [
       'docs/openspec/changes/example',
       archiveRef,
+      reportRef,
       ...(profile === 'full'
         ? ['docs/superpowers/specs/example-design.md', 'docs/superpowers/plans/example-plan.md']
         : []),
@@ -1123,6 +1124,7 @@ it.each(['hotfix', 'tweak'] as const)(
       archiveRef,
       'docs/superpowers/specs/example-design.md',
       'docs/superpowers/plans/example-plan.md',
+      report,
     ]);
     git(f.projectRoot, ['commit', '-m', 'chore: archive upgraded example']);
     await f.work({

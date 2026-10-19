@@ -1316,6 +1316,8 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         { from: 'verify.revalidate', to: 'supervisor.parent.deliver' },
         { from: 'supervisor.parent.deliver', to: 'archive.prepare' },
         { from: 'verify.revalidate', to: 'verify.report', on: 'failed' },
+        { from: 'verify.revalidate', to: 'verify.checks', on: 'failed' },
+        { from: 'verify.revalidate', to: 'verify.stop', on: 'failed' },
         { from: 'archive.prepare', to: 'archive.execute' },
         { from: 'archive.execute', to: 'archive.finalize' },
         { from: 'archive.finalize', to: 'supervisor.cleanup' },
@@ -2286,6 +2288,48 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
           };
         }
         if (event.kind === 'action-outcome' && event.stepId === 'verify.revalidate') {
+          const invalidated = event.outcome.output as {
+            reason?: string;
+            refreshChecks?: boolean;
+            message?: string;
+          };
+          if (event.outcome.status === 'failed' && invalidated.reason === 'check-input-drift') {
+            const refresh = invalidated.refreshChecks === true;
+            const reason = refresh
+              ? '检查输入或执行环境已变化；重新执行可重复检查，再由独立 Verifier 验收并请求用户确认。'
+              : `${invalidated.message ?? '检查输入已变化'}；无法安全重放检查，请确认修订实现和后续验证方式。`;
+            return {
+              state: parseNativePortableState({
+                ...state,
+                status: refresh ? 'active' : 'await-user',
+                state_version: state.state_version + 1,
+                verification: null,
+                verification_result: 'pending',
+                verification_report: null,
+                acceptance: state.acceptance.map((item) => ({
+                  ...item,
+                  result: 'pending',
+                  reason: null,
+                })),
+                blockers: refresh
+                  ? []
+                  : [
+                      {
+                        owner: 'user',
+                        reason: toNativePortableText(reason),
+                        acceptance_ids: [],
+                        resolution_action: 'await-user',
+                      },
+                    ],
+                loop: {
+                  ...state.loop,
+                  stage: refresh ? 'verify-ready' : 'await-user',
+                  next_action: refresh ? 'run-required-checks-and-dispatch-verifier' : 'await-user',
+                },
+              }) as unknown as RuntimeValue,
+              next: [refresh ? 'verify.checks' : 'verify.stop'],
+            };
+          }
           if (event.outcome.status !== 'succeeded') {
             return { state: state as unknown as RuntimeValue, next: ['verify.report'] };
           }

@@ -241,7 +241,7 @@ export function nativeBriefTemplate(
   options: { compact?: boolean } = {},
 ): string {
   const sections: NativeBriefSection[] = ['outcome', 'scope', 'nonGoals', 'acceptanceExamples'];
-  if (!options.compact)
+  if (options.compact === false)
     sections.push('constraints', 'decisions', 'openQuestions', 'verificationExpectations');
   return sections
     .map((section) => {

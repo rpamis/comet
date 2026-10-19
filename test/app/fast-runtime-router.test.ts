@@ -180,6 +180,47 @@ describe('CLI fast runtime router', () => {
     });
   });
 
+  it.each([false, true])(
+    'loads the Native facade once with bundle available=%s',
+    async (bundled) => {
+      const fixture = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-fast-facade-'));
+      try {
+        await fs.mkdir(path.join(fixture, 'bin'), { recursive: true });
+        await fs.copyFile(
+          fileURLToPath(new URL('../../bin/fast-runtime-router.js', import.meta.url)),
+          path.join(fixture, 'bin/fast-runtime-router.js'),
+        );
+        await fs.writeFile(path.join(fixture, 'package.json'), '{"type":"module"}');
+        const commands = path.join(fixture, 'dist/app/commands');
+        await fs.mkdir(commands, { recursive: true });
+        await fs.writeFile(
+          path.join(commands, 'native.js'),
+          `export async function runNativeFacade(args) { console.log(JSON.stringify({kind: 'source', args})); return 0; }`,
+        );
+        if (bundled)
+          await fs.writeFile(
+            path.join(commands, 'native.bundle.js'),
+            `export async function runNativeFacade(args) { console.log(JSON.stringify({kind: 'bundle', args})); return 0; }`,
+          );
+        const stdout = execFileSync(
+          process.execPath,
+          [
+            '--input-type=module',
+            '-e',
+            `const {tryRunFastRuntime} = await import('./bin/fast-runtime-router.js'); if (!await tryRunFastRuntime(['native', 'next', 'change'])) throw new Error('not handled');`,
+          ],
+          { cwd: fixture, encoding: 'utf8' },
+        );
+        expect(JSON.parse(stdout)).toEqual({
+          kind: bundled ? 'bundle' : 'source',
+          args: ['next', 'change'],
+        });
+      } finally {
+        await fs.rm(fixture, { recursive: true, force: true });
+      }
+    },
+  );
+
   it('preserves the command tail without parsing it', () => {
     expect(
       resolveFastRuntime([

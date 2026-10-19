@@ -40,6 +40,8 @@ export interface RuntimeCommandHost {
   environment?: Readonly<Record<string, string | undefined>>;
   /** 仅 CLI 使用紧凑展示；response.data 始终保留完整 SDK Run。 */
   output?: 'full' | 'compact';
+  /** CLI 可在内置 Native 独立验收回报后生成报告，仍保留用户接受步骤。 */
+  completeNativeReport?: boolean;
 }
 
 export type RuntimeCommandResponse = {
@@ -49,6 +51,7 @@ export type RuntimeCommandResponse = {
   | {
       status: 'succeeded';
       data: WorkflowRun;
+      warning?: { code: string; message: string };
       application?: ApplicationIdentity;
       skillWork?: unknown[];
       waitSkillWork?: unknown[];
@@ -853,15 +856,53 @@ export async function runtimeDispatchCommand(
       );
     }
     const context = { requestId, projectRoot, invocationCwd, environment };
-    const data =
+    let data =
       request.operation === 'inspect' && boundRun
         ? boundRun
         : await withCometRuntimeProgress(() => dispatch(runtime, request, context));
+    let warning: { code: string; message: string } | undefined;
+    if (
+      host.completeNativeReport &&
+      application === 'native' &&
+      request.operation === 'record-outcome'
+    ) {
+      try {
+        const { nativeSdkAutomaticReportAction } =
+          await import('../../domains/comet-native/native-sdk-report.js');
+        const action = nativeSdkAutomaticReportAction(
+          data,
+          request.outcome as { actionId: string; outcomeId: string },
+        );
+        if (action) {
+          data = await withCometRuntimeProgress(() =>
+            runtime.execute({
+              runId: data.runId,
+              expectedRevision: data.revision,
+              actionId: action.id,
+              executorId: 'comet-native-report',
+              context,
+            }),
+          );
+        }
+      } catch (error) {
+        // 回报已提交；报告生成失败不能让调用者重交原 Verifier 结果。
+        warning = {
+          code: 'NATIVE_REPORT_PENDING',
+          message: `独立验收结果已保存；报告尚未完成，请读取当前状态后继续。${error instanceof Error ? ` ${error.message}` : ''}`,
+        };
+        try {
+          data = await runtime.inspect(data.runId);
+        } catch {
+          // 保留最后确认的快照；调用者仍可使用 runId 重新读取。
+        }
+      }
+    }
     const response: Extract<RuntimeCommandResponse, { status: 'succeeded' }> = {
       protocolVersion: 1,
       requestId,
       status: 'succeeded',
       data,
+      ...(warning ? { warning } : {}),
     };
     if (
       host.output === 'compact' &&

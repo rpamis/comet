@@ -52,7 +52,10 @@ Mutations must use the current Run revision, Action or Wait identity required by
     )
     .action(async (options) => {
       const { runtimeDispatchCommand } = await import('../commands/runtime.js');
-      const result = await runtimeDispatchCommand(options, { output: 'compact' });
+      const result = await runtimeDispatchCommand(options, {
+        output: 'compact',
+        completeNativeReport: true,
+      });
       console.log(JSON.stringify(result.cliResponse ?? result.response, null, 2));
       process.exitCode = result.exitCode;
     });

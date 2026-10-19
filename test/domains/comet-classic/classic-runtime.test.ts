@@ -832,7 +832,7 @@ describe('Classic script bundles', () => {
       { cwd: directory, encoding: 'utf8' },
     );
 
-    expect(pass.status).toBe(0);
+    expect(pass.status, pass.stderr || pass.stdout).toBe(0);
     expect(pass.stdout).toContain('TASK_CHECKOFF: PASS');
     expect(fail.status).toBe(1);
     expect(fail.stderr).toContain('task is not checked');

@@ -25,6 +25,9 @@ export default defineConfig({
       exclude: [
         // Classic runtime behavior is generated to .mjs and exercised through subprocess smoke tests.
         'domains/comet-classic/**',
+        // AJV-generated code is checked for freshness and differentially tested against AJV.
+        // Keep authored schema selection/fallback and the generator in their normal test scopes.
+        'domains/engine/runtime-schema.generated.ts',
       ],
       thresholds: {
         branches: 75,

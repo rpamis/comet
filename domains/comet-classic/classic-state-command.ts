@@ -2893,13 +2893,21 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
                 checks: { blocked: true },
                 issues: [
                   {
-                    code: 'CLASSIC_ACTION_OUTCOME_UNKNOWN',
-                    message: 'Classic SDK Action 结果尚不明确；先核对原执行结果，不能重新执行',
+                    code:
+                      recovery.status === 'outcome-rejected'
+                        ? 'CLASSIC_BUILD_PROPOSAL_REJECTED'
+                        : 'CLASSIC_ACTION_OUTCOME_UNKNOWN',
+                    message:
+                      recovery.status === 'outcome-rejected'
+                        ? 'Build 配置提案已拒绝；修正配置后按 recovery 重提，再批准新提案'
+                        : 'Classic SDK Action 结果尚不明确；先核对原执行结果，不能重新执行',
                   },
                 ],
               };
               output.stderr.push(
-                'BLOCKED — Classic SDK Action 结果尚不明确；按 recovery 核对原 claim、命令和检查记录',
+                recovery.status === 'outcome-rejected'
+                  ? 'BLOCKED — Build 配置提案已拒绝；按 recovery 修正后重提'
+                  : 'BLOCKED — Classic SDK Action 结果尚不明确；按 recovery 核对原 claim、命令和检查记录',
               );
               throw new CommandFailure('', 1);
             }

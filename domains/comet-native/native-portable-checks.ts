@@ -846,6 +846,7 @@ interface NativeCheckInputGateOptions {
   plans?: readonly NativeCheckPlan[];
   managedArtifactRoot?: string;
   editReviewScope?: EditReviewScope;
+  legacyExecutionBinding?: boolean;
 }
 
 async function readNativeCheckInputObservation(options: NativeCheckInputGateOptions) {
@@ -1089,11 +1090,19 @@ async function nativeCandidateCommentGate(
     })
     .join('\0')
     .trim();
-  return canonicalHash('comet.native.candidate-comment-gate.v1', {
-    ...observation.binding,
-    status,
-    workingTree,
-  });
+  // 执行环境仍绑定检查收据；候选语义只绑定实现，环境变化可重跑检查。
+  const { boundEnvironment: _environment, ...candidateBinding } = observation.binding;
+  void _environment;
+  return canonicalHash(
+    options.legacyExecutionBinding
+      ? 'comet.native.candidate-comment-gate.v1'
+      : 'comet.native.candidate-comment-gate.v2',
+    {
+      ...(options.legacyExecutionBinding ? observation.binding : candidateBinding),
+      status,
+      workingTree,
+    },
+  );
 }
 
 /** Share only the reservation's observation; checks and later requests still capture fresh inputs. */

@@ -379,7 +379,7 @@ export async function validateNativeBrief(
   for (const [heading, body] of markdownSections(source)) {
     sections.set(nativeHeadingKey(heading) ?? heading, body);
   }
-  for (const heading of options.compact ? BRIEF_REQUIRED : BRIEF_ALL) {
+  for (const heading of options.compact !== false ? BRIEF_REQUIRED : BRIEF_ALL) {
     if (!sections.has(heading)) {
       findings.push({
         code: 'brief-section-missing',
@@ -389,7 +389,7 @@ export async function validateNativeBrief(
     }
   }
   const nonEmptySections = options.strict
-    ? BRIEF_ALL.filter((heading) => !options.compact || sections.has(heading))
+    ? BRIEF_ALL.filter((heading) => options.compact === false || sections.has(heading))
     : BRIEF_REQUIRED;
   for (const heading of nonEmptySections) {
     const section = sections.get(heading) ?? '';

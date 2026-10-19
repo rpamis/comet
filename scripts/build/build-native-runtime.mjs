@@ -4,6 +4,7 @@ import { build } from 'esbuild';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { readRepositoryLayout, resolveRepositoryPath } from '../lib/repository-layout.mjs';
+import { excludeClassicRuntimeSchemas } from '../lib/runtime-schema-build.mjs';
 import { writeFileWithTransientRetry } from '../lib/transient-file-write.mjs';
 
 const layout = readRepositoryLayout();
@@ -48,6 +49,7 @@ const esbuildOptions = {
   minify: true,
   define: { __COMET_VERSION__: JSON.stringify(packageVersion) },
   banner,
+  plugins: [excludeClassicRuntimeSchemas()],
 };
 
 async function bundledRuntime(entry) {

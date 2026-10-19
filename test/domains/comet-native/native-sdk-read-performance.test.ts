@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as yaml from 'yaml';
+import * as portableCheckpoints from '../../../domains/engine/portable-run-checkpoint.js';
 
 import {
   defaultProjectConfig,
@@ -106,6 +107,22 @@ async function preparedChange(name = 'read-budget', existingRoot?: string) {
 }
 
 describe('Native SDK read work budgets', () => {
+  it('encodes a checkpoint once per projection read and rejects later same-revision edits', async () => {
+    const { root, name, stateFile } = await preparedChange();
+    const encodes = vi.spyOn(portableCheckpoints, 'encodePortableRunCheckpoint');
+    const store = createNativeSdkStateStore(root, { readOnly: true });
+    const first = await store.read(name);
+    expect(first).not.toBeNull();
+    expect(encodes).toHaveBeenCalledTimes(1);
+    encodes.mockClear();
+    expect(await store.read(name)).toEqual(first);
+    expect(encodes).toHaveBeenCalledTimes(1);
+    const document = yaml.parse(await fs.readFile(stateFile, 'utf8'));
+    document.run_checkpoint.run.input = { ...document.run_checkpoint.run.input, edited: true };
+    await fs.writeFile(stateFile, '# comet-execution: managed-run\n' + yaml.stringify(document));
+    await expect(store.read(name)).rejects.toThrow(/projection needs recovery/);
+  });
+
   it('shares only normalized definitions within one read scope and keeps Run state independent', async () => {
     const { root, name, stateFile } = await preparedChange();
     const peer = await preparedChange('independent-peer', root);

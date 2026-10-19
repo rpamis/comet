@@ -1,3 +1,4 @@
+import { nativeSdkReportRevalidationValidator } from './native-sdk-report.js';
 import path from 'node:path';
 import { memoizedHookReadSync } from '../../platform/process/hook-read-cache.js';
 import { promises as fs } from 'node:fs';
@@ -285,6 +286,7 @@ export async function inspectNativeSdkDefinitionUpgrade(
         !advanced(action) &&
         (action.stepId === 'supervisor.child.verifier' ||
           action.stepId === 'verify.checks' ||
+          action.stepId === 'verify.revalidate' ||
           Boolean(
             (action.outcome?.output as { interruption?: unknown } | undefined)?.interruption,
           )),
@@ -296,7 +298,11 @@ export async function inspectNativeSdkDefinitionUpgrade(
       if (failure.stepId === 'supervisor.child.verifier') {
         await validateNativeSdkFailedChildVerifier(run, failure, projectRoot);
       } else {
-        const validation = await nativeSdkCheckValidator.validate({
+        const validation = await (
+          failure.stepId === 'verify.revalidate'
+            ? nativeSdkReportRevalidationValidator
+            : nativeSdkCheckValidator
+        ).validate({
           run,
           action: failure,
           outcome: failure.outcome,
@@ -313,13 +319,15 @@ export async function inspectNativeSdkDefinitionUpgrade(
         typeof target === 'string' ? target : target.stepId,
       );
       const allowed =
-        failure.stepId === 'supervisor.child.verifier'
-          ? ['supervisor.child.verifier-retry']
-          : failure.stepId === 'supervisor.child.checks'
-            ? ['supervisor.child.checks-stop']
-            : failure.stepId === 'supervisor.child.integration-checks'
-              ? ['supervisor.child.integration-checks-stop']
-              : ['verify.checks-stop', 'build.builder', 'supervisor.parent.builder'];
+        failure.stepId === 'verify.revalidate'
+          ? ['verify.checks', 'verify.stop']
+          : failure.stepId === 'supervisor.child.verifier'
+            ? ['supervisor.child.verifier-retry']
+            : failure.stepId === 'supervisor.child.checks'
+              ? ['supervisor.child.checks-stop']
+              : failure.stepId === 'supervisor.child.integration-checks'
+                ? ['supervisor.child.integration-checks-stop']
+                : ['verify.checks-stop', 'build.builder', 'supervisor.parent.builder'];
       if (targetSteps.length !== 1 || !allowed.includes(targetSteps[0]))
         throw new Error(
           'Native fixed Application did not declare the expected failed execution recovery',

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { spawnCommand } from '../../platform/process/spawn-command.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import type { WorkflowRun } from '../engine/runtime.js';
+import { archivedClassicDocumentRef } from './classic-archive-annotation.js';
 import { isGitWorkTree } from './classic-branch-binding.js';
 import {
   checkManifestHash,
@@ -222,6 +223,29 @@ export async function assertClassicSdkDeliveryInputs(root: string, run: Readonly
   }
   if (!inputs || typeof inputs !== 'object' || Array.isArray(inputs))
     throw new Error('Classic delivery inputs are invalid');
+  const report = run.evidenceWaits
+    ?.slice()
+    .reverse()
+    .find(
+      (wait) => wait.stepId === `${profile}.verify.report.evidence` && wait.status === 'resolved',
+    )?.receipt;
+  const reportRef = (run.state as { verificationReport?: string | null }).verificationReport;
+  if (reportRef && !report) throw new Error(`Classic 交付缺少验证报告收据：${reportRef}`);
+  let boundReportRef: string | undefined;
+  if (report) {
+    const changeDir = (run.input as { changeDir?: string } | null)?.changeDir;
+    const archive = run.outputs[`${profile}.archive.execute`]?.value as
+      { archiveDirectory?: string } | undefined;
+    const ref =
+      changeDir && archive?.archiveDirectory
+        ? archivedClassicDocumentRef(report.ref, changeDir, archive.archiveDirectory)
+        : report.ref;
+    if (!ref || (reportRef && reportRef !== ref && reportRef !== report.ref))
+      throw new Error('Classic 交付缺少已绑定的验证报告路径');
+    // 报告有独立验收收据；只携带该文件及原内容摘要，不放宽其所在目录。
+    boundReportRef = ref;
+    inputs = { ...inputs, [ref]: report.contentHash };
+  }
   const entries = Object.entries(inputs);
   if (
     entries.some(
@@ -253,10 +277,19 @@ export async function assertClassicSdkDeliveryInputs(root: string, run: Readonly
       actual !== expected &&
       !(file.exists && expected.startsWith('git:') && matchesCleanIndex(root, ref, expected))
     )
-      throw new Error(`Classic verified implementation changed: ${ref}`);
+      throw new Error(
+        ref === boundReportRef
+          ? `Classic 验证报告内容已改变：${ref}`
+          : `Classic verified implementation changed: ${ref}`,
+      );
+
     const size = file.exists ? (await stat(file.target)).size : 0;
     if ((await committedHash(root, ref, expected, size, trees, allowed)) !== expected)
-      throw new Error(`Classic commit omits verified implementation: ${ref}`);
+      throw new Error(
+        ref === boundReportRef
+          ? `Classic 归档提交缺少已验证报告或报告内容不符：${ref}`
+          : `Classic commit omits verified implementation: ${ref}`,
+      );
   }
   return allowed;
 }

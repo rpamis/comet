@@ -3,7 +3,8 @@ import { CLASSIC_WIRE_KEYS, RUN_WIRE_KEYS } from './classic-state.js';
 import { FIELD_ENUMS, SETTABLE_FIELDS } from './classic-state-options.js';
 
 const OUTPUT_HELP =
-  '\nOptions: --json (machine-readable output), --help\n' +
+  '\nOptions: --json (machine-readable output), --compact (requires --json), --help\n' +
+  '精简视图用 outputView.references 的 JSON Pointer 定位重复字段；Request 模板保留完整；没有字节收益时返回原完整协议。去掉 --compact 获取完整协议。\n' +
   'JSON: one object with command and exitCode; data, stdout, stderr, summary and next are optional.\n' +
   'Use exitCode for success; do not parse human-readable stdout. Help text is in stdout in JSON mode.\n';
 
@@ -94,6 +95,7 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'A copied SDK change with a Run checkpoint in comet-state.yaml (or legacy .comet.yaml) resumes at its saved phase. If the checkpoint is absent, state restore requires confirmation and restarts at Open with fresh approvals and checks.',
       'For SDK Design, propose-design records the exact proposal before asking the user; decide-design accepts only its current hash and may return a rejected proposal to Design. complete-design requires the approved hash and records the Design Doc in the same Run.',
       'For SDK Build, propose-build reads build_mode, tdd_mode, review_mode and subagent_dispatch from a project-relative JSON file; optional direct_override is required for full direct execution. Workspace isolation remains the Open decision.',
+      '内置 Build 配置提案已拒绝时，修正 JSON 后用 propose-build --file 重提；保留原 claim 和拒绝记录，禁止 --confirmed，须使用新的 proposalHash 再执行 decide-build。未回传或非配置执行任务仍须核对原执行器。',
       'decide-build resolves only the current proposal. Rejecting it returns to configuration; approving it stores the choices and advances to planning.',
       'submit-plan validates the plan and its tasks.md authority before recording both the Action and evidence in the SDK Run. --pause requires an explicit continue-plan decision before execution.',
       'continue-plan accepts only the current plan-ready proposal and rejects changes to the approved plan or tasks.',

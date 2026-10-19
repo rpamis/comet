@@ -1,3 +1,4 @@
+import { isClassicSdkRejectedBuildProposal } from './classic-build-configuration.js';
 import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
 import type { RuntimeAction, RuntimeValue, WorkflowRun } from '../engine/runtime.js';
 import type { CliActionContinuation } from '../workflow-contract/output-envelope.js';
@@ -320,6 +321,14 @@ export function classicSdkContinuation(
     nextAction && 'actionId' in nextAction
       ? run.actions.find((entry) => entry.id === nextAction.actionId)
       : undefined;
+  if (action && isClassicSdkRejectedBuildProposal(action))
+    return result({
+      mode: 'reconcile',
+      commandArgs: command('propose-build', '--file', '<configuration-json>'),
+      requiredInputs: ['修正后的 Build 配置 JSON 文件'],
+      instruction:
+        'Build 配置提案已被拒绝。修正配置后重提；沿用原 claim 补交结果并保留拒绝记录，随后仍须用户批准新提案。不要释放领取或重放执行任务。',
+    });
   if (action?.status === 'running')
     return result({
       mode: 'wait',

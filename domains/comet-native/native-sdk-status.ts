@@ -108,12 +108,15 @@ export async function projectNativeSdkStatus(
             }
           : {}),
       },
-      actions: actions.items.map(({ id, stepId, status, attempt, inputHash }) => ({
+      actions: actions.items.map(({ id, stepId, status, attempt, inputHash, reason, outcome }) => ({
         id,
         stepId,
         status,
         attempt,
         inputHash,
+        ...((reason ?? (outcome?.output as { message?: string } | undefined)?.message)
+          ? { reason: reason ?? (outcome?.output as { message?: string }).message }
+          : {}),
       })),
       waits: waits.items.map(({ id, stepId, status, proposalHash, choices }) => ({
         id,

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 
+import { runExternalCommandAsync, ExternalCommandError } from '../process/external-command.js';
 import { runGitCommand } from '../process/git.js';
 import { resolvePortablePath } from './portable-path.js';
 
@@ -95,6 +96,39 @@ export function resolveStableProjectId(
   options: ProjectIdentityOptions = {},
 ): string {
   return stableProjectId(resolveProjectIdentity(projectRoot, options));
+}
+
+/** 保持原有项目身份规则，同时允许可选学习查询取消等待 Git。 */
+export async function resolveStableProjectIdAsync(
+  projectRoot: string,
+  options: { readonly signal: AbortSignal; readonly timeoutMs: number },
+): Promise<string> {
+  const root = resolvePortablePath(projectRoot);
+  const run = async (args: readonly string[]) =>
+    runExternalCommandAsync('git', ['-C', root, ...args], {
+      timeoutMs: options.timeoutMs,
+      signal: options.signal,
+      maxBufferBytes: 64 * 1024,
+    });
+  const checkCancellation = (error: unknown) => {
+    if (options.signal.aborted || (error instanceof ExternalCommandError && error.timedOut))
+      throw error;
+  };
+  let source = root;
+  try {
+    const remote = (await run(['remote', 'get-url', 'origin'])).trim();
+    if (!remote) throw new Error('No origin');
+    source = remote;
+  } catch (error) {
+    checkCancellation(error);
+    try {
+      const commonDir = (await run(['rev-parse', '--git-common-dir'])).trim();
+      if (commonDir) source = resolvePortablePath(root, commonDir);
+    } catch (error) {
+      checkCancellation(error);
+    }
+  }
+  return stableProjectId(source);
 }
 
 export function resolveProjectName(

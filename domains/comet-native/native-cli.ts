@@ -1,3 +1,4 @@
+import { compactCliStdout } from '../workflow-contract/compact-output.js';
 import { nativeArchiveCommand } from './native-archive-command.js';
 import { withCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
 import { observeRuntimeOperation } from '../../platform/process/runtime-performance.js';
@@ -118,10 +119,13 @@ export async function runNativeCliDetailed(
   const commandTail = separator < 0 ? [] : args.slice(separator);
   const json = globalArgs.includes('--json');
   const verbose = globalArgs.includes('--verbose');
+  const compact = globalArgs.includes('--compact');
   let explicitProjectRoot: string | undefined;
   let command: string | null = globalArgs[0] ?? null;
   try {
     takeFlag(globalArgs, '--json');
+    takeFlag(globalArgs, '--compact');
+    if (compact && !json) throw new NativeUsageError('--compact requires --json');
     takeFlag(globalArgs, '--verbose');
     explicitProjectRoot = takeOption(globalArgs, '--project-root');
     const dispatchArgs = [...globalArgs, ...commandTail];
@@ -137,7 +141,10 @@ export async function runNativeCliDetailed(
     const rendered = renderNativeCommandDetailed(dispatchResult, json, verbose);
     return {
       dispatch: dispatchResult,
-      output: rendered.output,
+      output:
+        compact && json
+          ? { ...rendered.output, stdout: compactCliStdout(rendered.output.stdout, true) }
+          : rendered.output,
       experience: projectNativeExperienceEvidence(
         dispatchResult.data,
         rendered.structuredDataVisible,
@@ -150,7 +157,10 @@ export async function runNativeCliDetailed(
     const rendered = renderNativeCommandDetailed(dispatchResult, json, verbose);
     return {
       dispatch: dispatchResult,
-      output: rendered.output,
+      output:
+        compact && json
+          ? { ...rendered.output, stdout: compactCliStdout(rendered.output.stdout, true) }
+          : rendered.output,
       experience: projectNativeExperienceEvidence(
         dispatchResult.data,
         rendered.structuredDataVisible,

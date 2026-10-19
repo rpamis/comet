@@ -215,13 +215,7 @@ const buildConfigurationValidator: RuntimeValidator = {
     }
     const candidate: ClassicState = { ...state, ...output };
     const readiness = classicConfigurationReadiness(candidate);
-    if (
-      readiness.missingFields.length ||
-      readiness.invalidFields.length ||
-      (candidate.buildMode === 'subagent-driven-development') !==
-        (candidate.subagentDispatch === 'confirmed') ||
-      (candidate.buildMode !== 'direct' && candidate.directOverride === true)
-    ) {
+    if (readiness.missingFields.length || readiness.invalidFields.length) {
       return { accepted: false, reason: 'Classic Build configuration is incomplete or invalid' };
     }
     return { accepted: true };
@@ -460,6 +454,13 @@ const deliveryOutcomeValidator: RuntimeValidator = {
         file.startsWith(`${archiveRef}/`) ||
         file.startsWith(`${specsRef}/`) ||
         (profile === 'full' && (file === designDoc || file === plan));
+      const offendingPaths = changed.filter((file) => !allowed(file));
+      if (offendingPaths.length) {
+        return {
+          accepted: false,
+          reason: `Classic 归档提交包含未批准的路径：${offendingPaths.join(', ')}`,
+        };
+      }
       const checkpointOnlyDirty =
         dirty !== '' && (await onlyRuntimeCheckpointChanged(root, archiveRef, dirty, run));
       if (
@@ -469,7 +470,6 @@ const deliveryOutcomeValidator: RuntimeValidator = {
         !files ||
         (dirty && !checkpointOnlyDirty) ||
         !changed.some((file) => file.startsWith(`${archiveRef}/`)) ||
-        changed.some((file) => !allowed(file)) ||
         (profile === 'full' &&
           (typeof designDoc !== 'string' ||
             typeof plan !== 'string' ||

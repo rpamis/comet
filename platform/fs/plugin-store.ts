@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { throwIfOperationAborted, remainingOperationMs } from '../process/operation-budget.js';
-import { promises as fs } from 'node:fs';
+import { constants, promises as fs } from 'node:fs';
 import os from 'node:os';
 
 import { unlinkWithRetry } from './transient-retry.js';
@@ -32,7 +32,7 @@ export interface RecoverableFileLockOptions {
 }
 
 export interface TextFileStore {
-  read(): Promise<string | null>;
+  read(maxBytes?: number): Promise<string | null>;
   write(content: string): Promise<void>;
 }
 
@@ -45,9 +45,34 @@ export class JsonFileTextStore implements TextFileStore {
     this.lockOptions = { ...lockOptions };
   }
 
-  public async read(): Promise<string | null> {
+  public async read(maxBytes?: number): Promise<string | null> {
     try {
-      return await fs.readFile(this.filePath, 'utf8');
+      if (maxBytes === undefined) return await fs.readFile(this.filePath, 'utf8');
+      if (!Number.isSafeInteger(maxBytes) || maxBytes < 1)
+        throw new Error('Invalid file size limit');
+      // Windows 的普通 open 标志不保证无阻塞地拒绝重解析点；保留 worker 隔离回退。
+      if (process.platform === 'win32' || !constants.O_NOFOLLOW || !constants.O_NONBLOCK)
+        throw new Error('Bounded nonblocking file reads are unavailable');
+      const handle = await fs.open(
+        this.filePath,
+        constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW,
+      );
+      try {
+        const stat = await handle.stat();
+        if (!stat.isFile()) throw new Error('Bounded reads require a regular file');
+        if (stat.size > maxBytes) throw new Error('File exceeds read size limit');
+        const buffer = Buffer.alloc(maxBytes + 1);
+        let offset = 0;
+        while (offset < buffer.length) {
+          const { bytesRead } = await handle.read(buffer, offset, buffer.length - offset, null);
+          if (bytesRead === 0) break;
+          offset += bytesRead;
+        }
+        if (offset > maxBytes) throw new Error('File exceeds read size limit');
+        return buffer.subarray(0, offset).toString('utf8');
+      } finally {
+        await handle.close();
+      }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw error;
@@ -197,8 +222,8 @@ class JsonFilePluginStorage {
     this.store = store;
   }
 
-  public async read(): Promise<unknown | null> {
-    const content = await this.store.read();
+  public async read(maxBytes?: number): Promise<unknown | null> {
+    const content = await this.store.read(maxBytes);
     if (content === null || content.trim().length === 0) return null;
     return JSON.parse(content) as unknown;
   }

@@ -1,3 +1,5 @@
+import { compactCliStdout } from '../../domains/workflow-contract/compact-output.js';
+import { splitCompactOutputArgs } from './compact-output.js';
 import * as nativeCli from '../../domains/comet-native/native-cli.js';
 import type { NativeCliDetailedResult } from '../../domains/comet-native/native-cli.js';
 import {
@@ -12,7 +14,8 @@ import type { recordCometWorkflowResult } from '../../domains/comet-entry/plugin
 import path from 'node:path';
 
 export async function runNativeFacade(args: readonly string[]): Promise<number> {
-  const integration = splitIntegrationArgs(args);
+  const outputArgs = splitCompactOutputArgs(args);
+  const integration = splitIntegrationArgs(outputArgs.args);
   const projectRoot = path.resolve(integration.projectRoot ?? process.cwd());
   await emitContext(projectRoot, integration);
   const detailed =
@@ -21,7 +24,7 @@ export async function runNativeFacade(args: readonly string[]): Promise<number> 
       : undefined;
   const result = detailed?.output ?? (await nativeCli.runNativeCli(integration.cliArgs));
   await recordNativeResult(integration.cliArgs, result, integration.workflow, detailed);
-  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stdout) process.stdout.write(compactCliStdout(result.stdout, outputArgs.compact)!);
   if (result.stderr)
     process.stderr.write(result.stderr + (result.stderr.endsWith('\n') ? '' : '\n'));
   return result.exitCode;
@@ -84,7 +87,7 @@ async function recordNativeResult(
         summary: outcome.summary ?? 'A previous Native verification failure was resolved.',
       });
     }
-    await recordCometTaskWorkflowResults(results);
+    await recordCometTaskWorkflowResults(results, { reuseProcessed: command === 'next' });
   } catch {
     // Plugin learning must never make a workflow command fail.
   }

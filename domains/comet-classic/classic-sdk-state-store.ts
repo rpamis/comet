@@ -465,8 +465,11 @@ export function createClassicSdkStateStore(
         else document.set(key, value);
       }
       const checkpoint = createPortableRunCheckpoint(run);
-      if (!portableRunCheckpointMatches(current[PORTABLE_RUN_CHECKPOINT_KEY], checkpoint)) {
-        document.set(PORTABLE_RUN_CHECKPOINT_KEY, encodePortableRunCheckpoint(checkpoint));
+      if (!equal(current[PORTABLE_RUN_CHECKPOINT_KEY], checkpoint)) {
+        const encodedCheckpoint = encodePortableRunCheckpoint(checkpoint);
+        if (!equal(current[PORTABLE_RUN_CHECKPOINT_KEY], encodedCheckpoint)) {
+          document.set(PORTABLE_RUN_CHECKPOINT_KEY, encodedCheckpoint);
+        }
       }
       if (options.identity && !equal(current.application_checkpoint, options.identity))
         document.set('application_checkpoint', options.identity);
@@ -521,8 +524,9 @@ export function createClassicSdkStateStore(
       if (outcomes.length) {
         const previous = await store.read(runId);
         if ((previous?.revision ?? null) !== expectedRevision) return false;
+        const previousActions = new Map(previous?.actions.map((action) => [action.id, action]));
         for (const action of outcomes) {
-          const recorded = previous?.actions.find((entry) => entry.id === action.id);
+          const recorded = previousActions.get(action.id);
           // 历史已提交结果本身属于权威 Run；只有新增或改写结果必须有原执行收据。
           if (recorded && equal(recorded, action)) continue;
           await assertClassicSdkCheckReceipt(projectRoot, next, action, {

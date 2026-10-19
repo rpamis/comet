@@ -51,6 +51,37 @@ import { nativeCheckInputFingerprint, nativeCandidateInputGate } from './native-
 import { nativeEditReviewScope } from './native-edit-review.js';
 import type { NativePortableCheckSummary } from './native-portable-types.js';
 
+/** 已完成检查的输入发生变化；这不是执行结果未知。 */
+export class NativeSdkCheckInputDriftError extends Error {}
+export class NativeSdkCandidateDriftError extends Error {}
+
+/** 只重放当前候选明确声明可重复执行的检查。 */
+export function nativeSdkCanRefreshChecks(run: Readonly<WorkflowRun>): boolean {
+  const start = run.actions
+    .map(
+      (action) =>
+        ['build.builder', 'supervisor.parent.builder'].includes(action.stepId) &&
+        action.status === 'succeeded',
+    )
+    .lastIndexOf(true);
+  const plans = nativeSdkCheckPlans(
+    run.outputs['supervisor.parent.builder']?.value ?? run.outputs['build.builder']?.value,
+  );
+  for (const action of run.actions.slice(start + 1)) {
+    if (action.stepId !== 'verify.requested-checks') continue;
+    const outputs = record(
+      record(action.input, 'Native checks input').outputs,
+      'Native checks outputs',
+    );
+    const response = record(
+      record(outputs['verify.verifier'], 'Verifier request').response,
+      'Verifier response',
+    );
+    plans.push(...nativeSdkCheckPlans({ verificationChecks: response.checks }));
+  }
+  return plans.every((plan) => plan.repeatable);
+}
+
 interface NativeSdkCheckResult {
   id: string;
   name: string;
@@ -706,7 +737,7 @@ async function validatedCheckResults(options: {
           managedArtifactRoot: paths.artifactRoot,
         }))
     )
-      throw new Error(
+      throw new NativeSdkCheckInputDriftError(
         'Native 检查输入已变化；保留 Verify，由当前 Verifier 请求原检查并提交 refreshChecks: true，刷新证据后再验收',
       );
   }
@@ -1023,15 +1054,20 @@ export async function assertNativeSdkCandidateUnchanged(options: {
   const executionRoot =
     (parent?.input as { activation?: { integrationWorktree?: string } } | undefined)?.activation
       ?.integrationWorktree ?? options.projectRoot;
-  const actual = await nativeCandidateInputGate({
+  const gateOptions = {
     projectRoot: executionRoot,
     candidateId: state.builder_handoff.candidate_id,
     plans,
     managedArtifactRoot: paths.artifactRoot,
     editReviewScope: nativeEditReviewScope(paths, state),
-  });
+  };
+  const actual = await nativeCandidateInputGate(gateOptions);
+  if (actual === recorded) return;
+  // 旧检查仍可在原环境下验证；环境已变化时不能据旧摘要推断源码未变。
+  const legacy = await nativeCandidateInputGate({ ...gateOptions, legacyExecutionBinding: true });
+  if (legacy === recorded) return;
   if (actual !== recorded)
-    throw new Error(
+    throw new NativeSdkCandidateDriftError(
       'Native 候选实现已变化或无法完整复核；请通过原工作流修订，不能仅刷新检查来接受代码改动',
     );
 }

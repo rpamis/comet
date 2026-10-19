@@ -703,6 +703,7 @@ async function commitValidLocalArchive(
   run: WorkflowRun,
   projectRoot: string,
   implementationFiles: string[] = ['source.js'],
+  includeReport = true,
 ): Promise<{ pending: WorkflowRun; commit: string }> {
   const active = path.join(projectRoot, 'docs', 'openspec', 'changes', 'example');
   const archivedRef = 'docs/openspec/changes/archive/2026-09-24-example';
@@ -726,9 +727,22 @@ async function commitValidLocalArchive(
     path.join(projectRoot, ...planRef.split('/')),
     '---\narchived-with: 2026-09-24-example\nstatus: final\n---\n# Plan\n',
   );
-  execFileSync('git', ['add', '--', archivedRef, designDocRef, planRef, ...implementationFiles], {
-    cwd: projectRoot,
-  });
+  const reportRef = (pending.state as ClassicState).verificationReport!;
+  execFileSync(
+    'git',
+    [
+      'add',
+      '--',
+      archivedRef,
+      designDocRef,
+      planRef,
+      ...(includeReport ? [reportRef] : []),
+      ...implementationFiles,
+    ],
+    {
+      cwd: projectRoot,
+    },
+  );
   execFileSync(
     'git',
     [
@@ -927,7 +941,9 @@ describe('Classic workflow application through the public Runtime SDK', () => {
         { projectRoot },
       ),
     ).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
-    expect((await runtime.inspect(run.runId)).status).toBe('running');
+    const rejected = await runtime.inspect(run.runId);
+    expect(rejected.status).toBe('running');
+    expect(rejected.actions.at(-1)?.rejectedOutcomes?.at(-1)?.reason).toContain('unrelated.txt');
   });
 
   it('rejects delivery when another commit intervened after Archive preflight', async () => {
@@ -1104,6 +1120,74 @@ describe('Classic workflow application through the public Runtime SDK', () => {
     );
     expect(delivered.status).toBe('completed');
     expect(delivered.state).toMatchObject({ archived: true, branchStatus: 'handled' });
+  });
+
+  it('rejects delivery that omits its accepted report from the archive commit', async () => {
+    const { runtime, run, projectRoot } =
+      await reachFullArchiveExecuteAction('archive-report-omitted');
+    const reportRef = (run.state as ClassicState).verificationReport!;
+    const { pending, commit } = await commitValidLocalArchive(
+      runtime,
+      run,
+      projectRoot,
+      ['source.js'],
+      false,
+    );
+    await expect(
+      completeLatestAction(
+        runtime,
+        pending,
+        { action: 'local', targetBranch: 'sdk-build', commit },
+        'omitted-report-outcome',
+        { projectRoot },
+      ),
+    ).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
+    expect(
+      (await runtime.inspect(run.runId)).actions.at(-1)?.rejectedOutcomes?.at(-1)?.reason,
+    ).toContain(reportRef);
+  });
+
+  it('rejects a bound report changed after Verify even when the changed report is committed', async () => {
+    const { runtime, run, projectRoot } =
+      await reachFullArchiveExecuteAction('archive-report-changed');
+    const reportRef = (run.state as ClassicState).verificationReport!;
+    await fs.appendFile(path.join(projectRoot, reportRef), 'Changed after verification.\n');
+    const { pending, commit } = await commitValidLocalArchive(runtime, run, projectRoot);
+    await expect(
+      completeLatestAction(
+        runtime,
+        pending,
+        { action: 'local', targetBranch: 'sdk-build', commit },
+        'changed-report-outcome',
+        { projectRoot },
+      ),
+    ).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
+    expect(
+      (await runtime.inspect(run.runId)).actions.at(-1)?.rejectedOutcomes?.at(-1)?.reason,
+    ).toContain(reportRef);
+  });
+
+  it('rejects an unbound report next to the accepted report and identifies its exact path', async () => {
+    const { runtime, run, projectRoot } =
+      await reachFullArchiveExecuteAction('archive-report-unbound');
+    const extraRef = 'docs/superpowers/reports/unbound.md';
+    await fs.writeFile(path.join(projectRoot, extraRef), '# Unbound report\n');
+    const { pending, commit } = await commitValidLocalArchive(runtime, run, projectRoot, [
+      'source.js',
+      extraRef,
+    ]);
+    await expect(
+      completeLatestAction(
+        runtime,
+        pending,
+        { action: 'local', targetBranch: 'sdk-build', commit },
+        'unbound-report-outcome',
+        { projectRoot },
+      ),
+    ).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
+    expect(
+      (await runtime.inspect(run.runId)).actions.at(-1)?.rejectedOutcomes?.at(-1)?.reason,
+    ).toContain(extraRef);
   });
 
   it('restores a moved Archive with its claimed Action unknown on another device', async () => {
@@ -3081,6 +3165,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
           'docs/openspec/changes',
           'docs/superpowers/specs/design.md',
           'docs/superpowers/plans/2026-09-24-example.md',
+          (run.state as ClassicState).verificationReport!,
           'source.js',
         ],
         { cwd: projectRoot },

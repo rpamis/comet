@@ -56,7 +56,7 @@ describe('shared Runtime CLI routing', () => {
         rootDir: 'state',
         json: true,
       },
-      { output: 'compact' },
+      { output: 'compact', completeNativeReport: true },
     );
     expect(process.exitCode).toBe(0);
   });

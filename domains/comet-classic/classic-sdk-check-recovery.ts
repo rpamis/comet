@@ -1,3 +1,4 @@
+import { isClassicSdkRejectedBuildProposal } from './classic-build-configuration.js';
 import path from 'node:path';
 import { hashRuntimeValue, type WorkflowRun } from '../engine/runtime.js';
 import { classicProjectTargetExists, readClassicProjectFile } from './classic-protected-path.js';
@@ -12,6 +13,37 @@ import {
 export async function inspectClassicSdkActionRecovery(projectRoot: string, run: WorkflowRun) {
   const action = run.actions.find((entry) => ['running', 'unknown'].includes(entry.status));
   if (!action) return null;
+  if (isClassicSdkRejectedBuildProposal(action)) {
+    return {
+      status: 'outcome-rejected',
+      blocked: true,
+      action: {
+        actionId: action.id,
+        stepId: action.stepId,
+        status: action.status,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+      },
+      claim: action.claim,
+      rejection: action.rejectedOutcomes?.at(-1),
+      instructions: [
+        '配置提案已回传但未通过校验。修正 JSON 后重提，沿用原 claim 并保留拒绝历史。',
+        '恢复后须展示新提案并重新取得用户批准；不得使用 --confirmed，或声明原尝试未执行。',
+      ],
+      commandArgs: [
+        'comet',
+        'state',
+        'propose-build',
+        String((run.input as { change: string }).change),
+        '--file',
+        '<configuration-json>',
+        '--project-root',
+        path.resolve(projectRoot),
+        '--json',
+      ],
+      inspectRequest: { operation: 'inspect', runId: run.runId },
+    };
+  }
   const isCheck = action.type === 'call_tool' && action.ref === 'classic-check';
   const input = run.input as { changeDir?: string } | null;
   const evidenceDirectory = input?.changeDir ? classicSdkCheckDirectoryRef(run) : null;

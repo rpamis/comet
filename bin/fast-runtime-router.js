@@ -114,7 +114,13 @@ export async function tryRunFastRuntime(argv = process.argv.slice(2)) {
   const route = resolveFastRuntime(argv);
   if (!route) return false;
 
-  const runtimeUrl = assetUrl(route.assetPath);
+  // 聚合入口只替代完整 facade 的加载方式；未构建时保留开发目录回退。
+  const bundledFacadeUrl = route.nativeFacade
+    ? assetUrl('dist/app/commands/native.bundle.js')
+    : undefined;
+  const runtimeUrl = bundledFacadeUrl && existsSync(fileURLToPath(bundledFacadeUrl))
+    ? bundledFacadeUrl
+    : assetUrl(route.assetPath);
   const runtimePath = fileURLToPath(runtimeUrl);
   if (!existsSync(runtimePath)) return false;
 

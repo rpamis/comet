@@ -11,6 +11,7 @@ interface NativeHelpEntry {
 const GLOBAL_OPTIONS = [
   '--project-root <path>  Resolve the Native project from this working directory.',
   '--json                 Emit the stable JSON command envelope.',
+  '--compact              与 --json 合用；重复字段用 outputView.references 的 JSON Pointer 定位，Request 模板保留完整；没有字节收益时返回原完整协议。去掉此选项获取完整协议。',
   '--verbose              Append the raw machine projection after the human/agent text.',
   '--help                 Show help without requiring an initialized project.',
 ] as const;
