@@ -56,7 +56,18 @@ let items = JSON.parse(fs.readFileSync(file, 'utf8'));
 const atomicWrite = (target, value) => {
   const temporary = target + '.' + randomUUID() + '.tmp';
   fs.writeFileSync(temporary, JSON.stringify(value));
-  fs.renameSync(temporary, target);
+  const deadline = Date.now() + 2000;
+  const wait = new Int32Array(new SharedArrayBuffer(4));
+  for (;;) {
+    try { fs.renameSync(temporary, target); return; }
+    catch (error) {
+      if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || Date.now() >= deadline) {
+        fs.rmSync(temporary, { force: true });
+        throw error;
+      }
+      Atomics.wait(wait, 0, 0, 10);
+    }
+  }
 };
 const save = () => atomicWrite(file, items);
 if (args[0] === 'run') {
@@ -362,6 +373,55 @@ afterEach(async () => {
 });
 
 describe('真实宿主进程与持久 Docker 替身', () => {
+  it('Docker 替身重试临时重命名占用，保留完整的容器记录', async () => {
+    const preload = path.join(project, 'rename-busy.cjs');
+    await fs.writeFile(
+      preload,
+      `
+const fs = require('node:fs');
+const rename = fs.renameSync;
+let remaining = 2;
+fs.renameSync = (...args) => {
+  if (remaining-- > 0) {
+    fs.appendFileSync(process.env.FAKE_DOCKER_ROOT + '/rename-retries', 'busy\\n');
+    throw Object.assign(new Error('fixture-rename-busy'), { code: 'EPERM' });
+  }
+  return rename(...args);
+};
+`,
+    );
+    await runExternalCommandAsync(process.execPath, [
+      '--require',
+      preload,
+      path.join(project, 'fakebin/docker.cjs'),
+      'fixture-rewrite',
+    ]);
+    expect(await fs.readFile(path.join(project, 'rename-retries'), 'utf8')).toBe('busy\nbusy\n');
+    expect(await containers()).toHaveLength(1);
+    expect((await fs.readdir(project)).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('Docker 替身持续无法替换文件时返回错误并保留原记录', async () => {
+    const preload = path.join(project, 'rename-blocked.cjs');
+    await fs.writeFile(
+      preload,
+      `
+require('node:fs').renameSync = () => {
+  throw Object.assign(new Error('fixture-rename-blocked'), { code: 'EPERM' });
+};
+`,
+    );
+    await expect(
+      runExternalCommandAsync(
+        process.execPath,
+        ['--require', preload, path.join(project, 'fakebin/docker.cjs'), 'fixture-rewrite'],
+        { timeoutMs: 5000 },
+      ),
+    ).rejects.toThrow('fixture-rename-blocked');
+    expect(await containers()).toHaveLength(1);
+    expect((await fs.readdir(project)).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+  });
+
   it('Docker 替身的并发查询不会读到截断的容器记录', async () => {
     let finished = false;
     const rewriting = runExternalCommandAsync(process.execPath, [
