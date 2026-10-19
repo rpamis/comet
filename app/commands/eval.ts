@@ -17,6 +17,7 @@ import {
   resolveEvalContext,
   type ResolvedEvalContext,
 } from '../../domains/eval/index.js';
+import { evalProjectIdentity } from '../../domains/eval/eval-run-cleanup.js';
 import { collectStandaloneTasks } from '../../domains/eval/standalone-static-collect.js';
 import { recordRepositoryEvalExperiment } from '../../domains/bundle/eval-run-result.js';
 import { prepareEvalManifest } from '../../domains/bundle/eval-manifest-runtime.js';
@@ -438,6 +439,7 @@ async function runEval(
     env: {
       ...process.env,
       COMET_EVAL_EXPERIMENT_ID: experimentId,
+      COMET_EVAL_PROJECT_ID: await evalProjectIdentity(context.artifactOwnerRoot),
       COMET_EVAL_CONTEXT: JSON.stringify(context),
       COMET_EVAL_PROGRESS_ENABLED: '1',
       PYTHONDONTWRITEBYTECODE: '1',

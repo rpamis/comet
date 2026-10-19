@@ -81,6 +81,8 @@ Supervisor Child 的独立 worktree 和未提交代码不包含在父状态文�
 
 每个 Run 固定根工作流和传递子工作流的内容摘要。恢复时必须注册相同的 workflow id/version 与内容；同版本内容变了会以 `WORKFLOW_CHANGED` 拒绝继续，不能悄悄用新定义解释旧状态。
 
+Runtime 管理的 `child_workflow` Action 在恢复后变为 `unknown` 时，可调用 `next` 核对现有子 Run。Runtime 核对固定定义、父子归属、输入和领取身份，只接收子 Run 已持久化的完成、失败或取消结果；子流程未结束时继续等待。父子检查点必须一起恢复，缺失或不匹配的子 Run 不会被自动重建。宿主不能用通用 `retry` 或 `recordOutcome` 代填子流程结果；普通外部 Action 的未知执行仍须单独核对。
+
 ## 宿主执行 Action
 
 ### 常用接入路径

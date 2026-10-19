@@ -795,6 +795,86 @@ export function createRuntime(options: CreateRuntimeOptions) {
     }
   }
 
+  function validateChildAction(
+    run: WorkflowRun,
+    child: WorkflowRun['children'][number],
+    action: RuntimeAction,
+  ): WorkflowDefinition {
+    const definition = definitionFor(run.workflow);
+    const step = Object.hasOwn(definition.steps, action.stepId)
+      ? definition.steps[action.stepId]
+      : undefined;
+    if (
+      !step ||
+      step.type !== 'child_workflow' ||
+      referenceKey(step.workflow) !== referenceKey(child.workflow) ||
+      action.type !== step.type ||
+      action.ref !== `${step.workflow.id}@${step.workflow.version}` ||
+      action.attempt !== 1 ||
+      action.retry !== step.retry ||
+      !equalRuntimeData(action.requiredCapabilities, step.requiredCapabilities ?? []) ||
+      (action.claim &&
+        (action.claim.executorId !== 'comet-child-workflow' ||
+          action.claim.sessionId !== undefined ||
+          ![child.runId, `portable-${hashRuntimeValue(child.runId)}`].includes(action.claim.token)))
+    ) {
+      throw new RuntimeProtocolError(
+        'INVALID_RUN',
+        '子工作流 Action 与固定定义或 Runtime 领取身份不一致',
+      );
+    }
+    const input = action.input;
+    if (
+      !input ||
+      typeof input !== 'object' ||
+      Array.isArray(input) ||
+      !equalRuntimeData(input, {
+        input: step.input === undefined ? run.input : step.input,
+        outputs: workflowOutputs(run.actionContexts[action.id].results),
+        ...(Object.hasOwn(input, 'activation') ? { activation: input.activation } : {}),
+      })
+    ) {
+      throw new RuntimeProtocolError('INVALID_RUN', '子工作流 Action 输入与父 Run 上下文不一致');
+    }
+    const childDefinition = definitionFor({
+      ...child.workflow,
+      hash: run.definitionHashes[referenceKey(child.workflow)],
+    });
+    if (
+      Object.entries(pinnedDefinitions(childDefinition)).some(
+        ([key, hash]) => run.definitionHashes[key] !== hash,
+      )
+    ) {
+      throw new RuntimeProtocolError('INVALID_RUN', '父 Run 缺少子工作流的固定定义绑定');
+    }
+    return childDefinition;
+  }
+
+  function validateChildRun(
+    parent: WorkflowRun,
+    child: WorkflowRun['children'][number],
+    action: RuntimeAction,
+    definition: WorkflowDefinition,
+    run: WorkflowRun,
+  ): void {
+    const initialStateHash =
+      definition.initialState === undefined ? undefined : hashRuntimeValue(definition.initialState);
+    if (
+      run.runId !== child.runId ||
+      referenceKey(run.workflow) !== referenceKey(child.workflow) ||
+      run.workflow.hash !== parent.definitionHashes[referenceKey(child.workflow)] ||
+      !equalRuntimeData(run.definitionHashes, pinnedDefinitions(definition)) ||
+      !equalRuntimeData(run.input, action.input) ||
+      !equalRuntimeData(run.lineage, [...parent.lineage, parent.runId]) ||
+      (run.initialStateHash ?? initialStateHash) !== initialStateHash
+    ) {
+      throw new RuntimeProtocolError(
+        'RUN_CONFLICT',
+        '已有子 Run 与父 Action 的固定定义、输入或归属不一致',
+      );
+    }
+  }
+
   async function next(command: RunCommand): Promise<WorkflowRun> {
     let run = await mutate(command, (current, definition) => scheduleWorkflow(current, definition));
     if (run.status === 'cancelled') {
@@ -806,7 +886,8 @@ export function createRuntime(options: CreateRuntimeOptions) {
     if (run.children.length === 0) return run;
     for (const child of run.children) {
       let action = requiredAction(run, child.actionId);
-      if (!['pending', 'running'].includes(action.status)) continue;
+      if (!['pending', 'running', 'unknown'].includes(action.status)) continue;
+      const childDefinition = validateChildAction(run, child, action);
       if (action.status === 'pending') {
         run = await claimInternal(
           {
@@ -823,21 +904,27 @@ export function createRuntime(options: CreateRuntimeOptions) {
         );
         action = requiredAction(run, child.actionId);
       }
-      await startInternal(
-        {
-          runId: child.runId,
-          workflow: child.workflow,
-          input: action.input,
-          context: command.context,
-        },
-        [...run.lineage, run.runId],
-      );
+      // unknown 只能核对现存子 Run；丢失记录不能证明外部工作尚未执行。
+      const existingChild =
+        action.status === 'unknown'
+          ? await inspect(child.runId)
+          : await startInternal(
+              {
+                runId: child.runId,
+                workflow: child.workflow,
+                input: action.input,
+                context: command.context,
+              },
+              [...run.lineage, run.runId],
+            );
+      validateChildRun(run, child, action, childDefinition, existingChild);
       const currentParent = await inspect(run.runId);
       if (currentParent.status === 'cancelled') {
         await cancelChildren(currentParent);
         return currentParent;
       }
       const childRun = await next({ runId: child.runId, context: command.context });
+      validateChildRun(run, child, action, childDefinition, childRun);
       if (['completed', 'failed', 'cancelled'].includes(childRun.status)) {
         run = await recordOutcomeInternal(
           {
@@ -1567,7 +1654,14 @@ export function createRuntime(options: CreateRuntimeOptions) {
       if (run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') {
         return run.status;
       }
-      if (run.actions.some((action) => action.status === 'unknown')) return 'execution-unknown';
+      if (
+        run.actions.some(
+          (action) =>
+            action.status === 'unknown' &&
+            (!allowChildProgress || action.type !== 'child_workflow'),
+        )
+      )
+        return 'execution-unknown';
       if (
         run.actions.some(
           (action) =>
@@ -1582,7 +1676,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
     };
     for (;;) {
       checkContext(command.context);
-      // 先检查现有阻塞；next 可能领取并创建 Child，不能先调用再判断未知状态。
+      // 普通外部执行未知时先停止；Runtime 管理的 Child 可由 next 核对现存 Run。
       const existingBlock = blockedReason(true);
       if (existingBlock) return stop(existingBlock);
       run = await next({ runId: command.runId, context: command.context });

@@ -1060,12 +1060,7 @@ export function EvalPanel({
           <Space wrap className="dashboard-eval-actions">
             {detail.archiveId && <Tag>{t('历史实验 · 只读')}</Tag>}
             {detail.availableActions.stop && (
-              <Button
-                danger
-                loading={busy}
-                onClick={() => void stop()}
-                disabled={detail.executionStatus === 'stopping'}
-              >
+              <Button danger loading={busy} onClick={() => void stop()}>
                 {t('停止评估')}
               </Button>
             )}

@@ -48,6 +48,7 @@ import type { NativePortableSpecChange, NativePortableState } from './native-por
 import {
   inspectNativeVerificationReportAlignment,
   nativeVerificationReportStateVersion,
+  renderNativeVerificationReport,
   writeNativeVerificationReport,
 } from './native-verification-report-v2.js';
 import {
@@ -941,10 +942,59 @@ function sdkArchiveReceiptFile(paths: NativeProjectPaths, runId: string): string
   return path.join(paths.runtimeDir, 'sdk-archive-receipts', `${key}.json`);
 }
 
+/** 冻结事务和实际候选材料必须一致，不能用被改写的事务替换原 Spec 结果。 */
+async function assertSdkArchiveSources(
+  directory: string,
+  transaction: NativePortableArchiveTransaction,
+) {
+  for (const change of transaction.spec_changes) {
+    if (change.source === null) continue;
+    const source = await readNativeBoundedTextFile({
+      root: directory,
+      ref: change.source,
+      maxBytes: null,
+      includeHash: false,
+    });
+    if (source.text !== (change.source_content ?? change.content))
+      throw new Error('Native SDK Archive 冻结 Spec 与原候选材料不匹配');
+    if (change.delta_source) {
+      const delta = await readNativeBoundedTextFile({
+        root: directory,
+        ref: change.delta_source,
+        maxBytes: null,
+        includeHash: false,
+      });
+      if (delta.text !== change.delta_content)
+        throw new Error('Native SDK Archive 冻结 delta 与原候选材料不匹配');
+    }
+  }
+}
+
+/** 中断恢复只接受原 SDK 状态确定生成的报告，不能为被修改的报告补发收据。 */
+async function assertSdkArchiveReport(directory: string, state: NativePortableState) {
+  const report = await readNativeBoundedTextFile({
+    root: directory,
+    ref: 'verification.md',
+    maxBytes: null,
+    includeHash: false,
+  });
+  if (
+    report.text !== renderNativeVerificationReport(state) ||
+    Buffer.byteLength(report.text, 'utf8') !== report.size
+  )
+    throw new Error('Native SDK Archive 最终报告与原状态不匹配，恢复未覆盖报告');
+  return report;
+}
+
 export async function finalizeNativeSdkArchive(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
   runId: string;
+  transactionId: string;
+  archiveRef: string;
+  priorReportSha256: string;
+  /** 已持有 mutation lock；只核对候选，不再获取同一锁。 */
+  validateCandidate: () => Promise<void>;
 }): Promise<NativeSdkArchiveReceipt> {
   const { paths, state, runId } = options;
   return withNativeMutationLock(
@@ -961,20 +1011,66 @@ export async function finalizeNativeSdkArchive(options: {
       }
       let transaction = await readTransaction(paths, state.name);
       if (!transaction) {
-        return inspectNativeSdkArchiveFinalization({ paths, state, runId });
+        const receipt = await inspectNativeSdkArchiveFinalization({
+          paths,
+          state,
+          runId,
+          archiveRef: options.archiveRef,
+        });
+        if (receipt.transactionId !== options.transactionId)
+          throw new Error('Native SDK Archive 收据不属于原事务');
+        return receipt;
       }
       assertTransactionState(transaction, state);
+      if (
+        transaction.id !== options.transactionId ||
+        transaction.archive_ref !== options.archiveRef ||
+        transaction.next_spec_index !== transaction.spec_changes.length ||
+        transaction.spec_changes.length !== state.spec_changes.length ||
+        transaction.spec_changes.some((change, index) => {
+          const expected = state.spec_changes[index];
+          return (
+            change.capability !== expected.capability ||
+            change.operation !== expected.operation ||
+            change.source !== expected.source ||
+            change.delta_source !== expected.delta_source ||
+            change.base_hash !== expected.base_hash
+          );
+        }) ||
+        !['specs-applied', 'report-aligned', 'moved'].includes(transaction.status)
+      )
+        throw new Error('Native SDK Archive 恢复事务与原已应用 Specs 不匹配');
       await assertAppliedSpecsUnchanged(paths, transaction);
+      await options.validateCandidate();
       const activeDir = nativePortableChangeDir(paths, state.name);
       const target = archiveDirectory(paths, transaction.archive_ref);
+      const activeExists = await exists(activeDir);
+      const targetExists = await exists(target);
+      if (activeExists === targetExists)
+        throw new Error('Native SDK Archive layout contradicts its transaction');
+      await assertSdkArchiveSources(activeExists ? activeDir : target, transaction);
       if (transaction.status === 'specs-applied') {
         if (!(await exists(activeDir)) || (await exists(target))) {
           throw new Error('Native SDK Archive layout changed before final report');
         }
-        await writeNativeVerificationReport({
-          file: path.join(activeDir, 'verification.md'),
-          state,
+        const report = await readNativeBoundedTextFile({
+          root: activeDir,
+          ref: 'verification.md',
+          maxBytes: null,
+          includeHash: false,
         });
+        const finalReport = renderNativeVerificationReport(state);
+        if (report.text !== finalReport || Buffer.byteLength(report.text, 'utf8') !== report.size) {
+          if (
+            createHash('sha256').update(report.text).digest('hex') !== options.priorReportSha256 ||
+            Buffer.byteLength(report.text, 'utf8') !== report.size
+          )
+            throw new Error('Native SDK Archive 报告已偏离原预检或最终状态，恢复未覆盖报告');
+          await writeNativeVerificationReport({
+            file: path.join(activeDir, 'verification.md'),
+            state,
+          });
+        }
         const alignment = await inspectNativeVerificationReportAlignment({
           file: path.join(activeDir, 'verification.md'),
           stateVersion: state.state_version,
@@ -986,6 +1082,9 @@ export async function finalizeNativeSdkArchive(options: {
       if (transaction.status === 'report-aligned') {
         const activeExists = await exists(activeDir);
         const targetExists = await exists(target);
+        if (activeExists === targetExists)
+          throw new Error('Native SDK Archive layout contradicts its transaction');
+        await assertSdkArchiveReport(activeExists ? activeDir : target, state);
         if (activeExists && !targetExists) {
           await fs.mkdir(paths.archiveDir, { recursive: true });
           await fs.rename(activeDir, target);
@@ -998,12 +1097,9 @@ export async function finalizeNativeSdkArchive(options: {
       if (transaction.status !== 'moved' || (await exists(activeDir)) || !(await exists(target))) {
         throw new Error('Native SDK Archive has not moved the change');
       }
-      const report = await readNativeBoundedTextFile({
-        root: target,
-        ref: 'verification.md',
-        maxBytes: null,
-        includeHash: false,
-      });
+      const report = await assertSdkArchiveReport(target, state);
+      await assertAppliedSpecsUnchanged(paths, transaction);
+      await options.validateCandidate();
       const receipt: NativeSdkArchiveReceipt = {
         runId,
         change: state.name,

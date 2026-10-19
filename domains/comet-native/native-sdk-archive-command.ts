@@ -1,3 +1,5 @@
+import { nativeProjectPaths } from './native-paths.js';
+import { readNativePortableTransaction } from './native-portable-transactions.js';
 import { importNativeSdkArchiveOriginals } from './native-sdk-archive-originals.js';
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
 import {
@@ -104,6 +106,14 @@ export async function archiveNativeSdkChange(options: {
         },
       };
     }
+    const resumedFinalization =
+      action.stepId === 'archive.finalize' &&
+      (await readNativePortableTransaction(
+        await nativeProjectPaths(options.projectRoot, inspection.artifactRootRef, {
+          readOnly: true,
+        }),
+        { kind: 'archive', change: state.name },
+      )) !== null;
     const { runtime } = await loadOwnedNativeSdkRuntime(options.projectRoot, options.name);
     if (action.stepId === 'supervisor.parent.deliver') {
       await recoverNativeSdkSupervisorDeliveryOutcome({
@@ -129,10 +139,12 @@ export async function archiveNativeSdkChange(options: {
       recoveredAction: { id: action.id, stepId: action.stepId },
       ...(action.stepId === 'archive.finalize'
         ? {
-            historicalRecovery: true,
+            historicalRecovery: !resumedFinalization,
+            resumedFinalization,
             currentImplementationRevalidated: false,
-            recoveryMessage:
-              '已凭原持久收据补记历史归档完成；没有重新执行归档，也未重新验收当前实现。',
+            recoveryMessage: resumedFinalization
+              ? '已核对原候选、Specs 和报告，并继续原归档事务；没有重新运行验收检查。'
+              : '已凭原持久收据补记历史归档完成；没有重新执行归档，也未重新验收当前实现。',
           }
         : {}),
       ...(await inspectNativeSdkStatus(options)),

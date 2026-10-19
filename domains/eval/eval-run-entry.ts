@@ -12,12 +12,15 @@ import type { ExternalCommandOptions } from '../../platform/process/external-com
 import { loadUserEvalEnvironment } from './user-environment.js';
 import { runWorkflowApplicationEval } from './application-eval.js';
 import { applicationEvalSettings, evalPackageRoot, previewEvalRun } from './eval-run-preview.js';
-import {
-  readManagedEvalRun,
-  updateManagedEvalRun,
-  stopEvalContainers,
-} from './eval-run-manager.js';
+import { readManagedEvalRun, updateManagedEvalRun } from './eval-run-manager.js';
 import { evalRunPath, readEvalJson, redactEvalOutput, writeEvalJson } from './eval-run-store.js';
+import {
+  readEvalExecutionState,
+  cleanupEvalExecution,
+  registerEvalContainerOwnership,
+  evalProjectIdentity,
+  writeEvalExecutionState,
+} from './eval-run-cleanup.js';
 import type { EvalManagedRun } from './eval-run-types.js';
 
 export async function runManagedEvalWorker(project: string, id: string): Promise<void> {
@@ -25,6 +28,7 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
   const original = await readManagedEvalRun(project, id);
   if (!original || !['queued', 'stopping'].includes(original.status))
     throw new Error('Eval 启动记录不存在或已经执行');
+  if (original.status === 'queued') await registerEvalContainerOwnership(project, id);
   process.env.COMET_EVAL_MANAGED = '1';
   if (original.config.judgeEnabled !== undefined)
     process.env.COMET_EVAL_MANAGED_JUDGE = original.config.judgeEnabled ? '1' : '0';
@@ -35,6 +39,7 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
   });
   const controller = new AbortController();
   let stopping = false;
+  let executionStarted = false;
   let processesStopped = true;
   let polling = false;
   let exitCode: number | null = null;
@@ -134,6 +139,7 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
       env: options.env ?? process.env,
       timeoutMs: options.timeoutMs ?? (original.config.timeoutSeconds ?? 600) * 1000,
     });
+    executionStarted = true;
     let childClosed = false;
     const closed = new Promise<void>((resolve) =>
       owned.child.once('close', () => {
@@ -287,6 +293,7 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
         env: {
           ...process.env,
           COMET_EVAL_EXPERIMENT_ID: id,
+          COMET_EVAL_PROJECT_ID: await evalProjectIdentity(project),
           COMET_EVAL_MANAGED: '1',
           COMET_EVAL_MANAGED_TIMEOUT: String(config.timeoutSeconds ?? 600),
           COMET_EVAL_MANAGED_MAX_TURNS: String(config.maxTurns ?? 40),
@@ -299,31 +306,42 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
   } finally {
     clearInterval(timer);
     clearTimeout(deadline);
+    while (polling) await new Promise((resolve) => setTimeout(resolve, 10));
+    await poll();
     await outputPending;
     const metadata = await readEvalJson(await evalRunPath(project, id, 'metadata.json'));
-    const application = await readEvalJson(
-      await evalRunPath(project, id, 'application-result.json'),
-    );
+    const execution = await readEvalExecutionState(project, id);
     let status: EvalManagedRun['status'] = 'interrupted';
-    if (stopping || controller.signal.aborted) {
+    let cleanupComplete = false;
+    try {
+      if (executionStarted || original.status === 'stopping')
+        await cleanupEvalExecution(project, id);
       if (!processesStopped) {
         lastError = new Error('执行进程尚未确认停止');
         status = 'stopping';
       } else {
-        try {
-          await stopEvalContainers(id);
-          status = stopping ? 'stopped' : 'interrupted';
-        } catch (error) {
-          lastError = error;
-          status = 'stopping';
-        }
+        cleanupComplete = true;
+        if (stopping || controller.signal.aborted) status = stopping ? 'stopped' : 'interrupted';
+        else if (execution?.status === 'completed' || (!execution && metadata?.completed_at))
+          status = 'completed';
       }
-    } else if (metadata?.completed_at || application?.status) status = 'completed';
+    } catch (error) {
+      lastError = error;
+      status = 'stopping';
+    }
     await updateManagedEvalRun(project, id, (current) => {
+      // Stop 可以在最后一次轮询后到达；资源已经核对清理才允许确认停止。
+      if (current.status === 'stopping' && cleanupComplete) status = 'stopped';
       current.status = status;
       current.exitCode = exitCode;
       if (lastError && status !== 'completed')
         current.error = redactEvalOutput((lastError as Error).message);
+    });
+    await writeEvalExecutionState(project, id, {
+      status,
+      ...(lastError && status !== 'completed'
+        ? { error: redactEvalOutput((lastError as Error).message) }
+        : {}),
     });
   }
 }
@@ -336,7 +354,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   else
     void runManagedEvalWorker(project, id).catch(async (error) => {
       await updateManagedEvalRun(project, id, (current) => {
-        current.status = 'interrupted';
+        current.status = 'stopping';
         current.error = redactEvalOutput(error.message);
       }).catch(() => {});
       process.exitCode = 1;

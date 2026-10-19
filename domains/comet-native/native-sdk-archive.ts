@@ -463,6 +463,7 @@ async function archiveFinalizeBinding(
   const state = parseNativePortableState(run.state);
   const input = run.input as { name?: unknown; artifactRootRef?: unknown };
   const applied = run.outputs['archive.execute']?.value as Record<string, unknown> | undefined;
+  const preflight = run.outputs['archive.prepare']?.value as Record<string, unknown> | undefined;
   if (
     state.phase !== 'archive' ||
     state.status !== 'done' ||
@@ -474,7 +475,9 @@ async function archiveFinalizeBinding(
     !applied ||
     applied.stateVersion !== state.state_version - 1 ||
     typeof applied.transactionId !== 'string' ||
-    typeof applied.archiveRef !== 'string'
+    typeof applied.archiveRef !== 'string' ||
+    typeof preflight?.reportSha256 !== 'string' ||
+    !/^[0-9a-f]{64}$/u.test(preflight.reportSha256)
   ) {
     throw new Error('Native SDK Archive finalization lacks applied Specs');
   }
@@ -489,7 +492,7 @@ async function archiveFinalizeBinding(
       action.status !== 'unknown')
   )
     await assertArchiveCandidate(run, projectRoot);
-  return { state, paths, applied };
+  return { state, paths, applied, priorReportSha256: preflight.reportSha256 };
 }
 
 export const nativeSdkArchiveFinalizeExecutor: RuntimeExecutor = {
@@ -508,7 +511,15 @@ export const nativeSdkArchiveFinalizeExecutor: RuntimeExecutor = {
       return { status: 'failed', output: { reason: 'candidate-drift', message: error.message } };
     }
     const { state, paths, applied } = bound;
-    const receipt = await finalizeNativeSdkArchive({ paths, state, runId: run.runId });
+    const receipt = await finalizeNativeSdkArchive({
+      paths,
+      state,
+      runId: run.runId,
+      transactionId: applied.transactionId as string,
+      archiveRef: applied.archiveRef as string,
+      priorReportSha256: bound.priorReportSha256,
+      validateCandidate: () => assertArchiveCandidate(run, context.projectRoot!),
+    });
     if (
       receipt.transactionId !== applied.transactionId ||
       receipt.archiveRef !== applied.archiveRef
@@ -612,18 +623,29 @@ export async function recoverNativeSdkArchiveOutcome(options: {
     if (action.claim.executorId !== nativeSdkArchiveFinalizeExecutor.id) {
       throw new Error('Native SDK Archive recovery belongs to another executor');
     }
-    const { state, paths, applied } = await archiveFinalizeBinding(
-      run,
-      action,
-      options.projectRoot,
-      true,
-    );
-    const receipt = await inspectNativeSdkArchiveFinalization({
-      paths,
-      state,
-      runId: run.runId,
-      archiveRef: applied.archiveRef as string,
+    const bound = await archiveFinalizeBinding(run, action, options.projectRoot, true);
+    const { state, paths, applied } = bound;
+    const transaction = await readNativePortableTransaction(paths, {
+      kind: 'archive',
+      change: state.name,
     });
+    // 有未完成事务时继续原 finalize，重新核对候选、Specs 和报告；完整收据只补记历史结果。
+    const receipt = transaction
+      ? await finalizeNativeSdkArchive({
+          paths,
+          state,
+          runId: run.runId,
+          transactionId: applied.transactionId as string,
+          archiveRef: applied.archiveRef as string,
+          priorReportSha256: bound.priorReportSha256,
+          validateCandidate: () => assertArchiveCandidate(run, options.projectRoot),
+        })
+      : await inspectNativeSdkArchiveFinalization({
+          paths,
+          state,
+          runId: run.runId,
+          archiveRef: applied.archiveRef as string,
+        });
     if (
       receipt.transactionId !== applied.transactionId ||
       receipt.archiveRef !== applied.archiveRef

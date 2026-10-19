@@ -7119,3 +7119,316 @@ it.each([1, 2])(
     expect(stopped.actions.some((action) => action.stepId === 'archive.execute')).toBe(false);
   },
 );
+
+async function interruptArchiveFinalization(
+  point:
+    | 'report'
+    | 'report-journal'
+    | 'move'
+    | 'move-journal'
+    | 'portable-receipt'
+    | 'runtime-receipt'
+    | 'cleanup',
+  legacy = false,
+) {
+  const prepared = await awaitingArchiveApplication(
+    'sdk',
+    undefined,
+    false,
+    initializeArchiveGit,
+    legacy ? legacyArchiveApplication() : undefined,
+  );
+  const { root, paths, runtime } = prepared;
+  let run = await runtime.execute({
+    runId: prepared.run.runId,
+    actionId: prepared.run.actions.at(-1)!.id,
+    executorId: 'comet-native-archive-apply',
+    context: { requestId: 'interrupt-finalize-apply', projectRoot: root },
+  });
+  const action = run.actions.at(-1)!;
+  const context = { requestId: 'interrupt-finalize', projectRoot: root };
+  run = await runtime.claim({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: 'comet-native-archive-finalize',
+    claimToken: 'original-finalize-owner',
+    context,
+  });
+  const applied = run.outputs['archive.execute'].value as {
+    transactionId: string;
+    archiveRef: string;
+  };
+  const archiveDir = path.join(paths.archiveDir, applied.archiveRef);
+  const transactionFile = path.join(paths.transactionsDir, `portable-archive-${run.runId}.json`);
+  const atomic = await import('../../../domains/comet-native/native-atomic-file.js');
+  const originalJson = atomic.atomicWriteJson;
+  const originalText = atomic.atomicWriteText;
+  const originalRename = fs.rename;
+  const originalRm = fs.rm;
+  let interrupted = false;
+  const fail = () => {
+    interrupted = true;
+    throw Object.assign(new Error(`Injected finalize interruption: ${point}`), { code: 'EIO' });
+  };
+  vi.spyOn(atomic, 'atomicWriteJson').mockImplementation(async (file, value, options) => {
+    const status = (value as { status?: string }).status;
+    if (
+      !interrupted &&
+      ((file === transactionFile && point === 'report-journal' && status === 'report-aligned') ||
+        (file === transactionFile && point === 'move-journal' && status === 'moved') ||
+        (point === 'runtime-receipt' &&
+          file.includes(`${path.sep}sdk-archive-receipts${path.sep}`)))
+    )
+      fail();
+    return originalJson(file, value, options);
+  });
+  vi.spyOn(atomic, 'atomicWriteText').mockImplementation(async (file, text, options) => {
+    if (
+      !interrupted &&
+      ((point === 'report' && file === path.join(prepared.changeDir, 'verification.md')) ||
+        (point === 'portable-receipt' &&
+          file === path.join(archiveDir, 'comet-state.yaml') &&
+          text.includes('archive_receipt:')))
+    )
+      fail();
+    return originalText(file, text, options);
+  });
+  vi.spyOn(fs, 'rename').mockImplementation(async (source, target) => {
+    if (!interrupted && point === 'move' && source === prepared.changeDir) fail();
+    return originalRename(source, target);
+  });
+  vi.spyOn(fs, 'rm').mockImplementation(async (file, options) => {
+    if (!interrupted && point === 'cleanup' && file === transactionFile) fail();
+    return originalRm(file, options);
+  });
+  await expect(
+    nativeSdkArchiveFinalizeExecutor.execute(run.actions.at(-1)!, context, run),
+  ).rejects.toThrow('Injected finalize interruption');
+  expect(interrupted).toBe(true);
+  vi.restoreAllMocks();
+  run = await runtime.markUnknown({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    reason: `Original host exited at ${point}`,
+  });
+  return { ...prepared, run, action: run.actions.at(-1)!, applied, archiveDir, transactionFile };
+}
+
+it.each([
+  'report',
+  'report-journal',
+  'move',
+  'move-journal',
+  'portable-receipt',
+  'runtime-receipt',
+  'cleanup',
+] as const)(
+  'resumes the original finalize after interruption at %s without replaying applied side effects',
+  async (point) => {
+    const f = await interruptArchiveFinalization(point);
+    const originalTransaction = JSON.parse(await fs.readFile(f.transactionFile, 'utf8'));
+    const specFile = path.join(f.paths.specsDir, 'workflow/spec.md');
+    const spec = await fs.readFile(specFile, 'utf8');
+    const specStat = await fs.stat(specFile);
+    const originalRename = fs.rename;
+    const moves: unknown[] = [];
+    vi.spyOn(fs, 'rename').mockImplementation(async (source, target) => {
+      if (source === f.changeDir) moves.push([source, target]);
+      return originalRename(source, target);
+    });
+    const recovered = await archiveNativeSdkChange({
+      projectRoot: f.root,
+      name: f.run.runId,
+      dryRun: false,
+      recover: true,
+      confirmed: false,
+    });
+    expect(recovered.exitCode, JSON.stringify(recovered)).toBe(0);
+    expect(recovered.data).toMatchObject({
+      historicalRecovery: false,
+      resumedFinalization: true,
+      currentImplementationRevalidated: false,
+    });
+    const completed = await f.runtime.inspect(f.run.runId);
+    expect(completed.status).toBe('completed');
+    expect(completed.actions.at(-1)).toMatchObject({
+      id: f.action.id,
+      attempt: f.action.attempt,
+      inputHash: f.action.inputHash,
+      claim: f.action.claim,
+      status: 'succeeded',
+    });
+    expect(completed.actions.filter((action) => action.stepId === 'archive.execute')).toHaveLength(
+      1,
+    );
+    expect(completed.outputs['archive.finalize'].value).toMatchObject({
+      transactionId: originalTransaction.id,
+    });
+    expect(moves).toHaveLength(['report', 'report-journal', 'move'].includes(point) ? 1 : 0);
+    expect(await fs.readFile(specFile, 'utf8')).toBe(spec);
+    expect((await fs.stat(specFile)).mtimeMs).toBe(specStat.mtimeMs);
+    await expect(fs.access(f.transactionFile)).rejects.toMatchObject({ code: 'ENOENT' });
+    const again = await archiveNativeSdkChange({
+      projectRoot: f.root,
+      name: f.run.runId,
+      dryRun: false,
+      recover: true,
+      confirmed: false,
+    });
+    expect(again.exitCode).toBe(73);
+    expect((await f.runtime.inspect(f.run.runId)).revision).toBe(completed.revision);
+  },
+);
+
+it.each(['implementation', 'material', 'spec', 'report', 'transaction-id', 'spec-cursor'])(
+  'preserves the interrupted finalize when %s no longer matches its original evidence',
+  async (drift) => {
+    const f = await interruptArchiveFinalization('move-journal');
+    const transaction = await fs.readFile(f.transactionFile, 'utf8');
+    const files: Record<string, string> = {
+      implementation: path.join(f.root, 'implementation.js'),
+      material: path.join(f.archiveDir, 'brief.md'),
+      spec: path.join(f.paths.specsDir, 'workflow/spec.md'),
+      report: path.join(f.archiveDir, 'verification.md'),
+      'transaction-id': f.transactionFile,
+      'spec-cursor': f.transactionFile,
+    };
+    const file = files[drift];
+    const original = await fs.readFile(file, 'utf8');
+    const changed =
+      drift === 'transaction-id'
+        ? JSON.stringify({ ...JSON.parse(original), id: '00000000-0000-4000-8000-000000000000' })
+        : drift === 'spec-cursor'
+          ? JSON.stringify({ ...JSON.parse(original), next_spec_index: 0 })
+          : `${original}\nChanged after interruption.\n`;
+    await fs.writeFile(file, changed);
+    await expect(
+      archiveNativeSdkChange({
+        projectRoot: f.root,
+        name: f.run.runId,
+        dryRun: false,
+        recover: true,
+        confirmed: false,
+      }),
+    ).rejects.toThrow();
+    expect(await fs.readFile(file, 'utf8')).toBe(changed);
+    expect(await fs.readFile(f.transactionFile, 'utf8')).toBe(
+      file === f.transactionFile ? changed : transaction,
+    );
+    expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)).toEqual(f.action);
+    await fs.writeFile(file, original);
+    expect(
+      (
+        await archiveNativeSdkChange({
+          projectRoot: f.root,
+          name: f.run.runId,
+          dryRun: false,
+          recover: true,
+          confirmed: false,
+        })
+      ).exitCode,
+    ).toBe(0);
+  },
+);
+
+it('resumes a legacy finalize after rename using the original candidate evidence', async () => {
+  const f = await interruptArchiveFinalization('move-journal', true);
+  expect(f.run.outputs['archive.prepare'].value).not.toHaveProperty('candidateBinding');
+  expect(
+    (
+      await archiveNativeSdkChange({
+        projectRoot: f.root,
+        name: f.run.runId,
+        dryRun: false,
+        recover: true,
+        confirmed: false,
+      })
+    ).exitCode,
+  ).toBe(0);
+  const completed = await f.runtime.inspect(f.run.runId);
+  expect(completed.status).toBe('completed');
+  expect(completed.actions.at(-1)).toMatchObject({
+    id: f.action.id,
+    claim: f.action.claim,
+    attempt: 1,
+    status: 'succeeded',
+  });
+});
+
+it('does not overwrite a changed pre-finalization report while resuming the original finalize', async () => {
+  const f = await interruptArchiveFinalization('report');
+  const reportFile = path.join(f.changeDir, 'verification.md');
+  const changed = `${await fs.readFile(reportFile, 'utf8')}\nUnconfirmed report change.\n`;
+  await fs.writeFile(reportFile, changed);
+  await expect(
+    archiveNativeSdkChange({
+      projectRoot: f.root,
+      name: f.run.runId,
+      dryRun: false,
+      recover: true,
+      confirmed: false,
+    }),
+  ).rejects.toThrow(/报告/);
+  expect(await fs.readFile(reportFile, 'utf8')).toBe(changed);
+  expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)).toEqual(f.action);
+});
+
+it('rejects a rewritten frozen transaction even when the canonical Spec matches that rewrite', async () => {
+  const f = await interruptArchiveFinalization('move-journal');
+  const specFile = path.join(f.paths.specsDir, 'workflow/spec.md');
+  const transaction = JSON.parse(await fs.readFile(f.transactionFile, 'utf8'));
+  const content = '# Workflow\nThis replacement was never confirmed.\n';
+  transaction.spec_changes[0].content = content;
+  transaction.spec_changes[0].result_hash = createHash('sha256').update(content).digest('hex');
+  await fs.writeFile(f.transactionFile, JSON.stringify(transaction));
+  await fs.writeFile(specFile, content);
+  await expect(
+    archiveNativeSdkChange({
+      projectRoot: f.root,
+      name: f.run.runId,
+      dryRun: false,
+      recover: true,
+      confirmed: false,
+    }),
+  ).rejects.toThrow(/冻结 Spec/);
+  expect(await fs.readFile(specFile, 'utf8')).toBe(content);
+  expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)).toEqual(f.action);
+});
+
+it('rejects a changed aligned report before moving the active change during recovery', async () => {
+  const f = await interruptArchiveFinalization('move');
+  const reportFile = path.join(f.changeDir, 'verification.md');
+  const report = `${await fs.readFile(reportFile, 'utf8')}\nUnconfirmed report change.\n`;
+  await fs.writeFile(reportFile, report);
+  await expect(
+    archiveNativeSdkChange({
+      projectRoot: f.root,
+      name: f.run.runId,
+      dryRun: false,
+      recover: true,
+      confirmed: false,
+    }),
+  ).rejects.toThrow(/报告/);
+  expect(await fs.readFile(reportFile, 'utf8')).toBe(report);
+  await expect(fs.access(f.archiveDir)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)).toEqual(f.action);
+});
+
+it('keeps recovery blocked when neither the original transaction nor a complete receipt survived', async () => {
+  const f = await interruptArchiveFinalization('move-journal');
+  await fs.rm(f.transactionFile);
+  await expect(
+    archiveNativeSdkChange({
+      projectRoot: f.root,
+      name: f.run.runId,
+      dryRun: false,
+      recover: true,
+      confirmed: false,
+    }),
+  ).rejects.toThrow(/receipt/);
+  expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)).toEqual(f.action);
+  await expect(fs.access(f.transactionFile)).rejects.toMatchObject({ code: 'ENOENT' });
+});

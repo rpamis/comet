@@ -53,14 +53,18 @@ export function projectWorkflowApplicationRun(
   const nextRequest = { operation: 'next' as const, ...command };
 
   // 只选择本次 Run 已允许的工作；保留并行动作，不从阶段名猜测或重建推进规则。
+  const unknownExternalAction = activeActions.find(
+    (action) => action.status === 'unknown' && action.type !== 'child_workflow',
+  );
   const selectedAction =
+    unknownExternalAction ??
     activeActions.find((action) => action.status === 'unknown') ??
     activeActions.find((action) => action.status === 'running') ??
     activeActions.find((action) => action.status === 'pending');
   const mode: CliContinuationMode =
     run.status === 'completed' || run.status === 'cancelled'
       ? 'done'
-      : run.status === 'failed' || selectedAction?.status === 'unknown'
+      : run.status === 'failed' || unknownExternalAction !== undefined
         ? 'reconcile'
         : selectedAction?.status === 'running' && selectedAction.type !== 'child_workflow'
           ? 'wait'
@@ -75,7 +79,7 @@ export function projectWorkflowApplicationRun(
       return {
         instruction:
           action.status === 'unknown'
-            ? '保留原子 Run 和领取记录，核对子流程结果；不能另建子 Run 或重派 Action。'
+            ? '使用父 Run 的 nextRequest 核对既有子 Run 并接收真实结果；若子 Run 缺失，先恢复其记录，不能另建子 Run 或重派 Action。'
             : '使用父 Run 的 next 启动或接收原子 Run；到子 Run 的 inspect 查看待执行工作。',
       };
     }
@@ -280,13 +284,12 @@ export function projectWorkflowApplicationRun(
               : mode === 'ask'
                 ? '展示 current.waits 的完整 proposal 和 choices；取得对当前 proposalHash 的用户决定后填写 resolveRequest。'
                 : !selectedAction || selectedAction.type === 'child_workflow'
-                  ? '使用 nextRequest 推进已就绪的步骤或原子 Run；不另建相同子 Run。'
+                  ? selectedAction?.status === 'unknown'
+                    ? '使用 nextRequest 核对既有子 Run；Runtime 验证父子身份后接收已提交结果，缺失记录时先恢复原子 Run。'
+                    : '使用 nextRequest 推进已就绪的步骤或原子 Run；不另建相同子 Run。'
                   : '执行 current.actions 中所选动作的 executeRequest，或由具备能力的宿主使用 claimRequest；模板占位值替换为真实输入，每次提交后使用新响应的 revision 和身份。',
       ...(!terminal &&
-      !children.some(
-        (child) =>
-          activeActions.find((action) => action.id === child.actionId)?.status === 'unknown',
-      ) &&
+      unknownExternalAction === undefined &&
       (children.length > 0 || run.ready.length > 0)
         ? { nextRequest }
         : {}),

@@ -142,6 +142,19 @@ jobs:
           test/domains/comet-native/native-supervisor-integration-execution.test.ts
           test/domains/comet-native/native-supervisor-legacy-diagnostics.test.ts
       - run: pnpm test:runtime-smoke
+      - name: Verify Eval stop and cleanup recovery on the host platform
+        run: >-
+          pnpm exec vitest run
+          test/domains/eval/eval-container-cleanup.test.ts
+          test/app/eval-run-lifecycle.test.ts
+          --maxWorkers=1
+      - name: Verify Eval cancellation against real Docker containers
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          COMET_EVAL_DOCKER_INTEGRATION: '1'
+        run: |
+          docker pull alpine:3.21
+          pnpm exec vitest run test/domains/eval/eval-container-cleanup.integration.test.ts --maxWorkers=1
 
   package-e2e:
     name: Package install (${{ matrix.os }})

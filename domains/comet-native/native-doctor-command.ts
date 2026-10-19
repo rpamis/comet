@@ -447,6 +447,7 @@ function unmetReadySupervisorDependencyFinding(
 async function inspectPortableTransactions(
   paths: NativeProjectPaths,
   name?: string,
+  excludedNames?: ReadonlySet<string>,
 ): Promise<{
   transactions: NativePortableTransaction[];
   findings: NativeDoctorFinding[];
@@ -455,7 +456,7 @@ async function inspectPortableTransactions(
   const findings: NativeDoctorFinding[] = [];
   for (const entryName of await listNativePortableTransactionEntryNames(paths)) {
     const ref = describeNativePortableTransactionEntry(entryName)!;
-    if (name && ref.change !== name) continue;
+    if ((name && ref.change !== name) || excludedNames?.has(ref.change)) continue;
     const file = path.join(paths.transactionsDir, entryName);
     try {
       const transaction = await readNativePortableTransactionEntry(paths, entryName);
@@ -723,9 +724,15 @@ export async function nativeDoctorCommand(
     );
   }
   const portableTransactions = await inspectPortableTransactions(paths, name);
-  if (name && portableTransactions.findings.length === 0) {
+  if (name) {
     const commandRoot = await resolveNativeSdkCommandRoot(projectRoot, name, { readOnly: true });
     if (await readSdkChangeOwner(commandRoot, 'native', name)) {
+      const transactionFindings = portableTransactions.findings.map((finding) => ({
+        severity: finding.severity,
+        code: finding.code.replace(/^portable-/u, 'sdk-'),
+        path: finding.path,
+        message: `${finding.message}; this transaction belongs to the SDK Run and doctor will not replay it`,
+      }));
       if (recoveryStrategy) {
         throw new NativeUsageError('--strategy is only available to the legacy transaction doctor');
       }
@@ -831,7 +838,11 @@ export async function nativeDoctorCommand(
             change: name,
             healthy: false,
             repaired: lockRepaired || executionRepaired,
-            findings: [...lockFindings, { code: 'sdk-definition-upgrade-required', ...upgrade }],
+            findings: [
+              ...lockFindings,
+              ...transactionFindings,
+              { code: 'sdk-definition-upgrade-required', ...upgrade },
+            ],
           });
         const { run } = inspection;
         if (mayRepair && run.status === 'cancelled')
@@ -844,6 +855,7 @@ export async function nativeDoctorCommand(
         const unresolved = run.actions.filter((action) => action.status === 'unknown');
         const findings = [
           ...lockFindings,
+          ...transactionFindings,
           ...(upgrade?.required && !upgrade.repaired
             ? [{ code: 'sdk-definition-upgrade-required', ...upgrade }]
             : []),
@@ -865,6 +877,9 @@ export async function nativeDoctorCommand(
             stepId: action.stepId,
             status: action.status,
             message: 'Reconcile this SDK Action before continuing; doctor will not replay it',
+            ...(['archive.prepare', 'archive.execute', 'archive.finalize'].includes(action.stepId)
+              ? { repairCommand: `comet native archive ${name} --recover` }
+              : {}),
           })),
           ...(run.status === 'failed'
             ? [{ code: 'sdk-run-failed', message: run.reason ?? 'SDK Run failed' }]
@@ -903,6 +918,7 @@ export async function nativeDoctorCommand(
           repaired: lockRepaired,
           findings: [
             ...lockFindings,
+            ...transactionFindings,
             {
               code: 'sdk-run-invalid',
               message: error instanceof Error ? error.message : String(error),
@@ -1336,12 +1352,22 @@ export async function nativeDoctorCommand(
       ...(await listSdkChangeNames(projectRoot, 'native', { readOnly: true })),
     ]),
   ].sort();
+  const ownershipNames = [
+    ...new Set([
+      ...activeNames,
+      ...(await listNativePortableTransactionEntryNames(paths)).map(
+        (entry) => describeNativePortableTransactionEntry(entry)!.change,
+      ),
+      ...finishJournals.map((journal) => journal.name),
+      ...workspaceFinishJournalErrors.map((error) => error.name),
+    ]),
+  ].sort();
   const sdkNames = new Set<string>();
   const sdkResults: Array<Record<string, unknown>> = [];
-  for (const change of activeNames) {
+  for (const change of ownershipNames) {
     try {
       const sdk = await readSdkChangeOwner(projectRoot, 'native', change);
-      const managed =
+      let managed =
         sdk !== null ||
         (await hasNativeManagedRunMarker(nativePortableStateFile(paths, change)).catch(
           (error: NodeJS.ErrnoException) => {
@@ -1349,6 +1375,10 @@ export async function nativeDoctorCommand(
             throw error;
           },
         ));
+      if (!managed) {
+        const archived = await findNativeSdkArchivedStateFile(paths, change);
+        managed = archived !== null && (await hasNativeManagedRunMarker(archived));
+      }
       if (!managed) continue;
       sdkNames.add(change);
       const result = await nativeDoctorCommand(
@@ -1374,7 +1404,12 @@ export async function nativeDoctorCommand(
   const portableNames = (await listNativePortableChangeNames(paths)).filter(
     (change) => !sdkNames.has(change),
   );
-  const projectPortableTransactions = portableTransactions;
+  // 事务文件格式不决定推进归属；SDK 的 Archive 只能由原 Run 恢复。
+  const projectPortableTransactions = await inspectPortableTransactions(paths, undefined, sdkNames);
+  const portableFinishJournals = finishJournals.filter((journal) => !sdkNames.has(journal.name));
+  const portableFinishJournalErrors = workspaceFinishJournalErrors.filter(
+    (error) => !sdkNames.has(error.name),
+  );
   if (
     portableNames.length > 0 ||
     sdkResults.length > 0 ||
@@ -1386,6 +1421,21 @@ export async function nativeDoctorCommand(
       throw new NativeUsageError('--strategy is only available to the legacy transaction doctor');
     }
     if (repair) {
+      const sdkTransactionPending = (await listNativePortableTransactionEntryNames(paths)).some(
+        (entry) => sdkNames.has(describeNativePortableTransactionEntry(entry)!.change),
+      );
+      if (sdkTransactionPending) {
+        // SDK 事务也阻塞共享 mutation lock，先保留诊断，避免其它修复越过此边界。
+        const inspected = await nativeDoctorCommand([], projectRoot);
+        return {
+          ...inspected,
+          data: {
+            ...(inspected.data as Record<string, unknown>),
+            repaired: sdkResults.some((result) => result.repaired === true),
+            repairedPortableTransactions: [],
+          },
+        };
+      }
       const projectRepair = await doctorNativeProject({ paths, repair: true, projectOnly: true });
       const repairedPortableTransactions: Array<{
         kind: NativePortableTransaction['kind'];
@@ -1395,14 +1445,14 @@ export async function nativeDoctorCommand(
       const repairedWorkspaceFinishJournals: Array<{ change: string; quarantined: string | null }> =
         [];
       const repairedWorkspaceFinishes: string[] = [];
-      for (const journal of finishJournals) {
+      for (const journal of portableFinishJournals) {
         if (
           !(await isNativePortableChange(paths, journal.name)) &&
           (await workspaceFinishInspection(paths, journal, true)).repaired
         )
           repairedWorkspaceFinishes.push(journal.name);
       }
-      for (const error of workspaceFinishJournalErrors) {
+      for (const error of portableFinishJournalErrors) {
         repairedWorkspaceFinishJournals.push({
           change: error.name,
           quarantined: await quarantineNativeWorkspaceFinishJournal(paths, error.name),

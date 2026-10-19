@@ -5,6 +5,8 @@
 - 新归档会在准备、应用 Specs、收尾及结果提交时核对候选实现。写入 Specs 前发现漂移会回到 Verify 的修订确认；按返回的 `revise-implementation` 命令修订，并重新验收、批准。
 - 收尾在写入前明确发现漂移时，恢复已确认的实现与材料，再运行 `comet native archive <change>`。它继续原 Spec 事务，不重复应用 Specs。
 - 执行结果未知时，先由原执行 Agent 确认执行已经停止，再运行 `comet native archive <change> --recover`。已完成收尾只凭完整持久收据补记原结果，不重新执行搬迁。
+- 收尾中断且原事务仍在时，`--recover` 会核对原 Run、事务、候选实现、已应用 Specs 和报告，再继续尚未完成的收尾。目录已经搬迁时不会再次搬迁；证据不匹配时保留事务并拒绝继续。返回 `resumedFinalization: true` 不表示重新运行了验收检查。
+- `doctor --repair` 不代替 SDK 执行归档事务。有未完成事务或未知 Action 时，它报告阻塞和恢复命令，不删除事务或把流程标为健康。修复环境问题并确认原执行停止后，再使用 `archive --recover`。
 - 旧版已写入 Specs 的事务没有新归档摘要时，Runtime 会只读重建原 Spec 输入，精确匹配已保存的候选摘要。优先从 Git index/HEAD 读取与原目标哈希一致的版本；不会回写工作区或索引。
 - 收尾已经完成且持久收据完整时，恢复输出会标记 `historicalRecovery: true`、`currentImplementationRevalidated: false`。这仅补记历史完成事实，不表示后续修改过的实现重新通过验收。
 

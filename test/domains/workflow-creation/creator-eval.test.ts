@@ -89,9 +89,10 @@ function isWindowsProcessIdentityProbe(
   );
 }
 
-const { runExternalCommandAsync, processIdentityProbe } = vi.hoisted(() => ({
+const { runExternalCommandAsync, processIdentityProbe, dockerCommand } = vi.hoisted(() => ({
   runExternalCommandAsync: vi.fn(),
   processIdentityProbe: vi.fn(),
+  dockerCommand: vi.fn(),
 }));
 vi.mock('../../../platform/process/external-command.js', async (importOriginal) => {
   const original =
@@ -120,15 +121,29 @@ vi.mock('../../../platform/process/external-command.js', async (importOriginal) 
       ) {
         return processIdentityProbe(...args);
       }
+      if (
+        command === 'docker' &&
+        options?.maxBufferBytes === undefined &&
+        ['ps', 'inspect', 'stop', 'rm'].includes(parameters[0])
+      )
+        return dockerCommand(...args);
       return runExternalCommandAsync(...args);
     },
   };
 });
 
+// Creator 现在通过监管器运行模型命令；模型替身与 Docker 收尾探测分别计数。
+vi.mock('../../../platform/process/run-owned-command.js', () => ({
+  runOwnedCommand: vi.fn((command, args, options) =>
+    runExternalCommandAsync(command, args, options),
+  ),
+}));
+
 let root: string;
 beforeAll(() => ensureCliBuilt(process.cwd()));
 beforeEach(async () => {
   runExternalCommandAsync.mockReset();
+  dockerCommand.mockReset().mockResolvedValue('');
   processIdentityProbe.mockClear();
   root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-creator-eval-'));
   await fs.mkdir(path.join(root, 'node_modules/@rpamis'), { recursive: true });
@@ -430,16 +445,13 @@ it('keeps an abnormal harness exit incomplete even when its case report says pas
 it('does not start another model session while a previous incomplete experiment still has a live container', async () => {
   fakeEval('incomplete');
   let run = await choose(await compile(), 'evaluate');
-  const launch = runExternalCommandAsync.getMockImplementation()!;
-  runExternalCommandAsync.mockImplementation(async (...args) =>
-    args[0] === 'docker' ? 'active-container-id' : launch(...args),
-  );
+  dockerCommand.mockClear().mockResolvedValue('abcdef123456');
   run = await choose(run, 'retry');
   expect(run.waits.at(-1)?.stepId).toBe('confirm-eval');
   run = await choose(run, 'evaluate');
   expect(run.actions.at(-1)?.status).toBe('unknown');
   expect(run.actions.at(-1)?.reason).toMatch(/容器/);
-  expect(runExternalCommandAsync.mock.calls.filter((call) => call[0] === 'docker')).toHaveLength(1);
+  expect(dockerCommand).toHaveBeenCalled();
   expect(
     runExternalCommandAsync.mock.calls.filter((call) => call[0] === process.execPath),
   ).toHaveLength(1);
@@ -460,12 +472,13 @@ it('keeps an incomplete legacy Run pending with explicit recovery guidance', asy
 it('reconfirms collected cases after incomplete Eval and resumes when old containers stopped', async () => {
   fakeEval('incomplete');
   let run = await choose(await compile(), 'evaluate');
-  const original = run.outputs.evaluate.value as { taskSet: unknown; confirmationHash: string };
+  const original = run.outputs.evaluate.value as {
+    taskSet: unknown;
+    confirmationHash: string;
+    experimentId: string;
+  };
   fakeEval('passed');
-  const launch = runExternalCommandAsync.getMockImplementation()!;
-  runExternalCommandAsync.mockImplementation(async (...args) =>
-    args[0] === 'docker' ? '' : launch(...args),
-  );
+  dockerCommand.mockClear().mockResolvedValue('');
   run = await choose(run, 'retry');
   expect(run.waits.at(-1)?.stepId).toBe('confirm-eval');
   expect(run.outputs['eval-preview'].value).toMatchObject({ taskSet: original.taskSet });
@@ -478,7 +491,11 @@ it('reconfirms collected cases after incomplete Eval and resumes when old contai
   run = await choose(run, 'evaluate');
   expect(run.waits.at(-1)?.stepId).toBe('confirm-install');
   expect(creatorSummary(run).evaluation).toMatchObject({ status: 'passed', passed: 2, total: 2 });
-  expect(runExternalCommandAsync.mock.calls.filter((call) => call[0] === 'docker')).toHaveLength(1);
+  expect(dockerCommand).toHaveBeenCalledWith(
+    'docker',
+    expect.arrayContaining(['--filter', `label=comet.eval.experiment=${original.experimentId}`]),
+    { timeoutMs: 5000 },
+  );
   expect(
     runExternalCommandAsync.mock.calls.filter((call) => call[0] === process.execPath),
   ).toHaveLength(2);

@@ -15,7 +15,19 @@ import {
   readApplicationFiles,
 } from '../workflow-application/skill-adapter.js';
 import { runExternalCommandAsync } from '../../platform/process/external-command.js';
+import { runOwnedCommand } from '../../platform/process/run-owned-command.js';
 import { isPathWithin } from './standalone-context.js';
+import {
+  cleanupEvalExecution,
+  registerEvalContainerOwnership,
+  assertEvalContainerOwnership,
+  evalProjectIdentity,
+  assertEvalContainersStopped,
+  readEvalExecutionState,
+  writeEvalExecutionState,
+  releaseEvalExecutionLock,
+} from './eval-run-cleanup.js';
+import { readEvalJson, writeEvalJson, evalRunPath } from './eval-run-store.js';
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 
 export interface ApplicationEvalSettings {
@@ -70,17 +82,12 @@ export interface ApplicationEvalPreview {
 }
 
 async function assertPreviousEvaluationStopped(projectRoot: string, experimentId: string) {
-  if (!/^[A-Za-z0-9][A-Za-z0-9-]{0,127}$/u.test(experimentId)) throw new Error('原评估身份无效');
-  const containers = await runExternalCommandAsync(
-    'docker',
-    ['ps', '--quiet', '--filter', `label=comet.eval.experiment=${experimentId}`],
-    { cwd: projectRoot, timeoutMs: 5000 },
-  ).catch((error) => {
+  await assertEvalContainerOwnership(projectRoot, experimentId);
+  await assertEvalContainersStopped(projectRoot, experimentId).catch((error) => {
     throw new Error(
-      `无法核对原实验容器；恢复 Docker 后继续，不重复启动评估：${safeFailureText(String(error))}`,
+      `无法核对原实验容器；恢复 Docker 并核对归属后继续，不重复启动评估：${safeFailureText(String(error))}`,
     );
   });
-  if (containers.trim()) throw new Error('原评估容器仍在运行；先核对并停止原实验，不重复启动');
 }
 export interface PreparedApplicationEval {
   projectRoot: string;
@@ -783,7 +790,25 @@ export async function runWorkflowApplicationEval(
     process.env.COMET_EVAL_MANAGED === '1' && !!process.env.COMET_EVAL_CASE_SELECTION;
   const prepared = await prepareWorkflowApplicationEval(options);
   const existing = await readWorkflowApplicationEvalResult(prepared);
+  const execution = await readEvalExecutionState(options.projectRoot, options.experimentId);
+  if (execution?.status === 'stopping') {
+    // 冷恢复只重试资源清理，不重新运行模型或覆盖已有用例结果。
+    await cleanupEvalExecution(options.projectRoot, options.experimentId);
+    await writeEvalExecutionState(options.projectRoot, options.experimentId, {
+      status: 'interrupted',
+    });
+    await releaseEvalExecutionLock(options.projectRoot, options.experimentId);
+  }
+  if (!existing && execution && execution.status !== 'running')
+    throw new Error('原评估缺少完整的绑定结果；现有证据已保留，使用新的实验身份重试');
   if (existing) {
+    if (
+      await fs
+        .lstat(path.join(path.dirname(prepared.resultFile), 'execution.lock'))
+        .catch(() => null)
+    ) {
+      throw new Error('原评估清理尚未确认完成；先核对原进程和容器，不重复启动');
+    }
     if (!existing.caseSelection && !selectedRetry)
       await recordApplicationEvaluationEvidence(options.projectRoot, prepared.resultFile);
     return existing;
@@ -797,32 +822,73 @@ export async function runWorkflowApplicationEval(
   });
   const moduleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
   const packageRoot = path.basename(moduleRoot) === 'dist' ? path.dirname(moduleRoot) : moduleRoot;
-  try {
-    await (
-      prepared.preview.blockedReasons.length
-        ? Promise.reject(new Error(prepared.preview.blockedReasons.join('\n')))
-        : (options.executeCommand ?? runExternalCommandAsync)(
-            process.execPath,
-            [
-              path.join(packageRoot, 'bin/comet.js'),
-              'eval',
-              prepared.skillRoot,
-              '--project',
-              path.resolve(options.projectRoot),
-              '--html',
-            ],
+  const execute =
+    options.executeCommand ??
+    ((command, args, execution = {}) =>
+      runOwnedCommand(command, args, {
+        cwd: execution.cwd ?? options.projectRoot,
+        env: execution.env ?? process.env,
+        timeoutMs: execution.timeoutMs,
+        onRegistered: async (child) => {
+          await writeEvalJson(
+            await evalRunPath(options.projectRoot, options.experimentId, 'execution-process.json'),
             {
-              cwd: options.projectRoot,
-              timeoutMs: prepared.preview.settings.timeoutSeconds * 1000,
-              env: {
-                ...process.env,
-                COMET_EVAL_EXPERIMENT_ID: options.experimentId,
-                COMET_APPLICATION_EVAL_CONTEXT: JSON.stringify(prepared),
-                PYTHONDONTWRITEBYTECODE: '1',
-              },
+              schema: 'comet.eval.execution-process.v1',
+              runId: options.experimentId,
+              child,
             },
-          )
-    ).catch(async () => {
+          );
+        },
+      }));
+  let cleanupComplete = false;
+  let executionStarted = false;
+  try {
+    await registerEvalContainerOwnership(options.projectRoot, options.experimentId);
+    await writeEvalExecutionState(options.projectRoot, options.experimentId, { status: 'running' });
+    let executionError: unknown;
+    try {
+      if (prepared.preview.blockedReasons.length)
+        throw new Error(prepared.preview.blockedReasons.join('\n'));
+      executionStarted = true;
+      await execute(
+        process.execPath,
+        [
+          path.join(packageRoot, 'bin/comet.js'),
+          'eval',
+          prepared.skillRoot,
+          '--project',
+          path.resolve(options.projectRoot),
+          '--html',
+        ],
+        {
+          cwd: options.projectRoot,
+          timeoutMs: prepared.preview.settings.timeoutSeconds * 1000,
+          env: {
+            ...process.env,
+            COMET_EVAL_EXPERIMENT_ID: options.experimentId,
+            COMET_EVAL_PROJECT_ID: await evalProjectIdentity(options.projectRoot),
+            COMET_APPLICATION_EVAL_CONTEXT: JSON.stringify(prepared),
+            PYTHONDONTWRITEBYTECODE: '1',
+          },
+        },
+      );
+    } catch (error) {
+      executionError = error;
+    }
+    let cleanupError: unknown;
+    try {
+      if (executionStarted) await cleanupEvalExecution(options.projectRoot, options.experimentId);
+      cleanupComplete = true;
+    } catch (error) {
+      cleanupError = error;
+    }
+    await writeEvalExecutionState(options.projectRoot, options.experimentId, {
+      status: cleanupError ? 'stopping' : 'interrupted',
+      ...(cleanupError || executionError
+        ? { error: safeFailureText(String(cleanupError ?? executionError)) }
+        : {}),
+    });
+    if (executionError || cleanupError) {
       const reported = await readWorkflowApplicationEvalResult(prepared);
       if (reported?.status === 'passed') {
         await fs.writeFile(path.join(runRoot, 'model-result.json'), JSON.stringify(reported), {
@@ -836,6 +902,18 @@ export async function runWorkflowApplicationEval(
             failures: [
               ...reported.failures,
               'Eval 进程异常结束或超过预算；原用例结果保留在 model-result.json。',
+              ...(cleanupError ? [`容器清理未完成：${safeFailureText(String(cleanupError))}`] : []),
+            ],
+          }),
+        );
+      } else if (reported && cleanupError) {
+        await fs.writeFile(
+          prepared.resultFile,
+          JSON.stringify({
+            ...reported,
+            failures: [
+              ...reported.failures,
+              `容器清理未完成：${safeFailureText(String(cleanupError))}`,
             ],
           }),
         );
@@ -870,6 +948,8 @@ export async function runWorkflowApplicationEval(
             : [generation?.reason ?? 'Eval 未完成；检查模型配置、环境和原运行报告后重试。'],
           ...(taskSet ? { taskSet } : {}),
         };
+        if (cleanupError)
+          incomplete.failures.push(`容器清理未完成：${safeFailureText(String(cleanupError))}`);
         if (recoveryFailure) incomplete.failures.push(`固定用例恢复阻塞：${recoveryFailure}`);
         if (!generation)
           await fs
@@ -883,14 +963,26 @@ export async function runWorkflowApplicationEval(
             });
         await fs.writeFile(prepared.resultFile, JSON.stringify(incomplete), { flag: 'wx' });
       }
-    });
+    }
     const result = await readWorkflowApplicationEvalResult(prepared);
     if (!result) throw new Error('Eval 未生成与当前应用绑定的结果');
+    let completed = cleanupComplete && !executionError;
+    if (cleanupComplete && executionError && result.status === 'failed') {
+      const metadata = await readEvalJson(
+        await evalRunPath(options.projectRoot, options.experimentId, 'metadata.json'),
+      );
+      // pytest 的用例失败退出码属于评估结论；完整收尾和资源清理仍可成功。
+      completed = Boolean(metadata?.completed_at && metadata.pytest_exitstatus === 1);
+    }
     if (!result.caseSelection && !selectedRetry)
       await recordApplicationEvaluationEvidence(options.projectRoot, prepared.resultFile);
+    if (completed)
+      await writeEvalExecutionState(options.projectRoot, options.experimentId, {
+        status: 'completed',
+      });
     return result;
   } finally {
     await lock.close();
-    await fs.unlink(path.join(runRoot, 'execution.lock'));
+    if (cleanupComplete) await releaseEvalExecutionLock(options.projectRoot, options.experimentId);
   }
 }

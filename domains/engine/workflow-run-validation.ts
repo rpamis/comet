@@ -97,20 +97,23 @@ function reference(
 
 function parseResults(value: unknown, label: string): Record<string, WorkflowResult> {
   const data = object(value, label);
-  const results: Record<string, WorkflowResult> = {};
-  for (const [stepId, raw] of Object.entries(data)) {
-    text(stepId, `${label} step id`);
-    const result = object(raw, `${label}.${stepId}`);
-    onlyFields(result, ['sequence', 'value'], `${label}.${stepId}`);
-    if (!Object.hasOwn(result, 'sequence') || !Object.hasOwn(result, 'value')) {
-      invalid(`${label}.${stepId} 缺少 sequence 或 value`);
-    }
-    results[stepId] = {
-      sequence: integer(result.sequence, `${label}.${stepId}.sequence`, 1),
-      value: result.value,
-    };
-  }
-  return results;
+  return Object.fromEntries(
+    Object.entries(data).map(([stepId, raw]) => {
+      text(stepId, `${label} step id`);
+      const result = object(raw, `${label}.${stepId}`);
+      onlyFields(result, ['sequence', 'value'], `${label}.${stepId}`);
+      if (!Object.hasOwn(result, 'sequence') || !Object.hasOwn(result, 'value')) {
+        invalid(`${label}.${stepId} 缺少 sequence 或 value`);
+      }
+      return [
+        stepId,
+        {
+          sequence: integer(result.sequence, `${label}.${stepId}.sequence`, 1),
+          value: result.value,
+        },
+      ];
+    }),
+  );
 }
 
 function parseToken(value: unknown, label: string): WorkflowToken {
@@ -454,25 +457,29 @@ function validateWorkflowRunSnapshot(data: JsonObject, expectedRunId?: string): 
   for (const token of ready) validateResultOrigins(token.results);
 
   const joinsData = object(data.joins, 'WorkflowRun.joins');
-  const joins: Record<string, Record<string, WorkflowToken[]>> = {};
-  for (const [stepId, rawQueues] of Object.entries(joinsData)) {
-    text(stepId, 'WorkflowRun.joins step id');
-    const queues = object(rawQueues, `WorkflowRun.joins.${stepId}`);
-    const parsedQueues: Record<string, WorkflowToken[]> = {};
-    for (const [parentId, rawQueue] of Object.entries(queues)) {
-      text(parentId, 'WorkflowRun.joins parent id');
-      if (!Array.isArray(rawQueue)) invalid(`WorkflowRun.joins.${stepId}.${parentId} 必须是数组`);
-      parsedQueues[parentId] = rawQueue.map((rawToken) => {
-        const token = parseToken(rawToken, `WorkflowRun.joins.${stepId}.${parentId}`);
-        if (token.to !== stepId || token.from !== parentId) {
-          invalid(`WorkflowRun.joins.${stepId}.${parentId} 包含错误来源的 token`);
-        }
-        validateResultOrigins(token.results);
-        return token;
-      });
-    }
-    joins[stepId] = parsedQueues;
-  }
+  const joins: Record<string, Record<string, WorkflowToken[]>> = Object.fromEntries(
+    Object.entries(joinsData).map(([stepId, rawQueues]) => {
+      text(stepId, 'WorkflowRun.joins step id');
+      const queues = object(rawQueues, `WorkflowRun.joins.${stepId}`);
+      const parsedQueues = Object.fromEntries(
+        Object.entries(queues).map(([parentId, rawQueue]) => {
+          text(parentId, 'WorkflowRun.joins parent id');
+          if (!Array.isArray(rawQueue))
+            invalid(`WorkflowRun.joins.${stepId}.${parentId} 必须是数组`);
+          const tokens = rawQueue.map((rawToken) => {
+            const token = parseToken(rawToken, `WorkflowRun.joins.${stepId}.${parentId}`);
+            if (token.to !== stepId || token.from !== parentId) {
+              invalid(`WorkflowRun.joins.${stepId}.${parentId} 包含错误来源的 token`);
+            }
+            validateResultOrigins(token.results);
+            return token;
+          });
+          return [parentId, tokens];
+        }),
+      );
+      return [stepId, parsedQueues];
+    }),
+  );
 
   const outputs = parseResults(data.outputs, 'WorkflowRun.outputs');
   validateResultOrigins(outputs);

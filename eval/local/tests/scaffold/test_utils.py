@@ -196,6 +196,16 @@ def test_run_shell_decodes_subprocess_output_as_utf8(monkeypatch):
     assert captured["kwargs"]["errors"] == "replace"
 
 
+def test_wsl_bash_preserves_eval_project_and_experiment_ownership(monkeypatch):
+    monkeypatch.setattr(utils.os, "name", "nt")
+    monkeypatch.setattr(utils, "BASH_EXEC", r"C:\Windows\System32\bash.exe")
+    scope = "a" * 64
+    env = utils._bash_env({"COMET_EVAL_PROJECT_ID": scope, "COMET_EVAL_EXPERIMENT_ID": "owned-run"})
+    assert env["COMET_EVAL_PROJECT_ID"] == scope
+    assert "COMET_EVAL_PROJECT_ID" in env["WSLENV"].split(":")
+    assert "COMET_EVAL_EXPERIMENT_ID" in env["WSLENV"].split(":")
+
+
 def test_run_shell_file_capture_keeps_stdout_and_stderr(monkeypatch, tmp_path: Path):
     shell_dir = tmp_path / "shell"
     shell_dir.mkdir()

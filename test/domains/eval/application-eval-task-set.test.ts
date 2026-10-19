@@ -61,6 +61,7 @@ beforeEach(async () => {
     file: compiled.file,
     projectRoot: root,
     settings: { agent: 'codex', model: 'test-model' },
+    executeCommand: execute,
   };
 });
 afterEach(async () => fs.rm(root, { recursive: true, force: true }));
@@ -161,6 +162,7 @@ it('retains a collection receipt in incomplete fallback without fabricating exec
   const preview = await previewWorkflowApplicationEval(options);
   let expected: unknown;
   execute.mockImplementation(async (_command, _args, context) => {
+    if (_command === 'docker') return '';
     const prepared = JSON.parse(context.env.COMET_APPLICATION_EVAL_CONTEXT);
     expected = await frozen(prepared, true);
     throw new Error('interrupted after collection');

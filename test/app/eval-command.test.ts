@@ -1,4 +1,5 @@
 import os from 'os';
+import { createHash } from 'node:crypto';
 import path from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fileURLToPath } from 'url';
@@ -41,6 +42,12 @@ vi.mock('fs', async (importOriginal) => {
     ...original,
     promises: {
       ...original.promises,
+      realpath: async (target: Parameters<typeof original.promises.realpath>[0]) => {
+        // 此组纯命令测试使用虚拟项目；真实临时目录仍由真实 realpath 验证。
+        if ([project, path.dirname(path.dirname(manifest))].includes(String(target)))
+          return path.resolve(String(target));
+        return original.promises.realpath(target);
+      },
       readFile: (target: Parameters<typeof original.promises.readFile>[0], ...args: unknown[]) =>
         String(target).includes('v1alpha1.schema.json')
           ? original.promises.readFile(target, ...(args as []))
@@ -91,6 +98,13 @@ function expectUvRun(args: string[], cwd = evalCwd): string {
   expect(runCall?.[2]?.cwd).toBe(cwd);
   expect(runCall?.[2]?.stdio).toBe('inherit');
   expect(experimentId).toMatch(/^comet-eval-[0-9a-f-]+$/u);
+  const context = JSON.parse(runCall?.[2]?.env?.COMET_EVAL_CONTEXT);
+  const ownerRoot = path.resolve(context.artifactOwnerRoot);
+  expect(runCall?.[2]?.env?.COMET_EVAL_PROJECT_ID).toBe(
+    createHash('sha256')
+      .update(process.platform === 'win32' ? ownerRoot.toLowerCase() : ownerRoot)
+      .digest('hex'),
+  );
   return experimentId as string;
 }
 

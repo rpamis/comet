@@ -1513,6 +1513,7 @@ test.describe('Dashboard Eval', () => {
   test('previews, launches and restores one owned evaluation after reload', async ({ page }) => {
     let launched: typeof run | undefined;
     let launchCount = 0;
+    let stopCount = 0;
     await page.route('**/eval/preview', async (route) => {
       const config = route.request().postDataJSON();
       await route.fulfill({
@@ -1550,7 +1551,12 @@ test.describe('Dashboard Eval', () => {
     });
     await page.route('**/eval/runs/eval-new', (route) => route.fulfill({ json: launched }));
     await page.route('**/eval/runs/eval-new/stop', (route) => {
-      launched = { ...launched!, executionStatus: 'stopping' };
+      stopCount++;
+      launched = {
+        ...launched!,
+        executionStatus: stopCount === 1 ? 'stopping' : 'stopped',
+        availableActions: { ...run.availableActions, stop: stopCount === 1 },
+      };
       return route.fulfill({ status: 202, json: launched });
     });
     await page.getByRole('button', { name: /新建评估/ }).click();
@@ -1582,6 +1588,10 @@ test.describe('Dashboard Eval', () => {
     ).toBeVisible();
     await page.getByRole('button', { name: '停止评估', exact: true }).click();
     await expect(page.getByText('停止中', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '停止评估', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: '停止评估', exact: true }).click();
+    await expect(page.getByText('已停止', { exact: true })).toBeVisible();
+    expect(stopCount).toBe(2);
     expect(launchCount).toBe(1);
   });
 });

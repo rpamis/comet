@@ -150,6 +150,14 @@ it('exits nonzero with complete JSON when an external Skill has no test replacem
   expect(result.failures.join(' ')).toContain('测试替身');
   expect(await readManagedEvalRun(root, result.experimentId)).toMatchObject({
     origin: 'cli',
-    status: 'completed',
+    status: 'interrupted',
   });
+  expect(
+    JSON.parse(
+      await fs.readFile(
+        path.join(root, '.comet/eval/runs', result.experimentId, 'execution-state.json'),
+        'utf8',
+      ),
+    ),
+  ).toMatchObject({ status: 'interrupted' });
 });

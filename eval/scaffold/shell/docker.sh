@@ -11,9 +11,13 @@
 
 set -euo pipefail
 
-APPLICATION_EVAL_LABEL_ARGS=()
-if [[ -n "${COMET_APPLICATION_EVAL_CONTEXT:-}" && -n "${COMET_EVAL_EXPERIMENT_ID:-}" ]]; then
-    APPLICATION_EVAL_LABEL_ARGS=(--label "comet.eval.experiment=$COMET_EVAL_EXPERIMENT_ID")
+EVAL_LABEL_ARGS=()
+if [[ -n "${COMET_EVAL_EXPERIMENT_ID:-}" ]]; then
+    EVAL_LABEL_ARGS=(--label "comet.eval.experiment=$COMET_EVAL_EXPERIMENT_ID")
+    if [[ -n "${COMET_EVAL_PROJECT_ID:-}" ]]; then
+        [[ "$COMET_EVAL_PROJECT_ID" =~ ^[a-f0-9]{64}$ ]] || { echo 'ERROR: Invalid Eval project identity' >&2; return 1 2>/dev/null || exit 1; }
+        EVAL_LABEL_ARGS+=(--label "comet.eval.project=$COMET_EVAL_PROJECT_ID")
+    fi
 fi
 
 # Docker on Windows runs as a native binary needing Windows-style host paths,
@@ -330,9 +334,9 @@ docker_execution_identity() {
     local executable
     executable=$(agent_executable "$agent")
     if [[ "$agent" == "claude-code" && "${TRACE_TO_LANGFUSE:-}" != "true" ]]; then
-        agent_version_output=$(docker run --rm "$image_id" claude --version 2>/dev/null)
+        agent_version_output=$(docker run --rm ${EVAL_LABEL_ARGS[@]+"${EVAL_LABEL_ARGS[@]}"} "$image_id" claude --version 2>/dev/null)
     else
-        agent_version_output=$(docker run --rm "$image_id" "$executable" --version 2>/dev/null)
+        agent_version_output=$(docker run --rm ${EVAL_LABEL_ARGS[@]+"${EVAL_LABEL_ARGS[@]}"} "$image_id" "$executable" --version 2>/dev/null)
     fi || {
         echo "ERROR: Cannot verify $agent CLI version in benchmark image" >&2
         return 1
@@ -630,7 +634,7 @@ prepare_eval_runtime_data() {
     owner="${owner//$'\r'/}"
     docker volume create --label "comet.eval.workspace=$(sha256_text "$dir")" "$volume" >/dev/null || return 1
     printf '%s\n' "$volume" > "$dir/.eval-runtime-volume" || return 1
-    docker run --rm --user root -v "$volume://opt/comet-eval-data" "$image" sh -ec '
+    docker run --rm ${EVAL_LABEL_ARGS[@]+"${EVAL_LABEL_ARGS[@]}"} --user root -v "$volume://opt/comet-eval-data" "$image" sh -ec '
         chown "${1:-0}" /opt/comet-eval-data
         chmod 0700 /opt/comet-eval-data
     ' _ "$owner" </dev/null || return 1
@@ -663,6 +667,7 @@ prepare_agent_workspace_owner() {
     local windir
     windir=$(_winpath "$dir")
     docker run --rm --user root \
+        ${EVAL_LABEL_ARGS[@]+"${EVAL_LABEL_ARGS[@]}"} \
         -v "$windir://workspace" \
         "$image_id" \
         sh -ec '
@@ -693,6 +698,7 @@ docker_run() {
     windir=$(_winpath "$dir")
 
     docker run --rm \
+        ${EVAL_LABEL_ARGS[@]+"${EVAL_LABEL_ARGS[@]}"} \
         -v "$windir://workspace" \
         "${COMET_RUNTIME_MOUNT_ARGS[@]}" \
         ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
@@ -739,6 +745,7 @@ docker_run_command() {
     local windir
     windir=$(_winpath "$dir")
     local docker_command=(docker run --rm
+        ${EVAL_LABEL_ARGS[@]+"${EVAL_LABEL_ARGS[@]}"}
         -v "$windir://workspace"
         "${COMET_RUNTIME_MOUNT_ARGS[@]}"
         ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"}
@@ -880,7 +887,7 @@ docker_run_agent() (
     trap 'exit 130' INT
     if [[ -n "$TIMEOUT_CMD" ]]; then
         $TIMEOUT_CMD --kill-after=5 "$timeout" docker run --rm --name "$container_name" --label "comet.eval.turn=$container_name" \
-            ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
+            ${EVAL_LABEL_ARGS[@]+"${EVAL_LABEL_ARGS[@]}"} \
             "${prompt_docker_args[@]}" \
             -v "$windir://workspace" \
             "${COMET_RUNTIME_MOUNT_ARGS[@]}" \
@@ -896,7 +903,7 @@ docker_run_agent() (
             "${AGENT_COMMAND[@]}" < "$prompt_input"
     else
         docker run --rm --name "$container_name" --label "comet.eval.turn=$container_name" \
-            ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
+            ${EVAL_LABEL_ARGS[@]+"${EVAL_LABEL_ARGS[@]}"} \
             "${prompt_docker_args[@]}" \
             -v "$windir://workspace" \
             "${COMET_RUNTIME_MOUNT_ARGS[@]}" \
@@ -1001,7 +1008,7 @@ docker_run_claude_loop() {
     # Mount the scaffold shell scripts read-only so the loop driver is available
     # at /opt/scaffold-shell/ inside the container.
     docker run --rm --name "$container_name" \
-        ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
+        ${EVAL_LABEL_ARGS[@]+"${EVAL_LABEL_ARGS[@]}"} \
         -v "$windir://workspace" \
         "${COMET_RUNTIME_MOUNT_ARGS[@]}" \
         "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
@@ -1072,7 +1079,7 @@ docker_run_agent_loop() {
     docker rm -f "$container_name" &> /dev/null || true
 
     docker run --rm --name "$container_name" \
-        ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
+        ${EVAL_LABEL_ARGS[@]+"${EVAL_LABEL_ARGS[@]}"} \
         -v "$windir://workspace" \
         "${COMET_RUNTIME_MOUNT_ARGS[@]}" \
         "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \

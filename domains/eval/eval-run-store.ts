@@ -345,7 +345,7 @@ export async function readEvalRun(project: string, id: string): Promise<EvalRunD
     throw new EvalRunError('Eval 运行不存在', 404);
   }
   const diagnostics: string[] = [];
-  const [metadata, application, record, matrix, progress] = await readRunJsonFiles(
+  const [metadata, application, record, matrix, progress, execution] = await readRunJsonFiles(
     project,
     id,
     [
@@ -354,6 +354,7 @@ export async function readEvalRun(project: string, id: string): Promise<EvalRunD
       'dashboard-run.json',
       'expected-case-matrix.json',
       'progress.json',
+      'execution-state.json',
     ],
     diagnostics,
   );
@@ -406,8 +407,20 @@ export async function readEvalRun(project: string, id: string): Promise<EvalRunD
     number(matrix?.case_count) ??
     (Array.isArray(matrix?.cases) ? matrix!.cases.length : null);
   const completedAt = text(metadata?.completed_at);
+  const executionState =
+    execution?.schema === 'comet.eval.execution.v1' &&
+    execution.runId === id &&
+    ['running', 'completed', 'interrupted', 'stopping', 'stopped'].includes(
+      String(execution.status),
+    )
+      ? (execution.status as EvalRunDetail['executionStatus'])
+      : null;
   const executionStatus =
-    managed?.status ?? (completedAt ? 'completed' : application?.status ? 'completed' : 'unknown');
+    executionState === 'stopping'
+      ? 'stopping'
+      : (managed?.status ??
+        executionState ??
+        (completedAt ? 'completed' : application?.status ? 'completed' : 'unknown'));
   const caseKey = (task: unknown, treatment: unknown, repetition: unknown) =>
     JSON.stringify([task, treatment, repetition]);
   const actualKeys = new Set(
@@ -564,7 +577,11 @@ export async function readEvalRun(project: string, id: string): Promise<EvalRunD
         }
       : null,
     limitations: strings(application?.limitations),
-    failures: [...strings(application?.failures), ...(managed?.error ? [managed.error] : [])],
+    failures: [
+      ...strings(application?.failures),
+      ...(managed?.error ? [managed.error] : []),
+      ...(!managed?.error && text(execution?.error) ? [String(execution?.error)] : []),
+    ],
     artifacts,
     baselineScope,
     baselineRunId,

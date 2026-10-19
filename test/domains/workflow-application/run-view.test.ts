@@ -46,12 +46,19 @@ describe('application continuation state matrix', () => {
   it.each([
     ['pending', 'execute'],
     ['running', 'execute'],
-    ['unknown', 'reconcile'],
+    ['unknown', 'execute'],
   ] as const)('keeps runtime-managed child %s on the legal %s path', (status, mode) => {
     const run = childRun(status);
     const view = projectWorkflowApplicationRun(application, run);
     expect(view.continuation.mode).toBe(mode);
     expect(view.current.actions[0]).not.toHaveProperty('outcomeRequest');
+    expect(view.current.actions[0]).not.toHaveProperty('claimRequest');
+    expect(view.current.actions[0]).not.toHaveProperty('retryRequest');
+    if (status === 'unknown') {
+      expect(view.current.actions[0].instruction).toContain('nextRequest');
+      expect(view.current.actions[0].instruction).toContain('缺失');
+      expect(view.continuation.requiredInputs).toEqual([]);
+    }
     if (mode === 'execute') {
       expect(view.continuation.nextRequest).toEqual({
         operation: 'next',
@@ -67,6 +74,29 @@ describe('application continuation state matrix', () => {
       expect(view.continuation.nextRequest).toBeUndefined();
     }
   });
+
+  it.each(['first', 'last'] as const)(
+    'prioritizes unknown external work when a recoverable child is %s',
+    (order) => {
+      const run = childRun('unknown');
+      const external = createRuntimeAction({
+        id: 'parent:2',
+        runId: run.runId,
+        stepId: 'send',
+        type: 'call_tool',
+        ref: 'send',
+        input: {},
+      });
+      external.status = 'unknown';
+      external.claim = { executorId: 'original-host', token: 'original-claim' };
+      run.actions = order === 'first' ? [...run.actions, external] : [external, ...run.actions];
+      const view = projectWorkflowApplicationRun(application, run);
+      expect(view.continuation.mode).toBe('reconcile');
+      expect(view.continuation.actionId).toBe(external.id);
+      expect(view.continuation.nextRequest).toBeUndefined();
+      expect(view.continuation.requiredInputs).not.toEqual([]);
+    },
+  );
 
   it.each(['completed', 'cancelled', 'failed'] as const)(
     'never executes residual child work after %s',

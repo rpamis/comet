@@ -104,6 +104,8 @@ Eval does not publish. Use `comet application distribute` afterward; its preview
 
 Skills with external side effects require fixed test replacements. Without an isolated implementation, evaluation remains incomplete and does not perform real external operations. After timeout or uncertain results, reconcile the original experiment and containers before restarting.
 
+Stopping and total-budget cleanup check the execution subprocess and remove containers matching both the current project and experiment identity. Failed or unconfirmed cleanup keeps the run `stopping`, preserving partial reports and recovery locks. Resolve Docker or process issues, then retry stopping or recovering the original run; do not delete locks to rerun the model. An `incomplete` report describes the evaluation result, not proof that its resources stopped. Finish active Eval runs before upgrading. Older runs without project container ownership records require manual reconciliation; the system does not guess which unowned containers to stop.
+
 ## Why run `collect` first
 
 `collect` is the cheapest user-facing debugging entry point. It answers:

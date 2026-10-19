@@ -81,6 +81,8 @@ New built-in Native and Classic changes use their respective SDK Workflow Applic
 
 Each Run pins hashes for its root workflow and transitive child workflows. To resume, register the same workflow ids, versions, and contents. If a definition changes under the same version, Runtime rejects further mutations with `WORKFLOW_CHANGED` instead of interpreting old state with new logic.
 
+If a Runtime-managed `child_workflow` Action becomes `unknown` after recovery, call `next` to reconcile the existing child Run. Runtime checks pinned definitions, parent-child ownership, input, and claim identity before accepting a persisted completed, failed, or cancelled child result. An unfinished child remains pending completion. Restore both parent and child checkpoints; a missing or mismatched child Run is not recreated automatically. Hosts cannot supply child results through generic `retry` or `recordOutcome`. Unknown external Actions still require separate reconciliation.
+
 ## Execute Actions in the host
 
 ### Common integration path
