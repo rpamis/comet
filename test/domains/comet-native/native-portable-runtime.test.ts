@@ -40,7 +40,6 @@ import { sameNativeCheckPlan as sameNativeCheckPlanModule } from '../../../domai
 import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 import { ensureCliBuilt } from '../../helpers/ensure-cli-built.js';
 import {
-  processIsAlive,
   spawnNativePortableProcess,
   waitForCondition,
   waitForProcessExit,
@@ -1041,7 +1040,8 @@ children:
       activeProcess?.status === 'running'
         ? await inspectProcessTreeLiveness(activeProcess.pid, activeProcess.identity)
         : 'unknown';
-    if (ownerLiveness !== 'dead' || checkLiveness !== 'dead') {
+    // Windows 的 leader 退出没有提供整树停止证据，旧运行登记须继续阻止重试。
+    if (process.platform === 'win32' || ownerLiveness !== 'dead' || checkLiveness !== 'dead') {
       await expect(
         executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
       ).rejects.toThrow('could not be proven to have exited');

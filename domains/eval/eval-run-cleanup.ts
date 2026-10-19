@@ -1,7 +1,12 @@
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { runExternalCommandAsync } from '../../platform/process/external-command.js';
-import { inspectProcessTreeLiveness } from '../../platform/process/process-identity.js';
+import {
+  inspectProcessTreeLiveness,
+  terminateRegisteredProcessTree,
+} from '../../platform/process/process-identity.js';
+import type { OwnedProcessInstance } from '../../platform/process/owned-command.js';
+import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
 import { EvalRunError, evalRunPath, readEvalJson, writeEvalJson } from './eval-run-store.js';
 
 export interface EvalExecutionState {
@@ -139,6 +144,45 @@ export async function stopEvalContainers(project: string, id: string): Promise<v
   await assertEvalContainersStopped(project, id);
 }
 
+/** 绑定本次登记的进程实例；PID 消失或命令完成消息都不能替代整树终止收据。 */
+export async function recordEvalProcessTermination(
+  project: string,
+  id: string,
+  child: OwnedProcessInstance,
+  confirmed: boolean,
+): Promise<void> {
+  const file = await evalRunPath(project, id, 'process-cleanup.json');
+  await withRecoverableFileLock(`${file}.lock`, async () => {
+    // Stop 与 owner 的 finally 可以并发；失败不能撤销同一实例已核验的终止。
+    if (matchesProcessReceipt(await readEvalJson(file), id, child)) return;
+    await writeEvalJson(file, {
+      schema: 'comet.eval.process-cleanup.v1',
+      runId: id,
+      child,
+      confirmed,
+    });
+  });
+}
+
+function matchesProcessReceipt(
+  receipt: Record<string, unknown> | null,
+  id: string,
+  child: { pid: number; identity?: string; instanceId?: string; ownerPid?: number },
+): boolean {
+  const registered = receipt?.child as Partial<OwnedProcessInstance> | undefined;
+  return (
+    receipt?.schema === 'comet.eval.process-cleanup.v1' &&
+    receipt.runId === id &&
+    receipt.confirmed === true &&
+    typeof child.instanceId === 'string' &&
+    child.instanceId.length > 0 &&
+    registered?.instanceId === child.instanceId &&
+    registered.pid === child.pid &&
+    registered.identity === child.identity &&
+    registered.ownerPid === child.ownerPid
+  );
+}
+
 export async function cleanupEvalExecution(project: string, id: string): Promise<void> {
   await assertEvalContainerOwnership(project, id);
   const record = await readEvalJson(await evalRunPath(project, id, 'dashboard-run.json'));
@@ -146,14 +190,34 @@ export async function cleanupEvalExecution(project: string, id: string): Promise
   const child = (record?.child ??
     (execution?.schema === 'comet.eval.execution-process.v1' && execution.runId === id
       ? execution.child
-      : undefined)) as { pid: number; identity?: string } | undefined;
+      : undefined)) as
+    { pid: number; identity?: string; instanceId?: string; ownerPid?: number } | undefined;
   let stopped = !child;
   if (child) {
+    let confirmed = process.platform !== 'win32';
+    if (!confirmed) {
+      try {
+        confirmed = matchesProcessReceipt(
+          await readEvalJson(await evalRunPath(project, id, 'process-cleanup.json')),
+          id,
+          child,
+        );
+        // 活着且创建身份匹配的监管器允许重试终止；组长已死不能补造旧树的证明。
+        if (!confirmed && child.instanceId && (await terminateRegisteredProcessTree(child))) {
+          await recordEvalProcessTermination(project, id, child as OwnedProcessInstance, true);
+          confirmed = true;
+        }
+      } catch {
+        // 探测或收据落盘失败仍要继续尝试容器止损。
+        confirmed = false;
+      }
+    }
     for (let attempt = 0; attempt < 30; attempt++) {
-      if ((await inspectProcessTreeLiveness(child.pid, child.identity)) === 'dead') {
+      if (confirmed && (await inspectProcessTreeLiveness(child.pid, child.identity)) === 'dead') {
         stopped = true;
         break;
       }
+      if (!confirmed) break;
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }

@@ -23,6 +23,7 @@ import {
 } from '../engine/runtime.js';
 import {
   executeNativeCheck,
+  isNativeCheckTerminationUnconfirmedError,
   nativeCheckPlanKey,
   nativePortableArgvDisplay,
   preflightNativeCheckPlans,
@@ -30,6 +31,7 @@ import {
 } from './native-check-executor.js';
 import {
   createNativeSdkCheckExecution,
+  acknowledgeNativeSdkCheckStopped,
   inspectNativeSdkCheckExecutions,
   nativeSdkCheckRuntimeRef,
   nativeSdkCheckStorageRef,
@@ -626,13 +628,21 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
     try {
       for (const plan of plans) {
         await registration.assertNotStopped();
+        // 下一监管器尚无 PID 时也先保留未知边界，不能沿用上一条检查的停止收据。
+        delete registration.execution.child;
+        registration.execution.checkId = plan.id;
+        registration.execution.phase = 'reserved';
+        registration.execution.terminationUnconfirmed = true;
+        await registration.save();
         reportCometRuntimeProgress(`执行检查：${plan.name}`);
         const executed = await executeNativeCheck({
           projectRoot: checkRoot,
           runtimeDir,
           operationId,
           plan,
-          onSpawn: ({ pid, signal }) => registration.register(plan.id, pid, signal),
+          onSpawn: ({ signal, ...instance }) => registration.register(plan.id, instance, signal),
+          onTerminated: (instance, confirmed) =>
+            registration.recordTermination(instance, confirmed),
         });
         const logRef = `${runtimeRef}/${executed.logRef}`;
         const log = await inspectProtectedProjectPath(paths.workspaceRuntimeRoot, logRef, {
@@ -677,11 +687,14 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
         } as unknown as RuntimeValue,
       };
       registration.execution.phase = 'completed';
+      registration.execution.terminationUnconfirmed = false;
       registration.execution.outcome = result;
       await registration.save();
       return result;
     } catch (error) {
       registration.execution.phase = 'interrupted';
+      registration.execution.terminationUnconfirmed =
+        isNativeCheckTerminationUnconfirmedError(error);
       await registration.save();
       throw error;
     }
@@ -699,6 +712,16 @@ async function validatedCheckResults(options: {
 }): Promise<NativeSdkCheckResult[]> {
   const { run, action, outcome, candidateId, plans, projectRoot } = options;
   const output = record(outcome.output, 'Native check outcome') as unknown as NativeSdkCheckOutcome;
+  if (
+    process.platform === 'win32' &&
+    !output.interruption &&
+    ['running', 'unknown', 'cancelled'].includes(action.status)
+  ) {
+    const inspection = (
+      await inspectNativeSdkCheckExecutions({ projectRoot, run, includeSettled: true })
+    ).find((item) => item.actionId === action.id);
+    if (!inspection?.quiescent) throw new Error('Windows 检查尚无原进程树停止证据；不能验收原结果');
+  }
   if (outcome.status === 'succeeded' && !output.interruption && !options.allowCandidateSuccessor) {
     // 已完成检查也会在 await-user 和 Archive 前复核；不能把当时的执行阶段当作当前阶段。
     const state = parseNativePortableState(run.state);
@@ -1253,6 +1276,11 @@ export async function recoverNativeSdkChecks(
   if (options.reconcileInterrupted) {
     if (!Array.isArray(options.stoppedActions) || options.stoppedActions.length === 0)
       throw new Error('确认中断核对时必须提供原执行及全部后代已停止的证据');
+    const inspections = await inspectNativeSdkCheckExecutions({
+      projectRoot,
+      run,
+      includeSettled: true,
+    });
     const seen = new Set<string>();
     for (const stopped of options.stoppedActions) {
       const action = run.actions.find((entry) => entry.id === stopped?.actionId);
@@ -1261,12 +1289,49 @@ export async function recoverNativeSdkChecks(
       assertStoppedAction(action, stopped);
       seen.add(action.id);
     }
+    for (const stopped of options.stoppedActions) {
+      const action = run.actions.find((entry) => entry.id === stopped.actionId)!;
+      const item = inspections.find((entry) => entry.actionId === action.id);
+      if (process.platform === 'win32' && item?.execution?.child && !item.quiescent)
+        await acknowledgeNativeSdkCheckStopped({
+          projectRoot,
+          run,
+          action,
+          stoppedAction: stopped,
+        });
+    }
+  }
+  if (run.status === 'cancelled' && options.reconcileInterrupted) {
+    const inspections = await inspectNativeSdkCheckExecutions({
+      projectRoot,
+      run,
+      includeSettled: true,
+    });
+    if (
+      inspections.some(
+        (item) =>
+          options.stoppedActions!.some((stopped) => stopped.actionId === item.actionId) &&
+          item.phase !== 'missing' &&
+          !item.quiescent,
+      )
+    )
+      throw new Error('原检查停止尚未确认；不能登记取消完成');
+    return runtime.cancel({
+      runId: run.runId,
+      expectedRevision: run.revision,
+      reason: run.reason ?? '用户确认原检查及全部后代已停止',
+      stoppedActions: options.stoppedActions,
+      context: { projectRoot, requestId: 'native-check-cancellation-recovery' },
+    });
   }
   if (run.status === 'cancelled' || run.status === 'completed') return run;
   for (const item of await inspectNativeSdkCheckExecutions({ projectRoot, run })) {
     if (!item.recoveryRequired) continue;
     const action = run.actions.find((entry) => entry.id === item.actionId)!;
     if (!['running', 'unknown'].includes(action.status)) continue;
+    const stoppedActions =
+      options.stoppedActions?.filter((entry) => entry.actionId === action.id) ?? [];
+    if (stoppedActions.length > 1) throw new Error('不能重复提交同一 Action 的停止证据');
     if (item.quiescent && item.execution?.phase === 'completed' && item.execution.outcome) {
       const outcome: RuntimeOutcome = {
         ...item.execution.outcome,
@@ -1292,9 +1357,7 @@ export async function recoverNativeSdkChecks(
         continue;
       }
     }
-    const stoppedActions =
-      options.stoppedActions?.filter((entry) => entry.actionId === action.id) ?? [];
-    if (stoppedActions.length > 1) throw new Error('不能重复提交同一 Action 的停止证据');
+
     if (
       options.reconcileInterrupted &&
       stoppedActions.length === 1 &&

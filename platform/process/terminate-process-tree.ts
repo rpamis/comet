@@ -4,13 +4,22 @@ import path from 'node:path';
 const WINDOWS_TASKKILL_ATTEMPT_MS = 1_000;
 const WINDOWS_TASKKILL_ATTEMPTS = 2;
 
+/** 保留既有 best-effort 调用契约；需要清理证明的调用方使用确认版。 */
 export async function terminateProcessTree(child: ChildProcess): Promise<void> {
+  await terminateProcessTreeConfirmed(child);
+}
+
+/** 返回整树终止是否已确认；只杀掉组长不能证明 Windows 后代已退出。 */
+export async function terminateProcessTreeConfirmed(child: ChildProcess): Promise<boolean> {
   const pid = child.pid;
   if (pid === undefined) {
     child.kill('SIGKILL');
-    return;
+    return false;
   }
   if (process.platform === 'win32') {
+    const exited = () => typeof child.exitCode === 'number' || child.signalCode != null;
+    // 已退出的 ChildProcess 句柄不能授权再次按裸 PID 杀树，PID 可能已复用。
+    if (exited()) return false;
     const configuredSystemRoot = process.env.SystemRoot ?? process.env.WINDIR;
     const systemRoot =
       configuredSystemRoot && path.win32.isAbsolute(configuredSystemRoot)
@@ -42,16 +51,17 @@ export async function terminateProcessTree(child: ChildProcess): Promise<void> {
         }
       });
     for (let attempt = 0; attempt < WINDOWS_TASKKILL_ATTEMPTS; attempt += 1) {
+      if (exited()) return false;
       if (await runTaskkillAttempt()) {
         child.kill('SIGKILL');
-        return;
+        return true;
       }
     }
     child.kill('SIGKILL');
     child.stdin?.destroy();
     child.stdout?.destroy();
     child.stderr?.destroy();
-    return;
+    return false;
   }
   try {
     process.kill(-pid, 'SIGKILL');
@@ -59,4 +69,5 @@ export async function terminateProcessTree(child: ChildProcess): Promise<void> {
     if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
   }
   child.kill('SIGKILL');
+  return true;
 }

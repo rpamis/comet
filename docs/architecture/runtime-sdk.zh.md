@@ -218,6 +218,8 @@ comet runtime dispatch --request ./start.json --workflow ./report.workflow.json 
 
 Native 会分别展示 `cancelling`（原执行尚未确认停止，或当前选择尚未释放）和 `cancelled`（执行已停止且选择清理完成）。没有已领取工作且清理未受阻时立即释放当前选择和工作区，无需完成 Shape、验收或 Archive。Runtime 登记的检查由取消请求或 `comet native doctor <change> --repair` 按原进程创建身份停止；未知或不匹配的进程不会被当作已停止。进程组终止不能证明主动脱组的后台进程已经停止；所有已领取的任务（包括 Runtime 检查）仍须按原领取身份确认任务及子任务已全部停止，才释放工作区。 SDK 选择清理也会经过 Native 的 root-move 变更锁；未知持有者原有的 15 分钟显式接管保护仍保留。受阻时状态继续为 `cancelling`，返回持有者、锁龄、剩余保护时间和诊断/修复命令；只读 status/inspect 不等待该锁。
 
+Windows 上，仅检查监管进程退出不足以释放工作区或重试检查；自动恢复还要求与原登记进程实例绑定的停止证据。旧登记或收据缺失时，先在原机器确认原执行及全部后代均已停止，再查看 `comet native doctor <change> --json`，通过 `comet native doctor <change> --repair --confirmed --stopped-actions <file.json>` 提交真实停止证据。SDK 数组项须保留原 `actionId`、`attempt`、`inputHash`、`claimToken`，并填写 `evidence`。Portable 和 Supervisor 检查把 doctor 返回的 `checkStopTargets[].confirmation` 放进 JSON 数组，保留 `kind`、`operationId`、`executionHash`，只把证据占位符替换为真实停止事实。哈希绑定原执行完整快照；执行已变化时必须重新诊断。恢复会保留原快照与证据，不重放检查，也不把检查认定为通过。登记进程仍存活或状态未知时继续阻塞；普通 doctor 修复不会自动补造收据。
+
 外部 Builder、Verifier 和定制 Skill 的原宿主须先停止原任务及其子任务，再通过 `status` 的 `cancellation.outstandingActions[].acknowledgementRequest` 回报真实停止证据：
 
 ```json

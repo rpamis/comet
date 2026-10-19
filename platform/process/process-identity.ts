@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process';
-import { terminateProcessTree } from './terminate-process-tree.js';
+import { terminateProcessTreeConfirmed } from './terminate-process-tree.js';
 import { promises as fs } from 'node:fs';
 
 import { runExternalCommandAsync } from './external-command.js';
@@ -187,6 +187,5 @@ export async function terminateRegisteredProcessTree(instance: {
       }
     },
   } as ChildProcess;
-  await terminateProcessTree(child);
-  return true;
+  return terminateProcessTreeConfirmed(child);
 }

@@ -31,13 +31,14 @@ import { readProjectConfig } from './native-config.js';
 import { nativeEditReviewScope } from './native-edit-review.js';
 import {
   inspectProcessLiveness,
-  inspectProcessTreeLiveness,
   readProcessIdentity,
 } from '../../platform/process/process-identity.js';
 import { canonicalHash } from './native-canonical-hash.js';
 import { nativeRunnerInputArtifactPaths } from './native-runner-input-artifacts.js';
 import {
   executeNativeCheck,
+  inspectNativeCheckProcessTreeLiveness,
+  isNativeCheckTerminationUnconfirmedError,
   nativeCheckPlanKey,
   nativePortableArgvDisplay,
   preflightNativeCheckPlans,
@@ -189,9 +190,7 @@ export async function inspectNativePortableCheckExecution(
   const execution = local.execution;
   if (execution === null || execution.status !== 'running') return 'not-running';
   if (execution.ownerPid === undefined) return 'unknown';
-  // Probe failures land on 'unknown' instead of 'running': the doctor repair path
-  // can take those over, while a host whose probes never succeed no longer parks
-  // the change on an undying zombie owner.
+  // 探测失败保持 unknown；Doctor 仅可接管没有未确认检查进程的 owner 登记。
   const ownerLiveness = await inspectProcessLiveness(execution.ownerPid, execution.ownerIdentity);
   if (ownerLiveness === 'alive') return 'running';
 
@@ -203,7 +202,7 @@ export async function inspectNativePortableCheckExecution(
       unknown = true;
       continue;
     }
-    const liveness = await inspectProcessTreeLiveness(active.pid, active.identity);
+    const liveness = await inspectNativeCheckProcessTreeLiveness(active.pid, active.identity);
     if (liveness === 'alive') return 'running';
     if (liveness === 'unknown') unknown = true;
   }
@@ -1571,7 +1570,7 @@ async function reserveNativePortableCheckPlan(options: {
         if (liveness !== 'orphaned') {
           throw new Error(
             liveness === 'unknown'
-              ? 'Native check plan owner could not be proven to have exited; inspect the Runtime overlay before changing its binding'
+              ? 'Native check plan owner or process tree could not be proven to have exited; inspect the Runtime overlay before changing its binding'
               : 'Native check plan is already in progress on another workspace binding',
           );
         }
@@ -1644,7 +1643,7 @@ async function reserveNativePortableCheckPlan(options: {
           if (liveness !== 'orphaned') {
             throw new Error(
               liveness === 'unknown'
-                ? 'Native check plan owner could not be proven to have exited; inspect the Runtime overlay before retrying'
+                ? 'Native check plan owner or process tree could not be proven to have exited; inspect the Runtime overlay before retrying'
                 : 'Native check plan is already in progress',
             );
           }
@@ -1991,6 +1990,7 @@ export async function executeNativePortableCheckPlan(options: {
       }),
     });
   } catch (error) {
+    if (isNativeCheckTerminationUnconfirmedError(error)) throw error;
     try {
       await updateReservedNativeCheckPlan({
         paths: options.paths,
@@ -2418,6 +2418,7 @@ export async function executeReservedVerifierRequestedChecks(options: {
       }),
     });
   } catch (error) {
+    if (isNativeCheckTerminationUnconfirmedError(error)) throw error;
     try {
       await updateReservedVerifierRequestedChecks({
         paths: options.paths,

@@ -4171,16 +4171,18 @@ children:
       );
       owner.kill('SIGTERM');
       await waitForProcessExit(owner);
-      await waitForCondition(
-        async () =>
-          (
-            await inspectNativeSdkCheckExecutions({
-              projectRoot: root,
-              run: await runtime.inspect(ready.runId),
-            })
-          )[0]?.quiescent === true,
-        'original group did not stop',
-      );
+      await waitForCondition(async () => {
+        const inspection = (
+          await inspectNativeSdkCheckExecutions({
+            projectRoot: root,
+            run: await runtime.inspect(ready.runId),
+          })
+        )[0];
+        // owner 被终止后没有 Windows 整树收据；退出的组长仍需下方人工停止证明。
+        return process.platform === 'win32'
+          ? inspection?.owner === 'dead' && inspection.process === 'dead' && !inspection.quiescent
+          : inspection?.quiescent === true;
+      }, 'original process boundary did not stop');
       const diagnostic = await nativeDoctorCommand(['sdk-shape'], root);
       expect(diagnostic).toMatchObject({ exitCode: 65, data: { healthy: false } });
       expect((await runtime.inspect(ready.runId)).actions.at(-1)?.status).toBe('running');

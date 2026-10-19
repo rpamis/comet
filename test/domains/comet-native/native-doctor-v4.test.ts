@@ -50,10 +50,10 @@ import {
 } from '../../../domains/comet-native/native-portable-state.js';
 import { inspectNativePortableStatus } from '../../../domains/comet-native/native-portable-status.js';
 import { runGitCommand } from '../../../platform/process/git.js';
+import { inspectProcessTreeLiveness } from '../../../platform/process/process-identity.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 import { ensureCliBuilt } from '../../helpers/ensure-cli-built.js';
 import {
-  processIsAlive,
   spawnNativePortableProcess,
   waitForCondition,
   waitForProcessExit,
@@ -444,17 +444,16 @@ children:
       return reserved && mutationLockReleased;
     }, 'Runtime owner did not start the orphaned Doctor check');
     const running = await readNativeLocalExecution(file);
-    const activePid =
-      running?.checks[0]?.activeProcess?.status === 'running'
-        ? running.checks[0].activeProcess.pid
-        : undefined;
+    const activeProcess = running?.checks[0]?.activeProcess;
+    const activePid = activeProcess?.status === 'running' ? activeProcess.pid : undefined;
     expect(activePid).toEqual(expect.any(Number));
     owner.kill('SIGKILL');
     await waitForProcessExit(owner);
-    if (activePid !== undefined && processIsAlive(activePid)) process.kill(activePid, 'SIGKILL');
     await waitForCondition(
-      () => activePid !== undefined && !processIsAlive(activePid),
-      'Orphaned Doctor check process did not exit',
+      async () =>
+        activeProcess?.status === 'running' &&
+        (await inspectProcessTreeLiveness(activeProcess.pid, activeProcess.identity)) === 'dead',
+      'Doctor check process tree did not stop after its Runtime owner exited',
     );
 
     await expect(nativeDoctorCommand([name], projectRoot)).resolves.toMatchObject({
@@ -464,15 +463,22 @@ children:
         findings: [
           expect.objectContaining({
             code: 'portable-check-execution-stuck',
-            repair: 'recover',
+            ...(process.platform === 'win32' ? {} : { repair: 'recover' }),
           }),
         ],
       },
     });
     await expect(nativeDoctorCommand([name, '--repair'], projectRoot)).resolves.toMatchObject({
-      exitCode: 0,
-      data: { healthy: true, repaired: true },
+      exitCode: process.platform === 'win32' ? 65 : 0,
+      data: {
+        healthy: process.platform !== 'win32',
+        repaired: process.platform !== 'win32',
+        ...(process.platform === 'win32' ? { result: { reason: 'execution-active' } } : {}),
+      },
     });
+    if (process.platform === 'win32') {
+      expect(await readNativeLocalExecution(file)).toEqual(running);
+    }
   });
 
   it.each([false, true])(

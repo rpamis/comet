@@ -69,6 +69,10 @@ import {
 import { recoverNativePortableChange } from './native-portable-recovery.js';
 import { readNativeLocalExecution } from './native-local-execution.js';
 import { inspectNativePortableCheckExecution } from './native-portable-checks.js';
+import {
+  inspectNativeCheckStopEvidenceTargets,
+  recoverNativeChecksWithStopEvidence,
+} from './native-check-stop-evidence.js';
 import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
 import {
   activeNativeSupervisorTaskNames,
@@ -141,6 +145,9 @@ async function portableCheckExecutionFinding(
   if (local.execution.status !== 'running') return null;
   const liveness = await inspectNativePortableCheckExecution(local);
   if (liveness === 'running') return null;
+  const unconfirmedProcess =
+    liveness === 'unknown' &&
+    local.checks.some((check) => check.status === 'running' || check.activeProcess != null);
   const message =
     liveness === 'orphaned'
       ? `Native Runtime check operation ${local.execution.operationId} has no live owner or active check process`
@@ -148,9 +155,11 @@ async function portableCheckExecutionFinding(
   return {
     severity: 'error',
     code: 'portable-check-execution-stuck',
-    message: `${name}: ${message}; run comet native doctor ${name} --repair to recover it`,
+    message: unconfirmedProcess
+      ? `${name}: Native Runtime check operation ${local.execution.operationId} process tree has not been confirmed stopped; preserve its execution record. Doctor --repair cannot safely recover this check without process-tree termination evidence.`
+      : `${name}: ${message}; run comet native doctor ${name} --repair to recover it`,
     path: nativeLocalExecutionFile(paths, name),
-    repair: 'recover',
+    ...(unconfirmedProcess ? {} : { repair: 'recover' as const }),
   };
 }
 
@@ -616,7 +625,7 @@ export async function nativeDoctorCommand(
       value.length === 0 ||
       value.some((entry) => !entry || typeof entry !== 'object' || Array.isArray(entry))
     )
-      throw new NativeUsageError('--stopped-actions 必须包含原 Action 停止确认的非空数组');
+      throw new NativeUsageError('--stopped-actions 必须包含原执行停止确认的非空数组');
     stoppedActions = value as RuntimeStoppedAction[];
   }
   const paths = await doctorPaths(projectRoot);
@@ -863,14 +872,24 @@ export async function nativeDoctorCommand(
             .filter(
               (check) => check.recoveryRequired && !(run.status === 'cancelled' && check.quiescent),
             )
-            .map((check) => ({
-              code: 'sdk-check-execution-recovery-required',
-              ...check,
-              message:
-                check.reason ??
-                'SDK check execution needs reconciliation; doctor repair preserves the original claim and does not replay the check',
-              repairCommand: `comet native doctor ${name} --repair${check.phase === 'missing' || (check.quiescent && check.execution && !check.execution.outcome) ? ' --confirmed --stopped-actions <stopped-actions-json-file>' : ''}`,
-            })),
+            .map((check) => {
+              const requiresStoppedEvidence =
+                check.phase === 'missing' ||
+                (check.quiescent && check.execution && !check.execution.outcome) ||
+                (process.platform === 'win32' &&
+                  !check.quiescent &&
+                  check.execution?.child &&
+                  check.owner === 'dead' &&
+                  check.process === 'dead');
+              return {
+                code: 'sdk-check-execution-recovery-required',
+                ...check,
+                message:
+                  check.reason ??
+                  'SDK check execution needs reconciliation; doctor repair preserves the original claim and does not replay the check',
+                repairCommand: `comet native doctor ${name} --repair${requiresStoppedEvidence ? ' --confirmed --stopped-actions <stopped-actions-json-file>' : ''}`,
+              };
+            }),
           ...unresolved.map((action) => ({
             code: 'sdk-action-outcome-unresolved',
             actionId: action.id,
@@ -930,8 +949,26 @@ export async function nativeDoctorCommand(
   }
   if (lockToken !== undefined)
     throw new NativeUsageError('--lock-token is only available for SDK projection locks');
-  if (stoppedActionsFile !== undefined)
-    throw new NativeUsageError('--stopped-actions is only available for SDK check recovery');
+  if (stoppedActionsFile !== undefined) {
+    if (!name || !(await isNativePortableChange(paths, name)))
+      throw new NativeUsageError(
+        '--stopped-actions requires a named SDK or portable check execution',
+      );
+    const stoppedChecks = await recoverNativeChecksWithStopEvidence({
+      paths,
+      name,
+      confirmations: stoppedActions,
+    });
+    const inspected = await nativeDoctorCommand([name], projectRoot);
+    return {
+      ...inspected,
+      data: {
+        ...(inspected.data as Record<string, unknown>),
+        repaired: !stoppedChecks.alreadyApplied,
+        stoppedChecks,
+      },
+    };
+  }
   const workspaceFinishJournalErrors = await inspectWorkspaceFinishJournalErrors(paths, name);
   if (name && workspaceFinishJournalErrors.length > 0) {
     const finding = workspaceFinishJournalFinding(paths, workspaceFinishJournalErrors[0]);
@@ -1201,14 +1238,16 @@ export async function nativeDoctorCommand(
         recoverUnknownRuntimeCheck: true,
       });
       if (result.reason === 'execution-active') {
-        return success('doctor', {
-          healthy: true,
-          workflow: 'native-portable',
-          change: name,
-          repaired: false,
-          result,
-          continuation: await portableContinuation(paths, result.state),
-        });
+        const inspected = await nativeDoctorCommand([name], projectRoot);
+        return {
+          ...inspected,
+          data: {
+            ...(inspected.data as Record<string, unknown>),
+            repaired: false,
+            result,
+            continuation: await portableContinuation(paths, result.state),
+          },
+        };
       }
       // Repair legacy overlays that the pre-0.4.2 derivation left self-locked
       // (issue #439): demote ready children with unmet dependencies to pending
@@ -1257,6 +1296,7 @@ export async function nativeDoctorCommand(
       });
     }
     const executionFinding = await portableCheckExecutionFinding(paths, name);
+    const checkStopTargets = await inspectNativeCheckStopEvidenceTargets(paths, name);
     if (executionFinding) {
       const result = await inspectNativePortableStatus({ paths, name, details: true });
       return unhealthyDoctor({
@@ -1266,6 +1306,38 @@ export async function nativeDoctorCommand(
         repaired: false,
         result,
         findings: [executionFinding],
+        checkStopTargets,
+        ...(checkStopTargets.some(({ canConfirm }) => canConfirm)
+          ? {
+              repairCommand: `comet native doctor ${name} --repair --confirmed --stopped-actions <stopped-actions-json-file>`,
+            }
+          : {}),
+        continuation: result.continuation,
+      });
+    }
+    const stoppedSupervisor = checkStopTargets.filter(
+      (target) => target.kind !== 'portable-checks' && target.owner !== 'alive',
+    );
+    if (stoppedSupervisor.length > 0) {
+      const result = await inspectNativePortableStatus({ paths, name, details: true });
+      return unhealthyDoctor({
+        healthy: false,
+        workflow: 'native-portable',
+        change: name,
+        repaired: false,
+        result,
+        checkStopTargets,
+        findings: stoppedSupervisor.map((target) => ({
+          code: 'supervisor-check-execution-stuck',
+          ...target,
+          message:
+            '原Supervisor检查树停止尚未确认；保留执行登记，只能按精确快照提交人工停止证据后重试。',
+          ...(target.canConfirm
+            ? {
+                repairCommand: `comet native doctor ${name} --repair --confirmed --stopped-actions <stopped-actions-json-file>`,
+              }
+            : {}),
+        })),
         continuation: result.continuation,
       });
     }

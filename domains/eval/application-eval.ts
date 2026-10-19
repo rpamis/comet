@@ -26,6 +26,7 @@ import {
   readEvalExecutionState,
   writeEvalExecutionState,
   releaseEvalExecutionLock,
+  recordEvalProcessTermination,
 } from './eval-run-cleanup.js';
 import { readEvalJson, writeEvalJson, evalRunPath } from './eval-run-store.js';
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
@@ -839,6 +840,8 @@ export async function runWorkflowApplicationEval(
             },
           );
         },
+        onTerminated: (child, confirmed) =>
+          recordEvalProcessTermination(options.projectRoot, options.experimentId, child, confirmed),
       }));
   let cleanupComplete = false;
   let executionStarted = false;

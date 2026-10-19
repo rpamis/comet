@@ -17,7 +17,10 @@ import {
   resolveEvalContext,
   type ResolvedEvalContext,
 } from '../../domains/eval/index.js';
-import { evalProjectIdentity } from '../../domains/eval/eval-run-cleanup.js';
+import {
+  evalProjectIdentity,
+  recordEvalProcessTermination,
+} from '../../domains/eval/eval-run-cleanup.js';
 import { collectStandaloneTasks } from '../../domains/eval/standalone-static-collect.js';
 import { recordRepositoryEvalExperiment } from '../../domains/bundle/eval-run-result.js';
 import { prepareEvalManifest } from '../../domains/bundle/eval-manifest-runtime.js';
@@ -436,6 +439,11 @@ async function runEval(
             });
           }
         : undefined,
+    onTerminated:
+      process.env.COMET_EVAL_MANAGED !== '1' && !process.env.COMET_APPLICATION_EVAL_CONTEXT
+        ? (child, confirmed) =>
+            recordEvalProcessTermination(context.artifactOwnerRoot, experimentId, child, confirmed)
+        : undefined,
     env: {
       ...process.env,
       COMET_EVAL_EXPERIMENT_ID: experimentId,
@@ -629,6 +637,8 @@ export async function evalCommand(
                     current.child = child;
                   });
                 },
+                onTerminated: (child, confirmed) =>
+                  recordEvalProcessTermination(input.projectRoot, experimentId, child, confirmed),
               })
           : undefined,
       });

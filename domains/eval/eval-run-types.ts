@@ -45,7 +45,7 @@ export interface EvalManagedRun {
   requestId?: string;
   baselineRunId?: string | null;
   owner?: { pid: number; identity?: string };
-  child?: { pid: number; identity?: string };
+  child?: { pid: number; identity?: string; instanceId?: string; ownerPid?: number };
   error?: string;
   exitCode?: number | null;
 }

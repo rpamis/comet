@@ -1,6 +1,6 @@
-import { spawnOwnedCommand } from './owned-command.js';
+import { spawnOwnedCommand, type OwnedProcessInstance } from './owned-command.js';
 import { readProcessIdentity } from './process-identity.js';
-import { terminateProcessTree } from './terminate-process-tree.js';
+import { terminateProcessTreeConfirmed } from './terminate-process-tree.js';
 
 export async function runOwnedCommand(
   command: string,
@@ -10,13 +10,15 @@ export async function runOwnedCommand(
     env: NodeJS.ProcessEnv;
     streamOutput?: boolean;
     timeoutMs?: number;
-    onRegistered?: (instance: { pid: number; identity?: string }) => Promise<void>;
+    onRegistered?: (instance: OwnedProcessInstance) => Promise<void>;
+    onTerminated?: (instance: OwnedProcessInstance, confirmed: boolean) => Promise<void>;
   },
 ): Promise<string> {
   const owned = spawnOwnedCommand(command, args, {
     cwd: options.cwd,
     env: options.env,
     timeoutMs: options.timeoutMs ?? 2_147_483_000,
+    confirmTermination: true,
   });
   const closed = new Promise<void>((resolve) => owned.child.once('close', () => resolve()));
   const output: Buffer[] = [];
@@ -56,24 +58,40 @@ export async function runOwnedCommand(
       if (bytes <= 8 * 1024 * 1024) output.push(chunk);
       else {
         rejectResult(new Error('命令输出超过限制'));
-        void terminateProcessTree(owned.child);
       }
     });
     owned.child.stderr.on('data', () => {});
   }
+  let instance: OwnedProcessInstance | undefined;
+  let registered = false;
+  let failure: { error: unknown } | undefined;
   try {
+    if (!owned.child.pid) throw new Error('执行监管进程未启动');
     const identity = await readProcessIdentity(owned.child.pid!);
-    await options.onRegistered?.({ pid: owned.child.pid!, ...(identity ? { identity } : {}) });
+    instance = {
+      pid: owned.child.pid,
+      instanceId: owned.instanceId,
+      ownerPid: process.pid,
+      ...(identity ? { identity } : {}),
+    };
+    await options.onRegistered?.(instance);
+    registered = true;
     owned.start();
     await result;
-    await closed;
-    return Buffer.concat(output).toString('utf8');
   } catch (error) {
-    if (owned.child.connected) owned.child.disconnect();
-    await terminateProcessTree(owned.child).catch(() => {});
+    failure = { error };
+  }
+  // Windows 监管器等待此处的单次整树终止；先 disconnect 会让自清理与 taskkill 竞争。
+  const confirmed = await terminateProcessTreeConfirmed(owned.child).catch(() => false);
+  if (confirmed) await closed;
+  else {
     owned.child.stdout.destroy();
     owned.child.stderr.destroy();
+    if (owned.child.connected) owned.child.disconnect();
     owned.child.unref();
-    throw error;
   }
+  if (registered && instance) await options.onTerminated?.(instance, confirmed);
+  if (!confirmed) throw new Error('执行进程树的停止尚未确认');
+  if (failure) throw failure.error;
+  return Buffer.concat(output).toString('utf8');
 }

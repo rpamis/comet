@@ -45,6 +45,7 @@ const image = process.env.COMET_EVAL_DOCKER_IMAGE || 'alpine:3.21';
 describe.skipIf(!enabled)(
   'real Docker Eval cleanup (opt in with COMET_EVAL_DOCKER_INTEGRATION=1)',
   () => {
+    let temporary: string;
     let project: string;
     let identity: string;
     let runId: string;
@@ -93,14 +94,17 @@ describe.skipIf(!enabled)(
     }
 
     beforeEach(async () => {
-      project = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-real-docker-'));
+      temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-real-docker-'));
+      project = path.join(temporary, 'project');
+      await fs.mkdir(project);
       identity = randomUUID();
       runId = `integration-${identity}`;
       sentinelId = '';
       dockerReady = false;
       worker = undefined;
       application = undefined;
-      const home = path.join(project, 'home');
+      // 用户配置、Runtime 数据与项目分别存放，遵守工作区外的数据根边界。
+      const home = path.join(temporary, 'home');
       const dockerConfig = path.join(home, '.docker');
       await fs.mkdir(dockerConfig, { recursive: true });
       vi.spyOn(os, 'homedir').mockReturnValue(home);
@@ -109,7 +113,7 @@ describe.skipIf(!enabled)(
         USERPROFILE: home,
         XDG_CONFIG_HOME: path.join(home, '.config'),
         DOCKER_CONFIG: dockerConfig,
-        COMET_DATA_DIR: path.join(home, '.comet'),
+        COMET_DATA_DIR: path.join(temporary, 'runtime-data'),
       }))
         vi.stubEnv(name, value);
       for (const name of [
@@ -188,7 +192,7 @@ process.exitCode = result.status ?? 1;
 `,
       );
       // 另一项目复用实验 ID，清理仍必须以项目归属隔离。
-      const otherProject = path.join(project, 'other-project');
+      const otherProject = path.join(temporary, 'other-project');
       await fs.mkdir(otherProject);
       sentinelId = await docker([
         'run',
@@ -241,7 +245,7 @@ process.exitCode = result.status ?? 1;
       } finally {
         vi.restoreAllMocks();
         vi.unstubAllEnvs();
-        await fs.rm(project, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
+        await fs.rm(temporary, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
       }
     });
 

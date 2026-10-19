@@ -9,7 +9,10 @@ import {
   nativeVerifierActionExecutionRef,
   startNativeVerifierAction,
 } from './native-verifier-action.js';
-import type { NativeCheckPlan } from './native-check-executor.js';
+import {
+  isNativeCheckTerminationUnconfirmedError,
+  type NativeCheckPlan,
+} from './native-check-executor.js';
 import path from 'node:path';
 import {
   inspectNativeChildren,
@@ -555,6 +558,7 @@ export async function submitNativePortableVerifierResult(options: {
       requestChecks: requested.requestChecks,
     };
   } catch (error) {
+    if (isNativeCheckTerminationUnconfirmedError(error)) throw error;
     const summary = `Native Verifier-requested check execution failed: ${(error as Error).message}`;
     const failed = await withNativeMutationLock(
       options.paths,

@@ -494,7 +494,7 @@ docker_build() {
 # =============================================================================
 
 # Build env var arguments for docker run (populates ENV_ARGS array)
-# Usage: build_env_args; docker run "${ENV_ARGS[@]}" ...
+# Usage: build_env_args; docker run ${ENV_ARGS[@]+"${ENV_ARGS[@]}"} ...
 build_env_args() {
     ENV_ARGS=()
     for key in "${ENV_KEYS[@]}"; do
@@ -507,7 +507,7 @@ build_env_args() {
     if [[ -n "${COMET_EVAL_CUSTOM_CREDENTIALS:-}" ]]; then
         local custom_key
         IFS=',' read -r -a custom_keys <<< "${COMET_EVAL_CUSTOM_CREDENTIALS}"
-        for custom_key in "${custom_keys[@]}"; do
+        for custom_key in ${custom_keys[@]+"${custom_keys[@]}"}; do
             if [[ "$custom_key" =~ ^[A-Z][A-Z0-9_]{1,63}$ ]] && [[ -n "${!custom_key:-}" ]]; then
                 ENV_ARGS+=("-e" "$custom_key")
             fi
@@ -542,8 +542,11 @@ build_agent_runtime_mount_args() {
         local application_metadata
         application_metadata=$(python3 -c 'import json,os; p=json.loads(os.environ["COMET_APPLICATION_EVAL_CONTEXT"])["preview"]; print("\n".join([p["application"]["id"],p["application"]["version"],p["runtimeIdentityHash"]]))') || return 1
         application_metadata="${application_metadata//$'\r'/}"
-        local -a application_fields
-        mapfile -t application_fields <<< "$application_metadata"
+        local -a application_fields=()
+        local application_field
+        while IFS= read -r application_field; do
+            application_fields+=("$application_field")
+        done <<< "$application_metadata"
         [[ ${#application_fields[@]} -eq 3 ]] || return 1
         ENV_ARGS+=("-e" "COMET_EVAL_APPLICATION_ID=${application_fields[0]}"
                    "-e" "COMET_EVAL_APPLICATION_VERSION=${application_fields[1]}"
@@ -700,12 +703,12 @@ docker_run() {
     docker run --rm \
         ${EVAL_LABEL_ARGS[@]+"${EVAL_LABEL_ARGS[@]}"} \
         -v "$windir://workspace" \
-        "${COMET_RUNTIME_MOUNT_ARGS[@]}" \
+        ${COMET_RUNTIME_MOUNT_ARGS[@]+"${COMET_RUNTIME_MOUNT_ARGS[@]}"} \
         ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
         -w //workspace \
-        "${ENV_ARGS[@]}" \
+        ${ENV_ARGS[@]+"${ENV_ARGS[@]}"} \
         "$image_name" \
-        "${cmd[@]}"
+        ${cmd[@]+"${cmd[@]}"}
 }
 
 # Run one user-authored validation command inside the task container.
@@ -732,7 +735,7 @@ docker_run_command() {
                 ;;
         esac
     done
-    if [[ ${#command[@]} -eq 0 ]]; then
+    if [[ -z ${command[@]+present} ]]; then
         echo "ERROR: validation command is required" >&2
         return 2
     fi
@@ -747,7 +750,7 @@ docker_run_command() {
     local docker_command=(docker run --rm
         ${EVAL_LABEL_ARGS[@]+"${EVAL_LABEL_ARGS[@]}"}
         -v "$windir://workspace"
-        "${COMET_RUNTIME_MOUNT_ARGS[@]}"
+        ${COMET_RUNTIME_MOUNT_ARGS[@]+"${COMET_RUNTIME_MOUNT_ARGS[@]}"}
         ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"}
         -w //workspace
         "$image_name"
@@ -873,11 +876,9 @@ docker_run_agent() (
     else
         AGENT_COMMAND=(bash //opt/scaffold-shell/run-agent-runtime.sh "$agent" "$model" "$prompt" --)
     fi
-    if [[ "$agent" == "claude-code" && ${#PLUGIN_CLI_ARGS[@]} -gt 0 ]]; then
-        AGENT_COMMAND+=("${PLUGIN_CLI_ARGS[@]}")
-    fi
-    if [[ "$agent" == "claude-code" && ${#LANGFUSE_PLUGIN_CLI_ARGS[@]} -gt 0 ]]; then
-        AGENT_COMMAND+=("${LANGFUSE_PLUGIN_CLI_ARGS[@]}")
+    if [[ "$agent" == "claude-code" ]]; then
+        AGENT_COMMAND+=(${PLUGIN_CLI_ARGS[@]+"${PLUGIN_CLI_ARGS[@]}"})
+        AGENT_COMMAND+=(${LANGFUSE_PLUGIN_CLI_ARGS[@]+"${LANGFUSE_PLUGIN_CLI_ARGS[@]}"})
     fi
 
     local windir
@@ -888,33 +889,33 @@ docker_run_agent() (
     if [[ -n "$TIMEOUT_CMD" ]]; then
         $TIMEOUT_CMD --kill-after=5 "$timeout" docker run --rm --name "$container_name" --label "comet.eval.turn=$container_name" \
             ${EVAL_LABEL_ARGS[@]+"${EVAL_LABEL_ARGS[@]}"} \
-            "${prompt_docker_args[@]}" \
+            ${prompt_docker_args[@]+"${prompt_docker_args[@]}"} \
             -v "$windir://workspace" \
-            "${COMET_RUNTIME_MOUNT_ARGS[@]}" \
-            "${prompt_mount_args[@]}" \
-            "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
-            "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
+            ${COMET_RUNTIME_MOUNT_ARGS[@]+"${COMET_RUNTIME_MOUNT_ARGS[@]}"} \
+            ${prompt_mount_args[@]+"${prompt_mount_args[@]}"} \
+            ${RUNTIME_CONFIG_MOUNT_ARGS[@]+"${RUNTIME_CONFIG_MOUNT_ARGS[@]}"} \
+            ${RUNTIME_CONFIG_TMPFS_ARGS[@]+"${RUNTIME_CONFIG_TMPFS_ARGS[@]}"} \
             ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
             ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
             ${LANGFUSE_PLUGIN_MOUNT_ARGS[@]+"${LANGFUSE_PLUGIN_MOUNT_ARGS[@]}"} \
             -w //workspace \
-            "${ENV_ARGS[@]}" \
+            ${ENV_ARGS[@]+"${ENV_ARGS[@]}"} \
             "$image_id" \
             "${AGENT_COMMAND[@]}" < "$prompt_input"
     else
         docker run --rm --name "$container_name" --label "comet.eval.turn=$container_name" \
             ${EVAL_LABEL_ARGS[@]+"${EVAL_LABEL_ARGS[@]}"} \
-            "${prompt_docker_args[@]}" \
+            ${prompt_docker_args[@]+"${prompt_docker_args[@]}"} \
             -v "$windir://workspace" \
-            "${COMET_RUNTIME_MOUNT_ARGS[@]}" \
-            "${prompt_mount_args[@]}" \
-            "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
-            "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
+            ${COMET_RUNTIME_MOUNT_ARGS[@]+"${COMET_RUNTIME_MOUNT_ARGS[@]}"} \
+            ${prompt_mount_args[@]+"${prompt_mount_args[@]}"} \
+            ${RUNTIME_CONFIG_MOUNT_ARGS[@]+"${RUNTIME_CONFIG_MOUNT_ARGS[@]}"} \
+            ${RUNTIME_CONFIG_TMPFS_ARGS[@]+"${RUNTIME_CONFIG_TMPFS_ARGS[@]}"} \
             ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
             ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
             ${LANGFUSE_PLUGIN_MOUNT_ARGS[@]+"${LANGFUSE_PLUGIN_MOUNT_ARGS[@]}"} \
             -w //workspace \
-            "${ENV_ARGS[@]}" \
+            ${ENV_ARGS[@]+"${ENV_ARGS[@]}"} \
             "$image_id" \
             "${AGENT_COMMAND[@]}" < "$prompt_input"
     fi
@@ -1010,19 +1011,19 @@ docker_run_claude_loop() {
     docker run --rm --name "$container_name" \
         ${EVAL_LABEL_ARGS[@]+"${EVAL_LABEL_ARGS[@]}"} \
         -v "$windir://workspace" \
-        "${COMET_RUNTIME_MOUNT_ARGS[@]}" \
-        "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
-        "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
+        ${COMET_RUNTIME_MOUNT_ARGS[@]+"${COMET_RUNTIME_MOUNT_ARGS[@]}"} \
+        ${RUNTIME_CONFIG_MOUNT_ARGS[@]+"${RUNTIME_CONFIG_MOUNT_ARGS[@]}"} \
+        ${RUNTIME_CONFIG_TMPFS_ARGS[@]+"${RUNTIME_CONFIG_TMPFS_ARGS[@]}"} \
         ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
         ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
         ${LANGFUSE_PLUGIN_MOUNT_ARGS[@]+"${LANGFUSE_PLUGIN_MOUNT_ARGS[@]}"} \
         -w //workspace \
-        "${ENV_ARGS[@]}" \
+        ${ENV_ARGS[@]+"${ENV_ARGS[@]}"} \
         "$image_id" \
         bash //opt/scaffold-shell/run-claude-loop.sh "$prompt" \
             ${PLUGIN_CLI_ARGS[@]+"${PLUGIN_CLI_ARGS[@]}"} \
             ${LANGFUSE_PLUGIN_CLI_ARGS[@]+"${LANGFUSE_PLUGIN_CLI_ARGS[@]}"} \
-            "${loop_args[@]}"
+            ${loop_args[@]+"${loop_args[@]}"}
 }
 
 # Run the shared multi-turn driver with a selected agent CLI.
@@ -1081,20 +1082,20 @@ docker_run_agent_loop() {
     docker run --rm --name "$container_name" \
         ${EVAL_LABEL_ARGS[@]+"${EVAL_LABEL_ARGS[@]}"} \
         -v "$windir://workspace" \
-        "${COMET_RUNTIME_MOUNT_ARGS[@]}" \
-        "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
-        "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
+        ${COMET_RUNTIME_MOUNT_ARGS[@]+"${COMET_RUNTIME_MOUNT_ARGS[@]}"} \
+        ${RUNTIME_CONFIG_MOUNT_ARGS[@]+"${RUNTIME_CONFIG_MOUNT_ARGS[@]}"} \
+        ${RUNTIME_CONFIG_TMPFS_ARGS[@]+"${RUNTIME_CONFIG_TMPFS_ARGS[@]}"} \
         ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
         ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
         ${LANGFUSE_PLUGIN_MOUNT_ARGS[@]+"${LANGFUSE_PLUGIN_MOUNT_ARGS[@]}"} \
         -w //workspace \
-        "${ENV_ARGS[@]}" \
+        ${ENV_ARGS[@]+"${ENV_ARGS[@]}"} \
         "$image_id" \
         bash //opt/scaffold-shell/run-claude-loop.sh "$prompt" \
             --agent "$agent" \
             ${PLUGIN_CLI_ARGS[@]+"${PLUGIN_CLI_ARGS[@]}"} \
             ${LANGFUSE_PLUGIN_CLI_ARGS[@]+"${LANGFUSE_PLUGIN_CLI_ARGS[@]}"} \
-            "${loop_args[@]}"
+            ${loop_args[@]+"${loop_args[@]}"}
 }
 
 cleanup_claude_loop() {

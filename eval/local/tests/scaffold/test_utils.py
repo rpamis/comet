@@ -577,6 +577,109 @@ def test_docker_loop_passes_langsmith_plugin_args_to_loop_driver():
     assert "CC_LANGSMITH_LOG_FILE" in docker_sh
 
 
+def test_optional_docker_arrays_use_bash32_nounset_safe_expansion():
+    source = (utils.SHELL_DIR / "docker.sh").read_text(encoding="utf-8")
+    for name in (
+        "EVAL_LABEL_ARGS", "ENV_ARGS", "COMET_RUNTIME_MOUNT_ARGS", "prompt_docker_args",
+        "prompt_mount_args", "RUNTIME_CONFIG_MOUNT_ARGS", "RUNTIME_CONFIG_TMPFS_ARGS",
+        "TRUSTED_ORACLE_MOUNT_ARGS", "PLUGIN_MOUNT_ARGS", "LANGFUSE_PLUGIN_MOUNT_ARGS",
+        "PLUGIN_CLI_ARGS", "LANGFUSE_PLUGIN_CLI_ARGS", "loop_args", "cmd", "custom_keys",
+    ):
+        safe = '${' + name + '[@]+"${' + name + '[@]}"}'
+        assert safe in source, name
+        assert '${' + name + '[@]}' not in source.replace(safe, ""), name
+    assert "mapfile" not in source
+
+
+@pytest.mark.parametrize(
+    "entry", ["generic", "validation", "single", "single-timeout", "claude-loop", "agent-loop"]
+)
+@pytest.mark.parametrize("populated", [False, True])
+def test_docker_optional_arrays_preserve_empty_and_quoted_arguments(tmp_path, entry, populated):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    env = _isolated_fake_agent_env(fake_bin, "codex")
+    args_file = tmp_path / "docker-argv.bin"
+    script = r'''
+source "$1"
+docker_build() { printf '%s' fake-image; }
+resolve_runtime_image() { printf '%s' fake-image; }
+prepare_agent_workspace_owner() { :; }
+prepare_eval_runtime_data() { COMET_RUNTIME_MOUNT_ARGS=(); }
+build_env_args() { ENV_ARGS=(); }
+build_agent_runtime_mount_args() { RUNTIME_CONFIG_MOUNT_ARGS=(); RUNTIME_CONFIG_TMPFS_ARGS=(); }
+build_plugin_args() { PLUGIN_MOUNT_ARGS=(); PLUGIN_CLI_ARGS=(); }
+build_langfuse_plugin_args() { LANGFUSE_PLUGIN_MOUNT_ARGS=(); LANGFUSE_PLUGIN_CLI_ARGS=(); }
+build_trusted_oracle_mount_args() { TRUSTED_ORACLE_MOUNT_ARGS=(); }
+if [[ "$POPULATED" == 1 ]]; then
+  prepare_eval_runtime_data() { COMET_RUNTIME_MOUNT_ARGS=(-v 'runtime with spaces:*' ''); }
+  build_env_args() { ENV_ARGS=(-e 'FIXTURE=two words *'); }
+  build_agent_runtime_mount_args() {
+    RUNTIME_CONFIG_MOUNT_ARGS=(-v 'config with spaces:*');
+    RUNTIME_CONFIG_TMPFS_ARGS=(--tmpfs 'tmpfs with spaces:*');
+  }
+  build_plugin_args() { PLUGIN_MOUNT_ARGS=(-v 'plugin with spaces:*'); PLUGIN_CLI_ARGS=(--plugin-dir 'plugin dir *'); }
+fi
+TIMEOUT_CMD=""
+fixture_timeout() { shift 2; "$@"; }
+docker() { if [[ "$1" == run ]]; then printf '%s\0' "$@" > "$FIXTURE_ARGS"; fi; }
+case "$3" in
+  generic) docker_run "$2" printf 'generic value *';;
+  validation) docker_run_command "$2" -- 'printf "validation value *"';;
+  single) docker_run_agent "$2" 'prompt value *' --agent claude-code;;
+  single-timeout) TIMEOUT_CMD=fixture_timeout; docker_run_agent "$2" 'prompt value *' --agent claude-code;;
+  claude-loop) docker_run_claude_loop "$2" 'prompt value *';;
+  agent-loop) docker_run_agent_loop "$2" 'prompt value *' --agent codex;;
+esac
+'''
+    result = subprocess.run(
+        [utils.BASH_EXEC, "-c", script, "_", utils._to_bash_path(utils.SHELL_DIR / "docker.sh"),
+         utils._to_bash_path(tmp_path), entry],
+        env={**env, "FIXTURE_ARGS": utils._to_bash_path(args_file), "POPULATED": str(int(populated))},
+        capture_output=True, timeout=AGENT_FIXTURE_TIMEOUT, check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
+    args = args_file.read_bytes().split(b"\0")[:-1]
+    assert b"fake-image" in args
+    assert args.count(b"") == int(populated) + int(entry.startswith("single"))
+    if populated:
+        assert b"runtime with spaces:*" in args
+        if entry != "validation":
+            assert b"FIXTURE=two words *" in args
+        if entry not in {"generic", "validation"}:
+            assert b"config with spaces:*" in args
+            assert b"tmpfs with spaces:*" in args
+        if entry.startswith("single") or entry == "claude-loop":
+            assert b"plugin dir *" in args
+    if entry not in {"generic", "validation"}:
+        assert b"prompt value *" in args
+
+
+def test_application_runtime_metadata_parses_without_bash4_builtins(tmp_path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    env = _isolated_fake_agent_env(fake_bin, "codex")
+    script = r'''
+source "$1"
+mapfile() { echo 'Bash 4-only builtin used' >&2; return 99; }
+build_env_args
+build_agent_runtime_mount_args
+printf '%s\0' ${ENV_ARGS[@]+"${ENV_ARGS[@]}"}
+'''
+    context = {"preview": {"application": {"id": "example-app", "version": "1.0.0"},
+                           "runtimeIdentityHash": "fixture-hash"}}
+    result = subprocess.run(
+        [utils.BASH_EXEC, "-c", script, "_", utils._to_bash_path(utils.SHELL_DIR / "docker.sh")],
+        env={**env, "COMET_APPLICATION_EVAL_CONTEXT": json.dumps(context)},
+        capture_output=True, timeout=AGENT_FIXTURE_TIMEOUT, check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
+    args = result.stdout.split(b"\0")[:-1]
+    assert b"COMET_EVAL_APPLICATION_ID=example-app" in args
+    assert b"COMET_EVAL_APPLICATION_VERSION=1.0.0" in args
+    assert b"COMET_EVAL_APPLICATION_HASH=fixture-hash" in args
+
+
 def test_claude_loop_timeout_force_removes_its_named_container(monkeypatch, tmp_path: Path):
     calls = []
 

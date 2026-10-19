@@ -126,6 +126,7 @@ it('keeps a cancelled managed check occupied after its group stops until the ori
   });
   // 已登记的空计划实际未启动任何子进程；即使这份登记已完成，也不能推断外部后代已停止。
   registration.execution.phase = 'completed';
+  registration.execution.terminationUnconfirmed = false;
   await registration.save();
   const cancelled = await runtime.cancel({ runId: claimed.runId, reason: 'Stop the task' });
   const waiting = await inspectNativeSdkCancellation({ projectRoot: root, run: cancelled });

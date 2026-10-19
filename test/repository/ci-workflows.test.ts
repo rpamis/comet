@@ -321,7 +321,7 @@ describe('CI workflows', () => {
         string,
         {
           needs?: string[];
-          'timeout-minutes'?: number;
+          'timeout-minutes'?: number | string;
           strategy?: {
             'fail-fast'?: boolean;
             matrix?: {
@@ -350,7 +350,7 @@ describe('CI workflows', () => {
         shards: 8,
       })),
     ]);
-    expect(contracts['timeout-minutes']).toBe(40);
+    expect(contracts['timeout-minutes']).toBe("${{ matrix.os == 'windows-latest' && 50 || 40 }}");
     expect(contracts.strategy?.['fail-fast']).toBe(false);
     const test = contracts.steps?.find((step) => step.id === 'sdk-tests');
     expect(test?.run).toContain('pnpm test:sdk');

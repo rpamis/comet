@@ -4,11 +4,14 @@ import os from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   evalProjectIdentity,
+  readEvalExecutionState,
+  recordEvalProcessTermination,
   registerEvalContainerOwnership,
 } from '../../../domains/eval/eval-run-cleanup.js';
-import { runManagedEvalWorker } from '../../../domains/eval/eval-run-entry.js';
+import { runManagedEvalWorker as executeManagedEvalWorker } from '../../../domains/eval/eval-run-entry.js';
 import {
   requestStopEvalRun,
+  readManagedEvalRun,
   registerCliEvalRun,
   finishCliEvalTracking,
   updateManagedEvalRun,
@@ -18,11 +21,15 @@ import { writeEvalJson, evalRunPath, readEvalRun } from '../../../domains/eval/e
 import {
   previewWorkflowApplicationEval,
   prepareWorkflowApplicationEval,
-  runWorkflowApplicationEval,
+  runWorkflowApplicationEval as executeApplicationEval,
 } from '../../../domains/eval/application-eval.js';
 import { prepareWorkflowApplicationExample } from '../../../domains/workflow-generation/index.js';
 import { runOwnedCommand } from '../../../platform/process/run-owned-command.js';
-import { runExternalCommandAsync } from '../../../platform/process/external-command.js';
+import { runExternalCommandAsync as executeExternalCommand } from '../../../platform/process/external-command.js';
+import {
+  inspectProcessTreeLiveness,
+  terminateRegisteredProcessTree,
+} from '../../../platform/process/process-identity.js';
 
 let packageRoot: string;
 vi.mock('../../../domains/eval/eval-run-preview.js', () => ({
@@ -41,17 +48,29 @@ vi.mock('../../../domains/eval/eval-run-preview.js', () => ({
 // 持久文件模拟 Docker daemon；杀掉 CLI 进程不会自动删除其容器。
 const fakeDocker = String.raw`
 const fs = require('node:fs');
+const {randomUUID} = require('node:crypto');
 const args = process.argv.slice(2), root = process.env.FAKE_DOCKER_ROOT;
 const file = root + '/containers.json';
 fs.appendFileSync(root + '/docker-calls.jsonl', JSON.stringify(args) + '\n');
 let items = JSON.parse(fs.readFileSync(file, 'utf8'));
-const save = () => fs.writeFileSync(file, JSON.stringify(items));
+const atomicWrite = (target, value) => {
+  const temporary = target + '.' + randomUUID() + '.tmp';
+  fs.writeFileSync(temporary, JSON.stringify(value));
+  fs.renameSync(temporary, target);
+};
+const save = () => atomicWrite(file, items);
 if (args[0] === 'run') {
+  fs.mkdirSync(root + '/processes', { recursive: true });
+  atomicWrite(root + '/processes/' + process.pid + '.json', { pid: process.pid, role: 'docker-client' });
   const label = args.find((value, index) => args[index - 1] === '--label' && value.startsWith('comet.eval.experiment='));
   const projectLabel = args.find((value, index) => args[index - 1] === '--label' && value.startsWith('comet.eval.project='));
   items.push({ id: 'abcdef123456', running: true, label: label ?? null, projectIdentity: projectLabel?.slice('comet.eval.project='.length) });
   save();
-  if (!process.env.FAKE_DOCKER_EXIT) setInterval(() => {}, 1000);
+  // docker run 客户端随容器退出；杀客户端本身不删除 daemon 中的容器。
+  if (!process.env.FAKE_DOCKER_EXIT) setInterval(() => {
+    const current = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!current.some(item => item.id === 'abcdef123456' && item.running)) process.exit(0);
+  }, 25);
 } else if (args[0] === 'ps') {
   if (fs.existsSync(root + '/fail-query')) process.exit(1);
   if (fs.existsSync(root + '/hold-cleanup')) {
@@ -79,10 +98,80 @@ if (args[0] === 'run') {
   else {}
   if (args[0] === 'rm') items = items.filter(item => !ids.includes(item.id));
   save();
+} else if (args[0] === 'fixture-rewrite') {
+  for (let index = 0; index < 500; index++) save();
 }
 `;
 
 let project: string;
+let pending: Set<Promise<unknown>>;
+let managedWorkers: Set<string>;
+let executionRuns: Set<string>;
+let releaseBlockers: Set<() => void>;
+function track<T>(promise: Promise<T>): Promise<T> {
+  pending.add(promise);
+  // 立即接住后台拒绝；调用方仍通过原 Promise 观察失败。
+  void promise.catch(() => {});
+  return promise;
+}
+function runExternalCommandAsync(...args: Parameters<typeof executeExternalCommand>) {
+  return track(executeExternalCommand(...args));
+}
+async function fixtureProcessIsAlive(pid: number): Promise<boolean> {
+  try {
+    process.kill(pid, 0);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false;
+    throw error;
+  }
+  if (process.platform === 'linux') {
+    const stat = await fs.readFile(`/proc/${pid}/stat`, 'utf8').catch((error) => {
+      if (error.code === 'ENOENT') return '';
+      throw error;
+    });
+    if (!stat || /^[ZX] /u.test(stat.slice(stat.lastIndexOf(')') + 2))) return false;
+  }
+  return true;
+}
+async function fixtureProcesses(): Promise<Array<{ pid: number; role: string }>> {
+  const directory = path.join(project, 'processes');
+  const files = await fs.readdir(directory).catch((error) => {
+    if (error.code === 'ENOENT') return [] as string[];
+    throw error;
+  });
+  return Promise.all(
+    files
+      .filter((name) => name.endsWith('.json'))
+      .map(async (file) => JSON.parse(await fs.readFile(path.join(directory, file), 'utf8'))),
+  );
+}
+async function expectFixtureProcessesExited(): Promise<void> {
+  await waitFor(async () => {
+    for (const { pid } of await fixtureProcesses()) {
+      if (await fixtureProcessIsAlive(pid)) return false;
+    }
+    return true;
+  });
+}
+async function assertReleasedExecution(id: string): Promise<void> {
+  const execution = await readEvalExecutionState(project, id);
+  if (!['completed', 'interrupted', 'stopped'].includes(String(execution?.status))) return;
+  const child = (await readManagedEvalRun(project, id))?.child;
+  if (child) expect(await inspectProcessTreeLiveness(child.pid, child.identity)).toBe('dead');
+  // 单独核对 CLI 与 Docker 客户端，不能仅凭监管器 PID 消失宣称子进程退出。
+  await expectFixtureProcessesExited();
+}
+function runManagedEvalWorker(root: string, id: string) {
+  managedWorkers.add(id);
+  executionRuns.add(id);
+  return track(executeManagedEvalWorker(root, id).finally(() => assertReleasedExecution(id)));
+}
+function runWorkflowApplicationEval(options: Parameters<typeof executeApplicationEval>[0]) {
+  executionRuns.add(options.experimentId);
+  return track(
+    executeApplicationEval(options).finally(() => assertReleasedExecution(options.experimentId)),
+  );
+}
 // Windows 首次进程身份探测和 Git Bash 启动较慢；仍让真实监管器触发短时限。
 const applicationTimeoutMs = process.platform === 'win32' ? 8000 : 1500;
 const lifecycleTimeoutMs = process.platform === 'win32' ? 60000 : 20000;
@@ -156,19 +245,27 @@ async function application(id: string) {
       _args: readonly string[],
       execution?: Parameters<typeof runExternalCommandAsync>[2],
     ) =>
-      runOwnedCommand(process.execPath, [path.join(packageRoot, 'bin/comet.js')], {
-        cwd: project,
-        env: execution!.env!,
-        timeoutMs: applicationTimeoutMs,
-        onRegistered: (child) =>
-          updateManagedEvalRun(project, id, (current) => {
-            current.child = child;
-          }).then(() => {}),
-      }),
+      track(
+        runOwnedCommand(process.execPath, [path.join(packageRoot, 'bin/comet.js')], {
+          cwd: project,
+          env: execution!.env!,
+          timeoutMs: applicationTimeoutMs,
+          onRegistered: (child) =>
+            updateManagedEvalRun(project, id, (current) => {
+              current.child = child;
+            }).then(() => {}),
+          onTerminated: (child, confirmed) =>
+            recordEvalProcessTermination(project, id, child, confirmed),
+        }),
+      ),
   };
 }
 
 beforeEach(async () => {
+  pending = new Set();
+  managedWorkers = new Set();
+  executionRuns = new Set();
+  releaseBlockers = new Set();
   project = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-container-cleanup-'));
   packageRoot = path.join(project, 'package');
   await fs.mkdir(path.join(packageRoot, 'bin'), { recursive: true });
@@ -186,12 +283,9 @@ beforeEach(async () => {
     path.join(fakebin, 'docker.cmd'),
     `@echo off\r\n"${process.execPath}" "%~dp0docker.cjs" %*\r\n`,
   );
-  await fs.writeFile(
-    path.join(project, 'containers.json'),
-    JSON.stringify([
-      { id: '123456abcdef', running: true, label: 'comet.eval.experiment=unrelated' },
-    ]),
-  );
+  await writeEvalJson(path.join(project, 'containers.json'), [
+    { id: '123456abcdef', running: true, label: 'comet.eval.experiment=unrelated' },
+  ]);
   const shell = path.join(project, 'run.sh');
   await fs.writeFile(
     shell,
@@ -210,7 +304,12 @@ docker_run_agent_loop "$2" 'Test prompt' --agent codex --max-turns 2
   const bashPath = (value: string) => value.replaceAll('\\', '/');
   await fs.writeFile(
     path.join(packageRoot, 'bin/comet.js'),
-    `const {spawnSync}=require('node:child_process'); const result=spawnSync('bash',${JSON.stringify([bashPath(shell), bashPath(path.resolve('eval/scaffold/shell/docker.sh')), bashPath(project)])},{stdio:'inherit'}); process.exit(result.status ?? 1);`,
+    `const fs=require('node:fs'), {spawnSync}=require('node:child_process');
+const root=process.env.FAKE_DOCKER_ROOT;
+fs.mkdirSync(root+'/processes',{recursive:true});
+const record=root+'/processes/'+process.pid+'.json';
+fs.writeFileSync(record+'.tmp',JSON.stringify({pid:process.pid,role:'fixture-cli'})); fs.renameSync(record+'.tmp',record);
+const result=spawnSync('bash',${JSON.stringify([bashPath(shell), bashPath(path.resolve('eval/scaffold/shell/docker.sh')), bashPath(project)])},{stdio:'inherit'}); process.exit(result.status ?? 1);`,
   );
   vi.spyOn(os, 'homedir').mockReturnValue(path.join(project, 'home'));
   vi.stubEnv('PATH', fakebin + path.delimiter + process.env.PATH);
@@ -225,13 +324,96 @@ docker_run_agent_loop "$2" 'Test prompt' --agent codex --max-turns 2
   ])
     vi.stubEnv(name, undefined);
 });
+async function settleFixtureExecutions(): Promise<void> {
+  for (const release of releaseBlockers) release();
+  for (const name of ['hold-cleanup', 'fail-query', 'fail-cleanup', 'invalid-id'])
+    await fs.rm(path.join(project, name), { force: true });
+  for (const id of managedWorkers)
+    await writeEvalJson(await evalRunPath(project, id, 'stop-request.json'), { runId: id });
+  let observed = -1;
+  while (observed !== pending.size) {
+    observed = pending.size;
+    await Promise.allSettled([...pending]);
+  }
+}
 afterEach(async () => {
-  vi.unstubAllEnvs();
-  vi.restoreAllMocks();
-  await fs.rm(project, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
+  try {
+    await settleFixtureExecutions();
+    // 故障用例允许保留 stopping；断言后关闭本 fixture 的 daemon 状态，等待客户端退出。
+    await writeEvalJson(path.join(project, 'containers.json'), []);
+    let cleanupFailure: unknown;
+    try {
+      await expectFixtureProcessesExited();
+    } catch (error) {
+      cleanupFailure = error;
+      // 失败也回收已核对身份的本测试子进程；仍抛出失败，不能用强杀令测试变绿。
+      for (const id of executionRuns) {
+        const child = (await readManagedEvalRun(project, id))?.child;
+        if (child?.identity) await terminateRegisteredProcessTree(child);
+      }
+      await expectFixtureProcessesExited();
+    }
+    await fs.rm(project, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
+    if (cleanupFailure) throw cleanupFailure;
+  } finally {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  }
 });
 
 describe('真实宿主进程与持久 Docker 替身', () => {
+  it('Docker 替身的并发查询不会读到截断的容器记录', async () => {
+    let finished = false;
+    const rewriting = runExternalCommandAsync(process.execPath, [
+      path.join(project, 'fakebin/docker.cjs'),
+      'fixture-rewrite',
+    ]).finally(() => {
+      finished = true;
+    });
+    track(rewriting);
+    let reads = 0;
+    while (!finished) {
+      expect(await containers()).toHaveLength(1);
+      reads++;
+    }
+    await rewriting;
+    expect(reads).toBeGreaterThan(0);
+  });
+
+  it('Docker 替身客户端在容器停止后退出，不占用测试目录', async () => {
+    const client = runExternalCommandAsync('docker', [
+      'run',
+      '--label',
+      'comet.eval.experiment=client-exit',
+    ]);
+    await waitFor(async () => (await containers()).length === 2);
+    await runExternalCommandAsync('docker', ['stop', 'abcdef123456']);
+    await client;
+    await expectFixtureProcessesExited();
+  });
+
+  it(
+    '测试提前失败也先停止并等待后台 worker，再删除目录',
+    async () => {
+      await register('early-assertion-failure');
+      await expect(
+        (async () => {
+          runManagedEvalWorker(project, 'early-assertion-failure');
+          await waitFor(async () => (await containers()).length === 2);
+          throw new Error('模拟测试断言提前失败');
+        })(),
+      ).rejects.toThrow('模拟测试断言提前失败');
+      await settleFixtureExecutions();
+      expect((await readEvalRun(project, 'early-assertion-failure')).executionStatus).toBe(
+        'stopped',
+      );
+      await expectFixtureProcessesExited();
+      const settled = await Promise.allSettled([...pending]);
+      expect(settled.every((result) => result.status === 'fulfilled')).toBe(true);
+    },
+    lifecycleTimeoutMs,
+  );
+
   it.each([undefined, '{}'])(
     '普通 Skill 与 Application 的所有单轮、多轮入口带清理标识（context=%s）',
     async (context) => {
@@ -359,14 +541,21 @@ describe('真实宿主进程与持久 Docker 替身', () => {
       runId: options.experimentId,
       status: 'stopping',
     });
+    const child = {
+      pid: 999999999,
+      identity: 'finished-fixture',
+      instanceId: 'creator-stopped',
+      ownerPid: process.pid,
+    };
     await writeEvalJson(
       await evalRunPath(project, options.experimentId, 'execution-process.json'),
       {
         schema: 'comet.eval.execution-process.v1',
         runId: options.experimentId,
-        child: { pid: 999999999, identity: 'finished-fixture' },
+        child,
       },
     );
+    await recordEvalProcessTermination(project, options.experimentId, child, true);
     await fs.writeFile(await evalRunPath(project, options.experimentId, 'execution.lock'), '');
     const current = await containers();
     current.push({
@@ -375,7 +564,7 @@ describe('真实宿主进程与持久 Docker 替身', () => {
       label: 'comet.eval.experiment=' + options.experimentId,
       projectIdentity: await evalProjectIdentity(project),
     });
-    await fs.writeFile(path.join(project, 'containers.json'), JSON.stringify(current));
+    await writeEvalJson(path.join(project, 'containers.json'), current);
     const executeCommand = vi.fn(async () => '');
     for (let attempt = 0; attempt < 2; attempt++) {
       await expect(runWorkflowApplicationEval({ ...options, executeCommand })).rejects.toThrow(
@@ -412,6 +601,7 @@ describe('真实宿主进程与持久 Docker 替身', () => {
       const released = new Promise<void>((resolve) => {
         release = resolve;
       });
+      releaseBlockers.add(release);
       let first = true;
       vi.spyOn(fs, 'unlink').mockImplementation(async (file) => {
         if (String(file) === lockPath && first) {
@@ -462,22 +652,26 @@ describe('真实宿主进程与持久 Docker 替身', () => {
       const id = 'cold-stopping';
       await register(id);
       if (owned) await registerEvalContainerOwnership(project, id);
+      const child = {
+        pid: 999999999,
+        identity: 'finished-fixture',
+        instanceId: 'cold-stopped',
+        ownerPid: process.pid,
+      };
       await updateManagedEvalRun(project, id, (current) => {
         current.status = 'stopping';
-        current.child = { pid: 999999999, identity: 'finished-fixture' };
+        current.child = child;
       });
+      await recordEvalProcessTermination(project, id, child, true);
       await writeEvalJson(await evalRunPath(project, id, 'stop-request.json'), { runId: id });
-      await fs.writeFile(
-        path.join(project, 'containers.json'),
-        JSON.stringify([
-          {
-            id: 'abcdef123456',
-            running: true,
-            label: 'comet.eval.experiment=' + id,
-            projectIdentity: await evalProjectIdentity(project),
-          },
-        ]),
-      );
+      await writeEvalJson(path.join(project, 'containers.json'), [
+        {
+          id: 'abcdef123456',
+          running: true,
+          label: 'comet.eval.experiment=' + id,
+          projectIdentity: await evalProjectIdentity(project),
+        },
+      ]);
       await runManagedEvalWorker(project, id);
       expect((await readEvalRun(project, id)).executionStatus).toBe(owned ? 'stopped' : 'stopping');
       expect(await containers()).toHaveLength(owned ? 0 : 1);
@@ -516,18 +710,15 @@ describe('真实宿主进程与持久 Docker 替身', () => {
       label: own.label,
       projectIdentity: await evalProjectIdentity(other),
     };
-    await fs.writeFile(path.join(project, 'containers.json'), JSON.stringify([own, foreign]));
+    await writeEvalJson(path.join(project, 'containers.json'), [own, foreign]);
     await stopEvalContainers(project, 'same-id');
     expect(await containers()).toEqual([foreign]);
   });
 
   it('旧容器缺项目标签或旧运行缺启动归属记录时拒绝声称停止', async () => {
-    await fs.writeFile(
-      path.join(project, 'containers.json'),
-      JSON.stringify([
-        { id: 'abcdef123456', running: true, label: 'comet.eval.experiment=legacy' },
-      ]),
-    );
+    await writeEvalJson(path.join(project, 'containers.json'), [
+      { id: 'abcdef123456', running: true, label: 'comet.eval.experiment=legacy' },
+    ]);
     await expect(stopEvalContainers(project, 'legacy')).rejects.toThrow('旧实验容器');
     expect((await containers())[0].running).toBe(true);
     await register('legacy');

@@ -2,7 +2,11 @@ import { promises as fs } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as checkExecutor from '../../../domains/comet-native/native-check-executor.js';
+import * as atomicFile from '../../../domains/comet-native/native-atomic-file.js';
+import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
+import { inspectNativeCheckStopEvidenceTargets } from '../../../domains/comet-native/native-check-stop-evidence.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -28,13 +32,14 @@ import { withNativeMutationLock } from '../../../domains/comet-native/native-mut
 
 const roots: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
 });
 const git = (cwd: string, ...args: string[]) =>
   execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function setup() {
+async function setup(secondChild = false) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-supervisor-process-'));
   roots.push(root);
   git(root, 'init', '-b', 'main');
@@ -58,29 +63,40 @@ async function setup() {
   const changeDir = nativePortableChangeDir(paths, 'change');
   await fs.writeFile(
     path.join(changeDir, 'brief.md'),
-    '# Acceptance examples\n- The behavior works.\n',
+    '# Acceptance examples\n- The behavior works.\n' +
+      (secondChild ? '- Another behavior works.\n' : ''),
   );
   await fs.writeFile(
     path.join(changeDir, 'children.yaml'),
-    'schema: comet.native.children.v2\nacceptance_index:\n  A1:\n    source: brief.md\n    text: The behavior works.\nchildren:\n  - name: core\n    depends_on: []\n    covers: [A1]\n',
+    'schema: comet.native.children.v2\nacceptance_index:\n  A1:\n    source: brief.md\n    text: The behavior works.\n' +
+      (secondChild ? '  A2:\n    source: brief.md\n    text: Another behavior works.\n' : '') +
+      'children:\n  - name: core\n    depends_on: []\n    covers: [A1]\n' +
+      (secondChild ? '  - name: auxiliary\n    depends_on: []\n    covers: [A2]\n' : ''),
   );
-  await prepareNativePortableShapeConfirmation({ paths, name: 'change' });
-  await confirmNativePortableShape({ paths, name: 'change' });
-  const builder = (await dispatchNativeSupervisorReadyTasks({ paths, parent: 'change' })).tasks[0];
-  await fs.writeFile(path.join(builder.projectRoot, 'feature.txt'), 'implemented');
-  git(builder.projectRoot, 'add', 'feature.txt');
-  git(builder.projectRoot, 'commit', '-m', 'implement');
-  const result = await applyNativeRunnerInput({
-    paths,
-    name: 'change',
-    maxVerifyFailures: 5,
-    input: {
-      kind: 'supervisor-builder-result',
-      child: 'core',
-      runId: builder.runId,
-      candidateCommit: git(builder.projectRoot, 'rev-parse', 'HEAD'),
-    },
-  });
+  const coordination = secondChild ? { coordinationMode: 'multi-session' as const } : {};
+  await prepareNativePortableShapeConfirmation({ paths, name: 'change', ...coordination });
+  await confirmNativePortableShape({ paths, name: 'change', ...coordination });
+  const builders = (
+    await dispatchNativeSupervisorReadyTasks({ paths, parent: 'change', maxParallel: 2 })
+  ).tasks;
+  const verifierRunIds: Record<string, string> = {};
+  for (const builder of builders) {
+    await fs.writeFile(path.join(builder.projectRoot, `${builder.child}.txt`), 'implemented');
+    git(builder.projectRoot, 'add', `${builder.child}.txt`);
+    git(builder.projectRoot, 'commit', '-m', 'implement');
+    const result = await applyNativeRunnerInput({
+      paths,
+      name: 'change',
+      maxVerifyFailures: 5,
+      input: {
+        kind: 'supervisor-builder-result',
+        child: builder.child,
+        runId: builder.runId,
+        candidateCommit: git(builder.projectRoot, 'rev-parse', 'HEAD'),
+      },
+    });
+    verifierRunIds[builder.child] = result.supervisorTask!.runId;
+  }
   const marker = path.join(root, 'starts.txt');
   const release = path.join(root, 'release');
   const code =
@@ -89,7 +105,7 @@ async function setup() {
     paths,
     parent: 'change',
     child: 'core',
-    runId: result.supervisorTask!.runId,
+    runId: verifierRunIds.core,
     plans: [
       {
         id: 'slow',
@@ -103,10 +119,114 @@ async function setup() {
     ],
     materials: [],
   };
-  return { root, paths, marker, release, options };
+  return {
+    root,
+    paths,
+    marker,
+    release,
+    options,
+    secondaryOptions: { ...options, child: 'auxiliary', runId: verifierRunIds.auxiliary },
+  };
 }
 
 describe('Supervisor check process recovery', () => {
+  it('preserves unconfirmed process termination and blocks owner-dead recovery', async () => {
+    const { paths, options, secondaryOptions } = await setup(true);
+    const failure = new checkExecutor.NativeCheckTerminationUnconfirmedError();
+    const execute = vi
+      .spyOn(checkExecutor, 'executeNativeCheck')
+      .mockImplementation(async ({ onSpawn }) => {
+        await onSpawn?.({ pid: 2147483000, signal: new AbortController().signal });
+        throw failure;
+      });
+    await expect(executeNativeSupervisorChecks(options)).rejects.toBe(failure);
+    await expect(executeNativeSupervisorChecks(secondaryOptions)).rejects.toBe(failure);
+    const preserved = (await readNativeSupervisorState(paths, 'change'))!;
+    const execution = preserved.children[0].task!.checkExecution!;
+    expect(execution).toMatchObject({
+      status: 'running',
+      activeProcess: { status: 'running', checkId: 'slow', pid: 2147483000 },
+      checkStates: [{ id: 'slow', status: 'running', executionCount: 1 }],
+    });
+    await expect(
+      executeNativeSupervisorChecks({ ...options, retryCheckIds: ['slow'] }),
+    ).resolves.toMatchObject({ status: 'running', operationId: execution.operationId });
+
+    execution.ownerPid = 2147483001;
+    preserved.children[1].task!.checkExecution!.ownerPid = 2147483001;
+    await writeNativeSupervisorState(paths, preserved);
+    vi.spyOn(checkExecutor, 'inspectNativeCheckProcessTreeLiveness').mockResolvedValue('unknown');
+    await expect(executeNativeSupervisorChecks(options)).resolves.toMatchObject({
+      status: 'running',
+      operationId: execution.operationId,
+    });
+    expect(
+      (await readNativeSupervisorState(paths, 'change'))!.children[0].task!.checkExecution,
+    ).toEqual(execution);
+    expect(execute).toHaveBeenCalledTimes(2);
+
+    const target = (await inspectNativeCheckStopEvidenceTargets(paths, 'change')).find(
+      ({ child }) => child === 'core',
+    )!;
+    expect(target.canConfirm).toBe(true);
+    const proofFile = path.join(paths.workspaceRuntimeRoot, 'supervisor-stopped.json');
+    await fs.writeFile(
+      proofFile,
+      JSON.stringify([
+        {
+          ...target.confirmation,
+          evidence:
+            'Confirmed this original child check and all descendants stopped using the host process inventory.',
+        },
+      ]),
+    );
+    const command = () =>
+      nativeDoctorCommand(
+        ['change', '--repair', '--confirmed', '--stopped-actions', proofFile],
+        paths.projectRoot,
+      );
+    const originalWrite = atomicFile.atomicWriteJson;
+    const failApplied = vi
+      .spyOn(atomicFile, 'atomicWriteJson')
+      .mockImplementation(async (file, value, settings) => {
+        if (
+          (value as { schema?: string; applied?: boolean }).schema ===
+            'comet.native.check-stop-evidence.v1' &&
+          (value as { applied?: boolean }).applied
+        )
+          throw new Error('applied write failed');
+        return originalWrite(file, value, settings);
+      });
+    await expect(command()).rejects.toThrow('applied write failed');
+    failApplied.mockRestore();
+    const interrupted = (await readNativeSupervisorState(paths, 'change'))!;
+    expect(interrupted.stateVersion).toBe(preserved.stateVersion + 1);
+    expect(interrupted.children[0].task!.checkExecution).toMatchObject({
+      status: 'interrupted',
+      operationId: execution.operationId,
+      activeProcess: null,
+      checkStates: [{ id: 'slow', status: 'interrupted', executionCount: 1 }],
+    });
+    expect(interrupted.children[1].task!.checkExecution).toEqual(
+      preserved.children[1].task!.checkExecution,
+    );
+    await expect(command()).resolves.toMatchObject({
+      exitCode: 65,
+      data: {
+        healthy: false,
+        repaired: false,
+        stoppedChecks: { alreadyApplied: true },
+        findings: [{ code: 'supervisor-check-execution-stuck', child: 'auxiliary' }],
+      },
+    });
+    await expect(command()).resolves.toMatchObject({
+      exitCode: 65,
+      data: { healthy: false, repaired: false },
+    });
+    expect(await readNativeSupervisorState(paths, 'change')).toEqual(interrupted);
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
   it('does not start another check while the registered process outlives its recorded owner', async () => {
     const { paths, marker, release, options } = await setup();
     const running = executeNativeSupervisorChecks(options);

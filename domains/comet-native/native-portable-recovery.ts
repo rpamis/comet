@@ -250,11 +250,15 @@ export async function recoverNativePortableChange(options: {
           execution.stage === 'verifying' &&
           execution.actor === 'verifier' &&
           execution.executionId !== null;
+        const hasUnconfirmedCheck = inspected.local.checks.some(
+          (check) => check.status === 'running' || check.activeProcess != null,
+        );
         const mayRecoverUnknownRuntimeCheck =
           liveness === 'unknown' &&
           options.recoverUnknownRuntimeCheck === true &&
           execution.stage === 'checking' &&
-          execution.actor === 'runtime';
+          execution.actor === 'runtime' &&
+          !hasUnconfirmedCheck;
         if (
           externallyOwnedVerifier ||
           (liveness !== 'orphaned' && !mayRecoverUnknownRuntimeCheck)
@@ -269,7 +273,9 @@ export async function recoverNativePortableChange(options: {
                 ? `Native Verifier execution ${execution.executionId} is registered but never confirmed startup; if the task did not start, record an explicit Verifier failure before retrying it.`
                 : `Native Verifier execution ${execution.executionId} remains owned by its host task; record an explicit Verifier failure before retrying it.`
               : liveness === 'unknown'
-                ? 'The Native Runtime check owner could not be proven to have exited; inspect the overlay or run Doctor with --repair to take over explicitly.'
+                ? hasUnconfirmedCheck
+                  ? 'The Native Runtime check process tree could not be proven to have exited; its execution record must be preserved and Doctor --repair cannot safely retry it.'
+                  : 'The Native Runtime check owner could not be proven to have exited; inspect the overlay or run Doctor with --repair to take over explicitly.'
                 : 'The Native Runtime check operation is still owned by a live process; wait for it to finish before recovering it.',
           };
         }

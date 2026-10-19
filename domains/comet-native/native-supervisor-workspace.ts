@@ -11,13 +11,14 @@ import { resolvePortablePath } from '../../platform/paths/portable-path.js';
 import { runGitCommand } from '../../platform/process/git.js';
 import {
   processInstanceMayBeAlive,
-  inspectProcessTreeLiveness,
   readProcessIdentity,
 } from '../../platform/process/process-identity.js';
 import { atomicWriteJson } from './native-atomic-file.js';
 import { canonicalHash } from './native-canonical-hash.js';
 import {
   executeNativeCheck,
+  inspectNativeCheckProcessTreeLiveness,
+  isNativeCheckTerminationUnconfirmedError,
   preflightNativeCheckPlans,
   type NativeCheckPlan,
   type NativeExecutedCheck,
@@ -281,13 +282,13 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
         }
         if (
           previous.activeProcess &&
-          (await inspectProcessTreeLiveness(
+          (await inspectNativeCheckProcessTreeLiveness(
             previous.activeProcess.pid,
             previous.activeProcess.identity,
           )) !== 'dead'
         ) {
           throw new Error(
-            'Native Supervisor integration check process is still running after its owner stopped; wait for that process before retrying',
+            'Native Supervisor integration check process is still running or its process tree has not been confirmed stopped after its owner exited; inspect the original execution before retrying',
           );
         }
       }
@@ -700,6 +701,7 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
       },
     );
   } catch (error) {
+    if (isNativeCheckTerminationUnconfirmedError(error)) throw error;
     await withNativeMutationLock(
       options.paths,
       'interrupt Supervisor integration checks',

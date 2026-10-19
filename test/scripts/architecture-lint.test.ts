@@ -767,4 +767,44 @@ describe('architecture lint', () => {
       'domains/comet-classic/unreviewed.ts must not depend on restricted module domains/comet-classic/lock.ts',
     );
   });
+
+  it('registers the Native stop-evidence transaction without allowing unreviewed lock callers', async () => {
+    const repositoryLayout = JSON.parse(
+      await fs.readFile(path.resolve('config/repository-layout.json'), 'utf8'),
+    ) as DependencyTestLayout;
+    const target = 'domains/comet-native/native-mutation-lock.ts';
+    const importer = 'domains/comet-native/native-check-stop-evidence.ts';
+    const rule = repositoryLayout.dependencyRules.restrictedDependencies.find(
+      (entry) => entry.target === target,
+    );
+    expect(rule?.importers).toContain(importer);
+
+    const root = await makeMinimalRepository();
+    await writeFile(root, '.gitignore', '\n');
+    await writeFile(root, target, 'export const lock = true;\n');
+    const content = "import { lock } from './native-mutation-lock.js';\nexport { lock };\n";
+    await writeFile(root, importer, content);
+    const layoutPath = path.join(root, 'config/repository-layout.json');
+    const layout = JSON.parse(await fs.readFile(layoutPath, 'utf8')) as DependencyTestLayout;
+    layout.domainModules.push('comet-native');
+    layout.dependencyRules.restrictedDependencies = [
+      { ...rule!, importers: rule!.importers.filter((entry) => entry === importer) },
+    ];
+    await fs.writeFile(layoutPath, JSON.stringify(layout, null, 2));
+    const lint = () =>
+      spawnSync(process.execPath, [path.resolve('scripts/lint/architecture.mjs')], {
+        cwd: root,
+        encoding: 'utf8',
+      });
+    const approved = lint();
+    expect(approved.status, approved.stderr).toBe(0);
+
+    const unreviewed = 'domains/comet-native/native-unreviewed-stop.ts';
+    await writeFile(root, unreviewed, content);
+    const rejected = lint();
+    expect(rejected.status).toBe(1);
+    expect(rejected.stderr).toContain(
+      `${unreviewed} must not depend on restricted module ${target}`,
+    );
+  });
 });

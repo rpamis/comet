@@ -16,7 +16,9 @@ import {
   readEvalExecutionState,
   releaseEvalExecutionLock,
   writeEvalExecutionState,
+  recordEvalProcessTermination,
 } from './eval-run-cleanup.js';
+import type { OwnedProcessInstance } from '../../platform/process/owned-command.js';
 export { stopEvalContainers } from './eval-run-cleanup.js';
 import { hashEvalSkill, previewEvalRun } from './eval-run-preview.js';
 import type { ResolvedEvalContext } from './standalone-context.js';
@@ -146,6 +148,7 @@ export async function requestStopEvalRun(project: string, id: string): Promise<E
   if (
     terminal &&
     ['completed', 'stopped'].includes(String(execution?.status)) &&
+    (process.platform !== 'win32' || !record.child) &&
     (await assertEvalContainerOwnership(project, id).then(
       () => true,
       () => false,
@@ -168,19 +171,51 @@ export async function requestStopEvalRun(project: string, id: string): Promise<E
   if (['completed', 'stopped'].includes(stopping.status)) return readEvalRun(project, id);
   if (terminal || record.origin === 'cli' || (execution && execution.status !== 'running')) {
     try {
+      let ownerFailure: unknown;
       // 收尾已经开始时不能再终止调用方，它可能仍在保存报告或处理其他任务。
       if (
         (!execution || execution.status === 'running') &&
         record.owner &&
         !['completed', 'interrupted', 'stopped'].includes(record.status)
       ) {
-        if (
-          !(await terminateRegisteredProcessTree(record.owner)) &&
-          (await inspectProcessLiveness(record.owner.pid, record.owner.identity)) !== 'dead'
-        )
-          throw new EvalRunError('无法核对原执行进程身份，停止未完成', 409);
+        try {
+          const child = record.child;
+          // Creator/嵌入式调用不能杀掉当前宿主，只停止其已登记的执行树。
+          if (record.owner.pid === process.pid) {
+            if (!child || child.pid === process.pid)
+              throw new EvalRunError('缺少可停止的执行子进程登记，停止未完成', 409);
+            if (await terminateRegisteredProcessTree(child)) {
+              if (child.instanceId)
+                await recordEvalProcessTermination(
+                  project,
+                  id,
+                  child as OwnedProcessInstance,
+                  true,
+                );
+            }
+          } else {
+            const boundChild =
+              process.platform === 'win32' &&
+              child?.instanceId &&
+              child.ownerPid === record.owner.pid &&
+              (await inspectProcessLiveness(child.pid, child.identity)) === 'alive'
+                ? (child as OwnedProcessInstance)
+                : undefined;
+            const terminated = await terminateRegisteredProcessTree(record.owner);
+            if (terminated && boundChild)
+              await recordEvalProcessTermination(project, id, boundChild, true);
+            if (
+              !terminated &&
+              (await inspectProcessLiveness(record.owner.pid, record.owner.identity)) !== 'dead'
+            )
+              throw new EvalRunError('无法核对原执行进程身份，停止未完成', 409);
+          }
+        } catch (error) {
+          ownerFailure = error;
+        }
       }
       await cleanupEvalExecution(project, id);
+      if (ownerFailure) throw ownerFailure;
       await writeEvalExecutionState(project, id, { status: 'stopped' });
       await releaseEvalExecutionLock(project, id);
       await updateManagedEvalRun(project, id, (current) => {
@@ -285,7 +320,11 @@ export async function finishCliEvalTracking(
   let failure = error;
   let cleanupFailure: unknown;
   try {
-    if (!['completed', 'interrupted', 'stopped'].includes(String(execution?.status)))
+    const registered = process.platform === 'win32' ? await readManagedEvalRun(project, id) : null;
+    if (
+      registered?.child ||
+      !['completed', 'interrupted', 'stopped'].includes(String(execution?.status))
+    )
       await cleanupEvalExecution(project, id);
     const stopped = await readEvalJson(await evalRunPath(project, id, 'stop-request.json'));
     status =

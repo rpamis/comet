@@ -15,11 +15,36 @@ import {
 import {
   inspectProcessTreeLiveness,
   readProcessIdentity,
+  type ProcessLiveness,
 } from '../../platform/process/process-identity.js';
-import { spawnOwnedCommand } from '../../platform/process/owned-command.js';
-import { terminateProcessTree } from '../../platform/process/terminate-process-tree.js';
+import {
+  spawnOwnedCommand,
+  type OwnedProcessInstance,
+} from '../../platform/process/owned-command.js';
+import { terminateProcessTreeConfirmed } from '../../platform/process/terminate-process-tree.js';
 import { redactNativeCredentialText } from './native-redaction.js';
 import { observeRuntimeOperation } from '../../platform/process/runtime-performance.js';
+
+/** 不确定的停止不能当作普通失败清除登记或允许重试。 */
+export class NativeCheckTerminationUnconfirmedError extends Error {
+  constructor() {
+    super('检查进程树的停止尚未确认；保留原执行登记，不能验收或重试');
+    this.name = 'NativeCheckTerminationUnconfirmedError';
+  }
+}
+
+export function isNativeCheckTerminationUnconfirmedError(error: unknown): boolean {
+  return error instanceof NativeCheckTerminationUnconfirmedError;
+}
+
+/** Windows 的死亡组长不证明其后代停止；历史登记没有整树停止收据。 */
+export async function inspectNativeCheckProcessTreeLiveness(
+  pid: number,
+  identity?: string,
+): Promise<ProcessLiveness> {
+  const state = await inspectProcessTreeLiveness(pid, identity);
+  return process.platform === 'win32' && state === 'dead' ? 'unknown' : state;
+}
 
 export interface NativeCheckPlan {
   id: string;
@@ -198,7 +223,8 @@ async function executeNativeCheckOperation(options: {
   operationId: string;
   plan: NativeCheckPlan;
   now?: () => Date;
-  onSpawn?: (child: { pid: number; signal: AbortSignal }) => Promise<void>;
+  onSpawn?: (child: OwnedProcessInstance & { signal: AbortSignal }) => Promise<void>;
+  onTerminated?: (child: OwnedProcessInstance, confirmed: boolean) => Promise<void>;
 }): Promise<NativeExecutedCheck & { logSha256: string }> {
   const { plan } = options;
   safeSegment(options.operationId, 'Native check operation ID');
@@ -217,11 +243,13 @@ async function executeNativeCheckOperation(options: {
   return new Promise<NativeExecutedCheck & { logSha256: string }>((resolve, reject) => {
     let child;
     let start: () => void;
+    let instanceId: string;
     try {
-      ({ child, start } = spawnOwnedCommand(plan.executable, plan.argv, {
+      ({ child, start, instanceId } = spawnOwnedCommand(plan.executable, plan.argv, {
         cwd,
         env: process.env,
         timeoutMs: plan.timeoutMs,
+        confirmTermination: true,
       }));
     } catch (error) {
       stream.destroy();
@@ -233,10 +261,36 @@ async function executeNativeCheckOperation(options: {
     let supervisorInterrupted = false;
     let supervisorResult: { exitCode: number | null; signal: NodeJS.Signals | null } | null = null;
     let childIdentity: string | undefined;
+    let instance: OwnedProcessInstance | undefined;
+    let termination: Promise<boolean> | undefined;
+    const stop = () => {
+      termination ??= terminateProcessTreeConfirmed(child)
+        .catch(() => {
+          try {
+            child.kill('SIGKILL');
+          } catch {
+            /* 保留无法确认的停止状态。 */
+          }
+          return false;
+        })
+        .then((confirmed) => {
+          if (!confirmed) {
+            // 兜底 kill 可能没有 close 事件；停止无法证明时不能永远等待继承的句柄。
+            void registration.then(() => {
+              clearTimeout(timer);
+              stream.destroy();
+              reject(new NativeCheckTerminationUnconfirmedError());
+            });
+          }
+          return confirmed;
+        });
+      return termination;
+    };
     let spawnError: Error | null = null;
     let registrationError: unknown = null;
     let registration = Promise.resolve();
     let registrationSettled = false;
+    let commandStarted = false;
     const registrationController = new AbortController();
     let cancelRegistration: ((error: Error) => void) | undefined;
     const registrationDeadline = new Promise<never>((_resolve, rejectDeadline) => {
@@ -249,7 +303,7 @@ async function executeNativeCheckOperation(options: {
       if (!registrationSettled) registrationController.abort();
       if (!registrationSettled)
         cancelRegistration?.(new Error('检查进程登记超过执行时限；未放行的命令不会启动'));
-      void terminateProcessTree(child).catch(() => child.kill('SIGKILL'));
+      void stop();
     }, plan.timeoutMs);
     timer.unref?.();
 
@@ -274,6 +328,18 @@ async function executeNativeCheckOperation(options: {
           stream.write(text);
           logHash.update(text);
         }
+        if (
+          commandStarted &&
+          ['completed', 'interrupted', 'spawn-error'].includes(message.type ?? '')
+        )
+          clearTimeout(timer);
+        // Windows 的 opt-in 监管器等 owner 执行 taskkill /T，再退出。
+        // POSIX 监管器自行终止进程组，close 后仍核验整个进程组。
+        if (
+          process.platform === 'win32' &&
+          ['completed', 'interrupted', 'spawn-error'].includes(message.type ?? '')
+        )
+          void stop();
       },
     );
     child.stdout.pipe(stream, { end: false });
@@ -288,6 +354,15 @@ async function executeNativeCheckOperation(options: {
       stream.write(message);
       logHash.update(message);
     });
+    const processStopped = async () => {
+      const stopped = termination ? await termination : false;
+      return (
+        !child.pid ||
+        (process.platform === 'win32'
+          ? stopped
+          : (await inspectProcessTreeLiveness(child.pid, childIdentity)) === 'dead')
+      );
+    };
     child.once('close', (exitCode, signal) => {
       closed = true;
       if (registrationSettled) clearTimeout(timer);
@@ -299,13 +374,12 @@ async function executeNativeCheckOperation(options: {
             exitCode = supervisorResult.exitCode;
             signal = supervisorResult.signal;
           }
-          if (
-            child.pid &&
-            (await inspectProcessTreeLiveness(child.pid, childIdentity)) !== 'dead'
-          ) {
-            registrationError ??= new Error(
-              '检查监管进程已退出，但无法确认原进程组停止；保留 unknown，不能重新执行',
-            );
+          const confirmed = await processStopped();
+          if (instance) await options.onTerminated?.(instance, confirmed);
+          if (!confirmed) {
+            stream.destroy();
+            reject(new NativeCheckTerminationUnconfirmedError());
+            return;
           }
           if (registrationError !== null) {
             stream.destroy();
@@ -333,7 +407,10 @@ async function executeNativeCheckOperation(options: {
             });
           });
         })
-        .catch(reject);
+        .catch((error) => {
+          stream.destroy();
+          reject(error);
+        });
     });
     stream.once('error', (error) => {
       registrationError ??= error;
@@ -341,8 +418,18 @@ async function executeNativeCheckOperation(options: {
         registrationController.abort();
         cancelRegistration?.(error);
       }
-      if (closed) void registration.then(() => reject(registrationError));
-      else void terminateProcessTree(child).catch(() => child.kill('SIGKILL'));
+      if (closed) {
+        // close 可能早于 taskkill 的结果；日志错误不能抢先清除尚未确认停止的登记。
+        void registration
+          .then(async () => {
+            reject(
+              (await processStopped())
+                ? registrationError
+                : new NativeCheckTerminationUnconfirmedError(),
+            );
+          })
+          .catch(reject);
+      } else void stop();
       // The close listener rejects only once the process is gone and any pending
       // registration has settled, even though this log stream is already destroyed.
     });
@@ -354,17 +441,25 @@ async function executeNativeCheckOperation(options: {
         Promise.resolve().then(async () => {
           childIdentity = (await readProcessIdentity(pid)) ?? undefined;
           registrationController.signal.throwIfAborted();
-          await options.onSpawn?.({ pid, signal: registrationController.signal });
+          instance = {
+            pid,
+            ...(childIdentity === undefined ? {} : { identity: childIdentity }),
+            instanceId,
+            ownerPid: process.pid,
+          };
+          await options.onSpawn?.({ ...instance, signal: registrationController.signal });
         }),
         registrationDeadline,
       ])
         .then(() => {
-          if (!closed && registrationError === null) start();
+          if (!closed && registrationError === null) {
+            commandStarted = true;
+            start();
+          }
         })
         .catch(async (error) => {
           registrationError = error;
-          if (child.exitCode === null && child.signalCode === null)
-            await terminateProcessTree(child).catch(() => child.kill('SIGKILL'));
+          if (child.exitCode === null && child.signalCode === null) await stop();
         })
         .finally(() => {
           registrationSettled = true;

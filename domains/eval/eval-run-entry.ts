@@ -7,7 +7,7 @@ import {
   inspectProcessTreeLiveness,
   readProcessIdentity,
 } from '../../platform/process/process-identity.js';
-import { terminateProcessTree } from '../../platform/process/terminate-process-tree.js';
+import { terminateProcessTreeConfirmed } from '../../platform/process/terminate-process-tree.js';
 import type { ExternalCommandOptions } from '../../platform/process/external-command.js';
 import { loadUserEvalEnvironment } from './user-environment.js';
 import { runWorkflowApplicationEval } from './application-eval.js';
@@ -20,6 +20,7 @@ import {
   registerEvalContainerOwnership,
   evalProjectIdentity,
   writeEvalExecutionState,
+  recordEvalProcessTermination,
 } from './eval-run-cleanup.js';
 import type { EvalManagedRun } from './eval-run-types.js';
 
@@ -138,6 +139,7 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
       cwd: options.cwd ?? project,
       env: options.env ?? process.env,
       timeoutMs: options.timeoutMs ?? (original.config.timeoutSeconds ?? 600) * 1000,
+      confirmTermination: true,
     });
     executionStarted = true;
     let childClosed = false;
@@ -148,8 +150,14 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
       }),
     );
     const identity = await readProcessIdentity(owned.child.pid!);
+    const instance = {
+      pid: owned.child.pid!,
+      instanceId: owned.instanceId,
+      ownerPid: process.pid,
+      ...(identity ? { identity } : {}),
+    };
     await updateManagedEvalRun(project, id, (current) => {
-      current.child = { pid: owned.child.pid!, ...(identity ? { identity } : {}) };
+      current.child = instance;
     });
     let stdout = '';
     let stdoutLine = '';
@@ -175,12 +183,21 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
     owned.child.stdout.on('data', (chunk: Buffer) => consume(chunk, false));
     owned.child.stderr.on('data', (chunk: Buffer) => consume(chunk, true));
     let rejectExecution: ((error: Error) => void) | undefined;
-    let termination: Promise<void> | null = null;
+    let termination: Promise<boolean> | null = null;
+    const terminate = () =>
+      (termination ??= terminateProcessTreeConfirmed(owned.child)
+        .catch((error) => {
+          queueLog(`停止进程：${error.message}\n`);
+          return false;
+        })
+        .then(async (confirmed) => {
+          await recordEvalProcessTermination(project, id, instance, confirmed);
+          return confirmed;
+        }));
     const abort = () => {
       if (childClosed) return;
-      if (owned.child.connected) owned.child.disconnect();
-      termination = terminateProcessTree(owned.child)
-        .catch((error) => queueLog(`停止进程：${error.message}\n`))
+      void terminate()
+        .catch((error) => queueLog(`停止进程登记：${error.message}\n`))
         .finally(() => {
           owned.child.stdout.destroy();
           owned.child.stderr.destroy();
@@ -217,9 +234,10 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
       await result;
     } finally {
       controller.signal.removeEventListener('abort', abort);
-      if (controller.signal.aborted) {
-        if (termination) await termination;
-        let dead = false;
+      const confirmed = await terminate();
+      let dead = false;
+      if (confirmed) {
+        await closed;
         for (let attempt = 0; attempt < 20; attempt++) {
           if (
             (await inspectProcessTreeLiveness(owned.child.pid!, identity ?? undefined)) === 'dead'
@@ -229,9 +247,14 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
           }
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
-        processesStopped = dead;
-        if (!dead) queueLog('执行进程尚未确认停止，请重新核对。\n');
-      } else await closed;
+      } else {
+        owned.child.stdout.destroy();
+        owned.child.stderr.destroy();
+        if (owned.child.connected) owned.child.disconnect();
+        owned.child.unref();
+      }
+      processesStopped = confirmed && dead;
+      if (!processesStopped) queueLog('执行进程树尚未确认停止，请重新核对。\n');
       queueLog(stdoutLine + stdoutDecoder.end() + stderrLine + stderrDecoder.end());
       await outputPending;
     }

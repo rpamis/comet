@@ -137,7 +137,12 @@ jobs:
         run: >-
           pnpm exec vitest run
           test/platform/process/process-identity.test.ts
+          test/platform/process/owned-command-termination.test.ts
           test/domains/comet-native/native-check-registration.test.ts
+          test/domains/comet-native/native-check-executor.test.ts
+          test/domains/comet-native/native-check-executor-termination.test.ts
+          test/domains/comet-native/native-portable-check-termination.test.ts
+          test/domains/comet-native/native-sdk-check-termination.test.ts
           test/domains/comet-native/native-supervisor-check-process.test.ts
           test/domains/comet-native/native-supervisor-integration-execution.test.ts
           test/domains/comet-native/native-supervisor-legacy-diagnostics.test.ts
@@ -146,6 +151,7 @@ jobs:
         run: >-
           pnpm exec vitest run
           test/domains/eval/eval-container-cleanup.test.ts
+          test/domains/eval/eval-process-cleanup-proof.test.ts
           test/app/eval-run-lifecycle.test.ts
           --maxWorkers=1
       - name: Verify Eval cancellation against real Docker containers
@@ -330,7 +336,7 @@ jobs:
   sdk-contracts:
     name: SDK contracts (${{ matrix.os }}, Node ${{ matrix.node }}${{ matrix.shards > 1 && format(', shard {0}/{1}', matrix.shard, matrix.shards) || '' }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 40
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 50 || 40 }}
     strategy:
       fail-fast: false
       matrix:

@@ -3,7 +3,13 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as checkExecutor from '../../../domains/comet-native/native-check-executor.js';
+import * as atomicFile from '../../../domains/comet-native/native-atomic-file.js';
+import {
+  inspectNativeCheckStopEvidenceTargets,
+  recoverNativeChecksWithStopEvidence,
+} from '../../../domains/comet-native/native-check-stop-evidence.js';
 
 import {
   defaultProjectConfig,
@@ -25,6 +31,7 @@ import {
   integrateNativeSupervisorChildWorkspace,
   nativeSupervisorStateFile,
   readNativeSupervisorState,
+  writeNativeSupervisorState,
 } from '../../../domains/comet-native/native-supervisor.js';
 import { applyNativeRunnerInput } from '../../../domains/comet-native/native-runner-input.js';
 import { executeNativeSupervisorChecks } from '../../../domains/comet-native/native-supervisor-evidence.js';
@@ -32,6 +39,7 @@ import { confirmNativePortableShape } from '../../helpers/native-portable-confir
 
 const roots: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
 });
 const plan = (id: string, code = 'process.exit(0)', args: string[] = []) => ({
@@ -127,6 +135,102 @@ async function verifiedSupervisor() {
 }
 
 describe('Supervisor integration check execution', () => {
+  it('preserves unconfirmed process termination and blocks owner-dead recovery', async () => {
+    const { paths, state } = await verifiedSupervisor();
+    const failure = new checkExecutor.NativeCheckTerminationUnconfirmedError();
+    const originalExecute = checkExecutor.executeNativeCheck;
+    const execute = vi
+      .spyOn(checkExecutor, 'executeNativeCheck')
+      .mockImplementation(async (options) => {
+        if (options.plan.id === 'passed') return originalExecute(options);
+        await options.onSpawn?.({ pid: 2147483000, signal: new AbortController().signal });
+        throw failure;
+      });
+    const options = {
+      paths,
+      state,
+      name: 'core',
+      checks: [],
+      checkPlans: [plan('passed'), plan('pending')],
+    };
+    await expect(integrateNativeSupervisorChildWorkspace(options)).rejects.toBe(failure);
+    const preserved = (await readNativeSupervisorState(paths, 'parent'))!;
+    const execution = preserved.integration.checkExecution!;
+    expect(execution).toMatchObject({
+      status: 'running',
+      activeProcess: { status: 'running', checkId: 'pending', pid: 2147483000 },
+      checkStates: [
+        { id: 'passed', status: 'passed', executionCount: 1 },
+        { id: 'pending', status: 'running', executionCount: 1 },
+      ],
+    });
+    await expect(
+      integrateNativeSupervisorChildWorkspace({
+        ...options,
+        state: preserved,
+        retryCheckIds: ['pending'],
+      }),
+    ).rejects.toThrow('already running');
+
+    execution.ownerPid = 2147483001;
+    await writeNativeSupervisorState(paths, preserved);
+    vi.spyOn(checkExecutor, 'inspectNativeCheckProcessTreeLiveness').mockResolvedValue('unknown');
+    await expect(
+      integrateNativeSupervisorChildWorkspace({ ...options, state: preserved }),
+    ).rejects.toThrow('check process is still running');
+    expect((await readNativeSupervisorState(paths, 'parent'))!.integration.checkExecution).toEqual(
+      execution,
+    );
+    expect(execute).toHaveBeenCalledTimes(2);
+    const target = (await inspectNativeCheckStopEvidenceTargets(paths, 'parent')).find(
+      ({ kind }) => kind === 'supervisor-integration-checks',
+    )!;
+    expect(target.canConfirm).toBe(true);
+    const confirmation = {
+      ...target.confirmation,
+      evidence:
+        'Confirmed the integration check and all descendants stopped using the host process inventory.',
+    };
+    const recover = (confirmations: unknown = [confirmation]) =>
+      recoverNativeChecksWithStopEvidence({ paths, name: 'parent', confirmations });
+    await expect(recover([{ ...confirmation, executionHash: '0'.repeat(64) }])).rejects.toThrow(
+      '快照已变化',
+    );
+    expect(await readNativeSupervisorState(paths, 'parent')).toEqual(preserved);
+    const originalWrite = atomicFile.atomicWriteJson;
+    const failApplied = vi
+      .spyOn(atomicFile, 'atomicWriteJson')
+      .mockImplementation(async (file, value, settings) => {
+        if (
+          (value as { schema?: string; applied?: boolean }).schema ===
+            'comet.native.check-stop-evidence.v1' &&
+          (value as { applied?: boolean }).applied
+        )
+          throw new Error('applied write failed');
+        return originalWrite(file, value, settings);
+      });
+    await expect(recover()).rejects.toThrow('applied write failed');
+    failApplied.mockRestore();
+    const recovered = (await readNativeSupervisorState(paths, 'parent'))!;
+    expect(recovered.stateVersion).toBe(preserved.stateVersion + 1);
+    expect(recovered.integration.checkExecution).toMatchObject({
+      status: 'interrupted',
+      operationId: execution.operationId,
+      activeProcess: null,
+      checkStates: [
+        { id: 'passed', status: 'passed', executionCount: 1 },
+        { id: 'pending', status: 'interrupted', executionCount: 1 },
+      ],
+    });
+    expect(recovered.integration.checkExecution!.checkStates![0]).toEqual(
+      execution.checkStates![0],
+    );
+    await expect(recover()).resolves.toMatchObject({ alreadyApplied: true });
+    await expect(recover()).resolves.toMatchObject({ alreadyApplied: true });
+    expect(await readNativeSupervisorState(paths, 'parent')).toEqual(recovered);
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
   it('reserves the integration worktree before running checks with competing plans', async () => {
     const { root, paths, state } = await verifiedSupervisor();
     const marker = path.join(resolveWorkspaceRuntimeRootSync(root), 'integration-started');

@@ -361,6 +361,7 @@ describe('Native check owner recovery', () => {
     await registration.save();
     const [status] = await inspectNativeSdkCheckExecutions({ projectRoot: directory, run });
     expect(status.process).toBe('dead');
-    expect(status.quiescent).toBe(true);
+    // PID 身份已不匹配只证明原组长消失；Windows 旧登记仍缺整树停止收据。
+    expect(status.quiescent).toBe(process.platform !== 'win32');
   });
 });
