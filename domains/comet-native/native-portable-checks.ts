@@ -1,4 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
+import {
+  nativeLegacyArchiveGitStatus,
+  type NativeLegacyArchiveOverlay,
+} from './native-archive-legacy-overlay.js';
 import { promises as fs } from 'node:fs';
 import {
   activeNativeVerifierAction,
@@ -847,6 +851,10 @@ interface NativeCheckInputGateOptions {
   managedArtifactRoot?: string;
   editReviewScope?: EditReviewScope;
   legacyExecutionBinding?: boolean;
+  /** 仅供 Archive 排除另外绑定的事务写入和迁移材料。 */
+  archiveOwnedPaths?: readonly string[];
+  /** 仅重建原 Archive 事务写入前的候选；调用方仍须匹配旧摘要。 */
+  legacyArchiveOverlay?: NativeLegacyArchiveOverlay;
 }
 
 async function readNativeCheckInputObservation(options: NativeCheckInputGateOptions) {
@@ -854,11 +862,19 @@ async function readNativeCheckInputObservation(options: NativeCheckInputGateOpti
     const runnerInputs = await nativeRunnerInputArtifactPaths(options.projectRoot);
     const exclusions = [
       ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+      ...(options.archiveOwnedPaths ?? []).map((ref) => `:(exclude,literal)${ref}`),
       ...[...runnerInputs].map((relative) => `:(exclude,literal)${relative}`),
     ];
     const head = runGitCommand(options.projectRoot, ['rev-parse', 'HEAD']);
     const branch = runGitCommand(options.projectRoot, ['branch', '--show-current']);
-    const status = readGitStatusPorcelain(options.projectRoot, exclusions);
+    const actualStatus = readGitStatusPorcelain(options.projectRoot, exclusions);
+    const status = options.legacyArchiveOverlay
+      ? nativeLegacyArchiveGitStatus(
+          options.projectRoot,
+          actualStatus,
+          options.legacyArchiveOverlay,
+        )
+      : actualStatus;
     const staged = runGitCommand(options.projectRoot, [
       'ls-files',
       '--stage',
@@ -876,7 +892,11 @@ async function readNativeCheckInputObservation(options: NativeCheckInputGateOpti
       const target = path.resolve(options.projectRoot, ...changedPath.split('/'));
       let digest: string | null = null;
       try {
-        digest = (await digestNativeInputFileContent(target)).digest;
+        const virtual = options.legacyArchiveOverlay?.get(changedPath);
+        if (virtual?.text === null) return null;
+        digest = virtual
+          ? digestNativeCheckInput((virtual.bytes ?? Buffer.from(virtual.text!)).toString('base64'))
+          : (await digestNativeInputFileContent(target)).digest;
       } catch {
         // A dirty submodule is a directory. Its porcelain entry alone cannot
         // distinguish two different dirty contents, so disable the fast gate
@@ -953,6 +973,32 @@ async function nativeCandidateCommentGate(
         runnerInputs,
       );
       if (!physical.complete) return null;
+      if (options.legacyArchiveOverlay) {
+        const files = new Map(physical.files.map((file) => [file.path, file]));
+        for (const [ref, original] of options.legacyArchiveOverlay) {
+          if (original.text === null) files.delete(ref);
+          else if (
+            (options.plans?.length ? options.plans.map(({ cwdRef }) => cwdRef) : ['.']).some(
+              (cwd) => cwd === '.' || ref === cwd || ref.startsWith(`${cwd}/`),
+            ) &&
+            !ref
+              .split('/')
+              .slice(0, -1)
+              .some((part) => NATIVE_PHYSICAL_INPUT_EXCLUDED_DIRECTORIES.has(part)) &&
+            !isNativeRuntimeInputPath(ref, options.projectRoot, options.managedArtifactRoot)
+          )
+            files.set(ref, {
+              path: ref,
+              digest: digestNativeCheckInput(
+                (original.bytes ?? Buffer.from(original.text)).toString('base64'),
+              ),
+              size: original.bytes?.length ?? Buffer.byteLength(original.text),
+            });
+        }
+        physical.files = [...files.values()].sort((left, right) =>
+          left.path.localeCompare(right.path, 'en'),
+        );
+      }
       observation = {
         runnerInputs,
         binding: {
@@ -961,7 +1007,14 @@ async function nativeCandidateCommentGate(
           branch: '',
           status: '',
           staged: '',
-          workingTree: physical.files.map(({ path, digest }) => ({ path, digest })),
+          workingTree: physical.files
+            .filter(
+              ({ path: ref }) =>
+                !(options.archiveOwnedPaths ?? []).some(
+                  (owned) => ref === owned || ref.startsWith(`${owned}/`),
+                ),
+            )
+            .map(({ path, digest }) => ({ path, digest })),
           projectRoot: path.resolve(options.projectRoot),
           machineId: os.hostname(),
           execPath: process.execPath,
@@ -1021,10 +1074,16 @@ async function nativeCandidateCommentGate(
         continue;
       }
       try {
-        const source = await readNativeBoundedTextFile({
-          root: options.projectRoot,
-          ref: entry.path,
-        });
+        const virtual = options.legacyArchiveOverlay?.get(entry.path);
+        if (virtual?.bytes && !Buffer.from(virtual.text ?? '').equals(virtual.bytes))
+          throw new Error('旧 Archive 二进制材料沿用原始字节摘要');
+        const source =
+          virtual?.text != null
+            ? { text: virtual.text }
+            : await readNativeBoundedTextFile({
+                root: options.projectRoot,
+                ref: entry.path,
+              });
         if (digestNativeCheckInput(Buffer.from(source.text).toString('base64')) !== entry.digest)
           return null;
         const reviewed = options.editReviewScope
@@ -1038,7 +1097,8 @@ async function nativeCandidateCommentGate(
         }
         const indexed = index.get(entry.path);
         if (indexed) {
-          const mode = (await fs.lstat(path.resolve(options.projectRoot, entry.path))).mode;
+          const mode =
+            virtual?.mode ?? (await fs.lstat(path.resolve(options.projectRoot, entry.path))).mode;
           // chmod、重命名和删除仍需新候选，不能被注释判定掩盖。
           const modeMatches =
             process.platform === 'win32' || Boolean(mode & 0o111) === (indexed.mode === '100755');
@@ -1057,7 +1117,8 @@ async function nativeCandidateCommentGate(
             continue;
           }
         }
-        const mode = (await fs.lstat(path.resolve(options.projectRoot, entry.path))).mode;
+        const mode =
+          virtual?.mode ?? (await fs.lstat(path.resolve(options.projectRoot, entry.path))).mode;
         workingTree.push({
           path: entry.path,
           digest:

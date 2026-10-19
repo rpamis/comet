@@ -1,3 +1,4 @@
+import { canReopenClassicVerification } from './classic-sdk-revision-application.js';
 import type { WorkflowRun } from '../engine/runtime.js';
 import {
   assertClassicSdkDesignRequirementsCurrent,
@@ -101,6 +102,30 @@ export async function inspectClassicSdkRevisionReadiness(projectRoot: string, ru
       }
     }
   }
+  const reverify = (message: string) => {
+    if (!canReopenClassicVerification(run)) {
+      problems.push({
+        code: 'CLASSIC_EVIDENCE_DRIFT',
+        message,
+        remediation: 'Reconcile the unresolved work before replacing accepted Verify evidence',
+        commandArgs: ['comet', 'state', 'next', change],
+      });
+      return;
+    }
+    problems.push({
+      code: 'CLASSIC_EVIDENCE_DRIFT',
+      message,
+      remediation: `Run comet state reopen-verification ${change} --expected-revision ${revision}, then verify the current inputs and obtain a new Archive approval`,
+      commandArgs: [
+        'comet',
+        'state',
+        'reopen-verification',
+        change,
+        '--expected-revision',
+        String(revision),
+      ],
+    });
+  };
   if (state.phase === 'verify' && state.verificationReport) {
     const step = `${state.workflow}.verify.run`;
     const action = run.actions
@@ -128,12 +153,7 @@ export async function inspectClassicSdkRevisionReadiness(projectRoot: string, ru
         if (expected.ref !== current.ref || expected.contentHash !== current.contentHash)
           throw new Error('Classic Verify report changed within the accepted verification round');
       } catch (error) {
-        problems.push({
-          code: 'CLASSIC_EVIDENCE_DRIFT',
-          message: error instanceof Error ? error.message : String(error),
-          remediation: `Restore ${expected.ref} to the report accepted in this round (SHA256 ${expected.contentHash}), then resume the pending check`,
-          commandArgs: ['comet', 'state', 'next', change],
-        });
+        reverify(error instanceof Error ? error.message : String(error));
       }
     }
   }

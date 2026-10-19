@@ -42,7 +42,9 @@ export async function listWorkflowApplicationRunSources(
       ).exists
     )
       continue;
-    for (const entry of await fs.readdir(target, { withFileTypes: true })) {
+    for (const entry of (await fs.readdir(target, { withFileTypes: true })).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    )) {
       if (options.excludeApplications?.includes(entry.name)) continue;
       const applicationId = entry.name;
       if (
@@ -110,6 +112,7 @@ export async function listWorkflowApplicationRunRecords(
       applicationId: string;
       storageKey: string;
       runId: string | null;
+      record?: ApplicationRunRecord | null;
       error: WorkflowApplicationRunObservation['error'];
     }
   >();
@@ -122,7 +125,9 @@ export async function listWorkflowApplicationRunRecords(
       { label: '应用 Runtime 观测', expected: 'directory' },
     );
     if (!inspection.exists) continue;
-    for (const entry of await fs.readdir(target, { withFileTypes: true })) {
+    for (const entry of (await fs.readdir(target, { withFileTypes: true })).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    )) {
       const applicationId = entry.name;
       if (
         !/^[a-z][a-z\d]*(?:[.-][a-z\d]+)*$/u.test(applicationId) ||
@@ -148,7 +153,13 @@ export async function listWorkflowApplicationRunRecords(
             applicationId,
             storageKey: item.storageKey,
             runId: item.runId,
-            error: previous?.error ?? item.error,
+            record: item.record,
+            error: previous
+              ? {
+                  code: 'APPLICATION_UNREADABLE',
+                  message: '新旧应用 Runtime 同时存在，拒绝选择写入权威',
+                }
+              : item.error,
           });
         }
       } catch (error) {
@@ -164,37 +175,37 @@ export async function listWorkflowApplicationRunRecords(
       }
     }
   }
-  return Promise.all(
-    [...discovered.values()].map(async (item) => {
-      if (!item.runId || item.error) return { ...item, record: null };
-      try {
-        const record = await readWorkflowApplicationRunRecord(
-          projectRoot,
-          item.applicationId,
-          item.runId,
-        );
-        if (!record) throw new Error('应用 Run 已消失，请重新读取列表');
-        record.run = parseWorkflowRun(record.run, item.runId);
-        const root = await fs.realpath(projectRoot);
-        if (
-          path.resolve(record.application.projectRoot) !== root ||
-          !record.application.version ||
-          !/^[a-f0-9]{64}$/u.test(record.application.contentHash)
-        )
-          throw new Error('应用固定身份与当前工作区不匹配');
-        return { ...item, record };
-      } catch (error) {
-        return {
-          ...item,
-          record: null,
-          error: {
-            code: 'APPLICATION_UNREADABLE',
-            message: error instanceof Error ? error.message : String(error),
-          },
-        };
-      }
-    }),
-  );
+  const root = await fs.realpath(projectRoot);
+  return [...discovered.values()].map((item) => {
+    if (!item.runId || item.error) return { ...item, record: null };
+    try {
+      const record = item.record;
+      if (!record) throw new Error('应用 Run 已消失，请重新读取列表');
+      if (
+        record.application.id !== item.applicationId ||
+        record.runId !== record.run.runId ||
+        record.revision !== record.run.revision
+      )
+        throw new Error('应用归属与 SDK Run 不一致');
+      record.run = parseWorkflowRun(record.run, item.runId);
+      if (
+        path.resolve(record.application.projectRoot) !== root ||
+        !record.application.version ||
+        !/^[a-f0-9]{64}$/u.test(record.application.contentHash)
+      )
+        throw new Error('应用固定身份与当前工作区不匹配');
+      return { ...item, record };
+    } catch (error) {
+      return {
+        ...item,
+        record: null,
+        error: {
+          code: 'APPLICATION_UNREADABLE',
+          message: error instanceof Error ? error.message : String(error),
+        },
+      };
+    }
+  });
 }
 
 /** 校验当前包与固定身份；只读取字节和 Skill 契约，不 import 应用实现。 */

@@ -1,3 +1,7 @@
+import {
+  nativeSdkArchivePreflightValidator,
+  nativeSdkArchiveApplyValidator,
+} from './native-sdk-archive.js';
 import { nativeSdkReportRevalidationValidator } from './native-sdk-report.js';
 import path from 'node:path';
 import { memoizedHookReadSync } from '../../platform/process/hook-read-cache.js';
@@ -284,7 +288,9 @@ export async function inspectNativeSdkDefinitionUpgrade(
         recoverableFailureSteps.includes(action.stepId) &&
         (!action.stepId.startsWith('supervisor.') || currentChildren.has(action.id)) &&
         !advanced(action) &&
-        (action.stepId === 'supervisor.child.verifier' ||
+        ((['archive.prepare', 'archive.execute'].includes(action.stepId) &&
+          (action.outcome?.output as { reason?: string })?.reason === 'candidate-drift') ||
+          action.stepId === 'supervisor.child.verifier' ||
           action.stepId === 'verify.checks' ||
           action.stepId === 'verify.revalidate' ||
           Boolean(
@@ -299,9 +305,13 @@ export async function inspectNativeSdkDefinitionUpgrade(
         await validateNativeSdkFailedChildVerifier(run, failure, projectRoot);
       } else {
         const validation = await (
-          failure.stepId === 'verify.revalidate'
-            ? nativeSdkReportRevalidationValidator
-            : nativeSdkCheckValidator
+          failure.stepId === 'archive.execute'
+            ? nativeSdkArchiveApplyValidator
+            : failure.stepId === 'archive.prepare'
+              ? nativeSdkArchivePreflightValidator
+              : failure.stepId === 'verify.revalidate'
+                ? nativeSdkReportRevalidationValidator
+                : nativeSdkCheckValidator
         ).validate({
           run,
           action: failure,
@@ -318,8 +328,9 @@ export async function inspectNativeSdkDefinitionUpgrade(
       const targetSteps = recovered.next.map((target) =>
         typeof target === 'string' ? target : target.stepId,
       );
-      const allowed =
-        failure.stepId === 'verify.revalidate'
+      const allowed = ['archive.prepare', 'archive.execute'].includes(failure.stepId)
+        ? ['verify.stop']
+        : failure.stepId === 'verify.revalidate'
           ? ['verify.checks', 'verify.stop']
           : failure.stepId === 'supervisor.child.verifier'
             ? ['supervisor.child.verifier-retry']

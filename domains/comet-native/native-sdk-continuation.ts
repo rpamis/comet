@@ -21,6 +21,7 @@ import { inspectNativeSdkCheckExecutions } from './native-sdk-check-execution.js
 import {
   NATIVE_SDK_ARCHIVE_STEPS,
   nativeSdkRetryableArchivePreflight,
+  nativeSdkRetryableArchiveFinalization,
 } from './native-sdk-archive.js';
 import { collectNativeSdkShapeProposal } from './native-sdk-application.js';
 import { nativeProjectPaths } from './native-paths.js';
@@ -611,28 +612,35 @@ export async function projectNativeSdkContinuation(options: {
   if (run.status === 'failed') {
     const recoverable = nativeSdkRecoverableFailureReason(run.reason);
     const retryPreflight = nativeSdkRetryableArchivePreflight(run);
+    const retryFinalization = nativeSdkRetryableArchiveFinalization(run);
     return {
       continuation: bindSdkContinuation(
         {
           ...base,
           disposition: 'blocked' as const,
           mode: 'reconcile',
-          commandArgs: retryPreflight
-            ? ['comet', 'native', 'archive', state.name]
-            : recoverable
-              ? ['comet', 'native', 'doctor', state.name, '--repair']
-              : ['comet', 'native', 'doctor', state.name],
+          commandArgs:
+            retryPreflight || retryFinalization
+              ? ['comet', 'native', 'archive', state.name]
+              : recoverable
+                ? ['comet', 'native', 'doctor', state.name, '--repair']
+                : ['comet', 'native', 'doctor', state.name],
           requiredInputs: [],
           userCommunication: communication(
-            retryPreflight
+            retryFinalization
               ? localized(
-                  'Archive preflight found blockers without changing the confirmed report. Resolve its blockers, then rerun archive to retry the read-only inspection. Existing receipts and approval remain bound to this candidate.',
-                  'Archive 预检发现阻塞，未改写已确认报告。消除阻塞后重新执行 archive，只重试只读检查；原收据和审批仍绑定同一候选。',
+                  'Archive finalization stopped before writing because the confirmed candidate changed. Restore the confirmed implementation and materials, then run archive to continue the existing Spec transaction.',
+                  '归档收尾在写入前发现候选漂移并停止。恢复已确认的实现和材料后，执行 archive 继续原 Spec 事务。',
                 )
-              : localized(
-                  'The Run stopped. Inspect it with doctor and preserve the original failed receipts; do not claim pending work, retry an executed failure, or report that it never ran.',
-                  'Run 已停止。请使用 doctor 核对并保留原失败收据；不能领取遗留待执行工作、重跑已执行失败的旧 Action，或声称它未执行。',
-                ),
+              : retryPreflight
+                ? localized(
+                    'Archive preflight found blockers without changing the confirmed report. Resolve its blockers, then rerun archive to retry the read-only inspection. Existing receipts and approval remain bound to this candidate.',
+                    'Archive 预检发现阻塞，未改写已确认报告。消除阻塞后重新执行 archive，只重试只读检查；原收据和审批仍绑定同一候选。',
+                  )
+                : localized(
+                    'The Run stopped. Inspect it with doctor and preserve the original failed receipts; do not claim pending work, retry an executed failure, or report that it never ran.',
+                    'Run 已停止。请使用 doctor 核对并保留原失败收据；不能领取遗留待执行工作、重跑已执行失败的旧 Action，或声称它未执行。',
+                  ),
           ),
         },
         projectRoot,

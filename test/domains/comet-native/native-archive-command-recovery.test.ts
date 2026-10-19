@@ -160,6 +160,17 @@ describe('Native Archive workspace finish recovery command', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
+  it('rejects SDK-only legacy Spec backups for portable changes', async () => {
+    mocks.isNativePortableChange.mockResolvedValue(true);
+    await expect(
+      nativeArchiveCommand(
+        ['finish-change', '--legacy-spec-backup', '/outside/originals.json'],
+        root,
+      ),
+    ).rejects.toThrow('SDK');
+    expect(mocks.recoverPortableChange).not.toHaveBeenCalled();
+  });
+
   it('reports a pending workspace finish during dry-run and validates retry flags', async () => {
     await expect(nativeArchiveCommand(['finish-change', '--dry-run'], root)).resolves.toMatchObject(
       {

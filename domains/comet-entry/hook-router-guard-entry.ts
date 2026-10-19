@@ -6,7 +6,7 @@ import { inspectCometHook, inspectCometRuntimeWriteTargets } from './hook-router
 import type { CometHookDecision } from '../workflow-contract/hook.js';
 import type { CometHookRequest } from './hook-types.js';
 import { resolveCometHookProjectRoot } from './hook-project-root.js';
-import { readCometCurrentSelection } from '../workflow-contract/current-selection.js';
+import { readHookCurrentSelection } from '../workflow-contract/current-selection.js';
 import { discoverCachedNativeProject, readCachedProjectConfig } from './entry-reads.js';
 
 export interface ParsedArgs {
@@ -43,7 +43,7 @@ export async function projectRootFrom(
 async function configuredProjectFrom(projectRoot: string): Promise<string | null> {
   let cursor = path.resolve(projectRoot);
   while (true) {
-    const selection = await readCometCurrentSelection(cursor);
+    const selection = await readHookCurrentSelection(cursor);
     if (selection.status === 'selected' && selection.selection.workflow === 'application')
       return cursor;
     try {

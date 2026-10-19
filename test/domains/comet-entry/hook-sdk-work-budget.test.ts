@@ -4,9 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { inspectCometHook } from '../../../domains/comet-entry/hook-router.js';
+import { runCometHookRouterGuard } from '../../../domains/comet-entry/hook-router-guard-entry.js';
+import {
+  inspectCometHook,
+  inspectCometRuntimeWriteTargets,
+} from '../../../domains/comet-entry/hook-router.js';
 import { classicStateCommand } from '../../../domains/comet-classic/classic-state-command.js';
 import { selectCurrentChange } from '../../../domains/comet-classic/classic-current-change.js';
+import * as targetScope from '../../../domains/workflow-contract/hook-target-scope.js';
 import * as classicSdk from '../../../domains/comet-classic/classic-sdk-status.js';
 import * as classicLayout from '../../../domains/comet-classic/classic-layout.js';
 import * as nativeSdk from '../../../domains/comet-native/native-runtime-ownership.js';
@@ -33,6 +38,59 @@ describe('Hook SDK request work budget', () => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
     await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it('shares Runtime target checks only for the same project and relative root', async () => {
+    const other = path.join(root, 'other-worktree');
+    await fs.mkdir(other);
+    const checks = vi.spyOn(targetScope, 'isCometHookTargetWithin');
+    await runWithHookReadCache(async () => {
+      const request = write(['.comet/runtime/state.json']);
+      expect(await inspectCometRuntimeWriteTargets(root, request, other)).toBeNull();
+      const reads = checks.mock.calls.length;
+      expect(reads).toBeGreaterThan(0);
+      expect(await inspectCometRuntimeWriteTargets(root, request, other)).toBeNull();
+      expect(checks).toHaveBeenCalledTimes(reads);
+      expect(await inspectCometRuntimeWriteTargets(root, request, root)).toMatchObject({
+        allowed: false,
+      });
+      expect(checks.mock.calls.length).toBeGreaterThan(reads);
+      expect(await inspectCometRuntimeWriteTargets(other, request, other)).toMatchObject({
+        allowed: false,
+      });
+    });
+  });
+
+  it('reads selection once per full Hook request and refreshes after replacement', async () => {
+    const initialized = await runNativeCli([
+      'new',
+      'sdk-hook',
+      '--runtime',
+      'sdk',
+      '--project-root',
+      root,
+      '--json',
+    ]);
+    expect(initialized.exitCode, initialized.stderr).toBe(0);
+    const selection = path.join(root, '.comet/current-change.json');
+    const counts = { open: 0, lstat: 0, realpath: 0 };
+    for (const operation of ['open', 'lstat', 'realpath'] as const) {
+      const original = fs[operation].bind(fs);
+      vi.spyOn(fs, operation).mockImplementation(((...args: unknown[]) => {
+        if (String(args[0]) === selection) counts[operation]++;
+        return (original as (...args: unknown[]) => unknown)(...args);
+      }) as never);
+    }
+    const request = { ...write(['README.md']), cwd: root };
+    await expect(
+      runCometHookRouterGuard({ platformId: 'codex', projectRoot: root }, request),
+    ).resolves.toMatchObject({ allowed: true, phase: 'shape' });
+    expect(counts).toEqual({ open: 1, lstat: 3, realpath: 3 });
+    await fs.writeFile(selection, '{invalid');
+    await expect(
+      runCometHookRouterGuard({ platformId: 'codex', projectRoot: root }, request),
+    ).rejects.toThrow('invalid JSON');
+    expect(counts).toEqual({ open: 2, lstat: 6, realpath: 6 });
   });
 
   it('reads one Classic SDK snapshot for owner, branch validation and multi-target guard', async () => {

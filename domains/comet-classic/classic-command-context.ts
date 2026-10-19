@@ -8,7 +8,7 @@ import { discoverClassicProject } from './classic-layout.js';
 export interface ClassicCommandContext {
   invocationCwd: string;
   projectRoot: string;
-  observations: Map<string, Promise<unknown>>;
+  observations: Map<string, Promise<unknown>> | null;
 }
 
 export interface ClassicCommandContextOptions {
@@ -73,7 +73,7 @@ export async function classicOperationObservation<T>(
   operation: () => Promise<T>,
 ): Promise<T> {
   const active = commandContext.getStore();
-  if (!active) return operation();
+  if (!active?.observations) return operation();
   const existing = active.observations.get(key);
   if (existing) return existing as Promise<T>;
   const pending = operation();
@@ -83,6 +83,20 @@ export async function classicOperationObservation<T>(
   } catch (error) {
     active.observations.delete(key);
     throw error;
+  }
+}
+
+/** 写入与写后核验保留项目定位，但不复用任何请求内观察。 */
+export async function runWithoutClassicOperationObservations<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
+  const active = commandContext.getStore();
+  if (!active) return operation();
+  active.observations?.clear();
+  try {
+    return await commandContext.run({ ...active, observations: null }, operation);
+  } finally {
+    active.observations?.clear();
   }
 }
 

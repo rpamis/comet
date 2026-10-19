@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -20,7 +21,15 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
-async function fixture(options: { metadata?: boolean; preflight?: boolean } = {}) {
+async function fixture(
+  options: {
+    profile?: 'tweak' | 'hotfix';
+    metadata?: boolean;
+    preflight?: boolean;
+    choice?: 'local' | 'push' | 'pr';
+    verifyOnly?: boolean;
+  } = {},
+) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-archive-preflight-'));
   roots.push(root);
   const projectRoot = path.join(root, 'project');
@@ -73,7 +82,7 @@ async function fixture(options: { metadata?: boolean; preflight?: boolean } = {}
       wait: { proposalHash: string };
     };
   };
-  await cli('state', 'init', 'example', 'tweak', '--isolation', 'current');
+  await cli('state', 'init', 'example', options.profile ?? 'tweak', '--isolation', 'current');
   const active = path.join(projectRoot, 'openspec', 'changes', 'example');
   await fs.writeFile(path.join(active, 'proposal.md'), '# Proposal\nCorrect the example.\n');
   await fs.writeFile(path.join(active, 'design.md'), '# Design\nKeep the existing behavior.\n');
@@ -105,6 +114,18 @@ async function fixture(options: { metadata?: boolean; preflight?: boolean } = {}
   const report = 'docs/superpowers/reports/verify.md';
   await fs.mkdir(path.dirname(path.join(projectRoot, report)), { recursive: true });
   await fs.writeFile(path.join(projectRoot, report), '# Verification\nPASS\n');
+  if (options.verifyOnly)
+    return {
+      root,
+      projectRoot,
+      runtime: (await inspectClassicSdkRun(projectRoot, 'example')).runtime,
+      run: (await inspectClassicSdkRun(projectRoot, 'example')).run,
+      executable,
+      count,
+      install,
+      cli,
+      active,
+    };
   const verified = await runClassicCli(
     [
       'guard',
@@ -129,6 +150,9 @@ async function fixture(options: { metadata?: boolean; preflight?: boolean } = {}
     'example',
     '--summary',
     'Archive the verified example',
+    ...(options.choice && options.choice !== 'local'
+      ? ['--remote', 'origin', '--pr-base', 'main']
+      : []),
   );
   await cli(
     'state',
@@ -137,7 +161,7 @@ async function fixture(options: { metadata?: boolean; preflight?: boolean } = {}
     '--proposal-hash',
     proposed.wait.proposalHash,
     '--choice',
-    'local',
+    options.choice ?? 'local',
   );
   const { runtime, run } = await inspectClassicSdkRun(projectRoot, 'example');
   const ready =
@@ -166,14 +190,19 @@ describe('Classic SDK Archive dependency preflight', () => {
       const result = JSON.parse(response.stdout!);
       expect(result.exitCode).not.toBe(0);
       expect(result.agent.continuation).toMatchObject({
-        mode: 'reconcile',
-        commandArgs: null,
-        actionId: pending.id,
-        blockers: [{ code: 'CLASSIC_GUARD_BLOCKED', actionId: pending.id }],
+        mode: 'execute',
+        commandArgs: [
+          'comet',
+          'state',
+          'reopen-verification',
+          'example',
+          '--expected-revision',
+          String(f.run.revision),
+          '--json',
+        ],
       });
       expect(result.agent.continuation.completion).toBeUndefined();
-      expect(result.next.command).toBeUndefined();
-      expect(result.next.instruction).toContain('不要重复原失败命令');
+      expect(result.next.command).toContain('reopen-verification');
       expect(await f.runtime.inspect(f.run.runId)).toEqual(f.run);
       await expect(fs.access(f.count)).rejects.toMatchObject({ code: 'ENOENT' });
     },
@@ -446,4 +475,279 @@ describe('Classic SDK Archive dependency preflight', () => {
     ).toBe(metadata);
     expect(await fs.readFile(f.count, 'utf8')).toBe('archive\n');
   });
+});
+
+describe('Classic explicit verification recovery', () => {
+  it.each(['local', 'push', 'pr'] as const)(
+    'reopens approved %s delivery without losing edits or approvals',
+    async (choice) => {
+      const f = await fixture({ preflight: false, choice });
+      const old = f.run.waits.at(-1)!;
+      const pending = f.run.actions.find((action) => action.status === 'pending')!;
+      await fs.appendFile(path.join(f.projectRoot, 'README.md'), 'Late legitimate fix\n');
+      await f.cli(
+        'state',
+        'reopen-verification',
+        'example',
+        '--expected-revision',
+        String(f.run.revision),
+      );
+      let current = await inspectClassicSdkRun(f.projectRoot, 'example');
+      expect(current.state).toMatchObject({
+        phase: 'verify',
+        verifyResult: 'pending',
+        archiveConfirmation: null,
+        verificationReport: null,
+      });
+      expect(current.run.waits.find((wait) => wait.id === old.id)).toEqual(old);
+      expect(current.run.actions.find((action) => action.id === pending.id)?.status).toBe(
+        'cancelled',
+      );
+      expect(current.run.actions.at(-1)?.stepId).toBe('tweak.verify.run');
+      expect(await fs.readFile(path.join(f.projectRoot, 'README.md'), 'utf8')).toContain(
+        'Late legitimate fix',
+      );
+      const stale = await runClassicCli(
+        [
+          'state',
+          'reopen-verification',
+          'example',
+          '--expected-revision',
+          String(f.run.revision - 1),
+          '--json',
+        ],
+        undefined,
+        { invocationCwd: f.projectRoot },
+      );
+      expect(stale.exitCode).not.toBe(0);
+      const verified = await runClassicCli(
+        [
+          'guard',
+          'example',
+          'verify',
+          '--report',
+          'docs/superpowers/reports/verify.md',
+          '--apply',
+          '--json',
+          '--',
+          process.execPath,
+          '-e',
+          'process.exit(0)',
+        ],
+        undefined,
+        { invocationCwd: f.projectRoot },
+      );
+      expect(verified.exitCode, verified.stderr).toBe(0);
+      current = await inspectClassicSdkRun(f.projectRoot, 'example');
+      expect(current.run.actions.at(-1)?.stepId).toBe('tweak.archive.prepare');
+      expect(current.state.archiveConfirmation).toBe('pending');
+      const reused = await runClassicCli(
+        [
+          'state',
+          'decide-archive',
+          'example',
+          '--proposal-hash',
+          old.proposalHash,
+          '--choice',
+          choice,
+          '--json',
+        ],
+        undefined,
+        { invocationCwd: f.projectRoot },
+      );
+      expect(reused.exitCode).not.toBe(0);
+      await expect(fs.access(f.count)).rejects.toMatchObject({ code: 'ENOENT' });
+    },
+  );
+
+  it('reopens after successful preflight but before executing Archive', async () => {
+    const f = await fixture();
+    await f.cli(
+      'state',
+      'reopen-verification',
+      'example',
+      '--expected-revision',
+      String(f.run.revision),
+    );
+    expect((await inspectClassicSdkRun(f.projectRoot, 'example')).state.phase).toBe('verify');
+  });
+
+  it.each(['running', 'unknown'] as const)(
+    'rejects reopening an Archive action with %s outcome',
+    async (status) => {
+      const f = await fixture();
+      const action = f.run.actions.at(-1)!;
+      let claimed = await f.runtime.claim({
+        runId: f.run.runId,
+        expectedRevision: f.run.revision,
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        executorId: 'test',
+        claimToken: 'test-claim',
+      });
+      if (status === 'unknown')
+        claimed = await f.runtime.markUnknown({
+          runId: claimed.runId,
+          expectedRevision: claimed.revision,
+          actionId: action.id,
+          attempt: action.attempt,
+          reason: 'executor disconnected',
+        });
+      const result = await runClassicCli(
+        [
+          'state',
+          'reopen-verification',
+          'example',
+          '--expected-revision',
+          String(claimed.revision),
+          '--json',
+        ],
+        undefined,
+        { invocationCwd: f.projectRoot },
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect((await f.runtime.inspect(f.run.runId)).revision).toBe(claimed.revision);
+    },
+  );
+});
+
+it('reopens a changed accepted report in the same Run before its check', async () => {
+  const f = await fixture({ verifyOnly: true });
+  const ref = 'docs/superpowers/reports/verify.md';
+  const action = f.run.actions.at(-1)!;
+  let run = await f.runtime.claim({
+    runId: f.run.runId,
+    expectedRevision: f.run.revision,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: 'test',
+    claimToken: 'report-claim',
+  });
+  run = await f.runtime.recordOutcome({
+    runId: run.runId,
+    expectedRevision: run.revision,
+    outcome: {
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken: 'report-claim',
+      outcomeId: 'report-outcome',
+      status: 'succeeded',
+      output: { event: 'verification-ready', verificationReport: ref },
+    },
+    context: { requestId: 'report', projectRoot: f.projectRoot },
+  });
+  const wait = run.evidenceWaits!.at(-1)!;
+  run = await f.runtime.recordEvidence({
+    runId: run.runId,
+    expectedRevision: run.revision,
+    evidenceId: wait.id,
+    kind: wait.kind,
+    ref,
+    contentHash: createHash('sha256')
+      .update(await fs.readFile(path.join(f.projectRoot, ref)))
+      .digest('hex'),
+    submissionId: 'report-evidence',
+    context: { requestId: 'report-evidence', projectRoot: f.projectRoot },
+  });
+  await fs.appendFile(path.join(f.projectRoot, ref), 'Legitimate correction\n');
+  const blocked = await runClassicCli(
+    [
+      'guard',
+      'example',
+      'verify',
+      '--report',
+      ref,
+      '--apply',
+      '--json',
+      '--',
+      process.execPath,
+      '-e',
+      'process.exit(0)',
+    ],
+    undefined,
+    { invocationCwd: f.projectRoot },
+  );
+  expect(blocked.exitCode).not.toBe(0);
+  expect(JSON.parse(blocked.stdout!).agent.continuation.commandArgs).toEqual([
+    'comet',
+    'state',
+    'reopen-verification',
+    'example',
+    '--expected-revision',
+    String(run.revision),
+    '--json',
+  ]);
+  await f.cli(
+    'state',
+    'reopen-verification',
+    'example',
+    '--expected-revision',
+    String(run.revision),
+  );
+  const verified = await runClassicCli(
+    [
+      'guard',
+      'example',
+      'verify',
+      '--report',
+      ref,
+      '--apply',
+      '--json',
+      '--',
+      process.execPath,
+      '-e',
+      'process.exit(0)',
+    ],
+    undefined,
+    { invocationCwd: f.projectRoot },
+  );
+  expect(verified.exitCode, verified.stderr).toBe(0);
+  const current = await inspectClassicSdkRun(f.projectRoot, 'example');
+  expect(current.state.phase).toBe('archive');
+  expect(
+    current.run.evidenceWaits!.filter(
+      (entry) => entry.stepId === wait.stepId && entry.status === 'resolved',
+    ),
+  ).toHaveLength(2);
+});
+
+it('does not reopen after Archive has moved the change', async () => {
+  const f = await fixture();
+  await f.install();
+  vi.stubEnv('COMET_OPENSPEC', f.executable);
+  const archived = await executeClassicSdkArchive(f.runtime, {
+    runId: f.run.runId,
+    projectRoot: f.projectRoot,
+  });
+  const result = await runClassicCli(
+    [
+      'state',
+      'reopen-verification',
+      'example',
+      '--expected-revision',
+      String(archived.revision),
+      '--json',
+    ],
+    undefined,
+    { invocationCwd: f.projectRoot },
+  );
+  expect(result.exitCode).not.toBe(0);
+  expect(await fs.readFile(f.count, 'utf8')).toBe('archive\n');
+});
+
+it('reopens approved hotfix Archive in its original profile', async () => {
+  const f = await fixture({ profile: 'hotfix', preflight: false });
+  await f.cli(
+    'state',
+    'reopen-verification',
+    'example',
+    '--expected-revision',
+    String(f.run.revision),
+  );
+  expect((await inspectClassicSdkRun(f.projectRoot, 'example')).run.actions.at(-1)?.stepId).toBe(
+    'hotfix.verify.run',
+  );
 });

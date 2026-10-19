@@ -267,6 +267,9 @@ export function hashRuntimeValue(value: unknown): string;
 export type InvalidateRuntimeEvidence = RecordRuntimeEvidence;
 
 // @public
+export function listFileRuntimeStoreRunKeys(options: FileRuntimeStoreOptions): Promise<string[]>;
+
+// @public
 export function listFileRuntimeStoreRuns<T extends RuntimeRecord = RuntimeRecord>(options: FileRuntimeStoreOptions): Promise<FileRuntimeStoreRun<T>[]>;
 
 // @public (undocumented)
@@ -280,6 +283,9 @@ export const PORTABLE_RUN_CHECKPOINT_KEY = "run_checkpoint";
 
 // @public (undocumented)
 export function portableRunCheckpointMatches(value: unknown, expected: PortableRunCheckpoint): boolean;
+
+// @public
+export function readFileRuntimeStoreRunSources(options: FileRuntimeStoreOptions, storageKeys: readonly string[]): Promise<Omit<FileRuntimeStoreRunSource, 'fingerprint'>[]>;
 
 // @public (undocumented)
 export function readPortableRunCheckpoint(value: unknown, runId: string, options?: {

@@ -1,4 +1,15 @@
+import {
+  createNativeLegacyArchiveOverlay,
+  withNativeLegacyArchiveMaterials,
+} from './native-archive-legacy-overlay.js';
+import { readNativeSdkArchiveOriginals } from './native-sdk-archive-originals.js';
 import path from 'node:path';
+import { promises as fs } from 'node:fs';
+import {
+  assertNativeSdkCandidateUnchanged,
+  nativeSdkCandidateInputGate,
+  NativeSdkCandidateDriftError,
+} from './native-sdk-checks.js';
 
 import { hashProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 import {
@@ -18,6 +29,7 @@ import {
   inspectNativePortableArchive,
   inspectNativeSdkArchiveFinalization,
   inspectNativeSdkArchiveSpecs,
+  nativePortableArchiveDirectory,
 } from './native-portable-archive.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { readNativePortableTransaction } from './native-portable-transactions.js';
@@ -46,6 +58,120 @@ export function nativeSdkRetryableArchivePreflight(run: Readonly<WorkflowRun>) {
     !run.evidenceWaits?.some((wait) => wait.status === 'pending')
     ? action
     : undefined;
+}
+
+/** 仅重试 Runtime 已证实在写入前因候选漂移停止的 finalize。 */
+export function nativeSdkRetryableArchiveFinalization(run: Readonly<WorkflowRun>) {
+  const action = run.actions.at(-1);
+  return run.status === 'failed' &&
+    action?.stepId === 'archive.finalize' &&
+    action.status === 'failed' &&
+    action.claim?.executorId === nativeSdkArchiveFinalizeExecutor.id &&
+    (action.outcome?.output as { reason?: string } | undefined)?.reason === 'candidate-drift' &&
+    !action.rejectedOutcomes?.some((entry) => entry.outcome.attempt === action.attempt) &&
+    !run.actions.some((entry) => ['running', 'unknown', 'pending'].includes(entry.status)) &&
+    !run.waits.some((wait) => wait.status === 'pending') &&
+    !run.evidenceWaits?.some((wait) => wait.status === 'pending')
+    ? action
+    : undefined;
+}
+
+/** Spec 内容由归档事务核对；搬迁材料另行逐文件绑定，不能借目录排除隐藏实现漂移。 */
+async function archiveCandidateBinding(run: Readonly<WorkflowRun>, projectRoot: string) {
+  const state = parseNativePortableState(run.state);
+  const input = run.input as { artifactRootRef: string };
+  const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, { readOnly: true });
+  const active = path.join(paths.changesDir, state.name);
+  const archived = nativePortableArchiveDirectory(paths, state);
+  const ref = (file: string) => path.relative(projectRoot, file).replaceAll('\\', '/');
+  const archiveOwnedPaths = [
+    active,
+    archived,
+    ...state.spec_changes.map(({ capability }) => path.join(paths.specsDir, capability, 'spec.md')),
+  ].map(ref);
+  const source = await fs.lstat(active).then(
+    () => active,
+    (error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error;
+      return archived;
+    },
+  );
+  const materials: Array<{ ref: string; digest: string; mode: number }> = [];
+  async function visit(directory: string) {
+    const stat = await fs.lstat(directory);
+    if (!stat.isDirectory() || stat.isSymbolicLink())
+      throw new Error('Native Archive materials contain an unsafe directory');
+    for (const entry of (await fs.readdir(directory)).sort()) {
+      const file = path.join(directory, entry);
+      const relative = path.relative(source, file).replaceAll('\\', '/');
+      if (['verification.md', 'comet-state.yaml', 'children.yaml'].includes(relative)) continue;
+      const stat = await fs.lstat(file);
+      if (stat.isDirectory()) await visit(file);
+      else {
+        const { digest } = await hashProtectedProjectFile(projectRoot, ref(file), {
+          label: 'Native Archive material',
+        });
+        materials.push({ ref: relative, digest, mode: stat.mode & 0o777 });
+      }
+    }
+  }
+  await visit(source);
+  const candidateGate = await nativeSdkCandidateInputGate({ run, projectRoot, archiveOwnedPaths });
+  if (candidateGate === null)
+    throw new NativeSdkCandidateDriftError(
+      'Native Archive 无法完整复核候选实现；请恢复候选或重新验收',
+    );
+  return hashRuntimeValue({ candidateGate, materials });
+}
+
+async function assertArchiveCandidate(run: Readonly<WorkflowRun>, projectRoot: string) {
+  const preflight = run.outputs['archive.prepare']?.value as
+    { candidateBinding?: string } | undefined;
+  if (!preflight?.candidateBinding) {
+    // 旧 Run 尚无归档摘要时只接受原检查仍能证明的候选，绝不从当前文件静默重建信任。
+    try {
+      await assertNativeSdkCandidateUnchanged({ run, projectRoot, requireEvidence: true });
+    } catch (error) {
+      if (!(error instanceof NativeSdkCandidateDriftError)) throw error;
+      const state = parseNativePortableState(run.state);
+      const paths = await nativeProjectPaths(
+        projectRoot,
+        (run.input as { artifactRootRef: string }).artifactRootRef,
+        { readOnly: true },
+      );
+      const transaction = await readNativePortableTransaction(paths, {
+        kind: 'archive',
+        change: state.name,
+      });
+      if (transaction?.kind !== 'archive') throw error;
+      if (
+        transaction.journal.start_state_version !==
+        state.state_version - (state.archived ? 1 : 0)
+      )
+        throw new Error('旧 Archive 事务与当前状态不匹配', { cause: error });
+      const originals = await readNativeSdkArchiveOriginals(paths, run.runId, transaction.journal);
+      const legacyArchiveOverlay = await withNativeLegacyArchiveMaterials({
+        paths,
+        transaction: transaction.journal,
+        overlay: createNativeLegacyArchiveOverlay({
+          paths,
+          transaction: transaction.journal,
+          originals,
+        }),
+      });
+      await assertNativeSdkCandidateUnchanged({
+        run,
+        projectRoot,
+        requireEvidence: true,
+        legacyArchiveOverlay,
+      });
+    }
+    return;
+  }
+  if ((await archiveCandidateBinding(run, projectRoot)) !== preflight.candidateBinding)
+    throw new NativeSdkCandidateDriftError(
+      'Native Archive 候选实现或搬迁材料已变化；请恢复已确认候选后重试，或在写入 Specs 前重新验收',
+    );
 }
 
 async function archivePreflightBinding(
@@ -104,12 +230,14 @@ async function archivePreflightBinding(
   };
 }
 
-async function archivePreflightOutput(
+async function inspectArchivePreflightOutput(
   run: Readonly<WorkflowRun>,
   action: Readonly<RuntimeAction>,
   projectRoot: string,
 ) {
   const bound = await archivePreflightBinding(run, action, projectRoot);
+  await assertNativeSdkCandidateUnchanged({ run, projectRoot, requireEvidence: true });
+  const candidateBinding = await archiveCandidateBinding(run, projectRoot);
   const report = await hashProtectedProjectFile(projectRoot, bound.reportRef, {
     label: 'Native SDK verification report',
   });
@@ -128,6 +256,7 @@ async function archivePreflightOutput(
     throw new Error('Native Archive destination is outside the project');
   }
   return {
+    candidateBinding,
     candidateId: bound.state.builder_handoff!.candidate_id,
     stateVersion: bound.state.state_version,
     reportRef: bound.reportRef,
@@ -140,6 +269,19 @@ async function archivePreflightOutput(
     capabilityPeers: inspected.capabilityPeers,
     specPreview: inspected.specPreview,
   };
+}
+
+async function archivePreflightOutput(
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+  projectRoot: string,
+) {
+  try {
+    return await inspectArchivePreflightOutput(run, action, projectRoot);
+  } catch (error) {
+    if (!(error instanceof NativeSdkCandidateDriftError)) throw error;
+    return { ready: false, reason: 'candidate-drift', message: error.message };
+  }
 }
 
 export const nativeSdkArchivePreflightExecutor: RuntimeExecutor = {
@@ -173,7 +315,8 @@ export const nativeSdkArchivePreflightValidator: RuntimeValidator = {
       if (
         hashRuntimeValue(outcome.output) !==
           hashRuntimeValue(expected as unknown as RuntimeValue) ||
-        (outcome.status === 'succeeded') !== expected.ready
+        (outcome.status === 'succeeded') !== expected.ready ||
+        outcome.event !== undefined
       ) {
         return { accepted: false, reason: 'Native Archive preflight changed after execution' };
       }
@@ -234,7 +377,25 @@ async function archiveApplyBinding(
   });
   if (report.digest !== preflight.reportSha256)
     throw new Error('Native verification report changed after Archive preflight');
+  await assertArchiveCandidate(run, projectRoot);
   return { state, paths, verificationReportStateVersion: reportStateVersion as number };
+}
+
+async function archiveUnappliedDrift(
+  run: Readonly<WorkflowRun>,
+  projectRoot: string,
+  error: unknown,
+) {
+  if (!(error instanceof NativeSdkCandidateDriftError)) return null;
+  const state = parseNativePortableState(run.state);
+  const paths = await nativeProjectPaths(
+    projectRoot,
+    (run.input as { artifactRootRef: string }).artifactRootRef,
+    { readOnly: true },
+  );
+  if (await readNativePortableTransaction(paths, { kind: 'archive', change: state.name }))
+    return null;
+  return { ready: false, reason: 'candidate-drift', message: error.message };
 }
 
 export const nativeSdkArchiveApplyExecutor: RuntimeExecutor = {
@@ -243,7 +404,14 @@ export const nativeSdkArchiveApplyExecutor: RuntimeExecutor = {
   supports: (action) => action.type === 'call_tool' && action.ref === 'native-archive',
   async execute(action, context, run) {
     if (!context?.projectRoot || !run) throw new Error('Native Archive requires a bound SDK Run');
-    const bound = await archiveApplyBinding(run, action, context.projectRoot);
+    let bound: Awaited<ReturnType<typeof archiveApplyBinding>>;
+    try {
+      bound = await archiveApplyBinding(run, action, context.projectRoot);
+    } catch (error) {
+      const output = await archiveUnappliedDrift(run, context.projectRoot, error);
+      if (!output) throw error;
+      return { status: 'failed', output };
+    }
     const { state, paths } = bound;
     await applyNativeSdkArchiveSpecs(bound);
     return {
@@ -260,18 +428,27 @@ export const nativeSdkArchiveApplyValidator: RuntimeValidator = {
     if (
       !context?.projectRoot ||
       action.claim?.executorId !== nativeSdkArchiveApplyExecutor.id ||
-      outcome.status !== 'succeeded'
+      outcome.event !== undefined
     ) {
       return { accepted: false, reason: 'Native Archive Specs were not applied by the Runtime' };
     }
     try {
       const { state, paths } = await archiveApplyBinding(run, action, context.projectRoot);
+      if (outcome.status !== 'succeeded')
+        return { accepted: false, reason: 'Unexpected Native Archive apply event' };
       const expected = await inspectNativeSdkArchiveSpecs({ paths, state });
       return hashRuntimeValue(outcome.output) ===
         hashRuntimeValue(expected as unknown as RuntimeValue)
         ? { accepted: true }
         : { accepted: false, reason: 'Native Archive Spec application changed before commit' };
     } catch (error) {
+      const drift = await archiveUnappliedDrift(run, context.projectRoot, error);
+      if (
+        drift &&
+        outcome.status === 'failed' &&
+        hashRuntimeValue(outcome.output) === hashRuntimeValue(drift)
+      )
+        return { accepted: true };
       return { accepted: false, reason: error instanceof Error ? error.message : String(error) };
     }
   },
@@ -281,6 +458,7 @@ async function archiveFinalizeBinding(
   run: Readonly<WorkflowRun>,
   action: Readonly<RuntimeAction>,
   projectRoot: string,
+  historicalRecovery = false,
 ) {
   const state = parseNativePortableState(run.state);
   const input = run.input as { name?: unknown; artifactRootRef?: unknown };
@@ -305,6 +483,12 @@ async function archiveFinalizeBinding(
     throw new Error('Native artifact root changed after Run creation');
   }
   const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, { readOnly: true });
+  if (
+    !historicalRecovery ||
+    ((run.outputs['archive.prepare']?.value as { candidateBinding?: unknown })?.candidateBinding &&
+      action.status !== 'unknown')
+  )
+    await assertArchiveCandidate(run, projectRoot);
   return { state, paths, applied };
 }
 
@@ -316,11 +500,14 @@ export const nativeSdkArchiveFinalizeExecutor: RuntimeExecutor = {
     if (!context?.projectRoot || !run) {
       throw new Error('Native Archive finalization requires a bound SDK Run');
     }
-    const { state, paths, applied } = await archiveFinalizeBinding(
-      run,
-      action,
-      context.projectRoot,
-    );
+    let bound: Awaited<ReturnType<typeof archiveFinalizeBinding>>;
+    try {
+      bound = await archiveFinalizeBinding(run, action, context.projectRoot);
+    } catch (error) {
+      if (!(error instanceof NativeSdkCandidateDriftError)) throw error;
+      return { status: 'failed', output: { reason: 'candidate-drift', message: error.message } };
+    }
+    const { state, paths, applied } = bound;
     const receipt = await finalizeNativeSdkArchive({ paths, state, runId: run.runId });
     if (
       receipt.transactionId !== applied.transactionId ||
@@ -339,7 +526,7 @@ export const nativeSdkArchiveFinalizeValidator: RuntimeValidator = {
     if (
       !context?.projectRoot ||
       action.claim?.executorId !== nativeSdkArchiveFinalizeExecutor.id ||
-      outcome.status !== 'succeeded'
+      outcome.event !== undefined
     ) {
       return { accepted: false, reason: 'Native Archive was not finalized by the Runtime' };
     }
@@ -348,7 +535,10 @@ export const nativeSdkArchiveFinalizeValidator: RuntimeValidator = {
         run,
         action,
         context.projectRoot,
+        outcome.status === 'succeeded',
       );
+      if (outcome.status !== 'succeeded')
+        return { accepted: false, reason: 'Native Archive finalization did not succeed' };
       const receipt = await inspectNativeSdkArchiveFinalization({
         paths,
         state,
@@ -364,6 +554,13 @@ export const nativeSdkArchiveFinalizeValidator: RuntimeValidator = {
       }
       return { accepted: true };
     } catch (error) {
+      if (
+        error instanceof NativeSdkCandidateDriftError &&
+        outcome.status === 'failed' &&
+        hashRuntimeValue(outcome.output) ===
+          hashRuntimeValue({ reason: 'candidate-drift', message: error.message })
+      )
+        return { accepted: true };
       return { accepted: false, reason: error instanceof Error ? error.message : String(error) };
     }
   },
@@ -381,13 +578,20 @@ export async function recoverNativeSdkArchiveOutcome(options: {
     .find(
       (entry) =>
         entry.status === 'unknown' &&
-        ['archive.execute', 'archive.finalize'].includes(entry.stepId),
+        ['archive.prepare', 'archive.execute', 'archive.finalize'].includes(entry.stepId),
     );
   if (!action || action.status !== 'unknown' || !action.claim) {
     throw new Error('Native SDK Archive has no lost Action to recover');
   }
   let output: RuntimeValue;
-  if (action.stepId === 'archive.execute') {
+  let status: 'succeeded' | 'failed' = 'succeeded';
+  if (action.stepId === 'archive.prepare') {
+    if (action.claim.executorId !== nativeSdkArchivePreflightExecutor.id)
+      throw new Error('Native SDK Archive recovery belongs to another executor');
+    const inspected = await archivePreflightOutput(run, action, options.projectRoot);
+    output = inspected as RuntimeValue;
+    status = inspected.ready ? 'succeeded' : 'failed';
+  } else if (action.stepId === 'archive.execute') {
     if (action.claim.executorId !== nativeSdkArchiveApplyExecutor.id) {
       throw new Error('Native SDK Archive recovery belongs to another executor');
     }
@@ -412,6 +616,7 @@ export async function recoverNativeSdkArchiveOutcome(options: {
       run,
       action,
       options.projectRoot,
+      true,
     );
     const receipt = await inspectNativeSdkArchiveFinalization({
       paths,
@@ -438,8 +643,10 @@ export async function recoverNativeSdkArchiveOutcome(options: {
       attempt: action.attempt,
       inputHash: action.inputHash,
       claimToken: action.claim.token,
-      outcomeId: `${action.id}:${action.attempt}:executor-result`,
-      status: 'succeeded',
+      outcomeId: action.rejectedOutcomes?.length
+        ? `${action.id}:${action.attempt}:archive-recovery:${action.rejectedOutcomes.length}:${hashRuntimeValue(output)}`
+        : `${action.id}:${action.attempt}:executor-result`,
+      status,
       output,
     },
   });

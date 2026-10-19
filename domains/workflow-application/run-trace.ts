@@ -1,7 +1,8 @@
 import path from 'node:path';
 import {
   createFileRuntimeStore,
-  listFileRuntimeStoreRunSources,
+  listFileRuntimeStoreRunKeys,
+  readFileRuntimeStoreRunSources,
   parseWorkflowRun,
   type RuntimeStore,
   type WorkflowRun,
@@ -236,29 +237,52 @@ export async function readChangeTraceSnapshots(
   limit = 100,
 ) {
   const result: WorkflowRun[] = [];
-  let discovered = 0;
   let unreadable = 0;
-  const seen = new Set<string>();
-  for (const root of await readWorkspaceRuntimeRoots(projectRoot)) {
+  const roots = await readWorkspaceRuntimeRoots(projectRoot);
+  const locations = new Map<string, string[]>();
+  for (const root of roots) {
     const rootDir = path.join(root, 'sdk-runs', workflow);
-    const sources = await listFileRuntimeStoreRunSources({ rootDir });
-    discovered += sources.length;
-    const store = createFileRuntimeStore<WorkflowRun>({ rootDir });
-    for (const source of sources.slice(0, Math.max(0, limit - result.length - unreadable))) {
-      if (!source.runId || source.error) {
-        unreadable++;
-        continue;
-      }
-      if (seen.has(source.runId)) continue;
-      seen.add(source.runId);
-      try {
-        const run = await store.read(source.runId);
-        if (!run) throw new Error('Run unavailable');
-        result.push(parseWorkflowRun(run, source.runId));
-      } catch {
-        unreadable++;
-      }
+    for (const key of await listFileRuntimeStoreRunKeys({ rootDir })) {
+      const directories = locations.get(key) ?? [];
+      directories.push(rootDir);
+      locations.set(key, directories);
     }
   }
-  return { runs: result, truncated: discovered > result.length + unreadable, unreadable };
+  const keys = [...locations.keys()].sort((a, b) => a.localeCompare(b));
+  const selected = keys.slice(0, Math.max(0, Math.floor(limit)));
+  const sources = new Map<
+    string,
+    Awaited<ReturnType<typeof readFileRuntimeStoreRunSources>>[number]
+  >();
+  for (const root of roots) {
+    const rootDir = path.join(root, 'sdk-runs', workflow);
+    const localKeys = selected.filter(
+      (key) => locations.get(key)?.length === 1 && locations.get(key)![0] === rootDir,
+    );
+    if (!localKeys.length) continue;
+    for (const source of await readFileRuntimeStoreRunSources({ rootDir }, localKeys))
+      sources.set(source.storageKey, source);
+  }
+  for (const key of selected) {
+    const directories = locations.get(key)!;
+    // 同一身份的两个权威不能由列表顺序静默决定。
+    if (directories.length !== 1) {
+      unreadable++;
+      continue;
+    }
+    const rootDir = directories[0];
+    const source = sources.get(key);
+    if (!source?.runId || source.error) {
+      unreadable++;
+      continue;
+    }
+    try {
+      const run = await createFileRuntimeStore<WorkflowRun>({ rootDir }).read(source.runId);
+      if (!run) throw new Error('Run unavailable');
+      result.push(parseWorkflowRun(run, source.runId));
+    } catch {
+      unreadable++;
+    }
+  }
+  return { runs: result, truncated: keys.length > selected.length, unreadable };
 }

@@ -97,6 +97,7 @@ export async function nativeArchiveCommand(
       '--expected-state-version requires --confirmed --finish and a non-negative integer',
     );
   }
+  const legacySpecBackup = takeOption(args, '--legacy-spec-backup');
   const serialFirstOption = takeOption(args, '--serial-first');
   const commitMessage = takeOption(args, '--commit-message');
   const mergeMessage = takeOption(args, '--merge-message');
@@ -145,8 +146,13 @@ export async function nativeArchiveCommand(
       ...(serialFirstOption === undefined ? {} : { serialFirst: serialFirstOption }),
       ...(commitMessage === undefined ? {} : { commitMessage }),
       ...(mergeMessage === undefined ? {} : { mergeMessage }),
+      ...(legacySpecBackup === undefined ? {} : { legacySpecBackup }),
     });
   }
+  if (legacySpecBackup !== undefined)
+    throw new NativeUsageError(
+      '--legacy-spec-backup is only available for SDK-owned Native changes',
+    );
   if (recover) {
     throw new NativeUsageError('--recover is only available for SDK-owned Native changes');
   }

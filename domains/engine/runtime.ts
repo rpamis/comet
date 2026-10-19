@@ -46,6 +46,8 @@ export { createMemoryRuntimeStore, createFileRuntimeStore } from './runtime-stor
 export {
   listFileRuntimeStoreRuns,
   listFileRuntimeStoreRunSources,
+  listFileRuntimeStoreRunKeys,
+  readFileRuntimeStoreRunSources,
 } from './runtime-store-discovery.js';
 export type { FileRuntimeStoreRun, FileRuntimeStoreRunSource } from './runtime-store-discovery.js';
 export { parseWorkflowRun } from './workflow-run-validation.js';

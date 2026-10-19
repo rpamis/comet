@@ -1,3 +1,4 @@
+import { runWithoutClassicOperationObservations } from './classic-command-context.js';
 import { isClassicSdkApprovedUpgrade } from './classic-sdk-profile.js';
 import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
 import { clearCometCurrentSelectionIf } from '../workflow-contract/current-selection.js';
@@ -34,12 +35,12 @@ import {
 } from '../workflow-contract/change-runtime-owner.js';
 import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
 import { ensureProtectedProjectDirectory } from '../workflow-contract/protected-project-path.js';
-import {
-  inspectProtectedProjectPath,
-  readProtectedProjectFile,
-} from '../workflow-contract/protected-project-path.js';
+import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 import { readClassicProjectFile, writeClassicProjectText } from './classic-protected-path.js';
-import { inspectClassicStateFileCandidates } from './classic-paths.js';
+import {
+  inspectClassicArchiveChangeNames,
+  inspectClassicStateFileCandidates,
+} from './classic-paths.js';
 import {
   classicStateToDocument,
   CLASSIC_MANAGED_RUN_MARKER,
@@ -269,20 +270,11 @@ export function createClassicSdkStateStore(
     if (!(run.state as unknown as ClassicState).archived && !archiveMoveIsUnresolved(run))
       return null;
     const archiveDir = path.join(path.dirname(active), 'archive');
-    const archive = await inspectProtectedProjectPath(
-      projectRoot,
-      path.relative(projectRoot, archiveDir),
-      {
-        label: 'Classic SDK Archive directory',
-        expected: 'directory',
-      },
-    );
-    if (!archive.exists) return null;
-    const archives = (await fs.readdir(archive.target)).filter(
-      (name) => /^\d{4}-\d{2}-\d{2}-/u.test(name) && name.slice(11) === run.runId,
-    );
+    const entries = await inspectClassicArchiveChangeNames(projectRoot, archiveDir, run.runId);
+    if (entries === null) return null;
+    const archives = entries.filter((name) => name !== run.runId);
     if (archives.length !== 1) throw new Error(`Classic SDK Archive ${run.runId} is ambiguous`);
-    return resolveClassicStateFile(path.join(archive.target, archives[0]));
+    return resolveClassicStateFile(path.join(archiveDir, archives[0]));
   }
 
   async function syncStateFile(
@@ -322,7 +314,9 @@ export function createClassicSdkStateStore(
       let loaded = await store.read(runId);
       if (!loaded || (loaded.revision === 1 && marker && marker.revision > 1)) {
         if (options.readOnly) recoveryRequired(runId, 'the recorded Run is missing or incomplete');
-        const recovered = await recoverFromPortableFile(runId, marker, loaded ?? undefined);
+        const recovered = await runWithoutClassicOperationObservations(() =>
+          recoverFromPortableFile(runId, marker, loaded ?? undefined),
+        );
         if (loaded && !recovered) {
           throw new Error(
             `Classic SDK Run ${runId} requires its matching portable checkpoint or original Run history before completing recovery`,
@@ -393,6 +387,9 @@ export function createClassicSdkStateStore(
             revision: run.revision + 1,
             state: state as unknown as WorkflowRun['state'],
           };
+          await runWithoutClassicOperationObservations(() =>
+            inspectClassicStateFileCandidates(projectRoot, runId),
+          );
           if (!(await store.compareAndSwap(runId, run.revision, next))) {
             throw new Error(`Classic SDK Run ${runId} changed while importing state file settings`);
           }
@@ -426,6 +423,9 @@ export function createClassicSdkStateStore(
             revision: run.revision + 1,
             state: state as unknown as WorkflowRun['state'],
           };
+          await runWithoutClassicOperationObservations(() =>
+            inspectClassicStateFileCandidates(projectRoot, runId),
+          );
           if (!(await store.compareAndSwap(runId, run.revision, next))) {
             throw new Error(`Classic SDK Run ${runId} changed while binding its Git branch`);
           }
@@ -509,35 +509,37 @@ export function createClassicSdkStateStore(
   return {
     read: (runId) => syncStateFile(runId, true),
     async compareAndSwap(runId, expectedRevision, next) {
-      if (options.readOnly) throw new Error('Classic SDK read-only store cannot change a Run');
-      await inspectClassicStateFileCandidates(projectRoot, runId);
-      // 原始 SDK start 允许省略 input.change；后续投影仍校验完整身份。
-      if (expectedRevision !== null) await stateFile(next);
-      await boundRuntimeRoot();
-      const outcomes = next.actions.filter(
-        (action) =>
-          action.type === 'call_tool' &&
-          action.ref === 'classic-check' &&
-          ['succeeded', 'failed'].includes(action.status) &&
-          action.outcome,
-      );
-      if (outcomes.length) {
-        const previous = await store.read(runId);
-        if ((previous?.revision ?? null) !== expectedRevision) return false;
-        const previousActions = new Map(previous?.actions.map((action) => [action.id, action]));
-        for (const action of outcomes) {
-          const recorded = previousActions.get(action.id);
-          // 历史已提交结果本身属于权威 Run；只有新增或改写结果必须有原执行收据。
-          if (recorded && equal(recorded, action)) continue;
-          await assertClassicSdkCheckReceipt(projectRoot, next, action, {
-            status: action.outcome!.status,
-            output: action.outcome!.output,
-          });
+      return runWithoutClassicOperationObservations(async () => {
+        if (options.readOnly) throw new Error('Classic SDK read-only store cannot change a Run');
+        await inspectClassicStateFileCandidates(projectRoot, runId);
+        // 原始 SDK start 允许省略 input.change；后续投影仍校验完整身份。
+        if (expectedRevision !== null) await stateFile(next);
+        await boundRuntimeRoot();
+        const outcomes = next.actions.filter(
+          (action) =>
+            action.type === 'call_tool' &&
+            action.ref === 'classic-check' &&
+            ['succeeded', 'failed'].includes(action.status) &&
+            action.outcome,
+        );
+        if (outcomes.length) {
+          const previous = await store.read(runId);
+          if ((previous?.revision ?? null) !== expectedRevision) return false;
+          const previousActions = new Map(previous?.actions.map((action) => [action.id, action]));
+          for (const action of outcomes) {
+            const recorded = previousActions.get(action.id);
+            // 历史已提交结果本身属于权威 Run；只有新增或改写结果必须有原执行收据。
+            if (recorded && equal(recorded, action)) continue;
+            await assertClassicSdkCheckReceipt(projectRoot, next, action, {
+              status: action.outcome!.status,
+              output: action.outcome!.output,
+            });
+          }
         }
-      }
-      const committed = await store.compareAndSwap(runId, expectedRevision, next);
-      if (committed && expectedRevision !== null) await syncStateFile(runId, false);
-      return committed;
+        const committed = await store.compareAndSwap(runId, expectedRevision, next);
+        if (committed && expectedRevision !== null) await syncStateFile(runId, false);
+        return committed;
+      });
     },
   };
 }

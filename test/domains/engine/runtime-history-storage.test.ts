@@ -1,7 +1,8 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
+import { hashRuntimeValue } from '../../../domains/engine/runtime-json.js';
 import {
   createRuntime,
   createMemoryRuntimeStore,
@@ -136,3 +137,59 @@ test('stores shared upstream results once while preserving complete action input
     await fs.rm(root, { recursive: true, force: true });
   }
 }, 30000);
+
+test.each(['small', 'large', 'pooled'] as const)(
+  'serializes the %s checkpoint envelope without traversing its history again',
+  async (kind) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-runtime-serialization-'));
+    const output = { text: '\\"\n雪'.repeat(kind === 'small' ? 2 : 40000), value: -0 };
+    const record = {
+      runId: `serialization-${kind}`,
+      revision: 1,
+      protocolVersion: 1,
+      actions:
+        kind === 'pooled'
+          ? Array.from({ length: 8 }, () => ({ input: { outputs: { result: output } } }))
+          : [],
+      actionContexts: {},
+      outputs: { result: output },
+      data: JSON.parse('{"__proto__":{"safe":true},"constructor":"data","2":2,"10":10}'),
+    };
+    const store = createFileRuntimeStore<typeof record>({ rootDir: root });
+    try {
+      const stringify = vi.spyOn(JSON, 'stringify');
+      let traversals = 0;
+      try {
+        expect(await store.compareAndSwap(record.runId, null, record)).toBe(true);
+        traversals = stringify.mock.calls.filter(([value]) => {
+          if (!value || typeof value !== 'object') return false;
+          const candidate = value as {
+            runId?: unknown;
+            revision?: unknown;
+            record?: { runId?: unknown };
+          };
+          return (
+            (candidate.runId === record.runId && candidate.revision === 1) ||
+            candidate.record?.runId === record.runId
+          );
+        }).length;
+      } finally {
+        stringify.mockRestore();
+      }
+      // 小记录只序列化原文；大记录再序列化一次压缩候选。envelope 不重复遍历历史。
+      expect(traversals).toBe(kind === 'small' ? 1 : 2);
+      expect(await store.read(record.runId)).toEqual(JSON.parse(JSON.stringify(record)));
+      const [entry] = await fs.readdir(path.join(root, '.runtime-store-v2'));
+      const saved = JSON.parse(
+        await fs.readFile(path.join(root, '.runtime-store-v2', entry, 'checkpoint.json'), 'utf8'),
+      );
+      expect(saved.schema).toBe(
+        kind === 'pooled' ? 'comet.runtime-store-snapshot.v3' : 'comet.runtime-store-snapshot.v2',
+      );
+      const { schema: _schema, hash, ...payload } = saved;
+      expect(hash).toBe(hashRuntimeValue(payload));
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  },
+);

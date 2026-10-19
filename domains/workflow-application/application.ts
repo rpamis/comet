@@ -26,6 +26,7 @@ import {
 import { getCurrentVersion } from '../../platform/version/version.js';
 import {
   readCometCurrentSelection,
+  readHookCurrentSelection,
   writeCometCurrentSelection,
 } from '../workflow-contract/current-selection.js';
 import {
@@ -541,7 +542,23 @@ export async function loadWorkflowApplication(options: {
     });
     return withRecoverableFileLock(path.join(directory, `${manifest.id}.lock`), operation);
   };
-  const relatedRuns = async (run: WorkflowRun): Promise<WorkflowRun[]> => {
+  const relatedRuns = async (
+    run: WorkflowRun,
+    action: WorkflowRun['actions'][number],
+  ): Promise<WorkflowRun[]> => {
+    // 与 scope 校验使用相同绑定规则；没有共享资源的动作无需读取其他 Run。
+    const needsPeers = manifest.bindings.some((binding) => {
+      if (
+        binding.workflowId !== run.workflow.id ||
+        binding.stepId !== action.stepId ||
+        binding.usage !== 'action'
+      )
+        return false;
+      const skill = skills.get(binding.skillId);
+      return skill && skill.adapter.sideEffect !== 'read' && skill.adapter.scope.length > 0;
+    });
+    if (!needsPeers) return [];
+
     const records = await listFileRuntimeStoreRuns<ApplicationRunRecord>({
       rootDir: path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'applications', manifest.id),
       mirroredRevisionPaths: ['run.revision'],
@@ -620,7 +637,7 @@ export async function loadWorkflowApplication(options: {
             { manifest, skills, projectRoot },
             run,
             action,
-            await relatedRuns(run),
+            await relatedRuns(run, action),
           );
         return persistent.restoreCheckpoint!(runId, expectedRevision, restored);
       };
@@ -650,7 +667,7 @@ export async function loadWorkflowApplication(options: {
               { manifest, skills, projectRoot },
               run,
               action,
-              await relatedRuns(run),
+              await relatedRuns(run, action),
             );
             if (manifest.artifactContracts)
               await assertApplicationArtifactDependencies(
@@ -807,15 +824,17 @@ export async function inspectWorkflowApplicationRun(
   return { application, run };
 }
 
+/** Hook 只观测固定应用；投影修复与迁移必须通过显式 Runtime 操作。 */
 export async function readSelectedWorkflowApplication(
   projectRoot: string,
 ): Promise<{ application: LoadedWorkflowApplication; run: WorkflowRun } | null> {
-  const current = await readCometCurrentSelection(projectRoot);
+  const current = await readHookCurrentSelection(projectRoot);
   if (current.status !== 'selected' || current.selection.workflow !== 'application') return null;
   return inspectWorkflowApplicationRun(
     projectRoot,
     current.selection.applicationId!,
     current.selection.change,
+    { readOnly: true },
   );
 }
 

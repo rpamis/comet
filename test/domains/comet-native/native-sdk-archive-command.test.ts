@@ -85,6 +85,18 @@ beforeEach(() => {
 });
 
 describe('Native Archive command stop boundaries', () => {
+  it('rejects legacy Spec backup during dry-run', async () => {
+    mocked.inspect.mockResolvedValue(inspection());
+    await expect(
+      archiveNativeSdkChange({
+        ...options,
+        dryRun: true,
+        legacySpecBackup: '/outside/originals.json',
+      }),
+    ).rejects.toThrow('--legacy-spec-backup cannot be used with --dry-run');
+    expect(mocked.execute).not.toHaveBeenCalled();
+  });
+
   it.each(['manual', 'unknown', 'pending-approval'] as const)(
     'does not replay Archive preflight with %s evidence',
     async (kind) => {

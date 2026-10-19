@@ -37,6 +37,7 @@ import {
 } from '../workflow-contract/change-runtime-owner.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import {
+  nativeSdkCanRefreshChecks,
   nativeSdkCheckExecutor,
   nativeSdkCurrentCheckSummaries,
   assertNativeSdkCandidateUnchanged,
@@ -1319,6 +1320,8 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         { from: 'verify.revalidate', to: 'verify.checks', on: 'failed' },
         { from: 'verify.revalidate', to: 'verify.stop', on: 'failed' },
         { from: 'archive.prepare', to: 'archive.execute' },
+        { from: 'archive.prepare', to: 'verify.stop', on: 'failed' },
+        { from: 'archive.execute', to: 'verify.stop', on: 'failed' },
         { from: 'archive.execute', to: 'archive.finalize' },
         { from: 'archive.finalize', to: 'supervisor.cleanup' },
       ],
@@ -2238,11 +2241,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         }
         if (event.kind === 'wait-resolved' && event.stepId === 'verify.confirm') {
           if (event.choice === 'reverify') {
-            const plans = nativeSdkCheckPlans(
-              run.outputs['supervisor.parent.builder']?.value ??
-                run.outputs['build.builder']?.value,
-            );
-            if (plans.some((plan) => !plan.repeatable))
+            if (!nativeSdkCanRefreshChecks(run))
               throw new Error('不可重复执行的检查不能重放；请先确认后续验证方式');
             return {
               state: parseNativePortableState({
@@ -2287,13 +2286,22 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
               : ['build.builder'],
           };
         }
-        if (event.kind === 'action-outcome' && event.stepId === 'verify.revalidate') {
+        if (
+          event.kind === 'action-outcome' &&
+          (event.stepId === 'verify.revalidate' ||
+            (['archive.prepare', 'archive.execute'].includes(event.stepId) &&
+              event.outcome.status === 'failed' &&
+              (event.outcome.output as { reason?: string }).reason === 'candidate-drift'))
+        ) {
           const invalidated = event.outcome.output as {
             reason?: string;
             refreshChecks?: boolean;
             message?: string;
           };
-          if (event.outcome.status === 'failed' && invalidated.reason === 'check-input-drift') {
+          if (
+            event.outcome.status === 'failed' &&
+            ['check-input-drift', 'candidate-drift'].includes(invalidated.reason ?? '')
+          ) {
             const refresh = invalidated.refreshChecks === true;
             const reason = refresh
               ? '检查输入或执行环境已变化；重新执行可重复检查，再由独立 Verifier 验收并请求用户确认。'
@@ -2301,6 +2309,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             return {
               state: parseNativePortableState({
                 ...state,
+                phase: 'verify',
                 status: refresh ? 'active' : 'await-user',
                 state_version: state.state_version + 1,
                 verification: null,

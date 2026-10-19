@@ -1,3 +1,4 @@
+import * as nativeSdkChecks from '../../../domains/comet-native/native-sdk-checks.js';
 import { nativeCandidateInputGate } from '../../../domains/comet-native/native-portable-checks.js';
 import { nativeEditReviewScope } from '../../../domains/comet-native/native-edit-review.js';
 import {
@@ -51,11 +52,13 @@ import {
 import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
 import {
   nativeSdkBeforeReportRecovery,
+  nativeSdkBeforeArchiveCandidateRecovery,
   nativeSdkLegacyTransitionHandler,
   nativeSdkBeforeVerifierRecovery,
 } from '../../../domains/comet-native/native-sdk-definition.js';
 import {
   nativeSdkArchivePreflightExecutor,
+  nativeSdkArchivePreflightValidator,
   nativeSdkArchiveFinalizeExecutor,
 } from '../../../domains/comet-native/native-sdk-archive.js';
 import { archiveNativeSdkChange } from '../../../domains/comet-native/native-sdk-archive-command.js';
@@ -74,6 +77,7 @@ import {
   type RuntimeExecutor,
   type WorkflowRun,
   type WorkflowTransitionHandler,
+  hashRuntimeValue,
 } from '../../../domains/engine/runtime.js';
 import {
   COMET_CHANGE_OWNER_SCHEMA,
@@ -264,8 +268,10 @@ async function succeedLatestAction(
 async function preparedShape(
   storeKind: 'memory' | 'file' | 'sdk' = 'memory',
   application = nativeApplication(),
+  beforeShape?: (root: string) => Promise<void>,
 ) {
   const fixtureData = await fixture();
+  await beforeShape?.(fixtureData.root);
   const store =
     storeKind === 'sdk'
       ? createNativeSdkStateStore(fixtureData.root)
@@ -314,8 +320,10 @@ async function dispatchedVerifier(
   storeKind: 'memory' | 'file' | 'sdk' = 'memory',
   application = nativeApplication(),
   executeChecks = true,
+  beforeChecks?: (root: string) => Promise<void>,
+  beforeShape?: (root: string) => Promise<void>,
 ) {
-  const prepared = await preparedShape(storeKind, application);
+  const prepared = await preparedShape(storeKind, application, beforeShape);
   const { root, paths, runtime } = prepared;
   const shapeWait = prepared.run.waits.at(-1)!;
   let run = await runtime.resolveWait({
@@ -349,6 +357,7 @@ async function dispatchedVerifier(
     'builder-candidate',
     'builder-session-1',
   );
+  await beforeChecks?.(root);
   if (executeChecks)
     run = await runtime.execute({
       runId: run.runId,
@@ -420,8 +429,18 @@ async function awaitingArchiveApplication(
   storeKind: 'memory' | 'file' | 'sdk' = 'memory',
   beforePreflight?: (options: { root: string; run: WorkflowRun }) => void | Promise<void>,
   stopBeforePreflight = false,
+  beforeChecks?: (root: string) => Promise<void>,
+  application = nativeApplication(),
+  beforeShape?: (root: string) => Promise<void>,
 ) {
-  const prepared = await dispatchedVerifier([], storeKind);
+  const prepared = await dispatchedVerifier(
+    [],
+    storeKind,
+    application,
+    true,
+    beforeChecks,
+    beforeShape,
+  );
   const { root, runtime } = prepared;
   let run = prepared.run;
   run = await succeedLatestAction(
@@ -473,6 +492,15 @@ async function awaitingArchiveApplication(
     });
   }
   return { ...prepared, run };
+}
+
+async function initializeArchiveGit(root: string) {
+  execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
+  execFileSync('git', ['config', 'user.email', 'fixture@example.test'], { cwd: root });
+  execFileSync('git', ['config', 'user.name', 'Fixture'], { cwd: root });
+  await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = true;');
+  execFileSync('git', ['add', 'implementation.js'], { cwd: root });
+  execFileSync('git', ['commit', '-m', 'fixture'], { cwd: root, stdio: 'ignore' });
 }
 
 async function awaitingArchiveFinalization(storeKind: 'memory' | 'file' = 'memory') {
@@ -840,18 +868,22 @@ describe('Native SDK Workflow Application', () => {
     },
   );
   it('keeps blocked Archive preflight read-only and retries without not-executed evidence', async () => {
-    const prepared = await awaitingArchiveApplication('sdk', undefined, true);
-    const { root, runtime, paths } = prepared;
-    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
     const peerName = 'capability-peer';
+    const prepared = await awaitingArchiveApplication('sdk', undefined, true, async (root) => {
+      const paths = await nativeProjectPaths(root, 'docs');
+      const peerDir = path.join(paths.changesDir, peerName);
+      await fs.mkdir(path.join(peerDir, 'specs/workflow'), { recursive: true });
+      await fs.copyFile(
+        path.join(paths.changesDir, 'sdk-shape', 'brief.md'),
+        path.join(peerDir, 'brief.md'),
+      );
+      await fs.copyFile(
+        path.join(paths.changesDir, 'sdk-shape', 'specs/workflow/spec.md'),
+        path.join(peerDir, 'specs/workflow/spec.md'),
+      );
+    });
+    const { root, runtime, paths } = prepared;
     const peerDir = path.join(paths.changesDir, peerName);
-    await fs.mkdir(peerDir, { recursive: true });
-    await fs.copyFile(path.join(prepared.changeDir, 'brief.md'), path.join(peerDir, 'brief.md'));
-    await fs.mkdir(path.join(peerDir, 'specs/workflow'), { recursive: true });
-    await fs.copyFile(
-      path.join(prepared.changeDir, 'specs/workflow/spec.md'),
-      path.join(peerDir, 'specs/workflow/spec.md'),
-    );
     const peerApplication = nativeApplication();
     const peerRuntime = createRuntime({
       ...peerApplication,
@@ -948,22 +980,25 @@ describe('Native SDK Workflow Application', () => {
   it('rejects Archive document drift before overwriting the confirmed report', async () => {
     let reportFile = '';
     let before = '';
-    await expect(
-      awaitingArchiveApplication('memory', async ({ root }) => {
-        const paths = await nativeProjectPaths(root, 'docs');
-        const changeDir = path.join(paths.changesDir, 'sdk-shape');
-        reportFile = path.join(changeDir, 'verification.md');
-        before = await fs.readFile(reportFile, 'utf8');
-        const brief = path.join(changeDir, 'brief.md');
-        await fs.writeFile(
-          brief,
-          (await fs.readFile(brief, 'utf8')).replace(
-            'The selected workflow resumes.',
-            'The selected workflow requires a different result.',
-          ),
-        );
-      }),
-    ).rejects.toThrow(/EXECUTION_UNKNOWN/u);
+    const { run } = await awaitingArchiveApplication('memory', async ({ root }) => {
+      const paths = await nativeProjectPaths(root, 'docs');
+      const changeDir = path.join(paths.changesDir, 'sdk-shape');
+      reportFile = path.join(changeDir, 'verification.md');
+      before = await fs.readFile(reportFile, 'utf8');
+      const brief = path.join(changeDir, 'brief.md');
+      await fs.writeFile(
+        brief,
+        (await fs.readFile(brief, 'utf8')).replace(
+          'The selected workflow resumes.',
+          'The selected workflow requires a different result.',
+        ),
+      );
+    });
+    expect(run.actions.at(-1)).toMatchObject({
+      status: 'failed',
+      outcome: { output: { reason: 'candidate-drift' } },
+    });
+    expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
     expect(await fs.readFile(reportFile, 'utf8')).toBe(before);
   });
 
@@ -6370,3 +6405,717 @@ children:
     ).rejects.toThrow(/INITIAL_STATE_INVALID/);
   });
 });
+
+it('preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check', async () => {
+  const {
+    root,
+    runtime,
+    store,
+    run: ready,
+  } = await dispatchedVerifier([], 'sdk', undefined, true, initializeArchiveGit);
+  const candidateId = (ready.state as NativePortableState).builder_handoff!.candidate_id;
+  let run = await succeedLatestAction(
+    runtime,
+    ready,
+    {
+      candidateId,
+      verifierExecutionRef: 'v1',
+      response: {
+        kind: 'request-checks',
+        iteration: 1,
+        attempt: 1,
+        checks: [
+          {
+            id: 'oneshot',
+            name: 'oneshot',
+            executable: process.execPath,
+            argv: ['-e', 'process.stdout.write("ok")'],
+            cwdRef: '.',
+            timeoutMs: 5000,
+            repeatable: false,
+          },
+        ],
+      },
+    },
+    root,
+    'request',
+    'v1',
+  );
+  run = await runtime.execute({
+    runId: run.runId,
+    actionId: run.actions.at(-1)!.id,
+    executorId: 'comet-native-checks',
+    context: { requestId: 'checks', projectRoot: root },
+  });
+  run = await succeedLatestAction(
+    runtime,
+    run,
+    {
+      candidateId,
+      verifierExecutionRef: 'v1',
+      response: {
+        kind: 'final-result',
+        result: {
+          iteration: 1,
+          attempt: 1,
+          verdict: 'pass',
+          acceptance: [{ id: 'A1', result: 'passed', reason: 'Passed.' }],
+          risks: [],
+          summary: 'Passed.',
+        },
+      },
+    },
+    root,
+    'pass',
+    'v1',
+  );
+  run = await runtime.execute({
+    runId: run.runId,
+    actionId: run.actions.at(-1)!.id,
+    executorId: 'comet-native-report',
+    context: { requestId: 'report', projectRoot: root },
+  });
+  const wait = run.waits.at(-1)!;
+  await expect(
+    advanceNativeSdkChange(root, run.runId, {
+      expectedAction: 'retry-verifier',
+      expectedStateVersion: (run.state as NativePortableState).state_version,
+      proposalHash: wait.proposalHash,
+      summary: 'Please reverify',
+    }),
+  ).rejects.toThrow(/不可重复执行/);
+  const final = await store.read(run.runId);
+  expect(final).toEqual(run);
+  expect(final!.waits.at(-1)).toMatchObject({ id: wait.id, status: 'pending' });
+  expect((final!.state as NativePortableState).verification_result).toBe('pass');
+});
+
+it('blocks tracked implementation drift at Archive preflight and offers the original Verify repair path', async () => {
+  const prepared = await awaitingArchiveApplication('sdk', undefined, true, initializeArchiveGit);
+  const { root, runtime } = prepared;
+  await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("unverified");');
+  const result = await runNativeCli(['archive', 'sdk-shape', '--project-root', root, '--json']);
+  const run = await runtime.inspect(prepared.run.runId);
+  expect(run.state).toMatchObject({
+    phase: 'verify',
+    status: 'await-user',
+    archived: false,
+    verification_result: 'pending',
+  });
+  expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
+  expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.prepare', status: 'failed' });
+  expect(result.exitCode).toBe(73);
+  const wait = run.waits.at(-1)!;
+  const repaired = await runtime.resolveWait({
+    runId: run.runId,
+    waitId: wait.id,
+    proposalHash: wait.proposalHash,
+    choice: 'repair',
+    decisionId: 'repair-drift',
+  });
+  expect(repaired.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'pending' });
+});
+
+it('archives a real Git candidate through canonical writes and directory relocation', async () => {
+  const {
+    root,
+    runtime,
+    run: prepared,
+  } = await awaitingArchiveApplication('sdk', undefined, true, initializeArchiveGit);
+  const result = await runNativeCli(['archive', 'sdk-shape', '--project-root', root, '--json']);
+  expect(result.exitCode, JSON.stringify(result)).toBe(0);
+  expect((await runtime.inspect(prepared.runId)).state).toMatchObject({
+    archived: true,
+    status: 'done',
+  });
+});
+
+it.each([
+  'implementation.js',
+  'docs/comet/specs/workflow/hidden.js',
+  'docs/comet/changes/sdk-shape/hidden.js',
+])('blocks unapproved %s changes after Archive preflight', async (ref) => {
+  const { root, runtime, run } = await awaitingArchiveApplication(
+    'sdk',
+    undefined,
+    false,
+    initializeArchiveGit,
+  );
+  await fs.mkdir(path.dirname(path.join(root, ref)), { recursive: true });
+  await fs.writeFile(path.join(root, ref), 'throw new Error("unverified");');
+  const stopped = await runtime.execute({
+    runId: run.runId,
+    actionId: run.actions.at(-1)!.id,
+    executorId: 'comet-native-archive-apply',
+    context: { requestId: 'drift-apply', projectRoot: root },
+  });
+  expect(stopped.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
+  expect((await runtime.inspect(run.runId)).state).toMatchObject({ archived: false });
+  await expect(fs.stat(path.join(root, 'docs/comet/specs/workflow/spec.md'))).rejects.toThrow();
+});
+
+it('keeps a recovered unknown preflight blocked when the original candidate has drifted', async () => {
+  const { root, runtime, run } = await awaitingArchiveApplication(
+    'sdk',
+    undefined,
+    true,
+    initializeArchiveGit,
+  );
+  const action = run.actions.at(-1)!;
+  await runtime.claim({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: 'comet-native-archive-preflight',
+    claimToken: 'stopped-preflight',
+    context: { requestId: 'stopped-preflight', projectRoot: root },
+  });
+  await runtime.markUnknown({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    reason: 'The original executor has stopped.',
+  });
+  await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("unverified");');
+  const result = await runNativeCli([
+    'archive',
+    run.runId,
+    '--project-root',
+    root,
+    '--recover',
+    '--json',
+  ]);
+  expect(result.exitCode).toBe(73);
+  const recovered = await runtime.inspect(run.runId);
+  expect(recovered.actions.at(-1)).toMatchObject({
+    id: action.id,
+    status: 'failed',
+    outcome: { output: { reason: 'candidate-drift' } },
+  });
+  expect(recovered.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
+  expect(recovered.state).toMatchObject({ archived: false, verification_result: 'pending' });
+});
+
+it.each(['archive.prepare', 'archive.execute', 'archive.finalize'])(
+  'rejects implementation drift between %s execution and commit and recovers the original Action',
+  async (stepId) => {
+    const prepared = await awaitingArchiveApplication('sdk', undefined, true, initializeArchiveGit);
+    const { root, runtime, application } = prepared;
+    let run = prepared.run;
+    const executorIds = [
+      'comet-native-archive-preflight',
+      'comet-native-archive-apply',
+      'comet-native-archive-finalize',
+    ];
+    const steps = ['archive.prepare', 'archive.execute', 'archive.finalize'];
+    for (let i = 0; i < steps.indexOf(stepId); i++) {
+      run = await runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId: executorIds[i],
+        context: { requestId: `before-${stepId}-${i}`, projectRoot: root },
+      });
+    }
+    const pending = run.actions.at(-1)!;
+    const executor = application.executors.find(
+      (entry) => entry.id === executorIds[steps.indexOf(stepId)],
+    )!;
+    const context = { requestId: `commit-boundary-${stepId}`, projectRoot: root };
+    run = await runtime.claim({
+      runId: run.runId,
+      actionId: pending.id,
+      attempt: pending.attempt,
+      inputHash: pending.inputHash,
+      executorId: executor.id,
+      claimToken: `owner-${stepId}`,
+      context,
+    });
+    const action = run.actions.at(-1)!;
+    const executed = await executor.execute(action, context, run);
+    await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("unverified");');
+    await expect(
+      runtime.recordOutcome({
+        runId: run.runId,
+        context,
+        outcome: {
+          actionId: action.id,
+          attempt: action.attempt,
+          inputHash: action.inputHash,
+          claimToken: action.claim!.token,
+          outcomeId: `${action.id}:${action.attempt}:executor-result`,
+          status: executed.status,
+          output: executed.output,
+        },
+      }),
+    ).rejects.toThrow(/OUTCOME_REJECTED/);
+    expect((await runtime.inspect(run.runId)).actions.at(-1)).toMatchObject({
+      id: action.id,
+      status: 'running',
+    });
+    await runtime.markUnknown({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      reason: 'The test host has stopped after its rejected result.',
+    });
+    await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = true;');
+    const recovered = await archiveNativeSdkChange({
+      projectRoot: root,
+      name: run.runId,
+      dryRun: false,
+      recover: true,
+      confirmed: false,
+    });
+    expect(recovered.exitCode).toBe(0);
+    const completed = await runtime.inspect(run.runId);
+    expect(completed.actions.find((entry) => entry.id === action.id)).toMatchObject({
+      status: 'succeeded',
+      attempt: 1,
+    });
+    expect(completed.actions.filter((entry) => entry.stepId === stepId)).toHaveLength(1);
+  },
+);
+
+it('blocks implementation drift before finalization and resumes its existing Spec transaction after restoration', async () => {
+  const {
+    root,
+    runtime,
+    run: prepared,
+  } = await awaitingArchiveApplication('sdk', undefined, false, initializeArchiveGit);
+  const run = await runtime.execute({
+    runId: prepared.runId,
+    actionId: prepared.actions.at(-1)!.id,
+    executorId: 'comet-native-archive-apply',
+    context: { requestId: 'apply-before-finalize-drift', projectRoot: root },
+  });
+  const action = run.actions.at(-1)!;
+  await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("unverified");');
+  const stopped = await runtime.execute({
+    runId: run.runId,
+    actionId: action.id,
+    executorId: 'comet-native-archive-finalize',
+    context: { requestId: 'finalize-drift', projectRoot: root },
+  });
+  expect(stopped.actions.at(-1)).toMatchObject({
+    status: 'failed',
+    outcome: { output: { reason: 'candidate-drift' } },
+  });
+  await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = true;');
+  const result = await archiveNativeSdkChange({
+    projectRoot: root,
+    name: run.runId,
+    dryRun: false,
+    recover: false,
+    confirmed: false,
+  });
+  expect(result.exitCode).toBe(0);
+  const restored = await runtime.inspect(run.runId);
+  expect(restored.status).toBe('completed');
+  expect(restored.actions.filter((entry) => entry.stepId === 'archive.execute')).toHaveLength(1);
+});
+
+function legacyArchiveApplication() {
+  const application = nativeApplication();
+  const workflow = nativeSdkBeforeArchiveCandidateRecovery(application.workflow);
+  return {
+    ...application,
+    workflow,
+    transitionHandler: nativeSdkLegacyTransitionHandler(workflow, application.transitionHandler),
+    executors: application.executors.map((executor) =>
+      executor.id !== nativeSdkArchivePreflightExecutor.id
+        ? executor
+        : {
+            ...executor,
+            async execute(...args: Parameters<RuntimeExecutor['execute']>) {
+              const result = await executor.execute(...args);
+              const output = { ...(result.output as Record<string, never>) };
+              delete output.candidateBinding;
+              return { ...result, output };
+            },
+          },
+    ),
+    validators: application.validators.map((validator) =>
+      validator.id !== nativeSdkArchivePreflightValidator.id
+        ? validator
+        : {
+            ...validator,
+            async validate(args: Parameters<RuntimeValidator['validate']>[0]) {
+              const expected = await nativeSdkArchivePreflightExecutor.execute(
+                args.action,
+                args.context,
+                args.run,
+              );
+              const output = { ...(expected.output as Record<string, never>) };
+              delete output.candidateBinding;
+              return {
+                accepted:
+                  expected.status === args.outcome.status &&
+                  hashRuntimeValue(output) === hashRuntimeValue(args.outcome.output),
+              };
+            },
+          },
+    ),
+  };
+}
+
+it.each(['create', 'tracked-update', 'untracked-update', 'non-git-update'])(
+  'recovers an old Archive %s transaction by matching its original candidate evidence',
+  async (kind) => {
+    const original = '# Existing workflow\nPreserve the old acceptance.\n';
+    const prepared = await awaitingArchiveApplication(
+      'sdk',
+      undefined,
+      false,
+      undefined,
+      legacyArchiveApplication(),
+      async (root) => {
+        if (kind === 'non-git-update')
+          await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = true;');
+        else await initializeArchiveGit(root);
+        if (kind !== 'create') {
+          const file = path.join(root, 'docs/comet/specs/workflow/spec.md');
+          await fs.mkdir(path.dirname(file), { recursive: true });
+          await fs.writeFile(file, original);
+          if (kind === 'untracked-update' || kind === 'non-git-update') {
+            for (const [ref, content] of [
+              ['docs/comet/specs/secondary/spec.md', original],
+              [
+                'docs/comet/changes/sdk-shape/specs/secondary/spec.md',
+                '# Secondary\nThe selected workflow resumes.\n',
+              ],
+            ]) {
+              await fs.mkdir(path.dirname(path.join(root, ref!)), { recursive: true });
+              await fs.writeFile(path.join(root, ref!), content!);
+            }
+          }
+          if (kind === 'tracked-update') {
+            execFileSync('git', ['add', 'docs/comet/specs/workflow/spec.md'], { cwd: root });
+            execFileSync('git', ['commit', '-m', 'existing spec'], { cwd: root, stdio: 'ignore' });
+          }
+        }
+      },
+    );
+    const { root, runtime, run } = prepared;
+    expect(run.outputs['archive.prepare'].value).not.toHaveProperty('candidateBinding');
+    const action = run.actions.at(-1)!;
+    // 旧实现已完成 apply 的事实由原事务保存；新 Runtime 不重放已经写入的 Spec。
+    const context = { requestId: 'legacy-apply', projectRoot: root };
+    const claimed = await runtime.claim({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'comet-native-archive-apply',
+      claimToken: 'legacy-apply-owner',
+      context,
+    });
+    const { applyNativeSdkArchiveSpecs, inspectNativeSdkArchiveSpecs } =
+      await import('../../../domains/comet-native/native-portable-archive.js');
+    const state = claimed.state as NativePortableState;
+    await applyNativeSdkArchiveSpecs({
+      paths: prepared.paths,
+      state,
+      verificationReportStateVersion: (
+        run.outputs['archive.prepare'].value as { reportStateVersion: number }
+      ).reportStateVersion,
+    });
+    await runtime.markUnknown({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      reason: 'The legacy host stopped after applying its frozen transaction.',
+    });
+    const options = {
+      projectRoot: root,
+      name: run.runId,
+      dryRun: false,
+      recover: true,
+      confirmed: false,
+    };
+    if (kind === 'untracked-update' || kind === 'non-git-update') {
+      await expect(archiveNativeSdkChange(options)).rejects.toThrow(/原文/);
+      const { readNativePortableTransaction } =
+        await import('../../../domains/comet-native/native-portable-transactions.js');
+      const transaction = await readNativePortableTransaction(prepared.paths, {
+        kind: 'archive',
+        change: state.name,
+      });
+      const backupRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-archive-originals-'));
+      roots.push(backupRoot);
+      const backupRef = path.join(backupRoot, 'archive-originals.json');
+      await fs.writeFile(
+        backupRef,
+        JSON.stringify({
+          schema: 'comet.native.archive-originals.v1',
+          runId: run.runId,
+          transactionId: transaction!.journal.id,
+          files: [
+            { ref: 'docs/comet/specs/workflow/spec.md', content: original },
+            { ref: 'docs/comet/specs/secondary/spec.md', content: original },
+          ],
+        }),
+      );
+      const validBackup = await fs.readFile(backupRef, 'utf8');
+      const parsedBackup = JSON.parse(validBackup);
+      for (const invalid of [
+        { ...parsedBackup, unknown: true },
+        { ...parsedBackup, runId: 'another-run' },
+        { ...parsedBackup, transactionId: 'another-transaction' },
+        { ...parsedBackup, files: [...parsedBackup.files, ...parsedBackup.files] },
+        { ...parsedBackup, files: [{ ref: '../escape/spec.md', content: original }] },
+        { ...parsedBackup, files: [{ ref: 'docs/comet/specs/extra/spec.md', content: original }] },
+        { ...parsedBackup, files: [{ ref: parsedBackup.files[0].ref, content: 'wrong original' }] },
+      ]) {
+        await fs.writeFile(backupRef, JSON.stringify(invalid));
+        await expect(
+          archiveNativeSdkChange({ ...options, legacySpecBackup: backupRef }),
+        ).rejects.toThrow();
+        expect(await fs.readFile(backupRef, 'utf8')).toBe(JSON.stringify(invalid));
+      }
+      await fs.writeFile(backupRef, ' '.repeat(8 * 1024 * 1024 + 1));
+      await expect(
+        archiveNativeSdkChange({ ...options, legacySpecBackup: backupRef }),
+      ).rejects.toThrow();
+      await fs.writeFile(backupRef, validBackup);
+      const linked = path.join(backupRoot, 'linked.json');
+      await fs.symlink(backupRef, linked);
+      await expect(
+        archiveNativeSdkChange({ ...options, legacySpecBackup: linked }),
+      ).rejects.toThrow(/symbolic|symlink/i);
+      await expect(
+        archiveNativeSdkChange({ ...options, legacySpecBackup: '../outside.json' }),
+      ).rejects.toThrow();
+      await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("changed");');
+      await expect(
+        archiveNativeSdkChange({ ...options, legacySpecBackup: backupRef }),
+      ).rejects.toThrow(/候选实现/);
+      await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = true;');
+      const { importNativeSdkArchiveOriginals } =
+        await import('../../../domains/comet-native/native-sdk-archive-originals.js');
+      await importNativeSdkArchiveOriginals({
+        projectRoot: root,
+        run: await runtime.inspect(run.runId),
+        ref: backupRef,
+      });
+      await importNativeSdkArchiveOriginals({
+        projectRoot: root,
+        run: await runtime.inspect(run.runId),
+        ref: backupRef,
+      });
+      await fs.writeFile(
+        backupRef,
+        JSON.stringify({ ...parsedBackup, files: [...parsedBackup.files].reverse() }),
+      );
+      await importNativeSdkArchiveOriginals({
+        projectRoot: root,
+        run: await runtime.inspect(run.runId),
+        ref: backupRef,
+      });
+      await fs.writeFile(
+        backupRef,
+        JSON.stringify({
+          ...parsedBackup,
+          files: parsedBackup.files.map((entry: { ref: string; content: string }) => ({
+            ...entry,
+            content: 'different original',
+          })),
+        }),
+      );
+      await expect(
+        importNativeSdkArchiveOriginals({
+          projectRoot: root,
+          run: await runtime.inspect(run.runId),
+          ref: backupRef,
+        }),
+      ).rejects.toThrow();
+      await fs.writeFile(backupRef, validBackup);
+      expect(
+        (
+          await runNativeCli([
+            'archive',
+            run.runId,
+            '--project-root',
+            root,
+            '--recover',
+            '--legacy-spec-backup',
+            backupRef,
+            '--json',
+          ])
+        ).exitCode,
+      ).toBe(0);
+      expect(await fs.readFile(backupRef, 'utf8')).toBe(validBackup);
+    } else {
+      await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("changed");');
+      await expect(archiveNativeSdkChange(options)).rejects.toThrow(/候选实现/);
+      await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = true;');
+      expect((await archiveNativeSdkChange(options)).exitCode).toBe(0);
+    }
+    const restored = await runtime.inspect(run.runId);
+    expect(restored.outputs['archive.execute'].value).toEqual(
+      await inspectNativeSdkArchiveSpecs({ paths: prepared.paths, state }),
+    );
+    const result = await archiveNativeSdkChange({ ...options, recover: false });
+    expect(result.exitCode).toBe(0);
+    expect((await runtime.inspect(run.runId)).status).toBe('completed');
+    expect(
+      (await runtime.inspect(run.runId)).actions.filter(
+        (entry) => entry.stepId === 'archive.execute',
+      ),
+    ).toHaveLength(1);
+  },
+);
+
+it('upgrades a legacy failed Archive drift into the original Verify repair Wait', async () => {
+  const prepared = await awaitingArchiveApplication(
+    'sdk',
+    async ({ root }) => {
+      await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("changed");');
+    },
+    false,
+    initializeArchiveGit,
+    legacyArchiveApplication(),
+  );
+  expect(prepared.run.status).toBe('failed');
+  expect(prepared.run.state).toMatchObject({ phase: 'archive', archived: false });
+  expect(
+    await inspectNativeSdkDefinitionUpgrade(prepared.root, prepared.run.runId, true),
+  ).toMatchObject({ ready: true, repaired: true });
+  await advanceNativeSdkChange(prepared.root, prepared.run.runId);
+  // load 会预读首个快照；跨另一条 command 推进后应重新加载，不能拿旧实例作最新查询。
+  const { runtime } = await loadOwnedNativeSdkRuntime(prepared.root, prepared.run.runId);
+  const run = await runtime.inspect(prepared.run.runId);
+  expect(run.state).toMatchObject({
+    phase: 'verify',
+    status: 'await-user',
+    verification_result: 'pending',
+  });
+  expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
+});
+
+it('requires fresh verification instead of trusting a legacy check without a candidate digest', async () => {
+  const application = nativeApplication();
+  application.executors = application.executors.map((executor) =>
+    executor.id !== nativeSdkCheckExecutor.id
+      ? executor
+      : {
+          ...executor,
+          async execute(...args: Parameters<RuntimeExecutor['execute']>) {
+            const result = await executor.execute(...args);
+            const output = { ...(result.output as Record<string, never>) };
+            delete output.candidateInputFingerprintGate;
+            return { ...result, output };
+          },
+        },
+  );
+  const { run } = await awaitingArchiveApplication(
+    'memory',
+    undefined,
+    false,
+    initializeArchiveGit,
+    application,
+  );
+  expect(run.state).toMatchObject({
+    phase: 'verify',
+    status: 'await-user',
+    archived: false,
+    verification_result: 'pending',
+  });
+  expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
+});
+
+it.each(['legacy', 'current'])(
+  'records an already-finalized %s receipt as history without revalidating changed implementation',
+  async (kind) => {
+    const prepared = await awaitingArchiveApplication(
+      'sdk',
+      undefined,
+      false,
+      initializeArchiveGit,
+      kind === 'legacy' ? legacyArchiveApplication() : undefined,
+    );
+    const { root, runtime, application } = prepared;
+    let run = await runtime.execute({
+      runId: prepared.run.runId,
+      actionId: prepared.run.actions.at(-1)!.id,
+      executorId: 'comet-native-archive-apply',
+      context: { requestId: 'legacy-completed-apply', projectRoot: root },
+    });
+    const action = run.actions.at(-1)!;
+    const context = { requestId: 'legacy-completed-finalize', projectRoot: root };
+    run = await runtime.claim({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'comet-native-archive-finalize',
+      claimToken: 'legacy-finalize-owner',
+      context,
+    });
+    const executor = application.executors.find(
+      (entry) => entry.id === 'comet-native-archive-finalize',
+    )!;
+    const executed = await executor.execute(run.actions.at(-1)!, context, run);
+    expect(executed.status).toBe('succeeded');
+    await runtime.markUnknown({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      reason: 'The legacy host stopped after persisting the finalization receipt.',
+    });
+    await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("later work");');
+    const result = await archiveNativeSdkChange({
+      projectRoot: root,
+      name: run.runId,
+      dryRun: false,
+      recover: true,
+      confirmed: false,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.data).toMatchObject({
+      historicalRecovery: true,
+      currentImplementationRevalidated: false,
+    });
+    expect((await runtime.inspect(run.runId)).actions.at(-1)).toMatchObject({
+      id: action.id,
+      status: 'succeeded',
+      attempt: 1,
+    });
+    expect(await fs.readFile(path.join(root, 'implementation.js'), 'utf8')).toContain('later work');
+  },
+);
+
+it.each([1, 2])(
+  'rejects candidate drift after original gate observation %i before archive binding capture',
+  async (observation) => {
+    const { root, runtime, run } = await awaitingArchiveApplication(
+      'sdk',
+      undefined,
+      true,
+      initializeArchiveGit,
+    );
+    const original = nativeSdkChecks.assertNativeSdkCandidateUnchanged;
+    let calls = 0;
+    vi.spyOn(nativeSdkChecks, 'assertNativeSdkCandidateUnchanged').mockImplementation(
+      async (options) => {
+        await original(options);
+        if (++calls === observation)
+          await fs.writeFile(
+            path.join(root, 'implementation.js'),
+            'throw new Error("between observations");',
+          );
+      },
+    );
+    await expect(
+      runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId: 'comet-native-archive-preflight',
+        context: { requestId: `observation-drift-${observation}`, projectRoot: root },
+      }),
+    ).rejects.toThrow(/OUTCOME_REJECTED/);
+    const stopped = await runtime.inspect(run.runId);
+    expect(stopped.state).toMatchObject({ archived: false });
+    expect(stopped.actions.some((action) => action.stepId === 'archive.execute')).toBe(false);
+  },
+);

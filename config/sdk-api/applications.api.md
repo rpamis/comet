@@ -1269,7 +1269,7 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
 // @public
 export function readApplicationEvaluationEvidence(projectRoot: string, id: string, contentHash: string): Promise<ApplicationEvaluationEvidence>;
 
-// @public (undocumented)
+// @public
 export function readSelectedWorkflowApplication(projectRoot: string): Promise<{
     application: LoadedWorkflowApplication;
     run: WorkflowRun;

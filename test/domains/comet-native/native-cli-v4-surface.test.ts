@@ -1354,6 +1354,8 @@ Run focused Native checks.
         expect(finalized.exitCode, finalized.error?.message).toBe(0);
         expect(finalized.data).toMatchObject({
           recoveredAction: { id: action.id, stepId: 'archive.finalize' },
+          historicalRecovery: true,
+          currentImplementationRevalidated: false,
         });
       }
       expect(finalized, finalized.error?.message).toMatchObject({

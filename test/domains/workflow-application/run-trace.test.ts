@@ -1,3 +1,4 @@
+import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -5,10 +6,12 @@ import path from 'node:path';
 import {
   createRuntime,
   createMemoryRuntimeStore,
+  createFileRuntimeStore,
   type WorkflowRun,
 } from '../../../domains/engine/runtime.js';
 import {
   observeWorkflowRunStore,
+  readChangeTraceSnapshots,
   workflowRunTraceUpdates,
 } from '../../../domains/workflow-application/run-trace.js';
 import { readRuntimeTraceSpans } from '../../../platform/process/runtime-trace.js';
@@ -36,6 +39,51 @@ describe('SDK Run observation', () => {
   afterEach(async () => {
     vi.unstubAllEnvs();
     await fs.rm(directory, { recursive: true, force: true });
+  });
+  it('bounds selected identities and counts invalid entries and duplicate authorities accurately', async () => {
+    const current = path.join(resolveWorkspaceRuntimeRootSync(project), 'sdk-runs', 'native');
+    const prior = path.join(project, '.comet/runtime/sdk-runs/native');
+    const runtime = createRuntime({
+      store: createMemoryRuntimeStore<WorkflowRun>(),
+      workflows: [workflow],
+    });
+    const run = await runtime.start({
+      runId: 'duplicate',
+      workflow: { id: workflow.id, version: '1' },
+      input: null,
+    });
+    await createFileRuntimeStore<WorkflowRun>({ rootDir: current }).compareAndSwap(
+      run.runId,
+      null,
+      run,
+    );
+    await createFileRuntimeStore<WorkflowRun>({ rootDir: prior }).compareAndSwap(
+      run.runId,
+      null,
+      run,
+    );
+    await fs.writeFile(path.join(current, 'invalid'), '{}');
+    expect(await readChangeTraceSnapshots(project, 'native', 0)).toEqual({
+      runs: [],
+      truncated: true,
+      unreadable: 0,
+    });
+    expect(await readChangeTraceSnapshots(project, 'native', 1)).toEqual({
+      runs: [],
+      truncated: true,
+      unreadable: 1,
+    });
+    expect(await readChangeTraceSnapshots(project, 'native', 2)).toEqual({
+      runs: [],
+      truncated: false,
+      unreadable: 2,
+    });
+    await fs.rm(prior, { recursive: true });
+    expect(await readChangeTraceSnapshots(project, 'native', 2)).toEqual({
+      runs: [run],
+      truncated: false,
+      unreadable: 1,
+    });
   });
   it('records real claims, outcomes and waits without storing raw inputs or claim credentials', async () => {
     const store = observeWorkflowRunStore(

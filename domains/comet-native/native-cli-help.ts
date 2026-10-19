@@ -239,7 +239,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   archive: {
     usage:
-      'comet native archive <change-name> --dry-run [--finish merge|push|pull-request|keep] [--commit-message <text>] [--merge-message <text>]\n       comet native archive <change-name> [--confirmed] [--serial-first <current-change>] [--commit-message <text>] [--merge-message <text>]\n       comet native archive <sdk-change-name> --recover',
+      'comet native archive <change-name> --dry-run [--finish merge|push|pull-request|keep] [--commit-message <text>] [--merge-message <text>]\n       comet native archive <change-name> [--confirmed] [--serial-first <current-change>] [--commit-message <text>] [--merge-message <text>]\n       comet native archive <sdk-change-name> --recover [--legacy-spec-backup <json-file>]',
     purpose:
       'Preview or execute deterministic Archive after the portable state reaches archive-ready.',
     options: [
@@ -250,6 +250,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--merge-message <text>   For compat changes, set the local merge commit message; requires merge finish. Omit it to use Git defaults.',
       '--serial-first <current-change>  During execution only, confirm that this change archives before detected capability peers; the value must equal <change-name>.',
       '--confirmed        Confirm Archive when project policy requires it.',
+      '--legacy-spec-backup <json-file>  SDK only: read a bounded original-Spec backup for an existing legacy Archive transaction. Use a new file outside the project so it does not change the old candidate. Requires exact schema/runId/transactionId/path/hash and original candidate digest matches; never writes the source file or Git index. See docs/operations/native-archive-recovery.zh.md.',
       '--recover          For an SDK-owned change, reconcile one unknown Supervisor delivery, Archive, or cleanup Action only after confirming the original execution process has stopped; never retry it as new work.',
     ],
     output:

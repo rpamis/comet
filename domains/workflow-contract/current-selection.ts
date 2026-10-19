@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
+import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 import { readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
 import type { CometProjectWorkflow } from './types.js';
 
@@ -122,6 +123,12 @@ export async function readCometCurrentSelection(
   const parsed = parseSelection(source);
   return { status: 'selected', ...parsed };
 }
+
+/** 同一次 Hook 使用一个安全读取结果；Runtime 修改仍直接读取当前选择。 */
+export const readHookCurrentSelection = memoizedHookRead(
+  'readCometCurrentSelection',
+  (projectRoot: string) => readCometCurrentSelection(projectRoot),
+);
 
 export async function writeCometCurrentSelection(
   projectRoot: string,

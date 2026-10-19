@@ -1,8 +1,10 @@
+import { importNativeSdkArchiveOriginals } from './native-sdk-archive-originals.js';
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
 import {
   recoverNativeSdkArchiveOutcome,
   NATIVE_SDK_ARCHIVE_STEPS,
   nativeSdkRetryableArchivePreflight,
+  nativeSdkRetryableArchiveFinalization,
 } from './native-sdk-archive.js';
 import { recoverNativeSdkSupervisorCleanupOutcome } from './native-sdk-supervisor-cleanup.js';
 import {
@@ -51,6 +53,7 @@ export async function archiveNativeSdkChange(options: {
   serialFirst?: string;
   commitMessage?: string;
   mergeMessage?: string;
+  legacySpecBackup?: string;
 }): Promise<DispatchResult> {
   if (
     options.expectedPreflightHash !== undefined ||
@@ -69,6 +72,15 @@ export async function archiveNativeSdkChange(options: {
   }
   const inspection = await inspectNativeSdkRun(options.projectRoot, options.name);
   let { run, state } = inspection;
+  if (options.legacySpecBackup) {
+    if (options.dryRun)
+      throw new NativeUsageError('--legacy-spec-backup cannot be used with --dry-run');
+    await importNativeSdkArchiveOriginals({
+      projectRoot: options.projectRoot,
+      run,
+      ref: options.legacySpecBackup,
+    });
+  }
   if (options.recover) {
     const unknown = run.actions.filter((action) => action.status === 'unknown');
     const action = unknown.length === 1 ? unknown[0] : undefined;
@@ -77,6 +89,7 @@ export async function archiveNativeSdkChange(options: {
       !action ||
       ![
         'supervisor.parent.deliver',
+        'archive.prepare',
         'archive.execute',
         'archive.finalize',
         'supervisor.cleanup',
@@ -105,17 +118,35 @@ export async function archiveNativeSdkChange(options: {
         projectRoot: options.projectRoot,
       });
     } else {
-      await recoverNativeSdkArchiveOutcome({
+      run = await recoverNativeSdkArchiveOutcome({
         runtime,
         runId: run.runId,
         projectRoot: options.projectRoot,
       });
     }
-    return success('archive', {
+    const result = success('archive', {
       change: options.name,
       recoveredAction: { id: action.id, stepId: action.stepId },
+      ...(action.stepId === 'archive.finalize'
+        ? {
+            historicalRecovery: true,
+            currentImplementationRevalidated: false,
+            recoveryMessage:
+              '已凭原持久收据补记历史归档完成；没有重新执行归档，也未重新验收当前实现。',
+          }
+        : {}),
       ...(await inspectNativeSdkStatus(options)),
     });
+    return run.actions.find((entry) => entry.id === action.id)?.status === 'failed'
+      ? {
+          ...result,
+          exitCode: 73,
+          error: {
+            code: 'blocked',
+            message: '原归档预检已恢复为未通过；请按当前 Verify 修复入口继续。',
+          },
+        }
+      : result;
   }
   const pending = run.actions.find((action) => action.status === 'pending');
   if (options.dryRun) {
@@ -151,6 +182,26 @@ export async function archiveNativeSdkChange(options: {
       expectedRevision: run.revision,
       actionId: failedPreflight.id,
       attempt: failedPreflight.attempt,
+    });
+    state = parseNativePortableState(run.state);
+  }
+  const failedFinalization = nativeSdkRetryableArchiveFinalization(run);
+  if (failedFinalization) {
+    run = await runtime.retry({
+      runId: run.runId,
+      expectedRevision: run.revision,
+      actionId: failedFinalization.id,
+      attempt: failedFinalization.attempt,
+      reconciliation: {
+        resolution: 'not-executed',
+        evidence: {
+          actionId: failedFinalization.id,
+          attempt: failedFinalization.attempt,
+          outcomeId: failedFinalization.outcome!.outcomeId,
+          reason:
+            'Runtime finalization stopped at candidate validation before any finalization writes.',
+        },
+      },
     });
     state = parseNativePortableState(run.state);
   }

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createServer } from 'node:http';
 import { execFileSync } from 'node:child_process';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createRuntime,
   createMemoryRuntimeStore,
@@ -19,6 +19,7 @@ import {
   createApplicationSkillExecutor,
   reconcileApplicationSkill,
   inspectApplicationSkill,
+  listWorkflowApplicationRunRecords,
 } from '../../../domains/workflow-application/index.js';
 import type { SkillExecutionHost } from '../../../domains/workflow-application/index.js';
 import {
@@ -62,6 +63,15 @@ describe('application adaptation and SDK authority', () => {
     const recordFile = path.join(storeDir, '.runtime-store-v2', runDir, 'checkpoint.json');
     const before = await fs.readFile(recordFile, 'utf8');
     await fs.writeFile(fixture.file, '{}');
+    const open = vi.spyOn(fs, 'open');
+    try {
+      expect((await listWorkflowApplicationRunRecords(root))[0].record?.run).toEqual(run);
+      expect(
+        open.mock.calls.filter(([file]) => String(file).endsWith('checkpoint.json')),
+      ).toHaveLength(1);
+    } finally {
+      open.mockRestore();
+    }
     expect(await readWorkflowApplicationRun(root, manifest.id, 'report')).toEqual(run);
     expect(await readWorkflowApplicationRun(root, manifest.id, 'missing')).toBeNull();
     expect(await fs.readFile(recordFile, 'utf8')).toBe(before);
@@ -116,7 +126,12 @@ describe('application adaptation and SDK authority', () => {
     await expect(readWorkflowApplicationRun(root, loaded.manifest.id, run.runId)).rejects.toThrow(
       '同时存在',
     );
+    expect((await listWorkflowApplicationRunRecords(root))[0]).toMatchObject({
+      record: null,
+      error: { code: 'APPLICATION_UNREADABLE' },
+    });
     await fs.rm(current, { recursive: true });
+    expect((await listWorkflowApplicationRunRecords(root))[0].record?.run).toEqual(run);
     expect(await readWorkflowApplicationRun(root, loaded.manifest.id, run.runId)).toEqual(run);
     expect((await fs.lstat(legacyRoot)).isDirectory()).toBe(true);
     expect(await fs.stat(current).catch(() => null)).toBeNull();
@@ -205,6 +220,21 @@ describe('application adaptation and SDK authority', () => {
     run = await runtime.recordOutcome({ runId: 'report', outcome: outcome(left) });
     expect(run.actions[2].stepId).toBe('join');
     expect(await runtime.recordOutcome({ runId: 'report', outcome: outcome(left) })).toEqual(run);
+  });
+  it('claims an action without shared scope without opening corrupt unrelated records', async () => {
+    const { runtime, loaded } = await application();
+    const run = await runtime.start({
+      runId: 'report',
+      workflow: { id: 'editorial', version: '1' },
+      input,
+    });
+    const directory = path.join(
+      resolveWorkspaceRuntimeRootSync(root),
+      'applications',
+      loaded.manifest.id,
+    );
+    await fs.writeFile(path.join(directory, 'invalid-neighbor'), '{}');
+    expect((await claim(runtime, run.actions[0])).actions[0].status).toBe('running');
   });
   it('rejects old attempts, wrong claim ownership and stale approval proposals', async () => {
     const { runtime } = await application();

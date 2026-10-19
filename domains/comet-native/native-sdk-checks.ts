@@ -1,3 +1,4 @@
+import type { NativeLegacyArchiveOverlay } from './native-archive-legacy-overlay.js';
 import { resolveWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
 import path from 'node:path';
 
@@ -1018,6 +1019,8 @@ export async function nativeSdkCurrentCheckSummaries(options: {
 export async function assertNativeSdkCandidateUnchanged(options: {
   run: Readonly<WorkflowRun>;
   projectRoot: string;
+  requireEvidence?: boolean;
+  legacyArchiveOverlay?: NativeLegacyArchiveOverlay;
 }) {
   const state = parseNativePortableState(options.run.state);
   if (!state.builder_handoff) return;
@@ -1034,7 +1037,42 @@ export async function assertNativeSdkCandidateUnchanged(options: {
   const recorded = (current?.outcome?.output as unknown as NativeSdkCheckOutcome | undefined)
     ?.candidateInputFingerprintGate;
   // 旧收据没有语义摘要；显式重新验收建立绑定，不能据此复用旧成功证据。
-  if (!current || recorded === undefined || recorded === null) return;
+  if (!current || recorded === undefined || recorded === null) {
+    if (options.requireEvidence)
+      throw new NativeSdkCandidateDriftError(
+        'Native 旧检查缺少候选实现摘要；请通过原工作流重新验收',
+      );
+    return;
+  }
+  const actual = await nativeSdkCandidateInputGate(options);
+  if (actual === recorded) return;
+  const legacy = await nativeSdkCandidateInputGate({ ...options, legacyExecutionBinding: true });
+  if (legacy === recorded) return;
+  throw new NativeSdkCandidateDriftError(
+    'Native 候选实现已变化或无法完整复核；请通过原工作流修订，不能仅刷新检查来接受代码改动',
+  );
+}
+
+/** Archive 可排除另有内容绑定的事务写入；其他路径仍使用原候选检查计划。 */
+export async function nativeSdkCandidateInputGate(options: {
+  run: Readonly<WorkflowRun>;
+  projectRoot: string;
+  archiveOwnedPaths?: readonly string[];
+  legacyArchiveOverlay?: NativeLegacyArchiveOverlay;
+  legacyExecutionBinding?: boolean;
+}): Promise<string | null> {
+  const state = parseNativePortableState(options.run.state);
+  if (!state.builder_handoff) return null;
+  const current = [...options.run.actions]
+    .reverse()
+    .find(
+      (action) =>
+        ['verify.checks', 'verify.requested-checks'].includes(action.stepId) &&
+        action.status === 'succeeded' &&
+        (action.outcome?.output as { candidateId?: unknown } | undefined)?.candidateId ===
+          state.builder_handoff!.candidate_id,
+    );
+  if (!current) return null;
   const plans = checkPlansForAction(options.run, current, state.builder_handoff.candidate_id);
   const input = record(options.run.input, 'Native SDK Run input');
   if (typeof input.artifactRootRef !== 'string')
@@ -1061,15 +1099,12 @@ export async function assertNativeSdkCandidateUnchanged(options: {
     managedArtifactRoot: paths.artifactRoot,
     editReviewScope: nativeEditReviewScope(paths, state),
   };
-  const actual = await nativeCandidateInputGate(gateOptions);
-  if (actual === recorded) return;
-  // 旧检查仍可在原环境下验证；环境已变化时不能据旧摘要推断源码未变。
-  const legacy = await nativeCandidateInputGate({ ...gateOptions, legacyExecutionBinding: true });
-  if (legacy === recorded) return;
-  if (actual !== recorded)
-    throw new NativeSdkCandidateDriftError(
-      'Native 候选实现已变化或无法完整复核；请通过原工作流修订，不能仅刷新检查来接受代码改动',
-    );
+  return nativeCandidateInputGate({
+    ...gateOptions,
+    archiveOwnedPaths: options.archiveOwnedPaths,
+    legacyArchiveOverlay: options.legacyArchiveOverlay,
+    legacyExecutionBinding: options.legacyExecutionBinding,
+  });
 }
 
 export async function nativeSdkSupervisorChildCheckSummaries(options: {

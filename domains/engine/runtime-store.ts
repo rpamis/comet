@@ -24,7 +24,7 @@ import {
 } from './runtime-json.js';
 import { runWithoutHookReadCache } from '../../platform/process/hook-read-cache.js';
 import { RuntimeProtocolError } from './runtime-errors.js';
-import { encodeRuntimeHistory } from './runtime-history-storage.js';
+import { serializeRuntimeHistory } from './runtime-history-storage.js';
 import { decodeJsonValueMaps } from '../../platform/fs/json-value-pool.js';
 
 export interface RuntimeRecord {
@@ -893,19 +893,18 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
   async function publish(runId: string, record: T, state: StoreState): Promise<void> {
     const directory = path.join(rootDir, compactRunDirectory(runId));
     const legacyRevision = state.legacyRevision;
-    const encoded = encodeRuntimeHistory(record);
+    const { encoded, json } = serializeRuntimeHistory(record);
     const payload = encoded.pool
       ? { record: encoded.record, legacyRevision, pool: encoded.pool }
       : { record, legacyRevision };
-    await atomicWriteContainedText(
-      path.join(directory, currentName),
-      JSON.stringify({
-        schema: encoded.pool ? 'comet.runtime-store-snapshot.v3' : compactSchema,
-        ...payload,
-        hash: hashRuntimeValue(payload),
-      }) + '\n',
-      { containedRoot: rootDir, exclusive: !state.compacted, requireAtomicPublication: true },
-    );
+    const schema = encoded.pool ? 'comet.runtime-store-snapshot.v3' : compactSchema;
+    // json 是本次编码生成的对象；只拼接固定 envelope，hash 仍按原 canonical 契约计算。
+    const snapshot = `{"schema":${JSON.stringify(schema)},${json.slice(1, -1)},"legacyRevision":${JSON.stringify(legacyRevision)},"hash":${JSON.stringify(hashRuntimeValue(payload))}}\n`;
+    await atomicWriteContainedText(path.join(directory, currentName), snapshot, {
+      containedRoot: rootDir,
+      exclusive: !state.compacted,
+      requireAtomicPublication: true,
+    });
     if (!state.formatPresent) await writeMarker(runId, 'ready', false);
   }
 

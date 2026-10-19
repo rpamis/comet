@@ -1,3 +1,5 @@
+import { classicSdkRevisionApplication } from '../../../domains/comet-classic/classic-sdk-revision-application.js';
+import { defineWorkflow, hashRuntimeValue } from '../../../domains/engine/runtime.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { resolveClassicLocalTarget } from '../../../domains/comet-classic/classic-runtime-paths.js';
 import { createHash } from 'node:crypto';
@@ -4712,4 +4714,73 @@ describe('Classic SDK check commit freshness', () => {
       expect((await runtime.inspect(run.runId)).state).toMatchObject({ phase: 'build' });
     },
   );
+});
+
+it.each([false, true])(
+  'reopens the original full definition after approved Archive without reusing its authorization (legacy revision=%s)',
+  async (legacyRevision) => {
+    const { run: original, projectRoot } = await reachFullArchiveExecuteAction('example', {
+      projectedStore: true,
+    });
+    let run = original;
+    if (legacyRevision) {
+      const definition = defineWorkflow(classicSdkRevisionApplication('full', false).workflow);
+      const legacy = structuredClone(run);
+      legacy.workflow.hash = hashRuntimeValue(definition);
+      legacy.definitionHashes[JSON.stringify([definition.id, definition.version])] =
+        legacy.workflow.hash;
+      legacy.revision += 1;
+      expect(
+        await createClassicSdkStateStore(projectRoot).compareAndSwap(
+          run.runId,
+          run.revision,
+          legacy,
+        ),
+      ).toBe(true);
+      run = legacy;
+    }
+    await registerSdkChangeOwner(projectRoot, {
+      schema: 'comet.change-owner.v1',
+      workflow: 'classic',
+      change: 'example',
+      format: 'sdk',
+      application: 'classic-full',
+      runId: run.runId,
+    });
+    const result = await classicStateCommand(
+      ['reopen-verification', 'example', '--expected-revision', String(run.revision)],
+      { json: true, invocationCwd: projectRoot, projectRoot },
+    );
+    expect(result.exitCode, result.stderr).toBe(0);
+    const current = await inspectClassicSdkRun(projectRoot, 'example');
+    expect(current.state).toMatchObject({
+      phase: 'verify',
+      archiveConfirmation: null,
+      verifyResult: 'pending',
+    });
+    expect(current.run.actions.at(-1)?.stepId).toBe('full.verify.run');
+    expect(current.run.waits).toEqual(run.waits);
+  },
+);
+
+it('does not reopen a Classic Run owned by a fixed custom application', async () => {
+  const { run, projectRoot } = await reachFullArchiveExecuteAction('example', {
+    projectedStore: true,
+  });
+  await registerSdkChangeOwner(projectRoot, {
+    schema: 'comet.change-owner.v1',
+    workflow: 'classic',
+    change: 'example',
+    format: 'sdk',
+    application: 'custom-classic',
+    runId: run.runId,
+  });
+  const result = await classicStateCommand(
+    ['reopen-verification', 'example', '--expected-revision', String(run.revision)],
+    { json: true, invocationCwd: projectRoot, projectRoot },
+  );
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stderr).toContain('custom-classic');
+  const saved = await createClassicSdkStateStore(projectRoot).read(run.runId);
+  expect(saved?.revision).toBe(run.revision);
 });

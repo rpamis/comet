@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -7,6 +7,8 @@ import { createFileRuntimeStore } from '../../../domains/engine/runtime.js';
 import {
   listFileRuntimeStoreRuns,
   listFileRuntimeStoreRunSources,
+  listFileRuntimeStoreRunKeys,
+  readFileRuntimeStoreRunSources,
 } from '../../../domains/engine/runtime-store-discovery.js';
 
 describe('read-only RuntimeStore discovery', () => {
@@ -18,6 +20,56 @@ describe('read-only RuntimeStore discovery', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
   const key = (id: string) => createHash('sha256').update(JSON.stringify(id)).digest('hex');
+
+  it.each([100, 1000, 10000])(
+    'opens only the selected 50 identities among %i entries',
+    async (count) => {
+      for (let start = 0; start < count; start += 100) {
+        await Promise.all(
+          Array.from({ length: Math.min(100, count - start) }, (_, offset) => {
+            const runId = `run-${start + offset}`;
+            return fs.writeFile(
+              path.join(root, key(runId)),
+              JSON.stringify({ schema: 'comet.runtime-store-format.v2', runId, state: 'ready' }),
+            );
+          }),
+        );
+      }
+      const open = vi.spyOn(fs, 'open');
+      const readdir = vi.spyOn(fs, 'readdir');
+      try {
+        const keys = await listFileRuntimeStoreRunKeys({ rootDir: root });
+        expect(keys).toHaveLength(count);
+        expect(keys).toEqual([...keys].sort((a, b) => a.localeCompare(b)));
+        expect(open).not.toHaveBeenCalled();
+        const sources = await readFileRuntimeStoreRunSources({ rootDir: root }, keys.slice(0, 50));
+        expect(sources).toHaveLength(50);
+        expect(sources.every((source) => source.runId && !source.error)).toBe(true);
+        expect(sources.every((source) => !('fingerprint' in source))).toBe(true);
+        expect(open).toHaveBeenCalledTimes(50);
+        expect(readdir).toHaveBeenCalledTimes(2);
+      } finally {
+        open.mockRestore();
+        readdir.mockRestore();
+      }
+    },
+    30000,
+  );
+
+  it('pages invalid identities and never follows selected links or traversal keys', async () => {
+    await fs.writeFile(path.join(root, 'invalid'), '{}');
+    await fs.symlink(
+      root,
+      path.join(root, key('link')),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    const keys = await listFileRuntimeStoreRunKeys({ rootDir: root });
+    expect(keys).toHaveLength(2);
+    expect(await readFileRuntimeStoreRunSources({ rootDir: root }, ['../outside'])).toEqual([]);
+    const sources = await readFileRuntimeStoreRunSources({ rootDir: root }, keys);
+    expect(sources.every((source) => source.error && !source.runId)).toBe(true);
+    expect(sources.every((source) => !('fingerprint' in source))).toBe(true);
+  });
 
   it('discovers identity and changing source fingerprints without reading full checkpoints', async () => {
     const store = createFileRuntimeStore({ rootDir: root });

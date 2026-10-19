@@ -1,3 +1,4 @@
+import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -183,4 +184,26 @@ it('rejects mixed workspace declarations before treating the same directory as i
   };
   expect(() => assertApplicationSkillExecutionScope(mixed, sameDirectory, right)).toThrow('工作区');
   await expect(fixture(false, true)).rejects.toThrow('工作区');
+});
+
+it('fails closed on corrupt peer records before claiming a shared write scope', async () => {
+  const f = await fixture();
+  const directory = path.join(
+    resolveWorkspaceRuntimeRootSync(f.root),
+    'applications',
+    f.loaded.manifest.id,
+  );
+  await fs.writeFile(path.join(directory, 'invalid-neighbor'), '{}');
+  const action = f.run.actions.find((action) => action.status === 'pending')!;
+  await expect(
+    f.runtime.claim({
+      runId: f.run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'local-skill',
+      capabilities: ['skill-script'],
+      claimToken: 'write',
+    }),
+  ).rejects.toMatchObject({ code: 'INVALID_RUN' });
 });

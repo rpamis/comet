@@ -73,6 +73,7 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'decide-escalation <change-name> --proposal-hash <sha256> --choice <continue|upgrade> (SDK)',
       'propose-archive <change-name> --summary <text> [--remote <name>] [--pr-base <branch>] (SDK)',
       'decide-archive <change-name> --proposal-hash <sha256> --choice <local|push|pr|reverify|later> (SDK)',
+      'reopen-verification <change-name> --expected-revision <number> (SDK; before Archive execution)',
       'complete-delivery <change-name> --commit <sha> [--pr-url <url>] (SDK)',
       'transition <change-name> <event>',
       'transition <change-name> verify-fail --reason <text> (SDK)',
@@ -271,6 +272,11 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'Use the current Run revision from state next or state check --recover. A stale revision is rejected.',
       'Then propose-design with the revised design and any agreed Spec Patch, obtain a new explicit user decision, and decide-design with the new proposal hash.',
       'Revision does not approve the new design. Old approval hashes do not authorize changed requirements.',
+    ],
+    'reopen-verification': [
+      'comet state reopen-verification <change-name> --expected-revision <number>',
+      '保留当前修改和审计历史，取消未执行的归档或验收工作并重开 Verify；通过后必须重新批准 Archive。',
+      '仅支持尚未执行归档、活动目录仍存在且没有 running/unknown Action 的内置 SDK Run。旧 revision 不生效。',
     ],
     'revise-plan': [
       'comet state revise-plan <change-name> --expected-revision <number>',

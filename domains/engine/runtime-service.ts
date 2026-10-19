@@ -1424,14 +1424,24 @@ export function createRuntime(options: CreateRuntimeOptions) {
         scheduleWorkflow(run, definition);
         return;
       }
-      if (
-        action.status === 'failed' &&
-        definition.transitions.some((edge) => edge.from === action.stepId && edge.on === 'failed')
-      ) {
-        throw new RuntimeProtocolError(
-          'ACTION_ALREADY_ADVANCED',
-          '该失败结果已推进工作流，不能重新执行旧 Action',
-        );
+      if (action.status === 'failed') {
+        const sequence = run.actionContexts[action.id].sequence;
+        const consumed = (results: WorkflowRun['outputs']) =>
+          Object.hasOwn(results, action.stepId) && results[action.stepId].sequence === sequence;
+        // next:[] 也会保存 outputs；只有后继实际引用此结果才算推进，包括已完成的历史。
+        const advanced =
+          Object.values(run.actionContexts).some((context) => consumed(context.results)) ||
+          run.waits.some((wait) => consumed(wait.results)) ||
+          run.evidenceWaits?.some((wait) => consumed(wait.results)) ||
+          run.ready.some((token) => consumed(token.results)) ||
+          Object.values(run.joins).some((queues) =>
+            Object.values(queues).some((queue) => queue.some((token) => consumed(token.results))),
+          );
+        if (advanced)
+          throw new RuntimeProtocolError(
+            'ACTION_ALREADY_ADVANCED',
+            '该失败结果已推进工作流，不能重新执行旧 Action',
+          );
       }
       run.actions[run.actions.indexOf(action)] = retryRuntimeAction(action, command.reconciliation);
       run.status = 'running';

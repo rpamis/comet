@@ -1,3 +1,5 @@
+import { canReopenClassicVerification } from './classic-sdk-revision-application.js';
+import { inspectClassicSdkRevisionReadiness } from './classic-sdk-revision-readiness.js';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
@@ -54,12 +56,53 @@ async function guardResult(
           !blocked && phase === 'open' && approvalHash ? { openApprovalHash: approvalHash } : {},
         )
       : null);
+  let recovery =
+    blocked && run
+      ? (await inspectClassicSdkRevisionReadiness(projectRoot, run)).find(
+          (problem) => problem.commandArgs[2] === 'reopen-verification',
+        )
+      : undefined;
+  if (
+    !recovery &&
+    blocked &&
+    run &&
+    phase === 'archive' &&
+    canReopenClassicVerification(run) &&
+    /check inputs|check environment|report|evidence/iu.test(issue ?? '')
+  ) {
+    recovery = {
+      code: 'CLASSIC_EVIDENCE_DRIFT',
+      message: issue!,
+      remediation: '保留当前修改并重开 Verify；验收通过后重新确认 Archive 交付方式。',
+      commandArgs: [
+        'comet',
+        'state',
+        'reopen-verification',
+        change,
+        '--expected-revision',
+        String(run.revision),
+      ],
+    };
+  }
   return {
     exitCode: blocked ? 1 : 0,
     data: {
       ...(entry ?? { change, phase, projectRoot }),
       ...(entry && blocked && attempted
         ? { continuation: classicSdkBlockedContinuation(entry.continuation, attempted, issue) }
+        : {}),
+      ...(recovery && entry
+        ? {
+            continuation: {
+              ...entry.continuation,
+              mode: 'execute',
+              commandArgs: [...recovery.commandArgs, '--json'],
+              requiredInputs: [],
+              skill: undefined,
+              completion: undefined,
+              instruction: recovery.remediation,
+            },
+          }
         : {}),
       ...(approvalHash === null ? {} : { approvalHash }),
       checks: { passed: blocked ? 0 : 1, total: 1, blocked },

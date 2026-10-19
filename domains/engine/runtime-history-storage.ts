@@ -1,10 +1,22 @@
-import { encodeJsonValueMaps } from '../../platform/fs/json-value-pool.js';
+import { encodeJsonValueMaps, type JsonValuePool } from '../../platform/fs/json-value-pool.js';
 import type { RuntimeRecord } from './runtime-store.js';
 
 /** 上游结果映射按版本共享；不删减 Action 输入、审批提案或恢复历史。 */
 export function encodeRuntimeHistory<T extends RuntimeRecord>(record: T) {
-  const originalBytes = JSON.stringify(record).length;
-  if (originalBytes < 128 * 1024) return { record };
+  return serializeRuntimeHistory(record).encoded;
+}
+
+/** 复用本次压缩比较所需的 JSON；仅供文件 envelope 写入，不用于 canonical hash。 */
+export function serializeRuntimeHistory<T extends RuntimeRecord>(
+  record: T,
+): {
+  encoded: { record: T; pool?: JsonValuePool };
+  json: string;
+} {
+  const originalJson = JSON.stringify(record);
+  const originalBytes = originalJson.length;
+  const original = () => ({ encoded: { record }, json: `{"record":${originalJson}}` });
+  if (originalBytes < 128 * 1024) return original();
   const paths: { path: string[]; group: string }[] = [];
   const collect = (value: unknown, prefix: string[]) => {
     if (!value || typeof value !== 'object') return;
@@ -39,7 +51,8 @@ export function encodeRuntimeHistory<T extends RuntimeRecord>(record: T) {
   };
   collect(record, []);
   collect((record as unknown as { run?: unknown }).run, ['run']);
-  if (!paths.length) return { record };
+  if (!paths.length) return original();
   const encoded = encodeJsonValueMaps(record, paths);
-  return JSON.stringify(encoded).length < originalBytes * 0.9 ? encoded : { record };
+  const json = JSON.stringify(encoded);
+  return json.length < originalBytes * 0.9 ? { encoded, json } : original();
 }

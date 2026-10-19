@@ -20,7 +20,7 @@ import {
 } from '../comet-native/native-hook-guard.js';
 import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
-import { readCometCurrentSelection } from './current-selection.js';
+import { readHookCurrentSelection } from './current-selection.js';
 import { readCachedProjectConfig } from './entry-reads.js';
 import {
   cometHookRuntimeTargetCandidates,
@@ -32,14 +32,6 @@ import type { CometHookDecision, CometHookRequest } from './hook-types.js';
 import type { CometWorkflow } from './types.js';
 import { collectCometHookContext, collectCometPluginContext } from './plugin-context.js';
 import { readSelectedWorkflowApplication } from '../workflow-application/index.js';
-
-// Wrap the hot reads so that within one Hook decision the router and the
-// delegated Classic/Native Guard share a single config + selection read
-// instead of each re-opening the same files.
-const readCachedCurrentSelection = memoizedHookRead(
-  'readCometCurrentSelection',
-  (projectRoot: string) => readCometCurrentSelection(projectRoot),
-);
 
 export interface ActiveHookChange {
   workflow: CometWorkflow;
@@ -198,7 +190,7 @@ export async function resolveHookWorkflowOwner(
   const enabled = enabledWorkflows(config);
   let current;
   try {
-    current = await readCachedCurrentSelection(projectRoot);
+    current = await readHookCurrentSelection(projectRoot);
   } catch (error) {
     return {
       status: 'stale',
@@ -323,34 +315,47 @@ export async function resolveHookWorkflowOwner(
   }
 }
 
-/** 项目配置和当前需求尚未找到时，也必须保护本机 Runtime。 */
+/** 项目配置和当前需求尚未找到时，也必须保护本机 Runtime。
+ * 缓存键保留目标、cwd 和相对项目根，worktree 重新归属后必须重新检查。
+ */
+const readRuntimeWriteTargets = memoizedHookRead(
+  'inspectCometRuntimeWriteTargets',
+  async function (
+    projectRoot: string,
+    request: CometHookRequest,
+    relativeProjectRoot: string,
+  ): Promise<CometHookDecision | null> {
+    if (request.intent !== 'write' || request.targets.length === 0) return null;
+    const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
+    const legacyRuntimeRoot = path.join(projectRoot, '.comet', 'runtime');
+    for (const target of normalizeCometHookTargets(request.targets)) {
+      for (const absolute of cometHookRuntimeTargetCandidates(
+        relativeProjectRoot,
+        target,
+        request.cwd,
+      )) {
+        if (
+          (await isCometHookTargetWithin(runtimeRoot, absolute)) ||
+          (await isCometHookTargetWithin(legacyRuntimeRoot, absolute))
+        ) {
+          return {
+            allowed: false,
+            reason:
+              'Comet Runtime-owned files are maintained by Runtime commands. Run comet status in the guarded project and follow its continuation; do not edit local execution state directly.',
+          };
+        }
+      }
+    }
+    return null;
+  },
+);
+
 export async function inspectCometRuntimeWriteTargets(
   projectRoot: string,
   request: CometHookRequest,
   relativeProjectRoot = projectRoot,
 ): Promise<CometHookDecision | null> {
-  if (request.intent !== 'write' || request.targets.length === 0) return null;
-  const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
-  const legacyRuntimeRoot = path.join(projectRoot, '.comet', 'runtime');
-  for (const target of normalizeCometHookTargets(request.targets)) {
-    for (const absolute of cometHookRuntimeTargetCandidates(
-      relativeProjectRoot,
-      target,
-      request.cwd,
-    )) {
-      if (
-        (await isCometHookTargetWithin(runtimeRoot, absolute)) ||
-        (await isCometHookTargetWithin(legacyRuntimeRoot, absolute))
-      ) {
-        return {
-          allowed: false,
-          reason:
-            'Comet Runtime-owned files are maintained by Runtime commands. Run comet status in the guarded project and follow its continuation; do not edit local execution state directly.',
-        };
-      }
-    }
-  }
-  return null;
+  return readRuntimeWriteTargets(projectRoot, request, relativeProjectRoot);
 }
 
 export async function inspectCometHook(

@@ -26,11 +26,10 @@ export interface FileRuntimeStoreRunSource {
   error: { code: string; message: string } | null;
 }
 
-/** 枚举只发现身份；每条记录仍通过原 Store 校验，不迁移、恢复或写入。 */
-async function discoverFileRuntimeStoreRunSources(
+/** 只枚举稳定身份键；不打开未选中的记录，保留异常项目供调用者呈现。 */
+export async function listFileRuntimeStoreRunKeys(
   options: FileRuntimeStoreOptions,
-  withFingerprint: boolean,
-): Promise<FileRuntimeStoreRunSource[]> {
+): Promise<string[]> {
   const root = path.resolve(options.rootDir);
   const volume = path.parse(root).root;
   const rootRef = path.relative(volume, root).replaceAll('\\', '/');
@@ -45,6 +44,35 @@ async function discoverFileRuntimeStoreRunSources(
     ).exists
   )
     return [];
+  const keys: string[] = [];
+  for (const entry of await fs.readdir(root, { withFileTypes: true })) {
+    if (
+      /^\.[a-f0-9]{64}\.[a-f0-9-]{36}\.tmp$/u.test(entry.name) &&
+      entry.isFile() &&
+      !entry.isSymbolicLink()
+    )
+      continue;
+    if (['.runtime-store-v2', '.runtime-store-history'].includes(entry.name)) {
+      await inspectProtectedProjectPath(root, entry.name, {
+        label: 'RuntimeStore checkpoint directory',
+        expected: 'directory',
+      });
+      continue;
+    }
+    keys.push(entry.name);
+  }
+  return keys.sort((a, b) => a.localeCompare(b));
+}
+
+/** 只读取调用者选中的身份；选中前只枚举目录名称。 */
+async function discoverFileRuntimeStoreRunSources(
+  options: FileRuntimeStoreOptions,
+  withFingerprint: boolean,
+  storageKeys?: readonly string[],
+): Promise<FileRuntimeStoreRunSource[]> {
+  const root = path.resolve(options.rootDir);
+  const available = await listFileRuntimeStoreRunKeys(options);
+  const selected = storageKeys ? new Set(storageKeys) : null;
   const result: FileRuntimeStoreRunSource[] = [];
   const stamp = async (ref: string) => {
     const inspection = await inspectProtectedProjectPath(root, ref, {
@@ -65,22 +93,15 @@ async function discoverFileRuntimeStoreRunSources(
         ).bytes,
       ),
     );
-  for (const entry of (await fs.readdir(root, { withFileTypes: true })).sort((a, b) =>
-    a.name.localeCompare(b.name),
-  )) {
-    if (
-      /^\.[a-f0-9]{64}\.[a-f0-9-]{36}\.tmp$/u.test(entry.name) &&
-      entry.isFile() &&
-      !entry.isSymbolicLink()
-    )
-      continue;
-    if (['.runtime-store-v2', '.runtime-store-history'].includes(entry.name)) {
-      await inspectProtectedProjectPath(root, entry.name, {
-        label: 'RuntimeStore checkpoint directory',
-        expected: 'directory',
-      });
-      continue;
-    }
+  for (const name of available) {
+    if (selected && !selected.has(name)) continue;
+    const stat = await fs.lstat(path.join(root, name)).catch(() => null);
+    const entry = {
+      name,
+      isFile: () => stat?.isFile(),
+      isDirectory: () => stat?.isDirectory(),
+      isSymbolicLink: () => stat?.isSymbolicLink(),
+    };
     let runId: string | null = null;
     try {
       if (!/^[a-f0-9]{64}$/u.test(entry.name) || entry.isSymbolicLink())
@@ -189,4 +210,13 @@ export async function listFileRuntimeStoreRunSources(
   options: FileRuntimeStoreOptions,
 ): Promise<FileRuntimeStoreRunSource[]> {
   return discoverFileRuntimeStoreRunSources(options, true);
+}
+
+/** 调用内分页只返回身份，不提供变化指纹；需要指纹时使用 listFileRuntimeStoreRunSources。 */
+export async function readFileRuntimeStoreRunSources(
+  options: FileRuntimeStoreOptions,
+  storageKeys: readonly string[],
+): Promise<Omit<FileRuntimeStoreRunSource, 'fingerprint'>[]> {
+  const sources = await discoverFileRuntimeStoreRunSources(options, false, storageKeys);
+  return sources.map(({ storageKey, runId, error }) => ({ storageKey, runId, error }));
 }

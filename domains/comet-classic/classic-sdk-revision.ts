@@ -1,3 +1,4 @@
+import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import {
   createMemoryRuntimeStore,
   createRuntime,
@@ -15,7 +16,7 @@ import { inspectClassicSdkRun } from './classic-sdk-status.js';
 export async function reviseClassicSdkWork(options: {
   projectRoot: string;
   change: string;
-  name: 'revise-design' | 'revise-plan';
+  name: 'revise-design' | 'revise-plan' | 'reopen-verification';
   expectedRevision: number;
 }): Promise<WorkflowRun> {
   const { projectRoot, change, name, expectedRevision } = options;
@@ -35,8 +36,20 @@ export async function reviseClassicSdkWork(options: {
   });
   if (!['ok', 'not-applicable'].includes(branch.status))
     throw new Error(`Classic SDK branch binding is ${branch.status}`);
+  if (name === 'reopen-verification') {
+    const active = await inspectProtectedProjectPath(
+      projectRoot,
+      (run.input as { changeDir: string }).changeDir,
+      { label: 'Classic active change', expected: 'directory' },
+    );
+    if (!active.exists)
+      throw new Error(
+        'Classic verification requires its active change directory; reconcile the Archive operation',
+      );
+  }
   const application = classicSdkRevisionApplication(
     run.workflow.id.slice('comet-classic-'.length) as 'full' | 'tweak' | 'hotfix',
+    state.workflow === 'full' ? 'full' : true,
   );
   const definition = defineWorkflow(application.workflow);
   const upgraded = structuredClone(run);
@@ -68,6 +81,18 @@ export async function reviseClassicSdkWork(options: {
       verifyResult: 'pending',
       verifiedAt: null,
       archiveConfirmation: null,
+    };
+  }
+  if (name === 'reopen-verification') {
+    revised.state = {
+      ...(revised.state as object),
+      phase: 'verify',
+      verifyResult: 'pending',
+      verifiedAt: null,
+      verificationReport: null,
+      archiveConfirmation: null,
+      branchStatus: 'pending',
+      verifyFailures: 0,
     };
   }
   const store = createClassicSdkStateStore(projectRoot);

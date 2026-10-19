@@ -1,4 +1,5 @@
 import { resolveClassicStateFile } from './classic-state-file.js';
+import { classicOperationObservation } from './classic-command-context.js';
 import { promises as fs } from 'fs';
 import path from 'path';
 
@@ -91,17 +92,14 @@ export async function inspectClassicStateFileCandidates(
   };
   for (const rootRef of ['openspec/changes', 'docs/openspec/changes']) {
     files.push(await candidate(path.join(projectRoot, rootRef, name)));
-    const archive = await inspectProtectedProjectPath(projectRoot, `${rootRef}/archive`, {
-      label: 'Classic Archive directory',
-      expected: 'directory',
-    });
-    if (!archive.exists) continue;
-    for (const entry of await fs.readdir(archive.target)) {
+    const archiveDir = path.join(projectRoot, rootRef, 'archive');
+    const entries = await inspectClassicArchiveChangeNames(projectRoot, archiveDir, name);
+    for (const entry of entries ?? []) {
       if (entry === name) {
         // 历史 compat 无日期归档也须检查，但不扩大 SDK checkpoint 的恢复范围。
-        await candidate(path.join(archive.target, entry));
+        await candidate(path.join(archiveDir, entry));
       } else if (archiveNameMatchesChange(entry, name)) {
-        files.push(await candidate(path.join(archive.target, entry)));
+        files.push(await candidate(path.join(archiveDir, entry)));
       }
     }
   }
@@ -137,9 +135,49 @@ async function inspectChangeDirectory(
   return { change, exists: true, stateExists: state.exists };
 }
 
+const ARCHIVE_DATE_PREFIX = /^\d{4}-\d{2}-\d{2}-/u;
+
 function archiveNameMatchesChange(entryName: string, name: string): boolean {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-  return new RegExp(`^\\d{4}-\\d{2}-\\d{2}-${escaped}$`, 'u').test(entryName);
+  return entryName.slice(11) === name && ARCHIVE_DATE_PREFIX.test(entryName);
+}
+
+/** 只复用本次命令中未变化的目录列表；候选路径与状态文件仍须逐次检查。 */
+export async function inspectClassicArchiveChangeNames(
+  projectRoot: string,
+  archiveDir: string,
+  name: string,
+): Promise<readonly string[] | null> {
+  assertOpenSpecChangeName(name);
+  const inspect = () =>
+    inspectProtectedProjectPath(projectRoot, path.relative(projectRoot, archiveDir), {
+      label: 'Classic Archive directory',
+      expected: 'directory',
+    });
+  const archive = await inspect();
+  if (!archive.exists) return null;
+  const fingerprint = async () => {
+    const stat = await fs.lstat(archive.target, { bigint: true });
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new Error('Classic Archive directory must be a real directory');
+    }
+    return [stat.dev, stat.ino, stat.mode, stat.size, stat.mtimeNs, stat.ctimeNs].join(':');
+  };
+  const before = await fingerprint();
+  const entries = await classicOperationObservation(
+    `classic-archive:${JSON.stringify([archive.target, name, before])}`,
+    async () => {
+      const entries = await fs.readdir(archive.target);
+      if ((await fingerprint()) !== before) {
+        throw new Error('Classic Archive directory changed while inspecting state files');
+      }
+      return entries.filter((entry) => entry === name || archiveNameMatchesChange(entry, name));
+    },
+  );
+  // 缓存命中也检查路径链和目录身份，拒绝并发替换、移动或新增目录。
+  if (!(await inspect()).exists || (await fingerprint()) !== before) {
+    throw new Error('Classic Archive directory changed while inspecting state files');
+  }
+  return entries;
 }
 
 async function findArchiveChangeDirectory(
@@ -157,19 +195,14 @@ async function findArchiveChangeDirectory(
     if (exact.exists) return exact.change;
   }
 
-  const archive = await inspectClassicProjectTarget(projectRoot, archiveDir, {
-    label: 'Classic archive directory',
-    expected: 'directory',
-  });
-  if (!archive.exists) return null;
-
+  const entries = await inspectClassicArchiveChangeNames(projectRoot, archiveDir, name);
   const matches: ClassicChangeDirectory[] = [];
-  for (const entry of await fs.readdir(archiveDir, { withFileTypes: true })) {
-    if (!archiveNameMatchesChange(entry.name, name)) continue;
+  for (const entry of entries ?? []) {
+    if (entry === name) continue;
     const candidate = await inspectChangeDirectory(
       projectRoot,
-      path.join(archiveDir, entry.name),
-      `Classic archived change ${entry.name}`,
+      path.join(archiveDir, entry),
+      `Classic archived change ${entry}`,
     );
     if (candidate.exists && candidate.stateExists) matches.push(candidate.change);
   }

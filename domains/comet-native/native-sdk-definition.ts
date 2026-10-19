@@ -8,6 +8,8 @@ import {
 } from '../engine/runtime.js';
 
 export const NATIVE_SDK_RECOVERABLE_FAILURE_STEPS: readonly string[] = [
+  'archive.prepare',
+  'archive.execute',
   'verify.revalidate',
   'verify.checks',
   'verify.requested-checks',
@@ -29,8 +31,17 @@ export const NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH =
 export const NATIVE_SDK_PRE_EDIT_REVIEW_HASH =
   'a4fa2f7ad12c5c7dd37374f9cb5f1154f2c686e3b3b5473533154c01fdcdd9ea';
 
-export function nativeSdkBeforeReportRecovery(workflow: DefineWorkflowOptions) {
+export function nativeSdkBeforeArchiveCandidateRecovery(workflow: DefineWorkflowOptions) {
   const previous = structuredClone(workflow);
+  previous.transitions = previous.transitions?.filter(
+    (edge) =>
+      !(['archive.prepare', 'archive.execute'].includes(edge.from) && edge.to === 'verify.stop'),
+  );
+  return previous;
+}
+
+export function nativeSdkBeforeReportRecovery(workflow: DefineWorkflowOptions) {
+  const previous = nativeSdkBeforeArchiveCandidateRecovery(workflow);
   previous.transitions = previous.transitions?.filter(
     (edge) =>
       !(edge.from === 'verify.revalidate' && ['verify.checks', 'verify.stop'].includes(edge.to)),
@@ -96,6 +107,7 @@ export function nativeSdkLegacyDefinitions(workflow: DefineWorkflowOptions) {
     NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH,
   ];
   return [
+    nativeSdkBeforeArchiveCandidateRecovery(workflow),
     nativeSdkBeforeReportRecovery(workflow),
     nativeSdkBeforeReadOnlyArchivePreflight(workflow),
     ...(hashRuntimeValue(defineWorkflow(beforeEditReview)) === NATIVE_SDK_PRE_EDIT_REVIEW_HASH
@@ -116,6 +128,15 @@ export function nativeSdkLegacyTransitionHandler(
     ...transitionHandler,
     apply(input) {
       const { run, event } = input;
+      if (
+        event.kind === 'action-outcome' &&
+        ['archive.prepare', 'archive.execute'].includes(event.stepId) &&
+        event.outcome.status === 'failed' &&
+        !(workflow.transitions ?? []).some(
+          (edge) => edge.from === event.stepId && edge.to === 'verify.stop',
+        )
+      )
+        return { state: run.state!, next: [] };
       if (
         event.kind === 'action-outcome' &&
         event.stepId === 'verify.revalidate' &&

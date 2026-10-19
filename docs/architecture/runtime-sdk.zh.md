@@ -258,6 +258,8 @@ SDK 所有的 Classic change 也可以用 `comet guard <change> verify --report 
 
 SDK 所有的 Classic change 进入 Archive 后，可用 `comet state propose-archive` 记录交付提案，再用绑定提案哈希的 `decide-archive` 提交用户决定。已批准时，`comet guard <change> archive --apply` 或 `comet archive <change>` 会重验分支和 Verify 证据，执行 OpenSpec 文件归档一次。Agent 仍负责按决定完成 Git 提交、推送或 PR；`comet state complete-delivery` 核验实际提交及相应远端结果后结束 Run。Archive 命令不会自行创建提交或扩大用户授权。
 
+如果归档批准后输入发生变化，或 Verify 报告在已接受后需要合法修订，可执行 `comet state reopen-verification <change> --expected-revision <revision>`。此命令保留当前文件、历史审批和证据，在同一 Run 中取消待执行工作并重开 Verify；验收通过后必须重新提案和批准 Archive。仅支持仍有活动目录、尚未执行归档且没有 running/unknown Action 的内置 SDK Run。已执行归档或结果不明时，必须先核对原执行结果，不得借此重放归档。
+
 交付提交需要包含本次验收已绑定的验证报告，内容必须与原报告收据一致。报告路径可在 change 目录之外，但只允许该精确路径，不能顺带提交相邻的无关文件。报告遗漏、内容变化或提交越界时，错误会指出对应路径；先修正提交范围或重新验收，不要扩大白名单。
 
 此外，Native 普通 change 与 Classic full/hotfix/tweak 已各自定义独立的 SDK Workflow Application，可通过 `comet runtime dispatch --application` 创建和推进 Run；它们保留各自的阶段与验收规则，SDK 负责通用调度和提交。新 change 的默认入口已选择 SDK，现有 `compat` change 仍按原 Runtime 继续；尚未覆盖的旧命令入口和真实平台执行不能由 SDK 单测代替验收。

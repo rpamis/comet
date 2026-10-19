@@ -2188,6 +2188,7 @@ function requiredExact(args: string[], count: number, usage: string): void {
 }
 
 const MUTATING_STATE_COMMANDS = new Set([
+  'reopen-verification',
   'init',
   'restore',
   'set',
@@ -2241,6 +2242,7 @@ async function assertStateChangeNotSdkOwned(
     return;
   }
   if (
+    subcommand === 'reopen-verification' ||
     subcommand === 'next' ||
     subcommand === 'restore' ||
     subcommand === 'get' ||
@@ -2770,7 +2772,11 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
           ...(await sdkEntryData(rest[0], { run, projectRoot: workspace.projectRoot })),
         };
         output.stdout.push(`Archive delivery recorded for ${rest[0]}.`);
-      } else if (subcommand === 'revise-design' || subcommand === 'revise-plan') {
+      } else if (
+        subcommand === 'revise-design' ||
+        subcommand === 'revise-plan' ||
+        subcommand === 'reopen-verification'
+      ) {
         if (
           rest.length !== 3 ||
           rest[1] !== '--expected-revision' ||
