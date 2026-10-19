@@ -4,10 +4,6 @@ on:
   push:
     branches:
       - master
-      - 'beta*'
-      - 'release/**'
-      - 'hotfix/**'
-      - '0*'
   pull_request:
   workflow_dispatch:
 
@@ -34,6 +30,9 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -43,11 +42,16 @@ jobs:
         with:
           version: '0.11.29'
       - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Preserve baseline SDK recovery fixtures
+        env:
+          SDK_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: pnpm check:sdk-fixtures --base "$SDK_BASE_REF"
       - name: Verify generated runtimes are current
         run: pnpm check:generated
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm build
+      - run: pnpm check:sdk-api
       - name: Verify build is deterministic
         run: git diff --exit-code -- assets
       - name: Verify external OpenSpec CLI compatibility
@@ -185,7 +189,6 @@ jobs:
         run: node -e "const dir=require('node:fs').realpathSync.native(require('node:os').tmpdir()); require('node:fs').appendFileSync(process.env.GITHUB_ENV, 'TEMP=' + dir + '\nTMP=' + dir + '\n')"
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm build
-      - run: pnpm check:sdk-api
       - run: pnpm test:package-e2e
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: matrix.os == 'ubuntu-latest'
@@ -296,7 +299,6 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: pnpm build:dashboard
       - run: pnpm exec playwright install --only-shell chromium
       - run: pnpm test:dashboard-e2e
       - name: Upload Playwright report
@@ -309,30 +311,6 @@ jobs:
             coverage/playwright-results/
           if-no-files-found: warn
 
-  sdk-api:
-    name: SDK API and recovery snapshots
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Preserve baseline SDK recovery fixtures
-        env:
-          SDK_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: pnpm check:sdk-fixtures --base "$SDK_BASE_REF"
-      - name: Verify committed Runtime assets before building
-        run: pnpm check:generated
-      - run: pnpm build
-      - run: pnpm check:sdk-api
-
   sdk-contracts:
     name: SDK contracts (${{ matrix.os }}, Node ${{ matrix.node }}${{ matrix.shards > 1 && format(', shard {0}/{1}', matrix.shard, matrix.shards) || '' }})
     runs-on: ${{ matrix.os }}
@@ -343,10 +321,6 @@ jobs:
         include:
           - os: ubuntu-latest
             node: '22.16.0'
-            shard: 1
-            shards: 1
-          - os: ubuntu-latest
-            node: '24'
             shard: 1
             shards: 1
           - os: macos-latest
@@ -429,7 +403,6 @@ jobs:
       - eval-static
       - eval-windows
       - dashboard-e2e
-      - sdk-api
       - sdk-contracts
     runs-on: ubuntu-latest
     timeout-minutes: 5

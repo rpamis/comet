@@ -41,6 +41,21 @@ function classifyIssue(
 }
 
 describe('CI workflows', () => {
+  it('validates pull requests and master pushes without duplicating development branch runs', async () => {
+    for (const name of ['ci.yml', 'security.yml']) {
+      const workflow = parse(await readWorkflow(name));
+      expect(workflow.on.push.branches).toEqual(['master']);
+      expect(workflow.on).toHaveProperty('pull_request');
+      expect(workflow.on).not.toHaveProperty('paths');
+      expect(workflow.on.pull_request?.paths).toBeUndefined();
+      expect(workflow.concurrency['cancel-in-progress']).toBe(true);
+    }
+    const ci = parse(await readWorkflow('ci.yml'));
+    const security = parse(await readWorkflow('security.yml'));
+    expect(ci.on).toHaveProperty('workflow_dispatch');
+    expect(security.on.schedule).toEqual([{ cron: '31 2 * * 4' }]);
+  });
+
   it('uploads Dashboard browser reports and traces from the configured root coverage directory', async () => {
     const ci = parse(await readWorkflow('ci.yml'));
     const report = ci.jobs['dashboard-e2e'].steps.find((step: { uses?: string }) =>
@@ -341,7 +356,6 @@ describe('CI workflows', () => {
     const contracts = ci.jobs['sdk-contracts'];
     expect(contracts?.strategy?.matrix?.include).toEqual([
       { os: 'ubuntu-latest', node: '22.16.0', shard: 1, shards: 1 },
-      { os: 'ubuntu-latest', node: '24', shard: 1, shards: 1 },
       { os: 'macos-latest', node: '24', shard: 1, shards: 1 },
       ...Array.from({ length: 8 }, (_, index) => ({
         os: 'windows-latest',
@@ -365,9 +379,17 @@ describe('CI workflows', () => {
         ?.name,
     ).toContain('-shard-${{ matrix.shard }}-of-${{ matrix.shards }}');
     expect(ci.jobs['ci-required'].needs).toEqual(
-      expect.arrayContaining(['sdk-contracts', 'sdk-api']),
+      expect.arrayContaining(['sdk-contracts', 'quality']),
     );
-    expect(ci.on.push.branches).toContain('0*');
+    expect(ci.jobs).not.toHaveProperty('sdk-api');
+    expect(ci.jobs['ci-required'].needs).not.toContain('sdk-api');
+    const qualitySteps = ci.jobs.quality.steps ?? [];
+    expect(
+      qualitySteps.find((step) => step.uses?.startsWith('actions/setup-node@'))?.with?.[
+        'node-version'
+      ],
+    ).toBe(24);
+    expect(qualitySteps.some((step) => step.run?.startsWith('pnpm test:coverage'))).toBe(true);
     expect(ci.on).toHaveProperty('workflow_dispatch');
   });
 
@@ -378,18 +400,38 @@ describe('CI workflows', () => {
         { steps?: Array<{ run?: string; uses?: string; with?: Record<string, unknown> }> }
       >;
     };
-    const steps = ci.jobs['sdk-api']?.steps ?? [];
+    const steps = ci.jobs.quality?.steps ?? [];
     expect(
       steps.find((step) => step.uses?.startsWith('actions/checkout@'))?.with?.['fetch-depth'],
     ).toBe(0);
     expect(steps.some((step) => step.run?.includes('pnpm check:sdk-fixtures'))).toBe(true);
     expect(steps.some((step) => step.run === 'pnpm check:sdk-api')).toBe(true);
+    expect(steps.findIndex((step) => step.run?.includes('pnpm check:sdk-fixtures'))).toBeLessThan(
+      steps.findIndex((step) => step.run === 'pnpm build'),
+    );
+    expect(steps.findIndex((step) => step.run === 'pnpm check:sdk-api')).toBeGreaterThan(
+      steps.findIndex((step) => step.run === 'pnpm build'),
+    );
     expect(steps.findIndex((step) => step.run?.includes('pnpm check:generated'))).toBeLessThan(
       steps.findIndex((step) => step.run === 'pnpm build'),
     );
     for (const job of Object.values(ci.jobs))
       for (const step of job.steps ?? [])
         if (step.run?.startsWith('pnpm install ')) expect(step.run).toContain('--ignore-scripts');
+    expect(ci.jobs['package-e2e'].steps?.some((step) => step.run === 'pnpm check:sdk-api')).toBe(
+      false,
+    );
+  });
+
+  it('builds Dashboard once through the browser test server', async () => {
+    const ci = parse(await readWorkflow('ci.yml'));
+    const commands = ci.jobs['dashboard-e2e'].steps.map((step: { run?: string }) => step.run);
+    expect(commands).toContain('pnpm test:dashboard-e2e');
+    expect(commands).not.toContain('pnpm build:dashboard');
+    const config = await fs.readFile('test/domains/dashboard/playwright.config.ts', 'utf8');
+    const server = await fs.readFile('scripts/dashboard-e2e-server.mjs', 'utf8');
+    expect(config).toContain('node ../../../scripts/dashboard-e2e-server.mjs');
+    expect(server).toContain("await run(pnpm, ['run', 'build:dashboard'])");
   });
 
   it('keeps the SDK suite connected to protocol, Creator, composition and public CLI regressions', async () => {
