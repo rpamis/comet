@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import {
   DEMO_SNAPSHOT,
   DEMO_PLUGIN_PAGES,
@@ -22,6 +23,19 @@ function untranslated(value: unknown, path = ''): string[] {
 afterEach(() => setDashboardLanguage('zh', { persist: false }));
 
 describe('Dashboard example content language', () => {
+  it('loads both demo adapters directly in Node for browser-test setup', () => {
+    expect(
+      execFileSync(
+        process.execPath,
+        [
+          '--input-type=module',
+          '-e',
+          'await import("./domains/dashboard/web/src/application-demo.js"); await import("./domains/dashboard/web/src/eval-demo.js");',
+        ],
+        { encoding: 'utf8' },
+      ),
+    ).toBe('');
+  });
   it('translates all preset records and artifact bodies without changing source fixtures or IDs', () => {
     const original = JSON.stringify(DEMO_SNAPSHOT);
     const localized = localizedDemo(DEMO_SNAPSHOT);

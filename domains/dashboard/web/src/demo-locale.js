@@ -1,6 +1,6 @@
 import { getDashboardLanguage, t } from './dashboard-i18n.js';
-import interfaceMessages from './messages.en.json';
-import demoMessages from './demo-messages.en.json';
+import interfaceMessages from './messages.en.json' with { type: 'json' };
+import demoMessages from './demo-messages.en.json' with { type: 'json' };
 
 const translations = Object.entries({ ...interfaceMessages, ...demoMessages })
   .filter(([source]) => /\p{Script=Han}/u.test(source))

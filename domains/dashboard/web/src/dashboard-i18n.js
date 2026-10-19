@@ -1,4 +1,4 @@
-import englishMessages from './messages.en.json';
+import englishMessages from './messages.en.json' with { type: 'json' };
 
 const STORAGE_KEY = 'comet-dashboard-language';
 const listeners = new Set();
