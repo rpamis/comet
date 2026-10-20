@@ -1,4 +1,5 @@
 import { classicSdkRevisionApplication } from '../../../domains/comet-classic/classic-sdk-revision-application.js';
+import { classicOpenEvidenceReceipt } from '../../../domains/comet-classic/classic-sdk-application.js';
 import { defineWorkflow, hashRuntimeValue } from '../../../domains/engine/runtime.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { resolveClassicLocalTarget } from '../../../domains/comet-classic/classic-runtime-paths.js';
@@ -4414,7 +4415,15 @@ describe('Classic workflow application through the public Runtime SDK', () => {
           output: { event: 'open-complete' },
         },
       });
-      run = await acceptOpenEvidence(runtime, run);
+      // 后续校验读取真实文件，Open 也绑定同一份实际产物，不能沿用纯状态机测试的占位摘要。
+      run = await runtime.recordEvidence({
+        runId: run.runId,
+        evidenceId: run.evidenceWaits!.at(-1)!.id,
+        kind: 'classic-open-artifacts',
+        ...(await classicOpenEvidenceReceipt(projectRoot, 'docs/openspec/changes/example')),
+        submissionId: `${profile}-open-evidence`,
+        expectedRevision: run.revision,
+      });
       expect((run.state as { phase: string }).phase).toBe('build');
       expect(run.actions.at(-1)).toMatchObject({
         stepId: `${profile}.build.execute`,
