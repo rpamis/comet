@@ -724,7 +724,12 @@ export async function projectNativeSdkContinuation(options: {
   const evidenceWaits = (run.evidenceWaits ?? []).filter((wait) => wait.status === 'pending');
   const pendingBuilderDecisions = waits
     .filter((wait) =>
-      ['build.resume', 'supervisor.child.resume', 'supervisor.parent.resume'].includes(wait.stepId),
+      [
+        'build.resume',
+        'supervisor.child.resume',
+        'supervisor.parent.resume',
+        'supervisor.child.integration-resume',
+      ].includes(wait.stepId),
     )
     .map((wait) => ({
       waitId: wait.id,
@@ -876,15 +881,22 @@ export async function projectNativeSdkContinuation(options: {
         ),
         requirements
           ? pendingRequirementDecisions[0].message
-          : canReviseStoppedBuilder
-            ? localized(
-                'The Builder stopped before completing this work. Continue from its preserved workspace, or revise the requirements and confirm a new Shape?',
-                'Builder 尚未完成本轮工作。请选择从保留的工作区继续，或调整需求并重新确认 Shape。',
+          : pendingBuilderDecisions.some(
+                (wait) => wait.stepId === 'supervisor.child.integration-resume',
               )
-            : localized(
-                'The Builder stopped before completing this work. Continue from its preserved workspace?',
-                'Builder 尚未完成本轮工作。是否从保留的工作区继续？',
-              ),
+            ? localized(
+                'The integration repair failed. Continue from its preserved integration workspace?',
+                '集成修复执行失败。是否从保留的集成工作区继续修复？',
+              )
+            : canReviseStoppedBuilder
+              ? localized(
+                  'The Builder stopped before completing this work. Continue from its preserved workspace, or revise the requirements and confirm a new Shape?',
+                  'Builder 尚未完成本轮工作。请选择从保留的工作区继续，或调整需求并重新确认 Shape。',
+                )
+              : localized(
+                  'The Builder stopped before completing this work. Continue from its preserved workspace?',
+                  'Builder 尚未完成本轮工作。是否从保留的工作区继续？',
+                ),
       ),
     };
   } else if (verifyWait?.stepId === 'verify.checks-stop') {

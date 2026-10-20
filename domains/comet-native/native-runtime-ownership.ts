@@ -36,6 +36,7 @@ import {
 import { nativeSdkCheckValidator } from './native-sdk-checks.js';
 import {
   nativeSdkBeforeVerifierRecovery,
+  nativeSdkBeforeIntegrationRepairRecovery,
   nativeSdkLegacyDefinitions,
   nativeSdkMatchesRun,
   NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH,
@@ -43,6 +44,7 @@ import {
   nativeSdkRecoverableFailureReason,
 } from './native-sdk-definition.js';
 import { validateNativeSdkFailedChildVerifier } from './native-sdk-supervisor-verifier-recovery.js';
+import { validateNativeSdkFailedIntegrationRepair } from './native-sdk-supervisor-integration-repair.js';
 import { readProjectConfig } from './native-config.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { nativeProjectPaths } from './native-paths.js';
@@ -214,7 +216,10 @@ export async function inspectNativeSdkDefinitionUpgrade(
     )!;
     if (!workflow) return null;
     store = application.store;
-    previousDefinitions = [nativeSdkBeforeVerifierRecovery(workflow)];
+    previousDefinitions = [
+      nativeSdkBeforeIntegrationRepairRecovery(workflow),
+      nativeSdkBeforeVerifierRecovery(workflow),
+    ];
   }
   const definition = defineWorkflow(workflow);
   const saved = await store.read(name);
@@ -291,6 +296,7 @@ export async function inspectNativeSdkDefinitionUpgrade(
         ((['archive.prepare', 'archive.execute'].includes(action.stepId) &&
           (action.outcome?.output as { reason?: string })?.reason === 'candidate-drift') ||
           action.stepId === 'supervisor.child.verifier' ||
+          action.stepId === 'supervisor.child.integration-repair' ||
           action.stepId === 'verify.checks' ||
           action.stepId === 'verify.revalidate' ||
           Boolean(
@@ -303,6 +309,8 @@ export async function inspectNativeSdkDefinitionUpgrade(
       if (!failure.outcome) throw new Error('Native failed execution receipt is missing');
       if (failure.stepId === 'supervisor.child.verifier') {
         await validateNativeSdkFailedChildVerifier(run, failure, projectRoot);
+      } else if (failure.stepId === 'supervisor.child.integration-repair') {
+        await validateNativeSdkFailedIntegrationRepair(run, failure, projectRoot);
       } else {
         const validation = await (
           failure.stepId === 'archive.execute'
@@ -334,11 +342,13 @@ export async function inspectNativeSdkDefinitionUpgrade(
           ? ['verify.checks', 'verify.stop']
           : failure.stepId === 'supervisor.child.verifier'
             ? ['supervisor.child.verifier-retry']
-            : failure.stepId === 'supervisor.child.checks'
-              ? ['supervisor.child.checks-stop']
-              : failure.stepId === 'supervisor.child.integration-checks'
-                ? ['supervisor.child.integration-checks-stop']
-                : ['verify.checks-stop', 'build.builder', 'supervisor.parent.builder'];
+            : failure.stepId === 'supervisor.child.integration-repair'
+              ? ['supervisor.child.integration-resume']
+              : failure.stepId === 'supervisor.child.checks'
+                ? ['supervisor.child.checks-stop']
+                : failure.stepId === 'supervisor.child.integration-checks'
+                  ? ['supervisor.child.integration-checks-stop']
+                  : ['verify.checks-stop', 'build.builder', 'supervisor.parent.builder'];
       if (targetSteps.length !== 1 || !allowed.includes(targetSteps[0]))
         throw new Error(
           'Native fixed Application did not declare the expected failed execution recovery',

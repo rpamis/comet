@@ -1,6 +1,18 @@
 import { randomUUID } from 'node:crypto';
 
-import type { WorkflowRun } from '../engine/runtime.js';
+import {
+  createRuntime,
+  defineWorkflow,
+  hashRuntimeValue,
+  type WorkflowRun,
+} from '../engine/runtime.js';
+import { isDeepStrictEqual } from 'node:util';
+import {
+  assertClassicPresetRequirementsCurrent,
+  classicOpenEvidenceReceipt,
+} from './classic-sdk-application.js';
+import { classicSdkApplicationForRun } from './classic-sdk-revision-application.js';
+import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
 import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
 import { inspectClassicSdkRun } from './classic-sdk-status.js';
 import type { ClassicState } from './classic-state.js';
@@ -28,10 +40,9 @@ export async function proposeClassicSdkEscalation(options: {
 }): Promise<WorkflowRun> {
   const reason = options.reason.trim();
   if (!reason) throw new Error('Classic SDK escalation requires a concrete reason');
-  const { run, state, runtime, profile } = await inspectClassicSdkRun(
-    options.projectRoot,
-    options.change,
-  );
+  const initial = await inspectClassicSdkRun(options.projectRoot, options.change);
+  const { state } = initial;
+  let { run, runtime, profile } = initial;
   if (profile === 'full' || state.phase !== 'build') {
     throw new Error('Classic SDK escalation requires a hotfix or tweak in Build');
   }
@@ -39,6 +50,37 @@ export async function proposeClassicSdkEscalation(options: {
   if (run.actions.some((action) => action.status === 'running' || action.status === 'unknown')) {
     throw new Error('Classic SDK has a claimed Action with an unknown outcome');
   }
+  const application = classicSdkApplicationForRun(profile, run, {
+    upgradePresetRequirements: true,
+  });
+  const definition = defineWorkflow(application.workflow);
+  const hash = hashRuntimeValue(definition);
+  if (run.workflow.hash !== hash) {
+    const upgraded = structuredClone(run);
+    upgraded.workflow.hash = hash;
+    upgraded.definitionHashes[JSON.stringify([definition.id, definition.version])] = hash;
+    await createRuntime({
+      ...application,
+      workflows: [application.workflow],
+      transitionHandlers: [application.transitionHandler],
+      store: { read: async () => upgraded, compareAndSwap: async () => false },
+    }).inspect(run.runId);
+    upgraded.revision = run.revision + 1;
+    if (
+      !(await createClassicSdkStateStore(options.projectRoot).compareAndSwap(
+        run.runId,
+        run.revision,
+        upgraded,
+      ))
+    )
+      throw new Error('Classic Run changed while upgrading preset scope validation');
+    ({ run, runtime, profile } = await inspectClassicSdkRun(options.projectRoot, options.change));
+  }
+  const requirementsEvidence = await classicOpenEvidenceReceipt(
+    options.projectRoot,
+    (run.input as { changeDir: string }).changeDir,
+    { taskCheckboxes: 'ignore' },
+  );
   const action = run.actions.find(
     (candidate) =>
       candidate.stepId === `${profile}.build.execute` && candidate.status === 'pending',
@@ -64,7 +106,7 @@ export async function proposeClassicSdkEscalation(options: {
       claimToken,
       outcomeId: randomUUID(),
       status: 'succeeded',
-      output: { event: 'escalation-requested', proposal: reason },
+      output: { event: 'escalation-requested', proposal: reason, requirementsEvidence },
     },
     context: { requestId: randomUUID(), projectRoot: options.projectRoot },
   });
@@ -92,6 +134,26 @@ export async function decideClassicSdkEscalation(options: {
   if (wait.status === 'resolved' && wait.decision?.choice === options.choice) return run;
   if (wait.status !== 'pending' || state.phase !== 'build' || state.workflow === 'full') {
     throw new Error('Classic SDK escalation proposal already has a different decision');
+  }
+  if (options.choice === 'continue') {
+    const expected = (
+      wait.proposal as { outputs?: Record<string, { requirementsEvidence?: unknown }> }
+    ).outputs?.[`${state.workflow}.build.execute`]?.requirementsEvidence;
+    const current = await classicOpenEvidenceReceipt(
+      options.projectRoot,
+      (run.input as { changeDir: string }).changeDir,
+      { taskCheckboxes: 'ignore' },
+    );
+    if (!expected) {
+      await assertClassicPresetRequirementsCurrent(
+        options.projectRoot,
+        (run.input as { changeDir: string }).changeDir,
+        run,
+      );
+    } else if (!isDeepStrictEqual(expected, current))
+      throw new Error(
+        'Classic preset requirements changed after the scope proposal; restore the proposed artifacts or choose upgrade for a newly confirmed full Design',
+      );
   }
   return runtime.resolveWait({
     runId: run.runId,

@@ -4,6 +4,16 @@ Read only the current phase when `runtimeFormat: sdk`. The main Skill and latest
 
 Use current configuration.language for artifacts and external Skill inputs. At phase entry, when receiving work as a new Agent, or after context recovery, first follow the [task context protocol](scripts.md#task-context-and-artifact-language) using the current continuation or claimed Action's `contextRequest`. Pass the phase, task scope, actual workspace and valid configuration when dispatching child tasks. Preserve saved facts and valid evidence.
 
+## Phase entry and recovery
+
+Reuse the latest continuation, configuration, phase, revision, and paths for the same change, workspace, and Run. Query `comet state next <change-name> --json` only on cold recovery, after external changes, when the response is stale, or when required fields are missing. Do not fetch the same snapshot again at phase entry; Runtime still validates versions and evidence on writes.
+
+New SDK changes use `comet-state.yaml`; historical `.comet.yaml` files stay in place. If both exist, including a dangling symlink, stop and preserve the files without renaming or overwriting either. Use the current response for paths, Runtime ownership, and layout.
+
+When the response includes `agent.continuation.mode`, follow [automatic handoff](auto-transition.md); mode takes precedence over the old `nextAction.kind`. Distinguish manual handoff, waiting for the original executor, and outcome reconciliation. Submit `completion` only after completing the actual work. Use each phase's kind-based routing only for older responses without mode. Reconcile the original Action when its outcome is unknown; do not dispatch external work again.
+
+For denied Verify edits or a pending review proposal, read [edit review](../../comet/reference/edit-review.md). Load only the references needed for the current phase and an actual exception.
+
 ## Entry and artifacts
 
 For a new full, hotfix, or tweak change, first check required capabilities under [host capability check](../../comet/reference/host-check.md), choose isolation under workspace.md, and enter the returned projectRoot. All three flows use this order:
@@ -98,6 +108,8 @@ Write actual results, evidence, independent review, unexecuted checks, and accep
 For deterministic local checks, add `--local` before `--` in the main Skill's Guard command. Runtime returns reused only when argv, cwd, inputs, environment, timeout, original execution receipt, and log match. Build and Verify can reuse the identical full command. Omit the flag for external or nonrepeatable checks. Recover the original execution and receipt; investigate unknown results before repeating side effects. Runtime reruns changed inputs; remembered conversation claims cannot replace evidence.
 
 ## Preset scope
+
+For hotfix/tweak, Build, Verify, and Archive check the approved requirements. Completing task checkboxes does not change scope. If the proposal, design, specs, or task text changes, restore the approved content or use the main Skill's `propose-escalation` in Build to propose the current scope and obtain a new decision to continue the preset or upgrade to full. Approval to continue binds the actual proposed content; after proposing, restore the proposed content or choose upgrade and confirm a new full Design before proceeding.
 
 Hotfix first reproduces the cause and preserves failure evidence. When automatable, run the failing regression before repair and confirm GREEN afterward, then verify the cause is removed. Hotfix retains direct/direct/off defaults; task count does not determine escalation.
 

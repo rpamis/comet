@@ -26,11 +26,7 @@ Tweak 为 Comet 五阶段流程提供一组预设配置。它通过 OpenSpec 完
 
 ## SDK Run 路径
 
-进入 SDK 阶段时，必须读取 [SDK 执行方法](../comet-classic/reference/sdk-methods.md) 中当前阶段的章节；Verify 编辑被拒绝或出现待复核提案时，读取[编辑复核](../comet/reference/edit-review.md)。
-
-SDK 新 change 的状态文件为 `comet-state.yaml`；历史 `.comet.yaml` 保持原地读写，compat 初始化仍用旧名。两文件共存时（包括其中一个是失效符号链接）停止并保留现场，不自动改名或覆盖。以 Runtime 返回的归属与路径为准。
-
-响应已有 `agent.continuation.mode` 时，先按 `comet-classic/reference/auto-transition.md` 处理；`wait` 按 auto-transition.md 区分手动衔接和原任务等待，不能因兼容字段 `nextAction.kind: reconcile` 再做恢复查询。使用当前响应的命令与输入；Skill 工作实际完成后才使用 `completion` 提交。本节依据 `nextAction.kind` 的恢复规则仅用于没有 `mode` 的旧响应。
+首次进入当前 SDK 阶段、换 Agent 或恢复上下文时，读取[阶段入口与恢复](../comet-classic/reference/sdk-methods.md#阶段入口与恢复)及该参考的当前阶段章节；本会话已有且仍有效时直接复用。下文按当前阶段执行；`nextAction.kind` 的恢复路由只适用于没有 continuation mode 的旧响应。
 
 开始或恢复时，优先复用当前有效结果中的 `agent.continuation` / `data.nextAction` 及已绑定的 change、工作区、phase 和 Run revision，按已知的 `data.runtimeFormat` 路由。只有冷恢复、外部状态变化或缺少这些信息时，才运行 `comet state next <change-name> --json`。`sdk` 只按本节推进；SDK 方法参考的适用条件、OpenSpec apply 方法、升级判定和文件数授权规则仍适用，状态与证据通过本节命令提交。若 `nextAction.kind` 为 `reconcile`，运行 `comet state check <change-name> <phase> --recover --json` 核对原 Action；结果未明时不重做实现、检查或归档。
 

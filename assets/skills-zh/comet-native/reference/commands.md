@@ -14,6 +14,8 @@ Supervisor Child 的 Runtime 检查失败或独立 Verifier 明确判定失败�
 
 Supervisor Child 合并后的集成检查明确失败时，Run 会生成 `supervisor.child.integration-repair`，其输入绑定失败的检查 Action、Child、集成 worktree 与原集成提交。先读取检查失败记录，再在该集成 worktree 的原分支修复并提交后继 Git commit；成功回报的 `output` 包含非空 `summary`、新提交 `integrationCommit` 和非空、可重复的 `integrationChecks`。Runtime 验证提交祖先关系和工作区后才重新执行集成检查；修复和重检完成前，其他已通过验收的 Child 继续排队，不抢先合并。修复执行失败、合并冲突或执行结果未知时，保留原 Action 与现场，先核对证据，不推断检查通过或重新派发。
 
+集成修复明确回报 `failed` 后，保留原 Action 和未提交修改，等待 `supervisor.child.integration-resume`。向用户说明失败和保留现场；用户明确选择继续后，按当前 continuation 的 `continue-builder` 命令及最新提案哈希、状态版本创建后继修复 Action。旧 Run 因该失败终止时，先运行只读 `native doctor <change>`，仅按其建议使用 `--repair` 迁移恢复，再处理同一确认。结果未知仍先核对原领取和执行，不使用这条失败恢复路径。
+
 `supervisor.child.integrate` 返回 `EXECUTION_UNKNOWN` 时，先读取原 Action、领取记录和集成 worktree 的 Git 状态。若 `MERGE_HEAD` 等于该 Action 的 Child 候选提交，且当前分支仍停在上一次成功集成检查的提交（首个 Child 为准备阶段的目标提交），可在原合并现场解决冲突并完成 Git merge commit；随后用原 Action 的 `attempt`、`inputHash`、`claimToken` 提交一次 `record-outcome`，成功 `output` 包含 `child`、`candidateCommit`、`baseCommit`、`integrationCommit`、`integrationBranch` 和 `integrationWorktree`。Runtime 会核对 merge commit 的两个父提交，再安排集成检查。若没有匹配的 `MERGE_HEAD`，或分支在合并前已漂移，先查明是否发生外部执行；只有证据证明本次未合并，才按 SDK 的 reconciliation 协议重试原 Action，不能把 `EXECUTION_UNKNOWN` 直接当作合并失败或自动重派。
 
 Supervisor 父级独立 Verifier 明确判定失败，或用户拒绝当前父级验收结果时，Run 会生成新的 `supervisor.parent.builder`。在原集成 worktree 修复并提交后，Builder 回报须携带新的 `candidateCommit`；Runtime 将该提交绑定到后续检查、独立验收和交付。未改动代码时仍需提交新的 Builder 结果和检查，不复用旧候选的验收。

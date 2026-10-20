@@ -4753,11 +4753,21 @@ const validator8 = (() => {
     properties: {
       event: { enum: ['build-complete', 'escalation-requested'] },
       proposal: { minLength: 1, type: 'string' },
+      requirementsEvidence: {
+        additionalProperties: false,
+        properties: {
+          contentHash: { pattern: '^[a-f0-9]{64}$', type: 'string' },
+          ref: { minLength: 1, type: 'string' },
+        },
+        required: ['ref', 'contentHash'],
+        type: 'object',
+      },
     },
     required: ['event'],
     type: 'object',
   };
   const func2 = __helper0.default ?? __helper0;
+  const pattern0 = new RegExp('^[a-f0-9]{64}$', 'u');
   function validate10(
     data,
     { instancePath = '', parentData, parentDataProperty, rootData = data } = {},
@@ -4781,7 +4791,7 @@ const validator8 = (() => {
         errors++;
       }
       for (const key0 in data) {
-        if (!(key0 === 'event' || key0 === 'proposal')) {
+        if (!(key0 === 'event' || key0 === 'proposal' || key0 === 'requirementsEvidence')) {
           const err1 = {
             instancePath,
             schemaPath: '#/additionalProperties',
@@ -4849,8 +4859,142 @@ const validator8 = (() => {
           errors++;
         }
       }
+      if (data.requirementsEvidence !== undefined) {
+        let data2 = data.requirementsEvidence;
+        if (data2 && typeof data2 == 'object' && !Array.isArray(data2)) {
+          if (data2.ref === undefined) {
+            const err5 = {
+              instancePath: instancePath + '/requirementsEvidence',
+              schemaPath: '#/properties/requirementsEvidence/required',
+              keyword: 'required',
+              params: { missingProperty: 'ref' },
+              message: "must have required property '" + 'ref' + "'",
+            };
+            if (vErrors === null) {
+              vErrors = [err5];
+            } else {
+              vErrors.push(err5);
+            }
+            errors++;
+          }
+          if (data2.contentHash === undefined) {
+            const err6 = {
+              instancePath: instancePath + '/requirementsEvidence',
+              schemaPath: '#/properties/requirementsEvidence/required',
+              keyword: 'required',
+              params: { missingProperty: 'contentHash' },
+              message: "must have required property '" + 'contentHash' + "'",
+            };
+            if (vErrors === null) {
+              vErrors = [err6];
+            } else {
+              vErrors.push(err6);
+            }
+            errors++;
+          }
+          for (const key1 in data2) {
+            if (!(key1 === 'contentHash' || key1 === 'ref')) {
+              const err7 = {
+                instancePath: instancePath + '/requirementsEvidence',
+                schemaPath: '#/properties/requirementsEvidence/additionalProperties',
+                keyword: 'additionalProperties',
+                params: { additionalProperty: key1 },
+                message: 'must NOT have additional properties',
+              };
+              if (vErrors === null) {
+                vErrors = [err7];
+              } else {
+                vErrors.push(err7);
+              }
+              errors++;
+            }
+          }
+          if (data2.contentHash !== undefined) {
+            let data3 = data2.contentHash;
+            if (typeof data3 === 'string') {
+              if (!pattern0.test(data3)) {
+                const err8 = {
+                  instancePath: instancePath + '/requirementsEvidence/contentHash',
+                  schemaPath: '#/properties/requirementsEvidence/properties/contentHash/pattern',
+                  keyword: 'pattern',
+                  params: { pattern: '^[a-f0-9]{64}$' },
+                  message: 'must match pattern "' + '^[a-f0-9]{64}$' + '"',
+                };
+                if (vErrors === null) {
+                  vErrors = [err8];
+                } else {
+                  vErrors.push(err8);
+                }
+                errors++;
+              }
+            } else {
+              const err9 = {
+                instancePath: instancePath + '/requirementsEvidence/contentHash',
+                schemaPath: '#/properties/requirementsEvidence/properties/contentHash/type',
+                keyword: 'type',
+                params: { type: 'string' },
+                message: 'must be string',
+              };
+              if (vErrors === null) {
+                vErrors = [err9];
+              } else {
+                vErrors.push(err9);
+              }
+              errors++;
+            }
+          }
+          if (data2.ref !== undefined) {
+            let data4 = data2.ref;
+            if (typeof data4 === 'string') {
+              if (func2(data4) < 1) {
+                const err10 = {
+                  instancePath: instancePath + '/requirementsEvidence/ref',
+                  schemaPath: '#/properties/requirementsEvidence/properties/ref/minLength',
+                  keyword: 'minLength',
+                  params: { limit: 1 },
+                  message: 'must NOT have fewer than 1 characters',
+                };
+                if (vErrors === null) {
+                  vErrors = [err10];
+                } else {
+                  vErrors.push(err10);
+                }
+                errors++;
+              }
+            } else {
+              const err11 = {
+                instancePath: instancePath + '/requirementsEvidence/ref',
+                schemaPath: '#/properties/requirementsEvidence/properties/ref/type',
+                keyword: 'type',
+                params: { type: 'string' },
+                message: 'must be string',
+              };
+              if (vErrors === null) {
+                vErrors = [err11];
+              } else {
+                vErrors.push(err11);
+              }
+              errors++;
+            }
+          }
+        } else {
+          const err12 = {
+            instancePath: instancePath + '/requirementsEvidence',
+            schemaPath: '#/properties/requirementsEvidence/type',
+            keyword: 'type',
+            params: { type: 'object' },
+            message: 'must be object',
+          };
+          if (vErrors === null) {
+            vErrors = [err12];
+          } else {
+            vErrors.push(err12);
+          }
+          errors++;
+        }
+      }
     } else {
-      const err5 = {
+      const err13 = {
         instancePath,
         schemaPath: '#/type',
         keyword: 'type',
@@ -4858,9 +5002,9 @@ const validator8 = (() => {
         message: 'must be object',
       };
       if (vErrors === null) {
-        vErrors = [err5];
+        vErrors = [err13];
       } else {
-        vErrors.push(err5);
+        vErrors.push(err13);
       }
       errors++;
     }
@@ -6062,7 +6206,7 @@ export const precompiledRuntimeSchemas = new Map([
     validator7,
   ],
   [
-    '{"additionalProperties":false,"properties":{"event":{"enum":["build-complete","escalation-requested"]},"proposal":{"minLength":1,"type":"string"}},"required":["event"],"type":"object"}',
+    '{"additionalProperties":false,"properties":{"event":{"enum":["build-complete","escalation-requested"]},"proposal":{"minLength":1,"type":"string"},"requirementsEvidence":{"additionalProperties":false,"properties":{"contentHash":{"pattern":"^[a-f0-9]{64}$","type":"string"},"ref":{"minLength":1,"type":"string"}},"required":["ref","contentHash"],"type":"object"}},"required":["event"],"type":"object"}',
     validator8,
   ],
   [

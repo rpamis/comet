@@ -23,11 +23,7 @@ Personal memory contains reusable user information, never task summaries, progre
 
 ## SDK Run path
 
-On entering an SDK phase, read its section in [SDK execution methods](../comet-classic/reference/sdk-methods.md). For denied Verify edits or pending review proposals, read [edit review](../comet/reference/edit-review.md).
-
-New SDK changes use `comet-state.yaml`. Historical `.comet.yaml` files remain in place for reads and writes; compat initialization still uses the old name. If both names exist, including a dangling symlink, stop and preserve them rather than renaming or overwriting either. Use the ownership and paths returned by Runtime.
-
-When the response already includes `agent.continuation.mode`, follow `comet-classic/reference/auto-transition.md` first. `wait` distinguishes manual handoff from waiting for the original executor under auto-transition.md, without running recovery queries merely because the compatibility field says `nextAction.kind: reconcile`. Use the current response’s commands and inputs; submit `completion` only after the Skill’s actual work is complete. Recovery rules in this section based on `nextAction.kind` apply only to older responses without `mode`.
+On first entering the current SDK phase, handing off to a new Agent, or restoring context, read [phase entry and recovery](../comet-classic/reference/sdk-methods.md#phase-entry-and-recovery) and the current phase's section in that reference. Reuse them when already available and still valid in this session. Continue with the phase below; recovery routes based on `nextAction.kind` apply only to older responses without a continuation mode.
 
 At entry or resume, reuse the current valid result's `agent.continuation` / `data.nextAction` and the bound change, workspace, phase, and Run revision. Route by the known `data.runtimeFormat`. Run `comet state next <change-name> --json` only on a cold resume, after external state changes, or when this information is missing. For `sdk`, use this section for state changes. The applicability, reproduction, root-cause repair, escalation, and file-count authorization rules in SDK execution methods apply; submit state and evidence through this section. For `nextAction.kind: reconcile`, run `comet state check <change-name> <phase> --recover --json` to investigate the original Action; do not repeat implementation, checks, or archive while its result is unknown.
 

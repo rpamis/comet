@@ -249,7 +249,16 @@ export async function classicSdkOpenGuard(
         claimToken,
         outcomeId: randomUUID(),
         status: 'succeeded',
-        output: { event: 'open-complete' },
+        output: {
+          event: 'open-complete',
+          ...(profile === 'full'
+            ? {}
+            : {
+                requirementsEvidence: await classicOpenEvidenceReceipt(projectRoot, ref, {
+                  taskCheckboxes: 'ignore',
+                }),
+              }),
+        },
       },
       context,
     });

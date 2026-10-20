@@ -16,6 +16,7 @@ export const NATIVE_SDK_RECOVERABLE_FAILURE_STEPS: readonly string[] = [
   'supervisor.child.checks',
   'supervisor.child.integration-checks',
   'supervisor.child.verifier',
+  'supervisor.child.integration-repair',
 ];
 
 export function nativeSdkRecoverableFailureReason(reason: string | undefined): boolean {
@@ -31,8 +32,19 @@ export const NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH =
 export const NATIVE_SDK_PRE_EDIT_REVIEW_HASH =
   'a4fa2f7ad12c5c7dd37374f9cb5f1154f2c686e3b3b5473533154c01fdcdd9ea';
 
-export function nativeSdkBeforeArchiveCandidateRecovery(workflow: DefineWorkflowOptions) {
+export function nativeSdkBeforeIntegrationRepairRecovery(workflow: DefineWorkflowOptions) {
   const previous = structuredClone(workflow);
+  delete previous.steps['supervisor.child.integration-resume'];
+  previous.transitions = (previous.transitions ?? []).filter(
+    ({ from, to }) =>
+      from !== 'supervisor.child.integration-resume' &&
+      to !== 'supervisor.child.integration-resume',
+  );
+  return previous;
+}
+
+export function nativeSdkBeforeArchiveCandidateRecovery(workflow: DefineWorkflowOptions) {
+  const previous = nativeSdkBeforeIntegrationRepairRecovery(workflow);
   previous.transitions = previous.transitions?.filter(
     (edge) =>
       !(['archive.prepare', 'archive.execute'].includes(edge.from) && edge.to === 'verify.stop'),
@@ -107,6 +119,7 @@ export function nativeSdkLegacyDefinitions(workflow: DefineWorkflowOptions) {
     NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH,
   ];
   return [
+    nativeSdkBeforeIntegrationRepairRecovery(workflow),
     nativeSdkBeforeArchiveCandidateRecovery(workflow),
     nativeSdkBeforeReportRecovery(workflow),
     nativeSdkBeforeReadOnlyArchivePreflight(workflow),
@@ -128,6 +141,13 @@ export function nativeSdkLegacyTransitionHandler(
     ...transitionHandler,
     apply(input) {
       const { run, event } = input;
+      if (
+        event.kind === 'action-outcome' &&
+        event.stepId === 'supervisor.child.integration-repair' &&
+        event.outcome.status === 'failed' &&
+        !workflow.steps['supervisor.child.integration-resume']
+      )
+        return { state: run.state!, next: [] };
       if (
         event.kind === 'action-outcome' &&
         ['archive.prepare', 'archive.execute'].includes(event.stepId) &&

@@ -20,6 +20,12 @@ const legacy = definitions.nativeSdkLegacyDefinitions(application.workflow);
 const reference = (hash: string) => ({ workflow: { id: 'comet-native', version: '1', hash } });
 afterEach(() => vi.restoreAllMocks());
 
+it('recognizes the persisted builtin definition before integration repair recovery', () => {
+  const hash = '42c3944e15a25dc0cd179212587049deef1052f47d9c09d2248c2a8de936ec19';
+  const selected = nativeSdkApplicationForRun(reference(hash), application);
+  expect(hashRuntimeValue(defineWorkflow(selected.workflow))).toBe(hash);
+});
+
 it('returns the exact current application without constructing legacy definitions', () => {
   const probe = vi.spyOn(definitions, 'nativeSdkLegacyDefinitions');
   expect(nativeSdkApplicationForRun(reference(currentHash), application)).toBe(application);

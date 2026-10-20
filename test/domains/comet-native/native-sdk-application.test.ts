@@ -166,18 +166,7 @@ function preCheckRecoveryApplication(): NativeApplication {
   return {
     ...application,
     workflow,
-    transitionHandler: {
-      ...application.transitionHandler,
-      apply({ run, event }) {
-        if (
-          event.kind === 'action-outcome' &&
-          event.stepId === 'verify.checks' &&
-          event.outcome.status === 'failed'
-        )
-          return { state: run.state!, next: [] };
-        return application.transitionHandler.apply({ run, event });
-      },
-    },
+    transitionHandler: nativeSdkLegacyTransitionHandler(workflow, application.transitionHandler),
   };
 }
 
@@ -1702,7 +1691,7 @@ children:
       context: { requestId: 'first-integration-checks', projectRoot: root },
     });
     expect(run.actions.find((action) => action.id === firstChecks.id)?.status).toBe('failed');
-    const pendingRepair = run.actions.at(-1)!;
+    let pendingRepair = run.actions.at(-1)!;
     expect(pendingRepair).toMatchObject({
       stepId: 'supervisor.child.integration-repair',
       status: 'pending',
@@ -1744,7 +1733,145 @@ children:
         (action) => action.stepId === 'supervisor.child.integrate' && action.status === 'pending',
       ),
     ).toHaveLength(0);
+    const originalRepair = pendingRepair;
+    const failureContext = { requestId: 'integration-repair-failed', projectRoot: root };
+    run = await runtime.claim({
+      runId: run.runId,
+      actionId: originalRepair.id,
+      attempt: originalRepair.attempt,
+      inputHash: originalRepair.inputHash,
+      executorId: 'native-host',
+      sessionId: 'failed-repair-session',
+      claimToken: 'failed-repair-token',
+      context: failureContext,
+    });
+    run = await runtime.recordOutcome({
+      runId: run.runId,
+      outcome: {
+        actionId: originalRepair.id,
+        attempt: originalRepair.attempt,
+        inputHash: originalRepair.inputHash,
+        claimToken: 'failed-repair-token',
+        outcomeId: 'integration-repair-failed',
+        status: 'failed',
+        output: { summary: 'Stopped after partial integration repair.' },
+      },
+      context: failureContext,
+    });
+    const failedActions = structuredClone(run.actions);
+    await registerSdkChangeOwner(root, {
+      schema: COMET_CHANGE_OWNER_SCHEMA,
+      workflow: 'native',
+      change: run.runId,
+      format: 'sdk',
+      application: 'native',
+      runId: run.runId,
+    });
+    expect(await nativeDoctorCommand([run.runId, '--repair'], root)).toMatchObject({
+      exitCode: 0,
+      data: { healthy: true, repaired: true },
+    });
+    application = nativeApplication();
+    runtime = createSupervisorRuntime();
+    run = await runtime.next({ runId: run.runId });
+    expect(run.actions.slice(0, failedActions.length)).toEqual(failedActions);
+    const resume = run.waits.find(
+      (entry) =>
+        entry.stepId === 'supervisor.child.integration-resume' && entry.status === 'pending',
+    )!;
+    expect(resume).toBeDefined();
+    expect(run.status).toBe('waiting');
+    const beforeDecision = await projectNativeSdkContinuation({
+      run,
+      state: run.state as NativePortableState,
+      projectRoot: root,
+    });
+    expect(beforeDecision.continuation).toMatchObject({ mode: 'ask', requiresUserDecision: true });
+    const continued = await advanceNativeSdkChange(root, run.runId, {
+      expectedAction: 'continue-builder',
+      expectedStateVersion: (run.state as NativePortableState).state_version,
+      proposalHash: resume.proposalHash,
+      summary: 'The user chose to continue the integration repair.',
+    });
+    expect(continued.exitCode).toBe(0);
+    run = await runtime.inspect(run.runId);
+    pendingRepair = run.actions.find(
+      (entry) =>
+        entry.stepId === 'supervisor.child.integration-repair' && entry.status === 'pending',
+    )!;
+    expect(pendingRepair.id).not.toBe(originalRepair.id);
+    expect(pendingRepair.input).toMatchObject({
+      activation: { failedRepairActionId: originalRepair.id },
+    });
+    expect(run.actions.find((entry) => entry.id === originalRepair.id)?.outcome).toEqual(
+      failedActions.find((entry) => entry.id === originalRepair.id)?.outcome,
+    );
     const integrationWorktree = path.join(root, '.worktrees', 'sdk-shape-integration');
+    await fs.writeFile(
+      path.join(integrationWorktree, 'integration-repair.txt'),
+      'partial repair\n',
+    );
+    const successor = pendingRepair;
+    await runtime.claim({
+      runId: run.runId,
+      actionId: successor.id,
+      attempt: successor.attempt,
+      inputHash: successor.inputHash,
+      executorId: 'native-host',
+      sessionId: 'second-repair-session',
+      claimToken: 'second-repair-token',
+      context: failureContext,
+    });
+    run = await runtime.recordOutcome({
+      runId: run.runId,
+      outcome: {
+        actionId: successor.id,
+        attempt: successor.attempt,
+        inputHash: successor.inputHash,
+        claimToken: 'second-repair-token',
+        outcomeId: 'second-repair-failed',
+        status: 'failed',
+        output: { summary: 'Stopped again with uncommitted repair work.' },
+      },
+      context: failureContext,
+    });
+    expect(run.status).toBe('waiting');
+    const secondResume = run.waits.find(
+      (entry) =>
+        entry.stepId === 'supervisor.child.integration-resume' && entry.status === 'pending',
+    )!;
+    expect(secondResume.proposalHash).not.toBe(resume.proposalHash);
+    expect(
+      (
+        await advanceNativeSdkChange(root, run.runId, {
+          expectedAction: 'continue-builder',
+          expectedStateVersion: (run.state as NativePortableState).state_version,
+          proposalHash: resume.proposalHash,
+          summary: 'Stale approval must not continue a different repair.',
+        })
+      ).exitCode,
+    ).not.toBe(0);
+    expect(
+      (
+        await advanceNativeSdkChange(root, run.runId, {
+          expectedAction: 'continue-builder',
+          expectedStateVersion: (run.state as NativePortableState).state_version,
+          proposalHash: secondResume.proposalHash,
+          summary: 'The user chose to continue the preserved partial repair.',
+        })
+      ).exitCode,
+    ).toBe(0);
+    expect(
+      await fs.readFile(path.join(integrationWorktree, 'integration-repair.txt'), 'utf8'),
+    ).toBe('partial repair\n');
+    run = await runtime.inspect(run.runId);
+    pendingRepair = run.actions.find(
+      (entry) =>
+        entry.stepId === 'supervisor.child.integration-repair' && entry.status === 'pending',
+    )!;
+    expect(pendingRepair.input).toMatchObject({
+      activation: { failedRepairActionId: successor.id },
+    });
     await fs.writeFile(path.join(integrationWorktree, 'integration-repair.txt'), 'repaired\n');
     execFileSync('git', ['add', 'integration-repair.txt'], {
       cwd: integrationWorktree,
@@ -1797,29 +1924,6 @@ children:
       context: { requestId: 'integration-repair-checks', projectRoot: root },
     });
     expect(run.actions.find((action) => action.id === repairedCheck.id)?.status).toBe('succeeded');
-    if (upgradeDefinition) {
-      const savedActions = structuredClone(run.actions);
-      await registerSdkChangeOwner(root, {
-        schema: COMET_CHANGE_OWNER_SCHEMA,
-        workflow: 'native',
-        change: run.runId,
-        format: 'sdk',
-        application: 'native',
-        runId: run.runId,
-      });
-      expect(await nativeDoctorCommand([run.runId], root)).toMatchObject({
-        exitCode: 65,
-        data: { findings: [{ code: 'sdk-definition-upgrade-required', ready: true }] },
-      });
-      expect(await nativeDoctorCommand([run.runId, '--repair'], root)).toMatchObject({
-        exitCode: 0,
-        data: { healthy: true, repaired: true },
-      });
-      application = nativeApplication();
-      runtime = createSupervisorRuntime();
-      run = await runtime.next({ runId: run.runId });
-      expect(run.actions.slice(0, savedActions.length)).toEqual(savedActions);
-    }
     const apiArchive = run.actions.find(
       (action) => action.stepId === 'supervisor.child.archive' && action.status === 'pending',
     )!;

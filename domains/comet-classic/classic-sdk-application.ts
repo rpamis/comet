@@ -552,7 +552,7 @@ export async function validateClassicSdkDeliveryCandidate(
 export async function classicOpenEvidenceReceipt(
   projectRoot: string,
   changeDirRef: string,
-  options: { designRequirements?: boolean } = {},
+  options: { designRequirements?: boolean; taskCheckboxes?: 'include' | 'ignore' } = {},
 ): Promise<{ ref: string; contentHash: string }> {
   const inspected = await inspectProtectedProjectPath(projectRoot, changeDirRef, {
     label: 'Classic change',
@@ -569,14 +569,20 @@ export async function classicOpenEvidenceReceipt(
       label: 'Classic Open artifact',
     });
     if (hashed.stat.size === 0) throw new Error(`Classic Open artifact is empty: ${relative}`);
-    const digest =
-      options.designRequirements && relative === `${inspected.relative}/tasks.md`
-        ? classicTaskRevision(
-            await readClassicProjectFile(projectRoot, relative, {
-              label: 'Classic Design task requirements',
-            }),
-          )
-        : hashed.digest;
+    let digest = hashed.digest;
+    if (
+      relative === `${inspected.relative}/tasks.md` &&
+      (options.designRequirements || options.taskCheckboxes === 'ignore')
+    ) {
+      const source = await readClassicProjectFile(projectRoot, relative, {
+        label: 'Classic task requirements',
+      });
+      digest = options.designRequirements
+        ? classicTaskRevision(source)
+        : createHash('sha256')
+            .update(source.replace(/^(\s*[-*+]\s+\[)[xX](\]\s)/gm, '$1 $2'))
+            .digest('hex');
+    }
     entries.push([relative, digest]);
   }
   entries.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
@@ -716,6 +722,7 @@ export async function assertClassicBuildReady(
   state: ClassicState,
   run: WorkflowRun,
 ): Promise<void> {
+  await assertClassicPresetRequirementsCurrent(projectRoot, changeDirRef, run);
   const configuration = classicConfigurationReadiness(state);
   if (
     state.isolation === null ||
@@ -787,6 +794,52 @@ export async function assertClassicBuildReady(
   if (autonomousProblems.length > 0) throw new Error(autonomousProblems.join('\n'));
 }
 
+/** 预设以已批准的需求为准；勾选完成任务不会改变需求摘要。 */
+export async function assertClassicPresetRequirementsCurrent(
+  projectRoot: string,
+  changeDirRef: string,
+  run: Readonly<WorkflowRun>,
+): Promise<void> {
+  const state = run.state as unknown as ClassicState;
+  if (state.workflow === 'full') return;
+  const profile = state.workflow;
+  const confirmation = run.waits
+    .slice()
+    .reverse()
+    .find(
+      (wait) =>
+        wait.stepId === `${profile}.build.escalation-confirm` &&
+        wait.status === 'resolved' &&
+        wait.decision?.choice === 'continue',
+    );
+  const confirmed = (
+    confirmation?.proposal as
+      | {
+          outputs?: Record<string, { requirementsEvidence?: { ref: string; contentHash: string } }>;
+        }
+      | undefined
+  )?.outputs?.[`${profile}.build.execute`]?.requirementsEvidence;
+  const opened = (
+    run.outputs[`${profile}.open`]?.value as
+      { requirementsEvidence?: { ref: string; contentHash: string } } | undefined
+  )?.requirementsEvidence;
+  const original = run.outputs[`${profile}.open.evidence`]?.value;
+  const expected = confirmed ?? opened ?? original;
+  const current = await classicOpenEvidenceReceipt(projectRoot, changeDirRef, {
+    taskCheckboxes: 'ignore',
+  });
+  const unchangedLegacy =
+    !confirmed &&
+    !opened &&
+    expected &&
+    isDeepStrictEqual(expected, await classicOpenEvidenceReceipt(projectRoot, changeDirRef));
+  if (!expected || (!isDeepStrictEqual(expected, current) && !unchangedLegacy)) {
+    throw new Error(
+      `Classic preset requirements changed after approval; restore the approved artifacts or return to Build and run comet state propose-escalation ${run.runId} --reason "<scope-change>" to confirm the current scope`,
+    );
+  }
+}
+
 const openEvidenceValidator: RuntimeEvidenceValidator = {
   id: 'comet-classic-open-artifacts',
   version: '1',
@@ -810,6 +863,26 @@ const openEvidenceValidator: RuntimeEvidenceValidator = {
       );
       if (contentIssue) return { accepted: false, actualHash: '', reason: contentIssue };
       const current = await classicOpenEvidenceReceipt(context.projectRoot, ref);
+      if (state?.workflow !== 'full') {
+        const expected = (
+          run.outputs[`${state?.workflow}.open`]?.value as
+            { requirementsEvidence?: unknown } | undefined
+        )?.requirementsEvidence;
+        if (
+          expected &&
+          !isDeepStrictEqual(
+            expected,
+            await classicOpenEvidenceReceipt(context.projectRoot, ref, {
+              taskCheckboxes: 'ignore',
+            }),
+          )
+        )
+          return {
+            accepted: false,
+            actualHash: current.contentHash,
+            reason: 'Classic preset Open scope does not match its artifacts',
+          };
+      }
       return {
         accepted: current.contentHash === contentHash,
         actualHash: current.contentHash,
@@ -1172,6 +1245,35 @@ const requiredStateFields: Array<keyof ClassicState> = [
 const nullableString = { type: ['string', 'null'] };
 const nullableBoolean = { type: ['boolean', 'null'] };
 
+const presetScopeValidator: RuntimeValidator = {
+  id: 'comet-classic-preset-scope',
+  version: '1',
+  async validate({ run, outcome, context }) {
+    const output = outcome.output as { event?: unknown; requirementsEvidence?: unknown } | null;
+    if (
+      outcome.status !== 'succeeded' ||
+      output?.event !== 'escalation-requested' ||
+      !output.requirementsEvidence
+    )
+      return { accepted: true };
+    if (!context?.projectRoot)
+      return { accepted: false, reason: 'Classic preset scope requires its project root' };
+    try {
+      const current = await classicOpenEvidenceReceipt(
+        context.projectRoot,
+        (run.input as { changeDir: string }).changeDir,
+        { taskCheckboxes: 'ignore' },
+      );
+      return {
+        accepted: isDeepStrictEqual(output.requirementsEvidence, current),
+        reason: 'Classic preset scope changed before the proposal was recorded',
+      };
+    } catch (error) {
+      return { accepted: false, reason: error instanceof Error ? error.message : String(error) };
+    }
+  },
+};
+
 /** Classic owns phase rules; the SDK owns Action acceptance, scheduling, and Run commits. */
 export function defineClassicWorkflowApplication(
   profile: ClassicProfile,
@@ -1190,6 +1292,7 @@ export function defineClassicWorkflowApplication(
         : []),
       archiveOutcomeValidator,
       deliveryOutcomeValidator,
+      presetScopeValidator,
     ],
     evidenceValidators:
       fullApplication?.evidenceValidators ??
@@ -1295,7 +1398,9 @@ export function defineClassicWorkflowApplication(
                   version: designHandoffValidator.version,
                 },
               }
-            : {}),
+            : {
+                validator: { id: presetScopeValidator.id, version: presetScopeValidator.version },
+              }),
           ...(profile === 'full'
             ? {
                 outputSchema: {
@@ -1315,6 +1420,15 @@ export function defineClassicWorkflowApplication(
                   properties: {
                     event: { enum: ['build-complete', 'escalation-requested'] },
                     proposal: { type: 'string', minLength: 1 },
+                    requirementsEvidence: {
+                      type: 'object',
+                      required: ['ref', 'contentHash'],
+                      properties: {
+                        ref: { type: 'string', minLength: 1 },
+                        contentHash: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+                      },
+                      additionalProperties: false,
+                    },
                   },
                   additionalProperties: false,
                 },

@@ -1,4 +1,5 @@
 import { recoverNativeSdkReportRevalidation } from './native-sdk-report.js';
+import { validateNativeSdkFailedIntegrationRepair } from './native-sdk-supervisor-integration-repair.js';
 import { randomUUID } from 'node:crypto';
 import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
 import { settleNativeSdkCompletion } from './native-sdk-completion-cleanup.js';
@@ -234,9 +235,12 @@ export async function advanceNativeSdkChange(
     const wait = run.waits.find(
       (candidate) =>
         candidate.status === 'pending' &&
-        ['build.resume', 'supervisor.child.resume', 'supervisor.parent.resume'].includes(
-          candidate.stepId,
-        ) &&
+        [
+          'build.resume',
+          'supervisor.child.resume',
+          'supervisor.parent.resume',
+          'supervisor.child.integration-resume',
+        ].includes(candidate.stepId) &&
         candidate.proposalHash === decision.proposalHash,
     );
     if (!wait || state.state_version !== decision.expectedStateVersion) {
@@ -247,6 +251,13 @@ export async function advanceNativeSdkChange(
       };
     }
     if (!decision.summary.trim()) throw new NativeUsageError('--summary must not be empty');
+    if (wait.stepId === 'supervisor.child.integration-resume') {
+      const failedId = (wait.proposal as { activation?: { failedRepairActionId?: string } })
+        .activation?.failedRepairActionId;
+      const failed = run.actions.find(({ id }) => id === failedId);
+      if (!failed) throw new Error('Native integration repair decision lacks its failed Action');
+      await validateNativeSdkFailedIntegrationRepair(run, failed, projectRoot);
+    }
     await (
       await loadOwnedNativeSdkRuntime(projectRoot, name)
     ).runtime.resolveWait({

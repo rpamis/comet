@@ -1120,6 +1120,11 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             version: nativeSdkSupervisorIntegrationRepairValidator.version,
           },
         },
+        'supervisor.child.integration-resume': {
+          type: 'ask_user',
+          proposalFrom: 'supervisor.child.integration-repair',
+          choices: ['continue'],
+        },
         'supervisor.child.archive': {
           type: 'call_tool',
           ref: 'native-supervisor-child-archive',
@@ -1275,6 +1280,16 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
           on: 'failed',
         },
         { from: 'supervisor.child.integration-repair', to: 'supervisor.child.integration-checks' },
+        {
+          from: 'supervisor.child.integration-repair',
+          to: 'supervisor.child.integration-resume',
+          on: 'failed',
+        },
+        {
+          from: 'supervisor.child.integration-resume',
+          to: 'supervisor.child.integration-repair',
+          on: 'continue',
+        },
         { from: 'supervisor.child.integration-checks', to: 'supervisor.child.integrate' },
         { from: 'supervisor.child.integration-checks', to: 'supervisor.child.prepare' },
         { from: 'supervisor.child.integration-checks', to: 'supervisor.parent.builder' },
@@ -1913,7 +1928,21 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
           event.stepId === 'supervisor.child.integration-repair'
         ) {
           if (event.outcome.status !== 'succeeded') {
-            return { state: state as unknown as RuntimeValue, next: [] };
+            const action = run.actions.find((candidate) => candidate.id === event.outcome.actionId);
+            const activation = (
+              action?.input as { activation?: Record<string, RuntimeValue> } | undefined
+            )?.activation;
+            if (!action || !activation)
+              throw new Error('Native integration repair failure lacks its Action');
+            return {
+              state: state as unknown as RuntimeValue,
+              next: [
+                {
+                  stepId: 'supervisor.child.integration-resume',
+                  input: { ...activation, failedRepairActionId: action.id },
+                },
+              ],
+            };
           }
           const action = run.actions.find((candidate) => candidate.id === event.outcome.actionId);
           const input = (action?.input as { activation?: Record<string, RuntimeValue> } | undefined)
@@ -1936,6 +1965,35 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
                 },
               },
             ],
+          };
+        }
+        if (
+          event.kind === 'wait-resolved' &&
+          event.stepId === 'supervisor.child.integration-resume'
+        ) {
+          const wait = run.waits.find(
+            (candidate) =>
+              candidate.stepId === event.stepId &&
+              candidate.decision?.id === event.decisionId &&
+              candidate.proposalHash === event.proposalHash,
+          );
+          const activation = (
+            wait?.proposal as { activation?: Record<string, RuntimeValue> } | undefined
+          )?.activation;
+          if (
+            !activation ||
+            !run.actions.some(
+              (action) =>
+                action.id === activation.failedRepairActionId &&
+                action.stepId === 'supervisor.child.integration-repair' &&
+                action.status === 'failed',
+            )
+          ) {
+            throw new Error('Native integration repair continuation lacks its failed Action');
+          }
+          return {
+            state: state as unknown as RuntimeValue,
+            next: [{ stepId: 'supervisor.child.integration-repair', input: activation }],
           };
         }
         if (event.kind === 'action-outcome' && event.stepId === 'build.builder') {

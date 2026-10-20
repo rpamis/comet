@@ -1,4 +1,5 @@
 import { assertClassicEditReviewsComplete } from './classic-edit-review.js';
+import { assertClassicPresetRequirementsCurrent } from './classic-sdk-application.js';
 import { classicSdkCheckLogHash } from './classic-sdk-check-record.js';
 import { randomUUID } from 'node:crypto';
 import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
@@ -90,6 +91,11 @@ export async function assertClassicSdkArchiveReady(
       throw new Error('Classic SDK Run is not ready to Archive');
     }
     const approved = archiveApproval(run);
+    await assertClassicPresetRequirementsCurrent(
+      projectRoot,
+      String((run.input as { changeDir: string }).changeDir),
+      run,
+    );
     await assertClassicEditReviewsComplete(
       projectRoot,
       path.posix.basename(String((run.input as { changeDir?: string }).changeDir)),

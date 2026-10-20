@@ -18,10 +18,15 @@ describe('comet-open English batch completion protocol', () => {
   });
 
   it('requires every split item to pass the CLI completion checks', async () => {
-    const skill = await readFile(
-      path.resolve('assets', 'skills', 'comet-open', 'SKILL.md'),
-      'utf8',
-    );
+    const main = await readFile(path.resolve('assets', 'skills', 'comet-open', 'SKILL.md'), 'utf8');
+
+    expect(main).toContain('](reference/batch-changes.md)');
+    const skill =
+      main +
+      (await readFile(
+        path.resolve('assets', 'skills', 'comet-open/reference/batch-changes.md'),
+        'utf8',
+      ));
 
     expect(skill).toContain(
       'comet classic openspec --agent-json -- status --change "<name>" --json',

@@ -172,6 +172,27 @@ async function fixture(
 }
 
 describe('Classic SDK Archive dependency preflight', () => {
+  it.each(['hotfix', 'tweak'] as const)(
+    'blocks %s requirement drift before Archive side effects',
+    async (profile) => {
+      const f = await fixture({ profile, preflight: false });
+      await f.install();
+      vi.stubEnv('COMET_OPENSPEC', f.executable);
+      await fs.appendFile(path.join(f.active, 'proposal.md'), 'Also replace authentication.\n');
+      const response = await runClassicCli(
+        ['guard', 'example', 'archive', '--apply', '--json'],
+        undefined,
+        { invocationCwd: f.projectRoot },
+      );
+      expect(JSON.parse(response.stdout!).exitCode).not.toBe(0);
+      expect(await f.runtime.inspect(f.run.runId)).toEqual(f.run);
+      await expect(fs.access(f.count)).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(await fs.readFile(path.join(f.active, 'proposal.md'), 'utf8')).toContain(
+        'replace authentication',
+      );
+    },
+  );
+
   it.each([false, true])(
     'blocks the same approved Archive Action after report drift (apply=%s)',
     async (apply) => {

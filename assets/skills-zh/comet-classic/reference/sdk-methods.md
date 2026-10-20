@@ -4,6 +4,16 @@
 
 所有产物与外部 Skill 输入使用当前 configuration.language。每次阶段入口、接收新 Agent 和上下文恢复，先按 [任务上下文协议](scripts.md#任务上下文与产物语言) 使用当前 continuation 或已领取 Action 的 `contextRequest`；派发子任务时一并交付阶段、任务范围、实际工作区和有效配置。保留已有事实与有效证据。
 
+## 阶段入口与恢复
+
+复用同一 change、工作区和 Run 的最新 continuation、配置、phase、revision 与路径；只有冷恢复、外部变化、响应过期或字段缺失时，才用 `comet state next <change-name> --json` 补读。阶段入口不重复获取同一快照；写入仍由 Runtime 校验版本和证据。
+
+SDK 新 change 使用 `comet-state.yaml`，历史 `.comet.yaml` 原地保留。两文件共存（包括失效符号链接）时停止并保留现场，不自动改名或覆盖。路径、Runtime 归属和 layout 以当前响应为准。
+
+响应含 `agent.continuation.mode` 时按[自动衔接](auto-transition.md)执行；mode 优先于旧 `nextAction.kind`。区分手动衔接、原执行者等待与结果核对，完成实际工作后才提交 `completion`。无 mode 的旧响应才按各阶段的 kind 路由；结果未明时核对原 Action，不重发外部工作。
+
+Verify 编辑被拒绝或出现待复核提案时读取[编辑复核](../../comet/reference/edit-review.md)。只读取当前阶段与实际发生的异常所需参考，不展开其余阶段。
+
 ## 开始与产物
 
 新建 full、hotfix 或 tweak 时，先按[宿主能力核对](../../comet/reference/host-check.md)检查当前所需能力，再按 workspace.md 确定隔离方式并进入返回的 projectRoot。三种流程统一使用以下顺序：
@@ -98,6 +108,8 @@ review_mode 为 standard 或 thorough 时，由独立 reviewer 对最终 diff �
 确定性的本地检查使用主 Skill 的 Guard 命令并在 `--` 前加 `--local`。Runtime 只有在 argv、cwd、输入、环境、超时、原始收据和日志匹配时才返回 reused；Build 与 Verify 可复用同一完整命令。外部服务或不可重复检查不加该参数。恢复时沿用原执行及收据，结果未知先核对，不重发副作用。输入发生变化时由 Runtime 重跑，不能用旧对话里的通过结论替代检查。
 
 ## 预设范围复核
+
+hotfix/tweak 的 Build、Verify 和 Archive 都核对已批准需求。完成任务的 checkbox 不改变需求；proposal、设计、规格或任务正文发生变化时，恢复已批准内容，或在 Build 使用主 Skill 的 `propose-escalation` 提交当前范围，再取得同一预设继续或升级 full 的新决定。继续批准绑定提案时的实际内容；提案后再次改动时先恢复提案内容，或选择升级 full 并重新确认设计，不沿用旧批准。
 
 hotfix 先复现根因，保留真实失败证据；可自动化时先运行失败回归，再修复并确认转绿，最后检查根因已消除。hotfix 使用 direct/direct/off 默认配置，任务数不决定是否升级。
 

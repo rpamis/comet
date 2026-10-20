@@ -2591,7 +2591,17 @@ describe('skills', () => {
 
   describe('Chinese Comet workflow safeguards', () => {
     it('uses the OpenSpec status graph to drive Chinese open artifacts', async () => {
-      const zhOpen = await readSkillWithCompat(path.resolve('assets', 'skills-zh'), 'comet-open');
+      const zhOpenMain = await readSkillWithCompat(
+        path.resolve('assets', 'skills-zh'),
+        'comet-open',
+      );
+      expect(zhOpenMain).toContain('](reference/batch-changes.md)');
+      const zhOpen =
+        zhOpenMain +
+        (await fs.readFile(
+          path.resolve('assets', 'skills-zh', 'comet-open/reference/batch-changes.md'),
+          'utf8',
+        ));
 
       expect(zhOpen).toContain(
         'comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json',
@@ -2622,7 +2632,14 @@ describe('skills', () => {
     });
 
     it('uses the OpenSpec status graph to drive English open artifacts', async () => {
-      const enOpen = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-open');
+      const enOpenMain = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-open');
+      expect(enOpenMain).toContain('](reference/batch-changes.md)');
+      const enOpen =
+        enOpenMain +
+        (await fs.readFile(
+          path.resolve('assets', 'skills', 'comet-open/reference/batch-changes.md'),
+          'utf8',
+        ));
 
       expect(enOpen).toContain(
         'comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json',
@@ -2673,7 +2690,17 @@ describe('skills', () => {
         path.resolve('assets', 'skills-zh'),
         'comet-classic',
       );
-      const zhOpen = await readSkillWithCompat(path.resolve('assets', 'skills-zh'), 'comet-open');
+      const zhOpenMain = await readSkillWithCompat(
+        path.resolve('assets', 'skills-zh'),
+        'comet-open',
+      );
+      expect(zhOpenMain).toContain('](reference/batch-changes.md)');
+      const zhOpen =
+        zhOpenMain +
+        (await fs.readFile(
+          path.resolve('assets', 'skills-zh', 'comet-open/reference/batch-changes.md'),
+          'utf8',
+        ));
       const zhDesign = await readSkillWithCompat(
         path.resolve('assets', 'skills-zh'),
         'comet-design',
@@ -3106,7 +3133,14 @@ describe('skills', () => {
   describe('English Comet workflow safeguards', () => {
     it('matches the Chinese workflow decision-point requirements', async () => {
       const enComet = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-classic');
-      const enOpen = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-open');
+      const enOpenMain = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-open');
+      expect(enOpenMain).toContain('](reference/batch-changes.md)');
+      const enOpen =
+        enOpenMain +
+        (await fs.readFile(
+          path.resolve('assets', 'skills', 'comet-open/reference/batch-changes.md'),
+          'utf8',
+        ));
       const enDesign = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-design');
       const enBuild = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-build');
       const enVerify = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-verify');

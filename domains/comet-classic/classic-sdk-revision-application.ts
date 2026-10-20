@@ -3,6 +3,7 @@ import {
   hashRuntimeValue,
   type WorkflowRun,
   type RuntimeCommandValidator,
+  type DefineWorkflowOptions,
 } from '../engine/runtime.js';
 import { defineClassicWorkflowApplication } from './classic-sdk-application.js';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
@@ -178,11 +179,32 @@ export function classicSdkRevisionApplication(
 }
 
 /** 只识别已知内置定义；其他 hash 交由 Runtime 按固定定义拒绝。 */
-export function classicSdkApplicationForRun(profile: ClassicProfile, run: WorkflowRun | null) {
+export function classicSdkApplicationForRun(
+  profile: ClassicProfile,
+  run: WorkflowRun | null,
+  options: { upgradePresetRequirements?: boolean } = {},
+) {
+  const compatible = <T extends { workflow: DefineWorkflowOptions }>(application: T) => {
+    const previous = structuredClone(application.workflow);
+    const step = previous.steps[`${profile}.build.execute`];
+    if (step?.outputSchema && typeof step.outputSchema === 'object') {
+      const schema = step.outputSchema as { properties?: Record<string, unknown> };
+      if (schema.properties) delete schema.properties.requirementsEvidence;
+    }
+    if (step?.validator?.id === 'comet-classic-preset-scope') delete step.validator;
+    return { ...application, workflow: previous };
+  };
   for (const verification of [true, 'full', false] as const) {
     const application = classicSdkRevisionApplication(profile, verification);
     if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(application.workflow)))
       return application;
+    const previous = compatible(application);
+    if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previous.workflow)))
+      return options.upgradePresetRequirements ? application : previous;
   }
-  return { ...defineClassicWorkflowApplication(profile), commandValidators: [] };
+  const base = { ...defineClassicWorkflowApplication(profile), commandValidators: [] };
+  const previous = compatible(base);
+  if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previous.workflow)))
+    return options.upgradePresetRequirements ? base : previous;
+  return base;
 }

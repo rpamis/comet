@@ -63,6 +63,7 @@
     "comet-native/scripts/comet-native-doctor.mjs",
     "comet-native/scripts/comet-native-transfer.mjs",
     "comet-open/SKILL.md",
+    "comet-open/reference/batch-changes.md",
     "comet-open/agents/openai.yaml",
     "comet-design/SKILL.md",
     "comet-design/reference/compat.md",

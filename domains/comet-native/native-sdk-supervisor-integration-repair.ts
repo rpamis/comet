@@ -1,6 +1,7 @@
 import { inspectGitWorktree, resolveGitRef, samePath } from '../../platform/paths/git-worktree.js';
 import { runGitCommand } from '../../platform/process/git.js';
-import type { RuntimeValidator } from '../engine/runtime.js';
+import type { RuntimeAction, RuntimeValidator, WorkflowRun } from '../engine/runtime.js';
+import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
 import { preflightNativeCheckPlans } from './native-check-executor.js';
 import { nativeSdkCheckPlans } from './native-sdk-checks.js';
 import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
@@ -11,6 +12,36 @@ import {
 } from './native-supervisor-workspace.js';
 
 const COMMIT_PATTERN = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
+
+/** 继续已失败的修复前，核对原计划和集成现场；保留已执行的部分修改。 */
+export async function validateNativeSdkFailedIntegrationRepair(
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+  projectRoot: string,
+): Promise<void> {
+  const plan = await currentNativeSdkSupervisorPlan(run, projectRoot);
+  const input = (action.input as { activation?: Record<string, unknown> }).activation;
+  const worktree = nativeSupervisorIntegrationWorktree(projectRoot, plan.state.name);
+  const branch = nativeSupervisorIntegrationBranch(plan.state.name);
+  if (
+    action.stepId !== 'supervisor.child.integration-repair' ||
+    action.status !== 'failed' ||
+    action.outcome?.status !== 'failed' ||
+    !action.claim ||
+    !input ||
+    !currentNativeSdkSupervisorActions(run).some(({ id }) => id === action.id) ||
+    !plan.contract.children.some(({ name }) => name === input.child) ||
+    input.contractHash !== plan.state.children_contract_hash ||
+    typeof input.integrationWorktree !== 'string' ||
+    !samePath(input.integrationWorktree, worktree) ||
+    input.integrationBranch !== branch ||
+    inspectGitWorktree(worktree).currentBranch !== branch ||
+    typeof input.integrationCommit !== 'string' ||
+    !COMMIT_PATTERN.test(input.integrationCommit)
+  )
+    throw new Error('Native failed integration repair no longer matches its confirmed workspace');
+  runGitCommand(worktree, ['merge-base', '--is-ancestor', input.integrationCommit, 'HEAD']);
+}
 
 export const nativeSdkSupervisorIntegrationRepairValidator: RuntimeValidator = {
   id: 'native-supervisor-integration-repair-outcome',

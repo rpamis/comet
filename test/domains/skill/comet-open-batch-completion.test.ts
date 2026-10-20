@@ -18,10 +18,18 @@ describe('comet-open 批量拆分完成协议', () => {
   });
 
   it('所有拆分项通过 CLI 完成检查后才允许宣告批量拆分完成', async () => {
-    const skill = await readFile(
+    const main = await readFile(
       path.resolve('assets', 'skills-zh', 'comet-open', 'SKILL.md'),
       'utf8',
     );
+
+    expect(main).toContain('](reference/batch-changes.md)');
+    const skill =
+      main +
+      (await readFile(
+        path.resolve('assets', 'skills-zh', 'comet-open/reference/batch-changes.md'),
+        'utf8',
+      ));
 
     expect(skill).toContain(
       'comet classic openspec --agent-json -- status --change "<name>" --json',
