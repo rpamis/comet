@@ -27,6 +27,7 @@ import {
 } from '../../../domains/comet-native/native-sdk-application.js';
 import { nativeSdkArchiveFinalizeExecutor } from '../../../domains/comet-native/native-sdk-archive.js';
 import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
+import { reconcileNativeSdkExecutionStops } from '../../../domains/comet-native/native-sdk-check-execution.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -174,6 +175,7 @@ async function interruptedArchive() {
       await approve();
     await execute(executor);
   }
+  run = await reconcileNativeSdkExecutionStops(root, run, runtime);
   vi.spyOn(nativeSdkArchiveFinalizeExecutor, 'execute').mockRejectedValueOnce(
     new Error('Host lost before finalization'),
   );

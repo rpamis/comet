@@ -178,3 +178,11 @@ it('rejects wildcard and control-character permission paths', () => {
     expect(() => splitNodePermissionArguments([root], [])).toThrow(/控制字符或通配符/);
   }
 });
+
+it('rejects oversized quoted paths with long backslash runs', () => {
+  for (const suffix of ['tail', '"tail', '']) {
+    const value = `C:\\Program Files\\${'\\'.repeat(100_000)}${suffix}`;
+    expect(() => splitNodePermissionArguments([value], [])).toThrow(/路径过长/);
+    expect(() => splitNodePermissionArguments([], [value])).toThrow(/路径过长/);
+  }
+});

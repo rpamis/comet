@@ -245,14 +245,14 @@ it('serializes competing claims across sibling Runs and retains unknown write ow
   const results = await Promise.allSettled(claims.map((claim) => runtime.claim(claim)));
   expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
   const rejected = results.find((result) => result.status === 'rejected') as PromiseRejectedResult;
-  expect(rejected.reason).toMatchObject({ code: 'COMMAND_REJECTED' });
+  expect(rejected.reason).toMatchObject({ code: 'SCOPE_HELD' });
   expect(
     await loaded.implementation.inspectHook!(parent, { intent: 'write', targets: ['shared.txt'] }),
   ).toMatchObject({ allowed: true });
   const winner = results.findIndex((result) => result.status === 'fulfilled');
   await runtime.markUnknown({ ...claims[winner], reason: 'lost executor' });
   await expect(runtime.claim(claims[1 - winner])).rejects.toMatchObject({
-    code: 'COMMAND_REJECTED',
+    code: 'SCOPE_HELD',
   });
   expect(
     await loaded.implementation.inspectHook!(parent, { intent: 'write', targets: ['shared.txt'] }),

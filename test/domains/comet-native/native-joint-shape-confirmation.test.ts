@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { ensureCliBuilt } from '../../helpers/ensure-cli-built.js';
 
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
@@ -71,6 +72,34 @@ afterEach(async () => {
 });
 
 describe('Native joint Supervisor Shape decision', () => {
+  it('retains autolink Shape confirmation between bundled next and dist Doctor', async () => {
+    const repository = path.resolve(import.meta.dirname, '../../..');
+    await ensureCliBuilt(repository);
+    const { root, dir } = await shape(false);
+    await fs.appendFile(
+      path.join(dir, 'brief.md'),
+      '\n# References\nhttps://example.com/spec http://example.com/spec www.example.com <https://example.com/spec> reader@example.com\n',
+    );
+    const execute = (entry: string, args: string[]) =>
+      JSON.parse(
+        execFileSync(
+          process.execPath,
+          [path.join(repository, entry), 'joint-shape', ...args, '--project-root', root, '--json'],
+          { cwd: root, encoding: 'utf8', timeout: 60_000 },
+        ),
+      );
+    const prepared = execute('assets/skills/comet-native/scripts/comet-native-next.mjs', [
+      '--summary',
+      'Ready',
+    ]);
+    expect(prepared.exitCode).toBe(0);
+    expect(prepared.data.state).toMatchObject({ phase: 'shape', status: 'await-user' });
+    const doctor = execute('dist/domains/comet-native/native-doctor-entry.js', []);
+    expect(doctor.exitCode).toBe(0);
+    expect(doctor.data.healthy).toBe(true);
+    expect((await cli(root, ['doctor', 'joint-shape'])).data.healthy).toBe(true);
+  }, 120_000);
+
   it.each(['multi-session', 'single-session'] as const)(
     'confirms the complete Shape and %s choice in one user decision',
     async (mode) => {

@@ -3,7 +3,9 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Lexer } from 'marked';
+import { readNativePortableAcceptance } from '../../../domains/comet-native/native-portable-requirements.js';
 
 import {
   defaultProjectConfig,
@@ -717,6 +719,68 @@ children:
     await expect(
       confirmNativePortableShapeAtBoundary({ paths, name: 'reduced-supervisor' }),
     ).resolves.toMatchObject({ phase: 'build', status: 'active' });
+  });
+
+  it.each([
+    'https://example.com/spec',
+    'http://example.com/spec',
+    'www.example.com',
+    '<https://example.com/spec>',
+    'reader@example.com',
+  ])('keeps Shape fingerprints stable across parser metadata for %s', async (link) => {
+    await createNativePortableChange({ paths, name: 'autolink', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'autolink');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      `# Scope\nSee ${link}.\n# Acceptance examples\n- Follow the reference.\n`,
+    );
+    await fs.mkdir(path.join(changeDir, 'specs/links'), { recursive: true });
+    await fs.writeFile(
+      path.join(changeDir, 'specs/links/spec.md'),
+      `# Links\nReference: ${link}.\n`,
+    );
+    const state = {
+      ...(await readNativePortableChange(paths, 'autolink')),
+      document_constraints_version: 3 as const,
+    };
+    const options = {
+      paths,
+      state,
+      specChanges: [{ capability: 'links', source: 'specs/links/spec.md' }],
+    };
+    const original = await readNativePortableAcceptance(options);
+    const lex = Lexer.lex.bind(Lexer);
+    let links = 0;
+    const addMetadata = (value: unknown): void => {
+      if (Array.isArray(value)) value.forEach(addMetadata);
+      else if (value && typeof value === 'object') {
+        const token = value as Record<string, unknown>;
+        if (token.type === 'link') {
+          token.autolink = true;
+          token.parserMetadata = 'new-version';
+          links++;
+        }
+        Object.values(token).forEach(addMetadata);
+      }
+    };
+    const spy = vi.spyOn(Lexer, 'lex').mockImplementation((...args) => {
+      const tokens = lex(...args);
+      addMetadata(tokens);
+      return tokens;
+    });
+    try {
+      expect(await readNativePortableAcceptance(options)).toEqual(original);
+      expect(links).toBeGreaterThan(0);
+      await fs.writeFile(
+        path.join(changeDir, 'specs/links/spec.md'),
+        '# Links\nReference: https://example.org/changed.\n',
+      );
+      expect((await readNativePortableAcceptance(options)).formalHash).not.toBe(
+        original.formalHash,
+      );
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('creates only portable user artifacts and one local execution overlay', async () => {

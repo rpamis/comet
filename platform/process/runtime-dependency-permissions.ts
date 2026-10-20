@@ -102,10 +102,19 @@ export function splitNodePermissionArguments(
   const budget = 30_000;
   const tooLong = () =>
     new Error('隔离验收依赖路径过长；请缩短 SDK 或依赖安装目录后重试，不能关闭权限检查。');
-  const quotedLength = (value: string) =>
-    /[\s"]/u.test(value)
-      ? value.replace(/(\\*)"/gu, '$1$1\\"').replace(/(\\+)$/u, '$1$1').length + 2
-      : value.length;
+  const quotedLength = (value: string) => {
+    if (!/[\s"]/u.test(value)) return value.length;
+    let length = value.length + 2;
+    let backslashes = 0;
+    for (const character of value) {
+      if (character === '\\') backslashes++;
+      else {
+        if (character === '"') length += backslashes + 1;
+        backslashes = 0;
+      }
+    }
+    return length + backslashes;
+  };
   let argumentLength = [process.execPath, ...baseArgs].reduce(
     (length, value) => length + quotedLength(value) + 1,
     1,

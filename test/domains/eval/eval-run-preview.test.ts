@@ -5,6 +5,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { normalizeEvalRunConfig, previewEvalRun } from '../../../domains/eval/eval-run-preview.js';
 import { createDiskApplication } from '../../helpers/workflow-application.js';
+import { evalMatrix } from '../../helpers/eval-matrix.js';
 
 vi.mock('../../../platform/process/external-command.js', () => ({
   runExternalCommandAsync: vi.fn(async () => 'available'),
@@ -153,6 +154,10 @@ describe('Eval preview', () => {
     await fs.writeFile(manifest, yaml);
     const root = path.join(project, '.comet/eval/runs/original');
     await fs.mkdir(path.join(root, 'reports'), { recursive: true });
+    const matrix = evalMatrix(
+      ['passed-case', 'failed-case'].map((task) => ({ task, treatment: 'DYNAMIC_SKILL', rep: 1 })),
+    );
+    await fs.writeFile(path.join(root, 'expected-case-matrix.json'), JSON.stringify(matrix));
     await fs.writeFile(
       path.join(root, 'dashboard-run.json'),
       JSON.stringify({
@@ -166,7 +171,11 @@ describe('Eval preview', () => {
     );
     await fs.writeFile(
       path.join(root, 'metadata.json'),
-      JSON.stringify({ completed_at: '2026-10-11', expected_case_matrix: { case_count: 2 } }),
+      JSON.stringify({
+        experiment_id: 'original',
+        completed_at: '2026-10-11',
+        expected_case_matrix: { case_count: 2, matrix_hash: matrix.matrix_hash },
+      }),
     );
     const hash =
       'sha256:' +
@@ -175,10 +184,13 @@ describe('Eval preview', () => {
       await fs.writeFile(
         path.join(root, 'reports', `${name}_report.json`),
         JSON.stringify({
+          name: `${name}-DYNAMIC_SKILL`,
+          rep: 1,
           passed: name === 'passed-case',
           events_summary: {
             task: name,
             treatment: 'DYNAMIC_SKILL',
+            sample: 1,
             eval_manifest: manifest,
             case_manifest: {
               task_hash: 'task',

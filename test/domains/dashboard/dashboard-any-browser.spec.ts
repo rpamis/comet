@@ -841,9 +841,12 @@ test('Any bounds history pages and preserves selection when a cursor becomes sta
   await page.getByRole('tab', { name: '执行记录', exact: true }).click();
   await expect.poll(() => detailLimit).toBe('40');
   await page.locator('[data-record-id="bounded-first"]').click();
+  await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
   await page.getByRole('button', { name: '加载更多执行记录', exact: true }).click();
   await expect(page.locator('[data-record-id="bounded-second"]')).toBeVisible();
-  await page.getByRole('button', { name: '加载更多执行记录', exact: true }).click();
+  const loadMore = page.getByRole('button', { name: /加载更多执行记录$/u });
+  await expect(loadMore).not.toHaveClass(/ant-btn-loading/u);
+  await loadMore.click();
   await expect(page.locator('[data-record-id="bounded-first"]')).toHaveClass(/selected/u);
   await expect(page.getByText('运行记录已变化，请重新读取当前页')).toBeVisible();
 });

@@ -2392,5 +2392,12 @@
   "需关注": "Needs attention",
   "Git 状态未知": "Git status unavailable",
   "仅显示前 {0} 项，共 {1} 个未提交文件": "Showing the first {0} of {1} uncommitted files",
-  "加载更多执行记录": "Load more execution records"
+  "加载更多执行记录": "Load more execution records",
+  "确认执行已停止并修复结果？": "Confirm execution has stopped and repair the results?",
+  "请先确认模型和容器已停止。仅从完整原始用例重建摘要，原始损坏文件会保留；不会补造缺失用例或通过结论。": "First confirm that the model and container have stopped. Rebuild the summary only from complete original cases, preserving corrupted files. Missing cases and passing conclusions will not be fabricated.",
+  "已停止，修复结果": "Execution stopped; repair results",
+  "修复结果摘要": "Repair result summary",
+  "仅失败用例重跑": "Failed cases only",
+  "不能作为完整应用通过结论": "Cannot establish a passing result for the complete application",
+  "证据完整性": "Evidence integrity"
 }

@@ -28,6 +28,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Native Shape fingerprints**: Keep unchanged briefs and Specs with automatic links valid across CLI and bundled Runtime commands. Parser metadata no longer causes false Shape drift during Doctor or Archive, while changes to document structure, content, and link destinations still invalidate confirmation (#494).
 - **Memory and knowledge retrieval**: Preserve applicable preferences, precise project matches, source freshness, and valid results when indexing or remote retrieval is delayed or unavailable. Large histories load incrementally so record management remains responsive.
 - **Project initialization and worktrees**: Show the setup hint after package installation, respect the selected language, distinguish missing CodeGraph configuration from unavailable services, and retain the correct Classic workspace when continuing a change or before the first Git commit.
 - **Classic project discovery**: Report malformed or unsafe project configuration without falling back to a parent project, while keeping user-level configuration separate from project boundaries.
