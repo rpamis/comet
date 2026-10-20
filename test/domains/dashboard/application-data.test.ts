@@ -94,3 +94,56 @@ describe('Any page snapshot boundaries', () => {
     expect(refreshApplicationRunPage(previous, next)).toBe(next);
   });
 });
+
+describe('bounded application history', () => {
+  it('retains older history but clears obsolete active flags after a revision change', async () => {
+    const { refreshApplicationRunDetail } =
+      await import('../../../domains/dashboard/web/src/application-data.js');
+    const next = refreshApplicationRunDetail(
+      {
+        locator: 'one',
+        revision: 1,
+        records: [{ id: 'old', active: true }],
+        currentIds: ['old'],
+        artifacts: [],
+        recordPage: { nextCursor: 'old-cursor', total: 1 },
+      },
+      {
+        locator: 'one',
+        revision: 2,
+        records: [{ id: 'new', active: true }],
+        currentIds: ['new'],
+        artifacts: [],
+        recordPage: { nextCursor: 'new-cursor', total: 2 },
+      },
+    );
+    expect(next.records).toEqual([
+      { id: 'old', active: false, stale: true },
+      { id: 'new', active: true },
+    ]);
+    expect(next.currentIds).toEqual(['new']);
+    expect(next.recordPage.nextCursor).toBe('new-cursor');
+  });
+  it('rejects pages from another revision or run and merges stable artifacts', async () => {
+    const { mergeApplicationRecordPage } =
+      await import('../../../domains/dashboard/web/src/application-data.js');
+    const previous = {
+      locator: 'one',
+      revision: 2,
+      records: [{ id: 'a' }],
+      artifacts: [{ id: 'artifact' }],
+    };
+    expect(mergeApplicationRecordPage(previous, { locator: 'two', revision: 2 })).toBe(previous);
+    expect(mergeApplicationRecordPage(previous, { locator: 'one', revision: 1 })).toBe(previous);
+    const next = mergeApplicationRecordPage(previous, {
+      locator: 'one',
+      revision: 2,
+      items: [{ id: 'b' }],
+      artifacts: [{ id: 'artifact' }],
+      total: 2,
+      nextCursor: null,
+    });
+    expect(next.records).toEqual([{ id: 'a' }, { id: 'b' }]);
+    expect(next.artifacts).toHaveLength(1);
+  });
+});

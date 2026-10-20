@@ -2391,5 +2391,6 @@
   "应用": "Application",
   "需关注": "Needs attention",
   "Git 状态未知": "Git status unavailable",
-  "仅显示前 {0} 项，共 {1} 个未提交文件": "Showing the first {0} of {1} uncommitted files"
+  "仅显示前 {0} 项，共 {1} 个未提交文件": "Showing the first {0} of {1} uncommitted files",
+  "加载更多执行记录": "Load more execution records"
 }

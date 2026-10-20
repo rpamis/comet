@@ -24,6 +24,8 @@ import {
 } from '../../../domains/comet-native/native-sdk-checks.js';
 import {
   inspectNativeSdkCheckExecutions,
+  hasNativeSdkPortableStopEvidence,
+  reconcileNativeSdkExecutionStops,
   createNativeSdkCheckExecution,
 } from '../../../domains/comet-native/native-sdk-check-execution.js';
 
@@ -84,6 +86,18 @@ import {
   registerSdkChangeOwner,
   recoverSdkChangeOwnerToActive,
 } from '../../../domains/workflow-contract/change-runtime-owner.js';
+
+function expectOriginalActionFacts(run: WorkflowRun, expected: WorkflowRun['actions']) {
+  const actual = run.actions.filter((action) => expected.some(({ id }) => id === action.id));
+  expect(actual).toHaveLength(expected.length);
+  for (let index = 0; index < expected.length; index += 1) {
+    const { executionStop: oldStop, ...oldFacts } = expected[index];
+    const { executionStop: newStop, ...newFacts } = actual[index];
+    expect(newFacts).toEqual(oldFacts);
+    if (oldStop) expect(newStop).toEqual(oldStop);
+    else if (newStop) expect(hasNativeSdkPortableStopEvidence(run, actual[index])).toBe(true);
+  }
+}
 
 type NativeApplication = {
   workflow: DefineWorkflowOptions;
@@ -700,9 +714,7 @@ describe('Native SDK Workflow Application', () => {
           .map((stepId) => ({ stepId, status: 'succeeded' })),
       });
       const completed = await runtime.inspect(run.runId);
-      expect(
-        completed.actions.filter((action) => existing.some(({ id }) => action.id === id)),
-      ).toEqual(existing);
+      expectOriginalActionFacts(completed, existing);
       expect(
         completed.actions.filter((action) => action.stepId.startsWith('archive.')),
       ).toHaveLength(3);
@@ -1774,7 +1786,7 @@ children:
     application = nativeApplication();
     runtime = createSupervisorRuntime();
     run = await runtime.next({ runId: run.runId });
-    expect(run.actions.slice(0, failedActions.length)).toEqual(failedActions);
+    expectOriginalActionFacts(run, failedActions);
     const resume = run.waits.find(
       (entry) =>
         entry.stepId === 'supervisor.child.integration-resume' && entry.status === 'pending',
@@ -3881,13 +3893,23 @@ children:
       data: { phase: 'verify', pendingAction: { stepId: 'verify.verifier' } },
     });
     const doctor = await nativeDoctorCommand([run.runId], root);
-    expect(doctor).toMatchObject({ exitCode: 0, data: { healthy: true, repaired: false } });
-    expect(await store.read(run.runId)).toEqual(run);
+    expect(doctor).toMatchObject({
+      exitCode: 0,
+      data: { healthy: true, repaired: false },
+    });
+    const reconciled = (await store.read(run.runId))!;
+    expectOriginalActionFacts(reconciled, run.actions);
+    expect({
+      ...reconciled,
+      actions: run.actions,
+      revision: run.revision,
+    }).toEqual(run);
+    expect(reconciled.revision).toBe(run.revision + 1);
     const { runtime } = await loadOwnedNativeSdkRuntime(root, run.runId);
     const action = run.actions.at(-1)!;
     const claimed = await runtime.claim({
       runId: run.runId,
-      expectedRevision: run.revision,
+      expectedRevision: reconciled.revision,
       actionId: action.id,
       attempt: action.attempt,
       inputHash: action.inputHash,
@@ -3951,18 +3973,16 @@ children:
         data: { repaired: true, phase: 'build' },
       });
       const recovered = await store.read(run.runId);
-      expect(recovered?.actions).toEqual(original?.actions);
+      expectOriginalActionFacts(recovered!, original!.actions);
       expect(recovered?.waits).toEqual(original?.waits);
       expect(recovered?.outputs).toEqual(original?.outputs);
-      expect(recovered?.revision).toBe(run.revision + 1);
+      expect(recovered?.revision).toBe(run.revision + 2);
       const next = await advanceNativeSdkChange(root, run.runId);
       expect(next).toMatchObject({
         exitCode: 0,
         data: { phase: 'build', pendingAction: { stepId: 'build.builder' } },
       });
-      expect(
-        (await store.read(run.runId))?.actions.find((action) => action.id === failed.id),
-      ).toEqual(failed);
+      expectOriginalActionFacts((await store.read(run.runId))!, [failed]);
       expect(await inspectNativeSdkDefinitionUpgrade(root, run.runId, true)).toBeNull();
     },
   );
@@ -4673,7 +4693,7 @@ children:
         ['sdk-shape', '--repair', '--confirmed', '--stopped-actions', stopped],
         root,
       );
-      expect(repaired.exitCode).toBe(0);
+      expect(repaired.exitCode, JSON.stringify(repaired)).toBe(0);
       const loaded = await loadOwnedNativeSdkRuntime(root, 'sdk-shape');
       let current = await loaded.runtime.inspect(run.runId);
       expect(current.workflow.hash).not.toBe(run.workflow.hash);
@@ -4734,10 +4754,16 @@ children:
     expect(stopped.data).toMatchObject({
       phase: 'verify',
       status: 'await-user',
-      run: { revision: run.revision, status: 'waiting' },
+      run: { revision: run.revision + 1, status: 'waiting' },
       continuation: { disposition: 'await-user', requiresUserDecision: true },
     });
-    expect(await runtime.inspect(run.runId)).toEqual(run);
+    const stoppedRun = await runtime.inspect(run.runId);
+    expect(
+      stoppedRun.actions.find((entry) => entry.id === failedCheck.id)?.executionStop,
+    ).toBeDefined();
+    expect(stoppedRun.actions.find((entry) => entry.id === failedCheck.id)?.outcome).toEqual(
+      failedCheck.outcome,
+    );
     const wait = run.waits.at(-1)!;
     expect(wait).toMatchObject({ stepId: 'verify.checks-stop', status: 'pending' });
     const rejected = await advanceNativeSdkChange(root, 'sdk-shape', {
@@ -4747,7 +4773,7 @@ children:
       summary: 'Try a safe repair.',
     });
     expect(rejected.exitCode).toBe(73);
-    expect(await runtime.inspect(run.runId)).toEqual(run);
+    expect(await runtime.inspect(run.runId)).toEqual(stoppedRun);
     const repaired = await advanceNativeSdkChange(root, 'sdk-shape', {
       expectedAction: 'revise-implementation',
       expectedStateVersion: (run.state as NativePortableState).state_version,
@@ -4761,7 +4787,7 @@ children:
     });
     expect(
       (await runtime.inspect(run.runId)).actions.find((action) => action.id === failedCheck.id),
-    ).toEqual(failedCheck);
+    ).toEqual(stoppedRun.actions.find((entry) => entry.id === failedCheck.id));
   });
 
   it.each(['memory', 'sdk'] as const)(
@@ -4775,6 +4801,10 @@ children:
         run: ready,
       } = await dispatchedVerifier([], storeKind);
       let run = ready;
+      if (storeKind === 'sdk') {
+        expect((await advanceNativeSdkChange(root, run.runId)).exitCode).toBe(0);
+        run = await runtime.inspect(run.runId);
+      }
       const candidateId = (run.state as NativePortableState).builder_handoff!.candidate_id;
       run = await succeedLatestAction(
         runtime,
@@ -4966,9 +4996,9 @@ children:
           expect(await restoredStore.readDisposition(run.runId)).toBe('active');
           const sealed = await nativeDoctorCommand([run.runId, '--migrate-history'], target);
           expect(sealed.exitCode, JSON.stringify(sealed)).toBe(0);
-          expect(sealed.data).toMatchObject({ migrated: [], active: [run.runId], findings: [] });
-          // 新设备没有原检查进程登记，恢复保留正确终态，但不假造静止证据重新封存。
-          expect(await restoredStore.readDisposition(run.runId)).toBe('active');
+          expect(sealed.data).toMatchObject({ migrated: [run.runId], active: [], findings: [] });
+          // 新设备使用已持久化且绑定原领取的停止事实，不依赖缺失的本机 PID。
+          expect(await restoredStore.readDisposition(run.runId)).toBe('closed');
           const continued = await advanceNativeSdkChange(target, run.runId);
           expect(continued.exitCode, JSON.stringify(continued)).toBe(0);
           expect((await restoredStore.read(run.runId))!.status).toBe('completed');
@@ -7782,7 +7812,26 @@ it('recovers the durable transaction left by legacy cancellation without restart
     runId: run.runId,
     reason: 'Legacy cancellation after Specs applied',
   });
-  expect((await f.runtime.inspect(run.runId)).status).toBe('cancelled');
+  const cancelled = await f.runtime.inspect(run.runId);
+  expect(cancelled.status).toBe('cancelled');
+  const { readCometCurrentSelection, writeCometCurrentSelection } =
+    await import('../../../domains/workflow-contract/current-selection.js');
+  await writeCometCurrentSelection(f.root, {
+    schema: 'comet.selection.v2',
+    workflow: 'native',
+    change: run.runId,
+    branch: null,
+  });
+  const selected = await readCometCurrentSelection(f.root);
+  const stopped = await reconcileNativeSdkExecutionStops(f.root, cancelled, f.runtime);
+  expect(stopped.status).toBe('cancelled');
+  expectOriginalActionFacts(stopped, cancelled.actions);
+  expect(await readCometCurrentSelection(f.root)).toEqual(selected);
+  const durableStore = createFileRuntimeStore<WorkflowRun>({
+    rootDir: path.join(resolveWorkspaceRuntimeRootSync(f.root), 'sdk-runs/native'),
+  });
+  expect(await durableStore.readPartitionMetadata(run.runId)).toBe('active');
+  expect(await fs.readdir(f.paths.transactionsDir)).toContain(`portable-archive-${run.runId}.json`);
   const result = await nativeDomain.runNativeCliDetailed([
     'archive',
     run.runId,
@@ -7796,6 +7845,10 @@ it('recovers the durable transaction left by legacy cancellation without restart
   const after = await f.runtime.inspect(run.runId);
   expect(after.status).toBe('cancelled');
   expect(after.actions.at(-1)?.status).toBe('cancelled');
+  expect(await durableStore.readPartitionMetadata(run.runId)).toBe('closed');
+  expect(await readCometCurrentSelection(f.root)).toEqual({
+    status: 'missing',
+  });
   await fs.writeFile(path.join(f.root, 'implementation.js'), 'export const later = true;');
   const repeated = await nativeDomain.runNativeCliDetailed([
     'archive',
@@ -7837,4 +7890,45 @@ it('rejects cancellation of a claimed Archive writer before it creates its trans
     f.runtime.cancel({ runId: run.runId, reason: 'Cancel in-flight writer' }),
   ).rejects.toThrow('execution must finish or recover');
   expect(await f.runtime.inspect(run.runId)).toEqual(run);
+});
+
+it('keeps real check stop proof through cancel and cold copy without replay', async () => {
+  const plan = {
+    id: 'once',
+    name: 'Real original execution',
+    executable: process.execPath,
+    argv: ['-e', "require('node:fs').appendFileSync('cold-stop-count', 'once\\n')"],
+    cwdRef: '.',
+    timeoutMs: 5000,
+    repeatable: false,
+  };
+  const f = await dispatchedVerifier([plan], 'sdk');
+  expect(await fs.readFile(path.join(f.root, 'cold-stop-count'), 'utf8')).toBe('once\n');
+  const cancelled = await runNativeCli(['cancel', f.run.runId, '--project-root', f.root, '--json']);
+  expect(cancelled.exitCode, cancelled.stderr).toBe(0);
+  const original = await f.runtime.inspect(f.run.runId);
+  const check = original.actions.find((action) => action.ref === 'native-required-checks')!;
+  expect(check.executionStop).toBeDefined();
+  const target = await fs.mkdtemp(path.join(os.tmpdir(), 'native-cold-stop-project-'));
+  const data = await fs.mkdtemp(path.join(os.tmpdir(), 'native-cold-stop-data-'));
+  roots.push(target, data);
+  await fs.cp(f.root, target, { recursive: true });
+  const previous = process.env.COMET_DATA_DIR;
+  process.env.COMET_DATA_DIR = data;
+  try {
+    const repair = await nativeDoctorCommand([f.run.runId, '--repair', '--confirmed'], target);
+    expect(repair.exitCode, JSON.stringify(repair)).toBe(0);
+    const doctor = await nativeDoctorCommand([f.run.runId], target);
+    expect(doctor.exitCode, JSON.stringify(doctor)).toBe(0);
+    const next = await runNativeCli(['next', f.run.runId, '--project-root', target, '--json']);
+    expect(next.exitCode, next.stderr).toBe(0);
+    expect(JSON.parse(next.stdout!).data).toMatchObject({
+      status: 'cancelled',
+      diagnostics: { healthy: true },
+    });
+    expect(await fs.readFile(path.join(target, 'cold-stop-count'), 'utf8')).toBe('once\n');
+  } finally {
+    if (previous === undefined) delete process.env.COMET_DATA_DIR;
+    else process.env.COMET_DATA_DIR = previous;
+  }
 });

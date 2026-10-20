@@ -1,10 +1,14 @@
+import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
 import { randomUUID } from 'node:crypto';
 import { nativeProjectPaths } from './native-paths.js';
 import { readNativePortableTransaction } from './native-portable-transactions.js';
 
 import { readCometCurrentSelection } from '../workflow-contract/current-selection.js';
 import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
-import { inspectNativeSdkCheckExecutions } from './native-sdk-check-execution.js';
+import {
+  inspectNativeSdkCheckExecutions,
+  reconcileNativeSdkExecutionStops,
+} from './native-sdk-check-execution.js';
 import { inspectNativeSdkRun, loadOwnedNativeSdkRuntime } from './native-runtime-ownership.js';
 import {
   assertNoArguments,
@@ -52,7 +56,16 @@ export async function nativeCancelCommand(
 
   const alreadyCancelled = run.status === 'cancelled';
   if (alreadyCancelled) {
-    const cancellation = await inspectNativeSdkCancellation({ projectRoot, run });
+    let settled = run;
+    if (!dryRun) {
+      await settleNativeSdkCancellation({ projectRoot, run });
+      settled = await reconcileNativeSdkExecutionStops(
+        projectRoot,
+        run,
+        (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime,
+      );
+    }
+    const cancellation = await inspectNativeSdkCancellation({ projectRoot, run: settled });
     return success(
       'cancel',
       {
@@ -122,12 +135,13 @@ export async function nativeCancelCommand(
   }
 
   const { runtime } = await loadOwnedNativeSdkRuntime(projectRoot, name);
-  const cancelled = await runtime.cancel({
+  let cancelled = await runtime.cancel({
     runId: run.runId,
     expectedRevision: run.revision,
     reason,
     context: { requestId: randomUUID(), projectRoot },
   });
+  cancelled = await reconcileNativeSdkExecutionStops(projectRoot, cancelled, runtime);
   // The state-store hook settles the cancellation: managed executions stop and
   // the current selection is released once the original executions are quiet.
   const cancellation = await inspectNativeSdkCancellation({ projectRoot, run: cancelled });

@@ -1,3 +1,4 @@
+import { hasNativeSdkPortableStopEvidence } from '../../../domains/comet-native/native-sdk-check-execution.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { sourceHooks } from '../../helpers/native-source-loader.mjs';
 import { execFileSync } from 'node:child_process';
@@ -278,8 +279,70 @@ describe('Supervisor Child Verifier execution failure', () => {
     expect(run.waits.some((wait) => wait.stepId === 'supervisor.child.verifier-retry')).toBe(false);
     const status = await f.native(['status', f.name]);
     expect(status).toMatchObject({
-      continuation: { disposition: 'blocked', requiredInputs: ['original-execution-result'] },
+      continuation: {
+        disposition: 'blocked',
+        requiredInputs: ['original-check-execution-evidence'],
+        commandArgs: [
+          'comet',
+          'native',
+          'doctor',
+          f.name,
+          '--repair',
+          '--project-root',
+          f.projectRoot,
+          '--json',
+        ],
+      },
     });
+    // 只读诊断先暴露前序检查缺少停止收据，但不能改写原未知任务。
+    expect(await runtime.inspect(f.name)).toEqual(run);
+    const originalCheck = run.actions.find(
+      (action) => action.stepId === 'supervisor.child.checks',
+    )!;
+    const repair = await nativeDoctorCommand([f.name, '--repair'], f.projectRoot);
+    expect(repair.data).toMatchObject({
+      repaired: true,
+      healthy: false,
+      continuation: {
+        disposition: 'blocked',
+        requiredInputs: ['original-execution-result'],
+      },
+      findings: expect.arrayContaining([
+        expect.objectContaining({
+          code: 'sdk-action-outcome-unresolved',
+          actionId: f.verifier.id,
+          status: 'unknown',
+        }),
+      ]),
+    });
+    const recovered = await runtime.inspect(f.name);
+    expect(recovered.actions).toHaveLength(run.actions.length);
+    expect(recovered.waits).toEqual(run.waits);
+    expect(recovered.outputs).toEqual(run.outputs);
+    for (const original of run.actions) {
+      const actual = recovered.actions.find((action) => action.id === original.id)!;
+      if (original.id === originalCheck.id) {
+        const { executionStop, ...facts } = actual;
+        expect(facts).toEqual(original);
+        expect(executionStop).toMatchObject({
+          actionId: original.id,
+          attempt: original.attempt,
+          inputHash: original.inputHash,
+          claimToken: original.claim!.token,
+          evidence: expect.any(String),
+        });
+        expect(hasNativeSdkPortableStopEvidence(recovered, actual)).toBe(true);
+      } else expect(actual).toEqual(original);
+    }
+    expect(await f.native(['status', f.name])).toMatchObject({
+      continuation: {
+        disposition: 'blocked',
+        requiredInputs: ['original-execution-result'],
+        commandArgs: null,
+      },
+    });
+    await nativeDoctorCommand([f.name, '--repair'], f.projectRoot);
+    expect(await runtime.inspect(f.name)).toEqual(recovered);
     await expect(
       f.dispatch({
         operation: 'retry',
@@ -288,6 +351,29 @@ describe('Supervisor Child Verifier execution failure', () => {
         attempt: f.verifier.attempt,
       }),
     ).rejects.toThrow('RECONCILIATION_REQUIRED');
+    expect(await runtime.inspect(f.name)).toEqual(recovered);
+    // 原宿主仍可用原领取提交真实失败，此时才允许生成恢复决定。
+    const settled = await f.record(
+      recovered.actions.find((action) => action.id === f.verifier.id)!,
+      { summary: 'Original host recovered the actual failed execution result' },
+      'failed',
+    );
+    expect(
+      settled.actions.filter((action) => action.stepId === 'supervisor.child.verifier'),
+    ).toHaveLength(1);
+    expect(settled.actions.find((action) => action.id === f.verifier.id)).toMatchObject({
+      status: 'failed',
+      claim: f.verifier.claim,
+      attempt: f.verifier.attempt,
+      inputHash: f.verifier.inputHash,
+    });
+    expect(settled.actions.find((action) => action.id === f.sibling.id)).toEqual(f.sibling);
+    expect(settled.actions.find((action) => action.id === originalCheck.id)).toEqual(
+      recovered.actions.find((action) => action.id === originalCheck.id),
+    );
+    expect(
+      settled.waits.filter((wait) => wait.stepId === 'supervisor.child.verifier-retry'),
+    ).toHaveLength(1);
   });
 
   it('never advertises a pending claim for a failed or completed Run', async () => {
@@ -454,7 +540,16 @@ describe('fixed older custom Supervisor Runs', () => {
     const current = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name);
     expect(current.application!.identity).toEqual(identity);
     let run = await current.runtime.inspect(f.name);
-    expect(run.actions).toEqual(f.run.actions);
+    expect(run.actions).toHaveLength(f.run.actions.length);
+    for (let index = 0; index < f.run.actions.length; index += 1) {
+      const { executionStop: oldStop, ...oldFacts } = f.run.actions[index];
+      const { executionStop: newStop, ...newFacts } = run.actions[index];
+      expect(newFacts).toEqual(oldFacts);
+      if (oldStop) expect(newStop).toEqual(oldStop);
+      else if (newStop)
+        expect(hasNativeSdkPortableStopEvidence(run, run.actions[index])).toBe(true);
+    }
+    const migratedActions = run.actions;
     expect(run.waits).toEqual(f.run.waits);
     expect(run.outputs).toEqual(f.run.outputs);
     expect(run.reason).toBeUndefined();
@@ -483,7 +578,7 @@ describe('fixed older custom Supervisor Runs', () => {
       status: 'pending',
     });
     expect(run.actions.find((action) => action.id === f.sibling.id)).toEqual(f.sibling);
-    expect(run.actions.slice(0, -1)).toEqual(f.run.actions);
+    expect(run.actions.slice(0, -1)).toEqual(migratedActions);
     expect(await inspectNativeSdkDefinitionUpgrade(f.projectRoot, f.name, true)).toBeNull();
   });
 

@@ -127,3 +127,7 @@ export {
   evalArchiveRunId,
 } from './eval-archives.js';
 export type { EvalArchiveObservation, EvalArchive } from './eval-archives.js';
+
+export { repairEvalResults } from './eval-run-repair.js';
+
+export { iterateEvalRunSources, iterateEvalArchiveSources } from './eval-run-sources.js';

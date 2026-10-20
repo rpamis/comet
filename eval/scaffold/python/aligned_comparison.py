@@ -629,8 +629,10 @@ def expected_case_matrix_payload(
             or _CASE_IDENTIFIER_RE.fullmatch(treatment) is None
         ):
             raise ValueError("Expected case task and treatment must be non-empty strings")
-        if isinstance(rep, bool) or not isinstance(rep, int) or rep < 1:
+        from scaffold.python.evidence_contract import valid_repetition
+        if not valid_repetition(rep):
             raise ValueError("Expected case repetition must be a positive integer")
+        rep = int(rep)
         key = (task, treatment, rep)
         if key in normalized:
             raise ValueError("Expected case matrix contains a duplicate case")
@@ -669,8 +671,10 @@ def parse_expected_case_matrix(raw: Any) -> ExpectedCaseMatrix:
             or _CASE_IDENTIFIER_RE.fullmatch(treatment) is None
         ):
             raise ValueError("expected case matrix contains an invalid task or treatment")
-        if isinstance(rep, bool) or not isinstance(rep, int) or rep < 1:
+        from scaffold.python.evidence_contract import valid_repetition
+        if not valid_repetition(rep):
             raise ValueError("expected case matrix contains an invalid repetition")
+        rep = int(rep)
         key = (task, treatment, rep)
         if key in seen:
             raise ValueError("expected case matrix contains a duplicate case")
@@ -717,6 +721,18 @@ def _report_identity(
     treatment: str,
     report_path: Path | None = None,
 ) -> tuple[str, int] | None:
+    # 新生产器和在线/应用读取共用显式身份校验；旧报告仅走下面单一名称适配边界。
+    if report.get("case_identity") is not None:
+        if report_path is None:
+            return None
+        from scaffold.python.evidence_contract import case_identity
+        try:
+            declared = case_identity(report, report_path.parent.parent.name)
+        except (ValueError, TypeError, AttributeError):
+            return None
+        if declared["treatment"] != treatment:
+            return None
+        return declared["task"], declared["repetition"]
     name = str(report.get("name") or "")
     match = re.match(
         rf"^(?P<task>.+)-{re.escape(treatment)}{_REPORT_SUFFIX_RE}",

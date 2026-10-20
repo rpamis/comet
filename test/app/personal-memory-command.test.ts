@@ -330,20 +330,22 @@ describe('personal memory commands', () => {
       json: true,
     });
 
+    const missingRemote = path.join(root, 'missing-memory-remote.git');
     const remote = await personalMemoryRemoteCommand(root, {
       memoryRoot,
       stateRoot,
       language: 'en',
-      set: 'https://example.invalid/comet-memory.git',
+      set: missingRemote,
       json: true,
     });
-    expect(remote).toBeDefined();
+    expect(remote).toBe(missingRemote);
     const sync = await personalMemorySyncCommand(root, {
       memoryRoot,
       stateRoot,
       language: 'en',
     });
-    expect(sync).toBeDefined();
+    expect(sync).toMatchObject({ status: 'failed', retryable: true });
+    expect(process.exitCode).toBe(1);
     expect(logs.length).toBeGreaterThan(0);
   });
 

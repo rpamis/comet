@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadUserEvalEnvironment } from '../../domains/eval/index.js';
 import { evalCommand } from '../../app/commands/eval.js';
 
 const mocks = vi.hoisted(() => ({
@@ -53,6 +54,7 @@ describe('application Eval command exit contract', () => {
   it('returns zero for a successful collect even when the preview is blocked', async () => {
     expect(await evalCommand('application.json', { collect: true })).toBe(0);
     expect(JSON.parse(vi.mocked(console.log).mock.calls[0][0]).blockedReasons).toHaveLength(1);
+    expect(loadUserEvalEnvironment).toHaveBeenCalledWith(process.env, undefined, { create: false });
     expect(mocks.run).not.toHaveBeenCalled();
     expect(mocks.register).not.toHaveBeenCalled();
     expect(mocks.finish).not.toHaveBeenCalled();

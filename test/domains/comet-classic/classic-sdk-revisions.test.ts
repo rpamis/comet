@@ -312,13 +312,19 @@ describe('Classic candidate revisions', () => {
       ).exitCode,
     ).not.toBe(0);
     expect((await f.inspect()).run).toEqual(rejected);
-    const proposed = await f.ok(
-      'state',
-      'propose-build',
-      'example',
-      '--file',
-      'configuration.json',
+    expect(recovery.data.recovery.commandArgs).not.toContain('--project-root');
+    expect(recovery.data.recovery.cwd).toBe(f.projectRoot);
+    const roundtrip = await runClassicCli(
+      recovery.data.recovery.commandArgs
+        .slice(1)
+        .map((argument: string) =>
+          argument === '<configuration-json>' ? 'configuration.json' : argument,
+        ),
+      undefined,
+      { invocationCwd: recovery.data.recovery.cwd },
     );
+    expect(roundtrip.exitCode, roundtrip.stdout).toBe(0);
+    const proposed = JSON.parse(roundtrip.stdout!).data;
     const repaired = (await f.inspect()).run;
     const repairedAction = repaired.actions.find((entry) => entry.id === action.id)!;
     expect(repairedAction).toMatchObject({

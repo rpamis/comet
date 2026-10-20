@@ -817,8 +817,9 @@ export async function nativeDoctorCommand(
           const checks = await inspectNativeSdkCheckExecutions({
             projectRoot: commandRoot,
             run: inspection.run,
+            includeSettled: true,
           });
-          if (checks.some((check) => check.recoveryRequired)) {
+          if (checks.some((check) => check.recoveryRequired) || stoppedActions !== undefined) {
             const { runtime } = await loadOwnedNativeSdkRuntime(commandRoot, name);
             const recovered = await recoverNativeSdkChecks(commandRoot, inspection.run, runtime, {
               reconcileInterrupted: confirmed && stoppedActions !== undefined,
@@ -861,13 +862,25 @@ export async function nativeDoctorCommand(
           await settleNativeSdkCancellation({ projectRoot: commandRoot, run });
         if (mayRepair && run.status === 'completed')
           await settleNativeSdkCompletion({ projectRoot: commandRoot, run });
-        const checks = await inspectNativeSdkCheckExecutions({ projectRoot: commandRoot, run });
-        const cancellation = await inspectNativeSdkCancellation({ projectRoot: commandRoot, run });
-        const status = await projectNativeSdkStatus({ projectRoot: commandRoot, name }, inspection);
+        const checks = await inspectNativeSdkCheckExecutions({
+          projectRoot: commandRoot,
+          run,
+          includeSettled: true,
+        });
+        const cancellation = await inspectNativeSdkCancellation({
+          projectRoot: commandRoot,
+          run,
+          checkExecutionObservation: checks,
+        });
+        const status = await projectNativeSdkStatus(
+          { projectRoot: commandRoot, name, checkExecutionObservation: checks },
+          inspection,
+        );
         const unresolved = run.actions.filter((action) => action.status === 'unknown');
         const findings = [
           ...lockFindings,
           ...transactionFindings,
+          ...status.diagnostics.issues,
           ...(upgrade?.required && !upgrade.repaired
             ? [{ code: 'sdk-definition-upgrade-required', ...upgrade }]
             : []),

@@ -867,22 +867,24 @@ it('routes extension failure and requirement revision through declared domain re
 }, 90000);
 it('recovers the fixed Classic Application through public CLI across processes and rejects changed Skill bytes', async () => {
   const f = await fixture('tweak');
-  const clone = path.join(f.root, 'consumer');
+  const clone = path.join(f.root, 'consumer with spaces');
+  const packageRoot = path.join(f.root, 'external package with spaces');
+  await fs.cp(f.context.packageRoot, packageRoot, { recursive: true });
   git(f.root, ['clone', f.projectRoot, clone]);
   await fs.mkdir(path.join(f.root, 'node_modules/@rpamis'), { recursive: true });
   await fs.symlink(path.resolve('.'), path.join(f.root, 'node_modules/@rpamis/comet'), 'junction');
-  const module = path.join(f.context.packageRoot, 'application.mjs');
+  const module = path.join(packageRoot, 'application.mjs');
   await fs.writeFile(
     module,
     `import {createClassicApplication} from '@rpamis/comet/applications/classic';
   export function createApplication(context) { const host=context.createSkillExecutor({id:'fixture-host',capabilities:['domain-work'],authorize:async()=>true,invokeSkill:async()=>({status:'succeeded',output:{event:'open-complete'}})});return createClassicApplication(context,{profile:'tweak',replacements:${JSON.stringify(f.options.replacements)},extensions:[{id:'review',afterStep:'tweak.build.check.evidence',skillId:'classic-worker',artifactRefs:['source.js'],validator:{id:'review',version:'1',validate:()=>({accepted:true})}}],executors:[host]});}`,
   );
-  await fs.mkdir(path.join(f.context.packageRoot, 'entry'), { recursive: true });
+  await fs.mkdir(path.join(packageRoot, 'entry'), { recursive: true });
   await fs.writeFile(
-    path.join(f.context.packageRoot, 'entry/SKILL.md'),
+    path.join(packageRoot, 'entry/SKILL.md'),
     '# Entry\nContinue the Classic Application through comet runtime dispatch.\n',
   );
-  const applicationFile = path.join(f.context.packageRoot, 'application.json');
+  const applicationFile = path.join(packageRoot, 'application.json');
   await fs.writeFile(applicationFile, JSON.stringify(f.context.manifest));
   let count = 0;
   const dispatch = async (request: Record<string, unknown>) => {
@@ -950,7 +952,61 @@ it('recovers the fixed Classic Application through public CLI across processes a
     attempt: action.attempt,
     reason: 'Process stopped',
   });
-  await fs.rm(resolveWorkspaceRuntimeRootSync(clone), { recursive: true, force: true });
+  const runtimeRoot = resolveWorkspaceRuntimeRootSync(clone);
+  await fs.rm(runtimeRoot, { recursive: true, force: true });
+  const portableFile = path.join(clone, 'docs/openspec/changes/example/comet-state.yaml');
+  const portable = await fs.readFile(portableFile, 'utf8');
+  const snapshotFiles = async (directory: string) =>
+    Promise.all(
+      (await fs.readdir(directory, { recursive: true })).sort().map(async (relative) => {
+        const file = path.join(directory, relative);
+        const stat = await fs.lstat(file);
+        return [
+          relative,
+          stat.mtimeMs,
+          stat.isFile() ? (await fs.readFile(file)).toString('base64') : null,
+        ];
+      }),
+    );
+  const projectBeforeInspection = await snapshotFiles(clone);
+  const packageBeforeInspection = await snapshotFiles(packageRoot);
+  const inspectionError = await dispatch({ operation: 'inspect', runId: 'example' }).then(
+    () => {
+      throw new Error('Read-only inspection unexpectedly restored the Run');
+    },
+    (error: Error) => JSON.parse(error.message).error.message as string,
+  );
+  expect(await fs.readFile(portableFile, 'utf8')).toBe(portable);
+  expect(await snapshotFiles(clone)).toEqual(projectBeforeInspection);
+  expect(await snapshotFiles(packageRoot)).toEqual(packageBeforeInspection);
+  await expect(fs.stat(runtimeRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+  const recoveryArgs = JSON.parse(/^Recovery argv: (.+)$/mu.exec(inspectionError)![1]) as string[];
+  const recoveryRequest = JSON.parse(/^Recovery request: (.+)$/mu.exec(inspectionError)![1]);
+  expect(recoveryRequest).toEqual({ operation: 'next', runId: 'example' });
+  expect(recoveryArgs).toContain(applicationFile);
+  expect(recoveryArgs).toContain(clone);
+  const requestFile = path.join(f.root, 'explicit recovery request.json');
+  await fs.writeFile(requestFile, JSON.stringify(recoveryRequest));
+  const recover = () =>
+    spawnSync(
+      process.execPath,
+      [
+        path.resolve('bin/comet.js'),
+        ...recoveryArgs.map((arg) => (arg === '<recovery-request.json>' ? requestFile : arg)),
+      ],
+      { encoding: 'utf8' },
+    );
+  await fs.writeFile(portableFile, portable + '\ninvalid: [\n');
+  expect(recover().status).not.toBe(0);
+  expect(await fs.readFile(portableFile, 'utf8')).toBe(portable + '\ninvalid: [\n');
+  expect(
+    await createFileRuntimeStore({
+      rootDir: path.join(runtimeRoot, 'applications', f.context.manifest.id),
+    }).read('example'),
+  ).toBeNull();
+  await fs.writeFile(portableFile, portable);
+  const recovered = recover();
+  expect(recovered.status, recovered.stdout + recovered.stderr).toBe(0);
   run = await dispatch({ operation: 'inspect', runId: 'example' });
   expect(run.actions.at(-1)).toMatchObject({
     id: action.id,
@@ -961,7 +1017,7 @@ it('recovers the fixed Classic Application through public CLI across processes a
     },
   });
   await expect(inspectClassicSdkRun(clone, 'example')).rejects.toThrow(/belongs to application/);
-  const skillFile = path.join(f.context.packageRoot, 'worker/SKILL.md');
+  const skillFile = path.join(packageRoot, 'worker/SKILL.md');
   const original = await fs.readFile(skillFile, 'utf8');
   await fs.writeFile(skillFile, original + '\nChanged dependency.\n');
   await expect(dispatch({ operation: 'inspect', runId: 'example' })).rejects.toThrow();

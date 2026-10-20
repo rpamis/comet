@@ -29,7 +29,10 @@ export async function handleDashboardApplicationRequest(
   if (!locator) throw new DashboardApplicationQueryError('缺少运行记录定位信息');
   const body =
     subpath === '/application-run'
-      ? await collectDashboardApplicationRunDetail(projectRoot, locator)
+      ? await collectDashboardApplicationRunDetail(projectRoot, locator, {
+          recordLimit: query.has('recordLimit') ? Number(query.get('recordLimit')) : undefined,
+          recordId: query.get('recordId') ?? undefined,
+        })
       : subpath === '/application-run-records'
         ? await collectDashboardApplicationRunRecords(projectRoot, locator, {
             limit: query.has('limit') ? Number(query.get('limit')) : undefined,

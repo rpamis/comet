@@ -1,3 +1,4 @@
+import { evalMatrix } from '../../helpers/eval-matrix.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -51,8 +52,13 @@ describe('Dashboard Eval routes', () => {
     const root = path.join(project, '.comet/eval/runs/cli-history');
     await fs.mkdir(path.join(root, 'reports'), { recursive: true });
     await fs.writeFile(
+      path.join(root, 'expected-case-matrix.json'),
+      JSON.stringify(evalMatrix([{ task: 'case', treatment: 'BASE', rep: 1 }])),
+    );
+    await fs.writeFile(
       path.join(root, 'metadata.json'),
       JSON.stringify({
+        experiment_id: 'cli-history',
         completed_at: '2026-10-10T12:00:00Z',
         expected_case_matrix: { case_count: 1 },
       }),
@@ -60,12 +66,15 @@ describe('Dashboard Eval routes', () => {
     await fs.writeFile(
       path.join(root, 'reports/task_report.json'),
       JSON.stringify({
-        name: 'case',
+        name: 'case-BASE',
+        rep: 1,
         passed: false,
         checks_passed: [],
         checks_failed: ['missing input'],
         sample_quality: { status: 'included' },
         events_summary: {
+          treatment: 'BASE',
+          sample: 1,
           task: 'case',
           skill_sources: [{ name: 'writer', path: 'writer' }],
           case_manifest: { task_hash: 'task', validator_hash: 'validator' },
@@ -203,7 +212,10 @@ describe('Dashboard Eval routes', () => {
     expect(
       (await request('/runs/cli-history/baseline/clear', 'POST', {}, 'https://example.com')).status,
     ).toBe(403);
-    const cleared = await request('/runs/cli-history/baseline/clear', 'POST', {});
+    const cleared = await request('/runs/cli-history/baseline/clear', 'POST', {
+      scope: (await request('/runs/cli-history')).body.baselineScope,
+      expectedRun: 'cli-history',
+    });
     expect(cleared.status).toBe(200);
     expect(cleared.body).toMatchObject({ isBaseline: false, baselineRunId: null, passed: 0 });
     expect((await request('/runs/cli-history')).body.cases).toHaveLength(1);

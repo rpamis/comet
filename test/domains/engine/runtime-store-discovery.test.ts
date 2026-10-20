@@ -106,7 +106,7 @@ describe('read-only RuntimeStore discovery', () => {
         expect(sources.every((source) => source.runId && !source.error)).toBe(true);
         expect(sources.every((source) => !('fingerprint' in source))).toBe(true);
         expect(open).toHaveBeenCalledTimes(50);
-        expect(readdir).toHaveBeenCalledTimes(2);
+        expect(readdir).toHaveBeenCalledTimes(1);
       } finally {
         open.mockRestore();
         readdir.mockRestore();

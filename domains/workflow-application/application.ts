@@ -19,7 +19,6 @@ import {
   hashRuntimeValue,
   RuntimeProtocolError,
   parseWorkflowRun,
-  listFileRuntimeStoreRuns,
   type RuntimeStore,
   type WorkflowRun,
 } from '../engine/runtime.js';
@@ -47,12 +46,14 @@ import type {
   WorkflowApplicationManifest,
 } from './types.js';
 import {
+  snapshotApplicationAction,
   assertApplicationSkillExecutionScope,
   assertApplicationSkillAction,
   applicationSkillScopesOverlap,
   applicationActionHoldsScope,
   createApplicationSkillExecutor,
 } from './skill-executor.js';
+import { createApplicationStorageIndex } from './storage-index.js';
 import { resolveInstalledWorkflowApplication } from './installed-application.js';
 import { projectWorkflowApplicationRun } from './run-view.js';
 import { createApplicationHook } from './application-hook.js';
@@ -118,8 +119,30 @@ async function rawStore(
   const store = createFileRuntimeStore<ApplicationRunRecord>({
     rootDir: path.join(root, 'applications', safeId(id)),
     mirroredRevisionPaths: ['run.revision'],
+    writerProtocol: 'application-holder-v1',
   });
+  const prepareCommit = (runId: string, revision: number | null, next: ApplicationRunRecord) => {
+    const publish = store.prepareCompareAndSwap!(runId, revision, next);
+    return async () => {
+      assertCurrentRoot();
+      if (readOnly) throw new RuntimeProtocolError('READ_ONLY_OPERATION', '应用诊断不能推进 Run');
+      await prepare();
+      // 封存是可恢复的布局事务，不改变 revision；所有调用均位于应用 scope 锁内。
+      const disposition = await store.settleRun(runId);
+      if (['closing', 'closed', 'reopening'].includes(disposition)) {
+        const previous = await store.read(runId);
+        if (!previous || previous.revision !== revision) return false;
+        if (disposition === 'closing') await store.closeRun(runId, previous.revision);
+        await store.reopenRun(runId, previous.revision);
+      }
+      const committed = await publish();
+      if (committed && next.application.base === 'standalone' && applicationRunCanClose(next.run))
+        await store.closeRun(runId, next.revision);
+      return committed;
+    };
+  };
   return {
+    queryScope: store.queryScope,
     read: async (runId) => {
       await prepare();
       const current = await store.read(runId);
@@ -141,30 +164,119 @@ async function rawStore(
         );
       return current ?? prior;
     },
-    compareAndSwap: async (runId, revision, next) => {
-      assertCurrentRoot();
-      if (readOnly) throw new RuntimeProtocolError('READ_ONLY_OPERATION', '应用诊断不能推进 Run');
-      await prepare();
-      // 封存是可恢复的布局事务，不改变 revision；所有调用均位于应用 scope 锁内。
-      const disposition = await store.readPartitionMetadata(runId);
-      if (['closing', 'closed', 'reopening'].includes(disposition)) {
-        const previous = await store.read(runId);
-        if (!previous || previous.revision !== revision) return false;
-        if (disposition === 'closing') await store.closeRun(runId, previous.revision);
-        await store.reopenRun(runId, previous.revision);
-      }
-      const committed = await store.compareAndSwap(runId, revision, next);
-      if (committed && next.application.base === 'standalone' && applicationRunCanClose(next.run))
-        await store.closeRun(runId, next.revision);
-      return committed;
-    },
+    compareAndSwap: async (runId, revision, next) => prepareCommit(runId, revision, next)(),
+    prepareCompareAndSwap: prepareCommit,
     restoreCheckpoint: async (runId, revision, checkpoint) => {
       assertCurrentRoot();
       if (readOnly) throw new RuntimeProtocolError('READ_ONLY_OPERATION', '应用诊断不能恢复 Run');
       await prepare();
+      const disposition = await store.settleRun(runId);
+      if (disposition === 'closed') {
+        const current = await store.read(runId);
+        if (!current || current.revision !== revision) return false;
+        await store.reopenRun(runId, current.revision);
+      }
       return store.restoreCheckpoint!(runId, revision, checkpoint);
     },
   };
+}
+
+/** 只读分区状态，不执行存储恢复或加载应用模块。 */
+export async function readWorkflowApplicationStorageDisposition(
+  projectRoot: string,
+  applicationId: string,
+  runId: string,
+) {
+  return createFileRuntimeStore<ApplicationRunRecord>({
+    rootDir: path.join(
+      resolveWorkspaceRuntimeRootSync(projectRoot),
+      'applications',
+      safeId(applicationId),
+    ),
+    mirroredRevisionPaths: ['run.revision'],
+  }).readPartitionMetadata(runId);
+}
+
+async function recordHoldsApplicationScope(record: ApplicationRunRecord): Promise<boolean> {
+  const run = parseWorkflowRun(record.run, record.runId);
+  const actions = run.actions.filter(
+    (action) => action.type === 'invoke_skill' && applicationActionHoldsScope(action),
+  );
+  if (!actions.length) return false;
+  try {
+    const files = await readApplicationFiles(record.application.packageRoot);
+    const manifest = parseWorkflowApplicationManifest(
+      JSON.parse(Buffer.from(files['application.json'], 'base64').toString('utf8')),
+    );
+    if (
+      hashRuntimeValue({
+        package: applicationFilesHash(files),
+        skills: manifest.skills.map((skill) => ({ id: skill.id, contentHash: skill.contentHash })),
+      }) !== record.application.contentHash
+    )
+      return true;
+    return actions.some((action) =>
+      manifest.bindings.some((binding) => {
+        const skill = manifest.skills.find((skill) => skill.id === binding.skillId);
+        return (
+          binding.workflowId === run.workflow.id &&
+          binding.stepId === action.stepId &&
+          binding.usage === 'action' &&
+          skill &&
+          skill.adapter.sideEffect !== 'read' &&
+          skill.adapter.scope.length > 0
+        );
+      }),
+    );
+  } catch {
+    return true;
+  } // 固定定义缺失时不能证明原执行没有写入范围。
+}
+
+function applicationStorageMaintenance(projectRoot: string, applicationId: string) {
+  const rootDir = path.join(
+    resolveWorkspaceRuntimeRootSync(projectRoot),
+    'applications',
+    safeId(applicationId),
+  );
+  const store = createFileRuntimeStore<ApplicationRunRecord>({
+    rootDir,
+    mirroredRevisionPaths: ['run.revision'],
+    writerProtocol: 'application-holder-v1',
+  });
+  return createApplicationStorageIndex({
+    rootDir,
+    read: (runId) => store.read(runId),
+    settle: (runId) => store.settleRun(runId),
+    holds: recordHoldsApplicationScope,
+  });
+}
+
+export async function inspectWorkflowApplicationStorageIndex(
+  projectRoot: string,
+  applicationId: string,
+) {
+  return applicationStorageMaintenance(projectRoot, applicationId).inspect();
+}
+
+export async function repairWorkflowApplicationStorageIndex(options: {
+  projectRoot: string;
+  applicationId: string;
+  operation: 'audit' | 'rebuild';
+  expectedEpoch: string;
+}) {
+  const root = await resolveWorkspaceRuntimeRoot(options.projectRoot);
+  const directory = await ensureProtectedProjectDirectory(root, 'application-scope-locks', {
+    label: '应用写入范围锁',
+  });
+  return withRecoverableFileLock(
+    path.join(directory, `${safeId(options.applicationId)}.lock`),
+    () =>
+      applicationStorageMaintenance(options.projectRoot, options.applicationId).repair(
+        options.operation,
+        options.expectedEpoch,
+      ),
+  );
 }
 
 /** 只读取保存的进度；不加载应用代码、不恢复记录，也不更新领域投影。 */
@@ -571,8 +683,54 @@ export async function loadWorkflowApplication(options: {
     const directory = await ensureProtectedProjectDirectory(root, 'application-scope-locks', {
       label: '应用写入范围锁',
     });
-    return withRecoverableFileLock(path.join(directory, `${manifest.id}.lock`), operation);
+    try {
+      return await withRecoverableFileLock(path.join(directory, `${manifest.id}.lock`), operation);
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('Timed out waiting for file lock:'))
+        throw new RuntimeProtocolError(
+          'STORE_BUSY',
+          '应用写入协调繁忙，请稍后重新读取 revision 再重试',
+        );
+      throw error;
+    }
   };
+  const storageRoot = path.join(scopeRuntimeRoot, 'applications', manifest.id);
+  const coordinatedStore = createFileRuntimeStore<ApplicationRunRecord>({
+    rootDir: storageRoot,
+    mirroredRevisionPaths: ['run.revision'],
+    writerProtocol: 'application-holder-v1',
+  });
+  const actionNeedsScope = (run: WorkflowRun, action: WorkflowRun['actions'][number]) =>
+    action.type === 'invoke_skill' &&
+    manifest.bindings.some((binding) => {
+      const skill = skills.get(binding.skillId);
+      return (
+        binding.workflowId === run.workflow.id &&
+        binding.stepId === action.stepId &&
+        binding.usage === 'action' &&
+        skill &&
+        skill.adapter.sideEffect !== 'read' &&
+        skill.adapter.scope.length > 0
+      );
+    });
+  const storageIndex = createApplicationStorageIndex<ApplicationRunRecord>({
+    rootDir: storageRoot,
+    read: (runId) => coordinatedStore.read(runId),
+    settle: (runId) => coordinatedStore.settleRun(runId),
+    holds: (record) =>
+      record.application.contentHash !== identity.contentHash
+        ? recordHoldsApplicationScope(record)
+        : parseWorkflowRun(record.run, record.runId).actions.some(
+            (action) => applicationActionHoldsScope(action) && actionNeedsScope(record.run, action),
+          ),
+  });
+  const holderSignature = (run: WorkflowRun | undefined) =>
+    JSON.stringify(
+      run?.actions
+        .filter((action) => actionNeedsScope(run!, action) && applicationActionHoldsScope(action))
+        .map((action) => [action.id, action.status, action.claim?.token, action.inputHash])
+        .sort() ?? [],
+    );
   const relatedRuns = async (
     run: WorkflowRun,
     action: WorkflowRun['actions'][number],
@@ -590,60 +748,19 @@ export async function loadWorkflowApplication(options: {
     });
     if (!needsPeers) return [];
 
-    const records = await listFileRuntimeStoreRuns<ApplicationRunRecord>(
-      {
-        rootDir: path.join(
-          resolveWorkspaceRuntimeRootSync(projectRoot),
-          'applications',
-          manifest.id,
-        ),
-        mirroredRevisionPaths: ['run.revision'],
-      },
-      { excludeClosed: true },
-    );
+    const records = await storageIndex.holders();
     const peers: WorkflowRun[] = [];
-    let migrated = 0;
-    for (const item of records) {
-      if (item.runId === run.runId) continue;
-      if (item.error || !item.record)
-        throw new RuntimeProtocolError(
-          'INVALID_RUN',
-          `其他应用 Run 无法读取，不能安全领取共享写入范围：${item.storageKey}（${item.error?.code ?? 'INVALID_RUN'}）。请保留记录，检查或恢复该 Run 后重试。`,
-        );
-      const peer = parseWorkflowRun(item.record.run, item.runId!);
-      if (
-        !peer.actions.some(
-          (action) => action.type === 'invoke_skill' && applicationActionHoldsScope(action),
-        )
-      ) {
-        // 旧的静止终态在第一次领取检查时迁移；后续冷进程无需打开其正文。
-        if (
-          migrated < 8 &&
-          item.record.application.base === 'standalone' &&
-          applicationRunCanClose(peer)
-        ) {
-          migrated++;
-          await createFileRuntimeStore<ApplicationRunRecord>({
-            rootDir: path.join(
-              resolveWorkspaceRuntimeRootSync(projectRoot),
-              'applications',
-              manifest.id,
-            ),
-            mirroredRevisionPaths: ['run.revision'],
-          }).closeRun(peer.runId, peer.revision);
-        }
-        continue;
-      }
-      if (item.record.application.contentHash !== identity.contentHash)
-        throw new RuntimeProtocolError(
-          'COMMAND_REJECTED',
-          '其他固定版本的 Skill 仍占用此应用工作区；先完成执行或核对未知结果',
-        );
+    for (const record of records) {
+      if (record.runId === run.runId) continue;
+      const peer = parseWorkflowRun(record.run, record.runId);
+      if (record.application.contentHash !== identity.contentHash)
+        throw new RuntimeProtocolError('SCOPE_HELD', `其他固定版本仍占用应用工作区：${peer.runId}`);
       peers.push(peer);
     }
     return peers;
   };
   const pinnedStore: RuntimeStore<WorkflowRun> = {
+    queryScope: persistent.queryScope,
     async read(runId) {
       await assertCurrentMaterial();
       const record = await persistent.read(runId);
@@ -652,9 +769,11 @@ export async function loadWorkflowApplication(options: {
       return record.run;
     },
     async restoreCheckpoint(runId, expectedRevision, run) {
+      run = structuredClone(run);
       assertWritable();
       await assertCurrentMaterial();
       const restore = async () => {
+        await assertCurrentMaterial();
         const record = await persistent.read(runId);
         if (record) assertIdentity(record);
         if (run.runId !== runId || run.actions.some((action) => action.status === 'running')) {
@@ -694,16 +813,37 @@ export async function loadWorkflowApplication(options: {
             action,
             await relatedRuns(run, action),
           );
-        return persistent.restoreCheckpoint!(runId, expectedRevision, restored);
+        await storageIndex.begin(runId, !record);
+        try {
+          return await persistent.restoreCheckpoint!(runId, expectedRevision, restored);
+        } finally {
+          await storageIndex.finish();
+        }
       };
       return withScopeLock(restore);
     },
     async compareAndSwap(runId, expectedRevision, run) {
       assertWritable();
       await assertCurrentMaterial();
+      // 隔离调用者在异步等待期间修改下一版本。
+      run = structuredClone(run);
+      const prepared = persistent.prepareCompareAndSwap!(runId, expectedRevision, {
+        runId,
+        revision: run.revision,
+        application: identity,
+        run,
+      });
+      const previous = await persistent.read(runId);
+      const needsCoordination =
+        (await storageIndex.inspect())?.state !== 'ready' ||
+        !previous ||
+        holderSignature(previous.run) !== holderSignature(run) ||
+        applicationRunCanClose(run);
       const commit = async () => {
+        await assertCurrentMaterial();
         const record = await persistent.read(runId);
         if (record) assertIdentity(record);
+        if ((record?.revision ?? null) !== expectedRevision) return false;
         for (const action of run.actions) {
           if (
             action.status === 'running' &&
@@ -739,7 +879,10 @@ export async function loadWorkflowApplication(options: {
                   'EXECUTOR_UNAVAILABLE',
                   'Skill 必须由应用已配置的执行端口领取',
                 );
-              if (!executor.supports(structuredClone(action)) || !executor.preflight)
+              if (
+                executor.supports(snapshotApplicationAction(action)) !== true ||
+                !executor.preflight
+              )
                 throw new RuntimeProtocolError(
                   'EXECUTOR_UNSUPPORTED',
                   'Skill 执行端口缺少对应的领取预检',
@@ -774,14 +917,17 @@ export async function loadWorkflowApplication(options: {
                 manifest,
               );
           }
-        return persistent.compareAndSwap(runId, expectedRevision, {
-          runId,
-          revision: run.revision,
-          application: identity,
-          run,
-        });
+        if ((record?.revision ?? null) !== expectedRevision) return false;
+        if (!needsCoordination && holderSignature(record?.run) !== holderSignature(run))
+          return false;
+        if (needsCoordination) await storageIndex.begin(runId, !record);
+        try {
+          return await prepared();
+        } finally {
+          if (needsCoordination) await storageIndex.finish();
+        }
       };
-      return withScopeLock(commit);
+      return needsCoordination ? withScopeLock(commit) : commit();
     },
   };
   const store = implementation.wrapStore

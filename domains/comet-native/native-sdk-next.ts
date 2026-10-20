@@ -1,3 +1,5 @@
+import { inspectNativeSdkRunDiagnostics } from './native-sdk-diagnostics.js';
+import { reconcileNativeSdkExecutionStops } from './native-sdk-check-execution.js';
 import { recoverNativeSdkReportRevalidation } from './native-sdk-report.js';
 import { validateNativeSdkFailedIntegrationRepair } from './native-sdk-supervisor-integration-repair.js';
 import { randomUUID } from 'node:crypto';
@@ -86,6 +88,12 @@ export async function advanceNativeSdkChange(
     );
     state = parseNativePortableState(run.state);
   }
+  if (!decision)
+    run = await reconcileNativeSdkExecutionStops(
+      projectRoot,
+      run,
+      async () => (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime,
+    );
   if (run.status === 'cancelled') {
     await settleNativeSdkCancellation({ projectRoot, run });
     return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
@@ -480,6 +488,9 @@ export async function advanceNativeSdkChange(
     )
   )
     return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+  const diagnostics = await inspectNativeSdkRunDiagnostics(projectRoot, run);
+  if (!diagnostics.healthy)
+    return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
   if (run.ready.length > 0) {
     await (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime.next({ runId: run.runId });
     ({ run, state, artifactRootRef, application } = await inspectNativeSdkRun(projectRoot, name));
@@ -500,6 +511,7 @@ export async function advanceNativeSdkChange(
         executorId: executor.id,
         context: { requestId: randomUUID(), projectRoot },
       });
+      completed = await reconcileNativeSdkExecutionStops(projectRoot, completed, runtime);
     }
     return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
   }

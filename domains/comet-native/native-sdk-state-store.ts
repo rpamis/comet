@@ -25,9 +25,11 @@ import {
 import {
   createFileRuntimeStore,
   createPortableRunCheckpoint,
+  portableRunCheckpointProjectionMatches,
   encodePortableRunCheckpoint,
   PORTABLE_RUN_CHECKPOINT_KEY,
   readPortableRunCheckpoint,
+  readRuntimeProjection,
   type RuntimeStore,
   type WorkflowRun,
 } from '../engine/runtime.js';
@@ -64,9 +66,25 @@ export class NativeSdkRunRecoveryRequiredError extends Error {
     readonly projectRoot: string,
     readonly change: string,
     readonly interrupted = false,
+    application?: ApplicationIdentity,
   ) {
+    const argv = application
+      ? [
+          'runtime',
+          'dispatch',
+          '--application-file',
+          path.join(application.packageRoot, 'application.json'),
+          '--project-root',
+          projectRoot,
+          '--request',
+          '<recovery-request.json>',
+          '--json',
+        ]
+      : null;
     super(
-      `Native SDK Run ${change} needs checkpoint recovery; run comet native doctor ${change} --repair${interrupted ? '' : ' --confirmed'} before continuing`,
+      argv
+        ? `Native SDK Run ${change} needs checkpoint recovery. Save the recovery request JSON to a file and replace <recovery-request.json> with its path. Run comet with the exact argument array below to restore the recorded state and advance only the Runtime, without executing host work.\nRecovery argv: ${JSON.stringify(argv)}\nRecovery request: ${JSON.stringify({ operation: 'next', runId: change })}`
+        : `Native SDK Run ${change} needs checkpoint recovery; run comet native doctor ${change} --repair${interrupted ? '' : ' --confirmed'} before continuing`,
     );
   }
 }
@@ -257,6 +275,7 @@ export function createNativeSdkStateStore(
     identity?: ApplicationIdentity;
     readOnly?: boolean;
   } = {},
+  projectionRead = false,
 ): RuntimeStore<WorkflowRun> {
   const workspaceRuntimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
   const store = observeWorkflowRunStore(
@@ -434,11 +453,24 @@ export function createNativeSdkStateStore(
       ) {
         throw new Error(`Native SDK state projection marker is invalid for ${runId}`);
       }
-      let run = await store.read(runId);
+      let run: WorkflowRun | null;
+      if (projectionRead) {
+        try {
+          run = (await readRuntimeProjection(store, runId)).record;
+        } catch (error) {
+          if ((error as { code?: string }).code !== 'RUN_NOT_FOUND') throw error;
+          run = null;
+        }
+      } else run = await store.read(runId);
       if (!run || (run.revision === 1 && marker && marker.revision > 1)) {
         const recovered = await recoverFromPortableFile(runId, marker, run ?? undefined);
         if (options.readOnly && recovered) {
-          throw new NativeSdkRunRecoveryRequiredError(projectRoot, runId, run !== null);
+          throw new NativeSdkRunRecoveryRequiredError(
+            projectRoot,
+            runId,
+            run !== null,
+            options.identity,
+          );
         }
         if (run && !recovered) {
           throw new Error(
@@ -485,9 +517,11 @@ export function createNativeSdkStateStore(
         }
         file = archivedFile;
       }
-      const expectedCheckpoint = createPortableRunCheckpoint(run);
+      const expectedCheckpoint = projectionRead ? undefined : createPortableRunCheckpoint(run);
       // 仅在本次已校验快照内复用编码；后续读取仍重新核对磁盘和 Run。
-      const encodedCheckpoint = encodePortableRunCheckpoint(expectedCheckpoint);
+      const encodedCheckpoint = expectedCheckpoint
+        ? encodePortableRunCheckpoint(expectedCheckpoint)
+        : undefined;
       let current: NativePortableState | null = null;
       let currentSource: string | null = null;
       let currentDocument: Record<string, unknown> | null = null;
@@ -496,6 +530,7 @@ export function createNativeSdkStateStore(
         // 只对完整字节相等的内置活动投影复用权威状态；任何编辑或额外字段仍严格解析。
         const canonical =
           options.readOnly &&
+          !projectionRead &&
           !options.identity &&
           !state.archived &&
           currentSource === serializeNativeManagedRunProjection(state, encodedCheckpoint);
@@ -529,18 +564,29 @@ export function createNativeSdkStateStore(
         }
       }
       const currentCheckpoint = currentDocument?.[PORTABLE_RUN_CHECKPOINT_KEY];
+      let checkpointMatches: boolean;
+      if (projectionRead) {
+        // 同时校验实际 portable 正文与权威 Run 的规范化身份，不能只信可编辑 marker。
+        checkpointMatches = portableRunCheckpointProjectionMatches(currentCheckpoint, run);
+        if (
+          hashRuntimeValue((currentDocument?.application_checkpoint ?? null) as never) !==
+          hashRuntimeValue((options.identity ?? null) as never)
+        )
+          throw new Error('Native portable 投影与原固定应用身份不一致');
+      } else {
+        checkpointMatches =
+          isDeepStrictEqual(currentCheckpoint, expectedCheckpoint) ||
+          isDeepStrictEqual(currentCheckpoint, encodedCheckpoint);
+      }
       const archiveReceipt = currentDocument?.['archive_receipt'];
       const unresolvedFinalization = run.actions.some(
-        (action) =>
-          action.stepId === 'archive.finalize' &&
-          (action.status === 'running' || action.status === 'unknown'),
+        (action) => action.stepId === 'archive.finalize',
       );
       if (
         !current ||
         !sameState(current, state) ||
         !currentSource?.startsWith(NATIVE_MANAGED_RUN_MARKER) ||
-        (!isDeepStrictEqual(currentCheckpoint, expectedCheckpoint) &&
-          !isDeepStrictEqual(currentCheckpoint, encodedCheckpoint))
+        !checkpointMatches
       ) {
         if (options.readOnly)
           throw new Error(
@@ -582,7 +628,12 @@ export function createNativeSdkStateStore(
   }
 
   return {
+    queryScope: store.queryScope,
     read: syncStateFile,
+    readProjection: (runId) =>
+      createNativeSdkStateStore(projectRoot, { ...options, store, readOnly: true }, true).read(
+        runId,
+      ),
     async compareAndSwap(runId, expectedRevision, next) {
       if (options.readOnly) throw new Error('Native SDK diagnostic store is read-only');
       await assertWorkspaceRuntimeCurrent();

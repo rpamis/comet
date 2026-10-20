@@ -2,6 +2,8 @@ import { validateRuntimeActionSnapshot, type RuntimeAction } from './runtime-act
 import { RuntimeProtocolError } from './runtime-errors.js';
 import {
   cloneRuntimeValue,
+  isImmutableRuntimeSnapshot,
+  freezeRuntimeSnapshot,
   hashRuntimeValue,
   validateRuntimeValue,
   type RuntimeValue,
@@ -16,6 +18,15 @@ import type {
 } from './workflow-run.js';
 
 type JsonObject = Record<string, RuntimeValue>;
+const checkedActions = new WeakSet<object>();
+const checkedResultMaps = new WeakSet<object>();
+const checkedRuns = new WeakSet<object>();
+
+export interface WorkflowRunProjectionHelpers {
+  hash(value: unknown): string;
+  visitResults(value: object, visitor: (key: string, result: unknown) => void): void;
+  validateOrigins(value: object, sequences: ReadonlyMap<number, string>, bound: number): void;
+}
 
 const RUN_FIELDS = [
   'protocolVersion',
@@ -95,28 +106,32 @@ function reference(
   return result;
 }
 
-function parseResults(value: unknown, label: string): Record<string, WorkflowResult> {
+function parseResults(
+  value: unknown,
+  label: string,
+  helpers?: WorkflowRunProjectionHelpers,
+): Record<string, WorkflowResult> {
   const data = object(value, label);
-  return Object.fromEntries(
-    Object.entries(data).map(([stepId, raw]) => {
-      text(stepId, `${label} step id`);
-      const result = object(raw, `${label}.${stepId}`);
-      onlyFields(result, ['sequence', 'value'], `${label}.${stepId}`);
-      if (!Object.hasOwn(result, 'sequence') || !Object.hasOwn(result, 'value')) {
-        invalid(`${label}.${stepId} 缺少 sequence 或 value`);
-      }
-      return [
-        stepId,
-        {
-          sequence: integer(result.sequence, `${label}.${stepId}.sequence`, 1),
-          value: result.value,
-        },
-      ];
-    }),
-  );
+  if (!helpers && isImmutableRuntimeSnapshot(data) && checkedResultMaps.has(data))
+    return data as unknown as Record<string, WorkflowResult>;
+  const validate = (stepId: string, raw: unknown) => {
+    text(stepId, `${label} step id`);
+    const result = object(raw, `${label}.${stepId}`);
+    onlyFields(result, ['sequence', 'value'], `${label}.${stepId}`);
+    if (!Object.hasOwn(result, 'sequence') || !Object.hasOwn(result, 'value'))
+      invalid(`${label}.${stepId} 缺少 sequence 或 value`);
+    integer(result.sequence, `${label}.${stepId}.sequence`, 1);
+  };
+  if (helpers) helpers.visitResults(data, validate);
+  else for (const [key, value] of Object.entries(data)) validate(key, value);
+  return data as unknown as Record<string, WorkflowResult>;
 }
 
-function parseToken(value: unknown, label: string): WorkflowToken {
+function parseToken(
+  value: unknown,
+  label: string,
+  helpers?: WorkflowRunProjectionHelpers,
+): WorkflowToken {
   const data = object(value, label);
   onlyFields(data, ['from', 'to', 'results', 'activation'], label);
   if (
@@ -130,7 +145,7 @@ function parseToken(value: unknown, label: string): WorkflowToken {
   return {
     from,
     to: text(data.to, `${label}.to`),
-    results: parseResults(data.results, `${label}.results`),
+    results: parseResults(data.results, `${label}.results`, helpers),
     ...(Object.hasOwn(data, 'activation') ? { activation: data.activation } : {}),
   };
 }
@@ -147,7 +162,12 @@ function sequenceFromId(id: string, runId: string, label: string, maximum: numbe
   return sequence;
 }
 
-function parseWait(value: unknown, runId: string, maximum: number): RuntimeWait {
+function parseWait(
+  value: unknown,
+  runId: string,
+  maximum: number,
+  helpers?: WorkflowRunProjectionHelpers,
+): RuntimeWait {
   const data = object(value, 'Wait');
   onlyFields(
     data,
@@ -202,7 +222,7 @@ function parseWait(value: unknown, runId: string, maximum: number): RuntimeWait 
     proposal: data.proposal,
     proposalHash,
     choices,
-    results: parseResults(data.results, 'Wait.results'),
+    results: parseResults(data.results, 'Wait.results', helpers),
   };
   if (data.decision !== undefined) {
     const decision = object(data.decision, 'Wait.decision');
@@ -226,7 +246,12 @@ function parseWait(value: unknown, runId: string, maximum: number): RuntimeWait 
   return result;
 }
 
-function parseEvidenceWait(value: unknown, runId: string, maximum: number): RuntimeEvidenceWait {
+function parseEvidenceWait(
+  value: unknown,
+  runId: string,
+  maximum: number,
+  helpers?: WorkflowRunProjectionHelpers,
+): RuntimeEvidenceWait {
   const data = object(value, 'EvidenceWait');
   onlyFields(
     data,
@@ -247,7 +272,7 @@ function parseEvidenceWait(value: unknown, runId: string, maximum: number): Runt
     sequence,
     kind: text(data.kind, 'EvidenceWait.kind'),
     status: data.status as RuntimeEvidenceWait['status'],
-    results: parseResults(data.results, 'EvidenceWait.results'),
+    results: parseResults(data.results, 'EvidenceWait.results', helpers),
   };
   if (data.receipt !== undefined) {
     const receipt = object(data.receipt, 'EvidenceWait.receipt');
@@ -290,10 +315,58 @@ export function parseWorkflowRun(value: unknown, expectedRunId?: string): Workfl
 /** Store 边界保留不可变上游值的共享关系；公共返回值另行复制。 */
 export function parseWorkflowRunSnapshot(value: unknown, expectedRunId?: string): WorkflowRun {
   validateRuntimeValue(value);
-  return validateWorkflowRunSnapshot(object(structuredClone(value), 'WorkflowRun'), expectedRunId);
+  return sealValidatedRun(
+    validateWorkflowRunSnapshot(object(structuredClone(value), 'WorkflowRun'), expectedRunId),
+  );
 }
 
-function validateWorkflowRunSnapshot(data: JsonObject, expectedRunId?: string): WorkflowRun {
+/** 仅供已验证完整 JSON 和引用池的读取边界使用，不物化历史映射。 */
+export function validateWorkflowRunProjection(
+  value: unknown,
+  expectedRunId: string | undefined,
+  helpers: WorkflowRunProjectionHelpers,
+): WorkflowRun {
+  return validateWorkflowRunSnapshot(
+    object(value, 'WorkflowRun'),
+    expectedRunId,
+    undefined,
+    helpers,
+  );
+}
+
+/** 复用已经验证且不可变的历史，仍检查本次修改的绑定和 Run 级不变量。 */
+export function validateWorkflowRunCommit(value: WorkflowRun, before?: WorkflowRun): WorkflowRun {
+  validateRuntimeValue(value);
+  validateWorkflowRunSnapshot(
+    object(value, 'WorkflowRun'),
+    value.runId,
+    before && checkedRuns.has(before) && isImmutableRuntimeSnapshot(before) ? before : undefined,
+  );
+  return sealValidatedRun(value);
+}
+
+/** 验证和冻结必须连续完成，不能信任曾验证后又交还外部修改的对象。 */
+function sealValidatedRun(run: WorkflowRun): WorkflowRun {
+  freezeRuntimeSnapshot(run);
+  checkedRuns.add(run);
+  for (const action of run.actions) checkedActions.add(action);
+  const remember = (results: object) => checkedResultMaps.add(results);
+  for (const context of Object.values(run.actionContexts)) remember(context.results);
+  for (const wait of run.waits) remember(wait.results);
+  for (const wait of run.evidenceWaits ?? []) remember(wait.results);
+  for (const token of run.ready) remember(token.results);
+  for (const queues of Object.values(run.joins))
+    for (const queue of Object.values(queues)) for (const token of queue) remember(token.results);
+  remember(run.outputs);
+  return run;
+}
+
+function validateWorkflowRunSnapshot(
+  data: JsonObject,
+  expectedRunId?: string,
+  before?: WorkflowRun,
+  helpers?: WorkflowRunProjectionHelpers,
+): WorkflowRun {
   onlyFields(data, RUN_FIELDS, 'WorkflowRun');
   for (const field of RUN_FIELDS.filter(
     (field) =>
@@ -366,12 +439,20 @@ function validateWorkflowRunSnapshot(data: JsonObject, expectedRunId?: string): 
   const actions: RuntimeAction[] = data.actions.map((raw) => {
     let action: RuntimeAction;
     try {
-      action = validateRuntimeActionSnapshot(raw);
+      action =
+        raw && typeof raw === 'object' && checkedActions.has(raw) && isImmutableRuntimeSnapshot(raw)
+          ? (raw as unknown as RuntimeAction)
+          : validateRuntimeActionSnapshot(
+              raw,
+              helpers?.hash((raw as unknown as RuntimeAction).input),
+            );
     } catch (error) {
       if (error instanceof RuntimeProtocolError && error.code === 'UNSUPPORTED_PROTOCOL')
         throw error;
       invalid(`WorkflowRun.actions 包含无效 Action：${(error as Error).message}`);
     }
+    if (action.executionOrigin && action.executionOrigin.workflow.id !== workflow.id)
+      invalid('Action 执行来源不属于当前工作流');
     if (action.runId !== runId) invalid(`Action ${action.id} 不属于当前 Run`);
     if (new Set(action.requiredCapabilities).size !== action.requiredCapabilities.length) {
       invalid(`Action ${action.id} 的 requiredCapabilities 不能重复`);
@@ -399,12 +480,12 @@ function validateWorkflowRunSnapshot(data: JsonObject, expectedRunId?: string): 
   if (commands && new Set(commands.map((command) => command.id)).size !== commands.length) {
     invalid('WorkflowRun.commands 标识不能重复');
   }
-  const waits = data.waits.map((wait) => parseWait(wait, runId, sequence));
+  const waits = data.waits.map((wait) => parseWait(wait, runId, sequence, helpers));
   if (data.evidenceWaits !== undefined && !Array.isArray(data.evidenceWaits)) {
     invalid('WorkflowRun.evidenceWaits 必须是数组');
   }
   const evidenceWaits =
-    data.evidenceWaits?.map((wait) => parseEvidenceWait(wait, runId, sequence)) ?? [];
+    data.evidenceWaits?.map((wait) => parseEvidenceWait(wait, runId, sequence, helpers)) ?? [];
   const sequences = new Map<number, string>();
   for (const action of actions) {
     const actionSequence = sequenceFromId(action.id, runId, 'Action.id', sequence);
@@ -425,10 +506,47 @@ function validateWorkflowRunSnapshot(data: JsonObject, expectedRunId?: string): 
   if (Object.keys(actionContexts).length !== actions.length) {
     invalid('WorkflowRun.actionContexts 必须与 actions 一一对应');
   }
-  const checkedResults = new Set<Record<string, WorkflowResult>>();
+  // 只允许复用同一个已验证 Run 中身份、序号均未变化的历史来源。
+  const baselineResults = new Map<object, number>();
+  const baselineSteps = before
+    ? new Map<number, string>([
+        ...before.actions.map(
+          (action) => [before.actionContexts[action.id].sequence, action.stepId] as const,
+        ),
+        ...before.waits.map((wait) => [wait.sequence, wait.stepId] as const),
+        ...(before.evidenceWaits ?? []).map((wait) => [wait.sequence, wait.stepId] as const),
+      ])
+    : undefined;
+  if (
+    before &&
+    baselineSteps &&
+    before.runId === runId &&
+    [...baselineSteps].every(([index, stepId]) => sequences.get(index) === stepId)
+  ) {
+    const remember = (results: object, bound: number) =>
+      baselineResults.set(results, Math.min(baselineResults.get(results) ?? Infinity, bound));
+    for (const context of Object.values(before.actionContexts))
+      remember(context.results, context.sequence);
+    for (const wait of before.waits) remember(wait.results, wait.sequence);
+    for (const wait of before.evidenceWaits ?? []) remember(wait.results, wait.sequence);
+    for (const token of before.ready) remember(token.results, before.sequence + 1);
+    for (const queues of Object.values(before.joins))
+      for (const queue of Object.values(queues))
+        for (const token of queue) remember(token.results, before.sequence + 1);
+    remember(before.outputs, before.sequence + 1);
+  }
+  const checkedResults = new Map<Record<string, WorkflowResult>, number>();
   function validateResultOrigins(results: Record<string, WorkflowResult>, before?: number): void {
-    if (checkedResults.has(results)) return;
-    checkedResults.add(results);
+    const bound = before ?? sequence + 1;
+    if (helpers) {
+      helpers.validateOrigins(results, sequences, bound);
+      return;
+    }
+    const priorBound = baselineResults.get(results);
+    if (priorBound !== undefined && bound >= priorBound && isImmutableRuntimeSnapshot(results))
+      return;
+    if ((checkedResults.get(results) ?? Infinity) <= bound) return;
+    checkedResults.set(results, bound);
     for (const [stepId, result] of Object.entries(results)) {
       if (
         result.sequence >= (before ?? sequence + 1) ||
@@ -446,14 +564,14 @@ function validateWorkflowRunSnapshot(data: JsonObject, expectedRunId?: string): 
     if (contextSequence !== sequenceFromId(action.id, runId, 'Action.id', sequence)) {
       invalid(`Action ${action.id} 的上下文序号不一致`);
     }
-    const results = parseResults(context.results, `actionContexts.${action.id}.results`);
+    const results = parseResults(context.results, `actionContexts.${action.id}.results`, helpers);
     validateResultOrigins(results, contextSequence);
   }
   for (const wait of waits) validateResultOrigins(wait.results, wait.sequence);
   for (const wait of evidenceWaits) validateResultOrigins(wait.results, wait.sequence);
 
   if (!Array.isArray(data.ready)) invalid('WorkflowRun.ready 必须是数组');
-  const ready = data.ready.map((token) => parseToken(token, 'WorkflowRun.ready token'));
+  const ready = data.ready.map((token) => parseToken(token, 'WorkflowRun.ready token', helpers));
   for (const token of ready) validateResultOrigins(token.results);
 
   const joinsData = object(data.joins, 'WorkflowRun.joins');
@@ -467,7 +585,7 @@ function validateWorkflowRunSnapshot(data: JsonObject, expectedRunId?: string): 
           if (!Array.isArray(rawQueue))
             invalid(`WorkflowRun.joins.${stepId}.${parentId} 必须是数组`);
           const tokens = rawQueue.map((rawToken) => {
-            const token = parseToken(rawToken, `WorkflowRun.joins.${stepId}.${parentId}`);
+            const token = parseToken(rawToken, `WorkflowRun.joins.${stepId}.${parentId}`, helpers);
             if (token.to !== stepId || token.from !== parentId) {
               invalid(`WorkflowRun.joins.${stepId}.${parentId} 包含错误来源的 token`);
             }
@@ -481,7 +599,7 @@ function validateWorkflowRunSnapshot(data: JsonObject, expectedRunId?: string): 
     }),
   );
 
-  const outputs = parseResults(data.outputs, 'WorkflowRun.outputs');
+  const outputs = parseResults(data.outputs, 'WorkflowRun.outputs', helpers);
   validateResultOrigins(outputs);
   if (!Array.isArray(data.children)) invalid('WorkflowRun.children 必须是数组');
   const children = data.children.map((rawChild) => {
@@ -537,7 +655,7 @@ function validateWorkflowRunSnapshot(data: JsonObject, expectedRunId?: string): 
     invalid(`${String(data.status)} Run 必须记录停止原因`);
   }
 
-  return {
+  const result: WorkflowRun = {
     protocolVersion: 1,
     schemaVersion: 1,
     runId,
@@ -563,4 +681,5 @@ function validateWorkflowRunSnapshot(data: JsonObject, expectedRunId?: string): 
     lineage,
     ...(data.reason === undefined ? {} : { reason: data.reason as string }),
   };
+  return result;
 }

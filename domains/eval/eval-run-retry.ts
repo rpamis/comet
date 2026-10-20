@@ -35,6 +35,7 @@ export async function readEvalRetrySelection(
   const run = await readEvalRun(project, id);
   if (!['completed', 'stopped', 'interrupted'].includes(run.executionStatus))
     throw new EvalRunError('原评估尚未结束，请先停止并核对执行状态', 409);
+  if (run.integrity !== 'valid') throw new EvalRunError('原始用例证据身份无效，不能重跑', 409);
   const failed = run.cases.filter((item) => item.passed === false);
   if (!failed.length)
     throw new EvalRunError('没有已判定失败的用例；未执行的用例请通过完整评估补齐', 409);

@@ -46,6 +46,7 @@ export type {
 } from './workflow-definition.js';
 export { createMemoryRuntimeStore, createFileRuntimeStore } from './runtime-store.js';
 export {
+  iterateFileRuntimeStoreRunSources,
   listFileRuntimeStoreRuns,
   listFileRuntimeStoreRunSources,
   listFileRuntimeStoreRunKeys,
@@ -64,6 +65,10 @@ export { RuntimeProtocolError } from './runtime-errors.js';
 export type { RuntimeErrorCode, RuntimeErrorRecovery } from './runtime-errors.js';
 export { hashRuntimeValue } from './runtime-json.js';
 export {
+  portableRunCheckpointProjectionMatches,
+  portableClaimToken,
+  runtimeExecutionBinding,
+  preserveRuntimeExecutionOrigins,
   createPortableRunCheckpoint,
   encodePortableRunCheckpoint,
   portableRunCheckpointMatches,
@@ -97,3 +102,6 @@ export type {
   WorkflowTransitionHandler,
   WorkflowStepActivation,
 } from './workflow-run.js';
+
+export { readRuntimeProjection, queryRuntimeProjection } from './runtime-compact-query.js';
+export type { RuntimeQuery, RuntimeProjection } from './runtime-compact-query.js';

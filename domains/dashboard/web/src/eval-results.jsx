@@ -326,6 +326,17 @@ export function EvalOverview({ run }) {
                 : '任务检查决定结论；评分和执行证据用于解释结果。',
             )}
           </Text>
+          {run.subsetConclusion && (
+            <Text type="warning">
+              {t('仅失败用例重跑')}: {conclusionLabels[run.subsetConclusion]}。
+              {t('不能作为完整应用通过结论')}
+            </Text>
+          )}
+          {run.integrity && (
+            <Text type="secondary">
+              {t('证据完整性')}: {run.integrity} · {run.completeness} · {run.quality}
+            </Text>
+          )}
           <div className="dashboard-eval-result-counts">
             <Metric
               label={t(run.archiveId ? '原始业务测试通过项' : '通过用例')}

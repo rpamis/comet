@@ -2,7 +2,9 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
   listFileRuntimeStoreRuns,
-  listFileRuntimeStoreRunSources,
+  createFileRuntimeStore,
+  readRuntimeProjection,
+  iterateFileRuntimeStoreRunSources,
   hashRuntimeValue,
   parseWorkflowRun,
 } from '../engine/runtime.js';
@@ -24,11 +26,10 @@ export interface WorkflowApplicationRunObservation {
   error: { code: string; message: string } | null;
 }
 
-export async function listWorkflowApplicationRunSources(
+export async function* iterateWorkflowApplicationRunSources(
   projectRoot: string,
   options: { excludeApplications?: readonly string[] } = {},
 ) {
-  const result = [];
   for (const root of await readWorkspaceRuntimeRoots(projectRoot)) {
     const target = path.join(root, 'applications');
     const volume = path.parse(root).root;
@@ -42,9 +43,7 @@ export async function listWorkflowApplicationRunSources(
       ).exists
     )
       continue;
-    for (const entry of (await fs.readdir(target, { withFileTypes: true })).sort((a, b) =>
-      a.name.localeCompare(b.name),
-    )) {
+    for await (const entry of await fs.opendir(target)) {
       if (options.excludeApplications?.includes(entry.name)) continue;
       const applicationId = entry.name;
       if (
@@ -52,23 +51,32 @@ export async function listWorkflowApplicationRunSources(
         !entry.isDirectory() ||
         entry.isSymbolicLink()
       ) {
-        result.push({
+        yield {
           applicationId,
           rootDir: target,
           storageKey: applicationId,
           runId: null,
           fingerprint: applicationId,
           error: { code: 'APPLICATION_UNREADABLE', message: '应用 Runtime 目录项目无效' },
-        });
+        };
         continue;
       }
-      for (const source of await listFileRuntimeStoreRunSources({
+      for await (const source of iterateFileRuntimeStoreRunSources({
         rootDir: path.join(target, applicationId),
         mirroredRevisionPaths: ['run.revision'],
       }))
-        result.push({ ...source, applicationId, rootDir: path.join(target, applicationId) });
+        yield { ...source, applicationId, rootDir: path.join(target, applicationId) };
     }
   }
+}
+
+export async function listWorkflowApplicationRunSources(
+  projectRoot: string,
+  options: { excludeApplications?: readonly string[] } = {},
+) {
+  const result = [];
+  for await (const source of iterateWorkflowApplicationRunSources(projectRoot, options))
+    result.push(source);
   return result;
 }
 
@@ -274,4 +282,41 @@ export async function inspectWorkflowApplicationPackage(
       message: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+/** 只读逻辑投影保留池化载荷，不执行应用模块，也不迁移工作区。 */
+export async function readWorkflowApplicationRunProjection(
+  projectRoot: string,
+  applicationId: string,
+  runId: string,
+) {
+  if (!/^[a-z][a-z\d]*(?:[.-][a-z\d]+)*$/u.test(applicationId)) throw new Error('应用身份无效');
+  const found = [];
+  for (const root of await readWorkspaceRuntimeRoots(projectRoot)) {
+    const projection = await readRuntimeProjection(
+      createFileRuntimeStore<ApplicationRunRecord>({
+        rootDir: path.join(root, 'applications', applicationId),
+        mirroredRevisionPaths: ['run.revision'],
+      }),
+      runId,
+    ).catch((error) => {
+      if (error?.code === 'RUN_NOT_FOUND') return null;
+      throw error;
+    });
+    if (projection) found.push(projection);
+  }
+  if (found.length > 1) throw new Error('新旧应用 Runtime 同时存在，拒绝选择读取权威');
+  const projection = found[0];
+  if (!projection) return null;
+  const record = projection.record as ApplicationRunRecord;
+  const identity = record.application;
+  if (
+    !identity ||
+    identity.id !== applicationId ||
+    path.resolve(identity.projectRoot) !== (await fs.realpath(projectRoot)) ||
+    !identity.version ||
+    !/^[a-f0-9]{64}$/u.test(identity.contentHash)
+  )
+    throw new Error('应用固定身份与当前工作区不匹配');
+  return { application: identity, projection };
 }

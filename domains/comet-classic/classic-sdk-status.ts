@@ -1,3 +1,4 @@
+export { inspectClassicSdkRunDiagnostics } from './classic-sdk-diagnostics.js';
 import { isClassicSdkApprovedUpgrade } from './classic-sdk-profile.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';

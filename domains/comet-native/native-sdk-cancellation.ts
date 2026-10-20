@@ -11,12 +11,17 @@ import { nativeProjectPaths } from './native-paths.js';
 import type { NativePortableContinuation } from './native-portable-continuation.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import type { NativePortableState } from './native-portable-types.js';
-import { inspectNativeSdkCheckExecutions } from './native-sdk-check-execution.js';
+import {
+  inspectNativeSdkCheckExecutions,
+  hasNativeSdkPortableStopEvidence,
+  type NativeSdkCheckExecutionInspection,
+} from './native-sdk-check-execution.js';
 
 /** Run 取消只终止调度；原领取方或 Runtime 进程凭据还必须证明执行已停止。 */
 export async function inspectNativeSdkQuiescence(options: {
   projectRoot: string;
   run: WorkflowRun;
+  checkExecutionObservation?: readonly NativeSdkCheckExecutionInspection[];
 }) {
   const outstandingActions: Array<{
     runId: string;
@@ -26,10 +31,10 @@ export async function inspectNativeSdkQuiescence(options: {
     inputHash: string;
     reason: string;
     acknowledgementRequest?: {
-      operation: 'cancel';
+      operation: 'cancel' | 'acknowledge-stopped';
       runId: string;
       expectedRevision: number;
-      reason: string;
+      reason?: string;
       stoppedActions: Array<{
         actionId: string;
         attempt: number;
@@ -50,11 +55,13 @@ export async function inspectNativeSdkQuiescence(options: {
   async function inspect(run: WorkflowRun): Promise<void> {
     if (visited.has(run.runId)) return;
     visited.add(run.runId);
-    const executions = await inspectNativeSdkCheckExecutions({
-      projectRoot: options.projectRoot,
-      run,
-      includeSettled: true,
-    });
+    const executions =
+      (run === options.run ? options.checkExecutionObservation : undefined) ??
+      (await inspectNativeSdkCheckExecutions({
+        projectRoot: options.projectRoot,
+        run,
+        includeSettled: true,
+      }));
     for (const action of run.actions) {
       if (['pending', 'running', 'unknown'].includes(action.status)) {
         outstandingRuns.push(run.runId);
@@ -63,14 +70,16 @@ export async function inspectNativeSdkQuiescence(options: {
         (execution) => execution.actionId === action.id && execution.attempt === action.attempt,
       );
       const managedUnresolved = managed.some(
-        (execution) =>
-          !execution.quiescent && !(execution.phase === 'missing' && action.cancellation),
+        (execution) => !execution.quiescent || !hasNativeSdkPortableStopEvidence(run, action),
       );
       const requiresManagedStop = managed.some(
         (execution) => !execution.quiescent && execution.phase !== 'missing',
       );
       const claimedUnresolved =
-        action.status === 'cancelled' && action.claim !== undefined && !action.cancellation;
+        action.status === 'cancelled' &&
+        action.claim !== undefined &&
+        !action.cancellation &&
+        !action.executionStop;
       if (!managedUnresolved && !claimedUnresolved) continue;
       outstandingActions.push({
         runId: run.runId,
@@ -85,10 +94,14 @@ export async function inspectNativeSdkQuiescence(options: {
           ? {}
           : {
               acknowledgementRequest: {
-                operation: 'cancel' as const,
+                operation: ['succeeded', 'failed'].includes(action.status)
+                  ? ('acknowledge-stopped' as const)
+                  : ('cancel' as const),
                 runId: run.runId,
                 expectedRevision: run.revision,
-                reason: run.reason ?? 'Stop the cancelled work',
+                ...(['succeeded', 'failed'].includes(action.status)
+                  ? {}
+                  : { reason: run.reason ?? '停止已取消的工作' }),
                 stoppedActions: [
                   {
                     actionId: action.id,
@@ -138,6 +151,7 @@ export async function inspectNativeSdkQuiescence(options: {
 export async function inspectNativeSdkCancellation(options: {
   projectRoot: string;
   run: WorkflowRun;
+  checkExecutionObservation?: readonly NativeSdkCheckExecutionInspection[];
 }) {
   if (options.run.status !== 'cancelled') return null;
   const { quiescent, outstandingActions, outstandingRuns } =
@@ -225,6 +239,7 @@ export async function projectNativeSdkCancellationContinuation(options: {
   state: NativePortableState;
   base: NativePortableContinuation;
   cancellationObservation?: Awaited<ReturnType<typeof inspectNativeSdkCancellation>>;
+  checkExecutionObservation?: readonly NativeSdkCheckExecutionInspection[];
 }) {
   // 只复用同一次状态输出的观察；独立调用仍重新检查原执行和清理状态。
   const cancellation =

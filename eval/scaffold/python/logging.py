@@ -1,6 +1,9 @@
 """Output parsing, event extraction, and experiment logging for agent CLIs."""
 
 import json
+import hashlib
+import uuid
+import copy
 import math
 import os
 import re
@@ -926,5 +929,37 @@ def save_report(base_dir: Path, treatment_name: str, rep: int, report: dict[str,
     reports_dir = base_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     save_path = reports_dir / f"{stable_treatment_name(treatment_name)}_rep{rep}_report.json"
-    save_path.write_text(json.dumps(redact_sensitive(report), indent=2), encoding="utf-8")
+    # 报告先原子发布，随后在锁内发布新一代索引；中断只能暴露旧索引，不能伪造完整结论。
+    payload = redact_sensitive(copy.deepcopy(report))
+    if isinstance(payload.get("events_summary"), dict):
+        from scaffold.python.evidence_contract import case_identity
+        payload["case_identity"] = case_identity(payload, base_dir.name)
+        if treatment_name != payload["name"] or rep != payload["rep"]:
+            raise ValueError("报告文件身份与逐例证据不一致")
+    from scaffold.python.evidence_contract import report_publication_lock
+    with report_publication_lock(base_dir / ".report-publication.lock"):
+        _atomic_write_json(save_path, payload)
+        content = save_path.read_bytes()
+        manifest_path = base_dir / "report-generation.json"
+        manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {
+            "schema": "comet.eval.report-generation.v1", "experiment": base_dir.name, "reports": []
+        }
+        if manifest.get("schema") != "comet.eval.report-generation.v1" or manifest.get("experiment") != base_dir.name:
+            raise ValueError("报告发布索引身份无效")
+        summary = json.loads(content)
+        events = summary.get("events_summary")
+        if isinstance(events, dict):
+            prompt = events.get("prompt")
+            if isinstance(prompt, str):
+                events["prompt"] = prompt[:2048]
+                events["prompt_truncated"] = len(prompt) > 2048
+            events.pop("final_response", None)
+        entry = {"file": save_path.name, "sha256": hashlib.sha256(content).hexdigest(),
+                 "bytes": len(content), "summary": summary}
+        manifest["reports"] = sorted(
+            [item for item in manifest["reports"] if item["file"] != save_path.name] + [entry],
+            key=lambda item: item["file"],
+        )
+        manifest["generation"] = str(uuid.uuid4())
+        _atomic_write_json(manifest_path, manifest)
     return save_path

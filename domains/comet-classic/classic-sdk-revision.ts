@@ -4,6 +4,7 @@ import {
   createRuntime,
   defineWorkflow,
   hashRuntimeValue,
+  preserveRuntimeExecutionOrigins,
   RuntimeProtocolError,
   type WorkflowRun,
 } from '../engine/runtime.js';
@@ -52,7 +53,7 @@ export async function reviseClassicSdkWork(options: {
     state.workflow === 'full' ? 'full' : true,
   );
   const definition = defineWorkflow(application.workflow);
-  const upgraded = structuredClone(run);
+  const upgraded = preserveRuntimeExecutionOrigins(run);
   upgraded.workflow.hash = hashRuntimeValue(definition);
   upgraded.definitionHashes[JSON.stringify([definition.id, definition.version])] =
     hashRuntimeValue(definition);

@@ -3,6 +3,7 @@ import {
   withNativeLegacyArchiveMaterials,
 } from './native-archive-legacy-overlay.js';
 import { inspectNativeSdkQuiescence } from './native-sdk-cancellation.js';
+import type { NativeSdkCheckExecutionInspection } from './native-sdk-check-execution.js';
 import { readNativeSdkArchiveOriginals } from './native-sdk-archive-originals.js';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
@@ -681,6 +682,8 @@ export async function recoverNativeSdkArchiveOutcome(options: {
 export async function recoverCancelledNativeSdkArchive(options: {
   projectRoot: string;
   run: WorkflowRun;
+  readOnly?: boolean;
+  checkExecutionObservation?: readonly NativeSdkCheckExecutionInspection[];
 }): Promise<Awaited<ReturnType<typeof inspectNativeSdkArchiveFinalization>>> {
   const { run, projectRoot } = options;
   const action = run.actions.at(-1);
@@ -693,7 +696,15 @@ export async function recoverCancelledNativeSdkArchive(options: {
     action.status !== 'cancelled' ||
     (action.claim && action.claim.executorId !== nativeSdkArchiveFinalizeExecutor.id) ||
     appliedAction?.status !== 'succeeded' ||
-    !(await inspectNativeSdkQuiescence(options)).quiescent
+    !(
+      await inspectNativeSdkQuiescence({
+        projectRoot,
+        run,
+        ...(options.readOnly
+          ? { checkExecutionObservation: options.checkExecutionObservation }
+          : {}),
+      })
+    ).quiescent
   ) {
     throw new Error(
       'Cancelled Native Archive recovery requires applied Specs and proof that all original executions stopped',
@@ -705,6 +716,8 @@ export async function recoverCancelledNativeSdkArchive(options: {
     kind: 'archive',
     change: run.runId,
   });
+  if (transaction && options.readOnly)
+    throw new Error('取消归档仍有待收尾事务；只读诊断不能代替显式恢复');
   const bound = await archiveFinalizeBinding(run, action, projectRoot, transaction === null);
   const receipt = transaction
     ? await finalizeNativeSdkArchive({

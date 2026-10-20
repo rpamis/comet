@@ -130,7 +130,7 @@ test('stores shared upstream results once while preserving complete action input
     expect(portableRunCheckpointMatches(portable, portable)).toBe(true);
     if ('pool' in encoded) {
       const tampered = JSON.parse(JSON.stringify(encoded));
-      tampered.pool.maps[0].entries.push(['corrupt', 999999]);
+      tampered.pool.nodes[0].value = 999999;
       expect(() => readPortableRunCheckpoint(tampered, run.runId)).toThrow('invalid or changed');
     }
     const changed = await store.read('history');
@@ -220,7 +220,7 @@ test('captures pooled CAS input before awaiting and rejects corrupted pool refer
     const [entry] = await fs.readdir(path.join(root, '.runtime-store-v2'));
     const file = path.join(root, '.runtime-store-v2', entry, 'checkpoint.json');
     const envelope = JSON.parse(await fs.readFile(file, 'utf8'));
-    envelope.pool.maps[0].entries.push(['invalid', 999999]);
+    envelope.pool.nodes[0].value = 999999;
     const { schema: _schema, hash: _hash, ...payload } = envelope;
     envelope.hash = hashRuntimeValue(payload);
     const corrupt = JSON.stringify(envelope);
@@ -241,8 +241,8 @@ test('immutable map encoding does not expose cached delta arrays to later encodi
     { path: ['second'], group: 'test' },
   ];
   const first = encodeJsonValueMaps(record, paths, isImmutableRuntimeSnapshot);
-  expect(first.pool!.maps.some((map) => map.removed.includes('b'))).toBe(true);
-  (first.pool!.maps.find((map) => map.removed.length)!.removed as string[]).push('a');
+  expect(decodeJsonValueMaps(first.record, first.pool)).toEqual(record);
+  first.pool!.nodes[0].key = 'changed';
   const second = encodeJsonValueMaps(record, paths, isImmutableRuntimeSnapshot);
   expect(decodeJsonValueMaps(second.record, second.pool)).toEqual(record);
 });

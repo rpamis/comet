@@ -11,6 +11,12 @@ export type RuntimeErrorRecovery =
 
 /** 当前公开协议的错误码；宿主仍须保守处理未知的新错误码。 */
 export type RuntimeErrorCode =
+  | 'STORE_WRITER_FENCED'
+  | 'STORE_INDEX_CORRUPT'
+  | 'STORE_INDEX_EPOCH_CHANGED'
+  | 'STORE_BUSY'
+  | 'SCOPE_HELD'
+  | 'INVALID_VALIDATION'
   | 'ACTION_ACTIVE'
   | 'ACTION_ALREADY_ADVANCED'
   | 'ACTION_ALREADY_CLAIMED'
@@ -97,6 +103,12 @@ export type RuntimeErrorCode =
   | 'WORKFLOW_UNAVAILABLE';
 
 const recoveryByCode: Readonly<Record<RuntimeErrorCode, RuntimeErrorRecovery>> = Object.freeze({
+  STORE_WRITER_FENCED: 'inspect-run',
+  STORE_INDEX_CORRUPT: 'repair-storage',
+  STORE_INDEX_EPOCH_CHANGED: 'inspect-run',
+  STORE_BUSY: 'inspect-run',
+  SCOPE_HELD: 'inspect-run',
+  INVALID_VALIDATION: 'restore-definition',
   ACTION_ACTIVE: 'reconcile-execution',
   ACTION_ALREADY_ADVANCED: 'inspect-run',
   ACTION_ALREADY_CLAIMED: 'inspect-run',

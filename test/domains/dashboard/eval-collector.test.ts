@@ -1,3 +1,4 @@
+import { evalMatrix } from '../../helpers/eval-matrix.js';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -22,8 +23,13 @@ describe('Eval summary list', () => {
     const root = path.join(project, '.comet/eval/runs', id);
     await fs.mkdir(path.join(root, 'reports'), { recursive: true });
     await fs.writeFile(
+      path.join(root, 'expected-case-matrix.json'),
+      JSON.stringify(evalMatrix([{ task: 'case', treatment: 'BASE', rep: 1 }])),
+    );
+    await fs.writeFile(
       path.join(root, 'metadata.json'),
       JSON.stringify({
+        experiment_id: id,
         completed_at: '2026-10-10T12:00:00Z',
         expected_case_matrix: { case_count: 1 },
       }),
@@ -31,11 +37,15 @@ describe('Eval summary list', () => {
     await fs.writeFile(
       path.join(root, 'reports/case_report.json'),
       JSON.stringify({
-        name: 'case',
+        name: 'case-BASE',
+        rep: 1,
         passed,
         sample_quality: { status: 'included' },
         final_response: 'private-case-body',
         events_summary: {
+          treatment: 'BASE',
+          sample: 1,
+          task: 'case',
           skill_sources: [{ name: 'writer', path: 'writer' }],
           case_manifest: { task_hash: 'task', validator_hash: 'validator' },
         },

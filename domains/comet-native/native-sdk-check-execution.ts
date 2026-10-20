@@ -21,6 +21,9 @@ import {
 } from '../workflow-contract/protected-project-path.js';
 import {
   hashRuntimeValue,
+  portableClaimToken,
+  runtimeExecutionBinding,
+  type WorkflowRuntime,
   type RuntimeAction,
   type RuntimeValue,
   type RuntimeStoppedAction,
@@ -58,6 +61,7 @@ interface ProcessInstance {
 }
 export interface NativeSdkCheckExecution {
   schema: 'comet.native.sdk-check-execution.v1';
+  executionBinding?: string;
   runId: string;
   actionId: string;
   attempt: number;
@@ -90,6 +94,9 @@ async function readExecution(
   const file = await inspectProtectedProjectPath(runtimeRoot, ref, {
     label: 'Native 检查执行记录',
     expected: 'file',
+  }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return { exists: false };
+    throw error;
   });
   if (!file.exists) return null;
   const { bytes } = await readProtectedProjectFile(runtimeRoot, ref, 8 * 1024 * 1024, {
@@ -98,11 +105,13 @@ async function readExecution(
   const value = JSON.parse(bytes.toString('utf8')) as NativeSdkCheckExecution;
   if (
     value.schema !== 'comet.native.sdk-check-execution.v1' ||
+    (value.executionBinding !== undefined &&
+      value.executionBinding !== hashRuntimeValue(runtimeExecutionBinding(run, action))) ||
     value.runId !== run.runId ||
     value.actionId !== action.id ||
     value.attempt !== action.attempt ||
     value.inputHash !== action.inputHash ||
-    value.claimToken !== action.claim?.token ||
+    portableClaimToken(value.claimToken) !== portableClaimToken(action.claim?.token ?? '') ||
     !Number.isSafeInteger(value.owner?.pid) ||
     value.owner.pid < 1 ||
     !['reserved', 'running', 'completed', 'interrupted'].includes(value.phase) ||
@@ -281,6 +290,7 @@ export async function createNativeSdkCheckExecution(options: {
   const file = path.join(runtimeRoot, ...executionRef(run, action).split('/'));
   const execution: NativeSdkCheckExecution = {
     schema: 'comet.native.sdk-check-execution.v1',
+    executionBinding: hashRuntimeValue(runtimeExecutionBinding(run, action)),
     runId: run.runId,
     actionId: action.id,
     attempt: action.attempt,
@@ -366,6 +376,97 @@ export interface NativeSdkCheckExecutionInspection {
   reason?: string;
 }
 
+/** 可迁移的停止事实必须仍绑定本次领取，业务成功或失败本身不是停止证据。 */
+export function hasNativeSdkPortableStopEvidence(
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+): boolean {
+  if (!action.claim || !['succeeded', 'failed', 'cancelled'].includes(action.status)) return false;
+  const original = run.actions.find((entry) => entry.id === action.id);
+  if (!original || (original !== action && hashRuntimeValue(original) !== hashRuntimeValue(action)))
+    return false;
+  const matches = (value: RuntimeStoppedAction | undefined) =>
+    Boolean(
+      value &&
+      value.actionId === action.id &&
+      value.attempt === action.attempt &&
+      value.inputHash === action.inputHash &&
+      portableClaimToken(value.claimToken) === portableClaimToken(action.claim!.token) &&
+      typeof value.evidence === 'string' &&
+      value.evidence.trim() &&
+      value.evidence.length <= 4096 &&
+      !/^<.*>$/su.test(value.evidence.trim()),
+    );
+  if (matches(action.executionStop) || matches(action.cancellation)) return true;
+  const outcome = action.outcome;
+  if (
+    !outcome ||
+    outcome.actionId !== action.id ||
+    outcome.attempt !== action.attempt ||
+    outcome.inputHash !== action.inputHash ||
+    outcome.claimToken !== action.claim.token ||
+    !action.receipts.some(
+      (receipt) =>
+        receipt.outcomeId === outcome.outcomeId && receipt.hash === hashRuntimeValue(outcome),
+    )
+  )
+    return false;
+  const interruption = (
+    outcome.output as {
+      interruption?: { kind?: string; stoppedAction?: Omit<RuntimeStoppedAction, 'claimToken'> };
+    } | null
+  )?.interruption;
+  const stopped = interruption?.stoppedAction;
+  return (
+    outcome.status === 'failed' &&
+    interruption?.kind === 'execution-unknown' &&
+    stopped !== undefined &&
+    Object.keys(stopped).every((key) =>
+      ['actionId', 'attempt', 'inputHash', 'evidence'].includes(key),
+    ) &&
+    matches({ ...stopped, claimToken: outcome.claimToken })
+  );
+}
+
+/** 将本机已核验的进程停止事实提交到 Run，便于复制工作区后独立核验。 */
+export async function reconcileNativeSdkExecutionStops(
+  projectRoot: string,
+  initial: WorkflowRun,
+  runtime: WorkflowRuntime | (() => Promise<WorkflowRuntime>),
+): Promise<WorkflowRun> {
+  const inspections = await inspectNativeSdkCheckExecutions({
+    projectRoot,
+    run: initial,
+    includeSettled: true,
+  });
+  const stoppedActions = inspections.flatMap((item) => {
+    const action = initial.actions.find((entry) => entry.id === item.actionId)!;
+    if (
+      !item.quiescent ||
+      !item.execution ||
+      !['succeeded', 'failed', 'cancelled'].includes(action.status) ||
+      hasNativeSdkPortableStopEvidence(initial, action)
+    )
+      return [];
+    return [
+      {
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        claimToken: action.claim!.token,
+        evidence: `Runtime 已确认原受管执行停止；执行记录摘要 ${hashRuntimeValue(item.execution as unknown as RuntimeValue)}`,
+      },
+    ];
+  });
+  return stoppedActions.length
+    ? (typeof runtime === 'function' ? await runtime() : runtime).acknowledgeStopped({
+        runId: initial.runId,
+        expectedRevision: initial.revision,
+        stoppedActions,
+      })
+    : initial;
+}
+
 export async function inspectNativeSdkCheckExecutions(options: {
   projectRoot: string;
   run: Readonly<WorkflowRun>;
@@ -391,8 +492,8 @@ export async function inspectNativeSdkCheckExecutions(options: {
               process: 'unknown' as const,
               processBoundary: 'unknown' as const,
               phase: 'missing' as const,
-              quiescent: false,
-              recoveryRequired: true,
+              quiescent: hasNativeSdkPortableStopEvidence(run, action),
+              recoveryRequired: !hasNativeSdkPortableStopEvidence(run, action),
               reason: '检查缺少持久进程登记，无法确认它是否仍在执行',
             };
           const owner = await inspectProcessLiveness(execution.owner.pid, execution.owner.identity);
@@ -436,9 +537,14 @@ export async function inspectNativeSdkCheckExecutions(options: {
                 ? { reason: 'Windows 检查缺少整树停止证据；组长退出不能证明后代已停止' }
                 : {}),
             recoveryRequired:
-              owner !== 'alive' ||
-              execution.phase === 'completed' ||
-              execution.phase === 'interrupted',
+              !(
+                ['succeeded', 'failed', 'cancelled'].includes(action.status) &&
+                quiescent &&
+                hasNativeSdkPortableStopEvidence(run, action)
+              ) &&
+              (owner !== 'alive' ||
+                execution.phase === 'completed' ||
+                execution.phase === 'interrupted'),
           };
         } catch (error) {
           return {

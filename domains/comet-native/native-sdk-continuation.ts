@@ -17,7 +17,10 @@ import {
   projectNativeSdkCancellationContinuation,
   type inspectNativeSdkCancellation,
 } from './native-sdk-cancellation.js';
-import { inspectNativeSdkCheckExecutions } from './native-sdk-check-execution.js';
+import {
+  inspectNativeSdkCheckExecutions,
+  type NativeSdkCheckExecutionInspection,
+} from './native-sdk-check-execution.js';
 import {
   NATIVE_SDK_ARCHIVE_STEPS,
   nativeSdkRetryableArchivePreflight,
@@ -539,6 +542,7 @@ export async function projectNativeSdkContinuation(options: {
   skillExecutors?: readonly RuntimeExecutor[];
   editReviews?: readonly EditReviewObservation[];
   cancellationObservation?: Awaited<ReturnType<typeof inspectNativeSdkCancellation>>;
+  checkExecutionObservation?: readonly NativeSdkCheckExecutionInspection[];
 }) {
   const { run, state, projectRoot } = options;
   const dispatchCommandArgs = sdkDispatchCommand(options.applicationId ?? 'native', projectRoot);
@@ -603,6 +607,7 @@ export async function projectNativeSdkContinuation(options: {
     state,
     base,
     cancellationObservation: options.cancellationObservation,
+    checkExecutionObservation: options.checkExecutionObservation,
   });
   if (cancellation)
     return {
@@ -763,7 +768,9 @@ export async function projectNativeSdkContinuation(options: {
   const active = run.actions.filter(
     (action) => action.status === 'running' || action.status === 'unknown',
   );
-  const checkExecutions = await inspectNativeSdkCheckExecutions({ projectRoot, run });
+  const checkExecutions =
+    options.checkExecutionObservation ??
+    (await inspectNativeSdkCheckExecutions({ projectRoot, run }));
   const childCheckWaits = waits.filter((wait) =>
     ['supervisor.child.checks-stop', 'supervisor.child.integration-checks-stop'].includes(
       wait.stepId,

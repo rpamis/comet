@@ -24,10 +24,10 @@ describe('Eval source discovery', () => {
     const initial = await fingerprint(root);
     const readdir = vi.spyOn(fs, 'readdir');
     expect(await fingerprint(root)).toBe(initial);
-    expect(readdir).toHaveBeenCalledTimes(1);
+    expect(readdir).toHaveBeenCalledTimes(0);
     await fs.writeFile(path.join(reports, 'one_report.json'), '{"passed":false}');
     expect(await fingerprint(root)).not.toBe(initial);
-    expect(readdir).toHaveBeenCalledTimes(2);
+    expect(readdir).toHaveBeenCalledTimes(0);
   });
   it('invalidates terminal summaries when only execution-state changes', async () => {
     const file = path.join(reports, '..', 'execution-state.json');
@@ -97,6 +97,6 @@ describe('Eval source discovery', () => {
     const readdir = vi.spyOn(fs, 'readdir');
     expect(await listEvalRunSources(root)).toHaveLength(21);
     expect(realpath.mock.calls.length).toBeLessThan(60);
-    expect(readdir).toHaveBeenCalledTimes(1);
+    expect(readdir).toHaveBeenCalledTimes(0);
   });
 });

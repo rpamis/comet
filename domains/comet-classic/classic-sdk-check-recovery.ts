@@ -1,12 +1,18 @@
 import { isClassicSdkRejectedBuildProposal } from './classic-build-configuration.js';
 import path from 'node:path';
-import { hashRuntimeValue, type WorkflowRun } from '../engine/runtime.js';
-import { classicProjectTargetExists, readClassicProjectFile } from './classic-protected-path.js';
+import {
+  hashRuntimeValue,
+  portableClaimToken,
+  type RuntimeValue,
+  type WorkflowRun,
+} from '../engine/runtime.js';
+import { classicProjectTargetExists } from './classic-protected-path.js';
 import { classicSdkCheckCommand } from './classic-sdk-check.js';
 import {
   classicSdkCheckRecordRef,
   classicSdkCheckDirectoryRef,
   assertClassicSdkCheckReceipt,
+  readClassicSdkCheckRecoveryRecord,
 } from './classic-sdk-check-record.js';
 
 /** 只读诊断；恢复请求仍须由 Runtime 校验原 claim、版本和检查证据。 */
@@ -37,40 +43,43 @@ export async function inspectClassicSdkActionRecovery(projectRoot: string, run: 
         String((run.input as { change: string }).change),
         '--file',
         '<configuration-json>',
-        '--project-root',
-        path.resolve(projectRoot),
         '--json',
       ],
+      cwd: path.resolve(projectRoot),
       inspectRequest: { operation: 'inspect', runId: run.runId },
     };
   }
   const isCheck = action.type === 'call_tool' && action.ref === 'classic-check';
   const input = run.input as { changeDir?: string } | null;
   const evidenceDirectory = input?.changeDir ? classicSdkCheckDirectoryRef(run) : null;
-  const recordRef = isCheck && action.claim ? classicSdkCheckRecordRef(run, action) : null;
+  let recordRef = isCheck && action.claim ? classicSdkCheckRecordRef(run, action) : null;
   let record: Record<string, unknown> | null = null;
   let recordProblem: string | null = null;
   if (recordRef) {
     try {
-      if (
-        await classicProjectTargetExists(projectRoot, recordRef, {
-          label: 'Classic check recovery record',
-          expected: 'file',
-        })
-      ) {
-        const value = JSON.parse(
-          await readClassicProjectFile(projectRoot, recordRef, {
-            label: 'Classic check recovery record',
-            maxBytes: 4 * 1024 * 1024,
-          }),
-        );
+      const recovered = await readClassicSdkCheckRecoveryRecord(projectRoot, run, action);
+      if (recovered) {
+        recordRef = recovered.ref;
+        const value = recovered.value as Record<string, unknown> & {
+          status: string;
+          claim: { token: string };
+          command: { argv: unknown; cwd: string; timeoutMs: number };
+          result: { status: 'succeeded' | 'failed'; output: Record<string, RuntimeValue> };
+        };
         if (
           value?.schema !== 'comet.classic-sdk-check.v1' ||
           value.runId !== run.runId ||
           value.actionId !== action.id ||
           value.attempt !== action.attempt ||
           value.inputHash !== action.inputHash ||
-          hashRuntimeValue(value.claim) !== hashRuntimeValue(action.claim) ||
+          hashRuntimeValue({
+            ...value.claim,
+            token: portableClaimToken(value.claim?.token ?? ''),
+          }) !==
+            hashRuntimeValue({
+              ...action.claim,
+              token: portableClaimToken(action.claim?.token ?? ''),
+            }) ||
           !['started', 'completed'].includes(value.status) ||
           !Array.isArray(value.command?.argv) ||
           value.command.argv.length === 0 ||

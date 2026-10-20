@@ -1,4 +1,7 @@
-import { resolveWorkspaceRuntimeRoot } from '../../domains/workflow-contract/workspace-runtime.js';
+import {
+  resolveWorkspaceRuntimeRoot,
+  resolveWorkspaceRuntimeRootSync,
+} from '../../domains/workflow-contract/workspace-runtime.js';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -70,6 +73,11 @@ type JsonObject = { [key: string]: RuntimeValue };
 const operationFields = {
   start: ['runId', 'workflow', 'input', 'initialState'],
   inspect: ['runId'],
+  query: ['runId', 'view', 'limit', 'cursor', 'actionId', 'filter', 'artifactId'],
+  'acknowledge-stopped': ['runId', 'expectedRevision', 'stoppedActions'],
+  'inspect-storage-index': [],
+  'audit-storage-index': ['expectedEpoch'],
+  'rebuild-storage-index': ['expectedEpoch'],
   next: ['runId', 'expectedRevision'],
   execute: ['runId', 'expectedRevision', 'actionId', 'executorId'],
   'dispatch-command': ['runId', 'expectedRevision', 'commandId', 'name', 'input'],
@@ -162,7 +170,23 @@ function parseRequest(value: unknown): JsonObject & { operation: keyof typeof op
     throw new RuntimeProtocolError('UNSUPPORTED_PROTOCOL', '当前命令仅支持 protocolVersion: 1');
   }
   if (request.requestId !== undefined) text(request.requestId, 'requestId');
-  if (name !== 'start' || request.runId !== undefined) text(request.runId, 'runId');
+  if (!name.endsWith('storage-index') && (name !== 'start' || request.runId !== undefined))
+    text(request.runId, 'runId');
+  if (name.endsWith('storage-index') && name !== 'inspect-storage-index')
+    text(request.expectedEpoch, 'expectedEpoch');
+  if (name === 'query') {
+    if (!['current', 'summary', 'history', 'action', 'artifact'].includes(String(request.view)))
+      invalid('query.view 无效');
+    if (
+      request.limit !== undefined &&
+      (!Number.isSafeInteger(request.limit) ||
+        Number(request.limit) < 1 ||
+        Number(request.limit) > 100)
+    )
+      invalid('query.limit 必须在 1–100 之间');
+    for (const field of ['cursor', 'actionId', 'filter', 'artifactId'])
+      if (request[field] !== undefined) text(request[field], field);
+  }
   if (request.expectedRevision !== undefined)
     positiveInteger(request.expectedRevision, 'expectedRevision');
   if (name === 'start') {
@@ -192,7 +216,10 @@ function parseRequest(value: unknown): JsonObject & { operation: keyof typeof op
     text(request.name, 'name');
     if (!Object.hasOwn(request, 'input')) invalid('input 必须显式提供，可使用 null');
   }
-  if (name === 'cancel' && request.stoppedActions !== undefined) {
+  if (
+    (name === 'cancel' || name === 'acknowledge-stopped') &&
+    request.stoppedActions !== undefined
+  ) {
     if (!Array.isArray(request.stoppedActions)) invalid('stoppedActions 必须是停止确认数组');
     const seen = new Set<string>();
     for (const value of request.stoppedActions) {
@@ -273,6 +300,15 @@ function dispatch(
   );
   const command = { ...parameters, context };
   switch (request.operation) {
+    case 'query':
+    case 'inspect-storage-index':
+    case 'audit-storage-index':
+    case 'rebuild-storage-index':
+      throw new RuntimeProtocolError('INVALID_REQUEST', '只读查询和存储索引操作应通过独立入口');
+    case 'acknowledge-stopped':
+      return runtime.acknowledgeStopped(
+        command as unknown as Parameters<WorkflowRuntime['acknowledgeStopped']>[0],
+      );
     case 'start':
       return runtime.start(command as unknown as Parameters<WorkflowRuntime['start']>[0]);
     case 'inspect':
@@ -545,6 +581,97 @@ export async function runtimeDispatchCommand(
     requestId = (request.requestId as string | undefined) ?? requestId;
     const application = options.application;
     const builtIn = (SDK_APPLICATIONS as readonly string[]).includes(application ?? '');
+    if (request.operation.endsWith('storage-index')) {
+      if (
+        !application ||
+        builtIn ||
+        options.applicationFile ||
+        options.workflow?.length ||
+        options.rootDir
+      )
+        invalid('存储索引操作仅接受固定应用 --application');
+      const { inspectWorkflowApplicationStorageIndex, repairWorkflowApplicationStorageIndex } =
+        await import('../../domains/workflow-application/index.js');
+      const data =
+        request.operation === 'inspect-storage-index'
+          ? await inspectWorkflowApplicationStorageIndex(projectRoot, application)
+          : await repairWorkflowApplicationStorageIndex({
+              projectRoot,
+              applicationId: application,
+              operation: request.operation === 'audit-storage-index' ? 'audit' : 'rebuild',
+              expectedEpoch: request.expectedEpoch as string,
+            });
+      return {
+        exitCode: 0,
+        response: {
+          protocolVersion: 1,
+          requestId,
+          status: 'succeeded',
+          data: data as unknown as WorkflowRun,
+        },
+      };
+    }
+    if (request.operation === 'query') {
+      if (options.applicationFile || (application && (options.workflow?.length || options.rootDir)))
+        invalid('query 使用固定应用身份，不能同时指定应用文件或覆盖存储');
+      const { readRuntimeProjection, queryRuntimeProjection } =
+        await import('../../domains/engine/runtime-compact-query.js');
+      let projection;
+      if (application && !builtIn) {
+        const { readWorkflowApplicationRunProjection } =
+          await import('../../domains/workflow-application/index.js');
+        const observed = await readWorkflowApplicationRunProjection(
+          projectRoot,
+          application,
+          request.runId as string,
+        );
+        if (!observed) throw new RuntimeProtocolError('RUN_NOT_FOUND', '找不到固定应用 Run');
+        projection = observed.projection;
+      } else {
+        let store: RuntimeStore<WorkflowRun>;
+        if (application) {
+          if (application === 'native') {
+            const { resolveNativeSdkCommandRoot } =
+              await import('../../domains/comet-native/native-runtime-ownership.js');
+            projectRoot = await resolveNativeSdkCommandRoot(projectRoot, request.runId as string, {
+              readOnly: true,
+            });
+          } else {
+            const { resolveClassicSdkCommandRoot } =
+              await import('../../domains/comet-classic/classic-sdk-status.js');
+            projectRoot = await resolveClassicSdkCommandRoot(projectRoot, request.runId as string);
+          }
+          const owner = await readSdkChangeOwner(
+            projectRoot,
+            application === 'native' ? 'native' : 'classic',
+            request.runId as string,
+          );
+          if (!owner || owner.application !== application || owner.runId !== request.runId)
+            invalid('query 应用归属不匹配');
+          store =
+            application === 'native'
+              ? (
+                  await import('../../domains/comet-native/native-sdk-state-store.js')
+                ).createNativeSdkStateStore(projectRoot, { readOnly: true })
+              : (
+                  await import('../../domains/comet-classic/classic-sdk-state-store.js')
+                ).createClassicSdkStateStore(projectRoot, { readOnly: true });
+        } else
+          store = createFileRuntimeStore<WorkflowRun>({
+            rootDir: path.resolve(invocationCwd, text(options.rootDir, '--root-dir')),
+          });
+        projection = await readRuntimeProjection(store, request.runId as string);
+      }
+      const data = queryRuntimeProjection(
+        projection,
+        request as unknown as import('../../domains/engine/runtime-compact-query.js').RuntimeQuery,
+      );
+      return {
+        exitCode: 0,
+        response: { protocolVersion: 1, requestId, status: 'succeeded', data: data as WorkflowRun },
+      };
+    }
+
     if (options.applicationFile !== undefined || (application !== undefined && !builtIn)) {
       if (
         (options.workflow?.length ?? 0) > 0 ||
@@ -569,21 +696,12 @@ export async function runtimeDispatchCommand(
             application!,
             text(request.runId, 'runId'),
           );
-      let loaded = await loadWorkflowApplication({
+      const loaded = await loadWorkflowApplication({
         file,
         projectRoot,
         runId: request.runId as string | undefined,
         readOnly: request.operation === 'inspect',
       });
-      if (request.operation === 'inspect' && loaded.identity.base !== 'native') {
-        // Native diagnostics are read-only; other application bases keep their
-        // established inspection/recovery contract.
-        loaded = await loadWorkflowApplication({
-          file,
-          projectRoot,
-          runId: request.runId as string | undefined,
-        });
-      }
       const runtime = createRuntime({ ...loaded.implementation, store: loaded.store });
       const context = { requestId, projectRoot, invocationCwd, environment };
       const data = await withCometRuntimeProgress(() => dispatch(runtime, request, context));
@@ -723,7 +841,9 @@ export async function runtimeDispatchCommand(
       application === undefined
         ? undefined
         : path.join(
-            await resolveWorkspaceRuntimeRoot(projectRoot),
+            request.operation === 'inspect'
+              ? resolveWorkspaceRuntimeRootSync(projectRoot)
+              : await resolveWorkspaceRuntimeRoot(projectRoot),
             'sdk-runs',
             application === 'native' ? 'native' : 'classic',
           );
@@ -755,7 +875,7 @@ export async function runtimeDispatchCommand(
         : application !== undefined
           ? (
               await import('../../domains/comet-classic/classic-sdk-state-store.js')
-            ).createClassicSdkStateStore(projectRoot)
+            ).createClassicSdkStateStore(projectRoot, { readOnly: request.operation === 'inspect' })
           : createFileRuntimeStore<WorkflowRun>({ rootDir });
     let selectedBuiltInRun: WorkflowRun | null | undefined;
     if (application?.startsWith('classic-') && request.operation !== 'start') {

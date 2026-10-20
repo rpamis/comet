@@ -142,6 +142,9 @@ describe('eval command', () => {
     }
 
     expect(loadUserEvalEnvironment).toHaveBeenCalledTimes(2);
+    expect(loadUserEvalEnvironment).toHaveBeenNthCalledWith(1, process.env, undefined, {
+      create: false,
+    });
   });
 
   it('prints the generated user eval config path on first startup', async () => {

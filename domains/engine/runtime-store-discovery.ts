@@ -52,6 +52,7 @@ export async function listFileRuntimeStoreRunKeys(
       !entry.isSymbolicLink()
     )
       continue;
+    if (entry.name === '.runtime-store-coordination') continue;
     if (['.runtime-store-v2', '.runtime-store-history'].includes(entry.name)) {
       const partition = await inspectProtectedProjectPath(root, entry.name, {
         label: 'RuntimeStore checkpoint directory',
@@ -75,7 +76,11 @@ async function discoverFileRuntimeStoreRunSources(
   excludeClosed = false,
 ): Promise<FileRuntimeStoreRunSource[]> {
   const root = path.resolve(options.rootDir);
-  const available = await listFileRuntimeStoreRunKeys(options);
+  const available = storageKeys
+    ? [...new Set(storageKeys)].filter(
+        (key) => key && key !== '.' && key !== '..' && !key.includes('/') && !key.includes('\\'),
+      )
+    : await listFileRuntimeStoreRunKeys(options);
   const selected = storageKeys ? new Set(storageKeys) : null;
   const result: FileRuntimeStoreRunSource[] = [];
   const stamp = async (ref: string) => {
@@ -135,7 +140,15 @@ async function discoverFileRuntimeStoreRunSources(
                 typeof marker.recordHash !== 'string' ||
                 !/^[a-f0-9]{64}$/u.test(marker.recordHash) ||
                 Object.keys(marker).some(
-                  (key) => !['schema', 'runId', 'state', 'revision', 'recordHash'].includes(key),
+                  (key) =>
+                    ![
+                      'schema',
+                      'runId',
+                      'state',
+                      'revision',
+                      'recordHash',
+                      'writerProtocol',
+                    ].includes(key),
                 )
               )
                 throw new RuntimeProtocolError('STORE_CORRUPT_RECORD', 'RuntimeStore 历史标记损坏');
@@ -280,4 +293,52 @@ export async function readFileRuntimeStoreRunSources(
 ): Promise<Omit<FileRuntimeStoreRunSource, 'fingerprint'>[]> {
   const sources = await discoverFileRuntimeStoreRunSources(options, false, storageKeys);
   return sources.map(({ storageKey, runId, error }) => ({ storageKey, runId, error }));
+}
+
+/** 按需发现；每次 next 只解析一个来源，不预读整个目录或 Run 正文。 */
+export async function* iterateFileRuntimeStoreRunSources(
+  options: FileRuntimeStoreOptions,
+): AsyncGenerator<FileRuntimeStoreRunSource> {
+  const root = path.resolve(options.rootDir);
+  const volume = path.parse(root).root;
+  const relative = path.relative(volume, root).replaceAll('\\', '/');
+  if (!relative)
+    throw new RuntimeProtocolError('STORE_INVALID_ROOT', 'rootDir 不能是文件系统根目录');
+  if (
+    !(
+      await inspectProtectedProjectPath(volume, relative, {
+        label: 'RuntimeStore discovery',
+        expected: 'directory',
+      })
+    ).exists
+  )
+    return;
+  const seen = new Set<string>();
+  for (const ref of ['', '.runtime-store-v2', '.runtime-store-history']) {
+    if (
+      ref &&
+      !(
+        await inspectProtectedProjectPath(root, ref, {
+          label: 'RuntimeStore partition',
+          expected: 'directory',
+        })
+      ).exists
+    )
+      continue;
+    const entries = await fs.opendir(path.join(root, ref));
+    for await (const entry of entries) {
+      if (
+        !ref &&
+        (['.runtime-store-v2', '.runtime-store-history', '.runtime-store-coordination'].includes(
+          entry.name,
+        ) ||
+          /^\.[a-f0-9]{64}\.[a-f0-9-]{36}\.tmp$/u.test(entry.name))
+      )
+        continue;
+      if (seen.has(entry.name)) continue;
+      seen.add(entry.name);
+      const [source] = await discoverFileRuntimeStoreRunSources(options, true, [entry.name]);
+      if (source) yield source;
+    }
+  }
 }

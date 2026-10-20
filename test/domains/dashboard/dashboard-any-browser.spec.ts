@@ -766,3 +766,84 @@ test('Any ignores a delayed old search page after the new search has loaded', as
   await expect(page.locator('.any-app-row')).toContainText(['new-only']);
   await expect(page.getByRole('button', { name: '加载更多记录', exact: true })).toHaveCount(0);
 });
+
+test('Any bounds history pages and preserves selection when a cursor becomes stale', async ({
+  page,
+}) => {
+  const list = readApplicationDemo('application-runs', {});
+  const selected = list.items[0];
+  const original = readApplicationDemo('application-run', { locator: selected.locator });
+  const record = original.records[0];
+  const first = { ...record, id: 'bounded-first', active: false };
+  let detailLimit: string | null = null;
+  let historyRequests = 0;
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects')
+      return route.fulfill({
+        json: {
+          currentProjectId: 'fixture',
+          projects: [
+            {
+              id: 'fixture',
+              name: 'Fixture',
+              path: '/fixture',
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+    if (url.pathname.endsWith('/overview'))
+      return route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture' },
+          summary: {},
+          initialChanges: { items: [], total: 0 },
+          git: {},
+        },
+      });
+    if (url.pathname.endsWith('/application-runs'))
+      return route.fulfill({ json: { ...list, items: [selected], total: 1, nextCursor: null } });
+    if (url.pathname.endsWith('/application-run')) {
+      detailLimit = url.searchParams.get('recordLimit');
+      return route.fulfill({
+        json: {
+          ...original,
+          records: [first],
+          currentIds: [],
+          recordPage: { total: 80, nextCursor: 'page-two' },
+        },
+      });
+    }
+    if (url.pathname.endsWith('/application-run-records')) {
+      historyRequests++;
+      if (historyRequests > 1)
+        return route.fulfill({
+          status: 409,
+          json: { code: 'STALE_APPLICATION_CURSOR', error: '运行记录已变化，请重新读取当前页' },
+        });
+      return route.fulfill({
+        json: {
+          locator: selected.locator,
+          revision: original.revision,
+          items: [{ ...record, id: 'bounded-second', active: false }],
+          artifacts: [],
+          total: 80,
+          nextCursor: 'page-three',
+        },
+      });
+    }
+    return route.fulfill({ json: { items: [], pages: [] } });
+  });
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await page.getByRole('tab', { name: '执行记录', exact: true }).click();
+  await expect.poll(() => detailLimit).toBe('40');
+  await page.locator('[data-record-id="bounded-first"]').click();
+  await page.getByRole('button', { name: '加载更多执行记录', exact: true }).click();
+  await expect(page.locator('[data-record-id="bounded-second"]')).toBeVisible();
+  await page.getByRole('button', { name: '加载更多执行记录', exact: true }).click();
+  await expect(page.locator('[data-record-id="bounded-first"]')).toHaveClass(/selected/u);
+  await expect(page.getByText('运行记录已变化，请重新读取当前页')).toBeVisible();
+});

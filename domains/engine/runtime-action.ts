@@ -58,6 +58,8 @@ export interface RuntimeAction {
   retry: RuntimeRetryPolicy;
   requiredCapabilities: string[];
   claim?: RuntimeClaim;
+  executionOrigin?: { workflow: { id: string; version: string; hash: string } };
+  executionStop?: RuntimeStoppedAction;
   outcome?: RuntimeOutcome;
   receipts: { outcomeId: string; hash: string }[];
   rejectedOutcomes?: {
@@ -117,6 +119,7 @@ export function createRuntimeActionSnapshot(options: CreateRuntimeActionOptions)
 function initializeRuntimeAction(
   options: CreateRuntimeActionOptions,
   input: RuntimeValue,
+  inputHash?: string,
 ): RuntimeAction {
   for (const field of ['id', 'runId', 'stepId', 'type'] as const) nonEmpty(options[field], field);
   if (options.ref !== undefined) nonEmpty(options.ref, 'ref');
@@ -139,7 +142,7 @@ function initializeRuntimeAction(
     ...(options.ref === undefined ? {} : { ref: options.ref }),
     attempt,
     input,
-    inputHash: hashRuntimeValue(input),
+    inputHash: inputHash ?? hashRuntimeValue(input),
     status: 'pending',
     retry,
     requiredCapabilities: [...new Set(capabilities)],
@@ -150,7 +153,11 @@ function initializeRuntimeAction(
 
 export function claimRuntimeAction(
   action: RuntimeAction,
-  input: RuntimeClaim & { attempt: number; inputHash: string },
+  input: RuntimeClaim & {
+    attempt: number;
+    inputHash: string;
+    executionOrigin?: RuntimeAction['executionOrigin'];
+  },
 ): RuntimeAction {
   assertBinding(action, input.attempt, input.inputHash);
   nonEmpty(input.executorId, 'executorId');
@@ -173,7 +180,12 @@ export function claimRuntimeAction(
   if (action.status !== 'pending') {
     throw new RuntimeProtocolError('ACTION_NOT_PENDING', '只有待执行 Action 可以被领取');
   }
-  return { ...copyAction(action), claim, status: 'running' };
+  return {
+    ...copyAction(action),
+    claim,
+    status: 'running',
+    ...(input.executionOrigin ? { executionOrigin: structuredClone(input.executionOrigin) } : {}),
+  };
 }
 
 export function recordRuntimeOutcome(
@@ -278,6 +290,9 @@ export function retryRuntimeAction(
   next.attempt += 1;
   next.status = 'pending';
   delete next.claim;
+  delete next.executionOrigin;
+  delete next.executionStop;
+  delete next.cancellation;
   delete next.outcome;
   delete next.reason;
   return next;
@@ -306,6 +321,30 @@ export function acknowledgeRuntimeActionCancellation(
   if (action.cancellation && hashRuntimeValue(action.cancellation) !== hashRuntimeValue(stopped))
     throw new RuntimeProtocolError('OUTCOME_CONFLICT', '当前执行已有不同的停止确认');
   return { ...copyAction(action), cancellation: structuredClone(stopped) };
+}
+
+/** 原执行者确认终态任务已停止，不改变已经确认的执行结果。 */
+export function acknowledgeRuntimeActionStopped(
+  action: RuntimeAction,
+  stopped: RuntimeStoppedAction,
+): RuntimeAction {
+  keysOnly(stopped, ['actionId', 'attempt', 'inputHash', 'claimToken', 'evidence']);
+  for (const field of ['actionId', 'inputHash', 'claimToken', 'evidence'] as const)
+    nonEmpty(stopped[field], field);
+  if (
+    !Number.isSafeInteger(stopped.attempt) ||
+    stopped.attempt < 1 ||
+    /^<.*>$/su.test(stopped.evidence.trim())
+  )
+    throw new RuntimeProtocolError('INVALID_ACTION', '停止确认需要原执行尝试和实际停止证据');
+  assertBinding(action, stopped.attempt, stopped.inputHash);
+  if (stopped.actionId !== action.id || !action.claim || stopped.claimToken !== action.claim.token)
+    throw new RuntimeProtocolError('STALE_ACTION', '停止确认必须绑定原 Action 和领取身份');
+  if (!terminal(action))
+    throw new RuntimeProtocolError('ACTION_TERMINAL', '只能确认终态 Action 的执行停止');
+  if (action.executionStop && hashRuntimeValue(action.executionStop) !== hashRuntimeValue(stopped))
+    throw new RuntimeProtocolError('OUTCOME_CONFLICT', '当前执行已有不同的停止确认');
+  return { ...copyAction(action), executionStop: structuredClone(stopped) };
 }
 
 function keysOnly(
@@ -382,7 +421,10 @@ export function parseRuntimeAction(value: unknown): RuntimeAction {
 }
 
 /** 调用者已完成整个 Run 的 JSON 校验和隔离复制，逐项校验时复用该副本。 */
-export function validateRuntimeActionSnapshot(data: RuntimeValue): RuntimeAction {
+export function validateRuntimeActionSnapshot(
+  data: RuntimeValue,
+  inputHash?: string,
+): RuntimeAction {
   keysOnly(data, [
     'protocolVersion',
     'id',
@@ -403,6 +445,8 @@ export function validateRuntimeActionSnapshot(data: RuntimeValue): RuntimeAction
     'reconciliations',
     'reason',
     'cancellation',
+    'executionOrigin',
+    'executionStop',
   ]);
   if (data.protocolVersion !== 1) {
     throw new RuntimeProtocolError('UNSUPPORTED_PROTOCOL', '当前 Runtime 不支持此 Action 协议版本');
@@ -415,7 +459,7 @@ export function validateRuntimeActionSnapshot(data: RuntimeValue): RuntimeAction
     throw new RuntimeProtocolError('INVALID_ACTION', 'Action 缺少能力、结果或核对记录');
   }
   const action = data as unknown as RuntimeAction;
-  const normalized = initializeRuntimeAction(action, action.input);
+  const normalized = initializeRuntimeAction(action, action.input, inputHash);
   if (
     action.inputHash !== normalized.inputHash ||
     action.retry !== normalized.retry ||
@@ -441,8 +485,18 @@ export function validateRuntimeActionSnapshot(data: RuntimeValue): RuntimeAction
   ) {
     throw new RuntimeProtocolError('INVALID_ACTION', 'Action 状态与执行归属不一致');
   }
+  if (action.executionOrigin !== undefined) {
+    keysOnly(action.executionOrigin, ['workflow']);
+    keysOnly(action.executionOrigin.workflow, ['id', 'version', 'hash']);
+    nonEmpty(action.executionOrigin.workflow.id, 'executionOrigin.workflow.id');
+    nonEmpty(action.executionOrigin.workflow.version, 'executionOrigin.workflow.version');
+    if (!action.claim || !/^[a-f0-9]{64}$/u.test(action.executionOrigin.workflow.hash))
+      throw new RuntimeProtocolError('INVALID_ACTION', '执行来源必须包含领取记录和有效工作流摘要');
+  }
   if (action.cancellation !== undefined)
-    acknowledgeRuntimeActionCancellation(action, action.cancellation);
+    acknowledgeRuntimeActionCancellation({ ...action, input: null }, action.cancellation);
+  if (action.executionStop !== undefined)
+    acknowledgeRuntimeActionStopped({ ...action, input: null }, action.executionStop);
   const receiptIds = new Set<string>();
   for (const receipt of action.receipts) {
     keysOnly(receipt, ['outcomeId', 'hash']);
@@ -521,7 +575,10 @@ export function validateRuntimeActionSnapshot(data: RuntimeValue): RuntimeAction
     if (!stored || stored.hash !== hashRuntimeValue(action.outcome)) {
       throw new RuntimeProtocolError('INVALID_ACTION', '终态结果与已接受摘要不一致');
     }
-    recordRuntimeOutcome({ ...action, status: 'running', receipts: [] }, action.outcome);
+    recordRuntimeOutcome(
+      { ...action, input: null, status: 'running', receipts: [] },
+      action.outcome,
+    );
   } else if (action.outcome !== undefined) {
     throw new RuntimeProtocolError('INVALID_ACTION', '非执行终态不能保存当前执行结果');
   }

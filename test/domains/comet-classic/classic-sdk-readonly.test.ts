@@ -7,10 +7,39 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
-import { createFileRuntimeStore, type WorkflowRun } from '../../../domains/engine/runtime.js';
+import {
+  createFileRuntimeStore,
+  createPortableRunCheckpoint,
+  readRuntimeProjection,
+  queryRuntimeProjection,
+  type WorkflowRun,
+} from '../../../domains/engine/runtime.js';
+import { parseDocument } from 'yaml';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
 const roots: string[] = [];
+it('checks compact reads against the actual portable body and authoritative Run without writes', async () => {
+  const { root, backing, store, stateFile } = await fixture();
+  const authoritative = await backing.read('demo');
+  const before = await snapshot(root);
+  const fullRead = vi.spyOn(backing, 'read');
+  const projection = await readRuntimeProjection(store, 'demo');
+  expect(queryRuntimeProjection(projection, { view: 'current' })).toMatchObject({
+    runId: 'demo',
+    revision: authoritative!.revision,
+  });
+  expect(fullRead).not.toHaveBeenCalled();
+  expect(await snapshot(root)).toEqual(before);
+  const document = parseDocument(await fs.readFile(stateFile, 'utf8'));
+  document.set(
+    'run_checkpoint',
+    createPortableRunCheckpoint({ ...authoritative!, reason: '与权威历史不一致的有效副本' }),
+  );
+  const changed = document.toString();
+  await fs.writeFile(stateFile, changed);
+  await expect(readRuntimeProjection(store, 'demo')).rejects.toThrow(/comet state next/);
+  expect(await fs.readFile(stateFile, 'utf8')).toBe(changed);
+});
 afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));

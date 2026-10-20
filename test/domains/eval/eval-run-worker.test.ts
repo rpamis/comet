@@ -1,3 +1,4 @@
+import { evalMatrix } from '../../helpers/eval-matrix.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -72,8 +73,9 @@ describe('managed Eval worker process', () => {
       const project=process.argv[process.argv.indexOf('--project')+1];
       const root=path.join(project,'.comet/eval/runs',process.env.COMET_EVAL_EXPERIMENT_ID);
       fs.mkdirSync(path.join(root,'reports'),{recursive:true});
-      fs.writeFileSync(path.join(root,'metadata.json'),JSON.stringify({completed_at:'2026-10-11T00:00:00Z',expected_case_matrix:{case_count:1}}));
-      fs.writeFileSync(path.join(root,'reports/task_report.json'),JSON.stringify({name:'task',passed:true,checks_passed:[],checks_failed:[],sample_quality:{status:'included'},events_summary:{task:'task',case_manifest:{task_hash:'task',validator_hash:'rule'}}}));
+      fs.writeFileSync(path.join(root,'metadata.json'),JSON.stringify({experiment_id:process.env.COMET_EVAL_EXPERIMENT_ID,completed_at:'2026-10-11T00:00:00Z',expected_case_matrix:{case_count:1}}));
+      fs.writeFileSync(path.join(root,'reports/task_report.json'),JSON.stringify({name:'task-BASE',rep:1,passed:true,checks_passed:[],checks_failed:[],sample_quality:{status:'included'},events_summary:{task:'task',treatment:'BASE',sample:1,case_manifest:{task_hash:'task',validator_hash:'rule'}}}));
+      fs.writeFileSync(path.join(root,'expected-case-matrix.json'), ${JSON.stringify(JSON.stringify(evalMatrix([{ task: 'task', treatment: 'BASE', rep: 1 }])))});
       console.log('scripted evaluation finished');
       const text=Buffer.from('真实评估完成');process.stdout.write(text.subarray(0,1));setTimeout(()=>process.stdout.write(text.subarray(1)),50);
     `,
@@ -172,13 +174,15 @@ describe('managed Eval worker process', () => {
       const selected=JSON.parse(fs.readFileSync(marker.slice(1),'utf8'));
       if(selected.cases.length!==1||selected.cases[0].task!=='failed'||selected.cases[0].repetition!==2) throw new Error('wrong selection');
       const root=path.dirname(marker.slice(1));fs.mkdirSync(path.join(root,'reports'),{recursive:true});
-      fs.writeFileSync(path.join(root,'metadata.json'),JSON.stringify({completed_at:'2026-10-11',expected_case_matrix:{case_count:1}}));
-      fs.writeFileSync(path.join(root,'reports/failed_report.json'),JSON.stringify({name:'failed',passed:true,rep:2,sample_quality:{status:'included'},events_summary:{task:'failed',treatment:'DYNAMIC_SKILL',case_manifest:{task_hash:'fixed',validator_hash:'rule'}}}));
+      fs.writeFileSync(path.join(root,'metadata.json'),JSON.stringify({experiment_id:process.env.COMET_EVAL_EXPERIMENT_ID,completed_at:'2026-10-11',expected_case_matrix:{case_count:1}}));
+      fs.writeFileSync(path.join(root,'expected-case-matrix.json'), ${JSON.stringify(JSON.stringify(evalMatrix([{ task: 'failed', treatment: 'DYNAMIC_SKILL', rep: 2 }])))});
+      fs.writeFileSync(path.join(root,'reports/failed_report.json'),JSON.stringify({name:'failed-DYNAMIC_SKILL-r2',passed:true,rep:2,sample_quality:{status:'included'},events_summary:{task:'failed',treatment:'DYNAMIC_SKILL',sample:2,case_manifest:{task_hash:'fixed',validator_hash:'rule'}}}));
     `,
     );
     await runManagedEvalWorker(project, 'worker-run');
     const run = await readEvalRun(project, 'worker-run');
-    expect(run.conclusion).toBe('passed');
+    expect(run.conclusion).toBe('incomplete');
+    expect(run.subsetConclusion).toBe('passed');
     expect(run.baselineEligible).toBe(false);
     expect(run.cases[0].repetition).toBe(2);
   }, 30000);

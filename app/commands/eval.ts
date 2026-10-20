@@ -561,7 +561,7 @@ export async function evalRunCommand(options: EvalCommandOptions = {}): Promise<
 }
 
 export async function evalCollectCommand(options: EvalCommandOptions = {}): Promise<void> {
-  const userEnvironment = loadUserEvalEnvironment();
+  const userEnvironment = loadUserEvalEnvironment(process.env, undefined, { create: false });
   if (userEnvironment?.created) {
     console.log(`Created user Eval config template: ${userEnvironment.path}`);
     console.log('Edit this file with your model credentials, then run comet eval again.');
@@ -586,7 +586,7 @@ export async function evalCommand(
       throw new Error(
         'SDK 应用评估使用完整应用和自动用例；不能混入 Skill 目标、quick 或单任务选项',
       );
-    loadUserEvalEnvironment();
+    loadUserEvalEnvironment(process.env, undefined, { create: !options.collect });
     const { previewWorkflowApplicationEval, runWorkflowApplicationEval } =
       await import('../../domains/eval/index.js');
     const input = {

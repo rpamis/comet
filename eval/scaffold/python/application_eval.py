@@ -184,7 +184,7 @@ def _application_completeness(logger, context, results):
 
     import yaml
 
-    from scaffold.python.aligned_comparison import _report_identity, load_expected_case_matrix
+    from scaffold.python.aligned_comparison import load_expected_case_matrix
     from scaffold.python.evidence import stable_treatment_name
 
     def unlinked_path(value):
@@ -252,18 +252,10 @@ def _application_completeness(logger, context, results):
         failures.append("Application task set rejected: " + str(error))
 
     def identity(name, events, rep):
-        task = events.get("task")
-        treatment = events.get("treatment")
-        if (
-            not isinstance(task, str) or not isinstance(treatment, str)
-            or isinstance(rep, bool) or not isinstance(rep, int) or rep < 1
-            or type(events.get("sample")) is not int or events["sample"] != rep
-        ):
-            raise ValueError("missing or invalid task/treatment/repetition")
-        parsed = _report_identity({"name": name, "rep": rep}, treatment)
-        if parsed is None or parsed[0] != task or parsed[1] != rep:
-            raise ValueError("report name does not match its task/treatment")
-        return task, treatment, parsed[1]
+        from scaffold.python.evidence_contract import case_identity
+        parsed = case_identity({"name": name, "rep": rep, "passed": True,
+                                "events_summary": events}, context["experimentId"])
+        return parsed["task"], parsed["treatment"], parsed["repetition"]
 
     observed = []
     result_payloads = Counter()
@@ -300,6 +292,8 @@ def _application_completeness(logger, context, results):
             if not path.is_file():
                 raise ValueError("report is not a regular file")
             report = json.loads(path.read_text(encoding="utf-8"))
+            from scaffold.python.evidence_contract import case_identity
+            case_identity(report, context["experimentId"])
             key = identity(report["name"], report["events_summary"], report["rep"])
             if path.name != f"{stable_treatment_name(report['name'])}_rep{report['rep']}_report.json":
                 raise ValueError("report filename does not match its identity")

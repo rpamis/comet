@@ -180,10 +180,16 @@ it.each(['close', 'reopen'] as const)(
     vi.restoreAllMocks();
     expect(await store().readPartitionMetadata(runId)).toBe(state);
     expect(await store().read(runId)).toEqual(record);
-    await expect(
-      store().compareAndSwap(runId, 1, { ...record, revision: 2 }),
-    ).rejects.toMatchObject({ code: 'STORE_RUN_CLOSED' });
-    expect(await transition()).toBe(true);
+    if (direction === 'close') {
+      await expect(
+        store().compareAndSwap(runId, 1, { ...record, revision: 2 }),
+      ).rejects.toMatchObject({ code: 'STORE_RUN_CLOSED' });
+      expect(await transition()).toBe(true);
+    } else {
+      expect(await store().compareAndSwap(runId, 1, { ...record, revision: 2 })).toBe(true);
+      expect(await store().readDisposition(runId)).toBe('active');
+      expect(await store().read(runId)).toEqual({ ...record, revision: 2 });
+    }
   },
 );
 
@@ -275,3 +281,31 @@ it('discovery fingerprints include closed checkpoint changes and full reads reje
   expect(after[0].fingerprint).not.toBe(before[0].fingerprint);
   expect((await listFileRuntimeStoreRuns({ rootDir: root }))[0].error).not.toBeNull();
 });
+
+it.each(['close', 'reopen'] as const)(
+  'settles %s before an opposite transition with a stale revision',
+  async (direction) => {
+    if (direction === 'reopen') await store().closeRun(runId, 1);
+    const rename = fs.rename.bind(fs);
+    vi.spyOn(fs, 'rename').mockImplementation(async (source, destination) => {
+      const value = destination === marker() ? JSON.parse(await fs.readFile(source, 'utf8')) : null;
+      await rename(source, destination);
+      if (value?.state === (direction === 'close' ? 'closing' : 'reopening'))
+        throw new Error('after journal');
+    });
+    await expect(
+      direction === 'close' ? store().closeRun(runId, 1) : store().reopenRun(runId, 1),
+    ).rejects.toThrow('after journal');
+    vi.restoreAllMocks();
+    const opposite = (revision: number) =>
+      direction === 'close'
+        ? store().reopenRun(runId, revision)
+        : store().closeRun(runId, revision);
+    expect(await opposite(2)).toBe(false);
+    expect(await store().readPartitionMetadata(runId)).toBe(
+      direction === 'close' ? 'closed' : 'active',
+    );
+    expect(await opposite(1)).toBe(true);
+    expect(await store().read(runId)).toEqual(record);
+  },
+);

@@ -55,7 +55,14 @@ export async function evalSourceFingerprint(
     expected: 'directory',
   });
   if (!inspected.exists) return 'missing';
-  const rows: unknown[] = [];
+  let rowCount = 0;
+  let rowHash = 0n;
+  const addRow = (row: unknown) => {
+    rowCount++;
+    rowHash =
+      (rowHash + BigInt('0x' + createHash('sha256').update(JSON.stringify(row)).digest('hex'))) %
+      (1n << 256n);
+  };
   async function stamp(directory: string, prefix: string, predicate: (name: string) => boolean) {
     const entries = await sourceNames(directory);
     for (let i = 0; i < entries.length; i += 16)
@@ -66,7 +73,7 @@ export async function evalSourceFingerprint(
           .map(async (entry) => {
             const stat = await fs.lstat(path.join(directory, entry));
             if (stat.isSymbolicLink()) throw new Error('Eval 观测来源不能是符号链接');
-            rows.push([prefix + entry, stat.size, stat.mtimeMs, stat.ctimeMs, stat.ino]);
+            addRow([prefix + entry, stat.size, stat.mtimeMs, stat.ctimeMs, stat.ino]);
           }),
       );
   }
@@ -81,6 +88,8 @@ export async function evalSourceFingerprint(
           'execution-state.json',
           'managed-record-recovery.json',
           'reports',
+          'report-generation.json',
+          'results-repair.json',
         ].includes(name)
       : name === 'archive.json',
   );
@@ -89,8 +98,26 @@ export async function evalSourceFingerprint(
       label: 'Eval 用例报告',
       expected: 'directory',
     });
-    if (reports.exists)
-      await stamp(reports.target, 'reports/', (name) => /^[\w.-]+_report\.json$/u.test(name));
+    if (reports.exists) {
+      // 单运行也流式枚举；目录再大都不保留全量文件名与指纹数组。
+      let batch: string[] = [];
+      const flush = async () => {
+        await Promise.all(
+          batch.map(async (name) => {
+            const stat = await fs.lstat(path.join(reports.target, name));
+            if (stat.isSymbolicLink()) throw new Error('Eval 观测来源不能是符号链接');
+            addRow(['reports/' + name, stat.size, stat.mtimeMs, stat.ctimeMs, stat.ino]);
+          }),
+        );
+        batch = [];
+      };
+      for await (const entry of await fs.opendir(reports.target)) {
+        if (!/^[\w.-]+_report\.json$/u.test(entry.name)) continue;
+        batch.push(entry.name);
+        if (batch.length >= 16) await flush();
+      }
+      await flush();
+    }
   } else {
     const archive = await readEvalArchiveManifest(project, path.basename(relative));
     for (const ref of archive.runs) {
@@ -99,61 +126,59 @@ export async function evalSourceFingerprint(
         expected: 'file',
       });
       const stat = await fs.lstat(file.target);
-      rows.push([ref.file, stat.size, stat.mtimeMs, stat.ctimeMs, stat.ino]);
+      addRow([ref.file, stat.size, stat.mtimeMs, stat.ctimeMs, stat.ino]);
     }
   }
   return createHash('sha256')
-    .update(JSON.stringify(rows.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))))
+    .update(JSON.stringify([rowCount, rowHash.toString(16)]))
     .digest('hex');
 }
 
+export async function* iterateEvalRunSources(project: string) {
+  const root = await evalStoragePath(project, 'runs');
+  let directory: import('node:fs').Dir;
+  try {
+    directory = await fs.opendir(root);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw error;
+  }
+  for await (const entry of directory) {
+    if (
+      !entry.isDirectory() ||
+      entry.isSymbolicLink() ||
+      !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(entry.name)
+    )
+      continue;
+    const id = entry.name;
+    try {
+      yield {
+        id,
+        fingerprint: await evalSourceFingerprint(project, `.comet/eval/runs/${id}`, true),
+      };
+    } catch (error) {
+      yield {
+        id,
+        fingerprint: `unreadable:${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }
+}
 export async function listEvalRunSources(project: string) {
   return runWithHookReadCache(async () => {
-    const root = await evalStoragePath(project, 'runs');
-    const entries = await fs
-      .readdir(root, { withFileTypes: true })
-      .catch((error: NodeJS.ErrnoException) => {
-        if (error.code === 'ENOENT') return [];
-        throw error;
-      });
-    const runs = entries.filter(
-      (entry) =>
-        entry.isDirectory() &&
-        !entry.isSymbolicLink() &&
-        /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(entry.name),
-    );
     const result: { id: string; fingerprint: string }[] = [];
-    for (let offset = 0; offset < runs.length; offset += 16) {
-      result.push(
-        ...(await Promise.all(
-          runs.slice(offset, offset + 16).map(async ({ name: id }) => {
-            try {
-              return {
-                id,
-                fingerprint: await evalSourceFingerprint(project, `.comet/eval/runs/${id}`, true),
-              };
-            } catch (error) {
-              return {
-                id,
-                fingerprint: `unreadable:${error instanceof Error ? error.message : String(error)}`,
-              };
-            }
-          }),
-        )),
-      );
-    }
-    return result;
+    for await (const source of iterateEvalRunSources(project)) result.push(source);
+    return result.sort((a, b) => a.id.localeCompare(b.id));
   });
 }
 
-export async function listEvalArchiveSources(project: string) {
+export async function* iterateEvalArchiveSources(project: string) {
   const root = await inspectProtectedProjectPath(project, 'eval/archives', {
     label: 'Eval 归档',
     expected: 'directory',
   });
-  if (!root.exists) return [];
-  const result = [];
-  for (const entry of await fs.readdir(root.target, { withFileTypes: true })) {
+  if (!root.exists) return;
+  for await (const entry of await fs.opendir(root.target)) {
     if (
       !entry.isDirectory() ||
       entry.isSymbolicLink() ||
@@ -161,19 +186,23 @@ export async function listEvalArchiveSources(project: string) {
     )
       continue;
     try {
-      result.push({
+      yield {
         id: entry.name,
         fingerprint: await evalSourceFingerprint(project, evalArchiveRoot(entry.name)),
         error: null,
-      });
+      };
     } catch (error) {
-      result.push({
+      yield {
         id: entry.name,
         fingerprint: 'unreadable',
         error: error instanceof Error ? error.message : String(error),
-      });
+      };
     }
   }
+}
+export async function listEvalArchiveSources(project: string) {
+  const result = [];
+  for await (const source of iterateEvalArchiveSources(project)) result.push(source);
   return result;
 }
 
@@ -185,12 +214,19 @@ export function summarizeEvalRun(run: EvalRunDetail): EvalRunSummary {
     completedAt,
     executionStatus,
     conclusion,
+    subsetConclusion,
+    completeness,
+    integrity,
+    quality,
+    domainConclusion,
+    evidenceRevision,
     target,
     passed,
     total,
     expectedTotal,
     metrics,
     baselineScope,
+    storedBaselineScope,
     baselineRunId,
     boundBaselineRunId,
     isBaseline,
@@ -209,12 +245,19 @@ export function summarizeEvalRun(run: EvalRunDetail): EvalRunSummary {
     completedAt,
     executionStatus,
     conclusion,
+    subsetConclusion,
+    completeness,
+    integrity,
+    quality,
+    domainConclusion,
+    evidenceRevision,
     target,
     passed,
     total,
     expectedTotal,
     metrics,
     baselineScope,
+    storedBaselineScope,
     baselineRunId,
     boundBaselineRunId,
     isBaseline,
@@ -232,5 +275,12 @@ export function summarizeEvalRun(run: EvalRunDetail): EvalRunSummary {
 }
 
 export async function readEvalRunSummary(project: string, id: string): Promise<EvalRunSummary> {
-  return summarizeEvalRun(await readEvalRun(project, id, { includeCaseContent: false }));
+  return summarizeEvalRun(
+    await readEvalRun(project, id, {
+      includeCaseContent: false,
+      resumable: true,
+      maxReportBytes: 8 * 1024 * 1024,
+      maxReadMs: 1000,
+    }),
+  );
 }

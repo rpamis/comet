@@ -19,11 +19,26 @@ type SkillExecutionApplication = Pick<LoadedWorkflowApplication, 'manifest' | 's
   projectRoot?: string;
 };
 
+/** 宿主能力回调只接收隔离且冻结的 Action，不能改变后续预检输入。 */
+export function snapshotApplicationAction(action: Readonly<RuntimeAction>): RuntimeAction {
+  const snapshot = structuredClone(action);
+  const freeze = (value: unknown): void => {
+    if (!value || typeof value !== 'object' || Object.isFrozen(value)) return;
+    for (const child of Object.values(value)) freeze(child);
+    Object.freeze(value);
+  };
+  freeze(snapshot);
+  return snapshot;
+}
+
 /** 取消只停止调度；原领取方尚未确认停止时仍持有资源。 */
 export function applicationActionHoldsScope(action: Readonly<RuntimeAction>): boolean {
   return (
     ['running', 'unknown'].includes(action.status) ||
-    (action.status === 'cancelled' && Boolean(action.claim) && !action.cancellation)
+    (action.status === 'cancelled' &&
+      Boolean(action.claim) &&
+      !action.cancellation &&
+      !action.executionStop)
   );
 }
 
@@ -109,11 +124,14 @@ export function assertApplicationSkillExecutionScope(
             return applicationSkillScopesOverlap(scope.ref, target.ref);
           }),
         )
-      )
-        throw new RuntimeProtocolError(
-          'COMMAND_REJECTED',
-          `Skill 写入范围存在并行冲突：${action.stepId} / ${other.stepId}；请隔离范围或声明串行依赖`,
+      ) {
+        const error = new RuntimeProtocolError(
+          peer.runId === run.runId ? 'COMMAND_REJECTED' : 'SCOPE_HELD',
+          `Skill 写入范围存在并行冲突，仍由 Run ${peer.runId} 的 ${other.stepId} 占用；请停止原执行或提交真实结果`,
         );
+        Object.assign(error, { blockedRunIds: [peer.runId] });
+        throw error;
+      }
     }
 }
 
@@ -163,7 +181,10 @@ export function assertApplicationSkillAction(
       !(binding.authorizationChoices ?? ['approved']).includes(wait.decision.choice) ||
       wait.decision.proposalHash !== wait.proposalHash ||
       hashRuntimeValue(inherited.value) !==
-        hashRuntimeValue({ choice: wait.decision.choice, proposal: wait.proposal })
+        hashRuntimeValue({
+          choice: wait.decision.choice,
+          proposal: wait.proposal,
+        })
     )
       throw new RuntimeProtocolError('STALE_PROPOSAL', '此工作缺少父流程的当前批准记录');
   }
@@ -212,7 +233,13 @@ export function createApplicationSkillExecutor(
     async execute(action, context, run) {
       if (!run) throw new RuntimeProtocolError('INVALID_RUN', 'Skill 执行需要当前 SDK Run');
       const { binding, skill } = requiredBinding(application, action, run);
-      const result = await host.invokeSkill({ action, run, binding, skill, context });
+      const result = await host.invokeSkill({
+        action,
+        run,
+        binding,
+        skill,
+        context,
+      });
       // 已返回的原始结果交给 SDK Schema/业务验证器；拒绝时仍保存 output/artifacts。
       return result;
     },

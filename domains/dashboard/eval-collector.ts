@@ -1,6 +1,6 @@
 import {
-  listEvalRunSources,
-  listEvalArchiveSources,
+  iterateEvalRunSources,
+  iterateEvalArchiveSources,
   readEvalRunSummary,
   summarizeEvalRun,
   reconcileEvalRun,
@@ -16,7 +16,6 @@ import {
   DashboardSummaryIndex,
   DashboardSummaryIndexError,
   type DashboardSummaryRecord,
-  type DashboardSummarySource,
 } from './summary-index.js';
 
 const terminalStatuses = ['completed', 'stopped', 'interrupted', 'unknown'];
@@ -39,29 +38,32 @@ function index(projectRoot: string) {
     projectRoot,
     namespace: 'eval-v1',
     refreshIntervalMs: 3000,
-    discover: async () => {
-      const [runs, archives] = await Promise.all([
-        listEvalRunSources(projectRoot),
-        listEvalArchiveSources(projectRoot),
-      ]);
-      const sources: DashboardSummarySource[] = runs.map((source) => ({
-        ...source,
-        key: source.id,
-        read: async () => {
-          const summary = await readEvalRunSummary(projectRoot, source.id);
-          return [
-            indexed(
-              terminalStatuses.includes(summary.executionStatus)
-                ? summary
-                : summarizeEvalRun(
-                    await reconcileEvalRun(projectRoot, source.id, { includeCaseContent: false }),
-                  ),
-            ),
-          ];
-        },
-      }));
-      sources.push(
-        ...archives.map((source) => ({
+    discover: async function* () {
+      for await (const source of iterateEvalRunSources(projectRoot)) {
+        yield {
+          ...source,
+          key: source.id,
+          read: async () => {
+            const summary = await readEvalRunSummary(projectRoot, source.id);
+            return [
+              indexed(
+                terminalStatuses.includes(summary.executionStatus)
+                  ? summary
+                  : summarizeEvalRun(
+                      await reconcileEvalRun(projectRoot, source.id, {
+                        includeCaseContent: false,
+                        resumable: true,
+                        maxReportBytes: 8 * 1024 * 1024,
+                        maxReadMs: 1000,
+                      }),
+                    ),
+              ),
+            ];
+          },
+        };
+      }
+      for await (const source of iterateEvalArchiveSources(projectRoot))
+        yield {
           key: `archive:${source.id}`,
           fingerprint: source.fingerprint,
           read: async () => [
@@ -73,9 +75,7 @@ function index(projectRoot: string) {
               ),
             ),
           ],
-        })),
-      );
-      return sources;
+        };
     },
   });
 }

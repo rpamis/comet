@@ -136,6 +136,9 @@ describe('packaged static collect', () => {
     const packSource = await createPackSource();
     const isolatedEnv = {
       ...process.env,
+      HOME: path.join(owner, 'home'),
+      USERPROFILE: path.join(owner, 'home'),
+      UV_CACHE_DIR: path.join(owner, 'uv-cache'),
       npm_config_ignore_scripts: 'true',
       BENCH_CC_MODEL: undefined,
       ANTHROPIC_MODEL: undefined,
@@ -195,6 +198,9 @@ describe('packaged static collect', () => {
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
     expect(result.stdout.split(/\r?\n/u)).toContain('Tasks: pending generation');
+    await expect(fs.stat(path.join(isolatedEnv.HOME, '.comet/eval/.env'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
     await expect(
       fs.stat(path.join(owner, '.comet', 'eval', 'cache', 'venv')),
     ).rejects.toMatchObject({
@@ -351,6 +357,9 @@ describe('packaged static collect', () => {
     const packSource = await createPackSource();
     const baseEnv = {
       ...process.env,
+      HOME: path.join(owner, 'home'),
+      USERPROFILE: path.join(owner, 'home'),
+      UV_CACHE_DIR: path.join(owner, 'uv-cache'),
       npm_config_ignore_scripts: 'true',
       ANTHROPIC_API_KEY: 'main-secret-value',
       OPENAI_API_KEY: 'main-openai-secret',

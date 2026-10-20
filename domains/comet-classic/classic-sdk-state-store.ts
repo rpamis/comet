@@ -22,10 +22,12 @@ import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
 import {
   createFileRuntimeStore,
   createPortableRunCheckpoint,
+  portableRunCheckpointProjectionMatches,
   encodePortableRunCheckpoint,
   portableRunCheckpointMatches,
   PORTABLE_RUN_CHECKPOINT_KEY,
   readPortableRunCheckpoint,
+  readRuntimeProjection,
   type RuntimeStore,
   type WorkflowRun,
 } from '../engine/runtime.js';
@@ -106,6 +108,7 @@ export function createClassicSdkStateStore(
     identity?: ApplicationIdentity;
     readOnly?: boolean;
   } = {},
+  projectionRead = false,
 ): RuntimeStore<WorkflowRun> {
   const initialRuntimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
   const boundRuntimeRoot = async () => {
@@ -133,9 +136,23 @@ export function createClassicSdkStateStore(
   const projectionDir = 'state-projections/classic';
 
   function recoveryRequired(runId: string, reason: string): never {
-    const recovery = options.identity
-      ? `Run comet runtime dispatch --application ${options.identity.id} --request <inspect-request.json> with ${JSON.stringify({ operation: 'inspect', runId })}`
-      : `Run comet state next ${runId} --json`;
+    if (options.identity) {
+      const argv = [
+        'runtime',
+        'dispatch',
+        '--application-file',
+        path.join(options.identity.packageRoot, 'application.json'),
+        '--project-root',
+        projectRoot,
+        '--request',
+        '<recovery-request.json>',
+        '--json',
+      ];
+      throw new Error(
+        `Classic SDK Run ${runId} requires recovery: ${reason}. Save the recovery request JSON to a file and replace <recovery-request.json> with its path. Run comet with the exact argument array below to restore the recorded state and advance only the Runtime, without executing host work.\nRecovery argv: ${JSON.stringify(argv)}\nRecovery request: ${JSON.stringify({ operation: 'next', runId })}`,
+      );
+    }
+    const recovery = `Run comet state next ${runId} --json`;
     throw new Error(
       `Classic SDK Run ${runId} requires recovery: ${reason}. ${recovery} in ${projectRoot} to restore or synchronize its recorded state.`,
     );
@@ -311,7 +328,15 @@ export function createClassicSdkStateStore(
       ) {
         throw new Error(`Classic SDK state projection marker is invalid for ${runId}`);
       }
-      let loaded = await store.read(runId);
+      let loaded: WorkflowRun | null;
+      if (projectionRead) {
+        try {
+          loaded = (await readRuntimeProjection(store, runId)).record;
+        } catch (error) {
+          if ((error as { code?: string }).code !== 'RUN_NOT_FOUND') throw error;
+          loaded = null;
+        }
+      } else loaded = await store.read(runId);
       if (!loaded || (loaded.revision === 1 && marker && marker.revision > 1)) {
         if (options.readOnly) recoveryRequired(runId, 'the recorded Run is missing or incomplete');
         const recovered = await runWithoutClassicOperationObservations(() =>
@@ -328,8 +353,14 @@ export function createClassicSdkStateStore(
       let run: WorkflowRun = loaded;
       let state = run.state as unknown as ClassicState;
       const file = await stateFile(run);
+      const unpublishedStart =
+        !marker &&
+        run.revision === 1 &&
+        run.actions.every((action) => action.status === 'pending' && !action.claim);
       if (!file) {
-        if (options.readOnly) recoveryRequired(runId, 'the change directory is missing');
+        // 原始 SDK start 尚未创建文档目录时允许只读查看；已有投影仍需显式恢复。
+        if (options.readOnly && !unpublishedStart)
+          recoveryRequired(runId, 'the change directory is missing');
         return run; // Creation can commit before the change directory exists.
       }
       let source: string | null;
@@ -433,6 +464,16 @@ export function createClassicSdkStateStore(
         }
       }
       if (options.readOnly) {
+        const checkpoint = documentData?.[PORTABLE_RUN_CHECKPOINT_KEY];
+        let checkpointMatches = checkpoint === undefined;
+        if (checkpoint !== undefined && projectionRead) {
+          checkpointMatches = portableRunCheckpointProjectionMatches(checkpoint, run);
+        } else if (checkpoint !== undefined) {
+          checkpointMatches = portableRunCheckpointMatches(
+            checkpoint,
+            createPortableRunCheckpoint(run),
+          );
+        }
         // 初次创建尚未写入辅助 checkpoint 时，直接核对权威 Run 与状态文件。
         // 已存在的 checkpoint 仍需一致；诊断读取不补写缺失内容。
         if (
@@ -440,11 +481,7 @@ export function createClassicSdkStateStore(
           !hasClassicManagedRunMarker(source) ||
           !fileState ||
           !equal(fileState, state) ||
-          (documentData[PORTABLE_RUN_CHECKPOINT_KEY] !== undefined &&
-            !portableRunCheckpointMatches(
-              documentData[PORTABLE_RUN_CHECKPOINT_KEY],
-              createPortableRunCheckpoint(run),
-            )) ||
+          !checkpointMatches ||
           (options.identity &&
             documentData.application_checkpoint !== undefined &&
             !equal(documentData.application_checkpoint, options.identity))
@@ -507,7 +544,12 @@ export function createClassicSdkStateStore(
   }
 
   return {
+    queryScope: store.queryScope,
     read: (runId) => syncStateFile(runId, true),
+    readProjection: (runId) =>
+      createClassicSdkStateStore(projectRoot, { ...options, store, readOnly: true }, true).read(
+        runId,
+      ),
     async compareAndSwap(runId, expectedRevision, next) {
       return runWithoutClassicOperationObservations(async () => {
         if (options.readOnly) throw new Error('Classic SDK read-only store cannot change a Run');

@@ -1,3 +1,4 @@
+import { reconcileNativeSdkExecutionStops } from './native-sdk-check-execution.js';
 import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { readNativePortableTransaction } from './native-portable-transactions.js';
@@ -76,6 +77,14 @@ export async function archiveNativeSdkChange(options: {
   }
   const inspection = await inspectNativeSdkRun(options.projectRoot, options.name);
   let { run, state } = inspection;
+  if (!options.dryRun) {
+    run = await reconcileNativeSdkExecutionStops(
+      options.projectRoot,
+      run,
+      (await loadOwnedNativeSdkRuntime(options.projectRoot, options.name)).runtime,
+    );
+    inspection.run = run;
+  }
   if (options.legacySpecBackup) {
     if (options.dryRun)
       throw new NativeUsageError('--legacy-spec-backup cannot be used with --dry-run');

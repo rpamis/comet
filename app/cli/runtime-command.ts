@@ -41,8 +41,14 @@ Portable workflow requests:
   comet runtime dispatch --workflow workflow.json --root-dir .comet/runs --request request.json
 
 Cancel stops scheduling and preserves work. A claimed host must stop its execution and child tasks,
-then acknowledge using cancel.stoppedActions with the original actionId, attempt, inputHash,
+then acknowledge using acknowledge-stopped.stoppedActions (also supported by cancel.stoppedActions) with the original actionId, attempt, inputHash,
 claimToken and nonempty evidence. Native status shows cancelling until executions are stopped and current selection cleanup completes.
+
+Queries do not load application execution modules. Use operation query with view current, summary,
+history (limit 1–100, default 25; cursor binds storage, Run, revision and filter), action or artifact.
+Artifact queries return only bound references; they never read a requested resource path.
+Fixed applications support inspect-storage-index, audit-storage-index and rebuild-storage-index.
+Audit/rebuild require the expectedEpoch from inspection; storage operations reject application-file and root-dir.
 
 The request file is a JSON object, for example {"operation":"inspect","runId":"change-name"}.
 Built-in applications: native, classic-full, classic-hotfix, classic-tweak.

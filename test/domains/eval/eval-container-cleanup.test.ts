@@ -1,3 +1,4 @@
+import { evalMatrix } from '../../helpers/eval-matrix.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -580,8 +581,9 @@ require('node:fs').renameSync = () => {
       `
       const fs = require('node:fs'), root = ${JSON.stringify(runRoot)};
       fs.mkdirSync(root + '/reports');
-      fs.writeFileSync(root + '/metadata.json', JSON.stringify({ completed_at: new Date().toISOString(), pytest_exitstatus: 1, expected_case_matrix: { case_count: 1 } }));
-      fs.writeFileSync(root + '/reports/task_report.json', JSON.stringify({ name: 'task', passed: false, checks_passed: [], checks_failed: ['quality'], sample_quality: { status: 'included' }, events_summary: { task: 'task', case_manifest: { task_hash: 'task', validator_hash: 'rule' } } }));
+      fs.writeFileSync(root + '/metadata.json', JSON.stringify({ experiment_id: process.env.COMET_EVAL_EXPERIMENT_ID, completed_at: new Date().toISOString(), pytest_exitstatus: 1, expected_case_matrix: { case_count: 1 } }));
+      fs.writeFileSync(root + '/expected-case-matrix.json', ${JSON.stringify(JSON.stringify(evalMatrix([{ task: 'task', treatment: 'BASE', rep: 1 }])))});
+      fs.writeFileSync(root + '/reports/task_report.json', JSON.stringify({ name: 'task-BASE', rep: 1, passed: false, checks_passed: [], checks_failed: ['quality'], sample_quality: { status: 'included' }, events_summary: { task: 'task', treatment: 'BASE', sample: 1, case_manifest: { task_hash: 'task', validator_hash: 'rule' } } }));
       process.exitCode = 1;
     `,
     );

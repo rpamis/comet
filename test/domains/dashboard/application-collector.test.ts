@@ -104,6 +104,7 @@ describe('Comet Any observations', () => {
     project = path.join(root, 'project');
     await fs.mkdir(project);
     vi.stubEnv('COMET_DATA_DIR', path.join(root, 'data'));
+    vi.stubEnv('XDG_CACHE_HOME', path.join(root, 'cache'));
   });
   afterEach(async () => {
     vi.unstubAllEnvs();
@@ -423,4 +424,70 @@ describe('Comet Any observations', () => {
       readDashboardApplicationArtifact(project, item.locator, outside.id),
     ).rejects.toMatchObject({ statusCode: 403 });
   });
+  it('returns an explicit cache failure rather than silently scanning all Runtime records', async () => {
+    const fixture = await applicationObservationFixture(project);
+    const blocked = path.join(root, 'blocked-cache');
+    await fs.writeFile(blocked, 'not a directory');
+    vi.stubEnv('XDG_CACHE_HOME', blocked);
+    await expect(collectDashboardApplicationRunPage(project)).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'APPLICATION_INDEX_UNAVAILABLE',
+    });
+    expect(await fixture.outer.read(fixture.run.runId)).toMatchObject({
+      revision: fixture.run.revision,
+    });
+  });
+
+  it('bounds history while retaining selected and all current records, with stable artifact identifiers', async () => {
+    const store = createFileRuntimeStore<WorkflowRun>({
+      rootDir: path.join(resolveWorkspaceRuntimeRootSync(project), 'creator'),
+    });
+    const names = Array.from({ length: 46 }, (_, i) => `step-${i}`);
+    const runtime = createRuntime({
+      store,
+      workflows: [
+        {
+          id: 'comet-creator',
+          version: '1',
+          entry: names[0],
+          steps: Object.fromEntries(names.map((id) => [id, { type: 'handoff', ref: id }])),
+          transitions: names.slice(1).map((to, i) => ({ from: names[i], to })),
+        },
+      ],
+    });
+    let run = await runtime.start({
+      runId: 'bounded',
+      workflow: { id: 'comet-creator', version: '1' },
+      input: {},
+    });
+    for (const name of names.slice(0, -1))
+      run = await completeFixtureAction(runtime, run, name, { note: name });
+    const locator = (await collectDashboardApplicationRunPage(project)).items[0].locator;
+    const selectedId = `action:${run.actions[43].id}`;
+    const detail = (await collectDashboardApplicationRunDetail(project, locator, {
+      recordLimit: 4,
+      recordId: selectedId,
+    }))!;
+    expect(detail.records).toHaveLength(6);
+    expect(detail.records.some((record) => record.id === selectedId)).toBe(true);
+    expect(detail.currentIds).toEqual([`action:${run.actions[45].id}`]);
+    expect(detail.recordPage).toMatchObject({ total: 46, nextCursor: expect.any(String) });
+    const first = (await collectDashboardApplicationRunRecords(project, locator, { limit: 4 }))!;
+    expect(first.items).toHaveLength(4);
+    const artifact = first.artifacts.find((item) => item.recordId === first.items[0].id)!;
+    expect(detail.artifacts.find((item) => item.id === artifact.id)).toBeTruthy();
+    expect(await readDashboardApplicationArtifact(project, locator, artifact.id)).toMatchObject({
+      exists: true,
+    });
+    const next = await collectDashboardApplicationRunRecords(project, locator, {
+      limit: 4,
+      cursor: first.nextCursor!,
+    });
+    expect(next?.items).toHaveLength(4);
+    expect(next?.items[0].id).not.toBe(first.items[0].id);
+    await completeFixtureAction(runtime, run, names[45], { note: 'done' });
+    await expect(
+      collectDashboardApplicationRunRecords(project, locator, { cursor: first.nextCursor! }),
+    ).rejects.toMatchObject({ code: 'STALE_APPLICATION_CURSOR' });
+  }, 60000);
 });

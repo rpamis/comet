@@ -1,4 +1,4 @@
-import { applicationActionHoldsScope } from './skill-executor.js';
+import { applicationActionHoldsScope, snapshotApplicationAction } from './skill-executor.js';
 import type { RuntimeAction, WorkflowRun } from '../engine/runtime.js';
 import type { LoadedWorkflowApplication } from './types.js';
 import type { CliContinuationMode } from '../workflow-contract/output-envelope.js';
@@ -117,7 +117,7 @@ export function projectWorkflowApplicationRun(
         )
           return false;
         try {
-          return executor.supports(structuredClone(action));
+          return executor.supports(snapshotApplicationAction(action)) === true;
         } catch {
           return false;
         }

@@ -8,7 +8,12 @@ export function isClassicSdkCancellationComplete(run: WorkflowRun): boolean {
     run.actions.every(
       (action) =>
         !['pending', 'running', 'unknown'].includes(action.status) &&
-        !(action.status === 'cancelled' && action.claim && !action.cancellation),
+        !(
+          action.status === 'cancelled' &&
+          action.claim &&
+          !action.cancellation &&
+          !action.executionStop
+        ),
     ) &&
     run.waits.every((wait) => wait.status !== 'pending') &&
     (run.evidenceWaits ?? []).every((wait) => wait.status !== 'pending') &&

@@ -75,3 +75,47 @@ export async function fetchApplicationObservation(projectId, endpoint, query = {
   if (!response.ok) throw await dashboardResponseError(response);
   return response.json();
 }
+
+export function refreshApplicationRunDetail(previous, next) {
+  if (!previous || previous.locator !== next.locator) return next;
+  const changed = previous.revision !== next.revision;
+  const retained = previous.records.map((record) =>
+    changed ? { ...record, active: false, stale: true } : record,
+  );
+  return {
+    ...next,
+    records: [
+      ...new Map([...retained, ...next.records].map((record) => [record.id, record])).values(),
+    ],
+    artifacts: [
+      ...new Map(
+        [...(previous.artifacts ?? []), ...(next.artifacts ?? [])].map((artifact) => [
+          artifact.id,
+          artifact,
+        ]),
+      ).values(),
+    ],
+    recordPage: changed ? next.recordPage : (previous.recordPage ?? next.recordPage),
+  };
+}
+export function mergeApplicationRecordPage(previous, page) {
+  if (!previous || previous.locator !== page.locator || previous.revision !== page.revision)
+    return previous;
+  return {
+    ...previous,
+    records: [
+      ...new Map(
+        [...previous.records, ...page.items].map((record) => [record.id, record]),
+      ).values(),
+    ],
+    artifacts: [
+      ...new Map(
+        [...(previous.artifacts ?? []), ...(page.artifacts ?? [])].map((artifact) => [
+          artifact.id,
+          artifact,
+        ]),
+      ).values(),
+    ],
+    recordPage: { total: page.total, nextCursor: page.nextCursor },
+  };
+}

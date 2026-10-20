@@ -37,6 +37,7 @@ import {
   nativeSdkCheckStorageRef,
   requestNativeSdkCheckStop,
   hasNativeSdkCheckStopRequest,
+  reconcileNativeSdkExecutionStops,
 } from './native-sdk-check-execution.js';
 import { readProjectConfig } from './native-config.js';
 import { nativeProjectPaths } from './native-paths.js';
@@ -1301,6 +1302,34 @@ export async function recoverNativeSdkChecks(
         });
     }
   }
+  if (options.reconcileInterrupted) {
+    const terminal = options.stoppedActions!.filter((stopped) =>
+      ['succeeded', 'failed'].includes(
+        run.actions.find((action) => action.id === stopped.actionId)!.status,
+      ),
+    );
+    if (terminal.length) {
+      const observations = await inspectNativeSdkCheckExecutions({
+        projectRoot,
+        run,
+        includeSettled: true,
+      });
+      if (
+        observations.some(
+          (item) =>
+            terminal.some((stopped) => stopped.actionId === item.actionId) &&
+            item.phase !== 'missing' &&
+            !item.quiescent,
+        )
+      )
+        throw new Error('原检查仍未确认停止，不能登记终态执行停止事实');
+      run = await runtime.acknowledgeStopped({
+        runId: run.runId,
+        expectedRevision: run.revision,
+        stoppedActions: terminal,
+      });
+    }
+  }
   if (run.status === 'cancelled' && options.reconcileInterrupted) {
     const inspections = await inspectNativeSdkCheckExecutions({
       projectRoot,
@@ -1320,10 +1349,14 @@ export async function recoverNativeSdkChecks(
       runId: run.runId,
       expectedRevision: run.revision,
       reason: run.reason ?? '用户确认原检查及全部后代已停止',
-      stoppedActions: options.stoppedActions,
+      stoppedActions: options.stoppedActions!.filter(
+        (stopped) =>
+          run.actions.find((action) => action.id === stopped.actionId)?.status === 'cancelled',
+      ),
       context: { projectRoot, requestId: 'native-check-cancellation-recovery' },
     });
   }
+  run = await reconcileNativeSdkExecutionStops(projectRoot, run, runtime);
   if (run.status === 'cancelled' || run.status === 'completed') return run;
   for (const item of await inspectNativeSdkCheckExecutions({ projectRoot, run })) {
     if (!item.recoveryRequired) continue;
@@ -1429,5 +1462,5 @@ export async function recoverNativeSdkChecks(
       });
     }
   }
-  return run;
+  return reconcileNativeSdkExecutionStops(projectRoot, run, runtime);
 }

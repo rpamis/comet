@@ -1,5 +1,5 @@
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,7 +8,10 @@ import { prepareNativeApplication } from '../../helpers/native-application.js';
 import { readChangeRuntimeOwner } from '../../../domains/workflow-contract/change-runtime-owner.js';
 import { inspectCometHook } from '../../../domains/comet-entry/hook-router.js';
 import type { RuntimeAction, WorkflowRun } from '../../../domains/engine/runtime.js';
-import { createPortableRunCheckpoint } from '../../../domains/engine/runtime.js';
+import {
+  createFileRuntimeStore,
+  createPortableRunCheckpoint,
+} from '../../../domains/engine/runtime.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -31,6 +34,72 @@ async function removeLocalStores(projectRoot: string) {
       force: true,
     });
 }
+
+it('recovers an external Native Application using its exact readonly recovery arguments', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native recovery with spaces-'));
+  roots.push(root);
+  const f = await prepareNativeApplication(root);
+  const before = await f.dispatch({ operation: 'inspect', runId: f.name });
+  const runtimeRoot = resolveWorkspaceRuntimeRootSync(f.projectRoot);
+  const portableFile = path.join(f.projectRoot, 'docs/comet/changes', f.name, 'comet-state.yaml');
+  const portable = await fs.readFile(portableFile, 'utf8');
+  const snapshotFiles = async (directory: string) =>
+    Promise.all(
+      (await fs.readdir(directory, { recursive: true })).sort().map(async (relative) => {
+        const file = path.join(directory, relative);
+        const stat = await fs.lstat(file);
+        return [
+          relative,
+          stat.mtimeMs,
+          stat.isFile() ? (await fs.readFile(file)).toString('base64') : null,
+        ];
+      }),
+    );
+  const projectBeforeInspection = await snapshotFiles(f.projectRoot);
+  const packageBeforeInspection = await snapshotFiles(path.dirname(f.file));
+  await fs.rm(runtimeRoot, { recursive: true, force: true });
+  const message = await f.dispatch({ operation: 'inspect', runId: f.name }, true).then(
+    () => {
+      throw new Error('Read-only inspection unexpectedly restored the Run');
+    },
+    (error: Error) => JSON.parse(error.message).message as string,
+  );
+  expect(await fs.readFile(portableFile, 'utf8')).toBe(portable);
+  expect(await snapshotFiles(f.projectRoot)).toEqual(projectBeforeInspection);
+  expect(await snapshotFiles(path.dirname(f.file))).toEqual(packageBeforeInspection);
+  await expect(fs.stat(runtimeRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+  const argv = JSON.parse(/^Recovery argv: (.+)$/mu.exec(message)![1]) as string[];
+  const request = JSON.parse(/^Recovery request: (.+)$/mu.exec(message)![1]);
+  expect(argv).toContain(f.file);
+  expect(argv).toContain(f.projectRoot);
+  expect(request).toEqual({ operation: 'next', runId: f.name });
+  const requestFile = path.join(root, 'recovery request.json');
+  await fs.writeFile(requestFile, JSON.stringify(request));
+  const recover = () =>
+    spawnSync(
+      process.execPath,
+      [
+        path.resolve('bin/comet.js'),
+        ...argv.map((arg) => (arg === '<recovery-request.json>' ? requestFile : arg)),
+      ],
+      { encoding: 'utf8' },
+    );
+  await fs.writeFile(portableFile, portable + '\ninvalid: [\n');
+  expect(recover().status).not.toBe(0);
+  expect(await fs.readFile(portableFile, 'utf8')).toBe(portable + '\ninvalid: [\n');
+  expect(
+    await createFileRuntimeStore({
+      rootDir: path.join(runtimeRoot, 'applications', 'native-candidate-review'),
+    }).read(f.name),
+  ).toBeNull();
+  await fs.writeFile(portableFile, portable);
+  const result = recover();
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  const recovered = await f.dispatch({ operation: 'inspect', runId: f.name }, true);
+  expect(recovered.actions.map(({ id, status, attempt }) => ({ id, status, attempt }))).toEqual(
+    before.actions.map(({ id, status, attempt }) => ({ id, status, attempt })),
+  );
+});
 
 it('transfers a custom Supervisor through public CLI with fixed identity and an interrupted Child', async () => {
   const f = await fixture(true);
@@ -224,6 +293,7 @@ it('runs a real disk Skill, repairs a failed candidate, restores cold and retain
   expect(firstReview).toBeTruthy();
   expect(f.pending(run, 'verify.verifier')).toBeUndefined();
   const reviewStatus = await f.native(['status', f.name]);
+  expect(reviewStatus.diagnostics).toMatchObject({ executionReconciled: true, healthy: true });
   expect(reviewStatus.continuation.commandArgs).toEqual(builderWork.continuation.commandArgs);
   expect(reviewStatus.pendingAction.executeRequest).toEqual({
     operation: 'execute',

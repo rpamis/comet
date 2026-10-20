@@ -1,8 +1,9 @@
 import path from 'node:path';
 import {
   listFileRuntimeStoreRuns,
-  listFileRuntimeStoreRunSources,
+  iterateFileRuntimeStoreRunSources,
   createFileRuntimeStore,
+  readRuntimeProjection,
   parseWorkflowRun,
   type WorkflowRun,
 } from '../engine/runtime.js';
@@ -15,14 +16,18 @@ export interface CreatorRunObservation {
   error: { code: string; message: string } | null;
 }
 
-export async function listCreatorRunSources(projectRoot: string) {
-  const result = [];
+export async function* iterateCreatorRunSources(projectRoot: string) {
   for (const root of await readWorkspaceRuntimeRoots(projectRoot)) {
-    for (const source of await listFileRuntimeStoreRunSources({
+    for await (const source of iterateFileRuntimeStoreRunSources({
       rootDir: path.join(root, 'creator'),
     }))
-      result.push({ ...source, rootDir: path.join(root, 'creator') });
+      yield { ...source, rootDir: path.join(root, 'creator') };
   }
+}
+
+export async function listCreatorRunSources(projectRoot: string) {
+  const result = [];
+  for await (const source of iterateCreatorRunSources(projectRoot)) result.push(source);
   return result;
 }
 
@@ -72,4 +77,24 @@ export async function readCreatorRunRecord(
   const run = found[0] ? parseWorkflowRun(found[0], runId) : null;
   if (run && run.workflow.id !== 'comet-creator') throw new Error('记录不是 Creator Run');
   return run;
+}
+
+/** 只读紧凑投影，历史载荷按需物化。 */
+export async function readCreatorRunProjection(projectRoot: string, runId: string) {
+  const found = [];
+  for (const root of await readWorkspaceRuntimeRoots(projectRoot)) {
+    const projection = await readRuntimeProjection(
+      createFileRuntimeStore<WorkflowRun>({ rootDir: path.join(root, 'creator') }),
+      runId,
+    ).catch((error) => {
+      if (error?.code === 'RUN_NOT_FOUND') return null;
+      throw error;
+    });
+    if (projection) found.push(projection);
+  }
+  if (found.length > 1) throw new Error('新旧 Creator Runtime 同时存在，拒绝选择读取权威');
+  const projection = found[0] ?? null;
+  if (projection && projection.run.workflow.id !== 'comet-creator')
+    throw new Error('记录不是 Creator Run');
+  return projection;
 }

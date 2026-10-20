@@ -172,3 +172,5 @@ node scripts/lib/runtime-sdk-recovery-example.mjs --root-dir ./.tmp/recovery --r
 ```
 
 该示例默认目录为 `.comet/runtime-sdk-recovery-example`。它用本地文件模拟外部系统的可查询收据；真实应用须查询目标系统并核对原执行身份。`--confirmed-stopped` 是示例宿主的明确声明，不是 SDK 证明执行者已停止。已经执行的操作只回传原结果，不能用“未执行”证据重复发送。
+
+恢复、停止事实、存储审计和有界查询的边界见 [Runtime 恢复与规模化读取](runtime-recovery-and-scale.zh.md)。

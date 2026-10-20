@@ -1,15 +1,23 @@
+import { promises as fs } from 'node:fs';
 import { resolveClassicStateFile } from './classic-state-file.js';
 import { resolveWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
 import path from 'node:path';
 import { parseDocument } from 'yaml';
 import { hasClassicManagedRunMarker } from './classic-state.js';
-import { hashClassicProjectFile, readClassicProjectFile } from './classic-protected-path.js';
+import {
+  hashClassicProjectFile,
+  readClassicProjectFile,
+  inspectClassicProjectTarget,
+  classicProjectTargetExists,
+} from './classic-protected-path.js';
 import {
   createFileRuntimeStore,
   createPortableRunCheckpoint,
   readPortableRunCheckpoint,
   PORTABLE_RUN_CHECKPOINT_KEY,
   hashRuntimeValue,
+  portableClaimToken,
+  runtimeExecutionBinding,
   type RuntimeAction,
   type RuntimeOutcome,
   type WorkflowRun,
@@ -105,14 +113,22 @@ interface ClassicCheckReceipt {
 }
 
 function receiptIdentity(run: Readonly<WorkflowRun>, action: Readonly<RuntimeAction>) {
-  if (!action.claim) throw new Error('Classic check receipt requires the original claim');
+  return hashRuntimeValue(runtimeExecutionBinding(run, action));
+}
+
+function legacyReceiptIdentity(
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+  claim = action.claim,
+) {
+  if (!claim) throw new Error('Classic 检查收据缺少原领取身份');
   return hashRuntimeValue({
-    workflow: run.workflow,
+    workflow: action.executionOrigin?.workflow ?? run.workflow,
     runId: run.runId,
     actionId: action.id,
     attempt: action.attempt,
     inputHash: action.inputHash,
-    claim: action.claim,
+    claim,
   });
 }
 
@@ -131,6 +147,8 @@ export async function recordClassicSdkCheckReceipt(
 ) {
   const runId = receiptIdentity(run, action);
   const store = await receiptStore(projectRoot);
+  if (await store.read(legacyReceiptIdentity(run, action)))
+    await assertClassicSdkCheckReceipt(projectRoot, run, action, result);
   const next: ClassicCheckReceipt = {
     runId,
     revision: 1,
@@ -151,18 +169,43 @@ export async function assertClassicSdkCheckReceipt(
   action: Readonly<RuntimeAction>,
   result: CheckResult,
 ) {
-  const receipt = await (await receiptStore(projectRoot)).read(receiptIdentity(run, action));
-  if (
-    !receipt ||
-    receipt.schema !== 'comet.classic-sdk-check-receipt.v1' ||
-    receipt.revision !== 1 ||
-    receipt.resultHash !== hashRuntimeValue(receipt.result)
-  )
+  const store = await receiptStore(projectRoot);
+  let record: Awaited<ReturnType<typeof readClassicSdkCheckRecoveryRecord>>;
+  try {
+    record = await readClassicSdkCheckRecoveryRecord(projectRoot, run, action);
+  } catch (error) {
+    throw new Error(
+      `Classic original Runtime execution receipt alias is invalid: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+  const originalClaim = record?.value.claim as RuntimeAction['claim'];
+  const ids = [
+    ...new Set([
+      receiptIdentity(run, action),
+      legacyReceiptIdentity(run, action),
+      ...(originalClaim ? [legacyReceiptIdentity(run, action, originalClaim)] : []),
+    ]),
+  ];
+  const receipts = (
+    await Promise.all(ids.map(async (id) => ({ id, receipt: await store.read(id) })))
+  ).filter((entry) => entry.receipt !== null);
+  if (!receipts.length)
     throw new Error(
       'Classic check original Runtime execution receipt is unavailable; an editable recovery file or stdout cannot establish success',
     );
-  if (hashRuntimeValue(receipt.result) !== hashRuntimeValue(result))
-    throw new Error('Classic check result does not match the original Runtime execution receipt');
+  for (const { id, receipt } of receipts) {
+    if (
+      !receipt ||
+      receipt.runId !== id ||
+      receipt.schema !== 'comet.classic-sdk-check-receipt.v1' ||
+      receipt.revision !== 1 ||
+      receipt.resultHash !== hashRuntimeValue(receipt.result)
+    )
+      throw new Error('Classic 原始执行收据无效');
+    if (hashRuntimeValue(receipt.result) !== hashRuntimeValue(result))
+      throw new Error('Classic check result does not match the original Runtime execution receipt');
+  }
 }
 
 /** 按原领取身份定位检查记录，不把同一阶段的其他轮次当作本次结果。 */
@@ -178,6 +221,77 @@ export function classicSdkCheckRecordRef(
     actionId: action.id,
     attempt: action.attempt,
     inputHash: action.inputHash,
-    claim: action.claim,
+    claim: { ...action.claim, token: portableClaimToken(action.claim.token) },
   })}.json`;
+}
+
+function normalizedClaim(value: unknown) {
+  const claim = value as RuntimeAction['claim'];
+  if (!claim || typeof claim.token !== 'string') throw new Error('Classic 检查缺少原领取身份');
+  return { ...claim, token: portableClaimToken(claim.token) };
+}
+
+/** 旧 raw-key 仅作为同一领取的定位别名；可编辑 JSON 不提供执行结果权威。 */
+export async function readClassicSdkCheckRecoveryRecord(
+  projectRoot: string,
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+) {
+  const directory = classicSdkCheckDirectoryRef(run);
+  const inspected = await inspectClassicProjectTarget(projectRoot, directory, {
+    label: 'Classic 检查恢复目录',
+    expected: 'directory',
+  });
+  if (!inspected.exists) return null;
+  const stable = classicSdkCheckRecordRef(run, action);
+  const records: { ref: string; value: Record<string, unknown> }[] = [];
+  const rawRef = (claim: RuntimeAction['claim']) =>
+    `${directory}/sdk-${hashRuntimeValue({ runId: run.runId, actionId: action.id, attempt: action.attempt, inputHash: action.inputHash, claim })}.json`;
+  const seen = new Set<string>();
+  async function inspectRecord(ref: string) {
+    if (seen.has(ref)) return;
+    seen.add(ref);
+    if (
+      !(await classicProjectTargetExists(projectRoot, ref, {
+        label: 'Classic 检查恢复记录',
+        expected: 'file',
+      }))
+    )
+      return;
+    const value = JSON.parse(
+      await readClassicProjectFile(projectRoot, ref, {
+        label: 'Classic 检查恢复记录',
+        maxBytes: 4 * 1024 * 1024,
+      }),
+    );
+    if (ref !== stable && (value?.actionId !== action.id || value?.attempt !== action.attempt))
+      return;
+    if (
+      value?.runId !== run.runId ||
+      value.actionId !== action.id ||
+      value.attempt !== action.attempt ||
+      value.inputHash !== action.inputHash ||
+      hashRuntimeValue(normalizedClaim(value.claim)) !==
+        hashRuntimeValue(normalizedClaim(action.claim))
+    )
+      throw new Error('Classic check recovery record does not match the original claim');
+    const legacy = `${directory}/sdk-${hashRuntimeValue({ runId: run.runId, actionId: action.id, attempt: action.attempt, inputHash: action.inputHash, claim: value.claim })}.json`;
+    if (ref !== stable && ref !== legacy) throw new Error('Classic 检查恢复别名不匹配原领取');
+    records.push({ ref, value });
+    if (!seen.has(legacy)) await inspectRecord(legacy);
+  }
+  await inspectRecord(stable);
+  await inspectRecord(rawRef(action.claim));
+  // 仅旧版迁移缺少稳定定位时扫描此 Run 的记录，正常提交不随历史增长重复读取。
+  if (!records.length)
+    for (const name of (await fs.readdir(inspected.target)).filter((name) =>
+      /^sdk-[a-f0-9]{64}\.json$/u.test(name),
+    ))
+      await inspectRecord(`${directory}/${name}`);
+  if (!records.length) return null;
+  const digest = (value: Record<string, unknown>) =>
+    hashRuntimeValue({ ...value, claim: normalizedClaim(value.claim) });
+  if (records.some(({ value }) => digest(value) !== digest(records[0].value)))
+    throw new Error('Classic 检查恢复别名存在冲突');
+  return records.find(({ ref }) => ref === stable) ?? records[0];
 }

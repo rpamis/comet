@@ -33,7 +33,11 @@ async function fixture(shared = false, mixed = false) {
     type: 'object',
     required: ['input', 'activation'],
     properties: {
-      input: { type: 'object', required: ['topic'], properties: { topic: { type: 'string' } } },
+      input: {
+        type: 'object',
+        required: ['topic'],
+        properties: { topic: { type: 'string' } },
+      },
       activation: {
         type: 'object',
         required: ['workspaceRoot'],
@@ -68,8 +72,14 @@ async function fixture(shared = false, mixed = false) {
   }}]`,
   );
   await fs.writeFile(module, source);
-  const loaded = await loadWorkflowApplication({ file: disk.file, projectRoot: root });
-  const runtime = createRuntime({ ...loaded.implementation, store: loaded.store });
+  const loaded = await loadWorkflowApplication({
+    file: disk.file,
+    projectRoot: root,
+  });
+  const runtime = createRuntime({
+    ...loaded.implementation,
+    store: loaded.store,
+  });
   let run = await runtime.start({
     runId: 'workspaces',
     workflow: { id: 'editorial', version: '1' },
@@ -107,7 +117,11 @@ it('writes independently in two actual Git worktrees after the same approval', a
     capabilities: ['skill-script'],
     claimToken: 'left-claim',
   });
-  await f.runtime.execute({ runId: run.runId, actionId: right.id, executorId: 'local-skill' });
+  await f.runtime.execute({
+    runId: run.runId,
+    actionId: right.id,
+    executorId: 'local-skill',
+  });
   expect(await fs.readFile(path.join(f.rightRoot, 'shared.txt'), 'utf8')).toBe('right\n');
   expect(
     (await f.runtime.inspect(run.runId)).actions.find((action) => action.id === left.id),
@@ -142,7 +156,11 @@ it('rejects the same absolute file shared by different worktrees and retains unk
   const f = await fixture(true);
   const [left, right] = f.run.actions.filter((action) => action.status === 'pending');
   await expect(
-    f.runtime.execute({ runId: f.run.runId, actionId: right.id, executorId: 'local-skill' }),
+    f.runtime.execute({
+      runId: f.run.runId,
+      actionId: right.id,
+      executorId: 'local-skill',
+    }),
   ).rejects.toMatchObject({ code: 'COMMAND_REJECTED' });
   expect(
     (await f.runtime.inspect(f.run.runId)).actions.find((action) => action.id === right.id)?.status,
@@ -205,144 +223,156 @@ it('fails closed on corrupt peer records before claiming a shared write scope', 
       capabilities: ['skill-script'],
       claimToken: 'write',
     }),
-  ).rejects.toMatchObject({ code: 'INVALID_RUN' });
+  ).rejects.toMatchObject({ code: 'STORE_INDEX_CORRUPT' });
 });
 
-it('retains cancelled claims across cold reloads until the original executor confirms stopping', async () => {
-  const f = await fixture();
-  const action = f.run.actions.find((item) => item.stepId === 'left')!;
-  await f.runtime.claim({
-    runId: f.run.runId,
-    actionId: action.id,
-    attempt: action.attempt,
-    inputHash: action.inputHash,
-    executorId: 'local-skill',
-    capabilities: ['skill-script'],
-    claimToken: 'original-writer',
-  });
-
-  const restored = structuredClone(await f.runtime.inspect(f.run.runId));
-  restored.runId = 'restored-cancelled';
-  restored.revision = 50;
-  restored.status = 'cancelled';
-  restored.actions = restored.actions.map((item) => ({
-    ...item,
-    runId: restored.runId,
-    status: ['pending', 'running'].includes(item.status) ? 'cancelled' : item.status,
-  }));
-  await expect(
-    f.loaded.store.restoreCheckpoint!(restored.runId, null, restored),
-  ).rejects.toMatchObject({ code: 'COMMAND_REJECTED' });
-  let cancelled = await f.runtime.cancel({ runId: f.run.runId, reason: 'user cancellation' });
-  const store = createFileRuntimeStore({
-    rootDir: path.join(
-      resolveWorkspaceRuntimeRootSync(f.root),
-      'applications',
-      f.loaded.identity.id,
-    ),
-    mirroredRevisionPaths: ['run.revision'],
-  });
-  expect(await store.readPartitionMetadata(cancelled.runId)).toBe('active');
-  const loaded = await loadWorkflowApplication({ file: f.disk.file, projectRoot: f.root });
-  const runtime = createRuntime({ ...loaded.implementation, store: loaded.store });
-  let peer = await runtime.start({
-    runId: 'peer',
-    workflow: { id: 'editorial', version: '1' },
-    input: f.run.input,
-  });
-  peer = await runtime.execute({
-    runId: peer.runId,
-    actionId: peer.actions[0].id,
-    executorId: 'tool-host',
-  });
-  peer = await runtime.resolveWait({
-    runId: peer.runId,
-    waitId: peer.waits[0].id,
-    proposalHash: peer.waits[0].proposalHash,
-    decisionId: 'peer-approval',
-    choice: 'approved',
-  });
-  peer = await runtime.execute({
-    runId: peer.runId,
-    actionId: peer.actions.at(-1)!.id,
-    executorId: 'tool-host',
-  });
-  const next = peer.actions.find((item) => item.stepId === 'left')!;
-  const claim = {
-    runId: peer.runId,
-    actionId: next.id,
-    attempt: next.attempt,
-    inputHash: next.inputHash,
-    executorId: 'local-skill',
-    capabilities: ['skill-script'],
-    claimToken: 'peer-writer',
-  };
-  await expect(runtime.claim(claim)).rejects.toMatchObject({ code: 'COMMAND_REJECTED' });
-  const stopped = {
-    actionId: action.id,
-    attempt: action.attempt,
-    inputHash: action.inputHash,
-    claimToken: 'wrong',
-    evidence: 'The original process and its children have exited.',
-  };
-  await expect(
-    runtime.cancel({ runId: cancelled.runId, reason: 'confirm', stoppedActions: [stopped] }),
-  ).rejects.toMatchObject({ code: 'STALE_ACTION' });
-  await expect(runtime.claim(claim)).rejects.toMatchObject({ code: 'COMMAND_REJECTED' });
-  cancelled = await runtime.cancel({
-    runId: cancelled.runId,
-    reason: 'confirm',
-    stoppedActions: [{ ...stopped, claimToken: 'original-writer' }],
-  });
-  expect(await store.readPartitionMetadata(cancelled.runId)).toBe('closed');
-  expect((await runtime.claim(claim)).actions.find((item) => item.id === next.id)?.status).toBe(
-    'running',
-  );
-  // 原取消的重复提交保持兼容，封存不永久阻止幂等确认。
-  await runtime.cancel({
-    runId: cancelled.runId,
-    reason: 'confirm',
-    stoppedActions: [{ ...stopped, claimToken: 'original-writer' }],
-  });
-  expect(await store.readPartitionMetadata(cancelled.runId)).toBe('closed');
-});
-
-it('migrates validated quiescent legacy peers in bounded batches before cold scope claims', async () => {
-  const f = await fixture();
-  const store = createFileRuntimeStore({
-    rootDir: path.join(
-      resolveWorkspaceRuntimeRootSync(f.root),
-      'applications',
-      f.loaded.identity.id,
-    ),
-    mirroredRevisionPaths: ['run.revision'],
-  });
-  const legacyIds: string[] = [];
-  for (let index = 0; index < 10; index++) {
-    const old = await f.runtime.start({
-      runId: `legacy-ended-${index}`,
-      workflow: { id: 'editorial', version: '1' },
-      input: f.run.input,
-    });
-    const ended = await f.runtime.cancel({ runId: old.runId, reason: 'never executed' });
-    await store.reopenRun(ended.runId, ended.revision);
-    legacyIds.push(ended.runId);
-  }
-  const loaded = await loadWorkflowApplication({ file: f.disk.file, projectRoot: f.root });
-  const runtime = createRuntime({ ...loaded.implementation, store: loaded.store });
-  for (const [index, stepId] of ['left', 'right'].entries()) {
-    const action = f.run.actions.find((item) => item.stepId === stepId)!;
-    await runtime.claim({
+it.each(['cancel', 'acknowledgeStopped'] as const)(
+  'retains cancelled claims across cold reloads until the original executor confirms stopping through %s',
+  async (operation) => {
+    const f = await fixture();
+    const action = f.run.actions.find((item) => item.stepId === 'left')!;
+    await f.runtime.claim({
       runId: f.run.runId,
       actionId: action.id,
       attempt: action.attempt,
       inputHash: action.inputHash,
       executorId: 'local-skill',
       capabilities: ['skill-script'],
-      claimToken: `new-${stepId}`,
+      claimToken: 'original-writer',
     });
-    const partitions = await Promise.all(legacyIds.map((id) => store.readPartitionMetadata(id)));
-    expect(partitions.filter((status) => status === 'closed')).toHaveLength(index === 0 ? 8 : 10);
-  }
-  expect((await runtime.inspect(legacyIds[0])).status).toBe('cancelled');
+
+    const restored = structuredClone(await f.runtime.inspect(f.run.runId));
+    restored.runId = 'restored-cancelled';
+    restored.revision = 50;
+    restored.status = 'cancelled';
+    restored.actions = restored.actions.map((item) => ({
+      ...item,
+      runId: restored.runId,
+      status: ['pending', 'running'].includes(item.status) ? 'cancelled' : item.status,
+    }));
+    await expect(
+      f.loaded.store.restoreCheckpoint!(restored.runId, null, restored),
+    ).rejects.toMatchObject({ code: 'SCOPE_HELD' });
+    let cancelled = await f.runtime.cancel({
+      runId: f.run.runId,
+      reason: 'user cancellation',
+    });
+    const store = createFileRuntimeStore({
+      rootDir: path.join(
+        resolveWorkspaceRuntimeRootSync(f.root),
+        'applications',
+        f.loaded.identity.id,
+      ),
+      mirroredRevisionPaths: ['run.revision'],
+    });
+    expect(await store.readPartitionMetadata(cancelled.runId)).toBe('active');
+    const loaded = await loadWorkflowApplication({
+      file: f.disk.file,
+      projectRoot: f.root,
+    });
+    const runtime = createRuntime({
+      ...loaded.implementation,
+      store: loaded.store,
+    });
+    let peer = await runtime.start({
+      runId: 'peer',
+      workflow: { id: 'editorial', version: '1' },
+      input: f.run.input,
+    });
+    peer = await runtime.execute({
+      runId: peer.runId,
+      actionId: peer.actions[0].id,
+      executorId: 'tool-host',
+    });
+    peer = await runtime.resolveWait({
+      runId: peer.runId,
+      waitId: peer.waits[0].id,
+      proposalHash: peer.waits[0].proposalHash,
+      decisionId: 'peer-approval',
+      choice: 'approved',
+    });
+    peer = await runtime.execute({
+      runId: peer.runId,
+      actionId: peer.actions.at(-1)!.id,
+      executorId: 'tool-host',
+    });
+    const next = peer.actions.find((item) => item.stepId === 'left')!;
+    const claim = {
+      runId: peer.runId,
+      actionId: next.id,
+      attempt: next.attempt,
+      inputHash: next.inputHash,
+      executorId: 'local-skill',
+      capabilities: ['skill-script'],
+      claimToken: 'peer-writer',
+    };
+    await expect(runtime.claim(claim)).rejects.toMatchObject({
+      code: 'SCOPE_HELD',
+    });
+    const acknowledge = (
+      stoppedActions: Parameters<typeof runtime.acknowledgeStopped>[0]['stoppedActions'],
+    ) =>
+      operation === 'cancel'
+        ? runtime.cancel({
+            runId: cancelled.runId,
+            reason: 'confirm',
+            stoppedActions,
+          })
+        : runtime.acknowledgeStopped({
+            runId: cancelled.runId,
+            stoppedActions,
+          });
+    const stopped = {
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken: 'wrong',
+      evidence: 'The original process and its children have exited.',
+    };
+    await expect(acknowledge([stopped])).rejects.toMatchObject({
+      code: 'STALE_ACTION',
+    });
+    await expect(runtime.claim(claim)).rejects.toMatchObject({
+      code: 'SCOPE_HELD',
+    });
+    cancelled = await acknowledge([{ ...stopped, claimToken: 'original-writer' }]);
+    if (operation === 'acknowledgeStopped') {
+      expect(
+        cancelled.actions.find((item) => item.id === action.id)?.executionStop?.claimToken,
+      ).toBe('original-writer');
+      expect(cancelled.actions.find((item) => item.id === action.id)?.cancellation).toBeUndefined();
+    }
+    expect(await store.readPartitionMetadata(cancelled.runId)).toBe('closed');
+    expect((await runtime.claim(claim)).actions.find((item) => item.id === next.id)?.status).toBe(
+      'running',
+    );
+    // 原取消的重复提交保持兼容，封存不永久阻止幂等确认。
+    await acknowledge([{ ...stopped, claimToken: 'original-writer' }]);
+    expect(await store.readPartitionMetadata(cancelled.runId)).toBe('closed');
+  },
+);
+
+it('fences raw writers after application holder coordination is enabled', async () => {
+  const f = await fixture();
+  const store = createFileRuntimeStore({
+    rootDir: path.join(
+      resolveWorkspaceRuntimeRootSync(f.root),
+      'applications',
+      f.loaded.identity.id,
+    ),
+    mirroredRevisionPaths: ['run.revision'],
+  });
+  const old = await f.runtime.start({
+    runId: 'ended',
+    workflow: { id: 'editorial', version: '1' },
+    input: f.run.input,
+  });
+  const ended = await f.runtime.cancel({
+    runId: old.runId,
+    reason: 'never executed',
+  });
+  await expect(store.reopenRun(ended.runId, ended.revision)).rejects.toMatchObject({
+    code: 'STORE_WRITER_FENCED',
+  });
+  expect(await store.readPartitionMetadata(ended.runId)).toBe('closed');
 });

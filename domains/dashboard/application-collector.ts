@@ -2,15 +2,13 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  listCreatorRunRecords,
-  listCreatorRunSources,
-  readCreatorRunRecord,
+  iterateCreatorRunSources,
+  readCreatorRunProjection,
   type CreatorRunObservation,
 } from '../workflow-creation/index.js';
 import {
-  listWorkflowApplicationRunRecords,
-  listWorkflowApplicationRunSources,
-  readWorkflowApplicationRunObservation,
+  iterateWorkflowApplicationRunSources,
+  readWorkflowApplicationRunProjection,
   inspectWorkflowApplicationMaterial,
   inspectWorkflowApplicationPackage,
   readApplicationEvaluationEvidence,
@@ -28,9 +26,8 @@ import {
 import {
   readEvalRun,
   listEvalArchives,
-  listEvalArchiveSources,
+  iterateEvalArchiveSources,
   readEvalArchive,
-  readEvalArchiveManifest,
   evalArchiveRoot,
   evalArchiveRunId,
   readEvalArchiveFile,
@@ -38,7 +35,7 @@ import {
 } from '../eval/index.js';
 import { collectNativeDashboardChangePage } from './native-collector.js';
 import { collectDashboardChangePage } from './collector.js';
-import { DashboardSummaryIndex, type DashboardSummarySource } from './summary-index.js';
+import { DashboardSummaryIndex } from './summary-index.js';
 import type {
   DashboardApplicationRunKind,
   DashboardApplicationRunSummary,
@@ -192,138 +189,6 @@ function summary(
     },
   };
 }
-async function dataset(projectRoot: string) {
-  const result = await Promise.allSettled([
-    listCreatorRunRecords(projectRoot),
-    listWorkflowApplicationRunRecords(projectRoot),
-    listEvalArchives(projectRoot),
-  ]);
-  const entries: Entry[] = [];
-  const errors: DashboardApplicationRunPage['errors'] = [];
-  if (result[0].status === 'fulfilled')
-    for (const c of result[0].value) {
-      const identity = c.run ? candidate(c.run) : null;
-      entries.push({
-        summary: summary('creator', c.storageKey, c.run, identity, c.error, c.runId),
-        run: c.run,
-        creator: c,
-        application: null,
-      });
-    }
-  else
-    errors.push({
-      source: 'creator',
-      message:
-        result[0].reason instanceof Error ? result[0].reason.message : String(result[0].reason),
-    });
-  if (result[1].status === 'fulfilled')
-    for (const a of result[1].value) {
-      if ((SDK_APPLICATIONS as readonly string[]).includes(a.applicationId)) continue;
-      const fixed = a.record?.application;
-      const identity = fixed
-        ? {
-            id: fixed.id,
-            version: fixed.version,
-            base: fixed.base,
-            contentHash: fixed.contentHash,
-            packageHash: null,
-          }
-        : null;
-      const item = summary(
-        'application',
-        a.storageKey,
-        a.record?.run ?? null,
-        identity,
-        a.error,
-        a.runId,
-      );
-      if (!fixed) {
-        item.applicationId = a.applicationId;
-        item.locator = `application:${hash([a.applicationId, a.runId ?? a.storageKey])}`;
-        item.title = a.applicationId;
-      }
-      entries.push({ summary: item, run: a.record?.run ?? null, creator: null, application: a });
-    }
-  else
-    errors.push({
-      source: 'application',
-      message:
-        result[1].reason instanceof Error ? result[1].reason.message : String(result[1].reason),
-    });
-  if (result[2].status === 'fulfilled') {
-    for (const observation of result[2].value.items) {
-      const a = observation.archive.application;
-      for (const snapshot of observation.runs) {
-        const item = summary(
-          snapshot.kind,
-          snapshot.run.runId,
-          snapshot.run,
-          {
-            id: a.id,
-            version: a.version,
-            base: a.base,
-            contentHash: a.contentHash,
-            packageHash: a.packageHash,
-          },
-          null,
-          snapshot.run.runId,
-        );
-        item.locator = `${snapshot.kind}:${hash(['archive', observation.archive.id, snapshot.kind, snapshot.run.runId])}`;
-        item.archive = { id: observation.archive.id, title: observation.archive.title };
-        entries.push({
-          summary: item,
-          run: snapshot.run,
-          creator: null,
-          application: null,
-          archive: observation,
-          archivedIdentity: snapshot.identity,
-        });
-      }
-    }
-    errors.push(
-      ...result[2].value.errors.map((e) => ({
-        source: 'application' as const,
-        message: `${e.id}：${e.message}`,
-      })),
-    );
-    for (const error of result[2].value.errors) {
-      const item = summary(
-        'application',
-        error.id,
-        null,
-        null,
-        { code: 'ARCHIVE_UNREADABLE', message: error.message },
-        null,
-      );
-      item.locator = `application:${hash(['archive-error', error.id])}`;
-      item.title = error.id;
-      item.archive = { id: error.id, title: error.id };
-      entries.push({ summary: item, run: null, creator: null, application: null });
-    }
-  } else errors.push({ source: 'application', message: String(result[2].reason) });
-  for (const child of entries.filter((e) => e.summary.kind === 'application')) {
-    const parent = entries.find(
-      (e) =>
-        e.run &&
-        e.summary.applicationId === child.summary.applicationId &&
-        e.summary.archive?.id === child.summary.archive?.id &&
-        e.run.children.some(
-          (c) =>
-            c.runId === child.summary.runId &&
-            (!child.run ||
-              (c.workflow.id === child.run.workflow.id &&
-                c.workflow.version === child.run.workflow.version)),
-        ),
-    );
-    if (parent) {
-      child.summary.isChild = true;
-      child.summary.parentRunId = parent.summary.runId;
-      child.summary.parentLocator = parent.summary.locator;
-    }
-  }
-  entries.sort((a, b) => a.summary.locator.localeCompare(b.summary.locator));
-  return { entries, errors };
-}
 
 function limit(value: unknown): number {
   const n = value === undefined ? 40 : Number(value);
@@ -475,80 +340,98 @@ function reference(entry: Entry): ApplicationReference {
         },
   };
 }
+
+async function creatorProjection(projectRoot: string, runId: string) {
+  return (await readCreatorRunProjection(projectRoot, runId))?.run ?? null;
+}
+async function applicationProjection(
+  projectRoot: string,
+  applicationId: string,
+  runId: string,
+): Promise<WorkflowApplicationRunObservation> {
+  try {
+    const value = await readWorkflowApplicationRunProjection(projectRoot, applicationId, runId);
+    if (!value) throw new Error('应用 Run 已消失，请重新读取列表');
+    return {
+      applicationId,
+      runId,
+      storageKey: hash(runId),
+      error: null,
+      record: {
+        runId,
+        revision: value.projection.run.revision,
+        application: value.application,
+        run: value.projection.run,
+      },
+    };
+  } catch (error) {
+    return {
+      applicationId,
+      runId,
+      storageKey: hash(runId),
+      record: null,
+      error: {
+        code: 'APPLICATION_UNREADABLE',
+        message: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
 function applicationSummaryIndex(projectRoot: string) {
   return new DashboardSummaryIndex({
     projectRoot,
     namespace: 'any-v1',
-    discover: async () => {
-      const [creators, applications, archives] = await Promise.all([
-        listCreatorRunSources(projectRoot),
-        listWorkflowApplicationRunSources(projectRoot, { excludeApplications: SDK_APPLICATIONS }),
-        listEvalArchiveSources(projectRoot),
-      ]);
-      const sources: DashboardSummarySource[] = [];
-      const add = (key: string, fingerprint: string, load: () => Promise<Entry[]>) =>
-        sources.push({
-          key,
-          fingerprint,
-          read: async () =>
-            (await load()).map((entry) => {
-              const ref = reference(entry),
-                s = ref.summary;
-              return {
-                key: s.locator,
-                sortKey: s.locator,
-                search: `${s.title} ${s.goal ?? ''} ${s.runId ?? ''} ${s.application?.version ?? ''}`,
-                status: s.status,
-                kind: s.kind,
-                group: s.applicationId,
-                attention: Boolean(
-                  s.error ||
-                  s.status === 'failed' ||
-                  s.activity.unknown + s.activity.decisions + s.activity.evidence > 0,
-                ),
-                payload: ref,
-              };
-            }),
-        });
-      const creatorGroups = new Map<string, typeof creators>();
-      for (const source of creators) {
+    discover: async function* () {
+      const add = (key: string, fingerprint: string, load: () => Promise<Entry[]>) => ({
+        key,
+        fingerprint,
+        read: async () =>
+          (await load()).map((entry) => {
+            const ref = reference(entry),
+              s = ref.summary;
+            return {
+              key: s.locator,
+              sortKey: s.locator,
+              search: `${s.title} ${s.goal ?? ''} ${s.runId ?? ''} ${s.application?.version ?? ''}`,
+              status: s.status,
+              kind: s.kind,
+              group: s.applicationId,
+              attention: Boolean(
+                s.error ||
+                s.status === 'failed' ||
+                s.activity.unknown + s.activity.decisions + s.activity.evidence > 0,
+              ),
+              payload: ref,
+            };
+          }),
+      });
+      for await (const source of iterateCreatorRunSources(projectRoot)) {
         const key = source.runId ?? source.storageKey;
-        creatorGroups.set(key, [...(creatorGroups.get(key) ?? []), source]);
-      }
-      for (const [key, group] of creatorGroups) {
-        const source = group[0];
-        add(`creator:${key}`, hash(group.map((s) => [s.rootDir, s.fingerprint])), async () => {
+        yield add(`creator:${key}`, source.fingerprint, async () => {
           let run: Run | null = null,
             error = source.error;
           try {
-            if (!error && source.runId) run = await readCreatorRunRecord(projectRoot, source.runId);
+            if (!error && source.runId) run = await creatorProjection(projectRoot, source.runId);
           } catch (cause) {
             error = { code: 'CREATOR_UNREADABLE', message: String(cause) };
           }
           return [creatorEntry({ ...source, run, error })];
         });
       }
-      const applicationGroups = new Map<string, typeof applications>();
-      for (const source of applications) {
+      for await (const source of iterateWorkflowApplicationRunSources(projectRoot, {
+        excludeApplications: SDK_APPLICATIONS,
+      })) {
         const key = `${source.applicationId}:${source.runId ?? source.storageKey}`;
-        applicationGroups.set(key, [...(applicationGroups.get(key) ?? []), source]);
-      }
-      for (const [key, group] of applicationGroups) {
-        const source = group[0];
-        add(`application:${key}`, hash(group.map((s) => [s.rootDir, s.fingerprint])), async () => [
+        yield add(`application:${key}`, source.fingerprint, async () => [
           applicationEntry(
             source.error || !source.runId
               ? { ...source, record: null }
-              : await readWorkflowApplicationRunObservation(
-                  projectRoot,
-                  source.applicationId,
-                  source.runId,
-                ),
+              : await applicationProjection(projectRoot, source.applicationId, source.runId),
           ),
         ]);
       }
-      for (const source of archives)
-        add(`archive:${source.id}`, source.fingerprint, async () => {
+      for await (const source of iterateEvalArchiveSources(projectRoot))
+        yield add(`archive:${source.id}`, source.fingerprint, async () => {
           if (!source.error) return archivedEntries(await readEvalArchive(projectRoot, source.id));
           const item = summary(
             'application',
@@ -563,7 +446,6 @@ function applicationSummaryIndex(projectRoot: string) {
           item.archive = { id: source.id, title: source.id };
           return [{ summary: item, run: null, creator: null, application: null }];
         });
-      return sources;
     },
   });
 }
@@ -581,12 +463,12 @@ async function readReference(
   if (!ref.source.runId)
     return { summary: ref.summary, run: null, creator: null, application: null };
   if (ref.source.kind === 'creator') {
-    const run = await readCreatorRunRecord(projectRoot, ref.source.runId);
+    const run = await creatorProjection(projectRoot, ref.source.runId);
     return run
       ? creatorEntry({ storageKey: ref.source.storageKey, runId: run.runId, run, error: null })
       : null;
   }
-  const observation = await readWorkflowApplicationRunObservation(
+  const observation = await applicationProjection(
     projectRoot,
     ref.source.applicationId!,
     ref.source.runId,
@@ -605,84 +487,61 @@ async function detailDataset(
   const store = applicationSummaryIndex(projectRoot);
   let refs: ApplicationReference[];
   let indexing: boolean;
+  let ref: ApplicationReference | null;
   try {
-    const cached = await store.query<ApplicationReference>();
-    refs = cached.items;
-    indexing = cached.indexing;
-  } catch {
-    return dataset(projectRoot);
-  }
-  let ref = refs.find(
-    (r) =>
-      r.summary.locator === locator ||
-      (r.summary.kind === 'creator' &&
-        r.summary.applicationId &&
-        `creator:${hash([r.summary.applicationId, r.summary.runId ?? r.source.storageKey])}` ===
-          locator),
-  );
-  if (!ref) {
-    const [creators, applications, archives] = await Promise.all([
-      listCreatorRunSources(projectRoot),
-      listWorkflowApplicationRunSources(projectRoot, { excludeApplications: SDK_APPLICATIONS }),
-      listEvalArchiveSources(projectRoot),
-    ]);
-    const creator = creators.find(
-      (source) => `creator:${hash([null, source.runId ?? source.storageKey])}` === locator,
-    );
-    const application = applications.find(
-      (source) =>
-        `application:${hash([source.applicationId, source.runId ?? source.storageKey])}` ===
-        locator,
-    );
-    if (creator?.runId) {
-      const run = await readCreatorRunRecord(projectRoot, creator.runId);
-      if (run) ref = reference(creatorEntry({ ...creator, run }));
-    } else if (application?.runId)
-      ref = reference(
-        applicationEntry(
-          await readWorkflowApplicationRunObservation(
-            projectRoot,
-            application.applicationId,
-            application.runId,
-          ),
-        ),
-      );
-    else {
-      for (const archive of archives) {
-        if (archive.error) continue;
-        const manifest = await readEvalArchiveManifest(projectRoot, archive.id);
-        if (
-          manifest.runs.some(
-            (run) =>
-              `${run.kind}:${hash(['archive', archive.id, run.kind, run.runId])}` === locator,
-          )
-        ) {
-          const entry = archivedEntries(await readEvalArchive(projectRoot, archive.id)).find(
-            (entry) => entry.summary.locator === locator,
-          );
-          if (entry) ref = reference(entry);
-          break;
-        }
+    await store.ensure();
+    ref = await store.find<ApplicationReference>(locator);
+    if (!ref) {
+      await store.refresh({ maxSources: 20, budgetMs: 500 });
+      ref = await store.find<ApplicationReference>(locator);
+    }
+    if (!ref && locator.startsWith('creator:')) {
+      // 兼容旧候选链接，只分页查询已有摘要，不读取全部 Run。
+      for (let offset = 0; ; offset += 100) {
+        const candidates = await store.query<ApplicationReference>({
+          kind: 'creator',
+          limit: 100,
+          offset,
+        });
+        ref =
+          candidates.items.find(
+            (item) =>
+              item.summary.applicationId &&
+              `creator:${hash([item.summary.applicationId, item.summary.runId ?? item.source.storageKey])}` ===
+                locator,
+          ) ?? null;
+        if (ref || offset + 100 >= candidates.total) break;
       }
     }
-    if (ref) refs.push(ref);
-    else {
-      // Older candidate URLs included application identity in the Creator locator.
-      for (const creator of await listCreatorRunRecords(projectRoot)) {
-        const entry = creatorEntry(creator);
-        if (
-          entry.summary.applicationId &&
-          `creator:${hash([entry.summary.applicationId, creator.runId ?? creator.storageKey])}` ===
-            locator
-        ) {
-          ref = reference(entry);
-          refs.push(ref);
-          break;
-        }
-      }
+    const metadata = await store.metadata();
+    indexing = metadata?.indexing ?? true;
+    if (!ref) {
+      if (indexing)
+        throw new DashboardApplicationQueryError(
+          '运行列表仍在同步，请保留选择后重试',
+          503,
+          'APPLICATION_INDEX_PENDING',
+        );
+      return { entries: [], errors: [] };
     }
+    refs = [ref];
+    if (ref.summary.applicationId) {
+      const related = await store.query<ApplicationReference>({
+        group: ref.summary.applicationId,
+        limit: 100,
+      });
+      refs = [
+        ...new Map([ref, ...related.items].map((item) => [item.summary.locator, item])).values(),
+      ];
+    }
+  } catch (error) {
+    if (error instanceof DashboardApplicationQueryError) throw error;
+    throw new DashboardApplicationQueryError(
+      '运行列表缓存不可用，请稍后重试',
+      503,
+      'APPLICATION_INDEX_UNAVAILABLE',
+    );
   }
-  if (!ref) return { entries: [] as Entry[], errors: [] as DashboardApplicationRunPage['errors'] };
   if (ref.source.kind === 'archive')
     return {
       entries: archivedEntries(await readEvalArchive(projectRoot, ref.source.archiveId!)),
@@ -714,7 +573,7 @@ async function detailDataset(
   }
   if (selected.application?.record) {
     for (const child of selected.run?.children ?? []) {
-      const observation = await readWorkflowApplicationRunObservation(
+      const observation = await applicationProjection(
         projectRoot,
         selected.application.applicationId,
         child.runId,
@@ -879,48 +738,12 @@ export async function collectDashboardApplicationRunPage(
     };
   } catch (error) {
     if (error instanceof DashboardApplicationQueryError) throw error;
-  }
-  const size = limit(query.limit),
-    data = await dataset(projectRoot),
-    search = (query.q ?? '').toLocaleLowerCase();
-  const items = data.entries
-    .map((e) => e.summary)
-    .filter(
-      (s) =>
-        (!query.kind || query.kind === 'all' || s.kind === query.kind) &&
-        (!query.applicationId || s.applicationId === query.applicationId) &&
-        (!query.scope ||
-          query.scope === 'all' ||
-          (query.scope === 'apps' ? Boolean(s.applicationId) : !s.applicationId)) &&
-        `${s.title} ${s.goal ?? ''} ${s.runId ?? ''} ${s.application?.version ?? ''}`
-          .toLocaleLowerCase()
-          .includes(search) &&
-        (!query.status ||
-          query.status === 'all' ||
-          (query.status === 'attention'
-            ? s.error ||
-              s.status === 'failed' ||
-              s.activity.unknown + s.activity.decisions + s.activity.evidence > 0
-            : query.status === 'active'
-              ? ['running', 'waiting', 'unknown'].includes(s.status)
-              : s.status === query.status)),
+    throw new DashboardApplicationQueryError(
+      '运行列表缓存不可用，请稍后重试',
+      503,
+      'APPLICATION_INDEX_UNAVAILABLE',
     );
-  const fingerprint = hash([
-    path.resolve(projectRoot),
-    query.kind ?? 'all',
-    query.status ?? 'all',
-    query.applicationId ?? '',
-    search,
-    query.scope ?? 'all',
-    items.map((s) => [s.locator, s.revision, s.status, s.error?.code]),
-    data.errors,
-  ]);
-  return {
-    ...page(items, fingerprint, query.cursor, size),
-    fingerprint,
-    readAt: new Date().toISOString(),
-    errors: data.errors,
-  };
+  }
 }
 
 function records(
@@ -948,8 +771,9 @@ function records(
       type: a.type,
       active:
         ['pending', 'running', 'unknown'].includes(a.status) ||
+        (a.status === 'cancelled' && Boolean(a.claim) && !a.cancellation && !a.executionStop) ||
         (run.status === 'failed' && a.status === 'failed'),
-      data: sanitizeApplicationObservation(a),
+      data: a,
       childRunId: child?.runId ?? null,
       childLocator: child ? (childLocators.get(child.runId) ?? null) : null,
     });
@@ -967,7 +791,7 @@ function records(
       attempt: null,
       type: 'user_decision',
       active: w.status === 'pending',
-      data: sanitizeApplicationObservation(w),
+      data: w,
       childLocator: null,
       childRunId: null,
     });
@@ -992,7 +816,7 @@ function records(
       attempt: null,
       type: w.kind,
       active: w.status === 'pending',
-      data: sanitizeApplicationObservation(w),
+      data: w,
       childLocator: null,
       childRunId: null,
     });
@@ -1010,7 +834,7 @@ function records(
       attempt: null,
       type: 'ready',
       active: true,
-      data: sanitizeApplicationObservation(token),
+      data: token,
       childLocator: null,
       childRunId: null,
     });
@@ -1024,8 +848,10 @@ function records(
 function artifacts(
   entry: Entry,
   items: DashboardApplicationRecord[],
+  materialize = true,
 ): DashboardApplicationArtifact[] {
   const result: DashboardApplicationArtifact[] = [];
+  const occurrences = new Map<string, number>();
   const append = (
     label: string,
     recordId: string | null,
@@ -1033,13 +859,18 @@ function artifacts(
     sha256: string | null,
     value?: unknown,
   ) => {
+    const identity = hash([label, recordId, uri, sha256]);
+    const occurrence = occurrences.get(identity) ?? 0;
+    occurrences.set(identity, occurrence + 1);
     result.push({
-      id: hash([label, recordId, uri, sha256, result.length]),
+      id: hash([identity, occurrence]),
       label,
       recordId,
       uri,
       sha256,
-      ...(value === undefined ? {} : { value: sanitizeApplicationObservation(value) }),
+      ...(value === undefined
+        ? {}
+        : { value: materialize ? sanitizeApplicationObservation(value) : value }),
     });
   };
   for (const record of items) {
@@ -1315,6 +1146,7 @@ export async function collectDashboardApplicationDeliverySource(
 export async function collectDashboardApplicationRunDetail(
   projectRoot: string,
   locator: string,
+  query: { recordLimit?: number; recordId?: string } = {},
 ): Promise<DashboardApplicationRunDetail | null> {
   if (!/^(?:creator|application):[a-f0-9]{64}$/u.test(locator))
     throw new DashboardApplicationQueryError('运行记录定位信息无效');
@@ -1361,7 +1193,16 @@ export async function collectDashboardApplicationRunDetail(
       .map((e) => [e.summary.runId!, e.summary.locator]),
   );
   const run = entry.run,
-    items = records(entry, childLocators),
+    allItems = records(entry, childLocators),
+    recordPage = page(
+      allItems,
+      hash([path.resolve(projectRoot), locator, run.revision]),
+      undefined,
+      limit(query.recordLimit),
+    ),
+    items = allItems
+      .filter((r) => recordPage.items.includes(r) || r.active || r.id === query.recordId)
+      .map((r) => ({ ...r, data: sanitizeApplicationObservation(r.data) })),
     fixed = entry.archivedIdentity ?? entry.application?.record?.application ?? null;
   if (entry.archive) {
     const archive = entry.archive.archive;
@@ -1415,6 +1256,7 @@ export async function collectDashboardApplicationRunDetail(
       sequence: run.sequence,
       workflow: run.workflow,
       records: items,
+      recordPage: { total: recordPage.total, nextCursor: recordPage.nextCursor },
       currentIds: items.filter((r) => r.active).map((r) => r.id),
       definitionStatus: 'observed',
       material,
@@ -1493,6 +1335,7 @@ export async function collectDashboardApplicationRunDetail(
     sequence: run.sequence,
     workflow: { id: run.workflow.id, version: run.workflow.version },
     records: items,
+    recordPage: { total: recordPage.total, nextCursor: recordPage.nextCursor },
     currentIds: items.filter((r) => r.active).map((r) => r.id),
     artifacts: artifacts(entry, items),
     definitionStatus: 'observed',
@@ -1582,20 +1425,30 @@ export async function collectDashboardApplicationRunRecords(
   locator: string,
   query: { limit?: number; cursor?: string } = {},
 ) {
-  const size = limit(query.limit),
-    detail = await collectDashboardApplicationRunDetail(projectRoot, locator);
-  if (!detail) return null;
-  const fingerprint = hash([
-    path.resolve(projectRoot),
-    locator,
-    detail.revision,
-    detail.records.map((r) => r.id),
-  ]);
+  const size = limit(query.limit);
+  if (!/^(?:creator|application):[a-f0-9]{64}$/u.test(locator))
+    throw new DashboardApplicationQueryError('运行记录定位信息无效');
+  const data = await detailDataset(projectRoot, locator);
+  const entry = data.entries.find((item) => item.summary.locator === locator);
+  if (!entry?.run) return null;
+  const childLocators = new Map(
+    data.entries
+      .filter((item) => item.summary.runId)
+      .map((item) => [item.summary.runId!, item.summary.locator]),
+  );
+  const fingerprint = hash([path.resolve(projectRoot), locator, entry.run.revision]);
+  const selected = page(records(entry, childLocators), fingerprint, query.cursor, size);
+  const items = selected.items.map((record) => ({
+    ...record,
+    data: sanitizeApplicationObservation(record.data),
+  }));
   return {
-    ...page(detail.records, fingerprint, query.cursor, size),
+    ...selected,
+    items,
+    artifacts: artifacts(entry, items),
     locator,
-    revision: detail.revision,
-    readAt: detail.readAt,
+    revision: entry.run.revision,
+    readAt: new Date().toISOString(),
   };
 }
 
@@ -1605,14 +1458,23 @@ export async function readDashboardApplicationArtifact(
   locator: string,
   artifactId: string,
 ) {
-  const detail = await collectDashboardApplicationRunDetail(projectRoot, locator);
+  const data = await detailDataset(projectRoot, locator);
+  const entry = data.entries.find((item) => item.summary.locator === locator);
+  if (!entry?.run) return null;
+  const detail = await collectDashboardApplicationRunDetail(projectRoot, locator, {
+    recordLimit: 1,
+  });
   if (!detail) return null;
-  const artifact = detail.artifacts.find((a) => a.id === artifactId);
+  const artifact =
+    artifacts(entry, records(entry, new Map()), false).find((a) => a.id === artifactId) ??
+    detail.artifacts.find((a) => a.id === artifactId);
   if (!artifact)
     throw new DashboardApplicationQueryError('当前记录没有这个工件', 404, 'ARTIFACT_NOT_FOUND');
   if (artifact.value !== undefined) {
     const source =
-      typeof artifact.value === 'string' ? artifact.value : JSON.stringify(artifact.value, null, 2);
+      typeof artifact.value === 'string'
+        ? artifact.value
+        : JSON.stringify(sanitizeApplicationObservation(artifact.value), null, 2);
     return {
       key: artifact.id,
       label: artifact.label,

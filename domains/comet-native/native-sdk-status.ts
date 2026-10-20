@@ -1,4 +1,9 @@
 import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
+import { inspectNativeSdkRunDiagnostics } from './native-sdk-diagnostics.js';
+import {
+  inspectNativeSdkCheckExecutions,
+  type NativeSdkCheckExecutionInspection,
+} from './native-sdk-check-execution.js';
 import { inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { applicationSkillWork } from '../workflow-application/index.js';
 import { nativeProjectPaths } from './native-paths.js';
@@ -42,13 +47,26 @@ export async function inspectNativeSdkStatus(options: {
 
 /** Project one inspected or committed Run without synchronizing its state file again. */
 export async function projectNativeSdkStatus(
-  options: { projectRoot: string; name: string; details?: boolean },
+  options: {
+    projectRoot: string;
+    name: string;
+    details?: boolean;
+    checkExecutionObservation?: readonly NativeSdkCheckExecutionInspection[];
+  },
   { run, state, artifactRootRef, application }: Awaited<ReturnType<typeof inspectNativeSdkRun>>,
 ) {
   const summary = nativePortableStateSummary(state);
+  const checkExecutionObservation =
+    options.checkExecutionObservation ??
+    (await inspectNativeSdkCheckExecutions({
+      projectRoot: options.projectRoot,
+      run,
+      includeSettled: true,
+    }));
   const cancellation = await inspectNativeSdkCancellation({
     projectRoot: options.projectRoot,
     run,
+    checkExecutionObservation,
   });
   const actions = statusRecords(run.actions, options.details);
   const waits = statusRecords(run.waits, options.details);
@@ -63,6 +81,9 @@ export async function projectNativeSdkStatus(
     : [];
   return {
     schema: 'comet.native.sdk-status.v1' as const,
+    diagnostics: await inspectNativeSdkRunDiagnostics(options.projectRoot, run, {
+      checkExecutionObservation,
+    }),
     runtimeFormat: 'sdk' as const,
     ...(application
       ? { application: application.identity, skillWork: applicationSkillWork(application, run) }
@@ -140,6 +161,7 @@ export async function projectNativeSdkStatus(
       skillExecutors: application?.implementation.executors,
       editReviews,
       cancellationObservation: cancellation,
+      checkExecutionObservation,
     })),
     ...(options.details ? { details: { state } } : {}),
   };

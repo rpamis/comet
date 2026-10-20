@@ -1,0 +1,41 @@
+{
+  "matrix": {
+    "cases": [
+      {
+        "rep": 1,
+        "task": "alpha",
+        "treatment": "BASE"
+      },
+      {
+        "rep": 2,
+        "task": "alpha",
+        "treatment": "BASE"
+      },
+      {
+        "rep": 1,
+        "task": "zeta",
+        "treatment": "COMET"
+      }
+    ],
+    "schema": "comet.eval.expected-case-matrix.v1",
+    "matrix_hash": "sha256:01856d2565dd6cf46882310c7a3b6a493dfe24219442f410f9c3ea444f50d9cb"
+  },
+  "experiment": "golden-run",
+  "valid": {
+    "name": "alpha-BASE-r2",
+    "rep": 2,
+    "passed": false,
+    "events_summary": {
+      "task": "alpha",
+      "treatment": "BASE",
+      "sample": 2
+    },
+    "case_identity": {
+      "schema": "comet.eval.case-identity.v1",
+      "experiment": "golden-run",
+      "task": "alpha",
+      "treatment": "BASE",
+      "repetition": 2
+    }
+  }
+}

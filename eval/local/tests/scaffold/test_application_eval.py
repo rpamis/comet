@@ -539,4 +539,4 @@ def test_application_rejects_name_repetition_conflicting_with_report_and_sample(
                 result.events_summary["sample"] = 2
     actual = _application_report(logger)
     assert actual["status"] == "incomplete"
-    assert any("does not match" in failure for failure in actual["failures"])
+    assert any("does not match" in failure or "身份不一致" in failure for failure in actual["failures"])

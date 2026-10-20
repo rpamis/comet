@@ -38,6 +38,8 @@ import {
   initialApplicationRecord,
   mergeApplicationRunPages,
   refreshApplicationRunPage,
+  refreshApplicationRunDetail,
+  mergeApplicationRecordPage,
   fetchApplicationObservation,
 } from './application-data.js';
 import {
@@ -132,6 +134,8 @@ export function AnyWorkflowPanel({
   const [inspectorOpen, setInspectorOpen] = useState(false),
     [drawer, setDrawer] = useState(null),
     [artifactLoading, setArtifactLoading] = useState(null);
+  const [recordsLoading, setRecordsLoading] = useState(false);
+  const recordsRequest = useRef(null);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [rosters, setRosters] = useState({}),
     [rosterLoading, setRosterLoading] = useState(false);
@@ -200,7 +204,10 @@ export function AnyWorkflowPanel({
     (next, { restore = null, keepParents = false } = {}) => {
       const nextRecord = restore?.recordId ?? (next === locator ? recordRef.current : null);
       if (!keepParents) parentStack.current = [];
-      if (next !== locator) detailRequest.current?.abort();
+      if (next !== locator) {
+        detailRequest.current?.abort();
+        recordsRequest.current?.abort();
+      }
       setLocator(next);
       if (next !== locator) setDetail(null);
       setDetailError(null);
@@ -282,10 +289,16 @@ export function AnyWorkflowPanel({
   useEffect(() => {
     if (!locator) return;
     detailRequest.current?.abort();
+    recordsRequest.current?.abort();
+    setRecordsLoading(false);
     const controller = new AbortController();
     detailRequest.current = controller;
     setDetailLoading(!detailRef.current);
-    request('application-run', { locator }, controller.signal)
+    request(
+      'application-run',
+      { locator, recordLimit: 40, recordId: recordRef.current },
+      controller.signal,
+    )
       .then((next) => {
         if (controller.signal.aborted) return;
         setDetailError(null);
@@ -298,7 +311,7 @@ export function AnyWorkflowPanel({
               anchor.current = { id: element.id, top: element.getBoundingClientRect().top };
           }
         }
-        setDetail(next);
+        setDetail((previous) => refreshApplicationRunDetail(previous, next));
         if (next.locator !== locator) {
           setLocator(next.locator);
           remember(next.locator, recordRef.current, tab);
@@ -339,9 +352,38 @@ export function AnyWorkflowPanel({
     () => () => {
       pageRequest.current?.abort();
       detailRequest.current?.abort();
+      recordsRequest.current?.abort();
     },
     [],
   );
+  const loadMoreRecords = async () => {
+    const current = detailRef.current;
+    if (!current?.recordPage?.nextCursor || recordsLoading) return;
+    recordsRequest.current?.abort();
+    const controller = new AbortController();
+    recordsRequest.current = controller;
+    setRecordsLoading(true);
+    try {
+      const next = await request(
+        'application-run-records',
+        {
+          locator: current.locator,
+          cursor: current.recordPage.nextCursor,
+          limit: 40,
+        },
+        controller.signal,
+      );
+      if (!controller.signal.aborted)
+        setDetail((previous) => mergeApplicationRecordPage(previous, next));
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setDetailError(error);
+        setNews(true);
+      }
+    } finally {
+      if (!controller.signal.aborted) setRecordsLoading(false);
+    }
+  };
   const groups = useMemo(() => groupApplicationRuns(page?.items ?? []), [page]);
   const selectedSummary = detail ?? page?.items.find((r) => r.locator === locator);
   const mode = selectedSummary?.kind ?? 'creator';
@@ -1120,6 +1162,11 @@ export function AnyWorkflowPanel({
                     className="dashboard-motion-surface any-tab-content"
                     data-dashboard-motion="tab"
                   >
+                    {['steps', 'history'].includes(tab) && detail.recordPage?.nextCursor && (
+                      <Button loading={recordsLoading} onClick={loadMoreRecords}>
+                        {t('加载更多执行记录')}
+                      </Button>
+                    )}
                     {tab === 'steps' && (
                       <ApplicationStepList
                         steps={steps}

@@ -17,6 +17,19 @@ export async function settleNativeSdkCancellation(options: {
   run: WorkflowRun;
 }): Promise<void> {
   if (options.run.status !== 'cancelled') return;
+  const artifactRootRef = (options.run.input as { artifactRootRef?: unknown } | null)
+    ?.artifactRootRef;
+  if (typeof artifactRootRef === 'string') {
+    const paths = await nativeProjectPaths(options.projectRoot, artifactRootRef);
+    // 先保留原归档事务，等待 archive --recover 校验并收尾后再释放工作区。
+    if (
+      await readNativePortableTransaction(paths, {
+        kind: 'archive',
+        change: options.run.runId,
+      })
+    )
+      return;
+  }
   await terminateNativeSdkCheckExecutions(options);
   const cancellation = await inspectNativeSdkCancellation(options);
   if (!cancellation?.quiescent) return;

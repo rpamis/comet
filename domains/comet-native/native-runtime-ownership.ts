@@ -13,6 +13,7 @@ import {
   createRuntime,
   defineWorkflow,
   hashRuntimeValue,
+  preserveRuntimeExecutionOrigins,
   type WorkflowRun,
   type WorkflowRuntime,
   type RuntimeExecutor,
@@ -254,7 +255,7 @@ export async function inspectNativeSdkDefinitionUpgrade(
   if (!repair) return result;
   if (!ready)
     throw new Error('Reconcile running or unknown Actions before upgrading the definition');
-  const next = structuredClone(run);
+  const next = preserveRuntimeExecutionOrigins(run);
   if (
     workflow.steps['verify.confirm']?.type === 'ask_user' &&
     Array.isArray(workflow.steps['verify.confirm'].choices) &&

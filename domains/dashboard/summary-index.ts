@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { resolveDashboardIndexPath } from './index-store.js';
 
@@ -43,6 +43,14 @@ const inFlight = new Map<string, Promise<void>>();
 const lastRefreshFinished = new Map<string, number>();
 const dirty = new Set<string>();
 const scheduled = new Set<string>();
+interface RefreshScan {
+  iterator: AsyncIterator<DashboardSummarySource>;
+  seen: Set<string>;
+  pending: Map<string, DashboardSummarySource>;
+  complete: boolean;
+  knownCount?: number;
+}
+const scans = new Map<string, RefreshScan>();
 export class DashboardSummaryIndexError extends Error {}
 export function markDashboardSummaryIndexDirty(projectRoot: string, namespace: string): void {
   dirty.add(`${resolveDashboardIndexPath(projectRoot)}:${namespace}`);
@@ -58,7 +66,7 @@ export class DashboardSummaryIndex {
       namespace: string;
       cacheRoot?: string;
       refreshIntervalMs?: number;
-      discover(): Promise<DashboardSummarySource[]>;
+      discover(): AsyncIterable<DashboardSummarySource> | Promise<DashboardSummarySource[]>;
     },
   ) {
     this.databasePath = resolveDashboardIndexPath(options.projectRoot, options.cacheRoot);
@@ -89,6 +97,11 @@ export class DashboardSummaryIndex {
   async refresh(options: { maxSources?: number; budgetMs?: number } = {}): Promise<void> {
     const existing = inFlight.get(this.lockKey);
     if (existing) return existing;
+    if (dirty.has(this.lockKey)) {
+      const previous = scans.get(this.lockKey);
+      scans.delete(this.lockKey);
+      void previous?.iterator.return?.().catch(() => undefined);
+    }
     const task = this.refreshSources(options)
       .catch(async (error) => {
         try {
@@ -120,64 +133,108 @@ export class DashboardSummaryIndex {
 
   private async refreshSources(options: { maxSources?: number; budgetMs?: number }): Promise<void> {
     const deadline = Date.now() + (options.budgetMs ?? Infinity);
-    const sources = await this.options.discover();
+    let scan = scans.get(this.lockKey);
+    if (!scan) {
+      const discover = this.options.discover;
+      const iterator = (async function* () {
+        const discovered = discover();
+        if (Symbol.asyncIterator in discovered) yield* discovered;
+        else {
+          const sources = await discovered;
+          scan!.knownCount = sources.length;
+          yield* sources;
+        }
+      })()[Symbol.asyncIterator]();
+      scan = { iterator, seen: new Set(), pending: new Map(), complete: false };
+      scans.set(this.lockKey, scan);
+    }
     const cached = await this.database(
       (db) =>
         new Map(
           (
             db
               .prepare(
-                `SELECT s.source_key, s.fingerprint, COALESCE(MAX(r.volatile),0) AS volatile FROM dashboard_summary_sources s LEFT JOIN dashboard_summary_rows r ON r.namespace=s.namespace AND r.source_key=s.source_key WHERE s.namespace=? GROUP BY s.source_key`,
+                `SELECT s.source_key, s.fingerprint, COALESCE(MAX(r.volatile),0) AS volatile
+        FROM dashboard_summary_sources s LEFT JOIN dashboard_summary_rows r
+        ON r.namespace=s.namespace AND r.source_key=s.source_key WHERE s.namespace=?
+        GROUP BY s.source_key`,
               )
               .all(this.options.namespace) as {
               source_key: string;
               fingerprint: string;
               volatile: number;
             }[]
-          ).map((s) => [s.source_key, s]),
+          ).map((source) => [source.source_key, source]),
         ),
     );
-    const changed = sources
-      .filter(
-        (source) =>
-          cached.get(source.key)?.fingerprint !== source.fingerprint ||
-          cached.get(source.key)?.volatile === 1,
-      )
-      .sort((a, b) => Number(cached.has(a.key)) - Number(cached.has(b.key)));
     const updates: { source: DashboardSummarySource; records: DashboardSummaryRecord[] }[] = [];
     const errors: string[] = [];
     let attempted = 0;
-    while (attempted < changed.length) {
-      if (
-        attempted >= (options.maxSources ?? Infinity) ||
-        (attempted > 0 && Date.now() >= deadline)
-      )
-        break;
-      // 有预算时先读一个来源保障进展；其后每批最多四个，并等待整批完成。
-      const concurrency = options.budgetMs !== undefined && attempted === 0 ? 1 : 4;
-      const batch = changed
-        .slice(attempted, attempted + concurrency)
-        .filter((_source, index) => !(attempted + index >= (options.maxSources ?? Infinity)));
-      attempted += batch.length;
+    const retries = [...scan.pending.values()];
+    let retryIndex = 0;
+    // 预算同时覆盖发现、指纹读取和来源读取；至少推进一个来源，随后保留迭代位置。
+    while (
+      attempted < (options.maxSources ?? Infinity) &&
+      (attempted === 0 || Date.now() < deadline)
+    ) {
+      const batch: DashboardSummarySource[] = [];
+      const concurrency = options.budgetMs === undefined ? 4 : 1;
+      while (
+        batch.length < concurrency &&
+        attempted < (options.maxSources ?? Infinity) &&
+        (attempted === 0 || Date.now() < deadline)
+      ) {
+        let source = retries[retryIndex++];
+        if (!source) {
+          if (scan.complete) break;
+          try {
+            const next = await scan.iterator.next();
+            if (next.done) {
+              scan.complete = true;
+              break;
+            }
+            source = next.value;
+          } catch (error) {
+            scans.delete(this.lockKey);
+            throw error;
+          }
+          scan.seen.add(source.key);
+        }
+        attempted++;
+        if (
+          cached.get(source.key)?.fingerprint === source.fingerprint &&
+          cached.get(source.key)?.volatile !== 1 &&
+          !scan.pending.has(source.key)
+        )
+          continue;
+        scan.pending.set(source.key, source);
+        batch.push(source);
+      }
+      if (!batch.length) {
+        if (scan.complete) break;
+        continue;
+      }
       const results = await Promise.all(
         batch.map(async (source) => {
           try {
-            return { ok: true as const, source, records: await source.read() };
+            return { source, records: await source.read() };
           } catch (error) {
             return {
-              ok: false as const,
+              source,
               error: `${source.key}: ${error instanceof Error ? error.message : String(error)}`,
             };
           }
         }),
       );
-      // Promise.all 保持发现顺序，完成先后不会改变覆盖顺序或错误列表。
       for (const result of results) {
-        if (result.ok) updates.push({ source: result.source, records: result.records });
-        else errors.push(result.error);
+        if ('records' in result && result.records) {
+          updates.push({ source: result.source, records: result.records });
+          scan.pending.delete(result.source.key);
+        } else errors.push(result.error!);
       }
+      if (scan.complete && retryIndex >= retries.length) break;
     }
-    const present = new Set(sources.map((s) => s.key));
+    const currentScan = scan;
     await this.database((db) => {
       db.exec('BEGIN IMMEDIATE;');
       try {
@@ -189,7 +246,7 @@ export class DashboardSummaryIndex {
         );
         let removed = false;
         for (const key of cached.keys())
-          if (!present.has(key)) {
+          if (currentScan.complete && !currentScan.seen.has(key)) {
             removed = true;
             removeRows.run(this.options.namespace, key);
             removeSource.run(this.options.namespace, key);
@@ -201,6 +258,29 @@ export class DashboardSummaryIndex {
           'INSERT OR REPLACE INTO dashboard_summary_sources VALUES (?,?,?)',
         );
         for (const { source, records } of updates) {
+          const before = db
+            .prepare(
+              `SELECT record_key, sort_key, search, status, kind,
+            group_id, attention, volatile, payload FROM dashboard_summary_rows
+            WHERE namespace=? AND source_key=? ORDER BY record_key`,
+            )
+            .all(this.options.namespace, source.key);
+          const after = records
+            .map((record) => ({
+              record_key: record.key,
+              sort_key: record.sortKey,
+              search: record.search.toLocaleLowerCase(),
+              status: record.status,
+              kind: record.kind ?? '',
+              group_id: record.group ?? null,
+              attention: Number(Boolean(record.attention)),
+              volatile: Number(Boolean(record.volatile)),
+              payload: JSON.stringify(record.payload),
+            }))
+            .sort((a, b) =>
+              a.record_key < b.record_key ? -1 : a.record_key > b.record_key ? 1 : 0,
+            );
+          if (JSON.stringify(before) !== JSON.stringify(after)) removed = true;
           removeRows.run(this.options.namespace, source.key);
           for (const record of records)
             insert.run(
@@ -227,24 +307,13 @@ export class DashboardSummaryIndex {
         const previousGeneration = previous
           ? (JSON.parse(previous.payload) as IndexMetadata).generation
           : undefined;
-        const generation =
-          !removed && updates.length === 0 && previousGeneration
-            ? previousGeneration
-            : createHash('sha256')
-                .update(
-                  JSON.stringify(
-                    db
-                      .prepare(
-                        'SELECT record_key,payload FROM dashboard_summary_rows WHERE namespace=? ORDER BY record_key',
-                      )
-                      .all(this.options.namespace),
-                  ),
-                )
-                .digest('hex');
+        const generation = !removed && previousGeneration ? previousGeneration : randomUUID();
         const metadata: IndexMetadata = {
-          sourceCount: sources.length,
+          sourceCount: currentScan.complete
+            ? currentScan.seen.size
+            : Math.max(currentScan.knownCount ?? 0, currentScan.seen.size, cached.size),
           indexedCount: indexed.count,
-          indexing: attempted < changed.length,
+          indexing: !currentScan.complete || currentScan.pending.size > 0,
           errors,
           generation,
         };
@@ -253,6 +322,7 @@ export class DashboardSummaryIndex {
           JSON.stringify(metadata),
         );
         db.exec('COMMIT;');
+        if (currentScan.complete && currentScan.pending.size === 0) scans.delete(this.lockKey);
       } catch (error) {
         db.exec('ROLLBACK;');
         throw error;
@@ -273,7 +343,7 @@ export class DashboardSummaryIndex {
       if (!scheduled.has(this.lockKey) && !inFlight.has(this.lockKey)) {
         scheduled.add(this.lockKey);
         const timer = setTimeout(() => {
-          void this.refresh()
+          void this.refresh({ maxSources: 20, budgetMs: 500 })
             .catch(() => undefined)
             .finally(() => scheduled.delete(this.lockKey));
         }, 0);

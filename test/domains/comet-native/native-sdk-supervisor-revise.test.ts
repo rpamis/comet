@@ -1,3 +1,4 @@
+import { hasNativeSdkPortableStopEvidence } from '../../../domains/comet-native/native-sdk-check-execution.js';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -11,6 +12,18 @@ import { backfillNativeSdkSupervisorChildArchiveMaterials } from '../../../domai
 import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
 import type { RuntimeAction, WorkflowRun } from '../../../domains/engine/runtime.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
+
+function expectOriginalActionFacts(run: WorkflowRun, expected: WorkflowRun['actions']) {
+  const actual = run.actions.filter((action) => expected.some(({ id }) => id === action.id));
+  expect(actual).toHaveLength(expected.length);
+  for (let index = 0; index < expected.length; index += 1) {
+    const { executionStop: oldStop, ...oldFacts } = expected[index];
+    const { executionStop: newStop, ...newFacts } = actual[index];
+    expect(newFacts).toEqual(oldFacts);
+    if (oldStop) expect(newStop).toEqual(oldStop);
+    else if (newStop) expect(hasNativeSdkPortableStopEvidence(run, actual[index])).toBe(true);
+  }
+}
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -75,10 +88,17 @@ async function supervisor() {
       {
         encoding: 'utf8',
         timeout: 60000,
+        // 完整历史可超过默认 1 MiB；只有显式详情使用更大的有限缓冲。
+        ...(argv.includes('--details') ? { maxBuffer: 4 * 1024 * 1024 } : {}),
       },
     );
     if (result.error) throw result.error;
-    return { exitCode: result.status, response: JSON.parse(result.stdout), stderr: result.stderr };
+    return {
+      exitCode: result.status,
+      response: JSON.parse(result.stdout),
+      stderr: result.stderr,
+      stdoutBytes: Buffer.byteLength(result.stdout),
+    };
   }
   let sequence = 0;
   async function dispatchResult(request: Record<string, unknown>, file = candidateCli) {
@@ -646,16 +666,14 @@ it('recovers a blocked Child with a successor candidate without replaying an int
   expect(
     run.actions.find((action) => action.id === freshInput.checkActionId)?.outcome?.output,
   ).toMatchObject({ candidateId: successor });
-  expect(run.actions.find((action) => action.id === originalChecks.id)).toEqual(originalChecks);
+  expectOriginalActionFacts(run, [originalChecks]);
   run = await f.verifyChild(run);
   expect(run.actions.find((action) => action.id === verifier.id)?.outcome?.output).toMatchObject({
     verdict: 'blocked',
     candidateCommit: input.candidateCommit,
   });
   expect(run.actions.find((action) => action.id === failedBuilder.id)?.status).toBe('failed');
-  expect(run.actions.filter((action) => settled.some((old) => old.id === action.id))).toEqual(
-    settled,
-  );
+  expectOriginalActionFacts(run, settled);
   expect(f.git(integration, ['rev-parse', 'HEAD'])).toBe(integratedHead);
   console.info(
     JSON.stringify({
@@ -938,7 +956,19 @@ it('reintegrates an already included Child after public Shape reconfirmation (sa
   const beforeDrift = await f.inspect();
   const rejectedNext = f.cli(['native', 'next', f.name, '--json']);
   expect(rejectedNext.response.error.message).toContain('branch changed after the prior check');
-  expect(await f.inspect()).toEqual(beforeDrift);
+  const stoppedBeforeDrift = await f.inspect();
+  expectOriginalActionFacts(stoppedBeforeDrift, beforeDrift.actions);
+  expect({
+    ...stoppedBeforeDrift,
+    actions: beforeDrift.actions,
+    revision: beforeDrift.revision,
+  }).toEqual(beforeDrift);
+  const stopProofAdded = stoppedBeforeDrift.actions.some(
+    (action) =>
+      action.executionStop !== undefined &&
+      beforeDrift.actions.find(({ id }) => id === action.id)?.executionStop === undefined,
+  );
+  expect(stoppedBeforeDrift.revision).toBe(beforeDrift.revision + Number(stopProofAdded));
   for (const operation of ['execute', 'claim']) {
     const request = {
       operation,
@@ -965,7 +995,7 @@ it('reintegrates an already included Child after public Shape reconfirmation (sa
       requestFile,
     ]);
     expect(rejected.response.error.message).toContain('branch changed after the prior check');
-    expect(await f.inspect()).toEqual(beforeDrift);
+    expect(await f.inspect()).toEqual(stoppedBeforeDrift);
   }
   expect(f.git(firstOutput.integrationWorktree, ['rev-parse', 'HEAD'])).toBe(changedHead);
 }, 360000);
@@ -1180,6 +1210,31 @@ it('preserves integrated and uncommitted Child work, then rechecks every Child i
   revised = await f.inspect();
   expect(revised.state).toMatchObject({ phase: 'archive', verification_result: 'pass' });
   expect(f.pending(revised, 'supervisor.parent.deliver')).toBeTruthy();
+  const currentQueryFile = path.join(f.root, 'current-query.json');
+  await fs.writeFile(
+    currentQueryFile,
+    JSON.stringify({ operation: 'query', runId: f.name, view: 'current' }),
+  );
+  const current = f.cli([
+    'runtime',
+    'dispatch',
+    '--application',
+    'native',
+    '--request',
+    currentQueryFile,
+  ]);
+  expect(current.exitCode, JSON.stringify(current)).toBe(0);
+  expect(current.response.data).toMatchObject({
+    runId: f.name,
+    revision: revised.revision,
+    actions: [{ id: f.pending(revised, 'supervisor.parent.deliver').id }],
+  });
+  expect(current.response.data).not.toHaveProperty('actionContexts');
+  expect(current.stdoutBytes).toBeLessThan(128 * 1024);
+  const status = f.cli(['native', 'status', f.name, '--json']);
+  expect(status.exitCode, status.stderr).toBe(0);
+  expect(status.response.data.run).toMatchObject({ id: f.name, revision: revised.revision });
+  expect(status.stdoutBytes).toBeLessThan(128 * 1024);
   const dryRun = f.cli(['native', 'archive', f.name, '--dry-run', '--json']);
   expect(dryRun.response, JSON.stringify(dryRun)).not.toHaveProperty('error');
   expect(dryRun.response.data).toMatchObject({

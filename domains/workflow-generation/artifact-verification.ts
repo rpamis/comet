@@ -2,7 +2,11 @@ import { promises as fs } from 'node:fs';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import {
+  runtimeDependencyPermissions,
+  splitNodePermissionArguments,
+} from '../../platform/process/runtime-dependency-permissions.js';
 import { spawn } from 'node:child_process';
 import { hashRuntimeValue, type RuntimeValue } from '../engine/runtime.js';
 import type { WorkflowApplicationPlan } from './compiler.js';
@@ -178,29 +182,31 @@ export async function verifyWorkflowApplicationArtifactContracts(options: {
     const permission = process.allowedNodeEnvironmentFlags.has('--permission')
       ? '--permission'
       : '--experimental-permission';
+    const dependencies = runtimeDependencyPermissions(sdkRoot);
+    const preload = path.join(root, 'dependency-resolution.mjs');
+    await fs.writeFile(preload, dependencies.preloadSource);
     const readRoots = [
       root,
       path.dirname(options.file),
       path.join(sdkRoot, 'dist'),
-      path.join(sdkRoot, 'node_modules'),
+      ...dependencies.readRoots,
       path.join(sdkRoot, 'assets'),
       path.join(sdkRoot, 'package.json'),
     ];
-    // npm/pnpm消费者可能将依赖提升到SDK所在的node_modules；只许可依赖树。
-    for (let parent = sdkRoot; path.dirname(parent) !== parent; parent = path.dirname(parent))
-      if (path.basename(parent) === 'node_modules') readRoots.push(parent);
-    const args = [
+    const { args, nodeOptions } = splitNodePermissionArguments(readRoots, [
       permission,
-      ...readRoots.map((ref) => `--allow-fs-read=${ref}`),
       `--allow-fs-write=${root}`,
+      '--import',
+      pathToFileURL(preload).href,
       script,
       request,
-    ];
+    ]);
     const env: Record<string, string> = {
       COMET_DATA_DIR: path.join(root, 'data'),
       HOME: path.join(root, 'home'),
       USERPROFILE: path.join(root, 'home'),
       COMET_RUNTIME_DAEMON: '0',
+      NODE_OPTIONS: nodeOptions,
     };
     for (const key of ['SystemRoot', 'WINDIR', 'PATH', 'TEMP', 'TMP'])
       if (process.env[key]) env[key] = process.env[key]!;

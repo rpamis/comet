@@ -86,6 +86,12 @@ export interface EvalRunDetail {
   completedAt: string | null;
   executionStatus: EvalExecutionStatus;
   conclusion: EvalConclusion;
+  subsetConclusion?: EvalConclusion | null;
+  completeness?: 'complete' | 'incomplete';
+  integrity?: 'valid' | 'invalid' | 'unverified';
+  quality?: 'included' | 'flagged' | 'excluded';
+  domainConclusion?: EvalConclusion | null;
+  evidenceRevision?: string;
   target: {
     id: string;
     name: string;
@@ -132,6 +138,7 @@ export interface EvalRunDetail {
   failures: string[];
   artifacts: Array<{ id: string; label: string; format: 'markdown' | 'html' | 'json' | 'text' }>;
   baselineScope: string | null;
+  storedBaselineScope?: string | null;
   baselineRunId: string | null;
   boundBaselineRunId: string | null;
   isBaseline: boolean;
@@ -149,12 +156,19 @@ export type EvalRunSummary = Pick<
   | 'completedAt'
   | 'executionStatus'
   | 'conclusion'
+  | 'subsetConclusion'
+  | 'completeness'
+  | 'integrity'
+  | 'quality'
+  | 'domainConclusion'
+  | 'evidenceRevision'
   | 'target'
   | 'passed'
   | 'total'
   | 'expectedTotal'
   | 'metrics'
   | 'baselineScope'
+  | 'storedBaselineScope'
   | 'baselineRunId'
   | 'boundBaselineRunId'
   | 'isBaseline'

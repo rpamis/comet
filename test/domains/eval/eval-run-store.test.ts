@@ -40,6 +40,16 @@ describe('Eval run history and baselines', () => {
     const root = path.join(project, '.comet/eval/runs', id);
     await fs.mkdir(path.join(root, 'reports'), { recursive: true });
     await fs.writeFile(
+      path.join(root, 'expected-case-matrix.json'),
+      JSON.stringify(
+        expectedMatrix(
+          outcomes
+            .map((_, index) => ({ rep: 1, task: `task-${index}`, treatment: `task-${index}` }))
+            .sort((a, b) => (a.task < b.task ? -1 : 1)),
+        ),
+      ),
+    );
+    await fs.writeFile(
       path.join(root, 'metadata.json'),
       JSON.stringify({
         experiment_id: id,
@@ -52,7 +62,7 @@ describe('Eval run history and baselines', () => {
       await fs.writeFile(
         path.join(root, 'reports', `case-${index}_report.json`),
         JSON.stringify({
-          name: `task-${index}`,
+          name: `task-${index}-task-${index}`,
           passed: outcomes[index],
           rep: 1,
           checks_passed: ['[RUBRIC] artifact_quality: 0.80'],
@@ -60,6 +70,8 @@ describe('Eval run history and baselines', () => {
           sample_quality: { status: quality, include_in_analysis: quality !== 'excluded' },
           events_summary: {
             task: `task-${index}`,
+            treatment: `task-${index}`,
+            sample: 1,
             prompt: '请生成本周报告',
             final_response: '请先提供本周数据',
             total_tokens: 100,
@@ -290,6 +302,7 @@ describe('Eval run history and baselines', () => {
     const metadataFile = path.join(root, 'metadata.json');
     const metadata = JSON.parse(await fs.readFile(metadataFile, 'utf8'));
     metadata.expected_case_matrix.matrix_hash = expectedMatrix().matrix_hash;
+    await fs.unlink(path.join(root, 'expected-case-matrix.json'));
     await fs.writeFile(metadataFile, JSON.stringify(metadata));
     expect((await readEvalRun(project, 'matrix')).baselineEligible).toBe(false);
     await fs.writeFile(
@@ -604,7 +617,8 @@ describe('Eval run history and baselines', () => {
       }),
     );
     const run = await readEvalRun(project, 'subset');
-    expect(run.conclusion).toBe('passed');
+    expect(run.conclusion).toBe('incomplete');
+    expect(run.subsetConclusion).toBe('passed');
     expect(run.baselineEligible).toBe(false);
     expect(run.availableActions.compare).toBe(false);
     await expect(setEvalBaseline(project, 'subset')).rejects.toThrow(/失败用例重跑/);

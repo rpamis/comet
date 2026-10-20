@@ -76,3 +76,18 @@ export { resolveInstalledWorkflowApplication } from './installed-application.js'
 export { projectWorkflowApplicationRun } from './run-view.js';
 export type { SelectedWorkflowApplicationStatus } from './application.js';
 export type { ApplicationRunRecord } from './application.js';
+
+export { iterateWorkflowApplicationRunSources } from './run-observation.js';
+
+export { readWorkflowApplicationRunProjection } from './run-observation.js';
+export {
+  readWorkflowApplicationStorageDisposition,
+  inspectWorkflowApplicationStorageIndex,
+  repairWorkflowApplicationStorageIndex,
+} from './application.js';
+
+export {
+  parseEvaluationMatrix,
+  validateEvaluationCase,
+  evaluationCaseKey,
+} from './evaluation-case-evidence.js';

@@ -1,7 +1,15 @@
+import {
+  readRuntimeProjection,
+  queryRuntimeProjection,
+  type RuntimeQuery,
+} from './runtime-compact-query.js';
+import { hashJsonValueProjection } from '../../platform/fs/json-value-pool.js';
 import { randomUUID } from 'node:crypto';
+import { types as utilTypes } from 'node:util';
 import {
   cancelRuntimeAction,
   acknowledgeRuntimeActionCancellation,
+  acknowledgeRuntimeActionStopped,
   claimRuntimeAction,
   markRuntimeActionUnknown,
   recordRuntimeOutcome,
@@ -22,7 +30,7 @@ import {
 } from './runtime-json.js';
 import { compileRuntimeSchema } from './runtime-schema.js';
 import type { RuntimeStore } from './runtime-store.js';
-import { parseWorkflowRunSnapshot } from './workflow-run-validation.js';
+import { parseWorkflowRunSnapshot, validateWorkflowRunCommit } from './workflow-run-validation.js';
 import {
   defineWorkflow,
   type DefineWorkflowOptions,
@@ -170,7 +178,10 @@ function currentRun(run: WorkflowRun): RuntimeCurrentRun {
     actions: run.actions.filter(
       (action) =>
         ['pending', 'running', 'unknown'].includes(action.status) ||
-        (action.status === 'cancelled' && action.claim && !action.cancellation),
+        (action.status === 'cancelled' &&
+          action.claim &&
+          !action.cancellation &&
+          !action.executionStop),
     ),
     waits: run.waits.filter((wait) => wait.status === 'pending'),
     evidenceWaits: (run.evidenceWaits ?? []).filter((wait) => wait.status === 'pending'),
@@ -185,6 +196,102 @@ function currentRun(run: WorkflowRun): RuntimeCurrentRun {
 
 function referenceKey(reference: WorkflowRef): string {
   return JSON.stringify([reference.id, reference.version]);
+}
+
+/** 请求入口先取得稳定数据，取消信号仍连接原始请求。 */
+function captureContext(
+  context: RuntimeInvocationContext | undefined,
+): RuntimeInvocationContext | undefined {
+  if (context === undefined) return undefined;
+  if (!context || typeof context !== 'object' || utilTypes.isProxy(context))
+    throw new RuntimeProtocolError('INVALID_JSON', 'context 必须是普通对象');
+  const fields: Record<string, unknown> = {};
+  let signal: AbortSignal | undefined;
+  for (const key of Reflect.ownKeys(context)) {
+    const field = Object.getOwnPropertyDescriptor(context, key)!;
+    if (typeof key !== 'string' || !field.enumerable || !('value' in field))
+      throw new RuntimeProtocolError('INVALID_JSON', 'context 必须使用普通数据属性');
+    if (key === 'signal') signal = field.value;
+    else if (field.value !== undefined)
+      Object.defineProperty(fields, key, { value: field.value, enumerable: true });
+  }
+  const copied = cloneRuntimeValue(fields) as unknown as RuntimeInvocationContext;
+  if (signal !== undefined) {
+    if (!(signal instanceof AbortSignal))
+      throw new RuntimeProtocolError('INVALID_JSON', 'signal 必须是 AbortSignal');
+    copied.signal = signal;
+  }
+  return copied;
+}
+
+function captureData(value: unknown, ancestors = new Set<object>()): unknown {
+  if (value === null || typeof value !== 'object') return value;
+  if (utilTypes.isProxy(value))
+    throw new RuntimeProtocolError('INVALID_JSON', '请求不能包含代理对象');
+  if (ancestors.size > 64) throw new RuntimeProtocolError('INVALID_JSON', '请求数据嵌套超过 64 层');
+  if (ancestors.has(value)) throw new RuntimeProtocolError('INVALID_JSON', '请求包含循环引用');
+  const prototype = Object.getPrototypeOf(value);
+  if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null)
+    throw new RuntimeProtocolError('INVALID_JSON', '请求必须使用普通数据对象');
+  ancestors.add(value);
+  const copied: Record<string, unknown> | unknown[] = Array.isArray(value) ? [] : {};
+  for (const key of Reflect.ownKeys(value)) {
+    if (Array.isArray(value) && key === 'length') continue;
+    const field = Object.getOwnPropertyDescriptor(value, key)!;
+    if (typeof key !== 'string' || !field.enumerable || !('value' in field))
+      throw new RuntimeProtocolError('INVALID_JSON', '请求必须使用普通数据属性');
+    Object.defineProperty(copied, key, {
+      enumerable: true,
+      writable: true,
+      configurable: true,
+      value: captureData(field.value, ancestors),
+    });
+  }
+  ancestors.delete(value);
+  return copied;
+}
+
+function captureRequest<T>(request: T): T {
+  if (request === null || typeof request !== 'object') return request;
+  if (utilTypes.isProxy(request))
+    throw new RuntimeProtocolError('INVALID_JSON', '请求不能包含代理对象');
+  const captured: Record<string, unknown> = {};
+  for (const key of Reflect.ownKeys(request)) {
+    const field = Object.getOwnPropertyDescriptor(request, key)!;
+    if (typeof key !== 'string' || !field.enumerable || !('value' in field))
+      throw new RuntimeProtocolError('INVALID_JSON', '请求必须使用普通数据属性');
+    Object.defineProperty(captured, key, {
+      enumerable: true,
+      writable: true,
+      configurable: true,
+      value: key === 'context' ? captureContext(field.value) : captureData(field.value),
+    });
+  }
+  return captured as T;
+}
+
+function callbackValidation<T extends { accepted: boolean; reason?: string }>(value: T): T {
+  const owned = captureData(value);
+  const captured = cloneRuntimeValue(
+    owned && typeof owned === 'object' && !Array.isArray(owned)
+      ? Object.fromEntries(Object.entries(owned).filter(([, field]) => field !== undefined))
+      : owned,
+  ) as unknown as T;
+  if (
+    !captured ||
+    typeof captured.accepted !== 'boolean' ||
+    (captured.reason !== undefined && typeof captured.reason !== 'string') ||
+    ('allowCompleted' in captured && typeof captured.allowCompleted !== 'boolean')
+  )
+    throw new RuntimeProtocolError('INVALID_VALIDATION', '验证器必须返回布尔 accepted 和有效原因');
+  return captured;
+}
+
+function supports(executor: RuntimeExecutor, action: RuntimeAction): boolean {
+  const accepted = executor.supports(copyRuntimeSnapshot(action));
+  if (typeof accepted !== 'boolean')
+    throw new RuntimeProtocolError('INVALID_VALIDATION', '执行器 supports 必须返回布尔值');
+  return accepted;
 }
 
 function checkContext(context?: RuntimeInvocationContext): void {
@@ -399,7 +506,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
           '未注册工作流所要求的状态验证器版本',
         );
       try {
-        const result = validator.validate({ state: cloneRuntimeValue(state) });
+        const result = callbackValidation(validator.validate({ state: cloneRuntimeValue(state) }));
         if (!result.accepted) throw new Error(result.reason ?? '业务状态未通过验证');
       } catch (error) {
         throw new RuntimeProtocolError(
@@ -423,10 +530,12 @@ export function createRuntime(options: CreateRuntimeOptions) {
         'TRANSITION_HANDLER_UNAVAILABLE',
         '未注册工作流所要求的转移处理器版本',
       );
-    const transition = handler.apply({
-      run: copyRuntimeSnapshot(run),
-      event: copyRuntimeSnapshot(event),
-    });
+    const transition = cloneRuntimeValue(
+      handler.apply({
+        run: copyRuntimeSnapshot(run),
+        event: copyRuntimeSnapshot(event),
+      }),
+    ) as unknown as ReturnType<WorkflowTransitionHandler['apply']>;
     const state = cloneRuntimeValue(transition.state);
     validateWorkflowState(definition, state, 'TRANSITION_STATE_INVALID');
     const allowedTargets = new Set(
@@ -475,10 +584,10 @@ export function createRuntime(options: CreateRuntimeOptions) {
     return selected;
   }
 
-  async function inspect(runId: string): Promise<WorkflowRun> {
-    const persisted = await options.store.read(runId);
-    if (!persisted) throw new RuntimeProtocolError('RUN_NOT_FOUND', `找不到工作流实例：${runId}`);
-    const run = parseWorkflowRunSnapshot(persisted, runId);
+  function validateDefinitionBindings(
+    run: WorkflowRun,
+    digest: (value: unknown) => string = hashRuntimeValue,
+  ): void {
     if (definitions.size > 0) {
       for (const [key, hash] of Object.entries(run.definitionHashes)) {
         const [id, version] = JSON.parse(key) as [string, string];
@@ -498,8 +607,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
               action.input === null ||
               typeof action.input !== 'object' ||
               !Object.hasOwn(action.input, 'activation') ||
-              hashRuntimeValue((action.input as { activation?: unknown }).activation) !==
-                command.inputHash
+              digest((action.input as { activation?: unknown }).activation) !== command.inputHash
             ) {
               throw new RuntimeProtocolError('INVALID_RUN', '命令记录与固定工作流 Action 不一致');
             }
@@ -575,8 +683,8 @@ export function createRuntime(options: CreateRuntimeOptions) {
               (wait && wait.status !== 'resolved') ||
               (evidence && !['resolved', 'invalidated'].includes(evidence.status)) ||
               value === undefined ||
-              hashRuntimeValue(token.results) !==
-                hashRuntimeValue({
+              digest(token.results) !==
+                digest({
                   ...prior,
                   [token.from]: { sequence: source.sequence, value },
                 }) ||
@@ -599,6 +707,13 @@ export function createRuntime(options: CreateRuntimeOptions) {
         }
       }
     }
+  }
+
+  async function inspect(runId: string): Promise<WorkflowRun> {
+    const persisted = await options.store.read(runId);
+    if (!persisted) throw new RuntimeProtocolError('RUN_NOT_FOUND', `找不到工作流实例：${runId}`);
+    const run = parseWorkflowRunSnapshot(persisted, runId);
+    validateDefinitionBindings(run);
     return freezeRuntimeSnapshot(run);
   }
 
@@ -619,6 +734,8 @@ export function createRuntime(options: CreateRuntimeOptions) {
       validateRuntimeValue(next);
       if (equalRuntimeData(next, before)) return before;
       next.revision = before.revision + 1;
+      validateWorkflowRunCommit(next, before);
+      validateDefinitionBindings(next);
       freezeRuntimeSnapshot(next);
       checkContext(command.context);
       if (await options.store.compareAndSwap(command.runId, before.revision, next)) return next;
@@ -724,6 +841,8 @@ export function createRuntime(options: CreateRuntimeOptions) {
     scheduleWorkflow(run, definition);
     freezeRuntimeSnapshot(run);
     checkContext(input.context);
+    validateWorkflowRunCommit(run);
+    validateDefinitionBindings(run);
     if (!(await options.store.compareAndSwap(runId, null, run)))
       return startInternal({ ...input, runId }, lineage);
     return copyRuntimeSnapshot(run);
@@ -780,12 +899,14 @@ export function createRuntime(options: CreateRuntimeOptions) {
         }
         let checked;
         try {
-          checked = await validator.validate({
-            run: copyRuntimeSnapshot(before),
-            name: command.name,
-            input: activation,
-            context: command.context,
-          });
+          checked = callbackValidation(
+            await validator.validate({
+              run: copyRuntimeSnapshot(before),
+              name: command.name,
+              input: copyRuntimeSnapshot(activation),
+              context: captureContext(command.context),
+            }),
+          );
         } catch (error) {
           throw new RuntimeProtocolError(
             'COMMAND_VALIDATION_ERROR',
@@ -833,6 +954,8 @@ export function createRuntime(options: CreateRuntimeOptions) {
         },
       ];
       next.revision = before.revision + 1;
+      validateWorkflowRunCommit(next, before);
+      validateDefinitionBindings(next);
       freezeRuntimeSnapshot(next);
       checkContext(command.context);
       if (await options.store.compareAndSwap(command.runId, before.revision, next)) {
@@ -953,7 +1076,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
             executorId: 'comet-child-workflow',
             claimToken: child.runId,
             capabilities: ['child-workflow'],
-            context: command.context,
+            context: captureContext(command.context),
           },
           true,
         );
@@ -968,7 +1091,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
                 runId: child.runId,
                 workflow: child.workflow,
                 input: action.input,
-                context: command.context,
+                context: captureContext(command.context),
               },
               [...run.lineage, run.runId],
             );
@@ -984,7 +1107,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
         run = await recordOutcomeInternal(
           {
             runId: run.runId,
-            context: command.context,
+            context: captureContext(command.context),
             outcome: {
               actionId: action.id,
               attempt: action.attempt,
@@ -1031,6 +1154,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
             '子工作流由 Runtime 登记与核对，不接受宿主代领',
           );
         const claimed = claimRuntimeAction(action, {
+          executionOrigin: { workflow: { ...run.workflow } },
           attempt: command.attempt,
           inputHash: command.inputHash,
           executorId: command.executorId,
@@ -1045,7 +1169,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
               '执行者未声明 Action 要求的全部宿主能力',
             );
           const executor = executors.get(command.executorId);
-          if (executor?.supports(copyRuntimeSnapshot(action))) {
+          if (executor && supports(executor, action)) {
             if (
               action.requiredCapabilities.some(
                 (capability) => !executor.capabilities.includes(capability),
@@ -1057,7 +1181,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
               );
             await executor.preflight?.(
               copyRuntimeSnapshot(action),
-              command.context,
+              captureContext(command.context),
               executor.includeRun === false ? undefined : copyRuntimeSnapshot(run),
             );
             checkContext(command.context);
@@ -1108,12 +1232,14 @@ export function createRuntime(options: CreateRuntimeOptions) {
         const actionIndex = run.actions.indexOf(action);
         try {
           if (options.validateOutcome) {
-            const checked = await options.validateOutcome({
-              run: copyRuntimeSnapshot(run),
-              action: copyRuntimeSnapshot(action),
-              outcome: copyRuntimeSnapshot(outcome),
-              context: command.context,
-            });
+            const checked = callbackValidation(
+              await options.validateOutcome({
+                run: copyRuntimeSnapshot(run),
+                action: copyRuntimeSnapshot(action),
+                outcome: copyRuntimeSnapshot(outcome),
+                context: captureContext(command.context),
+              }),
+            );
             if (!checked.accepted)
               rejection = {
                 code: 'OUTCOME_REJECTED',
@@ -1134,12 +1260,14 @@ export function createRuntime(options: CreateRuntimeOptions) {
                 'VALIDATOR_UNAVAILABLE',
                 '未注册工作流所要求的验证器版本',
               );
-            const result = await validator.validate({
-              run: copyRuntimeSnapshot(run),
-              action: copyRuntimeSnapshot(action),
-              outcome: copyRuntimeSnapshot(outcome),
-              context: command.context,
-            });
+            const result = callbackValidation(
+              await validator.validate({
+                run: copyRuntimeSnapshot(run),
+                action: copyRuntimeSnapshot(action),
+                outcome: copyRuntimeSnapshot(outcome),
+                context: captureContext(command.context),
+              }),
+            );
             if (!result.accepted) {
               rejection = {
                 code: 'OUTCOME_REJECTED',
@@ -1285,13 +1413,15 @@ export function createRuntime(options: CreateRuntimeOptions) {
       const validator = evidenceValidators.get(referenceKey(step.validator));
       if (!validator)
         throw new RuntimeProtocolError('EVIDENCE_VALIDATOR_UNAVAILABLE', '未注册证据验证器版本');
-      const checked = await validator.validate({
-        run: copyRuntimeSnapshot(run),
-        kind: command.kind,
-        ref: command.ref,
-        contentHash: command.contentHash,
-        context: command.context,
-      });
+      const checked = callbackValidation(
+        await validator.validate({
+          run: copyRuntimeSnapshot(run),
+          kind: command.kind,
+          ref: command.ref,
+          contentHash: command.contentHash,
+          context: captureContext(command.context),
+        }),
+      );
       if (!checked.accepted || checked.actualHash !== command.contentHash) {
         throw new RuntimeProtocolError(
           'EVIDENCE_REJECTED',
@@ -1369,13 +1499,15 @@ export function createRuntime(options: CreateRuntimeOptions) {
       const validator = evidenceValidators.get(referenceKey(step.validator));
       if (!validator)
         throw new RuntimeProtocolError('EVIDENCE_VALIDATOR_UNAVAILABLE', '未注册证据验证器版本');
-      const checked = await validator.validate({
-        run: copyRuntimeSnapshot(run),
-        kind: command.kind,
-        ref: command.ref,
-        contentHash: command.contentHash,
-        context: command.context,
-      });
+      const checked = callbackValidation(
+        await validator.validate({
+          run: copyRuntimeSnapshot(run),
+          kind: command.kind,
+          ref: command.ref,
+          contentHash: command.contentHash,
+          context: captureContext(command.context),
+        }),
+      );
       if (checked.accepted && checked.actualHash === command.contentHash) {
         throw new RuntimeProtocolError('EVIDENCE_STILL_VALID', '当前证据仍然有效，不能使其失效');
       }
@@ -1468,6 +1600,23 @@ export function createRuntime(options: CreateRuntimeOptions) {
     return cancelled;
   }
 
+  async function acknowledgeStopped(
+    command: RunCommand & { stoppedActions: readonly RuntimeStoppedAction[] },
+  ): Promise<WorkflowRun> {
+    return mutate(command, (run) => {
+      if (!Array.isArray(command.stoppedActions) || !command.stoppedActions.length)
+        throw new RuntimeProtocolError('INVALID_ACTION', 'stoppedActions 必须是非空停止确认数组');
+      const seen = new Set<string>();
+      for (const stopped of command.stoppedActions) {
+        if (!stopped || typeof stopped !== 'object' || seen.has(stopped.actionId))
+          throw new RuntimeProtocolError('INVALID_ACTION', '停止确认重复或无效');
+        seen.add(stopped.actionId);
+        const action = requiredAction(run, stopped.actionId);
+        run.actions[run.actions.indexOf(action)] = acknowledgeRuntimeActionStopped(action, stopped);
+      }
+    });
+  }
+
   async function markUnknown(
     command: RunCommand & { actionId: string; attempt: number; reason: string },
   ): Promise<WorkflowRun> {
@@ -1529,13 +1678,15 @@ export function createRuntime(options: CreateRuntimeOptions) {
           action.outcome.status !== 'succeeded'
         )
           throw new RuntimeProtocolError('RUN_TERMINAL', '当前 Run 不符合已提交结果的恢复条件');
-        const checked = await options.validateRecovery({
-          run: copyRuntimeSnapshot(run),
-          action: copyRuntimeSnapshot(action),
-          outcome: copyRuntimeSnapshot(action.outcome),
-          context: command.context,
-          proposalHash: command.proposalHash,
-        });
+        const checked = callbackValidation(
+          await options.validateRecovery({
+            run: copyRuntimeSnapshot(run),
+            action: copyRuntimeSnapshot(action),
+            outcome: copyRuntimeSnapshot(action.outcome),
+            context: captureContext(command.context),
+            proposalHash: command.proposalHash,
+          }),
+        );
         if (!checked.accepted)
           throw new RuntimeProtocolError('ACTION_TERMINAL', checked.reason ?? '应用拒绝恢复此结果');
         const event = action.outcome.event ?? 'succeeded';
@@ -1609,7 +1760,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
         'ACTION_ALREADY_CLAIMED',
         '不能重复执行已派发的 Action；请先查询和核对结果',
       );
-    if (!executor.supports(copyRuntimeSnapshot(pending)))
+    if (!supports(executor, pending))
       throw new RuntimeProtocolError('EXECUTOR_UNSUPPORTED', '执行器不支持此 Action');
     checkContext(command.context);
     const started = await claimInternal(
@@ -1629,7 +1780,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
       checkContext(command.context);
       result = await executor.execute(
         copyRuntimeSnapshot(action),
-        command.context,
+        captureContext(command.context),
         executor.includeRun === false ? undefined : copyRuntimeSnapshot(started),
       );
     } catch (error) {
@@ -1657,7 +1808,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
       return await recordOutcomeInternal(
         {
           runId: command.runId,
-          context: command.context,
+          context: captureContext(command.context),
           outcome: {
             ...result,
             actionId: action.id,
@@ -1749,7 +1900,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
       if (!action) return stop('idle');
       if (actionsExecuted >= maxActions) return stop('action-limit');
       if (
-        !executor.supports(copyRuntimeSnapshot(action)) ||
+        !supports(executor, action) ||
         action.requiredCapabilities.some(
           (capability) => !executor.capabilities.includes(capability),
         )
@@ -1768,24 +1919,34 @@ export function createRuntime(options: CreateRuntimeOptions) {
     }
   }
 
+  async function query(command: RuntimeQuery & { runId: string }): Promise<unknown> {
+    const projection = await readRuntimeProjection(options.store, command.runId);
+    validateDefinitionBindings(projection.run, hashJsonValueProjection);
+    return queryRuntimeProjection(projection, command);
+  }
+
   function isolated<Args extends unknown[], Result>(
     operation: (...args: Args) => Promise<Result>,
   ): (...args: Args) => Promise<Result> {
-    return async (...args) => copyRuntimeSnapshot(await operation(...args));
+    return async (...args) => {
+      const captured = args.map((argument) => captureRequest(argument)) as Args;
+      return copyRuntimeSnapshot(await operation(...captured));
+    };
   }
   return {
     start: isolated(start),
     dispatchCommand: isolated(dispatchCommand),
     inspect: isolated(inspect),
+    query: isolated(query),
     inspectCurrent: async (runId: string): Promise<RuntimeCurrentRun> =>
-      currentRun(await inspect(runId)),
+      (await query({ runId, view: 'current' })) as RuntimeCurrentRun,
     executeCurrent: async (
       command: RunCommand & { actionId: string; executorId: string },
-    ): Promise<RuntimeCurrentRun> => currentRun(await execute(command)),
+    ): Promise<RuntimeCurrentRun> => currentRun(await execute(captureRequest(command))),
     runUntilBlockedCurrent: async (
       command: RunRuntimeUntilBlocked,
     ): Promise<RuntimeCurrentProgress> => {
-      const progress = await runUntilBlocked(command);
+      const progress = await runUntilBlocked(captureRequest(command));
       return { ...progress, run: currentRun(progress.run) };
     },
     next: isolated(next),
@@ -1796,6 +1957,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
     invalidateEvidence: isolated(invalidateEvidence),
     reviseWait: isolated(reviseWait),
     cancel: isolated(cancel),
+    acknowledgeStopped: isolated(acknowledgeStopped),
     markUnknown: isolated(markUnknown),
     retry: isolated(retry),
     execute: isolated((command: RunCommand & { actionId: string; executorId: string }) =>

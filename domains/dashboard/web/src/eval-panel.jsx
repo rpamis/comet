@@ -447,6 +447,31 @@ export function EvalPanel({
       }
     }
   };
+  const repairResults = (run) =>
+    modal.confirm({
+      title: t('确认执行已停止并修复结果？'),
+      content: t(
+        '请先确认模型和容器已停止。仅从完整原始用例重建摘要，原始损坏文件会保留；不会补造缺失用例或通过结论。',
+      ),
+      okText: t('已停止，修复结果'),
+      cancelText: t('取消'),
+      onOk: async () => {
+        try {
+          const updated = await requestJson(
+            base,
+            `/runs/${encodeURIComponent(run.id)}/repair-results`,
+            {
+              body: { expectedRevision: run.evidenceRevision, confirmedStopped: true },
+            },
+          );
+          if (!active.current) return;
+          setDetail(updated);
+          await refresh(true);
+        } catch (err) {
+          message.error(err.message);
+        }
+      },
+    });
   const clearBaseline = (run) =>
     modal.confirm({
       title: t('取消默认基线？'),
@@ -460,7 +485,7 @@ export function EvalPanel({
           const updated = await requestJson(
             base,
             `/runs/${encodeURIComponent(run.id)}/baseline/clear`,
-            { body: {} },
+            { body: { scope: run.storedBaselineScope ?? run.baselineScope, expectedRun: run.id } },
           );
           if (!active.current) return;
           setRuns((current) =>
@@ -1184,6 +1209,20 @@ export function EvalPanel({
               menu={{
                 items: [
                   { key: 'guide', label: t('使用指南'), onClick: () => setGuideOpen(true) },
+                  ...(!detail.archiveId &&
+                  detail.evidenceRevision &&
+                  ['completed', 'stopped', 'interrupted', 'unknown'].includes(
+                    detail.executionStatus,
+                  ) &&
+                  detail.conclusion === 'incomplete'
+                    ? [
+                        {
+                          key: 'repair-results',
+                          label: t('修复结果摘要'),
+                          onClick: () => repairResults(detail),
+                        },
+                      ]
+                    : []),
                   {
                     key: 'refresh',
                     label: t('刷新状态'),

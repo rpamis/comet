@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import {
   DashboardSummaryIndex,
+  markDashboardSummaryIndexDirty,
   type DashboardSummarySource,
 } from '../../../domains/dashboard/summary-index.js';
 
@@ -13,8 +14,10 @@ describe('Dashboard SQLite summary index', () => {
   let root: string;
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-summary-index-'));
+    vi.stubEnv('XDG_CACHE_HOME', root);
   });
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await fs.rm(root, { recursive: true, force: true });
   });
   const record = (key: string, status = 'completed') => ({
@@ -264,8 +267,8 @@ describe('Dashboard SQLite summary index', () => {
           })),
       });
       await index.refresh({ budgetMs: 100, maxSources: 8 });
-      expect(started).toEqual(['0', '1', '2', '3', '4']);
-      expect(await index.metadata()).toMatchObject({ indexedCount: 5, indexing: true });
+      expect(started).toEqual(['0', '1']);
+      expect(await index.metadata()).toMatchObject({ indexedCount: 2, indexing: true });
     } finally {
       now.mockRestore();
     }
@@ -315,8 +318,7 @@ describe('Dashboard SQLite summary index', () => {
         sourceCount: 8,
         indexing: true,
       });
-      await vi.waitFor(() => expect(discoveries).toBe(2));
-      expect(started).toEqual(['0']);
+      expect(discoveries).toBe(1);
       releaseBackground();
       await vi.waitFor(async () =>
         expect(await index.query()).toMatchObject({ total: 8, indexedCount: 8, indexing: false }),
@@ -435,5 +437,73 @@ describe('Dashboard SQLite summary index', () => {
     await vi.waitFor(async () =>
       expect((await index.query()).items).toEqual([{ id: 'a', status: 'completed' }]),
     );
+  });
+  it('resumes asynchronous discovery without deleting unseen sources or restarting the iterator', async () => {
+    let starts = 0;
+    const index = new DashboardSummaryIndex({
+      projectRoot: root,
+      namespace: 'resume',
+      discover: async function* () {
+        starts++;
+        for (const key of ['a', 'b', 'c'])
+          yield { key, fingerprint: 'one', read: async () => [record(key)] };
+      },
+    });
+    await index.refresh();
+    await index.refresh({ maxSources: 1 });
+    expect((await index.query()).total).toBe(3);
+    expect((await index.metadata())?.indexing).toBe(true);
+    await index.refresh({ maxSources: 1 });
+    expect(starts).toBe(2);
+    await index.refresh();
+    expect((await index.metadata())?.indexing).toBe(false);
+    expect(starts).toBe(2);
+  });
+  it('preserves generation when volatile content is unchanged and retries failed sources', async () => {
+    let fail = false,
+      version = 1;
+    const index = new DashboardSummaryIndex({
+      projectRoot: root,
+      namespace: 'volatile',
+      discover: async function* () {
+        yield {
+          key: 'a',
+          fingerprint: 'one',
+          read: async () => {
+            if (fail) throw new Error('retry');
+            return [{ ...record('a'), volatile: true, payload: { version } }];
+          },
+        };
+      },
+    });
+    await index.refresh();
+    const generation = (await index.metadata())?.generation;
+    await index.refresh();
+    expect((await index.metadata())?.generation).toBe(generation);
+    fail = true;
+    await index.refresh();
+    expect((await index.metadata())?.indexing).toBe(true);
+    fail = false;
+    version++;
+    await index.refresh();
+    expect((await index.metadata())?.generation).not.toBe(generation);
+    expect(await index.find('a')).toEqual({ version: 2 });
+  });
+  it('restarts incomplete discovery when marked dirty', async () => {
+    let starts = 0;
+    const index = new DashboardSummaryIndex({
+      projectRoot: root,
+      namespace: 'dirty',
+      discover: async function* () {
+        starts++;
+        for (const key of ['a', 'b'])
+          yield { key, fingerprint: 'one', read: async () => [record(key)] };
+      },
+    });
+    await index.refresh({ maxSources: 1 });
+    markDashboardSummaryIndexDirty(root, 'dirty');
+    await index.refresh();
+    expect(starts).toBe(2);
+    expect((await index.query()).total).toBe(2);
   });
 });

@@ -1,3 +1,4 @@
+import { inspectClassicSdkRunDiagnostics } from './classic-sdk-diagnostics.js';
 import { isClassicSdkRejectedBuildProposal } from './classic-build-configuration.js';
 import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
 import type { RuntimeAction, RuntimeValue, WorkflowRun } from '../engine/runtime.js';
@@ -623,6 +624,7 @@ export async function classicSdkEntryData(
       : null;
     return {
       ...base,
+      diagnostics: await inspectClassicSdkRunDiagnostics(projectRoot, run),
       changeDir: recovery.changeDir,
       layout: recovery.layout,
       artifactRefs: recovery.artifactRefs,

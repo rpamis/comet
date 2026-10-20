@@ -322,6 +322,9 @@ export function createReportApplication(context: Pick<WorkflowApplicationFactory
 // @public
 export function createStandaloneApplication(options: StandaloneApplicationOptions): WorkflowApplicationImplementation;
 
+// @public (undocumented)
+export const evaluationCaseKey: (item: EvaluationCaseIdentity) => string;
+
 // @public
 export function exportWorkflowApplication(options: {
     file: string;
@@ -420,6 +423,14 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                 retry: RuntimeRetryPolicy;
                 requiredCapabilities: string[];
                 claim?: RuntimeClaim;
+                executionOrigin?: {
+                    workflow: {
+                        id: string;
+                        version: string;
+                        hash: string;
+                    };
+                };
+                executionStop?: RuntimeStoppedAction;
                 outcome?: RuntimeOutcome;
                 receipts: {
                     outcomeId: string;
@@ -458,6 +469,14 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                 retry: RuntimeRetryPolicy;
                 requiredCapabilities: string[];
                 claim?: RuntimeClaim;
+                executionOrigin?: {
+                    workflow: {
+                        id: string;
+                        version: string;
+                        hash: string;
+                    };
+                };
+                executionStop?: RuntimeStoppedAction;
                 outcome?: RuntimeOutcome;
                 receipts: {
                     outcomeId: string;
@@ -512,6 +531,14 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                 retry: RuntimeRetryPolicy;
                 requiredCapabilities: string[];
                 claim?: RuntimeClaim;
+                executionOrigin?: {
+                    workflow: {
+                        id: string;
+                        version: string;
+                        hash: string;
+                    };
+                };
+                executionStop?: RuntimeStoppedAction;
                 outcome?: RuntimeOutcome;
                 receipts: {
                     outcomeId: string;
@@ -572,6 +599,14 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                 retry: RuntimeRetryPolicy;
                 requiredCapabilities: string[];
                 claim?: RuntimeClaim;
+                executionOrigin?: {
+                    workflow: {
+                        id: string;
+                        version: string;
+                        hash: string;
+                    };
+                };
+                executionStop?: RuntimeStoppedAction;
                 outcome?: RuntimeOutcome;
                 receipts: {
                     outcomeId: string;
@@ -624,6 +659,14 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                 retry: RuntimeRetryPolicy;
                 requiredCapabilities: string[];
                 claim?: RuntimeClaim;
+                executionOrigin?: {
+                    workflow: {
+                        id: string;
+                        version: string;
+                        hash: string;
+                    };
+                };
+                executionStop?: RuntimeStoppedAction;
                 outcome?: RuntimeOutcome;
                 receipts: {
                     outcomeId: string;
@@ -688,6 +731,14 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                 retry: RuntimeRetryPolicy;
                 requiredCapabilities: string[];
                 claim?: RuntimeClaim;
+                executionOrigin?: {
+                    workflow: {
+                        id: string;
+                        version: string;
+                        hash: string;
+                    };
+                };
+                executionStop?: RuntimeStoppedAction;
                 outcome?: RuntimeOutcome;
                 receipts: {
                     outcomeId: string;
@@ -859,6 +910,17 @@ export function inspectWorkflowApplicationRun(projectRoot: string, applicationId
     run: WorkflowRun;
 }>;
 
+// @public (undocumented)
+export function inspectWorkflowApplicationStorageIndex(projectRoot: string, applicationId: string): Promise<ApplicationStorageIndex | {
+    schema: string;
+    epoch: string;
+    state: "corrupt";
+    error: {
+        code: string;
+        message: string;
+    };
+} | null>;
+
 // @public
 export function installWorkflowApplication(options: ApplicationDeliveryOptions & {
     file: string;
@@ -884,6 +946,21 @@ export function installWorkflowApplication(options: ApplicationDeliveryOptions &
         platforms: string[];
     }>;
 }>;
+
+// @public (undocumented)
+export function iterateWorkflowApplicationRunSources(projectRoot: string, options?: {
+    excludeApplications?: readonly string[];
+}): AsyncGenerator<{
+    applicationId: string;
+    rootDir: string;
+    storageKey: string;
+    runId: string | null;
+    fingerprint: string;
+    error: {
+        code: string;
+        message: string;
+    } | null;
+}, void, unknown>;
 
 // @public
 export function listWorkflowApplicationRunRecords(projectRoot: string): Promise<WorkflowApplicationRunObservation[]>;
@@ -926,6 +1003,9 @@ export function loadWorkflowApplication(options: {
     useLatestDefinition?: boolean;
     readOnly?: boolean;
 }): Promise<LoadedWorkflowApplication>;
+
+// @public (undocumented)
+export function parseEvaluationMatrix(value: unknown, declaredHash?: unknown): EvaluationCaseIdentity[];
 
 // @public
 export function previewWorkflowApplicationInstall(options: ApplicationDeliveryOptions & {
@@ -997,6 +1077,14 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
             retry: RuntimeRetryPolicy;
             requiredCapabilities: string[];
             claim?: RuntimeClaim;
+            executionOrigin?: {
+                workflow: {
+                    id: string;
+                    version: string;
+                    hash: string;
+                };
+            };
+            executionStop?: RuntimeStoppedAction;
             outcome?: RuntimeOutcome;
             receipts: {
                 outcomeId: string;
@@ -1035,6 +1123,14 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
             retry: RuntimeRetryPolicy;
             requiredCapabilities: string[];
             claim?: RuntimeClaim;
+            executionOrigin?: {
+                workflow: {
+                    id: string;
+                    version: string;
+                    hash: string;
+                };
+            };
+            executionStop?: RuntimeStoppedAction;
             outcome?: RuntimeOutcome;
             receipts: {
                 outcomeId: string;
@@ -1089,6 +1185,14 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
             retry: RuntimeRetryPolicy;
             requiredCapabilities: string[];
             claim?: RuntimeClaim;
+            executionOrigin?: {
+                workflow: {
+                    id: string;
+                    version: string;
+                    hash: string;
+                };
+            };
+            executionStop?: RuntimeStoppedAction;
             outcome?: RuntimeOutcome;
             receipts: {
                 outcomeId: string;
@@ -1149,6 +1253,14 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
             retry: RuntimeRetryPolicy;
             requiredCapabilities: string[];
             claim?: RuntimeClaim;
+            executionOrigin?: {
+                workflow: {
+                    id: string;
+                    version: string;
+                    hash: string;
+                };
+            };
+            executionStop?: RuntimeStoppedAction;
             outcome?: RuntimeOutcome;
             receipts: {
                 outcomeId: string;
@@ -1201,6 +1313,14 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
             retry: RuntimeRetryPolicy;
             requiredCapabilities: string[];
             claim?: RuntimeClaim;
+            executionOrigin?: {
+                workflow: {
+                    id: string;
+                    version: string;
+                    hash: string;
+                };
+            };
+            executionStop?: RuntimeStoppedAction;
             outcome?: RuntimeOutcome;
             receipts: {
                 outcomeId: string;
@@ -1265,6 +1385,14 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
             retry: RuntimeRetryPolicy;
             requiredCapabilities: string[];
             claim?: RuntimeClaim;
+            executionOrigin?: {
+                workflow: {
+                    id: string;
+                    version: string;
+                    hash: string;
+                };
+            };
+            executionStop?: RuntimeStoppedAction;
             outcome?: RuntimeOutcome;
             receipts: {
                 outcomeId: string;
@@ -1402,7 +1530,23 @@ export function readWorkflowApplicationRun(projectRoot: string, applicationId: s
 export function readWorkflowApplicationRunObservation(projectRoot: string, applicationId: string, runId: string): Promise<WorkflowApplicationRunObservation>;
 
 // @public
+export function readWorkflowApplicationRunProjection(projectRoot: string, applicationId: string, runId: string): Promise<{
+    application: ApplicationIdentity;
+    projection: Readonly<{
+        record: ApplicationRunRecord;
+        run: WorkflowRun;
+        scope: string;
+        stats: JsonProjectionStats | undefined;
+        materialize: (path?: readonly string[]) => unknown;
+        hash: () => string;
+    }>;
+} | null>;
+
+// @public
 export function readWorkflowApplicationRunRecord(projectRoot: string, applicationId: string, runId: string): Promise<ApplicationRunRecord | null>;
+
+// @public
+export function readWorkflowApplicationStorageDisposition(projectRoot: string, applicationId: string, runId: string): Promise<FileRuntimeStoreDisposition>;
 
 // @public
 export function reconcileApplicationSkill(application: LoadedWorkflowApplication, host: SkillExecutionHost, run: Readonly<WorkflowRun>, actionId: string, context?: RuntimeInvocationContext): Promise<{
@@ -1415,6 +1559,14 @@ export function reconcileApplicationSkill(application: LoadedWorkflowApplication
 
 // @public
 export function recordApplicationEvaluationEvidence(projectRoot: string, resultFile: string): Promise<ApplicationEvaluationEvidence>;
+
+// @public (undocumented)
+export function repairWorkflowApplicationStorageIndex(options: {
+    projectRoot: string;
+    applicationId: string;
+    operation: 'audit' | 'rebuild';
+    expectedEpoch: string;
+}): Promise<ApplicationStorageIndex>;
 
 // @public
 export function resolveInstalledWorkflowApplication(options: ApplicationDeliveryOptions, id: string): Promise<string | null>;
@@ -1584,6 +1736,9 @@ export function validateApplicationArtifactOutcome(projectRoot: string, contract
 
 // @public
 export function validateApplicationEvaluationCompletion(projectRoot: string, resultFile: string, result: unknown): Promise<void>;
+
+// @public
+export function validateEvaluationCase(raw: unknown, experiment: string, file: string, expected: EvaluationCaseIdentity[]): EvaluationCaseIdentity;
 
 // @public (undocumented)
 export interface WorkflowApplicationFactoryContext {

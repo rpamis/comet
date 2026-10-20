@@ -1,3 +1,4 @@
+import { inspectClassicSdkRunDiagnostics } from '../comet-classic/classic-sdk-status.js';
 import { runWithHookReadCache } from '../../platform/process/hook-read-cache.js';
 import { withGitWorktreeReadScope } from '../../platform/paths/git-worktree.js';
 import { promises as fs } from 'fs';
@@ -250,6 +251,7 @@ export async function inspectClassicSdkChangeStatus(
     runtimeEval: null,
     commandChecks: null,
     run: { id: run.runId, revision: run.revision, status: run.status },
+    diagnostics: await inspectClassicSdkRunDiagnostics(projectRoot, run),
     nextAction,
     inspection,
   };

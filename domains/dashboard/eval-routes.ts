@@ -5,6 +5,7 @@ import {
   previewEvalRun,
   startEvalRun,
   repairManagedEvalRun,
+  repairEvalResults,
   requestStopEvalRun,
   setEvalBaseline,
   clearEvalBaseline,
@@ -82,7 +83,7 @@ export async function handleDashboardEvalRequest(
       }),
     };
   const match =
-    /^\/runs\/([^/]+)(?:\/(repair-managed-record|cases|case|artifact|stop|baseline|baseline\/clear|compare|rerun-preview))?$/u.exec(
+    /^\/runs\/([^/]+)(?:\/(repair-results|repair-managed-record|cases|case|artifact|stop|baseline|baseline\/clear|compare|rerun-preview))?$/u.exec(
       subpath,
     );
   if (!match) throw new EvalRunError('Eval 接口不存在', 404);
@@ -110,6 +111,16 @@ export async function handleDashboardEvalRequest(
     };
   if (read && action === 'case')
     return { status: 200, body: await readEvalCase(project, id, query.get('id') ?? '') };
+  if (method === 'POST' && action === 'repair-results')
+    return {
+      status: 200,
+      body: await repairEvalResults(
+        project,
+        id,
+        String(body.expectedRevision ?? ''),
+        body.confirmedStopped === true,
+      ),
+    };
   if (method === 'POST' && action === 'repair-managed-record')
     return {
       status: 200,
@@ -132,7 +143,13 @@ export async function handleDashboardEvalRequest(
   if (method === 'POST' && action === 'stop')
     return { status: 202, body: await requestStopEvalRun(project, id) };
   if (method === 'POST' && action === 'baseline/clear')
-    return { status: 200, body: await clearEvalBaseline(project, id) };
+    return {
+      status: 200,
+      body: await clearEvalBaseline(project, id, {
+        scope: String(body.scope ?? ''),
+        runId: String(body.expectedRun ?? ''),
+      }),
+    };
   if (method === 'POST' && action === 'baseline') {
     if (body.expectedPrevious !== undefined && typeof body.expectedPrevious !== 'string')
       throw new EvalRunError('旧基线身份无效');

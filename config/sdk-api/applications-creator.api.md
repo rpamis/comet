@@ -55,6 +55,18 @@ export function creatorSummary(run: WorkflowRun): {
     hostEvidence: string;
 };
 
+// @public (undocumented)
+export function iterateCreatorRunSources(projectRoot: string): AsyncGenerator<{
+    rootDir: string;
+    storageKey: string;
+    runId: string | null;
+    fingerprint: string;
+    error: {
+        code: string;
+        message: string;
+    } | null;
+}, void, unknown>;
+
 // @public
 export function listCreatorRunRecords(projectRoot: string): Promise<CreatorRunObservation[]>;
 
@@ -102,6 +114,16 @@ export function listCreatorRunSources(projectRoot: string): Promise<{
         message: string;
     } | null;
 }[]>;
+
+// @public
+export function readCreatorRunProjection(projectRoot: string, runId: string): Promise<Readonly<{
+    record: WorkflowRun;
+    run: WorkflowRun;
+    scope: string;
+    stats: JsonProjectionStats | undefined;
+    materialize: (path?: readonly string[]) => unknown;
+    hash: () => string;
+}>>;
 
 // @public (undocumented)
 export function readCreatorRunRecord(projectRoot: string, runId: string): Promise<WorkflowRun | null>;

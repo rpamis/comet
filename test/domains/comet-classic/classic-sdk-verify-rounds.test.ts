@@ -1,4 +1,4 @@
-import { hashRuntimeValue } from '../../../domains/engine/runtime.js';
+import { hashRuntimeValue, createFileRuntimeStore } from '../../../domains/engine/runtime.js';
 import { resolveClassicLocalTarget } from '../../../domains/comet-classic/classic-runtime-paths.js';
 import { parse, stringify } from 'yaml';
 import {
@@ -885,10 +885,100 @@ describe('Classic SDK original execution receipts', () => {
         outcome: forged,
         context: { requestId: 'forged-check-result', projectRoot: f.projectRoot },
       }),
-    ).rejects.toThrow(/original Runtime execution receipt/u);
+    ).rejects.toThrow(/original Runtime execution receipt|原始执行收据/u);
     const guard = await f.invoke('guard', 'example', 'build', '--apply', '--', ...argv);
     expect(guard.exitCode).not.toBe(0);
     expect((await f.inspect()).state.phase).toBe('build');
     expect(await fs.readFile(f.checkCount, 'utf8')).toBe('original-check\n');
   });
+  it.each([false, true])(
+    'restores a lost report from the original receipt after cold recovery without executing again (legacy=%s)',
+    async (legacy) => {
+      const f = await fixture('tweak', false);
+      await f.cli('state', 'complete-build', 'example');
+      const { runtime, run } = await f.inspect();
+      const argv = f.command('cold-original-execution');
+      await expect(
+        executeClassicSdkCommandCheck(
+          {
+            ...runtime,
+            async recordOutcome() {
+              throw new Error('lost report');
+            },
+          },
+          { runId: run.runId, projectRoot: f.projectRoot, argv },
+        ),
+      ).rejects.toThrow('lost report');
+      const oldRoot = resolveWorkspaceRuntimeRootSync(f.projectRoot);
+      if (legacy) {
+        const original = (await f.inspect()).run;
+        const action = original.actions.at(-1)!;
+        const recovery = (await f.invoke('state', 'check', 'example', 'build', '--recover'))
+          .response.data.recovery;
+        const result = {
+          status: recovery.recordOutcomeRequest.outcome.status,
+          output: recovery.recordOutcomeRequest.outcome.output,
+        };
+        const id = hashRuntimeValue({
+          workflow: action.executionOrigin?.workflow ?? original.workflow,
+          runId: original.runId,
+          actionId: action.id,
+          attempt: action.attempt,
+          inputHash: action.inputHash,
+          claim: action.claim,
+        });
+        await fs.rename(
+          path.join(oldRoot, 'check-receipts'),
+          path.join(path.dirname(f.projectRoot), 'modern-check-receipts'),
+        );
+        await createFileRuntimeStore<{
+          runId: string;
+          revision: number;
+          schema: string;
+          result: unknown;
+          resultHash: string;
+        }>({
+          rootDir: path.join(oldRoot, 'check-receipts/classic'),
+        }).compareAndSwap(id, null, {
+          runId: id,
+          revision: 1,
+          schema: 'comet.classic-sdk-check-receipt.v1',
+          result,
+          resultHash: hashRuntimeValue(result),
+        });
+        const rawRef = `${classicSdkCheckDirectoryRef(original)}/sdk-${hashRuntimeValue({ runId: original.runId, actionId: action.id, attempt: action.attempt, inputHash: action.inputHash, claim: action.claim })}.json`;
+        const source = (await resolveClassicLocalTarget(
+          f.projectRoot,
+          path.join(f.projectRoot, recovery.record.ref),
+        ))!.target;
+        const target = (await resolveClassicLocalTarget(
+          f.projectRoot,
+          path.join(f.projectRoot, rawRef),
+        ))!.target;
+        await fs.rename(source, target);
+      }
+      const backup = path.join(path.dirname(f.projectRoot), 'original-execution-runtime');
+      await fs.rename(oldRoot, backup);
+      await f.cli('state', 'next', 'example');
+      const cold = (await f.inspect()).run;
+      expect(cold.actions.at(-1)?.claim?.token).toMatch(/^portable-/u);
+      // 只恢复原执行器保存的记录；可编辑恢复 JSON 自身不授予成功结果。
+      for (const directory of ['classic-sdk-checks', 'check-receipts'])
+        await fs.cp(path.join(backup, directory), path.join(oldRoot, directory), {
+          recursive: true,
+        });
+      const recovery = (await f.invoke('state', 'check', 'example', 'build', '--recover')).response
+        .data.recovery;
+      expect(recovery.record.status).toBe('completed');
+      const restored = await f.inspect();
+      await restored.runtime.recordOutcome({
+        ...recovery.recordOutcomeRequest,
+        context: { requestId: 'cold-original-result', projectRoot: f.projectRoot },
+      });
+      expect((await f.cli('guard', 'example', 'build', '--apply', '--', ...argv)).phase).toBe(
+        'verify',
+      );
+      expect(await fs.readFile(f.checkCount, 'utf8')).toBe('cold-original-execution\n');
+    },
+  );
 });

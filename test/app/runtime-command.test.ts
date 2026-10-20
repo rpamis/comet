@@ -701,6 +701,28 @@ describe('Runtime JSON command', () => {
       stateSource.replace('auto_transition: true', 'auto_transition: false'),
     );
 
+    const unimported = await dispatch(
+      { operation: 'inspect', runId: 'linked-sdk' },
+      {
+        application: 'classic-full',
+        workflow: [],
+        rootDir: undefined,
+        projectRoot: prepared.projectRoot,
+      },
+    );
+    expect(unimported.response).toMatchObject({
+      status: 'failed',
+      error: { message: expect.stringContaining('comet state next') },
+    });
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(
+      stateSource.replace('auto_transition: true', 'auto_transition: false'),
+    );
+    const synchronized = await runClassicCli(['state', 'next', 'linked-sdk', '--json'], undefined, {
+      projectRoot: prepared.projectRoot,
+      invocationCwd: prepared.projectRoot,
+    });
+    expect(synchronized.exitCode, synchronized.stdout).toBe(0);
+
     const inspected = await dispatch(
       { operation: 'inspect', runId: 'linked-sdk' },
       {
@@ -1374,6 +1396,11 @@ describe('Runtime JSON command', () => {
   );
 
   it('rejects conflicting Classic state files before raw inspect writes', async () => {
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: legacy\n',
+    );
     const changeDirRef = 'openspec/changes/classic-change';
     const directory = path.join(projectRoot, changeDirRef);
     await fs.mkdir(directory, { recursive: true });
@@ -1383,6 +1410,12 @@ describe('Runtime JSON command', () => {
       rootDir: undefined,
     });
     expect(started.response.status, JSON.stringify(started.response)).toBe('succeeded');
+    const synchronized = await runClassicCli(
+      ['state', 'next', 'classic-change', '--json'],
+      undefined,
+      { projectRoot, invocationCwd: projectRoot },
+    );
+    expect(synchronized.exitCode, synchronized.stdout).toBe(0);
     const inspected = await dispatch(
       { operation: 'inspect', runId: 'classic-change' },
       { application: 'classic-full', workflow: [], rootDir: undefined },

@@ -4,6 +4,7 @@ import {
   createRuntime,
   defineWorkflow,
   hashRuntimeValue,
+  preserveRuntimeExecutionOrigins,
   type WorkflowRun,
 } from '../engine/runtime.js';
 import { isDeepStrictEqual } from 'node:util';
@@ -56,7 +57,7 @@ export async function proposeClassicSdkEscalation(options: {
   const definition = defineWorkflow(application.workflow);
   const hash = hashRuntimeValue(definition);
   if (run.workflow.hash !== hash) {
-    const upgraded = structuredClone(run);
+    const upgraded = preserveRuntimeExecutionOrigins(run);
     upgraded.workflow.hash = hash;
     upgraded.definitionHashes[JSON.stringify([definition.id, definition.version])] = hash;
     await createRuntime({

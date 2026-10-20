@@ -93,6 +93,7 @@ export interface DashboardApplicationRunDetail extends DashboardApplicationRunSu
   sequence: number | null;
   workflow: { id: string; version: string } | null;
   records: DashboardApplicationRecord[];
+  recordPage?: { total: number; nextCursor: string | null };
   currentIds: string[];
   artifacts: DashboardApplicationArtifact[];
   evidence: DashboardApplicationEvidence[];

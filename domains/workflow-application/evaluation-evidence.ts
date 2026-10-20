@@ -2,6 +2,11 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { parse } from 'yaml';
+import {
+  parseEvaluationMatrix,
+  validateEvaluationCase,
+  evaluationCaseKey,
+} from './evaluation-case-evidence.js';
 import { hashRuntimeValue } from '../engine/runtime.js';
 import { applicationFilesHash, readApplicationFiles } from './skill-adapter.js';
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
@@ -90,48 +95,8 @@ export async function validateApplicationEvaluationCompletion(
   const matrix = JSON.parse(
     (await read(path.join(directory, 'expected-case-matrix.json'))).toString('utf8'),
   );
-  const identifier = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/u;
-  type Case = { task: string; treatment: string; rep: number };
-  const key = (item: Case) => {
-    if (
-      !item ||
-      Object.keys(item).sort().join(',') !== 'rep,task,treatment' ||
-      typeof item.task !== 'string' ||
-      !identifier.test(item.task) ||
-      typeof item.treatment !== 'string' ||
-      !identifier.test(item.treatment) ||
-      !Number.isSafeInteger(item.rep) ||
-      item.rep < 1
-    )
-      fail();
-    return JSON.stringify([item.task, item.treatment, item.rep]);
-  };
-  if (
-    !matrix ||
-    Object.keys(matrix).sort().join(',') !== 'cases,matrix_hash,schema' ||
-    matrix.schema !== 'comet.eval.expected-case-matrix.v1' ||
-    !Array.isArray(matrix.cases)
-  )
-    fail();
-  const expected: Case[] = matrix.cases.map((item: Case) => {
-    key(item);
-    return { rep: item.rep, task: item.task, treatment: item.treatment };
-  });
-  const compare = (a: Case, b: Case) =>
-    (a.task < b.task ? -1 : a.task > b.task ? 1 : 0) ||
-    (a.treatment < b.treatment ? -1 : a.treatment > b.treatment ? 1 : 0) ||
-    a.rep - b.rep;
-  if (
-    expected.some(
-      (item: Case, index: number) => index > 0 && compare(expected[index - 1], item) >= 0,
-    ) ||
-    matrix.matrix_hash !==
-      'sha256:' +
-        createHash('sha256')
-          .update(JSON.stringify({ cases: expected, schema: matrix.schema }))
-          .digest('hex')
-  )
-    fail();
+  const expected = parseEvaluationMatrix(matrix);
+  const key = evaluationCaseKey;
   const metadataFile = path.join(directory, 'metadata.json');
   if (
     await fs.lstat(metadataFile).catch((error) => {
@@ -157,7 +122,7 @@ export async function validateApplicationEvaluationCompletion(
     )
       fail();
   }
-  const names = expected.map((item: Case) => item.task).sort();
+  const names = expected.map((item: (typeof expected)[number]) => item.task).sort();
   // 应用 Eval 固定为每个生成用例执行一次，不能拿其它 treatment 或重复轮次补齐数量。
   if (
     names.length < 2 ||
@@ -236,21 +201,7 @@ export async function validateApplicationEvaluationCompletion(
       (report.sample_quality ?? events.sample_quality)?.status !== 'included'
     )
       fail();
-    if (
-      typeof events.treatment !== 'string' ||
-      typeof events.task !== 'string' ||
-      !Number.isSafeInteger(report.rep) ||
-      report.rep < 1 ||
-      events.sample !== report.rep ||
-      typeof report.name !== 'string'
-    )
-      fail();
-    const prefix = `${events.task}-${events.treatment}`;
-    const suffix = report.name.slice(prefix.length);
-    if (!report.name.startsWith(prefix) || (suffix !== '' && !/^-r[1-9]\d*$/u.test(suffix))) fail();
-    const repetition = suffix ? Number(suffix.slice(2)) : report.rep;
-    if (repetition !== report.rep) fail();
-    actual.push(key({ task: events.task, treatment: events.treatment, rep: repetition }));
+    actual.push(key(validateEvaluationCase(report, value.experimentId, file, expected)));
     if (report.passed) passed++;
   }
   if (

@@ -52,6 +52,11 @@ export interface ChangeStatus {
     verify: RecordedCommandCheck | null;
   } | null;
   run?: { id: string; revision: number; status: string };
+  diagnostics?: Awaited<
+    ReturnType<
+      typeof import('../comet-classic/classic-sdk-diagnostics.js').inspectClassicSdkRunDiagnostics
+    >
+  >;
   nextAction?: ReturnType<typeof classicSdkNextAction>;
   inspection?: { commandArgs: string[]; request: { operation: 'inspect'; runId: string } };
   error?: string;

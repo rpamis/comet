@@ -44,7 +44,11 @@ async function registration(phase: 'running' | 'interrupted' | 'completed', mode
     status: 'unknown',
     claim: { token: 'original-claim', executorId: 'comet-native-checks' },
   } as RuntimeAction;
-  const run = { runId: 'check-run', actions: [action] } as WorkflowRun;
+  const run = {
+    runId: 'check-run',
+    workflow: { id: 'comet-native', version: '1', hash: 'a'.repeat(64) },
+    actions: [action],
+  } as WorkflowRun;
   const registered = await createNativeSdkCheckExecution({
     projectRoot: root,
     run,
@@ -337,4 +341,154 @@ it('keeps the pre-registration crash gap unknown before a child pid can be saved
     process: 'unknown',
     quiescent: false,
   });
+});
+
+it('keeps terminal stop evidence portable without changing the business result', async () => {
+  const { createPortableRunCheckpoint } = await import('../../../domains/engine/runtime.js');
+  const { hasNativeSdkPortableStopEvidence } =
+    await import('../../../domains/comet-native/native-sdk-check-execution.js');
+  const runtime = createRuntime({
+    store: createMemoryRuntimeStore<WorkflowRun>(),
+    workflows: [
+      {
+        id: 'terminal-stop',
+        version: '1',
+        entry: 'check',
+        steps: { check: { type: 'call_tool', ref: 'native-required-checks' } },
+      },
+    ],
+  });
+  const started = await runtime.start({
+    runId: 'terminal-stop',
+    workflow: { id: 'terminal-stop', version: '1' },
+    input: null,
+  });
+  const pending = started.actions[0];
+  const claimed = await runtime.claim({
+    runId: started.runId,
+    actionId: pending.id,
+    attempt: pending.attempt,
+    inputHash: pending.inputHash,
+    executorId: 'comet-native-checks',
+    claimToken: 'original-terminal-claim',
+  });
+  const action = claimed.actions[0];
+  const completed = await runtime.recordOutcome({
+    runId: claimed.runId,
+    outcome: {
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken: action.claim!.token,
+      outcomeId: 'result',
+      status: 'succeeded',
+      output: { result: 'business success' },
+    },
+  });
+  expect(hasNativeSdkPortableStopEvidence(completed, completed.actions[0])).toBe(false);
+  const stopped = await runtime.acknowledgeStopped({
+    runId: completed.runId,
+    expectedRevision: completed.revision,
+    stoppedActions: [
+      {
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        claimToken: action.claim!.token,
+        evidence: '原执行器与所有子任务均已确认停止。',
+      },
+    ],
+  });
+  expect(stopped.actions[0].outcome).toEqual(completed.actions[0].outcome);
+  const portable = createPortableRunCheckpoint(stopped).run;
+  expect(hasNativeSdkPortableStopEvidence(portable, portable.actions[0])).toBe(true);
+  expect(
+    (
+      await inspectNativeSdkCheckExecutions({
+        projectRoot: root,
+        run: portable,
+        includeSettled: true,
+      })
+    )[0],
+  ).toMatchObject({ phase: 'missing', quiescent: true, recoveryRequired: false });
+  portable.actions[0].executionStop!.inputHash = 'tampered';
+  expect(hasNativeSdkPortableStopEvidence(portable, portable.actions[0])).toBe(false);
+});
+
+it('requires an accepted and exactly bound receipt for legacy interruption stop evidence', async () => {
+  const { hasNativeSdkPortableStopEvidence } =
+    await import('../../../domains/comet-native/native-sdk-check-execution.js');
+  const runtime = createRuntime({
+    store: createMemoryRuntimeStore<WorkflowRun>(),
+    workflows: [
+      {
+        id: 'legacy-stop',
+        version: '1',
+        entry: 'check',
+        steps: { check: { type: 'call_tool', ref: 'native-required-checks' } },
+      },
+    ],
+  });
+  const started = await runtime.start({
+    runId: 'legacy-stop',
+    workflow: { id: 'legacy-stop', version: '1' },
+    input: null,
+  });
+  const pending = started.actions[0];
+  const claimed = await runtime.claim({
+    runId: started.runId,
+    actionId: pending.id,
+    attempt: pending.attempt,
+    inputHash: pending.inputHash,
+    executorId: 'comet-native-checks',
+    claimToken: 'original-legacy-claim',
+  });
+  const action = claimed.actions[0];
+  const accepted = await runtime.recordOutcome({
+    runId: claimed.runId,
+    outcome: {
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken: action.claim!.token,
+      outcomeId: 'interrupted',
+      status: 'failed',
+      output: {
+        interruption: {
+          kind: 'execution-unknown',
+          stoppedAction: {
+            actionId: action.id,
+            attempt: action.attempt,
+            inputHash: action.inputHash,
+            evidence: '原宿主已核对原执行及所有子任务停止。',
+          },
+        },
+      },
+    },
+  });
+  expect(hasNativeSdkPortableStopEvidence(accepted, accepted.actions[0])).toBe(true);
+  for (const mutate of [
+    (entry: RuntimeAction) => {
+      entry.receipts = [];
+    },
+    (entry: RuntimeAction) => {
+      entry.receipts[0].hash = 'a'.repeat(64);
+    },
+    (entry: RuntimeAction) => {
+      entry.claim!.token = 'another-claim';
+    },
+    (entry: RuntimeAction) => {
+      entry.outcome!.actionId = 'another-action';
+    },
+    (entry: RuntimeAction) => {
+      entry.outcome!.attempt++;
+    },
+    (entry: RuntimeAction) => {
+      entry.outcome!.inputHash = 'another-input';
+    },
+  ]) {
+    const forged = structuredClone(accepted);
+    mutate(forged.actions[0]);
+    expect(hasNativeSdkPortableStopEvidence(forged, forged.actions[0])).toBe(false);
+  }
 });

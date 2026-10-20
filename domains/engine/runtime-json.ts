@@ -14,6 +14,7 @@ export type RuntimeValue =
 
 // 只登记本模块逐层验证并冻结的对象；Object.freeze 外壳本身不足以信任子树。
 const immutableHeights = new WeakMap<object, number>();
+const immutableHashes = new WeakMap<object, string>();
 
 export function isImmutableRuntimeSnapshot(value: object): boolean {
   return immutableHeights.has(value);
@@ -175,7 +176,13 @@ export function validateRuntimeValue(value: unknown): void {
 }
 
 export function hashRuntimeValue(value: unknown): string {
-  return createHash('sha256').update(canonicalRuntimeJson(value)).digest('hex');
+  const immutable =
+    value !== null && typeof value === 'object' && isImmutableRuntimeSnapshot(value);
+  const previous = immutable ? immutableHashes.get(value) : undefined;
+  if (previous !== undefined) return previous;
+  const hash = createHash('sha256').update(canonicalRuntimeJson(value)).digest('hex');
+  if (immutable) immutableHashes.set(value, hash);
+  return hash;
 }
 
 /** 仅用于运行时拥有的快照；公开返回值仍创建可独立修改的 JSON 副本。 */

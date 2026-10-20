@@ -1,3 +1,5 @@
+import { readSdkChangeOwner } from '../../domains/workflow-contract/change-runtime-owner.js';
+import { inspectNativeSdkStatus } from '../../domains/comet-native/native-sdk-status.js';
 import path from 'path';
 import os from 'os';
 import { promises as fs } from 'fs';
@@ -1132,8 +1134,11 @@ async function checkCometYamlValidity(projectPath: string): Promise<CheckResult[
       if (sdk) {
         results.push({
           check: `${path.basename(yamlPath)}: ${entry}`,
-          status: 'pass',
-          message: `valid (step: ${sdk.currentStep ?? 'completed'}, mode: sdk)`,
+          status: sdk.diagnostics?.healthy === false ? 'fail' : 'pass',
+          message:
+            sdk.diagnostics?.healthy === false
+              ? sdk.diagnostics.issues.map((issue) => `${issue.code}: ${issue.message}`).join('; ')
+              : `valid (step: ${sdk.currentStep ?? 'completed'}, mode: sdk)`,
         });
         continue;
       }
@@ -1509,6 +1514,37 @@ async function checkCurrentSelection(projectPath: string): Promise<CheckResult> 
           message: `${resolution.staleSelection.reason}; no active Comet change`,
         }
       : { check: 'current selection', status: 'pass', message: 'no active Comet change' };
+  }
+  if (
+    (resolution.status === 'owned' || resolution.status === 'inferred') &&
+    resolution.owner.workflow === 'native'
+  ) {
+    try {
+      const owner = await readSdkChangeOwner(projectPath, 'native', resolution.owner.name, {
+        readOnly: true,
+      });
+      if (owner) {
+        const status = await inspectNativeSdkStatus({
+          projectRoot: projectPath,
+          name: resolution.owner.name,
+          readOnly: true,
+        });
+        if (!status.diagnostics.healthy)
+          return {
+            check: 'current selection',
+            status: 'fail',
+            message: status.diagnostics.issues
+              .map((issue) => `${issue.code}: ${issue.message}; ${issue.nextCommand}`)
+              .join('; '),
+          };
+      }
+    } catch (error) {
+      return {
+        check: 'current selection',
+        status: 'fail',
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
   if (resolution.status === 'owned') {
     return {
