@@ -14,9 +14,11 @@ import { executeClassicSdkArchivePreflight } from '../../../domains/comet-classi
 import { createRuntime } from '../../../domains/engine/runtime.js';
 import { defineClassicWorkflowApplication } from '../../../domains/comet-classic/classic-sdk-application.js';
 import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
+import * as artifactRequirements from '../../../domains/comet-classic/classic-artifact-requirements.js';
 
 const roots: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
@@ -446,11 +448,20 @@ describe('Classic SDK Archive dependency preflight', () => {
 
   it('rechecks deterministic requirement metadata when a launch failure is explicitly retried', async () => {
     const f = await fixture({ metadata: true });
-    await f.install('', 'fs.unlinkSync(process.argv[1]);');
+    const record = artifactRequirements.recordClassicArchiveRequirements;
+    const loseDependency = vi
+      .spyOn(artifactRequirements, 'recordClassicArchiveRequirements')
+      .mockImplementationOnce(async (...args) => {
+        await record(...args);
+        // 只在保存归档元数据后注入启动失败，不能让只读检查提前删除依赖。
+        await fs.unlink(f.executable);
+      });
     const failed = await executeClassicSdkArchive(f.runtime, {
       runId: f.run.runId,
       projectRoot: f.projectRoot,
     });
+    expect(loseDependency).toHaveBeenCalledOnce();
+    loseDependency.mockRestore();
     const action = failed.actions.at(-1)!;
     expect(action).toMatchObject({
       status: 'failed',
