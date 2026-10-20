@@ -356,12 +356,15 @@ async function executeNativeCheckOperation(options: {
     });
     const processStopped = async () => {
       const stopped = termination ? await termination : false;
-      return (
-        !child.pid ||
-        (process.platform === 'win32'
-          ? stopped
-          : (await inspectProcessTreeLiveness(child.pid, childIdentity)) === 'dead')
-      );
+      if (!child.pid) return true;
+      if (process.platform === 'win32') return stopped;
+      // 监管器的 close 可能早于同组后代退出；有限复查，不把组长退出当作整组停止。
+      const deadline = Date.now() + 1_000;
+      for (;;) {
+        if ((await inspectProcessTreeLiveness(child.pid, childIdentity)) === 'dead') return true;
+        if (Date.now() >= deadline) return false;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
     };
     child.once('close', (exitCode, signal) => {
       closed = true;
