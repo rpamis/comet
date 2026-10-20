@@ -47,10 +47,18 @@ export function parseClassicTasks(source: string): ClassicTask[] {
   return tasks;
 }
 
-export function classicTaskRequirements(source: string): string {
+export function classicTaskRequirements(
+  source: string,
+  options: { taskIds?: 'include' | 'ignore' } = {},
+): string {
   const lines = source.split(/(?<=\n)/u);
   for (const task of parseClassicTasks(source)) {
-    lines[task.line - 1] = lines[task.line - 1].replace(/^(\s*[-*]\s+\[)[ xX](\])/u, '$1 $2');
+    const index = task.line - 1;
+    lines[index] = lines[index].replace(/^(\s*[-*]\s+\[)[ xX](\])/u, '$1 $2');
+    if (options.taskIds === 'ignore') {
+      const ending = /\r?\n$/u.exec(lines[index])?.[0] ?? '';
+      lines[index] = lines[index].trimEnd().replace(ID, '').trimEnd() + ending;
+    }
   }
   return lines.join('');
 }

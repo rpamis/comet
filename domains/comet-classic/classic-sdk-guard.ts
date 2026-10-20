@@ -255,7 +255,7 @@ export async function classicSdkOpenGuard(
             ? {}
             : {
                 requirementsEvidence: await classicOpenEvidenceReceipt(projectRoot, ref, {
-                  taskCheckboxes: 'ignore',
+                  presetRequirements: true,
                 }),
               }),
         },

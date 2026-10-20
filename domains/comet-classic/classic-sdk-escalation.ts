@@ -79,7 +79,7 @@ export async function proposeClassicSdkEscalation(options: {
   const requirementsEvidence = await classicOpenEvidenceReceipt(
     options.projectRoot,
     (run.input as { changeDir: string }).changeDir,
-    { taskCheckboxes: 'ignore' },
+    { presetRequirements: true },
   );
   const action = run.actions.find(
     (candidate) =>
@@ -142,7 +142,7 @@ export async function decideClassicSdkEscalation(options: {
     const current = await classicOpenEvidenceReceipt(
       options.projectRoot,
       (run.input as { changeDir: string }).changeDir,
-      { taskCheckboxes: 'ignore' },
+      { presetRequirements: true },
     );
     if (!expected) {
       await assertClassicPresetRequirementsCurrent(

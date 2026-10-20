@@ -34,7 +34,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
-async function fixture(profile: 'hotfix' | 'tweak', legacy = false) {
+async function fixture(profile: 'hotfix' | 'tweak', legacy = false, completed = true) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-preset-scope-'));
   roots.push(root);
   await prepareClassicLegacyProject(root);
@@ -94,12 +94,20 @@ async function fixture(profile: 'hotfix' | 'tweak', legacy = false) {
   await fs.writeFile(path.join(directory, 'tasks.md'), '- [ ] Fix the greeting typo\n');
   const opened = await ok('guard', 'example', 'open');
   await ok('guard', 'example', 'open', '--apply', '--approval-hash', opened.approvalHash);
-  await fs.writeFile(path.join(directory, 'tasks.md'), '- [x] Fix the greeting typo\n');
+  if (completed)
+    await fs.writeFile(path.join(directory, 'tasks.md'), '- [x] Fix the greeting typo\n');
   const check = ['--apply', '--', process.execPath, '-e', 'process.exit(0)'];
   return { root, directory, proposal, cli, ok, check };
 }
 
 describe.each(['hotfix', 'tweak'] as const)('%s approved scope', (profile) => {
+  it('allows public task ID assignment and completion without another scope approval', async () => {
+    const { ok, check } = await fixture(profile, false, false);
+    const listed = await ok('state', 'tasks', 'example', '--assign-ids');
+    await ok('state', 'task-complete', 'example', listed.tasks[0].id, '--expect', listed.revision);
+    expect((await ok('guard', 'example', 'build', ...check)).phase).toBe('verify');
+  });
+
   it('blocks changed requirements at Build and Verify while allowing checkbox completion', async () => {
     const { root, directory, proposal, cli, ok, check } = await fixture(profile);
     const changed = '# Proposal\nReplace authentication and migrate credentials.\n';

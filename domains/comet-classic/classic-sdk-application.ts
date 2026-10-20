@@ -55,6 +55,7 @@ import {
 import type { ClassicProfile, ClassicState } from './classic-state.js';
 import {
   classicTaskRevision,
+  classicTaskRequirements,
   parseClassicTasks,
   validateClassicTaskPlan,
 } from './classic-tasks.js';
@@ -552,7 +553,11 @@ export async function validateClassicSdkDeliveryCandidate(
 export async function classicOpenEvidenceReceipt(
   projectRoot: string,
   changeDirRef: string,
-  options: { designRequirements?: boolean; taskCheckboxes?: 'include' | 'ignore' } = {},
+  options: {
+    designRequirements?: boolean;
+    presetRequirements?: boolean;
+    taskCheckboxes?: 'include' | 'ignore';
+  } = {},
 ): Promise<{ ref: string; contentHash: string }> {
   const inspected = await inspectProtectedProjectPath(projectRoot, changeDirRef, {
     label: 'Classic change',
@@ -572,7 +577,9 @@ export async function classicOpenEvidenceReceipt(
     let digest = hashed.digest;
     if (
       relative === `${inspected.relative}/tasks.md` &&
-      (options.designRequirements || options.taskCheckboxes === 'ignore')
+      (options.designRequirements ||
+        options.presetRequirements ||
+        options.taskCheckboxes === 'ignore')
     ) {
       const source = await readClassicProjectFile(projectRoot, relative, {
         label: 'Classic task requirements',
@@ -580,7 +587,11 @@ export async function classicOpenEvidenceReceipt(
       digest = options.designRequirements
         ? classicTaskRevision(source)
         : createHash('sha256')
-            .update(source.replace(/^(\s*[-*+]\s+\[)[xX](\]\s)/gm, '$1 $2'))
+            .update(
+              classicTaskRequirements(source, {
+                taskIds: options.presetRequirements ? 'ignore' : 'include',
+              }),
+            )
             .digest('hex');
     }
     entries.push([relative, digest]);
@@ -826,14 +837,21 @@ export async function assertClassicPresetRequirementsCurrent(
   const original = run.outputs[`${profile}.open.evidence`]?.value;
   const expected = confirmed ?? opened ?? original;
   const current = await classicOpenEvidenceReceipt(projectRoot, changeDirRef, {
-    taskCheckboxes: 'ignore',
+    presetRequirements: true,
   });
+  const legacyProgress =
+    expected &&
+    !isDeepStrictEqual(expected, current) &&
+    isDeepStrictEqual(
+      expected,
+      await classicOpenEvidenceReceipt(projectRoot, changeDirRef, { taskCheckboxes: 'ignore' }),
+    );
   const unchangedLegacy =
     !confirmed &&
     !opened &&
     expected &&
     isDeepStrictEqual(expected, await classicOpenEvidenceReceipt(projectRoot, changeDirRef));
-  if (!expected || (!isDeepStrictEqual(expected, current) && !unchangedLegacy)) {
+  if (!expected || (!isDeepStrictEqual(expected, current) && !legacyProgress && !unchangedLegacy)) {
     throw new Error(
       `Classic preset requirements changed after approval; restore the approved artifacts or return to Build and run comet state propose-escalation ${run.runId} --reason "<scope-change>" to confirm the current scope`,
     );
@@ -873,7 +891,7 @@ const openEvidenceValidator: RuntimeEvidenceValidator = {
           !isDeepStrictEqual(
             expected,
             await classicOpenEvidenceReceipt(context.projectRoot, ref, {
-              taskCheckboxes: 'ignore',
+              presetRequirements: true,
             }),
           )
         )
@@ -1262,7 +1280,7 @@ const presetScopeValidator: RuntimeValidator = {
       const current = await classicOpenEvidenceReceipt(
         context.projectRoot,
         (run.input as { changeDir: string }).changeDir,
-        { taskCheckboxes: 'ignore' },
+        { presetRequirements: true },
       );
       return {
         accepted: isDeepStrictEqual(output.requirementsEvidence, current),

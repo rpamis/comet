@@ -59,6 +59,28 @@ describe('Classic canonical tasks', () => {
     expect(assignClassicTaskIds(assigned)).toBe(assigned);
     expect(assigned.split(eol)).toHaveLength(3);
   });
+  it.each(['\n', '\r\n'])(
+    'ignores task IDs for preset scope while preserving examples and task text (%j)',
+    (eol) => {
+      const source = [
+        '# Tasks',
+        '```md',
+        '- [x] example',
+        '```',
+        '- [ ] first',
+        '  * [ ] second',
+        '',
+      ].join(eol);
+      const assigned = assignClassicTaskIds(source);
+      const tasks = parseClassicTasks(assigned);
+      const completed = completeClassicTask(assigned, tasks[0].id!, classicTaskRevision(assigned));
+      const scope = (text: string) => classicTaskRequirements(text, { taskIds: 'ignore' });
+      expect(scope(completed)).toBe(scope(source));
+      expect(scope(completed.replace('first', 'different scope'))).not.toBe(scope(source));
+      expect(scope(completed.replace('- [x] example', '- [ ] example'))).not.toBe(scope(source));
+      expect(classicTaskRevision(assigned)).not.toBe(classicTaskRevision(source));
+    },
+  );
   it('completes the correct ID after reorder and refuses a stale renamed task', () => {
     const source = '- [ ] one <!-- comet-task:a -->\n- [ ] two <!-- comet-task:b -->\n';
     const reordered = source.split('\n').slice(0, 2).reverse().join('\n') + '\n';

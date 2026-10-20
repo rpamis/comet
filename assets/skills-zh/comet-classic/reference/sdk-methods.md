@@ -109,7 +109,7 @@ review_mode 为 standard 或 thorough 时，由独立 reviewer 对最终 diff �
 
 ## 预设范围复核
 
-hotfix/tweak 的 Build、Verify 和 Archive 都核对已批准需求。完成任务的 checkbox 不改变需求；proposal、设计、规格或任务正文发生变化时，恢复已批准内容，或在 Build 使用主 Skill 的 `propose-escalation` 提交当前范围，再取得同一预设继续或升级 full 的新决定。继续批准绑定提案时的实际内容；提案后再次改动时先恢复提案内容，或选择升级 full 并重新确认设计，不沿用旧批准。
+hotfix/tweak 的 Build、Verify 和 Archive 都核对已批准需求。完成任务的 checkbox 和 `state tasks --assign-ids` 添加的任务标识不改变需求；proposal、设计、规格或任务正文发生变化时，恢复已批准内容，或在 Build 使用主 Skill 的 `propose-escalation` 提交当前范围，再取得同一预设继续或升级 full 的新决定。继续批准绑定提案时的实际内容；提案后再次改动时先恢复提案内容，或选择升级 full 并重新确认设计，不沿用旧批准。
 
 hotfix 先复现根因，保留真实失败证据；可自动化时先运行失败回归，再修复并确认转绿，最后检查根因已消除。hotfix 使用 direct/direct/off 默认配置，任务数不决定是否升级。
 

@@ -109,7 +109,7 @@ For deterministic local checks, add `--local` before `--` in the main Skill's Gu
 
 ## Preset scope
 
-For hotfix/tweak, Build, Verify, and Archive check the approved requirements. Completing task checkboxes does not change scope. If the proposal, design, specs, or task text changes, restore the approved content or use the main Skill's `propose-escalation` in Build to propose the current scope and obtain a new decision to continue the preset or upgrade to full. Approval to continue binds the actual proposed content; after proposing, restore the proposed content or choose upgrade and confirm a new full Design before proceeding.
+For hotfix/tweak, Build, Verify, and Archive check the approved requirements. Completing task checkboxes and adding task IDs with `state tasks --assign-ids` do not change scope. If the proposal, design, specs, or task text changes, restore the approved content or use the main Skill's `propose-escalation` in Build to propose the current scope and obtain a new decision to continue the preset or upgrade to full. Approval to continue binds the actual proposed content; after proposing, restore the proposed content or choose upgrade and confirm a new full Design before proceeding.
 
 Hotfix first reproduces the cause and preserves failure evidence. When automatable, run the failing regression before repair and confirm GREEN afterward, then verify the cause is removed. Hotfix retains direct/direct/off defaults; task count does not determine escalation.
 
