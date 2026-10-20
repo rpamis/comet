@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import {
   scaleCounts,
+  countGitTraceStarts,
   runWorkflowScaleBenchmark,
   workflowScaleSnapshotHealth,
 } from '../../scripts/benchmark/workflow-scale-benchmark.mjs';
@@ -49,4 +50,19 @@ it('rejects incomplete or missing Native snapshot evidence while accepting unrel
       { name: 'native-incremental-clean-10001', sample: 1, entries: null, omitted: null },
     ],
   });
+});
+
+it('counts Git process starts across parent and CLI descendants, not unrelated trace events', () => {
+  expect(
+    countGitTraceStarts(
+      [
+        { event: 'start', sid: 'parent', argv: ['git', 'status'] },
+        { event: 'exit', sid: 'parent' },
+        { event: 'start', sid: 'child', argv: ['git', 'diff'] },
+      ]
+        .map((event) => JSON.stringify(event))
+        .join('\n') + '\n',
+    ),
+  ).toBe(2);
+  expect(() => countGitTraceStarts('{truncated')).toThrow();
 });

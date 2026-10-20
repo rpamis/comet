@@ -121,9 +121,11 @@ export async function inspectClassicSdkRun(
       ? path.resolve(projectRoot, run.input.changeDir)
       : null;
   const archiveDir = expectedActive ? path.join(path.dirname(expectedActive), 'archive') : null;
+  const upgradedFromPreset = isClassicSdkApprovedUpgrade(run, profile);
+  const effectiveProfile = upgradedFromPreset ? 'full' : profile;
   const archiveMoveUnresolved = run.actions.some(
     (action) =>
-      action.stepId === `${profile}.archive.execute` &&
+      action.stepId === `${effectiveProfile}.archive.execute` &&
       (action.status === 'running' || action.status === 'unknown'),
   );
   const directoryMatches =
@@ -133,7 +135,6 @@ export async function inspectClassicSdkRun(
         path.dirname(directory) === archiveDir &&
         /^\d{4}-\d{2}-\d{2}-/u.test(path.basename(directory)) &&
         path.basename(directory).slice(11) === name));
-  const upgradedFromPreset = isClassicSdkApprovedUpgrade(run, profile);
   if (
     run.workflow.id !== application.workflow.id ||
     run.workflow.version !== application.workflow.version ||
@@ -149,7 +150,7 @@ export async function inspectClassicSdkRun(
   ) {
     throw new Error(`Classic SDK Run ${name} does not match its change ownership`);
   }
-  return { run, state, runtime, profile: upgradedFromPreset ? 'full' : profile };
+  return { run, state, runtime, profile: effectiveProfile };
 }
 
 type ClassicSdkWorkspace = Awaited<ReturnType<typeof inspectClassicSdkRun>> & {

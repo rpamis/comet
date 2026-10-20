@@ -12,6 +12,13 @@ import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
+import {
+  executeClassicSdkArchive,
+  recoverClassicSdkArchive,
+} from '../../../domains/comet-classic/classic-sdk-archive.js';
+import { executeClassicSdkArchivePreflight } from '../../../domains/comet-classic/classic-sdk-archive-preflight.js';
+import { recordClassicArchiveRequirements } from '../../../domains/comet-classic/classic-artifact-requirements.js';
+import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
 import { createOpenSpecArchiveFixture } from '../../helpers/classic-openspec-fixture.js';
 
 const roots: string[] = [];
@@ -21,7 +28,7 @@ afterEach(async () => {
 });
 async function fixture(
   legacyDesign = false,
-  profile: 'full' | 'tweak' = 'full',
+  profile: 'full' | 'tweak' | 'hotfix' = 'full',
   externalDesign = false,
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic revised candidate '));
@@ -872,5 +879,203 @@ describe('Classic candidate revisions', () => {
     expect((await f.inspect()).run).toEqual(before);
     const recovery = await f.cli('state', 'check', 'example', 'build', '--recover');
     expect(recovery.data.recoveryActions[0].commandArgs).toContain('revise-design');
+  });
+});
+
+describe('Classic upgraded preset archive recovery', () => {
+  it.each([
+    ['tweak', 'running'],
+    ['tweak', 'unknown'],
+    ['hotfix', 'running'],
+    ['hotfix', 'unknown'],
+  ] as const)('recovers %s after a moved %s Archive on cold start', async (profile, status) => {
+    const f = await fixture(false, profile);
+    const openSpec = await createOpenSpecArchiveFixture(path.dirname(f.projectRoot));
+    await fs.appendFile(
+      openSpec.command,
+      "\nprocess.stderr.write('injected disconnect after move'); process.exit(1);\n",
+    );
+    vi.stubEnv('COMET_OPENSPEC', openSpec.command);
+    await f.prepareBuild();
+    await f.ok('state', 'submit-plan', 'example', '--plan', f.plan);
+    await f.put(`${f.change}/tasks.md`, '- [x] Implement the adapter <!-- comet-task:impl -->\n');
+    await f.ok(
+      'guard',
+      'example',
+      'build',
+      '--apply',
+      '--',
+      process.execPath,
+      '-e',
+      'process.exit(0)',
+    );
+    const report = 'docs/superpowers/reports/verify.md';
+    await f.put(report, '# Verification\nAll current behavior checks pass.\n');
+    await f.ok(
+      'guard',
+      'example',
+      'verify',
+      '--report',
+      report,
+      '--apply',
+      '--',
+      process.execPath,
+      '-e',
+      'process.exit(0)',
+    );
+    const proposal = await f.ok(
+      'state',
+      'propose-archive',
+      'example',
+      '--summary',
+      'Archive locally.',
+    );
+    await f.ok(
+      'state',
+      'decide-archive',
+      'example',
+      '--proposal-hash',
+      proposal.wait.proposalHash,
+      '--choice',
+      'local',
+    );
+    const { runtime, run } = await f.inspect();
+    const preflighted = await executeClassicSdkArchivePreflight(runtime, {
+      runId: run.runId,
+      projectRoot: f.projectRoot,
+    });
+    if (status === 'unknown') {
+      await expect(
+        executeClassicSdkArchive(runtime, { runId: run.runId, projectRoot: f.projectRoot }),
+      ).rejects.toThrow('injected disconnect');
+    } else {
+      const action = preflighted.actions.at(-1)!;
+      expect(action.stepId).toBe('full.archive.execute');
+      await runtime.claim({
+        runId: run.runId,
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        executorId: 'comet-classic-archive',
+        claimToken: randomUUID(),
+      });
+      const active = path.join(f.projectRoot, f.change);
+      await recordClassicArchiveRequirements(f.projectRoot, active);
+      await fs.rename(active, path.join(path.dirname(active), 'archive', '2026-10-20-example'));
+    }
+    const cold = await f.inspect();
+    expect(cold.profile).toBe('full');
+    expect(cold.run.workflow.id).toBe(`comet-classic-${profile}`);
+    expect(cold.state).toMatchObject({ workflow: 'full', phase: 'archive', archived: false });
+    expect(cold.run.actions.at(-1)).toMatchObject({ stepId: 'full.archive.execute', status });
+    expect((await f.ok('state', 'next', 'example')).nextAction).toMatchObject({
+      kind: 'reconcile',
+      stepId: 'full.archive.execute',
+    });
+
+    if (status === 'running') {
+      // 原领取方可能仍在运行，目录搬迁不能代替停止或丢失执行上下文的证据。
+      const blocked = await f.cli('archive', 'example', '--recover');
+      expect(blocked.exitCode).not.toBe(0);
+      expect(blocked.stderr).toContain('markUnknownRequest');
+      expect((await f.ok('state', 'next', 'example')).continuation.commandArgs).toEqual([
+        'comet',
+        'state',
+        'check',
+        'example',
+        'archive',
+        '--recover',
+        '--json',
+      ]);
+      expect((await f.inspect()).run.actions.at(-1)?.status).toBe('running');
+      const diagnosis = await f.cli('state', 'check', 'example', 'archive', '--recover');
+      const request = path.join(f.projectRoot, 'archive-reconciliation.json');
+      expect(diagnosis.data.recovery.markUnknownRequest.operation).toBe('mark-unknown');
+      await fs.writeFile(request, JSON.stringify(diagnosis.data.recovery.markUnknownRequest));
+      const dispatch = await runtimeDispatchCommand(
+        { request, application: `classic-${profile}`, projectRoot: f.projectRoot },
+        { invocationCwd: f.projectRoot },
+      );
+      expect(dispatch.response.status).toBe('succeeded');
+      expect((await f.inspect()).run.actions.at(-1)?.status).toBe('unknown');
+    }
+
+    if (profile === 'tweak' && status === 'unknown') {
+      for (const corruption of ['claim', 'attempt', 'executor'] as const) {
+        const forged = structuredClone(cold.run);
+        const action = forged.actions.at(-1)!;
+        if (corruption === 'claim') action.claim!.token = 'unrelated-claim';
+        else if (corruption === 'attempt') action.attempt++;
+        else action.claim!.executorId = 'unrelated-executor';
+        const recordOutcome = vi.fn();
+        await expect(
+          recoverClassicSdkArchive(
+            { inspect: async () => forged, recordOutcome },
+            { projectRoot: f.projectRoot, runId: forged.runId },
+          ),
+        ).rejects.toThrow(/does not match|no single moved Action/u);
+        expect(recordOutcome).not.toHaveBeenCalled();
+      }
+      const store = createClassicSdkStateStore(f.projectRoot);
+      for (const corruption of ['choice', 'unresolved'] as const) {
+        const current = (await f.inspect()).run;
+        const forged = structuredClone(current);
+        forged.revision++;
+        const wait = forged.waits.find(
+          (entry) => entry.stepId === 'tweak.build.escalation-confirm',
+        )!;
+        if (corruption === 'choice') wait.decision!.choice = 'continue';
+        else {
+          wait.status = 'cancelled';
+          delete wait.decision;
+        }
+        expect(await store.compareAndSwap(current.runId, current.revision, forged)).toBe(true);
+        await expect(f.inspect()).rejects.toThrow('does not match its change ownership');
+        expect((await f.cli('archive', 'example', '--recover')).exitCode).not.toBe(0);
+        expect(
+          await store.compareAndSwap(current.runId, forged.revision, {
+            ...current,
+            revision: forged.revision + 1,
+          }),
+        ).toBe(true);
+      }
+    }
+
+    if (profile === 'hotfix') {
+      await fs.rename(
+        resolveWorkspaceRuntimeRootSync(f.projectRoot),
+        path.join(f.projectRoot, '.comet/runtime-before-moved-restore'),
+      );
+      await f.ok('state', 'next', 'example');
+      expect((await f.inspect()).run.actions.at(-1)?.status).toBe('unknown');
+    }
+    expect((await f.ok('state', 'next', 'example')).continuation.commandArgs).toEqual([
+      'comet',
+      'archive',
+      'example',
+      '--recover',
+      '--json',
+    ]);
+    const recovery = await f.ok('archive', 'example', '--recover');
+    expect(recovery.recoveredAction).toBe(cold.run.actions.at(-1)!.id);
+    const recovered = await f.inspect();
+    expect(recovered.state.archived).toBe(true);
+    expect(recovered.run.actions.at(-1)).toMatchObject({
+      stepId: 'full.archive.deliver',
+      status: 'pending',
+    });
+    if (status === 'unknown') expect(await openSpec.invocations()).toHaveLength(1);
+    await fs.rename(
+      resolveWorkspaceRuntimeRootSync(f.projectRoot),
+      path.join(f.projectRoot, '.comet/runtime-before-archive-restore'),
+    );
+    await f.ok('state', 'next', 'example');
+    const restored = await f.inspect();
+    expect(restored.profile).toBe('full');
+    expect(restored.state.archived).toBe(true);
+    expect(restored.run.actions.at(-1)).toMatchObject({
+      stepId: 'full.archive.deliver',
+      status: 'pending',
+    });
   });
 });

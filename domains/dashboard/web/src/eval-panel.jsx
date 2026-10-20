@@ -209,6 +209,7 @@ export function EvalPanel({
   const [runFilter, setRunFilter] = useDashboardViewState(stateScope, 'run-filter', 'all');
   const [runPage, setRunPage] = useDashboardViewState(stateScope, 'run-page', 1);
   const [caseDetail, setCaseDetail] = useState(null);
+  const caseRequest = useRef(0);
   const [artifact, setArtifact] = useState(null);
   const [artifactLoading, setArtifactLoading] = useState(false);
   const [followLog, setFollowLog] = useState(true);
@@ -511,6 +512,24 @@ export function EvalPanel({
         });
     } finally {
       setBusy(false);
+    }
+  };
+  const openCase = async (item) => {
+    if (demo || detail.archiveId || !detail.caseContentOmitted) {
+      setCaseDetail(item);
+      return;
+    }
+    const runId = detail.id;
+    const revision = ++caseRequest.current;
+    try {
+      const value = await readJson(
+        base,
+        `/runs/${encodeURIComponent(runId)}/case?id=${encodeURIComponent(item.id)}`,
+      );
+      if (active.current && selectedRef.current === runId && revision === caseRequest.current)
+        setCaseDetail({ ...value, repetition: item.repetition });
+    } catch (error) {
+      if (active.current && revision === caseRequest.current) message.error(error.message);
     }
   };
   const openArtifact = async (id) => {
@@ -1188,7 +1207,16 @@ export function EvalPanel({
                   key: 'cases',
                   label: t('用例结果'),
                   children: (
-                    <EvalCases run={detail} stateScope={stateScope} onSelect={setCaseDetail} />
+                    <EvalCases
+                      run={detail}
+                      stateScope={stateScope}
+                      onSelect={openCase}
+                      endpoint={
+                        !demo && !detail.archiveId && detail.caseContentOmitted
+                          ? `${base}/runs/${encodeURIComponent(detail.id)}/cases`
+                          : undefined
+                      }
+                    />
                   ),
                 },
                 ...(detail.target.type === 'application'

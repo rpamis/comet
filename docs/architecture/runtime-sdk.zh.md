@@ -273,3 +273,13 @@ SDK 所有的 Classic change 进入 Archive 后，可用 `comet state propose-ar
 公开接口兼容策略、类型消费范围、声明检查及错误恢复建议见 [SDK 发行契约](./sdk-release-contract.zh.md)。
 
 Runtime 是可复用的确定性编排内核，不是另一套 Agent 平台。它提供稳定的 Run/Action/Outcome/Wait 协议、工作流调度、持久化与恢复、确认和验收扩展点；宿主平台继续提供 Agent loop、system prompt、Skills、Hooks、Rules、MCP、沙箱、工具授权与模型上下文。平台在提示、Hook 或工具行为上的约束仍需由对应平台实施和验证。
+
+### 长历史的推进和当前视图
+
+默认的 `inspect`、`execute` 和 `runUntilBlocked` 仍返回完整 `WorkflowRun`，保留每个历史 Action 的原输入、结果和回执；不同返回值及各历史输入可独立修改，不影响已提交证据。多个不同步骤的串行链会在每个 Action 输入中保留累计 `outputs`，完整 JSON 的大小因此可能随步骤数二次增长。
+
+只需要当前待办和最终输出的宿主可用 `inspectCurrent(runId)`、`executeCurrent(command)` 或 `runUntilBlockedCurrent(command)`。它们返回独立的 `RuntimeCurrentRun` 类型，不是可用于恢复的 `WorkflowRun`：只包含待执行、执行中、结果未知和仍未确认停止的已取消 Action、未解决的等待、当前 `outputs` 及历史数量，不包含已结束 Action 的累计输入和 `actionContexts`。完整证据仍用 `inspect` 读取。`inspectCurrent` 目前仍读取、校验和展开整个存储快照，只减少返回对象，不是分页或恒定成本的冷读取。
+
+不需要完整 Run 参数的执行器可显式设置 `includeRun: false`（`createRuntimeExecutor` 也接受该选项）；其 `preflight` 和 `execute` 的第三个参数为 `undefined`，Action 本身及累计上游输入不变。默认仍传完整 Run。大规模串行推进优先组合 `runUntilBlockedCurrent({ runId, executorId, maxActions })` 与此选项，避免每步复制所有历史给执行器。批次内部复用验证过的不可变快照，提交仍逐步经过 CAS；并发取消或领取冲突不会绕过持久化检查。
+
+上述优化不删除证据、不改变已有 checkpoint 格式，也不承诺任意长度链的线性总执行时间。每步累计输入、当前输出和 checkpoint 仍随历史增长；需要全部历史的验证器、转移处理器以及完整 Run 返回仍有展开成本。评估容量时应记录实际执行数量、耗时、内存和 checkpoint 大小，不能用构造后的历史种子或仅 `inspect` 耗时代表完整推进性能。

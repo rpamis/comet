@@ -28,7 +28,9 @@ function indexed(run: EvalRunSummary): DashboardSummaryRecord {
     status: run.executionStatus,
     group: run.baselineScope,
     attention: run.baselineEligible,
-    volatile: !terminalStatuses.includes(run.executionStatus),
+    volatile:
+      !terminalStatuses.includes(run.executionStatus) ||
+      run.diagnostics.some((message) => message.includes('报告读取预算已用尽')),
     payload: run,
   };
 }
@@ -51,7 +53,9 @@ function index(projectRoot: string) {
             indexed(
               terminalStatuses.includes(summary.executionStatus)
                 ? summary
-                : summarizeEvalRun(await reconcileEvalRun(projectRoot, source.id)),
+                : summarizeEvalRun(
+                    await reconcileEvalRun(projectRoot, source.id, { includeCaseContent: false }),
+                  ),
             ),
           ];
         },
@@ -157,7 +161,7 @@ export async function collectDashboardEvalRunPage(
     };
   } catch (error) {
     if (!(error instanceof DashboardSummaryIndexError)) throw error;
-    const all = (await collectEvalRuns(projectRoot))
+    const all = (await collectEvalRuns(projectRoot, { includeCaseContent: false }))
       .map(summarizeEvalRun)
       .filter(
         (run) =>

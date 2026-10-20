@@ -9,10 +9,18 @@ export interface JsonValuePool {
   readonly bindings: readonly { readonly path: readonly string[]; readonly map: number }[];
 }
 
+interface SharedMapNode {
+  base?: SharedMapNode;
+  entries: [string, unknown][];
+  removed: string[];
+}
+const immutableMaps = new WeakMap<object, SharedMapNode>();
+
 /** 输入由调用方先按 JSON 契约校验。字段仍保留原位，公共协议无需识别内部引用。 */
 export function encodeJsonValueMaps<T>(
   value: T,
   paths: readonly { readonly path: readonly string[]; readonly group: string }[],
+  isImmutable?: (value: object) => boolean,
 ): { record: T; pool?: JsonValuePool } {
   const copies = new WeakMap<object, Record<string, unknown>>();
   const shallow = (source: object) => {
@@ -33,6 +41,37 @@ export function encodeJsonValueMaps<T>(
     mapIds = new Map<string, number>();
   const objectIds = new WeakMap<object, number>();
   const previous = new Map<string, { id: number; entries: Map<string, number> }>();
+  const sharedPrevious = new Map<
+    string,
+    { source: Record<string, unknown>; node: SharedMapNode }
+  >();
+  const nodeIds = new Map<SharedMapNode, number>();
+  const valueId = (item: unknown): number => {
+    let id = item && typeof item === 'object' ? objectIds.get(item) : undefined;
+    if (id !== undefined) return id;
+    const identity = JSON.stringify(item);
+    id = valueIds.get(identity);
+    if (id === undefined) {
+      id = values.length;
+      values.push(item);
+      valueIds.set(identity, id);
+    }
+    if (item && typeof item === 'object') objectIds.set(item, id);
+    return id;
+  };
+  const emitNode = (node: SharedMapNode): number => {
+    const cached = nodeIds.get(node);
+    if (cached !== undefined) return cached;
+    const base = node.base === undefined ? undefined : emitNode(node.base);
+    const id = maps.length;
+    maps.push({
+      ...(base === undefined ? {} : { base }),
+      entries: node.entries.map(([key, item]) => [key, valueId(item)]),
+      removed: [...node.removed],
+    });
+    nodeIds.set(node, id);
+    return id;
+  };
   for (const binding of paths) {
     let parent = record as unknown as Record<string, unknown>;
     let source = value as unknown as Record<string, unknown>;
@@ -50,6 +89,38 @@ export function encodeJsonValueMaps<T>(
     const field = binding.path.at(-1)!;
     const current = parent[field];
     if (!current || typeof current !== 'object' || Array.isArray(current)) continue;
+    if (isImmutable?.(current)) {
+      let node = immutableMaps.get(current);
+      if (!node) {
+        const source = current as Record<string, unknown>;
+        const prior = sharedPrevious.get(binding.group);
+        const entries = Object.entries(source);
+        const changes = prior
+          ? entries.filter(
+              ([key, item]) => !Object.hasOwn(prior.source, key) || prior.source[key] !== item,
+            )
+          : entries;
+        const removed = prior
+          ? Object.keys(prior.source).filter((key) => !Object.hasOwn(source, key))
+          : [];
+        const incremental = prior && changes.length + removed.length < entries.length;
+        node = {
+          ...(incremental ? { base: prior.node } : {}),
+          entries: incremental ? changes : entries,
+          removed: incremental ? removed : [],
+        };
+        immutableMaps.set(current, node);
+      }
+      sharedPrevious.set(binding.group, { source: current as Record<string, unknown>, node });
+      bindings.push({ path: binding.path, map: emitNode(node) });
+      Object.defineProperty(parent, field, {
+        value: {},
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+      continue;
+    }
     const entries = new Map<string, number>();
     for (const [key, item] of Object.entries(current)) {
       let id = item && typeof item === 'object' ? objectIds.get(item) : undefined;
@@ -92,7 +163,7 @@ export function encodeJsonValueMaps<T>(
   return bindings.length ? { record, pool: { version: 1, values, maps, bindings } } : { record };
 }
 
-export function decodeJsonValueMaps<T>(record: T, value: unknown): T {
+export function decodeJsonValueMaps<T>(record: T, value: unknown, materialize = true): T {
   const pool = value as JsonValuePool;
   if (
     !pool ||
@@ -115,7 +186,7 @@ export function decodeJsonValueMaps<T>(record: T, value: unknown): T {
       (node.base !== undefined && !index(node.base, maps.length))
     )
       throw new Error('Invalid JSON map reference');
-    const map = node.base === undefined ? {} : { ...maps[node.base] };
+    const map = !materialize || node.base === undefined ? {} : { ...maps[node.base] };
     const keys = new Set<string>();
     for (const key of node.removed) {
       if (typeof key !== 'string' || keys.has(key)) throw new Error('Invalid removed JSON map key');
@@ -132,12 +203,13 @@ export function decodeJsonValueMaps<T>(record: T, value: unknown): T {
       )
         throw new Error('Invalid JSON value reference');
       keys.add(entry[0]);
-      Object.defineProperty(map, entry[0], {
-        value: pool.values[entry[1]],
-        enumerable: true,
-        configurable: true,
-        writable: true,
-      });
+      if (materialize)
+        Object.defineProperty(map, entry[0], {
+          value: pool.values[entry[1]],
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
     }
     maps.push(map);
   }
@@ -178,7 +250,7 @@ export function decodeJsonValueMaps<T>(record: T, value: unknown): T {
     )
       throw new Error('JSON pool binding must replace an empty object');
     Object.defineProperty(parent, field, {
-      value: maps[binding.map],
+      value: materialize ? maps[binding.map] : {},
       enumerable: true,
       writable: true,
       configurable: true,

@@ -67,6 +67,7 @@ function snapshotNext<T extends RuntimeRecord>(
   runId: string,
   expectedRevision: number | null,
   next: T,
+  copy = true,
 ): T {
   assertRunId(runId);
   if (utilTypes.isProxy(next))
@@ -76,7 +77,7 @@ function snapshotNext<T extends RuntimeRecord>(
     );
   if (expectedRevision !== null) assertRevision(expectedRevision);
   validateRuntimeValue(next);
-  const snapshot = structuredClone(next);
+  const snapshot = copy ? structuredClone(next) : next;
   if (
     !snapshot ||
     typeof snapshot !== 'object' ||
@@ -323,6 +324,7 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
     runId: string,
     validateLegacy = false,
     runRef = runDirectory(runId),
+    materialize = true,
   ): Promise<StoreState> {
     assertRunId(runId);
     if (!(await inspectProtectedProjectPath(volumeRoot, rootRelative, rootOptions)).exists) {
@@ -437,7 +439,7 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
       try {
         record =
           snapshot.schema === 'comet.runtime-store-snapshot.v3'
-            ? decodeJsonValueMaps(stored, snapshot.pool)
+            ? decodeJsonValueMaps(stored, snapshot.pool, materialize || revisionPaths.length > 0)
             : stored;
       } catch (error) {
         throw new RuntimeProtocolError(
@@ -890,10 +892,15 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
     }
   }
 
-  async function publish(runId: string, record: T, state: StoreState): Promise<void> {
+  async function publish(
+    runId: string,
+    record: T,
+    state: StoreState,
+    serialized = serializeRuntimeHistory(record),
+  ): Promise<void> {
     const directory = path.join(rootDir, compactRunDirectory(runId));
     const legacyRevision = state.legacyRevision;
-    const { encoded, json } = serializeRuntimeHistory(record);
+    const { encoded, json } = serialized;
     const payload = encoded.pool
       ? { record: encoded.record, legacyRevision, pool: encoded.pool }
       : { record, legacyRevision };
@@ -944,7 +951,7 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
     }
   }
 
-  async function prepareWriter(runId: string): Promise<StoreState> {
+  async function prepareWriter(runId: string, materialize = true): Promise<StoreState> {
     let inspected = await layout(runId);
     if (inspected.marker?.schema === lifecycleSchema)
       throw new RuntimeProtocolError(
@@ -954,7 +961,7 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
     const history = await readState(runId, false, historyRunDirectory(runId));
     if (history.record)
       throw new RuntimeProtocolError('STORE_HISTORY_CONFLICT', '历史 checkpoint 缺少对应存储事务');
-    const existing = await readState(runId, false, compactRunDirectory(runId));
+    const existing = await readState(runId, false, compactRunDirectory(runId), materialize);
     if (existing.record && !inspected.marker) {
       throw new RuntimeProtocolError(
         'STORE_CORRUPT_RECORD',
@@ -1051,12 +1058,16 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
       });
     },
     async compareAndSwap(runId, expectedRevision, next) {
-      const snapshot = snapshotNext(runId, expectedRevision, next);
-      assertMirroredRevisions(snapshot);
+      snapshotNext(runId, expectedRevision, next, false);
+      assertMirroredRevisions(next);
+      // 在首个 await 前保存压缩快照，既隔离调用方修改，也不复制展开的历史。
+      const { json } = serializeRuntimeHistory(next);
+      const encoded = JSON.parse(json) as ReturnType<typeof serializeRuntimeHistory<T>>['encoded'];
       return withWriter(runId, async () => {
-        const state = await prepareWriter(runId);
+        // CAS 只需要校验已有 envelope、引用和 revision，不展开已有历史映射。
+        const state = await prepareWriter(runId, false);
         if ((state.record?.revision ?? null) !== expectedRevision) return false;
-        await publish(runId, snapshot, state);
+        await publish(runId, encoded.record, state, { encoded, json });
         return true;
       });
     },

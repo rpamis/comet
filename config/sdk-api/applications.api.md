@@ -388,7 +388,59 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
         outputs?: Record<string, WorkflowResult> | undefined;
         current: {
             actions: ({
+                stopConfirmationRequired: boolean;
                 instruction: string;
+                confirmStoppedRequest: {
+                    reason: string;
+                    stoppedActions: {
+                        actionId: string;
+                        attempt: number;
+                        inputHash: string;
+                        claimToken: string;
+                        evidence: string;
+                    }[];
+                    runId: string;
+                    expectedRevision: number;
+                    operation: "cancel";
+                };
+                executeRequests?: undefined;
+                claimRequest?: undefined;
+                validator?: WorkflowReference | undefined;
+                outputSchema?: RuntimeValue | undefined;
+                protocolVersion: 1;
+                id: string;
+                runId: string;
+                stepId: string;
+                type: string;
+                ref?: string;
+                attempt: number;
+                input: RuntimeValue;
+                inputHash: string;
+                status: RuntimeActionStatus;
+                retry: RuntimeRetryPolicy;
+                requiredCapabilities: string[];
+                claim?: RuntimeClaim;
+                outcome?: RuntimeOutcome;
+                receipts: {
+                    outcomeId: string;
+                    hash: string;
+                }[];
+                rejectedOutcomes?: {
+                    outcome: RuntimeOutcome;
+                    code: "OUTPUT_INVALID" | "OUTCOME_REJECTED" | "OUTCOME_PROCESSING_ERROR";
+                    reason: string;
+                }[];
+                reconciliations: {
+                    attempt: number;
+                    resolution: "not-executed";
+                    evidence: RuntimeValue;
+                }[];
+                reason?: string;
+                cancellation?: RuntimeStoppedAction;
+            } | {
+                instruction: string;
+                stopConfirmationRequired?: undefined;
+                confirmStoppedRequest?: undefined;
                 executeRequests?: undefined;
                 claimRequest?: undefined;
                 validator?: WorkflowReference | undefined;
@@ -443,6 +495,8 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                     expectedRevision: number;
                     operation: "claim";
                 };
+                stopConfirmationRequired?: undefined;
+                confirmStoppedRequest?: undefined;
                 validator?: WorkflowReference | undefined;
                 outputSchema?: RuntimeValue | undefined;
                 protocolVersion: 1;
@@ -499,6 +553,8 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                     expectedRevision: number;
                     operation: "record-outcome";
                 };
+                stopConfirmationRequired?: undefined;
+                confirmStoppedRequest?: undefined;
                 executeRequests?: undefined;
                 claimRequest?: undefined;
                 validator?: WorkflowReference | undefined;
@@ -549,6 +605,8 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                     expectedRevision: number;
                     operation: "record-outcome";
                 };
+                stopConfirmationRequired?: undefined;
+                confirmStoppedRequest?: undefined;
                 executeRequests?: undefined;
                 claimRequest?: undefined;
                 validator?: WorkflowReference | undefined;
@@ -611,6 +669,8 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                     expectedRevision: number;
                     operation: "record-outcome";
                 };
+                stopConfirmationRequired?: undefined;
+                confirmStoppedRequest?: undefined;
                 executeRequests?: undefined;
                 claimRequest?: undefined;
                 validator?: WorkflowReference | undefined;
@@ -905,7 +965,59 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
     outputs?: Record<string, WorkflowResult> | undefined;
     current: {
         actions: ({
+            stopConfirmationRequired: boolean;
             instruction: string;
+            confirmStoppedRequest: {
+                reason: string;
+                stoppedActions: {
+                    actionId: string;
+                    attempt: number;
+                    inputHash: string;
+                    claimToken: string;
+                    evidence: string;
+                }[];
+                runId: string;
+                expectedRevision: number;
+                operation: "cancel";
+            };
+            executeRequests?: undefined;
+            claimRequest?: undefined;
+            validator?: WorkflowReference | undefined;
+            outputSchema?: RuntimeValue | undefined;
+            protocolVersion: 1;
+            id: string;
+            runId: string;
+            stepId: string;
+            type: string;
+            ref?: string;
+            attempt: number;
+            input: RuntimeValue;
+            inputHash: string;
+            status: RuntimeActionStatus;
+            retry: RuntimeRetryPolicy;
+            requiredCapabilities: string[];
+            claim?: RuntimeClaim;
+            outcome?: RuntimeOutcome;
+            receipts: {
+                outcomeId: string;
+                hash: string;
+            }[];
+            rejectedOutcomes?: {
+                outcome: RuntimeOutcome;
+                code: "OUTPUT_INVALID" | "OUTCOME_REJECTED" | "OUTCOME_PROCESSING_ERROR";
+                reason: string;
+            }[];
+            reconciliations: {
+                attempt: number;
+                resolution: "not-executed";
+                evidence: RuntimeValue;
+            }[];
+            reason?: string;
+            cancellation?: RuntimeStoppedAction;
+        } | {
+            instruction: string;
+            stopConfirmationRequired?: undefined;
+            confirmStoppedRequest?: undefined;
             executeRequests?: undefined;
             claimRequest?: undefined;
             validator?: WorkflowReference | undefined;
@@ -960,6 +1072,8 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
                 expectedRevision: number;
                 operation: "claim";
             };
+            stopConfirmationRequired?: undefined;
+            confirmStoppedRequest?: undefined;
             validator?: WorkflowReference | undefined;
             outputSchema?: RuntimeValue | undefined;
             protocolVersion: 1;
@@ -1016,6 +1130,8 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
                 expectedRevision: number;
                 operation: "record-outcome";
             };
+            stopConfirmationRequired?: undefined;
+            confirmStoppedRequest?: undefined;
             executeRequests?: undefined;
             claimRequest?: undefined;
             validator?: WorkflowReference | undefined;
@@ -1066,6 +1182,8 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
                 expectedRevision: number;
                 operation: "record-outcome";
             };
+            stopConfirmationRequired?: undefined;
+            confirmStoppedRequest?: undefined;
             executeRequests?: undefined;
             claimRequest?: undefined;
             validator?: WorkflowReference | undefined;
@@ -1128,6 +1246,8 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
                 expectedRevision: number;
                 operation: "record-outcome";
             };
+            stopConfirmationRequired?: undefined;
+            confirmStoppedRequest?: undefined;
             executeRequests?: undefined;
             claimRequest?: undefined;
             validator?: WorkflowReference | undefined;

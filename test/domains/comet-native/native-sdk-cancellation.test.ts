@@ -1,4 +1,5 @@
-import { createFileRuntimeStore } from '../../../domains/engine/runtime.js';
+import { defineNativeWorkflowApplication } from '../../../domains/comet-native/native-sdk-application.js';
+import { createRuntime, createFileRuntimeStore } from '../../../domains/engine/runtime.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import {
   listActiveNativeHookChanges,
@@ -162,6 +163,27 @@ describe('Native cancellation lifecycle', () => {
     await fs.writeFile(lock, JSON.stringify(owner));
     await expect(
       f.runtime.cancel({ runId: f.name, reason: 'Cancel while root cleanup is blocked' }),
+    ).rejects.toThrow(/Native lock is already held/);
+    expect(await f.runtime.inspect(f.name)).toEqual(before);
+    // 旧版本可能已经提交取消；保留该故障恢复覆盖，而不是绕过新的提交前保护。
+    const application = defineNativeWorkflowApplication();
+    const legacy = createRuntime({
+      store: createFileRuntimeStore({
+        rootDir: path.join(resolveWorkspaceRuntimeRootSync(f.root), 'sdk-runs', 'native'),
+      }),
+      workflows: [application.workflow],
+      transitionHandlers: [application.transitionHandler],
+      validators: application.validators,
+      stateValidators: application.stateValidators,
+      commandValidators: application.commandValidators,
+    });
+    const cancelled = await legacy.cancel({
+      runId: f.name,
+      reason: 'Legacy committed cancellation',
+    });
+    await f.runtime.inspect(f.name);
+    await expect(
+      settleNativeSdkCancellation({ projectRoot: f.root, run: cancelled }),
     ).rejects.toThrow(/current selection release remains pending/);
     const status = await f.cli(['status', f.name]);
     expect(status.data).toMatchObject({

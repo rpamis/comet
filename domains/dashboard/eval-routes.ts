@@ -4,11 +4,14 @@ import {
   reconcileEvalRun,
   previewEvalRun,
   startEvalRun,
+  repairManagedEvalRun,
   requestStopEvalRun,
   setEvalBaseline,
   clearEvalBaseline,
   compareEvalRuns,
   readEvalArtifact,
+  readEvalCasePage,
+  readEvalCase,
   listEvalPresets,
   saveEvalPreset,
   deleteEvalPreset,
@@ -79,7 +82,7 @@ export async function handleDashboardEvalRequest(
       }),
     };
   const match =
-    /^\/runs\/([^/]+)(?:\/(artifact|stop|baseline|baseline\/clear|compare|rerun-preview))?$/u.exec(
+    /^\/runs\/([^/]+)(?:\/(repair-managed-record|cases|case|artifact|stop|baseline|baseline\/clear|compare|rerun-preview))?$/u.exec(
       subpath,
     );
   if (!match) throw new EvalRunError('Eval 接口不存在', 404);
@@ -90,7 +93,33 @@ export async function handleDashboardEvalRequest(
     throw new EvalRunError('运行身份编码无效');
   }
   const action = match[2];
-  if (read && !action) return { status: 200, body: await reconcileEvalRun(project, id) };
+  if (read && !action)
+    return {
+      status: 200,
+      body: await reconcileEvalRun(project, id, { includeCaseContent: false }),
+    };
+  if (read && action === 'cases')
+    return {
+      status: 200,
+      body: await readEvalCasePage(project, id, {
+        limit: query.has('limit') ? Number(query.get('limit')) : undefined,
+        offset: query.has('offset') ? Number(query.get('offset')) : undefined,
+        status: query.get('status') ?? undefined,
+        q: query.get('q') ?? undefined,
+      }),
+    };
+  if (read && action === 'case')
+    return { status: 200, body: await readEvalCase(project, id, query.get('id') ?? '') };
+  if (method === 'POST' && action === 'repair-managed-record')
+    return {
+      status: 200,
+      body: await repairManagedEvalRun(
+        project,
+        id,
+        typeof body.expectedHash === 'string' ? body.expectedHash : '',
+        body.confirmedStopped === true,
+      ),
+    };
   if (read && action === 'artifact')
     return {
       status: 200,

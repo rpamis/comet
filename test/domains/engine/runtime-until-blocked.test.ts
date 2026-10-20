@@ -357,3 +357,100 @@ describe('Runtime runUntilBlocked', () => {
     expect((await runtime.inspect('parent')).revision).toBe(before.revision);
   });
 });
+
+describe('Runtime current views', () => {
+  const chain = {
+    id: 'chain',
+    version: '1',
+    entry: 'first',
+    steps: { first: tool({ ref: 'tool' }), second: tool({ ref: 'tool' }) },
+    transitions: [{ from: 'first', to: 'second' }],
+  };
+  it('keeps full inspect evidence while returning only current work and isolated outputs', async () => {
+    const seen: unknown[] = [];
+    const returnedOutputs: { step: string }[] = [];
+    const store = createMemoryRuntimeStore<WorkflowRun>();
+    let reads = 0;
+    const runtime = createRuntime({
+      store: {
+        ...store,
+        read: async (id) => {
+          reads++;
+          return store.read(id);
+        },
+      },
+      workflows: [chain],
+      executors: [
+        {
+          id: 'host',
+          capabilities: [],
+          includeRun: false,
+          supports: () => true,
+          preflight: (_action, _context, run) => {
+            seen.push(run);
+          },
+          execute: async (action, _context, run) => {
+            seen.push(run);
+            const output = { step: action.stepId };
+            returnedOutputs.push(output);
+            return { status: 'succeeded', output };
+          },
+        },
+      ],
+    });
+    await runtime.start({ runId: 'chain', workflow: chain, input: null });
+    reads = 0;
+    const result = await runtime.runUntilBlockedCurrent({ runId: 'chain', executorId: 'host' });
+    expect(reads).toBe(1);
+    expect(result.reason).toBe('completed');
+    expect(result.actionsExecuted).toBe(2);
+    expect(result.run.actions).toEqual([]);
+    expect(result.run.history.actions).toBe(2);
+    expect(result.run).not.toHaveProperty('actionContexts');
+    expect(seen).toEqual([undefined, undefined, undefined, undefined]);
+    expect(returnedOutputs.every((output) => !Object.isFrozen(output))).toBe(true);
+    returnedOutputs[0].step = 'host mutation after completion';
+    (result.run.outputs.first.value as { step: string }).step = 'mutated';
+    const full = await runtime.inspect('chain');
+    expect(full.actions).toHaveLength(2);
+    expect(full.outputs.first.value).toEqual({ step: 'first' });
+    expect(full.actions[1].input).toEqual({ input: null, outputs: { first: { step: 'first' } } });
+    expect((await runtime.inspectCurrent('chain')).outputs.first.value).toEqual({ step: 'first' });
+  });
+
+  it('does not dispatch from a reused batch snapshot after a concurrent cancellation wins CAS', async () => {
+    const store = createMemoryRuntimeStore<WorkflowRun>();
+    const other = createRuntime({ store, workflows: [chain] });
+    let claims = 0;
+    let executions = 0;
+    const runtime = createRuntime({
+      store: {
+        ...store,
+        compareAndSwap: async (id, revision, next) => {
+          if (next.actions.some((action) => action.status === 'running') && ++claims === 2)
+            await other.cancel({ runId: id, reason: 'Concurrent owner cancelled' });
+          return store.compareAndSwap(id, revision, next);
+        },
+      },
+      workflows: [chain],
+      executors: [
+        {
+          id: 'host',
+          capabilities: [],
+          includeRun: false,
+          supports: () => true,
+          execute: async () => {
+            executions++;
+            return { status: 'succeeded', output: null };
+          },
+        },
+      ],
+    });
+    await runtime.start({ runId: 'race', workflow: chain, input: null });
+    await expect(
+      runtime.runUntilBlockedCurrent({ runId: 'race', executorId: 'host' }),
+    ).rejects.toThrow('RUN_CANCELLED');
+    expect(executions).toBe(1);
+    expect((await other.inspect('race')).status).toBe('cancelled');
+  });
+});

@@ -53,15 +53,18 @@ export async function listFileRuntimeStoreRunKeys(
     )
       continue;
     if (['.runtime-store-v2', '.runtime-store-history'].includes(entry.name)) {
-      await inspectProtectedProjectPath(root, entry.name, {
+      const partition = await inspectProtectedProjectPath(root, entry.name, {
         label: 'RuntimeStore checkpoint directory',
         expected: 'directory',
       });
+      // checkpoint 发布早于 marker；中断或 marker 丢失不能让一个持有者从发现中消失。
+      // 缺少顶层身份的分区项目由后续发现返回错误，不猜测或静默跳过。
+      for (const child of await fs.readdir(partition.target)) keys.push(child);
       continue;
     }
     keys.push(entry.name);
   }
-  return keys.sort((a, b) => a.localeCompare(b));
+  return [...new Set(keys)].sort((a, b) => a.localeCompare(b));
 }
 
 /** 只读取调用者选中的身份；选中前只枚举目录名称。 */
@@ -69,6 +72,7 @@ async function discoverFileRuntimeStoreRunSources(
   options: FileRuntimeStoreOptions,
   withFingerprint: boolean,
   storageKeys?: readonly string[],
+  excludeClosed = false,
 ): Promise<FileRuntimeStoreRunSource[]> {
   const root = path.resolve(options.rootDir);
   const available = await listFileRuntimeStoreRunKeys(options);
@@ -93,95 +97,152 @@ async function discoverFileRuntimeStoreRunSources(
         ).bytes,
       ),
     );
-  for (const name of available) {
-    if (selected && !selected.has(name)) continue;
-    const stat = await fs.lstat(path.join(root, name)).catch(() => null);
-    const entry = {
-      name,
-      isFile: () => stat?.isFile(),
-      isDirectory: () => stat?.isDirectory(),
-      isSymbolicLink: () => stat?.isSymbolicLink(),
-    };
-    let runId: string | null = null;
-    try {
-      if (!/^[a-f0-9]{64}$/u.test(entry.name) || entry.isSymbolicLink())
-        throw new RuntimeProtocolError('STORE_INVALID_ENTRY', 'RuntimeStore 目录含异常项目');
-      let identity: unknown;
-      if (entry.isFile()) {
-        const marker = await json(entry.name);
-        if (
-          !['comet.runtime-store-format.v2', 'comet.runtime-store-format.v3'].includes(
-            marker.schema,
+  const concurrency = excludeClosed ? 8 : 1;
+  for (let offset = 0; offset < available.length; offset += concurrency) {
+    await Promise.all(
+      available.slice(offset, offset + concurrency).map(async (name) => {
+        if (selected && !selected.has(name)) return;
+        const stat = await fs.lstat(path.join(root, name)).catch(() => null);
+        const entry = {
+          name,
+          isFile: () => stat?.isFile(),
+          isDirectory: () => stat?.isDirectory(),
+          isSymbolicLink: () => stat?.isSymbolicLink(),
+        };
+        let runId: string | null = null;
+        let closed = false;
+        try {
+          if (!/^[a-f0-9]{64}$/u.test(entry.name) || entry.isSymbolicLink())
+            throw new RuntimeProtocolError('STORE_INVALID_ENTRY', 'RuntimeStore 目录含异常项目');
+          let identity: unknown;
+          if (entry.isFile()) {
+            const marker = await json(entry.name);
+            if (
+              !['comet.runtime-store-format.v2', 'comet.runtime-store-format.v3'].includes(
+                marker.schema,
+              )
+            )
+              throw new RuntimeProtocolError('STORE_CORRUPT_RECORD', 'RuntimeStore 格式标记无效');
+            identity = marker.runId;
+            if (
+              excludeClosed &&
+              marker.schema === 'comet.runtime-store-format.v3' &&
+              marker.state === 'closed'
+            ) {
+              if (
+                !Number.isSafeInteger(marker.revision) ||
+                marker.revision < 1 ||
+                typeof marker.recordHash !== 'string' ||
+                !/^[a-f0-9]{64}$/u.test(marker.recordHash) ||
+                Object.keys(marker).some(
+                  (key) => !['schema', 'runId', 'state', 'revision', 'recordHash'].includes(key),
+                )
+              )
+                throw new RuntimeProtocolError('STORE_CORRUPT_RECORD', 'RuntimeStore 历史标记损坏');
+              const active = await inspectProtectedProjectPath(
+                root,
+                `.runtime-store-v2/${entry.name}/checkpoint.json`,
+                {
+                  label: 'RuntimeStore 活动 checkpoint',
+                  expected: 'file',
+                },
+              );
+              const history = await inspectProtectedProjectPath(
+                root,
+                `.runtime-store-history/${entry.name}/checkpoint.json`,
+                {
+                  label: 'RuntimeStore 历史 checkpoint',
+                  expected: 'file',
+                },
+              );
+              if (active.exists || !history.exists)
+                throw new RuntimeProtocolError(
+                  'STORE_HISTORY_CONFLICT',
+                  '历史分区与存储事务不一致',
+                );
+              closed = true;
+            }
+          } else if (entry.isDirectory()) {
+            await inspectProtectedProjectPath(root, entry.name, {
+              label: 'RuntimeStore legacy directory',
+              expected: 'directory',
+            });
+            const names = (await fs.readdir(path.join(root, entry.name)))
+              .filter((n) => /^[0-9]{16}\.json$/u.test(n))
+              .sort();
+            if (!names.length)
+              throw new RuntimeProtocolError('STORE_CORRUPT_RECORD', 'RuntimeStore 旧记录缺少版本');
+            const latest = await json(`${entry.name}/${names.at(-1)}`);
+            identity =
+              latest.schema === 'comet.runtime-store-checkpoint.v1'
+                ? latest.record?.runId
+                : latest.runId;
+          } else throw new RuntimeProtocolError('STORE_INVALID_ENTRY', 'RuntimeStore 项目类型无效');
+          if (
+            typeof identity !== 'string' ||
+            !identity.trim() ||
+            createHash('sha256').update(JSON.stringify(identity)).digest('hex') !== entry.name
           )
-        )
-          throw new RuntimeProtocolError('STORE_CORRUPT_RECORD', 'RuntimeStore 格式标记无效');
-        identity = marker.runId;
-      } else if (entry.isDirectory()) {
-        await inspectProtectedProjectPath(root, entry.name, {
-          label: 'RuntimeStore legacy directory',
-          expected: 'directory',
-        });
-        const names = (await fs.readdir(path.join(root, entry.name)))
-          .filter((n) => /^[0-9]{16}\.json$/u.test(n))
-          .sort();
-        if (!names.length)
-          throw new RuntimeProtocolError('STORE_CORRUPT_RECORD', 'RuntimeStore 旧记录缺少版本');
-        const latest = await json(`${entry.name}/${names.at(-1)}`);
-        identity =
-          latest.schema === 'comet.runtime-store-checkpoint.v1'
-            ? latest.record?.runId
-            : latest.runId;
-      } else throw new RuntimeProtocolError('STORE_INVALID_ENTRY', 'RuntimeStore 项目类型无效');
-      if (
-        typeof identity !== 'string' ||
-        !identity.trim() ||
-        createHash('sha256').update(JSON.stringify(identity)).digest('hex') !== entry.name
-      )
-        throw new RuntimeProtocolError('STORE_CORRUPT_RECORD', 'RuntimeStore 记录身份与目录不匹配');
-      runId = identity;
-      const refs = !withFingerprint
-        ? []
-        : entry.isFile()
-          ? [
-              entry.name,
-              `.runtime-store-v2/${entry.name}/checkpoint.json`,
-              `.runtime-store-history/${entry.name}/checkpoint.json`,
-            ]
-          : (await fs.readdir(path.join(root, entry.name)))
-              .filter((name) => /^[0-9]{16}\.json$/u.test(name))
-              .sort()
-              .map((name) => `${entry.name}/${name}`);
-      const fingerprint = createHash('sha256')
-        .update(JSON.stringify(await Promise.all(refs.map(stamp))))
-        .digest('hex');
-      result.push({ storageKey: entry.name, runId, fingerprint, error: null });
-    } catch (error) {
-      result.push({
-        storageKey: entry.name,
-        runId,
-        fingerprint: JSON.stringify(
-          await fs
-            .lstat(path.join(root, entry.name))
-            .then((stat) => [stat.size, stat.mtimeMs, stat.ctimeMs, stat.ino])
-            .catch(() => null),
-        ),
-        error: {
-          code: error instanceof RuntimeProtocolError ? error.code : 'STORE_UNREADABLE',
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-    }
+            throw new RuntimeProtocolError(
+              'STORE_CORRUPT_RECORD',
+              'RuntimeStore 记录身份与目录不匹配',
+            );
+          runId = identity;
+          if (closed) return;
+          const refs = !withFingerprint
+            ? []
+            : entry.isFile()
+              ? [
+                  entry.name,
+                  `.runtime-store-v2/${entry.name}/checkpoint.json`,
+                  `.runtime-store-history/${entry.name}/checkpoint.json`,
+                ]
+              : (await fs.readdir(path.join(root, entry.name)))
+                  .filter((name) => /^[0-9]{16}\.json$/u.test(name))
+                  .sort()
+                  .map((name) => `${entry.name}/${name}`);
+          const fingerprint = createHash('sha256')
+            .update(JSON.stringify(await Promise.all(refs.map(stamp))))
+            .digest('hex');
+          result.push({ storageKey: entry.name, runId, fingerprint, error: null });
+        } catch (error) {
+          result.push({
+            storageKey: entry.name,
+            runId,
+            fingerprint: JSON.stringify(
+              await fs
+                .lstat(path.join(root, entry.name))
+                .then((stat) => [stat.size, stat.mtimeMs, stat.ctimeMs, stat.ino])
+                .catch(() => null),
+            ),
+            error: {
+              code: error instanceof RuntimeProtocolError ? error.code : 'STORE_UNREADABLE',
+              message: error instanceof Error ? error.message : String(error),
+            },
+          });
+        }
+      }),
+    );
   }
-  return result;
+  return result.sort((left, right) => left.storageKey.localeCompare(right.storageKey));
 }
 
-/** Read each discovered Run through the original validating Store. */
+/**
+ * 默认通过权威 Store 完整验证每条 Run。excludeClosed 仅供资源发现：调用方承诺
+ * closeRun 前验证业务静止；封存正文留给显式 inspect 校验，未完成封存仍完整读取。
+ */
 export async function listFileRuntimeStoreRuns<T extends RuntimeRecord = RuntimeRecord>(
   options: FileRuntimeStoreOptions,
+  discovery: { excludeClosed?: boolean } = {},
 ): Promise<FileRuntimeStoreRun<T>[]> {
   const store = createFileRuntimeStore<T>(options);
   const result: FileRuntimeStoreRun<T>[] = [];
-  for (const source of await discoverFileRuntimeStoreRunSources(options, false)) {
+  for (const source of await discoverFileRuntimeStoreRunSources(
+    options,
+    false,
+    undefined,
+    discovery.excludeClosed,
+  )) {
     const identity = { storageKey: source.storageKey, runId: source.runId, error: source.error };
     if (source.error || !source.runId) {
       result.push({ ...identity, record: null });

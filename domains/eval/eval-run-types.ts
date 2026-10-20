@@ -99,6 +99,7 @@ export interface EvalRunDetail {
   total: number;
   expectedTotal: number | null;
   cases: EvalCaseResult[];
+  caseContentOmitted?: boolean;
   progress?: {
     phase: 'preparing' | 'generating' | 'running' | 'judging' | 'finalizing';
     updatedAt: string | null;

@@ -7538,3 +7538,303 @@ it('keeps recovery blocked when neither the original transaction nor a complete 
   expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)).toEqual(f.action);
   await expect(fs.access(f.transactionFile)).rejects.toMatchObject({ code: 'ENOENT' });
 });
+
+it('recovers original archive history after a subsequent legitimate archive changes canonical Specs', async () => {
+  const f = await awaitingArchiveApplication('sdk', undefined, false, initializeArchiveGit);
+  let a = await f.runtime.execute({
+    runId: f.run.runId,
+    actionId: f.run.actions.at(-1)!.id,
+    executorId: 'comet-native-archive-apply',
+    context: { requestId: 'a-apply', projectRoot: f.root },
+  });
+  const action = a.actions.at(-1)!;
+  const context = { requestId: 'a-finalize', projectRoot: f.root };
+  a = await f.runtime.claim({
+    runId: a.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: 'comet-native-archive-finalize',
+    claimToken: 'a-finalize',
+    context,
+  });
+  await nativeSdkArchiveFinalizeExecutor.execute(a.actions.at(-1)!, context, a);
+  a = await f.runtime.markUnknown({
+    runId: a.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    reason: 'Host exited after complete durable finalization.',
+  });
+  const newResult = await nativeDomain.runNativeCliDetailed([
+    'new',
+    'second-work',
+    '--isolation',
+    'current',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(newResult.dispatch.exitCode, JSON.stringify(newResult.dispatch)).toBe(0);
+  const { runtime } = await loadOwnedNativeSdkRuntime(f.root, 'second-work');
+  const change = path.join(f.paths.changesDir, 'second-work');
+  const archiveRef = (a.outputs['archive.execute'].value as { archiveRef: string }).archiveRef;
+  await fs.copyFile(
+    path.join(f.paths.archiveDir, archiveRef, 'brief.md'),
+    path.join(change, 'brief.md'),
+  );
+  await fs.mkdir(path.join(change, 'specs/workflow'), { recursive: true });
+  await fs.writeFile(
+    path.join(change, 'specs/workflow/spec.md'),
+    '# Workflow\nThe second approved workflow adds safe recovery for the user.\n',
+  );
+  let b = await runtime.inspect('second-work');
+  b = await succeedLatestAction(
+    runtime,
+    b,
+    await collectProposal(f.paths, b.state as NativePortableState),
+    f.root,
+    'b-shape',
+  );
+  const wait = b.waits.at(-1)!;
+  b = await runtime.resolveWait({
+    runId: b.runId,
+    waitId: wait.id,
+    proposalHash: wait.proposalHash,
+    decisionId: 'b-shape-approved',
+    choice: 'approved',
+  });
+  b = await succeedLatestAction(
+    runtime,
+    b,
+    await collectProposal(f.paths, b.state as NativePortableState),
+    f.root,
+    'b-revalidate',
+  );
+  b = await succeedLatestAction(
+    runtime,
+    b,
+    {
+      summary: 'Implement the second workflow.',
+      addressedAcceptanceIds: ['A1'],
+      acceptanceReview: fixtureAcceptanceReview(['A1']),
+      checks: [],
+      knownLimits: [],
+      review: null,
+      submittedAt: '2026-10-20T00:00:00.000Z',
+      verificationChecks: [],
+    },
+    f.root,
+    'b-builder',
+    'b-builder-session',
+  );
+  b = await runtime.execute({
+    runId: b.runId,
+    actionId: b.actions.at(-1)!.id,
+    executorId: 'comet-native-checks',
+    context: { requestId: 'b-checks', projectRoot: f.root },
+  });
+  b = await succeedLatestAction(
+    runtime,
+    b,
+    {
+      candidateId: (b.state as NativePortableState).builder_handoff!.candidate_id,
+      verifierExecutionRef: 'b-verifier-session',
+      response: {
+        kind: 'final-result',
+        result: {
+          iteration: 1,
+          attempt: 1,
+          verdict: 'pass',
+          acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified second work.' }],
+          risks: [],
+          summary: 'Second workflow passed.',
+        },
+      },
+    },
+    f.root,
+    'b-verifier',
+    'b-verifier-session',
+  );
+  for (const executorId of [
+    'comet-native-report',
+    'comet-native-report-revalidate',
+    'comet-native-archive-preflight',
+    'comet-native-archive-apply',
+    'comet-native-archive-finalize',
+  ]) {
+    if (b.waits.at(-1)?.stepId === 'verify.confirm' && b.waits.at(-1)?.status === 'pending') {
+      const w = b.waits.at(-1)!;
+      b = await runtime.resolveWait({
+        runId: b.runId,
+        waitId: w.id,
+        proposalHash: w.proposalHash,
+        decisionId: 'b-verify-approved',
+        choice: 'approved',
+      });
+    }
+    b = await runtime.execute({
+      runId: b.runId,
+      actionId: b.actions.at(-1)!.id,
+      executorId,
+      context: { requestId: `b-${executorId}`, projectRoot: f.root },
+    });
+  }
+  expect(b.status).toBe('completed');
+  const doctor = await nativeDomain.runNativeCliDetailed([
+    'doctor',
+    a.runId,
+    '--repair',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(doctor.dispatch.exitCode).not.toBe(0);
+  const reportFile = path.join(f.paths.archiveDir, archiveRef, 'verification.md');
+  const report = await fs.readFile(reportFile, 'utf8');
+  await fs.writeFile(reportFile, report + '\nChanged historical evidence.\n');
+  const tampered = await nativeDomain.runNativeCliDetailed([
+    'archive',
+    a.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(tampered.dispatch.exitCode).not.toBe(0);
+  expect((await f.runtime.inspect(a.runId)).actions.at(-1)?.status).toBe('unknown');
+  await fs.writeFile(reportFile, report);
+  const recover = await nativeDomain.runNativeCliDetailed([
+    'archive',
+    a.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(recover.dispatch.exitCode, JSON.stringify(recover.dispatch)).toBe(0);
+});
+
+it('rejects cancellation before committing when applied Archive Specs still have a transaction', async () => {
+  const f = await awaitingArchiveApplication('sdk', undefined, false, initializeArchiveGit);
+  const run = await f.runtime.execute({
+    runId: f.run.runId,
+    actionId: f.run.actions.at(-1)!.id,
+    executorId: 'comet-native-archive-apply',
+    context: { requestId: 'cancel-archive-apply', projectRoot: f.root },
+  });
+  const before = await f.runtime.inspect(run.runId);
+  const preview = await nativeDomain.runNativeCliDetailed([
+    'cancel',
+    run.runId,
+    '--dry-run',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(preview.dispatch.exitCode).not.toBe(0);
+  const result = await nativeDomain.runNativeCliDetailed([
+    'cancel',
+    run.runId,
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(result.dispatch.exitCode).not.toBe(0);
+  expect(await f.runtime.inspect(run.runId)).toEqual(before);
+  await expect(f.runtime.cancel({ runId: run.runId, reason: 'SDK cancellation' })).rejects.toThrow(
+    'transaction must finish',
+  );
+  expect(await f.runtime.inspect(run.runId)).toEqual(before);
+  expect(
+    (
+      await archiveNativeSdkChange({
+        projectRoot: f.root,
+        name: run.runId,
+        dryRun: false,
+        recover: false,
+        confirmed: false,
+      })
+    ).exitCode,
+  ).toBe(0);
+  expect((await f.runtime.inspect(run.runId)).status).toBe('completed');
+});
+
+it('recovers the durable transaction left by legacy cancellation without restarting the cancelled Run', async () => {
+  const f = await awaitingArchiveApplication('sdk', undefined, false, initializeArchiveGit);
+  const run = await f.runtime.execute({
+    runId: f.run.runId,
+    actionId: f.run.actions.at(-1)!.id,
+    executorId: 'comet-native-archive-apply',
+    context: { requestId: 'legacy-cancel-apply', projectRoot: f.root },
+  });
+  // 通过原 SDK 取消语义注入旧版本故障：绕过新增领域存储保护，保留真实 CAS 与取消记录。
+  const legacyRuntime = createRuntime({
+    store: createFileRuntimeStore<WorkflowRun>({
+      rootDir: path.join(resolveWorkspaceRuntimeRootSync(f.root), 'sdk-runs', 'native'),
+    }),
+    workflows: [f.application.workflow],
+    transitionHandlers: [f.application.transitionHandler],
+    validators: f.application.validators,
+    stateValidators: f.application.stateValidators,
+    commandValidators: f.application.commandValidators,
+  });
+  await legacyRuntime.cancel({
+    runId: run.runId,
+    reason: 'Legacy cancellation after Specs applied',
+  });
+  expect((await f.runtime.inspect(run.runId)).status).toBe('cancelled');
+  const result = await nativeDomain.runNativeCliDetailed([
+    'archive',
+    run.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(result.dispatch.exitCode, JSON.stringify(result.dispatch)).toBe(0);
+  expect(result.dispatch.data).toMatchObject({ recoveredCancelledArchive: true, cancelled: true });
+  const after = await f.runtime.inspect(run.runId);
+  expect(after.status).toBe('cancelled');
+  expect(after.actions.at(-1)?.status).toBe('cancelled');
+  await fs.writeFile(path.join(f.root, 'implementation.js'), 'export const later = true;');
+  const repeated = await nativeDomain.runNativeCliDetailed([
+    'archive',
+    run.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(repeated.dispatch.exitCode, JSON.stringify(repeated.dispatch)).toBe(0);
+  expect(await fs.readdir(f.paths.transactionsDir)).not.toContain(
+    `portable-archive-${run.runId}.json`,
+  );
+  const next = await nativeDomain.runNativeCliDetailed([
+    'new',
+    'after-recovered-cancel',
+    '--isolation',
+    'current',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(next.dispatch.exitCode, JSON.stringify(next.dispatch)).toBe(0);
+});
+
+it('rejects cancellation of a claimed Archive writer before it creates its transaction', async () => {
+  const f = await awaitingArchiveApplication('sdk', undefined, false, initializeArchiveGit);
+  const action = f.run.actions.at(-1)!;
+  const run = await f.runtime.claim({
+    runId: f.run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: 'comet-native-archive-apply',
+    claimToken: 'inflight-archive',
+    context: { requestId: 'inflight-archive', projectRoot: f.root },
+  });
+  await expect(
+    f.runtime.cancel({ runId: run.runId, reason: 'Cancel in-flight writer' }),
+  ).rejects.toThrow('execution must finish or recover');
+  expect(await f.runtime.inspect(run.runId)).toEqual(run);
+});

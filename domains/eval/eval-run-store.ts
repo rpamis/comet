@@ -168,7 +168,45 @@ function validExpectedMatrix(matrix: Json, declaredHash: unknown): boolean {
   return matrix.matrix_hash === hash && (declaredHash === undefined || declaredHash === hash);
 }
 
-function normalizeCase(id: string, raw: Json, root: string): EvalCaseResult {
+// 强制复制摘录，避免 V8 的切片字符串继续持有整份大输入。
+const excerpt = (value: string, limit: number): string =>
+  Buffer.from(value.slice(0, limit)).toString('utf8');
+function summarySource(events: Json): Json {
+  const source = object(Array.isArray(events.skill_sources) ? events.skill_sources[0] : null);
+  return Object.fromEntries(
+    ['path', 'name', 'hash'].map((key) => [
+      key,
+      text(source[key]) ? excerpt(String(source[key]), 2048) : null,
+    ]),
+  );
+}
+function legacyCaseRepetition(
+  file: string,
+  raw: Json,
+  item: EvalCaseResult,
+  matrix: Set<string> | null,
+): number | null {
+  if (
+    !matrix ||
+    raw.rep !== 1 ||
+    object(raw.events_summary).sample !== 1 ||
+    typeof raw.name !== 'string'
+  )
+    return null;
+  const match = /-r([1-9]\d*)$/u.exec(raw.name);
+  if (!match) return null;
+  const rep = Number(match[1]);
+  if (
+    !Number.isSafeInteger(rep) ||
+    rep === 1 ||
+    raw.name !== `${item.task}-${item.treatment}-r${rep}` ||
+    file !== `${raw.name.replaceAll('-', '_')}_rep1_report.json` ||
+    !matrix.has(JSON.stringify([item.task, item.treatment, rep]))
+  )
+    return null;
+  return rep;
+}
+function normalizeCase(id: string, raw: Json, root: string, includeContent = true): EvalCaseResult {
   const events = object(raw.events_summary);
   const manifest = object(events.case_manifest);
   const quality = object(raw.sample_quality ?? events.sample_quality);
@@ -196,13 +234,14 @@ function normalizeCase(id: string, raw: Json, root: string): EvalCaseResult {
     if (isPathWithin(root, target) && label !== 'artifacts')
       artifacts.push({ id: path.relative(root, target).split(path.sep).join('/'), label });
   }
-  return {
+  const item: EvalCaseResult = {
     id,
     task: text(events.task) ?? text(raw.name) ?? id,
     prompt: text(events.prompt) ? redactEvalOutput(String(events.prompt)) : null,
-    finalResponse: text(events.final_response)
-      ? redactEvalOutput(String(events.final_response))
-      : null,
+    finalResponse:
+      includeContent && text(events.final_response)
+        ? redactEvalOutput(String(events.final_response))
+        : null,
     treatment: text(events.treatment) ?? text(raw.name) ?? '',
     repetition: number(raw.rep) ?? 1,
     passed: typeof raw.passed === 'boolean' ? raw.passed : null,
@@ -244,7 +283,46 @@ function normalizeCase(id: string, raw: Json, root: string): EvalCaseResult {
     validatorHash: text(manifest.validator_hash),
     artifacts,
   };
+  item.task = excerpt(item.task, 1024);
+  item.treatment = excerpt(item.treatment, 1024);
+  if (item.caseHash && item.caseHash.length > 1024) item.caseHash = evalValueHash(item.caseHash);
+  if (item.validatorHash && item.validatorHash.length > 1024)
+    item.validatorHash = evalValueHash(item.validatorHash);
+  if (includeContent) return item;
+  // 列表和图表只保留有界摘录；完整输入、回答和检查证据由单用例接口读取。
+  const clip = (value: string | null) => (value === null ? null : excerpt(value, 1024));
+  return {
+    ...item,
+    task: excerpt(item.task, 1024),
+    treatment: excerpt(item.treatment, 1024),
+    prompt: clip(item.prompt),
+    finalResponse: null,
+    qualityReason: clip(item.qualityReason),
+    model: clip(item.model),
+    agent: clip(item.agent),
+    checksPassed: item.checksPassed.slice(0, 100).map((value) => excerpt(value, 1024)),
+    checksFailed: item.checksFailed.slice(0, 100).map((value) => excerpt(value, 1024)),
+    failureAttribution: item.failureAttribution.slice(0, 100).map((value) => ({
+      bucket: excerpt(value.bucket, 128),
+      check: excerpt(value.check, 1024),
+      ...(value.reason ? { reason: excerpt(value.reason, 1024) } : {}),
+    })),
+    scores: Object.fromEntries(
+      Object.entries(item.scores)
+        .slice(0, 100)
+        .map(([key, value]) => [excerpt(key, 128), value]),
+    ),
+    scoreSources: Object.fromEntries(
+      Object.entries(item.scoreSources)
+        .slice(0, 100)
+        .map(([key, value]) => [excerpt(key, 128), value]),
+    ),
+    artifacts: item.artifacts
+      .slice(0, 100)
+      .map((value) => ({ id: excerpt(value.id, 2048), label: excerpt(value.label, 128) })),
+  };
 }
+
 async function optionalJson(
   project: string,
   id: string,
@@ -335,7 +413,41 @@ function normalizeProgress(value: Json | null, id: string): EvalRunDetail['progr
     activities,
   };
 }
-export async function readEvalRun(project: string, id: string): Promise<EvalRunDetail> {
+// 缓存仅保存规范化摘要，按文件身份失效；正文始终由详情入口按需读取。
+const caseSummaries = new Map<
+  string,
+  { stamp: string; item: EvalCaseResult; source: Json; bytes: number }
+>();
+let caseSummaryBytes = 0;
+function cacheCaseSummary(
+  key: string,
+  value: { stamp: string; item: EvalCaseResult; source: Json },
+) {
+  const previous = caseSummaries.get(key);
+  if (previous) {
+    caseSummaryBytes -= previous.bytes;
+    caseSummaries.delete(key);
+  }
+  const bytes = Buffer.byteLength(JSON.stringify(value));
+  if (bytes > 256 * 1024) return;
+  caseSummaries.set(key, { ...value, bytes });
+  caseSummaryBytes += bytes;
+  while (caseSummaryBytes > 16 * 1024 * 1024 || caseSummaries.size > 10000) {
+    const key = caseSummaries.keys().next().value!;
+    caseSummaryBytes -= caseSummaries.get(key)!.bytes;
+    caseSummaries.delete(key);
+  }
+}
+export interface EvalReadOptions {
+  includeCaseContent?: boolean;
+  maxReportBytes?: number;
+  maxReadMs?: number;
+}
+export async function readEvalRun(
+  project: string,
+  id: string,
+  options: EvalReadOptions = {},
+): Promise<EvalRunDetail> {
   const archived = await readArchivedEvalRun(project, id);
   if (archived) return archived;
   const root = await evalRunPath(project, id);
@@ -345,21 +457,48 @@ export async function readEvalRun(project: string, id: string): Promise<EvalRunD
     throw new EvalRunError('Eval 运行不存在', 404);
   }
   const diagnostics: string[] = [];
-  const [metadata, application, record, matrix, progress, execution] = await readRunJsonFiles(
-    project,
-    id,
-    [
-      'metadata.json',
-      'application-result.json',
-      'dashboard-run.json',
-      'expected-case-matrix.json',
-      'progress.json',
-      'execution-state.json',
-    ],
-    diagnostics,
-  );
+  const [metadata, application, record, matrix, progress, execution, recovery] =
+    await readRunJsonFiles(
+      project,
+      id,
+      [
+        'metadata.json',
+        'application-result.json',
+        'dashboard-run.json',
+        'expected-case-matrix.json',
+        'progress.json',
+        'execution-state.json',
+        'managed-record-recovery.json',
+      ],
+      diagnostics,
+    );
+  if (recovery?.schema === 'comet.eval.managed-record-recovery.v1')
+    diagnostics.push(
+      `损坏管理记录已人工确认停止并隔离；原始证据：${recovery.retained}（sha256:${recovery.sha256}）。`,
+    );
   const managed =
-    record?.schema === 'comet.eval.managed-run.v1' ? (record as unknown as EvalManagedRun) : null;
+    record?.schema === 'comet.eval.managed-run.v1' &&
+    record.id === id &&
+    record.config &&
+    typeof record.config === 'object' &&
+    !Array.isArray(record.config) &&
+    [
+      'queued',
+      'preparing',
+      'generating',
+      'running',
+      'judging',
+      'finalizing',
+      'stopping',
+      'completed',
+      'stopped',
+      'interrupted',
+      'unknown',
+    ].includes(String(record.status))
+      ? (record as unknown as EvalManagedRun)
+      : null;
+  if (record && !managed)
+    diagnostics.push('dashboard-run.json：管理记录身份、配置或状态无效，请核对并恢复管理记录。');
   const entries = await evalRunPath(project, id, 'reports')
     .then((directory) => fs.readdir(directory))
     .catch((error: NodeJS.ErrnoException) => {
@@ -367,25 +506,85 @@ export async function readEvalRun(project: string, id: string): Promise<EvalRunD
       return [] as string[];
     });
   const cases: EvalCaseResult[] = [];
-  let firstReport: Json | null = null;
-  const reportFiles = entries
-    .filter((file) => /^[\w.-]+_report\.json$/u.test(file))
-    .sort()
-    .slice(0, 2000);
-  const reports = await readRunJsonFiles(
-    project,
-    id,
-    reportFiles.map((file) => `reports/${file}`),
-    diagnostics,
-  );
-  for (const [index, raw] of reports.entries()) {
+  let source: Json = {};
+  const reportFiles = entries.filter((file) => /^[\w.-]+_report\.json$/u.test(file)).sort();
+  // 逐份解析并丢弃正文，不同时保留整次运行的原始 JSON。预算耗尽必须显式报告。
+  const legacyMatrix =
+    matrix && validExpectedMatrix(matrix, object(metadata?.expected_case_matrix).matrix_hash)
+      ? new Set(
+          (matrix.cases as Json[]).map((item) =>
+            JSON.stringify([item.task, item.treatment, item.rep]),
+          ),
+        )
+      : null;
+  const started = Date.now();
+  let reportBytes = 0;
+  for (const file of reportFiles) {
+    if (Date.now() - started > (options.maxReadMs ?? 60000)) {
+      diagnostics.push(
+        `报告读取预算已用尽：已读取 ${cases.length}/${reportFiles.length} 份，结果不完整；请提高 maxReportBytes/maxReadMs 后重试。`,
+      );
+      break;
+    }
+    let reportPath: string;
+    try {
+      reportPath = await evalRunPath(project, id, 'reports', file);
+    } catch (error) {
+      diagnostics.push(`reports/${file}：${(error as Error).message}`);
+      continue;
+    }
+    const stat = await fs.stat(reportPath).catch(() => null);
+    const stamp = stat
+      ? JSON.stringify([
+          stat.dev,
+          stat.ino,
+          stat.size,
+          stat.mtimeMs,
+          stat.ctimeMs,
+          legacyMatrix ? matrix?.matrix_hash : null,
+          object(metadata?.expected_case_matrix).matrix_hash,
+        ])
+      : '';
+    const cached = options.includeCaseContent === false ? caseSummaries.get(reportPath) : undefined;
+    if (cached && cached.stamp === stamp) {
+      if (!cases.length) source = cached.source;
+      cases.push({ ...cached.item });
+      continue;
+    }
+    reportBytes += stat?.size ?? 0;
+    if (
+      reportBytes > (options.maxReportBytes ?? 1024 * 1024 * 1024) ||
+      Date.now() - started > (options.maxReadMs ?? 60000)
+    ) {
+      diagnostics.push(
+        `报告读取预算已用尽：已读取 ${cases.length}/${reportFiles.length} 份，结果不完整；请提高 maxReportBytes/maxReadMs 后重试。`,
+      );
+      break;
+    }
+    const raw = await optionalJson(project, id, `reports/${file}`, diagnostics);
     if (raw) {
-      firstReport ??= raw;
-      cases.push(normalizeCase(reportFiles[index], raw, root));
+      if (!cases.length) {
+        const events = object(raw.events_summary);
+        source = summarySource(events);
+      }
+      const item = normalizeCase(file, raw, root, options.includeCaseContent !== false);
+      // 旧生产器按 nodeid 计数导致 rep=1；仅在名称及已验证矩阵同时证明身份时校正。
+      const legacyRep = legacyCaseRepetition(file, raw, item, legacyMatrix);
+      if (legacyRep !== null) {
+        item.repetition = legacyRep;
+        diagnostics.push(`${file}：已按原始用例名称、sample 和预期矩阵校正旧报告重复编号。`);
+      }
+      if (options.includeCaseContent === false) {
+        const events = object(raw.events_summary);
+        cacheCaseSummary(reportPath, {
+          stamp,
+          item,
+          source: summarySource(events),
+        });
+      }
+      cases.push(item);
     }
   }
-  const events = object(firstReport?.events_summary);
-  const source = object(Array.isArray(events.skill_sources) ? events.skill_sources[0] : null);
   const app = object(application?.application);
   const config = managed?.config ?? {
     target: text(source.path) ?? undefined,
@@ -552,6 +751,7 @@ export async function readEvalRun(project: string, id: string): Promise<EvalRunD
     total: cases.length,
     expectedTotal,
     cases,
+    caseContentOmitted: options.includeCaseContent === false,
     progress: normalizeProgress(progress, id),
     metrics: {
       durationSeconds: sumKnown(cases.map((item) => item.durationSeconds)),
@@ -602,7 +802,87 @@ export async function readEvalRun(project: string, id: string): Promise<EvalRunD
     diagnostics,
   };
 }
-export async function listEvalRuns(project: string): Promise<EvalRunDetail[]> {
+export async function readEvalCasePage(
+  project: string,
+  id: string,
+  query: { limit?: number; offset?: number; status?: string; q?: string } = {},
+) {
+  const limit = query.limit ?? 10,
+    offset = query.offset ?? 0;
+  if (
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > 100 ||
+    !Number.isSafeInteger(offset) ||
+    offset < 0 ||
+    (query.status && !['all', 'failed', 'abnormal'].includes(query.status)) ||
+    (query.q?.length ?? 0) > 512
+  )
+    throw new EvalRunError('用例分页或筛选参数无效');
+  const run = await readEvalRun(project, id, { includeCaseContent: false });
+  const search = (query.q ?? '').trim().toLowerCase();
+  const selected: EvalCaseResult[] = [];
+  const started = Date.now();
+  let searchedBytes = 0;
+  for (const item of run.cases) {
+    if (query.status === 'failed' && !(item.passed === false && item.quality !== 'excluded'))
+      continue;
+    if (query.status === 'abnormal' && item.quality !== 'excluded') continue;
+    let matches = `${item.task}\n${item.prompt ?? ''}`.toLowerCase().includes(search);
+    if (!matches && search && !isEvalArchiveRunId(id)) {
+      // 摘录之外的输入也参与搜索；逐份读取，不把完整正文留在列表中。
+      const file = await evalRunPath(project, id, 'reports', item.id);
+      searchedBytes += (await fs.stat(file)).size;
+      if (searchedBytes > 1024 * 1024 * 1024 || Date.now() - started > 60000)
+        throw new EvalRunError('完整输入搜索超过读取预算，请缩小运行或筛选范围', 413);
+      const raw = await readEvalJson(file);
+      const events = object(raw?.events_summary);
+      matches = `${text(events.task) ?? ''}\n${text(events.prompt) ?? ''}`
+        .toLowerCase()
+        .includes(search);
+    }
+    if (matches) selected.push(item);
+  }
+  return {
+    items: selected.slice(offset, offset + limit),
+    total: selected.length,
+    runTotal: run.total,
+    offset,
+    nextOffset: offset + limit < selected.length ? offset + limit : null,
+    diagnostics: run.diagnostics,
+  };
+}
+export async function readEvalCase(
+  project: string,
+  id: string,
+  caseId: string,
+): Promise<EvalCaseResult> {
+  if (!/^[\w.-]+_report\.json$/u.test(caseId)) throw new EvalRunError('无效的 Eval 用例身份');
+  if (isEvalArchiveRunId(id)) {
+    const item = (await readEvalRun(project, id)).cases.find((item) => item.id === caseId);
+    if (!item) throw new EvalRunError('用例不存在', 404);
+    return item;
+  }
+  const raw = await readEvalJson(await evalRunPath(project, id, 'reports', caseId));
+  if (!raw) throw new EvalRunError('用例不存在', 404);
+  const item = normalizeCase(caseId, raw, await evalRunPath(project, id));
+  const matrix = await readEvalJson(await evalRunPath(project, id, 'expected-case-matrix.json'));
+  const metadata = await readEvalJson(await evalRunPath(project, id, 'metadata.json'));
+  const keys =
+    matrix && validExpectedMatrix(matrix, object(metadata?.expected_case_matrix).matrix_hash)
+      ? new Set(
+          (matrix.cases as Json[]).map((entry) =>
+            JSON.stringify([entry.task, entry.treatment, entry.rep]),
+          ),
+        )
+      : null;
+  item.repetition = legacyCaseRepetition(caseId, raw, item, keys) ?? item.repetition;
+  return item;
+}
+export async function listEvalRuns(
+  project: string,
+  options: EvalReadOptions = {},
+): Promise<EvalRunDetail[]> {
   const root = await evalStoragePath(project, 'runs');
   const entries = await fs
     .readdir(root, { withFileTypes: true })
@@ -615,7 +895,7 @@ export async function listEvalRuns(project: string): Promise<EvalRunDetail[]> {
   runs.push(...archives.items.map((item) => archiveEvalDetail(item.archive)));
   runs.push(...archives.errors.map((e) => archiveEvalError(e.id, e.message)));
   for (const entry of entries.filter((entry) => entry.isDirectory() && RUN_ID.test(entry.name))) {
-    runs.push(await readEvalRun(project, entry.name));
+    runs.push(await readEvalRun(project, entry.name, options));
   }
   return runs.sort(
     (a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id.localeCompare(a.id),
@@ -631,7 +911,7 @@ export async function setEvalBaseline(
   const file = await evalStoragePath(project, 'baselines.json');
   await fs.mkdir(path.dirname(file), { recursive: true });
   await withRecoverableFileLock(`${file}.lock`, async () => {
-    const run = await readEvalRun(project, id);
+    const run = await readEvalRun(project, id, { includeCaseContent: false });
     if (!run.baselineEligible || !run.baselineScope)
       throw new EvalRunError(run.baselineDisabledReason ?? '结果不完整');
     const baselines = await baselineMap(project);
@@ -643,7 +923,7 @@ export async function setEvalBaseline(
     baselines[run.baselineScope] = id;
     await writeEvalJson(file, { schema: 'comet.eval.baselines.v1', baselines });
   });
-  return readEvalRun(project, id);
+  return readEvalRun(project, id, { includeCaseContent: false });
 }
 export async function clearEvalBaseline(project: string, id: string): Promise<EvalRunDetail> {
   if ((await readArchivedEvalRun(project, id))?.archiveId)
@@ -651,14 +931,14 @@ export async function clearEvalBaseline(project: string, id: string): Promise<Ev
   const file = await evalStoragePath(project, 'baselines.json');
   await fs.mkdir(path.dirname(file), { recursive: true });
   await withRecoverableFileLock(`${file}.lock`, async () => {
-    const run = await readEvalRun(project, id);
+    const run = await readEvalRun(project, id, { includeCaseContent: false });
     const baselines = await baselineMap(project);
     if (!run.baselineScope || baselines[run.baselineScope] !== id)
       throw new EvalRunError('默认基线已变化，请刷新后重新确认', 409);
     delete baselines[run.baselineScope];
     await writeEvalJson(file, { schema: 'comet.eval.baselines.v1', baselines });
   });
-  return readEvalRun(project, id);
+  return readEvalRun(project, id, { includeCaseContent: false });
 }
 export async function compareEvalRuns(
   project: string,
@@ -666,8 +946,8 @@ export async function compareEvalRuns(
   baselineId: string,
 ): Promise<EvalRunComparison> {
   const [candidate, baseline] = await Promise.all([
-    readEvalRun(project, candidateId),
-    readEvalRun(project, baselineId),
+    readEvalRun(project, candidateId, { includeCaseContent: false }),
+    readEvalRun(project, baselineId, { includeCaseContent: false }),
   ]);
   const reasons: string[] = [];
   if (candidateId === baselineId) reasons.push('不能与自身比较');

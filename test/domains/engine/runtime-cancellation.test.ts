@@ -76,6 +76,30 @@ describe('Runtime cancellation acknowledgement', () => {
     expect(await f.runtime.inspect(f.runId)).toEqual(stopped);
   });
 
+  it('prioritizes committed cancellation over malformed late outcomes without accepting them', async () => {
+    const f = await fixture();
+    const cancelled = await f.runtime.cancel({ runId: f.runId, reason: 'Stop' });
+    await expect(
+      f.runtime.recordOutcome({
+        runId: f.runId,
+        outcome: {
+          ...f.stopped,
+          outcomeId: 'late-invalid',
+          status: 'failed',
+          output: undefined as never,
+        },
+      }),
+    ).rejects.toThrow(/RUN_CANCELLED/);
+    expect(await f.runtime.inspect(f.runId)).toEqual(cancelled);
+    const active = await fixture();
+    await expect(
+      active.runtime.recordOutcome({
+        runId: active.runId,
+        outcome: { ...active.stopped, outcomeId: 'invalid', status: 'failed', output: null },
+      }),
+    ).rejects.toThrow(/INVALID_OUTCOME/);
+  });
+
   it.each([
     ['claim', { claimToken: 'another-host' }, /STALE_ACTION/],
     ['attempt', { attempt: 2 }, /STALE_ACTION/],

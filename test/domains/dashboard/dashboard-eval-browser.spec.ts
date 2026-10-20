@@ -289,6 +289,78 @@ test.describe('Dashboard Eval', () => {
     await page.goto('/');
     await page.getByRole('menuitem', { name: '评估 Eval' }).click();
   });
+  test('pages case summaries and finds the failed 2001st report before fetching its body', async ({
+    page,
+  }) => {
+    const items = Array.from({ length: 2001 }, (_, index) => ({
+      ...run.cases[0],
+      id: `case-${index}_report.json`,
+      task: `task-${String(index).padStart(4, '0')}`,
+      passed: index !== 2000,
+      finalResponse: null,
+    }));
+    const calls: URL[] = [];
+    let bodyReads = 0;
+    await page.route('**/eval/runs/eval-one', (route) =>
+      route.fulfill({
+        json: {
+          ...run,
+          total: 2001,
+          passed: 2000,
+          expectedTotal: 2001,
+          cases: items,
+          caseContentOmitted: true,
+        },
+      }),
+    );
+    await page.route('**/eval/runs/eval-one/cases?*', (route) => {
+      const url = new URL(route.request().url());
+      calls.push(url);
+      const query = url.searchParams.get('q') ?? '';
+      const selected = items.filter(
+        (item) =>
+          (url.searchParams.get('status') !== 'failed' || !item.passed) &&
+          item.task.includes(query),
+      );
+      const offset = Number(url.searchParams.get('offset'));
+      return route.fulfill({
+        json: {
+          items: selected.slice(offset, offset + 10),
+          total: selected.length,
+          runTotal: 2001,
+        },
+      });
+    });
+    await page.route('**/eval/runs/eval-one/case?*', (route) => {
+      bodyReads++;
+      const id = new URL(route.request().url()).searchParams.get('id');
+      return route.fulfill({
+        json: { ...items.find((item) => item.id === id), finalResponse: '完整的第2001份回答证据' },
+      });
+    });
+    await page.getByRole('button', { name: 'writer', exact: true }).click();
+    await page.getByRole('tab', { name: '用例结果', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'task-0000', exact: true })).toBeVisible();
+    expect(bodyReads).toBe(0);
+    await page.getByRole('button', { name: '下一页', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'task-0010', exact: true })).toBeVisible();
+    await page.getByText('仅未通过', { exact: true }).click();
+    await expect(page.getByRole('button', { name: 'task-2000', exact: true })).toBeVisible();
+    await page.getByRole('textbox', { name: '搜索用例', exact: true }).fill('task-2000');
+    await expect
+      .poll(() =>
+        calls.some(
+          (url) =>
+            url.searchParams.get('q') === 'task-2000' && url.searchParams.get('offset') === '0',
+        ),
+      )
+      .toBe(true);
+    await page.getByRole('button', { name: 'task-2000', exact: true }).click();
+    await expect(page.getByText('完整的第2001份回答证据', { exact: true })).toBeVisible();
+    expect(bodyReads).toBe(1);
+    expect(calls.some((url) => url.searchParams.get('offset') === '10')).toBe(true);
+  });
+
   test('uses summary-only server pages and stops frequent polling for completed history', async ({
     page,
   }) => {

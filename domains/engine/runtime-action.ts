@@ -1,5 +1,10 @@
 import { RuntimeProtocolError } from './runtime-errors.js';
-import { cloneRuntimeValue, hashRuntimeValue, type RuntimeValue } from './runtime-json.js';
+import {
+  cloneRuntimeValue,
+  hashRuntimeValue,
+  isImmutableRuntimeSnapshot,
+  type RuntimeValue,
+} from './runtime-json.js';
 
 export type RuntimeActionStatus =
   'pending' | 'running' | 'unknown' | 'succeeded' | 'failed' | 'cancelled';
@@ -83,6 +88,13 @@ function nonEmpty(value: unknown, field: string): asserts value is string {
   }
 }
 
+function copyAction(action: RuntimeAction): RuntimeAction {
+  // 只有引擎已逐层验证并冻结的 Action 可以共享历史；外部可变输入仍完全隔离。
+  return isImmutableRuntimeSnapshot(action)
+    ? { ...action, reconciliations: [...action.reconciliations] }
+    : structuredClone(action);
+}
+
 function assertBinding(action: RuntimeAction, attempt: number, inputHash: string): void {
   if (attempt !== action.attempt || inputHash !== action.inputHash) {
     throw new RuntimeProtocolError('STALE_ACTION', '执行尝试或输入版本与当前 Action 不一致');
@@ -95,6 +107,11 @@ function terminal(action: RuntimeAction): boolean {
 
 export function createRuntimeAction(options: CreateRuntimeActionOptions): RuntimeAction {
   return initializeRuntimeAction(options, cloneRuntimeValue(options.input));
+}
+
+/** 调度器拥有输入快照，后续仅替换，不修改既有上游结果。公开工厂仍隔离外部输入。 */
+export function createRuntimeActionSnapshot(options: CreateRuntimeActionOptions): RuntimeAction {
+  return initializeRuntimeAction(options, options.input as RuntimeValue);
 }
 
 function initializeRuntimeAction(
@@ -146,7 +163,7 @@ export function claimRuntimeAction(
   };
   if (action.claim) {
     if (hashRuntimeValue(action.claim) === hashRuntimeValue(claim) && action.status === 'running') {
-      return structuredClone(action);
+      return copyAction(action);
     }
     throw new RuntimeProtocolError(
       'ACTION_ALREADY_CLAIMED',
@@ -156,7 +173,7 @@ export function claimRuntimeAction(
   if (action.status !== 'pending') {
     throw new RuntimeProtocolError('ACTION_NOT_PENDING', '只有待执行 Action 可以被领取');
   }
-  return { ...structuredClone(action), claim, status: 'running' };
+  return { ...copyAction(action), claim, status: 'running' };
 }
 
 export function recordRuntimeOutcome(
@@ -184,7 +201,7 @@ export function recordRuntimeOutcome(
     if (previous.hash !== receiptHash) {
       throw new RuntimeProtocolError('OUTCOME_CONFLICT', '同一结果标识不能提交不同内容');
     }
-    return { action: structuredClone(action), duplicate: true };
+    return { action: copyAction(action), duplicate: true };
   }
   assertBinding(action, outcome.attempt, outcome.inputHash);
   if (outcome.actionId !== action.id) {
@@ -206,7 +223,7 @@ export function recordRuntimeOutcome(
   }
   return {
     action: {
-      ...structuredClone(action),
+      ...copyAction(action),
       status: outcome.status,
       outcome: structuredClone(outcome),
       receipts: [...action.receipts, { outcomeId: outcome.outcomeId, hash: receiptHash }],
@@ -223,7 +240,7 @@ export function markRuntimeActionUnknown(action: RuntimeAction, reason: string):
       '只有已派发 Action 才存在执行结果不明的情况',
     );
   }
-  return { ...structuredClone(action), status: 'unknown', reason };
+  return { ...copyAction(action), status: 'unknown', reason };
 }
 
 export function retryRuntimeAction(
@@ -245,7 +262,7 @@ export function retryRuntimeAction(
       '先核对外部执行结果；不能把断连当作未执行',
     );
   }
-  const next = structuredClone(action);
+  const next = copyAction(action);
   if (reconciliation) {
     if (reconciliation.resolution !== 'not-executed' || reconciliation.evidence === null) {
       throw new RuntimeProtocolError('RECONCILIATION_REQUIRED', '需要明确的未执行结论与核对证据');
@@ -268,8 +285,8 @@ export function retryRuntimeAction(
 
 export function cancelRuntimeAction(action: RuntimeAction, reason: string): RuntimeAction {
   nonEmpty(reason, 'reason');
-  if (terminal(action)) return structuredClone(action);
-  return { ...structuredClone(action), status: 'cancelled', reason };
+  if (terminal(action)) return copyAction(action);
+  return { ...copyAction(action), status: 'cancelled', reason };
 }
 
 export function acknowledgeRuntimeActionCancellation(
@@ -288,7 +305,7 @@ export function acknowledgeRuntimeActionCancellation(
     throw new RuntimeProtocolError('ACTION_TERMINAL', '只能确认已取消 Action 的执行停止');
   if (action.cancellation && hashRuntimeValue(action.cancellation) !== hashRuntimeValue(stopped))
     throw new RuntimeProtocolError('OUTCOME_CONFLICT', '当前执行已有不同的停止确认');
-  return { ...structuredClone(action), cancellation: structuredClone(stopped) };
+  return { ...copyAction(action), cancellation: structuredClone(stopped) };
 }
 
 function keysOnly(

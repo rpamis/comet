@@ -2,6 +2,11 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, vi } from 'vitest';
+import { encodeJsonValueMaps, decodeJsonValueMaps } from '../../../platform/fs/json-value-pool.js';
+import {
+  freezeRuntimeSnapshot,
+  isImmutableRuntimeSnapshot,
+} from '../../../domains/engine/runtime-json.js';
 import { hashRuntimeValue } from '../../../domains/engine/runtime-json.js';
 import {
   createRuntime,
@@ -176,8 +181,8 @@ test.each(['small', 'large', 'pooled'] as const)(
       } finally {
         stringify.mockRestore();
       }
-      // 小记录只序列化原文；大记录再序列化一次压缩候选。envelope 不重复遍历历史。
-      expect(traversals).toBe(kind === 'small' ? 1 : 2);
+      // 压缩成功时不再序列化完整展开历史；无收益的候选才回退原文。
+      expect(traversals).toBe(kind === 'large' ? 2 : 1);
       expect(await store.read(record.runId)).toEqual(JSON.parse(JSON.stringify(record)));
       const [entry] = await fs.readdir(path.join(root, '.runtime-store-v2'));
       const saved = JSON.parse(
@@ -193,3 +198,51 @@ test.each(['small', 'large', 'pooled'] as const)(
     }
   },
 );
+
+test('captures pooled CAS input before awaiting and rejects corrupted pool references before replacing it', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-runtime-pool-cas-'));
+  const output = { text: 'x'.repeat(40000) };
+  const record = {
+    runId: 'pooled-cas',
+    revision: 1,
+    protocolVersion: 1,
+    actions: Array.from({ length: 12 }, () => ({ input: { outputs: { result: output } } })),
+    actionContexts: {},
+    outputs: { result: output },
+  };
+  const store = createFileRuntimeStore<typeof record>({ rootDir: root });
+  try {
+    const pending = store.compareAndSwap(record.runId, null, record);
+    output.text = 'caller changed input after CAS began';
+    expect(await pending).toBe(true);
+    const saved = (await store.read(record.runId))!;
+    expect(saved.outputs.result.text).toBe('x'.repeat(40000));
+    const [entry] = await fs.readdir(path.join(root, '.runtime-store-v2'));
+    const file = path.join(root, '.runtime-store-v2', entry, 'checkpoint.json');
+    const envelope = JSON.parse(await fs.readFile(file, 'utf8'));
+    envelope.pool.maps[0].entries.push(['invalid', 999999]);
+    const { schema: _schema, hash: _hash, ...payload } = envelope;
+    envelope.hash = hashRuntimeValue(payload);
+    const corrupt = JSON.stringify(envelope);
+    await fs.writeFile(file, corrupt);
+    await expect(store.compareAndSwap(record.runId, 1, { ...saved, revision: 2 })).rejects.toThrow(
+      'STORE_CORRUPT_RECORD',
+    );
+    expect(await fs.readFile(file, 'utf8')).toBe(corrupt);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('immutable map encoding does not expose cached delta arrays to later encoding callers', () => {
+  const record = freezeRuntimeSnapshot({ first: { a: 1, b: 2, c: 3 }, second: { a: 1, c: 3 } });
+  const paths = [
+    { path: ['first'], group: 'test' },
+    { path: ['second'], group: 'test' },
+  ];
+  const first = encodeJsonValueMaps(record, paths, isImmutableRuntimeSnapshot);
+  expect(first.pool!.maps.some((map) => map.removed.includes('b'))).toBe(true);
+  (first.pool!.maps.find((map) => map.removed.length)!.removed as string[]).push('a');
+  const second = encodeJsonValueMaps(record, paths, isImmutableRuntimeSnapshot);
+  expect(decodeJsonValueMaps(second.record, second.pool)).toEqual(record);
+});

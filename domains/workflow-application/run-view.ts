@@ -1,3 +1,4 @@
+import { applicationActionHoldsScope } from './skill-executor.js';
 import type { RuntimeAction, WorkflowRun } from '../engine/runtime.js';
 import type { LoadedWorkflowApplication } from './types.js';
 import type { CliContinuationMode } from '../workflow-contract/output-envelope.js';
@@ -21,8 +22,8 @@ export function projectWorkflowApplicationRun(
   run: WorkflowRun,
 ) {
   const terminal = ['completed', 'failed', 'cancelled'].includes(run.status);
-  const activeActions = run.actions.filter((action) =>
-    ['pending', 'running', 'unknown'].includes(action.status),
+  const activeActions = run.actions.filter(
+    (action) => action.status === 'pending' || applicationActionHoldsScope(action),
   );
   const failedActions =
     run.status === 'failed'
@@ -57,12 +58,15 @@ export function projectWorkflowApplicationRun(
     (action) => action.status === 'unknown' && action.type !== 'child_workflow',
   );
   const selectedAction =
+    activeActions.find((action) => action.status === 'cancelled') ??
     unknownExternalAction ??
     activeActions.find((action) => action.status === 'unknown') ??
     activeActions.find((action) => action.status === 'running') ??
     activeActions.find((action) => action.status === 'pending');
-  const mode: CliContinuationMode =
-    run.status === 'completed' || run.status === 'cancelled'
+  const pendingStop = activeActions.find((action) => action.status === 'cancelled');
+  const mode: CliContinuationMode = pendingStop
+    ? 'reconcile'
+    : run.status === 'completed' || run.status === 'cancelled'
       ? 'done'
       : run.status === 'failed' || unknownExternalAction !== undefined
         ? 'reconcile'
@@ -75,6 +79,27 @@ export function projectWorkflowApplicationRun(
               : 'reconcile';
 
   function actionRequests(action: RuntimeAction) {
+    if (action.status === 'cancelled' && action.claim && !action.cancellation) {
+      return {
+        stopConfirmationRequired: true,
+        instruction:
+          '调度已取消，但原执行器尚未确认停止，写入范围继续保留。先停止原领取的执行及其子任务，再提交真实停止证据；不能重派或将取消视为停止。',
+        confirmStoppedRequest: {
+          operation: 'cancel' as const,
+          ...command,
+          reason: run.reason ?? '确认原执行已停止',
+          stoppedActions: [
+            {
+              actionId: action.id,
+              attempt: action.attempt,
+              inputHash: action.inputHash,
+              claimToken: action.claim.token,
+              evidence: '<actual-stop-evidence>',
+            },
+          ],
+        },
+      };
+    }
     if (action.type === 'child_workflow') {
       return {
         instruction:

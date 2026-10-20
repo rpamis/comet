@@ -333,16 +333,33 @@ export function classicSdkContinuation(
     return result({
       mode: 'wait',
       waitReason: 'executor',
-      commandArgs: null,
+      commandArgs:
+        action.stepId === `${state.workflow}.archive.execute`
+          ? command('check', 'archive', '--recover')
+          : null,
       requiredInputs: [],
-      instruction: '等待原领取方返回本次执行结果；不要重新派发或把仍在运行的工作判为 unknown。',
+      instruction:
+        action.stepId === `${state.workflow}.archive.execute`
+          ? '等待原归档执行器返回结果，不得重放。仅确认原执行器已停止且回报丢失后，读取 state check archive --recover 给出的 markUnknownRequest，通过 runtime dispatch 提交，再运行 comet archive ' +
+            change +
+            ' --recover。'
+          : '等待原领取方返回本次执行结果；不要重新派发或把仍在运行的工作判为 unknown。',
     });
   if (action?.status === 'unknown')
     return result({
       mode: 'reconcile',
-      commandArgs: command('check', state.phase, '--recover'),
-      requiredInputs: ['原领取方本次尝试的真实结果或确未执行证据'],
-      instruction: '核对原 claim 和实际产物。结果未明前不得重放；仅有原始可信结果时补交 outcome。',
+      commandArgs:
+        action.stepId === `${state.workflow}.archive.execute`
+          ? ['comet', 'archive', change, '--recover', '--json']
+          : command('check', state.phase, '--recover'),
+      requiredInputs:
+        action.stepId === `${state.workflow}.archive.execute`
+          ? ['原归档执行器已经停止，归档目录与原 claim 的检查点及产物完整']
+          : ['原领取方本次尝试的真实结果或确未执行证据'],
+      instruction:
+        action.stepId === `${state.workflow}.archive.execute`
+          ? '确认原归档执行器已停止后，通过 archive --recover 核对搬迁目录、原 claim 和归档产物并补记结果；证据不完整时停止，不得重放归档。'
+          : '核对原 claim 和实际产物。结果未明前不得重放；仅有原始可信结果时补交 outcome。',
     });
   if (observation.openApprovalHash && state.phase === 'open')
     return result({

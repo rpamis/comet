@@ -2,6 +2,7 @@ import {
   createNativeLegacyArchiveOverlay,
   withNativeLegacyArchiveMaterials,
 } from './native-archive-legacy-overlay.js';
+import { inspectNativeSdkQuiescence } from './native-sdk-cancellation.js';
 import { readNativeSdkArchiveOriginals } from './native-sdk-archive-originals.js';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
@@ -489,7 +490,7 @@ async function archiveFinalizeBinding(
   if (
     !historicalRecovery ||
     ((run.outputs['archive.prepare']?.value as { candidateBinding?: unknown })?.candidateBinding &&
-      action.status !== 'unknown')
+      !['unknown', 'cancelled'].includes(action.status))
   )
     await assertArchiveCandidate(run, projectRoot);
   return { state, paths, applied, priorReportSha256: preflight.reportSha256 };
@@ -555,6 +556,7 @@ export const nativeSdkArchiveFinalizeValidator: RuntimeValidator = {
         state,
         runId: run.runId,
         archiveRef: applied.archiveRef as string,
+        history: action.status === 'unknown',
       });
       if (
         receipt.transactionId !== applied.transactionId ||
@@ -645,6 +647,7 @@ export async function recoverNativeSdkArchiveOutcome(options: {
           state,
           runId: run.runId,
           archiveRef: applied.archiveRef as string,
+          history: true,
         });
     if (
       receipt.transactionId !== applied.transactionId ||
@@ -672,4 +675,55 @@ export async function recoverNativeSdkArchiveOutcome(options: {
       output,
     },
   });
+}
+
+/** 收尾旧版本取消后留下的已应用事务；保留取消终态，不恢复调度或伪造 Action 回报。 */
+export async function recoverCancelledNativeSdkArchive(options: {
+  projectRoot: string;
+  run: WorkflowRun;
+}): Promise<Awaited<ReturnType<typeof inspectNativeSdkArchiveFinalization>>> {
+  const { run, projectRoot } = options;
+  const action = run.actions.at(-1);
+  const appliedAction = [...run.actions]
+    .reverse()
+    .find((entry) => entry.stepId === 'archive.execute');
+  if (
+    run.status !== 'cancelled' ||
+    action?.stepId !== 'archive.finalize' ||
+    action.status !== 'cancelled' ||
+    (action.claim && action.claim.executorId !== nativeSdkArchiveFinalizeExecutor.id) ||
+    appliedAction?.status !== 'succeeded' ||
+    !(await inspectNativeSdkQuiescence(options)).quiescent
+  ) {
+    throw new Error(
+      'Cancelled Native Archive recovery requires applied Specs and proof that all original executions stopped',
+    );
+  }
+  const input = run.input as { artifactRootRef: string };
+  const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, { readOnly: true });
+  const transaction = await readNativePortableTransaction(paths, {
+    kind: 'archive',
+    change: run.runId,
+  });
+  const bound = await archiveFinalizeBinding(run, action, projectRoot, transaction === null);
+  const receipt = transaction
+    ? await finalizeNativeSdkArchive({
+        paths: bound.paths,
+        state: bound.state,
+        runId: run.runId,
+        transactionId: bound.applied.transactionId as string,
+        archiveRef: bound.applied.archiveRef as string,
+        priorReportSha256: bound.priorReportSha256,
+        validateCandidate: () => assertArchiveCandidate(run, projectRoot),
+      })
+    : await inspectNativeSdkArchiveFinalization({
+        paths,
+        state: bound.state,
+        runId: run.runId,
+        archiveRef: bound.applied.archiveRef as string,
+        history: true,
+      });
+  if (receipt.transactionId !== bound.applied.transactionId)
+    throw new Error('Native SDK Archive recovery receipt belongs to another transaction');
+  return receipt;
 }

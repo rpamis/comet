@@ -5,6 +5,8 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import {
   readEvalRun,
+  readEvalCasePage,
+  readEvalCase,
   evalRunPath,
   listEvalRuns,
   setEvalBaseline,
@@ -79,6 +81,125 @@ describe('Eval run history and baselines', () => {
     await fs.writeFile(path.join(root, 'summary.md'), '# Eval report');
     return root;
   }
+  it('repairs only legacy repetitions proven by controller name, file identity and validated matrix', async () => {
+    const root = await report('legacy-reps', [true, true]);
+    const matrix = expectedMatrix([
+      { rep: 1, task: 'task', treatment: 'BASE' },
+      { rep: 2, task: 'task', treatment: 'BASE' },
+    ]);
+    await fs.writeFile(path.join(root, 'expected-case-matrix.json'), JSON.stringify(matrix));
+    for (let i = 0; i < 2; i++) {
+      const file = path.join(root, `reports/case-${i}_report.json`);
+      const raw = JSON.parse(await fs.readFile(file, 'utf8'));
+      raw.name = `task-BASE-r${i + 1}`;
+      raw.events_summary.task = 'task';
+      raw.events_summary.treatment = 'BASE';
+      raw.events_summary.sample = 1;
+      await fs.writeFile(
+        path.join(root, `reports/task_BASE_r${i + 1}_rep1_report.json`),
+        JSON.stringify(raw),
+      );
+      await fs.unlink(file);
+    }
+    const run = await readEvalRun(project, 'legacy-reps');
+    expect(run.cases.map((item) => item.repetition)).toEqual([1, 2]);
+    expect(run.conclusion).toBe('passed');
+    expect(
+      (await readEvalCase(project, 'legacy-reps', 'task_BASE_r2_rep1_report.json')).repetition,
+    ).toBe(2);
+    const warm = await readEvalRun(project, 'legacy-reps', { includeCaseContent: false });
+    expect(warm.cases.map((item) => item.repetition)).toEqual([1, 2]);
+    const metadataPath = path.join(root, 'metadata.json');
+    const metadata = JSON.parse(await fs.readFile(metadataPath, 'utf8'));
+    metadata.expected_case_matrix.matrix_hash = 'forged-declaration';
+    await fs.writeFile(metadataPath, JSON.stringify(metadata));
+    expect(
+      (await readEvalRun(project, 'legacy-reps', { includeCaseContent: false })).cases.map(
+        (item) => item.repetition,
+      ),
+    ).toEqual([1, 1]);
+    delete metadata.expected_case_matrix.matrix_hash;
+    await fs.writeFile(metadataPath, JSON.stringify(metadata));
+    expect(
+      (await readEvalRun(project, 'legacy-reps', { includeCaseContent: false })).cases.map(
+        (item) => item.repetition,
+      ),
+    ).toEqual([1, 2]);
+    matrix.cases[1].rep = 3;
+    await fs.writeFile(path.join(root, 'expected-case-matrix.json'), JSON.stringify(matrix));
+    expect(
+      (await readEvalRun(project, 'legacy-reps', { includeCaseContent: false })).cases.map(
+        (item) => item.repetition,
+      ),
+    ).toEqual([1, 1]);
+    matrix.matrix_hash = 'forged';
+    await fs.writeFile(path.join(root, 'expected-case-matrix.json'), JSON.stringify(matrix));
+    expect((await readEvalRun(project, 'legacy-reps')).conclusion).toBe('incomplete');
+  });
+  it('aggregates every report beyond 2000 and pages failed cases with on-demand evidence', async () => {
+    await report(
+      'large',
+      Array.from({ length: 2001 }, (_, i) => i !== 999),
+    );
+    const summary = await readEvalRun(project, 'large', { includeCaseContent: false });
+    expect(summary.total).toBe(2001);
+    expect(summary.conclusion).toBe('failed');
+    expect(summary.baselineEligible).toBe(true);
+    expect(summary.cases.every((item) => item.finalResponse === null)).toBe(true);
+    const page = await readEvalCasePage(project, 'large', {
+      status: 'failed',
+      q: 'task-999',
+      limit: 1,
+    });
+    expect(page.total).toBe(1);
+    expect(page.items[0].task).toBe('task-999');
+    expect((await readEvalCase(project, 'large', page.items[0].id)).finalResponse).toBe(
+      '请先提供本周数据',
+    );
+    const last = await readEvalCasePage(project, 'large', { offset: 2000, limit: 1 });
+    expect(last.items).toHaveLength(1);
+    expect(last.nextOffset).toBeNull();
+  }, 30000);
+  it('keeps report bodies out of summary caches and rereads only changed files', async () => {
+    const root = await report('bodies', [true, true]);
+    const file = path.join(root, 'reports/case-0_report.json');
+    const raw = JSON.parse(await fs.readFile(file, 'utf8'));
+    raw.events_summary.final_response = 'x'.repeat(1024 * 1024);
+    raw.events_summary.prompt = 'p'.repeat(1024 * 1024) + 'needle-beyond-excerpt';
+    await fs.writeFile(file, JSON.stringify(raw));
+    const summary = await readEvalRun(project, 'bodies', { includeCaseContent: false });
+    expect(JSON.stringify(summary).length).toBeLessThan(20000);
+    expect((await readEvalCasePage(project, 'bodies', { q: 'needle-beyond-excerpt' })).total).toBe(
+      1,
+    );
+    const spy = vi.spyOn(fs, 'readFile');
+    try {
+      await readEvalRun(project, 'bodies', { includeCaseContent: false });
+      expect(spy.mock.calls.filter(([name]) => String(name).endsWith('_report.json'))).toHaveLength(
+        0,
+      );
+      raw.passed = false;
+      await fs.writeFile(file, JSON.stringify(raw));
+      expect((await readEvalRun(project, 'bodies', { includeCaseContent: false })).conclusion).toBe(
+        'failed',
+      );
+      expect(spy.mock.calls.filter(([name]) => String(name).endsWith('_report.json'))).toHaveLength(
+        1,
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
+  it('discloses exhausted report budgets rather than silently truncating', async () => {
+    await report('budget', [true, true]);
+    const run = await readEvalRun(project, 'budget', {
+      includeCaseContent: false,
+      maxReportBytes: 1,
+    });
+    expect(run.conclusion).toBe('incomplete');
+    expect(run.baselineEligible).toBe(false);
+    expect(run.diagnostics.join(' ')).toContain('预算已用尽');
+  });
   it('checks every path component once and never reuses a previous symlink check', async () => {
     const root = await report('paths', [true]);
     const canonicalProject = await fs.realpath(project);

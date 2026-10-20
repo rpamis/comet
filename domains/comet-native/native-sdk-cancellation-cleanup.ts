@@ -1,5 +1,6 @@
+import { readNativePortableTransaction } from './native-portable-transactions.js';
 import { closeNativeSdkHistory } from './native-sdk-history.js';
-import type { WorkflowRun } from '../engine/runtime.js';
+import type { WorkflowRun, RuntimeStore } from '../engine/runtime.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 import {
   clearCometCurrentSelectionIf,
@@ -49,4 +50,48 @@ export async function settleNativeSdkCancellation(options: {
     );
   });
   await closeNativeSdkHistory(options);
+}
+
+/** 在 Archive 共用锁内提交取消；投影和停止执行仍由提交后的生命周期负责。 */
+export async function commitNativeSdkCancellation(options: {
+  projectRoot: string;
+  store: RuntimeStore<WorkflowRun>;
+  runId: string;
+  expectedRevision: number | null;
+  next: WorkflowRun;
+}): Promise<boolean> {
+  const { projectRoot, store, runId, expectedRevision, next } = options;
+  if (next.status !== 'cancelled')
+    throw new Error('Native cancellation commit requires a cancelled Run');
+  const input = next.input as { artifactRootRef?: unknown } | null;
+  if (typeof input?.artifactRootRef !== 'string')
+    throw new Error('Native cancellation commit requires its artifact root');
+  const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef);
+  return withNativeMutationLock(
+    paths,
+    `cancel SDK Native change ${runId}`,
+    async () => {
+      const current = await store.read(runId);
+      if (current && current.status !== 'cancelled') {
+        if (await readNativePortableTransaction(paths, { kind: 'archive', change: runId })) {
+          throw new Error(
+            `Native Archive transaction must finish before cancellation; run comet native archive ${runId} or recover its original Action with --recover`,
+          );
+        }
+        if (
+          current.actions.some(
+            (action) =>
+              action.stepId.startsWith('archive.') &&
+              ['running', 'unknown'].includes(action.status),
+          )
+        ) {
+          throw new Error(
+            `Native Archive execution must finish or recover before cancellation; run comet native archive ${runId} --recover`,
+          );
+        }
+      }
+      return store.compareAndSwap(runId, expectedRevision, next);
+    },
+    { allowedPortableTransaction: { kind: 'archive', change: runId } },
+  );
 }

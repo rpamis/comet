@@ -29,6 +29,23 @@ describe('Eval source discovery', () => {
     expect(await fingerprint(root)).not.toBe(initial);
     expect(readdir).toHaveBeenCalledTimes(2);
   });
+  it('invalidates terminal summaries when only execution-state changes', async () => {
+    const file = path.join(reports, '..', 'execution-state.json');
+    await fs.writeFile(
+      file,
+      JSON.stringify({
+        schema: 'comet.eval.execution.v1',
+        runId: 'run-one',
+        status: 'interrupted',
+      }),
+    );
+    const initial = await fingerprint(root);
+    await fs.writeFile(
+      file,
+      JSON.stringify({ schema: 'comet.eval.execution.v1', runId: 'run-one', status: 'completed' }),
+    );
+    expect(await fingerprint(root)).not.toBe(initial);
+  });
   it('observes report and run additions and removals', async () => {
     const initial = await fingerprint(root);
     await fs.writeFile(path.join(reports, 'two_report.json'), '{}');

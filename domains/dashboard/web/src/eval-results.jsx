@@ -435,7 +435,7 @@ export function EvalOverview({ run }) {
   );
 }
 
-export function EvalCases({ run, onSelect, stateScope }) {
+export function EvalCases({ run, onSelect, stateScope, endpoint }) {
   useDashboardLanguage();
   const [filter, setFilter] = useDashboardViewState(stateScope, `${run.id}:case-filter`, 'all');
   const [search, setSearch] = useDashboardViewState(stateScope, `${run.id}:case-search`, '');
@@ -446,18 +446,55 @@ export function EvalCases({ run, onSelect, stateScope }) {
     failed: (item) => item.passed === false && item.quality !== 'excluded',
     abnormal: (item) => item.quality === 'excluded',
   };
-  const data = cases.filter(
+  const localData = cases.filter(
     (item) =>
       matches[filter](item) &&
       `${item.task}\n${item.prompt ?? ''}`.toLowerCase().includes(search.trim().toLowerCase()),
   );
+  const [remote, setRemote] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    if (!endpoint) return;
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    const query = new URLSearchParams({
+      limit: '10',
+      offset: String((page - 1) * 10),
+      status: filter,
+      q: search,
+    });
+    fetch(`${endpoint}?${query}`, { signal: controller.signal, cache: 'no-store' })
+      .then(async (response) => {
+        const value = await response.json();
+        if (!response.ok) throw new Error(value.error ?? response.statusText);
+        return value;
+      })
+      .then((value) => {
+        if (!controller.signal.aborted) {
+          setRemote(value);
+          if (page > 1 && (page - 1) * 10 >= value.total)
+            setPage(Math.max(1, Math.ceil(value.total / 10)));
+        }
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) setError(error.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [endpoint, page, filter, search, run, setPage]);
+  const data = endpoint ? (remote?.items ?? []) : localData;
+  const total = endpoint ? (remote?.total ?? 0) : data.length;
   return (
     <EvalSection
       title={t('用例结果')}
       description={t('从结果进入输入、回答与检查证据。')}
       extra={
         <Text type="secondary">
-          {data.length} / {cases.length}
+          {total} / {run.total ?? cases.length}
           {t(' 个结果')}
         </Text>
       }
@@ -488,13 +525,16 @@ export function EvalCases({ run, onSelect, stateScope }) {
           }}
         />
       </div>
+      {error && <Alert type="error" showIcon message={error} />}
       <Table
+        loading={loading}
         rowKey="id"
         size="small"
         pagination={{
           ...evalPagination,
           pageSize: 10,
-          current: Math.min(page, Math.max(1, Math.ceil(data.length / 10))),
+          current: Math.min(page, Math.max(1, Math.ceil(total / 10))),
+          total,
           onChange: setPage,
         }}
         dataSource={data}

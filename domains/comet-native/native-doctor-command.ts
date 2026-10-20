@@ -741,6 +741,9 @@ export async function nativeDoctorCommand(
         code: finding.code.replace(/^portable-/u, 'sdk-'),
         path: finding.path,
         message: `${finding.message}; this transaction belongs to the SDK Run and doctor will not replay it`,
+        ...(finding.code === 'portable-archive-transaction-incomplete'
+          ? { repairCommand: `comet native archive ${name} --recover` }
+          : {}),
       }));
       if (recoveryStrategy) {
         throw new NativeUsageError('--strategy is only available to the legacy transaction doctor');

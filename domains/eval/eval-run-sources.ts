@@ -78,6 +78,8 @@ export async function evalSourceFingerprint(
           'dashboard-run.json',
           'expected-case-matrix.json',
           'progress.json',
+          'execution-state.json',
+          'managed-record-recovery.json',
           'reports',
         ].includes(name)
       : name === 'archive.json',
@@ -230,5 +232,5 @@ export function summarizeEvalRun(run: EvalRunDetail): EvalRunSummary {
 }
 
 export async function readEvalRunSummary(project: string, id: string): Promise<EvalRunSummary> {
-  return summarizeEvalRun(await readEvalRun(project, id));
+  return summarizeEvalRun(await readEvalRun(project, id, { includeCaseContent: false }));
 }

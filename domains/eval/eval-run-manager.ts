@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
 import { launchEvalWorker } from '../../platform/process/eval-worker.js';
 import {
@@ -33,16 +33,123 @@ import {
   redactEvalOutput,
   writeEvalJson,
 } from './eval-run-store.js';
+import type { EvalReadOptions } from './eval-run-store.js';
 import type { EvalManagedRun, EvalRunDetail } from './eval-run-types.js';
 
 export async function readManagedEvalRun(
   project: string,
   id: string,
 ): Promise<EvalManagedRun | null> {
-  const data = await readEvalJson(await evalRunPath(project, id, 'dashboard-run.json'));
-  return data?.schema === 'comet.eval.managed-run.v1' && data.id === id
-    ? (data as unknown as EvalManagedRun)
-    : null;
+  const file = await evalRunPath(project, id, 'dashboard-run.json');
+  try {
+    const data = await readEvalJson(file);
+    if (data === null) return null;
+    if (
+      data.schema !== 'comet.eval.managed-run.v1' ||
+      data.id !== id ||
+      !data.config ||
+      typeof data.config !== 'object' ||
+      Array.isArray(data.config) ||
+      ![
+        'queued',
+        'preparing',
+        'generating',
+        'running',
+        'judging',
+        'finalizing',
+        'stopping',
+        'completed',
+        'stopped',
+        'interrupted',
+        'unknown',
+      ].includes(String(data.status))
+    )
+      throw new Error('管理记录身份、配置或状态无效');
+    return data as unknown as EvalManagedRun;
+  } catch (error) {
+    const hash = await fs
+      .readFile(file)
+      .then((bytes) => createHash('sha256').update(bytes).digest('hex'))
+      .catch(() => 'unavailable');
+    throw new EvalRunError(
+      `Eval 管理记录损坏：${file}（sha256:${hash}）：${(error as Error).message}。原始证据未改动；请恢复已知良好备份，或核对旧执行已停止后调用 POST /runs/${encodeURIComponent(id)}/repair-managed-record（expectedHash、confirmedStopped=true）保留证据隔离；SDK 入口 repairManagedEvalRun(project, id, expectedHash, true)。`,
+      409,
+    );
+  }
+}
+/** 必须由操作者核对停止状态；损坏记录无法自动证明原执行器已退出。 */
+export async function repairManagedEvalRun(
+  project: string,
+  id: string,
+  expectedHash: string,
+  confirmedStopped: boolean,
+) {
+  if (confirmedStopped !== true || !/^[a-f0-9]{64}$/u.test(expectedHash))
+    throw new EvalRunError(
+      '请先核对旧执行器及容器均已停止，并提供当前管理记录的 expectedHash',
+      409,
+    );
+  const lock = await evalStoragePath(project, 'locks', 'dashboard-launch.lock');
+  await fs.mkdir(path.dirname(lock), { recursive: true });
+  return withRecoverableFileLock(lock, async () => {
+    const file = await evalRunPath(project, id, 'dashboard-run.json');
+    return withRecoverableFileLock(`${file}.lock`, async () => {
+      const bytes = await fs.readFile(file).catch(async (error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOENT') throw error;
+        const recovery = await readEvalJson(
+          await evalRunPath(project, id, 'managed-record-recovery.json'),
+        );
+        if (
+          recovery?.schema !== 'comet.eval.managed-record-recovery.v1' ||
+          recovery.runId !== id ||
+          recovery.sha256 !== expectedHash ||
+          recovery.confirmedStopped !== true
+        )
+          throw new EvalRunError('管理记录或匹配的恢复收据不存在', 409);
+        const retained = `dashboard-run.corrupt-${expectedHash}.json`;
+        const backup = await fs.readFile(await evalRunPath(project, id, retained));
+        if (createHash('sha256').update(backup).digest('hex') !== expectedHash)
+          throw new EvalRunError('恢复证据摘要不匹配', 409);
+        return null;
+      });
+      if (bytes === null)
+        return {
+          runId: id,
+          retained: `dashboard-run.corrupt-${expectedHash}.json`,
+          sha256: expectedHash,
+          recovered: true,
+        };
+      const actual = createHash('sha256').update(bytes).digest('hex');
+      if (actual !== expectedHash) throw new EvalRunError('管理记录已变化，请重新核对后恢复', 409);
+      let corrupt = false;
+      try {
+        await readManagedEvalRun(project, id);
+      } catch {
+        corrupt = true;
+      }
+      if (!corrupt) throw new EvalRunError('管理记录有效，不需要隔离', 409);
+      const retained = `dashboard-run.corrupt-${actual}.json`;
+      // 先创建不可覆盖的原字节副本，再记录人工核对证据，最后移除启动扫描入口。
+      const backup = await evalRunPath(project, id, retained);
+      await fs
+        .writeFile(backup, bytes, { flag: 'wx', mode: 0o600 })
+        .catch(async (error: NodeJS.ErrnoException) => {
+          if (error.code !== 'EEXIST' || !(await fs.readFile(backup)).equals(bytes)) throw error;
+        });
+      await writeEvalJson(await evalRunPath(project, id, 'managed-record-recovery.json'), {
+        schema: 'comet.eval.managed-record-recovery.v1',
+        runId: id,
+        sha256: actual,
+        retained,
+        confirmedStopped: true,
+        recoveredAt: new Date().toISOString(),
+      });
+      if (!(await fs.readFile(file)).equals(bytes))
+        throw new EvalRunError('管理记录已变化，原文件保留，请重新核对', 409);
+      await fs.unlink(file);
+      return { runId: id, retained, sha256: actual, recovered: true };
+    });
+  });
 }
 export async function updateManagedEvalRun(
   project: string,
@@ -232,9 +339,21 @@ export async function requestStopEvalRun(project: string, id: string): Promise<E
   }
   return readEvalRun(project, id);
 }
-export async function reconcileEvalRun(project: string, id: string): Promise<EvalRunDetail> {
-  if (id.startsWith('archive-')) return readEvalRun(project, id);
-  const record = await readManagedEvalRun(project, id);
+export async function reconcileEvalRun(
+  project: string,
+  id: string,
+  options: EvalReadOptions = {},
+): Promise<EvalRunDetail> {
+  if (id.startsWith('archive-')) return readEvalRun(project, id, options);
+  let record: EvalManagedRun | null;
+  try {
+    record = await readManagedEvalRun(project, id);
+  } catch (error) {
+    const detail = await readEvalRun(project, id, options);
+    detail.diagnostics.push((error as Error).message);
+    detail.availableActions.stop = false;
+    return detail;
+  }
   if (record?.owner && !['completed', 'stopped', 'interrupted'].includes(record.status)) {
     const liveness = await inspectProcessLiveness(record.owner.pid, record.owner.identity);
     if (liveness === 'dead') {
@@ -260,7 +379,7 @@ export async function reconcileEvalRun(project: string, id: string): Promise<Eva
       }
     }
   }
-  const detail = await readEvalRun(project, id);
+  const detail = await readEvalRun(project, id, options);
   if (record?.config.target && record.contentHash) {
     const freshness = await inspectEvalContentFreshness(project, record.config, record.contentHash);
     detail.stale = freshness.stale;
@@ -268,13 +387,16 @@ export async function reconcileEvalRun(project: string, id: string): Promise<Eva
   }
   return detail;
 }
-export async function collectEvalRuns(project: string): Promise<EvalRunDetail[]> {
-  const runs = await listEvalRuns(project);
+export async function collectEvalRuns(
+  project: string,
+  options: EvalReadOptions = {},
+): Promise<EvalRunDetail[]> {
+  const runs = await listEvalRuns(project, options);
   return Promise.all(
     runs.map((run) =>
       ['completed', 'stopped', 'interrupted', 'unknown'].includes(run.executionStatus)
         ? Promise.resolve(run)
-        : reconcileEvalRun(project, run.id),
+        : reconcileEvalRun(project, run.id, options),
     ),
   );
 }

@@ -21,6 +21,65 @@ describe('read-only RuntimeStore discovery', () => {
   });
   const key = (id: string) => createHash('sha256').update(JSON.stringify(id)).digest('hex');
 
+  it('excludes only structurally closed history without opening its body, while explicit reads still validate it', async () => {
+    const store = createFileRuntimeStore({ rootDir: root });
+    await store.compareAndSwap('closed', null, { runId: 'closed', revision: 1 });
+    await store.closeRun('closed', 1);
+    await store.compareAndSwap('active', null, { runId: 'active', revision: 1 });
+    const history = path.join(root, '.runtime-store-history', key('closed'), 'checkpoint.json');
+    await fs.writeFile(history, '{broken');
+    const open = vi.spyOn(fs, 'open');
+    try {
+      const entries = await listFileRuntimeStoreRuns({ rootDir: root }, { excludeClosed: true });
+      expect(entries.map((entry) => entry.runId)).toEqual(['active']);
+      expect(open.mock.calls.some(([file]) => String(file) === history)).toBe(false);
+      await expect(store.read('closed')).rejects.toMatchObject({ code: 'STORE_CORRUPT_RECORD' });
+    } finally {
+      open.mockRestore();
+    }
+  });
+
+  it.each(['missing', 'conflict', 'marker', 'link'] as const)(
+    'fails closed on %s history metadata instead of hiding a possible owner',
+    async (kind) => {
+      const store = createFileRuntimeStore({ rootDir: root });
+      await store.compareAndSwap('closed', null, { runId: 'closed', revision: 1 });
+      await store.closeRun('closed', 1);
+      const history = path.join(root, '.runtime-store-history', key('closed'), 'checkpoint.json');
+      if (kind === 'missing') await fs.unlink(history);
+      if (kind === 'conflict') {
+        await fs.mkdir(path.join(root, '.runtime-store-v2', key('closed')), { recursive: true });
+        await fs.copyFile(
+          history,
+          path.join(root, '.runtime-store-v2', key('closed'), 'checkpoint.json'),
+        );
+      }
+      if (kind === 'marker') {
+        const marker = JSON.parse(await fs.readFile(path.join(root, key('closed')), 'utf8'));
+        marker.recordHash = 'invalid';
+        await fs.writeFile(path.join(root, key('closed')), JSON.stringify(marker));
+      }
+      if (kind === 'link') {
+        await fs.rename(history, history + '.original');
+        await fs.symlink(history + '.original', history);
+      }
+      const entries = await listFileRuntimeStoreRuns({ rootDir: root }, { excludeClosed: true });
+      expect(entries).toHaveLength(1);
+      expect(entries[0].record).toBeNull();
+      expect(entries[0].error).not.toBeNull();
+    },
+  );
+
+  it('fails closed when an active checkpoint loses its discovery marker', async () => {
+    const store = createFileRuntimeStore({ rootDir: root });
+    await store.compareAndSwap('orphan', null, { runId: 'orphan', revision: 1 });
+    await fs.unlink(path.join(root, key('orphan')));
+    const entries = await listFileRuntimeStoreRuns({ rootDir: root }, { excludeClosed: true });
+    expect(entries).toHaveLength(1);
+    expect(entries[0].error).not.toBeNull();
+    expect(entries[0].record).toBeNull();
+  });
+
   it.each([100, 1000, 10000])(
     'opens only the selected 50 identities among %i entries',
     async (count) => {

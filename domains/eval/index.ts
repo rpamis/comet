@@ -11,12 +11,15 @@ export {
 } from './eval-run-preview.js';
 export {
   startEvalRun,
+  repairManagedEvalRun,
   requestStopEvalRun,
   reconcileEvalRun,
   collectEvalRuns,
 } from './eval-run-manager.js';
 export {
   readEvalRun,
+  readEvalCasePage,
+  readEvalCase,
   listEvalRuns,
   setEvalBaseline,
   clearEvalBaseline,

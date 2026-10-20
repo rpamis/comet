@@ -1441,3 +1441,102 @@ def test_docker_prebuild_consumes_only_frozen_task_environments(tmp_path: Path, 
     assert conftest._docker_environment_dirs_for_request(request, tasks_dir) == [
         environments[name] for name in selected
     ]
+
+
+@pytest.mark.parametrize(
+    "mode,repetitions",
+    [
+        ("ordinary", [1, 2]),
+        ("parallel", [2, 1]),
+        ("failed-rerun", [2]),
+    ],
+)
+def test_controller_repetition_reaches_raw_events_and_reports(
+    tmp_path, monkeypatch, mode, repetitions
+):
+    """Run the production fixtures, replacing only external execution and artifacts."""
+    if mode == "failed-rerun":
+        monkeypatch.setenv("COMET_EVAL_MANAGED", "1")
+        monkeypatch.setenv("COMET_EVAL_CASE_SELECTION", "selected-cases.json")
+    else:
+        monkeypatch.delenv("COMET_EVAL_MANAGED", raising=False)
+        monkeypatch.delenv("COMET_EVAL_CASE_SELECTION", raising=False)
+    execution = conftest.ResolvedExecution("claude-code", None, None, {})
+    monkeypatch.setattr(conftest, "_resolve_eval_execution", lambda config: execution)
+    monkeypatch.setattr(conftest, "build_agent_environment", lambda execution: {})
+    monkeypatch.setattr(
+        conftest,
+        "run_agent_in_docker",
+        lambda *args, **kwargs: SimpleNamespace(
+            stdout="fixture output",
+            stderr="",
+            returncode=0,
+        ),
+    )
+    monkeypatch.setattr(conftest, "_save_artifacts", lambda *args, **kwargs: None)
+    recorded = []
+    logger = SimpleNamespace(
+        base_dir=tmp_path, add_result=lambda name, result: recorded.append(result)
+    )
+    plugin = conftest.ExperimentPlugin(SimpleNamespace(option=SimpleNamespace(numprocesses=0)))
+    monkeypatch.setattr(conftest, "_plugin", plugin)
+    for rep in repetitions:
+        if mode == "parallel":
+            # Each worker has independent counters, and cases need not run in order.
+            plugin.run_counter.clear()
+        marker = SimpleNamespace(kwargs={"repetition": rep})
+        node = SimpleNamespace(
+            nodeid=f"tasks/test_tasks.py::test_task_treatment[task-BASE-r{rep}]",
+            callspec=SimpleNamespace(params={"task_name": "task", "treatment_name": "BASE"}),
+            get_closest_marker=lambda name: marker if name == "eval_case" else None,
+        )
+        request = SimpleNamespace(node=node, config=None)
+        assert conftest._expected_cases_from_items([node]) == [("task", "BASE", rep)]
+        run = conftest.run_claude.__wrapped__(tmp_path, logger, request)
+        result = run("fixture prompt")
+        record = conftest.record_result.__wrapped__(tmp_path, logger, request)
+        record(
+            {"task": "task", "treatment": "BASE"},
+            ["ok"],
+            [],
+            run_id=f"run-{rep}",
+            returncode=result.returncode,
+            stdout=result.stdout,
+            stderr=result.stderr,
+        )
+
+    reports = [
+        json.loads(path.read_text()) for path in sorted((tmp_path / "reports").glob("*.json"))
+    ]
+    assert sorted(report["rep"] for report in reports) == sorted(repetitions)
+    for report in reports:
+        rep = report["rep"]
+        assert report["events_summary"]["sample"] == rep
+        assert report["events_summary"]["task"] == "task"
+        assert report["events_summary"]["treatment"] == "BASE"
+        assert report["name"] == f"task-BASE-r{rep}"
+        assert (
+            tmp_path / "raw" / f"task_BASE_r{rep}_rep{rep}_stdout.json"
+        ).read_text() == "fixture output"
+        event = json.loads((tmp_path / "events" / f"task_BASE_r{rep}_rep{rep}.json").read_text())
+        assert event["sample"] == rep
+    assert sorted(result.events_summary["sample"] for result in recorded) == sorted(repetitions)
+
+
+@pytest.mark.parametrize("repetition", [None, True, 0, -1, "2"])
+def test_invalid_controller_repetition_is_not_replaced_by_a_counter(repetition):
+    node = SimpleNamespace(
+        get_closest_marker=lambda name: SimpleNamespace(kwargs={"repetition": repetition})
+    )
+    with pytest.raises(pytest.UsageError, match="positive integer"):
+        conftest._get_repetition(node, advance=True)
+
+
+def test_unmarked_repetition_preserves_legacy_counter(monkeypatch):
+    plugin = conftest.ExperimentPlugin(SimpleNamespace(option=SimpleNamespace(numprocesses=0)))
+    monkeypatch.setattr(conftest, "_plugin", plugin)
+    node = SimpleNamespace(nodeid="test_legacy", get_closest_marker=lambda name: None)
+    assert conftest._get_repetition(node, advance=True) == 1
+    assert conftest._get_repetition(node) == 1
+    assert conftest._get_repetition(node, advance=True) == 2
+    assert conftest._get_repetition(node) == 2

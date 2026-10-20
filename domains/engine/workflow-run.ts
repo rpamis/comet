@@ -171,6 +171,8 @@ export interface RuntimeCommandValidator {
 
 export interface RuntimeExecutor {
   id: string;
+  /** 显式禁用 preflight/execute 的完整 Run 参数；Action 输入与结果协议保持不变。 */
+  includeRun?: boolean;
   capabilities: readonly string[];
   supports(action: Readonly<RuntimeAction>): boolean;
   /** 自动 execute 与手工 claim 共用的无副作用领取预检。拒绝时保留 pending。 */

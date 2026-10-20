@@ -50,6 +50,7 @@ import {
   assertApplicationSkillExecutionScope,
   assertApplicationSkillAction,
   applicationSkillScopesOverlap,
+  applicationActionHoldsScope,
   createApplicationSkillExecutor,
 } from './skill-executor.js';
 import { resolveInstalledWorkflowApplication } from './installed-application.js';
@@ -69,6 +70,19 @@ export interface ApplicationRunRecord {
 }
 
 const loadedModules = new Map<string, string>();
+
+function applicationRunCanClose(run: WorkflowRun): boolean {
+  return (
+    ['completed', 'cancelled'].includes(run.status) &&
+    !run.actions.some(
+      (action) => action.status === 'pending' || applicationActionHoldsScope(action),
+    ) &&
+    run.children.length === 0 &&
+    !run.ready.length &&
+    !run.waits.some((wait) => wait.status === 'pending') &&
+    !(run.evidenceWaits ?? []).some((wait) => wait.status === 'pending')
+  );
+}
 
 function safeId(id: string): string {
   if (typeof id !== 'string' || !/^[a-z][a-z\d]*(?:[.-][a-z\d]+)*$/u.test(id))
@@ -131,7 +145,18 @@ async function rawStore(
       assertCurrentRoot();
       if (readOnly) throw new RuntimeProtocolError('READ_ONLY_OPERATION', '应用诊断不能推进 Run');
       await prepare();
-      return store.compareAndSwap(runId, revision, next);
+      // 封存是可恢复的布局事务，不改变 revision；所有调用均位于应用 scope 锁内。
+      const disposition = await store.readPartitionMetadata(runId);
+      if (['closing', 'closed', 'reopening'].includes(disposition)) {
+        const previous = await store.read(runId);
+        if (!previous || previous.revision !== revision) return false;
+        if (disposition === 'closing') await store.closeRun(runId, previous.revision);
+        await store.reopenRun(runId, previous.revision);
+      }
+      const committed = await store.compareAndSwap(runId, revision, next);
+      if (committed && next.application.base === 'standalone' && applicationRunCanClose(next.run))
+        await store.closeRun(runId, next.revision);
+      return committed;
     },
     restoreCheckpoint: async (runId, revision, checkpoint) => {
       assertCurrentRoot();
@@ -535,7 +560,13 @@ export async function loadWorkflowApplication(options: {
     if (options.readOnly)
       throw new RuntimeProtocolError('READ_ONLY_OPERATION', '应用诊断不能恢复或推进 Run');
   };
+  const scopeRuntimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
   const withScopeLock = async <T>(operation: () => Promise<T>): Promise<T> => {
+    if (resolveWorkspaceRuntimeRootSync(projectRoot) !== scopeRuntimeRoot)
+      throw new RuntimeProtocolError(
+        'WORKFLOW_CHANGED',
+        '工作区身份已改变，请重新加载应用 Runtime',
+      );
     const root = await resolveWorkspaceRuntimeRoot(projectRoot);
     const directory = await ensureProtectedProjectDirectory(root, 'application-scope-locks', {
       label: '应用写入范围锁',
@@ -559,26 +590,50 @@ export async function loadWorkflowApplication(options: {
     });
     if (!needsPeers) return [];
 
-    const records = await listFileRuntimeStoreRuns<ApplicationRunRecord>({
-      rootDir: path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'applications', manifest.id),
-      mirroredRevisionPaths: ['run.revision'],
-    });
+    const records = await listFileRuntimeStoreRuns<ApplicationRunRecord>(
+      {
+        rootDir: path.join(
+          resolveWorkspaceRuntimeRootSync(projectRoot),
+          'applications',
+          manifest.id,
+        ),
+        mirroredRevisionPaths: ['run.revision'],
+      },
+      { excludeClosed: true },
+    );
     const peers: WorkflowRun[] = [];
+    let migrated = 0;
     for (const item of records) {
       if (item.runId === run.runId) continue;
       if (item.error || !item.record)
         throw new RuntimeProtocolError(
           'INVALID_RUN',
-          '其他应用 Run 无法读取，不能安全领取共享写入范围',
+          `其他应用 Run 无法读取，不能安全领取共享写入范围：${item.storageKey}（${item.error?.code ?? 'INVALID_RUN'}）。请保留记录，检查或恢复该 Run 后重试。`,
         );
       const peer = parseWorkflowRun(item.record.run, item.runId!);
       if (
         !peer.actions.some(
-          (action) =>
-            ['running', 'unknown'].includes(action.status) && action.type === 'invoke_skill',
+          (action) => action.type === 'invoke_skill' && applicationActionHoldsScope(action),
         )
-      )
+      ) {
+        // 旧的静止终态在第一次领取检查时迁移；后续冷进程无需打开其正文。
+        if (
+          migrated < 8 &&
+          item.record.application.base === 'standalone' &&
+          applicationRunCanClose(peer)
+        ) {
+          migrated++;
+          await createFileRuntimeStore<ApplicationRunRecord>({
+            rootDir: path.join(
+              resolveWorkspaceRuntimeRootSync(projectRoot),
+              'applications',
+              manifest.id,
+            ),
+            mirroredRevisionPaths: ['run.revision'],
+          }).closeRun(peer.runId, peer.revision);
+        }
         continue;
+      }
       if (item.record.application.contentHash !== identity.contentHash)
         throw new RuntimeProtocolError(
           'COMMAND_REJECTED',
@@ -631,7 +686,7 @@ export async function loadWorkflowApplication(options: {
         const restored = { runId, revision: run.revision, application: identity, run };
         assertIdentity(restored);
         for (const action of run.actions.filter(
-          (action) => action.status === 'unknown' && action.type === 'invoke_skill',
+          (action) => applicationActionHoldsScope(action) && action.type === 'invoke_skill',
         ))
           assertApplicationSkillExecutionScope(
             { manifest, skills, projectRoot },
@@ -641,11 +696,7 @@ export async function loadWorkflowApplication(options: {
           );
         return persistent.restoreCheckpoint!(runId, expectedRevision, restored);
       };
-      return run.actions.some(
-        (action) => action.status === 'unknown' && action.type === 'invoke_skill',
-      )
-        ? withScopeLock(restore)
-        : restore();
+      return withScopeLock(restore);
     },
     async compareAndSwap(runId, expectedRevision, run) {
       assertWritable();
@@ -730,11 +781,7 @@ export async function loadWorkflowApplication(options: {
           run,
         });
       };
-      return run.actions.some(
-        (action) => action.status === 'running' && action.type === 'invoke_skill',
-      )
-        ? withScopeLock(commit)
-        : commit();
+      return withScopeLock(commit);
     },
   };
   const store = implementation.wrapStore

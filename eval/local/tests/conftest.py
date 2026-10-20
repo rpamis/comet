@@ -2028,16 +2028,7 @@ def run_claude(test_dir, experiment_logger, request):
 
         if experiment_logger and hasattr(request, "node"):
             treatment_name = _get_treatment_name(request.node)
-            rep = _plugin.get_rep_number(treatment_name) if _plugin else 1
-            if (
-                os.environ.get("COMET_EVAL_CASE_SELECTION")
-                and os.environ.get("COMET_EVAL_MANAGED") == "1"
-            ):
-                marker = request.node.get_closest_marker("eval_case")
-                if marker:
-                    rep = marker.kwargs["repetition"]
-                    if _plugin:
-                        _plugin.run_counter[treatment_name] = rep
+            rep = _get_repetition(request.node, advance=True)
             save_raw(
                 experiment_logger.base_dir,
                 treatment_name,
@@ -2071,14 +2062,7 @@ def record_result(test_dir, experiment_logger, request):
             _plugin.last_test_dir = test_dir
 
         treatment_name = _get_treatment_name(request.node)
-        rep = _plugin.run_counter.get(treatment_name, 1) if _plugin else 1
-        if (
-            os.environ.get("COMET_EVAL_CASE_SELECTION")
-            and os.environ.get("COMET_EVAL_MANAGED") == "1"
-        ):
-            marker = request.node.get_closest_marker("eval_case")
-            if marker:
-                rep = marker.kwargs["repetition"]
+        rep = _get_repetition(request.node)
         events["sample"] = rep
         base_dir = experiment_logger.base_dir
 
@@ -2276,7 +2260,7 @@ def fixtures(
         record_result=record_result,
         request_config=request.config,
         repetition=(
-            request.node.get_closest_marker("eval_case").kwargs.get("repetition", 1)
+            _get_repetition(request.node)
             if request.node.get_closest_marker("eval_case")
             else 1
         ),
@@ -2288,6 +2272,23 @@ def fixtures(
 # =============================================================================
 # FIXTURE HELPERS
 # =============================================================================
+
+
+def _get_repetition(node, *, advance: bool = False) -> int:
+    """Use the collected case identity regardless of worker order or rerun mode."""
+    marker = node.get_closest_marker("eval_case")
+    if marker is not None:
+        repetition = marker.kwargs.get("repetition")
+        if isinstance(repetition, bool) or not isinstance(repetition, int) or repetition < 1:
+            raise pytest.UsageError("eval_case repetition must be a positive integer")
+        return repetition
+    # Unmarked legacy fixtures retain their sequential counter contract.
+    if _plugin is None:
+        return 1
+    treatment_name = _get_treatment_name(node)
+    if advance:
+        return _plugin.get_rep_number(treatment_name)
+    return _plugin.run_counter.get(treatment_name, 1)
 
 
 def _get_treatment_name(node) -> str:

@@ -41,6 +41,7 @@ export interface RuntimeHandler {
 
 export interface CreateRuntimeExecutorOptions {
   id: string;
+  includeRun?: boolean;
   capabilities?: readonly string[];
   handlers: Readonly<Record<string, RuntimeHandler>>;
 }
@@ -82,6 +83,7 @@ export function createRuntimeExecutor(options: CreateRuntimeExecutorOptions): Ru
   };
   return {
     id: options.id,
+    ...(options.includeRun === undefined ? {} : { includeRun: options.includeRun }),
     capabilities: [...(options.capabilities ?? [])],
     supports: (action) => handlerFor(action) !== undefined,
     async execute(action, context, run) {

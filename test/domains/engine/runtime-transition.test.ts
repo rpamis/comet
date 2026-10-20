@@ -1531,3 +1531,78 @@ describe('workflow-owned state transitions', () => {
     expect((await runtime.inspect(run.runId)).state).toEqual({ phase: 'shape' });
   });
 });
+
+it('isolates submitted outcomes from asynchronous validators and mutating transition handlers', async () => {
+  let release!: () => void;
+  let entered!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const validating = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const definition = {
+    id: 'isolated-result',
+    version: '1',
+    entry: 'work',
+    initialState: null,
+    stateSchema: { type: 'null' },
+    transitionHandler: { id: 'isolated-handler', version: '1' },
+    steps: { work: { type: 'call_tool' as const, ref: 'work' } },
+  };
+  const runtime = createRuntime({
+    store: createMemoryRuntimeStore<WorkflowRun>(),
+    workflows: [definition],
+    validateOutcome: async ({ outcome }) => {
+      expect(outcome.output).toEqual({ value: 'original' });
+      (outcome.output as { value: string }).value = 'validator mutation';
+      entered();
+      await waiting;
+      return { accepted: true };
+    },
+    transitionHandlers: [
+      {
+        id: 'isolated-handler',
+        version: '1',
+        apply({ event }) {
+          if (event.kind === 'action-outcome') {
+            expect(event.outcome.output).toEqual({ value: 'original' });
+            (event.outcome.output as { value: string }).value = 'handler mutation';
+          }
+          return { state: null, next: [] };
+        },
+      },
+    ],
+  });
+  let run = await runtime.start({ runId: 'isolated', workflow: definition, input: null });
+  const action = run.actions[0];
+  run = await runtime.claim({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: 'host',
+    claimToken: 'claim',
+  });
+  const output = { value: 'original' };
+  const pending = runtime.recordOutcome({
+    runId: run.runId,
+    outcome: {
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken: 'claim',
+      outcomeId: 'result',
+      status: 'succeeded',
+      output,
+    },
+  });
+  await validating;
+  output.value = 'caller mutation while validator waits';
+  release();
+  const finished = await pending;
+  expect(Object.isFrozen(output)).toBe(false);
+  expect(finished.outputs.work.value).toEqual({ value: 'original' });
+  expect(finished.actions[0].outcome!.output).toEqual({ value: 'original' });
+  expect((await runtime.inspect(run.runId)).outputs.work.value).toEqual({ value: 'original' });
+});

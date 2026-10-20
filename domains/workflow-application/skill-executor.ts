@@ -19,6 +19,14 @@ type SkillExecutionApplication = Pick<LoadedWorkflowApplication, 'manifest' | 's
   projectRoot?: string;
 };
 
+/** 取消只停止调度；原领取方尚未确认停止时仍持有资源。 */
+export function applicationActionHoldsScope(action: Readonly<RuntimeAction>): boolean {
+  return (
+    ['running', 'unknown'].includes(action.status) ||
+    (action.status === 'cancelled' && Boolean(action.claim) && !action.cancellation)
+  );
+}
+
 export function applicationSkillScopesOverlap(left: string, right: string): boolean {
   const contains = (root: string, file: string) => {
     const relative = path.relative(path.resolve(root), path.resolve(file));
@@ -83,10 +91,8 @@ export function assertApplicationSkillExecutionScope(
     for (const other of peer.actions) {
       if (
         (peer.runId !== run.runId || other.id !== action.id) &&
-        (peer.runId === run.runId
-          ? ['pending', 'running', 'unknown']
-          : ['running', 'unknown']
-        ).includes(other.status) &&
+        (applicationActionHoldsScope(other) ||
+          (peer.runId === run.runId && other.status === 'pending')) &&
         scopes(peer, other).some((scope) =>
           current.some((target) => {
             if (

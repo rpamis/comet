@@ -1,9 +1,11 @@
+import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { readNativePortableTransaction } from './native-portable-transactions.js';
 import { importNativeSdkArchiveOriginals } from './native-sdk-archive-originals.js';
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
 import {
   recoverNativeSdkArchiveOutcome,
+  recoverCancelledNativeSdkArchive,
   NATIVE_SDK_ARCHIVE_STEPS,
   nativeSdkRetryableArchivePreflight,
   nativeSdkRetryableArchiveFinalization,
@@ -82,6 +84,24 @@ export async function archiveNativeSdkChange(options: {
       run,
       ref: options.legacySpecBackup,
     });
+  }
+  if (options.recover && run.status === 'cancelled') {
+    const receipt = await recoverCancelledNativeSdkArchive({
+      projectRoot: options.projectRoot,
+      run,
+    });
+    await settleNativeSdkCancellation({ projectRoot: options.projectRoot, run });
+    return success(
+      'archive',
+      {
+        change: options.name,
+        cancelled: true,
+        recoveredCancelledArchive: true,
+        receipt,
+        ...(await inspectNativeSdkStatus(options)),
+      },
+      'Finished the previously applied Archive transaction; the Run remains cancelled and no execution was restarted.\n',
+    );
   }
   if (options.recover) {
     const unknown = run.actions.filter((action) => action.status === 'unknown');
@@ -176,7 +196,7 @@ export async function archiveNativeSdkChange(options: {
       ...(delivery ? { delivery } : {}),
     });
   }
-  if (state.phase !== 'archive') {
+  if (state.phase !== 'archive' || run.status === 'cancelled') {
     return {
       command: 'archive',
       exitCode: 73,

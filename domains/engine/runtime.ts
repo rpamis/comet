@@ -20,6 +20,8 @@ export type {
   RunRuntimeUntilBlocked,
   RuntimeStopReason,
   RuntimeProgress,
+  RuntimeCurrentRun,
+  RuntimeCurrentProgress,
 } from './runtime-service.js';
 export {
   defineWorkflow,

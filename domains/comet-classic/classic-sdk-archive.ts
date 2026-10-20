@@ -7,6 +7,7 @@ import { samePath } from '../../platform/paths/git-worktree.js';
 import { parseDocument } from 'yaml';
 import {
   readPortableRunCheckpoint,
+  createPortableRunCheckpoint,
   type WorkflowRun,
   type WorkflowRuntime,
   type RuntimeAction,
@@ -304,6 +305,16 @@ export async function recoverClassicSdkArchive(
   const projectRoot = path.resolve(input.projectRoot);
   const run = await runtime.inspect(input.runId);
   const state = run.state as unknown as ClassicState;
+  if (
+    run.actions.some(
+      (candidate) =>
+        candidate.stepId === `${state.workflow}.archive.execute` && candidate.status === 'running',
+    )
+  ) {
+    throw new Error(
+      `Classic Archive executor may still be running. Wait for its result. Only after confirming the original executor has stopped, use comet state check ${input.runId} archive --recover --json to obtain markUnknownRequest, submit it through runtime dispatch, then retry comet archive ${input.runId} --recover. Do not replay Archive.`,
+    );
+  }
   const action = run.actions.filter((candidate) => candidate.status === 'unknown');
   const lost = action.length === 1 ? action[0] : null;
   if (
@@ -352,11 +363,17 @@ export async function recoverClassicSdkArchive(
     run.runId,
   );
   const savedAction = saved?.actions.find((candidate) => candidate.id === lost.id);
+  const portableAction = createPortableRunCheckpoint(run).run.actions.find(
+    (candidate) => candidate.id === lost.id,
+  );
   if (
     !savedAction ||
     savedAction.status !== 'unknown' ||
+    savedAction.stepId !== lost.stepId ||
+    savedAction.attempt !== lost.attempt ||
     savedAction.inputHash !== lost.inputHash ||
-    savedAction.claim?.token !== lost.claim.token
+    savedAction.claim?.executorId !== lost.claim.executorId ||
+    savedAction.claim?.token !== portableAction?.claim?.token
   ) {
     throw new Error('Classic archived state does not match the lost Archive Action');
   }

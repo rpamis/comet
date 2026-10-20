@@ -1,5 +1,8 @@
 import { encodeJsonValueMaps, type JsonValuePool } from '../../platform/fs/json-value-pool.js';
+import { isImmutableRuntimeSnapshot } from './runtime-json.js';
 import type { RuntimeRecord } from './runtime-store.js';
+
+const immutableSizes = new WeakMap<object, number>();
 
 /** 上游结果映射按版本共享；不删减 Action 输入、审批提案或恢复历史。 */
 export function encodeRuntimeHistory<T extends RuntimeRecord>(record: T) {
@@ -13,9 +16,35 @@ export function serializeRuntimeHistory<T extends RuntimeRecord>(
   encoded: { record: T; pool?: JsonValuePool };
   json: string;
 } {
-  const originalJson = JSON.stringify(record);
-  const originalBytes = originalJson.length;
-  const original = () => ({ encoded: { record }, json: `{"record":${originalJson}}` });
+  // 计算 JSON 长度时复用共享子树，不先生成可能数十 MiB 的展开字符串。
+  const sizes = new WeakMap<object, number>();
+  const strings = new Map<string, number>();
+  const size = (value: unknown): number => {
+    if (typeof value === 'string') {
+      let length = strings.get(value);
+      if (length === undefined) {
+        length = JSON.stringify(value).length;
+        strings.set(value, length);
+      }
+      return length;
+    }
+    if (value === null || typeof value !== 'object') return JSON.stringify(value).length;
+    const cached = immutableSizes.get(value) ?? sizes.get(value);
+    if (cached !== undefined) return cached;
+    const entries = Object.entries(value);
+    const length =
+      2 +
+      Math.max(0, entries.length - 1) +
+      entries.reduce(
+        (total, [key, item]) => total + (Array.isArray(value) ? 0 : size(key) + 1) + size(item),
+        0,
+      );
+    sizes.set(value, length);
+    if (isImmutableRuntimeSnapshot(value)) immutableSizes.set(value, length);
+    return length;
+  };
+  const originalBytes = size(record);
+  const original = () => ({ encoded: { record }, json: `{"record":${JSON.stringify(record)}}` });
   if (originalBytes < 128 * 1024) return original();
   const paths: { path: string[]; group: string }[] = [];
   const collect = (value: unknown, prefix: string[]) => {
@@ -52,7 +81,7 @@ export function serializeRuntimeHistory<T extends RuntimeRecord>(
   collect(record, []);
   collect((record as unknown as { run?: unknown }).run, ['run']);
   if (!paths.length) return original();
-  const encoded = encodeJsonValueMaps(record, paths);
+  const encoded = encodeJsonValueMaps(record, paths, isImmutableRuntimeSnapshot);
   const json = JSON.stringify(encoded);
   return json.length < originalBytes * 0.9 ? { encoded, json } : original();
 }

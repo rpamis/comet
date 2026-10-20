@@ -60,6 +60,12 @@ export function createRuntime(options: CreateRuntimeOptions): {
     start: (input: StartRuntimeRun) => Promise<WorkflowRun>;
     dispatchCommand: (command: DispatchRuntimeCommand) => Promise<WorkflowRun>;
     inspect: (runId: string) => Promise<WorkflowRun>;
+    inspectCurrent: (runId: string) => Promise<RuntimeCurrentRun>;
+    executeCurrent: (command: RunCommand & {
+        actionId: string;
+        executorId: string;
+    }) => Promise<RuntimeCurrentRun>;
+    runUntilBlockedCurrent: (command: RunRuntimeUntilBlocked) => Promise<RuntimeCurrentProgress>;
     next: (command: RunCommand) => Promise<WorkflowRun>;
     claim: (command: ClaimRuntimeRunAction) => Promise<WorkflowRun>;
     recordOutcome: (command: RunCommand & {
@@ -109,6 +115,8 @@ export interface CreateRuntimeExecutorOptions {
     handlers: Readonly<Record<string, RuntimeHandler>>;
     // (undocumented)
     id: string;
+    // (undocumented)
+    includeRun?: boolean;
 }
 
 // @public (undocumented)
@@ -270,7 +278,9 @@ export type InvalidateRuntimeEvidence = RecordRuntimeEvidence;
 export function listFileRuntimeStoreRunKeys(options: FileRuntimeStoreOptions): Promise<string[]>;
 
 // @public
-export function listFileRuntimeStoreRuns<T extends RuntimeRecord = RuntimeRecord>(options: FileRuntimeStoreOptions): Promise<FileRuntimeStoreRun<T>[]>;
+export function listFileRuntimeStoreRuns<T extends RuntimeRecord = RuntimeRecord>(options: FileRuntimeStoreOptions, discovery?: {
+    excludeClosed?: boolean;
+}): Promise<FileRuntimeStoreRun<T>[]>;
 
 // @public (undocumented)
 export function listFileRuntimeStoreRunSources(options: FileRuntimeStoreOptions): Promise<FileRuntimeStoreRunSource[]>;
@@ -423,6 +433,46 @@ export interface RuntimeCommandValidator {
     version: string;
 }
 
+// @public (undocumented)
+export interface RuntimeCurrentProgress extends Omit<RuntimeProgress, 'run'> {
+    // (undocumented)
+    run: RuntimeCurrentRun;
+}
+
+// @public
+export interface RuntimeCurrentRun {
+    // (undocumented)
+    actions: WorkflowRun['actions'];
+    // (undocumented)
+    evidenceWaits: NonNullable<WorkflowRun['evidenceWaits']>;
+    // (undocumented)
+    history: {
+        actions: number;
+        waits: number;
+        evidenceWaits: number;
+    };
+    // (undocumented)
+    input: RuntimeValue;
+    // (undocumented)
+    outputs: WorkflowRun['outputs'];
+    // (undocumented)
+    reason?: string;
+    // (undocumented)
+    revision: number;
+    // (undocumented)
+    runId: string;
+    // (undocumented)
+    sequence: number;
+    // (undocumented)
+    state?: RuntimeValue;
+    // (undocumented)
+    status: WorkflowRun['status'];
+    // (undocumented)
+    waits: WorkflowRun['waits'];
+    // (undocumented)
+    workflow: WorkflowRun['workflow'];
+}
+
 // @public
 export type RuntimeErrorCode = 'ACTION_ACTIVE' | 'ACTION_ALREADY_ADVANCED' | 'ACTION_ALREADY_CLAIMED' | 'ACTION_IN_FLIGHT' | 'ACTION_NOT_FOUND' | 'ACTION_NOT_PENDING' | 'ACTION_NOT_RUNNING' | 'ACTION_TERMINAL' | 'CAPABILITY_REQUIRED' | 'CHILD_DEPTH_LIMIT' | 'CHILD_MANAGED' | 'COMMAND_CONFLICT' | 'COMMAND_DISPATCH_FAILED' | 'COMMAND_NOT_FOUND' | 'COMMAND_REJECTED' | 'COMMAND_VALIDATION_ERROR' | 'COMMAND_VALIDATOR_UNAVAILABLE' | 'DECISION_CONFLICT' | 'DUPLICATE_COMMAND_VALIDATOR' | 'DUPLICATE_EVIDENCE_VALIDATOR' | 'DUPLICATE_EXECUTOR' | 'DUPLICATE_STATE_VALIDATOR' | 'DUPLICATE_TRANSITION_HANDLER' | 'DUPLICATE_VALIDATOR' | 'DUPLICATE_WORKFLOW' | 'EVIDENCE_INVALIDATION_UNAVAILABLE' | 'EVIDENCE_KIND_MISMATCH' | 'EVIDENCE_REJECTED' | 'EVIDENCE_STEP_CHANGED' | 'EVIDENCE_STILL_VALID' | 'EVIDENCE_VALIDATOR_UNAVAILABLE' | 'EVIDENCE_WAIT_NOT_FOUND' | 'EVIDENCE_WAIT_RESOLVED' | 'EXECUTION_UNKNOWN' | 'EXECUTOR_UNAVAILABLE' | 'EXECUTOR_UNSUPPORTED' | 'INITIAL_STATE_CONFLICT' | 'INITIAL_STATE_INVALID' | 'INITIAL_STATE_REQUIRED' | 'INVALID_ACTION' | 'INVALID_COMMAND' | 'INVALID_DECISION' | 'INVALID_EVIDENCE' | 'INVALID_JOIN' | 'INVALID_JSON' | 'INVALID_OUTCOME' | 'INVALID_REQUEST' | 'INVALID_RUN' | 'INVALID_WORKFLOW' | 'OUTCOME_ALREADY_RECORDED' | 'OUTCOME_CONFLICT' | 'OUTCOME_PROCESSING_ERROR' | 'OUTCOME_REJECTED' | 'OUTPUT_INVALID' | 'PROPOSAL_INPUT_MISSING' | 'RECONCILIATION_REQUIRED' | 'REQUEST_ABORTED' | 'REVISION_CONFLICT' | 'RUN_CANCELLED' | 'RUN_CONFLICT' | 'RUN_FAILED' | 'RUN_NOT_FOUND' | 'RUN_STATE_INVALID' | 'RUN_TERMINAL' | 'STALE_ACTION' | 'STALE_PROPOSAL' | 'STATE_VALIDATOR_UNAVAILABLE' | 'STORE_ATOMIC_PUBLICATION_UNSUPPORTED' | 'STORE_CHANGED_DIRECTORY' | 'STORE_CORRUPT_RECORD' | 'STORE_INVALID_ENTRY' | 'STORE_INVALID_REVISION' | 'STORE_INVALID_ROOT' | 'STORE_INVALID_RUN_ID' | 'STORE_MISSING_REVISION' | 'TRANSITION_HANDLER_UNAVAILABLE' | 'TRANSITION_STATE_INVALID' | 'TRANSITION_TARGET_INVALID' | 'TRANSITION_UNAVAILABLE' | 'UNSUPPORTED_PROTOCOL' | 'VALIDATOR_UNAVAILABLE' | 'WAIT_NOT_FOUND' | 'WORKFLOW_CHANGED' | 'WORKFLOW_UNAVAILABLE';
 
@@ -492,6 +542,7 @@ export interface RuntimeExecutor {
     }>;
     // (undocumented)
     id: string;
+    includeRun?: boolean;
     preflight?(action: Readonly<RuntimeAction>, context?: RuntimeInvocationContext, run?: Readonly<WorkflowRun>): void | Promise<void>;
     // (undocumented)
     supports(action: Readonly<RuntimeAction>): boolean;

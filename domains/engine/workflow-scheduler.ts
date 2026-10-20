@@ -1,4 +1,4 @@
-import { createRuntimeAction } from './runtime-action.js';
+import { createRuntimeActionSnapshot } from './runtime-action.js';
 import { RuntimeProtocolError } from './runtime-errors.js';
 import { hashRuntimeValue, type RuntimeValue } from './runtime-json.js';
 import type { WorkflowDefinition } from './workflow-definition.js';
@@ -107,7 +107,7 @@ export function scheduleWorkflow(run: WorkflowRun, definition: WorkflowDefinitio
     } else {
       const ref =
         step.type === 'child_workflow' ? `${step.workflow.id}@${step.workflow.version}` : step.ref;
-      const action = createRuntimeAction({
+      const action = createRuntimeActionSnapshot({
         id,
         runId: run.runId,
         stepId: incoming.to,

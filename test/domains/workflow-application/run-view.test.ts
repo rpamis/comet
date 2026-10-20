@@ -109,3 +109,40 @@ describe('application continuation state matrix', () => {
     },
   );
 });
+
+it('publishes pending stop confirmation instead of a done continuation after logical cancellation', () => {
+  const run = childRun('running');
+  run.children = [];
+  run.status = 'cancelled';
+  const action = run.actions[0];
+  action.type = 'invoke_skill';
+  action.status = 'cancelled';
+  action.claim = { executorId: 'host', token: 'original-token' };
+  const view = projectWorkflowApplicationRun(application, run);
+  expect(view.continuation.mode).toBe('reconcile');
+  expect(view.current.actions).toHaveLength(1);
+  expect(view.current.actions[0]).toMatchObject({
+    stopConfirmationRequired: true,
+    confirmStoppedRequest: {
+      operation: 'cancel',
+      stoppedActions: [
+        {
+          actionId: action.id,
+          claimToken: 'original-token',
+          attempt: action.attempt,
+          inputHash: action.inputHash,
+        },
+      ],
+    },
+  });
+  action.cancellation = {
+    actionId: action.id,
+    claimToken: 'original-token',
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    evidence: 'stopped',
+  };
+  const stopped = projectWorkflowApplicationRun(application, run);
+  expect(stopped.continuation.mode).toBe('done');
+  expect(stopped.current.actions).toHaveLength(0);
+});

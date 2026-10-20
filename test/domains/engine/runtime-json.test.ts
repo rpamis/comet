@@ -4,6 +4,8 @@ import {
   cloneRuntimeValue,
   hashRuntimeValue,
   validateRuntimeValue,
+  freezeRuntimeSnapshot,
+  isImmutableRuntimeSnapshot,
 } from '../../../domains/engine/runtime-json.js';
 
 describe('Runtime JSON snapshots', () => {
@@ -129,4 +131,22 @@ describe('Runtime JSON snapshots', () => {
       expect(() => validateRuntimeValue(value)).toThrow(/INVALID_JSON/);
     }
   });
+});
+
+it('memoizes only recursively validated immutable snapshots and retains shared depth checks', () => {
+  const mutable = { nested: { value: 1 } };
+  Object.freeze(mutable);
+  expect(isImmutableRuntimeSnapshot(mutable)).toBe(false);
+  validateRuntimeValue(mutable);
+  mutable.nested.value = NaN;
+  expect(() => validateRuntimeValue(mutable)).toThrow('INVALID_JSON');
+  const frozen = freezeRuntimeSnapshot({ nested: { value: 1 } });
+  expect(Object.isFrozen(frozen.nested)).toBe(true);
+  expect(isImmutableRuntimeSnapshot(frozen)).toBe(true);
+  const copy = cloneRuntimeValue(frozen) as typeof frozen;
+  copy.nested.value = 2;
+  expect(frozen.nested.value).toBe(1);
+  let deep: unknown = frozen;
+  for (let i = 0; i < 64; i++) deep = { nested: deep };
+  expect(() => validateRuntimeValue(deep)).toThrow('INVALID_JSON');
 });

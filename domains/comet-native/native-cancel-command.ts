@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { nativeProjectPaths } from './native-paths.js';
+import { readNativePortableTransaction } from './native-portable-transactions.js';
 
 import { readCometCurrentSelection } from '../workflow-contract/current-selection.js';
 import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
@@ -84,6 +86,21 @@ export async function nativeCancelCommand(
     selected.status === 'selected' && selected.selection.change === run.runId;
 
   if (dryRun) {
+    const transaction = await readNativePortableTransaction(
+      await nativeProjectPaths(projectRoot, inspection.artifactRootRef, { readOnly: true }),
+      { kind: 'archive', change: run.runId },
+    );
+    if (
+      transaction ||
+      run.actions.some(
+        (action) =>
+          action.stepId.startsWith('archive.') && ['running', 'unknown'].includes(action.status),
+      )
+    ) {
+      throw new Error(
+        `Native Archive must finish or recover before cancellation; inspect comet native archive ${name} --recover`,
+      );
+    }
     return success(
       'cancel',
       {

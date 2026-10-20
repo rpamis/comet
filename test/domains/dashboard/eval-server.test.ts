@@ -102,6 +102,30 @@ describe('Dashboard Eval routes', () => {
     const artifact = await request('/runs/cli-history/artifact?ref=summary.md');
     expect(artifact.body.content).toBe('# Report');
   });
+  it('serves bounded case pages and validates case identities and filters', async () => {
+    const detail = await request('/runs/cli-history');
+    expect(detail.body.caseContentOmitted).toBe(true);
+    const page = await request('/runs/cli-history/cases?limit=1&offset=0&status=failed&q=case');
+    expect(page.status).toBe(200);
+    expect(page.body.total).toBe(1);
+    expect(page.body.items[0].id).toBe('task_report.json');
+    expect((await request('/runs/cli-history/case?id=task_report.json')).body.checksFailed).toEqual(
+      ['missing input'],
+    );
+    expect((await request('/runs/cli-history/case?id=../metadata.json')).status).toBe(400);
+    expect((await request('/runs/cli-history/cases?limit=0')).status).toBe(400);
+    expect((await request('/runs/cli-history/cases?status=other')).status).toBe(400);
+    expect(
+      (
+        await request(
+          '/runs/cli-history/repair-managed-record',
+          'POST',
+          {},
+          'https://untrusted.example',
+        )
+      ).status,
+    ).toBe(403);
+  });
   it('manages user-level Eval settings without exposing credentials or accepting cross-origin writes', async () => {
     for (const key of [
       'BENCH_API_KEY',

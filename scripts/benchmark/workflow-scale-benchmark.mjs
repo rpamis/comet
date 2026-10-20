@@ -45,6 +45,17 @@ export function scaleCounts(value, fallback) {
   return [...new Set(counts)].sort((a, b) => a - b);
 }
 
+/** Git 自身记录所有进程的启动，覆盖 CLI 及其后代，不能用父进程计数冒充总量。 */
+export function countGitTraceStarts(text) {
+  return text
+    .split('\n')
+    .filter(Boolean)
+    .reduce((count, line) => {
+      const event = JSON.parse(line);
+      return count + (event.event === 'start' ? 1 : 0);
+    }, 0);
+}
+
 /** Real snapshots, Git inputs, and SDK receipts; setup and restoration are not timed. */
 export async function runWorkflowScaleBenchmark(options = {}) {
   const packageRoot = path.resolve(options.packageRoot ?? repository);
@@ -126,12 +137,21 @@ export async function runWorkflowScaleBenchmark(options = {}) {
       const samples = [];
       for (let index = -warmups; index < runs; index++) {
         await prepare?.();
+        const trace = path.join(base, 'git-trace.jsonl');
+        await fs.writeFile(trace, '');
+        env.GIT_TRACE2_EVENT = trace;
+        process.env.GIT_TRACE2_EVENT = trace;
         const start = performance.now();
         const { result, metrics } = await withCometRuntimeMetrics(operation);
+        const milliseconds = performance.now() - start;
+        const gitCommands = countGitTraceStarts(await fs.readFile(trace, 'utf8'));
+        if (gitCommands < metrics.gitCommands)
+          throw new Error('Git process tracing is incomplete; do not report this sample');
         if (index < 0) continue;
         samples.push({
-          milliseconds: performance.now() - start,
-          gitCommands: metrics.gitCommands,
+          milliseconds,
+          gitCommands,
+          parentGitCommands: metrics.gitCommands,
           ...(Array.isArray(result?.entries)
             ? {
                 entries: result.entries.length,
@@ -326,7 +346,7 @@ export async function runWorkflowScaleBenchmark(options = {}) {
           },
         ]),
       );
-      const runtime = createRuntime({
+      const runtimeOptions = {
         store: createFileRuntimeStore({ rootDir: path.join(base, `history-${count}`) }),
         workflows: [
           {
@@ -350,24 +370,76 @@ export async function runWorkflowScaleBenchmark(options = {}) {
             }),
           },
         ],
+      };
+      const runtime = createRuntime(runtimeOptions);
+      let run;
+      let execution = 0;
+      await measure(
+        `sdk-history-execute-${count}`,
+        async () => {
+          let executed = 0;
+          while (run.status !== 'completed') {
+            const action = run.actions.find((candidate) => candidate.status === 'pending');
+            if (!action) throw new Error('History fixture stopped before completion');
+            run = await runtime.execute({
+              runId: run.runId,
+              actionId: action.id,
+              executorId: 'benchmark',
+            });
+            executed++;
+          }
+          if (executed !== count || run.actions.length !== count)
+            throw new Error('History fixture did not execute every Action');
+        },
+        async () => {
+          run = await runtime.start({
+            runId: `history-${execution++}`,
+            workflow: { id: 'benchmark-history', version: '1' },
+            input: null,
+          });
+        },
+        {
+          dimension: 'sdk-history',
+          actionCount: count,
+          runtimeFormat: 'sdk',
+          scope: 'real per-action execution with full Run returns; start excluded',
+        },
+      );
+      const currentRuntime = createRuntime({
+        ...runtimeOptions,
+        executors: runtimeOptions.executors.map((executor) => ({ ...executor, includeRun: false })),
       });
-      let run = await runtime.start({
-        runId: 'history',
-        workflow: { id: 'benchmark-history', version: '1' },
-        input: null,
-      });
-      while (run.status !== 'completed') {
-        const action = run.actions.find((candidate) => candidate.status === 'pending');
-        if (!action) throw new Error('History fixture stopped before completion');
-        run = await runtime.execute({
-          runId: run.runId,
-          actionId: action.id,
-          executorId: 'benchmark',
-        });
-      }
-      if (run.actions.length !== count)
-        throw new Error('History fixture did not execute every Action');
-      await measure(`sdk-history-read-${count}`, () => runtime.inspect('history'), null, {
+      await measure(
+        `sdk-history-current-execute-${count}`,
+        async () => {
+          const progress = await currentRuntime.runUntilBlockedCurrent({
+            runId: run.runId,
+            executorId: 'benchmark',
+            maxActions: count,
+          });
+          if (
+            progress.reason !== 'completed' ||
+            progress.actionsExecuted !== count ||
+            progress.run.history.actions !== count
+          )
+            throw new Error('Current-view benchmark did not execute every Action');
+          run = progress.run;
+        },
+        async () => {
+          run = await currentRuntime.start({
+            runId: `current-history-${execution++}`,
+            workflow: { id: 'benchmark-history', version: '1' },
+            input: null,
+          });
+        },
+        {
+          dimension: 'sdk-history',
+          actionCount: count,
+          runtimeFormat: 'sdk',
+          scope: 'real batch execution, current view and includeRun=false; start excluded',
+        },
+      );
+      await measure(`sdk-history-read-${count}`, () => runtime.inspect(run.runId), null, {
         dimension: 'sdk-history',
         actionCount: count,
         runtimeFormat: 'sdk',
@@ -414,6 +486,8 @@ export async function runWorkflowScaleBenchmark(options = {}) {
         .update(await fs.readFile(script))
         .digest('hex'),
       daemon: 'off',
+      gitCounting:
+        'Git Trace2 start events across the operation and CLI descendants; setup excluded',
       timing:
         'warm filesystem; API operations in one process, acceptance through fresh CLI; setup and restore excluded',
       runs,

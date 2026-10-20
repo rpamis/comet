@@ -5,6 +5,7 @@ import {
   claimRuntimeAction,
   markRuntimeActionUnknown,
   recordRuntimeOutcome,
+  parseRuntimeOutcome,
   retryRuntimeAction,
   type RuntimeAction,
   type RuntimeOutcome,
@@ -13,6 +14,7 @@ import {
 import { RuntimeProtocolError } from './runtime-errors.js';
 import {
   cloneRuntimeValue,
+  freezeRuntimeSnapshot,
   copyRuntimeSnapshot,
   hashRuntimeValue,
   validateRuntimeValue,
@@ -132,6 +134,53 @@ export interface RuntimeProgress {
   run: WorkflowRun;
   /** 本次调用已尝试执行的 Action 数，包括结果未知的执行。 */
   actionsExecuted: number;
+}
+
+/** 返回对象省略已结束 Action 的累计输入；冷读取仍完整校验存储，证据由 inspect 返回。 */
+export interface RuntimeCurrentRun {
+  runId: string;
+  revision: number;
+  status: WorkflowRun['status'];
+  sequence: number;
+  workflow: WorkflowRun['workflow'];
+  input: RuntimeValue;
+  state?: RuntimeValue;
+  reason?: string;
+  actions: WorkflowRun['actions'];
+  waits: WorkflowRun['waits'];
+  evidenceWaits: NonNullable<WorkflowRun['evidenceWaits']>;
+  outputs: WorkflowRun['outputs'];
+  history: { actions: number; waits: number; evidenceWaits: number };
+}
+
+export interface RuntimeCurrentProgress extends Omit<RuntimeProgress, 'run'> {
+  run: RuntimeCurrentRun;
+}
+
+function currentRun(run: WorkflowRun): RuntimeCurrentRun {
+  return copyRuntimeSnapshot({
+    runId: run.runId,
+    revision: run.revision,
+    status: run.status,
+    sequence: run.sequence,
+    workflow: run.workflow,
+    input: run.input,
+    ...(run.state === undefined ? {} : { state: run.state }),
+    ...(run.reason === undefined ? {} : { reason: run.reason }),
+    actions: run.actions.filter(
+      (action) =>
+        ['pending', 'running', 'unknown'].includes(action.status) ||
+        (action.status === 'cancelled' && action.claim && !action.cancellation),
+    ),
+    waits: run.waits.filter((wait) => wait.status === 'pending'),
+    evidenceWaits: (run.evidenceWaits ?? []).filter((wait) => wait.status === 'pending'),
+    outputs: run.outputs,
+    history: {
+      actions: run.actions.length,
+      waits: run.waits.length,
+      evidenceWaits: run.evidenceWaits?.length ?? 0,
+    },
+  });
 }
 
 function referenceKey(reference: WorkflowRef): string {
@@ -374,7 +423,10 @@ export function createRuntime(options: CreateRuntimeOptions) {
         'TRANSITION_HANDLER_UNAVAILABLE',
         '未注册工作流所要求的转移处理器版本',
       );
-    const transition = handler.apply({ run: copyRuntimeSnapshot(run), event });
+    const transition = handler.apply({
+      run: copyRuntimeSnapshot(run),
+      event: copyRuntimeSnapshot(event),
+    });
     const state = cloneRuntimeValue(transition.state);
     validateWorkflowState(definition, state, 'TRANSITION_STATE_INVALID');
     const allowedTargets = new Set(
@@ -547,7 +599,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
         }
       }
     }
-    return run;
+    return freezeRuntimeSnapshot(run);
   }
 
   async function mutate(
@@ -567,6 +619,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
       validateRuntimeValue(next);
       if (equalRuntimeData(next, before)) return before;
       next.revision = before.revision + 1;
+      freezeRuntimeSnapshot(next);
       checkContext(command.context);
       if (await options.store.compareAndSwap(command.runId, before.revision, next)) return next;
     }
@@ -669,6 +722,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
       lineage,
     };
     scheduleWorkflow(run, definition);
+    freezeRuntimeSnapshot(run);
     checkContext(input.context);
     if (!(await options.store.compareAndSwap(runId, null, run)))
       return startInternal({ ...input, runId }, lineage);
@@ -779,6 +833,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
         },
       ];
       next.revision = before.revision + 1;
+      freezeRuntimeSnapshot(next);
       checkContext(command.context);
       if (await options.store.compareAndSwap(command.runId, before.revision, next)) {
         return copyRuntimeSnapshot(next);
@@ -1003,7 +1058,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
             await executor.preflight?.(
               copyRuntimeSnapshot(action),
               command.context,
-              copyRuntimeSnapshot(run),
+              executor.includeRun === false ? undefined : copyRuntimeSnapshot(run),
             );
             checkContext(command.context);
           }
@@ -1023,6 +1078,15 @@ export function createRuntime(options: CreateRuntimeOptions) {
     allowChild = false,
     initial?: WorkflowRun,
   ): Promise<WorkflowRun> {
+    // 在首次异步读取之前隔离宿主输入；取消终态仍优先于迟到结果的格式错误。
+    let capturedOutcome: RuntimeOutcome | undefined;
+    let captureError: unknown;
+    try {
+      capturedOutcome = parseRuntimeOutcome(command.outcome);
+    } catch (error) {
+      captureError = error;
+    }
+    command = { ...command, outcome: capturedOutcome! };
     let rejection:
       | { code: 'OUTPUT_INVALID' | 'OUTCOME_REJECTED' | 'OUTCOME_PROCESSING_ERROR'; reason: string }
       | undefined;
@@ -1031,6 +1095,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
       async (run, definition) => {
         rejection = undefined;
         ensureActive(run);
+        if (!capturedOutcome) throw captureError;
         const action = requiredAction(run, command.outcome.actionId);
         if (action.type === 'child_workflow' && !allowChild)
           throw new RuntimeProtocolError(
@@ -1039,13 +1104,14 @@ export function createRuntime(options: CreateRuntimeOptions) {
           );
         const accepted = recordRuntimeOutcome(action, command.outcome);
         if (accepted.duplicate) return;
+        const outcome = accepted.action.outcome!;
         const actionIndex = run.actions.indexOf(action);
         try {
           if (options.validateOutcome) {
             const checked = await options.validateOutcome({
               run: copyRuntimeSnapshot(run),
               action: copyRuntimeSnapshot(action),
-              outcome: copyRuntimeSnapshot(command.outcome),
+              outcome: copyRuntimeSnapshot(outcome),
               context: command.context,
             });
             if (!checked.accepted)
@@ -1055,13 +1121,9 @@ export function createRuntime(options: CreateRuntimeOptions) {
               };
           }
           const step = definition.steps[action.stepId];
-          if (
-            !rejection &&
-            command.outcome.status === 'succeeded' &&
-            step.outputSchema !== undefined
-          ) {
+          if (!rejection && outcome.status === 'succeeded' && step.outputSchema !== undefined) {
             const schema = schemaValidator(step.outputSchema);
-            if (!schema.validate(command.outcome.output)) {
+            if (!schema.validate(outcome.output)) {
               rejection = { code: 'OUTPUT_INVALID', reason: schema.errorsText() };
             }
           }
@@ -1075,7 +1137,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
             const result = await validator.validate({
               run: copyRuntimeSnapshot(run),
               action: copyRuntimeSnapshot(action),
-              outcome: copyRuntimeSnapshot(command.outcome),
+              outcome: copyRuntimeSnapshot(outcome),
               context: command.context,
             });
             if (!result.accepted) {
@@ -1090,13 +1152,11 @@ export function createRuntime(options: CreateRuntimeOptions) {
             advanced.actions[actionIndex] = accepted.action;
             const context = advanced.actionContexts[action.id];
             const routeEvent =
-              command.outcome.status === 'failed'
-                ? 'failed'
-                : (command.outcome.event ?? 'succeeded');
+              outcome.status === 'failed' ? 'failed' : (outcome.event ?? 'succeeded');
             const selectedTargets = applyTransitionHandler(
               advanced,
               definition,
-              { kind: 'action-outcome', stepId: action.stepId, outcome: command.outcome },
+              { kind: 'action-outcome', stepId: action.stepId, outcome },
               routeEvent,
             );
             advanceWorkflow(
@@ -1105,7 +1165,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
               action.stepId,
               context.sequence,
               context.results,
-              command.outcome.output,
+              outcome.output,
               routeEvent,
               selectedTargets,
             );
@@ -1538,10 +1598,11 @@ export function createRuntime(options: CreateRuntimeOptions) {
 
   async function execute(
     command: RunCommand & { actionId: string; executorId: string },
+    initial?: WorkflowRun,
   ): Promise<WorkflowRun> {
     const executor = executors.get(command.executorId);
     if (!executor) throw new RuntimeProtocolError('EXECUTOR_UNAVAILABLE', '未注册指定的执行器');
-    const before = await inspect(command.runId);
+    const before = initial ?? (await inspect(command.runId));
     const pending = requiredAction(before, command.actionId);
     if (pending.status !== 'pending')
       throw new RuntimeProtocolError(
@@ -1569,7 +1630,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
       result = await executor.execute(
         copyRuntimeSnapshot(action),
         command.context,
-        copyRuntimeSnapshot(started),
+        executor.includeRun === false ? undefined : copyRuntimeSnapshot(started),
       );
     } catch (error) {
       const current = await inspect(command.runId);
@@ -1679,7 +1740,9 @@ export function createRuntime(options: CreateRuntimeOptions) {
       // 普通外部执行未知时先停止；Runtime 管理的 Child 可由 next 核对现存 Run。
       const existingBlock = blockedReason(true);
       if (existingBlock) return stop(existingBlock);
-      run = await next({ runId: command.runId, context: command.context });
+      // 当前快照已经完成调度。子工作流仍需 next 核对；并发提交由 claim 的 CAS 检测。
+      if (run.ready.length || run.children.length)
+        run = await next({ runId: command.runId, context: command.context });
       const scheduledBlock = blockedReason(false);
       if (scheduledBlock) return stop(scheduledBlock);
       const action = run.actions.find((candidate) => candidate.status === 'pending');
@@ -1694,7 +1757,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
         return stop('executor-required');
       actionsExecuted++;
       try {
-        run = await execute({ ...command, actionId: action.id });
+        run = await execute({ ...command, actionId: action.id }, run);
       } catch (error) {
         if (!(error instanceof RuntimeProtocolError) || error.code !== 'EXECUTION_UNKNOWN')
           throw error;
@@ -1714,6 +1777,17 @@ export function createRuntime(options: CreateRuntimeOptions) {
     start: isolated(start),
     dispatchCommand: isolated(dispatchCommand),
     inspect: isolated(inspect),
+    inspectCurrent: async (runId: string): Promise<RuntimeCurrentRun> =>
+      currentRun(await inspect(runId)),
+    executeCurrent: async (
+      command: RunCommand & { actionId: string; executorId: string },
+    ): Promise<RuntimeCurrentRun> => currentRun(await execute(command)),
+    runUntilBlockedCurrent: async (
+      command: RunRuntimeUntilBlocked,
+    ): Promise<RuntimeCurrentProgress> => {
+      const progress = await runUntilBlocked(command);
+      return { ...progress, run: currentRun(progress.run) };
+    },
     next: isolated(next),
     claim: isolated(claim),
     recordOutcome: isolated(recordOutcome),
@@ -1724,7 +1798,9 @@ export function createRuntime(options: CreateRuntimeOptions) {
     cancel: isolated(cancel),
     markUnknown: isolated(markUnknown),
     retry: isolated(retry),
-    execute: isolated(execute),
+    execute: isolated((command: RunCommand & { actionId: string; executorId: string }) =>
+      execute(command),
+    ),
     runUntilBlocked: isolated(runUntilBlocked),
   };
 }

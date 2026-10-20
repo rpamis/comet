@@ -12,8 +12,20 @@ export type RuntimeValue =
       [key: string]: RuntimeValue;
     };
 
+// 只登记本模块逐层验证并冻结的对象；Object.freeze 外壳本身不足以信任子树。
+const immutableHeights = new WeakMap<object, number>();
+
+export function isImmutableRuntimeSnapshot(value: object): boolean {
+  return immutableHeights.has(value);
+}
+
 /** 只接受无损、无执行行为的 JSON 数据；字段排序使输入绑定不依赖属性插入顺序。 */
-function normalizeRuntimeValue(value: unknown, copy = true, serialize = false): RuntimeValue {
+function normalizeRuntimeValue(
+  value: unknown,
+  copy = true,
+  serialize = false,
+  freeze = false,
+): RuntimeValue {
   const ancestors = new Set<object>();
   const templates = new WeakMap<object, { value: RuntimeValue; height: number }>();
   function normalize(current: unknown, depth: number): RuntimeValue {
@@ -30,6 +42,13 @@ function normalizeRuntimeValue(value: unknown, copy = true, serialize = false): 
     if (ancestors.has(current)) throw new RuntimeProtocolError('INVALID_JSON', '数据包含循环引用');
     if (utilTypes.isProxy(current))
       throw new RuntimeProtocolError('INVALID_JSON', '仅接受无执行行为的 JSON 数据');
+    const immutableHeight = immutableHeights.get(current);
+    if (!copy && !serialize && immutableHeight !== undefined) {
+      if (depth + immutableHeight > 64)
+        throw new RuntimeProtocolError('INVALID_JSON', '数据嵌套超过 64 层');
+      templates.set(current, { value: current as RuntimeValue, height: immutableHeight });
+      return current as RuntimeValue;
+    }
     const template = templates.get(current);
     if (template) {
       if (depth + template.height > 64)
@@ -46,6 +65,10 @@ function normalizeRuntimeValue(value: unknown, copy = true, serialize = false): 
       child && typeof child === 'object' ? (templates.get(child)?.height ?? 0) : 0;
     const completed = (value: RuntimeValue) => {
       templates.set(current, { value, height });
+      if (freeze) {
+        Object.freeze(current);
+        immutableHeights.set(current, height);
+      }
       return value;
     };
     try {
@@ -153,4 +176,10 @@ export function validateRuntimeValue(value: unknown): void {
 
 export function hashRuntimeValue(value: unknown): string {
   return createHash('sha256').update(canonicalRuntimeJson(value)).digest('hex');
+}
+
+/** 仅用于运行时拥有的快照；公开返回值仍创建可独立修改的 JSON 副本。 */
+export function freezeRuntimeSnapshot<T>(value: T): T {
+  normalizeRuntimeValue(value, false, false, true);
+  return value;
 }

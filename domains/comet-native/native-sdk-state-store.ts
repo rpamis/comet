@@ -10,7 +10,10 @@ import path from 'node:path';
 import { stringify } from 'yaml';
 import { NATIVE_MANAGED_RUN_MARKER, parseNativeStateDocument } from './native-state-document.js';
 
-import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
+import {
+  commitNativeSdkCancellation,
+  settleNativeSdkCancellation,
+} from './native-sdk-cancellation-cleanup.js';
 import { settleNativeSdkCompletion } from './native-sdk-completion-cleanup.js';
 import { readNativeTextFilePrefix } from './native-bounded-file.js';
 import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
@@ -583,7 +586,10 @@ export function createNativeSdkStateStore(
     async compareAndSwap(runId, expectedRevision, next) {
       if (options.readOnly) throw new Error('Native SDK diagnostic store is read-only');
       await assertWorkspaceRuntimeCurrent();
-      const committed = await store.compareAndSwap(runId, expectedRevision, next);
+      const committed =
+        next.status === 'cancelled'
+          ? await commitNativeSdkCancellation({ projectRoot, store, runId, expectedRevision, next })
+          : await store.compareAndSwap(runId, expectedRevision, next);
       if (committed) {
         await syncStateFile(runId);
         if (next.status === 'cancelled') {

@@ -6,6 +6,9 @@ import {
   tool,
   type RuntimeValue,
   type RuntimeProgress,
+  type RuntimeCurrentRun,
+  type RuntimeCurrentProgress,
+  type WorkflowRun,
 } from '@rpamis/comet/runtime';
 import {
   createPluginClient,
@@ -71,6 +74,21 @@ if (
   result.note !== 'typed'
 )
   throw new Error('Typed Runtime consumer did not finish');
+
+const current: RuntimeCurrentRun = await runtime.inspectCurrent('typed');
+const currentProgress: RuntimeCurrentProgress = await runtime.runUntilBlockedCurrent({
+  runId: 'typed',
+  executorId: 'host',
+});
+if (current.history.actions !== 1 || currentProgress.reason !== 'completed')
+  throw new Error('Current Runtime view lost its committed result');
+if (false) {
+  // @ts-expect-error Current views intentionally cannot substitute for recovery evidence.
+  const complete: WorkflowRun = current;
+  // @ts-expect-error Internal cached snapshots are not accepted by the public execute API.
+  await runtime.execute({ runId: 'typed', actionId: 'typed:1', executorId: 'host' }, complete);
+  void complete;
+}
 
 const plugin = definePlugin({
   id: 'notes',
