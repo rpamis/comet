@@ -99,6 +99,12 @@ export function readEvalDemoSettings() {
     revision: 'demo-settings',
     path: '~/.comet/eval/.env',
     defaults: {
+      suite: 'local',
+      langsmithEndpoint: '',
+      langsmithProject: '',
+      langsmithTracing: true,
+      langfuseBaseUrl: '',
+      langfuseEnvironment: '',
       agent: 'codex',
       model: 'demo-model',
       baseUrl: 'https://provider.example/v1',
@@ -114,6 +120,9 @@ export function readEvalDemoSettings() {
     credentials: {
       main: { configured: false, saved: false, source: null, kind: 'api-key' },
       judge: { configured: false, saved: false, source: null, kind: 'api-key' },
+      langsmith: { configured: false, saved: false, source: 'none', kind: 'api-key' },
+      langfusePublic: { configured: false, saved: false, source: 'none', kind: 'api-key' },
+      langfuseSecret: { configured: false, saved: false, source: 'none', kind: 'api-key' },
     },
     overrides: [],
     warnings: [],

@@ -9,6 +9,12 @@ import { EVAL_AGENT_ENVIRONMENT, resolveEvalExecution } from './eval-execution-c
 import { EvalRunError, evalValueHash, redactEvalOutput } from './eval-run-store.js';
 
 export interface UserEvalDefaults {
+  suite?: 'local' | 'langsmith' | 'langfuse';
+  langsmithEndpoint?: string;
+  langsmithProject?: string;
+  langsmithTracing?: boolean;
+  langfuseBaseUrl?: string;
+  langfuseEnvironment?: string;
   agent: string;
   model: string;
   baseUrl: string;
@@ -28,6 +34,23 @@ const budgetFields = {
   applicationMaxTurns: ['COMET_EVAL_APPLICATION_MAX_TURNS', 8, 1, 32],
 } as const;
 const judgeKeys = ['BENCH_JUDGE_API_KEY', 'BENCH_JUDGE_AUTH_TOKEN'];
+const trackingKeys = {
+  langsmith: ['LANGSMITH_API_KEY'],
+  langfusePublic: ['LANGFUSE_PUBLIC_KEY'],
+  langfuseSecret: ['LANGFUSE_SECRET_KEY'],
+};
+const trackingFields = {
+  langsmithEndpoint: 'LANGSMITH_ENDPOINT',
+  langsmithProject: 'LANGSMITH_PROJECT',
+  langfuseBaseUrl: 'LANGFUSE_BASE_URL',
+  langfuseEnvironment: 'LANGFUSE_TRACING_ENVIRONMENT',
+} as const;
+export function evalDefaultSuite(
+  environment: NodeJS.ProcessEnv,
+): NonNullable<UserEvalDefaults['suite']> {
+  const value = environment.COMET_EVAL_SUITE;
+  return value === 'langsmith' || value === 'langfuse' ? value : 'local';
+}
 const filePath = () => path.join(os.homedir(), '.comet', 'eval', '.env');
 const present = (value: string | undefined) => !!value?.trim();
 const hasUnsafeCharacters = (value: string) =>
@@ -80,6 +103,7 @@ async function describe(source: string, inherited: NodeJS.ProcessEnv) {
     environment.COMET_EVAL_CUSTOM_CREDENTIALS,
     ...mainKeys,
     ...judgeKeys,
+    ...Object.values(trackingKeys).flat(),
   ]
     .filter(Boolean)
     .join(',');
@@ -97,6 +121,12 @@ async function describe(source: string, inherited: NodeJS.ProcessEnv) {
   const skill = evalDefaultBudget('skill', environment);
   const application = evalDefaultBudget('application', environment);
   const defaults: UserEvalDefaults = {
+    suite: evalDefaultSuite(environment),
+    langsmithEndpoint: environment.LANGSMITH_ENDPOINT ?? '',
+    langsmithProject: environment.LANGSMITH_PROJECT ?? '',
+    langsmithTracing: (environment.LANGSMITH_TRACING ?? 'true').toLowerCase() === 'true',
+    langfuseBaseUrl: environment.LANGFUSE_BASE_URL ?? '',
+    langfuseEnvironment: environment.LANGFUSE_TRACING_ENVIRONMENT ?? '',
     agent: execution.agent,
     model: execution.model === 'default' ? '' : execution.model,
     baseUrl: execution.baseUrl ?? '',
@@ -113,7 +143,7 @@ async function describe(source: string, inherited: NodeJS.ProcessEnv) {
     applicationMaxTurns: application.maxTurns,
   };
   const warnings: string[] = [];
-  for (const key of ['baseUrl', 'judgeBaseUrl'] as const) {
+  for (const key of ['baseUrl', 'judgeBaseUrl', 'langsmithEndpoint', 'langfuseBaseUrl'] as const) {
     try {
       if (!defaults[key]) continue;
       const url = new URL(defaults[key]);
@@ -128,7 +158,7 @@ async function describe(source: string, inherited: NodeJS.ProcessEnv) {
     } catch {
       defaults[key] = '';
       warnings.push(
-        `${key === 'baseUrl' ? '执行' : 'Judge'}端点需要重新填写无凭据的 HTTP(S) 地址，密钥请填入独立凭据输入框。`,
+        `${{ baseUrl: '执行', judgeBaseUrl: 'Judge', langsmithEndpoint: 'LangSmith', langfuseBaseUrl: 'Langfuse' }[key]}端点需要重新填写无凭据的 HTTP(S) 地址，密钥请填入独立凭据输入框。`,
       );
     }
   }
@@ -142,7 +172,13 @@ async function describe(source: string, inherited: NodeJS.ProcessEnv) {
     path: filePath(),
     revision: evalValueHash(source),
     defaults,
-    credentials: { main: credential(mainKeys), judge: credential(judgeKeys) },
+    credentials: {
+      main: credential(mainKeys),
+      judge: credential(judgeKeys),
+      langsmith: credential(trackingKeys.langsmith),
+      langfusePublic: credential(trackingKeys.langfusePublic),
+      langfuseSecret: credential(trackingKeys.langfuseSecret),
+    },
     warnings,
     overrides: [
       ...overridden('执行 Agent', ['BENCH_EVAL_AGENT']),
@@ -157,6 +193,15 @@ async function describe(source: string, inherited: NodeJS.ProcessEnv) {
       ...overridden('Judge 模型', ['BENCH_JUDGE_MODEL']),
       ...overridden('Judge 端点', ['BENCH_JUDGE_BASE_URL']),
       ...overridden('Judge 凭据', judgeKeys),
+      ...overridden('默认报告去向', ['COMET_EVAL_SUITE']),
+      ...overridden('LangSmith 地址', ['LANGSMITH_ENDPOINT']),
+      ...overridden('LangSmith 项目', ['LANGSMITH_PROJECT']),
+      ...overridden('LangSmith 轨迹追踪', ['LANGSMITH_TRACING']),
+      ...overridden('LangSmith 凭据', trackingKeys.langsmith),
+      ...overridden('Langfuse 地址', ['LANGFUSE_BASE_URL']),
+      ...overridden('Langfuse 环境', ['LANGFUSE_TRACING_ENVIRONMENT']),
+      ...overridden('Langfuse Public key', trackingKeys.langfusePublic),
+      ...overridden('Langfuse Secret key', trackingKeys.langfuseSecret),
       ...Object.entries(budgetFields).flatMap(([field, [key]]) =>
         overridden(
           (
@@ -184,6 +229,9 @@ function object(value: unknown): Record<string, unknown> {
 function validateDefaults(input: unknown): UserEvalDefaults {
   const value = object(input);
   const fields = new Set([
+    'suite',
+    'langsmithTracing',
+    ...Object.keys(trackingFields),
     'agent',
     'model',
     'baseUrl',
@@ -195,6 +243,23 @@ function validateDefaults(input: unknown): UserEvalDefaults {
   ]);
   for (const key of Object.keys(value))
     if (!fields.has(key)) throw new EvalRunError('不支持的 Eval 设置字段');
+  if (
+    value.suite !== undefined &&
+    !['local', 'langsmith', 'langfuse'].includes(String(value.suite))
+  )
+    throw new EvalRunError('不支持的报告去向');
+  if (value.langsmithTracing !== undefined && typeof value.langsmithTracing !== 'boolean')
+    throw new EvalRunError('LangSmith 轨迹追踪开关无效');
+  for (const key of Object.keys(trackingFields)) {
+    if (value[key] === undefined) continue;
+    if (
+      typeof value[key] !== 'string' ||
+      (value[key] as string).length > 512 ||
+      hasUnsafeCharacters(value[key] as string)
+    )
+      throw new EvalRunError('追踪服务设置无效');
+    value[key] = (value[key] as string).trim();
+  }
   for (const key of ['agent', 'judgeAgent'])
     if (typeof value[key] !== 'string' || !/^[a-z][a-z0-9-]{1,31}$/u.test(value[key] as string))
       throw new EvalRunError('请选择有效的执行 Agent');
@@ -207,7 +272,7 @@ function validateDefaults(input: unknown): UserEvalDefaults {
       throw new EvalRunError('模型与端点设置无效');
     value[key] = (value[key] as string).trim();
   }
-  for (const key of ['baseUrl', 'judgeBaseUrl'])
+  for (const key of ['baseUrl', 'judgeBaseUrl', 'langsmithEndpoint', 'langfuseBaseUrl'])
     if (value[key]) {
       try {
         const url = new URL(value[key] as string);
@@ -248,6 +313,13 @@ export async function saveUserEvalSettings(
   if (typeof body.expectedRevision !== 'string') throw new EvalRunError('请先读取当前 Eval 设置');
   const defaults = validateDefaults(body.defaults);
   const changes = new Map<string, string | null>();
+  if (defaults.suite !== undefined) changes.set('COMET_EVAL_SUITE', defaults.suite);
+  if (defaults.langsmithTracing !== undefined)
+    changes.set('LANGSMITH_TRACING', defaults.langsmithTracing ? 'true' : 'false');
+  for (const [field, key] of Object.entries(trackingFields)) {
+    const value = defaults[field as keyof typeof trackingFields];
+    if (value !== undefined) changes.set(key, value || null);
+  }
   changes.set('BENCH_EVAL_AGENT', defaults.agent);
   for (const key of EVAL_AGENT_ENVIRONMENT[defaults.agent]?.models ?? ['BENCH_MODEL'])
     changes.set(key, null);
@@ -269,13 +341,18 @@ export async function saveUserEvalSettings(
     changes.set(key, String(defaults[field as keyof UserEvalDefaults]));
   const credentials = body.credentials === undefined ? {} : object(body.credentials);
   for (const [slot, patch] of Object.entries(credentials)) {
-    if (!['main', 'judge'].includes(slot)) throw new EvalRunError('不支持的凭据字段');
+    if (!['main', 'judge', ...Object.keys(trackingKeys)].includes(slot))
+      throw new EvalRunError('不支持的凭据字段');
     const keys =
       slot === 'main'
         ? (EVAL_AGENT_ENVIRONMENT[defaults.agent]?.credentials ?? ['BENCH_API_KEY'])
-        : judgeKeys;
+        : slot === 'judge'
+          ? judgeKeys
+          : trackingKeys[slot as keyof typeof trackingKeys];
     if (patch !== null) {
       const value = object(patch);
+      if (Object.hasOwn(trackingKeys, slot) && value.kind !== 'api-key')
+        throw new EvalRunError('追踪服务请使用 API key');
       if (
         Object.keys(value).some((key) => !['value', 'kind'].includes(key)) ||
         typeof value.value !== 'string' ||
@@ -299,9 +376,11 @@ export async function saveUserEvalSettings(
               ? 'CODEBUDDY_AUTH_TOKEN'
               : 'ANTHROPIC_AUTH_TOKEN'
             : 'BENCH_API_KEY'
-          : value.kind === 'auth-token'
-            ? 'BENCH_JUDGE_AUTH_TOKEN'
-            : 'BENCH_JUDGE_API_KEY',
+          : slot !== 'judge'
+            ? keys[0]
+            : value.kind === 'auth-token'
+              ? 'BENCH_JUDGE_AUTH_TOKEN'
+              : 'BENCH_JUDGE_API_KEY',
         value.value.trim(),
       );
     } else for (const key of keys) changes.set(key, null);
@@ -324,6 +403,7 @@ export async function saveUserEvalSettings(
       secretEnvironment.COMET_EVAL_CUSTOM_CREDENTIALS,
       ...(EVAL_AGENT_ENVIRONMENT[defaults.agent]?.credentials ?? ['BENCH_API_KEY']),
       ...judgeKeys,
+      ...Object.values(trackingKeys).flat(),
     ]
       .filter(Boolean)
       .join(',');

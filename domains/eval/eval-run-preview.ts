@@ -15,7 +15,7 @@ import {
 import { EvalRunError, evalValueHash, redactEvalOutput } from './eval-run-store.js';
 import type { EvalRunConfig } from './eval-run-types.js';
 import { EVAL_AGENT_ENVIRONMENT, resolveEvalExecution } from './eval-execution-config.js';
-import { evalDefaultBudget } from './eval-user-settings.js';
+import { evalDefaultBudget, evalDefaultSuite } from './eval-user-settings.js';
 import { readEvalRetrySelection, type EvalRetrySelection } from './eval-run-retry.js';
 
 export interface EvalRunPreview {
@@ -182,7 +182,7 @@ export function normalizeEvalRunConfig(project: string, value: unknown): EvalRun
     ...input,
     target,
     targetType,
-    suite: input.suite ?? 'local',
+    suite: input.suite ?? (targetType === 'application' ? 'local' : evalDefaultSuite(environment)),
     timeoutSeconds,
     maxTurns,
   } as EvalRunConfig;
@@ -272,12 +272,16 @@ export async function evalEnvironmentChecks(
     });
   }
   if (config.suite && config.suite !== 'local') {
-    const key = config.suite === 'langsmith' ? 'LANGSMITH_API_KEY' : 'LANGFUSE_SECRET_KEY';
+    const keys =
+      config.suite === 'langsmith'
+        ? ['LANGSMITH_API_KEY']
+        : ['LANGFUSE_PUBLIC_KEY', 'LANGFUSE_SECRET_KEY'];
+    const ready = keys.every((key) => environment[key]?.trim());
     checks.push({
       id: 'tracking',
       label: config.suite,
-      status: environment[key]?.trim() ? 'available' : 'missing',
-      detail: environment[key]?.trim() ? '已配置，未验证服务连接' : `请配置 ${key}`,
+      status: ready ? 'available' : 'missing',
+      detail: ready ? '已配置，未验证服务连接' : `请配置 ${keys.join(' / ')}`,
     });
   }
   checks.push({

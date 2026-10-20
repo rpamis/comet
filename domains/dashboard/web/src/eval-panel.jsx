@@ -1422,7 +1422,8 @@ function EvalCreate({
   const judgeEnabled = Form.useWatch('judgeEnabled', form);
   Form.useWatch([], form);
   const summaryConfig = preview?.config ?? form.getFieldsValue(true);
-  const budgetFor = (type) => ({
+  const defaultsForTarget = (type) => ({
+    suite: type === 'application' ? 'local' : (userSettings?.defaults?.suite ?? 'local'),
     timeoutSeconds:
       userSettings?.defaults?.[`${type}TimeoutSeconds`] ?? (type === 'application' ? 1200 : 600),
     maxTurns: userSettings?.defaults?.[`${type}MaxTurns`] ?? (type === 'application' ? 8 : 40),
@@ -1444,6 +1445,7 @@ function EvalCreate({
             ? 'application'
             : 'skill';
         const defaults = {
+          suite: type === 'application' ? 'local' : (value.defaults.suite ?? 'local'),
           ...Object.fromEntries(
             [
               'agent',
@@ -1649,7 +1651,9 @@ function EvalCreate({
             const type = inferTargetType(changed.target);
             form.setFieldsValue(
               Object.fromEntries(
-                Object.entries(budgetFor(type)).filter(([key]) => !overrides.current.has(key)),
+                Object.entries(defaultsForTarget(type)).filter(
+                  ([key]) => !overrides.current.has(key),
+                ),
               ),
             );
           }
@@ -1672,7 +1676,7 @@ function EvalCreate({
                     task: undefined,
                     ...Object.fromEntries(
                       Object.entries(
-                        budgetFor(
+                        defaultsForTarget(
                           type === 'auto' ? inferTargetType(form.getFieldValue('target')) : type,
                         ),
                       ).filter(([key]) => !overrides.current.has(key)),
@@ -1842,6 +1846,17 @@ function EvalCreate({
               </div>
             </Card>
             <Card title={t('执行配置')} size="small">
+              {targetType === 'skill' && (
+                <Form.Item label={t('报告与追踪去向')} name="suite">
+                  <Select
+                    options={[
+                      { value: 'local', label: t('本地') },
+                      { value: 'langsmith', label: 'LangSmith' },
+                      { value: 'langfuse', label: 'Langfuse' },
+                    ]}
+                  />
+                </Form.Item>
+              )}
               <Descriptions
                 size="small"
                 column={1}
@@ -1947,15 +1962,6 @@ function EvalCreate({
                   <EvalSection title={t('报告与环境')} />
                   {targetType === 'skill' && (
                     <div className="dashboard-eval-form-grid">
-                      <Form.Item label={t('报告与追踪去向')} name="suite">
-                        <Select
-                          options={[
-                            { value: 'local', label: t('本地') },
-                            { value: 'langsmith', label: 'LangSmith' },
-                            { value: 'langfuse', label: 'Langfuse' },
-                          ]}
-                        />
-                      </Form.Item>
                       <Form.Item label={t('执行端点覆盖（可选）')} name="baseUrl">
                         <Input placeholder="https://provider.example/v1" />
                       </Form.Item>

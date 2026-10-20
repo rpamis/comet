@@ -142,6 +142,9 @@ describe('Dashboard Eval routes', () => {
       'ANTHROPIC_AUTH_TOKEN',
       'BENCH_CC_MODEL',
       'BENCH_MODEL',
+      'COMET_EVAL_SUITE',
+      'LANGFUSE_PUBLIC_KEY',
+      'LANGFUSE_SECRET_KEY',
     ])
       vi.stubEnv(key, undefined);
     const api = '/api/dashboard/eval/settings';
@@ -149,8 +152,17 @@ describe('Dashboard Eval routes', () => {
     expect(old.status).toBe(200);
     const update = {
       expectedRevision: old.body.revision,
-      defaults: { ...old.body.defaults, agent: 'claude-code', model: 'settings-model' },
-      credentials: { main: { value: 'http-test-secret', kind: 'api-key' } },
+      defaults: {
+        ...old.body.defaults,
+        agent: 'claude-code',
+        model: 'settings-model',
+        suite: 'langfuse',
+      },
+      credentials: {
+        main: { value: 'http-test-secret', kind: 'api-key' },
+        langfusePublic: { value: 'http-fuse-public', kind: 'api-key' },
+        langfuseSecret: { value: 'http-fuse-secret', kind: 'api-key' },
+      },
     };
     expect((await request(api, 'POST', update, 'https://untrusted.example')).status).toBe(403);
     const saved = await request(api, 'POST', update);
@@ -165,6 +177,13 @@ describe('Dashboard Eval routes', () => {
       'available',
     );
     expect(JSON.stringify(check.body)).not.toContain('http-test-secret');
+    expect(check.body.environment.find((item: any) => item.id === 'tracking').status).toBe(
+      'available',
+    );
+    for (const secret of ['http-fuse-public', 'http-fuse-secret']) {
+      expect(JSON.stringify(saved.body)).not.toContain(secret);
+      expect(JSON.stringify(check.body)).not.toContain(secret);
+    }
   });
   it('previews targets using the selected project even when the Dashboard process works elsewhere', async () => {
     const other = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-dashboard-launch-'));

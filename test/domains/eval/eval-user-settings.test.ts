@@ -20,6 +20,127 @@ describe('User Eval settings', () => {
     vi.restoreAllMocks();
     await fs.rm(home, { recursive: true, force: true });
   });
+  it('saves tracking destinations and separately manages masked service credentials', async () => {
+    const old = await readUserEvalSettings({});
+    const saved = await saveUserEvalSettings(
+      {
+        expectedRevision: old.revision,
+        defaults: {
+          ...old.defaults,
+          suite: 'langfuse',
+          langsmithEndpoint: 'https://smith.example',
+          langsmithProject: 'comet-skill-eval',
+          langsmithTracing: false,
+          langfuseBaseUrl: 'https://fuse.example',
+          langfuseEnvironment: 'development',
+        },
+        credentials: {
+          langsmith: { kind: 'api-key', value: 'smith-test-secret' },
+          langfusePublic: { kind: 'api-key', value: 'fuse-test-public' },
+          langfuseSecret: { kind: 'api-key', value: 'fuse-test-secret' },
+        },
+      },
+      {},
+    );
+    expect(saved.defaults).toMatchObject({
+      suite: 'langfuse',
+      langsmithProject: 'comet-skill-eval',
+      langsmithTracing: false,
+      langfuseBaseUrl: 'https://fuse.example',
+      langfuseEnvironment: 'development',
+    });
+    for (const slot of ['langsmith', 'langfusePublic', 'langfuseSecret'] as const)
+      expect(saved.credentials[slot]).toMatchObject({
+        configured: true,
+        saved: true,
+        source: 'file',
+      });
+    for (const value of ['smith-test-secret', 'fuse-test-public', 'fuse-test-secret'])
+      expect(JSON.stringify(saved)).not.toContain(value);
+    const environment = {};
+    loadUserEvalEnvironment(environment, home, { create: false });
+    expect(environment).toMatchObject({
+      COMET_EVAL_SUITE: 'langfuse',
+      LANGSMITH_API_KEY: 'smith-test-secret',
+      LANGSMITH_TRACING: 'false',
+      LANGSMITH_PROJECT: 'comet-skill-eval',
+      LANGFUSE_PUBLIC_KEY: 'fuse-test-public',
+      LANGFUSE_SECRET_KEY: 'fuse-test-secret',
+      LANGFUSE_BASE_URL: 'https://fuse.example',
+    });
+    const cleared = await saveUserEvalSettings(
+      {
+        expectedRevision: saved.revision,
+        defaults: saved.defaults,
+        credentials: { langfuseSecret: null },
+      },
+      {},
+    );
+    expect(cleared.credentials.langfuseSecret.configured).toBe(false);
+    expect(cleared.credentials.langfusePublic.configured).toBe(true);
+    expect(cleared.credentials.langsmith.configured).toBe(true);
+    const inherited = await readUserEvalSettings({
+      COMET_EVAL_SUITE: 'langsmith',
+      LANGFUSE_SECRET_KEY: 'inherited-fuse-secret',
+    });
+    expect(inherited.defaults.suite).toBe('langsmith');
+    expect(inherited.credentials.langfuseSecret).toMatchObject({
+      configured: true,
+      saved: false,
+      source: 'environment',
+    });
+    expect(inherited.overrides).toEqual(
+      expect.arrayContaining(['默认报告去向', 'Langfuse Secret key']),
+    );
+    expect(JSON.stringify(inherited)).not.toContain('inherited-fuse-secret');
+  });
+  it('preserves tracking settings when an older client omits the new defaults', async () => {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, 'LANGSMITH_PROJECT=retained\nCOMET_EVAL_SUITE=langsmith\n');
+    const old = await readUserEvalSettings({});
+    const defaults = { ...old.defaults };
+    for (const key of [
+      'suite',
+      'langsmithProject',
+      'langsmithEndpoint',
+      'langsmithTracing',
+      'langfuseBaseUrl',
+      'langfuseEnvironment',
+    ])
+      delete (defaults as Record<string, unknown>)[key];
+    const saved = await saveUserEvalSettings({ expectedRevision: old.revision, defaults }, {});
+    expect(saved.defaults).toMatchObject({ suite: 'langsmith', langsmithProject: 'retained' });
+  });
+  it.each([
+    { suite: 'unknown' },
+    { langsmithEndpoint: 'https://smith.example?key=bad' },
+    { langfuseBaseUrl: 'file:///tmp' },
+    { langfuseEnvironment: 'ci\nINJECT=1' },
+    { langsmithTracing: 'true' },
+  ])('rejects invalid tracking defaults %j', async (patch) => {
+    const old = await readUserEvalSettings({});
+    await expect(
+      saveUserEvalSettings(
+        { expectedRevision: old.revision, defaults: { ...old.defaults, ...patch } },
+        {},
+      ),
+    ).rejects.toThrow();
+    await expect(fs.stat(file)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+  it('rejects credentials copied into tracking metadata', async () => {
+    const old = await readUserEvalSettings({});
+    await expect(
+      saveUserEvalSettings(
+        {
+          expectedRevision: old.revision,
+          defaults: { ...old.defaults, langsmithProject: 'tracking-hidden-secret' },
+          credentials: { langsmith: { kind: 'api-key', value: 'tracking-hidden-secret' } },
+        },
+        {},
+      ),
+    ).rejects.toThrow(/凭据/);
+    await expect(fs.stat(file)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
   it('reads defaults without creating files or exposing inherited credentials', async () => {
     const settings = await readUserEvalSettings({
       BENCH_API_KEY: 'environment-secret',

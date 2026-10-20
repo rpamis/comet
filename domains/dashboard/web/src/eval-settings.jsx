@@ -64,6 +64,7 @@ export function EvalSettings({ readOnly = false, onSaved }) {
   const [checks, setChecks] = useState(null);
   const [clearMain, setClearMain] = useState(false);
   const [clearJudge, setClearJudge] = useState(false);
+  const [clearTracking, setClearTracking] = useState({});
   const [reload, setReload] = useState(0);
   const [dirty, setDirty] = useState(false);
   const judgeEnabled = Form.useWatch('judgeEnabled', form);
@@ -72,12 +73,15 @@ export function EvalSettings({ readOnly = false, onSaved }) {
     setData(value);
     form.resetFields();
     form.setFieldsValue({
+      suite: 'local',
+      langsmithTracing: true,
       ...value.defaults,
       mainKind: value.credentials.main.kind,
       judgeKind: value.credentials.judge.kind,
     });
     setClearMain(false);
     setClearJudge(false);
+    setClearTracking({});
     setDirty(false);
     setChecks(null);
   };
@@ -120,6 +124,11 @@ export function EvalSettings({ readOnly = false, onSaved }) {
         if (clear) credentials[slot] = null;
         else if (values[field]?.trim())
           credentials[slot] = { value: values[field].trim(), kind: values[kind] ?? 'api-key' };
+      }
+      for (const slot of ['langsmith', 'langfusePublic', 'langfuseSecret']) {
+        if (clearTracking[slot]) credentials[slot] = null;
+        else if (values[`${slot}Credential`]?.trim())
+          credentials[slot] = { value: values[`${slot}Credential`].trim(), kind: 'api-key' };
       }
       const next = await request('', { expectedRevision: data.revision, defaults, credentials });
       apply(next);
@@ -201,6 +210,52 @@ export function EvalSettings({ readOnly = false, onSaved }) {
       </div>
     );
   };
+  const trackingCredential = (slot, label) => {
+    const status = data?.credentials?.[slot];
+    const clear = !!clearTracking[slot];
+    return (
+      <div className="dashboard-eval-settings-credential">
+        <div className="dashboard-eval-heading">
+          <Text strong>{label}</Text>
+          <Tag color={clear ? 'warning' : status?.configured ? 'success' : 'default'}>
+            {clear
+              ? t('待移除')
+              : status?.configured
+                ? status.source === 'environment'
+                  ? t('由启动环境提供')
+                  : t('已配置')
+                : t('未配置')}
+          </Tag>
+        </div>
+        <Form.Item label={t('新的 {0}', [label])} name={`${slot}Credential`}>
+          <Input.Password
+            autoComplete="off"
+            disabled={readOnly || clear}
+            placeholder={status?.configured ? t('留空保留已有凭据') : t('输入凭据')}
+          />
+        </Form.Item>
+        {status?.saved && (
+          <Button
+            type="text"
+            danger={!clear}
+            disabled={readOnly || saving}
+            onClick={() => {
+              setClearTracking((previous) => ({ ...previous, [slot]: !clear }));
+              form.setFieldValue(`${slot}Credential`, '');
+              setDirty(true);
+            }}
+          >
+            {clear ? t('撤销移除 {0}', [label]) : t('移除已保存的 {0}', [label])}
+          </Button>
+        )}
+        {clear && (
+          <Text type="secondary">
+            {t('保存后移除本机用户配置中的凭据；启动环境中的值保持有效。')}
+          </Text>
+        )}
+      </div>
+    );
+  };
   return (
     <div className="dashboard-eval-page dashboard-eval-settings" aria-label={t('Eval 设置')}>
       <div className="dashboard-eval-heading">
@@ -246,7 +301,7 @@ export function EvalSettings({ readOnly = false, onSaved }) {
           type="warning"
           showIcon
           message={t('已有配置需要调整')}
-          description={data.warnings.join('\n')}
+          description={data.warnings.map((warning) => t(warning)).join('\n')}
         />
       )}
       <Spin spinning={loading}>
@@ -303,6 +358,48 @@ export function EvalSettings({ readOnly = false, onSaved }) {
                 </>
               )}
               {credential('judge')}
+            </Card>
+            <Card title={t('报告与追踪')} size="small">
+              <Form.Item label={t('默认报告去向')} name="suite">
+                <Select
+                  options={[
+                    { value: 'local', label: t('本地') },
+                    { value: 'langsmith', label: 'LangSmith' },
+                    { value: 'langfuse', label: 'Langfuse' },
+                  ]}
+                />
+              </Form.Item>
+              <Text type="secondary">
+                {t('用于新建 Skill 评估，可在运行前调整。SDK 应用评估使用本地报告。')}
+              </Text>
+              <div className="dashboard-eval-form-section">
+                <Text strong>LangSmith</Text>
+                <div className="dashboard-eval-form-grid">
+                  <Form.Item label={t('LangSmith 地址')} name="langsmithEndpoint">
+                    <Input placeholder="https://api.smith.langchain.com" />
+                  </Form.Item>
+                  <Form.Item label={t('LangSmith 项目')} name="langsmithProject">
+                    <Input placeholder="comet-skill-eval" />
+                  </Form.Item>
+                </div>
+                <Form.Item name="langsmithTracing" valuePropName="checked">
+                  <Checkbox>{t('LangSmith 轨迹追踪')}</Checkbox>
+                </Form.Item>
+                {trackingCredential('langsmith', 'LangSmith API key')}
+              </div>
+              <div className="dashboard-eval-form-section">
+                <Text strong>Langfuse</Text>
+                <div className="dashboard-eval-form-grid">
+                  <Form.Item label={t('Langfuse 地址')} name="langfuseBaseUrl">
+                    <Input placeholder="https://cloud.langfuse.com" />
+                  </Form.Item>
+                  <Form.Item label={t('Langfuse 环境')} name="langfuseEnvironment">
+                    <Input placeholder={t('可选，例如 development 或 ci')} />
+                  </Form.Item>
+                </div>
+                {trackingCredential('langfusePublic', 'Langfuse Public key')}
+                {trackingCredential('langfuseSecret', 'Langfuse Secret key')}
+              </div>
             </Card>
             <Card title={t('默认执行预算')} size="small">
               <div className="dashboard-eval-detail-grid">

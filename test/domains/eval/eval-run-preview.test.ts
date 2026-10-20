@@ -146,6 +146,39 @@ describe('Eval preview', () => {
     expect(preview.application?.workflows[0].steps).toContain('draft');
     expect(preview.noModelsStarted).toBe(true);
   });
+  it('inherits the Skill tracking destination and requires both Langfuse keys', async () => {
+    vi.stubEnv('COMET_EVAL_SUITE', 'langfuse');
+    vi.stubEnv('LANGFUSE_PUBLIC_KEY', undefined);
+    vi.stubEnv('LANGFUSE_SECRET_KEY', 'fuse-preview-secret');
+    const config = {
+      target: 'skill',
+      targetType: 'skill' as const,
+      agent: 'codex',
+      judgeEnabled: false,
+    };
+    const missing = await previewEvalRun(project, config);
+    expect(missing.config.suite).toBe('langfuse');
+    expect(missing.environment.find((item) => item.id === 'tracking')).toMatchObject({
+      status: 'missing',
+    });
+    expect(JSON.stringify(missing)).not.toContain('fuse-preview-secret');
+    vi.stubEnv('LANGFUSE_PUBLIC_KEY', 'fuse-preview-public');
+    const ready = await previewEvalRun(project, config);
+    expect(ready.environment.find((item) => item.id === 'tracking')).toMatchObject({
+      status: 'available',
+    });
+    expect(JSON.stringify(ready)).not.toContain('fuse-preview-public');
+    expect((await previewEvalRun(project, { ...config, suite: 'local' })).config.suite).toBe(
+      'local',
+    );
+    expect(
+      normalizeEvalRunConfig(project, {
+        target: 'application.json',
+        agent: 'codex',
+        judgeEnabled: false,
+      }).suite,
+    ).toBe('local');
+  });
   it('previews only failed authored cases and blocks a changed original manifest', async () => {
     const yaml =
       'apiVersion: comet.eval/v1alpha1\nkind: SkillEvalManifest\nmetadata:\n  name: writer\nskill:\n  name: writer\n  source: ..\nevaluation:\n  tasks:\n    - name: passed-case\n      prompt: Write the report\n      expect:\n        files: [REPORT.md]\n    - name: failed-case\n      prompt: Ask for data\n      expect:\n        files: [DATA.md]\n';

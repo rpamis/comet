@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { readEvalDemoSettings } from '../../../domains/dashboard/web/src/eval-demo.js';
 
 async function setDashboardTheme(page: Page, theme: 'light' | 'dark') {
   const settings = page.getByRole('button', { name: /^(设置|Settings)$/ });
@@ -1130,6 +1131,39 @@ test.describe('Dashboard Eval', () => {
     await expect(page.getByText('失败用例重跑 · 原记录 eval-one', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: /开始评估/ })).toBeDisabled();
   });
+  test('shows tracking settings in English without exposing credentials or overflowing a narrow screen', async ({
+    page,
+  }) => {
+    await page.route('**/api/dashboard/eval/settings', (route) =>
+      route.fulfill({ json: readEvalDemoSettings() }),
+    );
+    await page.evaluate(() => localStorage.setItem('comet-dashboard-language', 'en'));
+    await page.reload();
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: /Comet settings/iu });
+    await dialog.getByLabel('Default report destination').scrollIntoViewIfNeeded();
+    await expect(dialog.getByLabel('Default report destination')).toBeVisible();
+    await expect(dialog.getByLabel('LangSmith endpoint')).toBeVisible();
+    await expect(dialog.getByLabel('LangSmith project')).toBeVisible();
+    expect(await dialog.innerText()).not.toMatch(/[\u4e00-\u9fff]/u);
+    await page.screenshot({
+      path: test.info().outputPath('eval-tracking-en-desktop.png'),
+      animations: 'disabled',
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await dialog.getByLabel('Langfuse endpoint').scrollIntoViewIfNeeded();
+    await expect(dialog.getByLabel('New Langfuse Secret key')).toHaveValue('');
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
+      )
+      .toBe(true);
+    expect(await dialog.innerText()).not.toMatch(/[\u4e00-\u9fff]/u);
+    await page.screenshot({
+      path: test.info().outputPath('eval-tracking-en-narrow.png'),
+      animations: 'disabled',
+    });
+  });
   test('saves global Eval settings, clears credential inputs and reuses defaults without overriding run edits', async ({
     page,
   }) => {
@@ -1137,6 +1171,12 @@ test.describe('Dashboard Eval', () => {
       path: 'C:/Users/fixture/.comet/eval/.env',
       revision: 'initial',
       defaults: {
+        suite: 'local',
+        langsmithEndpoint: '',
+        langsmithProject: '',
+        langsmithTracing: true,
+        langfuseBaseUrl: '',
+        langfuseEnvironment: '',
         agent: 'claude-code',
         model: '',
         baseUrl: '',
@@ -1152,6 +1192,9 @@ test.describe('Dashboard Eval', () => {
       credentials: {
         main: { configured: false, saved: false, source: 'none', kind: 'api-key' },
         judge: { configured: false, saved: false, source: 'none', kind: 'api-key' },
+        langsmith: { configured: false, saved: false, source: 'none', kind: 'api-key' },
+        langfusePublic: { configured: false, saved: false, source: 'none', kind: 'api-key' },
+        langfuseSecret: { configured: false, saved: false, source: 'none', kind: 'api-key' },
       },
       overrides: [],
     };
@@ -1161,8 +1204,17 @@ test.describe('Dashboard Eval', () => {
         const input = route.request().postDataJSON();
         saves++;
         expect(input.expectedRevision).toBe(value.revision);
-        if (saves === 1) expect(input.credentials.main.value).toBe('browser-test-secret');
-        else expect(input.credentials).toEqual({});
+        if (saves === 1) {
+          expect(input.credentials.main.value).toBe('browser-test-secret');
+          expect(input.credentials.langsmith.value).toBe('smith-browser-secret');
+          expect(input.credentials.langfusePublic.value).toBe('fuse-browser-public');
+          expect(input.credentials.langfuseSecret.value).toBe('fuse-browser-secret');
+          expect(input.defaults).toMatchObject({
+            suite: 'langfuse',
+            langsmithProject: 'comet-skill-eval',
+            langfuseBaseUrl: 'https://fuse.example',
+          });
+        } else expect(input.credentials).toEqual({});
         value = {
           ...value,
           defaults: input.defaults,
@@ -1170,13 +1222,18 @@ test.describe('Dashboard Eval', () => {
           credentials: {
             ...value.credentials,
             main: { configured: true, saved: true, source: 'file', kind: 'api-key' },
+            langsmith: { configured: true, saved: true, source: 'file', kind: 'api-key' },
+            langfusePublic: { configured: true, saved: true, source: 'file', kind: 'api-key' },
+            langfuseSecret: { configured: true, saved: true, source: 'file', kind: 'api-key' },
           },
         };
       }
       return route.fulfill({ json: value });
     });
+    const previewConfigs: any[] = [];
     await page.route('**/eval/preview', (route) => {
       const config = route.request().postDataJSON();
+      previewConfigs.push(config);
       return route.fulfill({
         json: {
           config,
@@ -1198,20 +1255,44 @@ test.describe('Dashboard Eval', () => {
     await dialog.getByLabel('默认执行模型').fill('global-model');
     await dialog.getByLabel('新的执行凭据').fill('browser-test-secret');
     await dialog.getByLabel('Skill 默认总时限（秒）').fill('700');
+    await dialog.getByLabel('默认报告去向').click();
+    await dialog.getByLabel('默认报告去向').press('ArrowDown');
+    await dialog.getByLabel('默认报告去向').press('ArrowDown');
+    await dialog.getByLabel('默认报告去向').press('Enter');
+    await dialog.getByLabel('LangSmith 地址').fill('https://smith.example');
+    await dialog.getByLabel('LangSmith 项目').fill('comet-skill-eval');
+    await dialog.getByLabel('Langfuse 地址').fill('https://fuse.example');
+    await dialog.getByLabel('Langfuse 环境').fill('development');
+    await dialog.getByLabel('新的 LangSmith API key').fill('smith-browser-secret');
+    await dialog.getByLabel('新的 Langfuse Public key').fill('fuse-browser-public');
+    await dialog.getByLabel('新的 Langfuse Secret key').fill('fuse-browser-secret');
     await dialog.getByRole('button', { name: '保存 Eval 设置', exact: true }).click();
     await expect(dialog.getByLabel('新的执行凭据')).toHaveValue('');
-    await expect(dialog.getByText('已配置', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('已配置', { exact: true })).toHaveCount(4);
+    for (const label of ['LangSmith API key', 'Langfuse Public key', 'Langfuse Secret key'])
+      await expect(dialog.getByLabel(`新的 ${label}`)).toHaveValue('');
     expect(
       await page.evaluate(() =>
         [...Object.values(localStorage), ...Object.values(sessionStorage)].join('\n'),
       ),
     ).not.toContain('browser-test-secret');
+    const browserStorage = await page.evaluate(() =>
+      [...Object.values(localStorage), ...Object.values(sessionStorage)].join('\n'),
+    );
+    for (const secret of ['smith-browser-secret', 'fuse-browser-public', 'fuse-browser-secret'])
+      expect(browserStorage).not.toContain(secret);
+    await dialog.getByLabel('Langfuse 地址').scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: test.info().outputPath('eval-tracking-desktop.png'),
+      animations: 'disabled',
+    });
     await dialog.getByRole('heading', { name: 'Eval', exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({
       path: test.info().outputPath('eval-settings-desktop.png'),
       animations: 'disabled',
     });
     await page.setViewportSize({ width: 390, height: 844 });
+    await dialog.getByLabel('Langfuse 地址').scrollIntoViewIfNeeded();
     await expect
       .poll(() =>
         page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
@@ -1227,6 +1308,12 @@ test.describe('Dashboard Eval', () => {
     await page.getByLabel('目标路径').fill('skill/SKILL.md');
     await page.getByRole('button', { name: '下一步', exact: true }).click();
     await page.getByRole('button', { name: '下一步', exact: true }).click();
+    await expect(page.getByLabel('报告与追踪去向')).toBeVisible();
+    await expect.poll(() => previewConfigs.at(-1)?.suite).toBe('langfuse');
+    await page.getByLabel('报告与追踪去向').click();
+    await page.getByLabel('报告与追踪去向').press('ArrowUp');
+    await page.getByLabel('报告与追踪去向').press('ArrowUp');
+    await page.getByLabel('报告与追踪去向').press('Enter');
     await page.getByRole('button', { name: '临时覆盖本次配置', exact: true }).click();
     await expect(page.getByLabel('执行模型', { exact: true })).toHaveValue('global-model');
     await expect(page.getByLabel('评估总时限（秒）')).toHaveValue('700');
@@ -1237,6 +1324,10 @@ test.describe('Dashboard Eval', () => {
     await expect(dialog.getByLabel('新的执行凭据')).toHaveValue('');
     await dialog.getByRole('button', { name: '完成', exact: true }).click();
     await expect(page.getByLabel('执行模型', { exact: true })).toHaveValue('run-only-model');
+    const checkEnvironment = page.getByRole('button', { name: /检查目标与执行环境$/u });
+    await expect(checkEnvironment).not.toHaveClass(/ant-btn-loading/u);
+    await checkEnvironment.click();
+    await expect.poll(() => previewConfigs.at(-1)?.suite).toBe('local');
     expect(saves).toBe(2);
   });
   for (const language of ['zh', 'en']) {

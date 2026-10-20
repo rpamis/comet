@@ -7,9 +7,11 @@ export function evalDisplayError(error) {
   return String(error ?? '')
     .split('\n')
     .map((line) =>
-      /配置文件位于 ~\/\.comet\/eval\/\.env|请配置.*(?:API_KEY|AUTH_TOKEN)/u.test(line)
-        ? t('模型凭据未配置，请在「设置 → Eval」保存执行模型或独立 Judge 的凭据。')
-        : t(line),
+      /请配置.*(?:LANGSMITH_|LANGFUSE_)/u.test(line)
+        ? t('追踪服务凭据未配置，请在「设置 → Eval」配置所选报告服务。')
+        : /配置文件位于 ~\/\.comet\/eval\/\.env|请配置.*(?:API_KEY|AUTH_TOKEN)/u.test(line)
+          ? t('模型凭据未配置，请在「设置 → Eval」保存执行模型或独立 Judge 的凭据。')
+          : t(line),
     )
     .join('\n');
 }
@@ -33,6 +35,8 @@ export function evalErrorAdvice(error) {
     return t('启动 Docker 并运行 docker info；确认服务可用后，保留当前设置重新预检。');
   if (/uv/u.test(text))
     return t('安装 uv，并在启动 Dashboard 的环境中确认 uv --version 可用，再重新预检。');
+  if (/LANGSMITH_|LANGFUSE_/u.test(text))
+    return t('打开「设置 → Eval」，配置所选报告服务的凭据后重新预检。');
   if (/凭据|API_KEY|AUTH_TOKEN|鉴权|401|403/u.test(text))
     return t(
       '打开「设置 → Eval」，配置执行模型或独立 Judge 的凭据，保存后重新预检。已有密钥不会回显，也不会放入浏览器缓存。',
@@ -60,9 +64,10 @@ export function EvalErrorGuide({ error, onSettings }) {
   return (
     <div>
       <Paragraph type="secondary">{evalErrorAdvice(error)}</Paragraph>
-      {onSettings && /凭据|API_KEY|AUTH_TOKEN|鉴权|401|403/u.test(String(error ?? '')) && (
-        <Button onClick={onSettings}>{t('打开 Eval 设置')}</Button>
-      )}
+      {onSettings &&
+        /凭据|API_KEY|AUTH_TOKEN|LANGSMITH_|LANGFUSE_|鉴权|401|403/u.test(String(error ?? '')) && (
+          <Button onClick={onSettings}>{t('打开 Eval 设置')}</Button>
+        )}
     </div>
   );
 }
