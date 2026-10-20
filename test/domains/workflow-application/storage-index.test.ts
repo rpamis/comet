@@ -93,7 +93,7 @@ it('does not replace a published initialization inventory after a member disappe
   let interrupted = false;
   vi.spyOn(fs, 'rename').mockImplementation(async (source, destination) => {
     await rename(source, destination);
-    if (!interrupted && String(destination).endsWith('/inventory.json')) {
+    if (!interrupted && path.basename(String(destination)) === 'inventory.json') {
       interrupted = true;
       throw new Error('after inventory publication');
     }
@@ -111,7 +111,8 @@ it('settles a registration interrupted after inventory publication', async () =>
   const rename = fs.rename.bind(fs);
   vi.spyOn(fs, 'rename').mockImplementation(async (source, destination) => {
     await rename(source, destination);
-    if (String(destination).endsWith('/inventory.json')) throw new Error('after registration');
+    if (path.basename(String(destination)) === 'inventory.json')
+      throw new Error('after registration');
   });
   await expect(index().finish()).rejects.toThrow('after registration');
   vi.restoreAllMocks();
@@ -124,9 +125,10 @@ it('resumes rebuild after a new epoch is persisted before its inventory', async 
   const state = (await index().inspect())!;
   const rename = fs.rename.bind(fs);
   vi.spyOn(fs, 'rename').mockImplementation(async (source, destination) => {
-    const value = String(destination).endsWith('/index.json')
-      ? JSON.parse(await fs.readFile(source, 'utf8'))
-      : null;
+    const value =
+      path.basename(String(destination)) === 'index.json'
+        ? JSON.parse(await fs.readFile(source, 'utf8'))
+        : null;
     await rename(source, destination);
     if (value?.state === 'building') throw new Error('after new epoch');
   });
@@ -165,7 +167,8 @@ it('does not forget a committed registration whose Run disappeared after invento
   const rename = fs.rename.bind(fs);
   vi.spyOn(fs, 'rename').mockImplementation(async (source, destination) => {
     await rename(source, destination);
-    if (String(destination).endsWith('/inventory.json')) throw new Error('after registration');
+    if (path.basename(String(destination)) === 'inventory.json')
+      throw new Error('after registration');
   });
   await expect(index().finish()).rejects.toThrow('after registration');
   vi.restoreAllMocks();
