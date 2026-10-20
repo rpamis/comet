@@ -16,6 +16,16 @@ export {
   inspectWorkflowApplicationPackage,
 } from './run-observation.js';
 export type { WorkflowApplicationRunObservation } from './run-observation.js';
+export {
+  parseWorkflowApplicationDefinition,
+  validateWorkflowApplicationPresentation,
+  matchesWorkflowApplicationDefinition,
+} from './application-definition.js';
+export type {
+  WorkflowApplicationDefinition,
+  WorkflowApplicationPresentation,
+  WorkflowApplicationStepPresentation,
+} from './application-definition.js';
 export { inspectApplicationSkill, adaptApplicationSkill } from './skill-adapter.js';
 export { rewriteMarkdownResourceLinks } from './markdown-resources.js';
 export { createApplicationSkillExecutor, reconcileApplicationSkill } from './skill-executor.js';

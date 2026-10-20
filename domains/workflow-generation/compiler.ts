@@ -14,6 +14,9 @@ import {
   loadWorkflowApplication,
   adaptApplicationSkill,
   type WorkflowApplicationManifest,
+  type WorkflowApplicationPresentation,
+  parseWorkflowApplicationDefinition,
+  validateWorkflowApplicationPresentation,
   validateApplicationArtifactContracts,
 } from '../workflow-application/index.js';
 import type {
@@ -78,6 +81,7 @@ export interface WorkflowApplicationPlan {
   workflows: readonly DefineWorkflowOptions[];
   modules: Readonly<Record<string, string>>;
   documents?: Readonly<Record<string, string>>;
+  presentation?: WorkflowApplicationPresentation;
   artifactTests?: readonly ApplicationArtifactTestCase[];
   workflowTests?: readonly ApplicationWorkflowTestCase[];
   composition: ApplicationCompositionPlan;
@@ -133,6 +137,7 @@ const planSchema = {
         entrySkill: { const: 'SKILL.md' },
         module: { type: 'string', minLength: 1 },
         rule: { const: 'rules/workflow-guard.md' },
+        definition: { const: 'workflow.json' },
         artifactContracts: { type: 'array', maxItems: 256, items: { type: 'object' } },
         skills: {
           type: 'array',
@@ -176,6 +181,7 @@ const planSchema = {
     workflows: { type: 'array', minItems: 1, items: { type: 'object' } },
     modules: { type: 'object', additionalProperties: { type: 'string', minLength: 1 } },
     documents: { type: 'object', additionalProperties: { type: 'string', minLength: 1 } },
+    presentation: { type: 'object' },
     workflowTests: {
       type: 'array',
       maxItems: 32,
@@ -352,10 +358,16 @@ function parsePlan(value: unknown, requireWorkflows = true): WorkflowApplication
     const plan = parsed as WorkflowApplicationPlan;
     if (plan.manifest.artifactContracts !== undefined)
       validateApplicationArtifactContracts(plan.manifest.artifactContracts);
+    if (plan.presentation !== undefined)
+      validateWorkflowApplicationPresentation(
+        plan.presentation,
+        requireWorkflows ? plan.workflows.map(defineWorkflow) : undefined,
+      );
     validateApplicationDocuments(plan.documents, plan.manifest.id, [
       'SKILL.md',
       'rules/workflow-guard.md',
       'application.json',
+      'workflow.json',
       'installation.json',
       'application.mjs',
       ...Object.keys(plan.modules),
@@ -383,6 +395,7 @@ function moduleRef(ref: string): void {
   if (
     !/^[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*\.(?:mjs|json)$/u.test(ref) ||
     ref === 'application.json' ||
+    ref === 'workflow.json' ||
     ref === 'installation.json' ||
     ref.startsWith('skills/')
   )
@@ -442,6 +455,7 @@ export interface CompileWorkflowApplicationOptions {
 async function assemblyFiles(
   plan: WorkflowApplicationPlan,
   dependencyRoot?: string,
+  includeDefinition = true,
 ): Promise<Record<string, string>> {
   for (const ref of Object.keys(plan.modules)) moduleRef(ref);
   const files: Record<string, string> = Object.fromEntries(
@@ -452,6 +466,8 @@ async function assemblyFiles(
   );
   files['application.mjs'] = Buffer.from(applicationModule(plan)).toString('base64');
   const manifest = structuredClone(plan.manifest);
+  if (includeDefinition) manifest.definition = 'workflow.json';
+  else delete manifest.definition;
   if (plan.documents) manifest.rule ??= 'rules/workflow-guard.md';
   const ids = new Set<string>();
   for (const dependency of manifest.skills) {
@@ -475,6 +491,18 @@ async function assemblyFiles(
     files[ref] = Buffer.from(text).toString('base64');
   };
   textFile('application.json', canonicalRuntimeJson(manifest) + '\n');
+  if (includeDefinition) {
+    const definition = parseWorkflowApplicationDefinition(
+      {
+        schema: 'comet.workflow.application.definition.v1',
+        application: { id: manifest.id, version: manifest.version },
+        workflows: plan.workflows,
+        ...(plan.presentation ? { presentation: plan.presentation } : {}),
+      },
+      manifest,
+    );
+    textFile(manifest.definition!, canonicalRuntimeJson(definition) + '\n');
+  }
   if (manifest.rule) {
     const rule = renderApplicationRule(manifest, plan.workflows);
     textFile(
@@ -491,6 +519,7 @@ async function assemblyFiles(
       workflowHashes: expectedHashes,
       entrySkill: manifest.entrySkill,
       module: manifest.module,
+      ...(manifest.definition ? { definition: manifest.definition } : {}),
       skills: manifest.skills.map(({ id, root, contentHash }) => ({ id, root, contentHash })),
       bindings: manifest.bindings,
     }) + '\n',
@@ -520,7 +549,11 @@ async function assemblyFiles(
         `\n执行前读取[应用规则](${manifest.rule})。Rule 与流程和写入声明一起生成；宿主集成通过正式安装预览部署。\n`,
     ).toString('base64');
   }
-  validateApplicationDocumentLinks(plan.documents, files);
+  // 预装配先读取真实工厂，workflow.json 随后由最终装配生成；这里允许文档引用该固定目标。
+  validateApplicationDocumentLinks(
+    plan.documents,
+    includeDefinition ? files : { ...files, 'workflow.json': '' },
+  );
   return files;
 }
 
@@ -656,8 +689,18 @@ export async function prepareWorkflowApplicationPlan(options: {
     ];
   }
   plan.manifest.rule = 'rules/workflow-guard.md';
-  const files = await assemblyFiles(plan, options.dependencyRoot);
+  const files = await assemblyFiles(plan, options.dependencyRoot, false);
   plan.workflows = await inspectAssembly(files, options);
+  plan.manifest.definition = 'workflow.json';
+  parseWorkflowApplicationDefinition(
+    {
+      schema: 'comet.workflow.application.definition.v1',
+      application: { id: plan.manifest.id, version: plan.manifest.version },
+      workflows: plan.workflows,
+      ...(plan.presentation ? { presentation: plan.presentation } : {}),
+    },
+    plan.manifest,
+  );
   return plan;
 }
 

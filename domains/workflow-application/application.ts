@@ -58,6 +58,11 @@ import { resolveInstalledWorkflowApplication } from './installed-application.js'
 import { projectWorkflowApplicationRun } from './run-view.js';
 import { createApplicationHook } from './application-hook.js';
 import {
+  readWorkflowApplicationDefinition,
+  validateWorkflowApplicationDefinitionPath,
+  assertWorkflowApplicationDefinitionMatches,
+} from './application-definition.js';
+import {
   applyApplicationArtifactContracts,
   assertApplicationArtifactDependencies,
   validateApplicationArtifactContracts,
@@ -314,6 +319,8 @@ export function parseWorkflowApplicationManifest(value: unknown): WorkflowApplic
     validateApplicationArtifactContracts(manifest.artifactContracts);
   if (manifest.schema !== 'comet.workflow.application.v1')
     applicationError('应用格式不受支持，请重新生成 SDK 应用；原文件会保留');
+  if (manifest.definition !== undefined)
+    validateWorkflowApplicationDefinitionPath(manifest.definition);
   if (
     manifest.rule !== undefined &&
     (typeof manifest.rule !== 'string' ||
@@ -378,6 +385,7 @@ export async function loadWorkflowApplication(options: {
   const manifest = parseWorkflowApplicationManifest(
     JSON.parse(Buffer.from(files['application.json'] ?? '', 'base64').toString('utf8')),
   );
+  const definition = readWorkflowApplicationDefinition(files, manifest);
   if (
     manifest.rule &&
     (!manifest.rule.endsWith('.md') ||
@@ -502,6 +510,7 @@ export async function loadWorkflowApplication(options: {
     applicationError('应用模块必须提供完整 SDK 工作流');
   implementation = applyApplicationArtifactContracts(implementation, { manifest, projectRoot });
   const workflows = implementation.workflows.map(defineWorkflow);
+  if (definition) assertWorkflowApplicationDefinitionMatches(definition, workflows);
   const bindingKeys = new Set<string>();
   for (const binding of manifest.bindings) {
     const key = `${binding.workflowId}/${binding.stepId}/${binding.usage}${binding.usage === 'guidance' ? `/${binding.skillId}` : ''}`;
@@ -980,7 +989,7 @@ export async function loadWorkflowApplication(options: {
   };
   // SDK 自身校验所有 handler、validator、executor 身份；只装载图不足以通过这里。
   createRuntime({ ...checkedImplementation, store });
-  return { manifest, identity, implementation: checkedImplementation, skills, store };
+  return { manifest, definition, identity, implementation: checkedImplementation, skills, store };
 }
 
 export async function selectWorkflowApplication(

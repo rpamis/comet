@@ -188,6 +188,8 @@ export interface WorkflowApplicationPlan {
     // (undocumented)
     modules: Readonly<Record<string, string>>;
     // (undocumented)
+    presentation?: WorkflowApplicationPresentation;
+    // (undocumented)
     schema: 'comet.workflow.application.plan.v1';
     // (undocumented)
     workflows: readonly DefineWorkflowOptions[];

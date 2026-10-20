@@ -10,6 +10,7 @@ import type {
 import type { CometHookDecision } from '../workflow-contract/hook.js';
 import type { CometHookRequest } from '../../platform/process/hook-adapter.js';
 import type { ApplicationArtifactContract } from './artifact-contract.js';
+import type { WorkflowApplicationDefinition } from './application-definition.js';
 
 export type ApplicationBase =
   'standalone' | 'native' | 'classic-full' | 'classic-hotfix' | 'classic-tweak';
@@ -68,6 +69,8 @@ export interface WorkflowApplicationManifest {
   module: string;
   /** 应用规则引用；组合器从同一份流程声明生成并纳入固定包摘要。 */
   rule?: string;
+  /** 纯数据流程定义；只读观测不加载执行模块。 */
+  definition?: string;
   skills: ApplicationSkillDependency[];
   bindings: ApplicationSkillBinding[];
   artifactContracts?: readonly ApplicationArtifactContract[];
@@ -112,6 +115,7 @@ export interface ApplicationIdentity {
 
 export interface LoadedWorkflowApplication {
   manifest: WorkflowApplicationManifest;
+  definition?: WorkflowApplicationDefinition;
   identity: ApplicationIdentity;
   implementation: WorkflowApplicationImplementation;
   skills: ReadonlyMap<string, AdaptedSkill>;

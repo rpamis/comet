@@ -36,6 +36,10 @@ import {
 import { collectNativeDashboardChangePage } from './native-collector.js';
 import { collectDashboardChangePage } from './collector.js';
 import { DashboardSummaryIndex } from './summary-index.js';
+import {
+  projectDashboardApplicationDefinition,
+  labelDashboardApplicationRecords,
+} from './application-definition.js';
 import type {
   DashboardApplicationRunKind,
   DashboardApplicationRunSummary,
@@ -1179,6 +1183,7 @@ export async function collectDashboardApplicationRunDetail(
     evidence: [],
     otherEvidence: [],
     definitionStatus: 'unreadable',
+    definition: { status: 'missing' },
     material: { status: 'unavailable' },
     fixedIdentity: null,
     sourceCreators: [],
@@ -1206,7 +1211,7 @@ export async function collectDashboardApplicationRunDetail(
     fixed = entry.archivedIdentity ?? entry.application?.record?.application ?? null;
   if (entry.archive) {
     const archive = entry.archive.archive;
-    let material: DashboardApplicationRunDetail['material'];
+    let material: Awaited<ReturnType<typeof inspectWorkflowApplicationPackage>>;
     try {
       const ref = `${evalArchiveRoot(archive.id)}/${archive.application.root}/application.json`;
       const inspected = await inspectProtectedProjectPath(projectRoot, ref, {
@@ -1251,15 +1256,23 @@ export async function collectDashboardApplicationRunDetail(
     const skipped = creator?.run?.waits.some(
       (w) => w.stepId === 'confirm-eval' && w.decision?.choice === 'skip',
     );
+    const definition =
+      entry.summary.kind === 'application'
+        ? projectDashboardApplicationDefinition({ run, records: allItems, material })
+        : { status: 'missing' as const };
     return {
       ...empty,
       sequence: run.sequence,
       workflow: run.workflow,
-      records: items,
+      records: labelDashboardApplicationRecords(items, definition),
       recordPage: { total: recordPage.total, nextCursor: recordPage.nextCursor },
       currentIds: items.filter((r) => r.active).map((r) => r.id),
       definitionStatus: 'observed',
-      material,
+      definition,
+      material: {
+        status: material.status,
+        ...(material.message ? { message: material.message } : {}),
+      },
       fixedIdentity: fixed,
       artifacts: [
         ...linked,
@@ -1329,16 +1342,21 @@ export async function collectDashboardApplicationRunDetail(
         item.summary = '关联创作记录仍在同步，请稍后刷新。';
       }
   }
+  const definition =
+    entry.summary.kind === 'application'
+      ? projectDashboardApplicationDefinition({ run, records: allItems, material })
+      : { status: 'missing' as const };
   const result: DashboardApplicationRunDetail = {
     ...empty,
     ...proof,
     sequence: run.sequence,
     workflow: { id: run.workflow.id, version: run.workflow.version },
-    records: items,
+    records: labelDashboardApplicationRecords(items, definition),
     recordPage: { total: recordPage.total, nextCursor: recordPage.nextCursor },
     currentIds: items.filter((r) => r.active).map((r) => r.id),
     artifacts: artifacts(entry, items),
     definitionStatus: 'observed',
+    definition,
     material: material
       ? { status: material.status, message: material.message }
       : { status: 'not-generated' },
@@ -1437,8 +1455,35 @@ export async function collectDashboardApplicationRunRecords(
       .map((item) => [item.summary.runId!, item.summary.locator]),
   );
   const fingerprint = hash([path.resolve(projectRoot), locator, entry.run.revision]);
-  const selected = page(records(entry, childLocators), fingerprint, query.cursor, size);
-  const items = selected.items.map((record) => ({
+  const allRecords = records(entry, childLocators);
+  const selected = page(allRecords, fingerprint, query.cursor, size);
+  let material: Awaited<ReturnType<typeof inspectWorkflowApplicationMaterial>> | null = null;
+  if (entry.summary.kind === 'application') {
+    if (entry.archive) {
+      const archive = entry.archive.archive;
+      try {
+        const inspected = await inspectProtectedProjectPath(
+          projectRoot,
+          `${evalArchiveRoot(archive.id)}/${archive.application.root}/application.json`,
+          { expected: 'file', label: '归档固定应用' },
+        );
+        material = await inspectWorkflowApplicationPackage(
+          path.dirname(inspected.target),
+          archive.application.packageHash,
+        );
+      } catch (error) {
+        material = { status: 'unavailable', message: String(error) };
+      }
+    } else if (entry.application?.record?.application) {
+      material = await inspectWorkflowApplicationMaterial(entry.application.record.application);
+    }
+  }
+  const definition = projectDashboardApplicationDefinition({
+    run: entry.run,
+    records: allRecords,
+    material,
+  });
+  const items = labelDashboardApplicationRecords(selected.items, definition).map((record) => ({
     ...record,
     data: sanitizeApplicationObservation(record.data),
   }));

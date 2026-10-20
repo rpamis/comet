@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import { hashRuntimeValue, createRuntime } from '../../../domains/engine/runtime.js';
 import {
   createReportApplication,
+  inspectWorkflowApplicationPackage,
   loadWorkflowApplication,
 } from '../../../domains/workflow-application/index.js';
 import {
@@ -131,6 +132,18 @@ it('compiles fixed material deterministically and binds entry/install/recovery t
     workflows: application.workflows,
     modules: {},
     composition: { kind: 'report' as const },
+    presentation: {
+      title: '季度报告',
+      steps: [
+        {
+          workflowId: 'report-drafting',
+          stepId: 'compose',
+          title: '汇总草稿',
+          phase: '起草',
+          outputFields: [{ path: 'ref', label: '草稿文件' }],
+        },
+      ],
+    },
   };
   const first = await compileWorkflowApplication({
     plan,
@@ -153,6 +166,12 @@ it('compiles fixed material deterministically and binds entry/install/recovery t
   );
   const compiled = await loadWorkflowApplication({ file: first.file, projectRoot: root });
   expect(compiled.implementation.workflows).toEqual(application.workflows);
+  expect(compiled.manifest.definition).toBe('workflow.json');
+  expect(compiled.definition?.presentation).toEqual(plan.presentation);
+  expect(
+    (await inspectWorkflowApplicationPackage(path.dirname(first.file), first.contentHash))
+      .definition,
+  ).toEqual(compiled.definition);
   const installation = JSON.parse(
     await fs.readFile(path.join(root, 'first', 'installation.json'), 'utf8'),
   );

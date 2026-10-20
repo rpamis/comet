@@ -400,7 +400,21 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
         steps: plan.workflows.flatMap((w) =>
           Object.entries(w.steps).map(([id, s]) => ({
             id: `${w.id}/${id}`,
+            title:
+              plan.presentation?.steps?.find(
+                (step) => step.workflowId === w.id && step.stepId === id,
+              )?.title ?? id,
+            phase:
+              plan.presentation?.steps?.find(
+                (step) => step.workflowId === w.id && step.stepId === id,
+              )?.phase ?? null,
             work: s.type,
+            observation:
+              s.type === 'child_workflow'
+                ? '进入 SDK 子流程查看各步骤；子流程中未拆分的调用仍按一次动作观察。'
+                : s.type === 'invoke_skill' || s.type === 'handoff' || s.type === 'call_tool'
+                  ? '观察本次调用与实际结果；内部过程需要声明为步骤或子流程才能分别展示。'
+                  : '观察 SDK 保存的等待与决定。',
             skills: plan.manifest.bindings
               .filter((b) => b.workflowId === w.id && b.stepId === id)
               .map((b) => b.skillId),
@@ -966,6 +980,11 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
         ...command,
         input: {
           ...input,
+          presentationRequirements: {
+            field: 'proposal.presentation',
+            instruction:
+              '为应用填写 title、description，并在 steps 中按 workflowId、stepId 填写面向用户的 title、phase 和必要的 description。需要展示的结果用 outputFields 的 path、label 声明，路径从该步骤实际 output 读取。需要逐阶段观察的 Skill 应拆为显式步骤或 SDK 子流程；未拆分的内部过程在 limitations 中说明。展示信息不改变执行状态或批准规则。',
+          },
           ...(['4', '5', '6'].includes(command.workflow.version)
             ? { artifactContractsVersion: 1 }
             : {}),

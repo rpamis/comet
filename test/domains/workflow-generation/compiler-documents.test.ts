@@ -14,6 +14,7 @@ import {
   exportWorkflowApplication,
   previewWorkflowApplicationInstall,
   installWorkflowApplication,
+  inspectWorkflowApplicationPackage,
 } from '../../../domains/workflow-application/index.js';
 
 let root: string;
@@ -50,6 +51,12 @@ function proposal(
       bindings: [],
     },
     composition: { kind: 'report' },
+    presentation: {
+      title: '访谈报告',
+      steps: [
+        { workflowId: 'report-drafting', stepId: 'compose', title: '整理访谈', phase: '起草' },
+      ],
+    },
     modules: {},
     ...(documents ? { documents } : {}),
   };
@@ -98,6 +105,20 @@ it('does not add references when the Agent supplies only the required entry and 
   );
   await compile(plan);
   await expect(fs.access(path.join(root, 'compiled/references'))).rejects.toThrow();
+});
+
+it('allows authored documents to link the generated workflow definition before factory discovery', async () => {
+  const documents = {
+    ...proposal().documents!,
+    'SKILL.md': skill + '\n查看[完整流程](workflow.json)。\n',
+    'rules/workflow-guard.md': rule + '\n查看[完整流程](../workflow.json)。\n',
+  };
+  const built = await compile(await prepare(proposal(documents)));
+  const definition = JSON.parse(
+    await fs.readFile(path.join(path.dirname(built.file), 'workflow.json'), 'utf8'),
+  );
+  expect(definition.schema).toBe('comet.workflow.application.definition.v1');
+  expect(definition.workflows.length).toBeGreaterThan(0);
 });
 
 it('keeps the SDK-only generic sample available when documents are omitted', async () => {
@@ -258,6 +279,18 @@ it('retains business content in an exported package and its installed immutable 
     ...options,
     confirmationHash: preview.confirmationHash,
   });
+  const observation = await inspectWorkflowApplicationPackage(
+    path.dirname(installed.file),
+    exported.contentHash,
+  );
+  expect(observation.status).toBe('matched');
+  expect(observation.definition?.presentation).toEqual(proposal().presentation);
+  expect(
+    observation.definition?.workflows.some((workflow) => workflow.id === 'report-drafting'),
+  ).toBe(true);
+  expect(await fs.readFile(path.join(path.dirname(installed.file), 'workflow.json'), 'utf8')).toBe(
+    await fs.readFile(path.join(path.dirname(built.file), 'workflow.json'), 'utf8'),
+  );
   expect(
     (await fs.readFile(path.join(path.dirname(installed.file), 'SKILL.md'), 'utf8')).startsWith(
       skill,

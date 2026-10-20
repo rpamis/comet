@@ -4,6 +4,7 @@ import {
   createRuntime,
   createFileRuntimeStore,
   hashRuntimeValue,
+  defineWorkflow,
   type WorkflowRun,
   type WorkflowRuntime,
   type RuntimeArtifactRef,
@@ -13,7 +14,10 @@ import {
   readApplicationFiles,
   applicationFilesHash,
 } from '../../domains/workflow-application/skill-adapter.js';
-import type { ApplicationIdentity } from '../../domains/workflow-application/index.js';
+import type {
+  ApplicationIdentity,
+  WorkflowApplicationPresentation,
+} from '../../domains/workflow-application/index.js';
 
 export async function completeFixtureAction(
   runtime: WorkflowRuntime,
@@ -59,6 +63,8 @@ export async function applicationObservationFixture(
     child?: boolean;
     deferChild?: boolean;
     claimParallel?: boolean;
+    definition?: boolean;
+    presentation?: WorkflowApplicationPresentation;
   } = {},
 ) {
   const id = options.id ?? 'grill-suite',
@@ -78,6 +84,7 @@ export async function applicationObservationFixture(
       module: 'application.mjs',
       skills: [],
       bindings: [],
+      ...(options.definition ? { definition: 'workflow.json' } : {}),
     }),
   );
   await fs.writeFile(path.join(packageRoot, 'SKILL.md'), '# Fixed application\n');
@@ -86,7 +93,7 @@ export async function applicationObservationFixture(
     path.join(packageRoot, 'application.mjs'),
     'throw new Error("OBSERVATION_MUST_NOT_IMPORT");',
   );
-  const packageHash = applicationFilesHash(await readApplicationFiles(packageRoot));
+  let packageHash = applicationFilesHash(await readApplicationFiles(packageRoot));
   const identity: ApplicationIdentity = {
     id,
     version,
@@ -146,23 +153,37 @@ export async function applicationObservationFixture(
         ]
       : [],
   };
-  const runtime = createRuntime({
-    store,
-    workflows: [
-      definition,
-      {
-        id: 'review',
-        version: '1',
-        entry: 'proof',
-        steps: {
-          proof: {
-            type: 'await_evidence',
-            kind: 'host-proof',
-            validator: { id: 'host-proof', version: '1' },
-          },
+  const workflows = [
+    definition,
+    {
+      id: 'review',
+      version: '1',
+      entry: 'proof',
+      steps: {
+        proof: {
+          type: 'await_evidence' as const,
+          kind: 'host-proof',
+          validator: { id: 'host-proof', version: '1' },
         },
       },
-    ],
+    },
+  ];
+  if (options.definition) {
+    await fs.writeFile(
+      path.join(packageRoot, 'workflow.json'),
+      JSON.stringify({
+        schema: 'comet.workflow.application.definition.v1',
+        application: { id, version },
+        workflows: workflows.map(defineWorkflow),
+        ...(options.presentation ? { presentation: options.presentation } : {}),
+      }),
+    );
+    packageHash = applicationFilesHash(await readApplicationFiles(packageRoot));
+    identity.contentHash = hashRuntimeValue({ package: packageHash, skills: [] });
+  }
+  const runtime = createRuntime({
+    store,
+    workflows,
     evidenceValidators: [{ id: 'host-proof', version: '1', validate: () => ({ accepted: true }) }],
   });
   let run = await runtime.start({

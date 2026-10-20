@@ -1,4 +1,7 @@
-import type { ApplicationIdentity } from '../workflow-application/index.js';
+import type {
+  ApplicationIdentity,
+  ApplicationArtifactContract,
+} from '../workflow-application/index.js';
 
 export type DashboardApplicationRunKind = 'creator' | 'application';
 export type DashboardApplicationStatus =
@@ -88,6 +91,48 @@ export interface DashboardApplicationEvidence {
   summary: string;
   details: unknown;
 }
+export interface DashboardApplicationDefinitionStep {
+  stepId: string;
+  title: string;
+  phase: string;
+  description?: string;
+  type: string;
+  ref?: string;
+  skills: string[];
+  artifactContract?: ApplicationArtifactContract;
+  outputFields?: Array<{ path: string; label: string }>;
+  observation: 'action' | 'subworkflow';
+  recordCount: number;
+  activeRecordIds: string[];
+  latestRecordId: string | null;
+  latestStatus: string | null;
+}
+export interface DashboardApplicationDefinition {
+  status: 'available' | 'missing' | 'changed' | 'unavailable';
+  message?: string;
+  title?: string;
+  description?: string;
+  workflow?: {
+    id: string;
+    version: string;
+    entry: string[];
+    transitions: Array<{ from: string; to: string; on: string }>;
+    maxTransitions: number;
+    dynamicRouting: boolean;
+    commands?: Record<string, { stepId: string }>;
+    steps: Record<
+      string,
+      {
+        type: string;
+        ref?: string;
+        join?: string[];
+        workflow?: { id: string; version: string };
+        choices?: string[];
+      }
+    >;
+  };
+  steps?: DashboardApplicationDefinitionStep[];
+}
 export interface DashboardApplicationRunDetail extends DashboardApplicationRunSummary {
   readAt: string;
   sequence: number | null;
@@ -99,6 +144,7 @@ export interface DashboardApplicationRunDetail extends DashboardApplicationRunSu
   evidence: DashboardApplicationEvidence[];
   otherEvidence: DashboardApplicationEvidence[];
   definitionStatus: 'observed' | 'unreadable';
+  definition: DashboardApplicationDefinition;
   material: { status: 'matched' | 'changed' | 'unavailable' | 'not-generated'; message?: string };
   fixedIdentity: ApplicationIdentity | null;
   sourceCreators: { locator: string; runId: string; version: string }[];

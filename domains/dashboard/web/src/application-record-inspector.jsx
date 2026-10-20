@@ -11,6 +11,7 @@ import {
   ExportOutlined,
 } from '@ant-design/icons';
 import { t, systemText } from './dashboard-i18n.js';
+import { ApplicationStepDefinition } from './application-step-definition.jsx';
 
 const statusLabels = {
   succeeded: '已完成',
@@ -49,7 +50,11 @@ export function formatApplicationRecordType(value) {
   return t(
     {
       handoff: '交给 Agent 执行',
+      invoke_skill: '调用 Skill',
       call_tool: '调用工具',
+      child_workflow: '子流程',
+      ask_user: '用户决定',
+      await_evidence: '等待证据',
       user_decision: '用户决定',
       'host-proof': '宿主验证',
     }[value] ?? value,
@@ -105,6 +110,7 @@ export function ApplicationEvidenceCards({ detail, onEvidence }) {
 export function ApplicationRecordInspector({
   detail,
   record,
+  definitionStep,
   onChild,
   onArtifact,
   onEvidence,
@@ -217,6 +223,7 @@ export function ApplicationRecordInspector({
             { key: 'attempt', label: t('动作尝试'), children: record.attempt ?? t('不适用') },
           ]}
         />
+        <ApplicationStepDefinition step={definitionStep} record={record} />
         {record.kind === 'decision' && (
           <>
             <h4>{t('提案与用户决定')}</h4>

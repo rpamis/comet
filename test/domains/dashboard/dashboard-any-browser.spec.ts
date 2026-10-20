@@ -850,3 +850,250 @@ test('Any bounds history pages and preserves selection when a cursor becomes sta
   await expect(page.locator('[data-record-id="bounded-first"]')).toHaveClass(/selected/u);
   await expect(page.getByText('运行记录已变化，请重新读取当前页')).toBeVisible();
 });
+
+for (const width of [1600, 1280, 390]) {
+  test(`Any complete workflow exposes pending paths and real concurrent records at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    const list = readApplicationDemo('application-runs', {});
+    const selected = list.items.find((item: any) => item.kind === 'application' && !item.isChild);
+    const original = readApplicationDemo('application-run', { locator: selected.locator });
+    const records = [
+      {
+        ...original.records[0],
+        id: 'draft-old',
+        stepId: 'draft',
+        title: '撰写稿件',
+        status: 'succeeded',
+        active: false,
+        data: {
+          outcome: {
+            attempt: 1,
+            status: 'succeeded',
+            output: { article: { words: 1260, approved: false } },
+          },
+        },
+      },
+      {
+        ...original.records[1],
+        id: 'draft-a',
+        stepId: 'draft',
+        title: '撰写稿件',
+        active: true,
+        sequence: 8,
+      },
+      {
+        ...original.records[1],
+        id: 'draft-b',
+        stepId: 'draft',
+        title: '撰写稿件',
+        status: 'unknown',
+        active: true,
+        sequence: 9,
+      },
+    ];
+    const pagedRecord = {
+      ...original.records[0],
+      id: 'check-paged',
+      stepId: 'check',
+      title: '内容校验',
+      active: false,
+    };
+    let requestedRecord: string | null = null;
+    const definition = {
+      status: 'available',
+      title: '内容创作与审查',
+      description: '并行检查、人工确认和修订循环。',
+      workflow: {
+        id: 'editorial',
+        version: '1',
+        entry: ['draft'],
+        maxTransitions: 100,
+        dynamicRouting: false,
+        commands: { cleanup: { stepId: 'discard' } },
+        steps: {
+          draft: { type: 'invoke_skill', ref: 'writer' },
+          check: { type: 'call_tool', ref: 'check' },
+          review: { type: 'child_workflow', workflow: { id: 'review', version: '1' } },
+          publish: { type: 'ask_user', join: ['check', 'review'], choices: ['approved', 'revise'] },
+          discard: { type: 'call_tool', ref: 'discard' },
+        },
+        transitions: [
+          { from: 'draft', to: 'check', on: 'succeeded' },
+          { from: 'draft', to: 'review', on: 'succeeded' },
+          { from: 'check', to: 'publish', on: 'succeeded' },
+          { from: 'review', to: 'publish', on: 'succeeded' },
+          { from: 'publish', to: 'draft', on: 'revise' },
+          { from: 'publish', to: 'discard', on: 'rejected' },
+        ],
+      },
+      steps: [
+        {
+          stepId: 'draft',
+          title: '撰写稿件',
+          phase: '创作',
+          type: 'invoke_skill',
+          skills: ['writer'],
+          observation: 'action',
+          recordCount: 3,
+          activeRecordIds: ['draft-a', 'draft-b'],
+          latestRecordId: 'draft-b',
+          latestStatus: 'unknown',
+          outputFields: [
+            { path: 'article.words', label: '字数' },
+            { path: 'article.approved', label: '已批准' },
+          ],
+        },
+        {
+          stepId: 'check',
+          title: '内容校验',
+          phase: '审查',
+          type: 'call_tool',
+          skills: [],
+          observation: 'action',
+          recordCount: 4,
+          activeRecordIds: [],
+          latestRecordId: 'check-paged',
+          latestStatus: 'succeeded',
+        },
+        {
+          stepId: 'review',
+          title: '独立审查',
+          phase: '审查',
+          type: 'child_workflow',
+          skills: [],
+          observation: 'subworkflow',
+          recordCount: 0,
+          activeRecordIds: [],
+          latestRecordId: null,
+          latestStatus: null,
+        },
+        {
+          stepId: 'publish',
+          title: '确认发布范围和最终内容',
+          phase: '交付',
+          type: 'ask_user',
+          skills: [],
+          observation: 'action',
+          recordCount: 0,
+          activeRecordIds: [],
+          latestRecordId: null,
+          latestStatus: null,
+          description: '发布前确认这次内容和交付路径。',
+          outputFields: [{ path: 'report.ref', label: '发布清单' }],
+          artifactContract: {
+            workflowId: 'editorial',
+            stepId: 'publish',
+            artifacts: [
+              { ref: 'output/release.md', nonEmpty: true, requiredHeadings: ['发布清单'] },
+            ],
+          },
+        },
+        {
+          stepId: 'discard',
+          title: '清理未采用内容',
+          phase: '交付',
+          type: 'call_tool',
+          skills: [],
+          observation: 'action',
+          recordCount: 0,
+          activeRecordIds: [],
+          latestRecordId: null,
+          latestStatus: null,
+        },
+      ],
+    };
+    await page.route('**/api/dashboard/**', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === '/api/dashboard/projects')
+        return route.fulfill({
+          json: {
+            currentProjectId: 'fixture',
+            projects: [
+              {
+                id: 'fixture',
+                name: 'Fixture',
+                path: '/fixture',
+                availability: 'available',
+                isCurrent: true,
+              },
+            ],
+          },
+        });
+      if (url.pathname.endsWith('/overview'))
+        return route.fulfill({
+          json: {
+            project: { name: 'Fixture', path: '/fixture' },
+            summary: {},
+            initialChanges: { items: [], total: 0 },
+            git: {},
+          },
+        });
+      if (url.pathname.endsWith('/application-runs'))
+        return route.fulfill({
+          json: { ...list, items: [selected], total: 1, nextCursor: null },
+        });
+      if (url.pathname.endsWith('/application-run')) {
+        requestedRecord = url.searchParams.get('recordId');
+        return route.fulfill({
+          json: {
+            ...original,
+            definition,
+            records: requestedRecord === 'check-paged' ? [...records, pagedRecord] : records,
+            currentIds: ['draft-a', 'draft-b'],
+            recordPage: { total: 7, nextCursor: 'more' },
+          },
+        });
+      }
+      return route.fulfill({ json: { items: [], pages: [] } });
+    });
+    await page.goto('/');
+    if (width === 390) await page.getByRole('button', { name: '打开导航' }).click();
+    await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+    const flow = page.getByLabel('完整流程', { exact: true });
+    await expect(flow.locator('[data-step-id]')).toHaveCount(5);
+    await expect(flow.locator('[data-step-id="draft"] [data-record-id]')).toHaveCount(2);
+    await expect(flow.locator('[data-record-id="draft-a"]')).toContainText('执行中');
+    await expect(flow.locator('[data-record-id="draft-b"]')).toContainText('结果待核对');
+    await expect(flow.locator('[data-step-id="publish"]')).toContainText(
+      '汇合依赖：内容校验 · 独立审查',
+    );
+    await expect(flow.locator('[data-step-id="discard"]')).toContainText('命令入口：cleanup');
+    await expect(flow.locator('[data-step-id="publish"]')).toContainText('循环路径');
+    await expect(flow.locator('[data-step-id="draft"]')).toContainText('同时启动');
+    await expect(flow.locator('[data-step-id="discard"]')).toContainText('尚未开始');
+    await flow.locator('[data-step-id="publish"] > .any-step-row').click();
+    const inspector =
+      width < 1350
+        ? page.getByRole('dialog', { name: '步骤与验证详情' })
+        : page.locator('.any-inspector');
+    await expect(inspector).toContainText('预期产物');
+    await expect(inspector).toContainText('output/release.md');
+    await expect(inspector).toContainText('预期输出字段');
+    await expect(inspector).toContainText('report.ref');
+    await page.screenshot({
+      path: testInfo.outputPath(`workflow-definition-${width}.png`),
+      animations: 'disabled',
+      fullPage: width === 1600,
+    });
+    if (width < 1350) await inspector.getByRole('button', { name: '关闭', exact: true }).click();
+    await flow.locator('[data-step-id="check"] > .any-step-row').click();
+    await expect.poll(() => requestedRecord).toBe('check-paged');
+    await expect(inspector).toContainText('内容校验');
+    await expect(inspector).toContainText('已完成');
+    if (width < 1350) await inspector.getByRole('button', { name: '关闭', exact: true }).click();
+    await flow.locator('[data-step-id="draft"]').getByText('查看执行记录', { exact: true }).click();
+    await flow.locator('[data-record-id="draft-old"]').click();
+    await expect(inspector).toContainText('业务结果');
+    await expect(inspector).toContainText('1260');
+    await expect(inspector).toContainText('false');
+    await expect(inspector).toContainText('内部操作只有拆成步骤或子流程后才能逐项展示');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    await page.screenshot({
+      path: testInfo.outputPath(`workflow-output-${width}.png`),
+      animations: 'disabled',
+      fullPage: width === 1600,
+    });
+  });
+}

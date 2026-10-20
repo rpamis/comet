@@ -1291,6 +1291,114 @@
   gap: 6px;
   margin: 12px 0;
 }
+.any-flow-heading {
+  padding: 14px 8px 4px;
+}
+.any-flow-heading > b {
+  font-size: 16px;
+  font-weight: 600;
+}
+.any-flow-heading p {
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+.any-flow-phases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 8px 12px;
+}
+.any-flow-phases .ant-btn {
+  height: auto;
+  min-height: 24px;
+  white-space: normal;
+  text-align: left;
+}
+.any-flow-node {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.any-flow-node.selected {
+  border-color: var(--color-accent);
+}
+.any-flow-node > .any-step-row {
+  align-items: flex-start;
+}
+.any-flow-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: 45%;
+}
+.any-flow-tags .ant-tag {
+  margin: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.any-flow-activations {
+  padding: 0 8px 8px;
+}
+.any-flow-connections,
+.any-flow-join {
+  border-top: 1px solid var(--color-border);
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+.any-flow-join {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.any-flow-connections button {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  text-align: left;
+  gap: 6px;
+  padding: 5px 0;
+  width: 100%;
+}
+.any-flow-connections button:hover {
+  color: var(--color-accent);
+}
+.any-flow-connections .ant-tag {
+  margin: 0;
+}
+.any-step-definition {
+  overflow-wrap: anywhere;
+}
+.any-expected-artifact {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.any-expected-artifact code {
+  font-family: var(--font-mono);
+}
+.any-expected-artifact > span {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+@media (max-width: 600px) {
+  .any-flow-node > .any-step-row {
+    flex-wrap: wrap;
+  }
+  .any-flow-node .any-step-copy {
+    flex-basis: calc(100% - 32px);
+  }
+  .any-flow-tags {
+    max-width: 100%;
+    justify-content: flex-start;
+    margin-left: 23px;
+  }
+}
 .any-app-title b {
   display: -webkit-box;
   -webkit-box-orient: vertical;

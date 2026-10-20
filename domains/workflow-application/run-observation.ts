@@ -10,13 +10,21 @@ import {
 } from '../engine/runtime.js';
 import { readWorkspaceRuntimeRoots } from '../workflow-contract/workspace-runtime.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
-import { readWorkflowApplicationRunRecord, type ApplicationRunRecord } from './application.js';
+import {
+  parseWorkflowApplicationManifest,
+  readWorkflowApplicationRunRecord,
+  type ApplicationRunRecord,
+} from './application.js';
 import {
   readApplicationFiles,
   applicationFilesHash,
   adaptApplicationSkill,
 } from './skill-adapter.js';
 import type { ApplicationIdentity, WorkflowApplicationManifest } from './types.js';
+import {
+  readWorkflowApplicationDefinition,
+  type WorkflowApplicationDefinition,
+} from './application-definition.js';
 
 export interface WorkflowApplicationRunObservation {
   applicationId: string;
@@ -221,13 +229,14 @@ export async function inspectWorkflowApplicationMaterial(identity: ApplicationId
   status: 'matched' | 'changed' | 'unavailable';
   packageHash?: string;
   manifest?: WorkflowApplicationManifest;
+  definition?: WorkflowApplicationDefinition;
   message?: string;
 }> {
   try {
     const files = await readApplicationFiles(identity.packageRoot);
-    const manifest = JSON.parse(
-      Buffer.from(files['application.json'] ?? '', 'base64').toString('utf8'),
-    ) as WorkflowApplicationManifest;
+    const manifest = parseWorkflowApplicationManifest(
+      JSON.parse(Buffer.from(files['application.json'] ?? '', 'base64').toString('utf8')),
+    );
     if (
       manifest.schema !== 'comet.workflow.application.v1' ||
       manifest.id !== identity.id ||
@@ -243,10 +252,15 @@ export async function inspectWorkflowApplicationMaterial(identity: ApplicationId
       package: packageHash,
       skills: skills.map((s) => ({ id: s.id, contentHash: s.contentHash })),
     });
+    const definition =
+      contentHash === identity.contentHash
+        ? readWorkflowApplicationDefinition(files, manifest)
+        : undefined;
     return {
       status: contentHash === identity.contentHash ? 'matched' : 'changed',
       packageHash,
       manifest,
+      ...(definition ? { definition } : {}),
       ...(contentHash === identity.contentHash
         ? {}
         : { message: '当前包或依赖内容已变化；保存的 Run 仍绑定原固定内容' }),
@@ -265,13 +279,25 @@ export async function inspectWorkflowApplicationPackage(
 ): Promise<{
   status: 'matched' | 'changed' | 'unavailable';
   packageHash?: string;
+  manifest?: WorkflowApplicationManifest;
+  definition?: WorkflowApplicationDefinition;
   message?: string;
 }> {
   try {
-    const packageHash = applicationFilesHash(await readApplicationFiles(packageRoot));
+    const files = await readApplicationFiles(packageRoot);
+    const packageHash = applicationFilesHash(files);
+    const manifest =
+      packageHash === expectedPackageHash
+        ? parseWorkflowApplicationManifest(
+            JSON.parse(Buffer.from(files['application.json'] ?? '', 'base64').toString('utf8')),
+          )
+        : undefined;
+    const definition = manifest ? readWorkflowApplicationDefinition(files, manifest) : undefined;
     return {
       status: packageHash === expectedPackageHash ? 'matched' : 'changed',
       packageHash,
+      ...(manifest ? { manifest } : {}),
+      ...(definition ? { definition } : {}),
       ...(packageHash === expectedPackageHash
         ? {}
         : { message: '当前候选包内容与保存的编译结果不匹配' }),

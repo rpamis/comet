@@ -20,6 +20,7 @@ import {
   type WorkflowRun,
 } from '../../../domains/engine/runtime.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
+import { DashboardSummaryIndex } from '../../../domains/dashboard/summary-index.js';
 
 async function candidateEvidenceFixture(
   project: string,
@@ -426,13 +427,17 @@ describe('Comet Any observations', () => {
   });
   it('returns an explicit cache failure rather than silently scanning all Runtime records', async () => {
     const fixture = await applicationObservationFixture(project);
-    const blocked = path.join(root, 'blocked-cache');
-    await fs.writeFile(blocked, 'not a directory');
-    vi.stubEnv('XDG_CACHE_HOME', blocked);
-    await expect(collectDashboardApplicationRunPage(project)).rejects.toMatchObject({
-      statusCode: 503,
-      code: 'APPLICATION_INDEX_UNAVAILABLE',
-    });
+    const unavailable = vi
+      .spyOn(DashboardSummaryIndex.prototype, 'ensure')
+      .mockRejectedValueOnce(new Error('Fixture cache is unavailable'));
+    try {
+      await expect(collectDashboardApplicationRunPage(project)).rejects.toMatchObject({
+        statusCode: 503,
+        code: 'APPLICATION_INDEX_UNAVAILABLE',
+      });
+    } finally {
+      unavailable.mockRestore();
+    }
     expect(await fixture.outer.read(fixture.run.runId)).toMatchObject({
       revision: fixture.run.revision,
     });

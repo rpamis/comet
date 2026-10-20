@@ -24,6 +24,7 @@ import {
   type ApplicationHostIntegrationOptions,
 } from '../../platform/install/application-host.js';
 import { loadWorkflowApplication, parseWorkflowApplicationManifest } from './application.js';
+import { readWorkflowApplicationDefinition } from './application-definition.js';
 import {
   adaptApplicationSkill,
   applicationError,
@@ -166,6 +167,7 @@ async function completePackage(file: string, projectRoot: string) {
   const manifest = parseWorkflowApplicationManifest(
     JSON.parse(Buffer.from(files['application.json'] ?? '', 'base64').toString('utf8')),
   );
+  readWorkflowApplicationDefinition(files, manifest);
   if (manifest.runtimeVersion !== getCurrentVersion())
     applicationError(`应用要求 Runtime ${manifest.runtimeVersion}，当前是 ${getCurrentVersion()}`);
   if (!files[manifest.entrySkill] || !files[manifest.module])

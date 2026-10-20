@@ -892,6 +892,7 @@ export function inspectWorkflowApplicationMaterial(identity: ApplicationIdentity
     status: 'matched' | 'changed' | 'unavailable';
     packageHash?: string;
     manifest?: WorkflowApplicationManifest;
+    definition?: WorkflowApplicationDefinition;
     message?: string;
 }>;
 
@@ -899,6 +900,8 @@ export function inspectWorkflowApplicationMaterial(identity: ApplicationIdentity
 export function inspectWorkflowApplicationPackage(packageRoot: string, expectedPackageHash: string): Promise<{
     status: 'matched' | 'changed' | 'unavailable';
     packageHash?: string;
+    manifest?: WorkflowApplicationManifest;
+    definition?: WorkflowApplicationDefinition;
     message?: string;
 }>;
 
@@ -983,6 +986,8 @@ export function listWorkflowApplicationRunSources(projectRoot: string, options?:
 // @public (undocumented)
 export interface LoadedWorkflowApplication {
     // (undocumented)
+    definition?: WorkflowApplicationDefinition;
+    // (undocumented)
     identity: ApplicationIdentity;
     // (undocumented)
     implementation: WorkflowApplicationImplementation;
@@ -1004,8 +1009,14 @@ export function loadWorkflowApplication(options: {
     readOnly?: boolean;
 }): Promise<LoadedWorkflowApplication>;
 
+// @public
+export function matchesWorkflowApplicationDefinition(definition: WorkflowApplicationDefinition, run: Pick<WorkflowRun, 'workflow' | 'definitionHashes'>): boolean;
+
 // @public (undocumented)
 export function parseEvaluationMatrix(value: unknown, declaredHash?: unknown): EvaluationCaseIdentity[];
+
+// @public
+export function parseWorkflowApplicationDefinition(value: unknown, manifest?: Pick<WorkflowApplicationManifest, 'id' | 'version'>): WorkflowApplicationDefinition;
 
 // @public
 export function previewWorkflowApplicationInstall(options: ApplicationDeliveryOptions & {
@@ -1741,6 +1752,24 @@ export function validateApplicationEvaluationCompletion(projectRoot: string, res
 export function validateEvaluationCase(raw: unknown, experiment: string, file: string, expected: EvaluationCaseIdentity[]): EvaluationCaseIdentity;
 
 // @public (undocumented)
+export function validateWorkflowApplicationPresentation(value: unknown, workflows?: readonly WorkflowDefinition[]): asserts value is WorkflowApplicationPresentation;
+
+// @public
+export interface WorkflowApplicationDefinition {
+    // (undocumented)
+    application: {
+        id: string;
+        version: string;
+    };
+    // (undocumented)
+    presentation?: WorkflowApplicationPresentation;
+    // (undocumented)
+    schema: 'comet.workflow.application.definition.v1';
+    // (undocumented)
+    workflows: WorkflowDefinition[];
+}
+
+// @public (undocumented)
 export interface WorkflowApplicationFactoryContext {
     // (undocumented)
     createSkillExecutor(host: SkillExecutionHost): RuntimeExecutor;
@@ -1773,6 +1802,7 @@ export interface WorkflowApplicationManifest {
     base: ApplicationBase;
     // (undocumented)
     bindings: ApplicationSkillBinding[];
+    definition?: string;
     // (undocumented)
     entrySkill: string;
     // (undocumented)
@@ -1790,6 +1820,16 @@ export interface WorkflowApplicationManifest {
 }
 
 // @public (undocumented)
+export interface WorkflowApplicationPresentation {
+    // (undocumented)
+    description?: string;
+    // (undocumented)
+    steps?: WorkflowApplicationStepPresentation[];
+    // (undocumented)
+    title?: string;
+}
+
+// @public (undocumented)
 export interface WorkflowApplicationRunObservation {
     // (undocumented)
     applicationId: string;
@@ -1804,6 +1844,24 @@ export interface WorkflowApplicationRunObservation {
     runId: string | null;
     // (undocumented)
     storageKey: string;
+}
+
+// @public (undocumented)
+export interface WorkflowApplicationStepPresentation {
+    // (undocumented)
+    description?: string;
+    outputFields?: Array<{
+        path: string;
+        label: string;
+    }>;
+    // (undocumented)
+    phase?: string;
+    // (undocumented)
+    stepId: string;
+    // (undocumented)
+    title: string;
+    // (undocumented)
+    workflowId: string;
 }
 
 // (No @packageDocumentation comment for this package)

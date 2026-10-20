@@ -35,6 +35,8 @@ it('shows original creator and parent/child snapshots in a fresh project with re
     version: '3',
     parallel: true,
     child: true,
+    definition: true,
+    presentation: { title: 'Archived application' },
   });
   const fixture = await archiveFixture(project, creator.run);
   fixture.manifest.application.contentHash = app.identity.contentHash;
@@ -64,6 +66,8 @@ it('shows original creator and parent/child snapshots in a fresh project with re
   expect(detail.children[0].locator).toBe(child.locator);
   expect(detail.records.some((r) => r.childLocator === child.locator)).toBe(true);
   expect(detail.material.status).toBe('matched');
+  expect(detail.material).toEqual({ status: 'matched' });
+  expect(detail.definition).toMatchObject({ status: 'available', title: 'Archived application' });
   expect(detail.evidence.find((e) => e.kind === 'model')).toMatchObject({
     status: 'incomplete',
     evalRunId: 'archive-example',

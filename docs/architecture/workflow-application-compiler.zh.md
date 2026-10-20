@@ -24,7 +24,38 @@
 
 Native/Classic 的 `modules['bindings.mjs']` 必须导出 `createBindings(context)`，返回 `{ validators, executors }`。验证器提供固定的 `id`、`version` 和真实 `validate`；执行端口可用 `context.createSkillExecutor(host)` 创建，必须支持对应 Skill 路由、声明所需能力并提供领取预检。实现集合不能返回 `workflows` 或覆盖领域转移处理器。`application.mjs` 由编译器生成，不能由调用者覆盖。模块导入须符合完整应用加载器的固定依赖规则；加载阶段须使用已经审查、无业务副作用的工厂。
 
-输出包包括同源的 `application.json`、`application.mjs`、`SKILL.md`、`installation.json`、固定模块和全部 Skill 资源。安装材料保存流程摘要、绑定、Runtime 版本及应用恢复身份。相同方案和固定依赖产生相同字节摘要；无效转换、缺失验证器、无法路由的执行端口、重复或冲突身份，以及声明图与实际工厂不一致，均在生成目标前被拒绝。
+输出包包括同源的 `application.json`、`application.mjs`、`workflow.json`、`SKILL.md`、`installation.json`、固定模块和全部 Skill 资源。安装材料保存流程摘要、绑定、Runtime 版本及应用恢复身份。相同方案和固定依赖产生相同字节摘要；无效转换、缺失验证器、无法路由的执行端口、重复或冲突身份，以及声明图与实际工厂不一致，均在生成目标前被拒绝。
+
+## 在 Dashboard 展示自定义流程
+
+组合器把实际流程定义保存到 `workflow.json`，由 `application.json` 的 `definition` 引用。文件随应用一起分发，不依赖原项目的 Creator 记录。装配和加载时会核对它与实际执行定义一致，Dashboard 读取时还会核对当前 Run 固定的定义摘要。查看页面不会执行应用模块。
+
+在 `proposal.presentation` 中填写面向用户的名称、阶段和输出字段，例如：
+
+```json
+{
+  "title": "每周报告",
+  "description": "生成草稿，审阅后发布",
+  "steps": [
+    {
+      "workflowId": "report-publishing",
+      "stepId": "generate",
+      "title": "生成报告草稿",
+      "phase": "准备",
+      "description": "整理来源并保存可审阅的草稿。",
+      "outputFields": [{ "path": "compose.ref", "label": "草稿文件" }]
+    }
+  ]
+}
+```
+
+`workflowId` 和 `stepId` 必须引用实际步骤。`outputFields.path` 从当前执行记录的 `output` 读取字段，使用点分路径；数组项可用数字下标。不支持脚本或表达式，缺失字段不会被猜测。展示信息参与方案与固定包摘要，修改后应重新确认、编译和分发。
+
+Dashboard 将完整定义与真实执行记录组合，显示阶段、尚未执行的节点、候选分支、并行汇合、子流程和循环中的各轮执行。点击未执行节点可查看定义和必需产物；点击已发生的节点可查看实际输入输出、等待与产物。计划中的连接只表示允许的路径，不表示它已经执行，也不据此计算完成百分比。
+
+一个 Skill 若把搜索、写稿、审核等全部放在一次调用内，页面只能观察这次调用及其结果。需要分别观察时，应在方案中拆成显式步骤或 `child_workflow`；Creator 的分析动作会提示作者说明这类观测范围。SDK 的完成状态只证明声明的流程已完成，业务结果仍由对应验证器与实际产物证明。
+
+没有定义文件的旧应用继续显示执行记录。固定材料缺失、发生变化或与 Run 不一致时，页面说明原因并保留实际记录，不套用其他版本的流程图。
 
 `@rpamis/comet/applications` 的 `createApplicationArtifactValidator` 用于实际产物检查。配置必须包含工件路径、JSON Schema/内容要求或业务检查、当前真实候选读取函数，以及原 Action 候选读取函数。成功回报仅允许 `{ bindingHash, candidateHash, artifactHashes }`，分别绑定原 Action 输入、当前且仍与 Action 一致的候选和实际文件 SHA-256。JSON 工件先解析真实字节再运行 Schema；`validateActual` 可继续检查实际内容的业务含义。候选或文件在异步验收期间变化也会被拒绝。
 

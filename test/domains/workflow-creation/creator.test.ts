@@ -120,6 +120,25 @@ async function analyzed(
     : run;
 }
 
+it('tells the author how to declare Dashboard presentation and observable Skill boundaries', async () => {
+  const runtime = createCreatorRuntime(root);
+  const run = await runtime.start({
+    runId: 'presentation-authoring',
+    workflow: { id: 'comet-creator', version: '6' },
+    input: { goal: '报告审批', installTarget: 'export', host: 'codex' },
+  });
+  const action = run.actions.find((action) => action.stepId === 'analyze')!;
+  expect(action.input).toMatchObject({
+    input: {
+      presentationRequirements: {
+        field: 'proposal.presentation',
+        instruction: expect.stringContaining('workflowId、stepId'),
+      },
+    },
+  });
+  expect(JSON.stringify(action.input)).toContain('显式步骤或 SDK 子流程');
+});
+
 it.each(['documents', 'SKILL.md', 'rules/workflow-guard.md'])(
   'rejects analysis without Agent-authored %s',
   async (missing) => {

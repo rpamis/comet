@@ -41,6 +41,7 @@ import {
   refreshApplicationRunDetail,
   mergeApplicationRecordPage,
   fetchApplicationObservation,
+  applicationWorkflowView,
 } from './application-data.js';
 import {
   ApplicationStatus,
@@ -54,6 +55,8 @@ import { readApplicationDemo } from './application-demo.js';
 import './any-workflow-panel.css';
 import { ApplicationStepList } from './application-step-list.jsx';
 import { ApplicationDeliveryModal } from './application-delivery-modal.jsx';
+import { ApplicationWorkflowView } from './application-workflow-view.jsx';
+import { ApplicationDefinitionInspector } from './application-step-definition.jsx';
 
 const attention = (r) =>
   r.error ||
@@ -118,6 +121,11 @@ export function AnyWorkflowPanel({
   const [recordId, setRecordId] = useState(() =>
     route.workflow === 'any' ? (route.recordId ?? null) : null,
   );
+  const [definitionStepId, setDefinitionStepId] = useState(null);
+  const [flowLoading, setFlowLoading] = useState(null);
+  const flowRequest = useRef(null);
+  const definitionStepRef = useRef(definitionStepId);
+  definitionStepRef.current = definitionStepId;
   const [tab, setTab] = useState(() =>
     route.workflow === 'any' ? (route.runTab ?? 'steps') : 'steps',
   );
@@ -212,6 +220,9 @@ export function AnyWorkflowPanel({
       if (next !== locator) setDetail(null);
       setDetailError(null);
       setRecordId(nextRecord);
+      setDefinitionStepId(null);
+      flowRequest.current?.abort();
+      setFlowLoading(null);
       setTab(restore?.tab ?? 'steps');
       setManual(Boolean(restore));
       setNews(false);
@@ -241,6 +252,9 @@ export function AnyWorkflowPanel({
     ) {
       setLocator(route.runLocator);
       setRecordId(route.recordId ?? null);
+      setDefinitionStepId(null);
+      flowRequest.current?.abort();
+      setFlowLoading(null);
       setTab(route.runTab ?? 'steps');
       setDetail(null);
       setDetailError(null);
@@ -316,7 +330,7 @@ export function AnyWorkflowPanel({
           setLocator(next.locator);
           remember(next.locator, recordRef.current, tab);
         }
-        if (!recordRef.current) {
+        if (!recordRef.current && !definitionStepRef.current) {
           const first = initialApplicationRecord(next);
           setRecordId(first?.id ?? null);
           remember(next.locator, first?.id ?? null, tab);
@@ -353,6 +367,7 @@ export function AnyWorkflowPanel({
       pageRequest.current?.abort();
       detailRequest.current?.abort();
       recordsRequest.current?.abort();
+      flowRequest.current?.abort();
     },
     [],
   );
@@ -448,6 +463,8 @@ export function AnyWorkflowPanel({
   const selectedRecord = detail?.records.find((r) => r.id === recordId) ?? null;
   const current = detail?.records.filter((r) => detail.currentIds.includes(r.id)) ?? [];
   const steps = useMemo(() => groupApplicationSteps(detail?.records ?? []), [detail]);
+  const flow = useMemo(() => applicationWorkflowView(detail), [detail]);
+  const selectedDefinition = flow?.nodes.find((node) => node.stepId === definitionStepId);
 
   const recordsInMode = selectedGroup?.records.filter((r) => r.kind === mode) ?? [];
   const counts = [
@@ -466,15 +483,66 @@ export function AnyWorkflowPanel({
     }))
     .filter((c) => c.count);
   const selectRecord = (record, { locate = false } = {}) => {
+    flowRequest.current?.abort();
+    setFlowLoading(null);
+    setDefinitionStepId(null);
     setRecordId(record.id);
-    setExpanded((v) => ({ ...v, [`${locator}:${record.phase}`]: true }));
+    const phase = flow?.nodes.find((node) => node.stepId === record.stepId)?.phase;
+    setExpanded((v) => ({
+      ...v,
+      [`${locator}:${record.phase}`]: true,
+      ...(phase ? { [`${locator}:flow:${phase}`]: true } : {}),
+    }));
     setManual(!locate);
     if (locate) {
       setTab('steps');
       setNews(false);
-      setExpanded((v) => ({ ...v, [`${locator}:${record.phase}`]: true }));
     }
     remember(locator, record.id, locate ? 'steps' : tab);
+    if (innerWidth < 1350) setInspectorOpen(true);
+  };
+  const selectFlowRecord = async (node, id) => {
+    const loaded = detail?.records.find((record) => record.id === id);
+    if (loaded) return selectRecord(loaded);
+    flowRequest.current?.abort();
+    const controller = new AbortController();
+    flowRequest.current = controller;
+    setDefinitionStepId(node.stepId);
+    setRecordId(id);
+    setManual(true);
+    setFlowLoading(node.stepId);
+    remember(locator, id, tab);
+    if (innerWidth < 1350) setInspectorOpen(true);
+    try {
+      const next = await request(
+        'application-run',
+        { locator, recordId: id, recordLimit: 40 },
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      setDetail((previous) =>
+        previous?.locator === next.locator && previous.revision > next.revision
+          ? previous
+          : refreshApplicationRunDetail(previous, next),
+      );
+      if (next.records.some((record) => record.id === id)) setDefinitionStepId(null);
+      setDetailError(null);
+    } catch (error) {
+      if (!controller.signal.aborted) setDetailError(error);
+    } finally {
+      if (!controller.signal.aborted) setFlowLoading(null);
+    }
+  };
+  const selectFlowStep = (node) => {
+    if (!node) return;
+    const id = node.activeRecordIds[0] ?? node.latestRecordId;
+    if (id) return selectFlowRecord(node, id);
+    flowRequest.current?.abort();
+    setFlowLoading(null);
+    setDefinitionStepId(node.stepId);
+    setRecordId(null);
+    setManual(true);
+    remember(locator, null, tab);
     if (innerWidth < 1350) setInspectorOpen(true);
   };
   const locateCurrent = () => {
@@ -699,10 +767,13 @@ export function AnyWorkflowPanel({
       }
     }
   };
-  const inspector = (
+  const inspector = selectedDefinition ? (
+    <ApplicationDefinitionInspector step={selectedDefinition} />
+  ) : (
     <ApplicationRecordInspector
       detail={detail}
       record={selectedRecord}
+      definitionStep={flow?.nodes.find((node) => node.stepId === selectedRecord?.stepId)}
       onChild={openChild}
       onArtifact={openArtifact}
       onEvidence={openEvidence}
@@ -1134,7 +1205,7 @@ export function AnyWorkflowPanel({
                       </Button>
                     )}
                   </div>
-                  {recordId && !selectedRecord && (
+                  {recordId && !selectedRecord && !flowLoading && (
                     <Alert
                       className="any-error"
                       type="info"
@@ -1167,15 +1238,43 @@ export function AnyWorkflowPanel({
                         {t('加载更多执行记录')}
                       </Button>
                     )}
-                    {tab === 'steps' && (
-                      <ApplicationStepList
-                        steps={steps}
+                    {tab === 'steps' && flow && (
+                      <ApplicationWorkflowView
+                        flow={flow}
                         locator={locator}
                         recordId={recordId}
+                        stepId={definitionStepId}
                         expanded={expanded}
                         setExpanded={setExpanded}
-                        selectRecord={selectRecord}
+                        selectStep={selectFlowStep}
+                        selectRecordId={selectFlowRecord}
+                        loading={flowLoading}
                       />
+                    )}
+                    {tab === 'steps' && !flow && (
+                      <>
+                        {detail.definition?.status && detail.definition.status !== 'available' && (
+                          <Alert
+                            className="any-error"
+                            showIcon
+                            type={detail.definition.status === 'missing' ? 'info' : 'warning'}
+                            title={t('完整流程定义暂不可用，继续展示实际执行记录。')}
+                            description={
+                              detail.definition.message
+                                ? systemText(detail.definition.message)
+                                : undefined
+                            }
+                          />
+                        )}
+                        <ApplicationStepList
+                          steps={steps}
+                          locator={locator}
+                          recordId={recordId}
+                          expanded={expanded}
+                          setExpanded={setExpanded}
+                          selectRecord={selectRecord}
+                        />
+                      </>
                     )}
                     {tab === 'history' && (
                       <div className="any-history">
