@@ -205,7 +205,7 @@ test('Any delivery demo shows destination controls without making delivery API r
   });
   await page.goto('/?demo');
   await page.getByRole('menuitem', { name: 'Comet Any' }).click();
-  await page.getByText('应用运行', { exact: true }).last().click();
+  await expect(page.getByRole('radio', { name: '应用运行', exact: true })).toBeChecked();
   await page.getByRole('button', { name: '分发 / 导出' }).click();
   const dialog = page.getByRole('dialog', { name: '分发 / 导出应用' });
   await expect(dialog).toContainText('示例预览');
@@ -367,6 +367,7 @@ test('Any preserves pinned runs, child navigation and historical selection throu
   await expect(page.getByRole('region', { name: 'Comet Any 工作区' })).toBeVisible();
   const workspaceScroll = page.locator('[data-dashboard-scroll="workspace"]');
   await expect(page.getByRole('heading', { name: 'Comet Any', exact: true })).toHaveCount(0);
+  await page.getByText('创作过程', { exact: true }).last().click();
   await expect(page.locator('.any-current')).toContainText('确认安装');
   expect(
     await page.locator('.any-current').evaluate((element) => element.getBoundingClientRect().top),
@@ -652,6 +653,7 @@ test('Any self-source links retain detail and Eval returns to the originating ev
   });
   await page.goto('/');
   await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await page.getByText('创作过程', { exact: true }).last().click();
   await expect(page.locator('.any-current')).toContainText('确认安装');
   await page.getByRole('tab', { name: '版本与证据' }).click();
   const before = reads;
@@ -674,6 +676,58 @@ test('Any self-source links retain detail and Eval returns to the originating ev
     'true',
   );
   expect(await page.evaluate(() => window.history.state.cometDashboard)).toEqual(origin);
+});
+
+test('Any completes an in-flight Run read while discovery is still indexing', async ({ page }) => {
+  let finished = 0;
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/projects'))
+      return route.fulfill({
+        json: {
+          currentProjectId: 'fixture',
+          projects: [
+            {
+              id: 'fixture',
+              name: 'Fixture',
+              path: '/fixture',
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+    if (url.pathname.endsWith('/overview'))
+      return route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture' },
+          summary: {},
+          initialChanges: { items: [], total: 0 },
+          git: {},
+        },
+      });
+    if (url.pathname.endsWith('/application-runs'))
+      return route.fulfill({
+        json: { ...readApplicationDemo('application-runs', {}), indexing: true },
+      });
+    if (url.pathname.endsWith('/application-run')) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await route
+        .fulfill({
+          json: readApplicationDemo('application-run', {
+            locator: url.searchParams.get('locator'),
+          }),
+        })
+        .catch(() => {});
+      finished++;
+      return;
+    }
+    return route.fulfill({ json: { items: [], pages: [] } });
+  });
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await expect(page.getByRole('tab', { name: '步骤', exact: true })).toBeVisible({ timeout: 6500 });
+  expect(finished).toBeGreaterThan(0);
 });
 
 test('Any ignores a delayed old search page after the new search has loaded', async ({ page }) => {

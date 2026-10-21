@@ -239,6 +239,24 @@ export interface ApplicationRunRecord {
 }
 
 // @public (undocumented)
+export interface ApplicationSkillActionReceipt {
+    // (undocumented)
+    actionId: string;
+    // (undocumented)
+    applicationId: string;
+    // (undocumented)
+    attempt: number;
+    // (undocumented)
+    claimToken: string;
+    // (undocumented)
+    inputHash: string;
+    // (undocumented)
+    kind: 'action';
+    // (undocumented)
+    runId: string;
+}
+
+// @public (undocumented)
 export interface ApplicationSkillBinding {
     // (undocumented)
     authorizationChoices?: string[];
@@ -265,6 +283,74 @@ export interface ApplicationSkillDependency {
     // (undocumented)
     id: string;
     root: string;
+}
+
+// @public (undocumented)
+export type ApplicationSkillInvocationRequest = {
+    operation: 'start';
+    input: RuntimeValue;
+    runId?: string;
+    workflowId?: string;
+    initialState?: RuntimeValue;
+} | {
+    operation: 'inspect' | 'resume';
+    runId?: string;
+} | {
+    operation: 'next';
+    runId: string;
+} | {
+    operation: 'claim';
+    runId: string;
+    actionId: string;
+    sessionId?: string;
+    capabilities?: string[];
+} | {
+    operation: 'execute';
+    runId: string;
+    actionId: string;
+    executorId: string;
+} | {
+    operation: 'record-outcome';
+    receipt: ApplicationSkillActionReceipt;
+    result: Pick<RuntimeOutcome, 'status' | 'output' | 'summary' | 'artifacts' | 'event'>;
+} | {
+    operation: 'resolve-wait';
+    receipt: ApplicationSkillWaitReceipt;
+    choice: string;
+    decisionId: string;
+};
+
+// @public (undocumented)
+export interface ApplicationSkillInvocationResult {
+    // (undocumented)
+    application: Pick<ApplicationIdentity, 'id' | 'version' | 'packageRoot'>;
+    // (undocumented)
+    receipts: {
+        actions: string[];
+        waits: string[];
+    };
+    // (undocumented)
+    run: ReturnType<typeof projectWorkflowApplicationRun>;
+    // (undocumented)
+    schema: 'comet.application.skill-invocation.v1';
+    // (undocumented)
+    skillWork: ReturnType<typeof applicationSkillWork>;
+    // (undocumented)
+    waitSkillWork: ReturnType<typeof applicationWaitSkillWork>;
+}
+
+// @public (undocumented)
+export interface ApplicationSkillWaitReceipt {
+    // (undocumented)
+    applicationId: string;
+    // (undocumented)
+    kind: 'wait';
+    // (undocumented)
+    proposalHash: string;
+    // (undocumented)
+    runId: string;
+    // (undocumented)
+    waitId: string;
 }
 
 // @public
@@ -949,6 +1035,14 @@ export function installWorkflowApplication(options: ApplicationDeliveryOptions &
         platforms: string[];
     }>;
 }>;
+
+// @public
+export function invokeWorkflowApplicationSkill(options: {
+    file: string;
+    projectRoot: string;
+    request: ApplicationSkillInvocationRequest;
+    context?: Pick<RuntimeInvocationContext, 'environment' | 'signal'>;
+}): Promise<ApplicationSkillInvocationResult>;
 
 // @public (undocumented)
 export function iterateWorkflowApplicationRunSources(projectRoot: string, options?: {

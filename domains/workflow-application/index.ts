@@ -84,6 +84,13 @@ export type {
 export { resolveInstalledWorkflowApplication } from './installed-application.js';
 
 export { projectWorkflowApplicationRun } from './run-view.js';
+export { invokeWorkflowApplicationSkill } from './skill-invocation.js';
+export type {
+  ApplicationSkillActionReceipt,
+  ApplicationSkillWaitReceipt,
+  ApplicationSkillInvocationRequest,
+  ApplicationSkillInvocationResult,
+} from './skill-invocation.js';
 export type { SelectedWorkflowApplicationStatus } from './application.js';
 export type { ApplicationRunRecord } from './application.js';
 

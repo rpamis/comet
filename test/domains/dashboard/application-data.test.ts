@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import * as applicationData from '../../../domains/dashboard/web/src/application-data.js';
 import {
   groupApplicationRuns,
   groupApplicationSteps,
@@ -10,6 +11,46 @@ import {
 } from '../../../domains/dashboard/web/src/application-data.js';
 
 describe('Comet Any workspace identity', () => {
+  it('orders runtime stages by their declared dependencies rather than canonical JSON key order', () => {
+    const view = applicationWorkflowView({
+      definition: {
+        status: 'available',
+        workflow: {
+          id: 'editor',
+          entry: ['draft'],
+          steps: {
+            draft: { type: 'call_tool' },
+            publish: { type: 'call_tool' },
+            review: { type: 'ask_user' },
+          },
+          transitions: [
+            { from: 'draft', to: 'review', on: 'succeeded' },
+            { from: 'review', to: 'publish', on: 'approved' },
+          ],
+        },
+        steps: [
+          { stepId: 'draft', phase: '整理' },
+          { stepId: 'publish', phase: '交付' },
+          { stepId: 'review', phase: '确认' },
+        ],
+      },
+      records: [],
+    });
+    expect(view.phases).toEqual(['整理', '确认', '交付']);
+    expect(view.nodes.map((node: any) => node.stepId)).toEqual(['draft', 'review', 'publish']);
+  });
+  it('opens the actual active application Run before creation records and old failures', () => {
+    const activity = { unknown: 0, decisions: 0, evidence: 0 };
+    const creator = { kind: 'creator', locator: 'creation', status: 'waiting', activity };
+    const failed = { kind: 'application', locator: 'old', status: 'failed', activity };
+    const running = { kind: 'application', locator: 'current', status: 'running', activity };
+    expect(applicationData.preferredApplicationRun?.([creator, failed, running])).toBe(running);
+    expect(
+      applicationData.preferredApplicationRun?.([creator, { ...running, status: 'completed' }])
+        ?.locator,
+    ).toBe('current');
+    expect(applicationData.preferredApplicationRun?.([creator])).toBe(creator);
+  });
   it('groups versions by application while retaining independent early creations', () => {
     const items = [
       { locator: 'draft', kind: 'creator', goal: 'Goal', application: null },

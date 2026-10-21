@@ -8,7 +8,7 @@
 2. 调用 `prepareWorkflowApplicationPlan({ proposal, projectRoot, packageRoot, dependencyRoot })`。它加载实际实现集合，按组合位置装配有效流程，再返回包含有效定义的 JSON 方案。此步骤只查询工厂和执行路由，不执行业务 Action。
 3. 展示方案、步骤、Skill、验收和失败恢复路径，取得当前方案的用户确认。用 `hashRuntimeValue(plan)` 保存确认摘要；摘要本身不能证明用户已经授权。
 4. 调用 `compileWorkflowApplication({ plan, confirmationHash, projectRoot, packageRoot, dependencyRoot })`。编译器重新读取依赖、装配真实工厂并核对有效定义。方案变化后需重新展示和确认。
-5. 使用生成的 `application.json` 和公开 `comet runtime dispatch` 启动应用。恢复沿原应用身份与 Run ID，先查询原 Action，再按原 attempt、inputHash 和 claimToken 继续。
+5. 安装后在 Agent 中调用生成的 Skill，由包内入口启动和继续应用。自定义宿主也可使用公开 `comet runtime dispatch`；恢复沿原应用身份与 Run ID，先查询原 Action，再按原 attempt、inputHash 和 claimToken 继续。
 
 `packageRoot` 必须是尚不存在的目录，其父目录须能解析已安装的 Comet 包。相对依赖目录必须显式提供 `dependencyRoot`；依赖读入后复制到包内的 `skills/<身份>/`，原文件保持不变。已有目标不会被覆盖。
 
@@ -27,6 +27,16 @@ Native/Classic 的 `modules['bindings.mjs']` 必须导出 `createBindings(contex
 输出包包括同源的 `application.json`、`application.mjs`、`workflow.json`、`SKILL.md`、`installation.json`、固定模块和全部 Skill 资源。安装材料保存流程摘要、绑定、Runtime 版本及应用恢复身份。相同方案和固定依赖产生相同字节摘要；无效转换、缺失验证器、无法路由的执行端口、重复或冲突身份，以及声明图与实际工厂不一致，均在生成目标前被拒绝。
 
 ## 在 Dashboard 展示自定义流程
+
+用户安装应用后，直接在 Agent 对话中调用生成的 Skill。生成器把启动和恢复指令放在入口正文前面，并提供固定包内的 `scripts/comet-run.mjs`；原有业务正文和资源引用继续保留。Agent 使用入口创建 Run，先领取需要自行执行的步骤，再提交真实结果；机器步骤使用已注册执行器，用户决定仍在当前对话中取得并提交。用户无需操作 Dashboard 或手动维护步骤状态。
+
+入口响应提供同一 Run 的当前 Action、Wait、固定 Skill 和后续命令。结果回执绑定原 Action 的尝试、输入摘要与领取凭证；确认回执绑定原 Wait 和提案摘要。已声明产物的摘要由入口读取真实文件收集，再由 SDK 核对；额外工件仍须提供真实引用和摘要。输入与结果 JSON 是临时请求，推进状态始终由 SDK 保存。恢复使用原 Run ID 查询；新会话没有 Run ID 时可先查询当前应用的唯一未结束任务，多项任务需用户选择。已领取或结果未知的工作先核对原结果；新的独立任务创建新的 Run。入口沿 Run 固定的应用版本恢复，不套用后来安装的新版本。
+
+Dashboard 自动读取这些运行记录，默认优先显示正在进行的应用 Run；创作记录仍可单独切换查看。完整调用链路的验收须从实际安装的 Skill 入口开始，覆盖 Agent 执行、对话确认、恢复及 Dashboard 观测；直接调用 SDK 的测试只覆盖其中一部分。
+
+`resume` 恢复未结束 Run 的当前应用归属，让后续宿主写入仍由对应应用的 Hook 检查；它不重新领取或推进步骤。`inspect` 只读查看，不切换当前需求。宿主环境和认证材料只经本次调用上下文传给执行端口，不写入运行输入、生成包或 Dashboard 记录。
+
+需要初始状态的应用可由业务初始化入口取得当前项目的真实状态，并通过 `start --initial-state-file <JSON文件>` 提供；通用入口只传给原 SDK 校验，不猜测领域默认值，也不复制评估用例的初始状态。
 
 组合器把实际流程定义保存到 `workflow.json`，由 `application.json` 的 `definition` 引用。文件随应用一起分发，不依赖原项目的 Creator 记录。装配和加载时会核对它与实际执行定义一致，Dashboard 读取时还会核对当前 Run 固定的定义摘要。查看页面不会执行应用模块。
 

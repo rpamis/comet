@@ -34,6 +34,8 @@ import { useDashboardLanguage } from './dashboard-language.jsx';
 import { navigateDashboard, useDashboardNavigation } from './dashboard-navigation.js';
 import {
   groupApplicationRuns,
+  preferredApplicationRun,
+  applicationRunNeedsAttention as attention,
   groupApplicationSteps,
   initialApplicationRecord,
   mergeApplicationRunPages,
@@ -58,20 +60,7 @@ import { ApplicationDeliveryModal } from './application-delivery-modal.jsx';
 import { ApplicationWorkflowView } from './application-workflow-view.jsx';
 import { ApplicationDefinitionInspector } from './application-step-definition.jsx';
 
-const attention = (r) =>
-  r.error ||
-  r.status === 'failed' ||
-  r.activity.unknown + r.activity.decisions + r.activity.evidence > 0;
-const preferred = (records) => {
-  const ordered = [...records.filter((r) => !r.isChild), ...records.filter((r) => r.isChild)];
-  const roots = ordered.filter((r) => !r.isChild);
-  return (
-    roots.find(attention) ??
-    roots.find((r) => ['running', 'waiting', 'unknown'].includes(r.status)) ??
-    ordered.find(attention) ??
-    ordered[0]
-  );
-};
+const preferred = preferredApplicationRun;
 const baseLabel = (base) =>
   base === 'native'
     ? t('Native 扩展')
@@ -173,6 +162,7 @@ export function AnyWorkflowPanel({
   }, [listContext]);
   const latestRefreshToken = useRef(refreshToken),
     detailRequest = useRef(null),
+    detailPending = useRef(false),
     parentStack = useRef([]),
     anchor = useRef(null),
     restoreScroll = useRef(null);
@@ -301,12 +291,16 @@ export function AnyWorkflowPanel({
     return () => controller.abort();
   }, [request, listContext]);
   useEffect(() => {
-    if (!locator) return;
+    detailRequest.current?.abort();
+  }, [locator, request, refreshToken]);
+  useEffect(() => {
+    if (!locator || (detailPending.current && !detailRequest.current?.signal.aborted)) return;
     detailRequest.current?.abort();
     recordsRequest.current?.abort();
     setRecordsLoading(false);
     const controller = new AbortController();
     detailRequest.current = controller;
+    detailPending.current = true;
     setDetailLoading(!detailRef.current);
     request(
       'application-run',
@@ -340,9 +334,9 @@ export function AnyWorkflowPanel({
         if (!controller.signal.aborted) setDetailError(error);
       })
       .finally(() => {
+        if (detailRequest.current === controller) detailPending.current = false;
         if (!controller.signal.aborted) setDetailLoading(false);
       });
-    return () => controller.abort();
   }, [locator, request, refreshToken, tick]);
   useLayoutEffect(() => {
     if (restoreScroll.current && detail?.locator === restoreScroll.current.locator) {
@@ -561,7 +555,7 @@ export function AnyWorkflowPanel({
     });
   };
   const selectGroup = (group) => {
-    const chosen = preferred(group.creators) ?? preferred(group.runs);
+    const chosen = preferred(group.records);
     if (chosen) chooseRun(chosen.locator);
   };
   const openChild = (record) => {

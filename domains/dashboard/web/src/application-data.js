@@ -1,5 +1,35 @@
 import { dashboardResponseError } from './dashboard-web-state.js';
 
+export function applicationRunNeedsAttention(record) {
+  return (
+    record.error ||
+    record.status === 'failed' ||
+    (record.activity?.unknown ?? 0) +
+      (record.activity?.decisions ?? 0) +
+      (record.activity?.evidence ?? 0) >
+      0
+  );
+}
+
+export function preferredApplicationRun(records) {
+  const roots = records.filter((record) => !record.isChild);
+  const applications = roots.filter((record) => record.kind === 'application');
+  const active = applications.filter((record) =>
+    ['running', 'waiting', 'unknown'].includes(record.status),
+  );
+  const attention = applicationRunNeedsAttention;
+  return (
+    active.find(attention) ??
+    active[0] ??
+    applications.find(attention) ??
+    applications[0] ??
+    roots.find(attention) ??
+    roots[0] ??
+    records.find(attention) ??
+    records[0]
+  );
+}
+
 export function groupApplicationRuns(items) {
   const groups = new Map();
   for (const run of items) {
@@ -113,8 +143,6 @@ export function applicationWorkflowView(detail) {
       commands: commands.get(stepId) ?? [],
       connections: [],
     };
-    if (!phaseGroups.has(node.phase)) phaseGroups.set(node.phase, []);
-    phaseGroups.get(node.phase).push(node);
     return node;
   });
   const adjacency = new Map(nodes.map((node) => [node.stepId, []]));
@@ -137,10 +165,50 @@ export function applicationWorkflowView(detail) {
     byId.get(edge.from).connections.push(connection);
     return connection;
   });
+  // 将循环作为一组排序，避免 JSON 键顺序把下游阶段放到上游之前。
+  const members = new Map(),
+    successors = new Map(),
+    incoming = new Map();
+  for (const node of nodes) {
+    const group = components.get(node.stepId);
+    if (!members.has(group)) {
+      members.set(group, []);
+      successors.set(group, new Set());
+      incoming.set(group, 0);
+    }
+    members.get(group).push(node);
+  }
+  for (const edge of edges) {
+    const from = components.get(edge.from),
+      to = components.get(edge.to);
+    if (from !== to && !successors.get(from).has(to)) {
+      successors.get(from).add(to);
+      incoming.set(to, incoming.get(to) + 1);
+    }
+  }
+  const ready = [...members.keys()].filter((group) => incoming.get(group) === 0);
+  ready.sort(
+    (left, right) =>
+      Number(members.get(right).some((node) => node.entry)) -
+      Number(members.get(left).some((node) => node.entry)),
+  );
+  const ordered = [];
+  for (let cursor = 0; cursor < ready.length; cursor++) {
+    const group = ready[cursor];
+    ordered.push(...members.get(group));
+    for (const next of successors.get(group)) {
+      incoming.set(next, incoming.get(next) - 1);
+      if (incoming.get(next) === 0) ready.push(next);
+    }
+  }
+  for (const node of ordered) {
+    if (!phaseGroups.has(node.phase)) phaseGroups.set(node.phase, []);
+    phaseGroups.get(node.phase).push(node);
+  }
   return {
     title: definition.title ?? workflow.id,
     description: definition.description,
-    nodes,
+    nodes: ordered,
     edges,
     phases: [...phaseGroups.keys()],
     phaseGroups: [...phaseGroups].map(([phase, steps]) => ({ phase, nodes: steps })),

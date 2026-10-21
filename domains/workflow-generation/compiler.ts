@@ -29,6 +29,7 @@ import {
   readApplicationFiles,
 } from '../workflow-application/skill-adapter.js';
 import { renderApplicationRule } from './application-rule.js';
+import { applicationSkillEntryScript, applicationSkillEntryProtocol } from './skill-entry.js';
 import {
   validateApplicationDocuments,
   validateApplicationDocumentLinks,
@@ -370,6 +371,7 @@ function parsePlan(value: unknown, requireWorkflows = true): WorkflowApplication
       'workflow.json',
       'installation.json',
       'application.mjs',
+      'scripts/comet-run.mjs',
       ...Object.keys(plan.modules),
     ]);
     return plan;
@@ -397,6 +399,7 @@ function moduleRef(ref: string): void {
     ref === 'application.json' ||
     ref === 'workflow.json' ||
     ref === 'installation.json' ||
+    ref === 'scripts/comet-run.mjs' ||
     ref.startsWith('skills/')
   )
     applicationError(`执行模块路径无效或与生成内容冲突：${ref}`);
@@ -529,15 +532,22 @@ async function assemblyFiles(
     : '';
   const protocol = `固定组合：${compositionHash}\nRuntime：${manifest.runtimeVersion}；基础流程：${manifest.base}。\n\n用 comet runtime dispatch --application-file <本目录>/application.json --project-root <项目> --request <临时JSON> 启动下列流程：\n${plan.workflows.map(({ id, version }) => `- ${id}@${version}`).join('\n')}\n\n查询和恢复使用 --application ${manifest.id} 与原 Run ID，先 inspect 原 Action；保留 attempt、inputHash 和 claimToken。未知执行先核对结果。审批只沿 Runtime 当前 Wait 提交。\n${skillLoading}\n流程与绑定见 application.json，安装与恢复身份见 installation.json。不能以完成字符串代替实际 Schema、候选或工件检查；检查拒绝后保留现场，修正实际产物后继续原动作。\n本包通过组合结构和实际注册实现检查；真实宿主、模型执行与完整业务验收须另行记录。\n`;
   const artifactProtocol = manifest.artifactContracts
-    ? '\n逐阶段必需产物见 application.json 的 artifactContracts 与应用规则。succeeded 回报前检查真实文件与内容条件；有 sha256From 时回传对应实际 SHA-256，否则 outcome.artifacts 提供 uri/sha256。SDK 执行端口会收集文件证据。下游启动与完成前复验原 Action 的依赖；文件变化时保留现场，按已声明的修复步骤重新检查。\n'
+    ? '\n逐阶段必需产物见 application.json 的 artifactContracts 与应用规则。生成入口和 SDK 执行端口会读取真实文件并收集声明工件的证据；直接构造 Outcome 的宿主须按 sha256From 回传实际摘要，或在 outcome.artifacts 提供 uri/sha256。succeeded 回报前检查真实文件与内容条件。下游启动与完成前复验原 Action 的依赖；文件变化时保留现场，按已声明的修复步骤重新检查。\n'
     : '';
+  textFile('scripts/comet-run.mjs', applicationSkillEntryScript());
+  const authoredEntry = plan.documents?.['SKILL.md'];
+  const frontmatter = authoredEntry?.match(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/u)?.[0];
   textFile(
     'SKILL.md',
-    plan.documents
-      ? plan.documents['SKILL.md'] + '\n\n## SDK 执行协议\n\n' + protocol + artifactProtocol
-      : `---\nname: ${manifest.id}\ndescription: 启动或恢复已确认的 ${manifest.id} 工作流应用。\n---\n\n# ${manifest.id}\n\n` +
-          protocol +
-          artifactProtocol,
+    (frontmatter ??
+      `---\nname: ${manifest.id}\ndescription: 启动或恢复已确认的 ${manifest.id} 工作流应用。\n---\n`) +
+      '\n' +
+      applicationSkillEntryProtocol() +
+      '\n## 业务说明\n\n' +
+      (authoredEntry ? authoredEntry.slice(frontmatter!.length) : `# ${manifest.id}\n`) +
+      '\n\n## SDK 执行协议\n\n' +
+      protocol +
+      artifactProtocol,
   );
   for (const [ref, content] of Object.entries(plan.documents ?? {})) {
     if (ref !== 'SKILL.md' && ref !== manifest.rule) textFile(ref, content);

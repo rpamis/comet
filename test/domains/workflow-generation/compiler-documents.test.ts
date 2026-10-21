@@ -84,7 +84,7 @@ it('preserves Agent-authored Skill/Rule text and appends SDK protocol and the ac
     path.join(root, 'compiled/rules/workflow-guard.md'),
     'utf8',
   );
-  expect(entry.startsWith(skill)).toBe(true);
+  expect(entry).toContain(skill.slice(skill.indexOf('# 访谈报告')));
   expect(entry).toContain('## SDK 执行协议');
   expect(entry).toContain('comet runtime dispatch');
   expect(entry.match(/\nname: authored-report/g)).toHaveLength(1);
@@ -215,7 +215,9 @@ it('validates real Markdown links while retaining titles, angle targets, referen
   };
   await compile(await prepare(proposal(docs)));
   expect(
-    (await fs.readFile(path.join(root, 'compiled/SKILL.md'), 'utf8')).startsWith(docs['SKILL.md']),
+    (await fs.readFile(path.join(root, 'compiled/SKILL.md'), 'utf8')).includes(
+      docs['SKILL.md'].slice(docs['SKILL.md'].indexOf('# 访谈报告')),
+    ),
   ).toBe(true);
 });
 
@@ -251,8 +253,8 @@ it('includes complete documents in confirmation and package hashes without a cha
   await expect(compile(changed, hashRuntimeValue(first))).rejects.toThrow(/重新确认/);
   const built = await compile(changed);
   expect(
-    (await fs.readFile(path.join(root, 'compiled/SKILL.md'), 'utf8')).startsWith(
-      changed.documents['SKILL.md'],
+    (await fs.readFile(path.join(root, 'compiled/SKILL.md'), 'utf8')).includes(
+      changed.documents['SKILL.md'].slice(changed.documents['SKILL.md'].indexOf('# 访谈报告')),
     ),
   ).toBe(true);
   expect(built.compositionHash).toBe(hashRuntimeValue(changed));
@@ -265,9 +267,11 @@ it('retains business content in an exported package and its installed immutable 
     projectRoot: root,
     destination: path.join(root, 'exported'),
   });
-  expect((await fs.readFile(path.join(root, 'exported/SKILL.md'), 'utf8')).startsWith(skill)).toBe(
-    true,
-  );
+  expect(
+    (await fs.readFile(path.join(root, 'exported/SKILL.md'), 'utf8')).includes(
+      skill.slice(skill.indexOf('# 访谈报告')),
+    ),
+  ).toBe(true);
   const options = {
     file: exported.file,
     projectRoot: root,
@@ -292,8 +296,8 @@ it('retains business content in an exported package and its installed immutable 
     await fs.readFile(path.join(path.dirname(built.file), 'workflow.json'), 'utf8'),
   );
   expect(
-    (await fs.readFile(path.join(path.dirname(installed.file), 'SKILL.md'), 'utf8')).startsWith(
-      skill,
+    (await fs.readFile(path.join(path.dirname(installed.file), 'SKILL.md'), 'utf8')).includes(
+      skill.slice(skill.indexOf('# 访谈报告')),
     ),
   ).toBe(true);
   expect(
