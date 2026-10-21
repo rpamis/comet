@@ -137,7 +137,7 @@
     "tailwindcss": "^4.3.1",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.59.3",
-    "vite": "8.2.2",
+    "vite": "8.2.4",
     "vitest": "^4.1.11"
   },
   "dependencies": {
