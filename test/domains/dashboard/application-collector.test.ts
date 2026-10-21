@@ -21,6 +21,7 @@ import {
 } from '../../../domains/engine/runtime.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { DashboardSummaryIndex } from '../../../domains/dashboard/summary-index.js';
+import * as creatorObservations from '../../../domains/workflow-creation/index.js';
 
 async function candidateEvidenceFixture(
   project: string,
@@ -111,6 +112,97 @@ describe('Comet Any observations', () => {
     vi.unstubAllEnvs();
     await fs.rm(root, { recursive: true, force: true });
   });
+
+  it('isolates a malformed application partition while refreshing healthy creation runs', async () => {
+    await creatorObservationFixture(project, 'healthy-one');
+    expect(
+      (await collectDashboardApplicationRunPage(project)).items.some(
+        (item) => item.runId === 'healthy-one',
+      ),
+    ).toBe(true);
+    const badRoot = path.join(
+      resolveWorkspaceRuntimeRootSync(project),
+      'applications',
+      'broken-app',
+    );
+    await fs.mkdir(badRoot, { recursive: true });
+    await fs.writeFile(path.join(badRoot, '.runtime-store-v2'), 'invalid partition');
+    await creatorObservationFixture(project, 'healthy-two');
+    await applicationObservationFixture(project, { id: 'healthy-app', runId: 'healthy-app-run' });
+    const page = await collectDashboardApplicationRunPage(project);
+    expect(
+      page.items
+        .filter((item) => item.kind === 'creator')
+        .map((item) => item.runId)
+        .sort(),
+    ).toEqual(['healthy-one', 'healthy-two']);
+    expect(page.items.find((item) => item.applicationId === 'broken-app')).toMatchObject({
+      status: 'unreadable',
+    });
+    expect(page.items.find((item) => item.runId === 'healthy-app-run')?.error).toBeNull();
+    expect(page.indexing).toBe(false);
+    await fs.rename(path.join(badRoot, '.runtime-store-v2'), path.join(root, 'saved-partition'));
+    const repaired = await collectDashboardApplicationRunPage(project);
+    expect(repaired.items.some((item) => item.applicationId === 'broken-app')).toBe(false);
+    expect(repaired.items.map((item) => item.runId).sort()).toEqual([
+      'healthy-app-run',
+      'healthy-one',
+      'healthy-two',
+    ]);
+  });
+
+  it('retries an unreadable projection after a transient read failure without changing storage', async () => {
+    await creatorObservationFixture(project, 'transient-read');
+    const read = vi
+      .spyOn(creatorObservations, 'readCreatorRunProjection')
+      .mockRejectedValueOnce(new Error('temporary read failure'));
+    try {
+      expect((await collectDashboardApplicationRunPage(project)).items[0]).toMatchObject({
+        runId: 'transient-read',
+        status: 'unreadable',
+      });
+      expect((await collectDashboardApplicationRunPage(project)).items[0]).toMatchObject({
+        runId: 'transient-read',
+        status: 'running',
+        error: null,
+      });
+      expect(read).toHaveBeenCalledTimes(2);
+    } finally {
+      read.mockRestore();
+    }
+  });
+
+  it.each([false, true])(
+    'refreshes directory corruption and repair with an initially broken cache: %s',
+    async (initiallyBroken) => {
+      await creatorObservationFixture(project, 'health-change');
+      const key = createHash('sha256').update(JSON.stringify('health-change')).digest('hex');
+      const foreign = path.join(
+        resolveWorkspaceRuntimeRootSync(project),
+        'creator',
+        '.runtime-store-v2',
+        key,
+        'foreign.json',
+      );
+      if (!initiallyBroken) {
+        expect((await collectDashboardApplicationRunPage(project)).items[0]).toMatchObject({
+          status: 'running',
+          error: null,
+        });
+      }
+      await fs.writeFile(foreign, '{}');
+      const broken = await collectDashboardApplicationRunPage(project);
+      expect(broken.items[0]).toMatchObject({ runId: 'health-change', status: 'unreadable' });
+      expect(broken.items[0].error).not.toBeNull();
+      await fs.rename(foreign, path.join(root, 'saved-foreign.json'));
+      const repaired = await collectDashboardApplicationRunPage(project);
+      expect(repaired.items[0]).toMatchObject({
+        runId: 'health-change',
+        status: 'running',
+        error: null,
+      });
+    },
+  );
 
   it('shows bound local artifact cases separately from optional model evidence', async () => {
     const current = await candidateEvidenceFixture(project, 'artifact-version', 'passed', true);

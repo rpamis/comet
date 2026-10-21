@@ -60,6 +60,7 @@ export function createRuntime(options: CreateRuntimeOptions): {
     start: (input: StartRuntimeRun) => Promise<WorkflowRun>;
     dispatchCommand: (command: DispatchRuntimeCommand) => Promise<WorkflowRun>;
     inspect: (runId: string) => Promise<WorkflowRun>;
+    inspectProjection: (runId: string) => Promise<RuntimeProjection>;
     query: (command: RuntimeQuery & {
         runId: string;
     }) => Promise<unknown>;

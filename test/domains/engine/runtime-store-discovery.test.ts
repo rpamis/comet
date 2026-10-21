@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createFileRuntimeStore } from '../../../domains/engine/runtime.js';
 import {
+  iterateFileRuntimeStoreRunSources,
   listFileRuntimeStoreRuns,
   listFileRuntimeStoreRunSources,
   listFileRuntimeStoreRunKeys,
@@ -140,6 +141,47 @@ describe('read-only RuntimeStore discovery', () => {
     expect((await listFileRuntimeStoreRunSources({ rootDir: root }))[0].fingerprint).not.toBe(
       first.fingerprint,
     );
+  });
+
+  it('isolates an invalid partition and still discovers healthy history', async () => {
+    const store = createFileRuntimeStore({ rootDir: root });
+    await store.compareAndSwap('closed', null, { runId: 'closed', revision: 1 });
+    await store.closeRun('closed', 1);
+    // The active partition is empty after close; preserve it outside this Store.
+    const active = path.join(root, '.runtime-store-v2');
+    const saved = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-partition-backup-'));
+    try {
+      await fs.rename(active, path.join(saved, 'active'));
+      await fs.writeFile(active, 'invalid partition');
+      const sources = [];
+      for await (const source of iterateFileRuntimeStoreRunSources({ rootDir: root }))
+        sources.push(source);
+      expect(
+        sources.some((source) => source.storageKey === '.runtime-store-v2' && source.error),
+      ).toBe(true);
+      // The malformed partition remains visible even if a marker cannot be validated.
+      expect(sources.some((source) => source.runId === 'closed')).toBe(true);
+      expect(await fs.readFile(active, 'utf8')).toBe('invalid partition');
+    } finally {
+      await fs.rm(saved, { recursive: true, force: true });
+    }
+  });
+
+  it('changes fingerprints when directory validation changes without checkpoint changes', async () => {
+    const store = createFileRuntimeStore({ rootDir: root });
+    await store.compareAndSwap('one', null, { runId: 'one', revision: 1 });
+    const current = path.join(root, '.runtime-store-v2', key('one'));
+    const checkpoint = await fs.readFile(path.join(current, 'checkpoint.json'), 'utf8');
+    const first = (await listFileRuntimeStoreRunSources({ rootDir: root }))[0];
+    await fs.writeFile(path.join(current, 'foreign.json'), '{}');
+    const broken = (await listFileRuntimeStoreRunSources({ rootDir: root }))[0];
+    expect(broken.fingerprint).not.toBe(first.fingerprint);
+    await expect(store.read('one')).rejects.toMatchObject({ code: 'STORE_INVALID_ENTRY' });
+    await fs.unlink(path.join(current, 'foreign.json'));
+    const repaired = (await listFileRuntimeStoreRunSources({ rootDir: root }))[0];
+    expect(repaired.fingerprint).not.toBe(broken.fingerprint);
+    expect(await store.read('one')).toEqual({ runId: 'one', revision: 1 });
+    expect(await fs.readFile(path.join(current, 'checkpoint.json'), 'utf8')).toBe(checkpoint);
   });
 
   it('discovers validated checkpoints without creating or changing files', async () => {

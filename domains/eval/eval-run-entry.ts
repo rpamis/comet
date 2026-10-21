@@ -39,10 +39,12 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
     if (!['queued', 'stopping'].includes(current.status) || current.launchPhase === 'pending')
       throw new Error('Eval 启动记录已恢复或已经执行');
     current.owner = { pid: process.pid, ...(ownIdentity ? { identity: ownIdentity } : {}) };
+    current.startedAt ??= new Date().toISOString();
     if (current.status !== 'stopping') current.status = 'preparing';
   });
   const controller = new AbortController();
   let stopping = false;
+  let deadlineExceeded = false;
   let executionStarted = false;
   let processesStopped = true;
   let polling = false;
@@ -67,8 +69,9 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
     try {
       const request = await readEvalJson(await evalRunPath(project, id, 'stop-request.json'));
       if (request?.runId === id) {
-        if (!stopping) queueLog('停止请求已接收，正在结束执行进程。\n');
-        stopping = true;
+        if (!stopping && !deadlineExceeded) queueLog('停止请求已接收，正在结束执行进程。\n');
+        deadlineExceeded = request.reason === 'timeout';
+        stopping = !deadlineExceeded;
         controller.abort();
       }
       const current = await readManagedEvalRun(project, id);
@@ -357,7 +360,8 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
     }
     await updateManagedEvalRun(project, id, (current) => {
       // Stop 可以在最后一次轮询后到达；资源已经核对清理才允许确认停止。
-      if (current.status === 'stopping' && cleanupComplete) status = 'stopped';
+      if (current.status === 'stopping' && cleanupComplete)
+        status = deadlineExceeded ? 'interrupted' : 'stopped';
       current.status = status;
       current.exitCode = exitCode;
       if (lastError && status !== 'completed')

@@ -92,6 +92,20 @@ async function discoverFileRuntimeStoreRunSources(
     const stat = await fs.lstat(inspection.target);
     return [ref, stat.size, stat.mtimeMs, stat.ctimeMs, stat.ino, stat.dev];
   };
+  // Store 还会校验目录项目；正文未变化不代表目录仍然可读。
+  // 只枚举当前 Run 的名称和类型，不物化 checkpoint 或历史载荷。
+  const directoryStamp = async (ref: string) => {
+    const inspection = await inspectProtectedProjectPath(root, ref, {
+      label: 'RuntimeStore source directory',
+      expected: 'directory',
+    });
+    if (!inspection.exists) return null;
+    const stat = await fs.lstat(inspection.target);
+    const entries = (await fs.readdir(inspection.target, { withFileTypes: true }))
+      .map((entry) => [entry.name, entry.isFile(), entry.isDirectory(), entry.isSymbolicLink()])
+      .sort((left, right) => String(left[0]).localeCompare(String(right[0])));
+    return [ref, stat.mtimeMs, stat.ctimeMs, stat.ino, stat.dev, entries];
+  };
   const json = async (ref: string) =>
     JSON.parse(
       new TextDecoder('utf-8', { fatal: true }).decode(
@@ -217,7 +231,22 @@ async function discoverFileRuntimeStoreRunSources(
                   .sort()
                   .map((name) => `${entry.name}/${name}`);
           const fingerprint = createHash('sha256')
-            .update(JSON.stringify(await Promise.all(refs.map(stamp))))
+            .update(
+              JSON.stringify({
+                files: await Promise.all(refs.map(stamp)),
+                directories: !withFingerprint
+                  ? []
+                  : await Promise.all(
+                      (entry.isFile()
+                        ? [
+                            `.runtime-store-v2/${entry.name}`,
+                            `.runtime-store-history/${entry.name}`,
+                          ]
+                        : [entry.name]
+                      ).map(directoryStamp),
+                    ),
+              }),
+            )
             .digest('hex');
           result.push({ storageKey: entry.name, runId, fingerprint, error: null });
         } catch (error) {
@@ -306,41 +335,60 @@ export async function* iterateFileRuntimeStoreRunSources(
   const relative = path.relative(volume, root).replaceAll('\\', '/');
   if (!relative)
     throw new RuntimeProtocolError('STORE_INVALID_ROOT', 'rootDir 不能是文件系统根目录');
-  if (
-    !(
-      await inspectProtectedProjectPath(volume, relative, {
-        label: 'RuntimeStore discovery',
-        expected: 'directory',
-      })
-    ).exists
-  )
-    return;
-  const seen = new Set<string>();
-  for (const ref of ['', '.runtime-store-v2', '.runtime-store-history']) {
+  const diagnostic = (storageKey: string, error: unknown): FileRuntimeStoreRunSource => ({
+    storageKey,
+    runId: null,
+    fingerprint: String(error),
+    error: {
+      code: error instanceof RuntimeProtocolError ? error.code : 'STORE_UNREADABLE',
+      message: error instanceof Error ? error.message : String(error),
+    },
+  });
+  try {
     if (
-      ref &&
       !(
-        await inspectProtectedProjectPath(root, ref, {
-          label: 'RuntimeStore partition',
+        await inspectProtectedProjectPath(volume, relative, {
+          label: 'RuntimeStore discovery',
           expected: 'directory',
         })
       ).exists
     )
-      continue;
-    const entries = await fs.opendir(path.join(root, ref));
-    for await (const entry of entries) {
+      return;
+  } catch (error) {
+    yield diagnostic('.', error);
+    return;
+  }
+  const seen = new Set<string>();
+  for (const ref of ['', '.runtime-store-v2', '.runtime-store-history']) {
+    try {
       if (
-        !ref &&
-        (['.runtime-store-v2', '.runtime-store-history', '.runtime-store-coordination'].includes(
-          entry.name,
-        ) ||
-          /^\.[a-f0-9]{64}\.[a-f0-9-]{36}\.tmp$/u.test(entry.name))
+        ref &&
+        !(
+          await inspectProtectedProjectPath(root, ref, {
+            label: 'RuntimeStore partition',
+            expected: 'directory',
+          })
+        ).exists
       )
         continue;
-      if (seen.has(entry.name)) continue;
-      seen.add(entry.name);
-      const [source] = await discoverFileRuntimeStoreRunSources(options, true, [entry.name]);
-      if (source) yield source;
+      const entries = await fs.opendir(path.join(root, ref));
+      for await (const entry of entries) {
+        if (
+          !ref &&
+          (['.runtime-store-v2', '.runtime-store-history', '.runtime-store-coordination'].includes(
+            entry.name,
+          ) ||
+            /^\.[a-f0-9]{64}\.[a-f0-9-]{36}\.tmp$/u.test(entry.name))
+        )
+          continue;
+        if (seen.has(entry.name)) continue;
+        seen.add(entry.name);
+        const [source] = await discoverFileRuntimeStoreRunSources(options, true, [entry.name]);
+        if (source) yield source;
+      }
+    } catch (error) {
+      // 一处分区无法枚举时保留诊断，继续独立分区和其他应用；不推断丢失的 Run 状态。
+      yield diagnostic(ref || '.', error);
     }
   }
 }

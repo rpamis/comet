@@ -6,6 +6,7 @@ import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock
 import { launchEvalWorker } from '../../platform/process/eval-worker.js';
 import {
   inspectProcessLiveness,
+  inspectProcessTreeLiveness,
   readProcessIdentity,
   terminateRegisteredProcessTree,
 } from '../../platform/process/process-identity.js';
@@ -35,6 +36,83 @@ import {
 } from './eval-run-store.js';
 import type { EvalReadOptions } from './eval-run-store.js';
 import type { EvalManagedRun, EvalRunDetail } from './eval-run-types.js';
+
+const STOP_GRACE_MS = 5_000;
+const watchdogs = new Map<string, NodeJS.Timeout>();
+const stopOperations = new Map<string, Promise<EvalRunDetail>>();
+const watchdogFailures = new Map<string, number>();
+const watchdogRetryAt = new Map<string, number>();
+const watchdogKey = (project: string, id: string) => `${path.resolve(project)}\0${id}`;
+const terminalStatuses = new Set(['completed', 'stopped', 'interrupted', 'unknown']);
+
+function clearEvalWatchdog(project: string, id: string): void {
+  const key = watchdogKey(project, id);
+  const timer = watchdogs.get(key);
+  if (timer) clearTimeout(timer);
+  watchdogs.delete(key);
+  watchdogFailures.delete(key);
+  watchdogRetryAt.delete(key);
+}
+
+function executionDeadline(run: EvalManagedRun): number {
+  const timeout = run.config.timeoutSeconds ?? 600;
+  // 新记录以 worker 接管时间计时；旧 queued 记录不能按排队时间强杀。
+  const started = Date.parse(run.startedAt ?? (run.status === 'queued' ? '' : run.createdAt));
+  return Number.isFinite(started) && Number.isFinite(timeout) && timeout > 0
+    ? started + timeout * 1000
+    : Number.POSITIVE_INFINITY;
+}
+
+async function readStopRequest(project: string, id: string) {
+  const request = await readEvalJson(await evalRunPath(project, id, 'stop-request.json'));
+  return request?.runId === id &&
+    typeof request.requestedAt === 'string' &&
+    Number.isFinite(Date.parse(request.requestedAt))
+    ? request
+    : null;
+}
+
+/** 首次停止时间是恢复边界；重复请求或控制端重启不能重新开始宽限期。 */
+async function persistStopRequest(
+  project: string,
+  id: string,
+  reason: 'user' | 'timeout' = 'user',
+): Promise<void> {
+  const file = await evalRunPath(project, id, 'stop-request.json');
+  await withRecoverableFileLock(`${file}.lock`, async () => {
+    if (await readStopRequest(project, id)) return;
+    await writeEvalJson(file, { runId: id, requestedAt: new Date().toISOString(), reason });
+  });
+}
+
+/** 管理端监督与 worker 的事件循环分离；重启后读取持久化截止时间继续监督。 */
+async function scheduleEvalWatchdog(project: string, run: EvalManagedRun): Promise<void> {
+  const key = watchdogKey(project, run.id);
+  if (terminalStatuses.has(run.status)) {
+    clearEvalWatchdog(project, run.id);
+    return;
+  }
+  const request = await readStopRequest(project, run.id);
+  const deadline = request
+    ? Date.parse(String(request.requestedAt)) + STOP_GRACE_MS
+    : executionDeadline(run);
+  const retryDelay = Math.min(60_000, STOP_GRACE_MS * 2 ** (watchdogFailures.get(key) ?? 0));
+  const nextAttempt = Math.max(deadline, watchdogRetryAt.get(key) ?? 0);
+  const delay =
+    Number.isFinite(nextAttempt) && nextAttempt > Date.now()
+      ? Math.min(2_147_483_647, nextAttempt - Date.now())
+      : retryDelay;
+  // 异步读取后再替换，避免并发刷新各自留下一个 timer。
+  const previous = watchdogs.get(key);
+  if (previous) clearTimeout(previous);
+  const timer = setTimeout(() => {
+    watchdogs.delete(key);
+    // 故障诊断由 reconcile 持久化；定时器不能产生未处理拒绝。
+    void reconcileEvalRun(project, run.id, { includeCaseContent: false }).catch(() => {});
+  }, delay);
+  timer.unref();
+  watchdogs.set(key, timer);
+}
 
 export async function readManagedEvalRun(
   project: string,
@@ -178,6 +256,9 @@ export async function updateManagedEvalRun(
     await writeEvalJson(file, run);
     updated = run;
   });
+  if (terminalStatuses.has(updated!.status)) {
+    clearEvalWatchdog(project, id);
+  }
   return updated!;
 }
 export interface StartEvalRunRequest {
@@ -264,9 +345,20 @@ export async function startEvalRun(
     }
     resultId = id;
   });
+  const started = await readManagedEvalRun(project, resultId!);
+  if (started) await scheduleEvalWatchdog(project, started);
   return readEvalRun(project, resultId!);
 }
 export async function requestStopEvalRun(project: string, id: string): Promise<EvalRunDetail> {
+  const key = watchdogKey(project, id);
+  const active = stopOperations.get(key);
+  if (active) return active;
+  const operation = stopManagedEvalRun(project, id).finally(() => stopOperations.delete(key));
+  stopOperations.set(key, operation);
+  return operation;
+}
+
+async function stopManagedEvalRun(project: string, id: string): Promise<EvalRunDetail> {
   const record = await readManagedEvalRun(project, id);
   if (!record) throw new EvalRunError('此历史运行没有可核对的执行身份', 409);
   const execution = await readEvalExecutionState(project, id);
@@ -281,10 +373,11 @@ export async function requestStopEvalRun(project: string, id: string): Promise<E
     ))
   )
     return readEvalRun(project, id);
-  await writeEvalJson(await evalRunPath(project, id, 'stop-request.json'), {
-    runId: id,
-    requestedAt: new Date().toISOString(),
-  });
+  await persistStopRequest(project, id);
+  const request = await readStopRequest(project, id);
+  const graceExpired = Boolean(
+    request && Date.now() - Date.parse(String(request.requestedAt)) >= STOP_GRACE_MS,
+  );
   const stopping = await updateManagedEvalRun(project, id, (current) => {
     // 工作进程可能刚完成清理；不要在其退出后留下新的 stopping 状态。
     if (
@@ -295,30 +388,32 @@ export async function requestStopEvalRun(project: string, id: string): Promise<E
       current.status = 'stopping';
   });
   if (['completed', 'stopped'].includes(stopping.status)) return readEvalRun(project, id);
-  if (terminal || record.origin === 'cli' || (execution && execution.status !== 'running')) {
+  if (
+    graceExpired ||
+    terminal ||
+    record.origin === 'cli' ||
+    (execution && execution.status !== 'running')
+  ) {
     try {
       let ownerFailure: unknown;
-      // 收尾已经开始时不能再终止调用方，它可能仍在保存报告或处理其他任务。
+      // 宽限期内允许收尾；超时后只处理登记实例，当前嵌入式宿主始终保留。
       if (
-        (!execution || execution.status === 'running') &&
+        (graceExpired || !execution || execution.status === 'running') &&
         record.owner &&
         !['completed', 'interrupted', 'stopped'].includes(record.status)
       ) {
         try {
           const child = record.child;
+          // 执行监管器有独立进程组，停止 owner 不会覆盖它。先停止已登记子树。
+          if (child && child.pid !== process.pid) {
+            const terminated = await terminateRegisteredProcessTree(child);
+            if (terminated && child.instanceId)
+              await recordEvalProcessTermination(project, id, child as OwnedProcessInstance, true);
+          }
           // Creator/嵌入式调用不能杀掉当前宿主，只停止其已登记的执行树。
           if (record.owner.pid === process.pid) {
             if (!child || child.pid === process.pid)
               throw new EvalRunError('缺少可停止的执行子进程登记，停止未完成', 409);
-            if (await terminateRegisteredProcessTree(child)) {
-              if (child.instanceId)
-                await recordEvalProcessTermination(
-                  project,
-                  id,
-                  child as OwnedProcessInstance,
-                  true,
-                );
-            }
           } else {
             const boundChild =
               process.platform === 'win32' &&
@@ -328,6 +423,13 @@ export async function requestStopEvalRun(project: string, id: string): Promise<E
                 ? (child as OwnedProcessInstance)
                 : undefined;
             const terminated = await terminateRegisteredProcessTree(record.owner);
+            if (terminated)
+              await writeEvalJson(await evalRunPath(project, id, 'owner-cleanup.json'), {
+                schema: 'comet.eval.owner-cleanup.v1',
+                runId: id,
+                owner: record.owner,
+                confirmed: true,
+              });
             if (terminated && boundChild)
               await recordEvalProcessTermination(project, id, boundChild, true);
             if (
@@ -340,22 +442,40 @@ export async function requestStopEvalRun(project: string, id: string): Promise<E
           ownerFailure = error;
         }
       }
+      if (graceExpired && !record.owner && !record.child)
+        ownerFailure ??= new EvalRunError('执行身份未登记，不能确认原执行已经停止', 409);
       await cleanupEvalExecution(project, id);
+      if (
+        record.owner &&
+        record.owner.pid !== process.pid &&
+        (await inspectProcessTreeLiveness(record.owner.pid, record.owner.identity)) !== 'dead'
+      )
+        ownerFailure ??= new EvalRunError('原执行进程树尚未确认停止', 409);
       if (ownerFailure) throw ownerFailure;
-      await writeEvalExecutionState(project, id, { status: 'stopped' });
+      const status = request?.reason === 'timeout' ? 'interrupted' : 'stopped';
+      await writeEvalExecutionState(project, id, { status });
       await releaseEvalExecutionLock(project, id);
       await updateManagedEvalRun(project, id, (current) => {
-        current.status = 'stopped';
-        delete current.error;
+        current.status = status;
+        if (status === 'interrupted') current.error = '评估时限已到，管理端已确认停止执行';
+        else delete current.error;
       });
     } catch (error) {
       await updateManagedEvalRun(project, id, (current) => {
         current.status = 'stopping';
         current.error = redactEvalOutput((error as Error).message);
       });
+      const key = watchdogKey(project, id);
+      const failures = Math.min(4, (watchdogFailures.get(key) ?? 0) + 1);
+      watchdogFailures.set(key, failures);
+      watchdogRetryAt.set(key, Date.now() + Math.min(60_000, STOP_GRACE_MS * 2 ** failures));
+      const failed = await readManagedEvalRun(project, id);
+      if (failed) await scheduleEvalWatchdog(project, failed);
       throw error;
     }
   }
+  const latest = await readManagedEvalRun(project, id);
+  if (latest) await scheduleEvalWatchdog(project, latest);
   return readEvalRun(project, id);
 }
 export async function reconcileEvalRun(
@@ -367,7 +487,9 @@ export async function reconcileEvalRun(
   let record: EvalManagedRun | null;
   try {
     record = await readManagedEvalRun(project, id);
+    if (!record || terminalStatuses.has(record.status)) clearEvalWatchdog(project, id);
   } catch (error) {
+    clearEvalWatchdog(project, id);
     const detail = await readEvalRun(project, id, options);
     detail.diagnostics.push((error as Error).message);
     detail.availableActions.stop = false;
@@ -398,10 +520,39 @@ export async function reconcileEvalRun(
     });
     record = await readManagedEvalRun(project, id);
   }
-  if (record?.owner && !['completed', 'stopped', 'interrupted'].includes(record.status)) {
+  if (record && !terminalStatuses.has(record.status)) {
+    const request = await readStopRequest(project, id);
+    const graceExpired = Boolean(
+      request && Date.now() - Date.parse(String(request.requestedAt)) >= STOP_GRACE_MS,
+    );
+    const budgetExpired = !request && Date.now() >= executionDeadline(record);
+    if (
+      (graceExpired || budgetExpired) &&
+      Date.now() >= (watchdogRetryAt.get(watchdogKey(project, id)) ?? 0)
+    ) {
+      try {
+        if (budgetExpired) await persistStopRequest(project, id, 'timeout');
+        await requestStopEvalRun(project, id);
+      } catch (error) {
+        // 保留 stopping 和具体清理错误；重试不能制造停止证明。
+        await updateManagedEvalRun(project, id, (current) => {
+          current.error = redactEvalOutput(`执行状态核对未完成：${(error as Error).message}`);
+        });
+      }
+      record = await readManagedEvalRun(project, id);
+    }
+    if (record) await scheduleEvalWatchdog(project, record);
+  }
+  if (
+    record?.owner &&
+    !['completed', 'stopped', 'interrupted'].includes(record.status) &&
+    Date.now() >= (watchdogRetryAt.get(watchdogKey(project, id)) ?? 0)
+  ) {
     const liveness = await inspectProcessLiveness(record.owner.pid, record.owner.identity);
     if (liveness === 'dead') {
       try {
+        if ((await inspectProcessTreeLiveness(record.owner.pid, record.owner.identity)) !== 'dead')
+          throw new Error('原执行进程树尚未确认停止');
         if (
           record.child &&
           (await inspectProcessLiveness(record.child.pid, record.child.identity)) !== 'dead'

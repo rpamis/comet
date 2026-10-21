@@ -405,6 +405,7 @@ function applicationSummaryIndex(projectRoot: string) {
                 s.status === 'failed' ||
                 s.activity.unknown + s.activity.decisions + s.activity.evidence > 0,
               ),
+              volatile: Boolean(s.error),
               payload: ref,
             };
           }),

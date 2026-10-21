@@ -4230,6 +4230,220 @@ children:
     expect(await fs.readFile(path.join(root, 'check-count'), 'utf8')).toBe('once\n');
   });
 
+  it('requires explicit stopped repair for a completed check whose input drifted, without replaying its result', async () => {
+    const {
+      root,
+      runtime,
+      run: ready,
+    } = await dispatchedVerifier(
+      [
+        {
+          id: 'once',
+          name: 'Once',
+          executable: process.execPath,
+          argv: ['-e', "require('node:fs').appendFileSync('check-count', 'once\\n')"],
+          cwdRef: '.',
+          timeoutMs: 5000,
+          repeatable: false,
+        },
+      ],
+      'sdk',
+      nativeApplication(),
+      false,
+    );
+    const pending = ready.actions.at(-1)!;
+    let run = await runtime.claim({
+      runId: ready.runId,
+      actionId: pending.id,
+      attempt: pending.attempt,
+      inputHash: pending.inputHash,
+      executorId: 'comet-native-checks',
+      claimToken: 'completed-drift-original',
+    });
+    const action = run.actions.at(-1)!;
+    const original = await nativeSdkCheckExecutor.execute(
+      action,
+      { projectRoot: root, requestId: 'completed-drift' },
+      run,
+    );
+    expect(original.status).toBe('succeeded');
+    const inspection = (await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0];
+    expect(inspection).toMatchObject({ phase: 'completed', quiescent: true, owner: 'alive' });
+    const execution = structuredClone(inspection.execution);
+    await fs.writeFile(path.join(root, 'new-source.js'), 'export const changed = true;\n');
+    run = await recoverNativeSdkChecks(root, run, runtime);
+    expect(run.actions.find((entry) => entry.id === action.id)?.status).toBe('running');
+    expect(run.waits.filter((wait) => wait.status === 'pending')).toHaveLength(0);
+    const projection = await projectNativeSdkContinuation({
+      projectRoot: root,
+      run,
+      state: run.state as NativePortableState,
+    });
+    expect(projection.continuation).toMatchObject({
+      disposition: 'blocked',
+      mode: 'reconcile',
+      requiresUserDecision: true,
+      commandArgs: expect.arrayContaining([
+        'doctor',
+        '--repair',
+        '--confirmed',
+        '--stopped-actions',
+      ]),
+      inputOptions: [
+        {
+          name: 'stopped-actions-json-file',
+          template: [
+            {
+              actionId: action.id,
+              attempt: action.attempt,
+              inputHash: action.inputHash,
+              claimToken: action.claim!.token,
+            },
+          ],
+        },
+      ],
+      userCommunication: { agentInstruction: expect.stringContaining('input has changed') },
+    });
+    const doctor = await nativeDoctorCommand([run.runId], root);
+    expect(doctor.data).toMatchObject({
+      findings: expect.arrayContaining([
+        expect.objectContaining({
+          code: 'sdk-check-execution-recovery-required',
+          actionId: action.id,
+          repairCommand: expect.stringContaining('--confirmed --stopped-actions'),
+          message: expect.stringContaining('输入随后变化'),
+        }),
+      ]),
+    });
+    const stopped = {
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken: action.claim!.token,
+      evidence:
+        'The original Node check exited and its process group is quiescent. It started no detached descendants. Retain the original side effect and repair the changed candidate.',
+    };
+    await expect(
+      recoverNativeSdkChecks(root, run, runtime, {
+        reconcileInterrupted: true,
+        stoppedActions: [{ ...stopped, claimToken: 'wrong-claim' }],
+      }),
+    ).rejects.toThrow('中断核对需要');
+    // 输入变化不能掩盖日志损坏，必须保留原始证据后才可进入修复。
+    const log = path.join(
+      resolveWorkspaceRuntimeRootSync(root),
+      (original.output as { checks: Array<{ logRef: string }> }).checks[0].logRef,
+    );
+    const originalLog = await fs.readFile(log);
+    await fs.appendFile(log, 'tampered');
+    const options = { reconcileInterrupted: true, stoppedActions: [stopped] };
+    run = await recoverNativeSdkChecks(root, run, runtime, options);
+    expect(run.actions.find((entry) => entry.id === action.id)?.status).toBe('running');
+    await fs.writeFile(log, originalLog);
+    const racingRuntime = {
+      ...runtime,
+      recordOutcome: async (...args: Parameters<typeof runtime.recordOutcome>) => {
+        await fs.rm(path.join(root, 'new-source.js'));
+        return runtime.recordOutcome(...args);
+      },
+    };
+    await expect(recoverNativeSdkChecks(root, run, racingRuntime, options)).rejects.toThrow(
+      'OUTCOME_REJECTED',
+    );
+    expect(
+      (await runtime.inspect(run.runId)).actions.find((entry) => entry.id === action.id)?.status,
+    ).toBe('running');
+    await fs.writeFile(path.join(root, 'new-source.js'), 'export const changed = true;\n');
+    const stoppedFile = path.join(root, 'stopped-actions.json');
+    await fs.writeFile(stoppedFile, JSON.stringify([stopped]));
+    const repairDiagnostic = await nativeDoctorCommand(
+      [run.runId, '--repair', '--confirmed', '--stopped-actions', stoppedFile],
+      root,
+    );
+    expect(repairDiagnostic, JSON.stringify(repairDiagnostic)).toMatchObject({
+      data: { repaired: true },
+    });
+    const cold = (await loadOwnedNativeSdkRuntime(root, run.runId)).runtime;
+    run = await cold.inspect(run.runId);
+    const repaired = run.actions.find((entry) => entry.id === action.id)!;
+    expect(repaired).toMatchObject({
+      status: 'failed',
+      attempt: 1,
+      claim: action.claim,
+      outcome: {
+        output: {
+          checks: [{ id: 'once', status: 'passed' }],
+          interruption: { kind: 'completed-input-drift', unknownCheckIds: [], partialLogs: [] },
+        },
+      },
+    });
+    expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.checks-stop', status: 'pending' });
+    expect(run.state).toMatchObject({ phase: 'verify', status: 'await-user' });
+    expect(hasNativeSdkPortableStopEvidence(run, repaired)).toBe(true);
+    const portable = readPortableRunCheckpoint(createPortableRunCheckpoint(run), run.runId)!;
+    expect(
+      hasNativeSdkPortableStopEvidence(
+        portable,
+        portable.actions.find((entry) => entry.id === action.id)!,
+      ),
+    ).toBe(true);
+    expect(
+      (await inspectNativeSdkCheckExecutions({ projectRoot: root, run, includeSettled: true }))[0]
+        .execution,
+    ).toEqual(execution);
+    expect((await recoverNativeSdkChecks(root, run, cold)).revision).toBe(run.revision);
+    await expect(
+      cold.retry({ runId: run.runId, actionId: action.id, attempt: action.attempt }),
+    ).rejects.toMatchObject({ code: 'ACTION_ALREADY_ADVANCED' });
+    const wait = run.waits.at(-1)!;
+    run = await cold.resolveWait({
+      runId: run.runId,
+      waitId: wait.id,
+      proposalHash: wait.proposalHash,
+      decisionId: 'approve-changed-candidate-repair',
+      choice: 'repair',
+    });
+    expect(run.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'pending' });
+    run = await succeedLatestAction(
+      cold,
+      run,
+      {
+        summary: 'Review the changed implementation and submit a fresh candidate.',
+        addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
+        checks: [],
+        knownLimits: [],
+        submittedAt: new Date().toISOString(),
+        verificationChecks: [
+          {
+            id: 'fresh',
+            name: 'Fresh check',
+            executable: process.execPath,
+            argv: ['-e', "process.stdout.write('fresh candidate checked')"],
+            cwdRef: '.',
+            timeoutMs: 5000,
+            repeatable: true,
+          },
+        ],
+      },
+      root,
+      'drift-fresh-candidate',
+      'drift-fresh-builder',
+    );
+    expect((run.state as NativePortableState).builder_handoff!.candidate_id).not.toBe(
+      (original.output as { candidateId: string }).candidateId,
+    );
+    run = await cold.execute({
+      runId: run.runId,
+      actionId: run.actions.at(-1)!.id,
+      executorId: 'comet-native-checks',
+      context: { projectRoot: root, requestId: 'drift-fresh-check' },
+    });
+    expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
+    expect(run.actions.find((entry) => entry.id === action.id)).toEqual(repaired);
+    expect(await fs.readFile(path.join(root, 'check-count'), 'utf8')).toBe('once\n');
+  });
+
   it('reconciles an actual dead check owner into a stopped repair and completes a fresh candidate', async () => {
     const {
       root,

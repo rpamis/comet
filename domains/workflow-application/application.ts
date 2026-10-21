@@ -1,13 +1,19 @@
+import { materializeJsonValueProjection } from '../../platform/fs/json-value-pool.js';
 import {
   resolveWorkspaceRuntimeRoot,
   resolveWorkspaceRuntimeRootSync,
   isWorkspaceRuntimeMigrationFence,
 } from '../workflow-contract/workspace-runtime.js';
+import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import {
-  inspectProtectedProjectPath,
-  ensureProtectedProjectDirectory,
-} from '../workflow-contract/protected-project-path.js';
-import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
+  withWorkspaceApplicationScopeLock,
+  workspaceApplicationIds,
+  workspaceApplicationIdentityCurrent,
+  reserveWorkspaceApplicationClaims,
+  validateWorkspaceApplicationRecovery,
+  settleWorkspaceApplicationClaims,
+  type WorkspaceApplicationClaim,
+} from './workspace-scope.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { createRequire, isBuiltin } from 'node:module';
@@ -19,6 +25,8 @@ import {
   hashRuntimeValue,
   RuntimeProtocolError,
   parseWorkflowRun,
+  portableClaimToken,
+  readRuntimeProjection,
   type RuntimeStore,
   type WorkflowRun,
 } from '../engine/runtime.js';
@@ -51,6 +59,7 @@ import {
   assertApplicationSkillAction,
   applicationSkillScopesOverlap,
   applicationActionHoldsScope,
+  applicationActionScopes,
   createApplicationSkillExecutor,
 } from './skill-executor.js';
 import { createApplicationStorageIndex } from './storage-index.js';
@@ -201,6 +210,60 @@ export async function readWorkflowApplicationStorageDisposition(
   }).readPartitionMetadata(runId);
 }
 
+async function recordScopeManifest(
+  record: ApplicationRunRecord,
+): Promise<WorkflowApplicationManifest> {
+  const files = await readApplicationFiles(record.application.packageRoot);
+  const manifest = parseWorkflowApplicationManifest(
+    JSON.parse(Buffer.from(files['application.json'], 'base64').toString('utf8')),
+  );
+  if (
+    manifest.id !== record.application.id ||
+    manifest.version !== record.application.version ||
+    manifest.base !== record.application.base ||
+    hashRuntimeValue({
+      package: applicationFilesHash(files),
+      skills: manifest.skills.map((skill) => ({ id: skill.id, contentHash: skill.contentHash })),
+    }) !== record.application.contentHash
+  )
+    throw new RuntimeProtocolError(
+      'SCOPE_HELD',
+      `固定占用应用定义无法验证：${record.application.id} / ${record.runId}`,
+    );
+  return manifest;
+}
+function workspaceClaimsForRun(
+  run: WorkflowRun,
+  manifest: WorkflowApplicationManifest,
+  applicationContentHash: string,
+): WorkspaceApplicationClaim[] {
+  return run.actions
+    .filter(
+      (action) =>
+        action.type === 'invoke_skill' &&
+        applicationActionHoldsScope(action) &&
+        manifest.bindings.some((binding) => {
+          const skill = manifest.skills.find((item) => item.id === binding.skillId);
+          return (
+            binding.workflowId === run.workflow.id &&
+            binding.stepId === action.stepId &&
+            binding.usage === 'action' &&
+            skill &&
+            skill.adapter.sideEffect !== 'read' &&
+            skill.adapter.scope.length > 0
+          );
+        }),
+    )
+    .map((action) => ({
+      runId: run.runId,
+      applicationContentHash,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken: action.claim ? portableClaimToken(action.claim.token) : null,
+    }));
+}
+
 async function recordHoldsApplicationScope(record: ApplicationRunRecord): Promise<boolean> {
   const run = parseWorkflowRun(record.run, record.runId);
   const actions = run.actions.filter(
@@ -270,16 +333,11 @@ export async function repairWorkflowApplicationStorageIndex(options: {
   expectedEpoch: string;
 }) {
   const root = await resolveWorkspaceRuntimeRoot(options.projectRoot);
-  const directory = await ensureProtectedProjectDirectory(root, 'application-scope-locks', {
-    label: '应用写入范围锁',
-  });
-  return withRecoverableFileLock(
-    path.join(directory, `${safeId(options.applicationId)}.lock`),
-    () =>
-      applicationStorageMaintenance(options.projectRoot, options.applicationId).repair(
-        options.operation,
-        options.expectedEpoch,
-      ),
+  return withWorkspaceApplicationScopeLock(root, safeId(options.applicationId), () =>
+    applicationStorageMaintenance(options.projectRoot, options.applicationId).repair(
+      options.operation,
+      options.expectedEpoch,
+    ),
   );
 }
 
@@ -354,7 +412,9 @@ export async function resolveWorkflowApplicationFile(
   id: string,
   runId: string,
 ): Promise<string> {
-  const record = await (await rawStore(await fs.realpath(projectRoot), id, true)).read(runId);
+  const record = await (
+    await rawStore(await fs.realpath(projectRoot), id, true)
+  ).readProjection!(runId);
   if (record) return path.join(record.application.packageRoot, 'application.json');
   return (
     (await resolveInstalledWorkflowApplication({ projectRoot, scope: 'project' }, safeId(id))) ??
@@ -450,10 +510,15 @@ export async function loadWorkflowApplication(options: {
   let existingRun: WorkflowRun | undefined;
   // 先核对固定身份再 import，漂移的代码不会在恢复请求中执行。
   if (options.runId) {
-    const existing = await persistent.read(options.runId);
+    const existing = await persistent.readProjection!(options.runId);
     if (existing) {
       assertIdentity(existing);
-      existingRun = structuredClone(existing.run);
+      existingRun = (
+        await readRuntimeProjection(
+          { ...persistent, readProjection: async () => existing },
+          options.runId,
+        )
+      ).run;
     }
   }
   await init;
@@ -491,8 +556,7 @@ export async function loadWorkflowApplication(options: {
   const module = createRequire(file)(path.join(packageRoot, manifest.module));
   if (typeof module.createApplication !== 'function')
     applicationError('应用模块必须导出 createApplication');
-  let implementation: WorkflowApplicationImplementation = await module.createApplication({
-    ...(existingRun && !options.useLatestDefinition ? { existingRun } : {}),
+  const applicationContext = {
     manifest: structuredClone(manifest),
     skills,
     projectRoot,
@@ -500,7 +564,17 @@ export async function loadWorkflowApplication(options: {
     identity,
     createSkillExecutor: (host: Parameters<typeof createApplicationSkillExecutor>[1]) =>
       createApplicationSkillExecutor({ manifest, skills, projectRoot }, host),
-  });
+  };
+  // 仅应用工厂实际读取历史时才展开；保留 existingRun 是可结构化复制的普通对象这一契约。
+  if (existingRun && !options.useLatestDefinition) {
+    let materialized: WorkflowRun | undefined;
+    Object.defineProperty(applicationContext, 'existingRun', {
+      enumerable: true,
+      get: () => (materialized ??= materializeJsonValueProjection(existingRun)),
+    });
+  }
+  let implementation: WorkflowApplicationImplementation =
+    await module.createApplication(applicationContext);
   if (
     !implementation ||
     !Array.isArray(implementation.workflows) ||
@@ -688,11 +762,8 @@ export async function loadWorkflowApplication(options: {
         '工作区身份已改变，请重新加载应用 Runtime',
       );
     const root = await resolveWorkspaceRuntimeRoot(projectRoot);
-    const directory = await ensureProtectedProjectDirectory(root, 'application-scope-locks', {
-      label: '应用写入范围锁',
-    });
     try {
-      return await withRecoverableFileLock(path.join(directory, `${manifest.id}.lock`), operation);
+      return await withWorkspaceApplicationScopeLock(root, manifest.id, operation);
     } catch (error) {
       if (error instanceof Error && error.message.startsWith('Timed out waiting for file lock:'))
         throw new RuntimeProtocolError(
@@ -739,9 +810,35 @@ export async function loadWorkflowApplication(options: {
         .map((action) => [action.id, action.status, action.claim?.token, action.inputHash])
         .sort() ?? [],
     );
+  const claimsForRun = (run: WorkflowRun) =>
+    workspaceClaimsForRun(run, manifest, identity.contentHash);
+  const readWorkspaceClaims = async (
+    applicationId: string,
+  ): Promise<WorkspaceApplicationClaim[]> => {
+    const records = await applicationStorageMaintenance(projectRoot, applicationId).holders();
+    const claims: WorkspaceApplicationClaim[] = [];
+    for (const record of records) {
+      const ownerManifest =
+        record.application.id === identity.id &&
+        record.application.contentHash === identity.contentHash
+          ? manifest
+          : await recordScopeManifest(record);
+      claims.push(
+        ...workspaceClaimsForRun(
+          parseWorkflowRun(record.run, record.runId),
+          ownerManifest,
+          record.application.contentHash,
+        ),
+      );
+    }
+    return claims;
+  };
+  const workspaceIds = (recovering = false) =>
+    workspaceApplicationIds(scopeRuntimeRoot, manifest.id, readWorkspaceClaims, recovering);
   const relatedRuns = async (
     run: WorkflowRun,
     action: WorkflowRun['actions'][number],
+    recovering = false,
   ): Promise<WorkflowRun[]> => {
     // 与 scope 校验使用相同绑定规则；没有共享资源的动作无需读取其他 Run。
     const needsPeers = manifest.bindings.some((binding) => {
@@ -756,6 +853,46 @@ export async function loadWorkflowApplication(options: {
     });
     if (!needsPeers) return [];
 
+    const currentScopes = applicationActionScopes({ manifest, projectRoot }, run, action);
+    for (const peerId of await workspaceIds(recovering)) {
+      if (peerId === manifest.id) continue;
+      if (recovering && !(await workspaceApplicationIdentityCurrent(scopeRuntimeRoot, peerId)))
+        continue;
+      const records = await applicationStorageMaintenance(projectRoot, peerId).holders();
+      for (const record of records) {
+        const peer = parseWorkflowRun(record.run, record.runId);
+        // 只读取固定定义的数据，不加载其他应用代码；不同应用可以有相同 runId。
+        if (record.application.id !== peerId || record.application.projectRoot !== projectRoot)
+          throw new RuntimeProtocolError(
+            'SCOPE_HELD',
+            `应用 ${peerId} 的固定占用身份无法验证：${peer.runId}`,
+          );
+        const peerManifest = await recordScopeManifest(record);
+        for (const other of peer.actions.filter(applicationActionHoldsScope)) {
+          const scopes = applicationActionScopes(
+            { manifest: peerManifest, projectRoot },
+            peer,
+            other,
+          );
+          if (
+            scopes.some((scope) =>
+              currentScopes.some((target) =>
+                scope.write && target.write
+                  ? applicationSkillScopesOverlap(scope.ref, target.ref)
+                  : scope.ref === target.ref,
+              ),
+            )
+          ) {
+            const error = new RuntimeProtocolError(
+              'SCOPE_HELD',
+              `写入范围仍由应用 ${peerId} 的 Run ${peer.runId} / Action ${other.id} 占用；请停止原执行或提交真实结果`,
+            );
+            Object.assign(error, { blockedRunIds: [peer.runId], blockedApplicationIds: [peerId] });
+            throw error;
+          }
+        }
+      }
+    }
     const records = await storageIndex.holders();
     const peers: WorkflowRun[] = [];
     for (const record of records) {
@@ -819,6 +956,13 @@ export async function loadWorkflowApplication(options: {
         }
         const restored = { runId, revision: run.revision, application: identity, run };
         assertIdentity(restored);
+        await validateWorkspaceApplicationRecovery(
+          scopeRuntimeRoot,
+          manifest.id,
+          runId,
+          claimsForRun(run),
+        );
+        await workspaceIds(true);
         for (const action of run.actions.filter(
           (action) => applicationActionHoldsScope(action) && action.type === 'invoke_skill',
         ))
@@ -826,13 +970,25 @@ export async function loadWorkflowApplication(options: {
             { manifest, skills, projectRoot },
             run,
             action,
-            await relatedRuns(run, action),
+            await relatedRuns(run, action, true),
           );
-        await storageIndex.begin(runId, !record);
+        await reserveWorkspaceApplicationClaims(
+          scopeRuntimeRoot,
+          manifest.id,
+          claimsForRun(run),
+          true,
+        );
         try {
+          await storageIndex.begin(runId, !record);
           return await persistent.restoreCheckpoint!(runId, expectedRevision, restored);
         } finally {
           await storageIndex.finish();
+          await settleWorkspaceApplicationClaims(
+            scopeRuntimeRoot,
+            manifest.id,
+            readWorkspaceClaims,
+            true,
+          );
         }
       };
       return withScopeLock(restore);
@@ -858,6 +1014,7 @@ export async function loadWorkflowApplication(options: {
         await assertCurrentMaterial();
         const record = await persistent.read(runId);
         if (record) assertIdentity(record);
+        if (!record) await workspaceIds();
         if ((record?.revision ?? null) !== expectedRevision) return false;
         for (const action of run.actions) {
           if (
@@ -935,11 +1092,30 @@ export async function loadWorkflowApplication(options: {
         if ((record?.revision ?? null) !== expectedRevision) return false;
         if (!needsCoordination && holderSignature(record?.run) !== holderSignature(run))
           return false;
-        if (needsCoordination) await storageIndex.begin(runId, !record);
+        if (needsCoordination) {
+          const previousClaims = new Set(
+            record ? claimsForRun(record.run).map(hashRuntimeValue) : [],
+          );
+          const claims = claimsForRun(run).filter(
+            (claim) => !previousClaims.has(hashRuntimeValue(claim)),
+          );
+          if (claims.length) {
+            await workspaceIds();
+            await reserveWorkspaceApplicationClaims(scopeRuntimeRoot, manifest.id, claims);
+          }
+        }
         try {
+          if (needsCoordination) await storageIndex.begin(runId, !record);
           return await prepared();
         } finally {
-          if (needsCoordination) await storageIndex.finish();
+          if (needsCoordination) {
+            await storageIndex.finish();
+            await settleWorkspaceApplicationClaims(
+              scopeRuntimeRoot,
+              manifest.id,
+              readWorkspaceClaims,
+            );
+          }
         }
       };
       return needsCoordination ? withScopeLock(commit) : commit();

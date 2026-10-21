@@ -28,7 +28,7 @@ import {
   isNativeSdkRunRecoveryRequiredError,
 } from './native-sdk-state-store.js';
 import { inspectNativeSdkCheckExecutions } from './native-sdk-check-execution.js';
-import { recoverNativeSdkChecks } from './native-sdk-checks.js';
+import { recoverNativeSdkChecks, nativeSdkCompletedCheckInputDrift } from './native-sdk-checks.js';
 import { projectNativeSdkStatus } from './native-sdk-status.js';
 import {
   inspectNativeSdkProjectionLock,
@@ -877,6 +877,22 @@ export async function nativeDoctorCommand(
           inspection,
         );
         const unresolved = run.actions.filter((action) => action.status === 'unknown');
+        const staleCompleted = new Set<string>();
+        for (const check of checks) {
+          const action = run.actions.find((entry) => entry.id === check.actionId);
+          if (
+            action &&
+            check.recoveryRequired &&
+            check.quiescent &&
+            check.execution?.phase === 'completed' &&
+            check.execution.outcome &&
+            (await nativeSdkCompletedCheckInputDrift(
+              { projectRoot: commandRoot, run, action },
+              check.execution.outcome,
+            ))
+          )
+            staleCompleted.add(action.id);
+        }
         const findings = [
           ...lockFindings,
           ...transactionFindings,
@@ -890,6 +906,7 @@ export async function nativeDoctorCommand(
             )
             .map((check) => {
               const requiresStoppedEvidence =
+                staleCompleted.has(check.actionId) ||
                 check.phase === 'missing' ||
                 (check.quiescent && check.execution && !check.execution.outcome) ||
                 (process.platform === 'win32' &&
@@ -901,7 +918,9 @@ export async function nativeDoctorCommand(
                 code: 'sdk-check-execution-recovery-required',
                 ...check,
                 message:
-                  check.reason ??
+                  (staleCompleted.has(check.actionId)
+                    ? '原检查已完成但输入随后变化；确认全部后代已停止并提交原领取停止证据后，可批准新的修复候选。旧结果不会用于当前验收，也不会重跑旧检查。'
+                    : check.reason) ??
                   'SDK check execution needs reconciliation; doctor repair preserves the original claim and does not replay the check',
                 repairCommand: `comet native doctor ${name} --repair${requiresStoppedEvidence ? ' --confirmed --stopped-actions <stopped-actions-json-file>' : ''}`,
               };

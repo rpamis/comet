@@ -2,8 +2,9 @@ import { inspectCometHook } from '../../../domains/comet-entry/hook-router.js';
 import { isClassicSdkCancellationComplete } from '../../../domains/comet-classic/classic-sdk-run-lifecycle.js';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import * as spawnedCommands from '../../../platform/process/spawn-command.js';
+import * as spawnedCommands from '../../../platform/process/owned-command.js';
 import * as processTermination from '../../../platform/process/terminate-process-tree.js';
+import * as processIdentity from '../../../platform/process/process-identity.js';
 import { inspectClassicSdkActionRecovery } from '../../../domains/comet-classic/classic-sdk-check-recovery.js';
 import { hashRuntimeValue, createFileRuntimeStore } from '../../../domains/engine/runtime.js';
 import { resolveClassicLocalTarget } from '../../../domains/comet-classic/classic-runtime-paths.js';
@@ -29,6 +30,13 @@ import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
 import { requireFileSymlink } from '../../helpers/file-symlink.js';
 
 const roots: string[] = [];
+function stopTestDescendant(pid: number) {
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+  }
+}
 afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
@@ -542,6 +550,104 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
 });
 
 describe('Classic SDK interrupted check recovery', () => {
+  it.each([false, true])(
+    'stops ignored-stdio descendants before a successful receipt (intermediate parent=%s)',
+    async (intermediateParent) => {
+      const f = await fixture('tweak', false);
+      await f.cli('state', 'complete-build', 'example');
+      const { runtime, run } = await f.inspect();
+      const source = path.join(f.projectRoot, 'source.js');
+      const original = await fs.readFile(source, 'utf8');
+      const pidFile = path.join(path.dirname(f.projectRoot), 'descendant.pid');
+      const descendantCode = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(source)}, 'late write'), 800);`;
+      const spawnDescendant = `
+        const child = require('node:child_process').spawn(process.execPath,
+          ['-e', ${JSON.stringify(descendantCode)}], { stdio: 'ignore' });
+        require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));
+        child.unref();
+      `;
+      const script = intermediateParent
+        ? `const result = require('node:child_process').spawnSync(process.execPath,
+            ['-e', ${JSON.stringify(spawnDescendant)}], { stdio: 'ignore' });
+            process.exit(result.status ?? 1);`
+        : spawnDescendant;
+      let descendantPid: number | undefined;
+      try {
+        const checked = await executeClassicSdkCommandCheck(runtime, {
+          runId: run.runId,
+          projectRoot: f.projectRoot,
+          argv: [process.execPath, '-e', script],
+          timeoutMs: 10000,
+        });
+        descendantPid = Number(await fs.readFile(pidFile, 'utf8'));
+        const check = checked.actions.findLast((entry) => entry.ref === 'classic-check')!;
+        expect(check).toMatchObject({
+          status: 'succeeded',
+          outcome: { output: { exitCode: 0 } },
+        });
+        expect(await fs.readFile(source, 'utf8')).toBe(original);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        expect(await fs.readFile(source, 'utf8')).toBe(original);
+        expect(await inspectClassicSdkActionRecovery(f.projectRoot, checked)).not.toMatchObject({
+          status: 'stop-unconfirmed',
+        });
+      } finally {
+        descendantPid ??= Number(await fs.readFile(pidFile, 'utf8').catch(() => '0'));
+        if (descendantPid > 0) stopTestDescendant(descendantPid);
+      }
+    },
+  );
+
+  it.each([false, true])(
+    'does not accept completed before quiescence (termination signal accepted=%s)',
+    async (signalAccepted) => {
+      const f = await fixture('tweak', false);
+      await f.cli('state', 'complete-build', 'example');
+      const { runtime, run } = await f.inspect();
+      const child = Object.assign(new EventEmitter(), {
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        pid: 123456,
+        kill: vi.fn(() => true),
+        unref: vi.fn(),
+      });
+      vi.spyOn(spawnedCommands, 'spawnOwnedCommand').mockReturnValue({
+        child,
+        start: () => child.emit('message', { type: 'completed', exitCode: 0 }),
+        instanceId: 'test-supervisor',
+      } as unknown as ReturnType<typeof spawnedCommands.spawnOwnedCommand>);
+      vi.spyOn(processTermination, 'terminateProcessTreeConfirmed').mockImplementation(async () => {
+        child.emit('close', null);
+        return signalAccepted;
+      });
+      if (signalAccepted)
+        vi.spyOn(processIdentity, 'inspectProcessTreeLiveness').mockResolvedValue('unknown');
+      await expect(
+        executeClassicSdkCommandCheck(runtime, {
+          runId: run.runId,
+          projectRoot: f.projectRoot,
+          argv: [process.execPath, '-e', 'process.exit(0)'],
+        }),
+      ).rejects.toThrow('进程树尚未确认停止');
+      const cold = (await f.inspect()).run;
+      expect(cold.actions.at(-1)).toMatchObject({ status: 'unknown', ref: 'classic-check' });
+      expect(cold.actions.at(-1)!.outcome).toBeUndefined();
+      expect(await inspectClassicSdkActionRecovery(f.projectRoot, cold)).toMatchObject({
+        status: 'stop-unconfirmed',
+        blocked: true,
+      });
+      expect(
+        (
+          await inspectCometHook(f.projectRoot, {
+            intent: 'write',
+            toolName: 'Write',
+            targets: [path.join(f.projectRoot, 'source.js')],
+          })
+        ).allowed,
+      ).toBe(false);
+    },
+  );
+
   it.each([true, false])(
     'keeps a Windows-style unconfirmed tree stop blocked (close=%s)',
     async (emitClose) => {
@@ -553,10 +659,13 @@ describe('Classic SDK interrupted check recovery', () => {
         stderr: new PassThrough(),
         pid: 123456,
         kill: vi.fn(() => true),
+        unref: vi.fn(),
       });
-      const spawned = vi
-        .spyOn(spawnedCommands, 'spawnCommand')
-        .mockReturnValue(child as unknown as spawnedCommands.SpawnedCommand);
+      const spawned = vi.spyOn(spawnedCommands, 'spawnOwnedCommand').mockReturnValue({
+        child,
+        start: vi.fn(),
+        instanceId: 'test-supervisor',
+      } as unknown as ReturnType<typeof spawnedCommands.spawnOwnedCommand>);
       vi.spyOn(processTermination, 'terminateProcessTreeConfirmed').mockImplementation(async () => {
         // 模拟 taskkill /T 失败后仅组长退出；不启动或杀死任何真实进程。
         if (emitClose) child.emit('close', null);
@@ -660,10 +769,13 @@ describe('Classic SDK interrupted check recovery', () => {
       stderr: new PassThrough(),
       pid: 123456,
       kill: vi.fn(() => true),
+      unref: vi.fn(),
     });
-    vi.spyOn(spawnedCommands, 'spawnCommand').mockReturnValue(
-      child as unknown as spawnedCommands.SpawnedCommand,
-    );
+    vi.spyOn(spawnedCommands, 'spawnOwnedCommand').mockReturnValue({
+      child,
+      start: vi.fn(),
+      instanceId: 'test-supervisor',
+    } as unknown as ReturnType<typeof spawnedCommands.spawnOwnedCommand>);
     let confirmed = false;
     vi.spyOn(processTermination, 'terminateProcessTreeConfirmed').mockImplementation(async () => {
       child.emit('close', null);

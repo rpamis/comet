@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { materializeJsonValueProjection } from '../../platform/fs/json-value-pool.js';
 import { promises as fs } from 'node:fs';
 import {
   createRuntime,
@@ -170,7 +171,7 @@ export async function invokeWorkflowApplicationSkill(options: {
     });
     await selectWorkflowApplication(loaded, run.runId);
   } else {
-    run = await runtime.inspect(runId!);
+    run = (await runtime.inspectProjection(runId!)).run;
     const command = { runId: run.runId, expectedRevision: run.revision, context };
     if (request.operation === 'next') run = await runtime.next(command);
     if (request.operation === 'claim') {
@@ -276,14 +277,14 @@ export async function invokeWorkflowApplicationSkill(options: {
       waitId: wait.id,
       proposalHash: wait.proposalHash,
     }));
-  return {
+  return materializeJsonValueProjection({
     schema: 'comet.application.skill-invocation.v1' as const,
     application: {
       id: loaded.identity.id,
       version: loaded.identity.version,
       packageRoot: loaded.identity.packageRoot,
     },
-    run: projectWorkflowApplicationRun(loaded, run),
+    run: projectWorkflowApplicationRun(loaded, run, { includeOutputs: false }),
     skillWork: applicationSkillWork(loaded, run),
     waitSkillWork: applicationWaitSkillWork(loaded, run),
     receipts: {
@@ -292,5 +293,5 @@ export async function invokeWorkflowApplicationSkill(options: {
       ),
       waits: waitReceipts.map((value) => Buffer.from(JSON.stringify(value)).toString('base64url')),
     },
-  };
+  });
 }

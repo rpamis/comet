@@ -1,3 +1,4 @@
+import { nativeSdkCompletedCheckInputDrift } from './native-sdk-checks.js';
 import { nativeTaskContextRequest } from './native-task-context.js';
 import {
   hashRuntimeValue,
@@ -911,8 +912,8 @@ export async function projectNativeSdkContinuation(options: {
       ...sdkLoopStopContinuation(state, verifyWait.proposalHash),
       userCommunication: communication(
         localized(
-          'Preserve the failed or interrupted check receipts. Ask for a repair or requirements decision before creating a new candidate; do not retry the original check or report that it never ran.',
-          '保留失败或中断检查的收据。请用户决定修复实现或调整需求，再创建新候选；不要重跑原检查或声明它从未执行。',
+          'Preserve failed, interrupted, or input-invalidated check receipts. Ask for a repair or requirements decision before creating a new candidate; do not retry the original check or report that it never ran.',
+          '保留失败、中断或输入已变化的原检查收据。请用户决定修复实现或调整需求，再创建新候选；不要重跑原检查或声明它从未执行。',
         ),
         state.blockers.map((blocker) => blocker.reason.text).join('; '),
       ),
@@ -1007,11 +1008,27 @@ export async function projectNativeSdkContinuation(options: {
       };
     }
   } else if (checkExecutions.some((execution) => execution.recoveryRequired)) {
+    const staleCompleted = new Set<string>();
+    for (const execution of checkExecutions) {
+      const action = active.find((candidate) => candidate.id === execution.actionId);
+      if (
+        action &&
+        execution.quiescent &&
+        execution.execution?.phase === 'completed' &&
+        execution.execution.outcome &&
+        (await nativeSdkCompletedCheckInputDrift(
+          { projectRoot, run, action },
+          execution.execution.outcome,
+        ))
+      )
+        staleCompleted.add(action.id);
+    }
     const stopped = checkExecutions
       .filter(
         (execution) =>
           execution.recoveryRequired &&
-          (execution.phase === 'missing' ||
+          (staleCompleted.has(execution.actionId) ||
+            execution.phase === 'missing' ||
             (execution.quiescent && execution.execution && !execution.execution.outcome)),
       )
       .map((execution) => {
@@ -1058,12 +1075,16 @@ export async function projectNativeSdkContinuation(options: {
           : [],
       userCommunication: communication(
         localized(
-          stopped.length > 0
-            ? 'The check outcome or its older process registration is missing. Ask the original host or user to verify that the original execution and all descendants, including detached processes, have stopped. Submit actual evidence with the original claim using the shown doctor command. Until then, do not create a new candidate or run another check.'
-            : 'The original Runtime check needs recovery. Run doctor to inspect the registered owner, process, and receipts; do not start another check or assume it never executed.',
-          stopped.length > 0
-            ? '检查结果不完整，或旧执行缺少进程登记。请原宿主或用户核对原执行及全部后代（含脱组进程）确已停止，再按显示的 doctor 命令，用原领取信息提交实际停止证据。此前不要创建新候选或另开检查。'
-            : '原 Runtime 检查需要恢复。请执行 doctor 核对登记的执行者、进程及收据；不要另开检查或假设它未执行。',
+          staleCompleted.size > 0
+            ? 'The original check completed, but its input has changed. Preserve its receipts and side effects. Ask the original host or user to confirm all descendants have stopped, then submit the bound stop evidence using doctor. This opens an explicit new-candidate repair decision; it does not replay the old check.'
+            : stopped.length > 0
+              ? 'The check outcome or its older process registration is missing. Ask the original host or user to verify that the original execution and all descendants, including detached processes, have stopped. Submit actual evidence with the original claim using the shown doctor command. Until then, do not create a new candidate or run another check.'
+              : 'The original Runtime check needs recovery. Run doctor to inspect the registered owner, process, and receipts; do not start another check or assume it never executed.',
+          staleCompleted.size > 0
+            ? '原检查已经完成，但输入随后发生变化。保留原收据和副作用，请原宿主或用户确认全部后代已停止，再通过 doctor 提交绑定原领取的停止证据。这会进入新候选修复审批，不会重跑旧检查。'
+            : stopped.length > 0
+              ? '检查结果不完整，或旧执行缺少进程登记。请原宿主或用户核对原执行及全部后代（含脱组进程）确已停止，再按显示的 doctor 命令，用原领取信息提交实际停止证据。此前不要创建新候选或另开检查。'
+              : '原 Runtime 检查需要恢复。请执行 doctor 核对登记的执行者、进程及收据；不要另开检查或假设它未执行。',
         ),
         stopped.length > 0
           ? localized(

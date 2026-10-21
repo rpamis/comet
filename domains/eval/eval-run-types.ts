@@ -36,6 +36,8 @@ export interface EvalManagedRun {
   id: string;
   origin: 'dashboard' | 'cli';
   createdAt: string;
+  /** worker 接管时持久化，排队时间不消耗执行预算。 */
+  startedAt?: string;
   updatedAt: string;
   status: EvalExecutionStatus;
   config: EvalRunConfig;

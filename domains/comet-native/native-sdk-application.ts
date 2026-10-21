@@ -2102,7 +2102,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
           if (event.outcome.status === 'failed') {
             const output = event.outcome.output as {
               checks: Array<{ id: string; status: string }>;
-              interruption?: { unknownCheckIds: string[] };
+              interruption?: { kind?: string; unknownCheckIds: string[] };
             };
             const interrupted =
               Boolean(output.interruption) ||
@@ -2113,7 +2113,10 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
                 .map((check) => check.id),
               ...(output.interruption?.unknownCheckIds ?? []),
             ];
-            const reason = `Runtime checks ${interrupted ? 'were interrupted' : 'failed'}: ${affected.join(', ')}. Preserve their receipts and submit a new Builder candidate after repair.`;
+            const reason =
+              output.interruption?.kind === 'completed-input-drift'
+                ? 'Runtime checks completed, but their input changed before acceptance. Preserve the original receipts and approve a new Builder candidate; do not replay the old checks.'
+                : `Runtime checks ${interrupted ? 'were interrupted' : 'failed'}: ${affected.join(', ')}. Preserve their receipts and submit a new Builder candidate after repair.`;
             const maxVerifyFailures =
               (run.input as { maxVerifyFailures?: number }).maxVerifyFailures ??
               DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES;

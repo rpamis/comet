@@ -14,7 +14,8 @@ import {
 } from '../engine/runtime.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import { terminateProcessTreeConfirmed } from '../../platform/process/terminate-process-tree.js';
-import { spawnCommand } from '../../platform/process/spawn-command.js';
+import { spawnOwnedCommand } from '../../platform/process/owned-command.js';
+import { inspectProcessTreeLiveness } from '../../platform/process/process-identity.js';
 import { reportCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
 import { observeRuntimeOperation } from '../../platform/process/runtime-performance.js';
 import { collectClassicSdkDeliveryInputs } from './classic-sdk-delivery-inputs.js';
@@ -69,52 +70,94 @@ async function runCommand(
   cwd: string,
   timeoutMs: number,
 ): Promise<{ exitCode: number; output: string; stopConfirmed: boolean }> {
-  return new Promise((resolve) => {
-    const child = spawnCommand(argv[0], argv.slice(1), { cwd });
-    let output = '';
-    let timedOut = false;
-    let termination: Promise<boolean> | undefined;
-    const capture = (chunk: Buffer) => {
-      output = (output + chunk.toString()).slice(-2 * 1024 * 1024);
-    };
-    const finish = (exitCode: number, stopConfirmed: boolean) => {
-      clearTimeout(timer);
-      resolve({
-        exitCode,
-        output: (timedOut ? 'Check timed out.\n' : '') + output,
-        stopConfirmed,
-      });
-    };
-    child.stdout.on('data', capture);
-    child.stderr.on('data', capture);
-    child.on('error', (error) => {
-      output += `\n${error.message}`;
-    });
-    const timer = setTimeout(() => {
-      timedOut = true;
-      // close 可能早于整树终止结果；组长退出不能解除后代进程的写入风险。
-      termination = Promise.resolve()
-        .then(() => terminateProcessTreeConfirmed(child))
-        .catch(() => {
-          try {
-            child.kill('SIGKILL');
-          } catch {
-            // 尽力停止组长不代表整树终止已确认。
-          }
-          return false;
-        });
-      void termination.then((confirmed) => {
-        // Windows 兜底也可能没有 close 事件；保留阻塞而不是无限等待。
-        if (!confirmed) finish(124, false);
-      });
-    }, timeoutMs);
-    child.on('close', (code) => {
-      void (async () => {
-        const confirmed = termination ? await termination : true;
-        finish(timedOut ? 124 : (code ?? 1), confirmed);
-      })();
-    });
+  const owned = spawnOwnedCommand(argv[0], argv.slice(1), {
+    cwd,
+    timeoutMs,
+    confirmTermination: true,
   });
+  const child = owned.child;
+  const closed = new Promise<void>((resolve) => child.once('close', () => resolve()));
+  let output = '';
+  let timedOut = false;
+  const capture = (chunk: Buffer) => {
+    output = (output + chunk.toString()).slice(-2 * 1024 * 1024);
+  };
+  child.stdout.on('data', capture);
+  child.stderr.on('data', capture);
+  let timer: NodeJS.Timeout | undefined;
+  const exitCode = await new Promise<number>((resolve) => {
+    let settled = false;
+    const finish = (code: number) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(code);
+    };
+    child.once('error', (error) => {
+      output += `\n${error.message}`;
+      finish(1);
+    });
+    child.once('close', () => finish(1));
+    child.on('message', (message) => {
+      const value = message as {
+        type?: string;
+        exitCode?: number | null;
+        reason?: string;
+        message?: string;
+      };
+      if (value.type === 'completed') finish(value.exitCode ?? 1);
+      else if (value.type === 'interrupted' || value.type === 'spawn-error') {
+        timedOut = value.reason === 'timeout';
+        if (value.message) output += `\n${value.message}`;
+        finish(timedOut ? 124 : 1);
+      }
+    });
+    timer = setTimeout(() => {
+      timedOut = true;
+      finish(124);
+    }, timeoutMs);
+    try {
+      owned.start();
+    } catch (error) {
+      output += `\n${error instanceof Error ? error.message : String(error)}`;
+      finish(1);
+    }
+  });
+  // completed 只代表命令退出。监管器仍持有后代的执行边界；正常退出也必须清理，
+  // 不能用组长 close 事件证明检查已静止，更不能提前采集成功快照。
+  let stopConfirmed = await terminateProcessTreeConfirmed(child).catch(() => false);
+  if (stopConfirmed) {
+    let closeTimer: NodeJS.Timeout | undefined;
+    stopConfirmed = await Promise.race([
+      closed.then(() => true),
+      new Promise<boolean>((resolve) => {
+        closeTimer = setTimeout(() => resolve(false), 2000);
+      }),
+    ]);
+    clearTimeout(closeTimer);
+    // SIGKILL 成功只证明信号已发出；等待残留进程不再具备写入能力。
+    const deadline = Date.now() + 2000;
+    while (stopConfirmed && child.pid) {
+      const liveness = await inspectProcessTreeLiveness(child.pid).catch(() => 'unknown' as const);
+      if (liveness === 'dead') break;
+      if (Date.now() >= deadline) {
+        stopConfirmed = false;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+  if (!stopConfirmed) {
+    child.stdout.destroy();
+    child.stderr.destroy();
+    if (child.connected) child.disconnect();
+    child.unref();
+  }
+  return {
+    exitCode,
+    output: (timedOut ? 'Check timed out.\n' : '') + output,
+    stopConfirmed,
+  };
 }
 
 async function checkedInput(

@@ -2,6 +2,7 @@ import {
   readRuntimeProjection,
   queryRuntimeProjection,
   type RuntimeQuery,
+  type RuntimeProjection,
 } from './runtime-compact-query.js';
 import { hashJsonValueProjection } from '../../platform/fs/json-value-pool.js';
 import { randomUUID } from 'node:crypto';
@@ -1919,10 +1920,14 @@ export function createRuntime(options: CreateRuntimeOptions) {
     }
   }
 
-  async function query(command: RuntimeQuery & { runId: string }): Promise<unknown> {
-    const projection = await readRuntimeProjection(options.store, command.runId);
+  async function inspectProjection(runId: string): Promise<RuntimeProjection> {
+    const projection = await readRuntimeProjection(options.store, runId);
     validateDefinitionBindings(projection.run, hashJsonValueProjection);
-    return queryRuntimeProjection(projection, command);
+    return projection;
+  }
+
+  async function query(command: RuntimeQuery & { runId: string }): Promise<unknown> {
+    return queryRuntimeProjection(await inspectProjection(command.runId), command);
   }
 
   function isolated<Args extends unknown[], Result>(
@@ -1937,6 +1942,8 @@ export function createRuntime(options: CreateRuntimeOptions) {
     start: isolated(start),
     dispatchCommand: isolated(dispatchCommand),
     inspect: isolated(inspect),
+    // 已验证且只读的惰性投影；调用方仅物化要交付的当前视图。
+    inspectProjection,
     query: isolated(query),
     inspectCurrent: async (runId: string): Promise<RuntimeCurrentRun> =>
       (await query({ runId, view: 'current' })) as RuntimeCurrentRun,

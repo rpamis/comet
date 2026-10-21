@@ -10,6 +10,7 @@ import {
 import { loadWorkflowApplication } from '../../../domains/workflow-application/application.js';
 import { invokeWorkflowApplicationSkill } from '../../../domains/workflow-application/skill-invocation.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
+import * as runtimeExports from '../../../domains/engine/runtime.js';
 import { getCurrentVersion } from '../../../platform/version/version.js';
 
 let root: string;
@@ -20,7 +21,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   await fs.rm(root, { recursive: true, force: true });
 });
-async function application(id: string, count = 1) {
+async function application(id: string, count = 1, cloneExisting = false) {
   const pkg = path.join(root, id);
   await fs.mkdir(pkg);
   const file = path.join(pkg, 'application.json');
@@ -53,7 +54,7 @@ async function application(id: string, count = 1) {
   };
   await fs.writeFile(
     path.join(pkg, 'application.mjs'),
-    `export function createApplication(){return {workflows:[${JSON.stringify(workflow)}]};}`,
+    `export function createApplication(context){${cloneExisting ? 'if (context.existingRun) structuredClone(context.existingRun);' : ''}return {workflows:[${JSON.stringify(workflow)}]};}`,
   );
   const loaded = await loadWorkflowApplication({ file, projectRoot: root });
   return {
@@ -68,6 +69,7 @@ async function start(
   id: string,
   completed = false,
   steps = Infinity,
+  outputBytes = 8192,
 ) {
   let run = await app.runtime.start({
     runId: id,
@@ -93,7 +95,7 @@ async function start(
           claimToken: run.actions.at(-1)!.claim!.token,
           outcomeId: `outcome-${action.id}`,
           status: 'succeeded',
-          output: { text: 'x'.repeat(8192) },
+          output: { text: 'x'.repeat(outputBytes) },
         },
       });
     }
@@ -235,4 +237,145 @@ it('resumes a healthy task after a proven aborted registration without ignoring 
   expect((await invoke()).run.runId).toBe('healthy');
   await fs.writeFile(checkpoint('main', 'aborted'), '{uncertain committed data');
   await expect(invoke()).rejects.toThrow('无法读取');
+});
+
+it('keeps the Skill current view bounded while retaining explicit complete evidence', async () => {
+  const app = await application('skill-history', 101);
+  const run = await start(app, 'long-lived', true, 100, 512);
+  expect(run.actions).toHaveLength(101);
+  const inspect = await invokeWorkflowApplicationSkill({
+    file: app.file,
+    projectRoot: root,
+    request: { operation: 'inspect', runId: run.runId },
+  });
+  expect(inspect.run.history.actions).toBe(101);
+  expect(inspect.run.current.actions).toHaveLength(1);
+  expect(inspect.run.continuation.mode).toBe('execute');
+  // 当前 Action 的输入本身可能包含已声明的依赖；不能通过删掉必需输入伪造有界读取。
+  const currentAction = inspect.run.current.actions[0];
+  const claimed = await invokeWorkflowApplicationSkill({
+    file: app.file,
+    projectRoot: root,
+    request: { operation: 'claim', runId: run.runId, actionId: currentAction.id },
+  });
+  expect(claimed.run.current.actions[0].status).toBe('running');
+  expect(claimed.receipts.actions).toHaveLength(1);
+  const receipt = JSON.parse(Buffer.from(claimed.receipts.actions[0], 'base64url').toString());
+  const completed = await invokeWorkflowApplicationSkill({
+    file: app.file,
+    projectRoot: root,
+    request: {
+      operation: 'record-outcome',
+      receipt,
+      result: { status: 'succeeded', output: { text: 'last output' } },
+    },
+  });
+  expect(completed.run.status).toBe('completed');
+  expect(completed.run.outputsOmitted?.count).toBe(101);
+  expect(completed.run.outputs).toBeUndefined();
+  expect(Buffer.byteLength(JSON.stringify(completed))).toBeLessThan(5000);
+  const originalRuntime = runtimeExports.createRuntime;
+  const projections: Awaited<ReturnType<ReturnType<typeof createRuntime>['inspectProjection']>>[] =
+    [];
+  vi.spyOn(runtimeExports, 'createRuntime').mockImplementation((options) => {
+    const runtime = originalRuntime(options);
+    return {
+      ...runtime,
+      inspect: async () => {
+        throw new Error('Skill current view must not inspect full history');
+      },
+      inspectProjection: async (id) => {
+        const projection = await runtime.inspectProjection(id);
+        projections.push(projection);
+        return projection;
+      },
+    };
+  });
+  for (const operation of ['inspect', 'resume'] as const) {
+    const result = await invokeWorkflowApplicationSkill({
+      file: app.file,
+      projectRoot: root,
+      request: { operation, runId: run.runId },
+    });
+    expect(result.run.history.actions).toBe(101);
+    expect(result.run.current.actions).toEqual([]);
+    expect(result.run.outputsOmitted?.count).toBe(101);
+    expect(result.run.inspection.request).toEqual({ operation: 'inspect', runId: run.runId });
+    expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThan(5000);
+  }
+  expect(projections).toHaveLength(2);
+  expect(projections.every((projection) => projection.stats?.materializedEntries === 0)).toBe(true);
+  vi.restoreAllMocks();
+  const loaded = await loadWorkflowApplication({
+    file: app.file,
+    projectRoot: root,
+    runId: run.runId,
+    readOnly: true,
+  });
+  const runtime = createRuntime({ ...loaded.implementation, store: loaded.store });
+  const projection = await runtime.inspectProjection(run.runId);
+  expect(projection.stats?.materializedEntries).toBe(0);
+  expect((await runtime.inspect(run.runId)).outputs.step0).toEqual({
+    sequence: 1,
+    value: { text: 'x'.repeat(512) },
+  });
+}, 120_000);
+
+it('keeps unknown claimed work and its original receipt in the compact Skill view', async () => {
+  const app = await application('unknown-work');
+  let run = await start(app, 'uncertain');
+  const action = run.actions[0];
+  run = await app.runtime.claim({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: 'host',
+  });
+  const token = run.actions[0].claim!.token;
+  await app.runtime.markUnknown({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    reason: 'original host disconnected',
+  });
+  const resumed = await invokeWorkflowApplicationSkill({
+    file: app.file,
+    projectRoot: root,
+    request: { operation: 'resume', runId: run.runId },
+  });
+  expect(resumed.run.continuation.mode).toBe('reconcile');
+  expect(resumed.run.current.actions[0]).toMatchObject({
+    id: action.id,
+    status: 'unknown',
+    claim: { token },
+  });
+  expect(
+    JSON.parse(Buffer.from(resumed.receipts.actions[0], 'base64url').toString()),
+  ).toMatchObject({ actionId: action.id, claimToken: token });
+  await expect(
+    invokeWorkflowApplicationSkill({
+      file: app.file,
+      projectRoot: root,
+      request: { operation: 'claim', runId: run.runId, actionId: action.id },
+    }),
+  ).rejects.toThrow('pending');
+});
+
+it('keeps explicit factory history access compatible with structuredClone', async () => {
+  const app = await application('factory-history', 2, true);
+  const run = await start(app, 'original', true, 1);
+  const loaded = await loadWorkflowApplication({
+    file: app.file,
+    projectRoot: root,
+    runId: run.runId,
+    readOnly: true,
+  });
+  expect(
+    (
+      await createRuntime({ ...loaded.implementation, store: loaded.store }).inspectProjection(
+        run.runId,
+      )
+    ).run.revision,
+  ).toBe(run.revision);
 });

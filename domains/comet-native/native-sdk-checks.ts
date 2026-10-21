@@ -99,7 +99,7 @@ interface NativeSdkCheckResult {
 }
 
 interface NativeSdkCheckInterruption {
-  kind: 'execution-unknown';
+  kind: 'execution-unknown' | 'completed-input-drift';
   stoppedAction: Omit<RuntimeStoppedAction, 'claimToken'>;
   processBoundary: 'process-group' | 'supervisor-process' | 'unknown';
   candidateId: string;
@@ -822,6 +822,49 @@ async function validatedCheckResults(options: {
   return output.checks;
 }
 
+/** 只把已核验的完整原结果识别为输入过期；日志损坏等其他错误仍需单独修复。 */
+export async function nativeSdkCompletedCheckInputDrift(
+  options: {
+    run: Readonly<WorkflowRun>;
+    action: Readonly<RuntimeAction>;
+    projectRoot: string;
+  },
+  persisted: Omit<
+    RuntimeOutcome,
+    'actionId' | 'attempt' | 'inputHash' | 'claimToken' | 'outcomeId'
+  >,
+): Promise<boolean> {
+  const { action } = options;
+  const outcome: RuntimeOutcome = {
+    ...persisted,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    claimToken: action.claim!.token,
+    outcomeId: `${action.id}:${action.attempt}:executor-result`,
+  };
+  const original = outcome.output as unknown as NativeSdkCheckOutcome;
+  if (
+    outcome.status !== 'succeeded' ||
+    original?.interruption ||
+    typeof original?.inputBefore !== 'string' ||
+    !original.inputBefore ||
+    typeof original?.inputAfter !== 'string' ||
+    !original.inputAfter
+  )
+    return false;
+  try {
+    const { candidateId, plans } = checkInput(options.run, action);
+    const validation = { ...options, candidateId, plans, outcome };
+    // 原候选、完整计划和日志必须仍然可信；不能把任意校验失败包装成可恢复结果。
+    await validatedCheckResults({ ...validation, allowCandidateSuccessor: true });
+    await validatedCheckResults(validation);
+  } catch (error) {
+    return error instanceof NativeSdkCheckInputDriftError;
+  }
+  return false;
+}
+
 async function partialCheckLogs(
   projectRoot: string,
   run: Readonly<WorkflowRun>,
@@ -902,15 +945,26 @@ async function validateInterruptedCheckOutcome(
     await inspectNativeSdkCheckExecutions({ projectRoot, run, includeSettled: true })
   ).find((entry) => entry.actionId === action.id);
   const legacyMissing =
+    interruption.kind === 'execution-unknown' &&
     item?.phase === 'missing' &&
     interruption.executionHash === null &&
     output.checks.length === 0 &&
     (await hasNativeSdkCheckStopRequest({ projectRoot, run, action }));
+  const completedInputDrift =
+    interruption.kind === 'completed-input-drift' &&
+    item?.quiescent &&
+    item.execution?.phase === 'completed' &&
+    item.execution.outcome &&
+    hashRuntimeValue(item.execution.checks) ===
+      hashRuntimeValue((item.execution.outcome.output as { checks: RuntimeValue }).checks) &&
+    (await nativeSdkCompletedCheckInputDrift(options, item.execution.outcome));
   const registeredStopped =
     item?.quiescent &&
     item.execution &&
-    !item.execution.outcome &&
-    (item.owner === 'dead' || item.phase === 'interrupted') &&
+    (completedInputDrift ||
+      (interruption.kind === 'execution-unknown' &&
+        !item.execution.outcome &&
+        (item.owner === 'dead' || item.phase === 'interrupted'))) &&
     item.execution.candidateId === candidateId &&
     item.execution.plansHash === interruption.plansHash &&
     interruption.executionHash === hashRuntimeValue(item.execution as unknown as RuntimeValue) &&
@@ -920,7 +974,8 @@ async function validateInterruptedCheckOutcome(
     !item ||
     (!legacyMissing && !registeredStopped) ||
     outcome.status !== 'failed' ||
-    interruption.kind !== 'execution-unknown' ||
+    (interruption.kind !== 'execution-unknown' && interruption.kind !== 'completed-input-drift') ||
+    (interruption.kind === 'execution-unknown' && Boolean(item.execution?.outcome)) ||
     interruption.candidateId !== candidateId ||
     interruption.processBoundary !== item.processBoundary ||
     interruption.observedAt !== output.completedAt ||
@@ -1263,7 +1318,7 @@ export const nativeSdkCheckValidator: RuntimeValidator = {
   },
 };
 
-/** 完整结果按原领取补交；显式修复可登记已停止的未知结果，始终禁止重放原检查。 */
+/** 完整结果按原领取补交；显式修复可保留已停止的未知或输入过期结果，始终禁止重放原检查。 */
 export async function recoverNativeSdkChecks(
   projectRoot: string,
   initial: WorkflowRun,
@@ -1369,6 +1424,7 @@ export async function recoverNativeSdkChecks(
     const stoppedActions =
       options.stoppedActions?.filter((entry) => entry.actionId === action.id) ?? [];
     if (stoppedActions.length > 1) throw new Error('不能重复提交同一 Action 的停止证据');
+    let completedInputDrift = false;
     if (item.quiescent && item.execution?.phase === 'completed' && item.execution.outcome) {
       const outcome: RuntimeOutcome = {
         ...item.execution.outcome,
@@ -1393,12 +1449,17 @@ export async function recoverNativeSdkChecks(
         });
         continue;
       }
+      completedInputDrift = await nativeSdkCompletedCheckInputDrift(
+        { run, action, projectRoot },
+        item.execution.outcome,
+      );
     }
 
     if (
       options.reconcileInterrupted &&
       stoppedActions.length === 1 &&
-      (item.phase === 'missing' ||
+      (completedInputDrift ||
+        item.phase === 'missing' ||
         (item.quiescent &&
           item.execution &&
           !item.execution.outcome &&
@@ -1411,7 +1472,7 @@ export async function recoverNativeSdkChecks(
       const { candidateId, plans } = checkInput(run, action);
       const observedAt = new Date().toISOString();
       const interruption: NativeSdkCheckInterruption = {
-        kind: 'execution-unknown',
+        kind: completedInputDrift ? 'completed-input-drift' : 'execution-unknown',
         stoppedAction: { actionId, attempt, inputHash, evidence },
         processBoundary: item.processBoundary,
         candidateId,
@@ -1428,7 +1489,8 @@ export async function recoverNativeSdkChecks(
         attempt: action.attempt,
         inputHash: action.inputHash,
         claimToken: action.claim!.token,
-        outcomeId: `${action.id}:${action.attempt}:interrupted-reconciliation`,
+        // 提交时再次校验可能拒绝旧提案；新核对不能复用已拒绝的结果标识。
+        outcomeId: `${action.id}:${action.attempt}:interrupted-reconciliation:${action.rejectedOutcomes?.length ?? 0}`,
         status: 'failed',
         output: {
           candidateId,
@@ -1436,8 +1498,9 @@ export async function recoverNativeSdkChecks(
           interruption,
           completedAt: observedAt,
         } as unknown as RuntimeValue,
-        summary:
-          '原检查执行结果未知；已记录原领取方或用户提供的全部执行停止证据，保留实际部分结果与日志，等待批准新的修复候选。',
+        summary: completedInputDrift
+          ? '原检查已完成且已确认停止，但检查输入随后变化；保留原结果与日志，不将旧成功作为当前候选验收，等待批准新的修复候选。'
+          : '原检查执行结果未知；已记录原领取方或用户提供的全部执行停止证据，保留实际部分结果与日志，等待批准新的修复候选。',
       };
       const validation = await nativeSdkCheckValidator.validate({
         run,

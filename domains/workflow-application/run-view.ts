@@ -20,6 +20,7 @@ function waitView(wait: WorkflowRun['waits'][number]) {
 export function projectWorkflowApplicationRun(
   application: LoadedWorkflowApplication,
   run: WorkflowRun,
+  options: { includeOutputs?: boolean } = {},
 ) {
   const terminal = ['completed', 'failed', 'cancelled'].includes(run.status);
   const activeActions = run.actions.filter(
@@ -216,6 +217,36 @@ export function projectWorkflowApplicationRun(
       )
       .filter(([, queues]) => Object.values(queues).some((count) => count > 0)),
   );
+  const outputProjection: {
+    outputs?: WorkflowRun['outputs'];
+    outputsOmitted?: {
+      count: number;
+      reason: string;
+      request: {
+        operation: 'query';
+        runId: string;
+        view: 'history';
+        filter: 'actions';
+        limit: number;
+      };
+    };
+  } = {};
+  if (terminal) {
+    if (options.includeOutputs === false) {
+      outputProjection.outputsOmitted = {
+        count: Object.keys(run.outputs).length,
+        reason:
+          '当前视图不展开历史输出；按 inspection 读取完整 Run，或分页 query history 查阅 Action 结果。',
+        request: {
+          operation: 'query',
+          runId: run.runId,
+          view: 'history',
+          filter: 'actions',
+          limit: 25,
+        },
+      };
+    } else outputProjection.outputs = run.outputs;
+  }
   return {
     schema: 'comet.application.run-view.v1' as const,
     applicationId: application.identity.id,
@@ -276,11 +307,7 @@ export function projectWorkflowApplicationRun(
       })),
       joins,
     },
-    ...(terminal
-      ? {
-          outputs: run.outputs,
-        }
-      : {}),
+    ...outputProjection,
     history: {
       actions: run.actions.length,
       waits: run.waits.length,

@@ -53,6 +53,53 @@ export function applicationSkillScopesOverlap(left: string, right: string): bool
   return contains(left, right) || contains(right, left);
 }
 
+/** 固定应用自己的绑定决定实际资源路径，跨应用不能复用当前应用的 manifest。 */
+export function applicationActionScopes(
+  application: Pick<SkillExecutionApplication, 'manifest' | 'projectRoot'>,
+  owner: Readonly<WorkflowRun>,
+  candidate: Readonly<RuntimeAction>,
+) {
+  return application.manifest.bindings
+    .filter(
+      (binding) =>
+        binding.workflowId === owner.workflow.id &&
+        binding.stepId === candidate.stepId &&
+        binding.usage === 'action',
+    )
+    .flatMap((binding) => {
+      const skill = application.manifest.skills.find((skill) => skill.id === binding.skillId);
+      if (!skill || skill.adapter.sideEffect === 'read') return [];
+      if (skill.adapter.sideEffect !== 'write')
+        return skill.adapter.scope.map((ref) => ({
+          ref,
+          workspace: false,
+          write: skill.adapter.sideEffect === 'write',
+        }));
+      let workspace: unknown = application.projectRoot ?? process.cwd();
+      if (binding.workspaceFrom) {
+        workspace = candidate.input;
+        for (const field of binding.workspaceFrom.split('.'))
+          workspace =
+            workspace && typeof workspace === 'object'
+              ? (workspace as Record<string, unknown>)[field]
+              : undefined;
+      }
+      if (typeof workspace !== 'string' || !path.isAbsolute(workspace))
+        throw new RuntimeProtocolError('COMMAND_REJECTED', 'Skill 缺少实际写入工作区');
+      return skill.adapter.scope.map((ref) => {
+        const target = path.resolve(workspace, ref);
+        let parent = target;
+        while (!existsSync(parent) && parent !== path.dirname(parent))
+          parent = path.dirname(parent);
+        return {
+          ref: path.resolve(realpathSync(parent), path.relative(parent, target)),
+          workspace: Boolean(binding.workspaceFrom),
+          write: true,
+        };
+      });
+    });
+}
+
 /** 核对本次激活的共享资源；图中跨轮互达不能证明当前 Action 串行。 */
 export function assertApplicationSkillExecutionScope(
   application: SkillExecutionApplication,
@@ -61,45 +108,7 @@ export function assertApplicationSkillExecutionScope(
   relatedRuns: readonly Readonly<WorkflowRun>[] = [],
 ): void {
   const scopes = (owner: Readonly<WorkflowRun>, candidate: Readonly<RuntimeAction>) =>
-    application.manifest.bindings
-      .filter(
-        (binding) =>
-          binding.workflowId === owner.workflow.id &&
-          binding.stepId === candidate.stepId &&
-          binding.usage === 'action',
-      )
-      .flatMap((binding) => {
-        const skill = application.skills.get(binding.skillId);
-        if (!skill || skill.adapter.sideEffect === 'read') return [];
-        if (skill.adapter.sideEffect !== 'write')
-          return skill.adapter.scope.map((ref) => ({
-            ref,
-            workspace: false,
-            write: skill.adapter.sideEffect === 'write',
-          }));
-        let workspace: unknown = application.projectRoot ?? process.cwd();
-        if (binding.workspaceFrom) {
-          workspace = candidate.input;
-          for (const field of binding.workspaceFrom.split('.'))
-            workspace =
-              workspace && typeof workspace === 'object'
-                ? (workspace as Record<string, unknown>)[field]
-                : undefined;
-        }
-        if (typeof workspace !== 'string' || !path.isAbsolute(workspace))
-          throw new RuntimeProtocolError('COMMAND_REJECTED', 'Skill 缺少实际写入工作区');
-        return skill.adapter.scope.map((ref) => {
-          const target = path.resolve(workspace, ref);
-          let parent = target;
-          while (!existsSync(parent) && parent !== path.dirname(parent))
-            parent = path.dirname(parent);
-          return {
-            ref: path.resolve(realpathSync(parent), path.relative(parent, target)),
-            workspace: Boolean(binding.workspaceFrom),
-            write: true,
-          };
-        });
-      });
+    applicationActionScopes(application, owner, candidate);
   const current = scopes(run, action);
   if (!current.length) return;
   for (const peer of [run, ...relatedRuns.filter((peer) => peer.runId !== run.runId)])

@@ -474,7 +474,18 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                 runId: string;
             };
         };
-        outputs?: Record<string, WorkflowResult> | undefined;
+        outputs?: WorkflowRun["outputs"];
+        outputsOmitted?: {
+            count: number;
+            reason: string;
+            request: {
+                operation: "query";
+                runId: string;
+                view: "history";
+                filter: "actions";
+                limit: number;
+            };
+        };
         current: {
             actions: ({
                 stopConfirmationRequired: boolean;
@@ -1123,7 +1134,9 @@ export function previewWorkflowApplicationInstall(options: ApplicationDeliveryOp
 }): Promise<ApplicationInstallPreview>;
 
 // @public
-export function projectWorkflowApplicationRun(application: LoadedWorkflowApplication, run: WorkflowRun): {
+export function projectWorkflowApplicationRun(application: LoadedWorkflowApplication, run: WorkflowRun, options?: {
+    includeOutputs?: boolean;
+}): {
     history: {
         actions: number;
         waits: number;
@@ -1151,7 +1164,18 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
             runId: string;
         };
     };
-    outputs?: Record<string, WorkflowResult> | undefined;
+    outputs?: WorkflowRun["outputs"];
+    outputsOmitted?: {
+        count: number;
+        reason: string;
+        request: {
+            operation: "query";
+            runId: string;
+            view: "history";
+            filter: "actions";
+            limit: number;
+        };
+    };
     current: {
         actions: ({
             stopConfirmationRequired: boolean;

@@ -420,7 +420,7 @@ export function hasNativeSdkPortableStopEvidence(
   const stopped = interruption?.stoppedAction;
   return (
     outcome.status === 'failed' &&
-    interruption?.kind === 'execution-unknown' &&
+    ['execution-unknown', 'completed-input-drift'].includes(interruption?.kind ?? '') &&
     stopped !== undefined &&
     Object.keys(stopped).every((key) =>
       ['actionId', 'attempt', 'inputHash', 'evidence'].includes(key),
