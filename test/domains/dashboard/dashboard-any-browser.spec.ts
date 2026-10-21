@@ -72,6 +72,16 @@ for (const width of [1600, 1280, 390]) {
       path: testInfo.outputPath(`any-creation-en-dark-${width}.png`),
       animations: 'disabled',
     });
+    await page
+      .locator('.any-creator-roster')
+      .getByRole('button', { name: /creator-040/u })
+      .click();
+    await expect(page.getByRole('list', { name: 'Creation stages', exact: true })).toContainText(
+      'Skipped',
+    );
+    expect(
+      await page.getByRole('region', { name: 'Comet Any workspace', exact: true }).innerText(),
+    ).not.toMatch(/\p{Script=Han}/u);
   });
 }
 
