@@ -64,6 +64,7 @@ describe('Dashboard interface language', () => {
     expect(localized({ value: 'Passed', label: '通过' }).value).toBe('Passed');
     setDashboardLanguage('en', { persist: false });
     expect(t('评估工作台')).toBe('Evaluation workspace');
+    expect(t('执行失败')).toBe('Execution failed');
     expect(options[0]).toEqual({ value: 'running', label: 'In progress' });
     expect(getDashboardLocale()).toBe('en-US');
     setDashboardLanguage('zh', { persist: false });

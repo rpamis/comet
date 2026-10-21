@@ -5,6 +5,89 @@ import os from 'node:os';
 import path from 'node:path';
 import { createDiskApplication } from '../../helpers/workflow-application.js';
 
+for (const width of [1600, 1280, 390]) {
+  test(`custom workflows keep multiple applications and their runs separate at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    const english = width !== 1600;
+    await page.setViewportSize({ width, height: 1000 });
+    if (english)
+      await page.addInitScript(() => {
+        localStorage.setItem('comet-dashboard-language', 'en');
+        localStorage.setItem('comet-theme', 'dark');
+        localStorage.setItem('comet-dashboard-font-scale', '125');
+      });
+    await page.goto('/?demo');
+    if (width === 390)
+      await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+    await page
+      .getByRole('menuitem', { name: english ? 'Custom workflows' : '自定义工作流' })
+      .click();
+    const workspace = page.getByRole('region', {
+      name: english ? 'Custom workflow workspace' : '自定义工作流工作区',
+      exact: true,
+    });
+    const apps = workspace.locator('.any-app-row');
+    await expect(apps).toHaveCount(3);
+    const runs = workspace.getByRole('region', {
+      name: english ? 'Application run records' : '应用运行记录',
+      exact: true,
+    });
+    await apps.filter({ hasText: 'docs-publisher' }).click();
+    await expect(page.locator('.any-run-identity')).toContainText('docs-042');
+    await expect(runs.locator('.any-run-row')).toHaveCount(2);
+    await expect(runs).not.toContainText('run-128');
+    await expect(page.locator('[data-step-id="approve-docs"]')).toBeVisible();
+    await expect(page.locator('[data-step-id="implement"]')).toHaveCount(0);
+    await runs.getByRole('button', { name: /^docs-041/u }).click();
+    await expect(page.locator('.any-run-identity')).toContainText('docs-041');
+    await expect(runs.getByRole('button', { name: /^docs-041/u })).toContainText('v2.0.0');
+    await apps.filter({ hasText: 'dependency-audit' }).click();
+    await expect(page.locator('.any-run-identity')).toContainText('audit-009');
+    await expect(runs.locator('.any-run-row')).toHaveCount(1);
+    await expect(page.locator('[data-step-id="audit"]')).toContainText(
+      english ? 'Execution failed' : '失败',
+    );
+    await expect(page.locator('[data-step-id="approve-docs"]')).toHaveCount(0);
+    await apps.filter({ hasText: 'grill-suite' }).click();
+    await expect(page.locator('.any-run-identity')).toContainText('run-128');
+    await expect(runs.locator('.any-run-list > [role="listitem"]')).toHaveCount(2);
+    await expect(page.locator('[data-step-id="implement"]')).toBeVisible();
+    const search = workspace.getByRole('textbox', {
+      name: english ? 'Search goals or applications' : '搜索目标或应用',
+    });
+    await search.fill('docs-publisher');
+    await expect(apps).toHaveCount(1);
+    await expect(apps).toContainText('docs-publisher');
+    await search.fill('');
+    await expect(apps).toHaveCount(3);
+    await workspace
+      .locator('.any-filter-line')
+      .getByRole('button', { name: english ? 'Needs attention' : '需关注', exact: true })
+      .click();
+    await expect(apps).toHaveCount(3);
+    await workspace
+      .locator('.any-filter-line')
+      .getByRole('button', { name: english ? 'In progress' : '进行中', exact: true })
+      .click();
+    await expect(apps).toHaveCount(2);
+    await expect(apps.filter({ hasText: 'dependency-audit' })).toHaveCount(0);
+    await workspace
+      .locator('.any-filter-line')
+      .getByRole('button', { name: english ? 'All' : '全部', exact: true })
+      .click();
+    await expect(apps).toHaveCount(3);
+    if (english) expect(await workspace.innerText()).not.toMatch(/\p{Script=Han}/u);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    await page.screenshot({
+      path: testInfo.outputPath(`multiple-applications-${width}.png`),
+      animations: 'disabled',
+    });
+  });
+}
+
 test('Any retains full creation stages and delivered versions separately from custom workflow runs', async ({
   page,
 }, testInfo) => {

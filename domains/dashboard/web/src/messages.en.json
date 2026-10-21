@@ -218,6 +218,7 @@
   "准备环境": "Preparing environment",
   "生成用例": "Generating cases",
   "执行中": "Running",
+  "执行失败": "Execution failed",
   "判定中": "Judging",
   "整理报告": "Preparing reports",
   "停止中": "Stopping",

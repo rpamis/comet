@@ -23,6 +23,42 @@ function untranslated(value: unknown, path = ''): string[] {
 afterEach(() => setDashboardLanguage('zh', { persist: false }));
 
 describe('Dashboard example content language', () => {
+  it('keeps three applications, pinned versions and their independent traces separate', () => {
+    const applications = readApplicationDemo('application-runs', { kind: 'application' });
+    expect(new Set(applications.items.map((item) => item.applicationId))).toEqual(
+      new Set(['grill-suite', 'docs-publisher', 'dependency-audit']),
+    );
+    const expected = [
+      ['grill-suite', ['run-128', 'run-127', 'review-022']],
+      ['docs-publisher', ['docs-042', 'docs-041']],
+      ['dependency-audit', ['audit-009']],
+    ] as const;
+    for (const [applicationId, runIds] of expected) {
+      const list = readApplicationDemo('application-runs', { applicationId, kind: 'application' });
+      expect(list.items.map((item) => item.runId)).toEqual(runIds);
+      for (const item of list.items) {
+        const detail = readApplicationDemo('application-run', { locator: item.locator });
+        expect(detail.applicationId).toBe(applicationId);
+        expect(detail.application.version).toBe(item.application.version);
+        if (!item.isChild) {
+          expect(detail.definition.workflow.id).toBe(
+            applicationId === 'grill-suite' ? 'demo' : applicationId,
+          );
+          expect(detail.definition.steps.length).toBeGreaterThan(2);
+        }
+        if (applicationId !== 'grill-suite') expect(detail.sourceCreators).toEqual([]);
+      }
+    }
+    const docs = readApplicationDemo('application-runs', { applicationId: 'docs-publisher' });
+    expect(docs.items.map((item) => item.application.version)).toEqual(['2.1.0', '2.0.0']);
+    const failed = readApplicationDemo('application-run', {
+      locator: applications.items.find((item) => item.runId === 'audit-009')!.locator,
+    });
+    expect(failed.records.some((record) => record.status === 'failed')).toBe(true);
+    expect(failed.definition.steps.find((step) => step.stepId === 'remediate')!.recordCount).toBe(
+      0,
+    );
+  });
   it('loads both demo adapters directly in Node for browser-test setup', () => {
     expect(
       execFileSync(

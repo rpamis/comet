@@ -8,6 +8,9 @@ const locatorHashes = [
   '0277b305b27517a34e9507079dddcf65eca4c790592f1cef7174d31f80efcd6b',
   '9d8c3e533a62e32ace91aa9669e1bd69e0229059215945fa74bfd353c7a2e660',
   'bcada955ec1497464e4dc67ec93cac314ae184f553fc1f9d798ace425eafbf40',
+  '515f344e1ca536ee3d3d3213f6f54bb94fc0b2531020c469d330404ccdc1d14a',
+  '79a26a82cbb7b473a019246119e3360a99e28916c8bf0daab84a3403f40d1b71',
+  'cc58b8734e863813609dbf686c3c8514e48369106968927019d78c0ed35488ba',
 ];
 const locator = (kind, n) => `${kind}:${locatorHashes[n - 1]}`;
 const applicationHashes = {
@@ -19,9 +22,21 @@ const applicationHashes = {
     contentHash: '6d71f72fda1ec233d9f8795b919dffcee4cb1b6700edb6a5d38654f094075df2',
     packageHash: 'fe6ca7ea18f8af1ea823aa9436c306b67c7bfdee4f6bdc17388ced964cee6010',
   },
+  '2.0.0': {
+    contentHash: '6e5a03b11ea5f482a2984b0b87b751cb54ea9fc5a81b0627c9bfb6dc026b2637',
+    packageHash: 'dd1971ddd5b595e5d1b7221116b4e5f1c349ea4d2d816370842adf81203698ef',
+  },
+  '2.1.0': {
+    contentHash: '3e967b44c8e716df13554f5cf322c9f0dfef1b886360672fefa9447471a941f9',
+    packageHash: 'e91897970dc78a9a1b67e93245d0a0b8a1c286834e9f6bb6fa8a68f0ee068513',
+  },
+  '1.0.0': {
+    contentHash: '1cc4c9d1aca46db3894b05d674ecdb546269f4ee6f0f8fd46aa4fb6fc9d65dce',
+    packageHash: 'cbb8143cc74b7c239d6ba8f08682e5c758c3da9177bc720a90541eb8a71f7c1f',
+  },
 };
-const identity = (version) => ({
-  id: 'grill-suite',
+const identity = (version, id = 'grill-suite') => ({
+  id,
   version,
   base: 'standalone',
   ...applicationHashes[version],
@@ -104,7 +119,113 @@ const summaries = [
     'waiting',
     identity('1.1.0'),
   ),
+  summary(
+    'application',
+    7,
+    'docs-042',
+    '整理 0.5.0 升级指南，等待发布确认。',
+    'waiting',
+    identity('2.1.0', 'docs-publisher'),
+  ),
+  summary(
+    'application',
+    8,
+    'docs-041',
+    '发布上一版迁移指南。',
+    'completed',
+    identity('2.0.0', 'docs-publisher'),
+  ),
+  summary(
+    'application',
+    9,
+    'audit-009',
+    '检查依赖风险，保留失败证据。',
+    'failed',
+    identity('1.0.0', 'dependency-audit'),
+  ),
 ];
+const additionalWorkflows = {
+  'docs-publisher': {
+    title: '文档发布工作流',
+    steps: [
+      ['collect', '收集变更来源', '准备文档', 'call_tool', 'collect-changes'],
+      ['draft', '撰写升级指南', '准备文档', 'invoke_skill', 'write-guide'],
+      ['approve-docs', '确认发布内容', '发布确认', 'ask_user'],
+      ['publish', '发布指南', '发布', 'call_tool', 'publish-guide'],
+    ],
+  },
+  'dependency-audit': {
+    title: '依赖检查工作流',
+    steps: [
+      ['inventory', '读取依赖清单', '依赖检查', 'call_tool', 'read-lockfile'],
+      ['audit', '检查漏洞与许可证', '依赖检查', 'call_tool', 'audit-dependencies'],
+      ['remediate', '整理修复建议', '修复建议', 'invoke_skill', 'remediation-plan'],
+    ],
+  },
+};
+function additionalWorkflowDetail(summary) {
+  const example = additionalWorkflows[summary.applicationId];
+  if (!example) return null;
+  const completed = summary.status === 'completed';
+  const observed = completed ? example.steps : example.steps.slice(0, -1);
+  const records = observed.map(([id, title, phase, type], index) =>
+    record(
+      id,
+      title,
+      phase,
+      completed || index < observed.length - 1
+        ? 'succeeded'
+        : summary.status === 'failed'
+          ? 'failed'
+          : 'waiting',
+      type === 'ask_user' ? 'decision' : 'action',
+      index + 1,
+      summary.status === 'failed' && index === observed.length - 1
+        ? { error: '检测到不符合项目要求的依赖，等待修复后重试' }
+        : {},
+    ),
+  );
+  const steps = Object.fromEntries(
+    example.steps.map(([id, , , type, ref]) => [
+      id,
+      type === 'ask_user' ? { type, choices: ['approved', 'rejected'] } : { type, ref },
+    ]),
+  );
+  return {
+    records,
+    definition: {
+      status: 'available',
+      title: example.title,
+      workflow: {
+        id: summary.applicationId,
+        version: summary.application.version,
+        entry: [example.steps[0][0]],
+        dynamicRouting: false,
+        steps,
+        transitions: example.steps.slice(1).map(([to], index) => ({
+          from: example.steps[index][0],
+          to,
+          on: example.steps[index][3] === 'ask_user' ? 'approved' : 'succeeded',
+        })),
+      },
+      steps: example.steps.map(([stepId, title, phase]) => {
+        const observed = records.filter((record) => record.stepId === stepId);
+        const latest = observed.at(-1);
+        return {
+          stepId,
+          title,
+          phase,
+          ...steps[stepId],
+          skills: steps[stepId].type === 'invoke_skill' ? [steps[stepId].ref] : [],
+          recordCount: observed.length,
+          activeRecordIds: observed.filter((record) => record.active).map((record) => record.id),
+          latestRecordId: latest?.id ?? null,
+          latestStatus: latest?.status ?? null,
+        };
+      }),
+    },
+  };
+}
 function detail(summary) {
   let records =
     summary.kind === 'creator'
@@ -174,13 +295,18 @@ function detail(summary) {
       active: false,
       childLocator: null,
     }));
+  const additional = additionalWorkflowDetail(summary);
+  if (additional) records = additional.records;
   const definition =
-    summary.kind === 'application' && !summary.isChild ? demoDefinition(records) : null;
+    additional?.definition ??
+    (summary.kind === 'application' && !summary.isChild ? demoDefinition(records) : null);
   return {
     ...summary,
     readAt: new Date().toISOString(),
     sequence: 15,
-    workflow: { id: summary.kind === 'creator' ? 'comet-creator' : 'demo', version: '1' },
+    workflow: definition?.workflow
+      ? { id: definition.workflow.id, version: definition.workflow.version }
+      : { id: summary.kind === 'creator' ? 'comet-creator' : 'demo', version: '1' },
     records,
     currentIds: records.filter((r) => r.active).map((r) => r.id),
     artifacts: [
@@ -206,7 +332,7 @@ function detail(summary) {
     material: { status: summary.application ? 'matched' : 'not-generated' },
     fixedIdentity: null,
     sourceCreators:
-      summary.kind === 'application'
+      summary.kind === 'application' && summary.applicationId === 'grill-suite'
         ? [{ locator: locator('creator', 3), runId: 'creator-040', version: '1.1.0' }]
         : [],
     children: [],
