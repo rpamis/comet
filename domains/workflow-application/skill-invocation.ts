@@ -57,6 +57,7 @@ export type ApplicationSkillInvocationRequest =
       operation: 'claim';
       runId: string;
       actionId: string;
+      executorId?: string;
       sessionId?: string;
       capabilities?: string[];
     }
@@ -181,12 +182,20 @@ export async function invokeWorkflowApplicationSkill(options: {
           'INVALID_REQUEST',
           '仅能领取当前 pending Action；恢复时先核对原执行结果',
         );
+      const current = projectWorkflowApplicationRun(loaded, run).current.actions.find(
+        (item) => item.id === action.id,
+      );
+      const selected =
+        request.executorId ??
+        (current && 'claimRequest' in current ? current.claimRequest?.executorId : undefined);
+      if (action.type === 'invoke_skill' && (!selected || selected === '<executor-id>'))
+        fail('请通过 executorId 选择当前 Action 的合法执行端口');
       run = await runtime.claim({
         ...command,
         actionId: action.id,
         attempt: action.attempt,
         inputHash: action.inputHash,
-        executorId: 'skill-host',
+        executorId: selected && selected !== '<executor-id>' ? selected : 'skill-host',
         ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
         capabilities: request.capabilities ?? [],
       });

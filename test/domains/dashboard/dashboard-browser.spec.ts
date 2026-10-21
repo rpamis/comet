@@ -7143,7 +7143,11 @@ test('opens the Any proposal on the first frame without a height transition', as
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/?demo');
   await page.getByRole('menuitem', { name: 'Comet Any' }).click();
-  await page.locator('.any-active-list button').first().click();
+  await page
+    .locator('.any-entity-list')
+    .getByRole('button', { name: /grill-suite/ })
+    .click();
+  await page.getByText('创作过程', { exact: true }).last().click();
   const disclosure = page.locator('.any-proposal-disclosure');
   const summary = disclosure.locator('summary');
   const heights = await summary.evaluate(async (element) => {

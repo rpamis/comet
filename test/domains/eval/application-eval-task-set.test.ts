@@ -18,10 +18,6 @@ import {
 } from '../../../domains/eval/application-eval.js';
 
 const { execute } = vi.hoisted(() => ({ execute: vi.fn() }));
-vi.mock('../../../platform/process/external-command.js', async (original) => ({
-  ...(await original<typeof import('../../../platform/process/external-command.js')>()),
-  runExternalCommandAsync: execute,
-}));
 let root: string;
 let options: Parameters<typeof previewWorkflowApplicationEval>[0];
 const digest = (bytes: string | Buffer) =>
@@ -212,6 +208,10 @@ it('recovers one matching interrupted cache in a new preview without changing th
   const definition = JSON.parse(await fs.readFile(nextFile, 'utf8'));
   definition.version = '2';
   await fs.writeFile(nextFile, JSON.stringify(definition));
+  const graphFile = path.join(nextRoot, definition.definition);
+  const graph = JSON.parse(await fs.readFile(graphFile, 'utf8'));
+  graph.application.version = '2';
+  await fs.writeFile(graphFile, JSON.stringify(graph));
   const revised = { ...options, file: nextFile, previousExperimentId: 'original' };
   const nextPreview = await previewWorkflowApplicationEval(revised);
   const next = await prepareWorkflowApplicationEval({

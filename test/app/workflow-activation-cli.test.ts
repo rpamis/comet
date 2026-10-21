@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { readNodeHookArguments } from '../../platform/process/hook-command.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -141,9 +142,14 @@ describe('built workflow activation fast path', () => {
           path.join(repositoryRoot, 'assets/skills/comet/scripts/comet-hook-router.mjs'),
         ),
       );
-      expect(
-        (await fs.readFile(path.join(project, '.codex/hooks.json'), 'utf8')).replaceAll('\\', '/'),
-      ).toContain(router.replaceAll('\\', '/'));
+      const hooks = JSON.parse(await fs.readFile(path.join(project, '.codex/hooks.json'), 'utf8'));
+      expect(readNodeHookArguments(hooks.hooks.PreToolUse[0].hooks[0].command)).toEqual([
+        router,
+        '--platform',
+        'codex',
+        '--project-root',
+        project,
+      ]);
       expect(await fs.readdir(path.join(project, 'artifacts/comet'))).toEqual(
         expect.arrayContaining(['changes', 'specs']),
       );

@@ -1,5 +1,6 @@
-import { promises as fs } from 'node:fs';
+import { promises as fs, unlinkSync, rmdirSync } from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
 import { isPathWithin } from './standalone-context.js';
@@ -417,43 +418,245 @@ function cacheCaseSummary(
   }
 }
 type SummaryEntry = { stamp: string; item: EvalCaseResult; source: Json; bytes: number };
-// 最多保留两个续读摘要，各自预留 32MiB；新运行可轮换最久未使用的读取器。
-const evidenceReaders = new Map<
-  string,
-  {
-    entries: Map<string, SummaryEntry>;
-    errors: Map<string, { stamp: string; messages: string[] }>;
-    bytes: number;
-    busy: boolean;
+function rememberEvidenceSummary(
+  reader: EvidenceReader,
+  key: string,
+  value: Omit<SummaryEntry, 'bytes'>,
+) {
+  const bytes = Buffer.byteLength(JSON.stringify(value)) + Buffer.byteLength(key);
+  const previous = reader.entries.get(key);
+  const error = reader.errors.get(key);
+  const nextBytes = reader.bytes - (previous?.bytes ?? 0) - (error?.bytes ?? 0) + bytes;
+  if (nextBytes > 32 * 1024 * 1024) return false;
+  reader.bytes = nextBytes;
+  reader.errors.delete(key);
+  reader.entries.set(key, { ...value, bytes });
+  return true;
+}
+type EvidenceReader = {
+  entries: Map<string, SummaryEntry>;
+  errors: Map<string, { stamp: string; messages: string[]; bytes: number }>;
+  bytes: number;
+  busy: boolean;
+  complete?: boolean;
+  discarded?: boolean;
+  spool?: { file: string; hash: string; bytes: number };
+};
+// 两个工作槽限制同时解析的内存；未完成进度存放在进程私有临时缓存，不随工作槽轮换丢弃。
+const evidenceReaders = new Map<string, EvidenceReader>();
+let activeEvidenceReaders = 0;
+const evidenceReaderQueue: Array<() => void> = [];
+let readerCleanupCursor: MapIterator<string> | undefined;
+let spoolDirectory: Promise<{ path: string; dev: number; ino: number }> | undefined;
+const spoolDirectories = new Set<string>();
+let spoolBytes = 0;
+let spoolReservations = 0;
+const spoolFiles = new Set<string>();
+const pendingSpoolDeletes = new Map<string, number>();
+process.once('exit', () => {
+  for (const file of spoolFiles) {
+    try {
+      unlinkSync(file);
+    } catch {
+      /* 临时文件可能已被操作系统清理。 */
+    }
   }
->();
+  for (const directory of spoolDirectories) {
+    try {
+      rmdirSync(directory);
+    } catch {
+      /* 仅清理当前进程创建的空目录。 */
+    }
+  }
+});
+async function readerSpoolDirectory() {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const pending = (spoolDirectory ??= (async () => {
+      const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-readers-'));
+      spoolDirectories.add(directory);
+      const stat = await fs.lstat(directory);
+      return { path: directory, dev: stat.dev, ino: stat.ino };
+    })());
+    try {
+      const directory = await pending;
+      const stat = await fs.lstat(directory.path).catch(() => null);
+      if (
+        stat?.isDirectory() &&
+        !stat.isSymbolicLink() &&
+        stat.dev === directory.dev &&
+        stat.ino === directory.ino
+      )
+        return directory.path;
+      spoolDirectories.delete(directory.path);
+      if (spoolDirectory === pending) spoolDirectory = undefined;
+    } catch (error) {
+      if (spoolDirectory === pending) spoolDirectory = undefined;
+      throw error;
+    }
+  }
+  throw new EvalRunError('续扫临时目录已变化，请重试。', 409);
+}
+function removeReaderSpool(reader: EvidenceReader) {
+  if (!reader.spool) return;
+  const { file, bytes } = reader.spool;
+  reader.spool = undefined;
+  deleteReaderSpool(file, bytes);
+}
+function deleteReaderSpool(file: string, bytes: number) {
+  try {
+    unlinkSync(file);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      pendingSpoolDeletes.delete(file);
+      pendingSpoolDeletes.set(file, bytes);
+      return;
+    }
+  }
+  pendingSpoolDeletes.delete(file);
+  spoolFiles.delete(file);
+  spoolBytes -= bytes;
+}
+async function readReaderSpool(spool: NonNullable<EvidenceReader['spool']>) {
+  const handle = await fs.open(spool.file, 'r');
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size !== spool.bytes) throw new Error('缓存大小已变化');
+    const bytes = Buffer.alloc(spool.bytes + 1);
+    let length = 0;
+    while (length < bytes.length) {
+      const result = await handle.read(bytes, length, bytes.length - length, length);
+      if (!result.bytesRead) break;
+      length += result.bytesRead;
+    }
+    if (
+      length !== spool.bytes ||
+      createHash('sha256').update(bytes.subarray(0, length)).digest('hex') !== spool.hash
+    )
+      throw new Error('缓存内容已变化');
+    return JSON.parse(bytes.subarray(0, length).toString('utf8'));
+  } finally {
+    await handle.close();
+  }
+}
 async function evidenceReader(root: string) {
-  for (const key of [...evidenceReaders.keys()]) {
-    if (!(await fs.stat(key).catch(() => null))?.isDirectory()) forgetEvalEvidenceReader(key);
+  // 每次只清理一个失效运行和一个待删文件，避免多运行轮询形成平方级目录扫描。
+  const pendingDelete = pendingSpoolDeletes.entries().next().value;
+  if (pendingDelete) deleteReaderSpool(...pendingDelete);
+  readerCleanupCursor ??= evidenceReaders.keys();
+  let key = readerCleanupCursor.next().value;
+  if (key === undefined) {
+    readerCleanupCursor = evidenceReaders.keys();
+    key = readerCleanupCursor.next().value;
   }
+  if (key && !(await fs.stat(key).catch(() => null))?.isDirectory()) forgetEvalEvidenceReader(key);
   let reader = evidenceReaders.get(root);
   if (reader?.busy) return undefined;
   if (!reader) {
-    if (evidenceReaders.size >= 2) {
-      const idle = [...evidenceReaders].find(([, value]) => !value.busy);
-      if (!idle) return undefined;
-      forgetEvalEvidenceReader(idle[0]);
+    if (evidenceReaders.size >= 1024) {
+      const completed = [...evidenceReaders].find(([, value]) => value.complete && !value.busy);
+      if (completed) forgetEvalEvidenceReader(completed[0]);
     }
+    if (evidenceReaders.size >= 1024)
+      throw new EvalRunError(
+        '续扫缓存达到 1024 个运行的容量限制；请完整读取或删除已不需要的运行后重试。',
+        413,
+      );
     reader = { entries: new Map(), errors: new Map(), bytes: 0, busy: false };
   }
   reader.busy = true;
-  evidenceReaders.delete(root);
   evidenceReaders.set(root, reader);
+  // 不同运行按请求顺序取得两个工作槽，避免刷新中先出现的活跃运行持续抢占。
+  await new Promise<void>((resolve) => {
+    if (activeEvidenceReaders < 2) {
+      activeEvidenceReaders++;
+      resolve();
+    } else evidenceReaderQueue.push(resolve);
+  });
+  if (reader.spool) {
+    try {
+      const value = await readReaderSpool(reader.spool);
+      reader.entries = new Map(value.entries);
+      reader.errors = new Map(value.errors);
+    } catch {
+      // 派生缓存不是原始证据；丢失或损坏时只能重新校验报告，不能接受外部替换的摘要。
+      reader.entries.clear();
+      reader.errors.clear();
+      reader.bytes = 0;
+    }
+    removeReaderSpool(reader);
+  }
   return reader;
 }
 export function forgetEvalEvidenceReader(root: string) {
+  const reader = evidenceReaders.get(root);
+  if (!reader) return;
+  if (reader.busy) {
+    reader.discarded = true;
+    return;
+  }
+  removeReaderSpool(reader);
   evidenceReaders.delete(root);
+}
+async function releaseEvidenceReader(root: string, reader: EvidenceReader) {
+  try {
+    if (reader.discarded || !reader.bytes) return;
+    const bytes = Buffer.from(
+      JSON.stringify({ entries: [...reader.entries], errors: [...reader.errors] }),
+    );
+    for (const [key, value] of evidenceReaders) {
+      if (spoolBytes + bytes.length <= 256 * 1024 * 1024) break;
+      if (key !== root && value.complete && !value.busy) forgetEvalEvidenceReader(key);
+    }
+    if (spoolBytes + bytes.length > 256 * 1024 * 1024)
+      throw new EvalRunError(
+        '续扫临时缓存超过 256MiB；请完整读取或删除已不需要的运行后重试。',
+        413,
+      );
+    if (spoolFiles.size + spoolReservations >= 2048)
+      throw new EvalRunError(
+        '续扫临时文件达到 2048 份的容量限制；请释放临时目录中的文件占用后重试。',
+        413,
+      );
+    spoolBytes += bytes.length;
+    spoolReservations++;
+    let file: string | undefined;
+    try {
+      const directory = await readerSpoolDirectory();
+      file = path.join(directory, randomUUID() + '.json');
+      spoolFiles.add(file);
+      await fs.writeFile(file, bytes, { flag: 'wx', mode: 0o600 });
+      reader.spool = {
+        file,
+        bytes: bytes.length,
+        hash: createHash('sha256').update(bytes).digest('hex'),
+      };
+    } catch (error) {
+      if (file) {
+        deleteReaderSpool(file, bytes.length);
+      } else spoolBytes -= bytes.length;
+      throw error;
+    } finally {
+      spoolReservations--;
+    }
+  } finally {
+    reader.entries.clear();
+    reader.errors.clear();
+    reader.busy = false;
+    if (!reader.spool || reader.discarded) forgetEvalEvidenceReader(root);
+    activeEvidenceReaders--;
+    const next = evidenceReaderQueue.shift();
+    if (next) {
+      activeEvidenceReaders++;
+      next();
+    }
+  }
 }
 
 export interface EvalReadOptions {
   includeCaseContent?: boolean;
   resumable?: boolean;
   maxReportBytes?: number;
+  /** 未缓存报告正文的读取、解析与校验预算；元数据和缓存文件身份仍逐次核对。 */
   maxReadMs?: number;
 }
 export async function readEvalRun(
@@ -537,23 +740,34 @@ export async function readEvalRun(
   // 逐份解析并丢弃正文，不同时保留整次运行的原始 JSON。预算耗尽必须显式报告。
   const matrixValid =
     matrix && validExpectedMatrix(matrix, object(metadata?.expected_case_matrix).matrix_hash);
-  const reader = options.resumable ? await evidenceReader(root) : undefined;
-  const waiting = options.resumable && !reader;
-  const started = Date.now();
+  let reader: EvidenceReader | undefined;
+  if (options.resumable && options.includeCaseContent === false) {
+    try {
+      reader = await evidenceReader(root);
+    } catch (error) {
+      diagnostics.push(`报告读取预算已用尽：${(error as Error).message}`);
+    }
+  }
+  const waiting = options.resumable && options.includeCaseContent === false && !reader;
+  if (reader) {
+    const files = new Set(reportFiles);
+    for (const cache of [reader.entries, reader.errors]) {
+      for (const [file, entry] of cache) {
+        if (!files.has(path.basename(file))) {
+          reader.bytes -= entry.bytes;
+          cache.delete(file);
+        }
+      }
+    }
+  }
+  let reportReadMs = 0;
+  let reportsRead = 0;
   let reportBytes = 0;
   let exhausted = false;
-  let advanced = false;
   try {
     for (const file of reportFiles) {
       if (waiting) {
         diagnostics.push('报告读取预算已用尽：等待公平续扫；保留当前证据。');
-        exhausted = true;
-        break;
-      }
-      if (Date.now() - started > (options.maxReadMs ?? 60000)) {
-        diagnostics.push(
-          `报告读取预算已用尽：已读取 ${cases.length}/${reportFiles.length} 份，结果不完整；请提高 maxReportBytes/maxReadMs 后重试。`,
-        );
         exhausted = true;
         break;
       }
@@ -588,6 +802,12 @@ export async function readEvalRun(
           ? (reader?.entries.get(reportPath) ?? caseSummaries.get(reportPath))
           : undefined;
       if (cached && cached.stamp === stamp) {
+        if (
+          reader &&
+          !reader.entries.has(reportPath) &&
+          !rememberEvidenceSummary(reader, reportPath, cached)
+        )
+          diagnostics.push('reports/读取：用例摘要超过 32MiB 有界证据预算，请缩小运行');
         if (!cases.length) source = cached.source;
         cases.push({ ...cached.item });
         continue;
@@ -601,7 +821,7 @@ export async function readEvalRun(
       reportBytes += stat?.size ?? 0;
       if (
         reportBytes > (options.maxReportBytes ?? 1024 * 1024 * 1024) ||
-        Date.now() - started > (options.maxReadMs ?? 60000)
+        (reportsRead > 0 && reportReadMs >= (options.maxReadMs ?? 60000))
       ) {
         diagnostics.push(
           `报告读取预算已用尽：已读取 ${cases.length}/${reportFiles.length} 份，结果不完整；请提高 maxReportBytes/maxReadMs 后重试。`,
@@ -609,7 +829,8 @@ export async function readEvalRun(
         exhausted = true;
         break;
       }
-      advanced = true;
+      const reportStarted = Date.now();
+      reportsRead++;
       const diagnosticsBeforeReport = diagnostics.length;
       let raw: Json | null = null;
       try {
@@ -648,31 +869,40 @@ export async function readEvalRun(
           const events = object(raw.events_summary);
           const entry = { stamp, item, source: summarySource(events) };
           cacheCaseSummary(reportPath, entry);
-          if (reader) {
-            const bytes = Buffer.byteLength(JSON.stringify(entry));
-            const previous = reader.entries.get(reportPath);
-            if (reader.bytes - (previous?.bytes ?? 0) + bytes > 32 * 1024 * 1024) {
-              diagnostics.push('reports/读取：用例摘要超过 32MiB 有界证据预算，请缩小运行');
-            } else {
-              reader.bytes += bytes - (previous?.bytes ?? 0);
-              reader.entries.set(reportPath, { ...entry, bytes });
-            }
-          }
+          if (reader && !rememberEvidenceSummary(reader, reportPath, entry))
+            diagnostics.push('reports/读取：用例摘要超过 32MiB 有界证据预算，请缩小运行');
         }
         cases.push(item);
       }
       const reportErrors = diagnostics
         .slice(diagnosticsBeforeReport)
         .filter((message) => message.startsWith('reports/'));
-      if (reader && reportErrors.length)
-        reader.errors.set(reportPath, { stamp, messages: reportErrors });
+      if (reader && reportErrors.length) {
+        const bytes =
+          Buffer.byteLength(JSON.stringify({ stamp, messages: reportErrors })) +
+          Buffer.byteLength(reportPath);
+        const previous = reader.errors.get(reportPath);
+        const summary = reader.entries.get(reportPath);
+        if (
+          reader.bytes - (previous?.bytes ?? 0) - (summary?.bytes ?? 0) + bytes <=
+          32 * 1024 * 1024
+        ) {
+          reader.bytes += bytes - (previous?.bytes ?? 0) - (summary?.bytes ?? 0);
+          reader.entries.delete(reportPath);
+          reader.errors.set(reportPath, { stamp, messages: reportErrors, bytes });
+        }
+      }
+      reportReadMs += Date.now() - reportStarted;
     }
   } finally {
     if (reader) {
-      reader.busy = false;
-      if ((!exhausted || !advanced) && evidenceReaders.get(root) === reader)
-        forgetEvalEvidenceReader(root);
-    }
+      reader.complete = !exhausted;
+      try {
+        await releaseEvidenceReader(root, reader);
+      } catch (error) {
+        diagnostics.push(`报告读取预算已用尽：${(error as Error).message}`);
+      }
+    } else if (!exhausted) forgetEvalEvidenceReader(root);
   }
   const app = object(application?.application);
   const config = managed?.config ?? {

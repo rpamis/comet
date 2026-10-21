@@ -302,6 +302,7 @@ export type ApplicationSkillInvocationRequest = {
     operation: 'claim';
     runId: string;
     actionId: string;
+    executorId?: string;
     sessionId?: string;
     capabilities?: string[];
 } | {

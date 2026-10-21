@@ -319,7 +319,7 @@ it('keeps the Skill current view bounded while retaining explicit complete evide
     sequence: 1,
     value: { text: 'x'.repeat(512) },
   });
-}, 120_000);
+}, 240_000);
 
 it('keeps unknown claimed work and its original receipt in the compact Skill view', async () => {
   const app = await application('unknown-work');

@@ -13,6 +13,7 @@ import {
 import {
   previewWorkflowApplicationInstall,
   installWorkflowApplication,
+  inspectApplicationSkill,
 } from '../../../domains/workflow-application/index.js';
 import {
   collectDashboardApplicationRunPage,
@@ -145,6 +146,144 @@ async function invoke(file: string, args: string[], json?: unknown, status = 0) 
   expect(result.status, result.stderr || result.stdout).toBe(status);
   return JSON.parse(result.stdout);
 }
+
+async function realSkillProposal(executors = ['local-skill'], authorized = true) {
+  const value = invocationProposal();
+  const skillRoot = path.join(root, 'writer');
+  await fs.mkdir(skillRoot);
+  await fs.writeFile(
+    path.join(skillRoot, 'SKILL.md'),
+    '# Writer\nRead text and return a summary. No writes or approvals.\n',
+  );
+  const skill = await inspectApplicationSkill(skillRoot);
+  const outputSchema = {
+    type: 'object',
+    required: ['summary'],
+    properties: { summary: { type: 'string' } },
+    additionalProperties: false,
+  };
+  value.manifest.skills = [
+    {
+      id: 'writer',
+      root: skillRoot,
+      contentHash: skill.contentHash,
+      adapter: {
+        kind: 'action',
+        inputSchema: { type: 'object' },
+        outputSchema,
+        scope: ['report'],
+        requiredCapabilities: [],
+        interaction: 'none',
+        sideEffect: 'read',
+        controlsApproval: false,
+        completion: 'self-report',
+        failure: 'repair',
+        recovery: 'manual',
+        review: {
+          status: 'accepted',
+          reviewedBy: 'fixture-review',
+          contentHash: skill.contentHash,
+          capabilities: [{ id: 'summary', file: 'SKILL.md', excerpt: 'return a summary' }],
+          effects: [{ file: 'SKILL.md', excerpt: 'No writes or approvals.' }],
+        },
+      },
+    },
+  ];
+  value.manifest.bindings = [
+    {
+      workflowId: 'daily-editor',
+      stepId: 'draft',
+      skillId: 'writer',
+      capability: 'summary',
+      usage: 'action',
+    },
+  ];
+  delete value.presentation;
+  value.composition = {
+    kind: 'standalone',
+    executorIds: executors,
+    validatorRefs: [],
+    transitionHandlers: [],
+    workflows: [
+      {
+        id: 'daily-editor',
+        version: '1',
+        entry: 'draft',
+        steps: { draft: { type: 'invoke_skill', ref: 'writer', outputSchema } },
+      },
+    ],
+  };
+  value.modules = {
+    'bindings.mjs': `export function createBindings(context){return {executors:${JSON.stringify(executors)}.map(id=>context.createSkillExecutor({id,capabilities:[],authorize:async()=>${authorized},invokeSkill:async()=>{throw new Error('The Agent must execute the Skill')}})),validators:[]}}`,
+  };
+  return value;
+}
+
+it.each(['recommended', 'legacy', 'explicit'])(
+  'claims an installed real Skill using its registered executor (%s)',
+  async (mode) => {
+    const explicit = mode === 'explicit';
+    const installed = await install(
+      await realSkillProposal(explicit ? ['first-host', 'selected-host'] : ['local-skill']),
+    );
+    const started = await invoke(installed.file, ['start'], {});
+    const action = started.run.current.actions[0];
+    const command = started.commands.actions[0].claim.slice(2);
+    if (mode === 'legacy') command.splice(command.indexOf('--executor-id'), 2);
+    if (explicit) {
+      expect((await invoke(installed.file, command, undefined, 1)).error.code).toBe(
+        'INVALID_REQUEST',
+      );
+      const index = command.indexOf('--executor-id');
+      if (index >= 0) command.splice(index, 2);
+      command.push('--executor-id', 'selected-host');
+    }
+    const claimed = await invoke(installed.file, command);
+    expect(claimed.run.current.actions[0]).toMatchObject({ status: 'running' });
+    const { readWorkflowApplicationRun } =
+      await import('../../../domains/workflow-application/index.js');
+    expect(
+      (await readWorkflowApplicationRun(root, 'daily-editor', started.run.runId))?.actions[0].claim
+        ?.executorId,
+    ).toBe(explicit ? 'selected-host' : 'local-skill');
+    const resumed = await invoke(installed.file, ['resume', '--run-id', started.run.runId]);
+    expect(resumed.receipts.actions).toEqual(claimed.receipts.actions);
+    const finished = await invoke(
+      installed.file,
+      ['record-outcome', '--receipt', resumed.receipts.actions[0]],
+      { status: 'succeeded', output: { summary: 'Actual Agent result' } },
+    );
+    expect(finished.run.status).toBe('completed');
+    expect(action.type).toBe('invoke_skill');
+  },
+);
+
+it('keeps executor selection and authorization checks on installed Skill claims', async () => {
+  const installed = await install(await realSkillProposal(['local-skill'], false));
+  const started = await invoke(installed.file, ['start'], {});
+  const command = [
+    'claim',
+    '--run-id',
+    started.run.runId,
+    '--action-id',
+    started.run.current.actions[0].id,
+  ];
+  expect(
+    (await invoke(installed.file, [...command, '--executor-id', 'unregistered'], undefined, 1))
+      .error.code,
+  ).toBe('EXECUTOR_UNAVAILABLE');
+  const denied = await invoke(
+    installed.file,
+    [...command, '--executor-id', 'local-skill'],
+    undefined,
+    1,
+  );
+  expect(denied.error.code).toBe('COMMAND_REJECTED');
+  expect(
+    (await invoke(installed.file, ['inspect', '--run-id', started.run.runId])).run.current
+      .actions[0].status,
+  ).toBe('pending');
+});
 
 it('runs the installed Skill entry through work, conversation approval and cold recovery without Creator', async () => {
   const installed = await install();

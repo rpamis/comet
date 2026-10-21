@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { readNodeHookArguments } from '../../../platform/process/hook-command.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../domains/integrations/openspec.js', () => ({
@@ -116,9 +117,13 @@ describe('Comet project activation', () => {
     );
 
     const hooks = await fs.readFile(path.join(projectRoot, '.codex', 'hooks.json'), 'utf8');
-    expect(hooks.replaceAll('\\', '/')).toContain(
-      `${projectRoot.replaceAll('\\', '/')}/.agents/skills/comet/scripts/comet-hook-router.mjs`,
-    );
+    expect(readNodeHookArguments(JSON.parse(hooks).hooks.PreToolUse[0].hooks[0].command)).toEqual([
+      path.join(projectRoot, '.agents/skills/comet/scripts/comet-hook-router.mjs'),
+      '--platform',
+      'codex',
+      '--project-root',
+      projectRoot,
+    ]);
     await expect(
       fs.access(
         path.join(projectRoot, '.agents', 'skills', 'comet', 'scripts', 'comet-hook-router.mjs'),

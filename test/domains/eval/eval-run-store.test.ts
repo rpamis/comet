@@ -13,6 +13,7 @@ import {
   clearEvalBaseline,
   compareEvalRuns,
   readEvalArtifact,
+  forgetEvalEvidenceReader,
 } from '../../../domains/eval/eval-run-store.js';
 
 function expectedMatrix(
@@ -34,6 +35,9 @@ describe('Eval run history and baselines', () => {
     project = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-runs-'));
   });
   afterEach(async () => {
+    const runs = path.join(project, '.comet/eval/runs');
+    for (const id of await fs.readdir(runs).catch(() => []))
+      forgetEvalEvidenceReader(path.join(runs, id));
     await fs.rm(project, { recursive: true, force: true });
   });
   async function report(id: string, outcomes: boolean[], quality = 'included', model = 'model-a') {
@@ -243,6 +247,188 @@ describe('Eval run history and baselines', () => {
     expect(run.conclusion).toBe('incomplete');
     expect(run.baselineEligible).toBe(false);
     expect(run.diagnostics.join(' ')).toContain('单份报告超过 maxReportBytes');
+  });
+  it('converges across three large interleaved runs without rereading validated evidence', async () => {
+    const ids = ['fair-a', 'fair-b', 'fair-c'];
+    const original = new Map<string, string>();
+    for (const id of ids) {
+      const root = await report(
+        id,
+        Array.from({ length: 100 }, () => false),
+      );
+      for (const file of await fs.readdir(path.join(root, 'reports'))) {
+        const name = path.join(root, 'reports', file);
+        const raw = JSON.parse(await fs.readFile(name, 'utf8'));
+        raw.checks_failed = Array.from({ length: 100 }, (_, n) => `${n}: ${'x'.repeat(990)}`);
+        const bytes = JSON.stringify(raw);
+        await fs.writeFile(name, bytes);
+        original.set(name, createHash('sha256').update(bytes).digest('hex'));
+      }
+    }
+    const options = {
+      resumable: true,
+      includeCaseContent: false,
+      maxReportBytes: 8 * 1024 * 1024,
+      maxReadMs: 60000,
+    };
+    const spy = vi.spyOn(fs, 'readFile');
+    try {
+      for (let pass = 0; pass < 4; pass++) {
+        for (const id of ids) {
+          const run = await readEvalRun(project, id, options);
+          if (!pass) expect(run.total).toBeLessThan(100);
+          else {
+            expect(run.total).toBe(100);
+            expect(run.conclusion).toBe('failed');
+            expect(run.baselineEligible).toBe(true);
+            expect(run.diagnostics).toEqual([]);
+          }
+        }
+      }
+      expect(spy.mock.calls.filter(([file]) => String(file).endsWith('_report.json'))).toHaveLength(
+        300,
+      );
+    } finally {
+      spy.mockRestore();
+    }
+    for (const [file, hash] of original)
+      expect(
+        createHash('sha256')
+          .update(await fs.readFile(file))
+          .digest('hex'),
+      ).toBe(hash);
+    // 完整读取释放旧续扫状态；后续仍能通过原始报告重新收敛。
+    await readEvalRun(project, ids[0], { includeCaseContent: false });
+    expect((await readEvalRun(project, ids[0], options)).total).toBe(100);
+  }, 60000);
+
+  it('revalidates changed reports and refuses tampered continuation summaries', async () => {
+    const root = await report('integrity', [true, true]);
+    const reportFile = path.join(root, 'reports/case-0_report.json');
+    const spy = vi.spyOn(fs, 'writeFile');
+    const options = { resumable: true, includeCaseContent: false };
+    await readEvalRun(project, 'integrity', options);
+    const spoolFile = spy.mock.calls
+      .map(([file]) => String(file))
+      .find((file) => file.includes('comet-eval-readers-'));
+    spy.mockRestore();
+    expect(spoolFile).toBeTruthy();
+    const spool = JSON.parse(await fs.readFile(spoolFile!, 'utf8'));
+    spool.entries[0][1].item.passed = false;
+    await fs.writeFile(spoolFile!, JSON.stringify(spool));
+    expect((await readEvalRun(project, 'integrity', options)).conclusion).toBe('passed');
+    const raw = JSON.parse(await fs.readFile(reportFile, 'utf8'));
+    raw.passed = false;
+    await fs.writeFile(reportFile, JSON.stringify(raw));
+    expect((await readEvalRun(project, 'integrity', options)).conclusion).toBe('failed');
+  });
+  it('queues concurrent runs fairly with at most two active readers', async () => {
+    const ids = ['concurrent-a', 'concurrent-b', 'concurrent-c', 'concurrent-d'];
+    for (const id of ids) await report(id, [true, true]);
+    const original = fs.readFile;
+    let active = 0,
+      maximum = 0;
+    const spy = vi
+      .spyOn(fs, 'readFile')
+      .mockImplementation(async (...args: Parameters<typeof fs.readFile>) => {
+        if (!String(args[0]).endsWith('_report.json')) return original(...args);
+        active++;
+        maximum = Math.max(maximum, active);
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          return await original(...args);
+        } finally {
+          active--;
+        }
+      });
+    try {
+      for (let pass = 0; pass < 3; pass++) {
+        const runs = await Promise.all(
+          ids.map((id) => readEvalRun(project, id, { resumable: true, includeCaseContent: false })),
+        );
+        expect(runs.map((run) => run.total)).toEqual([2, 2, 2, 2]);
+        expect(runs.every((run) => run.conclusion === 'passed' && !run.diagnostics.length)).toBe(
+          true,
+        );
+      }
+      expect(maximum).toBe(2);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+  it('makes progress when cached path checks exceed the uncached report time budget', async () => {
+    const root = await report(
+      'slow-paths',
+      Array.from({ length: 12 }, () => true),
+    );
+    const size = (await fs.stat(path.join(root, 'reports/case-0_report.json'))).size;
+    const original = fs.lstat;
+    const spy = vi
+      .spyOn(fs, 'lstat')
+      .mockImplementation(async (...args: Parameters<typeof fs.lstat>) => {
+        if (String(args[0]).endsWith('_report.json'))
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        return original(...args);
+      });
+    try {
+      let total = 0;
+      for (let pass = 0; pass < 13; pass++) {
+        const run = await readEvalRun(project, 'slow-paths', {
+          resumable: true,
+          includeCaseContent: false,
+          maxReportBytes: size * 2,
+          maxReadMs: 1,
+        });
+        expect(run.total).toBeGreaterThan(total);
+        total = run.total;
+        if (total === 12) {
+          expect(run.conclusion).toBe('passed');
+          expect(run.baselineEligible).toBe(true);
+          expect(run.diagnostics).toEqual([]);
+          break;
+        }
+      }
+      expect(total).toBe(12);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+  it('recreates a removed private cache directory and retries a transient creation failure', async () => {
+    await report('cache-recovery', [true, true]);
+    const options = { resumable: true, includeCaseContent: false };
+    const writes = vi.spyOn(fs, 'writeFile');
+    try {
+      await readEvalRun(project, 'cache-recovery', options);
+      const file = writes.mock.calls
+        .map(([name]) => String(name))
+        .find((name) => name.includes('comet-eval-readers-'))!;
+      expect(file).toBeTruthy();
+      await fs.unlink(file);
+      await fs.rmdir(path.dirname(file));
+      const mkdir = vi
+        .spyOn(fs, 'mkdtemp')
+        .mockRejectedValueOnce(
+          Object.assign(new Error('temporarily unavailable'), { code: 'EACCES' }),
+        );
+      try {
+        expect(
+          (await readEvalRun(project, 'cache-recovery', options)).diagnostics.join(' '),
+        ).toContain('temporarily unavailable');
+        const recovered = await readEvalRun(project, 'cache-recovery', options);
+        expect(recovered.conclusion).toBe('passed');
+        expect(recovered.diagnostics).toEqual([]);
+        expect(mkdir).toHaveBeenCalledTimes(2);
+        const nextFile = String(writes.mock.calls.at(-1)![0]);
+        expect(path.dirname(nextFile)).not.toBe(path.dirname(file));
+        await expect(fs.access(nextFile)).resolves.toBeUndefined();
+        await readEvalRun(project, 'cache-recovery', { includeCaseContent: false });
+        await expect(fs.access(nextFile)).rejects.toMatchObject({ code: 'ENOENT' });
+      } finally {
+        mkdir.mockRestore();
+      }
+    } finally {
+      writes.mockRestore();
+    }
   });
   it('checks every path component once and never reuses a previous symlink check', async () => {
     const root = await report('paths', [true]);

@@ -23,7 +23,7 @@ try {
   if (operation === 'start') request = { operation, input: await jsonFile('input-file'), ...(values['run-id'] ? {runId:values['run-id']} : {}), ...(values['workflow-id'] ? {workflowId:values['workflow-id']} : {}), ...(values['initial-state-file'] ? {initialState:await jsonFile('initial-state-file')} : {}) };
   else if (['inspect', 'resume'].includes(operation)) request = { operation, ...(values['run-id'] ? {runId:values['run-id']} : {}) };
   else if (operation === 'next') request = { operation, runId: required('run-id') };
-  else if (operation === 'claim') request = { operation, runId: required('run-id'), actionId: required('action-id'), sessionId: values['session-id'], capabilities: values.capability ?? [] };
+  else if (operation === 'claim') request = { operation, runId: required('run-id'), actionId: required('action-id'), executorId: values['executor-id'], sessionId: values['session-id'], capabilities: values.capability ?? [] };
   else if (operation === 'execute') request = { operation, runId: required('run-id'), actionId: required('action-id'), executorId: required('executor-id') };
   else if (operation === 'record-outcome') request = { operation, receipt: receipt(), result: await jsonFile('result-file') };
   else if (operation === 'resolve-wait') request = { operation, receipt: receipt(), choice: required('choice'), decisionId: required('decision-id') };
@@ -37,7 +37,7 @@ try {
     next: [...base, 'next', '--run-id', result.run.runId],
     actions: result.run.current.actions.map(action => ({
       actionId: action.id,
-      ...(action.status === 'pending' ? { claim: [...base, 'claim', '--run-id', result.run.runId, '--action-id', action.id, ...action.requiredCapabilities.flatMap(value => ['--capability',value])] } : {}),
+      ...(action.status === 'pending' && action.claimRequest ? { claim: [...base, 'claim', '--run-id', result.run.runId, '--action-id', action.id, '--executor-id', action.claimRequest.executorId, ...action.requiredCapabilities.flatMap(value => ['--capability',value])] } : {}),
       execute: (action.executeRequests ?? []).map(request => [...base, 'execute', '--run-id', result.run.runId, '--action-id', action.id, '--executor-id', request.executorId]),
       ...(result.receipts.actions.find(value => JSON.parse(Buffer.from(value,'base64url').toString('utf8')).actionId === action.id) ? { recordOutcome: [...base, 'record-outcome', '--receipt', result.receipts.actions.find(value => JSON.parse(Buffer.from(value,'base64url').toString('utf8')).actionId === action.id), '--result-file', '<实际结果JSON文件>'] } : {})
     })),

@@ -5,6 +5,7 @@ import os from 'os';
 import { EventEmitter } from 'events';
 import { spawn } from 'child_process';
 import { spawnSync } from 'node:child_process';
+import { readNodeHookArguments } from '../../platform/process/hook-command.js';
 import { select } from '@inquirer/prompts';
 import { parse } from 'yaml';
 import { getLatestVersion } from '../../platform/version/version.js';
@@ -690,9 +691,13 @@ describe('update command helpers', () => {
       '# Personal\n',
     );
     const hooks = JSON.parse(await fs.readFile(path.join(tmpDir, '.codex', 'hooks.json'), 'utf8'));
-    expect(hooks.hooks.PreToolUse[0].hooks[0].command.replaceAll('\\', '/')).toContain(
-      '/.agents/skills/comet/scripts/comet-hook-router.mjs',
-    );
+    expect(readNodeHookArguments(hooks.hooks.PreToolUse[0].hooks[0].command)).toEqual([
+      path.join(tmpDir, '.agents/skills/comet/scripts/comet-hook-router.mjs'),
+      '--platform',
+      'codex',
+      '--project-root',
+      tmpDir,
+    ]);
     const legacy = JSON.parse(
       await fs.readFile(path.join(tmpDir, '.codex', 'settings.local.json'), 'utf8'),
     );
@@ -2355,7 +2360,13 @@ describe('update command helpers', () => {
     const settings = JSON.parse(
       await fs.readFile(path.join(tmpDir, '.test', 'settings.local.json'), 'utf8'),
     ) as { hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> } };
-    expect(JSON.stringify(settings.hooks)).toContain('comet-hook-router.mjs');
+    expect(readNodeHookArguments(settings.hooks.PreToolUse[0].hooks[0].command)).toEqual([
+      path.join(tmpDir, '.test/skills/comet/scripts/comet-hook-router.mjs'),
+      '--platform',
+      'test',
+      '--project-root',
+      tmpDir,
+    ]);
   });
 
   it('applies the project workflow selection to an explicit custom update target', async () => {
