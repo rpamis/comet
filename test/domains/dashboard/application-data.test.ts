@@ -8,9 +8,88 @@ import {
   refreshApplicationRunPage,
   applicationWorkflowView,
   applicationOutputSummary,
+  applicationPhaseState,
 } from '../../../domains/dashboard/web/src/application-data.js';
 
 describe('Comet Any workspace identity', () => {
+  it('associates large run histories in one pass and prefers exact parent locators', () => {
+    const runs = Array.from({ length: 10_000 }, (_, i) => ({
+      locator: `run:${i}`,
+      runId: `run-${i}`,
+    }));
+    let parentReads = 0;
+    const children = runs.map((run, i) => ({
+      locator: `child:${i}`,
+      get parentLocator() {
+        parentReads++;
+        return run.locator;
+      },
+      parentRunId: 'run-0',
+    }));
+    const legacy = { locator: 'legacy', parentRunId: 'run-0' };
+    const grouped = applicationData.groupApplicationRunChildren({
+      runs,
+      children: [...children, legacy],
+    });
+    expect(grouped.get('run:0')).toEqual([children[0], legacy]);
+    expect(grouped.get('run:9999')).toEqual([children[9999]]);
+    expect([...grouped.values()].flat()).toHaveLength(10_001);
+    expect(parentReads).toBeLessThanOrEqual(2 * children.length);
+  });
+  it('lays out each workflow step once while retaining cycles, branches and joins', () => {
+    const nodes = ['start', 'build', 'check', 'approve', 'deliver'].map((stepId) => ({ stepId }));
+    const edges = [
+      { from: 'start', to: 'build' },
+      { from: 'start', to: 'check' },
+      { from: 'start', to: 'approve' },
+      { from: 'check', to: 'build' },
+      { from: 'build', to: 'check' },
+      { from: 'build', to: 'deliver' },
+      { from: 'check', to: 'deliver' },
+      { from: 'approve', to: 'deliver' },
+    ];
+    const layers = applicationData.applicationWorkflowLayers({ nodes, edges });
+    expect(layers.map((layer: typeof nodes) => layer.map((node) => node.stepId))).toEqual([
+      ['start'],
+      ['build', 'check', 'approve'],
+      ['deliver'],
+    ]);
+    expect(layers.flat()).toHaveLength(5);
+  });
+  it('keeps unobserved Creator stages and unknown recovery steps without inferring success', () => {
+    const view = applicationData.creatorWorkflowView({
+      kind: 'creator',
+      workflow: { id: 'comet-creator', version: '1' },
+      records: [
+        { id: 'a', stepId: 'analyze', status: 'succeeded', active: false },
+        { id: 'b', stepId: 'confirm-plan', status: 'waiting', active: true },
+        {
+          id: 'c',
+          stepId: 'new-recovery',
+          title: '恢复',
+          phase: '恢复阶段',
+          active: true,
+          status: 'unknown',
+        },
+      ],
+    });
+    expect(view.phases).toEqual([
+      '需求与调查',
+      '方案与确认',
+      '构建与校验',
+      '模型评估',
+      '安装预览',
+      '交付与分发',
+      '恢复阶段',
+    ]);
+    expect(
+      view.nodes.find((n: { stepId: string }) => n.stepId === 'compile').latestStatus,
+    ).toBeNull();
+    expect(applicationPhaseState(view.phaseGroups[1].nodes).label).toBe('等待确认');
+    expect(
+      view.nodes.find((n: { stepId: string }) => n.stepId === 'new-recovery').latestStatus,
+    ).toBe('unknown');
+  });
   it('orders runtime stages by their declared dependencies rather than canonical JSON key order', () => {
     const view = applicationWorkflowView({
       definition: {
@@ -106,6 +185,43 @@ describe('Comet Any workspace identity', () => {
 });
 
 describe('complete application workflow', () => {
+  it('derives phase states from all concurrent records and never completes an unstarted branch', () => {
+    const done = { latestStatus: 'succeeded', activeRecordIds: [], records: [] };
+    const unstarted = { latestStatus: null, activeRecordIds: [], records: [] };
+    expect(applicationPhaseState([done])).toMatchObject({ state: 'done' });
+    expect(applicationPhaseState([done, unstarted])).toMatchObject({
+      state: 'pending',
+      label: '部分完成',
+    });
+    expect(applicationPhaseState([unstarted])).toMatchObject({ state: 'pending' });
+    const concurrent = {
+      latestStatus: 'succeeded',
+      activeRecordIds: ['running', 'uncertain'],
+      records: [
+        { id: 'running', status: 'running' },
+        { id: 'uncertain', status: 'unknown' },
+      ],
+    };
+    expect(applicationPhaseState([concurrent])).toEqual({
+      state: 'current',
+      running: false,
+      label: '结果待核对',
+    });
+    expect(applicationPhaseState([{ ...done, activeRecordIds: ['outside-page'] }])).toEqual({
+      state: 'current',
+      running: false,
+      label: '结果待核对',
+    });
+    expect(applicationPhaseState([{ ...concurrent, activeRecordIds: ['running'] }])).toMatchObject({
+      state: 'current',
+      running: true,
+    });
+    expect(applicationPhaseState([{ ...done, latestStatus: 'failed' }])).toMatchObject({
+      state: 'current',
+      running: false,
+      label: '失败',
+    });
+  });
   const workflow = {
     id: 'editorial',
     version: '1',

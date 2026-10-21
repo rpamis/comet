@@ -35,7 +35,7 @@ function normalize(value) {
     };
     if (
       value.returnTo?.view === 'workflow' &&
-      value.returnTo.workflow === 'any' &&
+      ['any', 'application'].includes(value.returnTo.workflow) &&
       id(value.returnTo.projectId) === projectId
     )
       route.returnTo = normalize(value.returnTo);
@@ -50,9 +50,11 @@ function normalize(value) {
   const route = {
     view: 'workflow',
     projectId,
-    workflow: ['native', 'classic', 'any'].includes(value?.workflow) ? value.workflow : null,
+    workflow: ['native', 'classic', 'any', 'application'].includes(value?.workflow)
+      ? value.workflow
+      : null,
   };
-  if (route.workflow === 'any') {
+  if (['any', 'application'].includes(route.workflow)) {
     if (id(value.runLocator)) route.runLocator = id(value.runLocator);
     if (id(value.recordId)) route.recordId = id(value.recordId);
     if (['steps', 'history', 'artifacts', 'evidence'].includes(value.runTab))

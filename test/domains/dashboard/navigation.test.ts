@@ -16,6 +16,42 @@ function browser(url = 'http://localhost:4399/') {
 }
 
 describe('Dashboard navigation without URL suffixes', () => {
+  it('keeps creation and custom workflow selections independent, including Eval return routes', () => {
+    const page = browser();
+    for (const workflow of ['any', 'application'])
+      navigateDashboard(
+        {
+          view: 'workflow',
+          projectId: 'one',
+          workflow,
+          runLocator: `${workflow}:run`,
+          runTab: 'artifacts',
+        },
+        {},
+        page,
+      );
+    navigateDashboard(
+      { view: 'workflow', projectId: 'one', workflow: 'any' },
+      { restore: true },
+      page,
+    );
+    expect(readDashboardNavigation(page).runLocator).toBe('any:run');
+    navigateDashboard(
+      { view: 'workflow', projectId: 'one', workflow: 'application' },
+      { restore: true },
+      page,
+    );
+    expect(readDashboardNavigation(page).runLocator).toBe('application:run');
+    navigateDashboard(
+      { view: 'eval', projectId: 'one', returnTo: readDashboardNavigation(page) },
+      {},
+      page,
+    );
+    expect(readDashboardNavigation(page).returnTo).toMatchObject({
+      workflow: 'application',
+      runLocator: 'application:run',
+    });
+  });
   it('restores the context usage page for its selected project', () => {
     const page = browser();
     navigateDashboard({ view: 'context-usage', projectId: 'one' }, {}, page);

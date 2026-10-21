@@ -7147,7 +7147,7 @@ test('opens the Any proposal on the first frame without a height transition', as
     .locator('.any-entity-list')
     .getByRole('button', { name: /grill-suite/ })
     .click();
-  await page.getByText('创作过程', { exact: true }).last().click();
+  await page.locator('.any-active-list').getByRole('button').click();
   const disclosure = page.locator('.any-proposal-disclosure');
   const summary = disclosure.locator('summary');
   const heights = await summary.evaluate(async (element) => {
@@ -7169,9 +7169,9 @@ test('opens the Any proposal on the first frame without a height transition', as
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.keyboard.press('Space');
   await expect(disclosure).toHaveAttribute('open');
-  expect(
-    await disclosure.evaluate((element) => element.getAnimations({ subtree: true }).length),
-  ).toBe(0);
+  await expect
+    .poll(() => disclosure.evaluate((element) => element.getAnimations({ subtree: true }).length))
+    .toBe(0);
 });
 
 test('animates artifact previews and exposes only the close control', async ({ page }) => {

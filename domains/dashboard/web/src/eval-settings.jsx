@@ -5,7 +5,6 @@ import {
   Alert,
   App,
   Button,
-  Card,
   Checkbox,
   Form,
   Input,
@@ -20,7 +19,22 @@ import { ReloadOutlined, SaveOutlined } from '@ant-design/icons';
 import './eval-panel.css';
 import { evalDisplayError } from './eval-guidance.jsx';
 import { readEvalDemoSettings } from './eval-demo.js';
-const { Text, Title } = Typography;
+const { Text } = Typography;
+
+function SettingsSection({ title, children }) {
+  return (
+    <section className="dashboard-settings-panel">
+      <div className="dashboard-settings-panel-head">
+        <h4>{title}</h4>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function SettingField(props) {
+  return <Form.Item {...props} layout="horizontal" className="dashboard-eval-setting-row" />;
+}
 const endpoint = '/api/dashboard/eval/settings';
 const agents = ['claude-code', 'codex', 'qoder', 'codebuddy'].map((value) => ({
   value,
@@ -161,7 +175,7 @@ export function EvalSettings({ readOnly = false, onSaved }) {
           </Tag>
         </div>
         <div className="dashboard-eval-form-grid">
-          <Form.Item
+          <SettingField
             label={main ? t('执行凭据类型') : t('Judge 凭据类型')}
             name={main ? 'mainKind' : 'judgeKind'}
           >
@@ -173,14 +187,14 @@ export function EvalSettings({ readOnly = false, onSaved }) {
                   : []),
               ]}
             />
-          </Form.Item>
-          <Form.Item label={main ? t('新的执行凭据') : t('新的 Judge 凭据')} name={field}>
+          </SettingField>
+          <SettingField label={main ? t('新的执行凭据') : t('新的 Judge 凭据')} name={field}>
             <Input.Password
               autoComplete="off"
               placeholder={status?.configured ? t('留空保留已有凭据') : t('输入凭据')}
               disabled={readOnly || clear}
             />
-          </Form.Item>
+          </SettingField>
         </div>
         {status?.saved && (
           <Button
@@ -227,13 +241,13 @@ export function EvalSettings({ readOnly = false, onSaved }) {
                 : t('未配置')}
           </Tag>
         </div>
-        <Form.Item label={t('新的 {0}', [label])} name={`${slot}Credential`}>
+        <SettingField label={t('新的 {0}', [label])} name={`${slot}Credential`}>
           <Input.Password
             autoComplete="off"
             disabled={readOnly || clear}
             placeholder={status?.configured ? t('留空保留已有凭据') : t('输入凭据')}
           />
-        </Form.Item>
+        </SettingField>
         {status?.saved && (
           <Button
             type="text"
@@ -260,7 +274,6 @@ export function EvalSettings({ readOnly = false, onSaved }) {
     <div className="dashboard-eval-page dashboard-eval-settings" aria-label={t('Eval 设置')}>
       <div className="dashboard-eval-heading">
         <div>
-          <Title level={4}>Eval</Title>
           <Text type="secondary">
             {t('本机用户级配置，供所有项目复用。新建评估可覆盖默认值。')}
           </Text>
@@ -316,51 +329,51 @@ export function EvalSettings({ readOnly = false, onSaved }) {
               setError(null);
             }}
           >
-            <Card title={t('默认执行模型')} size="small">
+            <SettingsSection title={t('默认执行模型')}>
               <div className="dashboard-eval-form-grid">
-                <Form.Item label={t('默认执行 Agent')} name="agent" rules={[{ required: true }]}>
+                <SettingField label={t('默认执行 Agent')} name="agent" rules={[{ required: true }]}>
                   <Select options={agents} />
-                </Form.Item>
-                <Form.Item label={t('默认执行模型')} name="model">
+                </SettingField>
+                <SettingField label={t('默认执行模型')} name="model">
                   <Input placeholder={t('留空沿用目标或启动环境')} />
-                </Form.Item>
+                </SettingField>
               </div>
-              <Form.Item label={t('默认执行端点')} name="baseUrl">
+              <SettingField label={t('默认执行端点')} name="baseUrl">
                 <Input placeholder={t('https://provider.example/v1，留空使用默认端点')} />
-              </Form.Item>
+              </SettingField>
               {credential('main')}
-            </Card>
-            <Card title={t('独立 Judge')} size="small">
-              <Form.Item name="judgeEnabled" valuePropName="checked">
+            </SettingsSection>
+            <SettingsSection title={t('独立 Judge')}>
+              <SettingField name="judgeEnabled" valuePropName="checked">
                 <Checkbox>{t('默认启用独立 Judge')}</Checkbox>
-              </Form.Item>
+              </SettingField>
               {judgeEnabled && (
                 <>
                   <div className="dashboard-eval-form-grid">
-                    <Form.Item
+                    <SettingField
                       label={t('默认 Judge Agent')}
                       name="judgeAgent"
                       rules={[{ required: true }]}
                     >
                       <Select options={agents} />
-                    </Form.Item>
-                    <Form.Item
+                    </SettingField>
+                    <SettingField
                       label={t('默认 Judge 模型')}
                       name="judgeModel"
                       rules={[{ required: true, message: t('请填写 Judge 模型') }]}
                     >
                       <Input />
-                    </Form.Item>
+                    </SettingField>
                   </div>
-                  <Form.Item label={t('默认 Judge 端点')} name="judgeBaseUrl">
+                  <SettingField label={t('默认 Judge 端点')} name="judgeBaseUrl">
                     <Input placeholder={t('留空使用默认端点')} />
-                  </Form.Item>
+                  </SettingField>
                 </>
               )}
               {credential('judge')}
-            </Card>
-            <Card title={t('报告与追踪')} size="small">
-              <Form.Item label={t('默认报告去向')} name="suite">
+            </SettingsSection>
+            <SettingsSection title={t('报告与追踪')}>
+              <SettingField label={t('默认报告去向')} name="suite">
                 <Select
                   options={[
                     { value: 'local', label: t('本地') },
@@ -368,40 +381,40 @@ export function EvalSettings({ readOnly = false, onSaved }) {
                     { value: 'langfuse', label: 'Langfuse' },
                   ]}
                 />
-              </Form.Item>
+              </SettingField>
               <Text type="secondary">
                 {t('用于新建 Skill 评估，可在运行前调整。SDK 应用评估使用本地报告。')}
               </Text>
               <div className="dashboard-eval-form-section">
                 <Text strong>LangSmith</Text>
                 <div className="dashboard-eval-form-grid">
-                  <Form.Item label={t('LangSmith 地址')} name="langsmithEndpoint">
+                  <SettingField label={t('LangSmith 地址')} name="langsmithEndpoint">
                     <Input placeholder="https://api.smith.langchain.com" />
-                  </Form.Item>
-                  <Form.Item label={t('LangSmith 项目')} name="langsmithProject">
+                  </SettingField>
+                  <SettingField label={t('LangSmith 项目')} name="langsmithProject">
                     <Input placeholder="comet-skill-eval" />
-                  </Form.Item>
+                  </SettingField>
                 </div>
-                <Form.Item name="langsmithTracing" valuePropName="checked">
+                <SettingField name="langsmithTracing" valuePropName="checked">
                   <Checkbox>{t('LangSmith 轨迹追踪')}</Checkbox>
-                </Form.Item>
+                </SettingField>
                 {trackingCredential('langsmith', 'LangSmith API key')}
               </div>
               <div className="dashboard-eval-form-section">
                 <Text strong>Langfuse</Text>
                 <div className="dashboard-eval-form-grid">
-                  <Form.Item label={t('Langfuse 地址')} name="langfuseBaseUrl">
+                  <SettingField label={t('Langfuse 地址')} name="langfuseBaseUrl">
                     <Input placeholder="https://cloud.langfuse.com" />
-                  </Form.Item>
-                  <Form.Item label={t('Langfuse 环境')} name="langfuseEnvironment">
+                  </SettingField>
+                  <SettingField label={t('Langfuse 环境')} name="langfuseEnvironment">
                     <Input placeholder={t('可选，例如 development 或 ci')} />
-                  </Form.Item>
+                  </SettingField>
                 </div>
                 {trackingCredential('langfusePublic', 'Langfuse Public key')}
                 {trackingCredential('langfuseSecret', 'Langfuse Secret key')}
               </div>
-            </Card>
-            <Card title={t('默认执行预算')} size="small">
+            </SettingsSection>
+            <SettingsSection title={t('默认执行预算')}>
               <div className="dashboard-eval-detail-grid">
                 {[
                   ['Skill', 'skill', 86400, 200],
@@ -409,19 +422,19 @@ export function EvalSettings({ readOnly = false, onSaved }) {
                 ].map(([title, prefix, seconds, turns]) => (
                   <div key={prefix}>
                     <Text strong>{title}</Text>
-                    <Form.Item
+                    <SettingField
                       label={t('{0} 默认总时限（秒）', [title])}
                       name={`${prefix}TimeoutSeconds`}
                     >
                       <InputNumber min={30} max={seconds} style={{ width: '100%' }} />
-                    </Form.Item>
-                    <Form.Item label={t('{0} 默认最大轮数', [title])} name={`${prefix}MaxTurns`}>
+                    </SettingField>
+                    <SettingField label={t('{0} 默认最大轮数', [title])} name={`${prefix}MaxTurns`}>
                       <InputNumber min={1} max={turns} style={{ width: '100%' }} />
-                    </Form.Item>
+                    </SettingField>
                   </div>
                 ))}
               </div>
-            </Card>
+            </SettingsSection>
             {data.overrides.length > 0 && (
               <Alert
                 type="info"
@@ -459,7 +472,7 @@ export function EvalSettings({ readOnly = false, onSaved }) {
               </Space>
             </div>
             {checks && (
-              <Card title={t('本地环境检查')} size="small">
+              <SettingsSection title={t('本地环境检查')}>
                 <div className="dashboard-eval-checks">
                   {checks.environment.map((check) => (
                     <div key={check.id}>
@@ -478,7 +491,7 @@ export function EvalSettings({ readOnly = false, onSaved }) {
                     </div>
                   ))}
                 </div>
-              </Card>
+              </SettingsSection>
             )}
             <Text className="dashboard-eval-settings-path" type="secondary">
               {t('配置保存在本机用户目录：')}

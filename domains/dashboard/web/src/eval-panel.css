@@ -872,7 +872,61 @@
 }
 .dashboard-eval-settings .ant-form {
   display: grid;
-  gap: 20px;
+  gap: 0;
+}
+.dashboard-eval-settings .dashboard-eval-form-grid,
+.dashboard-eval-settings .dashboard-eval-detail-grid {
+  display: block;
+}
+.dashboard-eval-settings .dashboard-eval-setting-row {
+  margin: 0;
+  padding-block: 13px;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+.dashboard-eval-settings .dashboard-eval-setting-row:last-child {
+  border-bottom: 0;
+}
+.dashboard-eval-settings .dashboard-eval-setting-row > .ant-row {
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.dashboard-eval-settings .dashboard-eval-setting-row .ant-form-item-label {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+  white-space: normal;
+}
+.dashboard-eval-settings .dashboard-eval-setting-row .ant-form-item-label > label {
+  height: auto;
+  color: var(--color-fg-2);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.dashboard-eval-settings .dashboard-eval-setting-row .ant-form-item-label > label::after {
+  display: none;
+}
+.dashboard-eval-settings .dashboard-eval-setting-row .ant-form-item-control {
+  flex: 0 1 300px;
+  min-width: 0;
+  max-width: 50%;
+}
+.dashboard-eval-settings
+  .dashboard-eval-setting-row:not(:has(.ant-form-item-label))
+  .ant-form-item-control {
+  flex: 1 1 100%;
+  max-width: 100%;
+}
+.dashboard-eval-settings .dashboard-eval-form-section {
+  margin-top: 16px;
+  padding-top: 16px;
+}
+.dashboard-eval-settings .ant-form > .dashboard-eval-heading,
+.dashboard-eval-settings .ant-form > .ant-alert,
+.dashboard-eval-settings-path {
+  margin-block: 16px;
 }
 .dashboard-eval-settings > .dashboard-eval-heading {
   background: var(--color-bg);
@@ -897,12 +951,25 @@
 }
 .dashboard-eval-settings-credential {
   display: grid;
-  gap: 12px;
+  gap: 0;
   border-top: 1px solid var(--color-border-soft);
   padding-top: 16px;
 }
 .dashboard-eval-settings-credential > .ant-btn {
   justify-self: start;
+}
+@media (max-width: 600px) {
+  .dashboard-eval-settings .dashboard-eval-setting-row > .ant-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .dashboard-eval-settings .dashboard-eval-setting-row .ant-form-item-label,
+  .dashboard-eval-settings .dashboard-eval-setting-row .ant-form-item-control {
+    flex: 0 1 auto;
+    width: 100%;
+    max-width: 100%;
+  }
 }
 .dashboard-eval-settings-credential .ant-form-item {
   margin-bottom: 0;

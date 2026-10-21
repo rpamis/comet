@@ -1,28 +1,12 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useDashboardMotion } from './dashboard-motion.jsx';
 import { useDashboardViewState } from './dashboard-view-state.js';
-import {
-  Alert,
-  Button,
-  Collapse,
-  Drawer,
-  Empty,
-  Input,
-  Segmented,
-  Select,
-  Skeleton,
-  Tabs,
-  Tag,
-  Tooltip,
-} from 'antd';
+import { Alert, Button, Collapse, Drawer, Empty, Input, Skeleton, Tabs, Tag, Tooltip } from 'antd';
 import {
   AimOutlined,
   AppstoreOutlined,
   ArrowLeftOutlined,
-  CheckCircleFilled,
-  ClockCircleOutlined,
   CopyOutlined,
-  ExclamationCircleOutlined,
   FileTextOutlined,
   InfoCircleOutlined,
   ReloadOutlined,
@@ -34,6 +18,7 @@ import { useDashboardLanguage } from './dashboard-language.jsx';
 import { navigateDashboard, useDashboardNavigation } from './dashboard-navigation.js';
 import {
   groupApplicationRuns,
+  groupApplicationRunChildren,
   preferredApplicationRun,
   applicationRunNeedsAttention as attention,
   groupApplicationSteps,
@@ -58,6 +43,12 @@ import './any-workflow-panel.css';
 import { ApplicationStepList } from './application-step-list.jsx';
 import { ApplicationDeliveryModal } from './application-delivery-modal.jsx';
 import { ApplicationWorkflowView } from './application-workflow-view.jsx';
+import {
+  ApplicationCreationSidebar,
+  useApplicationVersionRuns,
+} from './application-creation-sidebar.jsx';
+import { creatorWorkflowView } from './application-data.js';
+import { TransitionPaths } from './application-workflow-view.jsx';
 import { ApplicationDefinitionInspector } from './application-step-definition.jsx';
 
 const preferred = preferredApplicationRun;
@@ -69,6 +60,94 @@ const baseLabel = (base) =>
       : base === 'standalone'
         ? t('独立工作流')
         : t('尚未生成应用');
+
+function ApplicationRunList({
+  group,
+  locator,
+  onSelect,
+  loading,
+  error,
+  hasMore,
+  onMore,
+  onRetry,
+}) {
+  const childrenByRun = useMemo(() => groupApplicationRunChildren(group), [group]);
+  const row = (run, child = false) => (
+    <button
+      type="button"
+      className={`any-run-row${locator === run.locator ? ' selected' : ''}${child ? ' is-child' : ''}`}
+      aria-pressed={locator === run.locator}
+      onClick={() => onSelect(run.locator)}
+    >
+      <span className="any-run-row-heading">
+        <code title={run.runId ?? undefined}>{run.runId ?? t('无法读取')}</code>
+        <ApplicationStatus value={run.status} />
+      </span>
+      <span className="any-run-row-goal" title={run.goal ?? run.title}>
+        {run.goal ?? run.title}
+      </span>
+      <span className="any-run-row-version">
+        {run.application ? `v${run.application.version}` : t('未生成版本')}
+        {child && ` · ${t('子流程')}`}
+        {run.archive && ` · ${t('历史实验 · 只读')}`}
+      </span>
+    </button>
+  );
+  return (
+    <section className="any-application-runs" aria-label={t('应用运行记录')}>
+      <div className="any-run-list-heading">
+        <b>{t('运行记录')}</b>
+        <span>{t('已加载 {0} 次运行', [group.runs.length])}</span>
+      </div>
+      <div className="any-run-list" role="list">
+        {group.runs.map((run) => {
+          const children = childrenByRun.get(run.locator) ?? [];
+          return (
+            <div key={run.locator} role="listitem">
+              {row(run)}
+              {children.length > 0 && (
+                <details
+                  className="any-run-children"
+                  open={children.some((child) => child.locator === locator) || undefined}
+                >
+                  <summary>
+                    {t('子流程')} · {children.length}
+                  </summary>
+                  {children.map((child) => (
+                    <React.Fragment key={child.locator}>{row(child, true)}</React.Fragment>
+                  ))}
+                </details>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {!group.runs.length && (
+        <p className="any-run-list-empty">{loading ? t('正在读取记录') : t('尚无应用运行')}</p>
+      )}
+      {error && (
+        <div className="any-run-list-error" role="status">
+          <span>{t('历史运行读取失败，暂时显示已加载的记录。')}</span>
+          <Button type="link" size="small" onClick={onRetry}>
+            {t('重新读取运行列表')}
+          </Button>
+        </div>
+      )}
+      {hasMore && (
+        <Button
+          className="any-run-list-more"
+          type="link"
+          size="small"
+          loading={loading}
+          onClick={onMore}
+        >
+          {t('加载更多历史记录')}
+        </Button>
+      )}
+    </section>
+  );
+}
+
 export function AnyWorkflowPanel({
   projectId,
   projectPath,
@@ -78,8 +157,14 @@ export function AnyWorkflowPanel({
   onPreview,
   onRelatedChange,
   demo = false,
+  workspace = 'any',
+  initialLocator = null,
+  onNavigateWorkspace,
 }) {
   useDashboardLanguage();
+  const applicationWorkspace = workspace === 'application';
+  const runKind = applicationWorkspace ? 'application' : 'creator';
+  const listKind = applicationWorkspace ? 'application' : 'all';
   const pageMotion = useDashboardMotion('any', 'page');
   const workspaceElement = useRef(null);
   const bindWorkspace = useCallback(
@@ -97,6 +182,8 @@ export function AnyWorkflowPanel({
     return { element: window, top: window.scrollY, offset: 0 };
   }, []);
   const route = useDashboardNavigation();
+  const viewScope = `${demo ? 'demo' : projectId}:${workspace}`;
+  const [savedLocator, setSavedLocator] = useDashboardViewState(viewScope, 'selectedLocator', null);
   const [page, setPage] = useState(null),
     [pageError, setPageError] = useState(null),
     [pageLoading, setPageLoading] = useState(true),
@@ -104,23 +191,26 @@ export function AnyWorkflowPanel({
   const [detail, setDetail] = useState(null),
     [detailError, setDetailError] = useState(null),
     [detailLoading, setDetailLoading] = useState(false);
-  const [locator, setLocator] = useState(() =>
-    route.workflow === 'any' ? (route.runLocator ?? null) : null,
+  const [locator, setLocator] = useState(
+    () =>
+      initialLocator ?? (route.workflow === workspace ? route.runLocator : null) ?? savedLocator,
   );
   const [recordId, setRecordId] = useState(() =>
-    route.workflow === 'any' ? (route.recordId ?? null) : null,
+    route.workflow === workspace ? (route.recordId ?? null) : null,
   );
+  useEffect(() => {
+    setSavedLocator(locator);
+  }, [locator, setSavedLocator]);
   const [definitionStepId, setDefinitionStepId] = useState(null);
   const [flowLoading, setFlowLoading] = useState(null);
   const flowRequest = useRef(null);
   const definitionStepRef = useRef(definitionStepId);
   definitionStepRef.current = definitionStepId;
   const [tab, setTab] = useState(() =>
-    route.workflow === 'any' ? (route.runTab ?? 'steps') : 'steps',
+    route.workflow === workspace ? (route.runTab ?? 'steps') : 'steps',
   );
   const runMotion = useDashboardMotion(locator, 'panel');
   const tabMotion = useDashboardMotion(`${locator}:${tab}`, 'tab');
-  const viewScope = `${projectId}:any`;
   const [filter, setFilter] = useDashboardViewState(viewScope, 'filter', 'all'),
     [scope, setScope] = useDashboardViewState(viewScope, 'scope', 'all'),
     [search, setSearch] = useState(query),
@@ -136,6 +226,7 @@ export function AnyWorkflowPanel({
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [rosters, setRosters] = useState({}),
     [rosterLoading, setRosterLoading] = useState(false);
+  const [rosterError, setRosterError] = useState(null);
   const [goalExpanded, setGoalExpanded] = useDashboardViewState(viewScope, 'goalExpanded', false);
   const pageRequest = useRef(null),
     moreRequest = useRef(null),
@@ -183,11 +274,11 @@ export function AnyWorkflowPanel({
   );
   const remember = useCallback(
     (runLocator, selectedRecord, runTab) => {
-      if (demo) return;
+      if (globalThis.__COMET_DASHBOARD_EMBED__ === true) return;
       navigateDashboard(
         {
           view: 'workflow',
-          workflow: 'any',
+          workflow: workspace,
           projectId,
           runLocator,
           recordId: selectedRecord,
@@ -196,10 +287,15 @@ export function AnyWorkflowPanel({
         { replace: true },
       );
     },
-    [projectId, demo],
+    [projectId, demo, workspace],
   );
   const chooseRun = useCallback(
     (next, { restore = null, keepParents = false } = {}) => {
+      const target = next?.startsWith('creator:') ? 'any' : 'application';
+      if (applicationWorkspace && target !== workspace && onNavigateWorkspace) {
+        onNavigateWorkspace(target, next);
+        return;
+      }
       const nextRecord = restore?.recordId ?? (next === locator ? recordRef.current : null);
       if (!keepParents) parentStack.current = [];
       if (next !== locator) {
@@ -222,7 +318,7 @@ export function AnyWorkflowPanel({
       if (restore) setExpanded(restore.expanded);
       remember(next, nextRecord, restore?.tab ?? 'steps');
     },
-    [remember, locator],
+    [remember, locator, workspace, onNavigateWorkspace],
   );
   useEffect(() => {
     const timer = setTimeout(() => setSearch(query), 180);
@@ -235,7 +331,7 @@ export function AnyWorkflowPanel({
   useEffect(() => {
     if (
       !demo &&
-      route.workflow === 'any' &&
+      route.workflow === workspace &&
       route.projectId === projectId &&
       route.runLocator &&
       route.runLocator !== locator
@@ -260,7 +356,14 @@ export function AnyWorkflowPanel({
     latestRefreshToken.current = refreshToken;
     request(
       'application-runs',
-      { q: search, scope, status: 'all', limit: 100, ...(forceRefresh ? { refresh: 1 } : {}) },
+      {
+        q: search,
+        scope,
+        kind: listKind,
+        status: 'all',
+        limit: 100,
+        ...(forceRefresh ? { refresh: 1 } : {}),
+      },
       controller.signal,
     )
       .then((next) => {
@@ -278,8 +381,10 @@ export function AnyWorkflowPanel({
         pageKey.current = listKey;
         pageContext.current = listContext;
         if (!locator && next.items.length) {
-          const first = preferred(next.items);
-          chooseRun(first.locator);
+          const first =
+            preferred(next.items.filter((r) => r.kind === runKind)) ??
+            (!applicationWorkspace ? preferred(next.items) : null);
+          if (first) chooseRun(first.locator);
         }
       })
       .catch((error) => {
@@ -314,7 +419,9 @@ export function AnyWorkflowPanel({
         if (old && old.locator === next.locator && old.revision !== next.revision) {
           setNews(true);
           if (manualRef.current) {
-            const element = document.getElementById(`any-record-${recordRef.current}`);
+            const element = workspaceElement.current
+              ?.getRootNode()
+              .getElementById(`any-record-${recordRef.current}`);
             if (element)
               anchor.current = { id: element.id, top: element.getBoundingClientRect().top };
           }
@@ -349,7 +456,7 @@ export function AnyWorkflowPanel({
     const saved = anchor.current;
     if (!saved) return;
     anchor.current = null;
-    const element = document.getElementById(saved.id);
+    const element = workspaceElement.current?.getRootNode().getElementById(saved.id);
     if (element)
       getReadingViewport().element.scrollBy({
         top: element.getBoundingClientRect().top - saved.top,
@@ -393,10 +500,23 @@ export function AnyWorkflowPanel({
       if (!controller.signal.aborted) setRecordsLoading(false);
     }
   };
-  const groups = useMemo(() => groupApplicationRuns(page?.items ?? []), [page]);
+  const groups = useMemo(
+    () =>
+      groupApplicationRuns(
+        (page?.items ?? []).filter((r) => !applicationWorkspace || r.kind === runKind),
+      ),
+    [page, runKind],
+  );
   const selectedSummary = detail ?? page?.items.find((r) => r.locator === locator);
   const mode = selectedSummary?.kind ?? 'creator';
+  const managedApplication = !applicationWorkspace && mode === 'application';
   const applicationId = selectedSummary?.applicationId;
+  const versionHistory = useApplicationVersionRuns(
+    request,
+    applicationId,
+    !applicationWorkspace,
+    listContext,
+  );
   const rosterGeneration = useMemo(() => ({}), [applicationId, listContext]);
   const currentRosterGeneration = useRef(rosterGeneration);
   useLayoutEffect(() => {
@@ -416,7 +536,9 @@ export function AnyWorkflowPanel({
     if (!applicationId) return;
     const controller = new AbortController();
     rosterRequest.current = controller;
-    request('application-runs', { applicationId, limit: 100 }, controller.signal)
+    setRosterLoading(true);
+    setRosterError(null);
+    request('application-runs', { applicationId, kind: runKind, limit: 100 }, controller.signal)
       .then((next) => {
         if (controller.signal.aborted) return;
         setRosters((v) =>
@@ -429,7 +551,12 @@ export function AnyWorkflowPanel({
         );
         rosterContext.current = rosterGeneration;
       })
-      .catch(() => undefined);
+      .catch((error) => {
+        if (!controller.signal.aborted) setRosterError(error);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setRosterLoading(false);
+      });
     return () => controller.abort();
   }, [applicationId, request, rosterGeneration]);
   const roster = applicationId ? rosters[applicationId] : null;
@@ -438,6 +565,7 @@ export function AnyWorkflowPanel({
         ...new Map(
           [
             ...(roster?.items ?? []),
+            ...(versionHistory.page?.items ?? []),
             ...(groups.find((g) => g.records.some((r) => r.locator === locator))?.records ?? []),
             selectedSummary,
           ].map((r) => [r.locator, r]),
@@ -457,10 +585,15 @@ export function AnyWorkflowPanel({
   const selectedRecord = detail?.records.find((r) => r.id === recordId) ?? null;
   const current = detail?.records.filter((r) => detail.currentIds.includes(r.id)) ?? [];
   const steps = useMemo(() => groupApplicationSteps(detail?.records ?? []), [detail]);
-  const flow = useMemo(() => applicationWorkflowView(detail), [detail]);
+  const flow = useMemo(
+    () =>
+      applicationWorkspace
+        ? applicationWorkflowView(detail)
+        : (creatorWorkflowView(detail) ?? applicationWorkflowView(detail)),
+    [detail, applicationWorkspace],
+  );
   const selectedDefinition = flow?.nodes.find((node) => node.stepId === definitionStepId);
 
-  const recordsInMode = selectedGroup?.records.filter((r) => r.kind === mode) ?? [];
   const counts = [
     ['running', '项执行中'],
     ['pending', '项待执行'],
@@ -493,7 +626,7 @@ export function AnyWorkflowPanel({
       setNews(false);
     }
     remember(locator, record.id, locate ? 'steps' : tab);
-    if (innerWidth < 1350) setInspectorOpen(true);
+    setInspectorOpen(true);
   };
   const selectFlowRecord = async (node, id) => {
     const loaded = detail?.records.find((record) => record.id === id);
@@ -506,7 +639,7 @@ export function AnyWorkflowPanel({
     setManual(true);
     setFlowLoading(node.stepId);
     remember(locator, id, tab);
-    if (innerWidth < 1350) setInspectorOpen(true);
+    setInspectorOpen(true);
     try {
       const next = await request(
         'application-run',
@@ -537,25 +670,30 @@ export function AnyWorkflowPanel({
     setRecordId(null);
     setManual(true);
     remember(locator, null, tab);
-    if (innerWidth < 1350) setInspectorOpen(true);
+    setInspectorOpen(true);
   };
   const locateCurrent = () => {
     const record = initialApplicationRecord(detail);
     if (!record) return;
     selectRecord(record, { locate: true });
     requestAnimationFrame(() => {
-      const element = document.getElementById(`any-record-${record.id}`);
+      const element = workspaceElement.current
+        ?.getRootNode()
+        .getElementById(`any-record-${record.id}`);
       if (element) {
+        const target = element.closest('.any-flow-node') ?? element;
         const viewport = getReadingViewport();
         viewport.element.scrollTo({
-          top: viewport.top + element.getBoundingClientRect().top - viewport.offset - 24,
+          top: viewport.top + target.getBoundingClientRect().top - viewport.offset - 24,
           behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
         });
       }
     });
   };
   const selectGroup = (group) => {
-    const chosen = preferred(group.records);
+    const chosen =
+      preferred(group.records.filter((r) => r.kind === runKind)) ??
+      (!applicationWorkspace ? preferred(group.records) : null);
     if (chosen) chooseRun(chosen.locator);
   };
   const openChild = (record) => {
@@ -637,7 +775,7 @@ export function AnyWorkflowPanel({
       runId: id,
       returnTo: {
         view: 'workflow',
-        workflow: 'any',
+        workflow: workspace,
         projectId,
         runLocator: locator,
         recordId,
@@ -689,6 +827,7 @@ export function AnyWorkflowPanel({
         'application-runs',
         {
           q: search,
+          kind: listKind,
           scope,
           status: 'all',
           limit: 100,
@@ -736,6 +875,7 @@ export function AnyWorkflowPanel({
         'application-runs',
         {
           applicationId,
+          kind: runKind,
           limit: 100,
           cursor: roster.nextCursor,
         },
@@ -761,6 +901,22 @@ export function AnyWorkflowPanel({
       }
     }
   };
+  const currentWork = (
+    <div className="any-active-list">
+      {current.map((r) => (
+        <button
+          key={r.id}
+          className={recordId === r.id ? 'selected' : ''}
+          onClick={() => selectRecord(r, { locate: true })}
+        >
+          <ApplicationStateIcon status={r.status} />
+          <span>{r.title === r.stepId ? r.title : t(r.title)}</span>
+          <ApplicationStatus value={r.status} />
+          <RightOutlined />
+        </button>
+      ))}
+    </div>
+  );
   const inspector = selectedDefinition ? (
     <ApplicationDefinitionInspector step={selectedDefinition} />
   ) : (
@@ -786,34 +942,61 @@ export function AnyWorkflowPanel({
   return (
     <section
       ref={bindWorkspace}
-      className="any-workspace"
+      className={`any-workspace ${applicationWorkspace ? 'is-application' : 'is-creator'}`}
       data-dashboard-motion="page"
-      aria-label={t('Comet Any 工作区')}
+      aria-label={t(applicationWorkspace ? '自定义工作流工作区' : 'Comet Any 工作区')}
     >
-      <div className="any-overview">
-        <div className="any-stat-strip">
-          {[
-            ['all', '全部', groups.length],
-            ['draft', '早期创作', groups.filter((g) => !g.id).length],
-            ['apps', '应用', groups.filter((g) => g.id).length],
-          ].map(([value, label, count]) => (
-            <button
-              key={value}
-              className={scope === value ? 'selected' : ''}
-              onClick={() => setScope(value)}
-            >
-              <span>{t(label)}</span>
-              <b>{count}</b>
-            </button>
-          ))}
+      <div className="any-workspace-heading">
+        <div>
+          <h1>{t(applicationWorkspace ? '自定义工作流' : 'Comet Any')}</h1>
+          <p>
+            {t(
+              applicationWorkspace
+                ? '每次运行，一条独立的流程与轨迹'
+                : '从需求、方案与确认，到构建、验证和交付',
+            )}
+          </p>
         </div>
-        <span>{t('应用固定版本，创作与运行分别保留')}</span>
+        <Button
+          disabled={!applicationWorkspace && Boolean(applicationId) && !selectedGroup?.runs.length}
+          onClick={() =>
+            onNavigateWorkspace?.(
+              applicationWorkspace ? 'any' : 'application',
+              applicationWorkspace
+                ? (selectedGroup?.creators[0]?.locator ?? locator)
+                : selectedGroup?.runs[0]?.locator,
+            )
+          }
+        >
+          {t(applicationWorkspace ? '管理创作与分发' : '查看自定义工作流')}
+        </Button>
       </div>
       <div className="any-columns">
         <aside className="any-panel any-explorer" data-dashboard-scroll="any-explorer">
           <div className="any-panel-heading">
-            <b>{t('创作与应用')}</b>
+            <b>{t(applicationWorkspace ? '运行记录' : '应用与创作')}</b>
             <span>{demo ? t('示例数据') : t('当前项目')}</span>
+          </div>
+          <div className="any-overview">
+            <div className="any-stat-strip">
+              {[
+                ['all', '全部', groups.length],
+                ...(!applicationWorkspace
+                  ? [['draft', '早期创作', groups.filter((g) => !g.id).length]]
+                  : []),
+                ['apps', '应用', groups.filter((g) => g.id).length],
+              ].map(([value, label, count]) => (
+                <button
+                  key={value}
+                  className={scope === value ? 'selected' : ''}
+                  onClick={() => setScope(value)}
+                >
+                  <span>{t(label)}</span>
+                  <b>{count}</b>
+                </button>
+              ))}
+            </div>
+            <span>{t('应用固定版本，创作与运行分别保留')}</span>
           </div>
           <div className="any-search">
             <Input
@@ -865,44 +1048,106 @@ export function AnyWorkflowPanel({
                         {t(label)}
                         <span>{list.length}</span>
                       </div>
-                      {list.map((group) => (
-                        <button
-                          key={group.key}
-                          className={
-                            'any-app-row ' + (selectedGroup?.key === group.key ? 'selected' : '')
-                          }
-                          onClick={() => selectGroup(group)}
-                        >
-                          <span className="any-app-title">
-                            {group.id ? <AppstoreOutlined /> : <FileTextOutlined />}
-                            <b>{group.title}</b>
-                          </span>
-                          <span className="any-app-description">{baseLabel(group.base)}</span>
-                          <span className="any-app-fact">
-                            <span>{t('创作记录')}</span>
-                            <b>{group.creators.length}</b>
-                          </span>
-                          <span className="any-app-fact">
-                            <span>{t('应用运行')}</span>
-                            <b>{group.runs.length}</b>
-                          </span>
-                          <span className="any-app-state">
-                            {group.creators.length ? (
-                              <>
-                                <span>{t('创作')}</span>
-                                <ApplicationStatus value={preferred(group.creators).status} />
-                              </>
-                            ) : (
-                              <span>{t('无创作记录')}</span>
+                      {list.map((entry) => {
+                        const group = selectedGroup?.key === entry.key ? selectedGroup : entry;
+                        return (
+                          <div key={group.key} className="any-app-group">
+                            <button
+                              className={
+                                'any-app-row ' +
+                                (selectedGroup?.key === group.key ? 'selected' : '')
+                              }
+                              onClick={() => selectGroup(group)}
+                            >
+                              <span className="any-app-title">
+                                {group.id ? <AppstoreOutlined /> : <FileTextOutlined />}
+                                <b>{group.title}</b>
+                              </span>
+                              <span className="any-app-description">{baseLabel(group.base)}</span>
+                              <span className="any-app-counts">
+                                {applicationWorkspace
+                                  ? t('已加载 {0} 次独立运行', [group.runs.length])
+                                  : t('{0} 条创作记录', [group.creators.length])}
+                              </span>
+                              <span className="any-app-state" hidden={applicationWorkspace}>
+                                {group.creators.length ? (
+                                  <>
+                                    <span>{t('创作')}</span>
+                                    <ApplicationStatus value={preferred(group.creators).status} />
+                                  </>
+                                ) : (
+                                  <span>{t('无创作记录')}</span>
+                                )}
+                              </span>
+                              {group.versions.length > 0 && (
+                                <small className="any-version-hint">
+                                  {group.versions.map((v) => `v${v}`).join(' · ')}
+                                </small>
+                              )}
+                            </button>
+                            {!applicationWorkspace && selectedGroup?.key === group.key && (
+                              <div className="any-creator-roster">
+                                {selectedGroup.creators.map((run) => (
+                                  <button
+                                    className={locator === run.locator ? 'selected' : ''}
+                                    key={run.locator}
+                                    onClick={() => chooseRun(run.locator)}
+                                  >
+                                    <span>
+                                      <code>{run.runId}</code>
+                                      <ApplicationStatus value={run.status} />
+                                    </span>
+                                    <b>{run.goal ?? run.title}</b>
+                                    <small>
+                                      {run.application
+                                        ? `v${run.application.version}`
+                                        : t('尚未生成版本')}
+                                    </small>
+                                  </button>
+                                ))}
+                                {group.id && rosterError && (
+                                  <div className="any-run-list-error" role="status">
+                                    <span>{t('历史记录读取失败，暂时显示已加载的记录。')}</span>
+                                    <Button
+                                      type="link"
+                                      size="small"
+                                      onClick={() => setTick((value) => value + 1)}
+                                    >
+                                      {t('重新读取创作记录')}
+                                    </Button>
+                                  </div>
+                                )}
+                                {group.id && roster?.nextCursor && (
+                                  <div className="any-creator-more">
+                                    <Button
+                                      type="link"
+                                      size="small"
+                                      loading={rosterLoading}
+                                      onClick={loadRoster}
+                                    >
+                                      {t('加载更多创作记录')}
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
                             )}
-                          </span>
-                          {group.versions.length > 0 && (
-                            <small className="any-version-hint">
-                              {group.versions.map((v) => `v${v}`).join(' · ')}
-                            </small>
-                          )}
-                        </button>
-                      ))}
+                            {applicationWorkspace &&
+                              group.id &&
+                              selectedGroup?.key === group.key && (
+                                <ApplicationRunList
+                                  group={selectedGroup}
+                                  locator={locator}
+                                  onSelect={chooseRun}
+                                  loading={rosterLoading}
+                                  error={rosterError}
+                                  hasMore={Boolean(roster?.nextCursor)}
+                                  onMore={loadRoster}
+                                  onRetry={() => setTick((value) => value + 1)}
+                                />
+                              )}
+                          </div>
+                        );
+                      })}
                     </section>
                   )
                 );
@@ -977,7 +1222,11 @@ export function AnyWorkflowPanel({
                 <div className="any-run-title">
                   <div>
                     <h2>
-                      <span className="any-run-name">{selectedSummary.title}</span>
+                      <span className="any-run-name">
+                        {managedApplication
+                          ? selectedSummary.title
+                          : (selectedSummary.goal ?? selectedSummary.title)}
+                      </span>
                       <ApplicationStatus value={selectedSummary.status} />
                       {selectedSummary.isChild && <Tag>{t('子流程')}</Tag>}
                       {selectedSummary.archive && <Tag>{t('历史实验 · 只读')}</Tag>}
@@ -985,6 +1234,16 @@ export function AnyWorkflowPanel({
                   </div>
                 </div>
                 <div className="any-version-line">
+                  <span className="any-run-identity">
+                    {t(
+                      managedApplication
+                        ? '版本来源'
+                        : selectedSummary.kind === 'application'
+                          ? '运行轨迹'
+                          : '创作记录',
+                    )}{' '}
+                    <code>{selectedSummary.runId ?? t('无法读取')}</code>
+                  </span>
                   {selectedSummary.application ? (
                     <>
                       <Tooltip
@@ -1000,73 +1259,27 @@ export function AnyWorkflowPanel({
                     <span>{t('尚未生成或无法读取固定应用版本')}</span>
                   )}
                 </div>
-                {!selectedSummary.archive && selectedSummary.application && (
-                  <div className="any-delivery-trigger">
-                    <Tooltip title={t('完成创作并校验固定版本后，可分发或导出完整应用。')}>
-                      <Button
-                        size="small"
-                        disabled={
-                          !detail ||
-                          detailLoading ||
-                          detail.material.status !== 'matched' ||
-                          (detail.kind === 'creator' && detail.status !== 'delivered')
-                        }
-                        onClick={() => setDeliveryOpen(true)}
-                      >
-                        {t('分发 / 导出')}
-                      </Button>
-                    </Tooltip>
-                  </div>
-                )}
-                {selectedGroup && (
-                  <div className="any-run-controls">
-                    <Segmented
-                      className="any-mode-switch"
-                      block
-                      value={mode}
-                      options={[
-                        {
-                          value: 'creator',
-                          label: t('创作过程'),
-                          disabled: !selectedGroup.creators.length,
-                        },
-                        {
-                          value: 'application',
-                          label: t('应用运行'),
-                          disabled: !selectedGroup.records.some((r) => r.kind === 'application'),
-                        },
-                      ]}
-                      onChange={(value) => {
-                        const next = preferred(
-                          selectedGroup.records.filter((r) => r.kind === value),
-                        );
-                        if (next) chooseRun(next.locator);
-                      }}
-                    />
-                    <Select
-                      className="any-record-select"
-                      aria-label={t('选择创作或运行记录')}
-                      value={locator}
-                      options={recordsInMode.map((r) => ({
-                        value: r.locator,
-                        label: `${r.application ? 'v' + r.application.version : t('未生成版本')} · ${r.runId ?? t('无法读取')}`,
-                        title: r.goal ?? r.title,
-                      }))}
-                      optionRender={(option) => (
-                        <div className="any-record-option">
-                          <b>{option.data.label}</b>
-                          <small>{option.data.title}</small>
-                        </div>
-                      )}
-                      onChange={(value) => chooseRun(value)}
-                    />
-                    {roster?.nextCursor && (
-                      <Button type="link" size="small" onClick={loadRoster} loading={rosterLoading}>
-                        {t('加载更多历史记录')}
-                      </Button>
-                    )}
-                  </div>
-                )}
+                {!applicationWorkspace &&
+                  !selectedSummary.archive &&
+                  (managedApplication || selectedSummary.status === 'delivered') &&
+                  selectedSummary.application && (
+                    <div className="any-delivery-trigger">
+                      <Tooltip title={t('完成创作并校验固定版本后，可分发或导出完整应用。')}>
+                        <Button
+                          size="small"
+                          disabled={
+                            !detail ||
+                            detailLoading ||
+                            detail.material.status !== 'matched' ||
+                            (detail.kind === 'creator' && detail.status !== 'delivered')
+                          }
+                          onClick={() => setDeliveryOpen(true)}
+                        >
+                          {t('分发 / 导出')}
+                        </Button>
+                      </Tooltip>
+                    </div>
+                  )}
                 <Collapse
                   className="any-run-context"
                   ghost
@@ -1117,237 +1330,289 @@ export function AnyWorkflowPanel({
                   </Button>
                 </div>
               ) : detail ? (
-                <>
-                  {detail.material.status === 'changed' ||
-                  detail.material.status === 'unavailable' ? (
-                    <Alert
-                      className="any-error"
-                      type="warning"
-                      showIcon
-                      title={t('固定应用内容需要核对')}
-                      description={systemText(
-                        detail.material.message ??
-                          t('当前候选内容无法核对，保存的 Run 与历史结果仍可查看。'),
+                managedApplication ? (
+                  <div className="any-package-overview">
+                    <h3>{t('版本与分发')}</h3>
+                    <p>
+                      {t(
+                        '这是已安装的固定应用版本。创作记录缺失时仍可核对内容、分发与导出；每次使用的轨迹在自定义工作流中查看。',
                       )}
+                    </p>
+                    <ApplicationEvidenceView
+                      detail={detail}
+                      onEvidence={openEvidence}
+                      onSource={chooseRun}
+                      onEval={openEval}
                     />
-                  ) : null}
-                  <div className="any-current">
-                    <div className="any-current-heading">
-                      <b>{t(current.length ? '当前工作' : '本次记录没有活动项')}</b>
-                      <span>{t(manual ? '正在查看所选记录' : '已定位需处理项')}</span>
+                    <Button onClick={() => onNavigateWorkspace?.('application', locator)}>
+                      {t('查看此版本的运行')}
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    {detail.material.status === 'changed' ||
+                    detail.material.status === 'unavailable' ? (
+                      <Alert
+                        className="any-error"
+                        type="warning"
+                        showIcon
+                        title={t('固定应用内容需要核对')}
+                        description={systemText(
+                          detail.material.message ??
+                            t('当前候选内容无法核对，保存的 Run 与历史结果仍可查看。'),
+                        )}
+                      />
+                    ) : null}
+                    <details className="any-current-disclosure" open={!applicationWorkspace}>
+                      <summary>
+                        <span>{t('当前工作')}</span>
+                        {counts.map((c) => (
+                          <span key={c.value}>
+                            {c.count} {t(c.label)}
+                          </span>
+                        ))}
+                      </summary>
+                      <div className="any-current">
+                        <div className="any-current-heading">
+                          <b>{t(current.length ? '当前工作' : '本次记录没有活动项')}</b>
+                          <span>{t(manual ? '正在查看所选记录' : '已定位需处理项')}</span>
+                        </div>
+                        <div className="any-current-counts">
+                          {counts.map((c) => (
+                            <span key={c.value}>
+                              <b>{c.count}</b> {t(c.label)}
+                            </span>
+                          ))}
+                        </div>
+                        {applicationWorkspace ? (
+                          <Collapse
+                            ghost
+                            size="small"
+                            items={[
+                              { key: 'active', label: t('查看当前工作'), children: currentWork },
+                            ]}
+                          />
+                        ) : (
+                          currentWork
+                        )}
+                        {!current.length && (
+                          <p>{t('已有步骤、决定与产物继续保留，可展开查看历史。')}</p>
+                        )}
+                        {current.some((r) => r.status === 'running') && (
+                          <small>{t('已领取表示等待宿主回传，不代表宿主当前在线。')}</small>
+                        )}
+                        {!detail.archive && (
+                          <div className="any-continue-context">
+                            <span>{t('在 Agent 中继续处理，先读取最新运行。')}</span>
+                            <Button size="small" icon={<CopyOutlined />} onClick={copyContext}>
+                              {t('复制只读检查上下文')}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </details>
+                    <div className={'any-follow-bar ' + (news ? 'has-news' : '')}>
+                      <span aria-live="polite">
+                        {t(
+                          news
+                            ? '有新进展，当前阅读位置已保留'
+                            : manual
+                              ? '已保留你的阅读位置'
+                              : '点击步骤查看详情与历史',
+                        )}
+                      </span>
+                      <Button
+                        size="small"
+                        type="link"
+                        icon={<AimOutlined />}
+                        onClick={locateCurrent}
+                      >
+                        {t('回到当前工作')}
+                      </Button>
                     </div>
-                    <div className="any-current-counts">
-                      {counts.map((c) => (
-                        <span key={c.value}>
-                          <b>{c.count}</b> {t(c.label)}
-                        </span>
-                      ))}
+                    <div className={'any-sync-line ' + (error ? 'has-error' : '')} role="status">
+                      <span>
+                        {error ? t('刷新失败，正在显示上次成功读取') : t('上次成功读取')}{' '}
+                        {time
+                          ? new Date(time).toLocaleString(getDashboardLocale())
+                          : t('尚未成功读取')}
+                      </span>
+                      {error && (
+                        <Button size="small" type="link" onClick={() => setTick((v) => v + 1)}>
+                          {t('重试读取')}
+                        </Button>
+                      )}
                     </div>
-                    <div className="any-active-list">
-                      {current.map((r) => (
-                        <button
-                          key={r.id}
-                          className={recordId === r.id ? 'selected' : ''}
-                          onClick={() => selectRecord(r, { locate: true })}
-                        >
-                          <ApplicationStateIcon status={r.status} />
-                          <span>{r.title === r.stepId ? r.title : t(r.title)}</span>
-                          <ApplicationStatus value={r.status} />
-                          <RightOutlined />
-                        </button>
-                      ))}
-                    </div>
-                    {!current.length && (
-                      <p>{t('已有步骤、决定与产物继续保留，可展开查看历史。')}</p>
+                    {recordId && !selectedRecord && !flowLoading && (
+                      <Alert
+                        className="any-error"
+                        type="info"
+                        title={t('所选执行记录已不在当前快照中，请重新选择。')}
+                      />
                     )}
-                    {current.some((r) => r.status === 'running') && (
-                      <small>{t('已领取表示等待宿主回传，不代表宿主当前在线。')}</small>
-                    )}
-                    {!detail.archive && (
-                      <div className="any-continue-context">
-                        <span>{t('在 Agent 中继续处理，先读取最新运行。')}</span>
-                        <Button size="small" icon={<CopyOutlined />} onClick={copyContext}>
-                          {t('复制只读检查上下文')}
+                    <Tabs
+                      className="any-tabs"
+                      size="small"
+                      activeKey={tab}
+                      onChange={(value) => {
+                        setTab(value);
+                        setManual(true);
+                        remember(locator, recordId, value);
+                      }}
+                      items={[
+                        { key: 'steps', label: t(applicationWorkspace ? '步骤' : '创作流程') },
+                        { key: 'history', label: t('执行记录') },
+                        {
+                          key: 'artifacts',
+                          label: t(applicationWorkspace ? '产物' : '方案与产物'),
+                        },
+                        {
+                          key: 'evidence',
+                          label: t(applicationWorkspace ? '版本与证据' : '验证证据'),
+                        },
+                      ]}
+                    />
+                    <div
+                      ref={tabMotion}
+                      className="dashboard-motion-surface any-tab-content"
+                      data-dashboard-motion="tab"
+                    >
+                      {['steps', 'history'].includes(tab) && detail.recordPage?.nextCursor && (
+                        <Button loading={recordsLoading} onClick={loadMoreRecords}>
+                          {t('加载更多执行记录')}
+                        </Button>
+                      )}
+                      {tab === 'steps' && flow && (
+                        <ApplicationWorkflowView
+                          layout={applicationWorkspace ? 'graph' : 'stages'}
+                          creator={!applicationWorkspace}
+                          flow={flow}
+                          locator={locator}
+                          recordId={recordId}
+                          stepId={definitionStepId}
+                          expanded={expanded}
+                          setExpanded={setExpanded}
+                          selectStep={selectFlowStep}
+                          selectRecordId={selectFlowRecord}
+                          loading={flowLoading}
+                        />
+                      )}
+                      {tab === 'steps' && !flow && (
+                        <>
+                          {detail.definition?.status &&
+                            detail.definition.status !== 'available' && (
+                              <Alert
+                                className="any-error"
+                                showIcon
+                                type={detail.definition.status === 'missing' ? 'info' : 'warning'}
+                                title={t('完整流程定义暂不可用，继续展示实际执行记录。')}
+                                description={
+                                  detail.definition.message
+                                    ? systemText(detail.definition.message)
+                                    : undefined
+                                }
+                              />
+                            )}
+                          <ApplicationStepList
+                            steps={steps}
+                            locator={locator}
+                            recordId={recordId}
+                            expanded={expanded}
+                            setExpanded={setExpanded}
+                            selectRecord={selectRecord}
+                          />
+                        </>
+                      )}
+                      {tab === 'history' && (
+                        <div className="any-history">
+                          {[...detail.records].reverse().map((r) => (
+                            <button
+                              key={r.id}
+                              id={`any-record-${r.id}`}
+                              data-record-id={r.id}
+                              className={recordId === r.id ? 'selected' : ''}
+                              onClick={() => selectRecord(r)}
+                            >
+                              <span className="any-sequence">
+                                {r.sequence === null ? '—' : `#${r.sequence}`}
+                              </span>
+                              <span>
+                                <b>{r.title === r.stepId ? r.title : t(r.title)}</b>
+                                <small>
+                                  {formatApplicationRecordType(r.type)} ·{' '}
+                                  {r.attempt === null ? t('等待记录') : t('尝试 {0}', [r.attempt])}
+                                </small>
+                              </span>
+                              <ApplicationStatus value={r.status} />
+                              <RightOutlined />
+                            </button>
+                          ))}
+                          <p className="any-footnote">
+                            {t('按 SDK 记录顺序展示；旧尝试的完整输入输出可能未被保存。')}
+                          </p>
+                        </div>
+                      )}
+                      {tab === 'artifacts' && (
+                        <div className="any-artifact-list">
+                          {detail.artifacts.map((a) => (
+                            <button
+                              key={a.id}
+                              disabled={artifactLoading === a.id}
+                              onClick={() => openArtifact(a)}
+                            >
+                              <FileTextOutlined />
+                              <span>
+                                <b>{a.label}</b>
+                                <small>{a.uri ?? t('保存的输出快照')}</small>
+                              </span>
+                              <RightOutlined />
+                            </button>
+                          ))}
+                          {!detail.artifacts.length && (
+                            <Empty
+                              description={t('尚未收到产物')}
+                              image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            />
+                          )}
+                        </div>
+                      )}
+                      {tab === 'evidence' && (
+                        <ApplicationEvidenceView
+                          detail={detail}
+                          onEvidence={openEvidence}
+                          onSource={chooseRun}
+                          onEval={openEval}
+                        />
+                      )}
+                    </div>
+                    {detail.relatedChange && (
+                      <div className="any-related">
+                        <Button type="link" onClick={() => onRelatedChange?.(detail.relatedChange)}>
+                          {t('查看对应 {0} 变更', [
+                            detail.relatedChange.workflow === 'native' ? 'Native' : 'Classic',
+                          ])}
                         </Button>
                       </div>
                     )}
-                  </div>
-                  <div className={'any-follow-bar ' + (news ? 'has-news' : '')}>
-                    <span aria-live="polite">
-                      {t(
-                        news
-                          ? '有新进展，当前阅读位置已保留'
-                          : manual
-                            ? '已保留你的阅读位置'
-                            : '点击步骤查看详情与历史',
-                      )}
-                    </span>
-                    <Button size="small" type="link" icon={<AimOutlined />} onClick={locateCurrent}>
-                      {t('回到当前工作')}
-                    </Button>
-                  </div>
-                  <div className={'any-sync-line ' + (error ? 'has-error' : '')} role="status">
-                    <span>
-                      {error ? t('刷新失败，正在显示上次成功读取') : t('上次成功读取')}{' '}
-                      {time
-                        ? new Date(time).toLocaleString(getDashboardLocale())
-                        : t('尚未成功读取')}
-                    </span>
-                    {error && (
-                      <Button size="small" type="link" onClick={() => setTick((v) => v + 1)}>
-                        {t('重试读取')}
-                      </Button>
-                    )}
-                  </div>
-                  {recordId && !selectedRecord && !flowLoading && (
-                    <Alert
-                      className="any-error"
-                      type="info"
-                      title={t('所选执行记录已不在当前快照中，请重新选择。')}
-                    />
-                  )}
-                  <Tabs
-                    className="any-tabs"
-                    size="small"
-                    activeKey={tab}
-                    onChange={(value) => {
-                      setTab(value);
-                      setManual(true);
-                      remember(locator, recordId, value);
-                    }}
-                    items={[
-                      { key: 'steps', label: t('步骤') },
-                      { key: 'history', label: t('执行记录') },
-                      { key: 'artifacts', label: t('产物') },
-                      { key: 'evidence', label: t('版本与证据') },
-                    ]}
-                  />
-                  <div
-                    ref={tabMotion}
-                    className="dashboard-motion-surface any-tab-content"
-                    data-dashboard-motion="tab"
-                  >
-                    {['steps', 'history'].includes(tab) && detail.recordPage?.nextCursor && (
-                      <Button loading={recordsLoading} onClick={loadMoreRecords}>
-                        {t('加载更多执行记录')}
-                      </Button>
-                    )}
-                    {tab === 'steps' && flow && (
-                      <ApplicationWorkflowView
-                        flow={flow}
-                        locator={locator}
-                        recordId={recordId}
-                        stepId={definitionStepId}
-                        expanded={expanded}
-                        setExpanded={setExpanded}
-                        selectStep={selectFlowStep}
-                        selectRecordId={selectFlowRecord}
-                        loading={flowLoading}
-                      />
-                    )}
-                    {tab === 'steps' && !flow && (
-                      <>
-                        {detail.definition?.status && detail.definition.status !== 'available' && (
-                          <Alert
-                            className="any-error"
-                            showIcon
-                            type={detail.definition.status === 'missing' ? 'info' : 'warning'}
-                            title={t('完整流程定义暂不可用，继续展示实际执行记录。')}
-                            description={
-                              detail.definition.message
-                                ? systemText(detail.definition.message)
-                                : undefined
-                            }
-                          />
-                        )}
-                        <ApplicationStepList
-                          steps={steps}
-                          locator={locator}
-                          recordId={recordId}
-                          expanded={expanded}
-                          setExpanded={setExpanded}
-                          selectRecord={selectRecord}
-                        />
-                      </>
-                    )}
-                    {tab === 'history' && (
-                      <div className="any-history">
-                        {[...detail.records].reverse().map((r) => (
-                          <button
-                            key={r.id}
-                            id={`any-record-${r.id}`}
-                            data-record-id={r.id}
-                            className={recordId === r.id ? 'selected' : ''}
-                            onClick={() => selectRecord(r)}
-                          >
-                            <span className="any-sequence">
-                              {r.sequence === null ? '—' : `#${r.sequence}`}
-                            </span>
-                            <span>
-                              <b>{r.title === r.stepId ? r.title : t(r.title)}</b>
-                              <small>
-                                {formatApplicationRecordType(r.type)} ·{' '}
-                                {r.attempt === null ? t('等待记录') : t('尝试 {0}', [r.attempt])}
-                              </small>
-                            </span>
-                            <ApplicationStatus value={r.status} />
-                            <RightOutlined />
-                          </button>
-                        ))}
-                        <p className="any-footnote">
-                          {t('按 SDK 记录顺序展示；旧尝试的完整输入输出可能未被保存。')}
-                        </p>
-                      </div>
-                    )}
-                    {tab === 'artifacts' && (
-                      <div className="any-artifact-list">
-                        {detail.artifacts.map((a) => (
-                          <button
-                            key={a.id}
-                            disabled={artifactLoading === a.id}
-                            onClick={() => openArtifact(a)}
-                          >
-                            <FileTextOutlined />
-                            <span>
-                              <b>{a.label}</b>
-                              <small>{a.uri ?? t('保存的输出快照')}</small>
-                            </span>
-                            <RightOutlined />
-                          </button>
-                        ))}
-                        {!detail.artifacts.length && (
-                          <Empty
-                            description={t('尚未收到产物')}
-                            image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          />
-                        )}
-                      </div>
-                    )}
-                    {tab === 'evidence' && (
-                      <ApplicationEvidenceView
-                        detail={detail}
-                        onEvidence={openEvidence}
-                        onSource={chooseRun}
-                        onEval={openEval}
-                      />
-                    )}
-                  </div>
-                  {detail.relatedChange && (
-                    <div className="any-related">
-                      <Button type="link" onClick={() => onRelatedChange?.(detail.relatedChange)}>
-                        {t('查看对应 {0} 变更', [
-                          detail.relatedChange.workflow === 'native' ? 'Native' : 'Classic',
-                        ])}
-                      </Button>
-                    </div>
-                  )}
-                </>
+                  </>
+                )
               ) : null}
             </>
           )}
         </section>
         <aside className="any-panel any-inspector" data-dashboard-scroll="any-inspector">
-          {inspector}
+          {!applicationWorkspace && (
+            <ApplicationCreationSidebar
+              detail={detail}
+              group={selectedGroup}
+              versionHistory={versionHistory}
+              onSelect={chooseRun}
+              onEvidence={openEvidence}
+              onRuns={() =>
+                onNavigateWorkspace?.('application', preferred(selectedGroup?.runs ?? [])?.locator)
+              }
+            />
+          )}
         </aside>
       </div>
       {deliveryOpen && detail?.application && (
@@ -1371,6 +1636,37 @@ export function AnyWorkflowPanel({
         size={420}
       >
         {inspector}
+        {flow &&
+          (() => {
+            const node =
+              selectedDefinition ?? flow.nodes.find((n) => n.stepId === selectedRecord?.stepId);
+            return node ? (
+              <div className="any-step-extra">
+                <TransitionPaths
+                  node={node}
+                  byId={new Map(flow.nodes.map((n) => [n.stepId, n]))}
+                  selectStep={selectFlowStep}
+                />
+                <h4>{t('执行历史')}</h4>
+                {detail.recordPage?.nextCursor && (
+                  <Button loading={recordsLoading} onClick={loadMoreRecords}>
+                    {t('加载更多执行记录')}
+                  </Button>
+                )}
+                {node.records.map((record) => (
+                  <button
+                    key={record.id}
+                    className="any-round-row"
+                    data-record-id={record.id}
+                    onClick={() => selectFlowRecord(node, record.id)}
+                  >
+                    <span>#{record.sequence ?? '—'}</span>
+                    <ApplicationStatus value={record.status} />
+                  </button>
+                ))}
+              </div>
+            ) : null;
+          })()}
       </Drawer>
       <Drawer
         title={drawer?.title}

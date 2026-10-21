@@ -941,7 +941,9 @@ export function EvalPanel({
           icon={<ArrowLeftOutlined />}
           onClick={() => navigateDashboard(navigation.returnTo)}
         >
-          {t('返回 Comet Any')}
+          {t(
+            navigation.returnTo.workflow === 'application' ? '返回自定义工作流' : '返回 Comet Any',
+          )}
         </Button>
       )}
       <EvalGuideDrawer

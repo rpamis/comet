@@ -67,6 +67,59 @@ export function groupApplicationSteps(records) {
   }));
 }
 
+export function groupApplicationRunChildren(group) {
+  const byLocator = new Map(),
+    byRunId = new Map();
+  for (const child of group.children) {
+    const index = child.parentLocator ? byLocator : byRunId;
+    const key = child.parentLocator ?? child.parentRunId;
+    if (!key) continue;
+    if (!index.has(key)) index.set(key, []);
+    index.get(key).push(child);
+  }
+  return new Map(
+    group.runs.map((run) => [
+      run.locator,
+      [...(byLocator.get(run.locator) ?? []), ...(byRunId.get(run.runId) ?? [])],
+    ]),
+  );
+}
+
+// 定义中的未执行分支保留待进行状态；不能按阶段位置推断完成。
+export function applicationPhaseState(nodes) {
+  const active = nodes.flatMap((node) =>
+    (node.activeRecordIds ?? []).map(
+      (id) => node.records?.find((record) => record.id === id)?.status ?? 'unknown',
+    ),
+  );
+  const statuses = [...active, ...nodes.map((node) => node.latestStatus)];
+  const attention = ['unknown', 'failed', 'waiting', 'evidence'].find((status) =>
+    statuses.includes(status),
+  );
+  const labels = {
+    unknown: '结果待核对',
+    failed: '失败',
+    waiting: '等待确认',
+    evidence: '等待证据',
+  };
+  if (attention) return { state: 'current', running: false, label: labels[attention] };
+  if (active.length || statuses.some((status) => ['running', 'child'].includes(status)))
+    return {
+      state: 'current',
+      running:
+        active.some((status) => ['running', 'child'].includes(status)) ||
+        statuses.includes('running') ||
+        statuses.includes('child'),
+      label: statuses.some((status) => ['running', 'child'].includes(status))
+        ? '正在进行'
+        : '已准备就绪',
+    };
+  const done = (status) => ['succeeded', 'cancelled', 'resolved'].includes(status);
+  if (nodes.length && statuses.every(done))
+    return { state: 'done', running: false, label: '已完成' };
+  return { state: 'pending', running: false, label: statuses.some(done) ? '部分完成' : '待进行' };
+}
+
 function workflowComponents(adjacency, reverse) {
   // 先记录完成顺序，再沿反向边分组；同组内的边位于循环中。
   const visited = new Set(),
@@ -229,6 +282,145 @@ export function applicationOutputSummary(record, fields = []) {
       );
     return { ...field, available: value !== undefined, value };
   });
+}
+
+/** 循环步骤留在同一层，跨组依赖决定层次；每个步骤只渲染一次。 */
+export function applicationWorkflowLayers(flow) {
+  const adjacency = new Map(flow.nodes.map((node) => [node.stepId, []]));
+  const reverse = new Map(flow.nodes.map((node) => [node.stepId, []]));
+  for (const edge of flow.edges) {
+    adjacency.get(edge.from)?.push(edge.to);
+    reverse.get(edge.to)?.push(edge.from);
+  }
+  const components = workflowComponents(adjacency, reverse);
+  const successors = new Map(),
+    incoming = new Map(),
+    levels = new Map();
+  for (const component of components.values()) {
+    if (!successors.has(component)) {
+      successors.set(component, new Set());
+      incoming.set(component, 0);
+      levels.set(component, 0);
+    }
+  }
+  for (const edge of flow.edges) {
+    const from = components.get(edge.from),
+      to = components.get(edge.to);
+    if (from !== to && !successors.get(from).has(to)) {
+      successors.get(from).add(to);
+      incoming.set(to, incoming.get(to) + 1);
+    }
+  }
+  const ready = [...incoming.keys()].filter((id) => incoming.get(id) === 0);
+  for (let i = 0; i < ready.length; i++) {
+    const from = ready[i];
+    for (const to of successors.get(from)) {
+      levels.set(to, Math.max(levels.get(to), levels.get(from) + 1));
+      incoming.set(to, incoming.get(to) - 1);
+      if (!incoming.get(to)) ready.push(to);
+    }
+  }
+  const layers = [];
+  for (const node of flow.nodes) {
+    const level = levels.get(components.get(node.stepId));
+    (layers[level] ??= []).push(node);
+  }
+  return layers.filter(Boolean);
+}
+
+// 仅描述内置 Creator 的展示分组，不决定执行、确认或恢复行为。
+const creatorStages = [
+  ['需求与调查', [['analyze', '理解需求与调查 Skills', 'handoff']]],
+  [
+    '方案与确认',
+    [
+      ['prepare', '整理创作方案', 'call_tool'],
+      ['confirm-plan', '确认创作方案', 'ask_user'],
+    ],
+  ],
+  [
+    '构建与校验',
+    [
+      ['compile', '编译应用', 'call_tool'],
+      ['verify', '校验应用与依赖', 'call_tool'],
+    ],
+  ],
+  [
+    '模型评估',
+    [
+      ['eval-preview', '准备模型评估', 'call_tool'],
+      ['confirm-eval', '确认是否评估', 'ask_user'],
+      ['evaluate', '模型评估', 'call_tool'],
+    ],
+  ],
+  ['安装预览', [['preview', '预览安装影响', 'call_tool']]],
+  [
+    '交付与分发',
+    [
+      ['confirm-install', '确认安装', 'ask_user'],
+      ['install', '安装与交付', 'call_tool'],
+    ],
+  ],
+];
+export function creatorWorkflowView(detail) {
+  if (
+    detail?.kind !== 'creator' ||
+    detail.workflow?.id !== 'comet-creator' ||
+    detail.workflow.version !== '1'
+  )
+    return null;
+  const observed = new Map(
+    groupApplicationSteps(detail.records ?? []).map((step) => [step.stepId, step]),
+  );
+  const groups = creatorStages.map(([phase, entries]) => ({
+    phase,
+    nodes: entries.map(([stepId, title, type]) => {
+      const records = observed.get(stepId)?.records ?? [];
+      observed.delete(stepId);
+      const latest = records.at(-1);
+      return {
+        stepId,
+        title,
+        type,
+        phase,
+        records,
+        recordCount: records.length,
+        activeRecordIds: records.filter((r) => r.active).map((r) => r.id),
+        latestRecordId: latest?.id ?? null,
+        latestStatus: latest?.status ?? null,
+        connections: [],
+        commands: [],
+        planned: true,
+        unloaded: Boolean(detail.recordPage?.nextCursor),
+      };
+    }),
+  }));
+  for (const step of observed.values()) {
+    const group = groups.find((g) => g.phase === step.phase) ?? { phase: step.phase, nodes: [] };
+    if (!groups.includes(group)) groups.push(group);
+    const latest = step.records.at(-1);
+    group.nodes.push({
+      ...step,
+      type: latest.type,
+      recordCount: step.records.length,
+      activeRecordIds: step.records.filter((r) => r.active).map((r) => r.id),
+      latestRecordId: latest.id,
+      latestStatus: latest.status,
+      connections: [],
+      commands: [],
+    });
+  }
+  return {
+    title: '完整创作流程',
+    description: '阶段状态来自已加载的执行记录；模型评估可选。',
+    modelSkipped: detail.evidence?.some(
+      (item) => item.kind === 'model' && item.status === 'skipped',
+    ),
+    phases: groups.map((g) => g.phase),
+    phaseGroups: groups,
+    nodes: groups.flatMap((g) => g.nodes),
+    edges: [],
+  };
 }
 
 export function initialApplicationRecord(detail) {

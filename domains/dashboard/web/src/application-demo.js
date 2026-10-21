@@ -109,17 +109,15 @@ function detail(summary) {
   let records =
     summary.kind === 'creator'
       ? [
-          record('prepare', '整理创作方案', '准备方案', 'succeeded'),
-          record('compile', '编译应用', '构建与校验', 'succeeded'),
-          record('verify', '校验应用与依赖', '构建与校验', 'succeeded'),
-          record('confirm', '确认安装', '确认安装', 'waiting', 'decision', 15, {
-            proposal: { version: '1.2.0', scope: 'project', host: 'codex' },
+          record('analyze', '理解需求与调查 Skills', '需求与调查', 'succeeded'),
+          record('prepare', '整理创作方案', '方案与确认', 'succeeded'),
+          record('confirm-plan', '确认创作方案', '方案与确认', 'waiting', 'decision', 3, {
+            proposal: { version: '1.2.0', summary: '增加独立审查与恢复路径。' },
             choices: ['approved', 'revise', 'rejected'],
           }),
-          record('install', '安装与交付', '交付', 'pending', 'ready', null),
         ]
       : [
-          record('interview', '追问与记录决定', '执行步骤', 'succeeded', 'action', 3, {
+          record('interview', '追问与记录决定', '准备方案', 'succeeded', 'action', 3, {
             outcome: {
               attempt: 1,
               status: 'succeeded',
@@ -127,19 +125,19 @@ function detail(summary) {
               output: { scope: 'current' },
             },
           }),
-          record('implement', '实现工作流步骤', '执行步骤', 'running', 'action', 9, {
+          record('implement', '实现工作流步骤', '构建与校验', 'running', 'action', 9, {
             attempt: 2,
             reconciliations: [
               { attempt: 1, resolution: 'not-executed', evidence: '核对原宿主后确认未执行' },
             ],
           }),
-          record('regression', '执行回归检查', '执行步骤', 'running', 'action', 10),
-          record('approve', '确认文档发布范围', '执行步骤', 'waiting', 'decision', 11, {
+          record('regression', '执行回归检查', '构建与校验', 'running', 'action', 10),
+          record('approve', '确认文档发布范围', '确认与审查', 'waiting', 'decision', 11, {
             proposal: { scope: 'documentation' },
             choices: ['approved', 'rejected'],
           }),
           {
-            ...record('review', '独立审查子流程', '执行步骤', 'child', 'action', 12),
+            ...record('review', '独立审查子流程', '确认与审查', 'child', 'action', 12),
             childLocator: locator('application', 6),
             childRunId: 'review-022',
           },
@@ -152,6 +150,23 @@ function detail(summary) {
         kind: 'host-proof',
       }),
     ];
+  if (summary.status === 'completed' && !summary.isChild)
+    records.push(record('deliver', '安装与交付', '交付', 'succeeded', 'action', 15));
+  if (summary.status === 'delivered')
+    records = [
+      ...records.map((r) => ({ ...r, status: 'succeeded', active: false })),
+      ...[
+        ['compile', '编译应用', '构建与校验'],
+        ['verify', '校验应用与依赖', '构建与校验'],
+        ['eval-preview', '准备模型评估', '模型评估'],
+        ['confirm-eval', '确认是否评估', '模型评估'],
+        ['preview', '预览安装影响', '安装预览'],
+        ['confirm-install', '确认安装', '交付与分发'],
+        ['install', '安装与交付', '交付与分发'],
+      ].map(([id, title, phase], index) =>
+        record(id, title, phase, 'succeeded', 'action', index + 4),
+      ),
+    ];
   if (['delivered', 'completed'].includes(summary.status))
     records = records.map((r) => ({
       ...r,
@@ -159,11 +174,13 @@ function detail(summary) {
       active: false,
       childLocator: null,
     }));
+  const definition =
+    summary.kind === 'application' && !summary.isChild ? demoDefinition(records) : null;
   return {
     ...summary,
     readAt: new Date().toISOString(),
     sequence: 15,
-    workflow: { id: 'demo', version: '1' },
+    workflow: { id: summary.kind === 'creator' ? 'comet-creator' : 'demo', version: '1' },
     records,
     currentIds: records.filter((r) => r.active).map((r) => r.id),
     artifacts: [
@@ -176,9 +193,16 @@ function detail(summary) {
         value: { example: true },
       },
     ],
-    evidence: proof(summary.application?.version ?? null),
+    evidence: proof(summary.application?.version ?? null).map((e) =>
+      summary.kind === 'creator' && summary.status !== 'delivered'
+        ? { ...e, status: 'not-recorded', summary: '当前候选尚无验证记录' }
+        : summary.kind === 'creator' && summary.status === 'delivered' && e.kind === 'model'
+          ? { ...e, status: 'skipped' }
+          : e,
+    ),
     otherEvidence: [],
-    definitionStatus: 'observed',
+    definitionStatus: definition ? 'available' : 'observed',
+    ...(definition ? { definition } : {}),
     material: { status: summary.application ? 'matched' : 'not-generated' },
     fixedIdentity: null,
     sourceCreators:
@@ -193,12 +217,69 @@ function detail(summary) {
     relatedChange: null,
   };
 }
+
+function demoDefinition(records) {
+  const steps = {
+    interview: { type: 'invoke_skill', ref: 'grilling' },
+    implement: { type: 'invoke_skill', ref: 'implementation' },
+    regression: { type: 'call_tool', ref: 'regression' },
+    approve: { type: 'ask_user', choices: ['approved', 'rejected'] },
+    review: { type: 'child_workflow', workflow: { id: 'review', version: '1' } },
+    deliver: {
+      type: 'call_tool',
+      ref: 'deliver',
+      join: ['implement', 'regression', 'approve', 'review'],
+    },
+  };
+  return {
+    status: 'available',
+    title: '开发工作流',
+    workflow: {
+      id: 'demo',
+      version: '1',
+      entry: ['interview'],
+      dynamicRouting: false,
+      steps,
+      transitions: [
+        ...['implement', 'regression', 'approve', 'review'].map((to) => ({
+          from: 'interview',
+          to,
+          on: 'succeeded',
+        })),
+        ...['implement', 'regression', 'review'].map((from) => ({
+          from,
+          to: 'deliver',
+          on: 'succeeded',
+        })),
+        { from: 'approve', to: 'deliver', on: 'approved' },
+        { from: 'regression', to: 'implement', on: 'failed' },
+      ],
+    },
+    steps: Object.entries(steps).map(([stepId, step]) => {
+      const observed = records.filter((record) => record.stepId === stepId);
+      const latest = observed.at(-1);
+      return {
+        stepId,
+        ...step,
+        title: latest?.title ?? '安装与交付',
+        phase: latest?.phase ?? '交付',
+        skills: step.type === 'invoke_skill' ? [step.ref] : [],
+        recordCount: observed.length,
+        activeRecordIds: observed.filter((record) => record.active).map((record) => record.id),
+        latestRecordId: latest?.id ?? null,
+        latestStatus: latest?.status ?? null,
+      };
+    }),
+  };
+}
 export function readApplicationDemo(endpoint, query = {}) {
   const examples = localizedDemo(summaries);
   if (endpoint === 'application-runs') {
     const search = String(query.q ?? '').toLowerCase();
     const items = examples.filter(
       (s) =>
+        (!query.applicationId || s.applicationId === query.applicationId) &&
+        (!query.kind || query.kind === 'all' || s.kind === query.kind) &&
         `${s.title} ${s.goal} ${s.runId}`.toLowerCase().includes(search) &&
         (query.status === 'attention'
           ? s.status === 'waiting'

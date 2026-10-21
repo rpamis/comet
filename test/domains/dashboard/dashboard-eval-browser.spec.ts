@@ -108,6 +108,8 @@ test('read-only Eval settings demo shows configuration without saving or request
     .click();
   const settings = page.locator('.dashboard-eval-settings');
   await expect(settings).toBeVisible();
+  await expect(settings.locator('.ant-card')).toHaveCount(0);
+  await expect(settings.getByRole('heading', { name: '报告与追踪', exact: true })).toBeVisible();
   await expect(settings.getByText('默认执行端点', { exact: true })).toBeVisible();
   await expect(settings.getByText('默认 Judge 模型', { exact: true })).toBeVisible();
   await expect(settings.getByText('默认执行预算', { exact: true })).toBeVisible();
@@ -1286,7 +1288,9 @@ test.describe('Dashboard Eval', () => {
       path: test.info().outputPath('eval-tracking-desktop.png'),
       animations: 'disabled',
     });
-    await dialog.getByRole('heading', { name: 'Eval', exact: true }).scrollIntoViewIfNeeded();
+    await dialog
+      .locator('.dashboard-eval-settings > .dashboard-eval-heading')
+      .scrollIntoViewIfNeeded();
     await page.screenshot({
       path: test.info().outputPath('eval-settings-desktop.png'),
       animations: 'disabled',

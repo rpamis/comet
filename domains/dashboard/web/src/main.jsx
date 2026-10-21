@@ -51,6 +51,7 @@ import {
 } from 'antd';
 import {
   BranchesOutlined,
+  DeploymentUnitOutlined,
   AppstoreOutlined,
   BarChartOutlined,
   BulbOutlined,
@@ -567,6 +568,7 @@ function DashboardApp({
   const contextUsageOpenRef = useRef(contextUsageOpen);
   contextUsageOpenRef.current = contextUsageOpen;
   const [evalRefreshToken, setEvalRefreshToken] = useState(0);
+  const [applicationSelection, setApplicationSelection] = useState(null);
   const [applicationRefreshToken, setApplicationRefreshToken] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState('comet.personal-memory');
@@ -1809,6 +1811,7 @@ function DashboardApp({
             navigateDashboard({ view: 'eval', projectId: activeProjectId }, { restore: true });
         }}
         onWorkflow={(nextWorkflow) => {
+          setApplicationSelection(null);
           setContextUsageOpen(false);
           setEvalOpen(false);
           if (!embedded)
@@ -1905,6 +1908,7 @@ function DashboardApp({
             toast(t('已从索引移除缺失项目'));
           }}
           onProjectSelect={(nextProjectId) => {
+            setApplicationSelection(null);
             if (!embedded) {
               const routeProject = projects.find((project) => project.id === nextProjectId);
               navigateDashboard(
@@ -1917,10 +1921,9 @@ function DashboardApp({
                       : {
                           view: 'workflow',
                           projectId: nextProjectId,
-                          workflow:
-                            workflow === 'any'
-                              ? 'any'
-                              : resolveDashboardProjectWorkflow(routeProject).workflow,
+                          workflow: ['any', 'application'].includes(workflow)
+                            ? workflow
+                            : resolveDashboardProjectWorkflow(routeProject).workflow,
                         },
                 { restore: true },
               );
@@ -1928,18 +1931,24 @@ function DashboardApp({
             resetSelectedProject(nextProjectId);
             const nextProject = projects.find((project) => project.id === nextProjectId) ?? null;
             const nextWorkflow = resolveDashboardProjectWorkflow(nextProject);
-            setWorkflow(workflow === 'any' ? 'any' : nextWorkflow.workflow);
+            setWorkflow(
+              ['any', 'application'].includes(workflow) ? workflow : nextWorkflow.workflow,
+            );
             setWorkflowSource(nextWorkflow.source);
           }}
           loading={loading || Boolean(pluginSelection && pluginLoading)}
           query={query}
           onQuery={setQuery}
           searchKey={`${workspaceScope}:${searchResetToken}`}
-          showSearch={!contextUsageOpen && !pluginSelection && (evalOpen || workflow !== 'any')}
+          showSearch={
+            !contextUsageOpen &&
+            !pluginSelection &&
+            (evalOpen || !['any', 'application'].includes(workflow))
+          }
           searchPlaceholder={
             evalOpen
               ? t('搜索评估目标或运行记录…')
-              : workflow === 'any'
+              : ['any', 'application'].includes(workflow)
                 ? t('搜索目标或应用…')
                 : undefined
           }
@@ -1949,7 +1958,7 @@ function DashboardApp({
               setPluginRefreshToken((value) => value + 1);
               return;
             }
-            if (workflow === 'any' && !evalOpen && !pluginSelection) {
+            if (['any', 'application'].includes(workflow) && !evalOpen && !pluginSelection) {
               setApplicationRefreshToken((value) => value + 1);
               return;
             }
@@ -1971,7 +1980,9 @@ function DashboardApp({
         >
           <div
             className={`dashboard-content-inner${
-              !contextUsageOpen && !pluginSelection && (evalOpen || workflow === 'any')
+              !contextUsageOpen &&
+              !pluginSelection &&
+              (evalOpen || ['any', 'application'].includes(workflow))
                 ? ' dashboard-content-inner-workspace'
                 : ''
             }${pluginSelection ? ' dashboard-content-inner-plugin-center' : ''}${
@@ -2027,9 +2038,34 @@ function DashboardApp({
                   invokeActivePlugin(pluginSelection, capability, input)
                 }
               />
-            ) : workflow === 'any' ? (
+            ) : ['any', 'application'].includes(workflow) ? (
               <AnyWorkflowPanel
-                key={activeProjectId ?? 'demo'}
+                key={`${activeProjectId ?? 'demo'}:${workflow}`}
+                workspace={workflow}
+                initialLocator={
+                  applicationSelection?.projectId === activeProjectId &&
+                  applicationSelection?.workflow === workflow
+                    ? applicationSelection.locator
+                    : null
+                }
+                onNavigateWorkspace={(target, locator) => {
+                  setApplicationSelection({
+                    projectId: activeProjectId,
+                    workflow: target,
+                    locator,
+                  });
+                  setWorkflow(target);
+                  if (!embedded)
+                    navigateDashboard(
+                      {
+                        view: 'workflow',
+                        workflow: target,
+                        projectId: activeProjectId,
+                        runLocator: locator,
+                      },
+                      { restore: !locator },
+                    );
+                }}
                 projectId={activeProjectId}
                 projectPath={activeProject?.path ?? snapshot.project.path}
                 query={query}
@@ -4717,11 +4753,31 @@ function AntSidebar({
           items={[
             { key: 'classic', icon: <BranchesOutlined />, label: t('Classic 工作流') },
             { key: 'native', icon: <FileTextOutlined />, label: t('Native 工作流') },
-            { key: 'any', icon: <AppstoreOutlined />, label: 'Comet Any' },
+            { key: 'application', icon: <DeploymentUnitOutlined />, label: t('自定义工作流') },
           ]}
           onClick={({ key }) => {
             onPluginSelect(null);
             onWorkflow(key);
+            onClose();
+          }}
+        />
+      </div>
+      <div className="dashboard-sidebar-group">
+        <div className="dashboard-sidebar-label">{t('创作与分发')}</div>
+        <Menu
+          className="dashboard-sidebar-menu"
+          mode="inline"
+          inlineCollapsed={collapsed}
+          inlineIndent={12}
+          selectedKeys={
+            !evalSelected && !contextUsageSelected && !pluginSelection && workflow === 'any'
+              ? ['any']
+              : []
+          }
+          items={[{ key: 'any', icon: <AppstoreOutlined />, label: 'Comet Any' }]}
+          onClick={() => {
+            onPluginSelect(null);
+            onWorkflow('any');
             onClose();
           }}
         />

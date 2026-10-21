@@ -66,6 +66,8 @@ function fixture(kind: string) {
     rosterRequest: { current: new AbortController() },
     search: 'old',
     scope: 'all',
+    listKind: 'all',
+    runKind: 'creator',
     applicationId: 'app',
     detail: { runId: 'old-run' },
     request: vi.fn((_endpoint: string, _params: unknown, _signal: AbortSignal) => pending),

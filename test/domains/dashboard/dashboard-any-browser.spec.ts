@@ -5,6 +5,282 @@ import os from 'node:os';
 import path from 'node:path';
 import { createDiskApplication } from '../../helpers/workflow-application.js';
 
+test('Any retains full creation stages and delivered versions separately from custom workflow runs', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await expect(
+    page.getByRole('list', { name: '创作阶段', exact: true }).getByRole('listitem'),
+  ).toHaveCount(6);
+  await expect(page.locator('.any-current')).toContainText('确认创作方案');
+  await expect(page.locator('.any-creator-roster>button')).toHaveCount(2);
+  await expect(page.getByRole('region', { name: '应用运行记录', exact: true })).toHaveCount(0);
+  await expect(page.locator('.any-creation-sidebar')).toContainText('v1.1.0');
+  await page.getByRole('tab', { name: '方案与产物', exact: true }).click();
+  await expect(page.locator('.any-artifact-list>button')).toHaveCount(1);
+  await page.getByRole('tab', { name: '创作流程', exact: true }).click();
+  await page.screenshot({
+    path: testInfo.outputPath('any-creation-workflow.png'),
+    animations: 'disabled',
+  });
+  await page.getByRole('menuitem', { name: '自定义工作流' }).click();
+  const previous = page
+    .getByRole('region', { name: '应用运行记录', exact: true })
+    .getByRole('button', { name: /^run-127/u });
+  await previous.click();
+  await expect(page.locator('.any-run-identity')).toContainText('run-127');
+  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await expect(page.locator('.any-run-identity')).toContainText('creator-041');
+  await page.getByRole('menuitem', { name: '自定义工作流' }).click();
+  await expect(page.locator('.any-run-identity')).toContainText('run-127');
+});
+
+for (const width of [1600, 1280, 390]) {
+  test(`Any creation workflow fits English dark 125% at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.addInitScript(() => {
+      localStorage.setItem('comet-dashboard-language', 'en');
+      localStorage.setItem('comet-theme', 'dark');
+      localStorage.setItem('comet-dashboard-font-scale', '125');
+    });
+    await page.goto('/?demo');
+    if (width === 390)
+      await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+    await expect(
+      page.getByRole('list', { name: 'Creation stages', exact: true }).getByRole('listitem'),
+    ).toHaveCount(6);
+    await page.getByRole('button', { name: 'Expand all stages', exact: true }).click();
+    await expect(page.locator('.any-flow-node')).toHaveCount(11);
+    expect(
+      await page.getByRole('region', { name: 'Comet Any workspace', exact: true }).innerText(),
+    ).not.toMatch(/\p{Script=Han}/u);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    for (const card of await page.locator('.any-app-row').all()) {
+      const bounds = await card.boundingBox();
+      for (const tag of await card.locator('.ant-tag').all()) {
+        if (!(await tag.isVisible())) continue;
+        const rect = await tag.boundingBox();
+        expect(rect!.x + rect!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width);
+      }
+    }
+    await page.screenshot({
+      path: testInfo.outputPath(`any-creation-en-dark-${width}.png`),
+      animations: 'disabled',
+    });
+  });
+}
+
+test('Any retries run discovery and pages older runs without replacing the current trace', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const list = readApplicationDemo('application-runs', {});
+  const current = list.items.find((item: any) => item.runId === 'run-128')!;
+  const previous = list.items.find((item: any) => item.runId === 'run-127')!;
+  let rosterReads = 0;
+  const limits: string[] = [];
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects')
+      return route.fulfill({
+        json: {
+          currentProjectId: 'fixture',
+          projects: [
+            {
+              id: 'fixture',
+              name: 'Fixture',
+              path: '/fixture',
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+    if (url.pathname.endsWith('/overview'))
+      return route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture' },
+          summary: {},
+          initialChanges: { items: [], total: 0 },
+          git: {},
+        },
+      });
+    if (url.pathname.endsWith('/application-runs')) {
+      if (!url.searchParams.has('applicationId'))
+        return route.fulfill({ json: { ...list, items: [current], total: 1, nextCursor: null } });
+      rosterReads++;
+      limits.push(url.searchParams.get('limit')!);
+      if (rosterReads === 1)
+        return route.fulfill({ status: 503, json: { error: 'history temporarily unavailable' } });
+      const older = url.searchParams.get('cursor') === 'older';
+      return route.fulfill({
+        json: {
+          ...list,
+          fingerprint: 'run-history',
+          items: [older ? previous : current],
+          total: 2,
+          nextCursor: older ? null : 'older',
+        },
+      });
+    }
+    if (url.pathname.endsWith('/application-run'))
+      return route.fulfill({
+        json: readApplicationDemo('application-run', { locator: url.searchParams.get('locator') }),
+      });
+    return route.fulfill({ json: { items: [], pages: [] } });
+  });
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '自定义工作流' }).click();
+  const runs = page.getByRole('region', { name: '应用运行记录', exact: true });
+  await expect(runs).toContainText('历史运行读取失败');
+  await expect(page.locator('.any-run-identity')).toHaveText('运行轨迹 run-128');
+  await runs.getByRole('button', { name: '重新读取运行列表', exact: true }).click();
+  await runs.getByRole('button', { name: '加载更多历史记录', exact: true }).click();
+  await expect(runs.getByRole('button', { name: /^run-127/u })).toBeVisible();
+  await expect(runs.getByRole('button', { name: /^run-128/u })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await runs.getByRole('button', { name: /^run-127/u }).click();
+  await expect(page.locator('.any-run-identity')).toHaveText('运行轨迹 run-127');
+  await expect(
+    page.getByRole('list', { name: '应用阶段', exact: true }).locator('.is-done'),
+  ).toHaveCount(4);
+  expect(limits.length).toBeGreaterThanOrEqual(3);
+  expect(limits.every((limit) => limit === '100')).toBe(true);
+});
+
+for (const width of [1600, 390]) {
+  test(`Any lists independent runs and keeps child workflows under their parent at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.goto('/?demo');
+    if (width === 390) await page.getByRole('button', { name: '打开导航' }).click();
+    await page.getByRole('menuitem', { name: '自定义工作流' }).click();
+    const runs = page.getByRole('region', { name: '应用运行记录', exact: true });
+    await expect(runs.locator('.any-run-list > [role="listitem"]')).toHaveCount(2);
+    const current = runs.getByRole('button', { name: /^run-128/u });
+    const previous = runs.getByRole('button', { name: /^run-127/u });
+    await expect(current).toHaveAttribute('aria-pressed', 'true');
+    await previous.click();
+    await expect(page.locator('.any-run-identity')).toHaveText('运行轨迹 run-127');
+    await expect(
+      page.getByRole('list', { name: '应用阶段', exact: true }).locator('.is-done'),
+    ).toHaveCount(4);
+    await expect(previous).toHaveAttribute('aria-pressed', 'true');
+    await current.click();
+    await expect(page.locator('.any-run-identity')).toHaveText('运行轨迹 run-128');
+    await expect(
+      page.getByRole('list', { name: '应用阶段', exact: true }).locator('.is-done'),
+    ).toHaveCount(1);
+    await runs.locator('.any-run-children > summary').click();
+    await runs.getByRole('button', { name: /^review-022/u }).click();
+    await expect(page.locator('.any-run-identity')).toHaveText('运行轨迹 review-022');
+    await expect(page.locator('.any-current')).toContainText('等待证据');
+    await page.getByRole('button', { name: /返回父运行$/u }).click();
+    await expect(page.locator('.any-run-identity')).toHaveText('运行轨迹 run-128');
+    await expect(current).toHaveAttribute('aria-pressed', 'true');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    await page.screenshot({
+      path: testInfo.outputPath(`independent-runs-${width}.png`),
+      animations: 'disabled',
+    });
+  });
+}
+
+test('custom workflow A shows each step once and preserves path details in the drawer', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: '自定义工作流' }).click();
+  const graph = page.getByLabel('运行流程图', { exact: true });
+  await expect(graph.locator('[data-step-id]')).toHaveCount(6);
+  await expect(graph.locator('[data-step-id="deliver"]')).toHaveCount(1);
+  await expect(graph.locator('.application-graph-edges>path')).toHaveCount(9);
+  await graph.locator('[data-step-id="interview"]>.any-step-row').click();
+  const drawer = page.getByRole('dialog', { name: '步骤与验证详情', exact: true });
+  await expect(drawer.locator('.any-flow-connections')).toContainText('同时启动');
+  await expect(drawer.locator('.any-flow-connections button')).toHaveCount(4);
+  await page.screenshot({
+    path: testInfo.outputPath('custom-workflow-A.png'),
+    animations: 'disabled',
+  });
+});
+
+for (const width of [1600, 1280, 390]) {
+  test(`Any demo phase navigation and Eval setting rows fit English dark 125% at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.addInitScript(() => {
+      localStorage.setItem('comet-dashboard-language', 'en');
+      localStorage.setItem('comet-theme', 'dark');
+      localStorage.setItem('comet-dashboard-font-scale', '125');
+    });
+    await page.goto('/?demo');
+    if (width === 390)
+      await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Custom workflows' }).click();
+    const flow = page.getByLabel('Full workflow', { exact: true });
+    await expect(
+      page.getByRole('region', { name: 'Application run records', exact: true }),
+    ).toBeVisible();
+    const phases = flow.getByRole('list', { name: 'Application stages', exact: true });
+    await expect(phases.getByRole('listitem')).toHaveCount(4);
+    await expect(phases.locator('.is-done')).toHaveCount(1);
+    await flow.getByRole('button', { name: 'Workflow notes', exact: true }).focus();
+    await expect(page.getByRole('tooltip')).toContainText('Unstarted branches are not failures');
+    await expect(flow.locator('.any-flow-connections')).toHaveCount(0);
+    await expect(flow.locator('[data-step-id="regression"] [data-record-id]')).toHaveCount(1);
+    if (width >= 1280) {
+      const compactStep = await flow.locator('[data-step-id="interview"]').boundingBox();
+      expect(compactStep!.height).toBeLessThan(210);
+    }
+    await phases.getByRole('button', { name: 'Delivery Upcoming', exact: true }).click();
+    await expect(flow.locator('[data-step-id="deliver"]')).toBeAttached();
+    await expect(flow.locator('[data-step-id="deliver"]')).toContainText('Not started');
+    await page
+      .getByRole('dialog', { name: 'Step and verification details', exact: true })
+      .getByRole('button', { name: 'Close', exact: true })
+      .click();
+    await phases.scrollIntoViewIfNeeded();
+    expect(
+      await page.getByRole('region', { name: 'Custom workflow workspace' }).innerText(),
+    ).not.toMatch(/\p{Script=Han}/u);
+    await page.screenshot({
+      path: testInfo.outputPath(`any-phases-en-dark-${width}.png`),
+      animations: 'disabled',
+    });
+    if (width === 390)
+      await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page
+      .locator('.dashboard-settings-navigation')
+      .getByRole('menuitem', { name: /Eval/ })
+      .click();
+    const settings = page.locator('.dashboard-eval-settings');
+    await expect(settings.locator('.ant-card')).toHaveCount(0);
+    const fields = settings.locator('.dashboard-eval-setting-row .ant-form-item-control');
+    const bounds = await fields.first().boundingBox();
+    expect(bounds!.width).toBeGreaterThan(150);
+    expect(
+      await settings.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+    ).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    await page.screenshot({
+      path: testInfo.outputPath(`eval-rows-en-dark-${width}.png`),
+      animations: 'disabled',
+    });
+  });
+}
+
 test('Any distribution and export use the real local backend in isolated directories', async ({
   page,
 }) => {
@@ -205,7 +481,10 @@ test('Any delivery demo shows destination controls without making delivery API r
   });
   await page.goto('/?demo');
   await page.getByRole('menuitem', { name: 'Comet Any' }).click();
-  await expect(page.getByRole('radio', { name: '应用运行', exact: true })).toBeChecked();
+  await page
+    .locator('.any-creator-roster')
+    .getByRole('button', { name: /creator-040/u })
+    .click();
   await page.getByRole('button', { name: '分发 / 导出' }).click();
   const dialog = page.getByRole('dialog', { name: '分发 / 导出应用' });
   await expect(dialog).toContainText('示例预览');
@@ -240,10 +519,9 @@ test('a cloned historical archive exposes its original chain and readonly Eval r
     await page.setViewportSize({ width: 1440, height: 900 });
     page.setDefaultTimeout(20_000);
     await page.goto(server.url);
-    await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+    await page.getByRole('menuitem', { name: '自定义工作流' }).click();
     await expect(page.locator('.any-run-header')).toContainText('历史实验 · 只读');
     await expect(page.getByRole('button', { name: '复制只读检查上下文' })).toHaveCount(0);
-    await page.getByText('应用运行', { exact: true }).last().click();
     await page.getByRole('tab', { name: '执行记录', exact: true }).click();
     await page.locator('.any-history').getByRole('button', { name: /grill/ }).click();
     await page.getByRole('button', { name: '进入子流程' }).click();
@@ -277,8 +555,8 @@ test('a cloned historical archive exposes its original chain and readonly Eval r
       timeout: 20_000,
     });
   } finally {
-    await page.close();
-    await server.close();
+    await test.step('close archive browser context', () => page.context().close());
+    await test.step('close archive HTTP server', () => server.close());
     if (previous === undefined) delete process.env.COMET_USER_DATA_ROOT;
     else process.env.COMET_USER_DATA_ROOT = previous;
     await fs.rm(root, { recursive: true, force: true });
@@ -364,170 +642,54 @@ test('Any preserves pinned runs, child navigation and historical selection throu
   });
   await page.goto('/');
   await page.getByRole('menuitem', { name: 'Comet Any' }).click();
-  await expect(page.getByRole('region', { name: 'Comet Any 工作区' })).toBeVisible();
-  const workspaceScroll = page.locator('[data-dashboard-scroll="workspace"]');
-  await expect(page.getByRole('heading', { name: 'Comet Any', exact: true })).toHaveCount(0);
-  await page.getByText('创作过程', { exact: true }).last().click();
-  await expect(page.locator('.any-current')).toContainText('确认安装');
-  expect(
-    await page.locator('.any-current').evaluate((element) => element.getBoundingClientRect().top),
-  ).toBeLessThan(450);
-  await expect(page.locator('.any-run-context')).not.toContainText('增加独立审查与恢复路径。');
-  await page.getByRole('button', { name: '目标与运行信息' }).click();
-  await expect(page.locator('.any-run-context')).toContainText('增加独立审查与恢复路径。');
-  await page.getByRole('button', { name: '目标与运行信息' }).click();
-  await expect(page.locator('.any-inspector')).toContainText('用户决定');
-  await page.locator('.any-inspector').getByRole('button', { name: '运行标识与原始记录' }).click();
-  await expect(page.locator('.any-inspector pre').last()).toContainText('user_decision');
-  await page.locator('.any-inspector').getByRole('button', { name: '运行标识与原始记录' }).click();
+  await expect(page.locator('.any-current')).toContainText('确认创作方案');
+  await page.locator('.any-active-list').getByRole('button').click();
+  const inspector = page.getByRole('dialog', { name: '步骤与验证详情', exact: true });
+  await expect(inspector).toContainText('用户决定');
+  await inspector.getByRole('button', { name: '运行标识与原始记录' }).click();
+  await expect(inspector.locator('pre').last()).toContainText('user_decision');
+  await inspector.getByRole('button', { name: '关闭', exact: true }).click();
   await page.getByRole('button', { name: '复制只读检查上下文' }).click();
-  await expect(page.getByRole('dialog')).toContainText('先读取最新 Run');
+  const context = page.getByRole('dialog', { name: '已复制只读检查上下文', exact: true });
+  await expect(context).toContainText('先读取最新 Run');
   expect(await page.evaluate(() => (window as any).copiedAnyContext.runId)).toBe('creator-041');
-  await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
-  await page.getByText('应用运行', { exact: true }).last().click();
-  await expect(page.locator('.any-version')).toHaveText('v1.1.0');
+  await context.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('menuitem', { name: '自定义工作流' }).click();
   await expect(page.locator('.any-current-counts')).toContainText('2 项执行中');
-  await page
-    .locator('.any-active-list')
-    .getByRole('button', { name: /独立审查子流程/ })
-    .click();
-  await workspaceScroll.evaluate((element) => element.scrollTo({ top: 160, behavior: 'instant' }));
-  await page.getByRole('button', { name: '进入子流程' }).scrollIntoViewIfNeeded();
-  const enterChild = page.getByRole('button', { name: '进入子流程' });
-  // click 可能为按钮自动滚动；在 React 导航前记录用户实际离开的位置。
-  await enterChild.evaluate((button) => {
-    button.addEventListener(
-      'click',
-      () => {
-        const workspace = document.querySelector('[data-dashboard-scroll="workspace"]')!;
-        workspace.setAttribute('data-parent-scroll', String(workspace.scrollTop));
-      },
-      { capture: true, once: true },
-    );
-  });
-  await enterChild.click();
-  const parentScroll = Number(await workspaceScroll.getAttribute('data-parent-scroll'));
-  expect(parentScroll).toBeGreaterThan(0);
+  await page.locator('[data-step-id="review"]>.any-step-row').click();
+  await inspector.getByRole('button', { name: '进入子流程' }).click();
   await expect(page.locator('.any-current')).toContainText('1 项等待证据');
   await page.getByRole('button', { name: '返回父运行' }).click();
-  await expect(page.locator('.any-inspector h3')).toHaveText('独立审查子流程');
-  await expect
-    .poll(() =>
-      workspaceScroll.evaluate(
-        (element, saved) => Math.abs(element.scrollTop - saved),
-        parentScroll,
-      ),
-    )
-    .toBeLessThanOrEqual(1);
-  await workspaceScroll.evaluate((element) => element.scrollTo({ top: 0, behavior: 'instant' }));
-  await page.getByRole('button', { name: '回到当前工作' }).click();
-  await expect(page.locator('.any-step-row.selected')).toContainText('确认文档发布范围');
-  await expect
-    .poll(() =>
-      page.locator('.any-step-row.selected').evaluate((element) => {
-        const pane = element
-          .closest('[data-dashboard-scroll="workspace"]')!
-          .getBoundingClientRect();
-        const record = element.getBoundingClientRect();
-        return record.top >= pane.top && record.bottom <= pane.bottom;
-      }),
-    )
-    .toBe(true);
+  await expect(page.locator('.any-run-identity')).toContainText('run-128');
   await page.getByRole('tab', { name: '执行记录', exact: true }).click();
   await page
     .locator('.any-history')
-    .getByRole('button', { name: /追问与记录决定/ })
+    .getByRole('button', { name: /追问与记录决定/u })
     .click();
-  await expect(page.locator('.any-inspector h3')).toHaveText('追问与记录决定');
-  await expect(page.locator('.any-history')).toContainText('交给 Agent 执行');
+  await expect(inspector.locator('h3').first()).toHaveText('追问与记录决定');
+  await inspector.getByRole('button', { name: '关闭', exact: true }).click();
   await page.locator('.any-filter-line').getByRole('button', { name: '需关注' }).click();
-  await page.locator('.any-stat-strip').getByRole('button', { name: /应用/ }).click();
   await page.getByRole('textbox', { name: '搜索目标或应用' }).fill('grill');
-  await page.getByRole('button', { name: '目标与运行信息' }).click();
-  await expect
-    .poll(() =>
-      page
-        .locator('.any-run-context')
-        .evaluate((element) =>
-          element
-            .getAnimations({ subtree: true })
-            .some((animation) => animation.playState === 'running'),
-        ),
-    )
-    .toBe(false);
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await workspaceScroll.evaluate((element) => element.scrollTo({ top: 220, behavior: 'instant' }));
-  await expect
-    .poll(() => workspaceScroll.evaluate((element) => element.scrollTop))
-    .toBeGreaterThan(0);
-  const readingScroll = await workspaceScroll.evaluate((element) => element.scrollTop);
+  await expect(page.locator('.any-history>button.selected')).toContainText('追问与记录决定');
   await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
-  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await page.getByRole('menuitem', { name: '自定义工作流' }).click();
   await expect(page.getByRole('tab', { name: '执行记录', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
-  await expect(page.locator('.any-inspector h3')).toHaveText('追问与记录决定');
-  await expect(page.locator('.any-filter-line button.selected')).toHaveText('需关注');
-  await expect(page.locator('.any-stat-strip button.selected')).toContainText('应用');
-  await expect(page.getByRole('textbox', { name: '搜索目标或应用' })).toHaveValue('grill');
-  await expect(page.getByRole('button', { name: '目标与运行信息' })).toHaveAttribute(
-    'aria-expanded',
-    'true',
-  );
-  await expect
-    .poll(() =>
-      workspaceScroll.evaluate(
-        (element, saved) => Math.abs(element.scrollTop - saved),
-        readingScroll,
-      ),
-    )
-    .toBeLessThanOrEqual(1);
-  revision = 25;
-  await page.getByRole('button', { name: '立即刷新', exact: true }).click();
+  await expect(page.locator('.any-history>button.selected')).toContainText('追问与记录决定');
+  revision++;
+  await page.getByRole('button', { name: '立即刷新' }).click();
   await expect(page.locator('.any-follow-bar')).toContainText('有新进展');
-  await expect(page.getByRole('tab', { name: '执行记录', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
-  await expect(page.locator('.any-inspector h3')).toHaveText('追问与记录决定');
+  await expect(page.locator('.any-history>button.selected')).toContainText('追问与记录决定');
   fail = true;
-  await page.getByRole('button', { name: '立即刷新', exact: true }).click();
+  await page.getByRole('button', { name: '立即刷新' }).click();
   await expect(page.locator('.any-sync-line')).toContainText('刷新失败');
-  await expect(page.locator('.any-inspector h3')).toHaveText('追问与记录决定');
+  await expect(page.locator('.any-history>button.selected')).toContainText('追问与记录决定');
   fail = false;
-  await page.getByRole('button', { name: '重试读取', exact: true }).click();
+  revision++;
+  await page.getByRole('button', { name: '立即刷新' }).click();
   await expect(page.locator('.any-sync-line')).not.toContainText('刷新失败');
-  await page.locator('.comet-language-switch').getByText('EN', { exact: true }).click();
-  await expect(page.getByRole('tab', { name: 'Execution records', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
-  await page.locator('.comet-language-switch').getByText('中文', { exact: true }).click();
-  await page.getByRole('tab', { name: '产物', exact: true }).click();
-  const artifactRow = page.locator('.any-artifact-list > button').first();
-  const layout = await artifactRow.evaluate((row) => {
-    const [icon, copy, arrow] = Array.from(row.children).map((child) =>
-      child.getBoundingClientRect(),
-    );
-    return {
-      iconWidth: icon.width,
-      textGap: copy.left - icon.right,
-      arrowInset: row.getBoundingClientRect().right - arrow.right,
-    };
-  });
-  expect(layout.iconWidth).toBeLessThanOrEqual(24);
-  expect(layout.textGap).toBeLessThanOrEqual(16);
-  expect(layout.arrowInset).toBeLessThanOrEqual(16);
-  await page.locator('.any-artifact-list').getByRole('button').first().click();
-  await expect(page.locator('.dashboard-artifact-preview-panel h2')).not.toBeEmpty();
-  await expect(page.locator('.dashboard-artifact-preview-panel')).toContainText('example');
-  await expect(page.locator('.dashboard-artifact-preview-panel')).not.toContainText(
-    '当前服务未返回全文内容',
-  );
-  await page.getByRole('button', { name: '产物预览背景', exact: true }).click();
-  expect(writes).toBe(0);
-  expect(parent.application.version).toBe('1.1.0');
 });
 
 test('Any early creation and the mobile inspector remain usable without horizontal overflow', async ({
@@ -563,7 +725,7 @@ test('Any transitions preserve the reading surface on refresh and respect reduce
     };
   });
   await page.goto('/?demo');
-  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await page.getByRole('menuitem', { name: '自定义工作流' }).click();
   await expect(page.locator('.any-tabs')).toBeVisible();
   await page.getByRole('tab', { name: '执行记录', exact: true }).click();
   await expect(page.locator('.any-history')).toBeVisible();
@@ -652,13 +814,12 @@ test('Any self-source links retain detail and Eval returns to the originating ev
     return route.fulfill({ json: { items: [], total: 0 } });
   });
   await page.goto('/');
-  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
-  await page.getByText('创作过程', { exact: true }).last().click();
-  await expect(page.locator('.any-current')).toContainText('确认安装');
+  await page.getByRole('menuitem', { name: '自定义工作流' }).click();
+  await expect(page.locator('.any-current-counts')).toContainText('1 项等待确认');
   await page.getByRole('tab', { name: '版本与证据' }).click();
   const before = reads;
   await page.getByRole('button', { name: /查看对应创作/ }).click();
-  await expect(page.locator('.any-current')).toContainText('确认安装');
+  await expect(page.locator('.any-current-counts')).toContainText('1 项等待确认');
   await expect(page.getByRole('tab', { name: '步骤', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
@@ -667,10 +828,10 @@ test('Any self-source links retain detail and Eval returns to the originating ev
   await page.getByRole('tab', { name: '版本与证据' }).click();
   const origin = await page.evaluate(() => window.history.state.cometDashboard);
   await page.getByRole('button', { name: '进入 Eval 详情' }).click();
-  await expect(page.getByRole('button', { name: '返回 Comet Any' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '返回自定义工作流' })).toBeVisible();
   await page.reload();
-  await page.getByRole('button', { name: '返回 Comet Any' }).click();
-  await expect(page.locator('.any-current')).toContainText('确认安装');
+  await page.getByRole('button', { name: '返回自定义工作流' }).click();
+  await expect(page.locator('.any-current-counts')).toContainText('1 项等待确认');
   await expect(page.getByRole('tab', { name: '版本与证据' })).toHaveAttribute(
     'aria-selected',
     'true',
@@ -725,14 +886,87 @@ test('Any completes an in-flight Run read while discovery is still indexing', as
     return route.fulfill({ json: { items: [], pages: [] } });
   });
   await page.goto('/');
-  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await page.getByRole('menuitem', { name: '自定义工作流' }).click();
   await expect(page.getByRole('tab', { name: '步骤', exact: true })).toBeVisible({ timeout: 6500 });
   expect(finished).toBeGreaterThan(0);
 });
 
+test('Any pages mixed creation and application records with the same query', async ({ page }) => {
+  const list = readApplicationDemo('application-runs', {});
+  const base = list.items.find((item: any) => item.kind === 'creator')!;
+  const item = (index: number) => ({
+    ...base,
+    locator: `creation-${index}`,
+    applicationId: `application-${index}`,
+    application: { ...base.application, id: `application-${index}` },
+  });
+  const kinds: (string | null)[] = [];
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects')
+      return route.fulfill({
+        json: {
+          currentProjectId: 'fixture',
+          projects: [
+            {
+              id: 'fixture',
+              name: 'Fixture',
+              path: '/fixture',
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+    if (url.pathname.endsWith('/overview'))
+      return route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture' },
+          summary: {},
+          initialChanges: { items: [], total: 0 },
+          git: {},
+        },
+      });
+    if (url.pathname.endsWith('/application-runs')) {
+      if (url.searchParams.has('applicationId'))
+        return route.fulfill({ json: { ...list, items: [], nextCursor: null } });
+      kinds.push(url.searchParams.get('kind'));
+      const more = url.searchParams.has('cursor');
+      if (more && url.searchParams.get('kind') !== 'all')
+        return route.fulfill({
+          status: 409,
+          json: { error: 'Query changed', code: 'STALE_APPLICATION_CURSOR' },
+        });
+      return route.fulfill({
+        json: {
+          ...list,
+          fingerprint: 'mixed-list',
+          items: more ? [item(100)] : Array.from({ length: 100 }, (_, index) => item(index)),
+          total: 101,
+          nextCursor: more ? null : 'mixed-next',
+        },
+      });
+    }
+    if (url.pathname.endsWith('/application-run'))
+      return route.fulfill({
+        json: {
+          ...readApplicationDemo('application-run', { locator: base.locator }),
+          locator: url.searchParams.get('locator'),
+        },
+      });
+    return route.fulfill({ json: { items: [], pages: [] } });
+  });
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await expect(page.locator('.any-app-row')).toHaveCount(100);
+  await page.getByRole('button', { name: '加载更多记录', exact: true }).click();
+  await expect(page.locator('.any-app-row')).toHaveCount(101, { timeout: 3000 });
+  expect(kinds).toEqual(['all', 'all']);
+});
+
 test('Any ignores a delayed old search page after the new search has loaded', async ({ page }) => {
   const demoList = readApplicationDemo('application-runs', {});
-  const base = demoList.items.find((item: any) => item.applicationId)!;
+  const base = demoList.items.find((item: any) => item.kind === 'application')!;
   const item = (id: string) => ({
     ...base,
     locator: id,
@@ -802,7 +1036,7 @@ test('Any ignores a delayed old search page after the new search has loaded', as
     return route.fulfill({ json: { items: [], pages: [] } });
   });
   await page.goto('/');
-  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await page.getByRole('menuitem', { name: '自定义工作流' }).click();
   await expect(page.locator('.any-app-row')).toContainText(['old-first']);
   await page.getByRole('button', { name: '加载更多记录', exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as any).oldPaginationStarted)).toBe(true);
@@ -825,7 +1059,7 @@ test('Any bounds history pages and preserves selection when a cursor becomes sta
   page,
 }) => {
   const list = readApplicationDemo('application-runs', {});
-  const selected = list.items[0];
+  const selected = list.items.find((item: { kind: string }) => item.kind === 'application')!;
   const original = readApplicationDemo('application-run', { locator: selected.locator });
   const record = original.records[0];
   const first = { ...record, id: 'bounded-first', active: false };
@@ -891,17 +1125,24 @@ test('Any bounds history pages and preserves selection when a cursor becomes sta
     return route.fulfill({ json: { items: [], pages: [] } });
   });
   await page.goto('/');
-  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await page.getByRole('menuitem', { name: '自定义工作流' }).click();
   await page.getByRole('tab', { name: '执行记录', exact: true }).click();
   await expect.poll(() => detailLimit).toBe('40');
-  await page.locator('[data-record-id="bounded-first"]').click();
+  await page.locator('.any-history [data-record-id="bounded-first"]').click();
   await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
-  await page.getByRole('button', { name: '加载更多执行记录', exact: true }).click();
-  await expect(page.locator('[data-record-id="bounded-second"]')).toBeVisible();
-  const loadMore = page.getByRole('button', { name: /加载更多执行记录$/u });
+  await page
+    .getByRole('region', { name: '自定义工作流工作区', exact: true })
+    .getByRole('button', { name: '加载更多执行记录', exact: true })
+    .click();
+  await expect(page.locator('.any-history [data-record-id="bounded-second"]')).toBeVisible();
+  const loadMore = page
+    .getByRole('region', { name: '自定义工作流工作区', exact: true })
+    .getByRole('button', { name: /加载更多执行记录$/u });
   await expect(loadMore).not.toHaveClass(/ant-btn-loading/u);
   await loadMore.click();
-  await expect(page.locator('[data-record-id="bounded-first"]')).toHaveClass(/selected/u);
+  await expect(page.locator('.any-history [data-record-id="bounded-first"]')).toHaveClass(
+    /selected/u,
+  );
   await expect(page.getByText('运行记录已变化，请重新读取当前页')).toBeVisible();
 });
 
@@ -1104,41 +1345,42 @@ for (const width of [1600, 1280, 390]) {
     });
     await page.goto('/');
     if (width === 390) await page.getByRole('button', { name: '打开导航' }).click();
-    await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+    await page.getByRole('menuitem', { name: '自定义工作流' }).click();
     const flow = page.getByLabel('完整流程', { exact: true });
+    const phases = flow.getByRole('list', { name: '应用阶段', exact: true });
+    await expect(phases.getByRole('listitem')).toHaveCount(3);
+    await expect(phases.locator('.is-done')).toHaveCount(0);
+    await expect(
+      phases.getByRole('button', { name: '创作 结果待核对', exact: true }),
+    ).toBeVisible();
+    await expect(phases.getByRole('button', { name: '审查 部分完成', exact: true })).toBeVisible();
     await expect(flow.locator('[data-step-id]')).toHaveCount(5);
     await expect(flow.locator('[data-step-id="draft"] [data-record-id]')).toHaveCount(2);
     await expect(flow.locator('[data-record-id="draft-a"]')).toContainText('执行中');
     await expect(flow.locator('[data-record-id="draft-b"]')).toContainText('结果待核对');
-    await expect(flow.locator('[data-step-id="publish"]')).toContainText(
-      '汇合依赖：内容校验 · 独立审查',
-    );
-    await expect(flow.locator('[data-step-id="discard"]')).toContainText('命令入口：cleanup');
-    await expect(flow.locator('[data-step-id="publish"]')).toContainText('循环路径');
-    await expect(flow.locator('[data-step-id="draft"]')).toContainText('同时启动');
-    await expect(flow.locator('[data-step-id="discard"]')).toContainText('尚未开始');
-    await flow.locator('[data-step-id="publish"] > .any-step-row').click();
-    const inspector =
-      width < 1350
-        ? page.getByRole('dialog', { name: '步骤与验证详情' })
-        : page.locator('.any-inspector');
+    await phases.getByRole('button', { name: '交付 待进行', exact: true }).click();
+    const inspector = page.getByRole('dialog', { name: '步骤与验证详情', exact: true });
     await expect(inspector).toContainText('预期产物');
     await expect(inspector).toContainText('output/release.md');
     await expect(inspector).toContainText('预期输出字段');
     await expect(inspector).toContainText('report.ref');
+    await expect(inspector).toContainText('汇合依赖：内容校验 · 独立审查');
+    await expect(inspector).toContainText('循环路径');
     await page.screenshot({
       path: testInfo.outputPath(`workflow-definition-${width}.png`),
       animations: 'disabled',
-      fullPage: width === 1600,
     });
-    if (width < 1350) await inspector.getByRole('button', { name: '关闭', exact: true }).click();
-    await flow.locator('[data-step-id="check"] > .any-step-row').click();
+    await inspector.getByRole('button', { name: '关闭', exact: true }).click();
+    await flow.locator('[data-step-id="discard"]>.any-step-row').click();
+    await expect(inspector).toContainText('命令入口：cleanup');
+    await inspector.getByRole('button', { name: '关闭', exact: true }).click();
+    await flow.locator('[data-step-id="check"]>.any-step-row').click();
     await expect.poll(() => requestedRecord).toBe('check-paged');
-    await expect(inspector).toContainText('内容校验');
     await expect(inspector).toContainText('已完成');
-    if (width < 1350) await inspector.getByRole('button', { name: '关闭', exact: true }).click();
-    await flow.locator('[data-step-id="draft"]').getByText('查看执行记录', { exact: true }).click();
-    await flow.locator('[data-record-id="draft-old"]').click();
+    await inspector.getByRole('button', { name: '关闭', exact: true }).click();
+    await flow.locator('[data-step-id="draft"]>.any-step-row').click();
+    await expect(inspector.locator('.any-flow-connections')).toContainText('同时启动');
+    await inspector.locator('[data-record-id="draft-old"]').click();
     await expect(inspector).toContainText('业务结果');
     await expect(inspector).toContainText('1260');
     await expect(inspector).toContainText('false');
@@ -1151,3 +1393,266 @@ for (const width of [1600, 1280, 390]) {
     });
   });
 }
+
+test('custom workflow remains navigable at the 4096-step definition limit', async ({
+  page,
+}, testInfo) => {
+  const list = readApplicationDemo('application-runs', {});
+  const selected = list.items.find((item: any) => item.runId === 'run-128')!;
+  const original = readApplicationDemo('application-run', { locator: selected.locator });
+  const count = 4096;
+  const steps = Array.from({ length: count }, (_, i) => ({
+    stepId: `step-${i}`,
+    title: `Scale step ${i}`,
+    phase: 'Scale workflow',
+    type: 'call_tool',
+    recordCount: 0,
+    activeRecordIds: [],
+    latestRecordId: null,
+    latestStatus: null,
+  }));
+  const definition = {
+    status: 'available',
+    title: 'Scale workflow',
+    steps,
+    workflow: {
+      id: 'scale',
+      version: '1',
+      entry: ['step-0'],
+      steps: Object.fromEntries(
+        steps.map((step) => [step.stepId, { type: step.type, ref: 'scale-tool' }]),
+      ),
+      transitions: steps
+        .slice(1)
+        .map((step, i) => ({ from: `step-${i}`, to: step.stepId, on: 'succeeded' })),
+    },
+  };
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.addInitScript(() => {
+    (window as any).scaleLongTasks = [];
+    new PerformanceObserver((list) =>
+      (window as any).scaleLongTasks.push(...list.getEntries().map((entry) => entry.duration)),
+    ).observe({ type: 'longtask', buffered: true });
+  });
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects')
+      return route.fulfill({
+        json: {
+          currentProjectId: 'fixture',
+          projects: [
+            {
+              id: 'fixture',
+              name: 'Fixture',
+              path: '/fixture',
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+    if (url.pathname.endsWith('/overview'))
+      return route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture' },
+          summary: {},
+          initialChanges: { items: [], total: 0 },
+          git: {},
+        },
+      });
+    if (url.pathname.endsWith('/application-runs'))
+      return route.fulfill({ json: { ...list, items: [selected], total: 1, nextCursor: null } });
+    if (url.pathname.endsWith('/application-run'))
+      return route.fulfill({
+        json: {
+          ...original,
+          definition,
+          records: [],
+          currentIds: [],
+          recordPage: { total: 0, nextCursor: null },
+        },
+      });
+    return route.fulfill({ json: { items: [], pages: [] } });
+  });
+  await page.goto('/');
+  const start = performance.now();
+  await page.getByRole('menuitem', { name: '自定义工作流' }).click();
+  await expect(page.locator('.application-graph-layer .any-flow-node')).toHaveCount(count);
+  await expect(page.locator('.application-graph-edges > path')).toHaveCount(count - 1);
+  const graphMs = Math.round(performance.now() - start);
+  await page.locator('#any-flow-step-step-4095 > button').click();
+  await expect(page.getByRole('dialog')).toContainText('Scale step 4095');
+  await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('tab', { name: '执行记录', exact: true }).click();
+  await expect(page.locator('.application-workflow-graph')).toHaveCount(0);
+  const metrics = {
+    steps: count,
+    graphMs,
+    longTasksMs: await page.evaluate(() => (window as any).scaleLongTasks),
+  };
+  console.log('Workflow scale render:', JSON.stringify(metrics));
+  await testInfo.attach('workflow-scale.json', {
+    body: JSON.stringify(metrics),
+    contentType: 'application/json',
+  });
+});
+
+test('Any retries and pages one application creation history without losing delivered evidence sources', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const list = readApplicationDemo('application-runs', {});
+  const current = list.items.find((item: any) => item.runId === 'creator-041')!;
+  const delivered = list.items.find((item: any) => item.runId === 'creator-040')!;
+  const applicationRun = list.items.find((item: any) => item.runId === 'run-127')!;
+  const installed = {
+    ...applicationRun,
+    locator: 'application:imported-v2',
+    runId: 'imported-run-v2',
+    application: { ...applicationRun.application, version: '2.0.0' },
+  };
+  const recent = Array.from({ length: 100 }, (_, index) =>
+    index === 0
+      ? current
+      : {
+          ...current,
+          locator: `creator:recent-${index}`,
+          runId: `creator-recent-${index}`,
+        },
+  );
+  const rosterQueries: { kind: string | null; cursor: string | null }[] = [];
+  let rosterReads = 0;
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects')
+      return route.fulfill({
+        json: {
+          currentProjectId: 'fixture',
+          projects: [
+            {
+              id: 'fixture',
+              name: 'Fixture',
+              path: '/fixture',
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+    if (url.pathname.endsWith('/overview'))
+      return route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture' },
+          summary: {},
+          initialChanges: { items: [], total: 0 },
+          git: {},
+        },
+      });
+    if (url.pathname.endsWith('/application-runs')) {
+      if (!url.searchParams.has('applicationId'))
+        return route.fulfill({
+          json: { ...list, items: [current], total: 1, nextCursor: null },
+        });
+      if (url.searchParams.get('kind') === 'application') {
+        const older = url.searchParams.get('cursor') === 'older-versions';
+        return route.fulfill({
+          json: {
+            ...list,
+            fingerprint: 'version-history',
+            items: older ? [installed] : [applicationRun],
+            total: 2,
+            nextCursor: older ? null : 'older-versions',
+          },
+        });
+      }
+      rosterReads++;
+      rosterQueries.push({
+        kind: url.searchParams.get('kind'),
+        cursor: url.searchParams.get('cursor'),
+      });
+      if (rosterReads === 1)
+        return route.fulfill({ status: 503, json: { error: 'creation history unavailable' } });
+      const older = url.searchParams.get('cursor') === 'older-creations';
+      return route.fulfill({
+        json: {
+          ...list,
+          fingerprint: 'application-creation-history',
+          items: older ? [delivered] : recent,
+          total: 101,
+          nextCursor: older ? null : 'older-creations',
+        },
+      });
+    }
+    if (url.pathname.endsWith('/application-run')) {
+      if (url.searchParams.get('locator') === installed.locator)
+        return route.fulfill({
+          json: {
+            ...readApplicationDemo('application-run', { locator: applicationRun.locator }),
+            ...installed,
+            sourceCreators: [],
+          },
+        });
+      const detail = readApplicationDemo('application-run', {
+        locator: url.searchParams.get('locator'),
+      });
+      if (detail.locator === delivered.locator)
+        detail.evidence = detail.evidence.map((evidence: any) => ({
+          ...evidence,
+          sourceLocator: delivered.locator,
+          sourceRunId: delivered.runId,
+        }));
+      return route.fulfill({ json: detail });
+    }
+    return route.fulfill({ json: { items: [], pages: [] } });
+  });
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  const roster = page.locator('.any-creator-roster');
+  await expect(roster).toContainText('历史记录读取失败');
+  await expect(page.locator('.any-run-identity')).toHaveText('创作记录 creator-041');
+  await roster.getByRole('button', { name: '重新读取创作记录', exact: true }).click();
+  await expect(roster.locator(':scope > button')).toHaveCount(100);
+  await roster.getByRole('button', { name: '加载更多创作记录', exact: true }).click();
+  await expect(roster.locator(':scope > button')).toHaveCount(101);
+  await expect(page.locator('.any-run-identity')).toHaveText('创作记录 creator-041');
+  const version = page.locator('.any-creation-sidebar .any-delivered-version').filter({
+    hasText: 'creator-040',
+  });
+  await expect(version).toContainText('v1.1.0');
+  const installedVersion = page
+    .locator('.any-creation-sidebar .any-delivered-version')
+    .filter({ hasText: 'v2.0.0' });
+  const moreVersions = page.getByRole('button', { name: /加载更多版本记录$/u });
+  await expect(moreVersions).not.toHaveClass(/ant-btn-loading/u);
+  await moreVersions.click();
+  await expect(installedVersion).toBeVisible();
+  await installedVersion.click();
+  await expect(page.locator('.any-run-identity')).toHaveText('版本来源 imported-run-v2');
+  await expect(page.locator('.any-run-header .any-version')).toHaveText('v2.0.0');
+  await expect(page.getByRole('button', { name: '分发 / 导出', exact: true })).toBeEnabled();
+  await version.click();
+  await expect(page.locator('.any-run-identity')).toHaveText('创作记录 creator-040');
+  await expect(page.getByRole('button', { name: '分发 / 导出', exact: true })).toBeEnabled();
+  await page.getByRole('tab', { name: '验证证据', exact: true }).click();
+  const evidence = page.locator('.any-evidence-page');
+  await expect(evidence).toContainText('v1.1.0');
+  await expect(evidence).toContainText('creator-040');
+  await expect(evidence).not.toContainText('creator-041');
+  expect(rosterQueries.slice(0, 3)).toEqual([
+    { kind: 'creator', cursor: null },
+    { kind: 'creator', cursor: null },
+    { kind: 'creator', cursor: 'older-creations' },
+  ]);
+  expect(rosterQueries.every((query) => query.kind === 'creator')).toBe(true);
+  await page
+    .locator('.any-creation-sidebar')
+    .getByRole('button', { name: '查看自定义工作流', exact: true })
+    .click();
+  await expect(page.locator('.any-run-identity')).toHaveText('运行轨迹 run-127');
+  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await page
+    .locator('.any-workspace-heading')
+    .getByRole('button', { name: '查看自定义工作流', exact: true })
+    .click();
+  await expect(page.locator('.any-run-identity')).toHaveText('运行轨迹 run-127');
+});
