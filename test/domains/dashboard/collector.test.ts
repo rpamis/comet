@@ -6,6 +6,7 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { snapshotCometRuntimeMetrics } from '../../../platform/process/runtime-metrics.js';
+import { requireFileSymlink } from '../../helpers/file-symlink.js';
 import {
   collectDashboardChangeDetail,
   collectDashboardChangePage,
@@ -317,10 +318,11 @@ describe('collectDashboardSnapshot', () => {
     });
     await collectDashboardOverview(root);
     const open = vi.spyOn(fs, 'open');
+    const openedPaths = () => open.mock.calls.map(([file]) => String(file).replaceAll('\\', '/'));
     try {
       await fs.writeFile(path.join(root, 'openspec/changes/one/tasks.md'), '- [x] Work\n');
       expect((await collectDashboardOverview(root)).summary.tasksIncomplete).toBe(1);
-      const reads = open.mock.calls.map(([file]) => String(file));
+      const reads = openedPaths();
       expect(reads.some((file) => file.includes('/one/'))).toBe(true);
       expect(reads.some((file) => file.includes('/two/') || file.includes('/archive/'))).toBe(
         false,
@@ -332,11 +334,9 @@ describe('collectDashboardSnapshot', () => {
       );
       const page = await collectDashboardChangePage(root, { status: 'archived' });
       expect(page.items[0].tasks.completed).toBe(1);
-      expect(
-        open.mock.calls.some(
-          ([file]) => String(file).includes('/one/') || String(file).includes('/two/'),
-        ),
-      ).toBe(false);
+      expect(openedPaths().some((file) => file.includes('/one/') || file.includes('/two/'))).toBe(
+        false,
+      );
       await writeChange(root, {
         name: '2026-10-16-new',
         status: 'archived',
@@ -367,7 +367,8 @@ describe('collectDashboardSnapshot', () => {
     }
   });
 
-  it('invalidates archived summaries when a cached report becomes a symlink', async () => {
+  it('invalidates archived summaries when a cached report becomes a symlink', async (context) => {
+    await requireFileSymlink(context);
     await writeChange(root, {
       name: '2026-10-15-guarded',
       status: 'archived',
