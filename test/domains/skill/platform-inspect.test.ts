@@ -16,7 +16,41 @@ import {
   removeCometHooksForPlatform,
   removeCometRulesForPlatform,
 } from '../../../domains/skill/uninstall.js';
+import {
+  buildNodeHookCommand,
+  readNodeHookArguments,
+} from '../../../platform/process/hook-command.js';
 import { PLATFORMS, type Platform } from '../../../platform/install/platforms.js';
+
+function mapHookConfigStrings(value: unknown, map: (value: string) => string): unknown {
+  if (typeof value === 'string') return map(value);
+  if (Array.isArray(value)) return value.map((entry) => mapHookConfigStrings(entry, map));
+  if (value && typeof value === 'object')
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, mapHookConfigStrings(entry, map)]),
+    );
+  return value;
+}
+
+function replaceHookArgument(config: string, from: string, to: string): string {
+  const replace = (value: string) =>
+    value.replaceAll(from, to).replaceAll(from.replaceAll('/', '\\'), to.replaceAll('/', '\\'));
+  return JSON.stringify(
+    mapHookConfigStrings(JSON.parse(config), (value) => {
+      const args = readNodeHookArguments(value);
+      return args ? buildNodeHookCommand(args.map(replace)) : replace(value);
+    }),
+  );
+}
+
+function readableHookConfig(config: string): string {
+  return JSON.stringify(
+    mapHookConfigStrings(JSON.parse(config), (value) => {
+      const args = readNodeHookArguments(value);
+      return args ? args.join(' ') : value;
+    }),
+  );
+}
 
 function platform(id: string): Platform {
   const found = PLATFORMS.find((candidate) => candidate.id === id);
@@ -586,10 +620,13 @@ describe('platform component inspection', () => {
     await installManagedHookScripts(tmpDir, target);
     await installCometHooksForPlatform(tmpDir, target, 'project');
     const configPath = hookConfigPath(tmpDir, id);
-    const unmanaged = (await fs.readFile(configPath, 'utf8')).replaceAll(
+    const unmanaged = replaceHookArgument(
+      await fs.readFile(configPath, 'utf8'),
       'comet-hook-router',
       'user-hook',
     );
+    expect(unmanaged).not.toBe(await fs.readFile(configPath, 'utf8'));
+    expect(readableHookConfig(unmanaged)).toContain('user-hook');
     await fs.writeFile(configPath, unmanaged);
 
     await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
@@ -616,21 +653,67 @@ describe('platform component inspection', () => {
     await installManagedHookScripts(tmpDir, target);
     await installCometHooksForPlatform(tmpDir, target, 'project');
     const configPath = hookConfigPath(tmpDir, id);
-    const legacy = (await fs.readFile(configPath, 'utf8')).replaceAll(
+    const legacy = replaceHookArgument(
+      await fs.readFile(configPath, 'utf8'),
       'comet/scripts/comet-hook-router.mjs',
       'comet-native/scripts/comet-native-hook-guard.mjs',
     );
+    expect(readableHookConfig(legacy)).toContain('comet-native-hook-guard.mjs');
     await fs.writeFile(configPath, legacy);
 
     await expect(installCometHooksForPlatform(tmpDir, target, 'project')).resolves.toMatchObject({
       status: 'installed',
     });
-    const migrated = await fs.readFile(configPath, 'utf8');
+    const migrated = readableHookConfig(await fs.readFile(configPath, 'utf8'));
     expect(migrated).toContain('comet-hook-router.mjs');
     expect(migrated).not.toContain('comet-native-hook-guard.mjs');
     await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
       present: true,
     });
+  });
+
+  it('recognizes a literal legacy shell command as managed but requiring repair', async () => {
+    const target = platform('codex');
+    await installManagedHookScripts(tmpDir, target);
+    await installCometHooksForPlatform(tmpDir, target, 'project');
+    const configPath = hookConfigPath(tmpDir, target.id);
+    const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+    const handler = config.hooks.PreToolUse[0].hooks[0];
+    const args = readNodeHookArguments(handler.command);
+    expect(args).not.toBeNull();
+    handler.command = `node ${args!.map((arg) => JSON.stringify(arg.replaceAll('\\', '/'))).join(' ')}`;
+    await fs.writeFile(configPath, JSON.stringify(config));
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      present: false,
+      managedPresent: true,
+    });
+    await expect(installCometHooksForPlatform(tmpDir, target, 'project')).resolves.toMatchObject({
+      status: 'installed',
+    });
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      present: true,
+    });
+  });
+
+  it('preserves an encoded command with appended user code during uninstall', async () => {
+    const target = platform('codex');
+    await installManagedHookScripts(tmpDir, target);
+    await installCometHooksForPlatform(tmpDir, target, 'project');
+    const configPath = hookConfigPath(tmpDir, target.id);
+    const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+    const handler = config.hooks.PreToolUse[0].hooks[0];
+    handler.command += '; echo user-owned';
+    await fs.writeFile(configPath, JSON.stringify(config));
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      present: false,
+    });
+    await expect(removeCometHooksForPlatform(tmpDir, target, 'project')).resolves.toMatchObject({
+      removed: 0,
+      failed: 0,
+    });
+    expect(
+      JSON.parse(await fs.readFile(configPath, 'utf8')).hooks.PreToolUse[0].hooks[0].command,
+    ).toBe(handler.command);
   });
 
   it('returns a parse error for malformed canonical Hook JSON without rewriting it', async () => {
@@ -679,7 +762,8 @@ describe('platform component inspection', () => {
     await installManagedHookScripts(tmpDir, target);
     await installCometHooksForPlatform(tmpDir, target, 'project');
     const configPath = hookConfigPath(tmpDir, 'claude');
-    const legacy = (await fs.readFile(configPath, 'utf8')).replaceAll(
+    const legacy = replaceHookArgument(
+      await fs.readFile(configPath, 'utf8'),
       'comet-hook-router.mjs',
       'comet-hook-router.sh',
     );

@@ -80,7 +80,8 @@ export async function inspectClassicSdkActionRecovery(projectRoot: string, run: 
               ...action.claim,
               token: portableClaimToken(action.claim?.token ?? ''),
             }) ||
-          !['started', 'completed'].includes(value.status) ||
+          !['started', 'completed', 'stop-unconfirmed'].includes(value.status) ||
+          (value.status === 'stop-unconfirmed' && value.stopConfirmed !== false) ||
           !Array.isArray(value.command?.argv) ||
           value.command.argv.length === 0 ||
           value.command.argv.some((argument: unknown) => typeof argument !== 'string') ||
@@ -145,7 +146,7 @@ export async function inspectClassicSdkActionRecovery(projectRoot: string, run: 
       ? (record.result as { status: 'succeeded' | 'failed'; output: unknown })
       : null;
   return {
-    status: 'outcome-unknown',
+    status: record?.status === 'stop-unconfirmed' ? 'stop-unconfirmed' : 'outcome-unknown',
     blocked: true,
     action: {
       ...original,
@@ -163,6 +164,12 @@ export async function inspectClassicSdkActionRecovery(projectRoot: string, run: 
     },
     evidence: { directory: evidenceDirectory, ...Object.fromEntries(locations) },
     instructions: [
+      ...(record?.status === 'stop-unconfirmed'
+        ? [
+            '本次命令已执行，但进程树停止尚未确认。即使组长已退出，也必须核实所有后代进程停止；在此之前不得写入项目、提交失败结果解除阻塞或重跑检查。',
+            '若决定取消本次 Run，核实原执行及所有后代已停止后，填写 cancelRequestTemplate 中的真实停止证据，并通过 runtime dispatch 提交。仅取消调度而没有 stoppedActions 不能解除工作区占用；取消后须读取最新 revision 再提交停止确认。',
+          ]
+        : []),
       '检查原执行器是否仍在运行，并核对本次 claim 对应的命令和记录；结果明确前不能继续或重新运行检查。',
       completed
         ? '已找到本次执行结果记录。核对命令、日志、输入快照与退出码后，使用 recordOutcomeRequest 回填原结果；之后仍需通过正常检查证据校验。'
@@ -212,15 +219,35 @@ export async function inspectClassicSdkActionRecovery(projectRoot: string, run: 
           },
         }
       : {}),
-    retryRequestTemplate: {
-      operation: 'retry',
-      ...requestBase,
-      actionId: action.id,
-      attempt: action.attempt,
-      reconciliation: {
-        resolution: 'not-executed',
-        evidence: { summary: '<填写证明原尝试完全未执行的核对结果和来源>' },
-      },
-    },
+    ...(record?.status === 'stop-unconfirmed' && action.claim
+      ? {
+          cancelRequestTemplate: {
+            operation: 'cancel',
+            ...requestBase,
+            reason: '取消已超时的检查及其 Run',
+            stoppedActions: [
+              {
+                ...original,
+                claimToken: action.claim.token,
+                evidence: '<填写核实原检查进程及所有后代已停止的事实和来源>',
+              },
+            ],
+          },
+        }
+      : {}),
+    ...(record?.status === 'stop-unconfirmed'
+      ? {}
+      : {
+          retryRequestTemplate: {
+            operation: 'retry',
+            ...requestBase,
+            actionId: action.id,
+            attempt: action.attempt,
+            reconciliation: {
+              resolution: 'not-executed',
+              evidence: { summary: '<填写证明原尝试完全未执行的核对结果和来源>' },
+            },
+          },
+        }),
   };
 }

@@ -29,12 +29,15 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
   const original = await readManagedEvalRun(project, id);
   if (!original || !['queued', 'stopping'].includes(original.status))
     throw new Error('Eval 启动记录不存在或已经执行');
+  if (original.launchPhase === 'pending') throw new Error('Eval 启动请求尚未持久化');
   if (original.status === 'queued') await registerEvalContainerOwnership(project, id);
   process.env.COMET_EVAL_MANAGED = '1';
   if (original.config.judgeEnabled !== undefined)
     process.env.COMET_EVAL_MANAGED_JUDGE = original.config.judgeEnabled ? '1' : '0';
   const ownIdentity = await readProcessIdentity(process.pid);
   await updateManagedEvalRun(project, id, (current) => {
+    if (!['queued', 'stopping'].includes(current.status) || current.launchPhase === 'pending')
+      throw new Error('Eval 启动记录已恢复或已经执行');
     current.owner = { pid: process.pid, ...(ownIdentity ? { identity: ownIdentity } : {}) };
     if (current.status !== 'stopping') current.status = 'preparing';
   });

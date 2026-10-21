@@ -14,6 +14,15 @@ export function annotatedMarkdown(
   const extraFieldName = extraFields.match(/^([^:\n]+):/u)?.[1]?.trim();
 
   if (closingDelimiter !== -1) {
+    const existing = lines.slice(1, closingDelimiter);
+    if (
+      existing.filter((line) => /^archived-with:/u.test(line)).length === 1 &&
+      existing.includes(`archived-with: ${archiveName}`) &&
+      (!extraFields ||
+        (existing.includes(extraFields) &&
+          existing.filter((line) => line.startsWith(`${extraFieldName}:`)).length === 1))
+    )
+      return exactlyOneFinalNewline(normalized);
     const frontmatter = lines.slice(1, closingDelimiter).filter((line) => {
       const fieldName = line.match(/^([^:\n]+):/u)?.[1]?.trim();
       if (fieldName === undefined) return true;

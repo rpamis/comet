@@ -76,6 +76,11 @@ function confirmArchiveChange(dir: string): void {
 }
 
 describe('annotatedMarkdown', () => {
+  it('keeps the first plan annotation byte-identical on recovery', () => {
+    const once = annotatedMarkdown('# Plan\nDo the checked work.\n', '2026-10-21-example', '');
+    expect(annotatedMarkdown(once, '2026-10-21-example', '')).toBe(once);
+  });
+
   it('preserves an existing frontmatter document with one final newline', () => {
     const original = '---\ntitle: Demo\n---\nBody\n';
 

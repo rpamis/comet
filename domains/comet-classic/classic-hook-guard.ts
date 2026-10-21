@@ -152,6 +152,7 @@ interface GoverningChange {
   archived: boolean;
   cancelled?: boolean;
   cancellationPending?: boolean;
+  executionUnresolved?: boolean;
   invalidState?: boolean;
   superpowersArtifact?: 'matched' | 'unmatched';
   superpowersSlot?: SuperpowersArtifactSlot;
@@ -214,6 +215,7 @@ async function loadSdkGoverningChange(
     archived: state.archived,
     cancelled: isClassicSdkCancellationComplete(run),
     cancellationPending: run.status === 'cancelled' && !isClassicSdkCancellationComplete(run),
+    executionUnresolved: run.actions.some((action) => action.status === 'unknown'),
   };
 }
 
@@ -1103,6 +1105,11 @@ async function inspectClassicHookTarget(
     return result(
       2,
       'Classic Run cancellation is incomplete: the original host must confirm that its execution and child tasks have stopped before writing.',
+    );
+  if (governing.executionUnresolved)
+    return result(
+      2,
+      'Classic execution is unresolved: reconcile the original claim before writing, or confirm the entire process tree has stopped and cancel with stoppedActions.',
     );
   if (governing.archived) return allowed(`${relativePath} (own change archived)`);
 

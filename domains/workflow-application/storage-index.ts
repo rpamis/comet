@@ -19,6 +19,7 @@ const schema = 'comet.application-holder-index.v1';
 interface Inventory {
   epoch: string;
   members: string[];
+  aborted?: string[];
 }
 export interface ApplicationStorageIndex {
   schema: string;
@@ -138,6 +139,10 @@ export function createApplicationStorageIndex<T extends RuntimeRecord>(options: 
       !Array.isArray(value.members) ||
       value.members.some((id) => typeof id !== 'string') ||
       new Set(value.members).size !== value.members.length ||
+      (value.aborted !== undefined &&
+        (!Array.isArray(value.aborted) ||
+          value.aborted.some((id) => typeof id !== 'string' || value.members.includes(id)) ||
+          new Set(value.aborted).size !== value.aborted.length)) ||
       value.members.length !== index.memberCount ||
       hashRuntimeValue(value) !== index.inventoryHash
     )
@@ -154,6 +159,8 @@ export function createApplicationStorageIndex<T extends RuntimeRecord>(options: 
       const id = source.runId!;
       await options.settle?.(id);
       const record = await options.read(id);
+      // 仅忽略已持久化证明未提交的注册；成员丢失或无法识别的分区仍拒绝修复。
+      if (!record && known?.aborted?.includes(id) && !known.members.includes(id)) continue;
       if (!record) fail(`已发现的 Run 正文缺失：${id}`);
       ids.push(id);
       if (await options.holds(record!)) holders.push(id);
@@ -161,7 +168,11 @@ export function createApplicationStorageIndex<T extends RuntimeRecord>(options: 
     if (known?.members.some((id) => !ids.includes(id)))
       fail('已登记 Run 缺失，不能通过重建索引丢弃占用；请恢复原记录');
     index.holders = holders.sort();
-    return { epoch: index.epoch, members: ids.sort() };
+    return {
+      epoch: index.epoch,
+      members: ids.sort(),
+      ...(known?.aborted ? { aborted: known.aborted.filter((id) => !ids.includes(id)) } : {}),
+    };
   }
   async function initialize(): Promise<ApplicationStorageIndex> {
     const volume = path.parse(root).root;
@@ -243,12 +254,20 @@ export function createApplicationStorageIndex<T extends RuntimeRecord>(options: 
       )
         fail(`注册已提交或已观测到提交，但 Run 已缺失：${runId}`);
     }
-    if (registering && record) {
+    if (registering) {
       const known = await inventory(index);
-      if (!known.members.includes(runId)) {
+      let changed = false;
+      if (record && !known.members.includes(runId)) {
         known.members.push(runId);
         known.members.sort();
-        // 先保存 intent 中的新清单摘要，恢复时接受且仅接受旧/新原子版本。
+        if (known.aborted) known.aborted = known.aborted.filter((id) => id !== runId);
+        changed = true;
+      } else if (!record && !known.aborted?.includes(runId)) {
+        known.aborted = [...(known.aborted ?? []), runId].sort();
+        changed = true;
+      }
+      if (changed) {
+        // 注册和未提交证明采用同一发布协议；清除 pending 前必须保存可审计身份。
         await write('registration', {
           epoch: index.epoch,
           previousHash: index.inventoryHash,
@@ -290,6 +309,16 @@ export function createApplicationStorageIndex<T extends RuntimeRecord>(options: 
     return index;
   }
   return {
+    async isAbortedRegistration(runId: string): Promise<boolean> {
+      const index = await readIndex();
+      if (!index || index.state !== 'ready' || index.pending) return false;
+      const known = await inventory(index);
+      return (
+        !known.members.includes(runId) &&
+        !!known.aborted?.includes(runId) &&
+        (await options.read(runId)) === null
+      );
+    },
     async holders(): Promise<T[]> {
       const index = await ready();
       const result: T[] = [];

@@ -240,7 +240,7 @@ async function recordTerminationReceipt(options: {
   });
 }
 
-/** 旧 Windows 登记只能由明确绑定原领取的人工停止事实恢复，不能推断后代已退出。 */
+/** 缺失 PID 或旧 Windows 登记只能凭绑定原领取和执行快照的停止事实恢复。 */
 export async function acknowledgeNativeSdkCheckStopped(options: {
   projectRoot: string;
   run: Readonly<WorkflowRun>;
@@ -262,9 +262,10 @@ export async function acknowledgeNativeSdkCheckStopped(options: {
   }
   const execution = await readExecution(projectRoot, run, action);
   if (
-    !execution?.child ||
+    !execution ||
     (await inspectProcessLiveness(execution.owner.pid, execution.owner.identity)) !== 'dead' ||
-    (await inspectProcessTreeLiveness(execution.child.pid, execution.child.identity)) !== 'dead'
+    (execution.child &&
+      (await inspectProcessTreeLiveness(execution.child.pid, execution.child.identity)) !== 'dead')
   ) {
     throw new Error('Native 检查原领取方或监管进程尚未确认退出；不能提交人工停止证据');
   }
@@ -497,17 +498,20 @@ export async function inspectNativeSdkCheckExecutions(options: {
               reason: '检查缺少持久进程登记，无法确认它是否仍在执行',
             };
           const owner = await inspectProcessLiveness(execution.owner.pid, execution.owner.identity);
+          const receipt = await readTerminationReceipt(projectRoot, run, action);
+          // 无 PID 不能证明从未启动；只有死亡 owner 的明确停止事实可关闭登记间隙。
+          const acknowledged =
+            owner === 'dead' &&
+            receipt?.source === 'stopped-action' &&
+            matchesTerminationReceipt(receipt, execution);
           const process = execution.child
             ? await inspectProcessTreeLiveness(execution.child.pid, execution.child.identity)
-            : !execution.terminationUnconfirmed &&
-                (['reserved', 'interrupted'].includes(execution.phase) ||
-                  (execution.phase === 'completed' && execution.checks.length === 0))
+            : acknowledged ||
+                (!execution.terminationUnconfirmed &&
+                  (['reserved', 'interrupted'].includes(execution.phase) ||
+                    (execution.phase === 'completed' && execution.checks.length === 0)))
               ? 'dead'
               : 'unknown';
-          const receipt =
-            execution.child && globalThis.process.platform === 'win32'
-              ? await readTerminationReceipt(projectRoot, run, action)
-              : null;
           const treeConfirmed =
             !execution.child ||
             globalThis.process.platform !== 'win32' ||
@@ -528,10 +532,10 @@ export async function inspectNativeSdkCheckExecutions(options: {
             phase: execution.phase,
             execution,
             quiescent,
-            ...(!execution.child && execution.terminationUnconfirmed
+            ...(!execution.child && execution.terminationUnconfirmed && !acknowledged
               ? {
                   reason:
-                    '检查在监管进程 PID 登记完成前中断；缺少原进程身份，保留未知状态，不能验收或重试',
+                    '检查在监管进程 PID 登记完成前中断；确认原领取方及全部后代已停止后，以原领取身份提交 doctor --repair --confirmed --stopped-actions；此前不能验收或重试',
                 }
               : !treeConfirmed
                 ? { reason: 'Windows 检查缺少整树停止证据；组长退出不能证明后代已停止' }

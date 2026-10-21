@@ -1,3 +1,5 @@
+import { build } from 'esbuild';
+import { inspectNativeSdkCancellation } from '../../../domains/comet-native/native-sdk-cancellation.js';
 import * as nativeSdkChecks from '../../../domains/comet-native/native-sdk-checks.js';
 import { nativeCandidateInputGate } from '../../../domains/comet-native/native-portable-checks.js';
 import { nativeEditReviewScope } from '../../../domains/comet-native/native-edit-review.js';
@@ -4501,6 +4503,140 @@ children:
       await waitForProcessExit(owner);
     }
   });
+
+  it.each([false, true])(
+    'recovers a real reserved-before-child owner exit without replay (cancel=%s)',
+    async (cancel) => {
+      const plan = {
+        id: 'reserved',
+        name: 'Reserved check',
+        executable: process.execPath,
+        argv: ['-e', "require('node:fs').writeFileSync('reserved-side-effect', 'executed')"],
+        cwdRef: '.',
+        timeoutMs: 5000,
+        repeatable: false,
+      };
+      const {
+        root,
+        runtime,
+        run: ready,
+      } = await dispatchedVerifier([plan], 'sdk', nativeApplication(), false);
+      const pending = ready.actions.at(-1)!;
+      let run = await runtime.claim({
+        runId: ready.runId,
+        actionId: pending.id,
+        attempt: pending.attempt,
+        inputHash: pending.inputHash,
+        executorId: 'comet-native-checks',
+        claimToken: 'reserved-original-claim',
+      });
+      const action = run.actions.at(-1)!;
+      const bundle = path.join(root, 'reserve-owner.cjs');
+      const payload = path.join(root, 'reserve-owner.json');
+      await fs.writeFile(
+        payload,
+        JSON.stringify({
+          projectRoot: root,
+          run,
+          action,
+          candidateId: (run.state as NativePortableState).builder_handoff!.candidate_id,
+          plansHash: hashRuntimeValue(
+            nativeSdkChecks.nativeSdkCheckPlans({ verificationChecks: [plan] }),
+          ),
+        }),
+      );
+      await build({
+        stdin: {
+          contents: `const { createNativeSdkCheckExecution } = require('./domains/comet-native/native-sdk-check-execution.ts'); createNativeSdkCheckExecution(JSON.parse(require('node:fs').readFileSync(process.argv[2], 'utf8'))).then(() => process.exit(0));`,
+          resolveDir: process.cwd(),
+        },
+        bundle: true,
+        platform: 'node',
+        format: 'cjs',
+        outfile: bundle,
+        logLevel: 'silent',
+      });
+      execFileSync(process.execPath, [bundle, payload], { env: process.env });
+      await fs.rm(bundle);
+      await fs.rm(payload);
+      expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0]).toMatchObject({
+        owner: 'dead',
+        process: 'unknown',
+        phase: 'reserved',
+        quiescent: false,
+      });
+      const cold = (await loadOwnedNativeSdkRuntime(root, run.runId)).runtime;
+      run = await recoverNativeSdkChecks(root, await cold.inspect(run.runId), cold);
+      expect(run.actions.find((entry) => entry.id === action.id)?.status).toBe('unknown');
+      if (cancel) run = await cold.cancel({ runId: run.runId, reason: 'Stop reserved execution' });
+      if (cancel) {
+        const waiting = await inspectNativeSdkCancellation({ projectRoot: root, run });
+        expect(waiting?.outstandingActions[0].acknowledgementRequest).toMatchObject({
+          operation: 'doctor',
+          commandArgs: [
+            'comet',
+            'native',
+            'doctor',
+            run.runId,
+            '--repair',
+            '--confirmed',
+            '--stopped-actions',
+            '<path-to-stopped-actions-json>',
+          ],
+          stoppedActions: [{ actionId: action.id, claimToken: action.claim!.token }],
+        });
+      }
+      const options = {
+        reconcileInterrupted: true,
+        stoppedActions: [
+          {
+            actionId: action.id,
+            attempt: action.attempt,
+            inputHash: action.inputHash,
+            claimToken: action.claim!.token,
+            evidence:
+              'The synchronous parent observed the original reservation owner exit before it launched any child. No command or descendant was started.',
+          },
+        ],
+      };
+      run = await recoverNativeSdkChecks(root, run, cold, options);
+      const recovered = run.actions.find((entry) => entry.id === action.id)!;
+      expect(recovered).toMatchObject({
+        status: cancel ? 'cancelled' : 'failed',
+        attempt: action.attempt,
+        claim: action.claim,
+      });
+      if (cancel) {
+        expect(await inspectNativeSdkCancellation({ projectRoot: root, run })).toMatchObject({
+          status: 'cancelled',
+          quiescent: true,
+        });
+        expect(recovered.outcome).toBeUndefined();
+      } else {
+        expect(recovered.outcome?.output).toMatchObject({
+          checks: [],
+          interruption: { unknownCheckIds: ['reserved'] },
+        });
+        expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.checks-stop', status: 'pending' });
+      }
+      const again = await recoverNativeSdkChecks(root, run, cold, options);
+      expect(again.actions.find((entry) => entry.id === action.id)?.outcome).toEqual(
+        recovered.outcome,
+      );
+      expect(
+        (
+          await inspectNativeSdkCheckExecutions({
+            projectRoot: root,
+            run: again,
+            includeSettled: true,
+          })
+        )[0],
+      ).toMatchObject({ quiescent: true });
+      await expect(fs.access(path.join(root, 'reserved-side-effect'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    },
+  );
 
   it('reconciles a legacy unregistered execution only with original-host stop evidence and keeps every result unknown', async () => {
     const plan = {

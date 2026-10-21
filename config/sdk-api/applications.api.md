@@ -1060,7 +1060,11 @@ export function iterateWorkflowApplicationRunSources(projectRoot: string, option
 }, void, unknown>;
 
 // @public
-export function listWorkflowApplicationRunRecords(projectRoot: string): Promise<WorkflowApplicationRunObservation[]>;
+export function listWorkflowApplicationRunRecords(projectRoot: string, options?: {
+    applicationId?: string;
+    excludeClosed?: boolean;
+    excludeAbortedRegistrations?: boolean;
+}): Promise<WorkflowApplicationRunObservation[]>;
 
 // @public (undocumented)
 export function listWorkflowApplicationRunSources(projectRoot: string, options?: {

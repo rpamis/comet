@@ -1,3 +1,7 @@
+import {
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../domains/comet-native/native-config.js';
 import { mkdtemp, mkdir, readFile, writeFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -155,6 +159,8 @@ describe('SDK application host integration', () => {
   });
 
   it('loads the shipped shared router through the installed Claude configuration', async () => {
+    // 与正常 init 一致，明确项目边界，不继承临时目录祖先的其他测试项目。
+    await writeProjectConfig(root, defaultProjectConfig('docs'));
     const scoped = {
       ...options,
       routerSource: path.resolve('assets/skills/comet/scripts/comet-hook-router.mjs'),

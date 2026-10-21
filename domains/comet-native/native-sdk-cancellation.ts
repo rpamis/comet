@@ -31,7 +31,8 @@ export async function inspectNativeSdkQuiescence(options: {
     inputHash: string;
     reason: string;
     acknowledgementRequest?: {
-      operation: 'cancel' | 'acknowledge-stopped';
+      operation: 'cancel' | 'acknowledge-stopped' | 'doctor';
+      commandArgs?: string[];
       runId: string;
       expectedRevision: number;
       reason?: string;
@@ -75,6 +76,13 @@ export async function inspectNativeSdkQuiescence(options: {
       const requiresManagedStop = managed.some(
         (execution) => !execution.quiescent && execution.phase !== 'missing',
       );
+      const requiresRegistrationRecovery = managed.some(
+        (execution) =>
+          !execution.quiescent &&
+          execution.owner === 'dead' &&
+          execution.execution !== undefined &&
+          !execution.execution.child,
+      );
       const claimedUnresolved =
         action.status === 'cancelled' &&
         action.claim !== undefined &&
@@ -90,13 +98,29 @@ export async function inspectNativeSdkQuiescence(options: {
         reason: managedUnresolved
           ? 'Runtime-managed execution has not been proven stopped'
           : 'The original host has not acknowledged that this execution and its child tasks stopped',
-        ...(requiresManagedStop || !action.claim
+        ...((requiresManagedStop && !requiresRegistrationRecovery) || !action.claim
           ? {}
           : {
               acknowledgementRequest: {
-                operation: ['succeeded', 'failed'].includes(action.status)
-                  ? ('acknowledge-stopped' as const)
-                  : ('cancel' as const),
+                operation: requiresRegistrationRecovery
+                  ? ('doctor' as const)
+                  : ['succeeded', 'failed'].includes(action.status)
+                    ? ('acknowledge-stopped' as const)
+                    : ('cancel' as const),
+                ...(requiresRegistrationRecovery
+                  ? {
+                      commandArgs: [
+                        'comet',
+                        'native',
+                        'doctor',
+                        run.runId,
+                        '--repair',
+                        '--confirmed',
+                        '--stopped-actions',
+                        '<path-to-stopped-actions-json>',
+                      ],
+                    }
+                  : {}),
                 runId: run.runId,
                 expectedRevision: run.revision,
                 ...(['succeeded', 'failed'].includes(action.status)

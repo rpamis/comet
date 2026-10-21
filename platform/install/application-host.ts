@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { buildNodeHookCommand, readNodeHookArguments } from '../process/hook-command.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, readFile } from 'node:fs/promises';
 import { promises as fs, type Stats } from 'node:fs';
@@ -261,24 +262,6 @@ function isManagedRouter(content: string): boolean {
   );
 }
 
-function encodedHookArguments(command: unknown): unknown[] {
-  if (
-    typeof command !== 'string' ||
-    !command.startsWith(
-      "node -e \"const r=require('node:child_process').spawnSync(process.execPath,",
-    )
-  )
-    return [];
-  const encoded = /Buffer\.from\('([A-Za-z0-9+/=]+)','base64'\)/u.exec(command)?.[1];
-  if (!encoded) return [];
-  try {
-    const parsed: unknown = JSON.parse(Buffer.from(encoded, 'base64').toString());
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
 async function planIntegration(
   options: ApplicationHostIntegrationOptions,
 ): Promise<{ preview: ApplicationHostIntegrationPreview; files: PlannedFile[]; root: string }> {
@@ -450,11 +433,7 @@ async function planIntegration(
     if (options.scope === 'project')
       invocationArgs.push('--project-root', path.resolve(options.projectRoot));
     // 使用编码后的参数，避免宿主的 shell 把路径中的字符当作命令执行。
-    const encodedArgs = Buffer.from(JSON.stringify(invocationArgs)).toString('base64');
-    const command =
-      platformId === 'claude'
-        ? 'node'
-        : `node -e "const r=require('node:child_process').spawnSync(process.execPath,JSON.parse(Buffer.from('${encodedArgs}','base64').toString()),{stdio:'inherit'});process.exit(r.status??1)"`;
+    const command = platformId === 'claude' ? 'node' : buildNodeHookCommand(invocationArgs);
     const handler: Record<string, unknown> =
       platformId === 'claude'
         ? { type: 'command', command, args: invocationArgs }
@@ -492,7 +471,7 @@ async function planIntegration(
           }
           preservedHandlers.push(entry);
           const argumentsList = Array.isArray(entryObject.args) ? entryObject.args : [];
-          const encodedArguments = encodedHookArguments(entryObject.command);
+          const encodedArguments = readNodeHookArguments(entryObject.command) ?? [];
           if (
             entryObject.command === command &&
             (platformId !== 'claude' ||

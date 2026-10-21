@@ -1,3 +1,4 @@
+import { readNodeHookArguments } from '../../platform/process/hook-command.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'crypto';
 import { spawnSync } from 'child_process';
@@ -443,7 +444,11 @@ describe('doctor command', () => {
       }
 
       const hooks = await fs.readFile(path.join(secondary, '.codex', 'hooks.json'), 'utf8');
-      expect(hooks.replaceAll('\\', '/')).toContain(
+      expect(
+        readNodeHookArguments(
+          JSON.parse(hooks).hooks.PreToolUse[0].hooks[0].command,
+        )![0].replaceAll('\\', '/'),
+      ).toContain(
         `${secondary.replaceAll('\\', '/')}/.agents/skills/comet/scripts/comet-hook-router.mjs`,
       );
       await expect(
@@ -506,7 +511,11 @@ describe('doctor command', () => {
       }
 
       const hooks = await fs.readFile(path.join(secondary, '.codex', 'hooks.json'), 'utf8');
-      expect(hooks.replaceAll('\\', '/')).toContain(
+      expect(
+        readNodeHookArguments(
+          JSON.parse(hooks).hooks.PreToolUse[0].hooks[0].command,
+        )![0].replaceAll('\\', '/'),
+      ).toContain(
         `${secondary.replaceAll('\\', '/')}/.agents/skills/comet/scripts/comet-hook-router.mjs`,
       );
     } finally {

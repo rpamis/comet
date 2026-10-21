@@ -492,3 +492,61 @@ it('requires an accepted and exactly bound receipt for legacy interruption stop 
     expect(hasNativeSdkPortableStopEvidence(forged, forged.actions[0])).toBe(false);
   }
 });
+
+it.each(['reserved', 'interrupted'] as const)(
+  'requires exact manual stop evidence for a childless %s snapshot on every platform',
+  async (phase) => {
+    const { run, action, registered } = await registration('running');
+    delete registered.execution.child;
+    registered.execution.phase = phase;
+    await registered.save();
+    const stoppedAction = {
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken: action.claim!.token,
+      evidence: 'The original owner and all descendants were independently confirmed stopped.',
+    };
+    for (const owner of ['alive', 'unknown'] as const) {
+      vi.mocked(processIdentity.inspectProcessLiveness).mockResolvedValue(owner);
+      await expect(
+        acknowledgeNativeSdkCheckStopped({ projectRoot: root, run, action, stoppedAction }),
+      ).rejects.toThrow('尚未确认退出');
+    }
+    vi.mocked(processIdentity.inspectProcessLiveness).mockResolvedValue('dead');
+    for (const invalid of [
+      { claimToken: 'other' },
+      { attempt: action.attempt + 1 },
+      { inputHash: 'other' },
+      { evidence: '<actual stop evidence>' },
+    ]) {
+      await expect(
+        acknowledgeNativeSdkCheckStopped({
+          projectRoot: root,
+          run,
+          action,
+          stoppedAction: { ...stoppedAction, ...invalid },
+        }),
+      ).rejects.toThrow('原领取身份');
+    }
+    expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0].quiescent).toBe(
+      false,
+    );
+    await acknowledgeNativeSdkCheckStopped({ projectRoot: root, run, action, stoppedAction });
+    await acknowledgeNativeSdkCheckStopped({ projectRoot: root, run, action, stoppedAction });
+    expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0]).toMatchObject({
+      process: 'dead',
+      quiescent: true,
+    });
+    windows();
+    expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0].quiescent).toBe(
+      true,
+    );
+    registered.execution.checks.push({ stale: true });
+    await registered.save();
+    expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0]).toMatchObject({
+      process: 'unknown',
+      quiescent: false,
+    });
+  },
+);

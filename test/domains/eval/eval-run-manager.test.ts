@@ -8,6 +8,7 @@ import {
   requestStopEvalRun,
   repairManagedEvalRun,
   reconcileEvalRun,
+  readManagedEvalRun,
 } from '../../../domains/eval/eval-run-manager.js';
 const launch = vi.fn(async () => ({ pid: process.pid }));
 vi.mock('../../../platform/process/eval-worker.js', () => ({
@@ -35,6 +36,75 @@ describe('Eval run launch ownership', () => {
   });
   afterEach(async () => {
     await fs.rm(project, { recursive: true, force: true });
+  });
+  it('records pre-launch ownership failure as interrupted without spawning', async () => {
+    const rename = fs.rename;
+    const spy = vi.spyOn(fs, 'rename').mockImplementation(async (from, to) => {
+      if (String(to).endsWith('container-ownership.json'))
+        throw new Error('injected ownership failure');
+      return rename(from, to);
+    });
+    try {
+      await expect(startEvalRun(project, request)).rejects.toThrow('injected ownership');
+    } finally {
+      spy.mockRestore();
+    }
+    expect(launch).not.toHaveBeenCalled();
+    const [id] = await fs.readdir(path.join(project, '.comet/eval/runs'));
+    expect(await readManagedEvalRun(project, id)).toMatchObject({
+      status: 'interrupted',
+      launchPhase: 'pending',
+    });
+    expect((await reconcileEvalRun(project, id)).executionStatus).toBe('interrupted');
+    expect((await startEvalRun(project, request)).id).toBe(id);
+    expect(launch).not.toHaveBeenCalled();
+  });
+  it.each(['queued', 'stopping'])(
+    'recovers a durable pre-dispatch %s record after cold interruption',
+    async (status) => {
+      const run = await startEvalRun(project, request);
+      const file = path.join(project, '.comet/eval/runs', run.id, 'dashboard-run.json');
+      const record = JSON.parse(await fs.readFile(file, 'utf8'));
+      delete record.owner;
+      record.launchPhase = 'pending';
+      record.status = status;
+      await fs.writeFile(file, JSON.stringify(record));
+      vi.resetModules();
+      const cold = await import('../../../domains/eval/eval-run-manager.js');
+      for (let pass = 0; pass < 2; pass++)
+        expect((await cold.reconcileEvalRun(project, run.id)).executionStatus).toBe(
+          status === 'stopping' ? 'stopped' : 'interrupted',
+        );
+    },
+  );
+  it('does not infer stopped after dispatch and permits hash-bound confirmed ownerless recovery', async () => {
+    launch.mockRejectedValueOnce(new Error('dispatch outcome uncertain'));
+    await expect(startEvalRun(project, request)).rejects.toThrow('outcome uncertain');
+    const [id] = await fs.readdir(path.join(project, '.comet/eval/runs'));
+    expect((await reconcileEvalRun(project, id)).executionStatus).toBe('queued');
+    expect((await reconcileEvalRun(project, id)).diagnostics.join(' ')).toContain('不能推断');
+    expect((await requestStopEvalRun(project, id)).executionStatus).toBe('stopping');
+    const file = path.join(project, '.comet/eval/runs', id, 'dashboard-run.json');
+    const bytes = await fs.readFile(file);
+    const hash = createHash('sha256').update(bytes).digest('hex');
+    await expect(repairManagedEvalRun(project, id, hash, false)).rejects.toThrow('停止');
+    await expect(repairManagedEvalRun(project, id, 'a'.repeat(64), true)).rejects.toThrow('已变化');
+    const unlink = fs.unlink;
+    const interruption = vi.spyOn(fs, 'unlink').mockImplementation(async (name) => {
+      if (String(name) === file) throw new Error('injected ownerless repair interruption');
+      return unlink(name);
+    });
+    try {
+      await expect(repairManagedEvalRun(project, id, hash, true)).rejects.toThrow(
+        'repair interruption',
+      );
+    } finally {
+      interruption.mockRestore();
+    }
+    const repaired = await repairManagedEvalRun(project, id, hash, true);
+    expect(await fs.readFile(path.join(path.dirname(file), repaired.retained))).toEqual(bytes);
+    expect(await repairManagedEvalRun(project, id, hash, true)).toEqual(repaired);
+    expect((await reconcileEvalRun(project, id)).executionStatus).toBe('stopped');
   });
   it('diagnoses corrupt records and requires hash-bound explicit stopped confirmation before retaining evidence', async () => {
     const root = path.join(project, '.comet/eval/runs/old');

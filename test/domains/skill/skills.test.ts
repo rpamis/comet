@@ -1,3 +1,7 @@
+import {
+  buildNodeHookCommand,
+  readNodeHookArguments,
+} from '../../../platform/process/hook-command.js';
 import { readSkillWithCompat } from '../../helpers/skill-content.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { spawnSync } from 'child_process';
@@ -1124,7 +1128,12 @@ describe('skills', () => {
       baseDir = tmpDir,
       scope: 'project' | 'global' = 'project',
     ) =>
-      `node "${normalized(path.join(baseDir, skillsDir, 'skills', ...currentCometScript.split('/')))}" --platform "${platformId}"${scope === 'project' ? ` --project-root "${normalized(baseDir)}"` : ''}`;
+      buildNodeHookCommand([
+        path.join(baseDir, skillsDir, 'skills', ...currentCometScript.split('/')),
+        '--platform',
+        platformId,
+        ...(scope === 'project' ? ['--project-root', baseDir] : []),
+      ]);
     const runManagedHookCommand = (command: string, cwd: string) =>
       spawnSync(command, {
         cwd,
@@ -1190,9 +1199,14 @@ describe('skills', () => {
       const hooks = JSON.parse(
         await fs.readFile(path.join(tmpDir, '.codex', 'hooks.json'), 'utf8'),
       ) as { hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> } };
-      const source = JSON.stringify(hooks).replaceAll('\\', '/');
+      const source = JSON.stringify(
+        hooks.hooks.PreToolUse.flatMap((group) =>
+          group.hooks.map((hook) => readNodeHookArguments(hook.command)),
+        ),
+      ).replaceAll('\\', '/');
       expect(source).toContain('comet/scripts/comet-hook-router.mjs');
-      expect(source).toContain('--platform /"codex/"');
+      expect(source).toContain('--platform');
+      expect(source).toContain('codex');
       expect(source).not.toContain('comet/scripts/comet-hook-guard.mjs');
       expect(source).not.toContain('comet-native/scripts/comet-native-hook-guard.mjs');
     });
@@ -1210,7 +1224,13 @@ describe('skills', () => {
       const hooks = JSON.parse(
         await fs.readFile(path.join(tmpDir, '.dsh', 'hooks.json'), 'utf8'),
       ) as { hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> } };
-      expect(JSON.stringify(hooks)).toContain('comet/scripts/comet-hook-router.mjs');
+      expect(
+        JSON.stringify(
+          hooks.hooks.PreToolUse.flatMap((group) =>
+            group.hooks.map((hook) => readNodeHookArguments(hook.command)),
+          ),
+        ),
+      ).toContain('comet/scripts/comet-hook-router.mjs');
 
       const patch = await fs.readFile(path.join(tmpDir, '.dsh', 'cordis.patch.yml'), 'utf8');
       expect(patch).toContain('dsh-hooks-claude-code');
@@ -1233,10 +1253,13 @@ describe('skills', () => {
       };
       expect(config.hooks.preToolUse).toHaveLength(1);
       expect(config.hooks.preToolUse[0].matcher).toBe('create|edit|str_replace_editor|apply_patch');
-      expect(config.hooks.preToolUse[0].bash.replaceAll('\\', '/')).toContain(
-        'comet/scripts/comet-hook-router.mjs',
-      );
-      expect(config.hooks.preToolUse[0].bash).toContain('--platform "github-copilot"');
+      expect(
+        readNodeHookArguments(config.hooks.preToolUse[0].bash)![0].replaceAll('\\', '/'),
+      ).toContain('comet/scripts/comet-hook-router.mjs');
+      expect(readNodeHookArguments(config.hooks.preToolUse[0].bash)!.slice(1, 3)).toEqual([
+        '--platform',
+        'github-copilot',
+      ]);
       expect(config.hooks.preToolUse[0].powershell).toBe(config.hooks.preToolUse[0].bash);
     });
 
@@ -1275,7 +1298,9 @@ describe('skills', () => {
       expect(updated.hooks.postToolUse).toEqual([{ matcher: '*', bash: 'node post-hook.mjs' }]);
       expect(updated.hooks.preToolUse).toContainEqual(userHook);
       expect(
-        updated.hooks.preToolUse.some((entry) => String(entry.bash).includes('comet-hook-router')),
+        updated.hooks.preToolUse.some((entry) =>
+          (readNodeHookArguments(entry.bash)?.[0] ?? '').includes('comet-hook-router'),
+        ),
       ).toBe(true);
     });
 
@@ -1372,9 +1397,9 @@ describe('skills', () => {
       });
 
       const hooks = JSON.parse(await fs.readFile(path.join(root, '.codex', 'hooks.json'), 'utf-8'));
-      expect(hooks.hooks.PreToolUse[0].hooks[0].command.replaceAll('\\', '/')).toContain(
-        '/.agents/skills/comet/scripts/comet-hook-router.mjs',
-      );
+      expect(
+        readNodeHookArguments(hooks.hooks.PreToolUse[0].hooks[0].command)![0].replaceAll('\\', '/'),
+      ).toContain('/.agents/skills/comet/scripts/comet-hook-router.mjs');
       await expect(
         fs.access(path.join(root, '.codex', 'settings.local.json')),
       ).rejects.toMatchObject({ code: 'ENOENT' });
@@ -1588,9 +1613,12 @@ describe('skills', () => {
         hooks: [],
       });
       expect(secondInstall.hooks.PreToolUse[5].hooks).toHaveLength(1);
-      expect(secondInstall.hooks.PreToolUse[5].hooks[0].command.replaceAll('\\', '/')).toContain(
-        '/.agents/skills/comet/scripts/comet-hook-router.mjs',
-      );
+      expect(
+        readNodeHookArguments(secondInstall.hooks.PreToolUse[5].hooks[0].command)![0].replaceAll(
+          '\\',
+          '/',
+        ),
+      ).toContain('/.agents/skills/comet/scripts/comet-hook-router.mjs');
     });
 
     it('migrates only Comet hooks from the historical Codex settings file', async () => {

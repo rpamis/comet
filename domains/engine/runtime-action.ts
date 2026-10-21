@@ -304,30 +304,7 @@ export function cancelRuntimeAction(action: RuntimeAction, reason: string): Runt
   return { ...copyAction(action), status: 'cancelled', reason };
 }
 
-export function acknowledgeRuntimeActionCancellation(
-  action: RuntimeAction,
-  stopped: RuntimeStoppedAction,
-): RuntimeAction {
-  keysOnly(stopped, ['actionId', 'attempt', 'inputHash', 'claimToken', 'evidence']);
-  for (const field of ['actionId', 'inputHash', 'claimToken', 'evidence'] as const)
-    nonEmpty(stopped[field], field);
-  if (!Number.isSafeInteger(stopped.attempt) || stopped.attempt < 1)
-    throw new RuntimeProtocolError('INVALID_ACTION', '停止确认需要原执行尝试');
-  assertBinding(action, stopped.attempt, stopped.inputHash);
-  if (stopped.actionId !== action.id || !action.claim || stopped.claimToken !== action.claim.token)
-    throw new RuntimeProtocolError('STALE_ACTION', '停止确认必须绑定原 Action 和领取身份');
-  if (action.status !== 'cancelled')
-    throw new RuntimeProtocolError('ACTION_TERMINAL', '只能确认已取消 Action 的执行停止');
-  if (action.cancellation && hashRuntimeValue(action.cancellation) !== hashRuntimeValue(stopped))
-    throw new RuntimeProtocolError('OUTCOME_CONFLICT', '当前执行已有不同的停止确认');
-  return { ...copyAction(action), cancellation: structuredClone(stopped) };
-}
-
-/** 原执行者确认终态任务已停止，不改变已经确认的执行结果。 */
-export function acknowledgeRuntimeActionStopped(
-  action: RuntimeAction,
-  stopped: RuntimeStoppedAction,
-): RuntimeAction {
+function assertStoppedAction(action: RuntimeAction, stopped: RuntimeStoppedAction): void {
   keysOnly(stopped, ['actionId', 'attempt', 'inputHash', 'claimToken', 'evidence']);
   for (const field of ['actionId', 'inputHash', 'claimToken', 'evidence'] as const)
     nonEmpty(stopped[field], field);
@@ -340,6 +317,26 @@ export function acknowledgeRuntimeActionStopped(
   assertBinding(action, stopped.attempt, stopped.inputHash);
   if (stopped.actionId !== action.id || !action.claim || stopped.claimToken !== action.claim.token)
     throw new RuntimeProtocolError('STALE_ACTION', '停止确认必须绑定原 Action 和领取身份');
+}
+
+export function acknowledgeRuntimeActionCancellation(
+  action: RuntimeAction,
+  stopped: RuntimeStoppedAction,
+): RuntimeAction {
+  assertStoppedAction(action, stopped);
+  if (action.status !== 'cancelled')
+    throw new RuntimeProtocolError('ACTION_TERMINAL', '只能确认已取消 Action 的执行停止');
+  if (action.cancellation && hashRuntimeValue(action.cancellation) !== hashRuntimeValue(stopped))
+    throw new RuntimeProtocolError('OUTCOME_CONFLICT', '当前执行已有不同的停止确认');
+  return { ...copyAction(action), cancellation: structuredClone(stopped) };
+}
+
+/** 原执行者确认终态任务已停止，不改变已经确认的执行结果。 */
+export function acknowledgeRuntimeActionStopped(
+  action: RuntimeAction,
+  stopped: RuntimeStoppedAction,
+): RuntimeAction {
+  assertStoppedAction(action, stopped);
   if (!terminal(action))
     throw new RuntimeProtocolError('ACTION_TERMINAL', '只能确认终态 Action 的执行停止');
   if (action.executionStop && hashRuntimeValue(action.executionStop) !== hashRuntimeValue(stopped))

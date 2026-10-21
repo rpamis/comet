@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as jsonPool from '../../../platform/fs/json-value-pool.js';
+import * as runtimeJson from '../../../domains/engine/runtime-json.js';
 import { createFileRuntimeStore } from '../../../domains/engine/runtime-store.js';
 import { runWithHookReadCache } from '../../../platform/process/hook-read-cache.js';
 import {
@@ -307,5 +309,129 @@ it.each(['close', 'reopen'] as const)(
     );
     expect(await opposite(1)).toBe(true);
     expect(await store().read(runId)).toEqual(record);
+  },
+);
+
+function pooledHistoryRecord() {
+  const outputs = Object.fromEntries(
+    Array.from({ length: 16 }, (_, i) => [String(i), { text: `${i}:雪\\"${'x'.repeat(2000)}` }]),
+  );
+  return {
+    runId,
+    revision: 2,
+    protocolVersion: 1,
+    actions: Array.from({ length: 16 }, () => ({ input: { outputs } })),
+    actionContexts: {},
+    outputs,
+  };
+}
+
+it('keeps closed projections compact and immutable while public reads remain independent', async () => {
+  const input = pooledHistoryRecord();
+  const pooled = createFileRuntimeStore<typeof input>({ rootDir: root });
+  await pooled.compareAndSwap(runId, 1, input);
+  const canonicalHash = runtimeJson.hashRuntimeValue(input);
+  const decode = vi.spyOn(jsonPool, 'decodeJsonValueMaps');
+  const fullHash = vi.spyOn(runtimeJson, 'hashRuntimeValue');
+  expect(await pooled.closeRun(runId, 2)).toBe(true);
+  expect(JSON.parse(await fs.readFile(marker(), 'utf8')).recordHash).toBe(canonicalHash);
+  expect(await pooled.readDisposition(runId)).toBe('closed');
+  const projection = (await pooled.readProjection!(runId))!;
+  const stats = jsonPool.getJsonValueProjectionStats(projection)!;
+  expect(stats).toBeDefined();
+  expect(stats.materializedMaps).toBe(0);
+  expect(stats.materializedEntries).toBe(0);
+  expect(jsonPool.hashJsonValueProjection(projection)).toBe(canonicalHash);
+  expect(decode.mock.calls.every((call) => call[2] === false)).toBe(true);
+  expect(
+    fullHash.mock.calls.filter(([value]) => (value as typeof input)?.runId === runId),
+  ).toHaveLength(0);
+  expect(() => {
+    projection.actions[0].input.outputs['0'].text = 'mutated';
+  }).toThrow();
+  expect(() => {
+    projection.actions[0].input.outputs['0'] = { text: 'mutated' };
+  }).toThrow();
+  expect(() => {
+    projection.actions.pop();
+  }).toThrow();
+  const publicRecord = (await pooled.read(runId))!;
+  expect(publicRecord).toEqual(input);
+  publicRecord.actions[0].input.outputs['0'].text = 'caller mutation';
+  expect(publicRecord.actions[1].input.outputs['0'].text).toBe(input.outputs['0'].text);
+  expect((await pooled.readProjection!(runId))!.outputs['0'].text).toBe(input.outputs['0'].text);
+});
+
+it.each([
+  ['close', 'journal'],
+  ['close', 'link'],
+  ['close', 'unlink'],
+  ['reopen', 'journal'],
+  ['reopen', 'link'],
+  ['reopen', 'unlink'],
+] as const)(
+  'queries and settles compact %s history interrupted after %s',
+  async (direction, stage) => {
+    const input = pooledHistoryRecord();
+    const pooled = createFileRuntimeStore<typeof input>({ rootDir: root });
+    await pooled.compareAndSwap(runId, 1, input);
+    if (direction === 'reopen') await pooled.closeRun(runId, 2);
+    const rename = fs.rename.bind(fs),
+      link = fs.link.bind(fs),
+      unlink = fs.unlink.bind(fs);
+    const pending = direction === 'close' ? 'closing' : 'reopening';
+    vi.spyOn(fs, 'rename').mockImplementation(async (source, destination) => {
+      const value = destination === marker() ? JSON.parse(await fs.readFile(source, 'utf8')) : null;
+      await rename(source, destination);
+      if (stage === 'journal' && value?.state === pending)
+        throw new Error('injected compact interruption');
+    });
+    vi.spyOn(fs, 'link').mockImplementation(async (source, destination) => {
+      await link(source, destination);
+      if (stage === 'link' && destination === (direction === 'close' ? history() : active()))
+        throw new Error('injected compact interruption');
+    });
+    vi.spyOn(fs, 'unlink').mockImplementation(async (source) => {
+      await unlink(source);
+      if (stage === 'unlink' && source === (direction === 'close' ? active() : history()))
+        throw new Error('injected compact interruption');
+    });
+    await expect(
+      direction === 'close' ? pooled.closeRun(runId, 2) : pooled.reopenRun(runId, 2),
+    ).rejects.toThrow('injected compact interruption');
+    vi.restoreAllMocks();
+    const decode = vi.spyOn(jsonPool, 'decodeJsonValueMaps');
+    const projection = (await pooled.readProjection!(runId))!;
+    expect(jsonPool.getJsonValueProjectionStats(projection)?.materializedMaps).toBe(0);
+    expect(jsonPool.hashJsonValueProjection(projection)).toBe(runtimeJson.hashRuntimeValue(input));
+    expect(await pooled.settleRun(runId)).toBe(direction === 'close' ? 'closed' : 'active');
+    expect(decode.mock.calls.every((call) => call[2] === false)).toBe(true);
+    expect(
+      jsonPool.getJsonValueProjectionStats((await pooled.readProjection!(runId))!)
+        ?.materializedMaps,
+    ).toBe(0);
+  },
+);
+
+it.each(['hash', 'revision', 'duplicate'] as const)(
+  'rejects compact lifecycle %s conflicts without materialization',
+  async (conflict) => {
+    const input = pooledHistoryRecord();
+    const pooled = createFileRuntimeStore<typeof input>({ rootDir: root });
+    await pooled.compareAndSwap(runId, 1, input);
+    await pooled.closeRun(runId, 2);
+    const journal = JSON.parse(await fs.readFile(marker(), 'utf8'));
+    if (conflict === 'hash') journal.recordHash = '0'.repeat(64);
+    if (conflict === 'revision') journal.revision++;
+    if (conflict === 'duplicate') {
+      journal.state = 'reopening';
+      await fs.copyFile(history(), active());
+    }
+    await fs.writeFile(marker(), JSON.stringify(journal));
+    const decode = vi.spyOn(jsonPool, 'decodeJsonValueMaps');
+    await expect(pooled.readProjection!(runId)).rejects.toMatchObject({
+      code: 'STORE_HISTORY_CONFLICT',
+    });
+    expect(decode.mock.calls.every((call) => call[2] === false)).toBe(true);
   },
 );

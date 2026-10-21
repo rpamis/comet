@@ -208,7 +208,7 @@ for file in list((root/'reports').glob('*.json')):
       expect((await readEvalRun(project, 'producer')).baselineEligible).toBe(false);
     },
   );
-  it('17个大型run在两活动读取器FIFO中最终完成而不会驱逐进度', async () => {
+  it('17个大型 run 在有界读取器轮换中复用摘要并最终完成', async () => {
     const fixtures = await Promise.all(
       Array.from({ length: 17 }, (_, i) => fixture(`fair-${i}`, 4, 300 * 1024)),
     );

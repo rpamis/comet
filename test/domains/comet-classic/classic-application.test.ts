@@ -49,6 +49,7 @@ async function fixture(
   extensionNames = ['review'],
   checkpoint?: string,
   checkCommands: Record<string, unknown> | false | undefined = undefined,
+  artifactRefs = ['source.js'],
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-composition-'));
   roots.push(root);
@@ -229,7 +230,7 @@ async function fixture(
       id,
       afterStep: checkpoint ?? `${profile}.build.check.evidence`,
       skillId: skill.id,
-      artifactRefs: ['source.js'],
+      artifactRefs,
       validator,
     })),
     executors: [executor],
@@ -430,9 +431,14 @@ async function fixture(
       sourceHash: hashRuntimeValue(
         (action.input as { activation: { source: RuntimeValue } }).activation.source,
       ),
-      artifactHashes: {
-        'source.js': digest(await fs.readFile(path.join(projectRoot, 'source.js'), 'utf8')),
-      },
+      artifactHashes: Object.fromEntries(
+        await Promise.all(
+          artifactRefs.map(async (ref) => [
+            ref,
+            digest(await fs.readFile(path.join(projectRoot, ref), 'utf8')),
+          ]),
+        ),
+      ),
     };
   };
   return {
@@ -701,10 +707,19 @@ it('rejects unsafe replacement and order changes and allows reordering additions
     to: 'classic.extension.right',
   });
 });
-it.each(['full', 'hotfix', 'tweak'] as const)(
-  'runs actual %s domain checks, rejects text completion and preserves the current extension on cold restart',
-  async (profile) => {
-    const f = await fixture(profile);
+it.each([
+  ['full', 'source.js', false],
+  ['hotfix', 'source.js', false],
+  ['tweak', 'source.js', false],
+  ['tweak', 'docs/openspec/changes/example/proposal.md', false],
+  ['full', 'docs/superpowers/plans/example-plan.md', false],
+  ['full', 'docs/superpowers/specs/example-design.md', false],
+  ['tweak', 'docs/openspec/changes/example/proposal.md', true],
+  ['full', 'docs/superpowers/plans/example-plan.md', true],
+] as const)(
+  'runs actual %s domain checks with %s and archive recovery=%s',
+  async (profile, artifactRef, recover) => {
+    const f = await fixture(profile, ['review'], undefined, undefined, [artifactRef]);
     await f.reachReview();
     expect(f.run.state).toMatchObject({ phase: 'build' });
     await expect(f.work({ verdict: 'pass' })).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
@@ -748,12 +763,81 @@ it.each(['full', 'hotfix', 'tweak'] as const)(
       executorId: 'comet-classic-archive-preflight',
       context: { requestId: 'public-archive-preflight', projectRoot: f.projectRoot },
     });
-    f.run = await f.runtime.execute({
-      runId: 'example',
-      actionId: f.run.actions.find((action) => action.status === 'pending')!.id,
-      executorId: 'comet-classic-archive',
-      context: { requestId: 'public-archive', projectRoot: f.projectRoot },
-    });
+    if (recover) {
+      const action = f.run.actions.find((entry) => entry.status === 'pending')!;
+      f.run = await f.runtime.claim({
+        runId: 'example',
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        executorId: 'comet-classic-archive',
+        claimToken: 'lost-archive',
+        expectedRevision: f.run.revision,
+        context: { requestId: 'claim-archive', projectRoot: f.projectRoot },
+      });
+      const claimed = f.run.actions.find((entry) => entry.id === action.id)!;
+      const result = await classic.runClassicSdkArchive(f.run, claimed, f.projectRoot);
+      const archiveDirectory = (result.output as { archiveDirectory: string }).archiveDirectory;
+      const archivedArtifact = path.join(
+        f.projectRoot,
+        artifactRef.replace('docs/openspec/changes/example/', `${archiveDirectory}/`),
+      );
+      const acceptedArtifact = await fs.readFile(archivedArtifact, 'utf8');
+      f.run = await f.runtime.markUnknown({
+        runId: 'example',
+        actionId: action.id,
+        attempt: action.attempt,
+        reason: 'Archive finished but result was lost',
+      });
+      f.runtime = f.runtimeFactory();
+      await f.refresh();
+      await fs.writeFile(archivedArtifact, `${acceptedArtifact}\nUnaccepted content\n`);
+      await expect(
+        classic.recoverClassicSdkArchive(f.runtime, {
+          runId: 'example',
+          projectRoot: f.projectRoot,
+        }),
+      ).rejects.toThrow(/Classic/);
+      await fs.writeFile(archivedArtifact, acceptedArtifact);
+      if (profile === 'full') {
+        const receiptFile = path.join(
+          f.projectRoot,
+          archiveDirectory,
+          '.comet/archive-documents.json',
+        );
+        const originalReceipt = await fs.readFile(receiptFile, 'utf8');
+        const forged = JSON.parse(originalReceipt);
+        forged.documents[artifactRef].original += '\nForged preimage\n';
+        await fs.writeFile(receiptFile, JSON.stringify(forged));
+        await expect(
+          classic.recoverClassicSdkArchive(f.runtime, {
+            runId: 'example',
+            projectRoot: f.projectRoot,
+          }),
+        ).rejects.toThrow(/Classic/);
+        await fs.writeFile(receiptFile, originalReceipt);
+      }
+      f.run = await classic.recoverClassicSdkArchive(f.runtime, {
+        runId: 'example',
+        projectRoot: f.projectRoot,
+      });
+      f.runtime = f.runtimeFactory();
+      expect(
+        (
+          await classic.recoverClassicSdkArchive(f.runtime, {
+            runId: 'example',
+            projectRoot: f.projectRoot,
+          })
+        ).revision,
+      ).toBe(f.run.revision);
+    } else {
+      f.run = await f.runtime.execute({
+        runId: 'example',
+        actionId: f.run.actions.find((action) => action.status === 'pending')!.id,
+        executorId: 'comet-classic-archive',
+        context: { requestId: 'public-archive', projectRoot: f.projectRoot },
+      });
+    }
     expect(f.run.state).toMatchObject({ archived: true });
     expect(await f.openSpec.invocations()).toEqual([
       {
@@ -934,7 +1018,7 @@ it('recovers the fixed Classic Application through public CLI across processes a
     choice: 'approved',
   });
   const action = run.actions.at(-1)!;
-  run = await dispatch({
+  await dispatch({
     operation: 'claim',
     runId: 'example',
     actionId: action.id,
@@ -945,7 +1029,7 @@ it('recovers the fixed Classic Application through public CLI across processes a
     claimToken: 'original-host-claim',
     sessionId: 'original-process',
   });
-  run = await dispatch({
+  await dispatch({
     operation: 'mark-unknown',
     runId: 'example',
     actionId: action.id,

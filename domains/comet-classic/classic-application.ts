@@ -33,7 +33,10 @@ import {
   assertClassicSdkCheckCommandBinding,
 } from './classic-sdk-check.js';
 import { createClassicSdkArchivePreflightExecutor } from './classic-sdk-archive-preflight.js';
-import { createClassicSdkArchiveExecutor } from './classic-sdk-archive.js';
+import {
+  classicArchivedArtifactMatches,
+  createClassicSdkArchiveExecutor,
+} from './classic-sdk-archive.js';
 import { type ClassicProfile, type ClassicState } from './classic-state.js';
 
 export { parseClassicStateDocument } from './classic-state.js';
@@ -257,6 +260,15 @@ export function createClassicApplication(
       );
   }
   const validators = [...base.validators];
+  type ValidationInput = Parameters<RuntimeValidator['validate']>[0];
+  type ArchivedArtifacts = { action: RuntimeAction; directory: string };
+  const extensionValidators = new Map<
+    string,
+    (
+      input: ValidationInput,
+      archive?: ArchivedArtifacts,
+    ) => ReturnType<RuntimeValidator['validate']>
+  >();
   if (workApproval)
     validators.push({
       id: 'comet-classic-composition-proposal',
@@ -268,86 +280,100 @@ export function createClassicApplication(
       }),
     });
   for (const [stepId, extension] of extensions) {
+    const validate = async (input: ValidationInput, archive?: ArchivedArtifacts) => {
+      if (input.outcome.status === 'failed') return { accepted: true };
+      const source = activation(input.action)?.source;
+      const output = input.outcome.output as {
+        verdict?: string;
+        sourceHash?: string;
+        artifactHashes?: Record<string, string>;
+      } | null;
+      if (
+        !source ||
+        !output ||
+        !['pass', 'repair', 'revise-requirements'].includes(output.verdict ?? '') ||
+        output.sourceHash !== hashRuntimeValue(source as unknown as RuntimeValue)
+      )
+        return {
+          accepted: false,
+          reason: 'Classic 新增结果未绑定当前来源；请修复或重跑原领域工作',
+        };
+      if (output.verdict !== 'pass') return { accepted: true };
+      if (!sourceCurrent(input.run, source))
+        return { accepted: false, reason: 'Classic 检查来源已失效；请修复或重跑原领域工作' };
+      if (
+        source.checkEpoch === ((input.run.state as unknown as ClassicState).checkEpoch ?? 0) &&
+        source.event.kind === 'evidence-recorded'
+      ) {
+        const step = base.workflow.steps[source.event.stepId];
+        const original = base.evidenceValidators.find(
+          (validator) => validator.id === step.validator?.id,
+        );
+        if (original) {
+          const checked = await original.validate({
+            run: input.run,
+            kind: source.event.evidenceKind,
+            ref: source.event.ref,
+            contentHash: source.event.contentHash,
+            context: { requestId: 'classic-extension-source', projectRoot: context.projectRoot },
+          });
+          if (!checked.accepted) return checked;
+        }
+      }
+      if (
+        source.event.kind === 'action-outcome' &&
+        source.checkEpoch === ((input.run.state as unknown as ClassicState).checkEpoch ?? 0)
+      ) {
+        const step = base.workflow.steps[source.event.stepId];
+        const validator = base.validators.find((entry) => entry.id === step.validator?.id);
+        const original = input.run.actions.find(
+          (entry) =>
+            entry.id === (source.event as { outcome: { actionId: string } }).outcome.actionId,
+        );
+        if (validator && original?.outcome) {
+          const checked = await validator.validate({
+            run: input.run,
+            action: original,
+            outcome: original.outcome,
+            context: { requestId: 'classic-extension-source', projectRoot: context.projectRoot },
+          });
+          if (!checked.accepted) return checked;
+        }
+      }
+      for (const ref of extension.artifactRefs) {
+        try {
+          const matches = archive
+            ? await classicArchivedArtifactMatches(
+                context.projectRoot,
+                input.run,
+                archive.action,
+                archive.directory,
+                ref,
+                output.artifactHashes?.[ref],
+              )
+            : output.artifactHashes?.[ref] ===
+              (
+                await hashProtectedProjectFile(context.projectRoot, ref, {
+                  label: 'Classic 新增检查工件',
+                })
+              ).digest;
+          if (!matches)
+            return { accepted: false, reason: `Classic 检查工件已变化：${ref}；请重新检查` };
+        } catch (error) {
+          return {
+            accepted: false,
+            reason: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+      return extension.validator.validate(input);
+    };
     const validator: RuntimeValidator = {
       id: `comet-${stepId}-result`,
       version: '1',
-      async validate(input) {
-        if (input.outcome.status === 'failed') return { accepted: true };
-        const source = activation(input.action)?.source;
-        const output = input.outcome.output as {
-          verdict?: string;
-          sourceHash?: string;
-          artifactHashes?: Record<string, string>;
-        } | null;
-        if (
-          !source ||
-          !output ||
-          !['pass', 'repair', 'revise-requirements'].includes(output.verdict ?? '') ||
-          output.sourceHash !== hashRuntimeValue(source as unknown as RuntimeValue)
-        )
-          return {
-            accepted: false,
-            reason: 'Classic 新增结果未绑定当前来源；请修复或重跑原领域工作',
-          };
-        if (output.verdict !== 'pass') return { accepted: true };
-        if (!sourceCurrent(input.run, source))
-          return { accepted: false, reason: 'Classic 检查来源已失效；请修复或重跑原领域工作' };
-        if (
-          source.checkEpoch === ((input.run.state as unknown as ClassicState).checkEpoch ?? 0) &&
-          source.event.kind === 'evidence-recorded'
-        ) {
-          const step = base.workflow.steps[source.event.stepId];
-          const original = base.evidenceValidators.find(
-            (validator) => validator.id === step.validator?.id,
-          );
-          if (original) {
-            const checked = await original.validate({
-              run: input.run,
-              kind: source.event.evidenceKind,
-              ref: source.event.ref,
-              contentHash: source.event.contentHash,
-              context: { requestId: 'classic-extension-source', projectRoot: context.projectRoot },
-            });
-            if (!checked.accepted) return checked;
-          }
-        }
-        if (
-          source.event.kind === 'action-outcome' &&
-          source.checkEpoch === ((input.run.state as unknown as ClassicState).checkEpoch ?? 0)
-        ) {
-          const step = base.workflow.steps[source.event.stepId];
-          const validator = base.validators.find((entry) => entry.id === step.validator?.id);
-          const original = input.run.actions.find(
-            (entry) =>
-              entry.id === (source.event as { outcome: { actionId: string } }).outcome.actionId,
-          );
-          if (validator && original?.outcome) {
-            const checked = await validator.validate({
-              run: input.run,
-              action: original,
-              outcome: original.outcome,
-              context: { requestId: 'classic-extension-source', projectRoot: context.projectRoot },
-            });
-            if (!checked.accepted) return checked;
-          }
-        }
-        for (const ref of extension.artifactRefs) {
-          try {
-            const current = await hashProtectedProjectFile(context.projectRoot, ref, {
-              label: 'Classic 新增检查工件',
-            });
-            if (output.artifactHashes?.[ref] !== current.digest)
-              return { accepted: false, reason: `Classic 检查工件已变化：${ref}；请重新检查` };
-          } catch (error) {
-            return {
-              accepted: false,
-              reason: error instanceof Error ? error.message : String(error),
-            };
-          }
-        }
-        return extension.validator.validate(input);
-      },
+      validate,
     };
+    extensionValidators.set(stepId, validate);
     validators.push(validator);
     workflow.steps[stepId] = {
       type: 'invoke_skill',
@@ -687,14 +713,42 @@ export function createClassicApplication(
           (checked.outcome.output as { verdict?: string })?.verdict !== 'pass'
         )
           return { accepted: false, reason: 'Classic 必需新增检查尚未通过' };
-        const validator = validators.find(
-          (entry) => entry.id === workflow.steps[stepId].validator!.id,
-        )!;
-        const checkedResult = await validator.validate({
-          ...input,
-          action: checked,
-          outcome: checked.outcome,
-        });
+        const archiveAction =
+          input.action.ref === 'classic-archive'
+            ? input.action
+            : input.run.actions
+                .slice()
+                .reverse()
+                .find(
+                  (action) => action.ref === 'classic-archive' && action.status === 'succeeded',
+                );
+        const archiveOutput = (
+          archiveAction?.id === input.action.id
+            ? input.outcome.output
+            : archiveAction?.outcome?.output
+        ) as { archiveDirectory?: string } | undefined;
+        let archive: ArchivedArtifacts | undefined;
+        if (archiveAction && typeof archiveOutput?.archiveDirectory === 'string') {
+          const archiveValidator = base.validators.find(
+            (entry) => entry.id === base.workflow.steps[archiveAction.stepId].validator?.id,
+          )!;
+          const verified = await archiveValidator.validate({
+            ...input,
+            action: archiveAction,
+            outcome: archiveAction.id === input.action.id ? input.outcome : archiveAction.outcome!,
+            context: { requestId: 'classic-archive-artifacts', projectRoot: context.projectRoot },
+          });
+          if (!verified.accepted) return verified;
+          archive = { action: archiveAction, directory: archiveOutput.archiveDirectory };
+        }
+        const checkedResult = await extensionValidators.get(stepId)!(
+          {
+            ...input,
+            action: checked,
+            outcome: checked.outcome,
+          },
+          archive,
+        );
         if (!checkedResult.accepted) return checkedResult;
       }
       return { accepted: true };

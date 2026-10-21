@@ -1,3 +1,10 @@
+import { inspectCometHook } from '../../../domains/comet-entry/hook-router.js';
+import { isClassicSdkCancellationComplete } from '../../../domains/comet-classic/classic-sdk-run-lifecycle.js';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
+import * as spawnedCommands from '../../../platform/process/spawn-command.js';
+import * as processTermination from '../../../platform/process/terminate-process-tree.js';
+import { inspectClassicSdkActionRecovery } from '../../../domains/comet-classic/classic-sdk-check-recovery.js';
 import { hashRuntimeValue, createFileRuntimeStore } from '../../../domains/engine/runtime.js';
 import { resolveClassicLocalTarget } from '../../../domains/comet-classic/classic-runtime-paths.js';
 import { parse, stringify } from 'yaml';
@@ -535,6 +542,154 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
 });
 
 describe('Classic SDK interrupted check recovery', () => {
+  it.each([true, false])(
+    'keeps a Windows-style unconfirmed tree stop blocked (close=%s)',
+    async (emitClose) => {
+      const f = await fixture('tweak', false);
+      await f.cli('state', 'complete-build', 'example');
+      const { runtime, run } = await f.inspect();
+      const child = Object.assign(new EventEmitter(), {
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        pid: 123456,
+        kill: vi.fn(() => true),
+      });
+      const spawned = vi
+        .spyOn(spawnedCommands, 'spawnCommand')
+        .mockReturnValue(child as unknown as spawnedCommands.SpawnedCommand);
+      vi.spyOn(processTermination, 'terminateProcessTreeConfirmed').mockImplementation(async () => {
+        // 模拟 taskkill /T 失败后仅组长退出；不启动或杀死任何真实进程。
+        if (emitClose) child.emit('close', null);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return false;
+      });
+      await expect(
+        executeClassicSdkCommandCheck(runtime, {
+          runId: run.runId,
+          projectRoot: f.projectRoot,
+          argv: [process.execPath, '-e', 'process.exit(0)'],
+          timeoutMs: 1,
+        }),
+      ).rejects.toThrow('进程树尚未确认停止');
+      const cold = (await f.inspect()).run;
+      expect(cold.actions.at(-1)).toMatchObject({ status: 'unknown', ref: 'classic-check' });
+      expect(cold.actions.at(-1)!.outcome).toBeUndefined();
+      const recovery = await inspectClassicSdkActionRecovery(f.projectRoot, cold);
+      expect(recovery).toMatchObject({
+        status: 'stop-unconfirmed',
+        blocked: true,
+        record: { status: 'stop-unconfirmed' },
+      });
+      expect(recovery).not.toHaveProperty('recordOutcomeRequest');
+      expect(recovery).not.toHaveProperty('retryRequestTemplate');
+      await expect(
+        executeClassicSdkCommandCheck(runtime, {
+          runId: run.runId,
+          projectRoot: f.projectRoot,
+          argv: [process.execPath, '-e', 'process.exit(0)'],
+        }),
+      ).rejects.toThrow('no pending check Action');
+      const refused = await f.invoke(
+        'guard',
+        'example',
+        'build',
+        '--apply',
+        '--',
+        process.execPath,
+        '-e',
+        'process.exit(0)',
+      );
+      expect(refused.exitCode).not.toBe(0);
+      expect(spawned).toHaveBeenCalledTimes(1);
+      const writeRequest = {
+        intent: 'write' as const,
+        toolName: 'Write',
+        targets: [path.join(f.projectRoot, 'source.js')],
+      };
+      expect((await inspectCometHook(f.projectRoot, writeRequest)).allowed).toBe(false);
+      if (!recovery || !('cancelRequestTemplate' in recovery) || !recovery.cancelRequestTemplate)
+        throw new Error('Missing stopped-check cancellation template');
+      const template = recovery.cancelRequestTemplate;
+      const stopped = {
+        ...template.stoppedActions[0],
+        evidence: '原执行器已核实本次检查进程及所有后代停止，保留现有文件供重新检查',
+      };
+      await expect(
+        runtime.cancel({
+          ...template,
+          stoppedActions: [{ ...stopped, claimToken: 'wrong-claim' }],
+        }),
+      ).rejects.toThrow(/STALE_ACTION/);
+      await expect(
+        runtime.cancel({ ...template, stoppedActions: [{ ...stopped, evidence: '  ' }] }),
+      ).rejects.toThrow(/INVALID_ACTION/);
+      expect((await f.inspect()).run).toEqual(cold);
+      const cancelled = await runtime.cancel({ runId: run.runId, reason: '用户取消超时任务' });
+      expect(isClassicSdkCancellationComplete(cancelled)).toBe(false);
+      expect((await inspectCometHook(f.projectRoot, writeRequest)).allowed).toBe(false);
+      const requestPath = path.join(path.dirname(f.projectRoot), 'cancel-stopped-check.json');
+      await fs.writeFile(
+        requestPath,
+        JSON.stringify({
+          ...template,
+          expectedRevision: cancelled.revision,
+          stoppedActions: [stopped],
+        }),
+      );
+      const acknowledged = await runtimeDispatchCommand(
+        { request: requestPath, application: 'classic-tweak', projectRoot: f.projectRoot },
+        { invocationCwd: f.projectRoot },
+      );
+      expect(acknowledged.exitCode, JSON.stringify(acknowledged.response)).toBe(0);
+      const settled = (await f.inspect()).run;
+      expect(isClassicSdkCancellationComplete(settled)).toBe(true);
+      expect(settled.actions.at(-1)!.cancellation).toEqual(stopped);
+      expect((await inspectCometHook(f.projectRoot, writeRequest)).allowed).toBe(true);
+      expect(spawned).toHaveBeenCalledTimes(1);
+      child.stdout.destroy();
+      child.stderr.destroy();
+    },
+  );
+
+  it('returns a confirmed timeout to Build work only after tree termination completes', async () => {
+    const f = await fixture('tweak', false);
+    await f.cli('state', 'complete-build', 'example');
+    const { runtime, run } = await f.inspect();
+    const child = Object.assign(new EventEmitter(), {
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      pid: 123456,
+      kill: vi.fn(() => true),
+    });
+    vi.spyOn(spawnedCommands, 'spawnCommand').mockReturnValue(
+      child as unknown as spawnedCommands.SpawnedCommand,
+    );
+    let confirmed = false;
+    vi.spyOn(processTermination, 'terminateProcessTreeConfirmed').mockImplementation(async () => {
+      child.emit('close', null);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      confirmed = true;
+      return true;
+    });
+    const failed = await executeClassicSdkCommandCheck(runtime, {
+      runId: run.runId,
+      projectRoot: f.projectRoot,
+      argv: [process.execPath, '-e', 'process.exit(0)'],
+      timeoutMs: 1,
+    });
+    expect(confirmed).toBe(true);
+    expect(failed.actions.at(-2)).toMatchObject({
+      status: 'failed',
+      outcome: { output: { exitCode: 124 } },
+    });
+    expect(failed.actions.at(-1)).toMatchObject({
+      status: 'pending',
+      stepId: 'tweak.build.execute',
+    });
+    child.stdout.destroy();
+    child.stderr.destroy();
+  });
+
   it('returns the original claim and completed check request, then resumes without executing again', async () => {
     const f = await fixture('tweak', false);
     await f.cli('state', 'complete-build', 'example');

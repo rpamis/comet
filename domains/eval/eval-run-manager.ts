@@ -122,12 +122,19 @@ export async function repairManagedEvalRun(
       const actual = createHash('sha256').update(bytes).digest('hex');
       if (actual !== expectedHash) throw new EvalRunError('管理记录已变化，请重新核对后恢复', 409);
       let corrupt = false;
+      let ownerless = false;
       try {
-        await readManagedEvalRun(project, id);
+        const record = await readManagedEvalRun(project, id);
+        ownerless = Boolean(
+          record &&
+          !record.owner &&
+          !record.child &&
+          !['completed', 'stopped', 'interrupted', 'unknown'].includes(record.status),
+        );
       } catch {
         corrupt = true;
       }
-      if (!corrupt) throw new EvalRunError('管理记录有效，不需要隔离', 409);
+      if (!corrupt && !ownerless) throw new EvalRunError('管理记录有效，不需要隔离', 409);
       const retained = `dashboard-run.corrupt-${actual}.json`;
       // 先创建不可覆盖的原字节副本，再记录人工核对证据，最后移除启动扫描入口。
       const backup = await evalRunPath(project, id, retained);
@@ -142,10 +149,15 @@ export async function repairManagedEvalRun(
         sha256: actual,
         retained,
         confirmedStopped: true,
+        ownerless,
         recoveredAt: new Date().toISOString(),
       });
       if (!(await fs.readFile(file)).equals(bytes))
         throw new EvalRunError('管理记录已变化，原文件保留，请重新核对', 409);
+      if (ownerless) {
+        await writeEvalExecutionState(project, id, { status: 'stopped' });
+        await releaseEvalExecutionLock(project, id);
+      }
       await fs.unlink(file);
       return { runId: id, retained, sha256: actual, recovered: true };
     });
@@ -218,6 +230,7 @@ export async function startEvalRun(
       createdAt: at,
       updatedAt: at,
       status: 'queued',
+      launchPhase: 'pending',
       config: preview.config,
       targetId: preview.target.id,
       contentHash: preview.target.contentHash,
@@ -226,8 +239,13 @@ export async function startEvalRun(
       baselineRunId: request.baselineRunId ?? null,
     };
     await writeEvalJson(await evalRunPath(project, id, 'dashboard-run.json'), run);
-    await registerEvalContainerOwnership(project, id);
+    let dispatched = false;
     try {
+      await registerEvalContainerOwnership(project, id);
+      await updateManagedEvalRun(project, id, (current) => {
+        current.launchPhase = 'dispatched';
+      });
+      dispatched = true;
       const owner = await launchEvalWorker(
         fileURLToPath(new URL('./eval-run-entry.js', import.meta.url)),
         project,
@@ -238,7 +256,8 @@ export async function startEvalRun(
       });
     } catch (error) {
       await updateManagedEvalRun(project, id, (current) => {
-        current.status = 'interrupted';
+        // 发出启动请求后可能已有未登记的进程，不能仅因登记失败宣称执行结束。
+        if (!dispatched) current.status = 'interrupted';
         current.error = redactEvalOutput((error as Error).message);
       });
       throw error;
@@ -354,6 +373,31 @@ export async function reconcileEvalRun(
     detail.availableActions.stop = false;
     return detail;
   }
+  if (
+    record &&
+    !record.owner &&
+    !record.child &&
+    record.launchPhase === 'pending' &&
+    ['queued', 'stopping'].includes(record.status)
+  ) {
+    const lock = await evalStoragePath(project, 'locks', 'dashboard-launch.lock');
+    await fs.mkdir(path.dirname(lock), { recursive: true });
+    // 与启动共用锁；pending 持久化期间尚未允许创建工作进程。
+    await withRecoverableFileLock(lock, async () => {
+      await updateManagedEvalRun(project, id, (current) => {
+        if (
+          !current.owner &&
+          !current.child &&
+          current.launchPhase === 'pending' &&
+          ['queued', 'stopping'].includes(current.status)
+        ) {
+          current.status = current.status === 'stopping' ? 'stopped' : 'interrupted';
+          current.error = '启动在创建工作进程前中断，现有记录已保留';
+        }
+      });
+    });
+    record = await readManagedEvalRun(project, id);
+  }
   if (record?.owner && !['completed', 'stopped', 'interrupted'].includes(record.status)) {
     const liveness = await inspectProcessLiveness(record.owner.pid, record.owner.identity);
     if (liveness === 'dead') {
@@ -380,6 +424,18 @@ export async function reconcileEvalRun(
     }
   }
   const detail = await readEvalRun(project, id, options);
+  if (
+    record &&
+    !record.owner &&
+    !record.child &&
+    !['completed', 'stopped', 'interrupted', 'unknown'].includes(record.status)
+  ) {
+    const bytes = await fs.readFile(await evalRunPath(project, id, 'dashboard-run.json'));
+    const hash = createHash('sha256').update(bytes).digest('hex');
+    detail.diagnostics.push(
+      `执行身份未登记，不能推断执行已停止；请核对旧执行器及容器均已停止后调用 repair-managed-record（expectedHash=${hash}、confirmedStopped=true）。`,
+    );
+  }
   if (record?.config.target && record.contentHash) {
     const freshness = await inspectEvalContentFreshness(project, record.config, record.contentHash);
     detail.stale = freshness.stale;

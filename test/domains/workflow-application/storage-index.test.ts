@@ -186,3 +186,73 @@ it('abandons a never-committed new intent without creating an orphan Run', async
     code: 'ENOENT',
   });
 });
+
+it('audits and rebuilds an interrupted first publication without losing committed members', async () => {
+  await write('holder', true);
+  await index().begin('interrupted', true);
+  const link = fs.link.bind(fs);
+  vi.spyOn(fs, 'link').mockImplementation(async (source, destination) => {
+    if (path.basename(String(destination)) === 'checkpoint.json')
+      throw new Error('before checkpoint publication');
+    return link(source, destination);
+  });
+  await expect(
+    store().compareAndSwap('interrupted', null, {
+      runId: 'interrupted',
+      revision: 1,
+      held: false,
+    }),
+  ).rejects.toThrow('before checkpoint publication');
+  vi.restoreAllMocks();
+  await index().finish();
+  await index().finish();
+  const stray = path.join(root, 'stray');
+  await fs.writeFile(stray, 'external change');
+  await fs.rm(stray);
+  for (const operation of ['audit', 'audit', 'rebuild', 'audit'] as const) {
+    const state = (await index().inspect())!;
+    await index().repair(operation, state.epoch);
+    expect((await index().holders()).map((record) => record.runId)).toEqual(['holder']);
+  }
+  await write('interrupted', false);
+  const state = (await index().inspect())!;
+  await fs.rm(path.join(root, '.runtime-store-v2', key('interrupted'), 'checkpoint.json'));
+  await expect(index().repair('audit', state.epoch)).rejects.toThrow();
+});
+
+it.each(['registration.json', 'inventory.json', 'index.json'])(
+  'recovers aborted registration when publication stops after %s',
+  async (boundary) => {
+    await index().begin('aborted', true);
+    const link = fs.link.bind(fs);
+    vi.spyOn(fs, 'link').mockImplementation(async (source, destination) => {
+      if (path.basename(String(destination)) === 'checkpoint.json')
+        throw new Error('not published');
+      return link(source, destination);
+    });
+    await expect(
+      store().compareAndSwap('aborted', null, { runId: 'aborted', revision: 1, held: false }),
+    ).rejects.toThrow('not published');
+    vi.restoreAllMocks();
+    const rename = fs.rename.bind(fs);
+    vi.spyOn(fs, 'rename').mockImplementation(async (source, destination) => {
+      await rename(source, destination);
+      if (path.basename(String(destination)) === boundary) throw new Error('recovery interrupted');
+    });
+    await expect(index().finish()).rejects.toThrow('recovery interrupted');
+    vi.restoreAllMocks();
+    expect(await index().holders()).toEqual([]);
+    const state = (await index().inspect())!;
+    await index().repair('audit', state.epoch);
+    await index().repair('audit', state.epoch);
+    await write('healthy', true);
+    expect((await index().holders()).map((record) => record.runId)).toEqual(['healthy']);
+  },
+);
+
+it('does not treat an unidentified empty partition as an aborted registration', async () => {
+  await write('holder', true);
+  await fs.mkdir(path.join(root, '.runtime-store-v2', key('unknown')));
+  const state = (await index().inspect())!;
+  await expect(index().repair('rebuild', state.epoch)).rejects.toThrow();
+});

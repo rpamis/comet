@@ -51,6 +51,18 @@ interface RefreshScan {
   knownCount?: number;
 }
 const scans = new Map<string, RefreshScan>();
+const failedSources = new Map<
+  string,
+  Map<
+    string,
+    {
+      fingerprint: string;
+      message: string;
+      attempts: number;
+      retryAt: number;
+    }
+  >
+>();
 export class DashboardSummaryIndexError extends Error {}
 export function markDashboardSummaryIndexDirty(projectRoot: string, namespace: string): void {
   dirty.add(`${resolveDashboardIndexPath(projectRoot)}:${namespace}`);
@@ -170,8 +182,8 @@ export class DashboardSummaryIndex {
     const updates: { source: DashboardSummarySource; records: DashboardSummaryRecord[] }[] = [];
     const errors: string[] = [];
     let attempted = 0;
-    const retries = [...scan.pending.values()];
-    let retryIndex = 0;
+    const failures = failedSources.get(this.lockKey) ?? new Map();
+    failedSources.set(this.lockKey, failures);
     // 预算同时覆盖发现、指纹读取和来源读取；至少推进一个来源，随后保留迭代位置。
     while (
       attempted < (options.maxSources ?? Infinity) &&
@@ -184,8 +196,8 @@ export class DashboardSummaryIndex {
         attempted < (options.maxSources ?? Infinity) &&
         (attempted === 0 || Date.now() < deadline)
       ) {
-        let source = retries[retryIndex++];
-        if (!source) {
+        let source: DashboardSummarySource;
+        {
           if (scan.complete) break;
           try {
             const next = await scan.iterator.next();
@@ -201,6 +213,16 @@ export class DashboardSummaryIndex {
           scan.seen.add(source.key);
         }
         attempted++;
+        const failure = failures.get(source.key);
+        if (
+          options.budgetMs !== undefined &&
+          failure?.fingerprint === source.fingerprint &&
+          failure.retryAt > Date.now()
+        ) {
+          errors.push(failure.message);
+          scan.pending.set(source.key, source);
+          continue;
+        }
         if (
           cached.get(source.key)?.fingerprint === source.fingerprint &&
           cached.get(source.key)?.volatile !== 1 &&
@@ -230,9 +252,21 @@ export class DashboardSummaryIndex {
         if ('records' in result && result.records) {
           updates.push({ source: result.source, records: result.records });
           scan.pending.delete(result.source.key);
-        } else errors.push(result.error!);
+          failures.delete(result.source.key);
+        } else {
+          errors.push(result.error!);
+          const previous = failures.get(result.source.key);
+          const attempts =
+            previous?.fingerprint === result.source.fingerprint ? previous.attempts + 1 : 1;
+          failures.set(result.source.key, {
+            fingerprint: result.source.fingerprint,
+            message: result.error!,
+            attempts,
+            retryAt: Date.now() + Math.min(60000, 1000 * 2 ** Math.min(attempts - 1, 6)),
+          });
+        }
       }
-      if (scan.complete && retryIndex >= retries.length) break;
+      if (scan.complete) break;
     }
     const currentScan = scan;
     await this.database((db) => {
@@ -322,7 +356,12 @@ export class DashboardSummaryIndex {
           JSON.stringify(metadata),
         );
         db.exec('COMMIT;');
-        if (currentScan.complete && currentScan.pending.size === 0) scans.delete(this.lockKey);
+        // 失败来源只影响自身重试；每次完整发现后释放迭代器，以便发现新增和删除。
+        if (currentScan.complete) {
+          scans.delete(this.lockKey);
+          for (const key of failures.keys()) if (!currentScan.seen.has(key)) failures.delete(key);
+          if (!failures.size) failedSources.delete(this.lockKey);
+        }
       } catch (error) {
         db.exec('ROLLBACK;');
         throw error;

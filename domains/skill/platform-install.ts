@@ -1,4 +1,8 @@
 import path from 'path';
+import {
+  buildNodeHookCommand,
+  readNodeHookArguments,
+} from '../../platform/process/hook-command.js';
 import { existsSync } from 'fs';
 import { readFile, writeFile, lstat, unlink, symlink, rm, readdir, realpath } from 'fs/promises';
 import { fileURLToPath } from 'url';
@@ -1577,10 +1581,6 @@ async function installCometHooksForPlatform(
   }
 }
 
-function quoteCommandArg(value: string): string {
-  return `"${value.replaceAll('\\', '/').replaceAll('"', '\\"')}"`;
-}
-
 /** Build a hook command that is stable even when the hook runner executes from a subdirectory. */
 function buildHookInvocation(
   baseDir: string,
@@ -1609,17 +1609,7 @@ function buildHookCommand(
   scriptRelPath: string,
   context?: HookCommandContext,
 ): string {
-  const projectRoot = path.resolve(baseDir);
-  const scriptPath = path.join(projectRoot, skillsDir, 'skills', ...scriptRelPath.split('/'));
-  let command = `node ${quoteCommandArg(scriptPath)}`;
-  if (scriptRelPath === HOOK_ROUTER_SCRIPT && context) {
-    command += ` --platform ${quoteCommandArg(context.platformId)}`;
-    if (context.scope === 'project') {
-      command += ` --project-root ${quoteCommandArg(projectRoot)}`;
-    }
-    return command;
-  }
-  return `${command} --project-root ${quoteCommandArg(projectRoot)}`;
+  return buildNodeHookCommand(buildHookInvocation(baseDir, skillsDir, scriptRelPath, context).args);
 }
 
 function parseCommandTokens(command: string): string[] | undefined {
@@ -1691,6 +1681,10 @@ function isManagedHookCommand(command: unknown, scriptRelPaths: string[], args?:
       matchesManagedScript(scriptPath)
     );
   }
+
+  const encodedArgs = readNodeHookArguments(command);
+  if (encodedArgs)
+    return typeof encodedArgs[0] === 'string' && matchesManagedScript(encodedArgs[0]);
 
   // Match both the current `node .../comet-hook-guard.mjs` form and the legacy
   // `bash .../comet-hook-guard.sh` form so uninstall also cleans up hooks

@@ -105,9 +105,11 @@ export async function invokeWorkflowApplicationSkill(options: {
     fail('用户决定需要当前 Wait 回执');
   let runId = receipt?.runId ?? ('runId' in request ? request.runId : undefined);
   if (['inspect', 'resume'].includes(request.operation) && !runId) {
-    const observations = (await listWorkflowApplicationRunRecords(projectRoot)).filter(
-      (item) => item.applicationId === manifest.id,
-    );
+    const observations = await listWorkflowApplicationRunRecords(projectRoot, {
+      applicationId: manifest.id,
+      excludeClosed: true,
+      excludeAbortedRegistrations: true,
+    });
     if (observations.some((item) => item.error))
       fail('当前应用存在无法读取的运行记录，请先核对原记录或明确原 Run ID');
     const candidates = observations.filter(

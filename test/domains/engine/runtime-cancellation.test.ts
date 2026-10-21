@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { parseRuntimeAction } from '../../../domains/engine/runtime-action.js';
 import {
   createMemoryRuntimeStore,
   createPortableRunCheckpoint,
@@ -105,6 +106,8 @@ describe('Runtime cancellation acknowledgement', () => {
     ['attempt', { attempt: 2 }, /STALE_ACTION/],
     ['input', { inputHash: '0'.repeat(64) }, /STALE_ACTION/],
     ['missing evidence', { evidence: '  ' }, /INVALID_ACTION/],
+    ['placeholder evidence', { evidence: '<actual stop proof>' }, /INVALID_ACTION/],
+    ['multiline placeholder evidence', { evidence: ' \n<host exit\nproof>\n ' }, /INVALID_ACTION/],
     ['wrong action', { actionId: 'other-action' }, /ACTION_NOT_FOUND/],
   ] as const)(
     'rejects %s evidence without committing cancellation',
@@ -121,6 +124,39 @@ describe('Runtime cancellation acknowledgement', () => {
       expect(await f.runtime.inspect(f.runId)).toEqual(before);
     },
   );
+
+  it('rejects placeholder stop proof after cancellation without changing the retained task', async () => {
+    const f = await fixture();
+    const cancelled = await f.runtime.cancel({ runId: f.runId, reason: 'Stop requested' });
+    const placeholder = { ...f.stopped, evidence: '<replace with actual stop evidence>' };
+    await expect(
+      f.runtime.cancel({ runId: f.runId, reason: 'Stopped', stoppedActions: [placeholder] }),
+    ).rejects.toMatchObject({ code: 'INVALID_ACTION' });
+    await expect(
+      f.runtime.acknowledgeStopped({ runId: f.runId, stoppedActions: [placeholder] }),
+    ).rejects.toMatchObject({ code: 'INVALID_ACTION' });
+    expect(await f.runtime.inspect(f.runId)).toEqual(cancelled);
+    expect(() =>
+      parseRuntimeAction({ ...cancelled.actions[0], cancellation: placeholder }),
+    ).toThrow(/INVALID_ACTION/);
+  });
+
+  it('preserves concrete historical evidence verbatim, including embedded angle brackets', async () => {
+    const f = await fixture();
+    const stopped = {
+      ...f.stopped,
+      evidence: 'Host <worker-42> exited with code 0; child process 43 was reaped.',
+    };
+    const cancelled = await f.runtime.cancel({
+      runId: f.runId,
+      reason: 'Stop',
+      stoppedActions: [stopped],
+    });
+    expect(parseRuntimeAction(cancelled.actions[0]).cancellation).toEqual(stopped);
+    const recovered = readPortableRunCheckpoint(createPortableRunCheckpoint(cancelled), f.runId)!;
+    expect(recovered.actions[0].cancellation!.evidence).toBe(stopped.evidence);
+    expect(recovered.actions[0].cancellation!.claimToken).toBe(recovered.actions[0].claim!.token);
+  });
 
   it('rejects duplicate and conflicting acknowledgements and stale CAS revisions', async () => {
     const f = await fixture();

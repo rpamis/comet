@@ -202,6 +202,38 @@ describe('Eval run history and baselines', () => {
       spy.mockRestore();
     }
   });
+  it('skips individually oversized reports without starving other runs or later files', async () => {
+    for (const id of ['large-a', 'large-b']) {
+      const root = await report(id, [true, true]);
+      const file = path.join(root, 'reports/case-0_report.json');
+      const raw = JSON.parse(await fs.readFile(file, 'utf8'));
+      raw.events_summary.prompt = 'x'.repeat(8 * 1024 * 1024);
+      await fs.writeFile(file, JSON.stringify(raw));
+    }
+    await report('healthy', [true]);
+    for (let pass = 0; pass < 3; pass++) {
+      for (const id of ['large-a', 'large-b', 'healthy']) {
+        const run = await readEvalRun(project, id, {
+          resumable: true,
+          includeCaseContent: false,
+          maxReportBytes: 8 * 1024 * 1024,
+        });
+        expect(run.cases).toHaveLength(1);
+        expect(run.diagnostics.join(' ')).not.toContain('等待公平续扫');
+        if (id !== 'healthy') {
+          expect(run.diagnostics.join(' ')).toContain('单份报告超过 maxReportBytes');
+          expect(run.baselineEligible).toBe(false);
+        }
+      }
+    }
+    await report('large-a', [true, true]);
+    const expanded = await readEvalRun(project, 'large-a', {
+      resumable: true,
+      includeCaseContent: false,
+      maxReportBytes: 16 * 1024 * 1024,
+    });
+    expect(expanded.cases).toHaveLength(2);
+  });
   it('discloses exhausted report budgets rather than silently truncating', async () => {
     await report('budget', [true, true]);
     const run = await readEvalRun(project, 'budget', {
@@ -210,7 +242,7 @@ describe('Eval run history and baselines', () => {
     });
     expect(run.conclusion).toBe('incomplete');
     expect(run.baselineEligible).toBe(false);
-    expect(run.diagnostics.join(' ')).toContain('预算已用尽');
+    expect(run.diagnostics.join(' ')).toContain('单份报告超过 maxReportBytes');
   });
   it('checks every path component once and never reuses a previous symlink check', async () => {
     const root = await report('paths', [true]);

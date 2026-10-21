@@ -146,29 +146,28 @@ async function rawStore(
       return committed;
     };
   };
+  const read = async (runId: string, projection: boolean) => {
+    await prepare();
+    const current = await store[projection ? 'readProjection' : 'read']!(runId);
+    if (!readOnly) return current;
+    const legacy = await inspectProtectedProjectPath(projectRoot, '.comet/runtime', {
+      label: '应用旧 Runtime 只读查询',
+    });
+    if (!legacy.exists || (await isWorkspaceRuntimeMigrationFence(legacy.target))) return current;
+    if (!(await fs.lstat(legacy.target)).isDirectory())
+      throw new RuntimeProtocolError('INVALID_RUN', '应用旧 Runtime 目录类型无效');
+    const prior = await createFileRuntimeStore<ApplicationRunRecord>({
+      rootDir: path.join(legacy.target, 'applications', safeId(id)),
+      mirroredRevisionPaths: ['run.revision'],
+    })[projection ? 'readProjection' : 'read']!(runId);
+    if (current && prior)
+      throw new RuntimeProtocolError('INVALID_RUN', '新旧应用 Runtime 同时存在，拒绝选择写入权威');
+    return current ?? prior;
+  };
   return {
     queryScope: store.queryScope,
-    read: async (runId) => {
-      await prepare();
-      const current = await store.read(runId);
-      if (!readOnly) return current;
-      const legacy = await inspectProtectedProjectPath(projectRoot, '.comet/runtime', {
-        label: '应用旧 Runtime 只读查询',
-      });
-      if (!legacy.exists || (await isWorkspaceRuntimeMigrationFence(legacy.target))) return current;
-      if (!(await fs.lstat(legacy.target)).isDirectory())
-        throw new RuntimeProtocolError('INVALID_RUN', '应用旧 Runtime 目录类型无效');
-      const prior = await createFileRuntimeStore<ApplicationRunRecord>({
-        rootDir: path.join(legacy.target, 'applications', safeId(id)),
-        mirroredRevisionPaths: ['run.revision'],
-      }).read(runId);
-      if (current && prior)
-        throw new RuntimeProtocolError(
-          'INVALID_RUN',
-          '新旧应用 Runtime 同时存在，拒绝选择写入权威',
-        );
-      return current ?? prior;
-    },
+    read: (runId) => read(runId, false),
+    readProjection: (runId) => read(runId, true),
     compareAndSwap: async (runId, revision, next) => prepareCommit(runId, revision, next)(),
     prepareCompareAndSwap: prepareCommit,
     restoreCheckpoint: async (runId, revision, checkpoint) => {
@@ -770,6 +769,13 @@ export async function loadWorkflowApplication(options: {
   };
   const pinnedStore: RuntimeStore<WorkflowRun> = {
     queryScope: persistent.queryScope,
+    async readProjection(runId) {
+      await assertCurrentMaterial();
+      const record = await persistent.readProjection!(runId);
+      if (!record) return null;
+      assertIdentity(record);
+      return record.run;
+    },
     async read(runId) {
       await assertCurrentMaterial();
       const record = await persistent.read(runId);

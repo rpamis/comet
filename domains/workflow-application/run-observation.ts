@@ -8,6 +8,7 @@ import {
   hashRuntimeValue,
   parseWorkflowRun,
 } from '../engine/runtime.js';
+import { createApplicationStorageIndex } from './storage-index.js';
 import { readWorkspaceRuntimeRoots } from '../workflow-contract/workspace-runtime.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import {
@@ -120,6 +121,11 @@ export async function readWorkflowApplicationRunObservation(
 /** 返回固定身份和 SDK 保存的状态；单条失败不会遮住其他 Run。 */
 export async function listWorkflowApplicationRunRecords(
   projectRoot: string,
+  options: {
+    applicationId?: string;
+    excludeClosed?: boolean;
+    excludeAbortedRegistrations?: boolean;
+  } = {},
 ): Promise<WorkflowApplicationRunObservation[]> {
   const roots = await readWorkspaceRuntimeRoots(projectRoot);
   const discovered = new Map<
@@ -145,6 +151,7 @@ export async function listWorkflowApplicationRunRecords(
       a.name.localeCompare(b.name),
     )) {
       const applicationId = entry.name;
+      if (options.applicationId && applicationId !== options.applicationId) continue;
       if (
         !/^[a-z][a-z\d]*(?:[.-][a-z\d]+)*$/u.test(applicationId) ||
         !entry.isDirectory() ||
@@ -159,10 +166,30 @@ export async function listWorkflowApplicationRunRecords(
         continue;
       }
       try {
-        for (const item of await listFileRuntimeStoreRuns<ApplicationRunRecord>({
-          rootDir: path.join(target, applicationId),
+        const rootDir = path.join(target, applicationId);
+        const store = createFileRuntimeStore<ApplicationRunRecord>({
+          rootDir,
           mirroredRevisionPaths: ['run.revision'],
-        })) {
+        });
+        const index = createApplicationStorageIndex({
+          rootDir,
+          read: (runId) => store.read(runId),
+          holds: () => false,
+        });
+        for (const item of await listFileRuntimeStoreRuns<ApplicationRunRecord>(
+          {
+            rootDir: path.join(target, applicationId),
+            mirroredRevisionPaths: ['run.revision'],
+          },
+          { excludeClosed: options.excludeClosed },
+        )) {
+          if (
+            options.excludeAbortedRegistrations &&
+            item.runId &&
+            item.error &&
+            (await index.isAbortedRegistration(item.runId).catch(() => false))
+          )
+            continue;
           const key = `${applicationId}:${item.runId ?? item.storageKey}`;
           const previous = discovered.get(key);
           discovered.set(key, {

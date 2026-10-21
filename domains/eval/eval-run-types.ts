@@ -44,6 +44,7 @@ export interface EvalManagedRun {
   previewHash: string;
   requestId?: string;
   baselineRunId?: string | null;
+  launchPhase?: 'pending' | 'dispatched';
   owner?: { pid: number; identity?: string };
   child?: { pid: number; identity?: string; instanceId?: string; ownerPid?: number };
   error?: string;

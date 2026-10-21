@@ -52,6 +52,49 @@ describe('Eval summary list', () => {
       }),
     );
   }
+  it('continues discovering runs when a structurally valid archive fails its content hash', async () => {
+    const bad = path.join(project, 'eval/archives/bad');
+    await fs.mkdir(bad, { recursive: true });
+    await fs.writeFile(path.join(bad, 'run.json'), '{}');
+    await fs.writeFile(
+      path.join(bad, 'archive.json'),
+      JSON.stringify({
+        schema: 'comet.eval.archive.v1',
+        id: 'bad',
+        title: 'Bad',
+        application: {
+          id: 'app',
+          version: '1',
+          base: 'standalone',
+          root: 'app',
+          contentHash: 'a'.repeat(64),
+          packageHash: 'b'.repeat(64),
+        },
+        files: { 'run.json': 'a'.repeat(64) },
+        runs: [{ kind: 'application', runId: 'run', file: 'run.json' }],
+        reports: [],
+        assessment: {
+          task: 'test',
+          taskCompleted: true,
+          originalTestsPassed: 0,
+          regressionTestsPassed: 0,
+          models: [],
+          limitations: [],
+        },
+      }),
+    );
+    expect(
+      (await collectDashboardEvalRunPage(project, { cached: false })).errors.length,
+    ).toBeGreaterThan(0);
+    await seed('new-run', true);
+    for (let pass = 0; pass < 3; pass++) {
+      const page = await collectDashboardEvalRunPage(project, { cached: false });
+      expect(page.items.map((run) => run.id)).toContain('new-run');
+      expect(page.errors.length).toBeGreaterThan(0);
+    }
+    await fs.rm(bad, { recursive: true });
+    expect((await collectDashboardEvalRunPage(project, { cached: false })).errors).toEqual([]);
+  });
   it('does not reread completed case reports until a source changes', async () => {
     await seed('one', true);
     await seed('two', false);

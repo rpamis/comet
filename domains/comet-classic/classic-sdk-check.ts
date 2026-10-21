@@ -13,7 +13,7 @@ import {
   type WorkflowRuntime,
 } from '../engine/runtime.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
-import { terminateProcessTree } from '../../platform/process/terminate-process-tree.js';
+import { terminateProcessTreeConfirmed } from '../../platform/process/terminate-process-tree.js';
 import { spawnCommand } from '../../platform/process/spawn-command.js';
 import { reportCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
 import { observeRuntimeOperation } from '../../platform/process/runtime-performance.js';
@@ -68,13 +68,22 @@ async function runCommand(
   argv: readonly string[],
   cwd: string,
   timeoutMs: number,
-): Promise<{ exitCode: number; output: string }> {
+): Promise<{ exitCode: number; output: string; stopConfirmed: boolean }> {
   return new Promise((resolve) => {
     const child = spawnCommand(argv[0], argv.slice(1), { cwd });
     let output = '';
     let timedOut = false;
+    let termination: Promise<boolean> | undefined;
     const capture = (chunk: Buffer) => {
       output = (output + chunk.toString()).slice(-2 * 1024 * 1024);
+    };
+    const finish = (exitCode: number, stopConfirmed: boolean) => {
+      clearTimeout(timer);
+      resolve({
+        exitCode,
+        output: (timedOut ? 'Check timed out.\n' : '') + output,
+        stopConfirmed,
+      });
     };
     child.stdout.on('data', capture);
     child.stderr.on('data', capture);
@@ -83,14 +92,27 @@ async function runCommand(
     });
     const timer = setTimeout(() => {
       timedOut = true;
-      void terminateProcessTree(child).catch(() => child.kill('SIGKILL'));
+      // close 可能早于整树终止结果；组长退出不能解除后代进程的写入风险。
+      termination = Promise.resolve()
+        .then(() => terminateProcessTreeConfirmed(child))
+        .catch(() => {
+          try {
+            child.kill('SIGKILL');
+          } catch {
+            // 尽力停止组长不代表整树终止已确认。
+          }
+          return false;
+        });
+      void termination.then((confirmed) => {
+        // Windows 兜底也可能没有 close 事件；保留阻塞而不是无限等待。
+        if (!confirmed) finish(124, false);
+      });
     }, timeoutMs);
     child.on('close', (code) => {
-      clearTimeout(timer);
-      resolve({
-        exitCode: timedOut ? 124 : (code ?? 1),
-        output: (timedOut ? 'Check timed out.\n' : '') + output,
-      });
+      void (async () => {
+        const confirmed = termination ? await termination : true;
+        finish(timedOut ? 124 : (code ?? 1), confirmed);
+      })();
     });
   });
 }
@@ -331,6 +353,18 @@ export async function runClassicSdkCommandCheck(
     { projectRoot: () => root, workflow: 'classic', kind: 'check', command: 'check' },
     () => runCommand(identity.argv, cwd.absolute, timeoutMs),
   );
+  if (!result.stopConfirmed) {
+    await writeClassicProjectText(root, logPath, result.output, { label: 'Classic SDK check log' });
+    await writeClassicProjectText(
+      root,
+      recordRef,
+      JSON.stringify({ ...executionRecord, status: 'stop-unconfirmed', stopConfirmed: false }),
+      { label: 'Classic SDK check recovery record' },
+    );
+    throw new Error(
+      'Classic 检查进程树尚未确认停止；必须核实原进程及后代全部停止，不得继续写入或重跑检查',
+    );
+  }
   const after = await collectCheckSnapshot(root, change.target, identity, snapshotOptions).catch(
     () => null,
   );

@@ -1,11 +1,12 @@
 import { resolveClassicStateFile } from './classic-state-file.js';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { samePath } from '../../platform/paths/git-worktree.js';
 import { parseDocument } from 'yaml';
 import {
+  portableClaimToken,
   readPortableRunCheckpoint,
   createPortableRunCheckpoint,
   type WorkflowRun,
@@ -14,7 +15,10 @@ import {
   type RuntimeExecutor,
   type RuntimeOutcome,
 } from '../engine/runtime.js';
-import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
+import {
+  hashProtectedProjectFile,
+  inspectProtectedProjectPath,
+} from '../workflow-contract/protected-project-path.js';
 import {
   classicArchivedRequirementsProblems,
   recordClassicArchiveRequirements,
@@ -70,6 +74,101 @@ async function annotateIfPresent(
     file.target,
     annotatedMarkdown(original, archiveName, extraFields),
     { label: 'Classic Archive document' },
+  );
+}
+
+const archiveDocumentsReceipt = '.comet/archive-documents.json';
+
+/** 保存归档前的原文，归档后只接受可从已验收摘要确定性推导的注记。 */
+async function recordArchiveDocuments(
+  projectRoot: string,
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+  activeRef: string,
+): Promise<void> {
+  const state = run.state as unknown as ClassicState;
+  const documents: Record<string, { original: string; extraFields: string }> = {};
+  for (const [ref, extraFields] of [
+    [state.designDoc, 'status: final'],
+    [state.plan, ''],
+  ] as const) {
+    if (!ref) continue;
+    const file = await inspectProtectedProjectPath(projectRoot, ref, {
+      label: 'Classic Archive document',
+      expected: 'file',
+    });
+    if (file.exists)
+      documents[ref] = {
+        original: await readClassicProjectFile(projectRoot, file.target, {
+          label: 'Classic Archive document',
+        }),
+        extraFields,
+      };
+  }
+  await writeClassicProjectText(
+    projectRoot,
+    `${activeRef}/${archiveDocumentsReceipt}`,
+    JSON.stringify({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken: portableClaimToken(action.claim?.token ?? ''),
+      documents,
+    }),
+    { label: 'Classic Archive document receipt' },
+  );
+}
+
+/** 原摘要保持不变；只允许 Archive 的目录搬迁和确定性文档注记。 */
+export async function classicArchivedArtifactMatches(
+  projectRoot: string,
+  run: Readonly<WorkflowRun>,
+  archiveAction: Readonly<RuntimeAction>,
+  archiveRef: string,
+  ref: string,
+  acceptedHash: string | undefined,
+): Promise<boolean> {
+  const activeRef = (run.input as { changeDir: string }).changeDir;
+  const mapped = archivedClassicDocumentRef(ref, activeRef, archiveRef)!;
+  const current = await hashProtectedProjectFile(projectRoot, mapped, {
+    label: 'Classic 新增检查工件',
+  });
+  if (current.digest === acceptedHash) return true;
+  const receipt = JSON.parse(
+    await readClassicProjectFile(projectRoot, `${archiveRef}/${archiveDocumentsReceipt}`, {
+      label: 'Classic Archive document receipt',
+    }),
+  );
+  if (
+    receipt.runId !== run.runId ||
+    receipt.actionId !== archiveAction.id ||
+    receipt.attempt !== archiveAction.attempt ||
+    receipt.inputHash !== archiveAction.inputHash ||
+    receipt.claimToken !== portableClaimToken(archiveAction.claim?.token ?? '')
+  )
+    return false;
+  const document = receipt.documents?.[ref];
+  if (
+    typeof document?.original !== 'string' ||
+    !['', 'status: final'].includes(document.extraFields)
+  )
+    return false;
+  const digest = (text: string) => createHash('sha256').update(text).digest('hex');
+  // 回执不能自选任意变换：原指针和注记种类必须来自 Archive 固定输入的文档结果。
+  const outputs = (archiveAction.input as { outputs?: Record<string, unknown> }).outputs;
+  const plan = outputs?.['full.build.plan'] as
+    { plan?: string; designEvidence?: { ref?: string } } | undefined;
+  const designDoc =
+    (outputs?.['full.design.document'] as { designDoc?: string } | undefined)?.designDoc ??
+    plan?.designEvidence?.ref;
+  const extraFields = ref === plan?.plan ? '' : ref === designDoc ? 'status: final' : null;
+  return (
+    extraFields !== null &&
+    document.extraFields === extraFields &&
+    digest(document.original) === acceptedHash &&
+    digest(annotatedMarkdown(document.original, path.posix.basename(archiveRef), extraFields)) ===
+      current.digest
   );
 }
 
@@ -161,6 +260,7 @@ export async function runClassicSdkArchive(
     };
   }
   const { active, runInput, layout, before } = context;
+  await recordArchiveDocuments(projectRoot, run, action, runInput.changeDir);
   await recordClassicArchiveRequirements(projectRoot, active.target);
   const result = await executeClassicOpenSpec(['archive', runInput.change, '--yes'], projectRoot);
   if (result.exitCode !== 0) {
@@ -315,6 +415,16 @@ export async function recoverClassicSdkArchive(
       `Classic Archive executor may still be running. Wait for its result. Only after confirming the original executor has stopped, use comet state check ${input.runId} archive --recover --json to obtain markUnknownRequest, submit it through runtime dispatch, then retry comet archive ${input.runId} --recover. Do not replay Archive.`,
     );
   }
+  if (
+    state.archived &&
+    run.actions.some(
+      (candidate) =>
+        candidate.ref === 'classic-archive' &&
+        candidate.status === 'succeeded' &&
+        candidate.claim?.executorId === 'comet-classic-archive',
+    )
+  )
+    return run;
   const action = run.actions.filter((candidate) => candidate.status === 'unknown');
   const lost = action.length === 1 ? action[0] : null;
   if (
@@ -400,7 +510,7 @@ export async function recoverClassicSdkArchive(
       attempt: lost.attempt,
       inputHash: lost.inputHash,
       claimToken: lost.claim.token,
-      outcomeId: `${lost.id}:${lost.attempt}:recovered`,
+      outcomeId: `${lost.id}:${lost.attempt}:recovered:${run.revision}`,
       status: 'succeeded',
       output: {
         archiveDirectory: path.relative(projectRoot, archived.target).replaceAll('\\', '/'),

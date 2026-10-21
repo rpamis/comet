@@ -27,6 +27,35 @@ describe('Dashboard SQLite summary index', () => {
     status,
     payload: { id: key, status },
   });
+  it('discovers new sources despite repeated failures and drops deleted failed sources', async () => {
+    const badRead = vi.fn(async () => {
+      throw new Error('bad archive');
+    });
+    let sources: DashboardSummarySource[] = [{ key: 'bad', fingerprint: 'one', read: badRead }];
+    const options = {
+      projectRoot: root,
+      cacheRoot: root,
+      namespace: 'failure-discovery',
+      discover: async () => sources,
+    };
+    await new DashboardSummaryIndex(options).ensure({ fresh: true });
+    sources.push({ key: 'new', fingerprint: 'one', read: async () => [record('new')] });
+    for (let pass = 0; pass < 3; pass++) {
+      const index = new DashboardSummaryIndex(options);
+      await index.ensure({ fresh: true });
+      expect((await index.query()).items).toEqual([{ id: 'new', status: 'completed' }]);
+      expect((await index.metadata())?.errors).toEqual(['bad: bad archive']);
+    }
+    const index = new DashboardSummaryIndex(options);
+    const calls = badRead.mock.calls.length;
+    await index.refresh({ maxSources: 1, budgetMs: 500 });
+    await index.refresh({ maxSources: 1, budgetMs: 500 });
+    expect(badRead).toHaveBeenCalledTimes(calls);
+    sources = sources.filter((source) => source.key !== 'bad');
+    await index.ensure({ fresh: true });
+    await index.ensure({ fresh: true });
+    expect(await index.metadata()).toMatchObject({ sourceCount: 1, errors: [], indexing: false });
+  });
   it('isolates same-origin workspaces during serial and concurrent refreshes', async () => {
     const roots = [path.join(root, 'left'), path.join(root, 'right')];
     for (const workspace of roots) {

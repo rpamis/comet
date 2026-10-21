@@ -417,32 +417,39 @@ function cacheCaseSummary(
   }
 }
 type SummaryEntry = { stamp: string; item: EvalCaseResult; source: Json; bytes: number };
-// FIFO 仅保留两个活动读取器，各自预留 32MiB。排队运行不能挤掉未完成读取进度。
-const evidenceQueue = new Set<string>();
+// 最多保留两个续读摘要，各自预留 32MiB；新运行可轮换最久未使用的读取器。
 const evidenceReaders = new Map<
   string,
   {
     entries: Map<string, SummaryEntry>;
     errors: Map<string, { stamp: string; messages: string[] }>;
     bytes: number;
+    busy: boolean;
   }
 >();
 async function evidenceReader(root: string) {
-  for (const key of evidenceReaders.keys()) {
+  for (const key of [...evidenceReaders.keys()]) {
     if (!(await fs.stat(key).catch(() => null))?.isDirectory()) forgetEvalEvidenceReader(key);
   }
-  evidenceQueue.add(root);
-  for (const key of evidenceQueue) {
-    if (evidenceReaders.size >= 2) break;
-    if (!evidenceReaders.has(key))
-      evidenceReaders.set(key, { entries: new Map(), errors: new Map(), bytes: 0 });
+  let reader = evidenceReaders.get(root);
+  if (reader?.busy) return undefined;
+  if (!reader) {
+    if (evidenceReaders.size >= 2) {
+      const idle = [...evidenceReaders].find(([, value]) => !value.busy);
+      if (!idle) return undefined;
+      forgetEvalEvidenceReader(idle[0]);
+    }
+    reader = { entries: new Map(), errors: new Map(), bytes: 0, busy: false };
   }
-  return evidenceReaders.get(root);
+  reader.busy = true;
+  evidenceReaders.delete(root);
+  evidenceReaders.set(root, reader);
+  return reader;
 }
 export function forgetEvalEvidenceReader(root: string) {
-  evidenceQueue.delete(root);
   evidenceReaders.delete(root);
 }
+
 export interface EvalReadOptions {
   includeCaseContent?: boolean;
   resumable?: boolean;
@@ -481,7 +488,7 @@ export async function readEvalRun(
     );
   if (recovery?.schema === 'comet.eval.managed-record-recovery.v1')
     diagnostics.push(
-      `损坏管理记录已人工确认停止并隔离；原始证据：${recovery.retained}（sha256:${recovery.sha256}）。`,
+      `异常管理记录已人工确认停止并隔离；原始证据：${recovery.retained}（sha256:${recovery.sha256}）。`,
     );
   const managed =
     record?.schema === 'comet.eval.managed-run.v1' &&
@@ -535,123 +542,138 @@ export async function readEvalRun(
   const started = Date.now();
   let reportBytes = 0;
   let exhausted = false;
-  for (const file of reportFiles) {
-    if (waiting) {
-      diagnostics.push('报告读取预算已用尽：等待公平续扫；保留当前证据。');
-      exhausted = true;
-      break;
-    }
-    if (Date.now() - started > (options.maxReadMs ?? 60000)) {
-      diagnostics.push(
-        `报告读取预算已用尽：已读取 ${cases.length}/${reportFiles.length} 份，结果不完整；请提高 maxReportBytes/maxReadMs 后重试。`,
-      );
-      exhausted = true;
-      break;
-    }
-    let reportPath: string;
-    try {
-      reportPath = await evalRunPath(project, id, 'reports', file);
-    } catch (error) {
-      diagnostics.push(`reports/${file}：${(error as Error).message}`);
-      continue;
-    }
-    const stat = await fs.stat(reportPath).catch(() => null);
-    const stamp = stat
-      ? JSON.stringify([
-          stat.dev,
-          stat.ino,
-          stat.size,
-          stat.mtimeMs,
-          stat.ctimeMs,
-          matrixValid ? matrix?.matrix_hash : null,
-          object(metadata?.expected_case_matrix).matrix_hash,
-          publication?.generation,
-          published.get(file)?.sha256,
-        ])
-      : '';
-    const previousError = reader?.errors.get(reportPath);
-    if (previousError?.stamp === stamp) {
-      diagnostics.push(...previousError.messages);
-      continue;
-    }
-    const cached =
-      options.includeCaseContent === false
-        ? (reader?.entries.get(reportPath) ?? caseSummaries.get(reportPath))
-        : undefined;
-    if (cached && cached.stamp === stamp) {
-      if (!cases.length) source = cached.source;
-      cases.push({ ...cached.item });
-      continue;
-    }
-    reportBytes += stat?.size ?? 0;
-    if (
-      reportBytes > (options.maxReportBytes ?? 1024 * 1024 * 1024) ||
-      Date.now() - started > (options.maxReadMs ?? 60000)
-    ) {
-      diagnostics.push(
-        `报告读取预算已用尽：已读取 ${cases.length}/${reportFiles.length} 份，结果不完整；请提高 maxReportBytes/maxReadMs 后重试。`,
-      );
-      exhausted = true;
-      break;
-    }
-    const diagnosticsBeforeReport = diagnostics.length;
-    let raw: Json | null = null;
-    try {
-      raw =
-        publication && published.has(file)
-          ? await readPublishedReport(project, id, published.get(file)!)
-          : await optionalJson(project, id, `reports/${file}`, diagnostics);
-    } catch (error) {
-      diagnostics.push(`reports/${file}：${(error as Error).message}`);
-    }
-    if (raw) {
-      if (!cases.length) {
-        const events = object(raw.events_summary);
-        source = summarySource(events);
+  let advanced = false;
+  try {
+    for (const file of reportFiles) {
+      if (waiting) {
+        diagnostics.push('报告读取预算已用尽：等待公平续扫；保留当前证据。');
+        exhausted = true;
+        break;
       }
-      const item = normalizeCase(file, raw, root, options.includeCaseContent !== false);
-      try {
-        const identity = validateEvaluationCase(
-          raw,
-          id,
-          file,
-          matrix
-            ? parseEvaluationMatrix(matrix, object(metadata?.expected_case_matrix).matrix_hash)
-            : [],
+      if (Date.now() - started > (options.maxReadMs ?? 60000)) {
+        diagnostics.push(
+          `报告读取预算已用尽：已读取 ${cases.length}/${reportFiles.length} 份，结果不完整；请提高 maxReportBytes/maxReadMs 后重试。`,
         );
-        item.repetition = identity.rep;
-        if (identity.rep !== raw.rep)
-          diagnostics.push(`${file}：已按原始名称和固定矩阵校正旧报告重复编号。`);
+        exhausted = true;
+        break;
+      }
+      let reportPath: string;
+      try {
+        reportPath = await evalRunPath(project, id, 'reports', file);
+      } catch (error) {
+        diagnostics.push(`reports/${file}：${(error as Error).message}`);
+        continue;
+      }
+      const stat = await fs.stat(reportPath).catch(() => null);
+      const stamp = stat
+        ? JSON.stringify([
+            stat.dev,
+            stat.ino,
+            stat.size,
+            stat.mtimeMs,
+            stat.ctimeMs,
+            matrixValid ? matrix?.matrix_hash : null,
+            object(metadata?.expected_case_matrix).matrix_hash,
+            publication?.generation,
+            published.get(file)?.sha256,
+          ])
+        : '';
+      const previousError = reader?.errors.get(reportPath);
+      if (previousError?.stamp === stamp) {
+        diagnostics.push(...previousError.messages);
+        continue;
+      }
+      const cached =
+        options.includeCaseContent === false
+          ? (reader?.entries.get(reportPath) ?? caseSummaries.get(reportPath))
+          : undefined;
+      if (cached && cached.stamp === stamp) {
+        if (!cases.length) source = cached.source;
+        cases.push({ ...cached.item });
+        continue;
+      }
+      if ((stat?.size ?? 0) > (options.maxReportBytes ?? 1024 * 1024 * 1024)) {
+        diagnostics.push(
+          `reports/${file}：单份报告超过 maxReportBytes，无法在当前预算下读取；请缩小报告，或在单文件安全上限内提高预算后重试。`,
+        );
+        continue;
+      }
+      reportBytes += stat?.size ?? 0;
+      if (
+        reportBytes > (options.maxReportBytes ?? 1024 * 1024 * 1024) ||
+        Date.now() - started > (options.maxReadMs ?? 60000)
+      ) {
+        diagnostics.push(
+          `报告读取预算已用尽：已读取 ${cases.length}/${reportFiles.length} 份，结果不完整；请提高 maxReportBytes/maxReadMs 后重试。`,
+        );
+        exhausted = true;
+        break;
+      }
+      advanced = true;
+      const diagnosticsBeforeReport = diagnostics.length;
+      let raw: Json | null = null;
+      try {
+        raw =
+          publication && published.has(file)
+            ? await readPublishedReport(project, id, published.get(file)!)
+            : await optionalJson(project, id, `reports/${file}`, diagnostics);
       } catch (error) {
         diagnostics.push(`reports/${file}：${(error as Error).message}`);
       }
-      if (
-        options.includeCaseContent === false &&
-        !diagnostics.some((message) => message.startsWith(`reports/${file}：`))
-      ) {
-        const events = object(raw.events_summary);
-        const entry = { stamp, item, source: summarySource(events) };
-        cacheCaseSummary(reportPath, entry);
-        if (reader) {
-          const bytes = Buffer.byteLength(JSON.stringify(entry));
-          const previous = reader.entries.get(reportPath);
-          if (reader.bytes - (previous?.bytes ?? 0) + bytes > 32 * 1024 * 1024) {
-            diagnostics.push('reports/读取：用例摘要超过 32MiB 有界证据预算，请缩小运行');
-          } else {
-            reader.bytes += bytes - (previous?.bytes ?? 0);
-            reader.entries.set(reportPath, { ...entry, bytes });
+      if (raw) {
+        if (!cases.length) {
+          const events = object(raw.events_summary);
+          source = summarySource(events);
+        }
+        const item = normalizeCase(file, raw, root, options.includeCaseContent !== false);
+        try {
+          const identity = validateEvaluationCase(
+            raw,
+            id,
+            file,
+            matrix
+              ? parseEvaluationMatrix(matrix, object(metadata?.expected_case_matrix).matrix_hash)
+              : [],
+          );
+          item.repetition = identity.rep;
+          if (identity.rep !== raw.rep)
+            diagnostics.push(`${file}：已按原始名称和固定矩阵校正旧报告重复编号。`);
+        } catch (error) {
+          diagnostics.push(`reports/${file}：${(error as Error).message}`);
+        }
+        if (
+          options.includeCaseContent === false &&
+          !diagnostics.some((message) => message.startsWith(`reports/${file}：`))
+        ) {
+          const events = object(raw.events_summary);
+          const entry = { stamp, item, source: summarySource(events) };
+          cacheCaseSummary(reportPath, entry);
+          if (reader) {
+            const bytes = Buffer.byteLength(JSON.stringify(entry));
+            const previous = reader.entries.get(reportPath);
+            if (reader.bytes - (previous?.bytes ?? 0) + bytes > 32 * 1024 * 1024) {
+              diagnostics.push('reports/读取：用例摘要超过 32MiB 有界证据预算，请缩小运行');
+            } else {
+              reader.bytes += bytes - (previous?.bytes ?? 0);
+              reader.entries.set(reportPath, { ...entry, bytes });
+            }
           }
         }
+        cases.push(item);
       }
-      cases.push(item);
+      const reportErrors = diagnostics
+        .slice(diagnosticsBeforeReport)
+        .filter((message) => message.startsWith('reports/'));
+      if (reader && reportErrors.length)
+        reader.errors.set(reportPath, { stamp, messages: reportErrors });
     }
-    const reportErrors = diagnostics
-      .slice(diagnosticsBeforeReport)
-      .filter((message) => message.startsWith('reports/'));
-    if (reader && reportErrors.length)
-      reader.errors.set(reportPath, { stamp, messages: reportErrors });
+  } finally {
+    if (reader) {
+      reader.busy = false;
+      if ((!exhausted || !advanced) && evidenceReaders.get(root) === reader)
+        forgetEvalEvidenceReader(root);
+    }
   }
-  if (reader && !exhausted) forgetEvalEvidenceReader(root);
   const app = object(application?.application);
   const config = managed?.config ?? {
     target: text(source.path) ?? undefined,

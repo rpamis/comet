@@ -567,7 +567,14 @@ export function readJsonValueMapProjection<T>(record: T, raw: unknown) {
   freezeJsonValueProjection(pool);
   freezeJsonValueProjection(value);
 
-  if (value && typeof value === 'object') projections.set(value, stats);
+  // 只登记本次已校验并冻结的记录子树，使 envelope 解包后仍可识别可信投影。
+  // 映射视图已有独立登记，不能枚举它们来展开历史。
+  const register = (item: unknown): void => {
+    if (!item || typeof item !== 'object' || views.has(item) || projections.has(item)) return;
+    projections.set(item, stats);
+    for (const child of Object.values(item)) register(child);
+  };
+  register(value);
   return {
     value,
     stats,
@@ -683,7 +690,10 @@ interface HashPrefix {
   next: Map<string, HashPrefix>;
 }
 const hashPrefixes = new WeakMap<JsonProjectionStats, { root: HashPrefix; size: number }>();
-export function hashJsonValueProjection(value: unknown): string {
+export function hashJsonValueProjection(
+  value: unknown,
+  options: { cachePrefixes?: boolean } = {},
+): string {
   let hash = createHash('sha256');
   let stats = value && typeof value === 'object' ? projections.get(value) : undefined;
   const findStats = (v: unknown): JsonProjectionStats | undefined => {
@@ -697,8 +707,8 @@ export function hashJsonValueProjection(value: unknown): string {
     return;
   };
   stats ??= findStats(value);
-  let cache = stats ? hashPrefixes.get(stats) : undefined;
-  if (stats && !cache) {
+  let cache = stats && options.cachePrefixes !== false ? hashPrefixes.get(stats) : undefined;
+  if (stats && !cache && options.cachePrefixes !== false) {
     cache = { root: { hash: hash.copy(), next: new Map() }, size: 0 };
     hashPrefixes.set(stats, cache);
   }

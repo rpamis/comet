@@ -7,6 +7,8 @@ import {
   readJsonValueMapProjection,
   decodeJsonValueMaps,
   hashJsonValueProjection,
+  getJsonValueProjectionStats,
+  freezeJsonValueProjection,
 } from '../../../platform/fs/json-value-pool.js';
 import { hashRuntimeValue } from '../../../domains/engine/runtime-json.js';
 import {
@@ -64,6 +66,43 @@ test('hash prefix reuse counts actual hashing separately from logical data', () 
       hashRuntimeValue(record.items[projection.value.items.indexOf(item)]),
     );
   expect(projection.stats.hashBytes).toBeLessThan(projection.stats.logicalHashBytes / 2);
+});
+test('only decoded frozen child projections retain trust after envelope extraction', () => {
+  const record = { run: { outputs: { result: { text: 'retained' } } } };
+  const encoded = encodeJsonValueMaps(record, [{ path: ['run', 'outputs'], group: 'outputs' }]);
+  const projection = readJsonValueMapProjection(encoded.record, encoded.pool);
+  expect(getJsonValueProjectionStats(projection.value.run)).toBe(projection.stats);
+  expect(Object.isFrozen(projection.value.run)).toBe(true);
+  expect(() => {
+    projection.value.run.outputs.result.text = 'changed';
+  }).toThrow();
+  expect(projection.stats.materializedEntries).toBe(0);
+  expect(
+    getJsonValueProjectionStats(freezeJsonValueProjection({ ...projection.value.run })),
+  ).toBeUndefined();
+  expect(getJsonValueProjectionStats(freezeJsonValueProjection(record.run))).toBeUndefined();
+});
+test('one-shot projection hashes preserve canonical bytes without retaining prefix caches', () => {
+  const map = JSON.parse('{"10":"ten","2":"two","__proto__":{"safe":true},"雪":"\\"\\n"}');
+  const record = { items: Array.from({ length: 4 }, () => ({ outputs: map })) };
+  const encoded = encodeJsonValueMaps(
+    record,
+    record.items.map((_, i) => ({ path: ['items', String(i), 'outputs'], group: 'outputs' })),
+  );
+  const projection = readJsonValueMapProjection(encoded.record, encoded.pool);
+  const expected = hashRuntimeValue(record);
+  expect(hashJsonValueProjection(projection.value, { cachePrefixes: false })).toBe(expected);
+  const bytes = projection.stats.hashBytes;
+  expect(bytes).toBe(projection.stats.logicalHashBytes);
+  expect(hashJsonValueProjection(projection.value, { cachePrefixes: false })).toBe(expected);
+  expect(projection.stats.hashBytes).toBe(bytes * 2);
+  expect(projection.hash()).toBe(expected);
+  expect(projection.stats.hashBytes).toBe(bytes * 3);
+  expect(projection.hash()).toBe(expected);
+  expect(projection.stats.hashBytes).toBe(bytes * 3);
+  expect(hashJsonValueProjection(projection.value, { cachePrefixes: false })).toBe(expected);
+  expect(projection.stats.hashBytes).toBe(bytes * 4);
+  expect(projection.stats.materializedMaps).toBe(0);
 });
 test('runtime query keeps all parallel actions and binds cursors to store and revision', async () => {
   const store = createMemoryRuntimeStore<WorkflowRun>();

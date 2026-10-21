@@ -1293,7 +1293,11 @@ export async function recoverNativeSdkChecks(
     for (const stopped of options.stoppedActions) {
       const action = run.actions.find((entry) => entry.id === stopped.actionId)!;
       const item = inspections.find((entry) => entry.actionId === action.id);
-      if (process.platform === 'win32' && item?.execution?.child && !item.quiescent)
+      if (
+        item?.execution &&
+        !item.quiescent &&
+        (!item.execution.child || process.platform === 'win32')
+      )
         await acknowledgeNativeSdkCheckStopped({
           projectRoot,
           run,

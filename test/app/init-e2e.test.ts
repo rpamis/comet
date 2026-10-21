@@ -1,3 +1,4 @@
+import { readNodeHookArguments } from '../../platform/process/hook-command.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
@@ -1810,7 +1811,9 @@ describe('comet init E2E', () => {
     const settings = JSON.parse(
       await fs.readFile(path.join(tmpDir, '.test', 'settings.local.json'), 'utf8'),
     ) as { hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> } };
-    expect(JSON.stringify(settings.hooks)).toContain('comet-hook-router.mjs');
+    expect(readNodeHookArguments(settings.hooks.PreToolUse[0].hooks[0].command)?.[0]).toContain(
+      'comet-hook-router.mjs',
+    );
   });
 
   it('applies workflow selection to an explicit custom platform target', async () => {
@@ -2303,7 +2306,7 @@ describe('comet init E2E', () => {
         await fs.readFile(path.join(tmpDir, '.codex', 'hooks.json'), 'utf8'),
       );
       const hookCommand = hooks.hooks.PreToolUse[0].hooks[0].command as string;
-      expect(hookCommand.replaceAll('\\', '/')).toContain(
+      expect(readNodeHookArguments(hookCommand)![0].replaceAll('\\', '/')).toContain(
         '/.agents/skills/comet/scripts/comet-hook-router.mjs',
       );
       await expect(
@@ -2711,7 +2714,11 @@ describe('comet init E2E', () => {
     const globalHooks = JSON.parse(await fs.readFile(globalHooksPath, 'utf8'));
     expect(globalHooks.hooks.PreToolUse[0].hooks).toEqual([userHook]);
     const projectHooks = await fs.readFile(path.join(tmpDir, '.codex', 'hooks.json'), 'utf8');
-    expect(projectHooks.replaceAll('\\', '/')).toContain(
+    expect(
+      readNodeHookArguments(
+        JSON.parse(projectHooks).hooks.PreToolUse[0].hooks[0].command,
+      )![0].replaceAll('\\', '/'),
+    ).toContain(
       `${tmpDir.replaceAll('\\', '/')}/.agents/skills/comet/scripts/comet-hook-router.mjs`,
     );
   });

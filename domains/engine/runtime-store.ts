@@ -25,7 +25,12 @@ import {
 import { runWithoutHookReadCache } from '../../platform/process/hook-read-cache.js';
 import { RuntimeProtocolError } from './runtime-errors.js';
 import { serializeRuntimeHistory } from './runtime-history-storage.js';
-import { decodeJsonValueMaps } from '../../platform/fs/json-value-pool.js';
+import {
+  decodeJsonValueMaps,
+  getJsonValueProjectionStats,
+  hashJsonValueProjection,
+  materializeJsonValueProjection,
+} from '../../platform/fs/json-value-pool.js';
 
 export interface RuntimeRecord {
   runId: string;
@@ -624,9 +629,17 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
     return { original, staged, marker };
   }
 
+  // 仅对解码器登记的只读投影使用流式 canonical hash，外部记录仍走 JSON 校验。
+  // 生命周期只需单次完整摘要，不保留用于分页查询的 SHA 前缀缓存。
+  function hashLifecycleRecord(record: T): string {
+    return getJsonValueProjectionStats(record)
+      ? hashJsonValueProjection(record, { cachePrefixes: false })
+      : hashRuntimeValue(record);
+  }
+
   async function readLifecycle(runId: string, marker: FormatMarker) {
-    const active = await readState(runId, false, compactRunDirectory(runId));
-    const history = await readState(runId, false, historyRunDirectory(runId));
+    const active = await readState(runId, false, compactRunDirectory(runId), false);
+    const history = await readState(runId, false, historyRunDirectory(runId), false);
     if (
       (!active.record && !history.record) ||
       (marker.state === 'closed' && (active.record || !history.record))
@@ -651,8 +664,10 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
     const record = history.record ?? active.record!;
     if (
       record.revision !== marker.revision ||
-      hashRuntimeValue(record) !== marker.recordHash ||
-      (active.record && hashRuntimeValue(active.record) !== marker.recordHash)
+      hashLifecycleRecord(record) !== marker.recordHash ||
+      (active.record &&
+        active.record !== record &&
+        hashLifecycleRecord(active.record) !== marker.recordHash)
     ) {
       throw new RuntimeProtocolError(
         'STORE_HISTORY_CONFLICT',
@@ -705,7 +720,7 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
         runId,
         state,
         revision: record.revision,
-        recordHash: hashRuntimeValue(record),
+        recordHash: hashLifecycleRecord(record),
       }) + '\n',
       { containedRoot: rootDir, requireAtomicPublication: true },
     );
@@ -754,11 +769,11 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
     }
     if (closing) await writeLifecycle(runId, 'closed', record);
     else await writeMarker(runId, 'ready', false);
-    const committed = await readCurrent(runId);
+    const committed = await readCurrent(runId, false);
     if (
       !committed ||
       committed.revision !== record.revision ||
-      hashRuntimeValue(committed) !== hashRuntimeValue(record)
+      hashLifecycleRecord(committed) !== hashLifecycleRecord(record)
     )
       throw new RuntimeProtocolError('STORE_HISTORY_CONFLICT', '历史转换提交后固定版本发生变化');
   }
@@ -783,7 +798,7 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
         if (record.revision !== expectedRevision) return false;
         if (closing && marker.state === 'closed') return true;
       } else {
-        record = (await prepareWriter(runId)).record;
+        record = (await prepareWriter(runId, false)).record;
         if (!record || record.revision !== expectedRevision) return false;
         if (!closing) return true;
       }
@@ -798,9 +813,11 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
     if (!(await inspectProtectedProjectPath(volumeRoot, rootRelative, rootOptions)).exists)
       return null;
     const state = await layout(runId);
-    if (state.marker?.schema === lifecycleSchema)
-      return (await readLifecycle(runId, state.marker)).record;
-    const history = await readState(runId, false, historyRunDirectory(runId));
+    if (state.marker?.schema === lifecycleSchema) {
+      const { record } = await readLifecycle(runId, state.marker);
+      return materialize ? materializeJsonValueProjection(record) : record;
+    }
+    const history = await readState(runId, false, historyRunDirectory(runId), false);
     if (history.record)
       throw new RuntimeProtocolError('STORE_HISTORY_CONFLICT', '历史 checkpoint 缺少对应存储事务');
     const compact = await readState(runId, false, compactRunDirectory(runId), materialize);
@@ -845,11 +862,11 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
     return null;
   }
 
-  async function read(runId: string): Promise<T | null> {
+  async function read(runId: string, materialize = true): Promise<T | null> {
     // 原子替换和迁移可能发生在两次安全路径检查之间；损坏数据从不降级到旧快照。
     for (let attempt = 0; ; attempt += 1) {
       try {
-        return await readCurrent(runId);
+        return await readCurrent(runId, materialize);
       } catch (error) {
         const concurrentRead = error instanceof RaceSafeReadError && error.reason === 'changed';
         const disappeared = ['ENOENT', 'ENOTDIR'].includes(
@@ -1002,7 +1019,7 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
         'STORE_RUN_CLOSED',
         'Run 已封存或正在转换历史分区；请显式恢复后再写入',
       );
-    const history = await readState(runId, false, historyRunDirectory(runId));
+    const history = await readState(runId, false, historyRunDirectory(runId), false);
     if (history.record)
       throw new RuntimeProtocolError('STORE_HISTORY_CONFLICT', '历史 checkpoint 缺少对应存储事务');
     const existing = await readState(runId, false, compactRunDirectory(runId), materialize);
@@ -1078,7 +1095,7 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
   return {
     queryScope: `file:${createHash('sha256').update(rootDir).digest('hex')}`,
     read,
-    readProjection: (runId) => readCurrent(runId, false),
+    readProjection: (runId) => read(runId, false),
     readPartitionMetadata,
     settleRun: (runId) =>
       runWithoutHookReadCache(async () => {
@@ -1105,7 +1122,7 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
     reopenRun: (runId, expectedRevision) =>
       runWithoutHookReadCache(() => transitionRun(runId, expectedRevision, false)),
     async readDisposition(runId) {
-      const record = await read(runId);
+      const record = await read(runId, false);
       if (!record) return 'missing';
       const marker = (await layout(runId)).marker;
       return marker?.schema === lifecycleSchema

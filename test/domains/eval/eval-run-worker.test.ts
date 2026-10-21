@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { runManagedEvalWorker } from '../../../domains/eval/eval-run-entry.js';
 import { requestStopEvalRun } from '../../../domains/eval/eval-run-manager.js';
-import { previewEvalRun } from '../../../domains/eval/eval-run-preview.js';
+import { previewEvalRun, type EvalRunPreview } from '../../../domains/eval/eval-run-preview.js';
 import { readEvalRun, writeEvalJson, evalRunPath } from '../../../domains/eval/eval-run-store.js';
 let packageRoot: string;
 vi.mock('../../../domains/eval/eval-run-preview.js', () => ({
@@ -64,6 +64,17 @@ describe('managed Eval worker process', () => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
     await fs.rm(project, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
+  });
+  it('rejects a pending launch before registering or running a worker', async () => {
+    const file = await evalRunPath(project, 'worker-run', 'dashboard-run.json');
+    const record = JSON.parse(await fs.readFile(file, 'utf8'));
+    record.launchPhase = 'pending';
+    await writeEvalJson(file, record);
+    await expect(runManagedEvalWorker(project, 'worker-run')).rejects.toThrow('尚未持久化');
+    expect(JSON.parse(await fs.readFile(file, 'utf8')).owner).toBeUndefined();
+    await expect(
+      fs.stat(await evalRunPath(project, 'worker-run', 'container-ownership.json')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
   it('runs a real harmless child process and indexes its result under the original identity', async () => {
     await fs.writeFile(
@@ -164,7 +175,7 @@ describe('managed Eval worker process', () => {
           },
         ],
       },
-    } as any);
+    } as EvalRunPreview);
     await fs.writeFile(
       path.join(packageRoot, 'bin/comet.js'),
       `

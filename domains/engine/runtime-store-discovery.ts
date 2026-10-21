@@ -137,6 +137,8 @@ async function discoverFileRuntimeStoreRunSources(
               if (
                 !Number.isSafeInteger(marker.revision) ||
                 marker.revision < 1 ||
+                (marker.writerProtocol !== undefined &&
+                  marker.writerProtocol !== 'application-holder-v1') ||
                 typeof marker.recordHash !== 'string' ||
                 !/^[a-f0-9]{64}$/u.test(marker.recordHash) ||
                 Object.keys(marker).some(
