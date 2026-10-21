@@ -4912,6 +4912,11 @@ test('keeps collapsed sidebar menu icons aligned with their expanded positions',
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/?demo');
   await expect(page.locator('.dashboard-plugin-menu .ant-menu-item')).toHaveCount(3);
+  await expect(
+    page
+      .getByRole('menuitem', { name: '自定义工作流' })
+      .getByRole('img', { name: 'deployment-unit' }),
+  ).toBeVisible();
   for (const viewport of [
     { width: 1280, height: 900 },
     { width: 1024, height: 600 },
@@ -4942,7 +4947,7 @@ test('keeps collapsed sidebar menu icons aligned with their expanded positions',
       const frames = await page.evaluate(
         () => (window as any).sidebarIconFrames as { x: number; y: number }[][],
       );
-      expect(frames[0].length).toBe(8);
+      expect(frames[0].length).toBe(9);
       const drift = frames[0].map((_, index) => {
         const ys = frames.map((frame) => frame[index].y);
         return Math.max(...ys) - Math.min(...ys);
