@@ -214,7 +214,18 @@ async function realSkillProposal(executors = ['local-skill'], authorized = true)
     ],
   };
   value.modules = {
-    'bindings.mjs': `export function createBindings(context){return {executors:${JSON.stringify(executors)}.map(id=>context.createSkillExecutor({id,capabilities:[],authorize:async()=>${authorized},invokeSkill:async()=>{throw new Error('The Agent must execute the Skill')}})),validators:[]}}`,
+    'fixture.json': JSON.stringify({ executors, authorized }),
+    'bindings.mjs': `import { readFileSync } from 'node:fs';
+const fixture = JSON.parse(readFileSync(new URL('./fixture.json', import.meta.url), 'utf8'));
+export function createBindings(context) {
+  return {
+    executors: fixture.executors.map(id => context.createSkillExecutor({
+      id, capabilities: [], authorize: async () => fixture.authorized,
+      invokeSkill: async () => { throw new Error('The Agent must execute the Skill'); },
+    })),
+    validators: [],
+  };
+}`,
   };
   return value;
 }

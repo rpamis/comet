@@ -176,6 +176,18 @@ describe('Eval run history and baselines', () => {
     expect(last.items).toHaveLength(1);
     expect(last.nextOffset).toBeNull();
   }, 30000);
+  it('reads 8000 cold case reports completely within the default evidence budget', async () => {
+    await report(
+      'matrix-scale',
+      Array.from({ length: 8000 }, (_, i) => i !== 7999),
+    );
+    const run = await readEvalRun(project, 'matrix-scale', { includeCaseContent: false });
+    expect(run.total).toBe(8000);
+    expect(run.completeness).toBe('complete');
+    expect(run.conclusion).toBe('failed');
+    expect(run.baselineEligible).toBe(true);
+    expect(run.cases.find((item) => item.task === 'task-7999')?.passed).toBe(false);
+  });
   it('keeps report bodies out of summary caches and rereads only changed files', async () => {
     const root = await report('bodies', [true, true]);
     const file = path.join(root, 'reports/case-0_report.json');

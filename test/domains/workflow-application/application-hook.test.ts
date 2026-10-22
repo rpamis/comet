@@ -2,7 +2,8 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
-import { createRuntime } from '../../../domains/engine/runtime.js';
+import { createRuntime, createMemoryRuntimeStore } from '../../../domains/engine/runtime.js';
+import { createApplicationHook } from '../../../domains/workflow-application/application-hook.js';
 import { loadWorkflowApplication } from '../../../domains/workflow-application/index.js';
 import { createScopeCycleApplication } from '../../helpers/workflow-application.js';
 
@@ -12,6 +13,154 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
+});
+
+async function childTree(count: number) {
+  const entries = Array.from({ length: count }, (_, index) => `child${index}`);
+  const child = {
+    id: 'worker',
+    version: '1',
+    entry: 'work',
+    steps: { work: { type: 'invoke_skill' as const, ref: 'read' } },
+  };
+  const parent = {
+    id: 'parent',
+    version: '1',
+    entry: entries,
+    steps: {
+      ...Object.fromEntries(
+        entries.map((stepId) => [
+          stepId,
+          {
+            type: 'child_workflow' as const,
+            workflow: { id: child.id, version: child.version },
+          },
+        ]),
+      ),
+      finish: { type: 'call_tool' as const, ref: 'write', join: entries },
+    },
+    transitions: entries.map((from) => ({ from, to: 'finish' })),
+  };
+  const runtime = createRuntime({ store: createMemoryRuntimeStore(), workflows: [parent, child] });
+  let run = await runtime.start({ runId: 'parent', workflow: parent, input: null });
+  run = await runtime.next({ runId: run.runId });
+  const hookOptions: Parameters<typeof createApplicationHook>[0] = {
+    projectRoot: root,
+    packageRoot: path.join(root, 'package'),
+    manifest: { id: 'scale', bindings: [], skills: [] } as Parameters<
+      typeof createApplicationHook
+    >[0]['manifest'],
+    skills: new Map(),
+    readChild: (runId) => runtime.inspect(runId),
+    custom: () => ({ allowed: true, reason: 'declared tool write' }),
+  };
+  const hook = createApplicationHook(hookOptions);
+  const request = { intent: 'write' as const, targets: [path.join(root, 'output.txt')] };
+  return { runtime, run, hook, request, hookOptions };
+}
+
+it('allows current work after 128 verified completed child Runs without treating history as active width', async () => {
+  const f = await childTree(128);
+  for (const child of f.run.children) {
+    const run = await f.runtime.inspect(child.runId);
+    const action = run.actions[0];
+    const claimToken = `claim-${run.runId}`;
+    await f.runtime.claim({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'reader',
+      claimToken,
+    });
+    await f.runtime.recordOutcome({
+      runId: run.runId,
+      outcome: {
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        claimToken,
+        outcomeId: `done-${run.runId}`,
+        status: 'succeeded',
+        output: null,
+      },
+    });
+  }
+  const run = await f.runtime.next({ runId: f.run.runId });
+  expect(
+    run.actions.filter(
+      (action) => action.type === 'child_workflow' && action.status === 'succeeded',
+    ),
+  ).toHaveLength(128);
+  expect(run.actions.at(-1)).toMatchObject({ stepId: 'finish', status: 'pending' });
+  expect(await f.hook(run, f.request)).toMatchObject({ allowed: true });
+  const invalidOwner = createApplicationHook({
+    ...f.hookOptions,
+    readChild: async (runId) => ({ ...(await f.runtime.inspect(runId)), lineage: ['other'] }),
+  });
+  expect(await invalidOwner(run, f.request)).toMatchObject({
+    allowed: false,
+    reason: '子流程没有当前 SDK Run 的有效归属',
+  });
+  const disk = await createScopeCycleApplication(root, true);
+  const adapted = await loadWorkflowApplication({ file: disk.file, projectRoot: root });
+  const writer = adapted.skills.get('writer')!;
+  const terminalHook = createApplicationHook({
+    ...f.hookOptions,
+    manifest: {
+      ...f.hookOptions.manifest,
+      bindings: [
+        {
+          workflowId: 'worker',
+          stepId: 'work',
+          skillId: 'read',
+          usage: 'action',
+          capability: 'title',
+        },
+      ],
+    },
+    skills: new Map([['read', { ...writer, id: 'read' }]]),
+  });
+  const cancelled = await f.runtime.cancel({ runId: run.runId, reason: 'stop after children' });
+  expect(await terminalHook(cancelled, { intent: 'write', targets: ['shared.txt'] })).toMatchObject(
+    {
+      allowed: false,
+      reason: '已结束 Run 的声明产物保持固定；继续修改应启动新的 Run',
+    },
+  );
+  expect(await terminalHook(cancelled, f.request)).toMatchObject({ allowed: true });
+});
+
+it('still rejects excessive active child width, including cancelled claims without stop confirmation', async () => {
+  const f = await childTree(128);
+  expect(await f.hook(f.run, f.request)).toMatchObject({
+    allowed: false,
+    reason: '活跃子流程超出安全读取范围',
+  });
+  for (const child of f.run.children) {
+    const run = await f.runtime.inspect(child.runId);
+    const action = run.actions[0];
+    await f.runtime.claim({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'reader',
+      claimToken: `claim-${run.runId}`,
+    });
+  }
+  const cancelled = await f.runtime.cancel({
+    runId: f.run.runId,
+    reason: 'user stopped scheduling',
+  });
+  expect((await f.runtime.inspect(cancelled.children[0].runId)).actions[0]).toMatchObject({
+    status: 'cancelled',
+    claim: { executorId: 'reader' },
+  });
+  expect(await f.hook(cancelled, f.request)).toMatchObject({
+    allowed: false,
+    reason: '活跃子流程超出安全读取范围',
+  });
 });
 async function fixture(custom = false, scope = 'shared.txt') {
   const disk = await createScopeCycleApplication(root, true);

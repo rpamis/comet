@@ -33,7 +33,9 @@ export function ApplicationHistorySelector({
     if (filter && !filterMatches) setFilter(null);
   }, [filter, filterMatches, setFilter]);
   const creators = group?.creators ?? [];
-  const creatorVersions = new Set(creators.map((run) => run.application?.version));
+  const creatorVersions = new Set(
+    creators.filter((run) => run.status === 'delivered').map((run) => run.application?.version),
+  );
   const installedVersions = new Map();
   for (const run of group?.runs ?? []) {
     if (

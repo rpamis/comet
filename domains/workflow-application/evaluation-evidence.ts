@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { parse } from 'yaml';
 import {
   parseEvaluationMatrix,
-  validateEvaluationCase,
+  createEvaluationCaseValidator,
   evaluationCaseKey,
 } from './evaluation-case-evidence.js';
 import { hashRuntimeValue } from '../engine/runtime.js';
@@ -96,6 +96,7 @@ export async function validateApplicationEvaluationCompletion(
     (await read(path.join(directory, 'expected-case-matrix.json'))).toString('utf8'),
   );
   const expected = parseEvaluationMatrix(matrix);
+  const validateCase = createEvaluationCaseValidator(expected);
   const key = evaluationCaseKey;
   const metadataFile = path.join(directory, 'metadata.json');
   if (
@@ -201,7 +202,7 @@ export async function validateApplicationEvaluationCompletion(
       (report.sample_quality ?? events.sample_quality)?.status !== 'included'
     )
       fail();
-    actual.push(key(validateEvaluationCase(report, value.experimentId, file, expected)));
+    actual.push(key(validateCase(report, value.experimentId, file)));
     if (report.passed) passed++;
   }
   if (

@@ -7,6 +7,8 @@ import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
 import { isClassicSdkCancellationComplete } from '../../../domains/comet-classic/classic-sdk-run-lifecycle.js';
+import { resolveCometResumeProbe } from '../../../domains/comet-classic/classic-resume-probe.js';
+import { resolveCometEntryResumeProbe } from '../../../domains/comet-entry/resume-probe.js';
 import {
   listActiveClassicHookChanges,
   inspectClassicHookGuard,
@@ -53,6 +55,96 @@ async function fixture(profile: 'full' | 'tweak' = 'full') {
   };
   return { root, cli, dispatch, request };
 }
+
+function commitFixture(root: string): void {
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'ignore' });
+  git('config', 'user.name', 'Comet cancellation test');
+  git('config', 'user.email', 'test@example.invalid');
+  git('add', '.');
+  git('commit', '-m', 'fixture');
+}
+
+const resumeInput = {
+  schema_version: 'comet.resume_probe.v1',
+  utterance: 'continue',
+  locale: 'en',
+  agent_context: { non_trivial_work: true, already_in_comet_flow: false },
+};
+
+it('excludes a fully cancelled Run from Classic and shared resume entry points', async () => {
+  const f = await fixture();
+  await f.dispatch({ operation: 'cancel', runId: 'demo', reason: 'User cancelled this change' });
+  commitFixture(f.root);
+  expect(await resolveCometResumeProbe(f.root, resumeInput)).toMatchObject({
+    action: 'none',
+    changeName: null,
+    nextCommand: null,
+  });
+  expect(
+    await resolveCometEntryResumeProbe(f.root, {
+      ...resumeInput,
+      schema_version: 'comet.resume_probe.v2',
+    }),
+  ).toMatchObject({
+    action: 'none',
+    changeName: null,
+    nextCommand: null,
+  });
+  const copiedRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-cancelled-copy-'));
+  roots.push(copiedRoot);
+  await fs.cp(f.root, copiedRoot, { recursive: true });
+  expect(await resolveCometResumeProbe(copiedRoot, resumeInput)).toMatchObject({
+    action: 'none',
+    changeName: null,
+    nextCommand: null,
+  });
+});
+
+it('resumes the remaining active Run without a cancelled Run creating an ambiguous choice', async () => {
+  const f = await fixture();
+  await f.dispatch({ operation: 'cancel', runId: 'demo', reason: 'User cancelled this change' });
+  expect((await f.cli('state', 'init', 'other', 'full', '--isolation', 'current')).exitCode).toBe(
+    0,
+  );
+  commitFixture(f.root);
+  expect(
+    await resolveCometEntryResumeProbe(f.root, {
+      ...resumeInput,
+      schema_version: 'comet.resume_probe.v2',
+    }),
+  ).toMatchObject({
+    action: 'auto_resume',
+    changeName: 'other',
+    nextCommand: '/comet-classic',
+  });
+});
+
+it('requires original execution stop evidence before resuming a cancelled claimed Run', async () => {
+  const f = await fixture();
+  const { run, runtime } = await inspectClassicSdkRun(f.root, 'demo');
+  const action = run.actions[0];
+  await runtime.claim({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: 'original-host',
+    claimToken: 'original-claim',
+  });
+  await f.dispatch({ operation: 'cancel', runId: run.runId, reason: 'User cancelled' });
+  for (const [read, schema_version] of [
+    [resolveCometResumeProbe, 'comet.resume_probe.v1'],
+    [resolveCometEntryResumeProbe, 'comet.resume_probe.v2'],
+  ] as const) {
+    expect(await read(f.root, { ...resumeInput, schema_version })).toMatchObject({
+      action: 'ask_user',
+      changeName: 'demo',
+      nextCommand: null,
+      reason: expect.stringMatching(/stoppedActions/u),
+    });
+  }
+  expect((await inspectClassicSdkRun(f.root, 'demo')).run.status).toBe('cancelled');
+});
 
 it('releases a publicly cancelled unclaimed Run and retains its history and artifacts', async () => {
   const f = await fixture();

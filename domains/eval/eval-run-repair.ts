@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
 import {
   parseEvaluationMatrix,
-  validateEvaluationCase,
+  createEvaluationCaseValidator,
   evaluationCaseKey,
 } from '../workflow-application/index.js';
 import {
@@ -44,6 +44,7 @@ export async function repairEvalResults(
       throw new EvalRunError('运行仍处于活动状态，不能修复结果', 409);
     const matrix = await readEvalJson(await evalRunPath(project, id, 'expected-case-matrix.json'));
     const expected = parseEvaluationMatrix(matrix);
+    const validateCase = createEvaluationCaseValidator(expected);
     const files = (await fs.readdir(await evalRunPath(project, id, 'reports')))
       .filter((file) => file.endsWith('_report.json'))
       .sort();
@@ -63,7 +64,7 @@ export async function repairEvalResults(
       const bytes = await fs.readFile(reportPath);
       if (bytes.length > 8 * 1024 * 1024) throw new EvalRunError('逐例报告超过 8MiB 读取预算', 413);
       const report = JSON.parse(bytes.toString('utf8')) as Record<string, unknown>;
-      const identity = validateEvaluationCase(report, id, file, expected);
+      const identity = validateCase(report, id, file);
       const events = report?.events_summary as Record<string, unknown>;
       const quality = (report?.sample_quality ?? events?.sample_quality) as Record<string, unknown>;
       if (quality?.status !== 'included')

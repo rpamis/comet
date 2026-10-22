@@ -22,7 +22,11 @@ import type {
 
 import { validateApplicationEvaluationCompletion } from '../workflow-application/index.js';
 import { evalRubricScores } from './eval-score-adapter.js';
-import { parseEvaluationMatrix, validateEvaluationCase } from '../workflow-application/index.js';
+import {
+  parseEvaluationMatrix,
+  validateEvaluationCase,
+  createEvaluationCaseValidator,
+} from '../workflow-application/index.js';
 
 type Json = Record<string, unknown>;
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
@@ -176,12 +180,11 @@ export function redactEvalOutput(
   }
   return result;
 }
-function validExpectedMatrix(matrix: Json, declaredHash: unknown): boolean {
+function expectedMatrix(matrix: Json | null, declaredHash: unknown) {
   try {
-    parseEvaluationMatrix(matrix, declaredHash);
-    return true;
+    return matrix ? parseEvaluationMatrix(matrix, declaredHash) : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -738,8 +741,9 @@ export async function readEvalRun(
   )
     diagnostics.push('reports/索引：发布代次没有覆盖当前报告集合');
   // 逐份解析并丢弃正文，不同时保留整次运行的原始 JSON。预算耗尽必须显式报告。
-  const matrixValid =
-    matrix && validExpectedMatrix(matrix, object(metadata?.expected_case_matrix).matrix_hash);
+  const expected = expectedMatrix(matrix, object(metadata?.expected_case_matrix).matrix_hash);
+  const matrixValid = expected !== null;
+  const validateCase = createEvaluationCaseValidator(expected ?? []);
   let reader: EvidenceReader | undefined;
   if (options.resumable && options.includeCaseContent === false) {
     try {
@@ -848,14 +852,7 @@ export async function readEvalRun(
         }
         const item = normalizeCase(file, raw, root, options.includeCaseContent !== false);
         try {
-          const identity = validateEvaluationCase(
-            raw,
-            id,
-            file,
-            matrix
-              ? parseEvaluationMatrix(matrix, object(metadata?.expected_case_matrix).matrix_hash)
-              : [],
-          );
+          const identity = validateCase(raw, id, file);
           item.repetition = identity.rep;
           if (identity.rep !== raw.rep)
             diagnostics.push(`${file}：已按原始名称和固定矩阵校正旧报告重复编号。`);
@@ -944,10 +941,10 @@ export async function readEvalRun(
   const actualKeys = new Set(
     cases.map((item) => caseKey(item.task, item.treatment, item.repetition)),
   );
-  const expectedCases = Array.isArray(matrix?.cases) ? matrix.cases : null;
+  const expectedCases = expected;
   const matrixComplete =
     matrix !== null &&
-    validExpectedMatrix(matrix, object(metadata?.expected_case_matrix).matrix_hash) &&
+    matrixValid &&
     expectedCases !== null &&
     expectedCases.length === cases.length &&
     new Set(
@@ -1091,9 +1088,7 @@ export async function readEvalRun(
       ),
     )
       ? 'invalid'
-      : matrix &&
-          validExpectedMatrix(matrix, object(metadata?.expected_case_matrix).matrix_hash) &&
-          metadata?.experiment_id === id
+      : matrixValid && metadata?.experiment_id === id
         ? 'valid'
         : 'unverified',
     quality: excluded
@@ -1249,13 +1244,14 @@ export async function readEvalCasePage(
   if (publication) {
     const matrix = await readEvalJson(await evalRunPath(project, id, 'expected-case-matrix.json'));
     const expected = parseEvaluationMatrix(matrix);
+    const validateCase = createEvaluationCaseValidator(expected);
     const root = await evalRunPath(project, id);
     const search = (query.q ?? '').trim().toLowerCase();
     const selected: Array<{ item: EvalCaseResult; entry: PublishedReport }> = [];
     let searchedBytes = 0;
     const started = Date.now();
     for (const entry of publication.reports) {
-      const identity = validateEvaluationCase(entry.summary, id, entry.file, expected);
+      const identity = validateCase(entry.summary, id, entry.file);
       const item = normalizeCase(entry.file, entry.summary, root, false);
       item.repetition = identity.rep;
       if (query.status === 'failed' && !(item.passed === false && item.quality !== 'excluded'))
@@ -1279,7 +1275,7 @@ export async function readEvalCasePage(
     const items: EvalCaseResult[] = [];
     for (const { entry } of selected.slice(offset, offset + limit)) {
       const raw = await readPublishedReport(project, id, entry);
-      const identity = validateEvaluationCase(raw, id, entry.file, expected);
+      const identity = validateCase(raw, id, entry.file);
       items.push({ ...normalizeCase(entry.file, raw, root, false), repetition: identity.rep });
     }
     if ((await publishedReports(project, id))?.generation !== publication.generation)

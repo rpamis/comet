@@ -52,9 +52,15 @@ async function application(id: string, count = 1, cloneExisting = false) {
       to: `step${i + 1}`,
     })),
   };
+  await fs.writeFile(path.join(pkg, 'fixture.json'), JSON.stringify({ workflow, cloneExisting }));
   await fs.writeFile(
     path.join(pkg, 'application.mjs'),
-    `export function createApplication(context){${cloneExisting ? 'if (context.existingRun) structuredClone(context.existingRun);' : ''}return {workflows:[${JSON.stringify(workflow)}]};}`,
+    `import { readFileSync } from 'node:fs';
+const fixture = JSON.parse(readFileSync(new URL('./fixture.json', import.meta.url), 'utf8'));
+export function createApplication(context) {
+  if (fixture.cloneExisting && context.existingRun) structuredClone(context.existingRun);
+  return { workflows: [fixture.workflow] };
+}`,
   );
   const loaded = await loadWorkflowApplication({ file, projectRoot: root });
   return {

@@ -354,8 +354,10 @@ for (const width of [1600, 390]) {
     if (width === 390) await page.getByRole('button', { name: '打开导航' }).click();
     await page.getByRole('menuitem', { name: '自定义工作流' }).click();
     const runs = page.getByRole('region', { name: '应用运行记录', exact: true });
-    await expect((await historyChoices(page)).getByRole('option')).toHaveCount(3);
+    const choices = await historyChoices(page);
+    await expect(choices.getByRole('option')).toHaveCount(3);
     await page.keyboard.press('Escape');
+    await expect(choices).toBeHidden();
     await expect(page.locator('.any-context-selector')).toContainText('run-128');
     await chooseHistory(page, 'run-127');
     await expect(page.locator('.any-run-identity')).toHaveText('运行轨迹 run-127');
@@ -1696,6 +1698,12 @@ test('Any retries and pages one application creation history without losing deli
     runId: 'imported-run-v2',
     application: { ...applicationRun.application, version: '2.0.0' },
   };
+  const reauthoredInstalled = {
+    ...applicationRun,
+    locator: 'application:installed-being-reauthored',
+    runId: 'installed-being-reauthored',
+    application: { ...applicationRun.application, version: current.application.version },
+  };
   const recent = Array.from({ length: 100 }, (_, index) =>
     index === 0
       ? current
@@ -1707,6 +1715,23 @@ test('Any retries and pages one application creation history without losing deli
   );
   const rosterQueries: { kind: string | null; cursor: string | null }[] = [];
   let rosterReads = 0;
+  let evidenceReads = 0;
+  let evidenceFinished = 0;
+  let changedEvidenceHash = false;
+  let deferEvidence = false;
+  let evidencePending = false;
+  let releaseEvidence = () => {
+    throw new Error('Historical evidence request has not started');
+  };
+  const historyPointers = readApplicationDemo('application-run', { locator: delivered.locator })
+    .evidence.filter((item: any) => item.kind !== 'host')
+    .map((item: any) => ({
+      ...item,
+      status: 'stale',
+      details: null,
+      sourceLocator: delivered.locator,
+      sourceRunId: delivered.runId,
+    }));
   await page.route('**/api/dashboard/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === '/api/dashboard/projects')
@@ -1744,8 +1769,8 @@ test('Any retries and pages one application creation history without losing deli
           json: {
             ...list,
             fingerprint: 'version-history',
-            items: older ? [installed] : [applicationRun],
-            total: 2,
+            items: older ? [installed, reauthoredInstalled] : [applicationRun],
+            total: 3,
             nextCursor: older ? null : 'older-versions',
           },
         });
@@ -1769,23 +1794,39 @@ test('Any retries and pages one application creation history without losing deli
       });
     }
     if (url.pathname.endsWith('/application-run')) {
-      if (url.searchParams.get('locator') === installed.locator)
+      const selectedInstalled = [installed, reauthoredInstalled].find(
+        (item) => item.locator === url.searchParams.get('locator'),
+      );
+      if (selectedInstalled)
         return route.fulfill({
           json: {
             ...readApplicationDemo('application-run', { locator: applicationRun.locator }),
-            ...installed,
+            ...selectedInstalled,
             sourceCreators: [],
           },
         });
       const detail = readApplicationDemo('application-run', {
         locator: url.searchParams.get('locator'),
       });
-      if (detail.locator === delivered.locator)
+      if (detail.locator === delivered.locator) {
+        evidenceReads++;
         detail.evidence = detail.evidence.map((evidence: any) => ({
           ...evidence,
           sourceLocator: delivered.locator,
           sourceRunId: delivered.runId,
+          contentHash: changedEvidenceHash ? 'changed-package-hash' : evidence.contentHash,
+          details: { ...evidence.details, proofMarker: `original-${evidence.kind}-proof` },
         }));
+        if (deferEvidence)
+          await new Promise<void>((resolve) => {
+            releaseEvidence = resolve;
+            evidencePending = true;
+          });
+        await route.fulfill({ json: detail });
+        evidenceFinished++;
+        return;
+      }
+      if (detail.locator === current.locator) detail.otherEvidence = historyPointers;
       return route.fulfill({ json: detail });
     }
     return route.fulfill({ json: { items: [], pages: [] } });
@@ -1812,9 +1853,47 @@ test('Any retries and pages one application creation history without losing deli
   await expect(olderChoices.getByRole('option').filter({ hasText: 'run-127 ·' })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(page.locator('.any-run-identity')).toHaveText('创作记录 creator-041');
+  await page.getByRole('tab', { name: '验证证据', exact: true }).click();
+  await page.getByText('历史证据 · 对应其他版本或内容', { exact: true }).click();
+  const historicalLocal = page.locator('.any-history-evidence').filter({ hasText: '本地校验' });
+  const historicalModel = page.locator('.any-history-evidence').filter({ hasText: '模型 Eval' });
+  expect(evidenceReads).toBe(0);
+  await historicalLocal.click();
+  const proofDrawer = page.getByRole('dialog');
+  await expect(proofDrawer).toContainText('original-local-proof');
+  await expect(proofDrawer).toContainText('"status": "stale"');
+  await expect(page.locator('.any-run-identity')).toHaveText('创作记录 creator-041');
+  await proofDrawer.getByRole('button', { name: '关闭', exact: true }).click();
+  await historicalModel.click();
+  await expect(proofDrawer).toContainText('original-model-proof');
+  await proofDrawer.getByRole('button', { name: '关闭', exact: true }).click();
+  changedEvidenceHash = true;
+  await historicalLocal.click();
+  await expect(proofDrawer).toContainText('原始证据身份已变化，请重新读取当前运行。');
+  await expect(proofDrawer).not.toContainText('original-local-proof');
+  await proofDrawer.getByRole('button', { name: '关闭', exact: true }).click();
+  changedEvidenceHash = false;
+  deferEvidence = true;
+  await historicalLocal.click();
+  await expect.poll(() => evidencePending).toBe(true);
+  await expect(proofDrawer.locator('.ant-skeleton')).toBeVisible();
+  await proofDrawer.getByRole('button', { name: '关闭', exact: true }).click();
+  deferEvidence = false;
+  await historicalModel.click();
+  await expect(proofDrawer).toContainText('original-model-proof');
+  releaseEvidence();
+  await expect.poll(() => evidenceFinished).toBe(5);
+  await expect(proofDrawer).toContainText('original-model-proof');
+  await expect(proofDrawer).not.toContainText('original-local-proof');
+  await proofDrawer.getByRole('button', { name: '关闭', exact: true }).click();
   const moreVersions = page.getByRole('button', { name: /加载更多版本记录$/u });
   await expect(moreVersions).not.toHaveClass(/ant-btn-loading/u);
   await moreVersions.click();
+  await chooseHistory(page, reauthoredInstalled.runId);
+  await expect(page.locator('.any-run-identity')).toHaveText(
+    `版本来源 ${reauthoredInstalled.runId}`,
+  );
+  await expect(page.getByRole('button', { name: '分发 / 导出', exact: true })).toBeEnabled();
   await chooseHistory(page, 'imported-run-v2');
   await expect(page.locator('.any-run-identity')).toHaveText('版本来源 imported-run-v2');
   await expect(page.locator('.any-run-header .any-version')).toHaveText('v2.0.0');

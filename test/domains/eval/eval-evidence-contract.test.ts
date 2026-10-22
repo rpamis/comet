@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import {
   parseEvaluationMatrix,
   validateEvaluationCase,
+  createEvaluationCaseValidator,
 } from '../../../domains/workflow-application/evaluation-case-evidence.js';
 import {
   readEvalRun,
@@ -70,6 +71,30 @@ async function fixture(id: string, count = 2, promptSize = 0) {
   return { project, root };
 }
 describe('统一 Eval 证据契约', () => {
+  it('共用矩阵快照仍逐份拒绝身份漂移，并与调用方后续修改隔离', async () => {
+    const golden = JSON.parse(await fs.readFile('config/eval-evidence-golden.json', 'utf8'));
+    const expected = parseEvaluationMatrix(golden.matrix);
+    const validate = createEvaluationCaseValidator(expected);
+    const file = 'alpha_BASE_r2_rep2_report.json';
+    expect(validate(golden.valid, golden.experiment, file).rep).toBe(2);
+    const originalTask = golden.valid.events_summary.task;
+    expected.push({ task: 'unconfirmed', treatment: 'BASE', rep: 2 });
+    for (const damage of [
+      {
+        ...golden.valid,
+        events_summary: { ...golden.valid.events_summary, task: 'unconfirmed' },
+        case_identity: { ...golden.valid.case_identity, task: 'unconfirmed' },
+        name: 'unconfirmed-BASE-r2',
+      },
+      {
+        ...golden.valid,
+        events_summary: { ...golden.valid.events_summary, task: originalTask, sample: 99 },
+      },
+      { ...golden.valid, case_identity: { ...golden.valid.case_identity, experiment: 'other' } },
+    ])
+      expect(() => validate(damage, golden.experiment, file)).toThrow();
+    expect(validate(golden.valid, golden.experiment, file).rep).toBe(2);
+  });
   it('Python 与 TS 共用固定身份 golden', async () => {
     const golden = JSON.parse(await fs.readFile('config/eval-evidence-golden.json', 'utf8'));
     const expected = parseEvaluationMatrix(golden.matrix);

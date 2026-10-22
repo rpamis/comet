@@ -12,6 +12,7 @@ import { hasClassicManagedRunMarker } from './classic-sdk-state-store.js';
 import { PORTABLE_RUN_CHECKPOINT_KEY, readPortableRunCheckpoint } from '../engine/runtime.js';
 import { parseDocument } from 'yaml';
 import { inspectPristineClassicSdkState } from './classic-runtime-ownership.js';
+import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
 import {
   classicStateToDocument,
   parseClassicStateDocument,
@@ -72,6 +73,7 @@ interface ActiveProbeChange {
   archived: boolean;
   text: string;
   missingCometState: boolean;
+  cancellationPending?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -239,13 +241,28 @@ async function inspectManagedRun(
   projectRoot: string,
   name: string,
   stateFile: string,
-): Promise<{ state: ClassicState | null; lostRun: boolean }> {
+): Promise<{
+  state: ClassicState | null;
+  lostRun: boolean;
+  cancellation?: 'complete' | 'pending';
+}> {
   const source = await readClassicProjectFile(projectRoot, stateFile, {
     label: 'Classic change state',
   });
   const owner = await readSdkChangeOwner(projectRoot, 'classic', name);
   if (!hasClassicManagedRunMarker(source) && !owner) return { state: null, lostRun: false };
-  const checkpointState = (): ClassicState | null => {
+  const observe = (run: WorkflowRun, state: ClassicState) => ({
+    state,
+    lostRun: false,
+    ...(run.status === 'cancelled'
+      ? {
+          cancellation: isClassicSdkCancellationComplete(run)
+            ? ('complete' as const)
+            : ('pending' as const),
+        }
+      : {}),
+  });
+  const checkpointState = () => {
     const document = parseDocument(source, { uniqueKeys: true });
     if (document.errors.length > 0) return null;
     const data = document.toJS() as Record<string, unknown>;
@@ -258,12 +275,12 @@ async function inspectManagedRun(
       !Array.isArray(checkpoint.input) &&
       checkpoint.input.change === name &&
       (checkpoint.state as unknown as ClassicState).phase === state.phase
-      ? state
+      ? observe(checkpoint, state)
       : null;
   };
   if (!owner) {
     const saved = checkpointState();
-    if (saved) return { state: saved, lostRun: false };
+    if (saved) return saved;
     const initial = await inspectPristineClassicSdkState(path.dirname(stateFile), source);
     return initial ? { state: initial, lostRun: false } : { state: null, lostRun: true };
   }
@@ -274,7 +291,7 @@ async function inspectManagedRun(
     const run = await store.read(owner.runId);
     if (!run) {
       const saved = checkpointState();
-      return saved ? { state: saved, lostRun: false } : { state: null, lostRun: true };
+      return saved ?? { state: null, lostRun: true };
     }
     if (
       run.workflow.id !== `comet-${owner.application}` ||
@@ -288,7 +305,7 @@ async function inspectManagedRun(
     const state = parseClassicStateDocument(
       classicStateToDocument(run.state as unknown as ClassicState),
     ).classic;
-    return state ? { state, lostRun: false } : { state: null, lostRun: true };
+    return state ? observe(run, state) : { state: null, lostRun: true };
   } catch {
     return { state: null, lostRun: true };
   }
@@ -347,6 +364,7 @@ async function discoverActiveChanges(projectRoot: string): Promise<ActiveProbeCh
       entry,
       await resolveClassicStateFile(changeDir),
     );
+    if (managed.cancellation === 'complete') continue;
     const projection = await readClassicState(changeDir, { migrate: false });
     if (managed.state) projection.classic = managed.state;
     const classic = projection.classic;
@@ -362,13 +380,13 @@ async function discoverActiveChanges(projectRoot: string): Promise<ActiveProbeCh
     const hasClassicProjection = Boolean(classic);
     const phase = classic?.phase ?? diagnostic.phase;
     const workflow = classic?.workflow ?? diagnostic.workflow;
-    if (phase === 'archive' || classic?.archived) continue;
+    if ((phase === 'archive' || classic?.archived) && managed.cancellation !== 'pending') continue;
 
     const change: ActiveProbeChange = {
       name: entry,
       workflow,
       phase,
-      nextCommand: diagnostic.nextCommand,
+      nextCommand: managed.cancellation === 'pending' ? null : diagnostic.nextCommand,
       diagnostic,
       buildPause: classic?.buildPause ?? null,
       hasClassicProjection,
@@ -376,6 +394,7 @@ async function discoverActiveChanges(projectRoot: string): Promise<ActiveProbeCh
       archived: classic?.archived ?? false,
       text: '',
       missingCometState: false,
+      ...(managed.cancellation === 'pending' ? { cancellationPending: true } : {}),
     };
     change.text = await changeSearchText(projectRoot, changeDir, change);
     changes.push(change);
@@ -418,6 +437,7 @@ async function discoverPendingArchivedChanges(projectRoot: string): Promise<Acti
           name,
           await resolveClassicStateFile(inspection.target),
         );
+        if (managed.cancellation === 'complete') return null;
         if (managed.state) projection.classic = managed.state;
         const classic = projection.classic;
         if (!classic?.archived || classic.phase !== 'archive') return null;
@@ -439,7 +459,7 @@ async function discoverPendingArchivedChanges(projectRoot: string): Promise<Acti
           name,
           workflow: classic.workflow,
           phase: 'archive',
-          nextCommand: diagnostic.nextCommand,
+          nextCommand: managed.cancellation === 'pending' ? null : diagnostic.nextCommand,
           diagnostic,
           buildPause: null,
           hasClassicProjection: true,
@@ -447,6 +467,7 @@ async function discoverPendingArchivedChanges(projectRoot: string): Promise<Acti
           archived: true,
           text: '',
           missingCometState: false,
+          ...(managed.cancellation === 'pending' ? { cancellationPending: true } : {}),
         };
         change.text = await changeSearchText(projectRoot, inspection.target, change);
         return change;
@@ -546,6 +567,16 @@ function hasDecisionPoint(change: ActiveProbeChange): boolean {
   return false;
 }
 
+function cancellationDecision(change: ActiveProbeChange): CometResumeProbeResult {
+  return result(
+    'ask_user',
+    change,
+    'low',
+    'Classic Run is cancelled; the original host must confirm its execution and child tasks stopped, then submit the original claim and stop evidence through runtime dispatch cancel stoppedActions before releasing the workspace',
+    [{ source: 'state', quote: 'Run cancelled; original execution stop is not confirmed' }],
+  );
+}
+
 function relatedEvidence(utterance: string, change: ActiveProbeChange): CometResumeProbeEvidence[] {
   const text = utterance.toLowerCase();
   const evidence: CometResumeProbeEvidence[] = [];
@@ -625,6 +656,7 @@ export async function resolveCometResumeProbe(
     if (!named) {
       return result('ask_user', null, 'low', 'multiple active changes require a change name');
     }
+    if (named.cancellationPending) return cancellationDecision(named);
     if (dirtyFiles.length > 0) {
       return result('ask_user', named, 'low', 'uncommitted worktree changes require attribution', [
         { source: 'repo', quote: `${dirtyFiles.length} dirty file(s)` },
@@ -638,6 +670,7 @@ export async function resolveCometResumeProbe(
   }
 
   const [change] = changes;
+  if (change.cancellationPending) return cancellationDecision(change);
   if (dirtyFiles.length > 0) {
     return result('ask_user', change, 'low', 'uncommitted worktree changes require attribution', [
       { source: 'repo', quote: `${dirtyFiles.length} dirty file(s)` },

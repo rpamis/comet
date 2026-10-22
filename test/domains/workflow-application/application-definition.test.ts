@@ -72,9 +72,10 @@ const document = () => ({
 });
 
 async function packageFixture(
-  moduleSource = `export function createApplication() {
-  return { workflows: ${JSON.stringify([workflow()])} };
-}`,
+  moduleSource = `import { readFileSync } from 'node:fs';
+const workflows = JSON.parse(readFileSync(new URL('./implementation.json', import.meta.url), 'utf8'));
+export function createApplication() { return { workflows }; }`,
+  implementation = [workflow()],
 ) {
   const packageRoot = path.join(root, 'package');
   await fs.mkdir(packageRoot);
@@ -92,6 +93,7 @@ async function packageFixture(
   };
   await fs.writeFile(path.join(packageRoot, 'application.json'), JSON.stringify(manifest));
   await fs.writeFile(path.join(packageRoot, 'workflow.json'), JSON.stringify(document()));
+  await fs.writeFile(path.join(packageRoot, 'implementation.json'), JSON.stringify(implementation));
   await fs.writeFile(path.join(packageRoot, 'SKILL.md'), '# Research');
   await fs.writeFile(path.join(packageRoot, 'application.mjs'), moduleSource);
   const packageHash = applicationFilesHash(await readApplicationFiles(packageRoot));
@@ -307,9 +309,7 @@ it('loads a matching definition and retains legacy packages without a declared g
 it('refuses loading an application whose real graph differs from its static definition', async () => {
   const changed = structuredClone(workflow());
   changed.transitions[2].to = 'search';
-  const fixture = await packageFixture(
-    `export function createApplication() { return {workflows:${JSON.stringify([changed])}}; }`,
-  );
+  const fixture = await packageFixture(undefined, [changed]);
   await expect(
     loadWorkflowApplication({
       file: path.join(fixture.packageRoot, 'application.json'),

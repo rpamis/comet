@@ -28,13 +28,20 @@ async function candidateEvidenceFixture(
   version: string,
   status: 'passed' | 'failed',
   artifactCases = false,
+  runtimeIdentityHash?: string,
 ) {
   const app = await applicationObservationFixture(project, { version, runId: `app-${version}` });
   const runId = `creator-${version}`;
   const store = createFileRuntimeStore<WorkflowRun>({
     rootDir: path.join(resolveWorkspaceRuntimeRootSync(project), 'creator'),
   });
-  const names = ['prepare', 'compile', 'verify', 'evaluate'];
+  const names = [
+    'prepare',
+    'compile',
+    'verify',
+    ...(runtimeIdentityHash ? ['eval-preview'] : []),
+    'evaluate',
+  ];
   const runtime = createRuntime({
     store,
     workflows: [
@@ -81,6 +88,8 @@ async function candidateEvidenceFixture(
         }
       : {}),
   });
+  if (runtimeIdentityHash)
+    run = await completeFixtureAction(runtime, run, 'eval-preview', { runtimeIdentityHash });
   const result = {
     schema: 'comet.workflow.application.eval.result.v1',
     application: { id: app.identity.id, version, contentHash: app.packageHash },
@@ -466,6 +475,108 @@ describe('Comet Any observations', () => {
       statusCode: 400,
     });
   });
+  it('keeps fixed-version evidence after more than 100 executions without reading historical Runs', async () => {
+    const current = await candidateEvidenceFixture(project, '1.1.0', 'passed');
+    const record = (await current.outer.read(current.run.runId))!;
+    for (let i = 0; i < 105; i++) {
+      const id = `history-run-${i}`;
+      const copy = JSON.parse(JSON.stringify(record).replaceAll(record.runId, id));
+      await current.outer.compareAndSwap(id, null, copy);
+    }
+    const page = await collectDashboardApplicationRunPage(project, { limit: 100 });
+    const selected = page.items.find((item) => item.kind === 'application')!;
+    const read = vi.spyOn(creatorObservations, 'readCreatorRunProjection');
+    try {
+      const detail = (await collectDashboardApplicationRunDetail(project, selected.locator))!;
+      expect(detail.evidence.find((item) => item.kind === 'local')?.status).toBe('passed');
+      expect(detail.sourceCreators.map((item) => item.runId)).toEqual([current.creatorRun.runId]);
+      expect(read.mock.calls.map(([, id]) => id)).toEqual([current.creatorRun.runId]);
+    } finally {
+      read.mockRestore();
+    }
+  }, 60000);
+
+  it('searches all Creator summaries while loading only the matching fixed candidate', async () => {
+    const current = await candidateEvidenceFixture(project, '1.1.0', 'passed');
+    const other = await candidateEvidenceFixture(project, '0.1.0', 'failed', false, 'a'.repeat(64));
+    const store = createFileRuntimeStore<WorkflowRun>({
+      rootDir: path.join(resolveWorkspaceRuntimeRootSync(project), 'creator'),
+    });
+    const key = (id: string) =>
+      createHash('sha256')
+        .update(JSON.stringify([null, id]))
+        .digest('hex');
+    const bound = key(current.creatorRun.runId);
+    let written = 0;
+    for (let i = 0; written < 105; i++) {
+      const id = `historical-creator-${i}`;
+      if (key(id) >= bound) continue;
+      const copy = JSON.parse(
+        JSON.stringify(other.creatorRun).replaceAll(other.creatorRun.runId, id),
+      );
+      copy.revision = 1;
+      await store.compareAndSwap(id, null, copy);
+      written++;
+    }
+    await collectDashboardApplicationRunPage(project);
+    const locator = `application:${createHash('sha256')
+      .update(JSON.stringify([current.identity.id, current.run.runId]))
+      .digest('hex')}`;
+    const read = vi.spyOn(creatorObservations, 'readCreatorRunProjection');
+    try {
+      const detail = (await collectDashboardApplicationRunDetail(project, locator))!;
+      expect(detail.evidence.find((item) => item.kind === 'local')?.status).toBe('passed');
+      expect(detail.sourceCreators.map((item) => item.runId)).toEqual([current.creatorRun.runId]);
+      expect(detail.otherEvidence.length).toBeGreaterThan(0);
+      expect(detail.otherEvidence.every((item) => item.contentHash === other.packageHash)).toBe(
+        true,
+      );
+      expect(read.mock.calls.map(([, id]) => id)).toEqual([current.creatorRun.runId]);
+    } finally {
+      read.mockRestore();
+    }
+  }, 60000);
+
+  it('isolates corrupted historical Creators and diagnoses a missing matching source', async () => {
+    const current = await candidateEvidenceFixture(project, '1.1.0', 'passed');
+    const other = await candidateEvidenceFixture(project, '0.1.0', 'passed');
+    const page = await collectDashboardApplicationRunPage(project);
+    const selected = page.items.find((item) => item.runId === current.run.runId)!;
+    const corrupt = async (id: string) => {
+      const key = createHash('sha256').update(JSON.stringify(id)).digest('hex');
+      await fs.writeFile(
+        path.join(
+          resolveWorkspaceRuntimeRootSync(project),
+          'creator',
+          '.runtime-store-v2',
+          key,
+          'foreign.json',
+        ),
+        '{}',
+      );
+    };
+    await corrupt(other.creatorRun.runId);
+    const read = vi.spyOn(creatorObservations, 'readCreatorRunProjection');
+    try {
+      const healthy = (await collectDashboardApplicationRunDetail(project, selected.locator))!;
+      expect(healthy.error).toBeNull();
+      expect(healthy.records.length).toBeGreaterThan(0);
+      expect(healthy.evidence.find((item) => item.kind === 'local')?.status).toBe('passed');
+      expect(read.mock.calls.map(([, id]) => id)).toEqual([current.creatorRun.runId]);
+      await corrupt(current.creatorRun.runId);
+      const diagnosed = (await collectDashboardApplicationRunDetail(project, selected.locator))!;
+      expect(diagnosed.error).toBeNull();
+      expect(diagnosed.records.length).toBeGreaterThan(0);
+      expect(diagnosed.evidence.find((item) => item.kind === 'local')).toMatchObject({
+        status: 'unavailable',
+        sourceRunId: current.creatorRun.runId,
+        summary: expect.stringContaining('STORE_INVALID_ENTRY'),
+      });
+    } finally {
+      read.mockRestore();
+    }
+  });
+
   it('separates local success, failed model evidence and missing host evidence by fixed version', async () => {
     const current = await candidateEvidenceFixture(project, '1.1.0', 'failed');
     await candidateEvidenceFixture(project, '1.2.0', 'passed');

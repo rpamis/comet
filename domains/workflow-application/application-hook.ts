@@ -4,6 +4,7 @@ import { inspectProtectedProjectPath } from '../workflow-contract/protected-proj
 import {
   assertApplicationSkillAction,
   assertApplicationSkillExecutionScope,
+  applicationActionHoldsScope,
 } from './skill-executor.js';
 import type {
   AdaptedSkill,
@@ -96,9 +97,19 @@ export function createApplicationHook(
         return { allowed: true, reason: '临时协议请求不是推进状态；Runtime 仍核对身份与批准' };
       const runs: WorkflowRun[] = [];
       const seen = new Set<string>();
+      let activeRuns = 0;
       const visit = async (current: WorkflowRun) => {
-        if (seen.has(current.runId) || seen.size >= 128)
-          throw new Error('子流程归属循环或超出安全读取范围');
+        if (seen.has(current.runId)) throw new Error('子流程归属循环');
+        // 历史完成数不等于当前执行宽度；取消后仍未确认停止的领取继续占用预算。
+        const active =
+          ['running', 'waiting'].includes(current.status) ||
+          current.actions.some(
+            (action) => action.status === 'pending' || applicationActionHoldsScope(action),
+          ) ||
+          current.ready.length > 0 ||
+          current.waits.some((wait) => wait.status === 'pending') ||
+          (current.evidenceWaits ?? []).some((wait) => wait.status === 'pending');
+        if (active && ++activeRuns > 128) throw new Error('活跃子流程超出安全读取范围');
         seen.add(current.runId);
         runs.push(current);
         for (const child of current.children) {
@@ -108,9 +119,12 @@ export function createApplicationHook(
           if (!action.claim) continue;
           const state = await options.readChild(child.runId);
           if (
+            state.runId !== child.runId ||
             state.workflow.id !== child.workflow.id ||
             state.workflow.version !== child.workflow.version ||
-            !state.lineage.includes(current.runId)
+            state.lineage.length !== current.lineage.length + 1 ||
+            state.lineage.at(-1) !== current.runId ||
+            current.lineage.some((id, index) => state.lineage[index] !== id)
           )
             throw new Error('子流程没有当前 SDK Run 的有效归属');
           await visit(state);

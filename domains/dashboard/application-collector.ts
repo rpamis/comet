@@ -212,6 +212,7 @@ type ApplicationReference = {
     archiveKind?: DashboardApplicationRunKind;
   };
   children: string[];
+  evidenceKinds: ('local' | 'model')[];
 };
 
 function creatorEntry(observation: CreatorRunObservation): Entry {
@@ -327,6 +328,10 @@ function reference(entry: Entry): ApplicationReference {
   return {
     summary: item,
     children: entry.run?.children.map((c) => c.runId) ?? [],
+    evidenceKinds: [
+      ...(entry.run?.outputs.verify ? ['local' as const] : []),
+      ...(entry.run?.outputs.evaluate ? ['model' as const] : []),
+    ],
     source: entry.archive
       ? {
           kind: 'archive',
@@ -384,7 +389,7 @@ async function applicationProjection(
 function applicationSummaryIndex(projectRoot: string) {
   return new DashboardSummaryIndex({
     projectRoot,
-    namespace: 'any-v1',
+    namespace: 'any-v2',
     discover: async function* () {
       const add = (key: string, fingerprint: string, load: () => Promise<Entry[]>) => ({
         key,
@@ -396,7 +401,7 @@ function applicationSummaryIndex(projectRoot: string) {
             return {
               key: s.locator,
               sortKey: s.locator,
-              search: `${s.title} ${s.goal ?? ''} ${s.runId ?? ''} ${s.application?.version ?? ''}`,
+              search: `${s.title} ${s.goal ?? ''} ${s.runId ?? ''} ${s.application?.version ?? ''} ${s.application?.packageHash ?? ''}`,
               status: s.status,
               kind: s.kind,
               group: s.applicationId,
@@ -490,7 +495,6 @@ async function detailDataset(
   indexing?: boolean;
 }> {
   const store = applicationSummaryIndex(projectRoot);
-  let refs: ApplicationReference[];
   let indexing: boolean;
   let ref: ApplicationReference | null;
   try {
@@ -529,16 +533,6 @@ async function detailDataset(
         );
       return { entries: [], errors: [] };
     }
-    refs = [ref];
-    if (ref.summary.applicationId) {
-      const related = await store.query<ApplicationReference>({
-        group: ref.summary.applicationId,
-        limit: 100,
-      });
-      refs = [
-        ...new Map([ref, ...related.items].map((item) => [item.summary.locator, item])).values(),
-      ];
-    }
   } catch (error) {
     if (error instanceof DashboardApplicationQueryError) throw error;
     throw new DashboardApplicationQueryError(
@@ -556,26 +550,7 @@ async function detailDataset(
   if (!selected)
     return { entries: [] as Entry[], errors: [] as DashboardApplicationRunPage['errors'] };
   selected.summary = reference(selected).summary;
-  const entries: Entry[] = refs.map((r) => ({
-    summary: r.summary,
-    run: null,
-    creator: null,
-    application: null,
-  }));
-  for (const relevant of refs.filter(
-    (r) =>
-      r.summary.locator === ref!.summary.locator ||
-      (r.summary.kind === 'creator' &&
-        r.summary.applicationId === selected.summary.applicationId &&
-        selected.summary.applicationId),
-  )) {
-    const entry =
-      relevant.summary.locator === ref.summary.locator
-        ? selected
-        : await readReference(projectRoot, relevant);
-    const position = entries.findIndex((e) => e.summary.locator === relevant.summary.locator);
-    if (entry) entries[position] = entry;
-  }
+  const entries: Entry[] = [selected];
   if (selected.application?.record) {
     for (const child of selected.run?.children ?? []) {
       const observation = await applicationProjection(
@@ -942,25 +917,67 @@ const emptyEvidence = (
 async function evidence(
   projectRoot: string,
   entry: Entry,
-  all: Entry[],
   material: Awaited<ReturnType<typeof inspectWorkflowApplicationMaterial>> | null,
 ) {
   const identity = entry.summary.application;
-  const available = all.filter(
-    (e) => e.creator && e.run && e.summary.application?.id === identity?.id,
-  );
   const packageHash = entry.creator
     ? identity?.packageHash
     : material?.status === 'matched'
       ? material.packageHash
       : null;
-  const current = entry.creator
-    ? entry
-    : available.find(
-        (e) =>
-          e.summary.application?.version === identity?.version &&
-          e.summary.application?.packageHash === packageHash,
-      );
+  let current = entry.creator ? entry : undefined;
+  const history: ApplicationReference[] = [];
+  const failures: { ref: ApplicationReference; message: string }[] = [];
+  if (identity) {
+    const store = applicationSummaryIndex(projectRoot);
+    history.push(
+      ...(
+        await store.query<ApplicationReference>({
+          group: identity.id,
+          kind: 'creator',
+          limit: 100,
+        })
+      ).items.filter((ref) => ref.source.kind === 'creator'),
+    );
+    // 包摘要参与索引搜索，避免为一次详情分页扫描全部创作历史。
+    // 搜索只缩小候选集，读取前后仍精确校验应用、版本与包身份。
+    for (let offset = 0; !current && packageHash; offset += 100) {
+      const creators = await store.query<ApplicationReference>({
+        group: identity.id,
+        kind: 'creator',
+        search: packageHash,
+        limit: 100,
+        offset,
+      });
+      for (const ref of creators.items) {
+        if (
+          ref.source.kind !== 'creator' ||
+          ref.summary.application?.version !== identity.version ||
+          ref.summary.application.packageHash !== packageHash
+        )
+          continue;
+        try {
+          const observed = await readReference(projectRoot, ref);
+          if (
+            !observed?.run ||
+            observed.summary.application?.id !== identity.id ||
+            observed.summary.application.version !== identity.version ||
+            observed.summary.application.packageHash !== packageHash
+          )
+            throw new Error('关联创作记录已移除或固定身份发生变化');
+          current = observed;
+          break;
+        } catch (error) {
+          if (failures.length < 10)
+            failures.push({
+              ref,
+              message: error instanceof Error ? error.message : String(error),
+            });
+        }
+      }
+      if (offset + creators.items.length >= creators.total || !creators.items.length) break;
+    }
+  }
   const local = emptyEvidence('local', identity);
   if (current?.run) {
     const record = object(current.run.outputs.verify?.value);
@@ -1057,30 +1074,36 @@ async function evidence(
       if (linked) model.evalRunId = match[1];
     }
   }
-  const other: DashboardApplicationEvidence[] = available
-    .filter((e) => e !== current)
-    .flatMap((e) => {
-      const result: DashboardApplicationEvidence[] = [];
-      if (e.run?.outputs.verify)
-        result.push({
-          ...emptyEvidence('local', e.summary.application),
-          status: 'stale',
-          sourceLocator: e.summary.locator,
-          sourceRunId: e.summary.runId,
-          summary: '这份本地校验属于其他候选内容，不能用于当前版本',
-          details: sanitizeApplicationObservation(e.run.outputs.verify.value),
-        });
-      if (e.run?.outputs.evaluate)
-        result.push({
-          ...emptyEvidence('model', e.summary.application),
-          status: 'stale',
-          sourceLocator: e.summary.locator,
-          sourceRunId: e.summary.runId,
-          summary: '原评估结果保留；对应其他版本或候选内容',
-          details: sanitizeApplicationObservation(e.run.outputs.evaluate.value),
-        });
-      return result;
-    });
+  if (!current && failures.length) {
+    local.status = 'unavailable';
+    local.summary = `关联创作记录无法读取：${failures.map((failure) => failure.message).join('；')}`;
+    local.sourceLocator = failures[0].ref.summary.locator;
+    local.sourceRunId = failures[0].ref.summary.runId;
+    local.contentHash = packageHash ?? null;
+    if (model.status === 'not-recorded') {
+      model.status = 'unavailable';
+      model.summary = local.summary;
+      model.sourceLocator = local.sourceLocator;
+      model.sourceRunId = local.sourceRunId;
+      model.contentHash = packageHash ?? null;
+    }
+  }
+  const other: DashboardApplicationEvidence[] = history
+    .filter(
+      (ref) =>
+        ref.summary.locator !== current?.summary.locator &&
+        ref.summary.locator !== entry.summary.locator,
+    )
+    .flatMap((ref) =>
+      (ref.evidenceKinds ?? []).map((kind) => ({
+        ...emptyEvidence(kind, ref.summary.application),
+        contentHash: ref.summary.application?.packageHash ?? null,
+        status: 'stale' as const,
+        sourceLocator: ref.summary.locator,
+        sourceRunId: ref.summary.runId,
+        summary: '原验收结果保留；打开时读取对应创作记录，不能用于当前候选',
+      })),
+    );
   return {
     evidence: [local, model, emptyEvidence('host', identity)],
     otherEvidence: other,
@@ -1335,7 +1358,7 @@ export async function collectDashboardApplicationRunDetail(
       };
     }
   }
-  const proof = await evidence(projectRoot, entry, data.entries, material);
+  const proof = await evidence(projectRoot, entry, material);
   if (data.indexing && !entry.creator) {
     for (const item of proof.evidence)
       if (item.status === 'not-recorded' && item.kind !== 'host') {

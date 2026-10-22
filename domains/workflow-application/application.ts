@@ -1144,13 +1144,9 @@ export async function loadWorkflowApplication(options: {
             skills,
             custom: implementation.inspectHook,
             readChild: async (runId) => {
-              const child = await loadWorkflowApplication({
-                ...options,
-                runId,
-                expectedIdentity: identity,
-                readOnly: true,
-              });
-              return createRuntime({ ...child.implementation, store: child.store }).inspect(runId);
+              // 同一固定应用与 Store 已包含身份、内容和定义检查，不重复加载工厂或展开历史载荷。
+              return (await createRuntime({ ...implementation, store }).inspectProjection(runId))
+                .run;
             },
           }),
         }

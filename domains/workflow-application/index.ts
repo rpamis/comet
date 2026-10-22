@@ -106,5 +106,6 @@ export {
 export {
   parseEvaluationMatrix,
   validateEvaluationCase,
+  createEvaluationCaseValidator,
   evaluationCaseKey,
 } from './evaluation-case-evidence.js';

@@ -67,6 +67,22 @@ export function validateEvaluationCase(
   file: string,
   expected: EvaluationCaseIdentity[],
 ): EvaluationCaseIdentity {
+  return createEvaluationCaseValidator(expected)(raw, experiment, file);
+}
+
+/** 一次固定矩阵快照供逐份报告共用；每份报告仍核对完整身份与旧格式证明。 */
+export function createEvaluationCaseValidator(expected: readonly EvaluationCaseIdentity[]) {
+  const keys = new Set(expected.map(evaluationCaseKey));
+  return (raw: unknown, experiment: string, file: string): EvaluationCaseIdentity =>
+    validateCaseIdentity(raw, experiment, file, keys);
+}
+
+function validateCaseIdentity(
+  raw: unknown,
+  experiment: string,
+  file: string,
+  expected: ReadonlySet<string>,
+): EvaluationCaseIdentity {
   const report = object(raw),
     events = object(report.events_summary);
   const fail = (): never => {
@@ -99,7 +115,7 @@ export function validateEvaluationCase(
     rep = Number(match![1]);
   }
   const identity = { task: events.task as string, treatment: events.treatment as string, rep };
-  if (!expected.some((item) => evaluationCaseKey(item) === evaluationCaseKey(identity))) fail();
+  if (!expected.has(evaluationCaseKey(identity))) fail();
   const declared = object(report.case_identity);
   if (
     report.case_identity !== undefined &&

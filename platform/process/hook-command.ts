@@ -1,6 +1,7 @@
 /** 将路径作为编码后的 argv 传递；宿主 shell 不解释参数中的字符。 */
 export function buildNodeHookCommand(args: readonly string[]): string {
   const encoded = Buffer.from(JSON.stringify(args)).toString('base64');
+  if (!/^[A-Za-z0-9+/]*={0,2}$/u.test(encoded)) throw new TypeError('Hook 参数编码包含无效字符');
   return `node -e "const r=require('node:child_process').spawnSync(process.execPath,JSON.parse(Buffer.from('${encoded}','base64').toString()),{stdio:'inherit'});process.exit(r.status??1)"`;
 }
 

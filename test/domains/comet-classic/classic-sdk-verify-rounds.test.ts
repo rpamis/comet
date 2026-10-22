@@ -559,16 +559,16 @@ describe('Classic SDK interrupted check recovery', () => {
       const source = path.join(f.projectRoot, 'source.js');
       const original = await fs.readFile(source, 'utf8');
       const pidFile = path.join(path.dirname(f.projectRoot), 'descendant.pid');
-      const descendantCode = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(source)}, 'late write'), 800);`;
       const spawnDescendant = `
         const child = require('node:child_process').spawn(process.execPath,
-          ['-e', ${JSON.stringify(descendantCode)}], { stdio: 'ignore' });
-        require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));
+          ['-e', "setTimeout(() => require('node:fs').writeFileSync(process.argv[1], 'late write'), 800);", process.argv[1]],
+          { stdio: 'ignore' });
+        require('node:fs').writeFileSync(process.argv[2], String(child.pid));
         child.unref();
       `;
       const script = intermediateParent
         ? `const result = require('node:child_process').spawnSync(process.execPath,
-            ['-e', ${JSON.stringify(spawnDescendant)}], { stdio: 'ignore' });
+            process.argv.slice(1), { stdio: 'ignore' });
             process.exit(result.status ?? 1);`
         : spawnDescendant;
       let descendantPid: number | undefined;
@@ -576,7 +576,14 @@ describe('Classic SDK interrupted check recovery', () => {
         const checked = await executeClassicSdkCommandCheck(runtime, {
           runId: run.runId,
           projectRoot: f.projectRoot,
-          argv: [process.execPath, '-e', script],
+          argv: [
+            process.execPath,
+            '-e',
+            script,
+            ...(intermediateParent ? ['-e', spawnDescendant] : []),
+            source,
+            pidFile,
+          ],
           timeoutMs: 10000,
         });
         descendantPid = Number(await fs.readFile(pidFile, 'utf8'));

@@ -401,6 +401,9 @@ export function createApplicationArtifactValidator(options: ApplicationArtifactV
 export function createApplicationSkillExecutor(application: SkillExecutionApplication, host: SkillExecutionHost): RuntimeExecutor;
 
 // @public
+export function createEvaluationCaseValidator(expected: readonly EvaluationCaseIdentity[]): (raw: unknown, experiment: string, file: string) => EvaluationCaseIdentity;
+
+// @public
 export function createReportApplication(context: Pick<WorkflowApplicationFactoryContext, 'projectRoot'> & {
     manifest: Pick<WorkflowApplicationFactoryContext['manifest'], 'id'>;
     packageRoot?: WorkflowApplicationFactoryContext['packageRoot'];

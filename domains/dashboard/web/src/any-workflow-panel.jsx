@@ -136,6 +136,11 @@ export function AnyWorkflowPanel({
     [artifactLoading, setArtifactLoading] = useState(null);
   const [recordsLoading, setRecordsLoading] = useState(false);
   const recordsRequest = useRef(null);
+  const evidenceRequest = useRef(null);
+  useLayoutEffect(() => {
+    setDrawer(null);
+    return () => evidenceRequest.current?.abort();
+  }, [projectId, demo, locator]);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [rosters, setRosters] = useState({}),
     [rosterLoading, setRosterLoading] = useState(false);
@@ -630,14 +635,56 @@ export function AnyWorkflowPanel({
     chooseRun(parent.locator, { restore: parent, keepParents: true });
     anchor.current = null;
   };
-  const openEvidence = (e) =>
-    setDrawer({
+  const openEvidence = async (e) => {
+    evidenceRequest.current?.abort();
+    const pending = {
       title: t({ local: '本地校验', model: '模型 Eval', host: '宿主验证' }[e.kind]),
-      runId: detail.runId,
+      runId: e.sourceRunId ?? detail.runId,
       version: e.version,
       message: e.summary,
       evidence: e,
-    });
+      loading: Boolean(
+        e.status === 'stale' && e.sourceLocator && e.sourceLocator !== locator && e.details == null,
+      ),
+    };
+    setDrawer(pending);
+    if (!pending.loading) return;
+    const controller = new AbortController();
+    evidenceRequest.current = controller;
+    try {
+      const source = await request(
+        'application-run',
+        { locator: e.sourceLocator },
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      if (
+        !source ||
+        source.locator !== e.sourceLocator ||
+        source.application?.id !== detail.application?.id ||
+        source.application?.version !== e.version ||
+        (e.sourceRunId && source.runId !== e.sourceRunId)
+      )
+        throw new Error(t('原始证据身份已变化，请重新读取当前运行。'));
+      const original = (source.evidence ?? []).find((item) => item.kind === e.kind);
+      if (e.contentHash !== original?.contentHash)
+        throw new Error(t('原始证据身份已变化，请重新读取当前运行。'));
+      if (original?.details == null)
+        throw new Error(t('原始证据暂时无法读取，请打开对应创作检查。'));
+      setDrawer((current) =>
+        current === pending
+          ? { ...pending, loading: false, evidence: { ...e, details: original.details } }
+          : current,
+      );
+    } catch (error) {
+      if (!controller.signal.aborted)
+        setDrawer((current) =>
+          current === pending ? { ...pending, loading: false, message: error.message } : current,
+        );
+    } finally {
+      if (evidenceRequest.current === controller) evidenceRequest.current = null;
+    }
+  };
   const openAttempt = (record, attempt) =>
     setDrawer({
       title: attempt.label,
@@ -1541,10 +1588,17 @@ export function AnyWorkflowPanel({
         title={drawer?.title}
         rootClassName="any-detail-drawer"
         open={Boolean(drawer)}
-        onClose={() => setDrawer(null)}
+        onClose={() => {
+          evidenceRequest.current?.abort();
+          setDrawer(null);
+        }}
         size={530}
       >
-        <ApplicationObservationDrawer data={drawer} />
+        {drawer?.loading ? (
+          <Skeleton active paragraph={{ rows: 5 }} />
+        ) : (
+          <ApplicationObservationDrawer data={drawer} />
+        )}
       </Drawer>
     </section>
   );
