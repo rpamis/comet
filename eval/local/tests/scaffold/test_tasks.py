@@ -140,7 +140,9 @@ def test_classic_layout_lifecycle_uses_current_cli_and_compatible_openspec():
     assert "ln -s /opt/comet-cli/node_modules/.bin/openspec /usr/local/bin/openspec" in dockerfile
     assert "mkdir -p openspec/changes" not in dockerfile
     assert "/opt/comet-current" in wrapper
-    assert dependency_snapshot["dependencies"] == package["dependencies"]
+    assert dependency_snapshot["dependencies"] == package["dependencies"] | {
+        "@fission-ai/openspec": "^1.11.0"
+    }
     assert task.default_treatments == [
         "COMET_CLASSIC_DOCS_LAYOUT",
         "COMET_CLASSIC_LEGACY_LAYOUT",
@@ -151,7 +153,10 @@ def test_classic_layout_lifecycle_uses_current_cli_and_compatible_openspec():
     ("environment_ref", "extra_dependencies"),
     [
         ("scaffold/environments/workflow-application", {}),
-        ("local/tasks/comet-classic-layout-lifecycle/environment", {}),
+        (
+            "local/tasks/comet-classic-layout-lifecycle/environment",
+            {"@fission-ai/openspec": "^1.11.0"},
+        ),
         (
             "local/tasks/comet-native-workflow/environment",
             {"@fission-ai/openspec": "^1.11.0"},
