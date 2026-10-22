@@ -59,7 +59,7 @@ const baseLabel = (base) =>
       ? t('Classic 组合')
       : base === 'standalone'
         ? t('独立工作流')
-        : t('尚未生成应用');
+        : t('尚未确定应用');
 
 export function AnyWorkflowPanel({
   projectId,
@@ -896,7 +896,7 @@ export function AnyWorkflowPanel({
                 {[
                   ['all', '全部', groups.length],
                   ...(!applicationWorkspace
-                    ? [['draft', '早期创作', groups.filter((g) => !g.id).length]]
+                    ? [['draft', '未关联应用', groups.filter((g) => !g.id).length]]
                     : []),
                   ['apps', '应用', groups.filter((g) => g.id).length],
                 ].map(([value, label, count]) => (
@@ -904,6 +904,11 @@ export function AnyWorkflowPanel({
                     key={value}
                     className={scope === value ? 'selected' : ''}
                     aria-pressed={scope === value}
+                    title={
+                      value === 'apps'
+                        ? t('应用可能仍在创作中，是否可用请查看验证与安装状态。')
+                        : undefined
+                    }
                     onClick={() => setScope(value)}
                   >
                     <span>{t(label)}</span>
@@ -911,7 +916,6 @@ export function AnyWorkflowPanel({
                   </button>
                 ))}
               </div>
-              <span>{t('应用固定版本，创作与运行分别保留')}</span>
             </div>
           )}
           <div className="any-search">
@@ -952,8 +956,8 @@ export function AnyWorkflowPanel({
                 </p>
               )}
               {[
-                ['draft', '早期创作'],
-                ['apps', '已生成应用'],
+                ['draft', '未关联应用的创作'],
+                ['apps', '应用'],
               ].map(([section, label]) => {
                 const list = visibleGroups.filter((g) =>
                   section === 'draft' ? !g.id : Boolean(g.id),
@@ -1049,7 +1053,7 @@ export function AnyWorkflowPanel({
                 ? t('已加载 {0} / {1} 条记录', [page.items.length, page.total])
                 : t('正在读取记录')}
             </span>
-            {!applicationWorkspace && <small>{t('尚未命名的创作按目标显示。')}</small>}
+            {!applicationWorkspace && <small>{t('未关联应用的创作按目标显示。')}</small>}
           </div>
         </aside>
         <section className="any-panel any-run-panel" data-dashboard-scroll="any-workspace">

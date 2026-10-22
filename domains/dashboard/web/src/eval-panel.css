@@ -870,10 +870,6 @@
   border-top: 1px solid var(--color-border);
   padding-top: 20px;
 }
-.dashboard-eval-settings .ant-form {
-  display: grid;
-  gap: 0;
-}
 .dashboard-eval-settings .dashboard-eval-form-grid,
 .dashboard-eval-settings .dashboard-eval-detail-grid {
   display: block;

@@ -9,6 +9,33 @@ async function openSettings(page: Page) {
   return page.getByRole('dialog', { name: /Comet (设置|settings)/iu });
 }
 
+test('shows flat settings tabs and spaces Eval cards like other settings', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/?demo');
+  const dialog = await openSettings(page);
+  const navigation = dialog.locator('.dashboard-settings-navigation');
+  await expect(navigation.getByRole('menuitem')).toHaveCount(5);
+  await expect(navigation.getByText('个人偏好', { exact: true })).toHaveCount(0);
+  await expect(navigation.getByText('项目能力', { exact: true })).toHaveCount(0);
+  await expect(navigation.getByText('评估', { exact: true })).toHaveCount(0);
+
+  const cardGaps = () =>
+    dialog.locator('.dashboard-settings-panel').evaluateAll((elements) => {
+      const boxes = elements.map((element) => element.getBoundingClientRect());
+      return boxes.slice(1).map((box, index) => box.top - boxes[index].bottom);
+    });
+  await navigation.getByRole('menuitem', { name: /个人记忆$/u }).click();
+  await expect(dialog.getByRole('heading', { name: '全局能力', exact: true })).toBeVisible();
+  const referenceGap = (await cardGaps())[0];
+  expect(referenceGap).toBeGreaterThan(0);
+
+  await navigation.getByRole('menuitem', { name: /Eval$/u }).click();
+  await expect(dialog.getByRole('heading', { name: '默认执行模型', exact: true })).toBeVisible();
+  const evalGaps = await cardGaps();
+  expect(evalGaps).toHaveLength(3);
+  for (const gap of evalGaps) expect(gap).toBeCloseTo(referenceGap, 0);
+});
+
 test('changes the interface language in settings without leaving the panel and persists it after reload', async ({
   page,
 }) => {

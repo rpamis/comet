@@ -321,6 +321,7 @@ export function EvalSettings({ readOnly = false, onSaved }) {
         {data && (
           <Form
             name="eval-user-settings"
+            className="dashboard-settings-stack"
             form={form}
             layout="vertical"
             disabled={readOnly}

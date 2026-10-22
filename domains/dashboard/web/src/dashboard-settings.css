@@ -34,21 +34,6 @@
   display: none;
 }
 
-.dashboard-preferences-modal
-  .dashboard-settings-navigation
-  .ant-menu-item-group
-  + .ant-menu-item-group {
-  margin-top: 22px;
-}
-
-.dashboard-preferences-modal .dashboard-settings-navigation .ant-menu-item-group-title {
-  padding: 0 12px 7px;
-  color: var(--color-muted);
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.5;
-}
-
 .dashboard-preferences-modal .dashboard-settings-navigation .ant-menu-item {
   display: flex;
   align-items: center;
@@ -319,15 +304,6 @@
   .dashboard-preferences-modal .dashboard-settings-navigation {
     flex: 0 0 auto;
     padding: 8px 12px;
-  }
-
-  .dashboard-preferences-modal .dashboard-settings-navigation .ant-menu-item-group,
-  .dashboard-preferences-modal .dashboard-settings-navigation .ant-menu-item-group-list {
-    display: contents;
-  }
-
-  .dashboard-preferences-modal .dashboard-settings-navigation .ant-menu-item-group-title {
-    display: none;
   }
 
   .dashboard-preferences-modal .dashboard-settings-navigation .ant-menu-item {

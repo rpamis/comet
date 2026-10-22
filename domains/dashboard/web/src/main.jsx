@@ -5300,35 +5300,21 @@ function DashboardSettingsPage({
     pages.filter((item) => !item.pending).map((item) => item.pluginId),
   );
   const settingsPages = [
+    { key: 'comet.appearance', icon: <SunOutlined />, label: t('外观') },
     {
-      type: 'group',
-      label: t('个人偏好'),
-      children: [{ key: 'comet.appearance', icon: <SunOutlined />, label: t('外观') }],
+      key: 'comet.personal-memory',
+      icon: <UserOutlined />,
+      label: t('个人记忆'),
+      disabled: !installedPlugins.has('comet.personal-memory'),
     },
     {
-      type: 'group',
-      label: t('项目能力'),
-      children: [
-        {
-          key: 'comet.personal-memory',
-          icon: <UserOutlined />,
-          label: t('个人记忆'),
-          disabled: !installedPlugins.has('comet.personal-memory'),
-        },
-        {
-          key: 'comet.project-knowledge',
-          icon: <DatabaseOutlined />,
-          label: t('项目知识'),
-          disabled: !installedPlugins.has('comet.project-knowledge'),
-        },
-        { key: 'comet.config', icon: <SettingOutlined />, label: t('Comet 配置') },
-      ],
+      key: 'comet.project-knowledge',
+      icon: <DatabaseOutlined />,
+      label: t('项目知识'),
+      disabled: !installedPlugins.has('comet.project-knowledge'),
     },
-    {
-      type: 'group',
-      label: t('评估'),
-      children: [{ key: 'comet.eval', icon: <CheckCircleOutlined />, label: 'Eval' }],
-    },
+    { key: 'comet.config', icon: <SettingOutlined />, label: t('Comet 配置') },
+    { key: 'comet.eval', icon: <CheckCircleOutlined />, label: 'Eval' },
   ];
   const currentData = section === 'comet.config' ? config : page;
   return (
