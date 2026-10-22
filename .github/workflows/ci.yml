@@ -214,6 +214,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
         working-directory: .
+      - name: Compile Runtime modules for Eval contracts
+        run: pnpm exec tsc --pretty false
+        working-directory: .
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
@@ -224,7 +227,30 @@ jobs:
           cache-dependency-glob: eval/uv.lock
       - run: uv sync --locked --extra dev --extra langsmith
       - run: uv run ruff check local/tests scaffold local/scripts langsmith
-      - run: uv run pytest -q local/tests/scaffold local/tests/tasks/test_validation_scripts.py
+      - run: uv run pytest -q local/tests/scaffold local/tests/tasks/test_validation_scripts.py --junitxml=eval-static.xml
+      - name: Require real Runtime API cases to pass
+        shell: python {0}
+        run: |
+          import xml.etree.ElementTree as ET
+
+          cases = ET.parse("eval-static.xml").findall(".//testcase")
+          required = (
+              "test_current_checkpoint_api_validates_generated_v1_and_v2_content",
+              "test_current_runtime_owner_api_uses_workspace_identity_not_fence_target[foreign-fence]",
+              "test_current_runtime_owner_api_uses_workspace_identity_not_fence_target[history-owner]",
+              "test_current_runtime_owner_api_uses_workspace_identity_not_fence_target[owner-symlink]",
+              "test_current_runtime_owner_api_uses_workspace_identity_not_fence_target[runtime-symlink]",
+          )
+          for name in required:
+              matches = [case for case in cases if case.get("name") == name]
+              assert matches, f"Missing required Runtime API test: {name}"
+              assert all(
+                  case.find("skipped") is None
+                  and case.find("failure") is None
+                  and case.find("error") is None
+                  for case in matches
+              ), f"Required Runtime API test did not pass: {name}"
+          print(f"Verified {len(required)} real Runtime API cases without skips")
 
   eval-windows:
     name: Eval Windows artifact safety

@@ -1320,7 +1320,9 @@ export function AnyWorkflowPanel({
                           <p>{t('已有步骤、决定与产物继续保留，可展开查看历史。')}</p>
                         )}
                         {current.some((r) => r.status === 'running') && (
-                          <small>{t('已领取表示等待 Agent 平台返回结果，不代表 Agent 当前在线。')}</small>
+                          <small>
+                            {t('已领取表示等待 Agent 平台返回结果，不代表 Agent 当前在线。')}
+                          </small>
                         )}
                         {!detail.archive && (
                           <div className="any-continue-context">

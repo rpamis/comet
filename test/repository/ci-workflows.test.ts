@@ -109,6 +109,46 @@ describe('CI workflows', () => {
     expect(commands).toContain('test/domains/workflow-contract/workspace-runtime.test.ts');
   });
 
+  it('builds and requires the real Runtime API cases in Eval static checks', async () => {
+    const workflow = parse(await readWorkflow('ci.yml'));
+    const job = workflow.jobs['eval-static'];
+    const steps = job.steps as Array<{
+      name?: string;
+      run?: string;
+      shell?: string;
+      'working-directory'?: string;
+      if?: string;
+      'continue-on-error'?: boolean;
+    }>;
+    const install = steps.findIndex((step) => step.run?.startsWith('pnpm install'));
+    const build = steps.findIndex((step) => step.run === 'pnpm exec tsc --pretty false');
+    const tests = steps.findIndex((step) => step.run?.startsWith('uv run pytest'));
+    const required = steps.findIndex(
+      (step) => step.name === 'Require real Runtime API cases to pass',
+    );
+
+    expect(install).toBeGreaterThanOrEqual(0);
+    expect(build).toBeGreaterThan(install);
+    expect(tests).toBeGreaterThan(build);
+    expect(required).toBeGreaterThan(tests);
+    expect(steps[build]['working-directory']).toBe('.');
+    expect(steps[build].if).toBeUndefined();
+    expect(steps[build]['continue-on-error']).toBeUndefined();
+    expect(job.defaults.run['working-directory']).toBe('eval');
+    expect(steps[tests].run).toContain('--junitxml=eval-static.xml');
+    expect(steps[required].shell).toBe('python {0}');
+    expect(steps[required].if).toBeUndefined();
+    expect(steps[required]['continue-on-error']).toBeUndefined();
+    expect(steps[required].run).toContain(
+      'test_current_checkpoint_api_validates_generated_v1_and_v2_content',
+    );
+    for (const scenario of ['foreign-fence', 'history-owner', 'owner-symlink', 'runtime-symlink']) {
+      expect(steps[required].run).toContain(
+        `test_current_runtime_owner_api_uses_workspace_identity_not_fence_target[${scenario}]`,
+      );
+    }
+  });
+
   it('runs the required CI contract for every pull request', async () => {
     const workflow = await readWorkflow('ci.yml');
     const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as {
