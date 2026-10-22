@@ -4,6 +4,17 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Page } from '@playwright/test';
 
+type DashboardTestWindow = typeof window & {
+  sidebarIconFrames: { x: number; y: number }[][];
+  nativeArchiveCounts: number[];
+  dashboardMotionCalls: (string | null)[];
+  pluginMotionTransforms: NonNullable<Keyframe['transform']>[];
+  memoryMotionCount: number;
+  memoryReadingSurface: Element;
+  nativeBadgeRolled: boolean;
+  summaryRefreshValues: (string | null)[];
+};
+
 async function setDashboardTheme(page: Page, theme: 'light' | 'dark') {
   const settings = page.getByRole('button', { name: /^(设置|Settings)$/ });
   if (!(await settings.isVisible()))
@@ -4931,10 +4942,10 @@ test('keeps collapsed sidebar menu icons aligned with their expanded positions',
             '.dashboard-sidebar .ant-menu-item > .anticon svg, .dashboard-sidebar-settings > .anticon svg',
           ),
         ];
-        (window as any).sidebarIconFrames = [];
+        (window as DashboardTestWindow).sidebarIconFrames = [];
         const until = performance.now() + 500;
         const capture = () => {
-          (window as any).sidebarIconFrames.push(
+          (window as DashboardTestWindow).sidebarIconFrames.push(
             icons.map((icon) => {
               const box = icon.getBoundingClientRect();
               return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
@@ -4946,9 +4957,7 @@ test('keeps collapsed sidebar menu icons aligned with their expanded positions',
       });
       await page.getByRole('button', { name, exact: true }).click();
       await page.waitForTimeout(550);
-      const frames = await page.evaluate(
-        () => (window as any).sidebarIconFrames as { x: number; y: number }[][],
-      );
+      const frames = await page.evaluate(() => (window as DashboardTestWindow).sidebarIconFrames);
       expect(frames[0].length).toBe(9);
       const drift = frames[0].map((_, index) => {
         const ys = frames.map((frame) => frame[index].y);
@@ -5604,13 +5613,13 @@ test('keeps the Native change list scrollable on a narrow viewport', async ({ pa
 
 test('fills a server-paged Native list when its footer is already visible', async ({ page }) => {
   await page.addInitScript(() => {
-    (window as any).nativeArchiveCounts = [];
+    (window as DashboardTestWindow).nativeArchiveCounts = [];
     new MutationObserver(() => {
       const card = [...document.querySelectorAll('.native-summary-strip button')].find((el) =>
         el.textContent?.includes('已归档变更'),
       );
       const value = card?.querySelector('.dashboard-summary-metric')?.textContent;
-      if (value) (window as any).nativeArchiveCounts.push(Number(value));
+      if (value) (window as DashboardTestWindow).nativeArchiveCounts.push(Number(value));
     }).observe(document, { childList: true, characterData: true, subtree: true });
   });
   const nativeItems = Array.from({ length: 8 }, (_, index) => ({
@@ -5795,7 +5804,9 @@ test('fills a server-paged Native list when its footer is already visible', asyn
   ).toHaveText('8');
   expect(
     await page.evaluate(() =>
-      (window as any).nativeArchiveCounts.some((value: number) => value > 0 && value < 8),
+      (window as DashboardTestWindow).nativeArchiveCounts.some(
+        (value: number) => value > 0 && value < 8,
+      ),
     ),
   ).toBe(true);
   await expect.poll(() => detailRequests).toContain('native-1');
@@ -6519,17 +6530,20 @@ for (const workspace of ['个人记忆', '项目知识'] as const) {
   test(`${workspace} transitions preserve input and respect reduced motion`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.addInitScript(() => {
-      (window as any).dashboardMotionCalls = [];
-      (window as any).pluginMotionTransforms = [];
+      (window as DashboardTestWindow).dashboardMotionCalls = [];
+      (window as DashboardTestWindow).pluginMotionTransforms = [];
       const animate = Element.prototype.animate;
       Element.prototype.animate = function (...args: Parameters<typeof animate>) {
         if (this.closest('.dashboard-tool-page-memory, .dashboard-tool-page-knowledge')) {
           for (const frame of Array.isArray(args[0]) ? args[0] : []) {
-            if (frame.transform) (window as any).pluginMotionTransforms.push(frame.transform);
+            if (frame.transform)
+              (window as DashboardTestWindow).pluginMotionTransforms.push(frame.transform);
           }
         }
         if (this.hasAttribute('data-dashboard-motion'))
-          (window as any).dashboardMotionCalls.push(this.getAttribute('data-dashboard-motion'));
+          (window as DashboardTestWindow).dashboardMotionCalls.push(
+            this.getAttribute('data-dashboard-motion'),
+          );
         return animate.apply(this, args);
       };
     });
@@ -6542,14 +6556,16 @@ for (const workspace of ['个人记忆', '项目知识'] as const) {
     await expect(surface).toBeVisible();
     expect(
       await page.evaluate(() =>
-        (window as any).dashboardMotionCalls.filter((kind: string) => kind === 'enter'),
+        (window as DashboardTestWindow).dashboardMotionCalls.filter((kind) => kind === 'enter'),
       ),
     ).toEqual([]);
     await expect(surface).not.toHaveAttribute('data-dashboard-motion');
     expect(await surface.locator('[data-dashboard-motion] [data-dashboard-motion]').count()).toBe(
       0,
     );
-    const before = await page.evaluate(() => (window as any).dashboardMotionCalls.length);
+    const before = await page.evaluate(
+      () => (window as DashboardTestWindow).dashboardMotionCalls.length,
+    );
     if (personal) {
       await surface
         .locator('.dashboard-memory-filter-rail button')
@@ -6564,13 +6580,17 @@ for (const workspace of ['个人记忆', '项目知识'] as const) {
       );
     }
     await expect
-      .poll(() => page.evaluate(() => (window as any).dashboardMotionCalls.length))
+      .poll(() => page.evaluate(() => (window as DashboardTestWindow).dashboardMotionCalls.length))
       .toBeGreaterThan(before);
-    expect(await page.evaluate(() => (window as any).pluginMotionTransforms)).toEqual([]);
+    expect(
+      await page.evaluate(() => (window as DashboardTestWindow).pluginMotionTransforms),
+    ).toEqual([]);
     const search = page.getByLabel(personal ? '搜索个人记忆' : '搜索项目知识记录');
     await search.fill('Dashboard');
     await search.fill('');
-    const count = await page.evaluate(() => (window as any).dashboardMotionCalls.length);
+    const count = await page.evaluate(
+      () => (window as DashboardTestWindow).dashboardMotionCalls.length,
+    );
     await page.emulateMedia({ reducedMotion: 'reduce' });
     if (personal)
       await surface
@@ -6578,14 +6598,18 @@ for (const workspace of ['个人记忆', '项目知识'] as const) {
         .filter({ hasText: '全部记忆' })
         .click();
     else await page.getByRole('tab', { name: '项目概况', exact: true }).click();
-    expect(await page.evaluate(() => (window as any).dashboardMotionCalls.length)).toBe(count);
+    expect(
+      await page.evaluate(() => (window as DashboardTestWindow).dashboardMotionCalls.length),
+    ).toBe(count);
     await expect
       .poll(() => surface.evaluate((element) => element.getAnimations({ subtree: true }).length))
       .toBe(0);
     await search.fill('Dashboard');
     await page.getByRole('button', { name: '立即刷新', exact: true }).click();
     await expect(search).toHaveValue('Dashboard');
-    expect(await page.evaluate(() => (window as any).dashboardMotionCalls.length)).toBe(count);
+    expect(
+      await page.evaluate(() => (window as DashboardTestWindow).dashboardMotionCalls.length),
+    ).toBe(count);
   });
 }
 
@@ -6852,10 +6876,11 @@ test('scrolls a long project memory list inside the knowledge page', async ({ pa
 for (const scenario of ['stable reads', 'loading spacing'] as const) {
   test(`project memory detail ${scenario}`, async ({ page }) => {
     await page.addInitScript(() => {
-      (window as any).memoryMotionCount = 0;
+      (window as DashboardTestWindow).memoryMotionCount = 0;
       const animate = Element.prototype.animate;
       Element.prototype.animate = function (...args: Parameters<typeof animate>) {
-        if (this.hasAttribute('data-dashboard-motion')) (window as any).memoryMotionCount++;
+        if (this.hasAttribute('data-dashboard-motion'))
+          (window as DashboardTestWindow).memoryMotionCount++;
         return animate.apply(this, args);
       };
     });
@@ -7009,9 +7034,11 @@ for (const scenario of ['stable reads', 'loading spacing'] as const) {
       }
     } else {
       await expect(inspector.locator('.dashboard-project-memory-body')).toHaveText(entries[0].body);
-      const motionCount = await page.evaluate(() => (window as any).memoryMotionCount);
+      const motionCount = await page.evaluate(
+        () => (window as DashboardTestWindow).memoryMotionCount,
+      );
       await inspector.evaluate((element) => {
-        (window as any).memoryReadingSurface = element;
+        (window as DashboardTestWindow).memoryReadingSurface = element;
       });
       await page.clock.runFor(31_000);
       await page.waitForTimeout(700);
@@ -7021,9 +7048,13 @@ for (const scenario of ['stable reads', 'loading spacing'] as const) {
       await page.clock.runFor(31_000);
       await expect(page.getByRole('region', { name: '项目记忆列表' })).toContainText('3 条');
       expect(reads).toBe(1);
-      expect(await page.evaluate(() => (window as any).memoryMotionCount)).toBe(motionCount);
+      expect(await page.evaluate(() => (window as DashboardTestWindow).memoryMotionCount)).toBe(
+        motionCount,
+      );
       expect(
-        await inspector.evaluate((element) => element === (window as any).memoryReadingSurface),
+        await inspector.evaluate(
+          (element) => element === (window as DashboardTestWindow).memoryReadingSurface,
+        ),
       ).toBe(true);
 
       holdReads = true;
@@ -7036,16 +7067,18 @@ for (const scenario of ['stable reads', 'loading spacing'] as const) {
       await expect(inspector.locator('.ant-skeleton')).toHaveCount(0);
       releaseRead();
       await expect(inspector.locator('.dashboard-project-memory-body')).toHaveText(entries[0].body);
-      expect(await page.evaluate(() => (window as any).memoryMotionCount)).toBe(motionCount);
+      expect(await page.evaluate(() => (window as DashboardTestWindow).memoryMotionCount)).toBe(
+        motionCount,
+      );
       await page
         .getByRole('region', { name: '项目记忆列表' })
         .getByText('项目记忆 2', { exact: true })
         .click();
       await expect(inspector.locator('.dashboard-project-memory-body')).toHaveText(entries[1].body);
       expect(reads).toBe(3);
-      expect(await page.evaluate(() => (window as any).memoryMotionCount)).toBeGreaterThan(
-        motionCount,
-      );
+      expect(
+        await page.evaluate(() => (window as DashboardTestWindow).memoryMotionCount),
+      ).toBeGreaterThan(motionCount);
     }
   });
 }
@@ -7054,14 +7087,14 @@ test('rolls the Native explorer badge upward when the total is known before moun
   page,
 }) => {
   await page.addInitScript(() => {
-    (window as any).nativeBadgeRolled = false;
+    (window as DashboardTestWindow).nativeBadgeRolled = false;
     new MutationObserver(() => {
       if (
         [...document.querySelectorAll('.native-changes-count .ant-scroll-number-only')].some(
           (element) => (element as HTMLElement).style.transform.startsWith('translateY(-'),
         )
       )
-        (window as any).nativeBadgeRolled = true;
+        (window as DashboardTestWindow).nativeBadgeRolled = true;
     }).observe(document, {
       subtree: true,
       childList: true,
@@ -7071,7 +7104,9 @@ test('rolls the Native explorer badge upward when the total is known before moun
   });
   await page.goto('/?demo');
   await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
-  await expect.poll(() => page.evaluate(() => (window as any).nativeBadgeRolled)).toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => (window as DashboardTestWindow).nativeBadgeRolled))
+    .toBe(true);
   await expect
     .poll(() =>
       page
@@ -7425,9 +7460,9 @@ test('Native summary reads every active page and retries failures without report
   expect(summaryCursors).toContain('2');
   const metric = ready.locator('.dashboard-summary-metric');
   await metric.evaluate((element) => {
-    (window as any).summaryRefreshValues = [];
+    (window as DashboardTestWindow).summaryRefreshValues = [];
     new MutationObserver(() =>
-      (window as any).summaryRefreshValues.push(element.textContent),
+      (window as DashboardTestWindow).summaryRefreshValues.push(element.textContent),
     ).observe(element, { subtree: true, childList: true, characterData: true });
   });
   revision++;
@@ -7435,7 +7470,9 @@ test('Native summary reads every active page and retries failures without report
   await page.getByRole('button', { name: '立即刷新', exact: true }).click();
   await expect.poll(() => summaryCursors.length).toBeGreaterThan(5);
   await page.waitForTimeout(1200);
-  expect(await page.evaluate(() => (window as any).summaryRefreshValues)).not.toContain('—');
+  expect(
+    await page.evaluate(() => (window as DashboardTestWindow).summaryRefreshValues),
+  ).not.toContain('—');
   await expect(metric).toHaveText('1');
 
   await ready.click();
@@ -7456,7 +7493,7 @@ test('uses the same Eval selection style for memory and knowledge in both themes
       await item.click();
       await expect(item).toHaveClass(/ant-menu-item-selected/);
       await item.evaluate(async (element) => {
-        getComputedStyle(element).backgroundColor;
+        getComputedStyle(element).getPropertyValue('background-color');
         await Promise.all(
           element.getAnimations().map((animation) => animation.finished.catch(() => {})),
         );
