@@ -1252,15 +1252,15 @@ body {
   position: sticky;
   top: 18px;
   min-width: 0;
-  padding: 8px;
+  padding: 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--dashboard-tool-panel-radius);
   background: var(--color-bg);
-  box-shadow: 0 1px 2px rgba(15, 24, 39, 0.025);
+  box-shadow: var(--shadow-card);
 }
 
 .dashboard-settings-navigation-label {
-  padding: 7px 10px 5px;
+  padding: 7px 10px 6px;
   color: var(--color-meta);
   font-size: 13px;
   font-weight: 600;
@@ -1276,9 +1276,14 @@ body {
 .dashboard-settings-navigation .ant-menu-item {
   height: 38px;
   margin: 3px 0;
-  padding-inline: 10px !important;
+  padding-inline: 11px !important;
   border-radius: 8px;
   font-size: 13px;
+  transition: background-color 120ms ease-out;
+}
+
+.dashboard-settings-navigation .ant-menu-item-selected {
+  font-weight: 500;
 }
 
 .dashboard-settings-main {
@@ -1374,7 +1379,7 @@ body {
   border: 1px solid var(--color-border);
   border-radius: var(--dashboard-tool-panel-radius);
   background: var(--color-bg);
-  box-shadow: 0 1px 2px rgba(15, 24, 39, 0.025);
+  box-shadow: var(--shadow-card);
 }
 
 .dashboard-settings-panel-head {
@@ -1722,7 +1727,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 13px 16px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--color-border-soft);
 }
 

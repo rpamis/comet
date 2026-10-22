@@ -1115,7 +1115,7 @@ function NativeScopeCard({ change }) {
     <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="mb-4 flex items-center justify-between gap-3">
         <h4 className="text-lg font-semibold tracking-tight">{t('变更范围')}</h4>
-        <span className="rounded-full bg-surface px-3 py-1 font-mono text-xs text-fg-2">
+        <span className="rounded-lg bg-surface px-3 py-1 font-mono text-xs text-fg-2">
           {specs?.total ?? 0}
           {t(' 个 capability')}
         </span>

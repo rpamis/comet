@@ -41,12 +41,18 @@
   flex: 1 1 170px;
   max-width: 280px;
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--color-bg);
+  box-shadow: var(--shadow-card);
   padding: 0;
   min-width: 0;
+  transition: box-shadow 120ms ease-out;
+}
+.application-graph-layer > .any-flow-node:hover {
+  box-shadow: var(--shadow-raised);
 }
 .application-graph-layer > .any-flow-node.selected {
+  border-color: color-mix(in oklab, var(--color-accent) 35%, var(--color-border));
   background: var(--color-accent-softer);
 }
 .application-graph-layer .any-step-row {
