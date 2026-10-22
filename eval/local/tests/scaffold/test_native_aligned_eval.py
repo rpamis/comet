@@ -1,6 +1,7 @@
 """Tests for running the canonical Comet task set with Native workflow semantics."""
 
 from pathlib import Path
+import json
 
 import pytest
 import yaml
@@ -258,6 +259,27 @@ def test_validate_native_workflow_accepts_expected_active_hard_stop(tmp_path: Pa
     assert failed == []
     assert "native_state" in passed
     assert "native_loop" in passed
+
+
+@pytest.mark.parametrize("entry", ["valid-fence", "invalid-file", "foreign-schema", "change-local"])
+def test_native_runtime_fence_isolation(tmp_path: Path, entry: str):
+    _write_native_archive(tmp_path)
+    runtime = tmp_path / ".comet/runtime"
+    fence = {
+        "schema": "comet.workspace-runtime-migration.v1",
+        "workspaceId": "a" * 64,
+        "source": "/workspace/.comet/runtime",
+        "target": "/opt/comet-eval-data/workspaces/" + "a" * 64 + "/runtime",
+        "kind": "directory",
+    }
+    if entry == "foreign-schema":
+        fence["schema"] = "not-a-comet-fence"
+    runtime.write_text("not json" if entry == "invalid-file" else json.dumps(fence), encoding="utf-8")
+    if entry == "change-local":
+        (tmp_path / "docs/comet/archive/2026-07-16-fix-median/runtime").mkdir()
+    passed, failed = validate_native_workflow(tmp_path, {"events": {"skills_invoked": ["comet-native"]}})
+    assert ("native_isolation" in passed) == (entry == "valid-fence")
+    assert any(item.startswith("native_isolation:") for item in failed) == (entry != "valid-fence")
 
 
 def test_validate_native_workflow_rejects_classic_artifacts_and_active_change(tmp_path: Path):

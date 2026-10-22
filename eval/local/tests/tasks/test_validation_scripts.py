@@ -164,6 +164,9 @@ def _load_standalone_validator(path: Path, workspace: Path):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     module.WORKSPACE = workspace
+    if hasattr(module, "_read_sdk_owner"):
+        # 本文件的历史 compat fixture 没有 SDK owner；SDK 的真实接口契约在 test_sdk_task_validators 覆盖。
+        module._read_sdk_owner = lambda _name: None
     return module
 
 
@@ -332,18 +335,22 @@ def _write_archived_openspec_change(
         ("COMET_CLASSIC_LEGACY_LAYOUT", "legacy", "openspec/changes"),
     ],
 )
+@pytest.mark.parametrize("state_name", [".comet.yaml", "comet-state.yaml"])
 def test_current_full_workflow_layout_requires_complete_archived_lifecycle(
     tmp_path: Path,
     treatment_name: str,
     layout: str,
     changes_root: str,
+    state_name: str,
 ):
     _write_full_workflow_context(tmp_path, treatment_name)
     _write_docs_config(tmp_path, layout)
-    _write_archived_openspec_change(
+    change = _write_archived_openspec_change(
         tmp_path,
         tmp_path / changes_root,
     )
+    if state_name != ".comet.yaml":
+        (change / ".comet.yaml").rename(change / state_name)
     module = _load_standalone_validator(
         ROOT
         / "local/tasks/comet-classic-layout-lifecycle/validation/test_classic_layout_lifecycle.py",

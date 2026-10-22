@@ -238,11 +238,35 @@ def _archived_candidates(changes_dir: Path):
 
 
 def _read_state(change_dir: Path):
-    state_path = change_dir / ".comet.yaml"
+    try:
+        state_path = _state_path(change_dir)
+    except (OSError, ValueError) as error:
+        return None, str(error)
     state, error = _read_yaml(state_path)
     if error:
         return None, f"Cannot validate {state_path.name}: {error}"
     return state, None
+
+
+def _state_path(change_dir: Path):
+    # 与 Classic 的 resolveClassicStateFile 契约一致：保留旧名，双来源拒绝读取。
+    relative = change_dir.absolute().relative_to(WORKSPACE.absolute())
+    cursor = WORKSPACE.absolute()
+    for part in relative.parts:
+        cursor = cursor / part
+        if cursor.is_symlink() or (hasattr(cursor, "is_junction") and cursor.is_junction()):
+            raise ValueError("Classic change path must not contain links")
+    found = []
+    for name in ("comet-state.yaml", ".comet.yaml"):
+        candidate = change_dir / name
+        if candidate.exists() or candidate.is_symlink():
+            found.append(candidate)
+    if len(found) > 1:
+        raise ValueError("Classic state files are ambiguous: comet-state.yaml and .comet.yaml both exist")
+    selected = found[0] if found else change_dir / "comet-state.yaml"
+    if selected.is_symlink() or not selected.is_file():
+        raise ValueError(f"Classic state must be a regular file: {selected.name}")
+    return selected
 
 
 def _terminal_state_error(change_dir: Path):
@@ -257,7 +281,7 @@ def _terminal_state_error(change_dir: Path):
     }
     for field, value in expected.items():
         if state.get(field) != value:
-            return f".comet.yaml {field} must be {value!r}"
+            return f"Classic state {field} must be {value!r}"
     return None
 
 
@@ -286,17 +310,46 @@ def check_sdk_run():
     return passed("sdk_run")
 
 
+def _read_sdk_owner(name: str):
+    # 由当前 Runtime 校验工作区身份和 active/history 分区，不读取旧的固定路径。
+    inspection = subprocess.run(
+            [
+                "node", "--input-type=module", "-e",
+                "import { readSdkChangeOwner } from '/opt/comet-current/dist/domains/workflow-contract/change-runtime-owner.js';"
+                "process.stdout.write(JSON.stringify(await readSdkChangeOwner(process.argv[1], process.argv[2], process.argv[3], { readOnly: true })));",
+                str(WORKSPACE), "classic", name,
+            ],
+            cwd=WORKSPACE, capture_output=True, text=True, encoding="utf-8", timeout=30, check=False,
+    )
+    if inspection.returncode != 0:
+        raise ValueError(f"Read-only SDK owner inspection failed: {inspection.stderr}")
+    return json.loads(inspection.stdout)
+
+
+def _checkpoint_matches(source, run):
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e",
+         "import { readFileSync } from 'node:fs';"
+         "import { portableRunCheckpointProjectionMatches } from '/opt/comet-current/dist/domains/engine/portable-run-checkpoint.js';"
+         "import YAML from '/opt/comet-current/node_modules/yaml/dist/index.js';"
+         "const {source,run}=JSON.parse(readFileSync(0,'utf8'));const checkpoint=YAML.parse(source).run_checkpoint;"
+         "process.stdout.write(JSON.stringify(portableRunCheckpointProjectionMatches(checkpoint,run)));"],
+        input=json.dumps({"source": source, "run": run}), capture_output=True,
+        text=True, encoding="utf-8", timeout=30, check=False,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"Portable checkpoint validation failed: {result.stderr}")
+    return json.loads(result.stdout) is True
+
+
 def _inspect_classic_sdk_archive(archived: Path):
     """Inspect the owning Run through Runtime, rather than trusting copied JSON."""
     if len(archived.name) <= 11:
         return None, "Classic archive name does not identify a change"
     name = archived.name[11:]
-    owner_path = WORKSPACE / ".comet/runtime/change-owners/classic" / f"{name}.json"
     try:
-        if owner_path.is_symlink():
-            raise ValueError("SDK owner is a symlink")
-        owner = json.loads(owner_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, json.JSONDecodeError) as error:
+        owner = _read_sdk_owner(name)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
         return None, f"Classic SDK owner is unavailable or invalid: {error}"
     expected_owner = {
         "schema": "comet.change-owner.v1",
@@ -309,17 +362,17 @@ def _inspect_classic_sdk_archive(archived: Path):
     if owner != expected_owner:
         return None, "Classic change is not owned by the full SDK application"
 
-    state_path = archived / ".comet.yaml"
     try:
+        state_path = _state_path(archived)
         source = state_path.read_text(encoding="utf-8")
-    except OSError as error:
+    except (OSError, ValueError) as error:
         return None, f"Classic archive state is unavailable: {error}"
     state, _error = _read_yaml(state_path)
     checkpoint = state.get("run_checkpoint") if isinstance(state, dict) else None
     if (
         not source.startswith("# comet-execution: managed-run\n")
         or not isinstance(checkpoint, dict)
-        or checkpoint.get("schema") != "comet.workflow-run-checkpoint.v1"
+        or checkpoint.get("schema") not in {"comet.workflow-run-checkpoint.v1", "comet.workflow-run-checkpoint.v2"}
         or not isinstance(checkpoint.get("hash"), str)
         or not isinstance(checkpoint.get("run"), dict)
         or checkpoint["run"].get("runId") != name
@@ -370,6 +423,11 @@ def _inspect_classic_sdk_archive(archived: Path):
         or not isinstance(actions, list)
     ):
         return None, "Classic SDK Run is not the completed workflow for this archive"
+    try:
+        if not _checkpoint_matches(source, run):
+            return None, "Classic archive checkpoint does not match its current SDK Run"
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        return None, f"Classic archive checkpoint is invalid: {error}"
     return run, None
 
 
@@ -463,19 +521,16 @@ def _transition_error(change_dir: Path):
     state, state_error = _read_state(change_dir)
     if state_error:
         return state_error
-    owner_path = WORKSPACE / ".comet/runtime/change-owners/classic" / f"{change_dir.name[11:]}.json"
     owner = None
-    if owner_path.exists() or owner_path.is_symlink():
+    if _uses_current_layout():
         try:
-            if owner_path.is_symlink():
-                raise ValueError("Classic owner is a symlink")
-            owner = json.loads(owner_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as error:
+            owner = _read_sdk_owner(change_dir.name[11:])
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
             return f"Classic owner is unavailable or invalid: {error}"
-        if not isinstance(owner, dict):
+        if owner is not None and not isinstance(owner, dict):
             return "Classic owner is invalid"
     managed = (
-        (change_dir / ".comet.yaml")
+        _state_path(change_dir)
         .read_text(encoding="utf-8")
         .startswith("# comet-execution: managed-run\n")
     )

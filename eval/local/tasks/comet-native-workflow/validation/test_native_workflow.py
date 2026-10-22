@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,66 @@ def passed(name: str):
 
 def failed(name: str, reason: str):
     return {"check": name, "status": "failed", "reason": reason}
+
+
+def _read_sdk_owner(name: str):
+    # 由当前 Runtime 校验工作区身份和 active/history 分区，不跟随兼容标记的 target。
+    result = subprocess.run(
+        [
+            "node", "--input-type=module", "-e",
+            "import { readSdkChangeOwner } from '/opt/comet-current/dist/domains/workflow-contract/change-runtime-owner.js';"
+            "process.stdout.write(JSON.stringify(await readSdkChangeOwner(process.argv[1], process.argv[2], process.argv[3], { readOnly: true })));",
+            str(WORKSPACE), "native", name,
+        ],
+        cwd=WORKSPACE, capture_output=True, text=True, encoding="utf-8", timeout=30, check=False,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"Read-only SDK owner inspection failed: {result.stderr}")
+    return json.loads(result.stdout)
+
+
+def _checkpoint_matches(source, run):
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e",
+         "import { readFileSync } from 'node:fs';"
+         "import { portableRunCheckpointProjectionMatches } from '/opt/comet-current/dist/domains/engine/portable-run-checkpoint.js';"
+         "import YAML from '/opt/comet-current/node_modules/yaml/dist/index.js';"
+         "const {source,run}=JSON.parse(readFileSync(0,'utf8'));const checkpoint=YAML.parse(source).run_checkpoint;"
+         "process.stdout.write(JSON.stringify(portableRunCheckpointProjectionMatches(checkpoint,run)));"],
+        input=json.dumps({"source": source, "run": run}), capture_output=True,
+        text=True, encoding="utf-8", timeout=30, check=False,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"Portable checkpoint validation failed: {result.stderr}")
+    return json.loads(result.stdout) is True
+
+
+def _valid_runtime_entry(target: Path):
+    if target.is_symlink():
+        return False
+    if target.is_dir():
+        return True
+    try:
+        if not target.is_file() or target.stat().st_size > 16384:
+            return False
+        fence = json.loads(target.read_text(encoding="utf-8"))
+        if not isinstance(fence, dict):
+            return False
+        identity = fence.get("workspaceId")
+        source = str(fence.get("source", "")).replace("\\", "/")
+        destination = str(fence.get("target", "")).replace("\\", "/")
+        return (
+            fence.get("schema") == "comet.workspace-runtime-migration.v1"
+            and fence.get("kind") == "directory"
+            and isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity) is not None
+            and re.match(r"^(?:/|[A-Za-z]:/)", source) is not None
+            and source.endswith("/.comet/runtime")
+            and re.match(r"^(?:/|[A-Za-z]:/)", destination) is not None
+            and destination.endswith(f"/workspaces/{identity}/runtime")
+            and not destination.startswith(source[:-len('/.comet/runtime')] + "/")
+        )
+    except (OSError, ValueError):
+        return False
 
 
 def _read_yaml(path: Path):
@@ -186,12 +247,9 @@ def check_sdk_run():
     if archived is None or len(archived.name) <= 11:
         return failed("sdk_run", "No Native archive identifies an SDK Run")
     name = archived.name[11:]
-    owner_path = WORKSPACE / ".comet/runtime/change-owners/native" / f"{name}.json"
     try:
-        if owner_path.is_symlink():
-            raise ValueError("SDK owner is a symlink")
-        owner = json.loads(owner_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, json.JSONDecodeError) as error:
+        owner = _read_sdk_owner(name)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
         return failed("sdk_run", f"Native SDK owner is unavailable or invalid: {error}")
     expected_owner = {
         "schema": "comet.change-owner.v1",
@@ -214,7 +272,7 @@ def check_sdk_run():
     if (
         not source.startswith("# comet-execution: managed-run\n")
         or not isinstance(checkpoint, dict)
-        or checkpoint.get("schema") != "comet.workflow-run-checkpoint.v1"
+        or checkpoint.get("schema") not in {"comet.workflow-run-checkpoint.v1", "comet.workflow-run-checkpoint.v2"}
         or not isinstance(checkpoint.get("hash"), str)
         or not isinstance(checkpoint.get("run"), dict)
         or checkpoint["run"].get("runId") != name
@@ -267,6 +325,11 @@ def check_sdk_run():
         or not isinstance(actions, list)
     ):
         return failed("sdk_run", "Native SDK Run is not the completed workflow for this archive")
+    try:
+        if not _checkpoint_matches(source, run):
+            return failed("sdk_run", "Native archive checkpoint does not match its current SDK Run")
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        return failed("sdk_run", f"Native archive checkpoint is invalid: {error}")
     succeeded = {
         action.get("stepId")
         for action in actions
@@ -319,7 +382,7 @@ def check_isolation():
     present.extend(f".comet/{name}" for name in sorted(hidden_entries - allowed_entries))
     for name in sorted(hidden_entries & allowed_entries):
         target = comet_config_dir / name
-        if name == "runtime" and (target.is_symlink() or not target.is_dir()):
+        if name == "runtime" and not _valid_runtime_entry(target):
             present.append(f".comet/{name}")
         elif name != "runtime" and (target.is_symlink() or not target.is_file()):
             present.append(f".comet/{name}")

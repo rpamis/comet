@@ -13,6 +13,34 @@ import yaml
 from scaffold.python.validation.core import _normalize_skill_invocations
 
 
+def _valid_runtime_entry(target: Path):
+    if target.is_symlink():
+        return False
+    if target.is_dir():
+        return True
+    try:
+        if not target.is_file() or target.stat().st_size > 16384:
+            return False
+        fence = json.loads(target.read_text(encoding="utf-8"))
+        if not isinstance(fence, dict):
+            return False
+        identity = fence.get("workspaceId")
+        source = str(fence.get("source", "")).replace("\\", "/")
+        destination = str(fence.get("target", "")).replace("\\", "/")
+        return (
+            fence.get("schema") == "comet.workspace-runtime-migration.v1"
+            and fence.get("kind") == "directory"
+            and isinstance(identity, str) and re.fullmatch(r"[a-f0-9]{64}", identity) is not None
+            and re.match(r"^(?:/|[A-Za-z]:/)", source) is not None
+            and source.endswith("/.comet/runtime")
+            and re.match(r"^(?:/|[A-Za-z]:/)", destination) is not None
+            and destination.endswith(f"/workspaces/{identity}/runtime")
+            and not destination.startswith(source[:-len('/.comet/runtime')] + "/")
+        )
+    except (OSError, ValueError):
+        return False
+
+
 def _failure(name: str, reason: str) -> str:
     return f"{name}: {reason}"
 
@@ -337,7 +365,7 @@ def validate_native_workflow(
     invalid_comet_entries = []
     for name in hidden_entries & allowed_comet_entries:
         target = comet_config_dir / name
-        if name == "runtime" and (target.is_symlink() or not target.is_dir()):
+        if name == "runtime" and not _valid_runtime_entry(target):
             invalid_comet_entries.append(name)
         elif name != "runtime" and (target.is_symlink() or not target.is_file()):
             invalid_comet_entries.append(name)
