@@ -32,13 +32,11 @@
   transition:
     border-color 180ms ease,
     background-color 180ms ease,
-    box-shadow 180ms ease,
-    transform 180ms ease;
+    box-shadow 180ms ease;
 }
 .dashboard-theme-card.ant-radio-wrapper:hover {
   border-color: var(--color-accent);
-  box-shadow: var(--shadow-card);
-  transform: translateY(-1px);
+  box-shadow: 0 0 0 1px var(--color-accent);
 }
 .dashboard-theme-card.ant-radio-wrapper-checked {
   border-color: var(--color-accent);
@@ -56,7 +54,8 @@
 .dashboard-theme-card > .ant-radio {
   position: absolute;
   right: 14px;
-  top: 138px;
+  top: 18px;
+  z-index: 1;
 }
 .dashboard-theme-card > .ant-radio + span {
   display: block;
@@ -67,12 +66,31 @@
   --preview-bg: #f7f9fc;
   --preview-panel: #ffffff;
   --preview-line: #dce4ef;
+  position: relative;
   display: flex;
-  height: 112px;
+  height: 124px;
+  padding-top: 21px;
   overflow: hidden;
   border: 1px solid var(--preview-line);
   border-radius: 7px;
   background: var(--preview-bg);
+}
+.theme-preview-window-bar {
+  position: absolute;
+  inset: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 21px;
+  gap: 4px;
+  padding-inline: 9px;
+  border-bottom: 1px solid var(--preview-line);
+  background: var(--preview-panel);
+}
+.theme-preview-window-bar i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--preview-line);
 }
 .dashboard-theme-preview.is-dark {
   --preview-bg: #0e1420;

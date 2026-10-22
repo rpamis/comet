@@ -1,9 +1,112 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { readApplicationDemo } from '../../../domains/dashboard/web/src/application-demo.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createDiskApplication } from '../../helpers/workflow-application.js';
+
+async function historyChoices(page: Page) {
+  await page.locator('.any-context-fields .ant-select').last().click();
+  return page.locator('.any-record-select-popup:visible');
+}
+
+async function chooseHistory(page: Page, runId: string) {
+  const popup = await historyChoices(page);
+  await popup
+    .getByRole('option')
+    .filter({ hasText: `${runId} ·` })
+    .click();
+}
+
+test('searches grouped runs by ID and goal without losing the workspace', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: '自定义工作流' }).click();
+  const search = page.getByRole('combobox', { name: '运行记录', exact: true });
+  await search.fill('review-022');
+  const popup = page.locator('.any-record-select-popup:visible');
+  await expect(popup.getByRole('option')).toHaveCount(1);
+  await popup.getByRole('option').click();
+  await expect(page.locator('.any-run-identity')).toContainText('review-022');
+  await page.getByRole('button', { name: /返回父运行$/u }).click();
+  await search.fill('完善输入校验');
+  await expect(popup.getByRole('option')).toHaveCount(1);
+  await popup.getByRole('option').click();
+  await expect(page.locator('.any-run-identity')).toContainText('run-127');
+  expect(errors).toEqual([]);
+});
+
+test('version selection switches the active trace and survives a full refresh', async ({
+  page,
+}) => {
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: '自定义工作流' }).click();
+  await page.locator('.any-app-row').filter({ hasText: 'docs-publisher' }).click();
+  const version = page.getByRole('combobox', { name: '应用版本', exact: true });
+  await version.click();
+  await page.getByRole('option', { name: 'v2.0.0', exact: true }).click();
+  await expect(page.locator('.any-run-identity')).toContainText('docs-041');
+  await expect((await historyChoices(page)).getByRole('option')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await expect(page.locator('.any-app-row.selected')).toContainText('docs-publisher');
+  await expect(page.locator('.any-run-identity')).toContainText('docs-041');
+  await expect(page.locator('.any-context-fields .ant-select').last()).toContainText('v2.0.0');
+  await version.click();
+  await page.getByRole('option', { name: 'v2.1.0', exact: true }).click();
+  await expect(page.locator('.any-run-identity')).toContainText('docs-042');
+  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await version.click();
+  await page.getByRole('option', { name: 'v1.1.0', exact: true }).click();
+  await expect(page.locator('.any-run-identity')).toContainText('creator-040');
+  await expect(page.locator('.any-explorer')).not.toContainText('creator-040');
+});
+
+test('returning to an application keeps its version filter consistent with the active run', async ({
+  page,
+}) => {
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: '自定义工作流' }).click();
+  const apps = page.locator('.any-app-row');
+  await apps.filter({ hasText: 'docs-publisher' }).click();
+  await page.getByRole('combobox', { name: '应用版本', exact: true }).click();
+  await page.getByRole('option', { name: 'v2.0.0', exact: true }).click();
+  await expect(page.locator('.any-run-identity')).toContainText('docs-041');
+  await apps.filter({ hasText: 'grill-suite' }).click();
+  await apps.filter({ hasText: 'docs-publisher' }).click();
+  await expect(page.locator('.any-run-identity')).toContainText('docs-042');
+  await expect(page.locator('.any-context-fields .ant-select').first()).toContainText('全部版本');
+  const popup = await historyChoices(page);
+  await expect(popup.getByRole('option').filter({ hasText: 'docs-042 ·' })).toBeVisible();
+});
+
+test('applications stay in the explorer while version and execution selection stays in the center', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto('/?demo');
+  for (const workspaceName of ['自定义工作流', 'Comet Any']) {
+    await page.getByRole('menuitem', { name: workspaceName }).click();
+    const explorer = page.locator('.any-explorer');
+    await expect(explorer.locator('.any-app-row')).not.toHaveCount(0);
+    await expect(
+      explorer.locator('.any-run-row, .any-creator-roster, .any-version-hint'),
+    ).toHaveCount(0);
+    const center = page.locator('.any-run-panel');
+    await expect(center.getByRole('combobox', { name: '应用版本', exact: true })).toBeVisible();
+    await expect(
+      center.getByRole('combobox', {
+        name: workspaceName === 'Comet Any' ? '创作记录' : '运行记录',
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath(`${workspaceName}-application-navigation.png`),
+      animations: 'disabled',
+    });
+  }
+});
 
 for (const width of [1600, 1280, 390]) {
   test(`custom workflows keep multiple applications and their runs separate at ${width}px`, async ({
@@ -35,23 +138,26 @@ for (const width of [1600, 1280, 390]) {
     });
     await apps.filter({ hasText: 'docs-publisher' }).click();
     await expect(page.locator('.any-run-identity')).toContainText('docs-042');
-    await expect(runs.locator('.any-run-row')).toHaveCount(2);
-    await expect(runs).not.toContainText('run-128');
+    await expect((await historyChoices(page)).getByRole('option')).toHaveCount(2);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.any-context-selector')).not.toContainText('run-128');
     await expect(page.locator('[data-step-id="approve-docs"]')).toBeVisible();
     await expect(page.locator('[data-step-id="implement"]')).toHaveCount(0);
-    await runs.getByRole('button', { name: /^docs-041/u }).click();
+    await chooseHistory(page, 'docs-041');
     await expect(page.locator('.any-run-identity')).toContainText('docs-041');
-    await expect(runs.getByRole('button', { name: /^docs-041/u })).toContainText('v2.0.0');
+    await expect(page.locator('.any-context-selector')).toContainText('v2.0.0');
     await apps.filter({ hasText: 'dependency-audit' }).click();
     await expect(page.locator('.any-run-identity')).toContainText('audit-009');
-    await expect(runs.locator('.any-run-row')).toHaveCount(1);
+    await expect((await historyChoices(page)).getByRole('option')).toHaveCount(1);
+    await page.keyboard.press('Escape');
     await expect(page.locator('[data-step-id="audit"]')).toContainText(
       english ? 'Execution failed' : '失败',
     );
     await expect(page.locator('[data-step-id="approve-docs"]')).toHaveCount(0);
     await apps.filter({ hasText: 'grill-suite' }).click();
     await expect(page.locator('.any-run-identity')).toContainText('run-128');
-    await expect(runs.locator('.any-run-list > [role="listitem"]')).toHaveCount(2);
+    await expect((await historyChoices(page)).getByRole('option')).toHaveCount(3);
+    await page.keyboard.press('Escape');
     await expect(page.locator('[data-step-id="implement"]')).toBeVisible();
     const search = workspace.getByRole('textbox', {
       name: english ? 'Search goals or applications' : '搜索目标或应用',
@@ -98,9 +204,10 @@ test('Any retains full creation stages and delivered versions separately from cu
     page.getByRole('list', { name: '创作阶段', exact: true }).getByRole('listitem'),
   ).toHaveCount(6);
   await expect(page.locator('.any-current')).toContainText('确认创作方案');
-  await expect(page.locator('.any-creator-roster>button')).toHaveCount(2);
+  await expect((await historyChoices(page)).getByRole('option')).toHaveCount(2);
+  await page.keyboard.press('Escape');
   await expect(page.getByRole('region', { name: '应用运行记录', exact: true })).toHaveCount(0);
-  await expect(page.locator('.any-creation-sidebar')).toContainText('v1.1.0');
+  await expect(page.locator('.any-context-selector')).toContainText('creator-041');
   await page.getByRole('tab', { name: '方案与产物', exact: true }).click();
   await expect(page.locator('.any-artifact-list>button')).toHaveCount(1);
   await page.getByRole('tab', { name: '创作流程', exact: true }).click();
@@ -109,10 +216,7 @@ test('Any retains full creation stages and delivered versions separately from cu
     animations: 'disabled',
   });
   await page.getByRole('menuitem', { name: '自定义工作流' }).click();
-  const previous = page
-    .getByRole('region', { name: '应用运行记录', exact: true })
-    .getByRole('button', { name: /^run-127/u });
-  await previous.click();
+  await chooseHistory(page, 'run-127');
   await expect(page.locator('.any-run-identity')).toContainText('run-127');
   await page.getByRole('menuitem', { name: 'Comet Any' }).click();
   await expect(page.locator('.any-run-identity')).toContainText('creator-041');
@@ -155,10 +259,7 @@ for (const width of [1600, 1280, 390]) {
       path: testInfo.outputPath(`any-creation-en-dark-${width}.png`),
       animations: 'disabled',
     });
-    await page
-      .locator('.any-creator-roster')
-      .getByRole('button', { name: /creator-040/u })
-      .click();
+    await chooseHistory(page, 'creator-040');
     await expect(page.getByRole('list', { name: 'Creation stages', exact: true })).toContainText(
       'Skipped',
     );
@@ -230,16 +331,12 @@ test('Any retries run discovery and pages older runs without replacing the curre
   await page.goto('/');
   await page.getByRole('menuitem', { name: '自定义工作流' }).click();
   const runs = page.getByRole('region', { name: '应用运行记录', exact: true });
-  await expect(runs).toContainText('历史运行读取失败');
+  await expect(runs).toContainText('历史记录读取失败');
   await expect(page.locator('.any-run-identity')).toHaveText('运行轨迹 run-128');
   await runs.getByRole('button', { name: '重新读取运行列表', exact: true }).click();
   await runs.getByRole('button', { name: '加载更多历史记录', exact: true }).click();
-  await expect(runs.getByRole('button', { name: /^run-127/u })).toBeVisible();
-  await expect(runs.getByRole('button', { name: /^run-128/u })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
-  await runs.getByRole('button', { name: /^run-127/u }).click();
+  await expect(page.locator('.any-run-identity')).toHaveText('运行轨迹 run-128');
+  await chooseHistory(page, 'run-127');
   await expect(page.locator('.any-run-identity')).toHaveText('运行轨迹 run-127');
   await expect(
     page.getByRole('list', { name: '应用阶段', exact: true }).locator('.is-done'),
@@ -257,28 +354,26 @@ for (const width of [1600, 390]) {
     if (width === 390) await page.getByRole('button', { name: '打开导航' }).click();
     await page.getByRole('menuitem', { name: '自定义工作流' }).click();
     const runs = page.getByRole('region', { name: '应用运行记录', exact: true });
-    await expect(runs.locator('.any-run-list > [role="listitem"]')).toHaveCount(2);
-    const current = runs.getByRole('button', { name: /^run-128/u });
-    const previous = runs.getByRole('button', { name: /^run-127/u });
-    await expect(current).toHaveAttribute('aria-pressed', 'true');
-    await previous.click();
+    await expect((await historyChoices(page)).getByRole('option')).toHaveCount(3);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.any-context-selector')).toContainText('run-128');
+    await chooseHistory(page, 'run-127');
     await expect(page.locator('.any-run-identity')).toHaveText('运行轨迹 run-127');
     await expect(
       page.getByRole('list', { name: '应用阶段', exact: true }).locator('.is-done'),
     ).toHaveCount(4);
-    await expect(previous).toHaveAttribute('aria-pressed', 'true');
-    await current.click();
+    await expect(page.locator('.any-context-selector')).toContainText('run-127');
+    await chooseHistory(page, 'run-128');
     await expect(page.locator('.any-run-identity')).toHaveText('运行轨迹 run-128');
     await expect(
       page.getByRole('list', { name: '应用阶段', exact: true }).locator('.is-done'),
     ).toHaveCount(1);
-    await runs.locator('.any-run-children > summary').click();
-    await runs.getByRole('button', { name: /^review-022/u }).click();
+    await chooseHistory(page, 'review-022');
     await expect(page.locator('.any-run-identity')).toHaveText('运行轨迹 review-022');
     await expect(page.locator('.any-current')).toContainText('等待证据');
     await page.getByRole('button', { name: /返回父运行$/u }).click();
     await expect(page.locator('.any-run-identity')).toHaveText('运行轨迹 run-128');
-    await expect(current).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.any-context-selector')).toContainText('run-128');
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     await page.screenshot({
       path: testInfo.outputPath(`independent-runs-${width}.png`),
@@ -574,10 +669,7 @@ test('Any delivery demo shows destination controls without making delivery API r
   });
   await page.goto('/?demo');
   await page.getByRole('menuitem', { name: 'Comet Any' }).click();
-  await page
-    .locator('.any-creator-roster')
-    .getByRole('button', { name: /creator-040/u })
-    .click();
+  await chooseHistory(page, 'creator-040');
   await page.getByRole('button', { name: '分发 / 导出' }).click();
   const dialog = page.getByRole('dialog', { name: '分发 / 导出应用' });
   await expect(dialog).toContainText('示例预览');
@@ -1700,30 +1792,34 @@ test('Any retries and pages one application creation history without losing deli
   });
   await page.goto('/');
   await page.getByRole('menuitem', { name: 'Comet Any' }).click();
-  const roster = page.locator('.any-creator-roster');
+  const roster = page.locator('.any-context-selector');
   await expect(roster).toContainText('历史记录读取失败');
   await expect(page.locator('.any-run-identity')).toHaveText('创作记录 creator-041');
   await roster.getByRole('button', { name: '重新读取创作记录', exact: true }).click();
-  await expect(roster.locator(':scope > button')).toHaveCount(100);
+  const initialChoices = await historyChoices(page);
+  await expect(initialChoices.getByRole('option')).toHaveCount(101);
+  await expect(initialChoices.getByRole('option').filter({ hasText: 'run-127 ·' })).toHaveCount(1);
+  await expect(initialChoices.getByRole('option').filter({ hasText: 'creator-040 ·' })).toHaveCount(
+    0,
+  );
+  await page.keyboard.press('Escape');
   await roster.getByRole('button', { name: '加载更多创作记录', exact: true }).click();
-  await expect(roster.locator(':scope > button')).toHaveCount(101);
+  const olderChoices = await historyChoices(page);
+  await expect(olderChoices.getByRole('option')).toHaveCount(101);
+  await expect(olderChoices.getByRole('option').filter({ hasText: 'creator-040 ·' })).toHaveCount(
+    1,
+  );
+  await expect(olderChoices.getByRole('option').filter({ hasText: 'run-127 ·' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
   await expect(page.locator('.any-run-identity')).toHaveText('创作记录 creator-041');
-  const version = page.locator('.any-creation-sidebar .any-delivered-version').filter({
-    hasText: 'creator-040',
-  });
-  await expect(version).toContainText('v1.1.0');
-  const installedVersion = page
-    .locator('.any-creation-sidebar .any-delivered-version')
-    .filter({ hasText: 'v2.0.0' });
   const moreVersions = page.getByRole('button', { name: /加载更多版本记录$/u });
   await expect(moreVersions).not.toHaveClass(/ant-btn-loading/u);
   await moreVersions.click();
-  await expect(installedVersion).toBeVisible();
-  await installedVersion.click();
+  await chooseHistory(page, 'imported-run-v2');
   await expect(page.locator('.any-run-identity')).toHaveText('版本来源 imported-run-v2');
   await expect(page.locator('.any-run-header .any-version')).toHaveText('v2.0.0');
   await expect(page.getByRole('button', { name: '分发 / 导出', exact: true })).toBeEnabled();
-  await version.click();
+  await chooseHistory(page, 'creator-040');
   await expect(page.locator('.any-run-identity')).toHaveText('创作记录 creator-040');
   await expect(page.getByRole('button', { name: '分发 / 导出', exact: true })).toBeEnabled();
   await page.getByRole('tab', { name: '验证证据', exact: true }).click();

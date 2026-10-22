@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Button, Empty, Tag } from 'antd';
+import { Button, Empty } from 'antd';
 import { t } from './dashboard-i18n.js';
 import { ApplicationEvidenceCards } from './application-record-inspector.jsx';
 import { refreshApplicationRunPage, mergeApplicationRunPages } from './application-data.js';
@@ -101,79 +101,18 @@ export function useApplicationVersionRuns(request, applicationId, enabled, refre
   return { page, error, loading, loadMore, reload: () => setRetry((value) => value + 1) };
 }
 
-export function ApplicationCreationSidebar({
-  detail,
-  group,
-  versionHistory,
-  onSelect,
-  onEvidence,
-  onRuns,
-}) {
-  const delivered = (group?.creators ?? []).filter(
-    (run) => run.status === 'delivered' && run.application,
-  );
-  const deliveredVersions = new Set(delivered.map((run) => run.application.version));
-  const installed = [
-    ...new Map(
-      (group?.runs ?? [])
-        .filter((run) => run.application && !deliveredVersions.has(run.application.version))
-        .map((run) => [run.application.version, run]),
-    ).values(),
-  ];
+export function ApplicationCreationSidebar({ detail, hasRuns, onEvidence, onRuns }) {
   return (
     <div className="any-creation-sidebar">
-      <h3>{t('已交付版本')}</h3>
-      {delivered.map((run) => (
-        <button
-          className="any-delivered-version"
-          key={run.locator}
-          onClick={() => onSelect(run.locator)}
-        >
-          <span>
-            <b>v{run.application.version}</b>
-            <Tag color="success">{t('已交付')}</Tag>
-          </span>
-          <code>{run.runId}</code>
-          <small>{t('查看版本与分发入口')}</small>
-        </button>
-      ))}
-      {installed.map((run) => (
-        <button
-          className="any-delivered-version"
-          key={run.locator}
-          onClick={() => onSelect(run.locator)}
-        >
-          <b>v{run.application.version}</b>
-          <small>{t('已安装的固定版本')}</small>
-          <small>{t('查看版本与分发入口')}</small>
-        </button>
-      ))}
-      {!delivered.length && <p className="any-note">{t('已加载的创作记录中暂无已交付版本。')}</p>}
-      {versionHistory?.error && (
-        <div className="any-run-list-error" role="status">
-          <span>{t('版本记录读取失败，暂时显示已加载的版本。')}</span>
-          <Button type="link" onClick={versionHistory.reload}>
-            {t('重新读取版本记录')}
-          </Button>
-        </div>
-      )}
-      {versionHistory?.page?.nextCursor && (
-        <Button type="link" loading={versionHistory.loading} onClick={versionHistory.loadMore}>
-          {t('加载更多版本记录')}
-        </Button>
-      )}
-      <p className="any-note">
-        {t('当前创作与已交付版本分别保留；未确认的方案不会替换已发布内容。')}
-      </p>
-      <Button block onClick={onRuns} disabled={!group?.runs.length}>
-        {t('查看自定义工作流')}
-      </Button>
       <h3>{t('当前候选的验证证据')}</h3>
       {detail ? (
         <ApplicationEvidenceCards detail={detail} onEvidence={onEvidence} />
       ) : (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('正在读取记录')} />
       )}
+      <Button block onClick={onRuns} disabled={!hasRuns}>
+        {t('查看自定义工作流')}
+      </Button>
     </div>
   );
 }

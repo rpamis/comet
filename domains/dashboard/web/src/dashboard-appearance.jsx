@@ -6,10 +6,10 @@ import React, {
   useLayoutEffect,
   useState,
 } from 'react';
-import { Button, Radio, Slider } from 'antd';
+import { Button, Radio, Select, Slider } from 'antd';
 import { MoonOutlined, SunOutlined } from '@ant-design/icons';
 import './dashboard-appearance.css';
-import { t } from './dashboard-i18n.js';
+import { setDashboardLanguage, t } from './dashboard-i18n.js';
 import { useDashboardLanguage } from './dashboard-language.jsx';
 import {
   FONT_SCALE_STORAGE_KEY,
@@ -40,7 +40,7 @@ export function useDashboardFontScale({ embedded = false, themeRoot = null } = {
 }
 
 export function DashboardAppearanceSettings() {
-  useDashboardLanguage();
+  const language = useDashboardLanguage();
   const { fontScale, updateFontScale, embedded, theme, updateTheme } = useContext(
     DashboardAppearanceContext,
   );
@@ -56,6 +56,26 @@ export function DashboardAppearanceSettings() {
           )}
         </p>
       </div>
+      <section
+        className="dashboard-settings-panel dashboard-language-panel"
+        aria-labelledby="dashboard-language-label"
+      >
+        <div className="dashboard-appearance-field-copy">
+          <h4 id="dashboard-language-label">{t('界面语言')}</h4>
+          <p>{t('选择此浏览器使用的显示语言。')}</p>
+        </div>
+        <Select
+          virtual={false}
+          aria-labelledby="dashboard-language-label"
+          value={language}
+          onChange={setDashboardLanguage}
+          options={[
+            { value: 'zh', label: '简体中文' },
+            { value: 'en', label: 'English' },
+          ]}
+          className="dashboard-language-select"
+        />
+      </section>
       <section
         className="dashboard-settings-panel dashboard-theme-panel"
         aria-labelledby="dashboard-theme-label"
@@ -84,6 +104,11 @@ export function DashboardAppearanceSettings() {
           ].map(({ value, label, description, Icon }) => (
             <Radio key={value} value={value} aria-label={t(label)} className="dashboard-theme-card">
               <span className={`dashboard-theme-preview is-${value}`} aria-hidden="true">
+                <span className="theme-preview-window-bar">
+                  <i />
+                  <i />
+                  <i />
+                </span>
                 <span className="theme-preview-sidebar">
                   <i />
                   <i />
@@ -140,6 +165,12 @@ export function DashboardAppearanceSettings() {
           <span aria-hidden="true" className="dashboard-font-size-large">
             A
           </span>
+        </div>
+        <div className="dashboard-type-preview" aria-label={t('字体预览')}>
+          <span className="dashboard-type-preview-label">{t('字体预览')}</span>
+          <strong>{t('工作流概览')}</strong>
+          <p>{t('当前应用的步骤、执行状态与产物。')}</p>
+          <code>comet dashboard</code>
         </div>
         <div className="dashboard-font-size-actions">
           <span>{t('拖动即时生效，100% 保持原有字号。')}</span>

@@ -70,6 +70,33 @@ test.beforeEach(async ({ page }) => {
     return route.fulfill({ json: { items: [], total: 0 } });
   });
 });
+test('refresh keeps the System footer quiet while version information loads', async ({
+  page,
+}, testInfo) => {
+  let release: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/dashboard/update', async (route) => {
+    await pending;
+    await route.fulfill({ json: info });
+  });
+  await page.goto('/');
+  const version = page.getByRole('button', { name: 'Comet 版本与更新' });
+  try {
+    await expect(version).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath('footer-version-pending.png'),
+      animations: 'disabled',
+    });
+    await expect(version.locator('.ant-spin')).toHaveCount(0);
+    await expect(version).toHaveText('Comet');
+  } finally {
+    release!();
+  }
+  await expect(version).toContainText('v0.5.0');
+});
+
 test('shows the version beside System and opens a reviewable update without executing it', async ({
   page,
 }) => {
@@ -97,7 +124,7 @@ test('shows the version beside System and opens a reviewable update without exec
   await expect(page.getByText('/project-b', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '确认更新', exact: true })).toBeVisible();
   expect(writes).toBe(0);
-  await expect(page).toHaveURL('http://127.0.0.1:4173/');
+  await expect(page).toHaveURL(new URL('/', test.info().project.use.baseURL).href);
   await page.screenshot({
     path: test.info().outputPath('update-review-desktop.png'),
     animations: 'disabled',

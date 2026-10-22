@@ -18,7 +18,6 @@ import { useDashboardLanguage } from './dashboard-language.jsx';
 import { navigateDashboard, useDashboardNavigation } from './dashboard-navigation.js';
 import {
   groupApplicationRuns,
-  groupApplicationRunChildren,
   preferredApplicationRun,
   applicationRunNeedsAttention as attention,
   groupApplicationSteps,
@@ -40,6 +39,7 @@ import {
 } from './application-record-inspector.jsx';
 import { readApplicationDemo } from './application-demo.js';
 import './any-workflow-panel.css';
+import { ApplicationHistorySelector } from './application-history-selector.jsx';
 import { ApplicationStepList } from './application-step-list.jsx';
 import { ApplicationDeliveryModal } from './application-delivery-modal.jsx';
 import { ApplicationWorkflowView } from './application-workflow-view.jsx';
@@ -60,93 +60,6 @@ const baseLabel = (base) =>
       : base === 'standalone'
         ? t('独立工作流')
         : t('尚未生成应用');
-
-function ApplicationRunList({
-  group,
-  locator,
-  onSelect,
-  loading,
-  error,
-  hasMore,
-  onMore,
-  onRetry,
-}) {
-  const childrenByRun = useMemo(() => groupApplicationRunChildren(group), [group]);
-  const row = (run, child = false) => (
-    <button
-      type="button"
-      className={`any-run-row${locator === run.locator ? ' selected' : ''}${child ? ' is-child' : ''}`}
-      aria-pressed={locator === run.locator}
-      onClick={() => onSelect(run.locator)}
-    >
-      <span className="any-run-row-heading">
-        <code title={run.runId ?? undefined}>{run.runId ?? t('无法读取')}</code>
-        <ApplicationStatus value={run.status} />
-      </span>
-      <span className="any-run-row-goal" title={run.goal ?? run.title}>
-        {run.goal ?? run.title}
-      </span>
-      <span className="any-run-row-version">
-        {run.application ? `v${run.application.version}` : t('未生成版本')}
-        {child && ` · ${t('子流程')}`}
-        {run.archive && ` · ${t('历史实验 · 只读')}`}
-      </span>
-    </button>
-  );
-  return (
-    <section className="any-application-runs" aria-label={t('应用运行记录')}>
-      <div className="any-run-list-heading">
-        <b>{t('运行记录')}</b>
-        <span>{t('已加载 {0} 次运行', [group.runs.length])}</span>
-      </div>
-      <div className="any-run-list" role="list">
-        {group.runs.map((run) => {
-          const children = childrenByRun.get(run.locator) ?? [];
-          return (
-            <div key={run.locator} role="listitem">
-              {row(run)}
-              {children.length > 0 && (
-                <details
-                  className="any-run-children"
-                  open={children.some((child) => child.locator === locator) || undefined}
-                >
-                  <summary>
-                    {t('子流程')} · {children.length}
-                  </summary>
-                  {children.map((child) => (
-                    <React.Fragment key={child.locator}>{row(child, true)}</React.Fragment>
-                  ))}
-                </details>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      {!group.runs.length && (
-        <p className="any-run-list-empty">{loading ? t('正在读取记录') : t('尚无应用运行')}</p>
-      )}
-      {error && (
-        <div className="any-run-list-error" role="status">
-          <span>{t('历史运行读取失败，暂时显示已加载的记录。')}</span>
-          <Button type="link" size="small" onClick={onRetry}>
-            {t('重新读取运行列表')}
-          </Button>
-        </div>
-      )}
-      {hasMore && (
-        <Button
-          className="any-run-list-more"
-          type="link"
-          size="small"
-          loading={loading}
-          onClick={onMore}
-        >
-          {t('加载更多历史记录')}
-        </Button>
-      )}
-    </section>
-  );
-}
 
 export function AnyWorkflowPanel({
   projectId,
@@ -974,30 +887,33 @@ export function AnyWorkflowPanel({
       <div className="any-columns">
         <aside className="any-panel any-explorer" data-dashboard-scroll="any-explorer">
           <div className="any-panel-heading">
-            <b>{t(applicationWorkspace ? '运行记录' : '应用与创作')}</b>
+            <b>{t(applicationWorkspace ? '应用' : '应用与创作')}</b>
             <span>{demo ? t('示例数据') : t('当前项目')}</span>
           </div>
-          <div className="any-overview">
-            <div className="any-stat-strip">
-              {[
-                ['all', '全部', groups.length],
-                ...(!applicationWorkspace
-                  ? [['draft', '早期创作', groups.filter((g) => !g.id).length]]
-                  : []),
-                ['apps', '应用', groups.filter((g) => g.id).length],
-              ].map(([value, label, count]) => (
-                <button
-                  key={value}
-                  className={scope === value ? 'selected' : ''}
-                  onClick={() => setScope(value)}
-                >
-                  <span>{t(label)}</span>
-                  <b>{count}</b>
-                </button>
-              ))}
+          {!applicationWorkspace && (
+            <div className="any-overview">
+              <div className="any-stat-strip">
+                {[
+                  ['all', '全部', groups.length],
+                  ...(!applicationWorkspace
+                    ? [['draft', '早期创作', groups.filter((g) => !g.id).length]]
+                    : []),
+                  ['apps', '应用', groups.filter((g) => g.id).length],
+                ].map(([value, label, count]) => (
+                  <button
+                    key={value}
+                    className={scope === value ? 'selected' : ''}
+                    aria-pressed={scope === value}
+                    onClick={() => setScope(value)}
+                  >
+                    <span>{t(label)}</span>
+                    <b>{count}</b>
+                  </button>
+                ))}
+              </div>
+              <span>{t('应用固定版本，创作与运行分别保留')}</span>
             </div>
-            <span>{t('应用固定版本，创作与运行分别保留')}</span>
-          </div>
+          )}
           <div className="any-search">
             <Input
               aria-label={t('搜索目标或应用')}
@@ -1017,6 +933,7 @@ export function AnyWorkflowPanel({
               <button
                 key={value}
                 className={filter === value ? 'selected' : ''}
+                aria-pressed={filter === value}
                 onClick={() => setFilter(value)}
               >
                 {t(label)}
@@ -1053,6 +970,7 @@ export function AnyWorkflowPanel({
                         return (
                           <div key={group.key} className="any-app-group">
                             <button
+                              aria-pressed={selectedGroup?.key === group.key}
                               className={
                                 'any-app-row ' +
                                 (selectedGroup?.key === group.key ? 'selected' : '')
@@ -1064,87 +982,24 @@ export function AnyWorkflowPanel({
                                 <b>{group.title}</b>
                               </span>
                               <span className="any-app-description">{baseLabel(group.base)}</span>
-                              <span className="any-app-counts">
-                                {applicationWorkspace
-                                  ? t('已加载 {0} 次独立运行', [group.runs.length])
-                                  : t('{0} 条创作记录', [group.creators.length])}
+                              <span className="any-app-summary">
+                                <span className="any-app-counts">
+                                  {applicationWorkspace
+                                    ? t('已加载 {0} 次独立运行', [group.runs.length])
+                                    : t('{0} 条创作记录', [group.creators.length])}
+                                </span>
+                                <span className="any-app-state" hidden={applicationWorkspace}>
+                                  {group.creators.length ? (
+                                    <>
+                                      <span>{t('创作')}</span>
+                                      <ApplicationStatus value={preferred(group.creators).status} />
+                                    </>
+                                  ) : (
+                                    <span>{t('无创作记录')}</span>
+                                  )}
+                                </span>
                               </span>
-                              <span className="any-app-state" hidden={applicationWorkspace}>
-                                {group.creators.length ? (
-                                  <>
-                                    <span>{t('创作')}</span>
-                                    <ApplicationStatus value={preferred(group.creators).status} />
-                                  </>
-                                ) : (
-                                  <span>{t('无创作记录')}</span>
-                                )}
-                              </span>
-                              {group.versions.length > 0 && (
-                                <small className="any-version-hint">
-                                  {group.versions.map((v) => `v${v}`).join(' · ')}
-                                </small>
-                              )}
                             </button>
-                            {!applicationWorkspace && selectedGroup?.key === group.key && (
-                              <div className="any-creator-roster">
-                                {selectedGroup.creators.map((run) => (
-                                  <button
-                                    className={locator === run.locator ? 'selected' : ''}
-                                    key={run.locator}
-                                    onClick={() => chooseRun(run.locator)}
-                                  >
-                                    <span>
-                                      <code>{run.runId}</code>
-                                      <ApplicationStatus value={run.status} />
-                                    </span>
-                                    <b>{run.goal ?? run.title}</b>
-                                    <small>
-                                      {run.application
-                                        ? `v${run.application.version}`
-                                        : t('尚未生成版本')}
-                                    </small>
-                                  </button>
-                                ))}
-                                {group.id && rosterError && (
-                                  <div className="any-run-list-error" role="status">
-                                    <span>{t('历史记录读取失败，暂时显示已加载的记录。')}</span>
-                                    <Button
-                                      type="link"
-                                      size="small"
-                                      onClick={() => setTick((value) => value + 1)}
-                                    >
-                                      {t('重新读取创作记录')}
-                                    </Button>
-                                  </div>
-                                )}
-                                {group.id && roster?.nextCursor && (
-                                  <div className="any-creator-more">
-                                    <Button
-                                      type="link"
-                                      size="small"
-                                      loading={rosterLoading}
-                                      onClick={loadRoster}
-                                    >
-                                      {t('加载更多创作记录')}
-                                    </Button>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                            {applicationWorkspace &&
-                              group.id &&
-                              selectedGroup?.key === group.key && (
-                                <ApplicationRunList
-                                  group={selectedGroup}
-                                  locator={locator}
-                                  onSelect={chooseRun}
-                                  loading={rosterLoading}
-                                  error={rosterError}
-                                  hasMore={Boolean(roster?.nextCursor)}
-                                  onMore={loadRoster}
-                                  onRetry={() => setTick((value) => value + 1)}
-                                />
-                              )}
                           </div>
                         );
                       })}
@@ -1194,10 +1049,25 @@ export function AnyWorkflowPanel({
                 ? t('已加载 {0} / {1} 条记录', [page.items.length, page.total])
                 : t('正在读取记录')}
             </span>
-            <small>{t('尚未命名的创作按目标显示。')}</small>
+            {!applicationWorkspace && <small>{t('尚未命名的创作按目标显示。')}</small>}
           </div>
         </aside>
         <section className="any-panel any-run-panel" data-dashboard-scroll="any-workspace">
+          {selectedSummary && (
+            <ApplicationHistorySelector
+              viewScope={viewScope}
+              group={selectedGroup}
+              selected={selectedSummary}
+              applicationWorkspace={applicationWorkspace}
+              onSelect={chooseRun}
+              loading={rosterLoading}
+              error={rosterError}
+              hasMore={Boolean(roster?.nextCursor)}
+              onMore={loadRoster}
+              onRetry={() => setTick((value) => value + 1)}
+              versionHistory={applicationWorkspace ? null : versionHistory}
+            />
+          )}
           {(parentStack.current.length > 0 || detail?.parentLocator) && (
             <Button
               className="any-parent-back"
@@ -1411,37 +1281,34 @@ export function AnyWorkflowPanel({
                         )}
                       </div>
                     </details>
-                    <div className={'any-follow-bar ' + (news ? 'has-news' : '')}>
-                      <span aria-live="polite">
-                        {t(
-                          news
-                            ? '有新进展，当前阅读位置已保留'
-                            : manual
-                              ? '已保留你的阅读位置'
-                              : '点击步骤查看详情与历史',
-                        )}
-                      </span>
-                      <Button
-                        size="small"
-                        type="link"
-                        icon={<AimOutlined />}
-                        onClick={locateCurrent}
-                      >
-                        {t('回到当前工作')}
-                      </Button>
-                    </div>
-                    <div className={'any-sync-line ' + (error ? 'has-error' : '')} role="status">
-                      <span>
-                        {error ? t('刷新失败，正在显示上次成功读取') : t('上次成功读取')}{' '}
-                        {time
-                          ? new Date(time).toLocaleString(getDashboardLocale())
-                          : t('尚未成功读取')}
-                      </span>
-                      {error && (
-                        <Button size="small" type="link" onClick={() => setTick((v) => v + 1)}>
-                          {t('重试读取')}
+                    <div className="any-run-activity">
+                      <div className={'any-follow-bar ' + (news ? 'has-news' : '')}>
+                        <span aria-live="polite">
+                          {(news || manual) &&
+                            t(news ? '有新进展，当前阅读位置已保留' : '已保留你的阅读位置')}
+                        </span>
+                        <Button
+                          size="small"
+                          type="link"
+                          icon={<AimOutlined />}
+                          onClick={locateCurrent}
+                        >
+                          {t('回到当前工作')}
                         </Button>
-                      )}
+                      </div>
+                      <div className={'any-sync-line ' + (error ? 'has-error' : '')} role="status">
+                        <span>
+                          {error ? t('刷新失败，正在显示上次成功读取') : t('上次成功读取')}{' '}
+                          {time
+                            ? new Date(time).toLocaleString(getDashboardLocale())
+                            : t('尚未成功读取')}
+                        </span>
+                        {error && (
+                          <Button size="small" type="link" onClick={() => setTick((v) => v + 1)}>
+                            {t('重试读取')}
+                          </Button>
+                        )}
+                      </div>
                     </div>
                     {recordId && !selectedRecord && !flowLoading && (
                       <Alert
@@ -1604,9 +1471,7 @@ export function AnyWorkflowPanel({
           {!applicationWorkspace && (
             <ApplicationCreationSidebar
               detail={detail}
-              group={selectedGroup}
-              versionHistory={versionHistory}
-              onSelect={chooseRun}
+              hasRuns={Boolean(selectedGroup?.runs.length)}
               onEvidence={openEvidence}
               onRuns={() =>
                 onNavigateWorkspace?.('application', preferred(selectedGroup?.runs ?? [])?.locator)

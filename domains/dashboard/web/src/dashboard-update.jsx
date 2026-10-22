@@ -134,7 +134,7 @@ export function DashboardVersion({ update, onClick }) {
       {update.info ? (
         <span className="dashboard-version-number">v{update.info.currentVersion}</span>
       ) : (
-        <Spin size="small" />
+        <span className="dashboard-version-number">Comet</span>
       )}
       {update.job?.status === 'running' ? (
         <SyncOutlined spin />

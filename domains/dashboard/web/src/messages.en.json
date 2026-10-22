@@ -2523,5 +2523,15 @@
   "方案与产物": "Plans and artifacts",
   "尚未读取该步骤的记录": "Records for this step have not been loaded yet",
   "当前候选尚无验证记录": "No validation record for the current candidate",
-  "{0} 条创作记录": "{0} creation records"
+  "{0} 条创作记录": "{0} creation records",
+  "全部版本": "All versions",
+  "应用版本与创作记录": "Application versions and creation records",
+  "调整外观、工作流与项目能力": "Customize appearance, workflows, and project capabilities",
+  "按 Esc 或点击背景关闭；全屏时先退出全屏。": "Press Esc or click outside to close; in full screen, this exits full screen first.",
+  "个人偏好": "Preferences",
+  "项目能力": "Project capabilities",
+  "选择此浏览器使用的显示语言。": "Choose the display language for this browser.",
+  "字体预览": "Type preview",
+  "当前应用的步骤、执行状态与产物。": "Steps, run status, and artifacts for the current application.",
+  "工作流概览": "Workflow overview"
 }

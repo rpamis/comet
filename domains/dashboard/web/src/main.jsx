@@ -132,6 +132,7 @@ import {
   resolveDashboardProjectWorkflow,
 } from './dashboard-data.js';
 import './styles.css';
+import './dashboard-settings.css';
 import { localizedDemo } from './demo-locale.js';
 
 const AUTO_REFRESH_MS = 30_000;
@@ -5232,8 +5233,8 @@ function DashboardSettingsOverlay({
   return (
     <DashboardModal
       rootClassName="dashboard-settings-modal-root"
-      className="dashboard-settings-modal"
-      width={920}
+      className="dashboard-settings-modal dashboard-preferences-modal"
+      width={1000}
       open={open}
       title={t('Comet 设置')}
       subtitle={
@@ -5245,11 +5246,11 @@ function DashboardSettingsOverlay({
               ? t('本机用户')
               : t('当前项目')
       }
-      description={t('管理记忆、知识、工作流与 Eval 配置')}
+      description={t('调整外观、工作流与项目能力')}
       onClose={onClose}
       footer={
         <div className="dashboard-settings-modal-footer">
-          <span>{t('点击背景可关闭或还原设置')}</span>
+          <span>{t('按 Esc 或点击背景关闭；全屏时先退出全屏。')}</span>
           <div>
             <Button type="primary" onClick={onClose} aria-label={t('完成')}>
               {t('完成')}
@@ -5299,21 +5300,35 @@ function DashboardSettingsPage({
     pages.filter((item) => !item.pending).map((item) => item.pluginId),
   );
   const settingsPages = [
-    { key: 'comet.appearance', icon: <SunOutlined />, label: t('外观') },
     {
-      key: 'comet.personal-memory',
-      icon: <UserOutlined />,
-      label: t('个人记忆'),
-      disabled: !installedPlugins.has('comet.personal-memory'),
+      type: 'group',
+      label: t('个人偏好'),
+      children: [{ key: 'comet.appearance', icon: <SunOutlined />, label: t('外观') }],
     },
     {
-      key: 'comet.project-knowledge',
-      icon: <DatabaseOutlined />,
-      label: t('项目知识'),
-      disabled: !installedPlugins.has('comet.project-knowledge'),
+      type: 'group',
+      label: t('项目能力'),
+      children: [
+        {
+          key: 'comet.personal-memory',
+          icon: <UserOutlined />,
+          label: t('个人记忆'),
+          disabled: !installedPlugins.has('comet.personal-memory'),
+        },
+        {
+          key: 'comet.project-knowledge',
+          icon: <DatabaseOutlined />,
+          label: t('项目知识'),
+          disabled: !installedPlugins.has('comet.project-knowledge'),
+        },
+        { key: 'comet.config', icon: <SettingOutlined />, label: t('Comet 配置') },
+      ],
     },
-    { key: 'comet.config', icon: <SettingOutlined />, label: t('Comet 配置') },
-    { key: 'comet.eval', icon: <CheckCircleOutlined />, label: 'Eval' },
+    {
+      type: 'group',
+      label: t('评估'),
+      children: [{ key: 'comet.eval', icon: <CheckCircleOutlined />, label: 'Eval' }],
+    },
   ];
   const currentData = section === 'comet.config' ? config : page;
   return (
@@ -5402,7 +5417,10 @@ function SettingsSectionHead({ icon: Icon, title, description, status }) {
       <span className="dashboard-tool-panel-icon" aria-hidden="true">
         <Icon />
       </span>
-      <p>{description}</p>
+      <div className="dashboard-settings-section-copy">
+        <h3>{title}</h3>
+        <p>{description}</p>
+      </div>
       {status && <span className="dashboard-tool-counter">{status}</span>}
     </div>
   );
