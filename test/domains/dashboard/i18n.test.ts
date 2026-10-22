@@ -26,6 +26,9 @@ describe('Dashboard interface language', () => {
       'Requested directly by the user; Explicitly set by the user; Current project matches',
     );
     expect(systemText('用户补充的自由说明')).toBe('用户补充的自由说明');
+    expect(systemText('原验收结果保留；打开时读取对应创作记录，不能用于当前候选')).toBe(
+      'The original validation result is retained; open its creation record to read it. It does not apply to the current candidate.',
+    );
     const record = {
       id: 'generated-module-dashboard',
       authority: 'repository',
