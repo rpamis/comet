@@ -2684,7 +2684,9 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await expect(page.getByRole('complementary', { name: '记录详情' })).toContainText(
     '先验证检索与上下文衔接，再扩大测试范围',
   );
-  await expect(page.getByRole('complementary', { name: '记录详情' })).toContainText('宿主验证结果');
+  await expect(page.getByRole('complementary', { name: '记录详情' })).toContainText(
+    'Agent 平台验证结果',
+  );
   const correctionAction = inspectorFooter.getByRole('button', { name: '纠正记录' });
   await correctionAction.click();
   const correctionDialog = page.getByRole('dialog', { name: /纠正项目知识记录/u });

@@ -68,7 +68,7 @@ const run = {
     recoveredActions: [],
     actualModels: ['demo-model'],
   },
-  limitations: ['仅为交互示例，不代表真实模型评估结果。', '恢复路径与真实宿主尚未验证。'],
+  limitations: ['仅为交互示例，不代表真实模型评估结果。', '恢复路径与真实 Agent 平台尚未验证。'],
   failures: [],
   diagnostics: [],
   artifacts: [{ id: 'summary.md', label: 'summary.md', format: 'markdown' }],
@@ -89,7 +89,7 @@ export async function readEvalDemo(suffix, { body } = {}) {
     return localizedDemo({
       format: 'markdown',
       content:
-        '# 报告工作流评估示例\n\n两项示例用例中，一项通过，一项未通过来源检查。\n\n此记录仅展示界面交互，不证明真实模型或宿主已通过验收。',
+        '# 报告工作流评估示例\n\n两项示例用例中，一项通过，一项未通过来源检查。\n\n此记录仅展示界面交互，不证明真实模型或 Agent 平台已通过验收。',
     });
   throw new Error(demoText('示例记录不存在'));
 }

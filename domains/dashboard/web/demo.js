@@ -2836,7 +2836,7 @@ DEMO_SNAPSHOT.changes.active.forEach(addCometArtifacts);
 DEMO_SNAPSHOT.changes.archived.forEach(addCometArtifacts);
 
 // 静态侧栏示例沿用现有展示字段；应用文件使用当前 SDK 包结构。
-// 这些内容不是实际 Run、宿主调用或模型验收证据。
+// 这些内容不是实际 Run、Agent 平台调用或模型验收证据。
 export const DEMO_SKILL_VISUALS = {
   compose: {
     summary: {

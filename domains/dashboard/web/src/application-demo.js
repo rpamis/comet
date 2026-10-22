@@ -63,7 +63,7 @@ const proof = (version) =>
     {
       kind: 'host',
       status: 'not-recorded',
-      summary: '没有独立宿主验证记录；本地校验和模型评估不能替代宿主验收',
+      summary: '没有独立 Agent 平台验证记录；本地校验和模型评估不能替代 Agent 平台验收',
     },
   ].map((e) => ({
     ...e,
@@ -249,7 +249,7 @@ function detail(summary) {
           record('implement', '实现工作流步骤', '构建与校验', 'running', 'action', 9, {
             attempt: 2,
             reconciliations: [
-              { attempt: 1, resolution: 'not-executed', evidence: '核对原宿主后确认未执行' },
+              { attempt: 1, resolution: 'not-executed', evidence: '核对原执行端后确认未执行' },
             ],
           }),
           record('regression', '执行回归检查', '构建与校验', 'running', 'action', 10),
@@ -267,7 +267,7 @@ function detail(summary) {
     records = [record('analyze', '理解目标与调查 Skills', '准备方案', 'running')];
   if (summary.runId === 'review-022')
     records = [
-      record('evidence', '收集宿主验收证据', '执行步骤', 'evidence', 'evidence', 3, {
+      record('evidence', '收集 Agent 平台验收证据', '执行步骤', 'evidence', 'evidence', 3, {
         kind: 'host-proof',
       }),
     ];

@@ -320,7 +320,7 @@ export function ApplicationDeliveryModal({ projectId, projectPath, detail, demo,
             )}
             {preview.requiredCapabilities?.length > 0 && (
               <p>
-                {t('需要的宿主能力')}：{preview.requiredCapabilities.join(', ')}
+                {t('需要的 Agent 平台能力')}：{preview.requiredCapabilities.join(', ')}
               </p>
             )}
             {preview.evaluation && (

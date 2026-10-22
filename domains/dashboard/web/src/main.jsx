@@ -7304,7 +7304,7 @@ function ProjectKnowledgeInspector({
               </div>
               {record.lastApplication.outcomeEvents?.at(-1)?.evidence?.verification && (
                 <div>
-                  <dt>{t('宿主验证结果')}</dt>
+                  <dt>{t('Agent 平台验证结果')}</dt>
                   <dd>
                     {record.lastApplication.outcomeEvents.at(-1).evidence.verification.command}
                     {' · '}

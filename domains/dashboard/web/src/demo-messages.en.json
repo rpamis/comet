@@ -338,12 +338,12 @@
   "追问与记录决定": "Ask follow-up questions and record decisions",
   "方案已确认": "Plan confirmed",
   "实现工作流步骤": "Implement workflow steps",
-  "核对原宿主后确认未执行": "Reconcile with the original host and confirm no execution",
+  "核对原执行端后确认未执行": "Reconcile with the original host and confirm no execution",
   "执行回归检查": "Run regression checks",
   "确认文档发布范围": "Confirm the documentation publication scope",
   "独立审查子流程": "Independent review child workflow",
   "理解目标与调查 Skills": "Understand the goal and investigate Skills",
-  "收集宿主验收证据": "Collect host acceptance evidence",
+  "收集 Agent 平台验收证据": "Collect host acceptance evidence",
   "示例记录不存在": "Example record not found",
   "报告工作流 · 示例": "Report workflow - example",
   "检查报告来源，批准后发布。": "Check report sources and publish after approval.",
@@ -354,7 +354,7 @@
   "报告缺少来源，输出验收未通过。": "The report has no sources and failed output acceptance.",
   "报告必须包含可核对的来源": "The report must include verifiable sources",
   "仅为交互示例，不代表真实模型评估结果。": "Interaction example only; does not represent real model evaluation results.",
-  "恢复路径与真实宿主尚未验证。": "Recovery paths and real hosts have not been verified.",
+  "恢复路径与真实 Agent 平台尚未验证。": "Recovery paths and real hosts have not been verified.",
   "示例数据只支持读取": "Example data is read-only",
   "整理 0.5.0 升级指南，等待发布确认。": "Prepare the 0.5.0 upgrade guide and await publication approval.",
   "发布上一版迁移指南。": "Publish the previous migration guide.",
@@ -374,5 +374,5 @@
   "整理修复建议": "Prepare remediation recommendations",
   "修复建议": "Remediation recommendations",
   "检测到不符合项目要求的依赖，等待修复后重试": "Dependencies do not meet project requirements. Remediate before retrying.",
-  "# 报告工作流评估示例\n\n两项示例用例中，一项通过，一项未通过来源检查。\n\n此记录仅展示界面交互，不证明真实模型或宿主已通过验收。": "# Report workflow evaluation example\n\nOf two example cases, one passed and one failed source checks.\n\nThis record demonstrates interface interaction only and does not establish real model or host acceptance."
+  "# 报告工作流评估示例\n\n两项示例用例中，一项通过，一项未通过来源检查。\n\n此记录仅展示界面交互，不证明真实模型或 Agent 平台已通过验收。": "# Report workflow evaluation example\n\nOf two example cases, one passed and one failed source checks.\n\nThis record demonstrates interface interaction only and does not establish real model or host acceptance."
 }

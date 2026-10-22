@@ -56,7 +56,7 @@ export function formatApplicationRecordType(value) {
       ask_user: '用户决定',
       await_evidence: '等待证据',
       user_decision: '用户决定',
-      'host-proof': '宿主验证',
+      'host-proof': 'Agent 平台验证',
     }[value] ?? value,
   );
 }
@@ -66,7 +66,7 @@ const kindLabels = {
   evidence: '等待证据',
   ready: '待执行工作',
 };
-const evidenceLabels = { local: '本地校验', model: '模型 Eval', host: '宿主验证' };
+const evidenceLabels = { local: '本地校验', model: '模型 Eval', host: 'Agent 平台验证' };
 const evidenceStates = {
   passed: '通过',
   failed: '失败',
@@ -191,7 +191,7 @@ export function ApplicationRecordInspector({
         <p>
           {record.kind === 'action'
             ? record.status === 'running'
-              ? t('已领取，等待原宿主回传结果；这不是宿主心跳。')
+              ? t('已领取，等待原执行端回传结果；这不代表 Agent 当前在线。')
               : record.status === 'unknown'
                 ? t('执行结果需要核对，保留原 Action 后由 Agent 继续。')
                 : (data.reason ?? data.outcome?.summary ?? t('保存的执行动作与回报'))
@@ -386,7 +386,7 @@ export function ApplicationEvidenceView({ detail, onEvidence, onSource, onEval }
           ? `v${detail.application.version} · ${t('验证证据')}`
           : t('应用尚未生成')}
       </h3>
-      <p>{t('本地校验、模型行为和宿主执行分别记录，缺少证据时保留无记录状态。')}</p>
+      <p>{t('本地校验、模型行为和 Agent 平台执行情况分别记录，缺少证据时保留无记录状态。')}</p>
       <ApplicationEvidenceCards detail={detail} onEvidence={onEvidence} />
       {detail.sourceCreators.map((c) => (
         <Button key={c.locator} type="link" onClick={() => onSource(c.locator)}>

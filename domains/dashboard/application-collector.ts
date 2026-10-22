@@ -909,7 +909,7 @@ const emptyEvidence = (
   evalRunId: null,
   summary:
     kind === 'host'
-      ? '没有独立宿主验证记录；本地校验和模型评估不能替代宿主验收'
+      ? '没有独立 Agent 平台验证记录；本地校验和模型评估不能替代 Agent 平台验收'
       : '当前固定内容没有此类验证记录',
   details: null,
 });

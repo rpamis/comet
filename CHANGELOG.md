@@ -16,6 +16,7 @@ Comet v0.5.0 is now available. This release focuses on the following capabilitie
 
 ### Changed
 
+- **Dashboard terminology**: Clarify Chinese labels for Agent review, workflow execution, and verification evidence, distinguishing the Agent, its platform, and the executor.
 - **Comet Skill**: Upgrade the Native and Classic Runtimes to execute new tasks using shared SDK capabilities while retaining their respective phases, user confirmations, independent verification, and archive requirements. Resume interrupted tasks from persisted state. Complete and archive active tasks using 0.4.5 before upgrading.
 - **Runtime directory**: Local Runtime data moves to `~/.comet/workspaces/<workspace-id>/runtime/`, isolated by checkout and Git worktree, reducing the impact of execution records on the current project directory. Formal documents, state files that support cross-device recovery, and project configuration remain in the project.
 - **Classic state filename**: New Classic tasks use `<change>/comet-state.yaml` instead of `<change>/.comet.yaml`, matching Native's filename. Existing `.comet.yaml` files remain supported and are not automatically renamed.

@@ -638,7 +638,7 @@ export function AnyWorkflowPanel({
   const openEvidence = async (e) => {
     evidenceRequest.current?.abort();
     const pending = {
-      title: t({ local: '本地校验', model: '模型 Eval', host: '宿主验证' }[e.kind]),
+      title: t({ local: '本地校验', model: '模型 Eval', host: 'Agent 平台验证' }[e.kind]),
       runId: e.sourceRunId ?? detail.runId,
       version: e.version,
       message: e.summary,
@@ -1320,7 +1320,7 @@ export function AnyWorkflowPanel({
                           <p>{t('已有步骤、决定与产物继续保留，可展开查看历史。')}</p>
                         )}
                         {current.some((r) => r.status === 'running') && (
-                          <small>{t('已领取表示等待宿主回传，不代表宿主当前在线。')}</small>
+                          <small>{t('已领取表示等待 Agent 平台返回结果，不代表 Agent 当前在线。')}</small>
                         )}
                         {!detail.archive && (
                           <div className="any-continue-context">
