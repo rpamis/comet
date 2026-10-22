@@ -9,13 +9,15 @@ import {
   validateClassicSdkDesignContext,
   writeClassicSdkDesignContext,
 } from './classic-handoff.js';
-import { readClassicProjectFile } from './classic-protected-path.js';
+import { readClassicProjectFile, writeClassicProjectText } from './classic-protected-path.js';
 import {
   classicDesignEvidenceReceipt,
   classicOpenEvidenceReceipt,
 } from './classic-sdk-application.js';
 import { inspectClassicSdkRun } from './classic-sdk-status.js';
 import type { ClassicState } from './classic-state.js';
+import { withClassicStateLock } from './classic-store.js';
+import { assignClassicTaskIds } from './classic-tasks.js';
 
 async function assertDesignProposalSourcesCurrent(options: {
   projectRoot: string;
@@ -110,6 +112,19 @@ export async function proposeClassicSdkDesign(options: {
   );
   if (!action) throw new Error('Classic SDK Run has no pending Design proposal Action');
   const input = run.input as { changeDir: string };
+  // 先稳定协调身份，再固定设计来源；Build 读取任务 ID 不应触发重复设计审批。
+  await withClassicStateLock(path.join(projectRoot, input.changeDir), async () => {
+    const tasksFile = path.join(input.changeDir, 'tasks.md');
+    const source = await readClassicProjectFile(projectRoot, tasksFile, {
+      label: 'Classic task authority',
+    });
+    const updated = assignClassicTaskIds(source);
+    if (updated !== source) {
+      await writeClassicProjectText(projectRoot, tasksFile, updated, {
+        label: 'Classic task authority',
+      });
+    }
+  });
   const sourceEvidence = await classicOpenEvidenceReceipt(projectRoot, input.changeDir);
   const requirementsEvidence = await classicOpenEvidenceReceipt(projectRoot, input.changeDir, {
     designRequirements: true,

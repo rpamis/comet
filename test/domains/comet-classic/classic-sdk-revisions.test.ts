@@ -30,6 +30,7 @@ async function fixture(
   legacyDesign = false,
   profile: 'full' | 'tweak' | 'hotfix' = 'full',
   externalDesign = false,
+  taskSource = '- [ ] Implement the adapter <!-- comet-task:impl -->\n',
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic revised candidate '));
   roots.push(root);
@@ -75,7 +76,7 @@ async function fixture(
   await ok('state', 'init', 'example', profile, '--isolation', 'current');
   await put(`${change}/proposal.md`, '# Proposal\nKeep the existing public API.\n');
   await put(`${change}/design.md`, '# Design\nUse the existing adapter.\n');
-  await put(`${change}/tasks.md`, '- [ ] Implement the adapter <!-- comet-task:impl -->\n');
+  await put(`${change}/tasks.md`, taskSource);
   const opened = await ok('guard', 'example', 'open');
   await ok('guard', 'example', 'open', '--apply', '--approval-hash', opened.approvalHash);
   if (profile !== 'full') {
@@ -197,6 +198,109 @@ async function fixture(
 }
 
 describe('Classic candidate revisions', () => {
+  it('stabilizes missing task IDs before Design approval and keeps later task scope protected', async () => {
+    const f = await fixture(false, 'full', false, '- [ ] Implement the adapter\n');
+    const proposal = await f.ok(
+      'state',
+      'propose-design',
+      'example',
+      '--proposal',
+      'Use the existing adapter.',
+    );
+    const tasksFile = path.join(f.projectRoot, f.change, 'tasks.md');
+    const assigned = await f.ok('state', 'tasks', 'example');
+    expect(assigned.needsIds).toBe(false);
+    expect(assigned.tasks[0]).toMatchObject({ text: 'Implement the adapter', completed: false });
+    const taskId = assigned.tasks[0].id as string;
+    expect(taskId).toBeTruthy();
+    const source = await fs.readFile(tasksFile, 'utf8');
+    const pending = (await f.inspect()).run;
+    const repeated = await f.cli(
+      'state',
+      'propose-design',
+      'example',
+      '--proposal',
+      'Use the existing adapter.',
+    );
+    expect(repeated.exitCode).not.toBe(0);
+    expect((await f.inspect()).run).toEqual(pending);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await f.ok('state', 'tasks', 'example', '--assign-ids');
+      expect(await fs.readFile(tasksFile, 'utf8')).toBe(source);
+    }
+    await f.ok(
+      'state',
+      'decide-design',
+      'example',
+      '--proposal-hash',
+      proposal.wait.proposalHash,
+      '--choice',
+      'approved',
+    );
+    await f.finishDesign(proposal.wait.proposalHash);
+    await f.put(
+      'configuration.json',
+      JSON.stringify({
+        build_mode: 'executing-plans',
+        tdd_mode: 'tdd',
+        review_mode: 'standard',
+        subagent_dispatch: null,
+      }),
+    );
+    await f.ok('state', 'propose-build', 'example', '--file', 'configuration.json', '--confirmed');
+    await f.put(
+      f.plan,
+      `<!-- comet-task-authority: ${f.change}/tasks.md -->\n# Plan\n<!-- comet-task-ref:${taskId} -->\nImplement and validate.\n`,
+    );
+    const submitted = await f.ok('state', 'submit-plan', 'example', '--plan', f.plan);
+    expect(submitted.nextAction.stepId).toBe('full.build.execute');
+    const accepted = (await f.inspect()).run;
+    await f.put(
+      `${f.change}/tasks.md`,
+      `- [ ] Replace the public API <!-- comet-task:${taskId} -->\n`,
+    );
+    await f.ok('state', 'revise-plan', 'example', '--expected-revision', String(accepted.revision));
+    const before = (await f.inspect()).run;
+    const blocked = await f.cli('state', 'submit-plan', 'example', '--plan', f.plan);
+    expect(blocked.exitCode).not.toBe(0);
+    expect(blocked.stderr).toContain('revise-design');
+    expect((await f.inspect()).run).toEqual(before);
+  });
+
+  it('does not assign new task IDs through an already approved Design proposal', async () => {
+    const f = await fixture(false, 'full', false, '- [ ] Implement the adapter\n');
+    const hash = await f.design();
+    const tasksFile = path.join(f.projectRoot, f.change, 'tasks.md');
+    const source = (await fs.readFile(tasksFile, 'utf8')) + '- [ ] Add an unapproved capability\n';
+    await fs.writeFile(tasksFile, source);
+    const before = (await f.inspect()).run;
+    const repeated = await f.cli(
+      'state',
+      'propose-design',
+      'example',
+      '--proposal',
+      'Use the existing adapter.',
+    );
+    expect(repeated.exitCode).not.toBe(0);
+    expect(await fs.readFile(tasksFile, 'utf8')).toBe(source);
+    expect((await f.inspect()).run).toEqual(before);
+    await f.put(
+      `${f.change}/design.md`,
+      '---\ncomet_change: example\nrole: technical-design\ncanonical_spec: openspec\n---\n# Technical design\nUse the existing adapter.\n',
+    );
+    const completed = await f.cli(
+      'state',
+      'complete-design',
+      'example',
+      '--design-doc',
+      `${f.change}/design.md`,
+      '--approval-hash',
+      hash,
+    );
+    expect(completed.exitCode).not.toBe(0);
+    expect(completed.stderr).toContain('revise-design');
+  });
+
   it('rejects invalid Build semantics before claiming, then accepts a corrected proposal', async () => {
     const f = await fixture();
     await f.finishDesign(await f.design());
