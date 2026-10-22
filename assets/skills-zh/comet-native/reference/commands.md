@@ -252,7 +252,7 @@ Runtime 为每个子任务返回 worktree、集成分支的当前提交、角色
 - 等待外部输入时，必须读取恢复参考中的[等待外部输入与监控](recovery.md#等待外部输入与监控)：停止回复消息不等于暂停监控。只保留仍有任务可推进或外部状态需检查的监控，并及时告知用户阻塞原因和恢复条件。
 - 在 Codex 中，如果可以管理用户可见的独立会话，就为每个当前可执行子任务新建一个独立会话，不要只启动当前会话内的 subagent。创建会话时沿用现有项目，不要让 Codex 另外创建 worktree；新会话必须先进入 Runtime 为该子任务创建的 worktree，后续所有文件和 Git 操作只在该目录执行。当前会话保存会话信息，通过等待或读取会话检查进度，并在需要修正或补充信息时发送后续指令。
 - 在 Claude Code 中，如果可以使用 Claude Code Agent Team 且当前为交互式会话，就创建一个 Claude Code Agent Team。当前会话负责统筹，每个当前可执行子任务分配给一个有明确名称的团队成员。团队成员进入 Runtime 为该子任务创建的 worktree；团队任务列表只加入 Runtime 已允许开始的子任务。子任务是否可以开始、是否已经完成，最终以 Runtime 为准。团队成员不得创建新的 Claude Code Agent Team、直接集成父分支或自行扩大范围；当前会话持续读取消息和任务状态并及时引导。
-- 如果 Codex 独立会话或 Claude Code Agent Team 不可用，或者恢复后已经找不到原来的会话或团队，先重新读取 Runtime 状态并说明原因，然后在 `multi-session` 下自动改用 subagent，不再询问推进方式。尚未分配的任务直接按最新 `readyChildren` 创建任务包；已经分配但原会话丢失的任务不能被视为完成。会话信息（含全部 `runId`）不在手时，先运行 `next --summary`——恢复路径的响应会带出全部在途任务的完整任务包（含 runId、worktree 和基线提交）；随后对每个丢失会话的任务先用当前 `runId` 提交 `supervisor-cancel`，再按最新 `continuation` 取得新任务包和新 `runId`，交给 subagent 执行，旧执行的迟到结果由 Runtime 拒绝。subagent 也不可用时，如实报告任务无法执行的原因；不得自动改为单会话推进。
+- 如果 Codex 独立会话或 Claude Code Agent Team 不可用，或者恢复后已经找不到原来的会话或团队，先重新读取 Runtime 状态并说明原因，然后在 `multi-session` 下改用 subagent，不再询问推进方式。尚未分配的任务直接按最新 `readyChildren` 创建任务包。已分配任务的会话丢失时，先运行 `next --summary` 取得全部在途任务的完整任务包（含 `runId`、worktree 和基线提交），再通过原平台核对原执行及其后代是否已停止；会话不可访问和迟到结果被拒收都不能证明执行已停止。只有平台确认原执行及其后代已停止后，才用当前 `runId` 提交 `supervisor-cancel`，按最新 `continuation` 取得新任务包和新 `runId`，交给 subagent 执行。无法确认停止时，保留原 `runId` 和 worktree，报告阻塞原因及所需停止证据，等待核对；不得取消或重新派发，也不得继续修改该 worktree。subagent 也不可用时，如实报告任务无法执行的原因；不得自动改为单会话推进。
 
 ### Supervisor 主任务最终验收
 

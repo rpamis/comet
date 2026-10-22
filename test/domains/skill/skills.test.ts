@@ -1201,9 +1201,11 @@ describe('skills', () => {
       ) as { hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> } };
       const source = JSON.stringify(
         hooks.hooks.PreToolUse.flatMap((group) =>
-          group.hooks.map((hook) => readNodeHookArguments(hook.command)),
+          group.hooks.map((hook) =>
+            readNodeHookArguments(hook.command)?.map((arg) => arg.replaceAll('\\', '/')),
+          ),
         ),
-      ).replaceAll('\\', '/');
+      );
       expect(source).toContain('comet/scripts/comet-hook-router.mjs');
       expect(source).toContain('--platform');
       expect(source).toContain('codex');
@@ -1227,7 +1229,9 @@ describe('skills', () => {
       expect(
         JSON.stringify(
           hooks.hooks.PreToolUse.flatMap((group) =>
-            group.hooks.map((hook) => readNodeHookArguments(hook.command)),
+            group.hooks.map((hook) =>
+              readNodeHookArguments(hook.command)?.map((arg) => arg.replaceAll('\\', '/')),
+            ),
           ),
         ),
       ).toContain('comet/scripts/comet-hook-router.mjs');

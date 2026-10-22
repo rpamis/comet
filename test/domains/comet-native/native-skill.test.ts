@@ -238,6 +238,9 @@ describe('Comet Native Skills', () => {
       '每个验收 ID 必须恰好出现一次',
       '全部通过才记录为 `integrated`',
       '`supervisor-cancel`',
+      '只有平台确认原执行及其后代已停止后',
+      '保留原 `runId` 和 worktree',
+      '不得取消或重新派发，也不得继续修改该 worktree',
     ]) {
       expect(supervisor, term).toContain(term);
     }
@@ -281,6 +284,9 @@ describe('Comet Native Skills', () => {
       'Every task-package acceptance ID must occur exactly once',
       'records `integrated` only when all pass',
       '`supervisor-cancel`',
+      'Only after the platform confirms that the original execution and its descendants have stopped',
+      'preserve the original `runId` and worktree',
+      'do not cancel or redispatch the task or continue modifying that worktree',
     ])
       expect(enSupervisor, term).toContain(term);
     expect(markdownLinks(enSupervisor)).toContain('#filling-command-inputs');
