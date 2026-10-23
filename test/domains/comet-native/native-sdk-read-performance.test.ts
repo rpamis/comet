@@ -64,7 +64,7 @@ async function preparedChange(name = 'read-budget', existingRoot?: string) {
   await fs.mkdir(path.join(changeDir, 'specs', 'workflow'), { recursive: true });
   await fs.writeFile(
     path.join(changeDir, 'brief.md'),
-    '# Outcome\nResume the workflow.\n# Scope\nPreserve the workflow.\n# Non-goals\nNone.\n# Acceptance examples\n- The workflow resumes.\n# Constraints and invariants\nPreserve compatibility.\n# Decisions\nNone.\n# Open questions\nNone.\n# Verification expectations\nRun focused checks.\n',
+    '# Outcome\nResume the workflow.\n# Scope\nPreserve the workflow.\n## Directory structure\n### Modified\n- src/ — preserve workflow recovery behavior.\n# Non-goals\nNone.\n# Acceptance examples\n- The workflow resumes.\n# Constraints and invariants\nPreserve compatibility.\n# Decisions\nNone.\n# Open questions\nNone.\n# Verification expectations\nRun focused checks.\n',
   );
   await fs.writeFile(
     path.join(changeDir, 'specs', 'workflow', 'spec.md'),

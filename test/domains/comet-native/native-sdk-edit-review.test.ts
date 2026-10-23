@@ -42,7 +42,7 @@ it('reviews a generic edit in an independent session without claiming the formal
   const change = path.join(root, 'docs/comet/changes/demo');
   await fs.writeFile(
     path.join(change, 'brief.md'),
-    '# Outcome\nPreserve the worker.\n# Scope\nThe worker.\n# Non-goals\nNew functionality.\n# Acceptance examples\n- The worker returns one.\n',
+    '# Outcome\nPreserve the worker.\n# Scope\nThe worker.\n## Directory structure\n### Modified\n- worker.py — preserve the worker result.\n# Non-goals\nNew functionality.\n# Acceptance examples\n- The worker returns one.\n',
   );
   await fs.mkdir(path.join(change, 'specs/worker'), { recursive: true });
   await fs.writeFile(

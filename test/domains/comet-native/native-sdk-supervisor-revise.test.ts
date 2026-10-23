@@ -53,7 +53,7 @@ async function supervisor() {
   await fs.mkdir(path.join(change, 'specs/workflow'), { recursive: true });
   await fs.writeFile(
     path.join(change, 'brief.md'),
-    '# Outcome\nShip the workflow.\n# Scope\nTwo children.\n# Non-goals\nPublishing.\n# Acceptance examples\n- The workflow resumes.\n# Directory structure\n## Created\n- left.txt\n- right.txt\n## Modified\nNone.\n## Deleted\nNone.\n## Not created\nNo service.\n',
+    '# Outcome\nShip the workflow.\n# Scope\nTwo children.\n## Directory structure\n### Created\n- left.txt — implement the left child.\n- right.txt — implement the right child.\n# Non-goals\nPublishing.\n# Acceptance examples\n- The workflow resumes.\n',
   );
   await fs.writeFile(
     path.join(change, 'specs/workflow/spec.md'),
@@ -420,8 +420,8 @@ async function supervisor() {
 
 it('recovers a completed Supervisor Build after an independent Child reports blocked through the public CLI', async () => {
   const f = await supervisor();
-  let run = await f.submitChild(f.run, f.baselineCli);
-  run = await f.next(f.baselineCli);
+  await f.submitChild(f.run, f.baselineCli);
+  let run = await f.next(f.baselineCli);
   const verifier = f.pending(run, 'supervisor.child.verifier');
   const activation = verifier.input as { activation: { candidateCommit: string } };
   run = await f.claim(verifier, f.baselineCli);
@@ -464,8 +464,8 @@ it('recovers a completed Supervisor Build after an independent Child reports blo
 
 it('recovers a blocked Child with a successor candidate without replaying an integrated sibling or reusing historical checks as new evidence', async () => {
   const f = await supervisor();
-  let run = await f.submitChild(f.run, f.baselineCli);
-  run = await f.next(f.baselineCli);
+  await f.submitChild(f.run, f.baselineCli);
+  let run = await f.next(f.baselineCli);
   run = await f.verifyChild(run, f.baselineCli);
   for (let index = 0; index < 3; index++) run = await f.next(f.baselineCli);
   const failedBuilder = f.pending(run, 'supervisor.child.builder');
@@ -499,7 +499,7 @@ it('recovers a blocked Child with a successor candidate without replaying an int
     },
     f.baselineCli,
   );
-  run = await f.submitChild(run, f.baselineCli);
+  await f.submitChild(run, f.baselineCli);
   run = await f.next(f.baselineCli);
   const verifier = f.pending(run, 'supervisor.child.verifier');
   const input = (
@@ -647,7 +647,7 @@ it('recovers a blocked Child with a successor candidate without replaying an int
   const successor = f.git(input.worktree, ['rev-parse', 'HEAD']);
   expect(successor).not.toBe(input.candidateCommit);
   run = await f.claim(builder);
-  run = await f.report(
+  await f.report(
     run.actions.find((action) => action.id === builder.id)!,
     {
       summary: 'Return the preserved successor repair candidate',
@@ -1002,11 +1002,11 @@ it('reintegrates an already included Child after public Shape reconfirmation (sa
 
 it('preserves integrated and uncommitted Child work, then rechecks every Child in the new Shape cycle', async () => {
   const f = await supervisor();
-  let run = await f.submitChild(f.run, f.baselineCli);
-  run = await f.next(f.baselineCli);
-  run = await f.verifyChild(run, f.baselineCli);
-  run = await f.next(f.baselineCli);
-  run = await f.next(f.baselineCli);
+  await f.submitChild(f.run, f.baselineCli);
+  let run = await f.next(f.baselineCli);
+  await f.verifyChild(run, f.baselineCli);
+  await f.next(f.baselineCli);
+  await f.next(f.baselineCli);
   run = await f.next(f.baselineCli);
   const right = f.pending(run, 'supervisor.child.builder');
   const rightRoot = (right.input as { activation: { worktree: string } }).activation.worktree;
@@ -1072,13 +1072,13 @@ it('preserves integrated and uncommitted Child work, then rechecks every Child i
       (w) => w.worktree,
     ),
   ).toContain(rightRoot);
-  revised = await f.confirmAgain();
+  await f.confirmAgain();
+  await f.next();
   revised = await f.next();
+  await f.submitChild(revised, undefined, true);
   revised = await f.next();
-  revised = await f.submitChild(revised, undefined, true);
-  revised = await f.next();
-  revised = await f.verifyChild(revised);
-  revised = await f.next();
+  await f.verifyChild(revised);
+  await f.next();
   revised = await f.next();
   expect(f.pending(revised, 'supervisor.parent.builder')).toBeUndefined();
   revised = await f.next();
@@ -1099,10 +1099,10 @@ it('preserves integrated and uncommitted Child work, then rechecks every Child i
   });
   for (const fact of oldFacts)
     expect(revised.actions.find((action) => action.id === fact.id)).toEqual(fact);
-  revised = await f.submitChild(revised, undefined, true);
+  await f.submitChild(revised, undefined, true);
   revised = await f.next();
-  revised = await f.verifyChild(revised);
-  revised = await f.next();
+  await f.verifyChild(revised);
+  await f.next();
   revised = await f.next();
   expect(f.pending(revised, 'supervisor.parent.builder')).toBeTruthy();
   const revisionIndex = revised.actions.findLastIndex(
@@ -1127,7 +1127,7 @@ it('preserves integrated and uncommitted Child work, then rechecks every Child i
   ).activation;
   expect(parentActivation.integrationWorktree).toBe(integration);
   const parentClaimed = await f.claim(parentBuilder);
-  revised = await f.report(
+  await f.report(
     parentClaimed.actions.find((a) => a.id === parentBuilder.id)!,
     {
       summary: 'Read both actual integration artifacts after revised scope',
@@ -1163,7 +1163,7 @@ it('preserves integrated and uncommitted Child work, then rechecks every Child i
     builder_handoff: { candidate_id: string };
     loop: { iteration: number; attempt: number };
   };
-  revised = await f.report(
+  await f.report(
     verifierClaimed.actions.find((a) => a.id === parentVerifier.id)!,
     {
       candidateId: state.builder_handoff.candidate_id,
@@ -1354,9 +1354,9 @@ it('blocks a retained integration HEAD change without resetting Git or accepting
     configuration,
   );
   expect(f.revise(before).exitCode).toBe(0);
-  let reapproved = await f.confirmAgain();
-  reapproved = await f.next();
-  reapproved = await f.next();
+  await f.confirmAgain();
+  await f.next();
+  const reapproved = await f.next();
   expect(f.pending(reapproved, 'supervisor.child.builder')).toBeTruthy();
   expect(f.git(integration, ['rev-parse', 'HEAD'])).toBe(changedHead);
   expect(reapproved.definitionHashes).toEqual(f.started.definitionHashes);
@@ -1365,9 +1365,9 @@ it('blocks a retained integration HEAD change without resetting Git or accepting
 it('transfers repeated preparation receipts once per actual workspace without losing history or dirty files', async () => {
   const f = await supervisor();
   expect(f.revise(f.run).exitCode).toBe(0);
-  let run = await f.confirmAgain();
-  run = await f.next();
-  run = await f.next();
+  await f.confirmAgain();
+  await f.next();
+  const run = await f.next();
   const builder = f.pending(run, 'supervisor.child.builder');
   const activation = (builder.input as { activation: { worktree: string; branch: string } })
     .activation;
@@ -1471,8 +1471,8 @@ it('retains a genuine failed Child outcome and resume decision when Build return
   expect(revised.waits.find((wait) => wait.id === resume.id)).toMatchObject({
     status: 'cancelled',
   });
-  revised = await f.confirmAgain();
-  revised = await f.next();
+  await f.confirmAgain();
+  await f.next();
   revised = await f.next();
   const newBuilder = f.pending(revised, 'supervisor.child.builder');
   expect(newBuilder.id).not.toBe(original.id);

@@ -136,7 +136,7 @@ brainstorming 阶段先提出候选方案，供用户在 Step 1c 确认，不直
 
 brainstorming 产出设计方案后，**必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户明确确认设计方案**。不得在用户确认前创建最终 Design Doc、写入 `design_doc`、运行 design guard，或进入 `/comet-build`。
 
-暂停时只展示必要摘要：
+需求或验收变化后重新确认时，先读取[需求变化后的重新确认](../../comet-classic/reference/decision-point.md#需求变化后的重新确认)，说明变化、验收影响、保留成果和重做步骤，再展示完整当前方案。当前方案至少包含：
 
 - 采用的技术方案
 - 关键取舍与风险

@@ -48,24 +48,39 @@ describe('Native artifact language', () => {
     expect(nativeHeadingKey('Acceptance examples')).toBe('acceptanceExamples');
   });
 
-  it('renders the directory structure skeleton under Scope in both languages', () => {
+  it('guides category selection without requiring four empty sections in either language', () => {
     const zhTemplate = nativeBriefTemplate('zh-CN');
     expect(zhTemplate).toContain('## 目录结构\n');
-    expect(zhTemplate).toContain('### 新建\n');
-    expect(zhTemplate).toContain('### 修改\n');
-    expect(zhTemplate).toContain('### 删除\n');
-    expect(zhTemplate).toContain('### 明确不建\n');
+    expect(zhTemplate).toContain('新建、修改、删除、明确不建');
+    expect(zhTemplate).toContain('无内容的类别可省略');
+    expect(zhTemplate).not.toMatch(/^### /mu);
     expect(zhTemplate).not.toContain('## Directory structure\n');
     const enTemplate = nativeBriefTemplate('en');
     expect(enTemplate).toContain('## Directory structure\n');
-    expect(enTemplate).toContain('### Created\n');
-    expect(enTemplate).toContain('### Modified\n');
-    expect(enTemplate).toContain('### Deleted\n');
-    expect(enTemplate).toContain('### Not created\n');
+    expect(enTemplate).toContain('Created, Modified, Deleted, Not created');
+    expect(enTemplate).toContain('Omit unused categories');
+    expect(enTemplate).not.toMatch(/^### /mu);
     const scopeStart = enTemplate.indexOf('# Scope\n');
     const nextHeading = enTemplate.indexOf('# Non-goals\n');
     expect(enTemplate.slice(scopeStart, nextHeading)).toContain('## Directory structure\n');
   });
+
+  it.each(['en', 'zh-CN'] as const)(
+    'does not treat the %s template guidance as completed directory structure',
+    async (language) => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-blank-template-'));
+      roots.push(root);
+      await fs.writeFile(path.join(root, 'brief.md'), nativeBriefTemplate(language));
+      await expect(
+        validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),
+      ).resolves.toMatchObject({
+        valid: false,
+        findings: expect.arrayContaining([
+          expect.objectContaining({ code: 'brief-structure-subsection-missing' }),
+        ]),
+      });
+    },
+  );
 
   it('matches bilingual directory structure headings', () => {
     expect(isNativeBriefStructureHeading('目录结构')).toBe(true);

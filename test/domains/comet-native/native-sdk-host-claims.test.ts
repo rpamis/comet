@@ -48,7 +48,7 @@ it('claims independent Supervisor work from one response and safely acknowledges
   const dir = path.join(paths.changesDir, name);
   await fs.writeFile(
     path.join(dir, 'brief.md'),
-    '# Outcome\nShip both files.\n# Scope\nTwo independent children.\n# Non-goals\nPublishing.\n# Acceptance examples\n- Both files are present.\n# Directory structure\n## Created\n- left.txt\n- right.txt\n## Modified\nNone.\n## Deleted\nNone.\n## Not created\nNo service.\n',
+    '# Outcome\nShip both files.\n# Scope\nTwo independent children.\n## Directory structure\n### Created\n- left.txt — implement the left child.\n- right.txt — implement the right child.\n# Non-goals\nPublishing.\n# Acceptance examples\n- Both files are present.\n',
   );
   await fs.mkdir(path.join(dir, 'specs/workflow'), { recursive: true });
   await fs.writeFile(

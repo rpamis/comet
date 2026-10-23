@@ -37,7 +37,7 @@ async function builderFixture() {
   const changeDir = path.join(paths.changesDir, name);
   await fs.writeFile(
     path.join(changeDir, 'brief.md'),
-    '# Outcome\nShip the workflow.\n# Scope\nPreserve behavior.\n# Non-goals\nNone.\n# Acceptance examples\n- The workflow resumes.\n# Constraints and invariants\nPreserve compatibility.\n# Decisions\nNone.\n# Open questions\nNone.\n# Verification expectations\nRun focused checks.\n',
+    '# Outcome\nShip the workflow.\n# Scope\nPreserve behavior.\n## Directory structure\n### Modified\n- src/ — preserve workflow behavior.\n# Non-goals\nNone.\n# Acceptance examples\n- The workflow resumes.\n# Constraints and invariants\nPreserve compatibility.\n# Decisions\nNone.\n# Open questions\nNone.\n# Verification expectations\nRun focused checks.\n',
   );
   await fs.mkdir(path.join(changeDir, 'specs', 'workflow'), { recursive: true });
   await fs.writeFile(

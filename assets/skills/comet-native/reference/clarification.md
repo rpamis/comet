@@ -82,10 +82,16 @@ Before final confirmation of a large request, assess [Supervisor decomposition a
 Completion requires every outcome-affecting decision to be confirmed, relevant facts and implicit assumptions to be checked, no `[blocking]` in the brief, a complete directory structure under `# Scope` (see [formal artifacts](artifacts.md#formal-artifacts)), and specific, verifiable, nonduplicative acceptance items. Then:
 
 1. Execute `prepare-shape-confirmation` from the current continuation. Submit outcome, scope, key decisions, acceptance criteria, and non-goals through `--summary`; do not create another confirmation blocker.
-2. After Runtime saves the summary and returns `await-user`, show the complete summary and `userCommunication`, and wait for explicit confirmation.
+2. After Runtime saves the summary and returns `await-user`, show the complete summary and `userCommunication`, and wait for explicit confirmation. When reconfirming changed requirements, first explain changes and effects under [reconfirmation after requirement changes](#reconfirmation-after-requirement-changes), then show the complete summary.
 3. If the user adds to or rejects the summary, update formal artifacts and prepare confirmation again. Only after explicit confirmation may you execute the current `commandAlternatives` command with `--confirmed` and its state-version and expected-action guards.
 
 The initial request does not replace final confirmation. Ordinary implementation choices belong in formal requirements only when they affect user-visible behavior.
+
+### Reconfirmation after requirement changes
+
+Before reconfirmation, read the available previous approved proposal, formal documents, and explicit user decisions. First describe added, removed, and changed behavior, affected acceptance criteria, work that can be retained, and steps that must be repeated. Then show the complete current Shape. If no trustworthy previous proposal is available, state that a reliable comparison is unavailable and list only changes that can be established; do not invent differences or claim that everything else is unchanged. Initial confirmation does not require an invented before-and-after comparison.
+
+The change summary helps the user read the proposal; approval still covers the complete current Shape. Determine retained work and repeated steps from the current Runtime action and evidence validity. Do not describe invalid or unknown checks as passed or apply old acceptance results to new requirements. Prepare a new proposal after formal content changes, following the confirmation steps above and the current command's state version, expected action, and proposal identity. Do not reuse the previous Shape approval.
 
 ## Supervisor decomposition and confirmation
 

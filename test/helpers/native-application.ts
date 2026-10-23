@@ -54,9 +54,9 @@ export async function prepareNativeApplication(
   await fs.mkdir(path.join(change, 'specs', 'example'), { recursive: true });
   await fs.writeFile(
     path.join(change, 'brief.md'),
-    '# Outcome\nShip the candidate.\n# Scope\nCandidate review.\n# Non-goals\nPublishing.\n' +
-      '# Acceptance examples\n- The candidate meets its requirement.\n' +
-      '# Directory structure\n## Created\n- candidate.txt\n## Modified\nNone.\n## Deleted\nNone.\n## Not created\nNo service.\n',
+    '# Outcome\nShip the candidate.\n# Scope\nCandidate review.\n' +
+      '## Directory structure\n### Modified\n- candidate.txt — satisfy the fixed guidance and independent review.\n' +
+      '# Non-goals\nPublishing.\n# Acceptance examples\n- The candidate meets its requirement.\n',
   );
   await fs.writeFile(
     path.join(change, 'specs/example/spec.md'),

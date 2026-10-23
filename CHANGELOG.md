@@ -2,6 +2,19 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.5.1] - 2026-10-23
+
+### Changed
+
+- **Native brief structure**: List only the directory categories relevant to a change, instead of filling unused categories with "None". The Directory structure section and meaningful content in each retained category remain required. Existing complete briefs remain valid.
+- **Classic configuration guidance**: Show each execution, TDD, and review setting with its meaning and confirmation status. Ask only for missing, invalid, or explicitly changed choices, while retaining valid choices within the same change. Each new full change still requires its own configuration approval; hotfix and tweak retain their existing confirmation steps.
+- **Requirement reconfirmation**: Before presenting the complete revised Native or Classic proposal, explain behavior changes, affected acceptance criteria, retained work, and steps that must be repeated. State when the previous approved proposal is unavailable. Approval remains bound to the complete current proposal, and old verification results do not approve new requirements.
+
+### Fixed
+
+- **Native SDK Shape validation**: Enforce directory structure checks for new and re-prepared SDK Shape proposals. Previously pending approvals and confirmed Build, Verify, and Archive changes retain their original document constraints and progress.
+- **Native archive with submodules**: Bind the actual commit of a clean Git submodule when it differs from the parent repository's recorded commit, so verified changes can archive without falling back to a candidate scan of unrelated ignored caches. Uncommitted submodule content still requires complete verification.
+
 ## What's Changed [0.5.0] - 2026-10-23
 
 Comet v0.5.0 is now available. This release focuses on the following capabilities.

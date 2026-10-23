@@ -51,7 +51,8 @@ async function fixture(stage: 'unstarted' | 'approval' | 'builder' = 'unstarted'
   if (stage !== 'unstarted') {
     await fs.writeFile(
       path.join(change, 'brief.md'),
-      '# Outcome\nKeep partial work.\n# Scope\nCancel safely.\n# Non-goals\nPublishing.\n' +
+      '# Outcome\nKeep partial work.\n# Scope\nCancel safely.\n' +
+        '## Directory structure\n### Modified\n- src/ — preserve partial implementation when cancelled.\n# Non-goals\nPublishing.\n' +
         '# Acceptance examples\n- Existing work remains.\n# Constraints and invariants\nPreserve receipts.\n' +
         '# Decisions\nNone.\n# Open questions\nNone.\n# Verification expectations\nRun focused checks.\n',
     );

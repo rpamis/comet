@@ -26,9 +26,11 @@ comet state check <name> build --json
 
 ### 1. 先确认执行策略
 
-读取入口返回的 configuration、`configurationReadiness`、taskState 和 nextAction。`configurationReadiness.missingFields` 与 `invalidFields` 均为空时，沿用已确认配置，不重新列成待选择问题；只有缺失或无效字段才补问对应决定。已有计划和审查记录仍然有效时直接继续，不重新询问或生成。工作区必须已在 Open 阶段准备并绑定；缺少 isolation 或目录不匹配时停止，回到 workspace resolve 返回的 projectRoot 恢复任务，不能在 Build 新建或切换工作区。
+需要展示、补齐或更改配置时，先读取[执行配置展示](../../comet-classic/reference/decision-point.md#执行配置展示)，呈现当前 change 的值、含义和确认状态；保存仍使用本节 Compat 命令。
 
-**写计划前必须确认执行策略**。`configurationReadiness` 只列出尚未确定或组合无效的字段；配置已经有效时不重复询问。配置缺失或用户明确要求更改时，按 `comet-classic/reference/decision-point.md` 在同一轮提问中收集执行方式、TDD 和审查模式，但只询问 `missingFields` 和 `invalidFields` 中列出的决定，不按模型名称自动选择：
+读取入口返回的 configuration、`configurationReadiness`、taskState 和 nextAction。`configurationReadiness.missingFields` 与 `invalidFields` 均为空且用户未要求更改时，沿用已确认配置，不重新列成待选择问题；只有缺失、无效或用户要求更改的字段才补问对应决定。已有计划和审查记录仍然有效时直接继续，不重新询问或生成。工作区必须已在 Open 阶段准备并绑定；缺少 isolation 或目录不匹配时停止，回到 workspace resolve 返回的 projectRoot 恢复任务，不能在 Build 新建或切换工作区。
+
+**写计划前必须确认执行策略**。`configurationReadiness` 只列出尚未确定或组合无效的字段；配置已经有效且用户未要求更改时不重复询问。配置缺失、无效或用户明确要求更改时，按 `comet-classic/reference/decision-point.md` 在同一轮提问中收集执行方式、TDD 和审查模式，但只询问 `missingFields` 和 `invalidFields` 中列出的决定，以及用户明确要求更改的字段，不按模型名称自动选择：
 
 | build_mode                    | 行为                                                                                                                     |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -113,6 +115,8 @@ Build 只做任务或分段审查，Verify 负责唯一最终集成审查：
 根因调查、最小失败测试、修复后的验证，以及如何在当前 change 中完成这些步骤，均按 `comet-classic/reference/debug-gate.md` 执行。
 
 ### 4. Spec 增量更新
+
+需求或验收变化需要重新确认时，先读取[需求变化后的重新确认](../../comet-classic/reference/decision-point.md#需求变化后的重新确认)，说明变化及影响，再展示完整当前方案；实际更新与批准仍按下方规模分级处理。
 
 实施过程中发现初版 spec 不完整时，按变更规模分级处理：
 

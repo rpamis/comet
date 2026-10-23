@@ -39,7 +39,7 @@ Read the current proposal, tasks, delta specs, and relevant existing design. Exp
 
 After the skill loads, use its exploration and design methods with the bound change, workspace, facts, constraints, and source references. For decisions that cannot be inferred and affect the result, use decision-point.md to present a question, recommendation with reasons, options, and effects. Proceed when information is sufficient, without a minimum question count. Compare alternatives only for real tradeoffs; explain failure paths and verification for risky interfaces, migrations, security, and concurrency.
 
-Keep brainstorm-summary.md current, marking candidates separately from confirmed facts. Explain specific Spec Patches and obtain agreement before editing delta specs; clarify substantial scope changes again. Confirm the final design once through the main Skill's Design Wait. External Skills must not add document approval, start planning or implementation, or change workspaces.
+Keep brainstorm-summary.md current, marking candidates separately from confirmed facts. Explain specific Spec Patches and obtain agreement before editing delta specs; clarify substantial scope changes again. When reconfirmation is needed, explain changes and effects under [reconfirmation after requirement changes](decision-point.md#reconfirmation-after-requirement-changes). Confirm the final design once through the main Skill's Design Wait, retaining the current Design proposal hash. External Skills must not add document approval, start planning or implementation, or change workspaces.
 
 After approval, update the single Design Doc: reuse its recorded reference, otherwise prefer the change's design.md. If project convention requires a separate document, the OpenSpec design contains only a summary and link. Frontmatter contains only `comet_change: <change-name>`, `role: technical-design`, and `canonical_spec: openspec`. Cover the solution, tradeoffs, risks, and testing, matching the approved proposal before submission. Resume from saved summaries, sources, and the current Wait; complete only missing work.
 
@@ -47,15 +47,17 @@ After approval, update the single Design Doc: reuse its recorded reference, othe
 
 Before implementing with the chosen strategy, check its planning, implementation, TDD, and review capabilities under [host capability check](../../comet/reference/host-check.md). Reuse known available capabilities; do not defer discovering a missing required method until implementation.
 
-Reuse the workspace bound during Open and valid configuration. Ask only for missing, invalid, or explicitly changed choices, collecting necessary decisions together:
+Reuse the workspace bound during Open. When configuration needs to be presented, completed, or changed, read [presenting execution configuration](decision-point.md#presenting-execution-configuration) and show the current change's values, meanings, and approval status. Field choices and requirements are:
 
-| Setting     | Choices and requirements                                                                                                                                    |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| build_mode  | autonomous plans and implements freely; executing-plans follows a fixed plan; subagent-driven-development uses implementers coordinated by the main session |
-| tdd_mode    | tdd records real RED/GREEN; direct still runs relevant checks and defect regressions                                                                        |
-| review_mode | off skips automatic review; standard reviews risky tasks and final integration; thorough reviews tasks or segments and final integration                    |
+| Setting     | Choices and requirements                                                                                                                                                                                                |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| build_mode  | autonomous plans and implements freely; executing-plans follows a fixed plan; subagent-driven-development uses implementers coordinated by the main session; direct has the current session implement the plan directly |
+| tdd_mode    | tdd records real RED/GREEN; direct does not require RED/GREEN but still runs relevant checks and defect regressions                                                                                                     |
+| review_mode | off skips automatic review; standard reviews risky tasks and final integration; thorough reviews tasks or segments and final integration                                                                                |
 
-Full autonomous requires standard or thorough. Full direct requires explicit selection and `direct_override: true`, retaining design, planning, and verification. Set subagent_dispatch to confirmed only for subagent-driven-development, otherwise null. Only the user's explicit complete configuration constitutes approval; project defaults do not. Use the main Skill's `propose-build --confirmed` to save an already explicit proposal and approval together; otherwise retain the Wait for the missing decision.
+Full autonomous requires standard or thorough. Full direct requires explicit selection and `direct_override: true`, retaining design, planning, and verification. Set `subagent_dispatch: confirmed` only for subagent-driven-development, otherwise null.
+
+Reuse an existing pending Wait's proposal; when the proposal changes, reconfirm through the existing mechanism instead of reusing stale approval. After the user explicitly chooses the complete configuration, use the main Skill's `propose-build --confirmed` to save the proposal and approval. Retain the Wait when a decision is missing.
 
 Tasks and completion belong in tasks.md. Preserve IDs. The plan references design and task authority through `<!-- comet-task-authority: <classic-task-authority-ref> -->` and each `<!-- comet-task-ref:<task-id> -->`, without duplicate checkboxes. Describe scope, dependencies, constraints, and acceptance; explain risky choices, failure handling, and rollback. Preserve frontmatter change, design-doc, and the original pre-implementation base-ref on recovery. Reuse a valid plan.
 
@@ -79,7 +81,7 @@ For non-autonomous tdd, the implementer loads this once before implementation:
 
 After the skill loads, follow the confirmed tasks. For tdd, demonstrate failure caused by the missing behavior, implement, and record GREEN. Reuse valid evidence without reenacting implementation or reverting code to fabricate RED. Run checks according to risk. Build reviews tasks or segments; Verify owns the single final integration review. Resolve CRITICAL/IMPORTANT findings. If required independent review is unavailable, report the block rather than substituting implementer self-review. Check off tasks after actual completion, then submit implementation and checks through the Run.
 
-Evaluate changed goals, public behavior, acceptance, and risk. Repair omissions within confirmed scope directly; ask about material scope expansion or redesign. Task and file counts alone do not restart the full workflow. Reproduce failures and establish their cause before repair and verification; consult debug-gate.md when external debugging methods are needed, retaining the current Run.
+Evaluate changed goals, public behavior, acceptance, and risk. Repair omissions within confirmed scope directly; for material scope expansion or redesign, ask the user under [reconfirmation after requirement changes](decision-point.md#reconfirmation-after-requirement-changes). Task and file counts alone do not restart the full workflow. Reproduce failures and establish their cause before repair and verification; consult debug-gate.md when external debugging methods are needed, retaining the current Run.
 
 ## Verify
 
@@ -109,7 +111,7 @@ For deterministic local checks, add `--local` before `--` in the main Skill's Gu
 
 ## Preset scope
 
-For hotfix/tweak, Build, Verify, and Archive check the approved requirements. Completing task checkboxes and adding task IDs with `state tasks --assign-ids` do not change scope. If the proposal, design, specs, or task text changes, restore the approved content or use the main Skill's `propose-escalation` in Build to propose the current scope and obtain a new decision to continue the preset or upgrade to full. Approval to continue binds the actual proposed content; after proposing, restore the proposed content or choose upgrade and confirm a new full Design before proceeding.
+For hotfix/tweak, Build, Verify, and Archive check the approved requirements. Completing task checkboxes and adding task IDs with `state tasks --assign-ids` do not change scope. If the proposal, design, specs, or task text changes, restore the approved content or use the main Skill's `propose-escalation` in Build to propose the current scope, then obtain a new decision to continue the preset or upgrade to full under [reconfirmation after requirement changes](decision-point.md#reconfirmation-after-requirement-changes). Approval to continue binds the actual proposed content; after proposing, restore the proposed content or choose upgrade and confirm a new full Design before proceeding.
 
 Hotfix first reproduces the cause and preserves failure evidence. When automatable, run the failing regression before repair and confirm GREEN afterward, then verify the cause is removed. Hotfix retains direct/direct/off defaults; task count does not determine escalation.
 

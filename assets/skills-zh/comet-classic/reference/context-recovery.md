@@ -12,6 +12,8 @@ comet state check <change-name> <phase> --json
 
 普通入口和恢复入口都会返回 layout、configuration、`configurationReadiness`、nextAction、taskState、coordination 和 delivery。`configurationReadiness` 的 `missingFields` 与 `invalidFields` 为空时，表示当前执行配置可沿用；只根据其中列出的字段补问或修复，不逐字段重新查询。taskState 为 `{authority, revision, total, completed, needsIds, next}`；coordination 为 `{path, stale, taskIds, stage, sessionId, reviewRounds, unresolved}`。按 classic-layout.md 确定各逻辑路径对应的目录，根据实际 phase 进入对应阶段。摘要中已有的字段不再逐个查询。状态写入，或工作区、需求发生变化后，重新读取受影响的状态。
 
+需要展示或补齐配置时，SDK 与 Compat 均读取[执行配置展示](decision-point.md#执行配置展示)，保留同一 change 的有效选择，并使用当前路径的原有保存方式。SDK 已有 Wait 继续复用；不因恢复或重新 Design 重问已确认配置，也不把其他 change 的选择当作本次批准。
+
 恢复后先按 [任务上下文协议](scripts.md#任务上下文与产物语言) 执行 `contextRequest`，重新获取当前阶段适用的偏好和项目知识；协调检查点保存任务进度与证据，不替代记忆获取。换 Agent 时使用接收方会话标识；同一 Agent 恢复时沿用原标识并获取 snapshot。
 
 SDK 响应先按 auto-transition.md 处理 `continuation.mode` 和 `waitReason`：手动衔接不是运行中任务，`running`/`unknown` 则先核对原执行者。当前 Run 的 `current.actions`、Action 输入和完成模板决定下一步；不从旧阶段名猜测 Skill。下文的任务与协调记录命令对两种 Runtime 都适用，但它们不推进 SDK Run。SDK 的归档和 Git 收尾只按当前 continuation 及 Archive 入口执行，不使用 Compat delivery 命令。

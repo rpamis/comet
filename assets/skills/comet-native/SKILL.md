@@ -74,7 +74,7 @@ User Hook output can use `hook.allow_paths` in `.comet/config.yaml`; see [User H
 Classify requirement changes before taking an action allowed by the current `continuation`:
 
 - Missing implementation of confirmed functionality: use `--revise-implementation` from Verify, retain confirmed scope, and return to Build.
-- Changed user-visible behavior or acceptance criteria: use `--revise-requirements` from Verify or Archive-ready, update formal artifacts, and reconfirm Shape.
+- Changed user-visible behavior or acceptance criteria: use `--revise-requirements` from Verify or Archive-ready, update formal artifacts, and follow [reconfirmation after requirement changes](reference/clarification.md#reconfirmation-after-requirement-changes) to explain changes and effects before presenting and reconfirming the complete current Shape.
 - Unrelated requirements: use another change.
 
 Apply the same rules when the user explicitly adds to the current scope.

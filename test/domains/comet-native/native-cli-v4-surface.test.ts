@@ -335,6 +335,9 @@ describe('Native v4 public CLI surface', () => {
 Keep the work recoverable.
 # Scope
 Update the relevant behavior.
+## Directory structure
+### Modified
+- src/ — preserve workflow recovery behavior.
 # Non-goals
 No unrelated changes.
 # Acceptance examples
@@ -458,6 +461,9 @@ Run the focused checks.
 Keep completed work.
 # Scope
 Implement the requested behavior.
+## Directory structure
+### Modified
+- src/ — preserve the confirmed implementation.
 # Non-goals
 No unrelated work.
 # Acceptance examples
@@ -728,6 +734,9 @@ Run the focused checks.
 Ship the selected workflow.
 # Scope
 Preserve the selected workflow.
+## Directory structure
+### Modified
+- src/ — preserve workflow recovery behavior.
 # Non-goals
 None.
 # Acceptance examples
@@ -782,6 +791,9 @@ Run focused Native checks.
 Ship the selected workflow.
 # Scope
 Preserve the selected workflow.
+## Directory structure
+### Modified
+- src/ — preserve workflow recovery behavior.
 # Non-goals
 None.
 # Acceptance examples
@@ -1391,6 +1403,9 @@ Run focused Native checks.
 Ship the selected workflow.
 # Scope
 Preserve the selected workflow.
+## Directory structure
+### Modified
+- src/ — preserve workflow recovery behavior.
 # Non-goals
 None.
 # Acceptance examples
@@ -1511,6 +1526,9 @@ Run focused Native checks.
 Ship the selected workflow.
 # Scope
 Preserve the selected workflow.
+## Directory structure
+### Modified
+- src/ — preserve workflow recovery behavior.
 # Non-goals
 None.
 # Acceptance examples
@@ -1578,6 +1596,9 @@ Run focused Native checks.
 Ship the selected workflow.
 # Scope
 Preserve the selected workflow.
+## Directory structure
+### Modified
+- src/ — preserve workflow recovery behavior.
 # Non-goals
 None.
 # Acceptance examples

@@ -8,7 +8,9 @@ describe('contributor instructions', () => {
 
     expect(content).toContain('验证范围必须与改动风险相匹配');
     expect(content).toContain('每轮先运行覆盖当前改动的最小相关测试');
-    expect(content).toContain('最终交付前运行一次全量测试');
+    expect(content).toContain('本身都不自动触发全量测试');
+    expect(content).toContain('说明具体覆盖缺口、已有证据为何不足及预计耗时');
+    expect(content).toContain('用户明确要求不跑全量时，遵守该范围');
     expect(content).toContain('只有修正了明确原因后才重跑，不盲目重复');
     expect(content).toContain('不要求每个提交机械地运行全部命令');
     expect(content).toContain(

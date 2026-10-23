@@ -1148,7 +1148,7 @@ describe('Runtime JSON command', () => {
     await fs.mkdir(path.join(changeDir, 'specs', 'workflow'), { recursive: true });
     await fs.writeFile(
       path.join(changeDir, 'brief.md'),
-      `# Outcome\nShip this workflow.\n# Scope\nPreserve confirmation.\n# Non-goals\nNone.\n# Acceptance examples\n- The workflow resumes.\n# Constraints and invariants\nKeep compatibility.\n# Decisions\nNone.\n# Open questions\nNone.\n# Verification expectations\nRun focused checks.\n`,
+      `# Outcome\nShip this workflow.\n# Scope\nPreserve confirmation.\n## Directory structure\n### Modified\n- src/ — preserve workflow confirmation and recovery.\n# Non-goals\nNone.\n# Acceptance examples\n- The workflow resumes.\n# Constraints and invariants\nKeep compatibility.\n# Decisions\nNone.\n# Open questions\nNone.\n# Verification expectations\nRun focused checks.\n`,
     );
     await fs.writeFile(
       path.join(changeDir, 'specs', 'workflow', 'spec.md'),

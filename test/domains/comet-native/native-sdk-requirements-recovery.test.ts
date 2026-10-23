@@ -29,6 +29,7 @@ async function fixture(supervisor = false) {
   const change = path.join(root, 'docs/comet/changes', name);
   const brief =
     '# Outcome\nShip the selected workflow.\n# Scope\nPreserve the selected workflow.\n' +
+    '## Directory structure\n### Modified\n- src/ — preserve workflow recovery behavior.\n' +
     '# Non-goals\nPublishing.\n# Acceptance examples\n- The selected workflow resumes.\n' +
     '# Constraints and invariants\nPreserve compatibility.\n# Decisions\nNone.\n' +
     '# Open questions\nNone.\n# Verification expectations\nRun focused checks.\n';

@@ -389,6 +389,66 @@ describe('Comet Native Skills', () => {
     }
   });
 
+  it('allows omitted Chinese directory categories while requiring content for retained headings', async () => {
+    const brief = section(await read('zh', 'reference/artifacts.md'), 'brief');
+    expect(brief).toContain('至少填写一个有效类别');
+    expect(brief).toContain('无内容的类别可以省略');
+    expect(brief).toContain('已保留的标题必须有有效正文，不能留空或只放模板占位');
+    expect(brief).toContain('完整旧格式及「无」/`None` 写法继续有效');
+    expect(brief).not.toContain('章节固定四个三级子节');
+
+    const examples = [...brief.matchAll(/```text\r?\n([\s\S]*?)```/gu)].map((match) => match[1]);
+    const singleFile = examples.find((example) => example.includes('config/defaults.yaml'));
+    expect(singleFile).toBeDefined();
+    expect(singleFile!.match(/^### .+$/gmu)).toEqual(['### 修改']);
+    expect(singleFile).toContain('config/defaults.yaml — 调整默认超时时间');
+  });
+
+  it('explains Chinese requirement changes before reconfirming the complete current Shape', async () => {
+    const entry = await read('zh', 'SKILL.md');
+    const clarification = await read('zh', 'reference/clarification.md');
+    const anchor = '需求变化后的重新确认';
+    expect(markdownLinks(entry)).toContain(`reference/clarification.md#${anchor}`);
+    expect(markdownLinks(section(clarification, '最终确认'))).toContain(`#${anchor}`);
+    const reconfirmation = section(clarification, anchor);
+    expect(reconfirmation).toMatch(
+      /先说明新增、删除和改变的行为、受影响的验收、仍可保留的成果以及需要重做的步骤，再展示完整当前 Shape/u,
+    );
+    expect(reconfirmation).toContain('缺少可信旧方案时，明确说明无法可靠比较');
+    expect(reconfirmation).toContain('批准对象仍是完整当前 Shape');
+    expect(reconfirmation).toContain('状态版本、预期动作和提案身份');
+    expect(reconfirmation).toContain('不复用旧 Shape 批准');
+  });
+
+  it('keeps the English directory example minimal without accepting empty retained headings', async () => {
+    const brief = section(await read('en', 'reference/artifacts.md'), 'brief');
+    expect(brief).toContain('at least one valid category');
+    expect(brief).toContain('Categories with no content may be omitted');
+    expect(brief).toContain('retained headings must have meaningful body content');
+    expect(brief).toContain('The complete legacy format and "None"/「无」 remain valid');
+    expect(brief).not.toContain('four fixed level-three subsections');
+    const examples = [...brief.matchAll(/```text\r?\n([\s\S]*?)```/gu)].map((match) => match[1]);
+    const singleFile = examples.find((example) => example.includes('config/defaults.yaml'));
+    expect(singleFile).toBeDefined();
+    expect(singleFile!.match(/^### .+$/gmu)).toEqual(['### Modified']);
+  });
+
+  it('keeps English reconfirmation reachable and bound to the complete current Shape', async () => {
+    const anchor = 'reconfirmation-after-requirement-changes';
+    const entry = await read('en', 'SKILL.md');
+    const clarification = await read('en', 'reference/clarification.md');
+    expect(markdownLinks(entry)).toContain(`reference/clarification.md#${anchor}`);
+    expect(markdownLinks(section(clarification, 'final-confirmation'))).toContain(`#${anchor}`);
+    const reconfirmation = section(clarification, anchor);
+    expect(reconfirmation).toMatch(
+      /First describe[\s\S]*affected acceptance criteria[\s\S]*work that can be retained[\s\S]*steps that must be repeated[\s\S]*Then show the complete current Shape/u,
+    );
+    expect(reconfirmation).toContain('state that a reliable comparison is unavailable');
+    expect(reconfirmation).toContain('approval still covers the complete current Shape');
+    expect(reconfirmation).toContain('state version, expected action, and proposal identity');
+    expect(reconfirmation).toContain('Do not reuse the previous Shape approval');
+  });
+
   it('offers explicit cleanup for clean archived change worktrees', async () => {
     const variants = [
       {

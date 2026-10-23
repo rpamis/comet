@@ -856,6 +856,104 @@ interface NativeCheckInputGateOptions {
   legacyArchiveOverlay?: NativeLegacyArchiveOverlay;
 }
 
+const NATIVE_CHECK_GITLINK_MAX_DEPTH = 32;
+const NATIVE_CHECK_GITLINK_MAX_REPOSITORIES = 256;
+const NATIVE_CHECK_GITLINK_MAX_INDEX_BYTES = 8 * 1024 * 1024;
+
+function parseGitlinksInIndex(indexOutput: string): Map<string, string> {
+  const gitlinks = new Map<string, string>();
+  for (const record of indexOutput.split('\0')) {
+    if (!record.startsWith('160000 ')) continue;
+    const match = record.match(/^160000 ([a-f0-9]{40}(?:[a-f0-9]{24})?) 0\t(.+)$/su);
+    if (!match || gitlinks.has(match[2])) {
+      throw new Error('Native 检查输入中的子模块索引无效或存在冲突');
+    }
+    gitlinks.set(match[2], match[1]);
+  }
+  return gitlinks;
+}
+
+async function readNativeCheckGitlink(
+  projectRoot: string,
+  relative: string,
+  budget: { repositories: Set<string>; indexBytes: number },
+  depth = 0,
+): Promise<{ head: string; digest: string; observationHash: string }> {
+  if (
+    depth >= NATIVE_CHECK_GITLINK_MAX_DEPTH ||
+    budget.repositories.size >= NATIVE_CHECK_GITLINK_MAX_REPOSITORIES
+  ) {
+    throw new Error('Native 检查输入中的子模块数量或深度超出读取上限');
+  }
+  const target = path.resolve(projectRoot, ...relative.split('/'));
+  const [physicalRoot, realTarget, before] = await Promise.all([
+    fs.realpath(projectRoot),
+    fs.realpath(target),
+    fs.lstat(target),
+  ]);
+  if (
+    !before.isDirectory() ||
+    before.isSymbolicLink() ||
+    realTarget === physicalRoot ||
+    !isInsidePath(physicalRoot, realTarget) ||
+    realTarget !== path.resolve(physicalRoot, ...relative.split('/')) ||
+    budget.repositories.has(realTarget) ||
+    (await fs.realpath(runGitCommand(realTarget, ['rev-parse', '--show-toplevel']))) !== realTarget
+  ) {
+    throw new Error('Native 检查输入中的子模块目录不可用');
+  }
+  budget.repositories.add(realTarget);
+  const head = runGitCommand(realTarget, ['rev-parse', '--verify', 'HEAD']);
+  if (!/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(head)) {
+    throw new Error('Native 检查输入中的子模块 HEAD 无效');
+  }
+  // 显式包含未跟踪文件和嵌套子模块，不能受 submodule.*.ignore 配置影响。
+  const status = readGitStatusPorcelain(realTarget);
+  if (status !== '') throw new Error('Native 检查输入中的子模块有未提交内容');
+  const index = runGitCommand(realTarget, ['ls-files', '--stage', '-z']);
+  budget.indexBytes += Buffer.byteLength(index);
+  if (budget.indexBytes > NATIVE_CHECK_GITLINK_MAX_INDEX_BYTES) {
+    throw new Error('Native 检查输入中的子模块索引超出读取上限');
+  }
+  const nested: Array<{ path: string; observationHash: string }> = [];
+  for (const [childPath, objectId] of parseGitlinksInIndex(index)) {
+    const child = await readNativeCheckGitlink(realTarget, childPath, budget, depth + 1);
+    if (child.head !== objectId) {
+      throw new Error('Native 检查输入中的嵌套子模块 HEAD 与索引不一致');
+    }
+    nested.push({ path: childPath, observationHash: child.observationHash });
+  }
+  const afterStatus = readGitStatusPorcelain(realTarget);
+  const afterIndex = runGitCommand(realTarget, ['ls-files', '--stage', '-z']);
+  const afterHead = runGitCommand(realTarget, ['rev-parse', '--verify', 'HEAD']);
+  const [afterTarget, after] = await Promise.all([fs.realpath(target), fs.lstat(target)]);
+  if (
+    afterStatus !== status ||
+    afterIndex !== index ||
+    head !== afterHead ||
+    realTarget !== afterTarget ||
+    !after.isDirectory() ||
+    after.isSymbolicLink() ||
+    before.ino !== after.ino ||
+    before.dev !== after.dev
+  ) {
+    throw new Error('Native 检查输入中的子模块有未提交内容或在读取时变化');
+  }
+  return {
+    head,
+    digest: digestNativeCheckInput(`gitlink:${head}`),
+    // 仅比较本次前后采样；持久摘要仍由干净的顶层 HEAD 传递绑定嵌套提交。
+    observationHash: canonicalHash('comet.native.check-gitlink-observation.v1', {
+      head,
+      index: digestNativeCheckInput(index),
+      realTarget,
+      ino: after.ino,
+      dev: after.dev,
+      nested,
+    }),
+  };
+}
+
 async function readNativeCheckInputObservation(options: NativeCheckInputGateOptions) {
   try {
     const runnerInputs = await nativeRunnerInputArtifactPaths(options.projectRoot);
@@ -882,12 +980,25 @@ async function readNativeCheckInputObservation(options: NativeCheckInputGateOpti
       ...exclusions,
     ]);
     if (head === null || status === null) return null;
-    const workingTree: Array<{ path: string; digest: string | null }> = [];
-    for (const changedPath of parseGitStatusPaths(status).filter(
+    const changedPaths = parseGitStatusPaths(status).filter(
       (changedPath) =>
         !runnerInputs.has(changedPath) &&
         !isNativeRuntimeInputPath(changedPath, options.projectRoot, options.managedArtifactRoot),
-    )) {
+    );
+    const gitlinks = new Map<string, Awaited<ReturnType<typeof readNativeCheckGitlink>>>();
+    const beforeGitlinkBudget = { repositories: new Set<string>(), indexBytes: 0 };
+    for (const [relative, objectId] of parseGitlinksInIndex(staged)) {
+      const observed = await readNativeCheckGitlink(
+        options.projectRoot,
+        relative,
+        beforeGitlinkBudget,
+      );
+      // 未初始化的子模块可能不出现在 status 中，仍须核对子仓库身份与 HEAD。
+      if (!changedPaths.includes(relative) && observed.head !== objectId) return null;
+      gitlinks.set(relative, observed);
+    }
+    const workingTree: Array<{ path: string; digest: string | null }> = [];
+    for (const changedPath of changedPaths) {
       const target = path.resolve(options.projectRoot, ...changedPath.split('/'));
       let digest: string | null = null;
       try {
@@ -895,14 +1006,18 @@ async function readNativeCheckInputObservation(options: NativeCheckInputGateOpti
         if (virtual?.text === null) return null;
         digest = virtual
           ? digestNativeCheckInput((virtual.bytes ?? Buffer.from(virtual.text!)).toString('base64'))
-          : (await digestNativeInputFileContent(target)).digest;
+          : (gitlinks.get(changedPath)?.digest ??
+            (await digestNativeInputFileContent(target)).digest);
       } catch {
-        // A dirty submodule is a directory. Its porcelain entry alone cannot
-        // distinguish two different dirty contents, so disable the fast gate
-        // and let the full fingerprint mark the snapshot non-reusable.
+        // 无法完整读取的工作区输入不能用于快速复用。
         return null;
       }
       workingTree.push({ path: changedPath, digest });
+    }
+    const afterGitlinkBudget = { repositories: new Set<string>(), indexBytes: 0 };
+    for (const [relative, before] of gitlinks) {
+      const after = await readNativeCheckGitlink(options.projectRoot, relative, afterGitlinkBudget);
+      if (after.observationHash !== before.observationHash) return null;
     }
     workingTree.sort((left, right) => left.path.localeCompare(right.path, 'en'));
     return {
@@ -1031,7 +1146,7 @@ async function nativeCandidateCommentGate(
   const workingTree: typeof observation.binding.workingTree = [];
   const index = new Map(
     observation.binding.staged.split('\0').flatMap((record) => {
-      const match = record.match(/^(100644|100755) ([a-f0-9]+) 0\t(.+)$/u);
+      const match = record.match(/^(100644|100755|160000) ([a-f0-9]+) 0\t(.+)$/su);
       return match ? [[match[3], { mode: match[1], objectId: match[2] }] as const] : [];
     }),
   );
@@ -1045,13 +1160,17 @@ async function nativeCandidateCommentGate(
         options.projectRoot,
         batch.flatMap((entry) => {
           const indexed = index.get(entry.path);
-          return indexed ? [indexed.objectId] : [];
+          return indexed && indexed.mode !== '160000' ? [indexed.objectId] : [];
         }),
       );
     } catch {
       return null;
     }
     for (const entry of batch) {
+      if (index.get(entry.path)?.mode === '160000') {
+        workingTree.push(entry);
+        continue;
+      }
       if (
         config?.native.document_writes !== 'revert' &&
         isNeutralDocumentPath(entry.path, [

@@ -227,6 +227,15 @@ export async function registerNativeSdkStartOwner(options: {
   });
 }
 
+function nativeSdkShapeConstraintsVersion(state: NativePortableState): 1 | 2 | 3 {
+  // Upgrade only a fresh proposal; pending approvals retain their original document contract.
+  return state.phase === 'shape' &&
+    state.status === 'active' &&
+    state.loop.next_action === 'prepare-shape-confirmation'
+    ? 3
+    : (state.document_constraints_version ?? 2);
+}
+
 /** Reads formal Shape artifacts without creating a second mutable Native state. */
 export async function collectNativeSdkShapeProposal(options: {
   paths: NativeProjectPaths;
@@ -234,7 +243,7 @@ export async function collectNativeSdkShapeProposal(options: {
 }): Promise<NativeShapeProposal> {
   const state = parseNativePortableState({
     ...options.state,
-    document_constraints_version: options.state.document_constraints_version ?? 2,
+    document_constraints_version: nativeSdkShapeConstraintsVersion(options.state),
   });
   if (state.phase !== 'shape' || !['active', 'await-user'].includes(state.status)) {
     throw new Error('Native Shape proposal requires an active or pending Shape');
@@ -1384,7 +1393,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
           const prepared = prepareNativePortableShapeConfirmation({
             state: {
               ...state,
-              document_constraints_version: state.document_constraints_version ?? 2,
+              document_constraints_version: nativeSdkShapeConstraintsVersion(state),
               spec_changes: proposal.specChanges,
               shape_confirmation_hash: proposal.shapeConfirmationHash,
             },

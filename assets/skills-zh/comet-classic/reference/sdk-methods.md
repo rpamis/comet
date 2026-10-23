@@ -39,7 +39,7 @@ Verify 编辑被拒绝或出现待复核提案时读取[编辑复核](../../come
 
 技能加载后，只采用探索与设计方法；传入当前 change、已绑定工作区、已知事实、约束和源文件引用。遇到无法推断且会改变结果的决定时，按 decision-point.md 提供问题、推荐理由、选项及影响。信息充分时直接形成方案，不设最低问答轮数；真实存在取舍时比较方案，高风险接口、迁移、安全和并发说明失败路径与验证策略。
 
-持续保存 `brainstorm-summary.md`，区分候选与已确认内容。Spec Patch 先说明具体改动并取得用户同意，再修改 delta spec；大幅改变范围时重新澄清。最终方案统一通过主 Skill 的 Design Wait 确认，不再追加整份设计文档批准，也不让外部 Skill 自动进入规划、实施或切换工作区。
+持续保存 `brainstorm-summary.md`，区分候选与已确认内容。Spec Patch 先说明具体改动并取得用户同意，再修改 delta spec；大幅改变范围时重新澄清。需要重新确认时，按[需求变化后的重新确认](decision-point.md#需求变化后的重新确认)说明变化及影响。最终方案统一通过主 Skill 的 Design Wait 确认，仍绑定当前 Design 提案哈希；不再追加整份设计文档批准，也不让外部 Skill 自动进入规划、实施或切换工作区。
 
 批准后完善唯一 Design Doc：已有引用优先沿用，否则使用当前 change 的 design.md；项目明确要求独立文档时，OpenSpec design.md 仅保存摘要和链接。frontmatter 仅含 `comet_change: <change-name>`、`role: technical-design`、`canonical_spec: openspec`。设计覆盖方案、取舍、风险和测试策略，正文与已批准提案一致后提交。中断后读取已保存摘要、源文件与当前 Wait，只补未完成工作。
 
@@ -47,15 +47,17 @@ Verify 编辑被拒绝或出现待复核提案时读取[编辑复核](../../come
 
 已选配置要求的实施、TDD 或审查能力，按[宿主能力核对](../../comet/reference/host-check.md) 在开始实现前确认；已有仍有效的核对直接复用。
 
-工作区沿用 Open 的绑定；配置有效时直接继续。只询问缺失、无效或用户要求更改的字段，在同一轮收集实际需要的选择：
+工作区沿用 Open 的绑定；需要展示、补齐或更改配置时，读取[执行配置展示](decision-point.md#执行配置展示)，按当前 change 的值、含义和确认状态呈现。各字段的选择与要求如下：
 
-| 配置        | 选择与要求                                                                                                        |
-| ----------- | ----------------------------------------------------------------------------------------------------------------- |
-| build_mode  | autonomous 自行规划与实施；executing-plans 按固定计划实施；subagent-driven-development 由实现代理实施、主会话协调 |
-| tdd_mode    | tdd 保留真实 RED/GREEN；direct 仍做相关检查与缺陷回归                                                             |
-| review_mode | off 跳过自动审查；standard 审查风险任务与最终集成；thorough 做任务或分段审查及最终集成                            |
+| 配置        | 选择与要求                                                                                                                                         |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| build_mode  | autonomous 自行规划与实施；executing-plans 按固定计划实施；subagent-driven-development 由实现代理实施、主会话协调；direct 由当前会话按计划直接实施 |
+| tdd_mode    | tdd 保留真实 RED/GREEN；direct 不要求 RED/GREEN，仍做相关检查与缺陷回归                                                                            |
+| review_mode | off 跳过自动审查；standard 审查风险任务与最终集成；thorough 做任务或分段审查及最终集成                                                             |
 
-full autonomous 必须采用 standard 或 thorough。full direct 需要用户明确选择并记录 `direct_override: true`，仍完成设计、计划和验证。subagent-driven-development 对应 `subagent_dispatch: confirmed`，其他方式为 null。只把用户明确选择的完整配置作为批准；项目默认值不自动构成批准。使用主 Skill 的 `propose-build --confirmed` 合并保存已明确的提案与批准，缺少决定时保留 Wait。
+full autonomous 必须采用 standard 或 thorough。full direct 需要用户明确选择并记录 `direct_override: true`，仍完成设计、计划和验证。subagent-driven-development 对应 `subagent_dispatch: confirmed`，其他方式为 null。
+
+已有待决定 Wait 复用原提案，提案改变后按现有机制重新确认，不沿用过期批准。用户明确选择完整配置后，使用主 Skill 的 `propose-build --confirmed` 保存提案与批准；缺少决定时保留 Wait。
 
 任务正文与完成状态以 tasks.md 为准。保留任务 ID；计划引用设计和当前任务权威，写入 `<!-- comet-task-authority: <classic-task-authority-ref> -->` 和每项 `<!-- comet-task-ref:<task-id> -->`，不复制 checkbox。计划列出任务范围、依赖、约束和验收方式；高风险部分补充理由、失败处理和回退。frontmatter 保留 `change`、`design-doc` 和实施前的 `base-ref`，恢复时不重写旧 base-ref。已有有效计划直接复用。
 
@@ -79,7 +81,7 @@ autonomous 直接制定计划。其他策略需要编写计划时：
 
 技能加载后，按当前已确认任务执行。tdd 先确认测试因待实现行为而失败，再实施并记录转绿结果。已有有效证据无需重演，不回退代码伪造 RED。按风险运行相关检查；Build 做任务级或分段审查，Verify 做唯一最终集成审查。必须解决 CRITICAL/IMPORTANT 问题；无法完成所需独立审查时报告阻塞，不用实现者自评代替。任务实际完成后勾选同一 tasks.md，由 Run 提交实现结果和检查证据。
 
-需求变化时判断实际范围、公开行为、验收和风险；原范围内遗漏直接修复，实质扩大范围或需要重新设计时请用户决定。任务数和文件数不单独触发 full 流程重启。异常先复现、定位根因，再修复并验证；需要外部方法时按 debug-gate.md 加载相应 Skill，仍沿用当前 Run。
+需求变化时判断实际范围、公开行为、验收和风险；原范围内遗漏直接修复，实质扩大范围或需要重新设计时，按[需求变化后的重新确认](decision-point.md#需求变化后的重新确认)请用户决定。任务数和文件数不单独触发 full 流程重启。异常先复现、定位根因，再修复并验证；需要外部方法时按 debug-gate.md 加载相应 Skill，仍沿用当前 Run。
 
 ## Verify
 
@@ -109,7 +111,7 @@ review_mode 为 standard 或 thorough 时，由独立 reviewer 对最终 diff �
 
 ## 预设范围复核
 
-hotfix/tweak 的 Build、Verify 和 Archive 都核对已批准需求。完成任务的 checkbox 和 `state tasks --assign-ids` 添加的任务标识不改变需求；proposal、设计、规格或任务正文发生变化时，恢复已批准内容，或在 Build 使用主 Skill 的 `propose-escalation` 提交当前范围，再取得同一预设继续或升级 full 的新决定。继续批准绑定提案时的实际内容；提案后再次改动时先恢复提案内容，或选择升级 full 并重新确认设计，不沿用旧批准。
+hotfix/tweak 的 Build、Verify 和 Archive 都核对已批准需求。完成任务的 checkbox 和 `state tasks --assign-ids` 添加的任务标识不改变需求；proposal、设计、规格或任务正文发生变化时，恢复已批准内容，或在 Build 使用主 Skill 的 `propose-escalation` 提交当前范围，再按[需求变化后的重新确认](decision-point.md#需求变化后的重新确认)取得同一预设继续或升级 full 的新决定。继续批准绑定提案时的实际内容；提案后再次改动时先恢复提案内容，或选择升级 full 并重新确认设计，不沿用旧批准。
 
 hotfix 先复现根因，保留真实失败证据；可自动化时先运行失败回归，再修复并确认转绿，最后检查根因已消除。hotfix 使用 direct/direct/off 默认配置，任务数不决定是否升级。
 

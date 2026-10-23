@@ -26,9 +26,11 @@ If select/check returns `BLOCKED` — or a branch-binding `ERROR` — because `b
 
 ### 1. Confirm the execution strategy first
 
-Read configuration, `configurationReadiness`, taskState, and nextAction from entry. When `configurationReadiness.missingFields` and `invalidFields` are empty, retain the confirmed configuration instead of presenting the same choices again; ask only about the listed missing or invalid decisions. If configuration, plan, and review records remain valid, continue without asking again or regenerating them. Open must already have prepared and bound the workspace. Stop if isolation is missing or the directory does not match, and resume in the projectRoot returned by workspace resolve. Do not create or switch workspaces in Build.
+When configuration needs to be presented, completed, or changed, first read [presenting execution configuration](../../comet-classic/reference/decision-point.md#presenting-execution-configuration) and show the current change's values, meanings, and approval status. Save through the Compat commands in this section.
 
-**Confirm the execution strategy before writing a plan.** `configurationReadiness` lists only unresolved or invalid fields; a valid configuration is not presented as a new choice. If configuration is missing or the user explicitly requests a change, collect execution mode, TDD, and review mode together under `comet-classic/reference/decision-point.md`, asking only about the listed decisions. Do not choose based on the model name.
+Read configuration, `configurationReadiness`, taskState, and nextAction from entry. When `configurationReadiness.missingFields` and `invalidFields` are empty and the user has not requested a change, retain the confirmed configuration instead of presenting the same choices again; ask only about missing, invalid, or user-requested changes. If configuration, plan, and review records remain valid, continue without asking again or regenerating them. Open must already have prepared and bound the workspace. Stop if isolation is missing or the directory does not match, and resume in the projectRoot returned by workspace resolve. Do not create or switch workspaces in Build.
+
+**Confirm the execution strategy before writing a plan.** `configurationReadiness` lists only unresolved or invalid fields; do not ask about a valid configuration again unless the user requests a change. If configuration is missing, invalid, or the user explicitly requests a change, collect execution mode, TDD, and review mode together under `comet-classic/reference/decision-point.md`, asking only about the listed decisions and fields the user requested to change. Do not choose based on the model name.
 
 | build_mode                    | Behavior                                                                                                                                                                                    |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -115,6 +117,8 @@ Follow `comet-classic/reference/debug-gate.md` for root-cause investigation, a m
 ### 4. Update specs incrementally
 
 When implementation reveals gaps in the initial spec, handle them according to the size of the change.
+
+When changed requirements or acceptance need reconfirmation, first read [reconfirmation after requirement changes](../../comet-classic/reference/decision-point.md#reconfirmation-after-requirement-changes), explain changes and effects, then show the complete current proposal. Updates and approval still follow the categories below.
 
 For implementation details within the confirmed scope that do not change public behavior or acceptance requirements, update the plan and rationale without reopening Open/Design. The following categories apply only to actual specification or scope changes:
 

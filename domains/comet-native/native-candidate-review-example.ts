@@ -251,8 +251,8 @@ export async function prepareNativeCandidateReviewProject(options: {
   await fs.writeFile(
     path.join(changeDir, 'brief.md'),
     '# Outcome\n让 candidate.txt 满足固定指导。\n# Scope\n实现、候选审查、失败修复和冷恢复。\n' +
-      '# Non-goals\n发布或归档。\n# Acceptance examples\n- 当前候选满足固定指导。\n' +
-      '# Directory structure\n## Created\n- candidate.txt\n## Modified\n无。\n## Deleted\n无。\n## Not created\n外部服务。\n',
+      '## Directory structure\n### Created\n- candidate.txt — 保存供固定指导和独立审查验证的候选内容。\n' +
+      '# Non-goals\n发布或归档。\n# Acceptance examples\n- 当前候选满足固定指导。\n',
     { flag: 'wx' },
   );
   await fs.writeFile(

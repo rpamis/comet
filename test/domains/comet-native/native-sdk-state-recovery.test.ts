@@ -52,7 +52,7 @@ async function fixture(custom = false, { initializeGit = true, completeShape = t
   await fs.mkdir(path.join(changeDir, 'specs', 'workflow'), { recursive: true });
   await fs.writeFile(
     path.join(changeDir, 'brief.md'),
-    '# Outcome\nResume the workflow.\n# Scope\nPreserve the workflow.\n# Non-goals\nNone.\n# Acceptance examples\n- The workflow resumes.\n# Constraints and invariants\nPreserve compatibility.\n# Decisions\nNone.\n# Open questions\nNone.\n# Verification expectations\nRun focused checks.\n',
+    '# Outcome\nResume the workflow.\n# Scope\nPreserve the workflow.\n## Directory structure\n### Modified\n- src/ — preserve workflow recovery behavior.\n# Non-goals\nNone.\n# Acceptance examples\n- The workflow resumes.\n# Constraints and invariants\nPreserve compatibility.\n# Decisions\nNone.\n# Open questions\nNone.\n# Verification expectations\nRun focused checks.\n',
   );
   await fs.writeFile(
     path.join(changeDir, 'specs', 'workflow', 'spec.md'),
@@ -255,7 +255,7 @@ describe('Native trusted checkpoint recovery', () => {
   it('preserves Build history, approvals, hashes and an interrupted claim without replaying work', async () => {
     const f = await fixture();
     const wait = f.run.waits[0];
-    let run = await f.runtime.resolveWait({
+    await f.runtime.resolveWait({
       runId: f.name,
       expectedRevision: f.run.revision,
       waitId: wait.id,
@@ -264,7 +264,7 @@ describe('Native trusted checkpoint recovery', () => {
       choice: 'approved',
     });
     expect((await advanceNativeSdkChange(f.root, f.name)).exitCode).toBe(0);
-    run = await f.runtime.inspect(f.name);
+    let run = await f.runtime.inspect(f.name);
     expect(run.state).toMatchObject({ phase: 'build' });
     const builder = run.actions.at(-1)!;
     expect(builder.stepId).toBe('build.builder');

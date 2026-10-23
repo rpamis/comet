@@ -6,7 +6,7 @@
 
 ## Requirement: Brief 完整性
 
-Runtime 在准备 Shape 确认及最终确认时必须读取当前 change 的 brief，检查八个既有章节：Outcome、Scope、Non-goals、Acceptance examples、Constraints and invariants、Decisions、Open questions、Verification expectations。兼容产品已有中文对应标题，不强制中文用户改用英文。
+Runtime 在准备 Shape 确认及最终确认时读取当前 change 的 brief，要求 Outcome、Scope、Non-goals、Acceptance examples 四个核心章节。Constraints and invariants、Decisions、Open questions、Verification expectations 仅在有实际内容时添加；已存在的章节必须填写有效内容。兼容产品已有中文对应标题，不强制中文用户改用英文。
 
 文件必须存在，章节必须有有效正文；空白、注释或单独的模板提示、占位内容不能算完成。无非目标、无额外决定、无待解决问题时，允许明确说明无相关事项，不能迫使用户编造内容。真实 blocking 问题仍阻止确认。任意正文里合法出现 TODO 等词语不能单凭关键词就否定整份文档。
 
@@ -61,3 +61,35 @@ Archive 执行前核对正式文档、当前验收结论与待发布 Spec 的一
 ## Requirement: 恢复上下文提示
 
 恢复任务时明确当前阶段、配置决定的正式文档路径、缺失或失效项及可执行的下一动作。无问题时正常继续，不重复询问已有决定。存在问题时保留当前需求和已有工作，不以新建同名 change 或重新开始整个流程作为常规修复办法。
+
+## Requirement: 目录结构按实际内容填写
+
+Scope 保留 Directory structure／目录结构二级章节。Created／新建、Modified／修改、Deleted／删除、Not created／明确不建四种既有类别按需填写，无内容类别可省略；保留完整旧格式和 None／无的既有写法。至少有一个有效类别，不能仅有二级标题、空的类别标题或模板占位。
+
+保留的类别须有有效正文；不要求为未出现的类别补写“无”。使用 Skill 时，每个实际改动位置写明职责，目录树、列表或两者混用均可。没有文件变更但存在明确取舍时，在明确不建中说明真实原因，不制造虚构路径。Runtime 只检查文档结构和有效正文，不根据自然语言猜测路径，也不证明范围语义完整或实际代码符合范围；这些由 Agent、用户确认和独立验收核对。
+
+新建模板和参考示例说明如何只保留实际类别，不把四个空类别继续描述为必填。空模板仍是待填写草稿，不能直接推进。中文与英文模板、校验提示和 Skill 说明必须一致。
+
+### Scenario: 单项修改省略其余类别
+
+Acceptance: A1
+
+- Given 四个核心章节均有效，目录结构的“修改”类别中说明一个配置文件路径和改动职责。
+- When 准备 Shape 确认。
+- Then 不因缺少新建、删除、明确不建类别而拒绝；中文或英文标题、列表或目录树均有相同结果。
+
+### Scenario: 无效结构可在同一 change 修复
+
+Acceptance: A2
+
+- Given 缺失必要章节或目录结构、没有有效类别、只有空标题或模板占位，或者仍有真实未决问题。
+- When 准备或确认 Shape。
+- Then 拒绝并说明文件、原因与修复方式；补充有效内容后，沿同一 change 和当前 continuation 继续，不手工修改 Runtime 状态。
+
+### Scenario: 保留既有格式和已确认进度
+
+Acceptance: A3
+
+- Given 旧的完整目录结构，或升级前已确认且仍在 Build、Verify、待归档阶段的 change。
+- When 使用升级后的 Runtime 读取或继续未改变的需求。
+- Then 完整格式仍被接受，已确认进度不因本次模板变化作废；正式需求后续重新确认时再校验当前适用要求。

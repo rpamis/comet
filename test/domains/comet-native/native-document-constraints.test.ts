@@ -126,23 +126,60 @@ describe('Native document constraints', () => {
       findings: [expect.objectContaining({ code: 'brief-structure-missing' })],
     });
 
-    await fs.writeFile(
-      path.join(root, 'brief.md'),
-      completeBrief.replace('### Not created\nNone.\n', ''),
-    );
-    await expect(
-      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),
-    ).resolves.toMatchObject({
-      valid: false,
-      findings: [expect.objectContaining({ code: 'brief-structure-subsection-missing' })],
-    });
-
     await fs.writeFile(path.join(root, 'brief.md'), completeBrief);
     await expect(
       validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),
     ).resolves.toEqual({
       valid: true,
       findings: [],
+    });
+  });
+
+  it.each([
+    ['Directory structure', 'Modified', '- config/defaults.yaml — Adjust the timeout.'],
+    ['目录结构', '修改', '- config/defaults.yaml — 调整默认超时时间。'],
+    ['Directory structure', 'Created', '```text\nsrc/\n└─ report.ts — Export reports.\n```'],
+    ['目录结构', '新建', '```text\nsrc/\n└─ report.ts — 导出报告。\n```'],
+    ['目录结构', '明确不建', '- 独立存储层 — 现有接口已满足需求。'],
+  ])('accepts only the populated %s / %s category', async (section, category, content) => {
+    await fs.writeFile(
+      path.join(root, 'brief.md'),
+      completeBrief.replace(
+        /## Directory structure\n[\s\S]*?(?=# Non-goals)/u,
+        `## ${section}\n### ${category}\n${content}\n`,
+      ),
+    );
+
+    await expect(
+      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),
+    ).resolves.toEqual({ valid: true, findings: [] });
+  });
+
+  it.each([
+    '',
+    '### Other\n- src/report.ts — Not a recognized category.\n',
+    '<!-- ### Modified\n- src/report.ts — Commented example. -->\n',
+    '```text\n### Modified\n- src/report.ts — Fenced example.\n```\n',
+    '### Modified\n',
+    '### Modified\n<!-- Fill this later. -->\n',
+    '### Modified\nTODO: fill this in.\n',
+    '### Modified\n- src/report.ts — Export reports.\n### Deleted\n',
+  ])('rejects missing or unfilled structure categories: %s', async (structure) => {
+    await fs.writeFile(
+      path.join(root, 'brief.md'),
+      completeBrief.replace(
+        /## Directory structure\n[\s\S]*?(?=# Non-goals)/u,
+        `## Directory structure\n${structure}`,
+      ),
+    );
+
+    await expect(
+      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),
+    ).resolves.toMatchObject({
+      valid: false,
+      findings: expect.arrayContaining([
+        expect.objectContaining({ code: 'brief-structure-subsection-missing', path: 'brief.md' }),
+      ]),
     });
   });
 

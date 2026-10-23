@@ -27,6 +27,22 @@
 - 不得用推荐规则、默认值、历史偏好或“用户应该会同意”的推断代替当前确认
 - 用户明确选择前，不得写入对应状态字段、执行对应分支操作或自动继续下一阶段
 
+## 执行配置展示
+
+SDK 与 Compat 需要展示、补齐或更改 Build 配置时，均按本节呈现，再使用当前 Runtime 路径的原有命令保存。根据当前 `configuration`、`configurationReadiness` 和已有用户决定，逐项列出当前值、自然语言含义，以及「已确认」「待补充」「需修正」或「用户要求更改」的状态；缺少值时如实说明，不把建议值写成已确认。`configurationReadiness` 只说明字段是否有效，不能代替本 change 的批准。只询问缺失、无效或用户要求更改的字段，在同一轮收集实际需要的选择。
+
+每个新 full change 都确认本 change 的配置；项目默认值、推荐或其他 change 的选择不构成批准。同一 change 恢复或重新 Design 后，沿用仍有效的已确认选择；配置提案改变后按当前路径原有机制重新确认，不沿用过期批准。用户明确选择完整配置后，保存并简短回显，然后继续，不追加没有新决定的继续确认；缺少决定时继续等待。hotfix/tweak 只说明当前已选预设的值和含义，保留既有确认步骤，不增加独立 Build 配置批准。
+
+执行方式、TDD 和审查深度分别说明。`tdd_mode: direct` 不要求 RED/GREEN，仍做相关检查与缺陷回归；`direct_override` 只对应 full 的 `build_mode: direct`，不因 `tdd_mode: direct` 自动启用。向用户解释派发与直接实施的实际影响，不把关联标志另列为需要猜测的布尔选项。各路径原有的 full direct 明确选择、autonomous 独立审查和子代理派发约束保持不变，非法组合仍按 Runtime 校验修正。
+
+## 需求变化后的重新确认
+
+SDK 与 Compat 在需求或验收变化后需要重新确认时，均先按本节说明，再沿当前路径的 Spec Patch、Design 或预设范围复核步骤处理。先区分已确认目标的实现遗漏、正式需求或验收变化、与当前 change 无关的请求。实现遗漏在原范围内修复；无关请求另行归属，不混入当前 change。
+
+重新确认时，先说明相对上次批准方案的新增、删除和改变的行为、受影响验收、可保留成果与需要重做的步骤，再展示完整当前方案。比较只依据可读取的已批准提案、正式文件和用户明确决定；缺少可信旧方案时，说明无法可靠比较，只列能确定的变化，不编造差异或声称“其余不变”。初次确认无需制造前后差异。
+
+变化摘要只帮助用户阅读，批准仍绑定完整当前提案及当前路径原有的批准身份。Design 中 Spec Patch 的事先授权、正式设计确认及预设范围复核均保留；现有 Build 配置按上节复用。重做范围依据 Runtime 当前动作和证据有效性说明，不承诺复用已失效的检查，不把旧验收结论用于新需求。失败、中断或未知结果如实保留，恢复不能跳过仍待用户决定的步骤。
+
 ## Classic 预设的文件数授权复用
 
 hotfix 和 tweak 的文件数阈值只触发范围复核，不是实质升级信号。预设可以复用 `<classic-change-dir>/.comet/rulings.md` 中的 `Preset file-count authorization`，但只有 active、workflow 与当前 change 匹配，scope、验收和风险假设未变，且当前唯一触发条件是文件数超限时，才把它视为有效授权。记录必须包含 `status: active|invalidated`、`workflow`、`decision: continue-on-file-count-only`、授权范围、`allowed-file-categories`、`authorization-basis` 和 `reason`。

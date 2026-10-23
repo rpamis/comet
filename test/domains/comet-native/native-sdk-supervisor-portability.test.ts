@@ -42,7 +42,7 @@ async function preparedSupervisorBuilder() {
   await fs.mkdir(path.join(changeDir, 'specs', 'workflow'), { recursive: true });
   await fs.writeFile(
     path.join(changeDir, 'brief.md'),
-    '# Outcome\nShip the API.\n# Scope\nAPI work.\n# Non-goals\nNone.\n# Acceptance examples\n- The API works.\n# Constraints and invariants\nKeep the workflow.\n# Decisions\nNone.\n# Open questions\nNone.\n# Verification expectations\nRun checks.\n',
+    '# Outcome\nShip the API.\n# Scope\nAPI work.\n## Directory structure\n### Created\n- api.txt — retain the API implementation.\n# Non-goals\nNone.\n# Acceptance examples\n- The API works.\n# Constraints and invariants\nKeep the workflow.\n# Decisions\nNone.\n# Open questions\nNone.\n# Verification expectations\nRun checks.\n',
   );
   await fs.writeFile(
     path.join(changeDir, 'specs', 'workflow', 'spec.md'),

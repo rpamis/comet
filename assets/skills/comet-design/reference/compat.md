@@ -136,7 +136,7 @@ Keep `brainstorm-summary.md` updated throughout brainstorming so discussion can 
 
 After brainstorming produces a design, **follow `comet-classic/reference/decision-point.md` and wait for the user to explicitly confirm the design**. Before that confirmation, do not create the final Design Doc, set `design_doc`, run the design guard, or enter `/comet-build`.
 
-Present the necessary summary:
+When reconfirming changed requirements or acceptance, first read [reconfirmation after requirement changes](../../comet-classic/reference/decision-point.md#reconfirmation-after-requirement-changes). Explain changes, acceptance impact, retained work, and repeated steps, then show the complete current proposal. The current proposal must cover:
 
 - Selected technical approach.
 - Key tradeoffs and risks.

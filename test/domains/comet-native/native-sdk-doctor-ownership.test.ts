@@ -48,7 +48,7 @@ async function interruptedArchive() {
   await fs.mkdir(path.join(changeDir, 'specs/workflow'), { recursive: true });
   await fs.writeFile(
     path.join(changeDir, 'brief.md'),
-    '# Outcome\nPreserve the workflow.\n# Scope\nThe workflow.\n# Non-goals\nNone.\n# Acceptance examples\n- The workflow resumes.\n',
+    '# Outcome\nPreserve the workflow.\n# Scope\nThe workflow.\n## Directory structure\n### Modified\n- src/ — preserve workflow recovery behavior.\n# Non-goals\nNone.\n# Acceptance examples\n- The workflow resumes.\n',
   );
   await fs.writeFile(
     path.join(changeDir, 'specs/workflow/spec.md'),

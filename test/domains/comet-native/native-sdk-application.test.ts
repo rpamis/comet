@@ -10,6 +10,7 @@ import {
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
+import { requireFileSymlink } from '../../helpers/file-symlink.js';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
@@ -41,6 +42,7 @@ import {
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
 import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
+import { prepareNativePortableShapeConfirmation } from '../../../domains/comet-native/native-loop-runtime.js';
 import { inspectNativeSdkArchiveFinalization } from '../../../domains/comet-native/native-portable-archive.js';
 import { removeNativeWorkspaceConfig } from '../../../domains/comet-native/native-workspace-config.js';
 import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
@@ -131,6 +133,9 @@ async function fixture() {
 Ship the selected workflow.
 # Scope
 Preserve the selected workflow.
+## Directory structure
+### Modified
+- domains/workflow.ts: preserve workflow recovery.
 # Non-goals
 None.
 # Acceptance examples
@@ -1199,7 +1204,7 @@ describe('Native SDK Workflow Application', () => {
     expect(run.state).toMatchObject({
       phase: 'shape',
       status: 'await-user',
-      document_constraints_version: 2,
+      document_constraints_version: 3,
       acceptance: [{ source: 'brief.md', text: 'The selected workflow resumes.' }],
     });
     expect(run.waits.at(-1)).toMatchObject({
@@ -3521,9 +3526,76 @@ children:
     await expect(collectProposal(paths, initialState)).rejects.toThrow(/brief-section-missing/);
   });
 
+  it('retains the v2 document contract for a pending approval but upgrades a fresh proposal', async () => {
+    const { paths, changeDir, initialState } = await fixture();
+    const brief = path.join(changeDir, 'brief.md');
+    await fs.writeFile(
+      brief,
+      (await fs.readFile(brief, 'utf8')).replace(
+        /## Directory structure[\s\S]*?(?=# Non-goals)/u,
+        '',
+      ),
+    );
+    const legacyState = { ...initialState, document_constraints_version: 2 as const };
+    const pending = prepareNativePortableShapeConfirmation({
+      state: legacyState,
+      acceptance: [{ id: 'A1', source: 'brief.md', text: 'The selected workflow resumes.' }],
+    });
+    await expect(collectProposal(paths, pending)).resolves.toMatchObject({
+      acceptance: [{ id: 'A1', text: 'The selected workflow resumes.' }],
+    });
+    await expect(collectProposal(paths, legacyState)).rejects.toThrow(/brief-structure-missing/u);
+  });
+
+  it('repairs missing structure in the same SDK Run before confirming the complete Shape', async () => {
+    const { root, changeDir, runtime, run: prepared } = await preparedShape('sdk');
+    const wait = prepared.waits.at(-1)!;
+    const rejected = await runtime.resolveWait({
+      runId: prepared.runId,
+      waitId: wait.id,
+      proposalHash: wait.proposalHash,
+      decisionId: 'shape-needs-revision',
+      choice: 'rejected',
+    });
+    const brief = path.join(changeDir, 'brief.md');
+    const completeBrief = await fs.readFile(brief, 'utf8');
+    await fs.writeFile(
+      brief,
+      completeBrief.replace(/## Directory structure[\s\S]*?(?=# Non-goals)/u, ''),
+    );
+    await expect(advanceNativeSdkChange(root, 'sdk-shape')).rejects.toThrow(
+      /brief-structure-missing/u,
+    );
+    const afterFailure = await runtime.inspect(prepared.runId);
+    expect(afterFailure.state).toEqual(rejected.state);
+    expect(afterFailure.actions.at(-1)).toMatchObject({
+      id: rejected.actions.at(-1)!.id,
+      status: 'pending',
+    });
+    await fs.writeFile(brief, completeBrief);
+    expect(await advanceNativeSdkChange(root, 'sdk-shape')).toMatchObject({ exitCode: 0 });
+    const repaired = await runtime.inspect(prepared.runId);
+    expect(repaired.state).toMatchObject({
+      document_constraints_version: 3,
+      phase: 'shape',
+      status: 'await-user',
+    });
+    expect(repaired.waits.at(-1)!.id).not.toBe(wait.id);
+    expect(
+      await advanceNativeSdkChange(root, 'sdk-shape', {
+        expectedAction: 'confirm-shape',
+        expectedStateVersion: (repaired.state as NativePortableState).state_version,
+        summary: 'Confirm the repaired complete Shape.',
+      }),
+    ).toMatchObject({ exitCode: 0 });
+    const confirmed = await runtime.inspect(prepared.runId);
+    expect(confirmed.state).toMatchObject({ phase: 'build', document_constraints_version: 3 });
+    expect(confirmed.actions.at(-1)).toMatchObject({ stepId: 'build.builder' });
+  });
+
   it('keeps SDK Shape approval current after formatting-only document edits', async () => {
     const { root, paths, changeDir, runtime, run: prepared } = await preparedShape();
-    expect(prepared.state).toMatchObject({ document_constraints_version: 2 });
+    expect(prepared.state).toMatchObject({ document_constraints_version: 3 });
     const wait = prepared.waits.at(-1)!;
     let run = await runtime.resolveWait({
       runId: prepared.runId,
@@ -7245,103 +7317,130 @@ function legacyArchiveApplication() {
   };
 }
 
+async function interruptedLegacyArchive(kind: string) {
+  const original = '# Existing workflow\nPreserve the old acceptance.\n';
+  const prepared = await awaitingArchiveApplication(
+    'sdk',
+    undefined,
+    false,
+    undefined,
+    legacyArchiveApplication(),
+    async (root) => {
+      if (kind === 'non-git-update')
+        await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = true;');
+      else await initializeArchiveGit(root);
+      if (kind !== 'create') {
+        const file = path.join(root, 'docs/comet/specs/workflow/spec.md');
+        await fs.mkdir(path.dirname(file), { recursive: true });
+        await fs.writeFile(file, original);
+        if (kind === 'untracked-update' || kind === 'non-git-update') {
+          for (const [ref, content] of [
+            ['docs/comet/specs/secondary/spec.md', original],
+            [
+              'docs/comet/changes/sdk-shape/specs/secondary/spec.md',
+              '# Secondary\nThe selected workflow resumes.\n',
+            ],
+          ]) {
+            await fs.mkdir(path.dirname(path.join(root, ref!)), { recursive: true });
+            await fs.writeFile(path.join(root, ref!), content!);
+          }
+        }
+        if (kind === 'tracked-update') {
+          execFileSync('git', ['add', 'docs/comet/specs/workflow/spec.md'], { cwd: root });
+          execFileSync('git', ['commit', '-m', 'existing spec'], { cwd: root, stdio: 'ignore' });
+        }
+      }
+    },
+  );
+  const { root, runtime, run } = prepared;
+  expect(run.outputs['archive.prepare'].value).not.toHaveProperty('candidateBinding');
+  const action = run.actions.at(-1)!;
+  // 旧实现已完成 apply 的事实由原事务保存；新 Runtime 不重放已经写入的 Spec。
+  const context = { requestId: 'legacy-apply', projectRoot: root };
+  const claimed = await runtime.claim({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: 'comet-native-archive-apply',
+    claimToken: 'legacy-apply-owner',
+    context,
+  });
+  const { applyNativeSdkArchiveSpecs, inspectNativeSdkArchiveSpecs } =
+    await import('../../../domains/comet-native/native-portable-archive.js');
+  const state = claimed.state as NativePortableState;
+  await applyNativeSdkArchiveSpecs({
+    paths: prepared.paths,
+    state,
+    verificationReportStateVersion: (
+      run.outputs['archive.prepare'].value as { reportStateVersion: number }
+    ).reportStateVersion,
+  });
+  await runtime.markUnknown({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    reason: 'The legacy host stopped after applying its frozen transaction.',
+  });
+  const options = {
+    projectRoot: root,
+    name: run.runId,
+    dryRun: false,
+    recover: true,
+    confirmed: false,
+  };
+  return { ...prepared, state, options, original, inspectNativeSdkArchiveSpecs };
+}
+
+async function legacyArchiveOriginalsBackup(
+  fixture: Awaited<ReturnType<typeof interruptedLegacyArchive>>,
+) {
+  const { readNativePortableTransaction } =
+    await import('../../../domains/comet-native/native-portable-transactions.js');
+  const transaction = await readNativePortableTransaction(fixture.paths, {
+    kind: 'archive',
+    change: fixture.state.name,
+  });
+  const backupRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-archive-originals-'));
+  roots.push(backupRoot);
+  const backupRef = path.join(backupRoot, 'archive-originals.json');
+  await fs.writeFile(
+    backupRef,
+    JSON.stringify({
+      schema: 'comet.native.archive-originals.v1',
+      runId: fixture.run.runId,
+      transactionId: transaction!.journal.id,
+      files: [
+        { ref: 'docs/comet/specs/workflow/spec.md', content: fixture.original },
+        { ref: 'docs/comet/specs/secondary/spec.md', content: fixture.original },
+      ],
+    }),
+  );
+  return backupRef;
+}
+
+it.for(['untracked-update', 'non-git-update'])(
+  'rejects a file symlink backup for an old Archive %s transaction',
+  async (kind, context) => {
+    await requireFileSymlink(context);
+    const fixture = await interruptedLegacyArchive(kind);
+    const backupRef = await legacyArchiveOriginalsBackup(fixture);
+    const linked = path.join(path.dirname(backupRef), 'linked.json');
+    await fs.symlink(backupRef, linked, 'file');
+    await expect(
+      archiveNativeSdkChange({ ...fixture.options, legacySpecBackup: linked }),
+    ).rejects.toThrow(/symbolic|symlink/i);
+  },
+);
+
 it.each(['create', 'tracked-update', 'untracked-update', 'non-git-update'])(
   'recovers an old Archive %s transaction by matching its original candidate evidence',
   async (kind) => {
-    const original = '# Existing workflow\nPreserve the old acceptance.\n';
-    const prepared = await awaitingArchiveApplication(
-      'sdk',
-      undefined,
-      false,
-      undefined,
-      legacyArchiveApplication(),
-      async (root) => {
-        if (kind === 'non-git-update')
-          await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = true;');
-        else await initializeArchiveGit(root);
-        if (kind !== 'create') {
-          const file = path.join(root, 'docs/comet/specs/workflow/spec.md');
-          await fs.mkdir(path.dirname(file), { recursive: true });
-          await fs.writeFile(file, original);
-          if (kind === 'untracked-update' || kind === 'non-git-update') {
-            for (const [ref, content] of [
-              ['docs/comet/specs/secondary/spec.md', original],
-              [
-                'docs/comet/changes/sdk-shape/specs/secondary/spec.md',
-                '# Secondary\nThe selected workflow resumes.\n',
-              ],
-            ]) {
-              await fs.mkdir(path.dirname(path.join(root, ref!)), { recursive: true });
-              await fs.writeFile(path.join(root, ref!), content!);
-            }
-          }
-          if (kind === 'tracked-update') {
-            execFileSync('git', ['add', 'docs/comet/specs/workflow/spec.md'], { cwd: root });
-            execFileSync('git', ['commit', '-m', 'existing spec'], { cwd: root, stdio: 'ignore' });
-          }
-        }
-      },
-    );
-    const { root, runtime, run } = prepared;
-    expect(run.outputs['archive.prepare'].value).not.toHaveProperty('candidateBinding');
-    const action = run.actions.at(-1)!;
-    // 旧实现已完成 apply 的事实由原事务保存；新 Runtime 不重放已经写入的 Spec。
-    const context = { requestId: 'legacy-apply', projectRoot: root };
-    const claimed = await runtime.claim({
-      runId: run.runId,
-      actionId: action.id,
-      attempt: action.attempt,
-      inputHash: action.inputHash,
-      executorId: 'comet-native-archive-apply',
-      claimToken: 'legacy-apply-owner',
-      context,
-    });
-    const { applyNativeSdkArchiveSpecs, inspectNativeSdkArchiveSpecs } =
-      await import('../../../domains/comet-native/native-portable-archive.js');
-    const state = claimed.state as NativePortableState;
-    await applyNativeSdkArchiveSpecs({
-      paths: prepared.paths,
-      state,
-      verificationReportStateVersion: (
-        run.outputs['archive.prepare'].value as { reportStateVersion: number }
-      ).reportStateVersion,
-    });
-    await runtime.markUnknown({
-      runId: run.runId,
-      actionId: action.id,
-      attempt: action.attempt,
-      reason: 'The legacy host stopped after applying its frozen transaction.',
-    });
-    const options = {
-      projectRoot: root,
-      name: run.runId,
-      dryRun: false,
-      recover: true,
-      confirmed: false,
-    };
+    const prepared = await interruptedLegacyArchive(kind);
+    const { root, runtime, run, state, options, original, inspectNativeSdkArchiveSpecs } = prepared;
     if (kind === 'untracked-update' || kind === 'non-git-update') {
       await expect(archiveNativeSdkChange(options)).rejects.toThrow(/原文/);
-      const { readNativePortableTransaction } =
-        await import('../../../domains/comet-native/native-portable-transactions.js');
-      const transaction = await readNativePortableTransaction(prepared.paths, {
-        kind: 'archive',
-        change: state.name,
-      });
-      const backupRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-archive-originals-'));
-      roots.push(backupRoot);
-      const backupRef = path.join(backupRoot, 'archive-originals.json');
-      await fs.writeFile(
-        backupRef,
-        JSON.stringify({
-          schema: 'comet.native.archive-originals.v1',
-          runId: run.runId,
-          transactionId: transaction!.journal.id,
-          files: [
-            { ref: 'docs/comet/specs/workflow/spec.md', content: original },
-            { ref: 'docs/comet/specs/secondary/spec.md', content: original },
-          ],
-        }),
-      );
+      const backupRef = await legacyArchiveOriginalsBackup(prepared);
       const validBackup = await fs.readFile(backupRef, 'utf8');
       const parsedBackup = JSON.parse(validBackup);
       for (const invalid of [
@@ -7364,11 +7463,6 @@ it.each(['create', 'tracked-update', 'untracked-update', 'non-git-update'])(
         archiveNativeSdkChange({ ...options, legacySpecBackup: backupRef }),
       ).rejects.toThrow();
       await fs.writeFile(backupRef, validBackup);
-      const linked = path.join(backupRoot, 'linked.json');
-      await fs.symlink(backupRef, linked);
-      await expect(
-        archiveNativeSdkChange({ ...options, legacySpecBackup: linked }),
-      ).rejects.toThrow(/symbolic|symlink/i);
       await expect(
         archiveNativeSdkChange({ ...options, legacySpecBackup: '../outside.json' }),
       ).rejects.toThrow();

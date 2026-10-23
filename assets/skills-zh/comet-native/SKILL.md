@@ -74,7 +74,7 @@ Build、Verify 和 Archive 会复查正式文件绑定。新确认的 Shape 按 
 需求变化时，先判断变化属于哪种情况，再执行当前 `continuation` 允许的动作：
 
 - 已确认的功能有实现遗漏：从 Verify 使用 `--revise-implementation`，保留已确认的需求范围，回 Build 修改。
-- 用户可见行为或验收标准发生变化：从 Verify 或 Archive-ready 使用 `--revise-requirements`，更新正式文件并重新确认 Shape。
+- 用户可见行为或验收标准发生变化：从 Verify 或 Archive-ready 使用 `--revise-requirements`，更新正式文件，按[需求变化后的重新确认](reference/clarification.md#需求变化后的重新确认)先说明变化与影响，再展示完整当前 Shape 并重新确认。
 - 与当前需求无关：交给另一个 change。
 
 用户明确补充当前范围时，按同一规则处理。

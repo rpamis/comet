@@ -248,9 +248,13 @@ export function nativeBriefTemplate(
       if (section !== 'scope') return `# ${nativeBriefHeading(language, section)}\n`;
       const lines = [`# ${nativeBriefHeading(language, section)}\n`];
       lines.push(`## ${nativeBriefStructureHeading(language)}\n`);
-      for (const subsection of NATIVE_BRIEF_STRUCTURE_SUBSECTIONS) {
-        lines.push(`### ${nativeBriefStructureSubsectionHeading(language, subsection)}\n`);
-      }
+      lines.push(
+        nativeLocalizedText(
+          language,
+          '<!-- Add only needed level-three categories (Created, Modified, Deleted, Not created), with paths and responsibilities. Omit unused categories. -->\n',
+          '<!-- 按实际改动添加三级标题（新建、修改、删除、明确不建），写明路径与职责；无内容的类别可省略。 -->\n',
+        ),
+      );
       return lines.join('\n');
     })
     .join('\n');
