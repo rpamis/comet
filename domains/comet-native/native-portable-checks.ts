@@ -341,10 +341,6 @@ export async function digestNativeInputFileContent(
   return { digest: hash.digest('hex'), size: total };
 }
 
-const NATIVE_IGNORED_INPUT_MAX_FILES = 20_000;
-
-const NATIVE_IGNORED_INPUT_MAX_TOTAL_BYTES = 1024 * 1024 * 1024;
-
 /**
  * Chunk size for streamed base64 digests. It must stay divisible by 3 so that
  * concatenating per-chunk base64 output equals base64-encoding the whole file,
@@ -553,6 +549,7 @@ function isNativeNextVolatileInputPath(relative: string): boolean {
 function nativeGeneratedInputRoots(
   plans: readonly NativeCheckPlan[],
   stagedIndex: string,
+  ignoredEntries: string,
 ): string[] {
   const roots = new Set(['.', ...plans.map(({ cwdRef }) => cwdRef)]);
   // 已跟踪的项目清单覆盖 monorepo 子项目，不扫描 node_modules 寻找项目。
@@ -561,6 +558,25 @@ function nativeGeneratedInputRoots(
     if (!NATIVE_PROJECT_INPUT_MANIFESTS.has(path.posix.basename(relative))) continue;
     if (relative.split('/').some((part) => NATIVE_DEPENDENCY_INPUT_DIRECTORIES.has(part))) continue;
     roots.add(path.posix.dirname(relative));
+  }
+  // --directory collapses ignored dependency trees to one entry. Discover
+  // generated roots from those entries without asking Git to descend into
+  // node_modules with a recursive **/dist pathspec.
+  for (const entry of ignoredEntries.split('\0')) {
+    const parts = entry.replaceAll('\\', '/').split('/').filter(Boolean);
+    for (let index = 0; index < parts.length; index += 1) {
+      if (
+        NATIVE_DEPENDENCY_INPUT_DIRECTORIES.has(parts[index]) ||
+        NATIVE_WORKTREE_INPUT_DIRECTORIES.has(parts[index])
+      )
+        break;
+      if (
+        NATIVE_GENERATED_INPUT_DIRECTORIES.includes(
+          parts[index] as (typeof NATIVE_GENERATED_INPUT_DIRECTORIES)[number],
+        )
+      )
+        roots.add(parts.slice(0, index).join('/') || '.');
+    }
   }
   return [...roots].sort();
 }
@@ -576,13 +592,19 @@ async function nativeIgnoredCheckInputSnapshot(
   runnerInputs: ReadonlySet<string> = new Set(),
   stagedIndex = '',
 ): Promise<NativeIgnoredInputSnapshot> {
-  const cwdRefs = nativeGeneratedInputRoots(plans, stagedIndex);
-  if (cwdRefs.length === 0) return { complete: true, files: [] };
-
   let ignoredPaths: string[];
   let realRoot: string;
   try {
     realRoot = await fs.realpath(projectRoot);
+    const ignoredEntries = runGitCommand(projectRoot, [
+      'ls-files',
+      '--others',
+      '--ignored',
+      '--exclude-standard',
+      '--directory',
+      '-z',
+    ]);
+    const cwdRefs = nativeGeneratedInputRoots(plans, stagedIndex, ignoredEntries);
     const nextDevTypes: string[] = [];
     for (const cwdRef of cwdRefs) {
       for (const directory of [
@@ -645,14 +667,7 @@ async function nativeIgnoredCheckInputSnapshot(
   } catch {
     return incompleteNativeIgnoredInputSnapshot('无法列出项目生成输入；本次检查不能复用旧证据');
   }
-  if (ignoredPaths.length > NATIVE_IGNORED_INPUT_MAX_FILES) {
-    return incompleteNativeIgnoredInputSnapshot(
-      `项目生成输入超过文件数上限（${NATIVE_IGNORED_INPUT_MAX_FILES}）；本次检查不能复用旧证据`,
-    );
-  }
-
   const files: NativeIgnoredInputFile[] = [];
-  let totalBytes = 0;
   for (const relative of ignoredPaths) {
     if (runnerInputs.has(relative)) continue;
     if (isNativeOwnedInputPath(relative, projectRoot, managedArtifactRoot)) continue;
@@ -679,13 +694,7 @@ async function nativeIgnoredCheckInputSnapshot(
       if (!before.isFile()) {
         return incompleteNativeIgnoredInputSnapshot(`项目生成输入不是普通文件：${relative}`);
       }
-      if (totalBytes + before.size > NATIVE_IGNORED_INPUT_MAX_TOTAL_BYTES) {
-        return incompleteNativeIgnoredInputSnapshot(
-          `项目生成输入超过大小上限（${NATIVE_IGNORED_INPUT_MAX_TOTAL_BYTES} bytes）：${relative}`,
-        );
-      }
       const { digest, size } = await digestNativeInputFileContent(target);
-      totalBytes += size;
       files.push({ path: relative, digest, size });
     } catch {
       return incompleteNativeIgnoredInputSnapshot(`项目生成输入无法稳定读取：${relative}`);
@@ -705,7 +714,6 @@ async function nativePhysicalCheckInputSnapshot(
   const cwdRefs = ['.'];
   void plans;
   const files = new Map<string, NativeIgnoredInputFile>();
-  let totalBytes = 0;
   const isGeneratedDirectory = (name: string): boolean =>
     NATIVE_GENERATED_INPUT_DIRECTORIES.includes(
       name as (typeof NATIVE_GENERATED_INPUT_DIRECTORIES)[number],
@@ -754,16 +762,12 @@ async function nativePhysicalCheckInputSnapshot(
       if (sensitiveNativeIgnoredInputPath(relative)) return false;
       if (!entry.isFile()) return false;
       try {
-        const before = await fs.lstat(target);
-        if (totalBytes + before.size > NATIVE_IGNORED_INPUT_MAX_TOTAL_BYTES) return false;
         const { digest, size } = await digestNativeInputFileContent(target);
-        totalBytes += size;
         files.set(relative, {
           path: relative,
           digest,
           size,
         });
-        if (files.size > NATIVE_IGNORED_INPUT_MAX_FILES) return false;
       } catch {
         return false;
       }

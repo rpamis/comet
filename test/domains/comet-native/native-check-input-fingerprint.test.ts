@@ -206,7 +206,9 @@ describe('Native check input fingerprint', () => {
         expect(
           await nativeCheckInputGate({ projectRoot: root, candidateId: null, plans }),
         ).not.toBe(beforeGate);
-        for (const [, args] of run.mock.calls.filter(([, args]) => args.includes('--ignored'))) {
+        for (const [, args] of run.mock.calls.filter(
+          ([, args]) => args.includes('--ignored') && args.includes('--'),
+        )) {
           expect(args).not.toContain(':(glob)**/dist/**');
           expect(args).toContain(':(glob)packages/app/dist/**');
         }
@@ -215,6 +217,22 @@ describe('Native check input fingerprint', () => {
       }
     },
   );
+
+  it('binds ignored generated inputs under a nested directory without a project manifest', async () => {
+    await fs.writeFile(path.join(root, '.gitignore'), 'dist/\nnode_modules/\n');
+    await fs.mkdir(path.join(root, 'packages/app/dist'), { recursive: true });
+    await fs.mkdir(path.join(root, 'node_modules/pkg/dist'), { recursive: true });
+    await fs.writeFile(path.join(root, 'packages/app/dist/input.txt'), 'good');
+    await fs.writeFile(path.join(root, 'node_modules/pkg/dist/output.txt'), 'dependency');
+    const input = fingerprintInput(root);
+    const before = await nativeCheckInputSnapshot(input);
+    const gate = await nativeCheckInputGate({ projectRoot: root, candidateId: null });
+    expect(before.complete).toBe(true);
+    await fs.writeFile(path.join(root, 'packages/app/dist/input.txt'), 'bad');
+    const after = await nativeCheckInputSnapshot(input);
+    expect(after.contentFingerprint).not.toBe(before.contentFingerprint);
+    expect(await nativeCheckInputGate({ projectRoot: root, candidateId: null })).not.toBe(gate);
+  });
 
   it.each(['git', 'physical'])(
     'binds Next production artifacts while ignoring volatile output (%s)',
@@ -276,17 +294,13 @@ describe('Native check input fingerprint', () => {
     },
   );
 
-  it.each(['sensitive', 'size', 'symlink-root', 'symlink-ancestor'])(
+  it.each(['sensitive', 'symlink-root', 'symlink-ancestor'])(
     'reports incomplete generated input instead of stable reusable evidence (%s)',
     async (failure) => {
       await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n.next/\npackages/\n');
       await fs.mkdir(path.join(root, 'dist'));
       if (failure === 'sensitive')
         await fs.writeFile(path.join(root, 'dist/.env'), 'TOKEN=fixture');
-      if (failure === 'size') {
-        await fs.writeFile(path.join(root, 'dist/large.bin'), '');
-        await fs.truncate(path.join(root, 'dist/large.bin'), 1024 * 1024 * 1024 + 1);
-      }
       if (failure === 'symlink-root') {
         await fs.symlink(
           path.join(root, 'dist'),
@@ -307,10 +321,20 @@ describe('Native check input fingerprint', () => {
       const snapshot = await nativeCheckInputSnapshot(fingerprintInput(root));
       expect(snapshot.complete).toBe(false);
       expect(snapshot.diagnostics).not.toEqual([]);
-      expect(snapshot.diagnostics.join(' ')).toMatch(/敏感|大小|链接/);
+      expect(snapshot.diagnostics.join(' ')).toMatch(/敏感|链接/);
       expect(await nativeCheckInputGate({ projectRoot: root, candidateId: null })).toBeNull();
     },
   );
+
+  it('hashes an ignored generated file beyond the former one GiB cap', async () => {
+    await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n');
+    await fs.mkdir(path.join(root, 'dist'));
+    const large = path.join(root, 'dist/large.bin');
+    await fs.writeFile(large, '');
+    await fs.truncate(large, 1024 * 1024 * 1024 + 1);
+    const snapshot = await nativeCheckInputSnapshot(fingerprintInput(root));
+    expect(snapshot.complete).toBe(true);
+  }, 120_000);
 
   it('captures tracked deletions as known input rather than an unreadable snapshot', async () => {
     const before = await nativeCheckInputSnapshot(fingerprintInput(root));
