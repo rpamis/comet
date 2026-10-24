@@ -464,6 +464,53 @@
         }
       ],
       "sources": ["report:2026-10-25-051-native-classic-acceptance"]
+    },
+    {
+      "id": "eval-outer-timeout-budget",
+      "behavior": "评测外层期限完整覆盖已配置的 Classic 高难度执行、验证和评分预算。",
+      "coverageLevel": "unit",
+      "reproduction": "真实 runner 的timeout marker为4200秒，而高难度Classic配置允许Agent执行4800秒，另需180秒验证和评分。",
+      "expected": "外层期限覆盖任务声明的Agent、验证与评分预算，Agent自身期限不变。",
+      "forbidden": "外层比任务预算先终止，或缩短Agent预算来掩盖配置不一致。",
+      "rootCause": "外层固定期限未随当前高难度任务预算调整。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "keeps the outer case timeout beyond the configured Classic execution budget",
+          "requiredNames": [
+            "standalone static collector parity keeps the outer case timeout beyond the configured Classic execution budget"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"]
+    },
+    {
+      "id": "eval-medium-optional-learning-completion",
+      "behavior": "临时中难度项目完成必要验证与归档后结束，不被范围外学习拖住。",
+      "coverageLevel": "unit",
+      "reproduction": "Native中难度的原Run已完成，所有业务及归档检查通过，但Agent继续处理知识学习直到2400秒期限。",
+      "expected": "临时任务明确不发布学习及完成后的结束边界，同时保留全部业务、审批、验证、归档和交付要求。",
+      "forbidden": "把原超时改成通过、删除失败、降低验收，或从临时fixture推导持久知识。",
+      "rootCause": "任务没有明确临时项目完成后应停止范围外学习。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "ends disposable medium fixtures after verified Archive without persisting learning",
+          "requiredNames": [
+            "standalone static collector parity ends disposable medium fixtures after verified Archive without persisting learning"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM medium Native Archive and normal process exit",
+          "status": "pending",
+          "evidence": [
+            "Original failure: eval/local/logs/experiments/experiment_20261025_034211/reports/comet_counter_refactor_archive_COMET_NATIVE_SDK_CURRENT_r1_rep1_report.json"
+          ]
+        }
+      ]
     }
   ]
 }

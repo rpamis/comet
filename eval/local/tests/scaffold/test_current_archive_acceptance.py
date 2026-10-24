@@ -45,6 +45,27 @@ def test_051_acceptance_contains_one_case_for_each_workflow_and_difficulty():
         assert case["count"] == 1
 
 
+def test_outer_case_timeout_covers_the_configured_hard_classic_budget():
+    spec = importlib.util.spec_from_file_location(
+        "graded_task_runner", get_tasks_dir().parent / "tests/tasks/test_tasks.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    timeout = next(
+        mark.args[0] for mark in module.test_task_treatment.pytestmark if mark.name == "timeout"
+    )
+    task = load_task("comet-classic-sdk-recovery")
+    assert timeout >= task.config.timeout_sec + task.config.validation.timeout + 120
+
+
+def test_disposable_medium_fixture_ends_after_verified_archive_without_publishing_learning():
+    task = load_task("comet-counter-refactor-archive")
+    prompt = task.render_prompt()
+    assert "Do not create or publish Personal Memory or Project Knowledge" in prompt
+    assert "does not waive verification, Archive, approval, or delivery requirements" in prompt
+    assert "final completion summary and stop" in task.config.interaction.continue_prompt
+
+
 @pytest.mark.parametrize("treatment", ["COMET_NATIVE_SDK_CURRENT", "COMET_CLASSIC_DOCS_LAYOUT"])
 def test_archive_validation_rejects_a_handwritten_terminal_flag(tmp_path, treatment):
     directory = (

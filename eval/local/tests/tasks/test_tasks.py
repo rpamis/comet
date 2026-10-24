@@ -50,7 +50,7 @@ from scaffold.python.validation import run_validators
 
 # Timeouts
 CLAUDE_TIMEOUT = 1500  # Default floor for Claude to complete a multi-turn task
-PYTEST_TIMEOUT = 4200  # Include long full-cycle task runtime, image setup, and teardown
+PYTEST_TIMEOUT = 6000  # 覆盖 80 分钟 Classic 用例及验证、评分和清理，Agent 自身期限保持不变。
 MANIFEST_DYNAMIC_ONLY_TASKS = {"workflow-overlay-contract"}
 
 

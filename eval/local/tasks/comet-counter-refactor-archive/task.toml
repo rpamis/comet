@@ -23,4 +23,4 @@ rubric_criteria = ["Preserves existing behavior", "Uses the current SDK and appr
 mode = "auto_user"
 max_turns = 12
 decision_reply = "I approve the proposed scope and choose the original workflow's requested continuation. Use direct implementation with optional reviews and TDD off where supported. Complete verified local Archive and delivery without push or PR."
-continue_prompt = "Resume the same named SDK change from its actual continuation and finish verification and Archive. Preserve its original work and receipts; never recreate it to bypass a rejected submission."
+continue_prompt = "Resume the same named SDK change from its actual continuation and finish verification and Archive. Preserve its original work and receipts; never recreate it to bypass a rejected submission. If the original Run is already completed and any required delivery verifies, provide the final completion summary and stop. Do not continue optional learning or publish fixture facts as project knowledge."
