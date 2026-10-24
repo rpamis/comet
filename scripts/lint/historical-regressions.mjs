@@ -79,6 +79,7 @@ export function historicalRegressionEntries(catalog) {
         const entry = files.get(test.file) ?? {
           id: `history-${test.file.slice(5, -8).replaceAll('/', '-')}`,
           issues: [],
+          caseIds: [],
           invariant: '保留 040 beta 至 050 仍适用的用户历史故障回归。',
           files: [test.file],
           requiredNames: [],
@@ -86,6 +87,7 @@ export function historicalRegressionEntries(catalog) {
           patterns: [],
         };
         if (!entry.issues.includes(issue.number)) entry.issues.push(issue.number);
+        entry.caseIds.push(item.id);
         entry.patterns.push(test.namePattern);
         entry.requiredNames.push(...test.requiredNames);
         entry.requiredCases.push(...test.requiredNames.map((name) => ({ file: test.file, name })));
@@ -121,6 +123,7 @@ export function mergeHistoricalRegressions(core, historical) {
   for (const entry of historical) {
     const existing = merged.find(
       (group) =>
+        entry.files.length === 1 &&
         group.files.includes(entry.files[0]) &&
         (!group.testNamePattern || group.files.length === 1),
     );
@@ -128,6 +131,7 @@ export function mergeHistoricalRegressions(core, historical) {
       merged.push(structuredClone(entry));
       continue;
     }
+    existing.caseIds = [...new Set([...(existing.caseIds ?? []), ...(entry.caseIds ?? [])])];
     existing.issues = [...new Set([...existing.issues, ...entry.issues])];
     existing.requiredNames = [...new Set([...existing.requiredNames, ...entry.requiredNames])];
     existing.requiredCases = [...(existing.requiredCases ?? []), ...(entry.requiredCases ?? [])];

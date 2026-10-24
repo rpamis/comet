@@ -161,6 +161,8 @@ def test_classic_layout_lifecycle_uses_current_cli_and_compatible_openspec():
             "local/tasks/comet-native-workflow/environment",
             {"@fission-ai/openspec": "^1.11.0"},
         ),
+        ("local/tasks/comet-native-sdk-recovery/environment", {"@fission-ai/openspec": "^1.11.0"}),
+        ("local/tasks/comet-classic-sdk-recovery/environment", {"@fission-ai/openspec": "^1.11.0"}),
         ("local/tasks/comet-native-wave-f-dashboard-readonly/environment", {}),
     ],
 )
@@ -216,12 +218,14 @@ def test_comet_task_index_lists_real_tasks():
     index = yaml.safe_load(index_path.read_text(encoding="utf-8"))
     names = [task["name"] for task in index["tasks"]]
     assert sorted(names) == sorted(list_tasks())
-    assert len(names) == 32
+    assert len(names) == 34
     assert set(names) == {
         "authoring-skill-smoke",
         "comet-agent-memory-routing",
         "comet-api-cache-ttl",
         "comet-classic-layout-lifecycle",
+        "comet-classic-sdk-recovery",
+        "comet-native-sdk-recovery",
         "comet-cross-file-refactor",
         "comet-dependency-confusion",
         "comet-fix-median",

@@ -1,0 +1,39 @@
+[metadata]
+name = "comet-native-sdk-recovery"
+description = "Recover a blocked current SDK candidate across sessions without replacing checks or incremental Shape"
+difficulty = "hard"
+category = "comet-native"
+tags = ["comet-native", "sdk", "recovery", "cross-session", "incremental-shape", "badcase"]
+default_treatments = ["COMET_NATIVE_SDK_CURRENT"]
+
+[template]
+required = []
+
+[environment]
+description = "Python workspace with the current-checkout Comet CLI and Native Skill, without OpenSpec or external workflow Skills."
+dockerfile = "environment/Dockerfile"
+timeout_sec = 1800
+
+[validation]
+test_scripts = "test_native_sdk_recovery.py"
+target_artifacts = ["docs/comet/archive", "docs/comet/specs/sentence-counting/spec.md"]
+timeout = 120
+
+[evaluation]
+profile = "generic"
+required_skills = ["comet-native"]
+expected_artifacts = [".comet/config.yaml", "docs/comet/archive", "docs/comet/specs/sentence-counting/spec.md"]
+require_skill_invocation = true
+rubric_criteria = [
+  "Uses only the current-checkout Comet Native Skill and SDK Runtime",
+  "Updates approved test-plan line numbers without restarting Shape",
+  "Preserves the same candidate and one-shot checks across blocked verifier recovery",
+  "Leaves no OpenSpec, Classic, or hidden Native artifact tree",
+]
+
+[interaction]
+mode = "auto_user"
+max_turns = 12
+decision_reply = "I confirm the proposed scope and choose resolve-verifier-blocker: retain the original candidate and checks, use a new independent verifier, and accept and archive only after all acceptance items pass."
+continue_prompt = "This is a fresh session. Invoke /comet-native, inspect sentence-counting from disk, and follow the exact resolve-verifier-blocker continuation. Preserve the candidate and original checks. Use a separate shell process for the verifier context command with the same explicit PATH and working directory as the recorded checks. Finish independent verification and Archive."
+fresh_resume_marker = "COMET_SDK_RECOVERY_READY"

@@ -77,6 +77,44 @@ describe('core regression entrypoint', () => {
     expect(assertCoreRegressionResult(required, input)).toBe(2);
   });
 
+  it('preserves legacy fragments but never masks a skipped exact identity or mixed duplicate', () => {
+    const file = 'test/scripts/core-regressions.test.ts';
+    const required = {
+      id: 'legacy',
+      requiredNames: ['positive'],
+      requiredCases: [{ file, name: 'positive' }],
+    };
+    const result = (assertionResults: Array<{ fullName: string; status: string }>) => ({
+      success: true,
+      numFailedTests: 0,
+      testResults: [{ name: path.resolve(file), assertionResults }],
+    });
+    expect(
+      assertCoreRegressionResult(
+        required,
+        result([{ fullName: 'suite positive case', status: 'passed' }]),
+      ),
+    ).toBe(1);
+    expect(() =>
+      assertCoreRegressionResult(
+        required,
+        result([
+          { fullName: 'positive', status: 'pending' },
+          { fullName: 'positive other input', status: 'passed' },
+        ]),
+      ),
+    ).toThrow();
+    expect(() =>
+      assertCoreRegressionResult(
+        required,
+        result([
+          { fullName: 'suite positive case', status: 'pending' },
+          { fullName: 'suite positive case', status: 'passed' },
+        ]),
+      ),
+    ).toThrow();
+  });
+
   it.each(['pending', 'skipped', 'todo', 'failed'])(
     'does not count a %s required case as passed',
     (status) => {

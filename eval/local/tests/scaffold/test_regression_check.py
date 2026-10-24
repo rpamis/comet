@@ -160,9 +160,11 @@ def test_regression_check_help_imports_from_eval_working_directory():
 
 def test_matrix_is_bounded_complete_and_uses_supported_current_treatments():
     cases = gate.suite_contract()["cases"]
-    assert len(cases) == 14
-    assert len({(c["task"], c["treatment"]) for c in cases}) == 14
-    assert sum(c["coverage"] == "sdk-cli" for c in cases) == 3
+    assert len(cases) == 16
+    assert len({(c["task"], c["treatment"]) for c in cases}) == 16
+    assert sum(c["coverage"] == "sdk-cli" for c in cases) == 5
+    assert sum(c["role"] == "release-core" for c in cases) == 5
+    assert sum(c["role"] == "legacy-supplemental" for c in cases) == 11
     treatments = load_treatments()
     for case in cases:
         task = load_task(case["task"])
@@ -176,7 +178,7 @@ def test_matrix_is_bounded_complete_and_uses_supported_current_treatments():
             for c in treatments[case["treatment"]].skills
         )
         assert "040" not in case["treatment"] and "039" not in case["treatment"]
-    assert len(gate.expected_matrix(5)["cases"]) == 70
+    assert len(gate.expected_matrix(5)["cases"]) == 80
 
 
 @pytest.mark.parametrize("count", [0, -1, 6, True, 1.5, None])
@@ -191,7 +193,7 @@ def test_complete_evidence_passes_without_refreshing_baseline(experiment):
     assert experiment.baseline_file.read_bytes() == before
     receipt = experiment.root / cli.RECEIPT_FILE
     assert cli.main(["--verify-receipt", str(receipt)]) == 0
-    assert gate.read_json(receipt)["sampleCount"] == 14
+    assert gate.read_json(receipt)["sampleCount"] == 16
 
 
 @pytest.mark.parametrize("exit_code", [1, 2, 3, 4, 5])
@@ -580,7 +582,7 @@ def test_current_classic_sdk_fixture_can_meet_release_rubric_thresholds(tmp_path
     assert all(scores[dim] >= minimum for dim, minimum in classic_case["minimums"].items())
 
 
-def test_each_native_profile_can_emit_every_required_dimension(tmp_path):
+def test_each_generic_profile_can_emit_every_required_dimension(tmp_path):
     from scaffold.python.validation.generic_rubric import generic_rubric_validator
 
     for case in gate.suite_contract()["cases"]:
@@ -595,9 +597,9 @@ def test_each_native_profile_can_emit_every_required_dimension(tmp_path):
             else:
                 path.mkdir(exist_ok=True)
         outputs = {
-            "events": {"skills_invoked": ["comet-native"]},
+            "events": {"skills_invoked": task.config.evaluation.required_skills},
             "completion": {"passed": ["task: passed"], "failed": []},
-            "required_skills": ["comet-native"],
+            "required_skills": task.config.evaluation.required_skills,
             "require_skill_invocation": True,
             "expected_artifacts": task.config.evaluation.expected_artifacts,
             "interaction": {

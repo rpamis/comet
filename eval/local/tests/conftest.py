@@ -90,7 +90,7 @@ from scaffold.python.aligned_comparison import (
 
 
 def _extract_loop_turns(stderr: str | None) -> int | None:
-    match = re.search(r"\[loop\] finished after (\d+) turns", stderr or "")
+    match = re.search(r"^\[loop\] finished after (\d+) turns", stderr or "", re.MULTILINE)
     return int(match.group(1)) if match else None
 
 
@@ -98,16 +98,31 @@ def _extract_loop_interaction(stderr: str | None) -> dict[str, Any]:
     source = stderr or ""
     role_sessions = {"subject": [], "simulator": [], "judge": []}
     for role, session_id in re.findall(
-        r"\[loop\] role-session (subject|simulator|judge) ([^\s]+)", source
+        r"^\[loop\] role-session (subject|simulator|judge) ([^\s]+)$", source, re.MULTILINE
     ):
         if session_id not in role_sessions[role]:
             role_sessions[role].append(session_id)
+    boundaries = []
+    for raw in re.findall(r"^\[loop\] sdk-recovery-boundary (.+)$", source, re.MULTILINE):
+        try:
+            boundaries.append(json.loads(raw))
+        except json.JSONDecodeError:
+            boundaries.append({"invalid": True})
     return {
+        **({"sdk_recovery_boundaries": boundaries} if boundaries else {}),
         "actual_turns": _extract_loop_turns(source),
-        "decision_points": source.count("[loop] decision point detected"),
-        "deterministic_replies": source.count("[loop] deterministic decision reply applied"),
-        "completion_signals": source.count("[loop] workflow completion detected"),
-        "fresh_resume_boundaries": source.count("[loop] fresh resume boundary detected"),
+        "decision_points": len(
+            re.findall(r"^\[loop\] decision point detected", source, re.MULTILINE)
+        ),
+        "deterministic_replies": len(
+            re.findall(r"^\[loop\] deterministic decision reply applied", source, re.MULTILINE)
+        ),
+        "completion_signals": len(
+            re.findall(r"^\[loop\] workflow completion detected", source, re.MULTILINE)
+        ),
+        "fresh_resume_boundaries": len(
+            re.findall(r"^\[loop\] fresh resume boundary detected", source, re.MULTILINE)
+        ),
         "role_sessions": role_sessions,
     }
 

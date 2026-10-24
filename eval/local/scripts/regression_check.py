@@ -29,6 +29,7 @@ from scaffold.python.paths import get_logs_dir  # noqa: E402
 from scaffold.python.release_gate import (  # noqa: E402
     BASELINE_SCHEMA,
     RECEIPT_SCHEMA,
+    RELEASE_CASES,
     GateError,
     candidate_identity,
     checked_count,
@@ -176,11 +177,11 @@ def verify_receipt(path: Path) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--suite", choices=["current"], default="current", help="固定当前版 14 组矩阵"
+        "--suite", choices=["current"], default="current", help=f"固定当前版 {len(RELEASE_CASES)} 组矩阵"
     )
     parser.add_argument("--experiment", help="只复核指定完整实验，不重新调用模型")
     parser.add_argument(
-        "--count", type=int, default=1, help="每组样本数 1–5；完整矩阵共 14×count 个样本"
+        "--count", type=int, default=1, help=f"每组样本数 1–5；完整矩阵共 {len(RELEASE_CASES)}×count 个样本"
     )
     parser.add_argument(
         "--baseline", type=Path, default=BASELINE_FILE, help="已审核的新 schema 基线"

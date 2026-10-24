@@ -6,6 +6,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Badcase regression maintenance**: Require traceable user-fix declarations and executable regression mappings in pull requests, preserve existing case coverage, and keep pending browser, platform, or model acceptance from being reported as a completed fix or release approval.
+- **Current SDK evaluation**: Add Native blocked-session recovery and Classic full/tweak/hotfix delivery tasks to the current-candidate matrix, bind recovery boundaries to actual Runtime evidence, and keep legacy portable scenarios explicitly separate from current SDK coverage.
 - **Classic check configuration**: Support a bounded project-level check timeout with explicit CLI overrides, plus opt-in output presets for Vite, .NET, and coverage artifacts. Explicitly declared ignored inputs remain part of the evidence ([#502](https://github.com/rpamis/comet/issues/502)).
 - **Native brief structure**: List only the directory categories relevant to a change, instead of filling unused categories with "None". The Directory structure section and meaningful content in each retained category remain required. Existing complete briefs remain valid.
 - **Classic configuration guidance**: Show each execution, TDD, and review setting with its meaning and confirmation status. Ask only for missing, invalid, or explicitly changed choices, while retaining valid choices within the same change. Each new full change still requires its own configuration approval; hotfix and tweak retain their existing confirmation steps.

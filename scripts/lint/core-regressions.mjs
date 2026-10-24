@@ -1,3 +1,4 @@
+import { loadWorkflowRegressions } from './workflow-regressions.mjs';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -177,17 +178,20 @@ const CURRENT_CORE_REGRESSIONS = [
   },
 ];
 
-export const CORE_REGRESSIONS = mergeHistoricalRegressions(
-  CURRENT_CORE_REGRESSIONS,
-  loadHistoricalRegressions(repositoryRoot),
-);
+export const CORE_REGRESSIONS = mergeHistoricalRegressions(CURRENT_CORE_REGRESSIONS, [
+  ...loadHistoricalRegressions(repositoryRoot),
+  ...loadWorkflowRegressions(repositoryRoot),
+]);
 
 export function selectCoreRegressions(selectors = []) {
   if (!selectors.length) return [...CORE_REGRESSIONS];
   const selected = new Set();
   for (const selector of selectors) {
     const matches = CORE_REGRESSIONS.filter(
-      (entry) => entry.id === selector || entry.issues.some((issue) => String(issue) === selector),
+      (entry) =>
+        entry.id === selector ||
+        entry.caseIds?.includes(selector) ||
+        entry.issues.some((issue) => String(issue) === selector),
     );
     if (!matches.length) throw new Error(`Unknown core regression: ${selector}`);
     matches.forEach((entry) => selected.add(entry));
@@ -233,12 +237,27 @@ export function assertCoreRegressionResult(entry, report) {
         typeof result.name === 'string' &&
         normalize(result.name) === normalize(path.join(repositoryRoot, required.file)),
     );
-    if (
-      !file?.assertionResults?.some(
-        (test) =>
-          test.status === 'passed' && String(test.fullName ?? test.title).includes(required.name),
-      )
-    )
+    const matches = (file?.assertionResults ?? []).filter((test) =>
+      required.exact
+        ? String(test.fullName ?? test.title) === required.name
+        : String(test.fullName ?? test.title).includes(required.name),
+    );
+    const valid = required.exact
+      ? matches.length === 1 && matches[0].status === 'passed'
+      : !matches.some(
+          (test) =>
+            String(test.fullName ?? test.title) === required.name && test.status !== 'passed',
+        ) &&
+        matches.some(
+          (test) =>
+            test.status === 'passed' &&
+            matches.every(
+              (other) =>
+                String(other.fullName ?? other.title) !== String(test.fullName ?? test.title) ||
+                other.status === 'passed',
+            ),
+        );
+    if (!valid)
       throw new Error(
         `${entry.id}: required file regression did not pass: ${required.file}: ${required.name}`,
       );
