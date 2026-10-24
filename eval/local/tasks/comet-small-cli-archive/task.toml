@@ -1,0 +1,26 @@
+[metadata]
+name = "comet-small-cli-archive"
+description = "Current CLI easy task requiring an actual SDK Archive"
+difficulty = "easy"
+category = "workflow"
+tags = ["current-cli", "native", "classic", "archive", "easy"]
+default_treatments = ["COMET_NATIVE_SDK_CURRENT", "COMET_CLASSIC_DOCS_LAYOUT"]
+[template]
+required = []
+[environment]
+description = "Current-checkout Comet CLI and supported OpenSpec, with an isolated Git project"
+dockerfile = "environment/Dockerfile"
+timeout_sec = 1800
+[validation]
+test_scripts = "test_archive_task.py"
+target_artifacts = []
+timeout = 180
+[evaluation]
+profile = "generic"
+require_skill_invocation = true
+rubric_criteria = ["Preserves existing behavior", "Uses the current SDK and approval protocol", "Completes actual Archive and any required local delivery"]
+[interaction]
+mode = "auto_user"
+max_turns = 12
+decision_reply = "I approve the proposed scope and choose the original workflow's requested continuation. Use direct implementation with optional reviews and TDD off where supported. Complete verified local Archive and delivery without push or PR."
+continue_prompt = "Resume the same named SDK change from its actual continuation and finish verification and Archive. Preserve its original work and receipts; never recreate it to bypass a rejected submission."

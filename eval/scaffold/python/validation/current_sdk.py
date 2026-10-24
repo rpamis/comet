@@ -80,12 +80,24 @@ def inspect_run(
         or run.get("runId") != name
     ):
         raise ValueError("Current CLI did not inspect the expected SDK Run")
+    delivery_import = (
+        f"import {{readClassicSdkDeliveryCheckpoint}} from {json.dumps((package / 'dist/domains/comet-classic/classic-sdk-delivery-checkpoint.js').as_uri())};"
+        if workflow == "classic"
+        else ""
+    )
+    delivery_match = (
+        " || readClassicSdkDeliveryCheckpoint(checkpoint,run)!==null"
+        if workflow == "classic"
+        else ""
+    )
     script = (
         "import {readFileSync} from 'node:fs';"
         f"import {{portableRunCheckpointProjectionMatches}} from {json.dumps((package / 'dist/domains/engine/portable-run-checkpoint.js').as_uri())};"
         f"import YAML from {json.dumps((package / 'node_modules/yaml/dist/index.js').as_uri())};"
-        "const {source,run}=JSON.parse(readFileSync(0,'utf8'));"
-        "console.log(JSON.stringify(portableRunCheckpointProjectionMatches(YAML.parse(source).run_checkpoint,run)));"
+        + delivery_import
+        + "const {source,run}=JSON.parse(readFileSync(0,'utf8'));"
+        "const checkpoint=YAML.parse(source).run_checkpoint;"
+        f"console.log(JSON.stringify(portableRunCheckpointProjectionMatches(checkpoint,run){delivery_match}));"
     )
     checked = subprocess.run(
         ["node", "--input-type=module", "-e", script],

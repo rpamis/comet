@@ -411,3 +411,15 @@ def test_preflight_reports_missing_main_and_judge_credentials_without_values():
         "main credentials missing for codex: OPENAI_API_KEY or CODEX_API_KEY",
         "judge credentials missing: BENCH_JUDGE_API_KEY or BENCH_JUDGE_AUTH_TOKEN",
     ]
+
+
+@pytest.mark.parametrize("agent", ["claude-code", "codex", "qoder", "codebuddy"])
+@pytest.mark.parametrize("credential", ["BENCH_JUDGE_API_KEY", "BENCH_JUDGE_AUTH_TOKEN"])
+def test_builtin_judge_accepts_either_dedicated_credential(agent, credential):
+    main = resolve_execution(cli_agent="claude-code", cli_model="subject-model")
+    judge = resolve_judge(main=main, cli_agent=agent, cli_model="judge-model", source_env={})
+    assert preflight_credentials(
+        main,
+        judge,
+        source_env={"ANTHROPIC_AUTH_TOKEN": "subject-secret", credential: "judge-secret"},
+    ) == []

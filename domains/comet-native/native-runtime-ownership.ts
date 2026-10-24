@@ -594,7 +594,7 @@ export async function findNativeSdkWorkspace(
   options: { readOnly?: boolean } = {},
 ): Promise<({ projectRoot: string } & Awaited<ReturnType<typeof inspectNativeSdkRun>>) | null> {
   const requestedRoot = path.resolve(projectRoot);
-  if (await readSdkChangeOwner(requestedRoot, 'native', name)) {
+  if (await readSdkChangeOwner(requestedRoot, 'native', name, options)) {
     return {
       projectRoot: requestedRoot,
       ...(await inspectNativeSdkRun(requestedRoot, name, options)),
@@ -605,7 +605,7 @@ export async function findNativeSdkWorkspace(
   > = [];
   for (const worktree of listGitWorktrees(requestedRoot)) {
     if (samePath(worktree.root, requestedRoot)) continue;
-    if (!(await readSdkChangeOwner(worktree.root, 'native', name))) continue;
+    if (!(await readSdkChangeOwner(worktree.root, 'native', name, options))) continue;
     const inspected = await inspectNativeSdkRun(worktree.root, name, options);
     if (!worktree.branch || inspected.state.workspace.change_branch !== worktree.branch) {
       throw new Error(`Native SDK change '${name}' is not bound to its registered worktree`);
@@ -624,7 +624,7 @@ export async function resolveNativeSdkCommandRoot(
   options: { readOnly?: boolean } = {},
 ): Promise<string> {
   const requestedRoot = path.resolve(projectRoot);
-  let localOwner = await readChangeRuntimeOwner(requestedRoot, 'native', name);
+  let localOwner = await readChangeRuntimeOwner(requestedRoot, 'native', name, options);
   if (!localOwner && !options.readOnly) {
     const config = await readProjectConfig(requestedRoot);
     if (config) {

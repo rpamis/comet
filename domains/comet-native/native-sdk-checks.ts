@@ -57,6 +57,12 @@ import { toNativePortableText } from './native-portable-text.js';
 import { nativeCheckInputSnapshot, nativeCandidateInputGate } from './native-portable-checks.js';
 import { nativeEditReviewScope } from './native-edit-review.js';
 import type { NativePortableCheckSummary } from './native-portable-types.js';
+import {
+  captureNativeCheckScope,
+  isNativeCheckScope,
+  sameNativeCheckScope,
+  type NativeCheckScope,
+} from './native-check-scope.js';
 
 /** 已完成检查的输入发生变化；这不是执行结果未知。 */
 export class NativeSdkCheckInputDriftError extends Error {}
@@ -101,6 +107,8 @@ interface NativeSdkCheckResult {
   durationMs: number;
   logRef: string;
   logSha256: string;
+  inputScope?: NativeCheckScope;
+  reusedFrom?: { actionId: string; attempt: number; candidateId: string; checkId: string };
 }
 
 interface NativeSdkCheckInterruption {
@@ -542,6 +550,73 @@ function checkOperationId(action: Readonly<RuntimeAction>): string {
   return hashRuntimeValue({ actionId: action.id, attempt: action.attempt });
 }
 
+async function reusableScopedCheck(options: {
+  run: Readonly<WorkflowRun>;
+  action: Readonly<RuntimeAction>;
+  plan: NativeCheckPlan;
+  scope: NativeCheckScope | null;
+  projectRoot: string;
+}): Promise<NativeSdkCheckResult | null> {
+  if (!options.scope) return null;
+  const before = options.run.actions.findIndex(({ id }) => id === options.action.id);
+  for (const prior of options.run.actions.slice(0, before).reverse()) {
+    if (
+      !['verify.checks', 'verify.requested-checks'].includes(prior.stepId) ||
+      !['succeeded', 'failed'].includes(prior.status) ||
+      !prior.outcome ||
+      prior.claim?.executorId !== nativeSdkCheckExecutor.id
+    )
+      continue;
+    const output = prior.outcome.output as unknown as NativeSdkCheckOutcome;
+    if (
+      output.interruption ||
+      !output.inputSnapshot?.complete ||
+      output.inputSnapshot.candidateBefore === null ||
+      output.inputSnapshot.candidateBefore !== output.candidateInputFingerprintGate
+    )
+      continue;
+    const plans = checkPlansForAction(options.run, prior, output.candidateId);
+    const index = plans.findIndex(
+      (plan) => nativeCheckPlanKey(plan) === nativeCheckPlanKey(options.plan),
+    );
+    const check = output.checks[index];
+    if (
+      !check ||
+      check.reusedFrom ||
+      check.status !== 'passed' ||
+      !isNativeCheckScope(check.inputScope, plans[index]) ||
+      !sameNativeCheckScope(check.inputScope, options.scope)
+    )
+      continue;
+    try {
+      await validatedCheckResults({
+        run: options.run,
+        action: prior,
+        outcome: prior.outcome,
+        candidateId: output.candidateId,
+        plans,
+        projectRoot: options.projectRoot,
+        allowCandidateSuccessor: true,
+      });
+    } catch {
+      // 历史证据损坏不成为新的通过结果，执行当前检查重新建立证据。
+      continue;
+    }
+    return {
+      ...check,
+      id: options.plan.id,
+      name: options.plan.name,
+      reusedFrom: {
+        actionId: prior.id,
+        attempt: prior.attempt,
+        candidateId: output.candidateId,
+        checkId: check.id,
+      },
+    };
+  }
+  return null;
+}
+
 export const nativeSdkCheckExecutor: RuntimeExecutor = {
   id: 'comet-native-checks',
   capabilities: [],
@@ -656,6 +731,31 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
     try {
       for (const plan of plans) {
         await registration.assertNotStopped();
+        const scopeOptions = {
+          projectRoot: checkRoot,
+          plan,
+          contract: {
+            shape: state.shape_confirmation_hash ?? null,
+            acceptance: state.acceptance.map(({ id, source, text }) => ({ id, source, text })),
+          },
+        };
+        const scopeBefore = await captureNativeCheckScope(scopeOptions);
+        const reused = await reusableScopedCheck({
+          run,
+          action,
+          plan,
+          scope: scopeBefore,
+          projectRoot: context.projectRoot,
+        });
+        if (reused) {
+          const scopeAfter = await captureNativeCheckScope(scopeOptions);
+          if (scopeAfter && sameNativeCheckScope(scopeBefore!, scopeAfter)) {
+            checks.push(reused);
+            registration.execution.checks = checks as unknown as RuntimeValue[];
+            await registration.save();
+            continue;
+          }
+        }
         // 下一监管器尚无 PID 时也先保留未知边界，不能沿用上一条检查的停止收据。
         delete registration.execution.child;
         registration.execution.checkId = plan.id;
@@ -673,6 +773,7 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
             registration.recordTermination(instance, confirmed),
         });
         const logRef = `${runtimeRef}/${executed.logRef}`;
+        const scopeAfter = await captureNativeCheckScope(scopeOptions);
         const log = await inspectProtectedProjectPath(paths.workspaceRuntimeRoot, logRef, {
           label: 'Native SDK check log',
           expected: 'file',
@@ -688,6 +789,9 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
           durationMs: executed.durationMs,
           logRef,
           logSha256: executed.logSha256,
+          ...(scopeBefore && scopeAfter && sameNativeCheckScope(scopeBefore, scopeAfter)
+            ? { inputScope: scopeAfter }
+            : {}),
         });
         registration.execution.checks = checks as unknown as RuntimeValue[];
         await registration.save();
@@ -875,7 +979,46 @@ async function validatedCheckResults(options: {
       output.checks[index],
       `Native check ${index}`,
     ) as unknown as NativeSdkCheckResult;
-    const expectedRef = `${runtimeRef}/logs/checks/${operationId}-${plan.id}.log`;
+    let expectedRef = `${runtimeRef}/logs/checks/${operationId}-${plan.id}.log`;
+    if (check.reusedFrom) {
+      const origin = check.reusedFrom;
+      const prior = run.actions.find((entry) => entry.id === origin.actionId);
+      const priorOutput = prior?.outcome?.output as unknown as NativeSdkCheckOutcome | undefined;
+      const priorPlans =
+        prior && priorOutput ? checkPlansForAction(run, prior, priorOutput.candidateId) : [];
+      const originalIndex = priorOutput?.checks.findIndex(({ id }) => id === origin.checkId) ?? -1;
+      const original = priorOutput?.checks[originalIndex];
+      if (
+        !prior ||
+        !prior.outcome ||
+        run.actions.findIndex(({ id }) => id === prior.id) >=
+          run.actions.findIndex(({ id }) => id === action.id) ||
+        prior.attempt !== origin.attempt ||
+        prior.claim?.executorId !== nativeSdkCheckExecutor.id ||
+        !['succeeded', 'failed'].includes(prior.status) ||
+        priorOutput?.interruption ||
+        !priorOutput?.inputSnapshot?.complete ||
+        priorOutput.candidateId !== origin.candidateId ||
+        priorOutput.inputSnapshot.candidateBefore === null ||
+        priorOutput.inputSnapshot.candidateBefore !== priorOutput.candidateInputFingerprintGate ||
+        !original ||
+        original.reusedFrom ||
+        original.status !== 'passed' ||
+        !priorPlans[originalIndex] ||
+        nativeCheckPlanKey(priorPlans[originalIndex]) !== nativeCheckPlanKey(plan) ||
+        !isNativeCheckScope(original.inputScope, priorPlans[originalIndex]) ||
+        !isNativeCheckScope(check.inputScope, plan) ||
+        !sameNativeCheckScope(original.inputScope, check.inputScope) ||
+        original.logSha256 !== check.logSha256 ||
+        original.exitCode !== check.exitCode ||
+        original.durationMs !== check.durationMs
+      ) {
+        throw new Error('Native reused check is not bound to its original Runtime evidence');
+      }
+      expectedRef = `${runtimeRef}/logs/checks/${checkOperationId(prior)}-${origin.checkId}.log`;
+      if (nativeSdkCheckStorageRef(original.logRef) !== expectedRef)
+        throw new Error('Native original check log does not match its Runtime Action');
+    }
     if (
       check.id !== plan.id ||
       check.name !== plan.name ||

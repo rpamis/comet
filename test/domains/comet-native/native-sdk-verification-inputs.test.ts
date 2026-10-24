@@ -31,6 +31,7 @@ import {
 import { inspectNativeSdkCheckExecutions } from '../../../domains/comet-native/native-sdk-check-execution.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
+import type { NativeCheckPlan } from '../../../domains/comet-native/native-check-executor.js';
 
 type ReceiptFault = 'null-snapshot' | 'unknown-schema' | 'missing-candidate' | 'incomplete';
 
@@ -90,6 +91,8 @@ async function checkedCandidate(
     receiptFault?: ReceiptFault;
     checkSource?: string;
     executeChecks?: boolean;
+    verificationChecks?: NativeCheckPlan[];
+    files?: Record<string, string>;
   } = {},
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-sdk-verification-inputs-'));
@@ -97,6 +100,8 @@ async function checkedCandidate(
   execFileSync('git', ['init', '--quiet'], { cwd: root });
   await writeProjectFile(root, '.gitignore', '.next/\n');
   await writeProjectFile(root, 'value.ts', 'export const value = 1;\n');
+  for (const [file, content] of Object.entries(options.files ?? {}))
+    await writeProjectFile(root, file, content);
   await writeProjectFile(root, '.next/types/routes.d.ts', 'export type Route = "/";\n');
   await writeProjectFile(root, '.next/dev/types/routes.d.ts', 'export type DevRoute = "/";\n');
   await writeProjectFile(root, '.next/server/app/page.js', 'good');
@@ -262,7 +267,7 @@ Run focused Native checks.
       knownLimits: [],
       review: null,
       submittedAt: '2026-10-23T01:00:00.000Z',
-      verificationChecks: [check],
+      verificationChecks: options.verificationChecks ?? [check],
     },
     'builder-session',
   );
@@ -276,9 +281,9 @@ Run focused Native checks.
     context: { requestId: 'runtime-checks', projectRoot: root },
   });
   expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
-  expect(await nativeSdkCurrentCheckSummaries({ run, projectRoot: root })).toMatchObject([
-    { id: check.id, status: 'passed' },
-  ]);
+  expect(await nativeSdkCurrentCheckSummaries({ run, projectRoot: root })).toMatchObject(
+    (options.verificationChecks ?? [check]).map(({ id }) => ({ id, status: 'passed' })),
+  );
   if (options.legacyReceipt) {
     const restartedStore = createFileRuntimeStore<WorkflowRun>(storeOptions);
     runtime = createRuntime({ ...runtimeOptions, store: restartedStore });
@@ -287,7 +292,10 @@ Run focused Native checks.
   return { root, paths, changeDir, runtime, store, run, check };
 }
 
-async function submitVerifierResult(prepared: Awaited<ReturnType<typeof checkedCandidate>>) {
+async function submitVerifierResult(
+  prepared: Awaited<ReturnType<typeof checkedCandidate>>,
+  verdict: 'pass' | 'fail' = 'pass',
+) {
   const { root, runtime, run } = prepared;
   const state = run.state as unknown as NativePortableState;
   return succeedLatestAction(
@@ -303,8 +311,14 @@ async function submitVerifierResult(prepared: Awaited<ReturnType<typeof checkedC
         result: {
           iteration: state.loop.iteration,
           attempt: state.loop.attempt,
-          verdict: 'pass',
-          acceptance: [{ id: 'A1', result: 'passed', reason: 'The selected value is available.' }],
+          verdict,
+          acceptance: [
+            {
+              id: 'A1',
+              result: verdict === 'pass' ? 'passed' : 'failed',
+              reason: 'The selected value requires review.',
+            },
+          ],
           risks: [],
           summary: 'All acceptance scenarios passed.',
         },
@@ -413,6 +427,158 @@ async function approveCheckRepair(
 }
 
 describe('Native SDK verification input binding', () => {
+  it.each(['package-declaration', 'execution-environment', 'tampered-log', 'unproven-command'])(
+    'does not reuse stale or unproven check evidence for a successor candidate: %s',
+    async (fault) => {
+      const plans = ['left', 'right'].map((name) => ({
+        id: name,
+        name: `Check ${name}`,
+        executable: process.execPath,
+        argv:
+          fault === 'unproven-command'
+            ? ['-e', `require('node:fs').readFileSync('${name}.mjs')`]
+            : ['--check', `${name}.mjs`],
+        cwdRef: '.',
+        timeoutMs: 5_000,
+        repeatable: true,
+      }));
+      const prepared = await checkedCandidate({
+        verificationChecks: plans,
+        files: { 'left.mjs': 'export const left = 1;\n', 'right.mjs': 'export const right = 1;\n' },
+      });
+      const original = prepared.run.outputs['verify.checks'].value as {
+        checks: Array<{ logRef: string }>;
+      };
+      let run = await submitVerifierResult(prepared, 'fail');
+      await writeProjectFile(prepared.root, 'left.mjs', 'export const left = 2;\n');
+      if (fault === 'package-declaration')
+        await writeProjectFile(prepared.root, 'package.json', '{"type":"module"}');
+      if (fault === 'execution-environment')
+        vi.stubEnv(
+          'PATH',
+          `${process.env.PATH}${path.delimiter}${path.join(prepared.root, 'other-tools')}`,
+        );
+      if (fault === 'tampered-log')
+        await fs.appendFile(
+          path.join(resolveWorkspaceRuntimeRootSync(prepared.root), original.checks[1].logRef),
+          'changed original log',
+        );
+      run = await succeedLatestAction(
+        prepared.runtime,
+        run,
+        prepared.root,
+        'fresh-builder',
+        {
+          summary: 'Review the changed candidate.',
+          addressedAcceptanceIds: ['A1'],
+          acceptanceReview: fixtureAcceptanceReview(['A1']),
+          checks: [],
+          knownLimits: [],
+          review: null,
+          submittedAt: '2026-10-23T02:00:00.000Z',
+          verificationChecks: plans,
+        },
+        'fresh-builder-session',
+      );
+      run = await prepared.runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId: 'comet-native-checks',
+        context: { requestId: 'fresh-checks', projectRoot: prepared.root },
+      });
+      expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
+      const current = run.outputs['verify.checks'].value as {
+        checks: Array<{ logRef: string; reusedFrom?: unknown }>;
+      };
+      expect(
+        current.checks.every(
+          (check, index) => !check.reusedFrom && check.logRef !== original.checks[index].logRef,
+        ),
+      ).toBe(true);
+      expect(
+        await nativeSdkCurrentCheckSummaries({ run, projectRoot: prepared.root }),
+      ).toHaveLength(2);
+    },
+  );
+
+  it('reuses only unchanged Runtime-proven check inputs across a repaired candidate and retains the approved Shape', async () => {
+    const plans = ['left', 'right'].map((name) => ({
+      id: name,
+      name: `Check ${name} syntax`,
+      executable: process.execPath,
+      argv: ['--check', `${name}.mjs`],
+      cwdRef: '.',
+      timeoutMs: 5_000,
+      repeatable: true,
+    }));
+    const prepared = await checkedCandidate({
+      files: { 'left.mjs': 'export const left = 1;\n', 'right.mjs': 'export const right = 1;\n' },
+      verificationChecks: plans,
+    });
+    const originalState = prepared.run.state as unknown as NativePortableState;
+    const originalChecks = prepared.run.outputs['verify.checks'].value as {
+      checks: Array<{ id: string; logRef: string }>;
+    };
+    let run = await submitVerifierResult(prepared, 'fail');
+    expect(run.state).toMatchObject({
+      phase: 'build',
+      shape_confirmation_hash: originalState.shape_confirmation_hash,
+    });
+    expect(run.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'pending' });
+    expect(run.actions.at(-1)!.input).toMatchObject({
+      activation: {
+        repairContext: {
+          previousCandidateId: originalState.builder_handoff!.candidate_id,
+          shapeConfirmationHash: originalState.shape_confirmation_hash,
+          unresolvedAcceptanceIds: ['A1'],
+        },
+      },
+    });
+    await writeProjectFile(prepared.root, 'left.mjs', 'export const left = 2;\n');
+    run = await succeedLatestAction(
+      prepared.runtime,
+      run,
+      prepared.root,
+      'repaired-builder',
+      {
+        summary: 'Repair the left implementation while preserving the right module.',
+        addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
+        checks: [],
+        knownLimits: [],
+        review: null,
+        submittedAt: '2026-10-23T02:00:00.000Z',
+        verificationChecks: plans,
+      },
+      'repaired-builder-session',
+    );
+    run = await prepared.runtime.execute({
+      runId: run.runId,
+      actionId: run.actions.at(-1)!.id,
+      executorId: 'comet-native-checks',
+      context: { requestId: 'incremental-repair-checks', projectRoot: prepared.root },
+    });
+    expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
+    const refreshed = run.outputs['verify.checks'].value as {
+      checks: Array<{
+        id: string;
+        logRef: string;
+        reusedFrom?: { actionId: string; candidateId: string };
+      }>;
+    };
+    expect(refreshed.checks[0].logRef).not.toBe(originalChecks.checks[0].logRef);
+    expect(refreshed.checks[0].reusedFrom).toBeUndefined();
+    expect(refreshed.checks[1]).toMatchObject({
+      logRef: originalChecks.checks[1].logRef,
+      reusedFrom: { candidateId: originalState.builder_handoff!.candidate_id },
+    });
+    expect(run.state).toMatchObject({
+      shape_confirmation_hash: originalState.shape_confirmation_hash,
+    });
+    const completed = await submitVerifierResult({ ...prepared, run });
+    await completeArchive(prepared, completed);
+  });
+
   it('completes Archive after the Builder, Runtime checks and Verifier finish normally', async () => {
     const prepared = await checkedCandidate();
     const completed = await submitVerifierResult(prepared);

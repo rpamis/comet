@@ -12,5 +12,7 @@
 - Build、Verify、Archive 和 Supervisor 的状态只能通过 Runtime 契约推进，不在测试或实现中手工伪造正常路径。
 - 涉及 portable state、worktree、恢复或验收时，验证主工作区与 linked worktree 的身份、路径和状态隔离。
 - Native Verify 应优先复用与当前候选和执行上下文匹配的 Runtime 检查；“覆盖全部验收项的独立 Verifier”不等于运行仓库全量测试。
+- 修改候选、检查输入或恢复路径前，读取 `docs/architecture/native-incremental-recovery.zh.md`。按正式契约、实现和生成输入的实际变化选择推进步骤，保留仍匹配的 Shape 批准和证据；跨候选复用须由 Runtime 证明完整输入范围并保留原执行来源。
+- 阻塞输出须包含实际原因、冲突路径或持有者、诊断命令、恢复命令及其前提。恢复继续原 Action 和事务；未知锁须绑定精确记录并确认原写入者已停止，存放时间不能单独作为删除依据。通过执行输出的原命令验证恢复与重复调用。
 - 已派发的 Verifier 仍在运行时继续使用同一任务；等待工具超时不等于执行超时，不得仅因没有即时汇总就取消、并行重派或要求 Verifier 停止核查。
 - 只有确认任务失败、宿主报告执行超时、任务丢失或结束后没有可用结果时，才登记 `verifier-execution-error`；重试前保留已完成证据并说明恢复方式发生的变化。

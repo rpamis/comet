@@ -18,6 +18,8 @@ import {
 } from '../../../domains/comet-native/native-paths.js';
 import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
 import { readNativeSdkRunRecord } from '../../../domains/comet-native/native-sdk-state-store.js';
+import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import { createHash } from 'node:crypto';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -63,6 +65,77 @@ async function files(root: string): Promise<Record<string, string>> {
 }
 
 describe('Native SDK read-only projection lock diagnostics', () => {
+  it('diagnoses and repairs the original SDK store writer lock without changing Run history', async () => {
+    const { root, name, request } = await fixture();
+    const directory = path.join(
+      resolveWorkspaceRuntimeRootSync(root),
+      'sdk-runs/native/.runtime-store-v2',
+      createHash('sha256').update(JSON.stringify(name)).digest('hex'),
+    );
+    const file = path.join(directory, '.write.lock');
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(file, '{interrupted-writer');
+    const original = await readNativeSdkRunRecord(root, name);
+    const action = original!.actions.find(({ status }) => status === 'pending')!;
+    await fs.writeFile(
+      request,
+      JSON.stringify({
+        operation: 'claim',
+        runId: name,
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        executorId: 'native-host',
+        sessionId: 'writer-session',
+        claimToken: 'writer-session',
+      }),
+    );
+    const refused = await runtimeDispatchCommand({
+      application: 'native',
+      projectRoot: root,
+      request,
+    });
+    expect(refused.response).toMatchObject({
+      status: 'failed',
+      recovery: { code: 'lock-owner-unknown', affectedPaths: [file] },
+    });
+    const diagnosed = await runNativeCli(['doctor', name, '--project-root', root, '--json']);
+    const data = JSON.parse(diagnosed.stdout!).data;
+    expect(data).toMatchObject({
+      healthy: false,
+      recovery: { code: 'lock-owner-unknown', affectedPaths: [file] },
+    });
+    const repaired = await runNativeCli(data.recovery.recoveryArgs.slice(2));
+    expect(repaired.exitCode, repaired.stdout ?? repaired.stderr).toBe(0);
+    expect(await readNativeSdkRunRecord(root, name)).toEqual(original);
+    await expect(fs.access(file)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('executes the public recovery command for the exact uncertain lock and preserves the original Run', async () => {
+    const { root, name, lock } = await fixture();
+    await fs.writeFile(lock, '{partial');
+    const original = await readNativeSdkRunRecord(root, name);
+    const diagnosed = await runNativeCli(['doctor', name, '--project-root', root, '--json']);
+    expect(diagnosed.exitCode).toBe(65);
+    const data = JSON.parse(diagnosed.stdout!).data as {
+      recovery: {
+        code: string;
+        diagnosticArgs: string[];
+        recoveryArgs: string[];
+        preconditions: string[];
+      };
+    };
+    expect(data.recovery).toMatchObject({ code: 'lock-owner-unknown' });
+    expect(data.recovery.preconditions.length).toBeGreaterThan(0);
+    expect(data.recovery.recoveryArgs).toContain('--lock-token');
+    const repaired = await runNativeCli(data.recovery.recoveryArgs.slice(2));
+    expect(repaired.exitCode, repaired.stdout ?? repaired.stderr).toBe(0);
+    expect(await readNativeSdkRunRecord(root, name)).toEqual(original);
+    await expect(fs.access(lock)).rejects.toMatchObject({ code: 'ENOENT' });
+    const repeated = await runNativeCli(['doctor', name, '--project-root', root, '--json']);
+    expect(JSON.parse(repeated.stdout!).data).toMatchObject({ healthy: true });
+  });
+
   it.each([
     ['empty', '', 'malformed'],
     ['partial', '{partial-owner:', 'malformed'],

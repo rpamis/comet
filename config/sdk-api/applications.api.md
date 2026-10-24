@@ -991,6 +991,22 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
 } | null>;
 
 // @public
+export function inspectWorkflowApplicationLocks(projectRoot: string, applicationId: string, runId: string): Promise<{
+    kind: string;
+    file: string;
+    path: string;
+    status: "missing" | "active" | "stale" | "unknown" | "malformed";
+    owner: RecoverableFileLockOwner | null;
+    token: string | null;
+    coordinator?: Array<{
+        file: string;
+        status: "active" | "unknown" | "malformed";
+        owner: RecoverableFileLockOwner | null;
+        token: string;
+    }>;
+}[]>;
+
+// @public
 export function inspectWorkflowApplicationMaterial(identity: ApplicationIdentity): Promise<{
     status: 'matched' | 'changed' | 'unavailable';
     packageHash?: string;
@@ -1700,6 +1716,9 @@ export function reconcileApplicationSkill(application: LoadedWorkflowApplication
 
 // @public
 export function recordApplicationEvaluationEvidence(projectRoot: string, resultFile: string): Promise<ApplicationEvaluationEvidence>;
+
+// @public (undocumented)
+export function repairWorkflowApplicationLock(projectRoot: string, applicationId: string, runId: string, token: string, confirmedOwnerStopped?: boolean): Promise<"removed" | "changed" | "missing" | "blocked">;
 
 // @public (undocumented)
 export function repairWorkflowApplicationStorageIndex(options: {

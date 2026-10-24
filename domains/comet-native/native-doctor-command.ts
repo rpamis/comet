@@ -30,10 +30,7 @@ import {
 import { inspectNativeSdkCheckExecutions } from './native-sdk-check-execution.js';
 import { recoverNativeSdkChecks, nativeSdkCompletedCheckInputDrift } from './native-sdk-checks.js';
 import { projectNativeSdkStatus } from './native-sdk-status.js';
-import {
-  inspectNativeSdkProjectionLock,
-  repairNativeSdkProjectionLock,
-} from './native-sdk-projection-lock.js';
+import { inspectNativeSdkLocks, repairNativeSdkLock } from './native-sdk-projection-lock.js';
 import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
 
 /**
@@ -49,6 +46,8 @@ import { inspectGitWorktree, resolveGitRef } from '../../platform/paths/git-work
 import { gitWorktreeIsClean } from '../../platform/process/git.js';
 
 import { doctorNativeProject } from './native-doctor.js';
+import { inspectNativeProjectLocks, repairNativeProjectLock } from './native-lock.js';
+import { nativeRecoveryCommand } from './native-recovery.js';
 import { inspectNativeChildren, readNativeChildrenContract } from './native-children.js';
 import { archiveNativePortableChange } from './native-portable-archive.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
@@ -603,11 +602,13 @@ export async function nativeDoctorCommand(
     };
     return data.healthy ? success('doctor', data) : unhealthyDoctor(data);
   }
-  if (confirmed && (!repair || !name)) {
-    throw new NativeUsageError('--confirmed requires a named change and --repair');
+  if (confirmed && (!repair || (!name && !lockToken))) {
+    throw new NativeUsageError(
+      '--confirmed requires --repair and a named change or exact --lock-token',
+    );
   }
-  if (lockToken !== undefined && (!repair || !confirmed || !name)) {
-    throw new NativeUsageError('--lock-token requires a named change, --repair and --confirmed');
+  if (lockToken !== undefined && (!repair || !confirmed)) {
+    throw new NativeUsageError('--lock-token requires --repair and --confirmed');
   }
   let stoppedActions: RuntimeStoppedAction[] | undefined;
   if (stoppedActionsFile !== undefined) {
@@ -629,6 +630,58 @@ export async function nativeDoctorCommand(
     stoppedActions = value as RuntimeStoppedAction[];
   }
   const paths = await doctorPaths(projectRoot);
+  const projectLocks = await inspectNativeProjectLocks(paths);
+  if (lockToken && projectLocks.some((lock) => lock.token === lockToken)) {
+    await repairNativeProjectLock(paths, lockToken, confirmed);
+    const inspected = await nativeDoctorCommand(name ? [name] : [], projectRoot);
+    return {
+      ...inspected,
+      data: { ...(inspected.data as Record<string, unknown>), repaired: true },
+    };
+  }
+  if (lockToken && !name)
+    throw new NativeUsageError(
+      'Native project lock changed since inspection; inspect doctor again before confirming repair',
+    );
+  const unresolvedLocks = projectLocks.filter((lock) =>
+    ['active', 'unknown', 'malformed'].includes(lock.status),
+  );
+  if (unresolvedLocks.length) {
+    return unhealthyDoctor({
+      healthy: false,
+      repaired: false,
+      change: name,
+      findings: unresolvedLocks.map((lock) => ({
+        code: `native-project-${lock.kind === 'coordinator' ? 'coordinator' : 'lock'}-${lock.status}`,
+        path: lock.file,
+        owner: lock.owner,
+        token: lock.token,
+        message:
+          lock.identity === null
+            ? `The lock path is not a regular owner record: ${lock.file}. Inspect its type and resolve the path conflict after stopping all writers; doctor will not delete it.`
+            : lock.status === 'active'
+              ? 'The original Native writer is still alive; wait for that operation to finish.'
+              : 'The original Native lock owner is unknown. Confirm all original and concurrent writers have stopped before repairing this exact record.',
+        diagnosticArgs: nativeRecoveryCommand(['comet', 'native', 'doctor'], projectRoot),
+        ...(lock.status !== 'active' && lock.token
+          ? {
+              recoveryArgs: nativeRecoveryCommand(
+                [
+                  'comet',
+                  'native',
+                  'doctor',
+                  '--repair',
+                  '--confirmed',
+                  '--lock-token',
+                  lock.token!,
+                ],
+                projectRoot,
+              ),
+            }
+          : {}),
+      })),
+    });
+  }
   const owner = name ? await readChangeRuntimeOwner(projectRoot, 'native', name) : null;
   if (
     name &&
@@ -751,64 +804,77 @@ export async function nativeDoctorCommand(
       const lockFindings: Array<Record<string, unknown>> = [];
       let lockRepaired = false;
       try {
-        let lock = await inspectNativeSdkProjectionLock(commandRoot, name);
+        let locks = await inspectNativeSdkLocks(commandRoot, name);
         if (
           lockToken !== undefined &&
-          lock.token !== lockToken &&
-          !lock.coordinator?.some((entry) => entry.token === lockToken)
+          !locks.some(
+            (lock) =>
+              lock.token === lockToken ||
+              lock.coordinator?.some((entry) => entry.token === lockToken),
+          )
         ) {
           throw new NativeUsageError(
-            'Projection lock changed since inspection; inspect doctor again before confirming repair',
+            'SDK writer lock changed since inspection; inspect doctor again before confirming repair',
           );
         }
-        if (repair && ((lock.token && lock.status === 'stale') || (confirmed && lockToken))) {
-          const result = await repairNativeSdkProjectionLock(
-            commandRoot,
-            name,
-            lockToken ?? lock.token!,
-            confirmed,
-          );
-          lockRepaired = result === 'removed';
-          lock = await inspectNativeSdkProjectionLock(commandRoot, name);
+        if (repair) {
+          for (const lock of locks) {
+            const token =
+              lockToken &&
+              (lock.token === lockToken ||
+                lock.coordinator?.some((entry) => entry.token === lockToken))
+                ? lockToken
+                : !lockToken && lock.status === 'stale'
+                  ? lock.token
+                  : null;
+            if (token)
+              lockRepaired =
+                (await repairNativeSdkLock(commandRoot, name, token, confirmed)) === 'removed' ||
+                lockRepaired;
+          }
+          locks = await inspectNativeSdkLocks(commandRoot, name);
         }
-        if (lock.status !== 'missing') {
-          const uncertain = lock.status === 'unknown' || lock.status === 'malformed';
-          lockFindings.push({
-            code: `sdk-projection-lock-${lock.status}`,
-            path: lock.path,
-            owner: lock.owner,
-            token: lock.token,
-            message:
-              lock.status === 'active'
-                ? 'The projection writer is still alive; wait for that writer to finish. Read-only inspection has not changed its lock.'
-                : uncertain
-                  ? 'The projection owner cannot be proved stopped. Confirm the original writer and all concurrent writers have stopped on every host before running the confirmed repair command; elapsed time alone is not evidence of exit.'
-                  : 'The local projection owner has exited; explicit doctor repair can recover its exact lock without a minimum waiting period.',
-            ...(lock.status === 'active'
-              ? {}
-              : {
-                  repairCommand: uncertain
-                    ? `comet native doctor ${name} --repair --confirmed --lock-token ${lock.token}`
-                    : `comet native doctor ${name} --repair`,
-                }),
-          });
-        }
-        for (const contender of lock.coordinator ?? []) {
-          lockFindings.push({
-            code: `sdk-projection-coordinator-${contender.status}`,
-            path: contender.file,
-            owner: contender.owner,
-            token: contender.token,
-            message:
-              contender.status === 'active'
-                ? 'A live projection lock contender is updating lock metadata; wait for it to finish.'
-                : 'Projection lock coordination has an unknown owner. Confirm every original and concurrent writer has stopped before repairing this exact record.',
-            ...(contender.status === 'active'
-              ? {}
-              : {
-                  repairCommand: `comet native doctor ${name} --repair --confirmed --lock-token ${contender.token}`,
-                }),
-          });
+        for (const lock of locks) {
+          const prefix = lock.kind === 'projection' ? 'sdk-projection' : `sdk-${lock.kind}`;
+          if (lock.status !== 'missing') {
+            const uncertain = lock.status === 'unknown' || lock.status === 'malformed';
+            lockFindings.push({
+              code: `${prefix}-lock-${lock.status}`,
+              path: lock.path,
+              owner: lock.owner,
+              token: lock.token,
+              message:
+                lock.status === 'active'
+                  ? 'The projection writer is still alive; wait for that writer to finish. Read-only inspection has not changed its lock.'
+                  : uncertain
+                    ? 'The projection owner cannot be proved stopped. Confirm the original writer and all concurrent writers have stopped on every host before running the confirmed repair command; elapsed time alone is not evidence of exit.'
+                    : 'The local projection owner has exited; explicit doctor repair can recover its exact lock without a minimum waiting period.',
+              ...(lock.status === 'active'
+                ? {}
+                : {
+                    repairCommand: uncertain
+                      ? `comet native doctor ${name} --repair --confirmed --lock-token ${lock.token}`
+                      : `comet native doctor ${name} --repair`,
+                  }),
+            });
+          }
+          for (const contender of lock.coordinator ?? []) {
+            lockFindings.push({
+              code: `${prefix}-coordinator-${contender.status}`,
+              path: contender.file,
+              owner: contender.owner,
+              token: contender.token,
+              message:
+                contender.status === 'active'
+                  ? 'A live projection lock contender is updating lock metadata; wait for it to finish.'
+                  : 'Projection lock coordination has an unknown owner. Confirm every original and concurrent writer has stopped before repairing this exact record.',
+              ...(contender.status === 'active'
+                ? {}
+                : {
+                    repairCommand: `comet native doctor ${name} --repair --confirmed --lock-token ${contender.token}`,
+                  }),
+            });
+          }
         }
         const mayRepair = repair && lockFindings.length === 0;
         let executionRepaired = false;
@@ -983,7 +1049,9 @@ export async function nativeDoctorCommand(
     }
   }
   if (lockToken !== undefined)
-    throw new NativeUsageError('--lock-token is only available for SDK projection locks');
+    throw new NativeUsageError(
+      '--lock-token must match a project or SDK writer lock reported by doctor',
+    );
   if (stoppedActionsFile !== undefined) {
     if (!name || !(await isNativePortableChange(paths, name)))
       throw new NativeUsageError(

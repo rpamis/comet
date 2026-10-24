@@ -55,6 +55,16 @@ function continuation(
 }
 
 describe('native output envelope derivation', () => {
+  it('preserves the actual Archive conflict instead of claiming the stopped command made no changes', () => {
+    const reason =
+      'Archive applied the Spec transaction but could not move verification.md because the file is occupied.';
+    const envelope = nativeErrorEnvelope({
+      code: 'conflict',
+      message: reason,
+      data: { change: 'archive-recovery' },
+    })!;
+    expect(envelope.summary).toBe(reason);
+  });
   it.each(['wait', 'ask', 'reconcile', 'done'] as const)(
     'renders the domain %s decision without advertising a conditional command as executable',
     (mode) => {

@@ -20,6 +20,8 @@ import { createRequire, isBuiltin } from 'node:module';
 import { init, parse } from 'es-module-lexer';
 import {
   createFileRuntimeStore,
+  inspectFileRuntimeStoreLock,
+  repairFileRuntimeStoreLock,
   createRuntime,
   defineWorkflow,
   hashRuntimeValue,
@@ -31,6 +33,10 @@ import {
   type WorkflowRun,
 } from '../engine/runtime.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
+import {
+  diagnoseRecoverableFileLock,
+  repairRecoverableFileLock,
+} from '../../platform/fs/recoverable-file-lock.js';
 import {
   readCometCurrentSelection,
   readHookCurrentSelection,
@@ -208,6 +214,70 @@ export async function readWorkflowApplicationStorageDisposition(
     ),
     mirroredRevisionPaths: ['run.revision'],
   }).readPartitionMetadata(runId);
+}
+
+/** 观测当前应用写入所需的工作区、应用和 Run 锁，不加载或推进应用。 */
+export async function inspectWorkflowApplicationLocks(
+  projectRoot: string,
+  applicationId: string,
+  runId: string,
+) {
+  const root = resolveWorkspaceRuntimeRootSync(projectRoot);
+  const id = safeId(applicationId);
+  const locks = [
+    {
+      ...(await inspectFileRuntimeStoreLock(
+        { rootDir: path.join(root, 'applications', id) },
+        runId,
+      )),
+      kind: 'run-store',
+    },
+  ];
+  for (const ref of [
+    'application-scope-locks/_workspace.lock',
+    `application-scope-locks/${id}.lock`,
+  ]) {
+    const { target } = await inspectProtectedProjectPath(root, ref, {
+      label: 'Application writer lock',
+      expected: 'file',
+    });
+    locks.push({
+      ...(await diagnoseRecoverableFileLock(target)),
+      file: target,
+      path: target,
+      kind: 'application-scope',
+    });
+  }
+  return locks;
+}
+
+export async function repairWorkflowApplicationLock(
+  projectRoot: string,
+  applicationId: string,
+  runId: string,
+  token: string,
+  confirmedOwnerStopped = false,
+) {
+  const locks = await inspectWorkflowApplicationLocks(projectRoot, applicationId, runId);
+  for (const lock of locks) {
+    if (lock.token === token || lock.coordinator?.some((entry) => entry.token === token)) {
+      if (lock.kind === 'run-store')
+        return repairFileRuntimeStoreLock(
+          {
+            rootDir: path.join(
+              resolveWorkspaceRuntimeRootSync(projectRoot),
+              'applications',
+              safeId(applicationId),
+            ),
+          },
+          runId,
+          token,
+          confirmedOwnerStopped,
+        );
+      return repairRecoverableFileLock(lock.file, token, { confirmedOwnerStopped });
+    }
+  }
+  throw new Error('Application writer lock changed; inspect its exact owner record again');
 }
 
 async function recordScopeManifest(

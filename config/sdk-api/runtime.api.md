@@ -281,6 +281,21 @@ export interface FileRuntimeStoreRunSource {
 // @public (undocumented)
 export function hashRuntimeValue(value: unknown): string;
 
+// @public
+export function inspectFileRuntimeStoreLock(options: Pick<FileRuntimeStoreOptions, 'rootDir'>, runId: string): Promise<{
+    file: string;
+    path: string;
+    status: "missing" | "active" | "stale" | "unknown" | "malformed";
+    owner: RecoverableFileLockOwner | null;
+    token: string | null;
+    coordinator?: Array<{
+        file: string;
+        status: "active" | "unknown" | "malformed";
+        owner: RecoverableFileLockOwner | null;
+        token: string;
+    }>;
+}>;
+
 // @public (undocumented)
 export type InvalidateRuntimeEvidence = RecordRuntimeEvidence;
 
@@ -357,6 +372,9 @@ export interface RecordRuntimeEvidence extends RunCommand {
     // (undocumented)
     submissionId: string;
 }
+
+// @public (undocumented)
+export function repairFileRuntimeStoreLock(options: Pick<FileRuntimeStoreOptions, 'rootDir'>, runId: string, token: string, confirmedOwnerStopped?: boolean): Promise<"removed" | "changed" | "missing" | "blocked">;
 
 // @public (undocumented)
 export interface ResolveRuntimeWait extends RunCommand {

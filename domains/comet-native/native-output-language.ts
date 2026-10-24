@@ -524,11 +524,15 @@ export function nativeErrorEnvelope(
       };
     case 'conflict':
       return {
-        summary: phrase(
-          locale,
-          'This change was updated elsewhere while the command ran, so the command stopped without changing anything. Nothing was lost — reload the latest state and continue from there.',
-          '这条需求刚被另一个会话更新，本次命令未做任何改动。没有工作丢失——重新读取最新状态后继续即可。',
-        ),
+        summary:
+          record.outcome === 'revision-conflict' ||
+          /^expected revision \d+, got \d+$/iu.test(input.message)
+            ? phrase(
+                locale,
+                'This change was updated by another operation. Read the latest state and continue from its current instructions.',
+                '这条需求已被另一个操作更新。请读取最新状态，按当前指引继续。',
+              )
+            : input.message,
         ...(typeof record.change === 'string'
           ? { next: { command: `comet native status ${record.change} --json` } }
           : {}),

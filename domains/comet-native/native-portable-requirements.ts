@@ -1104,7 +1104,12 @@ export async function inspectNativePortableAcceptanceDrift(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
   ignoreSpecOperationFor?: ReadonlySet<string>;
-}): Promise<{ drifted: boolean; reason: string | null; reviewRequired?: boolean }> {
+}): Promise<{
+  drifted: boolean;
+  reason: string | null;
+  reviewRequired?: boolean;
+  affectedSources?: string[];
+}> {
   if (options.state.document_constraints_version !== undefined) {
     const documents = await validateNativePortableDocuments(options);
     if (!documents.valid) {
@@ -1232,6 +1237,21 @@ export async function inspectNativePortableAcceptanceDrift(options: {
     }
     return {
       drifted: true,
+      ...(approved && current
+        ? {
+            affectedSources: [
+              ...new Set([...approved.artifacts, ...current.artifacts].map(({ source }) => source)),
+            ].filter((source) => {
+              const before = approved.artifacts.find((entry) => entry.source === source);
+              const after = current.artifacts.find((entry) => entry.source === source);
+              return (
+                !before ||
+                !after ||
+                nativeShapeArtifactContractHash(before) !== nativeShapeArtifactContractHash(after)
+              );
+            }),
+          }
+        : {}),
       reason:
         'Native Shape artifacts changed; acceptance is unchanged, but the complete approved brief, specifications, and child plan remain bound. Restore the approved documents, or reconcile any running Builder with its original Action and claim before using the latest continuation to revise-requirements on this change and confirm the edits.',
     };

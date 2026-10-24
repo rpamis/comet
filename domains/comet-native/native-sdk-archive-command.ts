@@ -2,6 +2,7 @@ import { reconcileNativeSdkExecutionStops } from './native-sdk-check-execution.j
 import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { readNativePortableTransaction } from './native-portable-transactions.js';
+import { inspectNativeSdkArchiveFinalization } from './native-portable-archive.js';
 import { importNativeSdkArchiveOriginals } from './native-sdk-archive-originals.js';
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
 import {
@@ -21,7 +22,7 @@ import { loadOwnedNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime
 import { restoreNativeSupervisorChildArchiveMaterials } from './native-sdk-supervisor-archive.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { randomUUID } from 'node:crypto';
-import type { WorkflowRun } from '../engine/runtime.js';
+import { hashRuntimeValue, type WorkflowRun, type RuntimeValue } from '../engine/runtime.js';
 import { nativeSdkNextAction, nativeSdkPendingActions } from './native-sdk-continuation.js';
 
 function pendingArchiveAction(run: WorkflowRun) {
@@ -47,7 +48,36 @@ export async function backfillNativeSdkSupervisorChildArchiveMaterials(options: 
   return restoreNativeSupervisorChildArchiveMaterials(options, inspection);
 }
 
-export async function archiveNativeSdkChange(options: {
+export async function archiveNativeSdkChange(
+  options: Parameters<typeof archiveNativeSdkChangeValue>[0],
+): Promise<DispatchResult> {
+  try {
+    return await archiveNativeSdkChangeValue(options);
+  } catch (error) {
+    if (error instanceof NativeUsageError) throw error;
+    const inspection = await inspectNativeSdkRun(options.projectRoot, options.name, {
+      readOnly: true,
+    }).catch(() => null);
+    const unresolved = inspection?.run.actions.find(
+      (action) =>
+        ['running', 'unknown'].includes(action.status) &&
+        NATIVE_SDK_ARCHIVE_STEPS.some(
+          ([stepId, ref]) => action.stepId === stepId && action.ref === ref,
+        ),
+    );
+    if (!inspection || inspection.state.phase !== 'archive' || !unresolved) throw error;
+    return {
+      ...success('archive', {
+        change: options.name,
+        ...(await projectNativeSdkStatus(options, inspection)),
+      }),
+      exitCode: 73,
+      error: { code: 'blocked', message: error instanceof Error ? error.message : String(error) },
+    };
+  }
+}
+
+async function archiveNativeSdkChangeValue(options: {
   projectRoot: string;
   name: string;
   dryRun: boolean;
@@ -77,6 +107,36 @@ export async function archiveNativeSdkChange(options: {
   }
   const inspection = await inspectNativeSdkRun(options.projectRoot, options.name);
   let { run, state } = inspection;
+  if (options.recover && run.status === 'completed' && state.archived) {
+    const applied = run.outputs['archive.execute']?.value as { archiveRef?: string } | undefined;
+    const completed = [...run.actions]
+      .reverse()
+      .find((action) => action.stepId === 'archive.finalize' && action.status === 'succeeded');
+    if (!applied?.archiveRef || !completed?.outcome)
+      throw new Error('Native completed Archive lacks its original finalization receipt');
+    const receipt = await inspectNativeSdkArchiveFinalization({
+      paths: await nativeProjectPaths(options.projectRoot, inspection.artifactRootRef, {
+        readOnly: true,
+      }),
+      state,
+      runId: run.runId,
+      archiveRef: applied.archiveRef,
+      history: true,
+    });
+    if (
+      hashRuntimeValue(receipt as unknown as RuntimeValue) !==
+      hashRuntimeValue(completed.outcome.output)
+    )
+      throw new Error('Native completed Archive differs from its original receipt');
+    return success('archive', {
+      change: options.name,
+      alreadyArchived: true,
+      historicalRecovery: true,
+      currentImplementationRevalidated: false,
+      receipt,
+      ...(await projectNativeSdkStatus(options, inspection)),
+    });
+  }
   if (!options.dryRun) {
     run = await reconcileNativeSdkExecutionStops(
       options.projectRoot,

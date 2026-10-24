@@ -1,4 +1,18 @@
 tasks:
+  - name: comet-small-cli-archive
+    category: workflow
+    default_treatments:
+      - COMET_NATIVE_SDK_CURRENT
+      - COMET_CLASSIC_DOCS_LAYOUT
+    description: Small Unicode character-counting CLI change with current SDK Archive and verified Classic local delivery.
+
+  - name: comet-counter-refactor-archive
+    category: workflow
+    default_treatments:
+      - COMET_NATIVE_SDK_CURRENT
+      - COMET_CLASSIC_DOCS_LAYOUT
+    description: Behavior-preserving counter dispatcher refactor with current SDK Archive and verified Classic local delivery.
+
   - name: comet-native-sdk-recovery
     category: comet-native
     default_treatments:

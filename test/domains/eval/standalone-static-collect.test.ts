@@ -85,6 +85,16 @@ function pythonAccepts(manifest: string): boolean {
 }
 
 describe('standalone static collector parity', () => {
+  it('accepts either builtin Judge credential while preserving custom credential requirements', () => {
+    const result = execFileSync(
+      'uv',
+      ['run', '--locked', 'python', '-m', 'pytest', 'local/tests/scaffold/test_execution.py', '-q'],
+      { cwd: evalRoot, encoding: 'utf8', stdio: 'pipe' },
+    );
+    expect(result).toMatch(/28 passed/);
+    expect(result).not.toMatch(/failed|skipped/);
+  });
+
   it.each([
     ['valid inline', '        files: [result.md]', true, 'evaluation.tasks[0]'],
     ['unsafe files', '        files: [../secret]', false, 'evaluation.tasks[0]'],

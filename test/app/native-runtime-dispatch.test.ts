@@ -180,6 +180,152 @@ async function verifierOutcomeFixture() {
 }
 
 describe('Native dispatch CLI presentation', () => {
+  it('recovers a rejected Builder after formal Spec drift through the original failure receipt and reconfirms the same change', async () => {
+    const f = await builderFixture();
+    await cli(f.root, f.requestFile);
+    const before = await inspectNativeSdkRun(f.root, f.name);
+    const spec = path.join(f.root, 'docs/comet/changes', f.name, 'specs/workflow/spec.md');
+    await fs.writeFile(spec, '# Workflow\nThe workflow resumes and records an audit event.\n');
+    await fs.writeFile(
+      f.requestFile,
+      JSON.stringify({
+        operation: 'record-outcome',
+        runId: f.name,
+        outcome: {
+          actionId: f.request.actionId,
+          attempt: f.request.attempt,
+          inputHash: f.request.inputHash,
+          claimToken: f.request.claimToken,
+          outcomeId: 'rejected-candidate',
+          status: 'succeeded',
+          output: {
+            summary: 'Implemented the fixture.',
+            addressedAcceptanceIds: ['A1'],
+            acceptanceReview: fixtureAcceptanceReview(['A1']),
+            checks: [],
+            knownLimits: [],
+            review: null,
+            submittedAt: new Date().toISOString(),
+            verificationChecks: [],
+          },
+        },
+      }),
+    );
+    const rejected = await runtimeDispatchCommand(
+      { application: 'native', projectRoot: f.root, request: f.requestFile },
+      { output: 'compact' },
+    );
+    expect(rejected.response.status).toBe('failed');
+    const recovery = rejected.response.recovery as {
+      code: string;
+      affectedPaths: string[];
+      request: { outcome: { actionId: string; claimToken: string; status: string } };
+      recoveryArgs: string[];
+    };
+    expect(recovery).toMatchObject({
+      code: 'shape-drift',
+      affectedPaths: [spec],
+      request: {
+        operation: 'record-outcome',
+        runId: f.name,
+        outcome: {
+          actionId: f.request.actionId,
+          claimToken: f.request.claimToken,
+          status: 'failed',
+        },
+      },
+    });
+    const rejectedRun = (await inspectNativeSdkRun(f.root, f.name)).run;
+    expect(rejectedRun.state).toEqual(before.run.state);
+    expect(rejectedRun.actions.map(({ id }) => id)).toEqual(before.run.actions.map(({ id }) => id));
+    expect(rejectedRun.actions.find(({ id }) => id === f.request.actionId)).toMatchObject({
+      status: 'running',
+      claim: { token: f.request.claimToken },
+      rejectedOutcomes: [{ code: 'OUTCOME_REJECTED' }],
+    });
+    await fs.writeFile(f.requestFile, JSON.stringify(recovery.request));
+    const previousExitCode = process.exitCode;
+    const logged = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await runRuntimeCli(
+        recovery.recoveryArgs
+          .slice(1)
+          .map((arg) => (arg === '<failure-outcome-request-json-file>' ? f.requestFile : arg)),
+      );
+      expect(process.exitCode, JSON.stringify(logged.mock.calls)).toBe(0);
+    } finally {
+      logged.mockRestore();
+      process.exitCode = previousExitCode;
+    }
+    const once = (await inspectNativeSdkRun(f.root, f.name)).run;
+    expect(
+      (
+        await runtimeDispatchCommand({
+          application: 'native',
+          projectRoot: f.root,
+          request: f.requestFile,
+        })
+      ).response.status,
+    ).toBe('succeeded');
+    expect((await inspectNativeSdkRun(f.root, f.name)).run).toEqual(once);
+    const status = JSON.parse(
+      (await runNativeCli(['status', f.name, '--project-root', f.root, '--json'])).stdout!,
+    );
+    const revise = status.data.continuation.commandAlternatives.find(
+      (entry: { name: string }) => entry.name === 'revise-requirements',
+    );
+    expect(revise).toBeDefined();
+    const args = revise.commandArgs
+      .slice(2)
+      .map((arg: string) =>
+        arg === '<summary>' ? 'The user explicitly requests reconfirming the edited Spec.' : arg,
+      );
+    const revised = await runNativeCli(args);
+    expect(revised.exitCode, revised.stdout || revised.stderr).toBe(0);
+    const after = await inspectNativeSdkRun(f.root, f.name);
+    expect(after.run.runId).toBe(before.run.runId);
+    expect(after.state.phase).toBe('shape');
+    expect(after.state.archived).toBe(false);
+    expect(after.run.actions.find(({ id }) => id === f.request.actionId)?.status).toBe('failed');
+  });
+  it('does not disclose a Builder failure receipt to a rejected outcome with another claim', async () => {
+    const f = await builderFixture();
+    await cli(f.root, f.requestFile);
+    const before = await inspectNativeSdkRun(f.root, f.name);
+    await fs.writeFile(
+      path.join(f.root, 'docs/comet/changes', f.name, 'specs/workflow/spec.md'),
+      '# Workflow\nChanged behavior.\n',
+    );
+    await fs.writeFile(
+      f.requestFile,
+      JSON.stringify({
+        operation: 'record-outcome',
+        runId: f.name,
+        outcome: {
+          actionId: f.request.actionId,
+          attempt: f.request.attempt,
+          inputHash: f.request.inputHash,
+          claimToken: 'another-claim',
+          outcomeId: 'wrong-owner',
+          status: 'failed',
+          output: { summary: 'Not the original owner.' },
+        },
+      }),
+    );
+    const refused = await runtimeDispatchCommand({
+      application: 'native',
+      projectRoot: f.root,
+      request: f.requestFile,
+    });
+    expect(refused.response.status).toBe('failed');
+    expect(refused.response.recovery).toBeUndefined();
+    const after = await inspectNativeSdkRun(f.root, f.name);
+    expect(after.state).toEqual(before.state);
+    expect(after.run.actions.find(({ id }) => id === f.request.actionId)).toMatchObject({
+      status: 'running',
+      claim: { token: f.request.claimToken },
+    });
+  });
   it('generates the report after a CLI Verifier outcome but still requires explicit acceptance', async () => {
     const { root, name, requestFile } = await verifierOutcomeFixture();
     const result = await cli(root, requestFile);

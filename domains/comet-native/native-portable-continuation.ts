@@ -1,4 +1,5 @@
 import { nativeTaskContextRequest } from './native-task-context.js';
+import { nativeRecoveryForContinuation, type NativeRecovery } from './native-recovery.js';
 import type { CliContinuationMode } from '../workflow-contract/output-envelope.js';
 import type { NativeChildrenInspection } from './native-children.js';
 import type { NativePortableExpectedContinuationAction } from './native-portable-runtime.js';
@@ -57,6 +58,7 @@ export interface NativePortableUserCommunication {
 }
 
 export interface NativePortableContinuation {
+  recovery?: NativeRecovery;
   schema: 'comet.native.continuation.v2';
   skill: 'comet-native';
   change: string;
@@ -712,6 +714,20 @@ function individualRunnerInputs(
 }
 
 export function nativePortableContinuation(
+  state: NativePortableState,
+  children?: NativeChildrenInspection | null,
+  options: NativePortableContinuationOptions = {},
+): NativePortableContinuation {
+  const continuation = nativePortableContinuationValue(state, children, options);
+  const recovery = nativeRecoveryForContinuation({
+    state,
+    continuation,
+    reason: options.archiveBlockers?.join('; ') || undefined,
+  });
+  return recovery ? { ...continuation, recovery } : continuation;
+}
+
+function nativePortableContinuationValue(
   state: NativePortableState,
   children?: NativeChildrenInspection | null,
   options: NativePortableContinuationOptions = {},

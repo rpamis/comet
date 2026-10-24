@@ -50,6 +50,7 @@ export interface RuntimeCommandHost {
 export type RuntimeCommandResponse = {
   protocolVersion: 1;
   requestId: string;
+  recovery?: unknown;
 } & (
   | {
       status: 'succeeded';
@@ -570,6 +571,8 @@ export async function runtimeDispatchCommand(
 ): Promise<RuntimeCommandResult> {
   let requestId: string = randomUUID();
   let recoveryRequest: { operation: 'inspect'; runId: string } | undefined;
+  let rejectedOutcome:
+    { actionId: string; attempt: number; inputHash: string; claimToken: string } | undefined;
   let recoveryCwd = path.resolve(host.invocationCwd ?? process.cwd(), options.projectRoot ?? '.');
   try {
     const invocationCwd = path.resolve(host.invocationCwd ?? process.cwd());
@@ -583,6 +586,26 @@ export async function runtimeDispatchCommand(
     );
     const requestFile = path.resolve(invocationCwd, text(options.request, '--request'));
     const request = parseRequest(await readJson(requestFile, 'REQUEST'));
+    if (
+      request.operation === 'record-outcome' &&
+      request.outcome &&
+      typeof request.outcome === 'object' &&
+      !Array.isArray(request.outcome)
+    ) {
+      const outcome = request.outcome as Record<string, unknown>;
+      if (
+        typeof outcome.actionId === 'string' &&
+        typeof outcome.attempt === 'number' &&
+        typeof outcome.inputHash === 'string' &&
+        typeof outcome.claimToken === 'string'
+      )
+        rejectedOutcome = {
+          actionId: outcome.actionId,
+          attempt: outcome.attempt,
+          inputHash: outcome.inputHash,
+          claimToken: outcome.claimToken,
+        };
+    }
     if (typeof request.runId === 'string' && request.operation !== 'inspect') {
       recoveryRequest = { operation: 'inspect', runId: request.runId };
       recoveryCwd = projectRoot;
@@ -1078,6 +1101,34 @@ export async function runtimeDispatchCommand(
     };
   } catch (error) {
     const failure = runtimeCommandFailure(error, requestId);
+    if (options.application && recoveryRequest) {
+      try {
+        const { withNativeCommandRecovery } =
+          await import('../../domains/comet-native/native-command-recovery.js');
+        const diagnosed = await withNativeCommandRecovery(
+          {
+            command: 'runtime',
+            exitCode: failure.exitCode,
+            error: {
+              code: 'blocked',
+              message: error instanceof Error ? error.message : String(error),
+            },
+          },
+          {
+            projectRoot: recoveryCwd,
+            name: recoveryRequest.runId,
+            error,
+            onlyLocks: true,
+            application: options.application,
+            rejectedOutcome,
+          },
+        );
+        const recovery = (diagnosed.data as { recovery?: unknown } | undefined)?.recovery;
+        if (recovery) failure.response = { ...failure.response, recovery };
+      } catch {
+        // 恢复诊断不可掩盖原失败，也不能通过尝试写入来修复观测。
+      }
+    }
     if (
       host.output !== 'compact' ||
       !recoveryRequest ||

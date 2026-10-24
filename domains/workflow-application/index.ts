@@ -99,6 +99,8 @@ export { iterateWorkflowApplicationRunSources } from './run-observation.js';
 export { readWorkflowApplicationRunProjection } from './run-observation.js';
 export {
   readWorkflowApplicationStorageDisposition,
+  inspectWorkflowApplicationLocks,
+  repairWorkflowApplicationLock,
   inspectWorkflowApplicationStorageIndex,
   repairWorkflowApplicationStorageIndex,
 } from './application.js';

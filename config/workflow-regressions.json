@@ -52,6 +52,342 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-successor-scoped-check-reuse",
+      "behavior": "修复实现后保留已确认 Shape，只重跑输入变化的可靠范围检查，并保留原收据来源完成归档。",
+      "coverageLevel": "public-cli",
+      "reproduction": "两个单文件 Node 语法检查通过后，Verifier 要求修复；只修改左侧实现。原实现仍重新执行右侧检查。",
+      "expected": "后继候选保留 Shape 与修复上下文，右侧沿用原 Action 和日志，左侧重新检查，独立验收后可归档。",
+      "forbidden": "重开 Shape、伪造新的检查执行、沿用已变化输入的旧通过结果或无法归档。",
+      "rootCause": "检查复用只按整个候选和项目指纹判断，没有 Runtime 可证明的单项完整输入范围。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "reuses only unchanged Runtime-proven check inputs across a repaired candidate and retains the approved Shape",
+          "requiredNames": [
+            "Native SDK verification input binding reuses only unchanged Runtime-proven check inputs across a repaired candidate and retains the approved Shape"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "runs incremental repair and Archive through the generated CLI without repeating unchanged scoped checks",
+          "requiredNames": [
+            "blocked Verifier recovery command contract runs incremental repair and Archive through the generated CLI without repeating unchanged scoped checks"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-native-incremental-recovery"]
+    },
+    {
+      "id": "native-successor-reuse-evidence-guards",
+      "behavior": "包声明、执行环境或原日志变化以及无法证明依赖范围的命令不能被后继候选误复用。",
+      "coverageLevel": "runtime",
+      "reproduction": "两个检查通过后创建后继候选，分别修改 package.json、PATH、原日志或使用任意 Node 执行脚本。",
+      "expected": "重新执行检查，重新建立当前候选证据；可靠范围之外的命令按完整项目输入处理。",
+      "forbidden": "将无法证明、环境已变或损坏的原收据作为当前候选的通过证据。",
+      "rootCause": "跨候选复用需要同时约束完整输入、执行条件和原执行证据，不能只按文件名或命令相同判断。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "does not reuse stale or unproven check evidence for a successor candidate:",
+          "requiredNames": [
+            "Native SDK verification input binding does not reuse stale or unproven check evidence for a successor candidate: package-declaration",
+            "Native SDK verification input binding does not reuse stale or unproven check evidence for a successor candidate: execution-environment",
+            "Native SDK verification input binding does not reuse stale or unproven check evidence for a successor candidate: tampered-log",
+            "Native SDK verification input binding does not reuse stale or unproven check evidence for a successor candidate: unproven-command"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-native-incremental-recovery"]
+    },
+    {
+      "id": "native-project-lock-stopped-owner-repair",
+      "behavior": "未知归属的项目锁即使已经存放很久，普通 doctor --repair 也不能删除；明确停止确认与精确令牌可恢复。",
+      "coverageLevel": "public-cli",
+      "reproduction": "创建另一台机器的旧 archive.lock 后运行公开 doctor --repair。旧实现按年龄删除该锁。",
+      "expected": "保留原锁并输出持有者、路径和带精确令牌的恢复命令；确认停止后执行该命令恢复。",
+      "forbidden": "以年龄替代持有者停止事实，或清除令牌未绑定的记录。",
+      "rootCause": "旧版项目锁修复把超过十五分钟的未知持有者视为可接管，缺少精确停止确认。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-command-recovery.test.ts",
+          "namePattern": "requires the exact stopped-owner decision for an aged unknown project lock",
+          "requiredNames": [
+            "requires the exact stopped-owner decision for an aged unknown project lock and executes its emitted recovery command"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-native-incremental-recovery"]
+    },
+    {
+      "id": "native-project-lock-owner-token-guards",
+      "behavior": "活跃持有者和已被替换的锁记录不能被旧恢复决定清除，损坏记录恢复时保留原字节。",
+      "coverageLevel": "public-cli",
+      "reproduction": "分别对活跃锁提交停止确认、在诊断后替换锁字节，再执行旧令牌的公开恢复命令。",
+      "expected": "拒绝活跃或已替换记录，最新损坏记录经精确确认后隔离保存。",
+      "forbidden": "删除活跃锁、旧令牌删除替换者或丢失损坏现场。",
+      "rootCause": "恢复必须同时核对持有者存活、文件身份、内容与本次确认，不能复用过期观察。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-command-recovery.test.ts",
+          "namePattern": "preserves a live project lock|rejects a replaced lock token",
+          "requiredNames": [
+            "preserves a live project lock even when its exact token is submitted with stopped-owner confirmation",
+            "rejects a replaced lock token and preserves malformed lock bytes when explicit recovery quarantines them"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-native-incremental-recovery"]
+    },
+    {
+      "id": "native-coordinator-claim-recovery",
+      "behavior": "Native 协调票据持有者未知时，doctor 能发现并用精确命令恢复，恢复不再申请被该票据阻塞的协调锁。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在 Native .coordinator 中遗留另一台机器的旧 claim。旧 doctor 不检查票据，可能报告健康而后续命令无法获得协调锁。",
+      "expected": "公开诊断给出该票据与精确恢复命令，执行后可重新获取正常 Native 锁。",
+      "forbidden": "未发现票据、对同一协调锁自锁或删除活跃票据。",
+      "rootCause": "原项目锁检查只枚举 .lock 文件，遗漏实际参与排队的 .claim 文件。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-command-recovery.test.ts",
+          "namePattern": "recovers an unknown Native coordinator claim",
+          "requiredNames": [
+            "recovers an unknown Native coordinator claim through the exact emitted command without acquiring the blocked coordinator"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-native-incremental-recovery"]
+    },
+    {
+      "id": "native-sdk-store-writer-lock-recovery",
+      "behavior": "SDK Run 写入锁阻塞时，公开 runtime dispatch 和 doctor 给出同一精确恢复路径，恢复不改变 Run 历史。",
+      "coverageLevel": "public-cli",
+      "reproduction": "真实 Native Run 的 .write.lock 遗留损坏字节，领取 Action 超时。旧 doctor 只检查投影锁并错误报告健康。",
+      "expected": "错误响应和 doctor 识别真实写锁，执行精确恢复命令后解除阻塞且原 Run 不变。",
+      "forbidden": "诊断为健康、只处理投影锁、绕过未知写入或重置 Run。",
+      "rootCause": "锁诊断和修复只覆盖投影文件，没有覆盖实际 RuntimeStore 写入锁。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+          "namePattern": "diagnoses and repairs the original SDK store writer lock",
+          "requiredNames": [
+            "Native SDK read-only projection lock diagnostics diagnoses and repairs the original SDK store writer lock without changing Run history"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-native-incremental-recovery"]
+    },
+    {
+      "id": "native-sdk-projection-recovery-command",
+      "behavior": "公开 doctor 为未知投影锁输出可直接执行的精确恢复命令并保留原 Run。",
+      "coverageLevel": "public-cli",
+      "reproduction": "真实 Native change 的投影锁损坏后运行公开 doctor，按其 recoveryArgs 恢复。",
+      "expected": "给出停止前提与精确令牌，恢复后 Run 历史相同，重复诊断健康。",
+      "forbidden": "缺少结构化命令、错误令牌或恢复时覆盖原 Run。",
+      "rootCause": "原诊断只有部分字符串提示，CLI 续行没有共同可执行的恢复结构。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+          "namePattern": "executes the public recovery command for the exact uncertain lock",
+          "requiredNames": [
+            "Native SDK read-only projection lock diagnostics executes the public recovery command for the exact uncertain lock and preserves the original Run"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-native-incremental-recovery"]
+    },
+    {
+      "id": "native-interrupted-archive-command-recovery",
+      "behavior": "Archive 目标被占用导致收尾中断时，返回原 Action 和 archive --recover，移除占用后继续同一事务。",
+      "coverageLevel": "public-cli",
+      "reproduction": "用真实 Runtime 完成 Spec 应用后占用 Archive 目标目录，再执行生成 CLI 的 archive。旧 continuation 未提供 archive --recover。",
+      "expected": "报告原 Action 和路径冲突，输出的恢复命令完成同一事务，检查与 Spec 应用均不重放。",
+      "forbidden": "没有可执行入口、丢失未知执行身份、重新运行检查或重复应用 Specs。",
+      "rootCause": "未知 Archive Action 落入通用未知执行提示，已有领域恢复命令未连接到 continuation。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "recovers an interrupted Archive through its emitted CLI command",
+          "requiredNames": [
+            "blocked Verifier recovery command contract recovers an interrupted Archive through its emitted CLI command after removing an occupied destination without replaying checks or Specs"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-native-incremental-recovery"]
+    },
+    {
+      "id": "native-completed-archive-recovery-idempotency",
+      "behavior": "完成归档后再次执行原恢复命令可核对原收据并返回已完成，不能重放或错误阻塞。",
+      "coverageLevel": "public-cli",
+      "reproduction": "成功执行 Archive 恢复命令后，再次执行同一命令。旧入口因没有未知 Action 返回冲突。",
+      "expected": "原收据仍有效时返回 alreadyArchived，明确未重新验收当前实现，不新增 Action 或副作用。",
+      "forbidden": "重复执行检查、Specs 或搬迁，或仅因没有未知 Action 报无法恢复。",
+      "rootCause": "--recover 在核对已完成收据前要求必须存在未知 Action，遗漏了合法的重复恢复。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "recovers an interrupted Archive through its emitted CLI command",
+          "requiredNames": [
+            "blocked Verifier recovery command contract recovers an interrupted Archive through its emitted CLI command after removing an occupied destination without replaying checks or Specs"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-native-incremental-recovery"]
+    },
+    {
+      "id": "native-git-lock-diagnostics",
+      "behavior": "实际 Git index.lock 阻塞时报告具体锁路径和停止核对前提，并保留未知 Git 锁。",
+      "coverageLevel": "runtime",
+      "reproduction": "真实临时 Git 项目存在 index.lock 时执行 git add，再投影 Native 的工作区收尾失败。",
+      "expected": "恢复信息标明 Git 锁路径与重试条件，锁保持原字节；解除实际占用后 Git 操作可成功。",
+      "forbidden": "隐去路径、捏造 PID、按年龄删 Git 锁或给出无关的状态冲突说明。",
+      "rootCause": "原收尾错误按普通工作区冲突投影，未区别 Git 自有锁的持有者与处理条件。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-command-recovery.test.ts",
+          "namePattern": "reports an actual Git index lock",
+          "requiredNames": [
+            "reports an actual Git index lock with its path and retry conditions without deleting the Git lock"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-native-incremental-recovery"]
+    },
+    {
+      "id": "native-archive-conflict-truthful-output",
+      "behavior": "Archive 部分完成后的冲突提示保留实际原因，不宣称命令没有产生改动。",
+      "coverageLevel": "unit",
+      "reproduction": "Spec 事务已应用、材料搬迁被占用的冲突进入 Native 错误输出。旧提示一律声称并发更新且没有改动。",
+      "expected": "输出实际冲突原因，保留机读恢复信息。",
+      "forbidden": "把锁、权限或部分归档一律描述成无写入的状态版本冲突。",
+      "rootCause": "conflict 错误码被统一映射为仅适合 CAS 版本冲突的固定说明。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-output-language.test.ts",
+          "namePattern": "preserves the actual Archive conflict",
+          "requiredNames": [
+            "native output envelope derivation preserves the actual Archive conflict instead of claiming the stopped command made no changes"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-native-incremental-recovery"]
+    },
+    {
+      "id": "native-application-writer-scope-recovery",
+      "behavior": "扩展应用的工作区、应用与 Run 写锁可以精确诊断恢复，同时保留应用 Run 并拒绝跨应用误修复。",
+      "coverageLevel": "runtime",
+      "reproduction": "创建真实应用 Run 后，分别模拟其三层写锁损坏，通过公开应用维护入口观察和修复。",
+      "expected": "只有当前应用的精确令牌与明确停止确认可恢复，Run 始终一致。",
+      "forbidden": "未确认删除未知锁、修复其他应用的 Run 写锁或覆盖权威状态。",
+      "rootCause": "Native 扩展应用也经过工作区与应用写入协调，只修复投影锁不足以覆盖实际写入路径。",
+      "tests": [
+        {
+          "file": "test/domains/workflow-application/application.test.ts",
+          "namePattern": "repairs only an observed application or Run writer lock",
+          "requiredNames": [
+            "application adaptation and SDK authority repairs only an observed application or Run writer lock and preserves the authoritative Run"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-native-incremental-recovery"]
+    },
+    {
+      "id": "native-recovery-readonly-missing-run",
+      "behavior": "Run 尚不存在时，失败命令的恢复诊断不创建 Native 或工作区 Runtime 目录。",
+      "coverageLevel": "runtime",
+      "reproduction": "在没有 Runtime 状态的 Git 项目中诊断 Native 和 Classic 命令失败，原诊断路径初始化了 Native 目录。",
+      "expected": "保留原失败原因，所有恢复观察保持只读；Classic 不进入 Native 恢复。",
+      "forbidden": "恢复诊断初始化工作区、取得写锁或创建 .comet 目录。",
+      "rootCause": "恢复路径查询归属时未传递只读选项，并在判断应用归属前解析 Native 路径。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-command-recovery.test.ts",
+          "namePattern": "command recovery diagnosis read-only before any Run exists",
+          "requiredNames": [
+            "keeps failed native command recovery diagnosis read-only before any Run exists",
+            "keeps failed classic-full command recovery diagnosis read-only before any Run exists"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-native-incremental-recovery"]
+    },
+    {
+      "id": "native-standalone-recovery-protocol",
+      "behavior": "独立 Native doctor bundle 与聚合 Runtime 一样输出可执行的恢复协议。",
+      "coverageLevel": "public-cli",
+      "reproduction": "直接运行真实 doctor bundle 诊断未知锁，原独立入口只有 findings，没有聚合 Runtime 新增的 recovery。",
+      "expected": "独立命令输出恢复原因、路径与精确命令；执行该命令成功解除原阻塞。",
+      "forbidden": "只有源码或聚合入口通过，实际 CLI 使用的独立 bundle 仍缺少恢复命令。",
+      "rootCause": "聚合 Native CLI 与独立脚本使用不同渲染入口，恢复投影只接入了前者。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-command-recovery.test.ts",
+          "namePattern": "executes the exact recovery command emitted by the standalone doctor bundle",
+          "requiredNames": [
+            "executes the exact recovery command emitted by the standalone doctor bundle"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-native-incremental-recovery"]
+    },
+    {
+      "id": "native-nonregular-lock-diagnostics",
+      "behavior": "目录占据 Native 锁路径时报告具体阻塞，不返回健康或生成自动删除命令。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在真实 Native 项目的锁目录创建 interrupted.lock 目录后运行 doctor，原扫描跳过非文件项并报告健康。",
+      "expected": "doctor 报告原冲突路径和手动处理前提，recoveryArgs 为 null，保留原目录。",
+      "forbidden": "漏报路径占用、传递空令牌进行自动修复，或删除非普通锁记录。",
+      "rootCause": "项目锁扫描只观察普通文件，没有将占据相同名称的目录和链接视为阻塞。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-command-recovery.test.ts",
+          "namePattern": "reports a directory occupying a project lock path without advertising deletion as lock repair",
+          "requiredNames": [
+            "reports a directory occupying a project lock path without advertising deletion as lock repair"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-native-incremental-recovery"]
+    },
+    {
+      "id": "native-builder-shape-drift-recovery",
+      "behavior": "正式 Spec 改变导致 Builder 提交被拒绝后，以原 claim 的失败收据结束原 Action，再在同一 change 内重新确认，保留拒绝记录。",
+      "coverageLevel": "public-cli",
+      "reproduction": "批准 Shape 并 claim Builder 后修改正式 Spec，再从公开 Runtime 提交原候选；原错误响应只有 inspect 入口，没有原失败收据和变化文件。",
+      "expected": "拒绝仍记录审计收据，响应指出变化的 Spec 并提供绑定原 Action/claim 的失败请求；原命令可执行且重复提交不重复推进，随后原 change 可进入 Shape 重新确认。",
+      "forbidden": "自动批准改动、清除原 Run 或拒绝记录、要求重建 change，或向错误 claim 提供原失败收据。",
+      "rootCause": "状态转换已支持失败 Builder 的需求修订，但拒绝响应没有将这条恢复链与原 Action、变化文件和现有失败请求模板关联。",
+      "tests": [
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "recovers a rejected Builder after formal Spec drift|does not disclose a Builder failure receipt",
+          "requiredNames": [
+            "Native dispatch CLI presentation recovers a rejected Builder after formal Spec drift through the original failure receipt and reconfirms the same change",
+            "Native dispatch CLI presentation does not disclose a Builder failure receipt to a rejected outcome with another claim"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-native-incremental-recovery"]
+    },
+    {
+      "id": "eval-builtin-judge-credential-alternatives",
+      "behavior": "内置 Judge 只提供一种有效专用凭据时允许启动，同时保留自定义 Agent 的全部凭据要求。",
+      "coverageLevel": "runtime",
+      "reproduction": "使用 CC Switch 的有效 AUTH_TOKEN 配置执行预检，原逻辑仍要求 BENCH_JUDGE_API_KEY 并拒绝启动。",
+      "expected": "四种内置 Agent 的任一专用凭据均通过预检，缺少全部凭据时拒绝，自定义多凭据仍全部必需。",
+      "forbidden": "误拒绝有效 token，使用主执行凭据替代 Judge 专用凭据，或放宽自定义 Agent 的凭据契约。",
+      "rootCause": "预检根据凭据别名数量判断全部必需，没有区分内置的可替代认证和自定义的多凭据契约。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "accepts either builtin Judge credential while preserving custom credential requirements",
+          "requiredNames": [
+            "standalone static collector parity accepts either builtin Judge credential while preserving custom credential requirements"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"]
     }
   ]
 }

@@ -495,7 +495,7 @@ def missing_credentials(
     if judge:
         if not adapter.required_credentials:
             return ()
-        if len(adapter.required_credentials) == 1:
+        if not adapter.custom or len(adapter.required_credentials) == 1:
             return (
                 ()
                 if any(

@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -31,8 +31,12 @@ import {
   registerSdkChangeOwner,
 } from '../../../domains/workflow-contract/change-runtime-owner.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
+import type { NativeCheckPlan } from '../../../domains/comet-native/native-check-executor.js';
+import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 
 const roots: string[] = [];
+// Windows 上未修改基线的双工作区修复案例需约 125 秒；保留全部断言并给完整事务留出执行时间。
+const supervisorRecoveryTimeout = process.platform === 'win32' ? 240_000 : 120_000;
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
@@ -43,6 +47,9 @@ async function blockedFixture(
     supervisor?: boolean;
     blockedChild?: boolean;
     repeatableChecks?: boolean;
+    verificationChecks?: NativeCheckPlan[];
+    syntaxFiles?: boolean;
+    bundleCommands?: boolean;
   } = {},
 ) {
   let useReleased = Boolean(options.legacy && process.env.COMET_NATIVE_LEGACY_PACKAGE_ROOT);
@@ -79,6 +86,10 @@ async function blockedFixture(
       'schema: comet.native.children.v2\nacceptance_index:\n  A1:\n    source: brief.md\n    text: The candidate meets the requirement.\nchildren:\n  - name: left\n    depends_on: []\n    covers: [A1]\n  - name: right\n    depends_on: [left]\n    covers: [A1]\n',
     );
   await fs.writeFile(path.join(projectRoot, 'candidate.txt'), 'approved\n');
+  if (options.syntaxFiles) {
+    await fs.writeFile(path.join(projectRoot, 'left.mjs'), 'export const left = 1;\n');
+    await fs.writeFile(path.join(projectRoot, 'right.mjs'), 'export const right = 1;\n');
+  }
   await fs.writeFile(
     path.join(projectRoot, '.gitignore'),
     '.comet/runtime/\n.comet/current-change.json\n.worktrees/\n**/comet-state.yaml\n**/verification.md\ncheck-count\n',
@@ -116,12 +127,21 @@ async function blockedFixture(
     return result.response.data;
   }
   async function native(args: string[]) {
-    return (useReleased ? releasedNative! : runNativeCli)([
+    const argv = [
       ...args,
-      '--project-root',
-      projectRoot,
-      '--json',
-    ]);
+      ...(args.includes('--project-root') ? [] : ['--project-root', projectRoot]),
+      ...(args.includes('--json') ? [] : ['--json']),
+    ];
+    if (options.bundleCommands) {
+      const result = spawnSync(
+        process.execPath,
+        [path.resolve('assets/skills/comet-native/scripts/comet-native-runtime.mjs'), ...argv],
+        { encoding: 'utf8', timeout: 60_000, cwd: projectRoot },
+      );
+      if (result.error) throw result.error;
+      return { exitCode: result.status ?? 1, stdout: result.stdout, stderr: result.stderr };
+    }
+    return (useReleased ? releasedNative! : runNativeCli)(argv);
   }
   async function record(action: RuntimeAction, output: RuntimeValue, sessionId: string) {
     const claimed = await dispatch({
@@ -329,7 +349,7 @@ async function blockedFixture(
       checks: [],
       knownLimits: [],
       submittedAt: new Date().toISOString(),
-      verificationChecks: [
+      verificationChecks: options.verificationChecks ?? [
         {
           id: 'one-shot',
           name: 'one-shot',
@@ -395,7 +415,231 @@ async function executeAlternative(action: Alternative) {
   );
 }
 
+async function archiveReadyFixture() {
+  const f = await blockedFixture({ bundleCommands: true });
+  const resume = (await alternatives(f)).find(({ name }) => name === 'resolve-verifier-blocker')!;
+  expect(
+    (
+      await f.native(
+        resume.commandArgs
+          .slice(2)
+          .map((arg) => (arg === '<summary>' ? 'The independent verifier is available.' : arg)),
+      )
+    ).exitCode,
+  ).toBe(0);
+  let run = await f.dispatch({ operation: 'inspect', runId: f.name });
+  const state = parseNativePortableState(run.state);
+  run = await f.record(
+    run.actions.findLast(({ status }) => status === 'pending')!,
+    {
+      candidateId: state.builder_handoff!.candidate_id,
+      verifierExecutionRef: 'archive-verifier',
+      response: {
+        kind: 'final-result',
+        result: {
+          iteration: state.loop.iteration,
+          attempt: state.loop.attempt,
+          verdict: 'pass',
+          acceptance: [
+            {
+              id: 'A1',
+              result: 'passed',
+              reason: 'Independently verified the retained candidate.',
+            },
+          ],
+          risks: [],
+          summary: 'All acceptance passed.',
+        },
+      },
+    },
+    'archive-verifier',
+  );
+  expect((await f.native(['next', f.name])).exitCode).toBe(0);
+  const data = JSON.parse((await f.native(['status', f.name])).stdout!).data;
+  const approval = (data.continuation.commandAlternatives as Alternative[]).find(
+    ({ name }) => name === 'accept-result',
+  )!;
+  expect(
+    (
+      await f.native(
+        approval.commandArgs
+          .slice(2)
+          .map((arg) => (arg === '<summary>' ? 'Approve the verified result.' : arg)),
+      )
+    ).exitCode,
+  ).toBe(0);
+  return f;
+}
+
 describe('blocked Verifier recovery command contract', () => {
+  it('recovers an interrupted Archive through its emitted CLI command after removing an occupied destination without replaying checks or Specs', async () => {
+    const f = await archiveReadyFixture();
+    let run = await f.dispatch({ operation: 'inspect', runId: f.name });
+    for (const [stepId, executorId] of [
+      ['archive.prepare', 'comet-native-archive-preflight'],
+      ['archive.execute', 'comet-native-archive-apply'],
+    ]) {
+      const action = run.actions.findLast(({ status }) => status === 'pending')!;
+      expect(action.stepId).toBe(stepId);
+      run = await f.dispatch({
+        operation: 'execute',
+        runId: f.name,
+        actionId: action.id,
+        executorId,
+      });
+    }
+    const applied = run.outputs['archive.execute'].value as {
+      archiveRef: string;
+      transactionId: string;
+    };
+    const paths = await nativeProjectPaths(f.projectRoot, 'docs');
+    const target = path.resolve(paths.archiveDir, applied.archiveRef);
+    expect(path.relative(paths.archiveDir, target).startsWith('..')).toBe(false);
+    expect(target).not.toBe(paths.archiveDir);
+    await fs.mkdir(target, { recursive: true });
+    const blocker = path.join(target, 'verification.md');
+    await fs.writeFile(blocker, 'Another unfinished publication occupies the destination.');
+    const stopped = await f.native(['archive', f.name]);
+    expect(stopped.exitCode).not.toBe(0);
+    const data = JSON.parse((await f.native(['status', f.name])).stdout!).data;
+    expect(data.recovery).toMatchObject({
+      code: 'execution-unresolved',
+      owner: { actionId: run.actions.at(-1)!.id },
+    });
+    expect(data.recovery.recoveryArgs).toContain('--recover');
+    await fs.unlink(blocker);
+    await fs.rmdir(target);
+    const recovered = await f.native(data.recovery.recoveryArgs.slice(2));
+    expect(recovered.exitCode, recovered.stdout ?? recovered.stderr).toBe(0);
+    const repeated = await f.native(data.recovery.recoveryArgs.slice(2));
+    expect(repeated.exitCode, repeated.stdout ?? repeated.stderr).toBe(0);
+    expect(JSON.parse(repeated.stdout!).data).toMatchObject({
+      alreadyArchived: true,
+      currentImplementationRevalidated: false,
+    });
+    const completed = await f.dispatch({ operation: 'inspect', runId: f.name });
+    expect(completed.state).toMatchObject({ archived: true });
+    expect(completed.actions.filter(({ stepId }) => stepId === 'archive.execute')).toHaveLength(1);
+    expect(completed.outputs['archive.execute'].value).toMatchObject(applied);
+    expect(await fs.readFile(path.join(f.projectRoot, 'check-count'), 'utf8')).toBe('once\n');
+  });
+
+  it('runs incremental repair and Archive through the generated CLI without repeating unchanged scoped checks', async () => {
+    const plans = ['left', 'right'].map((name) => ({
+      id: name,
+      name: `${name} syntax`,
+      executable: process.execPath,
+      argv: ['--check', `${name}.mjs`],
+      cwdRef: '.',
+      timeoutMs: 5_000,
+      repeatable: true,
+    }));
+    const f = await blockedFixture({
+      syntaxFiles: true,
+      verificationChecks: plans,
+      bundleCommands: true,
+    });
+    const original = parseNativePortableState(f.run.state);
+    const originalChecks = f.run.outputs['verify.checks'].value as {
+      checks: Array<{ logRef: string }>;
+    };
+    const data = JSON.parse((await f.native(['status', f.name])).stdout!).data;
+    const repair = (data.continuation.commandAlternatives as Alternative[]).find(
+      ({ name }) => name === 'revise-implementation',
+    )!;
+    expect(
+      (
+        await f.native(
+          repair.commandArgs
+            .slice(2)
+            .map((arg) => (arg === '<summary>' ? 'Repair only the left module.' : arg)),
+        )
+      ).exitCode,
+    ).toBe(0);
+    let run = await f.dispatch({ operation: 'inspect', runId: f.name });
+    expect(run.state).toMatchObject({
+      phase: 'build',
+      shape_confirmation_hash: original.shape_confirmation_hash,
+    });
+    await fs.writeFile(path.join(f.projectRoot, 'left.mjs'), 'export const left = 2;\n');
+    run = await f.record(
+      run.actions.findLast(({ status }) => status === 'pending')!,
+      {
+        summary: 'Repair the left module.',
+        addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
+        checks: [],
+        knownLimits: [],
+        review: null,
+        submittedAt: new Date().toISOString(),
+        verificationChecks: plans,
+      },
+      'successor-builder',
+    );
+    const checked = await f.native(['next', f.name]);
+    expect(checked.exitCode, checked.stdout ?? checked.stderr).toBe(0);
+    run = await f.dispatch({ operation: 'inspect', runId: f.name });
+    const checks = run.outputs['verify.checks'].value as {
+      checks: Array<{ logRef: string; reusedFrom?: { candidateId: string } }>;
+    };
+    expect(checks.checks[0].logRef).not.toBe(originalChecks.checks[0].logRef);
+    expect(checks.checks[1]).toMatchObject({
+      logRef: originalChecks.checks[1].logRef,
+      reusedFrom: { candidateId: original.builder_handoff!.candidate_id },
+    });
+    const state = parseNativePortableState(run.state);
+    run = await f.record(
+      run.actions.findLast(({ status }) => status === 'pending')!,
+      {
+        candidateId: state.builder_handoff!.candidate_id,
+        verifierExecutionRef: 'successor-verifier',
+        response: {
+          kind: 'final-result',
+          result: {
+            iteration: state.loop.iteration,
+            attempt: state.loop.attempt,
+            verdict: 'pass',
+            acceptance: [
+              {
+                id: 'A1',
+                result: 'passed',
+                reason: 'Independently inspected both modules and the repair.',
+              },
+            ],
+            risks: [],
+            summary: 'All acceptance passed for the successor candidate.',
+          },
+        },
+      },
+      'successor-verifier',
+    );
+    expect((await f.native(['next', f.name])).exitCode).toBe(0);
+    const approval = JSON.parse(
+      (await f.native(['status', f.name])).stdout!,
+    ).data.continuation.commandAlternatives.find(
+      (item: Alternative) => item.name === 'accept-result',
+    ) as Alternative;
+    expect(
+      (
+        await f.native(
+          approval.commandArgs
+            .slice(2)
+            .map((arg) =>
+              arg === '<summary>' ? 'Approve the independently verified candidate.' : arg,
+            ),
+        )
+      ).exitCode,
+    ).toBe(0);
+    const archived = await f.native(['archive', f.name]);
+    expect(archived.exitCode, archived.stdout ?? archived.stderr).toBe(0);
+    expect((await f.dispatch({ operation: 'inspect', runId: f.name })).state).toMatchObject({
+      archived: true,
+    });
+    await expect(
+      fs.access(path.join(f.projectRoot, 'docs/comet/changes', f.name)),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it.each(['resolve-verifier-blocker', 'revise-implementation', 'revise-requirements'])(
     'executes the exact advertised %s command from the advertised state',
     async (name) => {
@@ -687,7 +931,7 @@ describe('blocked Verifier recovery command contract', () => {
       );
       expect(await fs.readFile(path.join(f.candidateRoot, 'check-count'), 'utf8')).toBe('once\n');
     },
-    120_000,
+    supervisorRecoveryTimeout,
   );
 
   it('rejects stale proposal, state, and used outcome identities without dispatching a duplicate', async () => {
@@ -833,7 +1077,7 @@ describe('blocked Verifier recovery command contract', () => {
       expect(resumed.actions.filter(({ stepId }) => stepId === 'verify.checks')).toHaveLength(1);
       expect(await fs.readFile(path.join(f.candidateRoot, 'check-count'), 'utf8')).toBe('once\n');
     },
-    120_000,
+    supervisorRecoveryTimeout,
   );
   it('executes the exact advertised Runtime decision with its reason and preserves proposal binding', async () => {
     const f = await blockedFixture();
@@ -877,35 +1121,41 @@ describe('blocked Verifier recovery command contract', () => {
     ).toMatchObject({ stepId: 'build.builder', status: 'pending' });
   });
 
-  it('keeps the current Supervisor Child blocked repair executable without reusing its Verifier', async () => {
-    const f = await blockedFixture({ supervisor: true, blockedChild: true });
-    expect(f.run.status).toBe('running');
-    const original = f.run.actions.findLast(
-      ({ stepId }) => stepId === 'supervisor.child.verifier',
-    )!;
-    expect(original).toMatchObject({ outcome: { output: { verdict: 'blocked' } } });
-    const status = JSON.parse((await f.native(['status', f.name])).stdout!).data;
-    const pending = status.pendingActions.find(
-      (action: { stepId: string }) => action.stepId === 'supervisor.child.builder',
-    );
-    expect(pending).toBeDefined();
-    const request = {
-      ...pending.claimRequest,
-      sessionId: 'child-repair-builder',
-      claimToken: 'child-repair-token',
-    };
-    const resumed = await f.dispatch(request);
-    expect(resumed.actions.at(-1)).toMatchObject({
-      id: pending.id,
-      stepId: 'supervisor.child.builder',
-      status: 'running',
-    });
-    expect(resumed.actions.find(({ id }) => id === original.id)?.outcome).toEqual(original.outcome);
-    expect((await f.native(['next', f.name])).exitCode).toBe(0);
-    expect(
-      (await f.dispatch({ operation: 'inspect', runId: f.name })).actions.filter(
+  it(
+    'keeps the current Supervisor Child blocked repair executable without reusing its Verifier',
+    async () => {
+      const f = await blockedFixture({ supervisor: true, blockedChild: true });
+      expect(f.run.status).toBe('running');
+      const original = f.run.actions.findLast(
         ({ stepId }) => stepId === 'supervisor.child.verifier',
-      ),
-    ).toHaveLength(2);
-  }, 120_000);
+      )!;
+      expect(original).toMatchObject({ outcome: { output: { verdict: 'blocked' } } });
+      const status = JSON.parse((await f.native(['status', f.name])).stdout!).data;
+      const pending = status.pendingActions.find(
+        (action: { stepId: string }) => action.stepId === 'supervisor.child.builder',
+      );
+      expect(pending).toBeDefined();
+      const request = {
+        ...pending.claimRequest,
+        sessionId: 'child-repair-builder',
+        claimToken: 'child-repair-token',
+      };
+      const resumed = await f.dispatch(request);
+      expect(resumed.actions.at(-1)).toMatchObject({
+        id: pending.id,
+        stepId: 'supervisor.child.builder',
+        status: 'running',
+      });
+      expect(resumed.actions.find(({ id }) => id === original.id)?.outcome).toEqual(
+        original.outcome,
+      );
+      expect((await f.native(['next', f.name])).exitCode).toBe(0);
+      expect(
+        (await f.dispatch({ operation: 'inspect', runId: f.name })).actions.filter(
+          ({ stepId }) => stepId === 'supervisor.child.verifier',
+        ),
+      ).toHaveLength(2);
+    },
+    supervisorRecoveryTimeout,
+  );
 });

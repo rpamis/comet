@@ -1,0 +1,9 @@
+You are modifying the supplied wordcount.py CLI. Add --characters without changing default word counting or --lines behavior. Count Python Unicode characters, including spaces and newline characters; do not count UTF-8 bytes. When --characters is present print Characters: N on its own line alongside the existing output. Support both stdin and file input.
+
+Acceptance examples: empty input has 0 characters; abc has 3; a b followed by one newline has 4; 中文🙂 has 3. Combined --lines --characters preserves the existing Words and Lines counts. Add tests for these cases and run the existing tests.
+
+Complete the SDK workflow through Archive using the current-checkout Comet CLI supplied in this environment. Follow the treatment-selected workflow: invoke /comet-native for Native or /comet-classic for Classic. Use one change named character-counting and a complete target capability Spec with the same name. Native uses artifact_root docs; Classic uses its full profile and docs layout.
+
+Initialize a local Git repository if missing and commit the supplied source and tests as the initial baseline before implementation. Never configure a remote, push, or create a PR. Preserve existing behavior and add regression tests. Native must finish independent read-only verification and Archive; Classic must finish verification, Archive, and verified local Git delivery. Obtain the actual Runtime approval decisions through the user interaction. Reuse approved configuration; do not invent receipts, edit managed state, recreate the change to escape an error, or delete Runtime data. Follow the original Action's recovery request if a submission is rejected.
+
+Before completion inspect the actual SDK Run with comet runtime dispatch --application native or classic-full. It must be completed, its canonical Spec must exist, and the original active change directory must be gone. A completion message or a manually written archived flag is insufficient.

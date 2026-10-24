@@ -267,17 +267,18 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   doctor: {
     usage:
-      'comet native doctor [<change-name>] [--repair] [--confirmed] [--stopped-actions <json-file>] [--migrate-history]',
+      'comet native doctor [<change-name>] [--repair] [--confirmed] [--lock-token <token>] [--stopped-actions <json-file>] [--migrate-history]',
     purpose:
-      'Inspect portable state, migrate a compat Runtime active change, or rebuild its local execution overlay.',
+      'Inspect Native state, original executions, project locks and SDK writer locks, or recover the exact recorded interruption.',
     options: [
       '--stopped-actions <json-file>  With --repair --confirmed, submit original Action/attempt/inputHash/claimToken and actual evidence that its execution and all descendants, including detached processes, stopped; retained results remain unknown and require a fresh repair candidate.',
       '--repair  Apply deterministic migration or rebuild from the portable stable boundary.',
+      '--lock-token <token>  With --repair --confirmed, repair exactly the lock record reported by doctor after confirming its original writer and all concurrent writers stopped. Omit the change name for a project lock. Named changes also inspect Run-store, application and projection locks. Live owners are never removed; age alone does not prove exit.',
       '--migrate-history  Validate and close fully stopped built-in Native terminal Runs. Preserve documents and checkpoints; unfinished or invalid Runs remain active. Safe to rerun after interruption. Upgrade CLI and platform Hooks together: older Runtime versions cannot write the new storage format. Ordinary inspection never migrates.',
       '--confirmed  With --repair and a named managed change whose local Run history is missing, recover its saved Run checkpoint after confirming the original process stopped. Older states without a checkpoint restart at Shape and require fresh approvals and checks.',
     ],
     output:
-      'Health, migration or recovery details, and the continuation with the next Runner action.',
+      'Health, retained execution evidence, lock owners, and structured recovery with diagnosticArgs, recoveryArgs and preconditions. Inspection never acquires a writer lock.',
   },
   transfer: {
     usage:

@@ -1,4 +1,5 @@
 import { compactCliStdout } from '../workflow-contract/compact-output.js';
+import { withNativeCommandRecovery } from './native-command-recovery.js';
 import type { DispatchResult, NativeCommandResult } from './native-cli-shared.js';
 import {
   errorResult,
@@ -32,6 +33,8 @@ export async function runNativeScript(
   const verbose = globalArgs.includes('--verbose');
   const compact = globalArgs.includes('--compact');
   let explicitProjectRoot: string | undefined;
+  let requestName: string | undefined;
+  let caughtError: unknown;
   let result: DispatchResult;
   try {
     takeFlag(globalArgs, '--json');
@@ -40,6 +43,7 @@ export async function runNativeScript(
     takeFlag(globalArgs, '--verbose');
     explicitProjectRoot = takeOption(globalArgs, '--project-root');
     const dispatchArgs = [...globalArgs, ...commandTail];
+    requestName = dispatchArgs[0]?.startsWith('--') ? undefined : dispatchArgs[0];
     const invoke = async () => {
       const projectRoot = await projectRootFrom(explicitProjectRoot);
       return { executionCwd: projectRoot, ...(await handler(dispatchArgs, projectRoot)) };
@@ -48,8 +52,14 @@ export async function runNativeScript(
       ? await withGitWorktreeReadScope(invoke)
       : await invoke();
   } catch (error) {
+    caughtError = error;
     result = errorResult(command, error);
   }
+  result = await withNativeCommandRecovery(result, {
+    projectRoot: result.executionCwd ?? explicitProjectRoot ?? process.cwd(),
+    name: requestName,
+    error: caughtError,
+  });
   const output: NativeCommandResult = render(result, json, verbose);
   if (output.stdout) process.stdout.write(compactCliStdout(output.stdout, compact && json)!);
   if (output.stderr)

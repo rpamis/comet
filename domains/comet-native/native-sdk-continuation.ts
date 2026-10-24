@@ -3,6 +3,7 @@ import {
   nativeSdkVerifyWaitDecisions,
 } from './native-sdk-verify-decision.js';
 import { nativeSdkCompletedCheckInputDrift } from './native-sdk-checks.js';
+import { nativeRecoveryForContinuation } from './native-recovery.js';
 import { nativeTaskContextRequest } from './native-task-context.js';
 import {
   hashRuntimeValue,
@@ -557,7 +558,49 @@ function sdkDecision(
 }
 
 /** 从同一 Run 投影下一步；SDK 不使用 compat Runner 输入或 workspace finish 决定。 */
-export async function projectNativeSdkContinuation(options: {
+export async function projectNativeSdkContinuation(
+  options: Parameters<typeof projectNativeSdkContinuationValue>[0],
+) {
+  const projection = await projectNativeSdkContinuationValue(options);
+  const stopped = [...options.run.actions]
+    .reverse()
+    .find((action) => ['failed', 'unknown', 'running'].includes(action.status));
+  const output = stopped?.outcome?.output as
+    { message?: string; blockers?: unknown[]; reason?: string } | null | undefined;
+  const reason =
+    typeof output?.message === 'string'
+      ? output.message
+      : (Array.isArray(output?.blockers)
+          ? output.blockers.filter((entry) => typeof entry === 'string').join('; ')
+          : '') ||
+        stopped?.reason ||
+        options.run.reason ||
+        projection.continuation.userCommunication.message ||
+        undefined;
+  const recovery = nativeRecoveryForContinuation({
+    state: options.state,
+    continuation: projection.continuation,
+    projectRoot: options.projectRoot,
+    reason,
+  });
+  if (recovery && stopped) {
+    recovery.owner = {
+      actionId: stopped.id,
+      attempt: stopped.attempt,
+      executorId: stopped.claim?.executorId ?? null,
+      sessionId: stopped.claim?.sessionId ?? null,
+    };
+    if (stopped.stepId === 'archive.prepare') recovery.code = 'archive-preflight-blocked';
+    else if (['unknown', 'running'].includes(stopped.status))
+      recovery.code = 'execution-unresolved';
+    if (output?.reason === 'candidate-drift') recovery.code = 'candidate-drift';
+  }
+  return recovery
+    ? { ...projection, continuation: { ...projection.continuation, recovery } }
+    : projection;
+}
+
+async function projectNativeSdkContinuationValue(options: {
   run: WorkflowRun;
   state: NativePortableState;
   projectRoot: string;
@@ -1138,6 +1181,28 @@ export async function projectNativeSdkContinuation(options: {
         localized(
           `Report revalidation stopped: ${active[0].reason ?? 'unknown result'}. Run next to repeat only the read-only validation with the original claim. Changed checks require fresh verification; unresolved storage or permission errors remain blocked.`,
           `报告复核停止：${active[0].reason ?? '结果未知'}。执行 next，只重读校验并保留原领取记录；检查失效后重新验收，未解决的存储或权限错误仍保持阻塞。`,
+        ),
+      ),
+    };
+  } else if (
+    state.phase === 'archive' &&
+    active.length === 1 &&
+    active[0].status === 'unknown' &&
+    NATIVE_SDK_ARCHIVE_STEPS.some(
+      ([stepId, ref]) => active[0].stepId === stepId && active[0].ref === ref,
+    )
+  ) {
+    continuation = {
+      ...base,
+      action: 'archive',
+      disposition: 'blocked',
+      mode: 'reconcile',
+      commandArgs: ['comet', 'native', 'archive', state.name, '--recover'],
+      requiredInputs: ['original-archive-writer-stopped', 'archive-conflict-resolution'],
+      userCommunication: communication(
+        localized(
+          `The original Archive step stopped: ${active[0].reason ?? 'its outcome is unresolved'}. Confirm the original writer stopped and resolve the reported path or permission conflict, then run the recovery command. It reconciles the same transaction and Action; completed checks and applied Specs are retained.`,
+          `原归档步骤已停止：${active[0].reason ?? '执行结果尚未核对'}。确认原写入进程已停止，处理报告中的路径或权限冲突后执行恢复命令。恢复会核对同一事务和 Action，保留已完成检查及已应用规格。`,
         ),
       ),
     };

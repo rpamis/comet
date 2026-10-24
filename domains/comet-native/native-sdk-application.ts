@@ -2200,7 +2200,10 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
                     ? supervisorParentRepairActivation(run, {
                         failedCheckActionId: event.outcome.actionId,
                       })
-                    : { failedCheckActionId: event.outcome.actionId },
+                    : {
+                        failedCheckActionId: event.outcome.actionId,
+                        repairContext: nativeBuilderRepairContext(returned, run),
+                      },
                 },
               ],
             };
@@ -2236,7 +2239,12 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
                           }),
                         },
                       ]
-                    : ['build.builder']
+                    : [
+                        {
+                          stepId: 'build.builder',
+                          input: { repairContext: nativeBuilderRepairContext(verified.state, run) },
+                        },
+                      ]
                   : ['verify.stop'],
           };
         }
@@ -2283,7 +2291,10 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
                   ? supervisorParentRepairActivation(run, {
                       failedCheckActionId: failedCheckActionId!,
                     })
-                  : { failedCheckActionId: failedCheckActionId! },
+                  : {
+                      failedCheckActionId: failedCheckActionId!,
+                      repairContext: nativeBuilderRepairContext(returned, run),
+                    },
               },
             ],
           };
@@ -2341,7 +2352,12 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
                     }),
                   },
                 ]
-              : ['build.builder'],
+              : [
+                  {
+                    stepId: 'build.builder',
+                    input: { repairContext: nativeBuilderRepairContext(returned, run) },
+                  },
+                ],
           };
         }
         if (event.kind === 'wait-resolved' && event.stepId === 'verify.retry') {
@@ -2415,7 +2431,12 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
                     }),
                   },
                 ]
-              : ['build.builder'],
+              : [
+                  {
+                    stepId: 'build.builder',
+                    input: { repairContext: nativeBuilderRepairContext(returned, run) },
+                  },
+                ],
           };
         }
         if (
@@ -2595,3 +2616,4 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
     ],
   };
 }
+import { nativeBuilderRepairContext } from './native-task-context.js';

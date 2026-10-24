@@ -20,6 +20,8 @@ import {
   reconcileApplicationSkill,
   inspectApplicationSkill,
   listWorkflowApplicationRunRecords,
+  inspectWorkflowApplicationLocks,
+  repairWorkflowApplicationLock,
 } from '../../../domains/workflow-application/index.js';
 import type { SkillExecutionHost } from '../../../domains/workflow-application/index.js';
 import {
@@ -40,6 +42,42 @@ describe('application adaptation and SDK authority', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
   const input = { topic: 'Actual topic' };
+  it('repairs only an observed application or Run writer lock and preserves the authoritative Run', async () => {
+    const { runtime, fixture } = await application();
+    const run = await runtime.start({
+      runId: 'lock-recovery',
+      workflow: { id: 'editorial', version: '1' },
+      input,
+    });
+    const applicationId = fixture.manifest.id;
+    const before = await readWorkflowApplicationRun(root, applicationId, run.runId);
+    const locks = await inspectWorkflowApplicationLocks(root, applicationId, run.runId);
+    expect(locks.map(({ kind }) => kind)).toEqual([
+      'run-store',
+      'application-scope',
+      'application-scope',
+    ]);
+    for (const target of locks) {
+      await fs.mkdir(path.dirname(target.file), { recursive: true });
+      await fs.writeFile(target.file, '{interrupted-writer');
+      const current = (await inspectWorkflowApplicationLocks(root, applicationId, run.runId)).find(
+        ({ file }) => file === target.file,
+      )!;
+      expect(current.status).toBe('malformed');
+      if (target.kind === 'run-store')
+        await expect(
+          repairWorkflowApplicationLock(root, 'other-app', run.runId, current.token!, true),
+        ).rejects.toThrow('changed');
+      expect(
+        await repairWorkflowApplicationLock(root, applicationId, run.runId, current.token!),
+      ).toBe('blocked');
+      expect(await fs.readFile(target.file, 'utf8')).toBe('{interrupted-writer');
+      expect(
+        await repairWorkflowApplicationLock(root, applicationId, run.runId, current.token!, true),
+      ).toBe('removed');
+      expect(await readWorkflowApplicationRun(root, applicationId, run.runId)).toEqual(before);
+    }
+  });
   it('rejects an application pinned to a different Runtime before creating saved progress', async () => {
     const fixture = await createDiskApplication(root);
     fixture.manifest.runtimeVersion = '0.0.0';

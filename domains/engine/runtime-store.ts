@@ -5,7 +5,11 @@ import path from 'node:path';
 
 import { hasComparableFileObject, sameFileObject } from '../../platform/fs/file-identity.js';
 import { RaceSafeReadError } from '../../platform/fs/race-safe-read.js';
-import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
+import {
+  withRecoverableFileLock,
+  diagnoseRecoverableFileLock,
+  repairRecoverableFileLock,
+} from '../../platform/fs/recoverable-file-lock.js';
 
 import {
   atomicWriteContainedText,
@@ -59,6 +63,50 @@ function assertRunId(runId: string): void {
   if (typeof runId !== 'string' || runId.trim().length === 0) {
     throw new RuntimeProtocolError('STORE_INVALID_RUN_ID', 'runId 必须是非空字符串');
   }
+}
+
+function fileRuntimeStoreRunDirectory(runId: string): string {
+  assertRunId(runId);
+  return createHash('sha256').update(JSON.stringify(runId)).digest('hex');
+}
+
+async function fileRuntimeStoreLockFile(
+  options: Pick<FileRuntimeStoreOptions, 'rootDir'>,
+  runId: string,
+): Promise<string> {
+  const target = path.resolve(
+    options.rootDir,
+    '.runtime-store-v2',
+    fileRuntimeStoreRunDirectory(runId),
+    '.write.lock',
+  );
+  const volume = path.parse(target).root;
+  return (
+    await inspectProtectedProjectPath(volume, path.relative(volume, target).replaceAll('\\', '/'), {
+      label: 'RuntimeStore writer lock',
+      expected: 'file',
+    })
+  ).target;
+}
+
+/** 只读核对当前 Run 的写锁，不加载工作流或执行存储恢复。 */
+export async function inspectFileRuntimeStoreLock(
+  options: Pick<FileRuntimeStoreOptions, 'rootDir'>,
+  runId: string,
+) {
+  const file = await fileRuntimeStoreLockFile(options, runId);
+  return { ...(await diagnoseRecoverableFileLock(file)), file, path: file };
+}
+
+export async function repairFileRuntimeStoreLock(
+  options: Pick<FileRuntimeStoreOptions, 'rootDir'>,
+  runId: string,
+  token: string,
+  confirmedOwnerStopped = false,
+) {
+  return repairRecoverableFileLock(await fileRuntimeStoreLockFile(options, runId), token, {
+    confirmedOwnerStopped,
+  });
 }
 
 function assertRevision(revision: number): void {
@@ -272,8 +320,7 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
   if (!rootRelative)
     throw new RuntimeProtocolError('STORE_INVALID_ROOT', 'rootDir 不能是文件系统根目录');
   const rootOptions = { label: 'RuntimeStore root', expected: 'directory' as const };
-  const runDirectory = (runId: string) =>
-    createHash('sha256').update(JSON.stringify(runId)).digest('hex');
+  const runDirectory = fileRuntimeStoreRunDirectory;
 
   const currentName = 'checkpoint.json';
   const formatSchema = 'comet.runtime-store-format.v2';

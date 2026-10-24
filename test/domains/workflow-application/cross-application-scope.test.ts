@@ -91,7 +91,11 @@ it('serializes simultaneous cross-application claims including identical Run IDs
 it('uses each pinned application manifest and canonical paths rather than current bindings', async () => {
   const project = await root();
   await fs.mkdir(path.join(project, 'actual'));
-  await fs.symlink(path.join(project, 'actual'), path.join(project, 'alias'), 'dir');
+  await fs.symlink(
+    path.join(project, 'actual'),
+    path.join(project, 'alias'),
+    process.platform === 'win32' ? 'junction' : 'dir',
+  );
   const alpha = await fixture(project, 'alpha', 'actual');
   const beta = await fixture(project, 'beta', 'alias/nested.txt');
   const independent = await fixture(project, 'independent', 'elsewhere.txt');

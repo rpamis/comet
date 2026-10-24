@@ -16,6 +16,7 @@ import { nativeSpecCommand } from './native-spec-command.js';
 import { nativeStatusCommand } from './native-status-command.js';
 import { nativeTransferCommand } from './native-transfer-command.js';
 import { nativeHelp } from './native-cli-help.js';
+import { withNativeCommandRecovery } from './native-command-recovery.js';
 import {
   errorResult,
   isNativeReadOnlyCommand,
@@ -122,6 +123,7 @@ export async function runNativeCliDetailed(
   const compact = globalArgs.includes('--compact');
   let explicitProjectRoot: string | undefined;
   let command: string | null = globalArgs[0] ?? null;
+  let requestName: string | undefined;
   try {
     takeFlag(globalArgs, '--json');
     takeFlag(globalArgs, '--compact');
@@ -130,14 +132,19 @@ export async function runNativeCliDetailed(
     explicitProjectRoot = takeOption(globalArgs, '--project-root');
     const dispatchArgs = [...globalArgs, ...commandTail];
     command = dispatchArgs[0] ?? null;
+    requestName = dispatchArgs[1]?.startsWith('--') ? undefined : dispatchArgs[1];
     const invoke = () =>
       dispatch(dispatchArgs, explicitProjectRoot, options.invocationCwd ?? process.cwd());
     const run = async () =>
       isNativeReadOnlyCommand(command ?? '', dispatchArgs.slice(1))
         ? await withGitWorktreeReadScope(invoke)
         : await invoke();
-    const dispatchResult =
-      command === 'hook-guard' ? await run() : await withCometRuntimeProgress(run);
+    const dispatched = command === 'hook-guard' ? await run() : await withCometRuntimeProgress(run);
+    const dispatchResult = await withNativeCommandRecovery(dispatched, {
+      projectRoot:
+        dispatched.executionCwd ?? explicitProjectRoot ?? options.invocationCwd ?? process.cwd(),
+      name: requestName,
+    });
     const rendered = renderNativeCommandDetailed(dispatchResult, json, verbose);
     return {
       dispatch: dispatchResult,
@@ -153,7 +160,11 @@ export async function runNativeCliDetailed(
       verbose,
     };
   } catch (error) {
-    const dispatchResult = errorResult(command, error);
+    const dispatchResult = await withNativeCommandRecovery(errorResult(command, error), {
+      projectRoot: explicitProjectRoot ?? options.invocationCwd ?? process.cwd(),
+      name: requestName,
+      error,
+    });
     const rendered = renderNativeCommandDetailed(dispatchResult, json, verbose);
     return {
       dispatch: dispatchResult,

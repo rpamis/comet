@@ -1,0 +1,54 @@
+{
+  "schema": "comet.acceptance-plan.v1",
+  "branch": "051",
+  "provider": {
+    "app": "claude",
+    "name": "Zhipu GLM"
+  },
+  "candidate": "committed-current-checkout",
+  "requireArchive": true,
+  "cases": [
+    {
+      "workflow": "native",
+      "difficulty": "easy",
+      "task": "comet-small-cli-archive",
+      "treatment": "COMET_NATIVE_SDK_CURRENT",
+      "count": 1
+    },
+    {
+      "workflow": "native",
+      "difficulty": "medium",
+      "task": "comet-counter-refactor-archive",
+      "treatment": "COMET_NATIVE_SDK_CURRENT",
+      "count": 1
+    },
+    {
+      "workflow": "native",
+      "difficulty": "hard",
+      "task": "comet-native-sdk-recovery",
+      "treatment": "COMET_NATIVE_SDK_CURRENT",
+      "count": 1
+    },
+    {
+      "workflow": "classic",
+      "difficulty": "easy",
+      "task": "comet-small-cli-archive",
+      "treatment": "COMET_CLASSIC_DOCS_LAYOUT",
+      "count": 1
+    },
+    {
+      "workflow": "classic",
+      "difficulty": "medium",
+      "task": "comet-counter-refactor-archive",
+      "treatment": "COMET_CLASSIC_DOCS_LAYOUT",
+      "count": 1
+    },
+    {
+      "workflow": "classic",
+      "difficulty": "hard",
+      "task": "comet-classic-sdk-recovery",
+      "treatment": "COMET_CLASSIC_DOCS_LAYOUT",
+      "count": 1
+    }
+  ]
+}

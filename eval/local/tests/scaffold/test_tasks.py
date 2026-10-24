@@ -218,9 +218,11 @@ def test_comet_task_index_lists_real_tasks():
     index = yaml.safe_load(index_path.read_text(encoding="utf-8"))
     names = [task["name"] for task in index["tasks"]]
     assert sorted(names) == sorted(list_tasks())
-    assert len(names) == 34
+    assert len(names) == 36
     assert set(names) == {
         "authoring-skill-smoke",
+        "comet-small-cli-archive",
+        "comet-counter-refactor-archive",
         "comet-agent-memory-routing",
         "comet-api-cache-ttl",
         "comet-classic-layout-lifecycle",
