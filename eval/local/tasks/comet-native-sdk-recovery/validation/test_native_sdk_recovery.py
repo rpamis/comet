@@ -7,6 +7,7 @@ import json
 import os
 import re
 import subprocess
+import traceback
 from pathlib import Path
 
 from scaffold.python.validation.current_sdk import inspect_run
@@ -16,6 +17,26 @@ WORKSPACE = Path("/workspace")
 PACKAGE = Path("/opt/comet-current")
 CLI = ["comet"]
 NAME = "sentence-counting"
+
+
+def assert_once_check(plan: dict, receipt: dict) -> None:
+    argv = plan["argv"]
+    if plan["executable"] == "python3":
+        assert argv == ["recovery_once.py"], "Unexpected one-shot Python arguments"
+    else:
+        assert plan["executable"] in {"env", "/usr/bin/env"}, "Unexpected one-shot executable"
+        assert len(argv) == 3 and argv[1:] == ["python3", "recovery_once.py"], (
+            "Unexpected fixed-PATH one-shot command"
+        )
+        assert argv[0].startswith("PATH=") and all(
+            directory.startswith("/") for directory in argv[0][5:].split(":")
+        ), "One-shot PATH must contain only absolute directories"
+    assert plan["repeatable"] is False and plan["cwdRef"] == ".", (
+        "One-shot check must be non-repeatable at the project root"
+    )
+    assert receipt["argvDisplay"] == argv and receipt["cwdRef"] == ".", (
+        "One-shot receipt does not match its Runtime plan"
+    )
 
 
 def assert_recovery(run: dict, archived: Path) -> None:
@@ -71,8 +92,6 @@ def assert_recovery(run: dict, archived: Path) -> None:
     plans = result(builder)["verificationChecks"]
     once = [p for p in plans if p.get("id") == "recovery-once"]
     assert len(once) == 1 and once[0]["repeatable"] is False
-    assert once[0]["executable"] == "python3"
-    assert once[0]["argv"] == ["recovery_once.py"] and once[0]["cwdRef"] == "."
     business = {p["id"] for p in plans if "pytest" in p.get("argv", [])}
     assert business and any(
         c["id"] in business and c["status"] == "passed" for c in receipt["checks"]
@@ -80,10 +99,7 @@ def assert_recovery(run: dict, archived: Path) -> None:
     once_receipts = [c for c in receipt["checks"] if c["id"] == "recovery-once"]
     assert len(once_receipts) == 1
     assert once_receipts[0]["status"] == "passed" and once_receipts[0]["exitCode"] == 0
-    assert (
-        once_receipts[0]["argvDisplay"] == ["recovery_once.py"]
-        and once_receipts[0]["cwdRef"] == "."
-    )
+    assert_once_check(once[0], once_receipts[0])
     assert (WORKSPACE / ".cache/comet-sdk-recovery/check-count").read_text() == "once\n"
     assert (
         hashlib.sha256((WORKSPACE / "recovery_once.py").read_bytes()).hexdigest()
@@ -171,7 +187,12 @@ def check_recovery() -> dict:
         OSError,
         subprocess.SubprocessError,
     ) as error:
-        return {"check": name, "status": "failed", "reason": str(error)}
+        frame = traceback.extract_tb(error.__traceback__)[-1]
+        return {
+            "check": name,
+            "status": "failed",
+            "reason": f"{type(error).__name__} at {frame.name}:{frame.lineno}: {error}",
+        }
 
 
 def check_feature() -> dict:

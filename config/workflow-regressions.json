@@ -505,9 +505,10 @@
       "additionalAcceptance": [
         {
           "layer": "real GLM medium Native Archive and normal process exit",
-          "status": "pending",
+          "status": "verified",
           "evidence": [
-            "Original failure: eval/local/logs/experiments/experiment_20261025_034211/reports/comet_counter_refactor_archive_COMET_NATIVE_SDK_CURRENT_r1_rep1_report.json"
+            "Original failure: eval/local/logs/experiments/experiment_20261025_034211/reports/comet_counter_refactor_archive_COMET_NATIVE_SDK_CURRENT_r1_rep1_report.json",
+            "Verified 23/23, exit 0: eval/local/logs/experiments/experiment_20261025_043926/reports/comet_counter_refactor_archive_COMET_NATIVE_SDK_CURRENT_r1_rep1_report.json; source identity metadata difference audited in eval/local/logs/acceptance-051-source-identity-audit.json"
           ]
         }
       ]
@@ -536,6 +537,62 @@
           "status": "pending",
           "evidence": [
             "Original failure: eval/local/logs/experiments/experiment_20261025_042537/reports/comet_native_sdk_recovery_COMET_NATIVE_SDK_CURRENT_r1_rep1_report.json"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-native-shared-capability-reference",
+      "behavior": "当前Native评估能读取当前候选的共享能力检查文档，且不安装额外可调用Skill。",
+      "coverageLevel": "unit",
+      "reproduction": "真实新会话读不到Native入口链接的../comet/reference/host-check.md；评估只复制Native目录，遗漏共享文档。",
+      "expected": "从同一当前CLI快照复制共享文档到原相对路径，缺失时拒绝启动。",
+      "forbidden": "静默漏装、修改Native入口、安装或调用Classic或Superpowers代替。",
+      "rootCause": "Native独立treatment未携带入口引用的共享只读文档。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "provides the current Native shared capability reference without installing another Skill",
+          "requiredNames": [
+            "standalone static collector parity provides the current Native shared capability reference without installing another Skill"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM Native easy medium hard capability check and Archive",
+          "status": "pending",
+          "evidence": [
+            "Observed in eval/local/logs/experiments/experiment_20261025_045220/reports/comet_native_sdk_recovery_COMET_NATIVE_SDK_CURRENT_r1_rep1_report.json"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-native-one-shot-fixed-path-receipt",
+      "behavior": "Native恢复验收按真实Runtime计划校验固定PATH的一次性检查。",
+      "coverageLevel": "unit",
+      "reproduction": "真实高难度通过env固定PATH执行python3 recovery_once.py并归档，验证器却仅接受executable=python3。",
+      "expected": "只接受直接Python或仅固定绝对PATH的env包装；收据参数必须与原计划完全匹配，候选和一次性计数仍严格核验。",
+      "forbidden": "接受任意shell、额外参数、相对或空PATH、错误收据，或删掉一次性检查和跨会话证据断言。",
+      "rootCause": "验证器把命令的唯一表现形式误当成任务要求，和明确PATH要求冲突。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "binds one-shot recovery receipts to direct Python or an explicit fixed PATH",
+          "requiredNames": [
+            "standalone static collector parity binds one-shot recovery receipts to direct Python or an explicit fixed PATH"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM Native fixed PATH blocked recovery and Archive",
+          "status": "pending",
+          "evidence": [
+            "Observed in eval/local/logs/experiments/experiment_20261025_045220/reports/comet_native_sdk_recovery_COMET_NATIVE_SDK_CURRENT_r1_rep1_report.json"
           ]
         }
       ]

@@ -1970,6 +1970,21 @@ def setup_test_context(test_dir):
                 os.unlink(temp_file)
 
         agent = _resolve_eval_agent(_plugin.config).agent if _plugin else "claude-code"
+        skills_root = test_dir / _agent_project_root(agent) / "skills"
+        native_entry = skills_root / "comet-native/SKILL.md"
+        if (
+            environment_dir
+            and (environment_dir / CURRENT_COMET_CLI_MARKER).is_file()
+            and native_entry.is_file()
+            and "../comet/reference/host-check.md" in native_entry.read_text(encoding="utf-8")
+        ):
+            # This is shared documentation, not an additional executable Skill.
+            reference = test_dir / "_eval_current_comet/assets/skills/comet/reference/host-check.md"
+            if not reference.is_file():
+                raise FileNotFoundError(f"Current Native capability reference is missing: {reference}")
+            target = skills_root / "comet/reference/host-check.md"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(reference, target)
         _ensure_langfuse_trajectory_support(test_dir, agent)
         _ensure_agent_pre_tool_hook(test_dir, agent, _comet_hook_command(test_dir, agent))
 

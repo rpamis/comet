@@ -27,9 +27,37 @@ def validator():
     return module
 
 
+def test_one_shot_receipt_accepts_only_the_bound_direct_or_fixed_path_command():
+    module = validator()
+    direct = dict(executable="python3", argv=["recovery_once.py"], cwdRef=".", repeatable=False)
+    fixed = dict(
+        direct,
+        executable="/usr/bin/env",
+        argv=["PATH=/usr/local/bin:/usr/bin:/bin", "python3", "recovery_once.py"],
+    )
+    for plan in (direct, fixed):
+        receipt = dict(argvDisplay=plan["argv"], cwdRef=".")
+        module.assert_once_check(plan, receipt)
+        for field, value in (
+            ("executable", "sh"),
+            ("argv", ["other.py"]),
+            ("cwdRef", "other"),
+            ("repeatable", True),
+        ):
+            with pytest.raises(AssertionError):
+                module.assert_once_check(dict(plan, **{field: value}), receipt)
+        with pytest.raises(AssertionError):
+            module.assert_once_check(plan, dict(receipt, argvDisplay=["other.py"]))
+    for prefix in ("PATH=", "PATH=.", "PATH=/usr/bin:", "HOME=/tmp"):
+        invalid = dict(fixed, argv=[prefix, "python3", "recovery_once.py"])
+        with pytest.raises(AssertionError):
+            module.assert_once_check(invalid, dict(argvDisplay=invalid["argv"], cwdRef="."))
+
+
 class Driver:
-    def __init__(self, root, monkeypatch):
+    def __init__(self, root, monkeypatch, *, explicit_path=False):
         self.root = root
+        self.explicit_path = explicit_path
         self.name = "sentence-counting"
         self.sequence = 0
         monkeypatch.setenv("COMET_DATA_DIR", str(root.parent / "data"))
@@ -225,6 +253,10 @@ Run test_wordcount.py.
             repeatable=False,
         ),
     ]
+    if driver.explicit_path:
+        for plan in plans:
+            plan["argv"] = ["PATH=" + driver.env["PATH"], plan["executable"], *plan["argv"]]
+            plan["executable"] = "/usr/bin/env"
     run = driver.record(
         builder,
         "builder-session",
@@ -309,10 +341,18 @@ Run test_wordcount.py.
 
 
 def test_current_cli_recovery_to_archive(tmp_path, monkeypatch):
+    exercise_cli_recovery_to_archive(tmp_path, monkeypatch, explicit_path=False)
+
+
+def test_current_cli_recovery_fixed_path_to_archive(tmp_path, monkeypatch):
+    exercise_cli_recovery_to_archive(tmp_path, monkeypatch, explicit_path=True)
+
+
+def exercise_cli_recovery_to_archive(tmp_path, monkeypatch, *, explicit_path):
     assert (ROOT / "dist/app/cli/index.js").is_file(), (
         "Build the current candidate first; no skipped release coverage"
     )
-    driver = Driver(tmp_path / "project", monkeypatch)
+    driver = Driver(tmp_path / "project", monkeypatch, explicit_path=explicit_path)
     run = build_recovery(driver)
     assert run["status"] == "completed"
     module = validator()

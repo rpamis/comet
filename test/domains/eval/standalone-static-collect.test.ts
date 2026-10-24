@@ -85,6 +85,46 @@ function pythonAccepts(manifest: string): boolean {
 }
 
 describe('standalone static collector parity', () => {
+  it('provides the current Native shared capability reference without installing another Skill', () => {
+    const result = execFileSync(
+      'uv',
+      [
+        'run',
+        '--locked',
+        'python',
+        '-m',
+        'pytest',
+        'local/tests/scaffold/test_conftest_helpers.py',
+        '-k',
+        'current_native_shared_host_check',
+        '-q',
+      ],
+      { cwd: evalRoot, encoding: 'utf8', stdio: 'pipe' },
+    );
+    expect(result).toMatch(/2 passed/);
+    expect(result).not.toMatch(/failed|skipped/);
+  });
+
+  it('binds one-shot recovery receipts to direct Python or an explicit fixed PATH', () => {
+    const result = execFileSync(
+      'uv',
+      [
+        'run',
+        '--locked',
+        'python',
+        '-m',
+        'pytest',
+        'local/tests/scaffold/test_native_sdk_recovery.py',
+        '-k',
+        'one_shot_receipt',
+        '-q',
+      ],
+      { cwd: evalRoot, encoding: 'utf8', stdio: 'pipe' },
+    );
+    expect(result).toMatch(/1 passed/);
+    expect(result).not.toMatch(/failed|skipped/);
+  });
+
   it('starts the trusted Native recovery boundary checker in the actual flattened container layout', () => {
     const result = execFileSync(
       'uv',

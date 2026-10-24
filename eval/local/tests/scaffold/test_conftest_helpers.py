@@ -14,6 +14,37 @@ import pytest
 from scaffold.python.tasks import load_task
 from scaffold.python.treatments import build_treatment_skills, load_treatments
 
+
+@pytest.mark.parametrize("reference_present", [True, False])
+def test_current_native_shared_host_check_is_available_without_loading_other_skills(
+    tmp_path, monkeypatch, setup_test_context, reference_present
+):
+    assets = Path(__file__).resolve().parents[4] / "assets/skills"
+    native = (assets / "comet-native/SKILL.md").read_text(encoding="utf-8")
+    reference = assets / "comet/reference/host-check.md"
+    environment = tmp_path / "environment"
+    environment.mkdir()
+    (environment / conftest.CURRENT_COMET_CLI_MARKER).touch()
+
+    def copy_snapshot(_environment, workspace):
+        if reference_present:
+            target = workspace / "_eval_current_comet/assets/skills/comet/reference/host-check.md"
+            target.parent.mkdir(parents=True)
+            target.write_bytes(reference.read_bytes())
+
+    monkeypatch.setattr(conftest, "_copy_current_comet_cli_snapshot", copy_snapshot)
+    args = {"skills": {"comet-native": {"sections": [native]}}, "environment_dir": environment}
+    if not reference_present:
+        with pytest.raises(FileNotFoundError, match="host-check.md"):
+            setup_test_context(**args)
+        return
+    workspace = setup_test_context(**args)
+    skills = workspace / ".claude/skills"
+    assert (skills / "comet/reference/host-check.md").read_bytes() == reference.read_bytes()
+    assert (skills / "comet-native/SKILL.md").read_text(encoding="utf-8") == native
+    assert not (skills / "comet/SKILL.md").exists()
+    assert not (skills / "comet/scripts").exists()
+
 if sys.platform == "win32":
     import msvcrt
 else:
