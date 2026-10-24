@@ -2306,7 +2306,101 @@ const demoMemoryRecords = [
     failureCount: 0,
     updatedAt: '2026-08-29T09:40:00.000Z',
   },
+  ...[
+    {
+      id: 'demo-memory-review-scope',
+      memoryType: 'collaboration-policy',
+      category: '评审范围',
+      text: '评审时优先指出可复现、会影响用户的行为问题，并说明触发条件和验证证据。',
+      reason: '多次代码评审中确认了问题报告的范围。',
+    },
+    {
+      id: 'demo-memory-release-notes',
+      memoryType: 'core-profile',
+      category: '发布说明偏好',
+      text: '发布说明聚焦升级后能感知的最终行为，不记录开发分支中的反复调整。',
+      reason: '用户明确要求按发布视角整理 Changelog。',
+    },
+    {
+      id: 'demo-memory-test-evidence',
+      memoryType: 'collaboration-policy',
+      category: '验证证据',
+      text: '分别报告定向测试、构建、浏览器验收和未执行的检查，不把单元测试当成完整交付证明。',
+      reason: '任务交付时需要区分不同层级的验证结果。',
+    },
+    {
+      id: 'demo-memory-workspace-protection',
+      memoryType: 'collaboration-policy',
+      category: '工作区保护',
+      text: '修改前检查当前分支和未提交文件；保留无关改动，提交时只暂存本次任务涉及的文件。',
+      reason: '用户的工作区经常同时包含其他进行中的改动。',
+    },
+    {
+      id: 'demo-memory-readable-layout',
+      memoryType: 'personal-episode',
+      category: '长列表可读性',
+      text: '长列表需要在可用高度内独立滚动，同时保留页脚翻页和右侧详情的操作入口。',
+      reason: '一次 Dashboard 迭代发现长内容会挤出分页按钮。',
+    },
+    {
+      id: 'demo-memory-response-density',
+      memoryType: 'core-profile',
+      category: '回复详略',
+      text: '简单问题直接回答；代码交付说明关键改动、实际验证和剩余限制。',
+      reason: '用户偏好简洁且可核对的最终回复。',
+    },
+    {
+      id: 'demo-memory-loading-feedback',
+      memoryType: 'personal-episode',
+      category: '加载状态反馈',
+      text: '自动刷新时尽量保留已有内容，让用户继续阅读；首次加载再展示占位状态。',
+      reason: '可观测页面的频繁刷新曾打断阅读。',
+    },
+    {
+      id: 'demo-memory-mobile-navigation',
+      memoryType: 'personal-episode',
+      category: '窄屏导航验收',
+      text: '窄屏验收要实际切换筛选与分页，并确认按钮可触达、详情内容可读。',
+      reason: '仅检查桌面截图无法发现窄屏交互问题。',
+    },
+  ].map((record, index) => ({
+    ...record,
+    scope: record.memoryType === 'core-profile' ? 'global' : 'project',
+    ...(record.memoryType === 'core-profile' ? {} : { projectKey: 'comet' }),
+    status: index === 6 ? 'trial' : 'proven',
+    authority: index === 6 ? 'inferred' : 'explicit',
+    evidenceCount: index === 6 ? 2 : 4,
+    applicationCount: index === 6 ? 1 : 5,
+    successCount: index === 6 ? 1 : 5,
+    failureCount: 0,
+    updatedAt: new Date(Date.parse('2026-08-29T09:30:00.000Z') - index * 60000).toISOString(),
+  })),
 ];
+
+const demoMemoryPageSize = 5;
+const demoMemoryCounts = {
+  active: demoMemoryRecords.filter((record) => ['trial', 'proven'].includes(record.status)).length,
+  trial: demoMemoryRecords.filter((record) => record.status === 'trial').length,
+  proven: demoMemoryRecords.filter((record) => record.status === 'proven').length,
+  history: demoMemoryRecords.filter((record) => !['trial', 'proven'].includes(record.status))
+    .length,
+  tombstones: demoMemoryRecords.filter((record) => record.status === 'tombstoned').length,
+};
+const demoMemoryFilterCounts = {
+  all: demoMemoryRecords.length,
+  profile: demoMemoryRecords.filter(
+    (record) => ['trial', 'proven'].includes(record.status) && record.memoryType === 'core-profile',
+  ).length,
+  policy: demoMemoryRecords.filter(
+    (record) =>
+      ['trial', 'proven'].includes(record.status) && record.memoryType === 'collaboration-policy',
+  ).length,
+  episode: demoMemoryRecords.filter(
+    (record) =>
+      ['trial', 'proven'].includes(record.status) && record.memoryType === 'personal-episode',
+  ).length,
+  history: demoMemoryCounts.history,
+};
 
 const demoProjectKnowledgeRecords = [
   {
@@ -2580,10 +2674,24 @@ export const DEMO_PLUGIN_PAGES = [
         pausedLearningProjects: [],
         pausedRetrievalProjects: [],
         profile: { usedChars: 62, maxChars: 2000 },
+        counts: demoMemoryCounts,
         provider: { provider: 'local', configured: true },
       },
-      retrieval: { records: demoMemoryRecords, profileRecords: demoMemoryRecords.slice(0, 1) },
-      management: { records: demoMemoryRecords, conflicts: [] },
+      retrieval: {
+        records: demoMemoryRecords,
+        profileRecords: demoMemoryRecords.filter(
+          (record) => record.memoryType === 'core-profile' && record.status === 'proven',
+        ),
+      },
+      management: {
+        records: demoMemoryRecords.slice(0, demoMemoryPageSize),
+        conflicts: [],
+        counts: demoMemoryFilterCounts,
+        total: demoMemoryRecords.length,
+        offset: 0,
+        nextOffset: demoMemoryPageSize,
+        truncated: true,
+      },
       policy: { learning: true, retrieval: true },
       projectKey: 'comet',
       providerConfig: {

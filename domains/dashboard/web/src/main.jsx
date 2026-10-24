@@ -1320,7 +1320,7 @@ function DashboardApp({
               .toLocaleLowerCase()
               .split(/\s+/u)
               .filter(Boolean);
-            const records = (pluginPage?.data?.management?.records ?? []).filter((record) => {
+            const records = (pluginPage?.data?.retrieval?.records ?? []).filter((record) => {
               const text = [record.text, record.category, record.memoryClass, record.reason]
                 .filter(Boolean)
                 .join(' ')
@@ -1338,7 +1338,18 @@ function DashboardApp({
                   }[input.managementFilter]
               );
             });
-            return { records, conflicts: [], total: records.length, offset: 0, truncated: false };
+            const offset = Math.max(0, Number(input?.offset) || 0);
+            const pageSize = pluginPage?.data?.management?.records?.length || 5;
+            const nextOffset = offset + pageSize;
+            return {
+              records: records.slice(offset, nextOffset),
+              conflicts: [],
+              counts: pluginPage?.data?.management?.counts,
+              total: records.length,
+              offset,
+              truncated: nextOffset < records.length,
+              ...(nextOffset < records.length ? { nextOffset } : {}),
+            };
           }
           if (pluginId === 'comet.project-knowledge' && capability === 'read-source') {
             const source = isDashboardRecord(input) ? input.source : null;
@@ -2031,6 +2042,7 @@ function DashboardApp({
                 loading={pluginLoading}
                 error={pluginError}
                 readOnly={embedded}
+                demo={useDemo}
                 onRetry={() => {
                   setPluginError(null);
                   setPluginRefreshToken((value) => value + 1);
@@ -4983,6 +4995,9 @@ function ContextUsageCenter({
   );
   const [sections, setSections] = useState({});
   const [retryToken, setRetryToken] = useState(0);
+  const traceCache = useRef(new Map());
+  const performanceCache = useRef(new Map());
+  const insightsCache = useRef(null);
   useEffect(() => {
     if (demo) {
       setSections(Object.fromEntries(demoPages.map((page) => [page.pluginId, { page }])));
@@ -5057,6 +5072,8 @@ function ContextUsageCenter({
             demo={demo}
             refreshToken={refreshToken}
             timeRange={timeRange}
+            timeSelection={timeSelection}
+            cacheRef={traceCache}
           />
         )}
         {selectedSource === 'runtime-performance' && (
@@ -5068,6 +5085,8 @@ function ContextUsageCenter({
             timeRange={timeRange}
             rangeLabel={rangeLabel}
             timeSelection={timeSelection}
+            cacheRef={performanceCache}
+            insightsCacheRef={insightsCache}
           />
         )}
         {DASHBOARD_PLUGIN_NAV_PLACEHOLDERS.map(({ pluginId, label }) => {
@@ -5125,6 +5144,7 @@ function PluginCenterPage({
   loading,
   error,
   readOnly = false,
+  demo = false,
   onRetry,
   onInvoke,
   viewScope,
@@ -5196,6 +5216,7 @@ function PluginCenterPage({
           viewScope={viewScope}
           data={page.data}
           readOnly={readOnly}
+          demo={demo}
           onInvoke={onInvoke}
         />
       </>
@@ -7166,6 +7187,7 @@ function ContextApplicationHistory({
         <div className="dashboard-context-application-history-head">
           <Button
             aria-label={t('较新记录')}
+            className="dashboard-page-nav-button"
             size="small"
             type="text"
             disabled={!page || loading}
@@ -7175,6 +7197,7 @@ function ContextApplicationHistory({
           </Button>
           <Button
             aria-label={t('较早记录')}
+            className="dashboard-page-nav-button"
             size="small"
             type="text"
             loading={loading}
@@ -8868,7 +8891,7 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke, viewSc
   );
 }
 
-function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
+function PersonalMemoryCenter({ data, readOnly = false, demo = false, onInvoke, viewScope }) {
   useDashboardLanguage();
   const [editingRecord, setEditingRecord] = useState(null);
   const [correctionText, setCorrectionText] = useState('');
@@ -8922,7 +8945,7 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
   useEffect(() => {
     let current = true;
     if (
-      readOnly ||
+      (readOnly && !demo) ||
       (!memoryQuery.trim() &&
         memoryFilter === 'all' &&
         memoryOffset === 0 &&
@@ -8961,11 +8984,11 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
       current = false;
       clearTimeout(timer);
     };
-  }, [requestKey, data?.management, readOnly]);
+  }, [requestKey, data?.management, readOnly, demo]);
   const status = data?.status ?? {};
   const retrieval = data?.retrieval ?? {};
   const defaultMemoryPage =
-    readOnly ||
+    (readOnly && !demo) ||
     (!memoryQuery.trim() &&
       memoryFilter === 'all' &&
       memoryOffset === 0 &&
@@ -9393,10 +9416,12 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
                   example={activeMemoryFilter.example}
                 />
               </span>
-              <span>
-                {visibleMemoryRecords.length}
-                {t(' 条')}
-              </span>
+              {!memoryLoading && (
+                <span>
+                  {visibleMemoryRecords.length}
+                  {t(' 条')}
+                </span>
+              )}
             </div>
             <Select
               value="updated"
@@ -9414,10 +9439,33 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
           <div
             ref={filterMotion}
             data-dashboard-motion="tab"
-            className="dashboard-memory-table-body"
+            className={`dashboard-memory-table-body${visibleMemoryRecords.length >= 4 ? ' is-filled-page' : ''}`}
             data-dashboard-scroll="personal-memory-list"
           >
-            {memoryLoading && <p role="status">{t('正在搜索个人记忆…')}</p>}
+            {memoryLoading && (
+              <div
+                className="dashboard-memory-loading"
+                role="status"
+                aria-label={t('正在搜索个人记忆…')}
+                aria-live="polite"
+              >
+                <div className="dashboard-memory-loading-label">
+                  <SyncOutlined spin aria-hidden="true" />
+                  <span>{t('正在搜索个人记忆…')}</span>
+                </div>
+                <div aria-hidden="true">
+                  {[0, 1, 2].map((index) => (
+                    <div className="dashboard-memory-loading-row" key={index}>
+                      <Skeleton
+                        active
+                        title={{ width: index === 1 ? '56%' : '72%' }}
+                        paragraph={{ rows: 1, width: index === 2 ? '44%' : '64%' }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {memoryLoadError && (
               <Alert type="error" showIcon message={t('个人记忆加载失败，请重试搜索或刷新页面')} />
             )}
@@ -9434,7 +9482,11 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={memoryEmptyDescription} />
             ) : (
               memoryGroups.map((group) => (
-                <section key={group.key} className="dashboard-memory-group">
+                <section
+                  key={group.key}
+                  className="dashboard-memory-group"
+                  style={{ '--memory-group-records': group.records.length }}
+                >
                   <div className="dashboard-memory-group-title">
                     <strong>{group.title}</strong>
                     <span>{group.records.length}</span>
@@ -9463,8 +9515,10 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
             )}
             <div>
               <Button
+                className="dashboard-page-nav-button"
                 size="small"
-                disabled={readOnly || memoryLoading || memoryPageOffsets.length === 0}
+                type="text"
+                disabled={(readOnly && !demo) || memoryLoading || memoryPageOffsets.length === 0}
                 onClick={() => {
                   setMemoryOffset(memoryPageOffsets.at(-1) ?? 0);
                   setMemoryPageOffsets((offsets) => offsets.slice(0, -1));
@@ -9474,9 +9528,11 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
                 {t('上一页')}
               </Button>
               <Button
+                className="dashboard-page-nav-button"
                 size="small"
+                type="text"
                 disabled={
-                  readOnly ||
+                  (readOnly && !demo) ||
                   memoryLoading ||
                   !Number.isInteger(management.nextOffset) ||
                   management.nextOffset <= memoryOffset

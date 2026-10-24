@@ -1056,7 +1056,12 @@ test('Any completes an in-flight Run read while discovery is still indexing', as
       });
     if (url.pathname.endsWith('/application-runs'))
       return route.fulfill({
-        json: { ...readApplicationDemo('application-runs', {}), indexing: true },
+        json: {
+          ...readApplicationDemo('application-runs', {}),
+          indexing: true,
+          indexedCount: 3,
+          sourceCount: 4,
+        },
       });
     if (url.pathname.endsWith('/application-run')) {
       await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -1072,8 +1077,23 @@ test('Any completes an in-flight Run read while discovery is still indexing', as
     }
     return route.fulfill({ json: { items: [], pages: [] } });
   });
+  await page.addInitScript(() => {
+    localStorage.setItem('comet-theme', 'dark');
+    localStorage.setItem('comet-dashboard-font-scale', '125');
+  });
   await page.goto('/');
   await page.getByRole('menuitem', { name: '自定义工作流' }).click();
+  const indexingStatus = page.locator('.any-indexing-status');
+  await expect(indexingStatus).toContainText(/正在同步列表\s*3 \/ 4/);
+  await expect(indexingStatus.locator('.any-indexing-status-track > span')).toHaveAttribute(
+    'style',
+    'width: 75%;',
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await indexingStatus.evaluate((element) => element.scrollWidth <= element.clientWidth),
+  ).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
   await expect(page.getByRole('tab', { name: '步骤', exact: true })).toBeVisible({ timeout: 6500 });
   expect(finished).toBeGreaterThan(0);
 });

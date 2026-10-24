@@ -118,6 +118,15 @@ describe('dashboard demo data', () => {
         }),
       ]),
     );
+    expect(personalMemory?.data.management).toMatchObject({
+      total: 12,
+      offset: 0,
+      nextOffset: 5,
+      truncated: true,
+    });
+    expect(personalMemory?.data.management.records).toHaveLength(5);
+    expect(personalMemory?.data.retrieval.records).toHaveLength(12);
+    expect(personalMemory?.data.status.counts).toMatchObject({ active: 11, history: 1 });
     expect(projectKnowledge).toMatchObject({
       status: 'enabled',
       data: {

@@ -122,10 +122,11 @@ export function RuntimeCommandInsights({ data, rangeLabel = t('最近 7 天') })
   );
 }
 
-export function RuntimeInsightsPanel({ projectId, demo, refreshToken }) {
+export function RuntimeInsightsPanel({ projectId, demo, refreshToken, cacheRef }) {
   const [state, setState] = useState({});
   const [retry, setRetry] = useState(0);
-  const cache = useRef(null);
+  const localCache = useRef(null);
+  const cache = cacheRef ?? localCache;
   useEffect(() => {
     if (demo) return undefined;
     const controller = new AbortController();
@@ -148,8 +149,8 @@ export function RuntimeInsightsPanel({ projectId, demo, refreshToken }) {
         if (!controller.signal.aborted) setState({ data: cache.current, error: true });
       });
     return () => controller.abort();
-  }, [projectId, demo, refreshToken, retry]);
-  const data = demo ? DEMO_RUNTIME_INSIGHTS : state.data;
+  }, [projectId, demo, refreshToken, retry, cache]);
+  const data = demo ? DEMO_RUNTIME_INSIGHTS : (state.data ?? cache.current);
   const health = data?.health;
   const quality = data?.quality;
   const healthStats =

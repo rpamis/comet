@@ -23,6 +23,8 @@ export function RuntimePerformancePanel({
   timeRange,
   rangeLabel,
   timeSelection,
+  cacheRef,
+  insightsCacheRef,
 }) {
   useDashboardLanguage();
   const scope = `${demo ? 'demo' : projectId}:runtime-performance`;
@@ -30,7 +32,8 @@ export function RuntimePerformancePanel({
   const [state, setState] = useState(null);
   const [retry, setRetry] = useState(0);
   const [selected, setSelected] = useState(null);
-  const cache = useRef(new Map());
+  const localCache = useRef(new Map());
+  const cache = cacheRef ?? localCache;
   const rangeQuery = observabilityRangeQuery(timeRange);
   // 滚动时间范围刷新后沿用相同筛选的快照，失败时仍可阅读上次结果。
   const requestKey = `${projectId}:${workflow}:${timeSelection ? JSON.stringify(timeSelection) : rangeQuery}`;
@@ -64,10 +67,12 @@ export function RuntimePerformancePanel({
           setState({ key: requestKey, data: cache.current.get(requestKey), error: error.message });
       });
     return () => controller.abort();
-  }, [projectId, demo, workflow, refreshToken, retry, requestKey, rangeQuery]);
+  }, [projectId, demo, workflow, refreshToken, retry, requestKey, rangeQuery, cache]);
   useEffect(() => setSelected(null), [requestKey]);
   const current = state?.key === requestKey ? state : null;
-  const data = demo ? getDemoRuntimePerformance(workflow, timeRange) : current?.data;
+  const data = demo
+    ? getDemoRuntimePerformance(workflow, timeRange)
+    : (current?.data ?? cache.current.get(requestKey));
   const commands = data?.commands;
   const checks = data?.checks;
   const recent = data?.recent ?? [];
@@ -163,7 +168,7 @@ export function RuntimePerformancePanel({
         />
         {demo && <Tag>{t('演示数据')}</Tag>}
         {data?.truncated && <Tag color="warning">{t('记录已截断')}</Tag>}
-        {current?.loading && data && <span>{t('正在刷新')}</span>}
+        {!demo && <span className="runtime-performance-sync">{t('每 30 秒同步')}</span>}
       </div>
       {current?.error && (
         <Alert
@@ -270,7 +275,12 @@ export function RuntimePerformancePanel({
             </section>
           </div>
           <RuntimeCommandInsights data={data} rangeLabel={rangeLabel} />
-          <RuntimeInsightsPanel projectId={projectId} demo={demo} refreshToken={refreshToken} />
+          <RuntimeInsightsPanel
+            projectId={projectId}
+            demo={demo}
+            refreshToken={refreshToken}
+            cacheRef={insightsCacheRef}
+          />
           <section className="usage-card runtime-slowest" aria-label={t('慢命令与检查')}>
             <header>
               <h4>{t('慢命令与检查')}</h4>

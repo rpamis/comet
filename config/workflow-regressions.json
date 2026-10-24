@@ -23,6 +23,35 @@
       "expected": "缺少同来源映射或缩减基线时登记守卫失败；登记的测试必须在指定文件实际通过。",
       "forbidden": "空声明、错误文件同名测试、skip 或 excluded 被当作已修复证据。",
       "rootCause": "原入口只校验历史快照，没有持续 PR 修复登记与比较基线约束。"
+    },
+    {
+      "id": "dashboard-memory-selection-layout-stability",
+      "behavior": "在个人记忆列表中切换内容长度不同的记录时，列表边界、行位置和滚动位置保持稳定。",
+      "sources": ["report:2026-10-25-dashboard-memory-selection-jitter"],
+      "coverageLevel": "unit",
+      "reproduction": "Chromium 在 1900×1170 的 /?demo 页面反复点击评审范围和官网工作台迭代，原布局的列表上沿及行高发生约 0.484px 的变化。",
+      "expected": "详情正常切换，列表各行及容器的逐帧位置、尺寸和滚动位置不变。",
+      "forbidden": "详情内容长度参与顶部区域和列表的高度分配，导致切换选中记录时页面抖动。",
+      "rootCause": "桌面列表使用内容决定的 flex basis，顶部状态和最近使用区域还会参与收缩；不同详情的固有高度改变了它们的高度分配。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/web-source.test.ts",
+          "namePattern": "keeps personal memory focused on searchable records and application reasons",
+          "requiredNames": [
+            "dashboard web source contracts keeps personal memory focused on searchable records and application reasons"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "Chromium browser layout and selection",
+          "status": "verified",
+          "evidence": [
+            "2026-10-25: pnpm exec playwright test --config test/domains/dashboard/playwright.config.ts -g \"keeps personal memory rows fixed while switching the selected record\" --workers=1",
+            "相同 demo 数据和逐帧断言在修复前检测到 0.484375px 位移而失败，固定顶部区域并将列表 flex basis 改为 0 后通过；Vitest 仅覆盖桌面布局源码契约，真实交互由该浏览器用例覆盖。"
+          ]
+        }
+      ]
     }
   ]
 }

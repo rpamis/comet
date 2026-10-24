@@ -3117,11 +3117,33 @@ body {
   margin: 0;
 }
 
-.dashboard-context-application-history-head .ant-btn {
+.dashboard-page-nav-button.ant-btn {
   height: 26px;
-  padding-inline: 7px;
-  color: var(--color-accent);
+  padding-inline: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-fg-2);
   font-size: 13px;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease;
+}
+
+.dashboard-page-nav-button.ant-btn:disabled {
+  color: var(--color-meta);
+}
+
+.dashboard-page-nav-button.ant-btn:not(:disabled):hover {
+  border-color: transparent;
+  background: var(--color-surface-warm);
+  color: var(--color-fg);
+}
+
+.dashboard-page-nav-button.ant-btn:not(:disabled):active {
+  border-color: transparent;
+  background: var(--color-surface);
+  color: var(--color-fg);
 }
 
 .dashboard-context-application-history article {
@@ -7272,14 +7294,20 @@ body {
     flex-direction: column;
   }
 
-  .dashboard-tool-page-memory .dashboard-tool-header {
+  .dashboard-tool-page-memory
+    > :is(
+      .dashboard-tool-header,
+      .dashboard-plugin-context-bar,
+      .dashboard-context-manifest,
+      .ant-alert
+    ) {
     flex: 0 0 auto;
   }
 
   .dashboard-tool-page-memory .dashboard-memory-workspace {
     min-height: 0;
     height: auto;
-    flex: 1 1 auto;
+    flex: 1 1 0;
   }
 
   /* 列表和筛选栏必须能缩进剩余高度，避免 Grid 的自动最小高度撑开整行。 */
@@ -7300,6 +7328,26 @@ body {
 
   .dashboard-memory-workspace .dashboard-memory-table-body {
     flex: 1 1 auto;
+  }
+
+  .dashboard-memory-workspace .dashboard-memory-table-body.is-filled-page {
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 1px;
+  }
+
+  .dashboard-memory-table-body.is-filled-page > .dashboard-memory-group {
+    display: flex;
+    flex: var(--memory-group-records) 0 auto;
+    flex-direction: column;
+  }
+
+  .dashboard-memory-table-body.is-filled-page .dashboard-memory-group-title {
+    flex: 0 0 auto;
+  }
+
+  .dashboard-memory-table-body.is-filled-page .dashboard-memory-table-row {
+    flex: 1 0 auto;
   }
 
   .dashboard-tool-page-knowledge {
@@ -7472,17 +7520,22 @@ body {
 }
 
 .dashboard-memory-pagination {
-  display: grid;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   flex: 0 0 auto;
   gap: 8px;
   padding: 12px 14px;
   border-top: 1px solid var(--color-border-soft);
+  color: var(--color-muted);
+  font-size: 13px;
 }
 
 .dashboard-memory-pagination > div {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 2px;
+  margin-left: auto;
 }
 
 .dashboard-memory-registry-toolbar {
@@ -7541,6 +7594,38 @@ body {
 
 .dashboard-memory-table-body > .ant-empty {
   margin-top: 90px;
+}
+
+.dashboard-memory-loading-label {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 10px 14px;
+  gap: 9px;
+  border-bottom: 1px solid var(--color-border-soft);
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.dashboard-memory-loading-label .anticon {
+  flex: 0 0 auto;
+  color: var(--color-accent-active);
+  font-size: 15px;
+}
+
+.dashboard-memory-loading-row {
+  min-height: 88px;
+  padding: 16px 14px;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.dashboard-memory-loading-row .ant-skeleton-title {
+  margin-top: 0;
+}
+
+.dashboard-memory-loading-row .ant-skeleton-paragraph {
+  margin-bottom: 0;
 }
 
 .dashboard-memory-group-title {
@@ -8211,6 +8296,11 @@ body {
 @media (max-width: 1180px) {
   .dashboard-memory-workspace {
     grid-template-columns: minmax(160px, 0.42fr) minmax(460px, 1.58fr);
+  }
+
+  .dashboard-memory-workspace .dashboard-memory-table-body {
+    overflow: visible;
+    overscroll-behavior: auto;
   }
 
   .dashboard-memory-inspector {

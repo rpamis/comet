@@ -898,6 +898,9 @@ export function AnyWorkflowPanel({
   const time = detail?.readAt ?? page?.readAt;
   const error = detailError ?? pageError;
   const missing = Boolean(detailError && detailError.status === 404);
+  const indexingProgress = page?.sourceCount
+    ? Math.min(100, Math.max(0, (page.indexedCount / page.sourceCount) * 100))
+    : 0;
 
   return (
     <section
@@ -998,9 +1001,18 @@ export function AnyWorkflowPanel({
           ) : (
             <div className="any-entity-list">
               {page?.indexing && (
-                <p role="status">
-                  {t('正在同步列表')} · {page.indexedCount} / {page.sourceCount}
-                </p>
+                <div className="any-indexing-status" role="status" aria-live="polite">
+                  <div className="any-indexing-status-line">
+                    <span className="any-indexing-status-dot" aria-hidden="true" />
+                    <span>{t('正在同步列表')}</span>
+                    <strong>
+                      {page.indexedCount} / {page.sourceCount}
+                    </strong>
+                  </div>
+                  <div className="any-indexing-status-track" aria-hidden="true">
+                    <span style={{ width: `${indexingProgress}%` }} />
+                  </div>
+                </div>
               )}
               {[
                 ['draft', '未关联应用的创作'],

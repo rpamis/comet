@@ -115,7 +115,14 @@ function treeRows(nodes, collapsed) {
   return rows;
 }
 
-export function ChangeTracePanel({ projectId, demo, refreshToken, timeRange }) {
+export function ChangeTracePanel({
+  projectId,
+  demo,
+  refreshToken,
+  timeRange,
+  timeSelection,
+  cacheRef,
+}) {
   useDashboardLanguage();
   const rangeQuery = observabilityRangeQuery(timeRange);
   const scope = `${demo ? 'demo' : projectId}:change-trace`;
@@ -126,7 +133,8 @@ export function ChangeTracePanel({ projectId, demo, refreshToken, timeRange }) {
   const [query, setQuery] = useState('');
   const [tick, setTick] = useState(0),
     [indexState, setIndexState] = useState(null),
-    [detailState, setDetailState] = useState(null);
+    [detailState, setDetailState] = useState(null),
+    [manualRefresh, setManualRefresh] = useState(false);
   const [collapsed, setCollapsed] = useState(new Set());
   const host = useRef(null);
   const [compact, setCompact] = useState(false);
@@ -140,7 +148,9 @@ export function ChangeTracePanel({ projectId, demo, refreshToken, timeRange }) {
     if (host.current) observer.observe(host.current);
     return () => observer.disconnect();
   }, []);
-  const cache = useRef(new Map());
+  const localCache = useRef(new Map());
+  const cache = cacheRef ?? localCache;
+  const indexKey = `index:${projectId}:${workflow}:${JSON.stringify(timeSelection)}`;
   useEffect(() => {
     if (demo) return undefined;
     const timer = setInterval(() => setTick((value) => value + 1), 15000);
@@ -149,7 +159,7 @@ export function ChangeTracePanel({ projectId, demo, refreshToken, timeRange }) {
   useEffect(() => {
     if (demo) return undefined;
     const controller = new AbortController(),
-      key = `index:${projectId}:${workflow}:${rangeQuery}`;
+      key = indexKey;
     setIndexState({ key, data: cache.current.get(key), loading: true });
     fetch(
       `/api/dashboard/projects/${encodeURIComponent(projectId)}/change-traces?workflow=${workflow}${rangeQuery}`,
@@ -168,12 +178,16 @@ export function ChangeTracePanel({ projectId, demo, refreshToken, timeRange }) {
       .catch((error) => {
         if (!controller.signal.aborted)
           setIndexState({ key, data: cache.current.get(key), error: error.message });
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setManualRefresh(false);
       });
     return () => controller.abort();
-  }, [projectId, demo, workflow, refreshToken, tick, rangeQuery]);
-  const indexKey = `index:${projectId}:${workflow}:${rangeQuery}`;
+  }, [projectId, demo, workflow, refreshToken, tick, rangeQuery, indexKey, cache]);
   const currentIndex = indexState?.key === indexKey ? indexState : null;
-  const index = demo ? DEMO_CHANGE_TRACE_INDEX : currentIndex?.data;
+  const index = demo
+    ? DEMO_CHANGE_TRACE_INDEX
+    : (currentIndex?.data ?? cache.current.get(indexKey));
   const traces = (index?.traces ?? []).filter(
     (trace) =>
       (workflow === 'all' || trace.workflow === workflow) &&
@@ -215,10 +229,12 @@ export function ChangeTracePanel({ projectId, demo, refreshToken, timeRange }) {
           setDetailState({ key, data: cache.current.get(key), error: error.message });
       });
     return () => controller.abort();
-  }, [projectId, demo, activeId, refreshToken, tick]);
+  }, [projectId, demo, activeId, refreshToken, tick, cache]);
   const detailKey = `trace:${projectId}:${activeId}`;
   const currentDetail = detailState?.key === detailKey ? detailState : null;
-  const trace = demo ? DEMO_CHANGE_TRACES[activeId] : currentDetail?.data;
+  const trace = demo
+    ? DEMO_CHANGE_TRACES[activeId]
+    : (currentDetail?.data ?? cache.current.get(detailKey));
   const nodes = trace?.nodes ?? [];
   const selected =
     nodes.find((node) => node.spanId === nodeId) ??
@@ -434,8 +450,11 @@ export function ChangeTracePanel({ projectId, demo, refreshToken, timeRange }) {
           </span>
           <Button
             icon={<ReloadOutlined />}
-            loading={!demo && Boolean(currentIndex?.loading || currentDetail?.loading)}
-            onClick={() => setTick((value) => value + 1)}
+            loading={manualRefresh}
+            onClick={() => {
+              if (!demo) setManualRefresh(true);
+              setTick((value) => value + 1);
+            }}
           >
             {t('刷新链路')}
           </Button>

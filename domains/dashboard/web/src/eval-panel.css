@@ -180,19 +180,28 @@
   margin: 0;
 }
 .dashboard-eval-pagination .ant-pagination-item-link {
+  height: 26px;
   padding-inline: 8px;
-  border: 0 !important;
+  border: 1px solid transparent !important;
   background: transparent !important;
   box-shadow: none !important;
   color: var(--color-fg-2);
   font-size: 13px;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease;
 }
 .dashboard-eval-pagination .ant-pagination-item-link:disabled {
   color: var(--color-meta);
   cursor: not-allowed;
 }
 .dashboard-eval-pagination .ant-pagination-item-link:not(:disabled):hover {
-  color: var(--color-accent);
+  background: var(--color-surface-warm) !important;
+  color: var(--color-fg);
+}
+.dashboard-eval-pagination .ant-pagination-item-link:not(:disabled):active {
+  background: var(--color-surface) !important;
+  color: var(--color-fg);
 }
 .dashboard-eval-pagination .ant-pagination-simple-pager {
   margin: 0;

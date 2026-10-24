@@ -6,6 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Personal Memory demo**: Show three pages of representative memories and let reviewers use previous, next, filters, and search in the read-only preview. Let regular pages fill the available list height and align page controls with the Dashboard's text navigation style, including steady hover and press feedback.
 - **Badcase regression maintenance**: Require traceable user-fix declarations and executable regression mappings in pull requests, preserve existing case coverage, and keep pending browser, platform, or model acceptance from being reported as a completed fix or release approval.
 - **Current SDK evaluation**: Add Native blocked-session recovery and Classic full/tweak/hotfix delivery tasks to the current-candidate matrix, bind recovery boundaries to actual Runtime evidence, and keep legacy portable scenarios explicitly separate from current SDK coverage.
 - **Classic check configuration**: Support a bounded project-level check timeout with explicit CLI overrides, plus opt-in output presets for Vite, .NET, and coverage artifacts. Explicitly declared ignored inputs remain part of the evidence ([#502](https://github.com/rpamis/comet/issues/502)).
@@ -15,6 +16,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Dashboard loading and refresh states**: Align Personal Memory and Custom Workflow loading with their lists, and keep previously loaded Observability views visible during automatic sync, manual refresh, and tab switches so routine updates do not interrupt reading.
 - **Native incremental Shape and Hook ownership**: Preserve approved auxiliary test-plan updates, review formal comment changes within the existing workflow, and prevent compatibility Hook mutations from splitting SDK state.
 - **Workflow resume intent**: Honor explicit refusal and commit-only scope before resuming an active change, including Chinese and English requests.
 - **Classic archive evidence**: Bind delivered archive and specification outputs to their recorded execution evidence, preserve committed archive checkpoints after delivery, and keep declared-directory deletions in the approved delivery scope.
@@ -28,7 +30,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Native generated check inputs**: Keep dependency trees and volatile development caches out of generated-input snapshots while binding project outputs in nested directories, even without a project manifest. Generated inputs are streamed into the check fingerprint without fixed file-count or byte caps, and unreadable snapshots cannot reuse old checks ([#501](https://github.com/rpamis/comet/issues/501)).
 - **Classic check executable changes**: Resolve the current executable before reusing check evidence, including PATH changes and newly installed higher-priority commands in long-lived sessions.
 - **Classic delivery after re-verification**: Retain validated Design and Plan document references when reopening a full workflow's verification, so a newly approved archive can complete delivery without losing its document evidence. Changed documents still require renewed validation.
-- **Personal Memory scrolling**: Keep the desktop memory list within the available height so long lists can scroll without hiding pagination or clipping the detail pane ([#499](https://github.com/rpamis/comet/issues/499)).
+- **Personal Memory reading**: Keep desktop lists within the available height so long lists retain accessible pagination and details. Preserve list boundaries when selecting records with different detail lengths to avoid page jitter ([#499](https://github.com/rpamis/comet/issues/499)).
 - **Native SDK Shape validation**: Enforce directory structure checks for new and re-prepared SDK Shape proposals. Previously pending approvals and confirmed Build, Verify, and Archive changes retain their original document constraints and progress.
 - **Native archive with submodules**: Bind the actual commit of a clean Git submodule when it differs from the parent repository's recorded commit, so verified changes can archive without falling back to a candidate scan of unrelated ignored caches. Uncommitted submodule content still requires complete verification.
 

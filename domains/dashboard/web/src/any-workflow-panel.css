@@ -457,6 +457,50 @@
 .any-entity-list {
   padding: 2px 10px 16px;
 }
+.any-indexing-status {
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--color-accent-soft) 38%, var(--color-bg));
+}
+.any-indexing-status-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--color-fg-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.any-indexing-status-line strong {
+  margin-left: auto;
+  color: var(--color-meta);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.any-indexing-status-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--color-accent-active);
+}
+.any-indexing-status-track {
+  height: 3px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--color-border-soft);
+}
+.any-indexing-status-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent-active);
+  transition: width 180ms ease;
+}
 .any-list-label {
   padding: 16px 10px 10px;
   display: flex;

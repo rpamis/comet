@@ -1554,6 +1554,10 @@ test.describe('Dashboard Eval', () => {
     const nextPage = page.getByRole('button', { name: '下一页', exact: true });
     const previousPage = page.getByRole('button', { name: '上一页', exact: true });
     await expect(previousPage).toBeDisabled();
+    await nextPage.scrollIntoViewIfNeeded();
+    const nextPageBounds = await nextPage.boundingBox();
+    await nextPage.hover();
+    expect(await nextPage.boundingBox()).toEqual(nextPageBounds);
     await nextPage.click();
     await expect(page.getByRole('button', { name: 'writer-16', exact: true })).toBeVisible();
     await expect(nextPage).toBeDisabled();

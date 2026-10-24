@@ -70,7 +70,7 @@ describe('dashboard web source contracts', () => {
     'passes the homepage language through to the embedded Dashboard',
     async () => {
       const snippet = await readWebsiteDemoSnippet();
-      expect(snippet).toContain('window.location.href, language');
+      expect(snippet).toMatch(/window\.location\.href,\s*language/);
       expect(snippet).toContain('}, [language]);');
       for (const language of ['zh', 'en']) {
         const home = await fs.readFile(path.resolve('website', language, 'home.mdx'), 'utf8');
@@ -208,7 +208,7 @@ describe('dashboard web source contracts', () => {
       /@media \(min-width: 1181px\)[\s\S]*?\.dashboard-tool-page-memory\s*\{[\s\S]*?height: 100%;[\s\S]*?flex-direction: column;/,
     );
     expect(styles).toMatch(
-      /\.dashboard-tool-page-memory \.dashboard-memory-workspace\s*\{[\s\S]*?min-height: 0;[\s\S]*?flex: 1 1 auto;/,
+      /\.dashboard-tool-page-memory \.dashboard-memory-workspace\s*\{[\s\S]*?min-height: 0;[\s\S]*?flex: 1 1 0;/,
     );
     expect(page?.[0]).toContain('dashboard-plugin-primary-action');
     expect(page?.[0]).toContain('dashboard-plugin-secondary-action');

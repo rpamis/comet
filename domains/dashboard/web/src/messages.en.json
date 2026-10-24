@@ -2354,6 +2354,7 @@
   "搜索执行链路": "Search traces",
   "搜索 Change 或执行名称": "Search change or execution name",
   "每 15 秒同步": "Syncs every 15 seconds",
+  "每 30 秒同步": "Syncs every 30 seconds",
   "刷新链路": "Refresh traces",
   "部分链路记录不可用或已截断，当前仅展示可读样本。": "Some traces are unavailable or truncated. Only readable samples are shown.",
   "尚无 Change 链路；执行 Native 或 Classic 后，这里会显示已采集的记录。": "No change traces yet. Recorded Native and Classic executions will appear here.",
