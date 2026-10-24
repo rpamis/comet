@@ -551,11 +551,11 @@ export function classicSdkContinuation(
         ...(approved?.deliveryAction === 'pr' ? ['--pr-url', '<pr-url>'] : []),
       );
       requiredInputs = [
-        'commit-sha: 实际归档提交',
+        'commit-sha: 实际交付 HEAD；允许从 archive.preflight.baseCommit 开始的连续单父提交',
         ...(approved?.deliveryAction === 'pr' ? ['pr-url: 已获授权且实际创建的 PR'] : []),
       ];
       preparation =
-        '按当前 Action inputSummary 与 approvals 中已批准的目标完成真实归档提交及必要远端交付；仅补交实际结果，不再次归档。';
+        '按当前 Action inputSummary 与 approvals 中已批准的目标完成真实归档提交及必要远端交付。修复与归档可分为多个连续单父提交；整个 baseCommit..HEAD 范围只能包含本次已验证实现和归档产物，不得夹带其他 change、合并提交或改写 Git 历史。仅补交实际结果，不再次归档。';
     }
   }
   return result({
@@ -577,6 +577,32 @@ export function classicSdkContinuation(
       ? `${base.automatic ? '加载' : '等待用户手动加载'} ${skill}，仅完成 ${action.stepId} 的当前工作，并沿用本次 Run 与工作区。${!base.automatic ? '用户已明确调用本 Skill 时，执行当前工作；仅停止自动加载后续 Skill。' : ''}${preparation}`
       : '此 Action 需要应用声明的宿主执行器；不要把工具或子流程引用当作 Skill。',
   });
+}
+
+/** SDK 交付只投影本 Run 的审批和结果，不读取 compat 的另一份授权。 */
+function classicSdkDeliverySummary(run: WorkflowRun) {
+  const profile = (run.state as unknown as ClassicState).workflow;
+  const approved = runtimeObject(run.outputs[`${profile}.archive.preflight`]?.value);
+  if (!approved) return { delivery: null, verification: { status: 'needsAuthorization' } };
+  const delivered = runtimeObject(run.outputs[`${profile}.archive.deliver`]?.value);
+  return {
+    delivery: {
+      action: approved.deliveryAction,
+      targetBranch: approved.targetBranch,
+      baseCommit: approved.baseCommit,
+      ...(approved.remote ? { remote: approved.remote } : {}),
+      ...(delivered?.commit ? { commit: delivered.commit } : {}),
+      ...(delivered?.prUrl ? { prUrl: delivered.prUrl } : {}),
+    },
+    verification: {
+      status:
+        delivered && run.status === 'completed'
+          ? approved.deliveryAction === 'local'
+            ? 'local-verified'
+            : 'complete'
+          : 'needsVerification',
+    },
+  };
 }
 
 /** 查询与写入共用同一响应；使用调用方已经读取或提交的 Run，绝不再次 inspect 推进状态。 */
@@ -605,6 +631,7 @@ export async function classicSdkEntryData(
     runtimeFormat: 'sdk' as const,
     phase: state.phase,
     configuration: state,
+    delivery: state.phase === 'archive' ? classicSdkDeliverySummary(run) : null,
     projectRoot,
     workspace: { projectRoot },
     ...(editReviews.length ? { editReviews } : {}),
@@ -633,7 +660,6 @@ export async function classicSdkEntryData(
       nextTask: recovery.nextTask,
       planMapping: recovery.planMapping,
       coordination: recovery.coordination,
-      delivery: recovery.delivery,
       requiredFiles: recovery.requiredFiles,
       ...(actionRecovery ? { recovery: actionRecovery } : {}),
     };

@@ -37,7 +37,11 @@ import {
   decideClassicSdkArchive,
   proposeClassicSdkArchive,
 } from './classic-sdk-archive-decision.js';
-import { completeClassicSdkDelivery } from './classic-sdk-delivery.js';
+import {
+  completeClassicSdkDelivery,
+  completeClassicSdkDeliveryFromRecord,
+  verifyClassicSdkDelivery,
+} from './classic-sdk-delivery.js';
 import {
   completeClassicSdkBuild,
   continueClassicSdkBuildPlan,
@@ -1396,8 +1400,53 @@ async function progressCommand(
       `Usage: comet state ${kind} <change-name> [--file <json>${kind === 'delivery' ? ' | --verify | --reauthorize --file <json>' : ''}]`,
     );
   validateChangeName(args[0]);
-  const { directory, file } = await stateFile(args[0]);
   const root = classicCommandProjectRoot();
+  if (kind === 'delivery') {
+    const owner = await resolveClassicChangeRuntimeOwner(root, args[0]);
+    const workspace =
+      owner?.format === 'compat' ? null : await findClassicSdkWorkspace(root, args[0]);
+    if (workspace) {
+      if (reauthorize)
+        fail(
+          'Classic SDK 交付审批不可通过 delivery --reauthorize 改写；请按 state next 返回的 SDK 续行处理',
+        );
+      if (args.length > 1 && !(args[1] === '--verify' && workspace.run.status === 'completed'))
+        await assertStateCommandWritable('set');
+      const run =
+        args[1] === '--verify'
+          ? await verifyClassicSdkDelivery(workspace.projectRoot, args[0])
+          : args[1] === '--file'
+            ? await completeClassicSdkDeliveryFromRecord(
+                workspace.projectRoot,
+                args[0],
+                JSON.parse(
+                  await readClassicProjectFile(root, args[2], { label: 'Classic delivery input' }),
+                ),
+              )
+            : workspace.run;
+      const data = await sdkEntryData(args[0], { run, projectRoot: workspace.projectRoot });
+      const historical = args[1] === '--verify' && workspace.run.status === 'completed';
+      output.data =
+        historical && data.delivery
+          ? {
+              ...data,
+              delivery: {
+                ...data.delivery,
+                verification: { ...data.delivery.verification, scope: 'historical-receipt' },
+              },
+            }
+          : data;
+      output.stdout.push(
+        historical
+          ? `Classic SDK 已完成交付回执核验：${args[0]}；核对原始提交，不重新核验当前工作区或远端状态。`
+          : run.status === 'completed'
+            ? `Classic SDK 交付已记录：${args[0]}`
+            : `Classic SDK 交付状态：${args[0]}。按 continuation 继续，不要重复归档。`,
+      );
+      return;
+    }
+  }
+  const { directory, file } = await stateFile(args[0]);
   const write = args[1] === '--file' || reauthorize;
   if (write && kind === 'delivery') {
     const inputPath = path.isAbsolute(args[inputIndex])
@@ -2242,6 +2291,7 @@ async function assertStateChangeNotSdkOwned(
     return;
   }
   if (
+    subcommand === 'delivery' ||
     subcommand === 'reopen-verification' ||
     subcommand === 'next' ||
     subcommand === 'restore' ||

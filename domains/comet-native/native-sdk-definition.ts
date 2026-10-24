@@ -32,8 +32,19 @@ export const NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH =
 export const NATIVE_SDK_PRE_EDIT_REVIEW_HASH =
   'a4fa2f7ad12c5c7dd37374f9cb5f1154f2c686e3b3b5473533154c01fdcdd9ea';
 
-export function nativeSdkBeforeIntegrationRepairRecovery(workflow: DefineWorkflowOptions) {
+export function nativeSdkBeforeBlockedVerifierRecovery(workflow: DefineWorkflowOptions) {
   const previous = structuredClone(workflow);
+  const stop = previous.steps['verify.stop'];
+  if (stop?.type === 'ask_user' && Array.isArray(stop.choices))
+    stop.choices = stop.choices.filter((choice) => choice !== 'retry');
+  previous.transitions = (previous.transitions ?? []).filter(
+    ({ from, to, on }) => !(from === 'verify.stop' && to === 'verify.verifier' && on === 'retry'),
+  );
+  return previous;
+}
+
+export function nativeSdkBeforeIntegrationRepairRecovery(workflow: DefineWorkflowOptions) {
+  const previous = nativeSdkBeforeBlockedVerifierRecovery(workflow);
   delete previous.steps['supervisor.child.integration-resume'];
   previous.transitions = (previous.transitions ?? []).filter(
     ({ from, to }) =>
@@ -119,6 +130,7 @@ export function nativeSdkLegacyDefinitions(workflow: DefineWorkflowOptions) {
     NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH,
   ];
   return [
+    nativeSdkBeforeBlockedVerifierRecovery(workflow),
     nativeSdkBeforeIntegrationRepairRecovery(workflow),
     nativeSdkBeforeArchiveCandidateRecovery(workflow),
     nativeSdkBeforeReportRecovery(workflow),

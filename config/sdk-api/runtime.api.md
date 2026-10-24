@@ -361,6 +361,7 @@ export interface ResolveRuntimeWait extends RunCommand {
     decisionId: string;
     // (undocumented)
     proposalHash: string;
+    reason?: string;
     // (undocumented)
     waitId: string;
 }
@@ -818,6 +819,7 @@ export interface RuntimeWait {
         id: string;
         choice: string;
         proposalHash: string;
+        reason?: string;
     };
     // (undocumented)
     id: string;

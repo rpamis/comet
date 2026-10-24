@@ -93,6 +93,7 @@ export interface WorkflowClassicProjectConfig {
   review_mode?: 'off' | 'standard' | 'thorough';
   auto_transition?: boolean;
   document_evidence?: WorkflowClassicDocumentEvidence;
+  check_timeout_ms?: number;
 }
 
 export interface WorkflowProjectConfig {

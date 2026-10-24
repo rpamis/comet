@@ -11,7 +11,12 @@ import { readClassicState } from './classic-store.js';
 import { readClassicProjectBytes, inspectClassicProjectTarget } from './classic-protected-path.js';
 import { hashProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 import { resolveWindowsCommand } from '../../platform/process/spawn-command.js';
-import { readCheckPolicy, type CheckPolicy, type CheckIdentity } from './classic-check-policy.js';
+import {
+  CHECK_POLICY_PATH,
+  readCheckPolicy,
+  type CheckPolicy,
+  type CheckIdentity,
+} from './classic-check-policy.js';
 import { classicTaskRequirements } from './classic-tasks.js';
 import {
   compileCheckPolicyPattern,
@@ -238,10 +243,20 @@ export async function collectCheckSnapshot(
     ),
   ].filter((home) => rootVariants.some((base) => home !== base && isWithinRoot(home, base)));
   const runtimeRecords = path.join(root, '.comet', 'runtime');
-  const omitted = (absolute: string) =>
-    outputMatchers.some((matches) =>
-      matches(path.relative(root, absolute).replaceAll('\\', '/')),
-    ) ||
+  const policyFileDeclared = policy.files?.some((input) =>
+    hasGlobCharacters(input)
+      ? compileCheckPolicyPattern(input)(CHECK_POLICY_PATH)
+      : CHECK_POLICY_PATH === input || CHECK_POLICY_PATH.startsWith(`${input}/`),
+  );
+  const omitted = (absolute: string, directory = false) =>
+    outputMatchers.some((matches) => {
+      const relative = path.relative(root, absolute).replaceAll('\\', '/');
+      return matches(relative) || (directory && matches(`${relative}/`));
+    }) ||
+    (!legacy &&
+      policy.entryDigest !== undefined &&
+      !policyFileDeclared &&
+      absolute === path.join(root, CHECK_POLICY_PATH)) ||
     processHomeRoots.some((home) => absolute === home || absolute.startsWith(home + path.sep)) ||
     (path.dirname(absolute) === changeDir && isClassicStateFileName(path.basename(absolute))) ||
     absolute === path.join(changeDir, '.comet-state.lock') ||
@@ -257,8 +272,31 @@ export async function collectCheckSnapshot(
 
   const gitKey = (directory: string) => path.relative(root, directory).replaceAll('\\', '/') || '.';
 
-  /** Enumerates repository-relative file paths exactly as the tree walk visits them. */
+  /** 显式 glob 必须包含 ignored 输入；用固定目录前缀限制枚举，避免扫描无关依赖树。 */
   async function enumerateTree(base: string): Promise<string[]> {
+    const prefixes = [
+      ...new Set(
+        (policy.files ?? []).filter(hasGlobCharacters).map((pattern) => {
+          const segments = pattern.split('/');
+          return segments.slice(0, segments.findIndex(hasGlobCharacters)).join('/') || '.';
+        }),
+      ),
+    ];
+    for (const prefix of prefixes) {
+      if (prefix !== '.')
+        await inspectClassicProjectTarget(root, prefix, {
+          label: 'Classic check input',
+          expected: 'any',
+        });
+    }
+    const relevant = (relative: string) =>
+      prefixes.some(
+        (prefix) =>
+          prefix === '.' ||
+          relative === prefix ||
+          relative.startsWith(`${prefix}/`) ||
+          prefix.startsWith(`${relative}/`),
+      );
     const results: string[] = [];
     async function walk(directory: string): Promise<void> {
       const isRepository =
@@ -268,7 +306,14 @@ export async function collectCheckSnapshot(
           () => false,
         ));
       const files = isRepository
-        ? git(directory, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])
+        ? git(directory, [
+            'ls-files',
+            '-z',
+            '--cached',
+            '--others',
+            '--',
+            ...(directory === base ? prefixes : ['.']).map((prefix) => `:(literal)${prefix}`),
+          ])
         : null;
       const prefix = path.relative(base, directory).replaceAll('\\', '/');
       if (files !== null) {
@@ -280,8 +325,10 @@ export async function collectCheckSnapshot(
       for (const entry of (await fs.readdir(directory, { withFileTypes: true })).sort((a, b) =>
         a.name.localeCompare(b.name),
       )) {
-        if (entry.name === '.git' || entry.name === 'node_modules') continue;
+        if (entry.name === '.git') continue;
         const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+        if (!relevant(relative) || omitted(path.join(directory, entry.name), entry.isDirectory()))
+          continue;
         if (entry.isDirectory()) await walk(path.join(directory, entry.name));
         else results.push(relative);
       }
@@ -331,6 +378,7 @@ export async function collectCheckSnapshot(
         `Check input is a symbolic link: ${relative}. Symbolic links cannot be check inputs; either remove the link, or bind this command's inputs in .comet/check-policy.json (version 2) with a files list that excludes it`,
       );
     if (stat.isDirectory()) {
+      if (omitted(absolute, true)) return null;
       await inspectClassicProjectTarget(root, absolute, {
         label: 'Classic check input',
         expected: 'directory',
@@ -391,8 +439,12 @@ export async function collectCheckSnapshot(
     const identity = inputIdentity(snapshot.absolute);
     if (!legacy && visitedInputs.has(identity)) return;
     visitedInputs.add(identity);
-    for (const part of snapshot.binding) hash.update(part);
-    if (snapshot.directory) await tree(snapshot.directory);
+    // 目录只负责遍历，不是 per-file manifest 输入；保持与 Git 不记录空目录的语义一致。
+    // 否则生成输出的中间父目录会改变 digest，却没有可诊断的文件差异。
+    if (legacy || !snapshot.directory) {
+      for (const part of snapshot.binding) hash.update(part);
+    }
+    if (snapshot.directory) await tree(snapshot.directory, policy.files !== undefined);
     if (snapshot.entry) entries.push(snapshot.entry);
     reportCometRuntimeProgress('核对检查输入', entries.length);
   }
@@ -420,7 +472,7 @@ export async function collectCheckSnapshot(
     }
   }
 
-  async function tree(directory: string): Promise<void> {
+  async function tree(directory: string, declared = false): Promise<void> {
     const isRepository =
       directory === root ||
       (await fs.lstat(path.join(directory, '.git')).then(
@@ -428,7 +480,13 @@ export async function collectCheckSnapshot(
         () => false,
       ));
     const files = isRepository
-      ? git(directory, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])
+      ? git(directory, [
+          'ls-files',
+          '-z',
+          '--cached',
+          '--others',
+          ...(declared ? [] : ['--exclude-standard']),
+        ])
       : null;
     if (files !== null) {
       if (policy.git === 'all') {
@@ -522,7 +580,7 @@ export async function collectCheckSnapshot(
     for (const entry of (await fs.readdir(directory, { withFileTypes: true })).sort((a, b) =>
       a.name.localeCompare(b.name),
     )) {
-      if (entry.name === '.git' || entry.name === 'node_modules') continue;
+      if (entry.name === '.git' || (!declared && entry.name === 'node_modules')) continue;
       await file(path.join(directory, entry.name));
     }
   }

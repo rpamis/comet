@@ -9,7 +9,12 @@ import { settleNativeSdkCompletion } from './native-sdk-completion-cleanup.js';
 import { hashRuntimeValue, type RuntimeValue, type WorkflowRun } from '../engine/runtime.js';
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
 import { collectNativeSdkShapeProposal } from './native-sdk-application.js';
-import { recoverNativeSdkChecks } from './native-sdk-checks.js';
+import {
+  recoverNativeSdkChecks,
+  nativeSdkCurrentCheckSummaries,
+  NativeSdkCheckInputDriftError,
+} from './native-sdk-checks.js';
+import { nativeSdkVerifyDecisions } from './native-sdk-verify-decision.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { loadOwnedNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { inspectNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
@@ -211,7 +216,10 @@ export async function advanceNativeSdkChange(
       return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
     }
   }
-  if (decision?.expectedAction === 'resolve-verifier-blocker') {
+  if (
+    decision?.expectedAction === 'resolve-verifier-blocker' &&
+    !nativeSdkVerifyDecisions(run, state).some(({ action }) => action === decision.expectedAction)
+  ) {
     const recovery = await inspectNativeSdkSupervisorRecovery(run, projectRoot);
     if (!decision.summary.trim()) throw new NativeUsageError('--summary 不能为空。');
     if (
@@ -369,34 +377,14 @@ export async function advanceNativeSdkChange(
   if (
     decision?.expectedAction === 'accept-result' ||
     decision?.expectedAction === 'revise-implementation' ||
-    decision?.expectedAction === 'retry-verifier'
+    decision?.expectedAction === 'retry-verifier' ||
+    decision?.expectedAction === 'resolve-verifier-blocker'
   ) {
-    const retry = decision.expectedAction === 'retry-verifier';
-    const reverify = retry && state.loop.next_action === 'confirm-skill-coordinated-pass';
-    const loopStop =
-      decision.expectedAction === 'revise-implementation' &&
-      state.loop.next_action === 'await-user';
-    const wait = run.waits.find(
-      (candidate) =>
-        candidate.status === 'pending' &&
-        (retry
-          ? candidate.stepId === (reverify ? 'verify.confirm' : 'verify.retry')
-          : loopStop
-            ? ['verify.stop', 'verify.checks-stop'].includes(candidate.stepId)
-            : candidate.stepId === 'verify.confirm'),
+    const recovery = nativeSdkVerifyDecisions(run, state).find(
+      ({ action, wait }) =>
+        action === decision.expectedAction && wait.proposalHash === decision.proposalHash,
     );
-    if (
-      !wait ||
-      state.phase !== 'verify' ||
-      state.loop.next_action !==
-        (retry && !reverify
-          ? 'retry-verifier'
-          : loopStop
-            ? 'await-user'
-            : 'confirm-skill-coordinated-pass') ||
-      state.state_version !== decision.expectedStateVersion ||
-      wait.proposalHash !== decision.proposalHash
-    ) {
+    if (!recovery || state.state_version !== decision.expectedStateVersion) {
       return {
         ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
         exitCode: 73,
@@ -404,19 +392,29 @@ export async function advanceNativeSdkChange(
       };
     }
     if (!decision.summary.trim()) throw new NativeUsageError('--summary must not be empty');
-    const choice = retry
-      ? reverify
-        ? 'reverify'
-        : 'retry'
-      : loopStop
-        ? 'repair'
-        : decision.expectedAction === 'accept-result'
-          ? 'approved'
-          : 'rejected';
+    if (decision.expectedAction === 'resolve-verifier-blocker') {
+      try {
+        await nativeSdkCurrentCheckSummaries({ run, projectRoot });
+      } catch (error) {
+        if (!(error instanceof NativeSdkCheckInputDriftError)) throw error;
+        // 此处原 Verifier 已结束，不能沿用检查校验器给运行中 Verifier 的刷新指令。
+        const reason = error.message.split('由当前 Verifier')[0];
+        return {
+          ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
+          exitCode: 73,
+          error: {
+            code: 'conflict',
+            message: `${reason}当前 blocked Verifier 已结束，不能复用这份证据重试验收。原 Run、候选和检查均未修改，也未重跑检查。请明确选择当前 continuation 中的 revise-implementation 命令，保留其 proposal-hash 和 expected-state-version，在同一 Run 中修复候选并重新建立检查证据；无需重置需求。`,
+          },
+        };
+      }
+    }
+    const { wait, choice } = recovery;
     await (
       await loadOwnedNativeSdkRuntime(projectRoot, name)
     ).runtime.resolveWait({
       runId: run.runId,
+      expectedRevision: run.revision,
       waitId: wait.id,
       proposalHash: decision.proposalHash,
       decisionId: hashRuntimeValue({
@@ -426,6 +424,7 @@ export async function advanceNativeSdkChange(
         choice,
       }),
       choice,
+      reason: decision.summary.trim(),
     });
     return advanceNativeSdkChange(projectRoot, name);
   }

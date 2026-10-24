@@ -38,6 +38,9 @@ export const DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG = {
 export const DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG: WorkflowKnowledgeProjectConfig = {
   provider: 'local',
 };
+export const DEFAULT_WORKFLOW_CLASSIC_CHECK_TIMEOUT_MS = 300_000;
+export const MAX_WORKFLOW_CLASSIC_CHECK_TIMEOUT_MS = 3_600_000;
+
 export const DEFAULT_WORKFLOW_NATIVE_PULL_REQUEST_FINISH_TIMEOUT_MS = 120_000;
 export const MAX_WORKFLOW_NATIVE_PULL_REQUEST_FINISH_TIMEOUT_MS = 600_000;
 
@@ -202,7 +205,8 @@ type ProjectConfigCommentKey =
   | 'classic.context_compression'
   | 'classic.review_mode'
   | 'classic.auto_transition'
-  | 'classic.document_evidence';
+  | 'classic.document_evidence'
+  | 'classic.check_timeout_ms';
 
 const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigCommentKey, string>> = {
   en: {
@@ -273,6 +277,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# Sets the default review depth for new Classic changes.\n# review_mode: off | standard | thorough',
     'classic.auto_transition':
       '# Automatically enters the next Classic phase after a phase passes.\n# auto_transition: true | false',
+    'classic.check_timeout_ms':
+      '# Default check timeout in milliseconds (1-3600000); --timeout-ms overrides it. Default: 300000.',
     'classic.document_evidence':
       '# Controls how documentation edits affect recorded check evidence: neutral keeps build and verify evidence valid when only documentation files changed, strict binds every working-tree file again.\n# document_evidence: neutral | strict',
   },
@@ -333,6 +339,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
     'classic.review_mode':
       '# 新建 Classic change 默认使用的审查深度。\n# 可选值：off | standard | thorough',
     'classic.auto_transition': '# Classic 阶段通过后是否自动进入下一阶段。\n# 可选值：true | false',
+    'classic.check_timeout_ms':
+      '# 检查命令默认超时，单位毫秒，范围 1-3600000，缺省为 300000；命令行 --timeout-ms 优先。',
     'classic.document_evidence':
       '# 文档编辑对已记录检查证据的影响：neutral 在只有文档文件变化时保持 build 和 verify 证据有效，strict 重新绑定工作区的全部文件。\n# 可选值：neutral | strict',
   },
@@ -757,6 +765,19 @@ function normalizeWorkflowNativeProjectConfig(
   };
 }
 
+export function normalizeWorkflowClassicCheckTimeout(value: unknown, label: string): number {
+  if (
+    !Number.isSafeInteger(value) ||
+    Number(value) < 1 ||
+    Number(value) > MAX_WORKFLOW_CLASSIC_CHECK_TIMEOUT_MS
+  ) {
+    throw new Error(
+      `${label} must be an integer between 1 and ${MAX_WORKFLOW_CLASSIC_CHECK_TIMEOUT_MS} milliseconds`,
+    );
+  }
+  return value as number;
+}
+
 function normalizeWorkflowClassicProjectConfig(value: unknown): WorkflowClassicProjectConfig {
   const classic = projectConfigRecord(value, 'classic');
   const contextCompression = classic.context_compression ?? 'off';
@@ -771,6 +792,9 @@ function normalizeWorkflowClassicProjectConfig(value: unknown): WorkflowClassicP
   if (typeof autoTransition !== 'boolean') {
     throw new Error('classic.auto_transition must be true or false');
   }
+  if (classic.check_timeout_ms !== undefined) {
+    normalizeWorkflowClassicCheckTimeout(classic.check_timeout_ms, 'classic.check_timeout_ms');
+  }
   const documentEvidence = classic.document_evidence ?? 'neutral';
   if (documentEvidence !== 'neutral' && documentEvidence !== 'strict') {
     throw new Error('classic.document_evidence must be neutral or strict');
@@ -782,6 +806,9 @@ function normalizeWorkflowClassicProjectConfig(value: unknown): WorkflowClassicP
     review_mode: reviewMode,
     auto_transition: autoTransition,
     ...(documentEvidence === 'strict' ? { document_evidence: documentEvidence } : {}),
+    ...(classic.check_timeout_ms !== undefined
+      ? { check_timeout_ms: classic.check_timeout_ms as number }
+      : {}),
   };
 }
 
@@ -1194,6 +1221,9 @@ export function workflowProjectConfigManagedValue(
             context_compression: config.classic.context_compression,
             review_mode: config.classic.review_mode,
             auto_transition: config.classic.auto_transition,
+            ...(config.classic.check_timeout_ms !== undefined
+              ? { check_timeout_ms: config.classic.check_timeout_ms }
+              : {}),
             ...(config.classic.document_evidence
               ? { document_evidence: config.classic.document_evidence }
               : {}),
@@ -1330,6 +1360,9 @@ export function mergeWorkflowProjectConfigDocument(
       context_compression: validated.classic.context_compression,
       review_mode: validated.classic.review_mode,
       auto_transition: validated.classic.auto_transition,
+      ...(validated.classic.check_timeout_ms !== undefined
+        ? { check_timeout_ms: validated.classic.check_timeout_ms }
+        : {}),
       ...(validated.classic.document_evidence
         ? { document_evidence: validated.classic.document_evidence }
         : {}),
@@ -2483,6 +2516,12 @@ function managedWorkflowConfigFields(source) {
     const autoTransition = classic.auto_transition ?? true;
     if (typeof autoTransition !== 'boolean') {
       throw new Error('classic.auto_transition must be true or false');
+    }
+    if (classic.check_timeout_ms !== undefined && (
+      !Number.isSafeInteger(classic.check_timeout_ms) || classic.check_timeout_ms < 1 ||
+      classic.check_timeout_ms > ${MAX_WORKFLOW_CLASSIC_CHECK_TIMEOUT_MS}
+    )) {
+      throw new Error('classic.check_timeout_ms must be an integer between 1 and ${MAX_WORKFLOW_CLASSIC_CHECK_TIMEOUT_MS} milliseconds');
     }
     const documentEvidence = classic.document_evidence ?? 'neutral';
     if (documentEvidence !== 'neutral' && documentEvidence !== 'strict') {

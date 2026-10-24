@@ -192,7 +192,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--revise-requirements    Return Verify, Archive, or a quiescent SDK Supervisor Build to Shape. SDK changes also allow renewing a pending Shape proposal or revising after an ordinary Builder explicitly failed; use the current continuation proposal hash. Preserve partial work and reconcile running/unknown Actions first. The new Shape still requires explicit approval. Completed SDK Runs require an application-validated blocked Child recovery.',
       '--retry-verifier    Retry a failed or unavailable Verifier when the continuation allows it.',
       '--continue-builder  After a failed SDK Builder Action, explicitly continue from its preserved workspace in a new Action.',
-      '--resolve-verifier-blocker  Resolve a compat semantic blocker, or recover an application-validated completed SDK Supervisor by dispatching a new Child Builder. SDK recovery requires the current proposal hash and both expected guards; original candidates, checks, and outcomes remain historical evidence.',
+      '--resolve-verifier-blocker  Resume an SDK or compat blocked Verifier with the retained candidate and valid checks; a completed SDK Supervisor Child resumes with a new Builder. SDK recovery requires the current proposal hash and both expected guards; original outcomes are preserved.',
       '--max-parallel <n>  Supervisor task concurrency cap; defaults to 2, use 1 for serial fallback.',
       '--expected-state-version <n>  Continuation-issued guard that rejects stale public transition decisions.',
       '--expected-action <action>    Continuation-issued guard that binds the public transition decision to its intended action.',

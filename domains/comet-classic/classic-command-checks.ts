@@ -1,3 +1,4 @@
+import { resolveClassicCheckTimeout } from './classic-project-config.js';
 import path from 'path';
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
@@ -536,6 +537,7 @@ export async function executeCommandCheck(
   },
 ): Promise<RecordedCommandCheck> {
   validateScope(input.scope);
+  const timeoutMs = await resolveClassicCheckTimeout(root, input.timeoutMs);
   if (!input.argv.length || input.argv.some((arg) => typeof arg !== 'string' || arg.includes('\0')))
     throw new Error('Check requires literal program arguments');
   const cwd = normalizedCwd(root, input.cwd);
@@ -549,6 +551,7 @@ export async function executeCommandCheck(
     if (
       previous &&
       previous.reusable &&
+      (previous.timeoutMs ?? 300_000) === timeoutMs &&
       (previous.tier ?? 'full') === tier &&
       previous.cwd === cwd &&
       JSON.stringify(previous.argv) === JSON.stringify(input.argv)
@@ -562,6 +565,7 @@ export async function executeCommandCheck(
       const other = await usableCommandCheck(root, changeDir, run, otherScope);
       if (
         other?.reusable &&
+        (other.timeoutMs ?? 300_000) === timeoutMs &&
         (other.tier ?? 'full') === tier &&
         other.cwd === cwd &&
         JSON.stringify(other.argv) === JSON.stringify(input.argv)
@@ -637,7 +641,6 @@ export async function executeCommandCheck(
     }
   }
   // A failed launch, snapshot, or log write must not expose an older success.
-  const timeoutMs = input.timeoutMs ?? 300_000;
   const { started, checkEpoch, action } = await withClassicStateLock(changeDir, async () => {
     const projection = await readClassicState(changeDir, { migrate: false });
     if (

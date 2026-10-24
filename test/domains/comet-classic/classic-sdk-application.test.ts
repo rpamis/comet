@@ -949,9 +949,9 @@ describe('Classic workflow application through the public Runtime SDK', () => {
     expect(rejected.actions.at(-1)?.rejectedOutcomes?.at(-1)?.reason).toContain('unrelated.txt');
   });
 
-  it('rejects delivery when another commit intervened after Archive preflight', async () => {
+  it('accepts full delivery with separate approved implementation and annotated archive commits', async () => {
     const { runtime, run, projectRoot } = await reachFullArchiveExecuteAction(
-      'archive-delivery-intervening-commit',
+      'archive-delivery-linear-commits',
     );
     execFileSync('git', ['add', '--', 'source.js'], { cwd: projectRoot });
     execFileSync(
@@ -963,49 +963,19 @@ describe('Classic workflow application through the public Runtime SDK', () => {
         'user.email=comet-test@example.invalid',
         'commit',
         '-m',
-        'chore: unrelated work',
+        'fix: verified implementation',
       ],
       { cwd: projectRoot },
     );
-    const active = path.join(projectRoot, 'docs', 'openspec', 'changes', 'example');
-    const archivedRef = 'docs/openspec/changes/archive/2026-09-24-example';
-    const archived = path.join(projectRoot, ...archivedRef.split('/'));
-    await fs.mkdir(path.dirname(archived), { recursive: true });
-    await fs.rename(active, archived);
-    const pending = await completeLatestAction(
+    const { pending, commit } = await commitValidLocalArchive(runtime, run, projectRoot, []);
+    const delivered = await completeLatestAction(
       runtime,
-      run,
-      { archiveDirectory: archivedRef },
-      'archive-delivery-intervening-files',
-      { executorId: 'comet-classic-archive', projectRoot },
+      pending,
+      { action: 'local', targetBranch: 'sdk-build', commit },
+      'archive-delivery-linear-outcome',
+      { projectRoot },
     );
-    execFileSync('git', ['add', '--', archivedRef], { cwd: projectRoot });
-    execFileSync(
-      'git',
-      [
-        '-c',
-        'user.name=Comet Test',
-        '-c',
-        'user.email=comet-test@example.invalid',
-        'commit',
-        '-m',
-        'chore: archive example',
-      ],
-      { cwd: projectRoot },
-    );
-    const commit = execFileSync('git', ['rev-parse', 'HEAD'], {
-      cwd: projectRoot,
-      encoding: 'utf8',
-    }).trim();
-    await expect(
-      completeLatestAction(
-        runtime,
-        pending,
-        { action: 'local', targetBranch: 'sdk-build', commit },
-        'archive-delivery-intervening-outcome',
-        { projectRoot },
-      ),
-    ).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
+    expect(delivered.status).toBe('completed');
   });
 
   it('rejects a local archive commit that omitted Design Doc and Plan annotations', async () => {

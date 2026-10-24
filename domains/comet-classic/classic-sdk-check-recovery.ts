@@ -1,3 +1,4 @@
+import { resolveClassicCheckTimeout } from './classic-project-config.js';
 import { isClassicSdkRejectedBuildProposal } from './classic-build-configuration.js';
 import path from 'node:path';
 import {
@@ -110,7 +111,11 @@ export async function inspectClassicSdkActionRecovery(projectRoot: string, run: 
   if (isCheck && !command) {
     try {
       const fixed = classicSdkCheckCommand(run, action, projectRoot);
-      command = { argv: fixed.argv, cwd: fixed.cwd ?? '.', timeoutMs: fixed.timeoutMs ?? 300_000 };
+      command = {
+        argv: fixed.argv,
+        cwd: fixed.cwd ?? '.',
+        timeoutMs: await resolveClassicCheckTimeout(projectRoot, fixed.timeoutMs),
+      };
     } catch {
       // 旧 CLI 在执行前未保存 argv；如实报告缺失，不能从上轮检查猜测。
     }

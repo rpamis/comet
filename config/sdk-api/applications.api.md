@@ -881,6 +881,7 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                     id: string;
                     choice: string;
                     proposalHash: string;
+                    reason?: string;
                 } | undefined;
                 id: string;
                 stepId: string;
@@ -923,6 +924,7 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                     id: string;
                     choice: string;
                     proposalHash: string;
+                    reason?: string;
                 } | undefined;
                 id: string;
                 stepId: string;
@@ -1571,6 +1573,7 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
                 id: string;
                 choice: string;
                 proposalHash: string;
+                reason?: string;
             } | undefined;
             id: string;
             stepId: string;
@@ -1613,6 +1616,7 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
                 id: string;
                 choice: string;
                 proposalHash: string;
+                reason?: string;
             } | undefined;
             id: string;
             stepId: string;

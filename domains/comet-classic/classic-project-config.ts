@@ -1,5 +1,9 @@
 import os from 'os';
 import path from 'path';
+import {
+  DEFAULT_WORKFLOW_CLASSIC_CHECK_TIMEOUT_MS,
+  normalizeWorkflowClassicCheckTimeout,
+} from '../workflow-contract/project-config.js';
 import { readWorkflowGlobalConfig } from '../workflow-contract/global-config.js';
 import { readWorkflowProjectConfigDocument } from '../workflow-contract/project-config-reader.js';
 
@@ -64,3 +68,17 @@ async function readClassicConfigValue(
 
 export { configCandidates, readClassicConfigValue };
 export type { ClassicConfigOptions, ClassicConfigValue };
+
+/** 项目默认仅在未显式指定时生效；执行、恢复和收据校验使用同一规则。 */
+export async function resolveClassicCheckTimeout(
+  projectRoot: string,
+  explicit?: number,
+): Promise<number> {
+  const document = await readWorkflowProjectConfigDocument(projectRoot, {
+    allowPartialProject: true,
+  });
+  return normalizeWorkflowClassicCheckTimeout(
+    explicit ?? document?.classic?.check_timeout_ms ?? DEFAULT_WORKFLOW_CLASSIC_CHECK_TIMEOUT_MS,
+    'Classic check timeout',
+  );
+}

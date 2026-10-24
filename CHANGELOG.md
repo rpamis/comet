@@ -6,12 +6,16 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Classic check configuration**: Support a bounded project-level check timeout with explicit CLI overrides, plus opt-in output presets for Vite, .NET, and coverage artifacts. Explicitly declared ignored inputs remain part of the evidence ([#502](https://github.com/rpamis/comet/issues/502)).
 - **Native brief structure**: List only the directory categories relevant to a change, instead of filling unused categories with "None". The Directory structure section and meaningful content in each retained category remain required. Existing complete briefs remain valid.
 - **Classic configuration guidance**: Show each execution, TDD, and review setting with its meaning and confirmation status. Ask only for missing, invalid, or explicitly changed choices, while retaining valid choices within the same change. Each new full change still requires its own configuration approval; hotfix and tweak retain their existing confirmation steps.
 - **Requirement reconfirmation**: Before presenting the complete revised Native or Classic proposal, explain behavior changes, affected acceptance criteria, retained work, and steps that must be repeated. State when the previous approved proposal is unavailable. Approval remains bound to the complete current proposal, and old verification results do not approve new requirements.
 
 ### Fixed
 
+- **Native blocked verification recovery**: Make advertised retry and implementation-repair commands executable for ordinary changes, retain valid candidate/check evidence, and carry the blocker resolution into the new independent verification attempt ([#505](https://github.com/rpamis/comet/issues/505)).
+- **Native acceptance boundaries**: Respect Markdown section and list-item boundaries instead of attaching later sections to the final criterion. Preserve legacy confirmed criteria only when their original full approval evidence still matches; confirmed Shape content remains protected ([#504](https://github.com/rpamis/comet/issues/504)).
+- **Classic delivery scope**: Keep unrelated change drafts out of delivery requirements, validate approved linear commit ranges, and route the compatible delivery verification entry to the owning SDK workflow without discarding its approval ([#503](https://github.com/rpamis/comet/issues/503)).
 - **Native verification across sessions**: Validate submitted check evidence against the candidate's content rather than the submitting shell's environment, while retaining execution-environment checks when deciding whether to reuse results ([#500](https://github.com/rpamis/comet/issues/500)).
 - **Native generated check inputs**: Keep dependency trees and volatile development caches out of generated-input snapshots, retain generated types and production outputs, and reject reuse of incomplete snapshots instead of accepting stale passing results ([#501](https://github.com/rpamis/comet/issues/501)).
 - **Classic check executable changes**: Resolve the current executable before reusing check evidence, including PATH changes and newly installed higher-priority commands in long-lived sessions.

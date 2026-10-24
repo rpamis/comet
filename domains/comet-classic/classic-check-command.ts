@@ -1,3 +1,4 @@
+import { resolveClassicCheckTimeout } from './classic-project-config.js';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { RuntimeProtocolError } from '../engine/runtime.js';
@@ -52,9 +53,10 @@ export async function executeClassicSdkCheckCommand(
     projectRoot,
     argv: requestedArgv,
     cwd = '.',
-    timeoutMs = 300_000,
+    timeoutMs: requestedTimeout,
     reusable = false,
   } = options;
+  const timeoutMs = await resolveClassicCheckTimeout(projectRoot, requestedTimeout);
   if (inspected.state.phase !== scope) {
     throw new Error(`Classic SDK change ${name} is in ${inspected.state.phase}, not ${scope}`);
   }
@@ -180,7 +182,7 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
   if (sdkWorkspace) {
     if (rerun) throw new Error('Classic SDK check rerun requires a new pending check Action');
     let cwd = '.';
-    let timeoutMs = 300_000;
+    let timeoutMs: number | undefined;
     let reusable = false;
     for (let index = 3; index < separator; index += 1) {
       const option = args[index];
@@ -249,7 +251,7 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
     };
   }
   let cwd = path.relative(root, classicCommandInvocationCwd()) || '.';
-  let timeoutMs = 300_000;
+  let timeoutMs: number | undefined;
   let reusable = false;
   let incremental = false;
   for (let index = 3; index < separator; index += 1) {
@@ -260,8 +262,6 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
     else if (option === '--timeout-ms' && index + 1 < separator) timeoutMs = Number(args[++index]);
     else throw new Error(`Unknown or incomplete check option: ${option}`);
   }
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 3_600_000)
-    throw new Error('Check timeout must be 1..3600000 milliseconds');
   const recorded = await executeCommandCheck(root, change.directory, context.run, {
     scope: scope as 'build' | 'verify',
     argv: args.slice(separator + 1),

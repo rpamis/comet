@@ -363,12 +363,18 @@ const deliveryOutcomeValidator: RuntimeValidator = {
       typeof archive.archiveDirectory !== 'string' ||
       typeof actionInput.input?.changeDir !== 'string' ||
       typeof delivered.commit !== 'string' ||
-      !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(delivered.commit) ||
-      liveGitBranch(root) !== approved.targetBranch
+      !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(delivered.commit)
     ) {
       return { accepted: false, reason: 'Classic delivery does not match its approval' };
     }
     try {
+      const branch = liveGitBranch(root);
+      if (branch !== approved.targetBranch) {
+        return {
+          accepted: false,
+          reason: `Classic 当前分支 ${branch ?? '(detached HEAD)'} 与已批准目标 ${String(approved.targetBranch)} 不一致`,
+        };
+      }
       if (approved.deliveryAction !== 'local') {
         if (
           typeof approved.remote !== 'string' ||
@@ -384,12 +390,56 @@ const deliveryOutcomeValidator: RuntimeValidator = {
         cwd: root,
         encoding: 'utf8',
       }).trim();
-      const parents = execFileSync('git', ['rev-list', '--parents', '-n', '1', 'HEAD'], {
-        cwd: root,
-        encoding: 'utf8',
-      })
+      if (head !== delivered.commit) {
+        return {
+          accepted: false,
+          reason: `Classic 当前 HEAD ${head} 与交付提交 ${delivered.commit} 不一致`,
+        };
+      }
+      if (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u.test(approved.baseCommit)) {
+        return { accepted: false, reason: 'Classic 交付缺少有效的已批准基线 baseCommit' };
+      }
+      const commits = execFileSync(
+        'git',
+        ['rev-list', '--reverse', '--parents', `${approved.baseCommit}..${head}`, '--'],
+        { cwd: root, encoding: 'utf8' },
+      )
         .trim()
-        .split(/\s+/u);
+        .split('\n')
+        .filter(Boolean);
+      if (!commits.length) {
+        return {
+          accepted: false,
+          reason: `Classic 已批准基线 ${approved.baseCommit} 之后没有交付提交`,
+        };
+      }
+      let previousCommit = approved.baseCommit;
+      const changed = new Set<string>();
+      for (const row of commits) {
+        const [commit, ...parents] = row.split(/\s+/u);
+        if (parents.length !== 1) {
+          return {
+            accepted: false,
+            reason: `Classic 交付范围包含非线性提交 ${commit}（父提交数 ${parents.length}）；只接受从已批准基线 ${approved.baseCommit} 连续产生的单父提交`,
+          };
+        }
+        if (parents[0] !== previousCommit) {
+          return {
+            accepted: false,
+            reason: `Classic 交付提交 ${commit} 的父提交 ${parents[0]} 不等于 ${previousCommit}；交付范围必须从已批准基线 ${approved.baseCommit} 连续开始`,
+          };
+        }
+        // 逐提交检查，避免先夹带未批准文件、再撤销的提交躲过最终 tree 对比。
+        for (const file of execFileSync(
+          'git',
+          ['diff-tree', '--no-commit-id', '--no-renames', '--name-only', '-r', '-z', commit],
+          { cwd: root, encoding: 'utf8' },
+        )
+          .split('\0')
+          .filter(Boolean))
+          changed.add(file);
+        previousCommit = commit;
+      }
       const files = execFileSync(
         'git',
         ['ls-tree', '-r', '--name-only', 'HEAD', '--', archive.archiveDirectory],
@@ -403,16 +453,6 @@ const deliveryOutcomeValidator: RuntimeValidator = {
         ['status', '--porcelain', '--untracked-files=all', '--', archive.archiveDirectory],
         { cwd: root, encoding: 'utf8' },
       ).trim();
-      const changed = execFileSync(
-        'git',
-        ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', 'HEAD'],
-        {
-          cwd: root,
-        },
-      )
-        .toString('utf8')
-        .split('\0')
-        .filter(Boolean);
       const activeRef = actionInput.input.changeDir.replaceAll('\\', '/');
       const archiveRef = archive.archiveDirectory.replaceAll('\\', '/');
       const specsRef = path.relative(root, layout.specsDir).replaceAll('\\', '/');
@@ -479,34 +519,41 @@ const deliveryOutcomeValidator: RuntimeValidator = {
         file.startsWith(`${archiveRef}/`) ||
         file.startsWith(`${specsRef}/`) ||
         (profile === 'full' && (file === designDoc || file === plan));
-      const offendingPaths = changed.filter((file) => !allowed(file));
+      const offendingPaths = [...changed].filter((file) => !allowed(file));
       if (offendingPaths.length) {
         return {
           accepted: false,
-          reason: `Classic 归档提交包含未批准的路径：${offendingPaths.join(', ')}`,
+          reason: `Classic 交付提交范围包含未批准的路径：${offendingPaths.join(', ')}`,
         };
       }
       const checkpointOnlyDirty =
         dirty !== '' && (await onlyRuntimeCheckpointChanged(root, archiveRef, dirty, run));
+      if (!files) {
+        return { accepted: false, reason: `Classic 交付 HEAD 缺少归档目录：${archiveRef}` };
+      }
+      if (dirty && !checkpointOnlyDirty) {
+        return { accepted: false, reason: `Classic 归档目录与交付 HEAD 不一致：${dirty}` };
+      }
+      if (![...changed].some((file) => file.startsWith(`${archiveRef}/`))) {
+        return {
+          accepted: false,
+          reason: `Classic 交付范围 ${approved.baseCommit}..${head} 未包含归档目录：${archiveRef}`,
+        };
+      }
       if (
-        head !== delivered.commit ||
-        parents.length !== 2 ||
-        parents[1] !== approved.baseCommit ||
-        !files ||
-        (dirty && !checkpointOnlyDirty) ||
-        !changed.some((file) => file.startsWith(`${archiveRef}/`)) ||
-        (profile === 'full' &&
-          (typeof designDoc !== 'string' ||
-            typeof plan !== 'string' ||
-            !archivedDesignDoc ||
-            !archivedPlan ||
-            !changed.includes(archivedDesignDoc) ||
-            !changed.includes(archivedPlan) ||
-            !committedDesign?.includes(`archived-with: ${archiveName}`) ||
-            !committedDesign.includes('status: final') ||
-            !committedPlan?.includes(`archived-with: ${archiveName}`)))
+        profile === 'full' &&
+        (!archivedDesignDoc ||
+          !archivedPlan ||
+          !changed.has(archivedDesignDoc) ||
+          !changed.has(archivedPlan) ||
+          !committedDesign?.includes(`archived-with: ${archiveName}`) ||
+          !committedDesign.includes('status: final') ||
+          !committedPlan?.includes(`archived-with: ${archiveName}`))
       ) {
-        return { accepted: false, reason: 'Classic archive commit is missing or changed' };
+        return {
+          accepted: false,
+          reason: `Classic 交付范围缺少已归档的设计或计划，或归档标记不符：${archivedDesignDoc}, ${archivedPlan}`,
+        };
       }
       if (approved.deliveryAction !== 'local') {
         const remoteHead = classicSdkRemoteBranchHead(

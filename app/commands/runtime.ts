@@ -111,7 +111,15 @@ const operationFields = {
     'contentHash',
     'submissionId',
   ],
-  'resolve-wait': ['runId', 'expectedRevision', 'waitId', 'proposalHash', 'decisionId', 'choice'],
+  'resolve-wait': [
+    'runId',
+    'expectedRevision',
+    'waitId',
+    'proposalHash',
+    'decisionId',
+    'choice',
+    'reason',
+  ],
   'revise-wait': ['runId', 'expectedRevision', 'waitId', 'proposalHash', 'proposal'],
   'mark-unknown': ['runId', 'expectedRevision', 'actionId', 'attempt', 'reason'],
   retry: ['runId', 'expectedRevision', 'actionId', 'attempt', 'proposalHash', 'reconciliation'],
@@ -268,6 +276,7 @@ function parseRequest(value: unknown): JsonObject & { operation: keyof typeof op
     if (name === 'resolve-wait') {
       text(request.decisionId, 'decisionId');
       text(request.choice, 'choice');
+      if (request.reason !== undefined) text(request.reason, 'reason');
     } else if (!Object.hasOwn(request, 'proposal')) invalid('proposal 必须显式提供，可使用 null');
   }
   if (name === 'cancel') text(request.reason, 'reason');

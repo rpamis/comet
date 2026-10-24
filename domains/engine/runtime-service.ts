@@ -31,7 +31,11 @@ import {
 } from './runtime-json.js';
 import { compileRuntimeSchema } from './runtime-schema.js';
 import type { RuntimeStore } from './runtime-store.js';
-import { parseWorkflowRunSnapshot, validateWorkflowRunCommit } from './workflow-run-validation.js';
+import {
+  parseWorkflowRunSnapshot,
+  validateWorkflowRunCommit,
+  validRuntimeDecisionReason,
+} from './workflow-run-validation.js';
 import {
   defineWorkflow,
   type DefineWorkflowOptions,
@@ -98,6 +102,8 @@ export interface ResolveRuntimeWait extends RunCommand {
   proposalHash: string;
   decisionId: string;
   choice: string;
+  /** 决定说明，只绑定此 Wait；省略时保持既有输出与重试语义。 */
+  reason?: string;
 }
 
 export interface DispatchRuntimeCommand extends RunCommand {
@@ -1334,6 +1340,8 @@ export function createRuntime(options: CreateRuntimeOptions) {
   }
 
   async function resolveWait(command: ResolveRuntimeWait): Promise<WorkflowRun> {
+    if (command.reason !== undefined && !validRuntimeDecisionReason(command.reason))
+      throw new RuntimeProtocolError('INVALID_DECISION', 'reason 必须是 1 到 4096 字符的非空文本');
     return mutate(command, (run, definition) => {
       ensureActive(run);
       const wait = run.waits.find((candidate) => candidate.id === command.waitId);
@@ -1342,7 +1350,8 @@ export function createRuntime(options: CreateRuntimeOptions) {
         if (
           wait.decision.id !== command.decisionId ||
           wait.decision.choice !== command.choice ||
-          wait.decision.proposalHash !== command.proposalHash
+          wait.decision.proposalHash !== command.proposalHash ||
+          wait.decision.reason !== command.reason
         ) {
           throw new RuntimeProtocolError('DECISION_CONFLICT', '等待项已经接受了不同的决定');
         }
@@ -1359,6 +1368,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
         id: command.decisionId,
         choice: command.choice,
         proposalHash: command.proposalHash,
+        ...(command.reason === undefined ? {} : { reason: command.reason }),
       };
       const selectedTargets = applyTransitionHandler(
         run,

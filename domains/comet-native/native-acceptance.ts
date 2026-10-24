@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { Lexer } from 'marked';
 
 import { nativeHeadingKey } from './native-artifact-language.js';
 import { canonicalHash } from './native-canonical-hash.js';
@@ -392,7 +393,7 @@ function uniqueCriteria(
   return criteria;
 }
 
-function acceptanceSectionBounds(markdown: string): { start: number; end: number } | null {
+function legacyAcceptanceSectionBounds(markdown: string): { start: number; end: number } | null {
   let sectionStart: number | null = null;
   let sectionEnd: number | null = null;
   let matches = 0;
@@ -415,8 +416,8 @@ function acceptanceSectionBounds(markdown: string): { start: number; end: number
   return { start: sectionStart, end: sectionEnd ?? lineCount };
 }
 
-/** Derive criteria from top-level list items in the brief's Acceptance examples section. */
-export function deriveBriefAcceptanceCriteria(
+/** 仅用于核对旧确认快照；新 Shape 不得继续使用旧版列表边界。 */
+export function deriveLegacyBriefAcceptanceCriteria(
   markdown: string,
   source = 'brief.md',
   maxCriteria: number = NATIVE_ACCEPTANCE_LIMITS.maxCriteria,
@@ -425,7 +426,7 @@ export function deriveBriefAcceptanceCriteria(
   if (!Number.isSafeInteger(maxCriteria) || maxCriteria < 0) {
     throw new Error('Native brief acceptance budget is invalid');
   }
-  const section = acceptanceSectionBounds(markdown);
+  const section = legacyAcceptanceSectionBounds(markdown);
   if (section === null) return [];
 
   let topLevelIndent: number | null = null;
@@ -463,6 +464,43 @@ export function deriveBriefAcceptanceCriteria(
     'Brief',
     identityMode,
   );
+}
+
+/** 按 Markdown section 和 list item 的实际边界派生验收，保留条目内部的完整正文。 */
+export function deriveBriefAcceptanceCriteria(
+  markdown: string,
+  source = 'brief.md',
+  maxCriteria: number = NATIVE_ACCEPTANCE_LIMITS.maxCriteria,
+  identityMode: NativeAcceptanceIdentityMode = 'content-hash',
+): NativeAcceptanceCriterion[] {
+  if (!Number.isSafeInteger(maxCriteria) || maxCriteria < 0) {
+    throw new Error('Native brief acceptance budget is invalid');
+  }
+  const blocks = Lexer.lex(markdown.replace(/\r\n?/gu, '\n'));
+  const sections = blocks.flatMap((block, index) =>
+    block.type === 'heading' && nativeHeadingKey(block.text) === 'acceptanceExamples'
+      ? [{ index, depth: block.depth }]
+      : [],
+  );
+  if (sections.length === 0) return [];
+  if (sections.length !== 1) {
+    throw new Error('Brief must contain exactly one Acceptance examples section');
+  }
+  const section = sections[0];
+  const criteria: NativeAcceptanceCriterion[] = [];
+  for (const block of blocks.slice(section.index + 1)) {
+    if (block.type === 'heading' && block.depth <= section.depth) break;
+    if (block.type !== 'list') continue;
+    for (const item of block.items) {
+      if (criteria.length >= maxCriteria) {
+        throw new Error(`Native acceptance exceeds its ${maxCriteria}-criterion acceptance budget`);
+      }
+      // raw 保留 checkbox、嵌套列表、表格和代码；只去掉本条的列表标记。
+      const text = item.raw.replace(/^ {0,3}(?:[-*+]|\d{1,9}[.)])[ \t]*/u, '');
+      criteria.push(criterion('brief-example', source, text, [], identityMode));
+    }
+  }
+  return uniqueCriteria(criteria, 'Brief', identityMode);
 }
 
 /** Derive criteria from explicit Markdown `Scenario:` heading blocks in a target spec. */

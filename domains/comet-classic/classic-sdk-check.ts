@@ -1,3 +1,4 @@
+import { resolveClassicCheckTimeout } from './classic-project-config.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
 import { promises as fs } from 'node:fs';
@@ -173,10 +174,7 @@ async function checkedInput(
   ) {
     throw new Error('Classic check requires literal program arguments');
   }
-  const timeoutMs = input.timeoutMs ?? 300_000;
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 3_600_000) {
-    throw new Error('Classic check timeout must be 1..3600000 milliseconds');
-  }
+  const timeoutMs = await resolveClassicCheckTimeout(root, input.timeoutMs);
   const state = run.state as ClassicState | undefined;
   const changeDirRef =
     run.input !== null &&
@@ -265,7 +263,7 @@ export async function assertClassicSdkCheckCommandBinding(
   if (
     hashRuntimeValue(output.argv) !== hashRuntimeValue(input.argv) ||
     output.cwd !== cwd.relative ||
-    output.timeoutMs !== (input.timeoutMs ?? 300_000) ||
+    output.timeoutMs !== (await resolveClassicCheckTimeout(projectRoot, input.timeoutMs)) ||
     (output.reusable === true) !== (input.reusable === true)
   )
     throw new Error('Classic check receipt does not match the fixed command');

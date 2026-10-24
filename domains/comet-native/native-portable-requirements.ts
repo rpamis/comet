@@ -743,6 +743,8 @@ export async function readNativePortableAcceptance(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
   specChanges: readonly NativePortableSpecChange[];
+  /** 只在完整批准指纹仍可验证时核对旧验收快照。 */
+  legacyBriefBoundaries?: boolean;
 }) {
   const changeDir = nativePortableChangeDir(options.paths, options.state.name);
   const brief = await readNativeBoundedTextFile({
@@ -865,6 +867,7 @@ export async function readNativePortableAcceptance(options: {
     acceptance: buildNativePortableAcceptance({
       briefMarkdown: brief.text,
       specs,
+      legacyBriefBoundaries: options.legacyBriefBoundaries,
       resolveBriefReferences:
         options.state.document_constraints_version !== undefined &&
         options.state.document_constraints_version !== 1,
@@ -1078,10 +1081,32 @@ export async function inspectNativePortableAcceptanceDrift(options: {
   } catch {
     return { drifted: true, reason: 'Native Shape artifacts changed or became invalid' };
   }
-  const { acceptance } = shape;
+  let { acceptance } = shape;
   const expected = options.state.acceptance.map(({ source, text }) => ({ source, text }));
   if (!sameNativePortableAcceptance(expected, acceptance)) {
-    return { drifted: true, reason: 'Native confirmed acceptance criteria changed' };
+    // 旧版把列表外正文并入最后一项。只有完整文档仍通过后续批准指纹校验，
+    // 且旧解析结果精确匹配快照，才保留既有验收身份；不能截断已扁平化的文本猜测边界。
+    let legacyAcceptance;
+    if (options.state.phase !== 'shape' && options.state.shape_confirmation_hash !== undefined) {
+      try {
+        const legacyShape = await readNativePortableAcceptance({
+          ...options,
+          specChanges,
+          legacyBriefBoundaries: true,
+        });
+        if (legacyShape.formalHash === shape.formalHash) legacyAcceptance = legacyShape.acceptance;
+      } catch {
+        // 无法重现原确认内容时维持阻塞，交由原需求的显式重新确认恢复。
+      }
+    }
+    if (!legacyAcceptance || !sameNativePortableAcceptance(expected, legacyAcceptance)) {
+      return {
+        drifted: true,
+        reason:
+          'Native confirmed acceptance criteria changed; restore the approved documents, or reconcile any running Builder with its original Action and claim before using the latest continuation to revise-requirements on this change and confirm the current Shape. A legacy flattened acceptance snapshot cannot safely establish Markdown boundaries after an edit.',
+      };
+    }
+    acceptance = legacyAcceptance;
   }
   let children;
   try {
@@ -1112,7 +1137,11 @@ export async function inspectNativePortableAcceptanceDrift(options: {
       coordinationMode: options.state.coordination_mode,
     }) !== options.state.shape_confirmation_hash
   ) {
-    return { drifted: true, reason: 'Native Shape artifacts changed' };
+    return {
+      drifted: true,
+      reason:
+        'Native Shape artifacts changed; acceptance is unchanged, but the complete approved brief, specifications, and child plan remain bound. Restore the approved documents, or reconcile any running Builder with its original Action and claim before using the latest continuation to revise-requirements on this change and confirm the edits.',
+    };
   }
   const currentHash = children
     ? hashNativeParentContract({ acceptance, children: children.contract })

@@ -34,7 +34,7 @@ export interface RuntimeWait {
   proposalHash: string;
   choices: string[];
   results: Record<string, WorkflowResult>;
-  decision?: { id: string; choice: string; proposalHash: string };
+  decision?: { id: string; choice: string; proposalHash: string; reason?: string };
 }
 
 export interface RuntimeEvidenceWait {

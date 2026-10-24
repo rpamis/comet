@@ -1,3 +1,4 @@
+import { nativeSdkVerifyWaitDecisions } from './native-sdk-verify-decision.js';
 import { assertNativeEditReviewsComplete } from './native-edit-review.js';
 import path from 'node:path';
 
@@ -119,6 +120,7 @@ import {
   reserveNativeVerifierAttempt,
   recordNativeVerifierExecutionError,
   retryNativeVerifier,
+  resolveNativeVerifierBlocker,
   returnNativeCandidateToBuild,
 } from './native-loop-runtime.js';
 import { nativeProjectPaths } from './native-paths.js';
@@ -599,13 +601,23 @@ function verifierResultState(
   const lastExecutionFailure = candidateActions
     .map((entry) => entry.stepId === 'verify.verifier' && entry.status === 'failed')
     .lastIndexOf(true);
+  // 新 Verifier 从已批准的 blocked 恢复 Wait 开始独立尝试；旧结果仍保留为历史证据。
+  const recoverySequence = run.actionContexts[action.id]?.results['verify.stop']?.sequence;
+  const recoveryWait = run.waits.find(
+    (wait) =>
+      wait.stepId === 'verify.stop' &&
+      wait.sequence === recoverySequence &&
+      wait.status === 'resolved' &&
+      wait.decision?.choice === 'retry',
+  );
   const previousVerifierActions = candidateActions
     .slice(lastExecutionFailure + 1)
     .filter(
       (entry) =>
         entry.stepId === 'verify.verifier' &&
         entry.id !== action.id &&
-        entry.status === 'succeeded',
+        entry.status === 'succeeded' &&
+        (!recoveryWait || run.actionContexts[entry.id].sequence > recoveryWait.sequence),
     );
   if (
     previousVerifierActions.some(
@@ -1189,7 +1201,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         'verify.stop': {
           type: 'ask_user',
           proposalFrom: 'verify.verifier',
-          choices: ['repair'],
+          choices: ['retry', 'repair'],
         },
         'verify.checks-stop': {
           type: 'ask_user',
@@ -1327,6 +1339,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         { from: 'verify.verifier', to: 'verify.retry', on: 'failed' },
         { from: 'verify.retry', to: 'verify.verifier', on: 'retry' },
         { from: 'verify.verifier', to: 'verify.stop' },
+        { from: 'verify.stop', to: 'verify.verifier', on: 'retry' },
         { from: 'verify.stop', to: 'build.builder', on: 'repair' },
         { from: 'verify.stop', to: 'supervisor.parent.builder', on: 'repair' },
         { from: 'verify.requested-checks', to: 'verify.verifier' },
@@ -2266,13 +2279,36 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
           };
         }
         if (event.kind === 'wait-resolved' && event.stepId === 'verify.stop') {
+          const wait = run.waits.find(
+            (candidate) =>
+              candidate.stepId === event.stepId &&
+              candidate.decision?.id === event.decisionId &&
+              candidate.proposalHash === event.proposalHash,
+          );
           if (
-            event.choice !== 'repair' ||
-            state.phase !== 'verify' ||
-            state.status !== 'await-user' ||
-            state.loop.next_action !== 'await-user'
+            !wait ||
+            !nativeSdkVerifyWaitDecisions(state, wait).some(({ choice }) => choice === event.choice)
           ) {
             throw new Error('Native Verify stop decision does not match the current Run');
+          }
+          if (event.choice === 'retry') {
+            const reserved = reserveNativeVerifierAttempt(
+              resolveNativeVerifierBlocker(state, { reason: wait.decision?.reason }),
+            );
+            return {
+              state: reserved as unknown as RuntimeValue,
+              next: [
+                {
+                  stepId: 'verify.verifier',
+                  input: {
+                    recoveryWaitId: wait.id,
+                    ...(wait.decision?.reason === undefined
+                      ? {}
+                      : { reason: wait.decision.reason }),
+                  },
+                },
+              ],
+            };
           }
           const returned = returnNativeCandidateToBuild({
             state,

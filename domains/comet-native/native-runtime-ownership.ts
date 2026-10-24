@@ -37,6 +37,7 @@ import {
 import { nativeSdkCheckValidator } from './native-sdk-checks.js';
 import {
   nativeSdkBeforeVerifierRecovery,
+  nativeSdkBeforeBlockedVerifierRecovery,
   nativeSdkBeforeIntegrationRepairRecovery,
   nativeSdkLegacyDefinitions,
   nativeSdkMatchesRun,
@@ -218,6 +219,7 @@ export async function inspectNativeSdkDefinitionUpgrade(
     if (!workflow) return null;
     store = application.store;
     previousDefinitions = [
+      nativeSdkBeforeBlockedVerifierRecovery(workflow),
       nativeSdkBeforeIntegrationRepairRecovery(workflow),
       nativeSdkBeforeVerifierRecovery(workflow),
     ];
@@ -245,6 +247,13 @@ export async function inspectNativeSdkDefinitionUpgrade(
     ready,
     required:
       previousHash === NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH ||
+      (state.loop.next_action === 'resolve-verifier-blocker' &&
+        run.waits.some(
+          (wait) =>
+            wait.status === 'pending' &&
+            wait.stepId === 'verify.stop' &&
+            !wait.choices.includes('retry'),
+        )) ||
       (run.status === 'failed' && nativeSdkRecoverableFailureReason(run.reason)),
     repaired: false,
     fromHash: previousHash,
@@ -268,6 +277,19 @@ export async function inspectNativeSdkDefinitionUpgrade(
         !wait.choices.includes('reverify')
       )
         wait.choices = [...wait.choices, 'reverify'];
+  }
+  if (
+    workflow.steps['verify.stop']?.type === 'ask_user' &&
+    Array.isArray(workflow.steps['verify.stop'].choices) &&
+    workflow.steps['verify.stop'].choices.includes('retry')
+  ) {
+    for (const wait of next.waits)
+      if (
+        wait.stepId === 'verify.stop' &&
+        wait.status === 'pending' &&
+        !wait.choices.includes('retry')
+      )
+        wait.choices = ['retry', ...wait.choices];
   }
   next.workflow.hash = result.toHash;
   next.definitionHashes[JSON.stringify([definition.id, definition.version])] = result.toHash;

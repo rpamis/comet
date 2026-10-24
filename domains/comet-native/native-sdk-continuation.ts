@@ -1,3 +1,7 @@
+import {
+  nativeSdkVerifyDecisions,
+  nativeSdkVerifyWaitDecisions,
+} from './native-sdk-verify-decision.js';
 import { nativeSdkCompletedCheckInputDrift } from './native-sdk-checks.js';
 import { nativeTaskContextRequest } from './native-task-context.js';
 import {
@@ -466,29 +470,47 @@ function sdkShapeContinuation(
   };
 }
 
-function sdkLoopStopContinuation(state: NativePortableState, proposalHash: string) {
+function sdkLoopStopContinuation(
+  run: WorkflowRun,
+  state: NativePortableState,
+  proposalHash: string,
+) {
   const continuation = nativePortableContinuation(state);
-  if (!continuation.commandAlternatives) {
-    throw new Error('Native SDK Verify stop has no recovery choices');
+  const decisions = nativeSdkVerifyDecisions(run, state).filter(
+    ({ wait }) => wait.proposalHash === proposalHash,
+  );
+  if (
+    state.loop.next_action === 'resolve-verifier-blocker' &&
+    !decisions.some(({ action }) => action === 'resolve-verifier-blocker')
+  ) {
+    // 旧定义的 Wait 只有 repair；先精确迁移，不能展示执行时必然被拒的 retry。
+    return {
+      ...continuation,
+      action: 'none' as const,
+      disposition: 'blocked' as const,
+      mode: 'reconcile' as const,
+      requiresUserDecision: false,
+      commandArgs: ['comet', 'native', 'doctor', state.name, '--repair'],
+      commandAlternatives: undefined,
+      requiredInputs: [],
+      inputOptions: [],
+      userCommunication: {
+        required: false,
+        message: null,
+        suggestedReply: null,
+        agentInstruction:
+          state.language === 'zh-CN'
+            ? '更新原 Run 的恢复选项，然后重新读取 continuation。保留候选和检查；只有用户明确决定后才重新验收或修复实现，不需要重新确认需求。'
+            : 'Update the original Run recovery choices, then read its continuation again. Preserve the candidate and checks; retry verification or repair only after an explicit user decision. Do not reset the requirements.',
+      },
+    };
   }
   return {
     ...continuation,
-    commandAlternatives: continuation.commandAlternatives.map((alternative) => {
-      if (alternative.name !== 'revise-implementation' || !alternative.commandArgs) {
-        return alternative;
-      }
-      const position = alternative.commandArgs.indexOf('--expected-state-version');
-      if (position < 0) throw new Error('Native SDK repair command lacks its state version');
-      return {
-        ...alternative,
-        commandArgs: [
-          ...alternative.commandArgs.slice(0, position),
-          '--proposal-hash',
-          proposalHash,
-          ...alternative.commandArgs.slice(position),
-        ],
-      };
-    }),
+    commandAlternatives: [
+      ...decisions.map(({ action, wait }) => sdkDecision(state, action, wait.proposalHash)),
+      sdkDecision(state, 'revise-requirements'),
+    ],
   };
 }
 
@@ -909,7 +931,7 @@ export async function projectNativeSdkContinuation(options: {
     };
   } else if (verifyWait?.stepId === 'verify.checks-stop') {
     continuation = {
-      ...sdkLoopStopContinuation(state, verifyWait.proposalHash),
+      ...sdkLoopStopContinuation(run, state, verifyWait.proposalHash),
       userCommunication: communication(
         localized(
           'Preserve failed, interrupted, or input-invalidated check receipts. Ask for a repair or requirements decision before creating a new candidate; do not retry the original check or report that it never ran.',
@@ -919,7 +941,7 @@ export async function projectNativeSdkContinuation(options: {
       ),
     };
   } else if (verifyWait?.stepId === 'verify.stop') {
-    continuation = sdkLoopStopContinuation(state, verifyWait.proposalHash);
+    continuation = sdkLoopStopContinuation(run, state, verifyWait.proposalHash);
   } else if (verifyWait) {
     const retry = verifyWait.stepId === 'verify.retry';
     continuation = {
@@ -929,16 +951,12 @@ export async function projectNativeSdkContinuation(options: {
       requiresUserDecision: true,
       action: retry ? 'retry-verifier' : 'confirm-skill-coordinated-pass',
       requiredInputs: ['summary', 'user-decision'],
-      commandAlternatives: retry
-        ? [sdkDecision(state, 'retry-verifier', verifyWait.proposalHash)]
-        : [
-            sdkDecision(state, 'accept-result', verifyWait.proposalHash),
-            sdkDecision(state, 'revise-implementation', verifyWait.proposalHash),
-            ...(verifyWait.choices.includes('reverify')
-              ? [sdkDecision(state, 'retry-verifier', verifyWait.proposalHash)]
-              : []),
-            sdkDecision(state, 'revise-requirements'),
-          ],
+      commandAlternatives: [
+        ...nativeSdkVerifyDecisions(run, state)
+          .filter(({ wait }) => wait.id === verifyWait.id)
+          .map(({ action, wait }) => sdkDecision(state, action, wait.proposalHash)),
+        ...(!retry ? [sdkDecision(state, 'revise-requirements')] : []),
+      ],
       userCommunication: communication(
         localized(
           'Summarize the result and evidence, then wait for an explicit decision before executing the matching option.',
@@ -1376,7 +1394,15 @@ export async function projectNativeSdkContinuation(options: {
           pendingWaits: waits.map((wait) => ({
             ...wait,
             commandArgs: dispatchCommandArgs,
-            decisionRequests: wait.choices.map((choice) => ({
+            decisionRequests: ([
+              'verify.stop',
+              'verify.checks-stop',
+              'verify.retry',
+              'verify.confirm',
+            ].includes(wait.stepId)
+              ? nativeSdkVerifyWaitDecisions(state, wait).map(({ choice }) => choice)
+              : wait.choices
+            ).map((choice) => ({
               operation: 'resolve-wait',
               runId: run.runId,
               expectedRevision: run.revision,
@@ -1384,6 +1410,9 @@ export async function projectNativeSdkContinuation(options: {
               proposalHash: wait.proposalHash,
               decisionId: '<decision-id>',
               choice,
+              ...(wait.stepId === 'verify.stop' && choice === 'retry'
+                ? { reason: '<summary>' }
+                : {}),
             })),
           })),
         }

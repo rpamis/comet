@@ -2,6 +2,7 @@ import path from 'node:path';
 
 import {
   deriveBriefAcceptanceCriteria,
+  deriveLegacyBriefAcceptanceCriteria,
   deriveSpecAcceptanceCriteria,
   normalizeNativeAcceptanceText,
 } from './native-acceptance.js';
@@ -47,10 +48,8 @@ function compareText(left: string, right: string): number {
 /**
  * Build the confirmed acceptance list without deriving identity from content.
  *
- * The existing Markdown scanner remains useful for excluding code/comments and
- * recognizing scenarios. Its legacy content-derived IDs are deliberately
- * discarded here; portable Native uses small sequential IDs only for result
- * mapping within the confirmed goal cycle.
+ * Markdown 解析负责确定条目和场景的正文归属。这里不沿用内容哈希 ID；
+ * Portable Native 的连续 ID 只映射当前已确认目标周期内的验收结果。
  */
 export function buildNativePortableAcceptance(options: {
   briefMarkdown: string;
@@ -58,6 +57,8 @@ export function buildNativePortableAcceptance(options: {
   /** Enable references only at the versioned Shape boundary; legacy callers retain their IDs. */
   resolveBriefReferences?: boolean;
   specs?: readonly NativePortableSpecAcceptanceInput[];
+  /** 只核对已持久化的旧确认快照，不用于创建新 Shape。 */
+  legacyBriefBoundaries?: boolean;
 }): NativePortableAcceptanceCriterion[] {
   const briefSource = portableRef(options.briefSource ?? 'brief.md', 'Native brief source');
   const specs = [...(options.specs ?? [])].sort((left, right) =>
@@ -67,7 +68,10 @@ export function buildNativePortableAcceptance(options: {
     throw new Error('Native acceptance sources contain duplicate capabilities');
   }
 
-  const derived: NativePortableAcceptanceInput[] = deriveBriefAcceptanceCriteria(
+  const deriveBrief = options.legacyBriefBoundaries
+    ? deriveLegacyBriefAcceptanceCriteria
+    : deriveBriefAcceptanceCriteria;
+  const derived: NativePortableAcceptanceInput[] = deriveBrief(
     options.briefMarkdown,
     briefSource,
     Number.MAX_SAFE_INTEGER,

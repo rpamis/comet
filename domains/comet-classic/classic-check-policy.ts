@@ -46,14 +46,20 @@ export interface CheckPolicyCommand {
   taskCheckboxes: 'include' | 'ignore';
 }
 
-const COMMAND_KEYS = ['argv', 'cwd', 'files', 'outputs', 'env', 'git', 'taskCheckboxes'];
+// 仅在命令显式选择时排除这些产物；读取产物的检查应声明真实 inputs，不使用对应预设。
+const OUTPUT_PRESETS: Record<string, readonly string[]> = {
+  vite: ['**/.vite/**'],
+  dotnet: ['**/bin/**', '**/obj/**'],
+  coverage: ['**/coverage/**', '**/.nyc_output/**'],
+};
+const COMMAND_KEYS = ['argv', 'cwd', 'files', 'outputs', 'presets', 'env', 'git', 'taskCheckboxes'];
 
 function parseCommandEntry(value: unknown, label: string): CheckPolicyCommand {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error(`${label} must be an object`);
   const record = value as Record<string, unknown>;
-  if (Object.keys(record).some((key) => !COMMAND_KEYS.includes(key)))
-    throw new Error(`${label} has unknown fields`);
+  const unknown = Object.keys(record).filter((key) => !COMMAND_KEYS.includes(key));
+  if (unknown.length) throw new Error(`${label} has unknown fields: ${unknown.join(', ')}`);
   if (
     !Array.isArray(record.argv) ||
     !record.argv.length ||
@@ -99,6 +105,22 @@ function parseCommandEntry(value: unknown, label: string): CheckPolicyCommand {
         ),
       ),
     ].sort((left, right) => left.localeCompare(right, 'en'));
+  }
+  if (record.presets !== undefined) {
+    if (!Array.isArray(record.presets) || record.presets.some((name) => typeof name !== 'string'))
+      throw new Error(`${label} presets must be an array of names: vite, dotnet, coverage`);
+    const outputs = [...(command.outputs ?? [])];
+    for (const name of record.presets as string[]) {
+      if (!Object.hasOwn(OUTPUT_PRESETS, name))
+        throw new Error(
+          `${label} has unknown preset '${name}'; supported presets: vite, dotnet, coverage`,
+        );
+      outputs.push(...OUTPUT_PRESETS[name]);
+    }
+    if (outputs.length || command.outputs !== undefined)
+      command.outputs = [...new Set(outputs)].sort((left, right) =>
+        left.localeCompare(right, 'en'),
+      );
   }
   if (record.env !== undefined) {
     if ((record.env as string[]).some((name) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)))

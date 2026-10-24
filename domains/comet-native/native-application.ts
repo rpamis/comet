@@ -19,6 +19,7 @@ import { inspectGitWorktree, resolveGitRef } from '../../platform/paths/git-work
 import { defineNativeWorkflowApplication } from './native-sdk-application.js';
 import {
   nativeSdkBeforeVerifierRecovery,
+  nativeSdkBeforeBlockedVerifierRecovery,
   nativeSdkMatchesRun,
   nativeSdkLegacyTransitionHandler,
 } from './native-sdk-definition.js';
@@ -503,8 +504,11 @@ export function createNativeWorkflowApplication(
     },
   };
   // 固定包身份已由 loader 验证；仅回退本次新增的恢复定义，其他差异仍拒绝。
-  const previous = nativeSdkBeforeVerifierRecovery(workflow);
-  if (nativeSdkMatchesRun(previous, context.existingRun)) {
+  const previous = [
+    nativeSdkBeforeBlockedVerifierRecovery(workflow),
+    nativeSdkBeforeVerifierRecovery(workflow),
+  ].find((candidate) => nativeSdkMatchesRun(candidate, context.existingRun));
+  if (previous) {
     workflow = previous;
     transitionHandler = nativeSdkLegacyTransitionHandler(workflow, transitionHandler);
   }

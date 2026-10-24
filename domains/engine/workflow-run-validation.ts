@@ -17,6 +17,11 @@ import type {
   WorkflowToken,
 } from './workflow-run.js';
 
+/** 决定说明随原 Wait 保存，限制长度以免用户输入无限扩大后继 Action。 */
+export function validRuntimeDecisionReason(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= 4096;
+}
+
 type JsonObject = Record<string, RuntimeValue>;
 const checkedActions = new WeakSet<object>();
 const checkedResultMaps = new WeakSet<object>();
@@ -226,11 +231,14 @@ function parseWait(
   };
   if (data.decision !== undefined) {
     const decision = object(data.decision, 'Wait.decision');
-    onlyFields(decision, ['id', 'choice', 'proposalHash'], 'Wait.decision');
+    onlyFields(decision, ['id', 'choice', 'proposalHash', 'reason'], 'Wait.decision');
+    if (decision.reason !== undefined && !validRuntimeDecisionReason(decision.reason))
+      invalid('Wait.decision.reason 必须是 1 到 4096 字符的非空文本');
     const decisionValue = {
       id: text(decision.id, 'Wait.decision.id'),
       choice: text(decision.choice, 'Wait.decision.choice'),
       proposalHash: hash(decision.proposalHash, 'Wait.decision.proposalHash'),
+      ...(decision.reason === undefined ? {} : { reason: decision.reason as string }),
     };
     if (
       data.status !== 'resolved' ||
