@@ -75,7 +75,7 @@ jobs:
           fail_ci_if_error: false
 
   core-regressions:
-    name: badcase (${{ matrix.os }})
+    name: Badcase regressions (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     strategy:
