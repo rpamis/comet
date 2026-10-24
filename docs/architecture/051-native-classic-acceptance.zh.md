@@ -23,9 +23,13 @@
 
 保留原始工具缺失实验，不能把模型自述或兼容性小样本当成工作流归档成功。最终六组使用同一兼容设置，重新核对真实 Action、独立验收和 Archive。
 
+Judge 的 HTTP 传输还复现了 `glm-5.3[1M]` 返回模型不存在的 400 响应。`[1m]` 是 [Claude Code 的上下文后缀](https://code.claude.com/docs/en/model-config)，发送模型 ID 前应去除。修复只改变 HTTP 传输中的模型 ID，保留配置及报告中的原模型名称；同一配置的真实修复验证已返回 `OK`。评分器修复不改变 Comet 产品快照。若已完成的同候选实验需要重新评分，应引用原产物和报告摘要另存评分证据，保留原失败记录；Agent 超时仍算失败，不能仅补评分就改成通过。
+
+评分输入还应跳过根级 `_eval_current_comet`、`_eval_target_skills`、`_eval_trusted_oracles` 三个控制器目录。它们是注入的安装与验证输入，不能先占满评分上下文而遗漏业务代码。普通下划线文件仍保留。目录污染问题已用相同预算下丢失 `wordcount.py` 的最小样例先复现，再验证修复。
+
 ## 候选与证据
 
-先完成实现、定向检查和构建，再记录候选 commit/tree、发布资产与完整 dist 的摘要、任务及 validator 的摘要和实际模型映射。六组最终结果必须匹配同一个候选；产品、任务或 harness 改变后，不能把旧结果当作新候选的通过证据。所有当前矩阵均使用 `COMET_NATIVE_SDK_CURRENT` 或 `COMET_CLASSIC_DOCS_LAYOUT`，不以冻结的 039/040 treatment 或 050 包作为被验收产品。
+先完成实现、定向检查和构建，再记录候选 commit/tree、发布资产与完整 dist 的摘要、任务及 validator 的摘要和实际模型映射。六组最终结果必须匹配同一产品候选的 `sourceHash`、`snapshotHash` 和 `assetsHash`。产品实现或资产改变后，不能把旧结果当作新候选的通过证据；任务或影响被测 Agent 执行、产物校验的 harness 改变后，重跑受影响的实验。仅评分传输、评分输入选择或结果文档改变时，核对产品文件未变，并按上面的规则另存同产物重评分证据。所有当前矩阵均使用 `COMET_NATIVE_SDK_CURRENT` 或 `COMET_CLASSIC_DOCS_LAYOUT`，不以冻结的 039/040 treatment 或 050 包作为被验收产品。
 
 历史 badcase 可以保留旧状态和旧输入，以验证 051 的兼容与恢复；被执行的产品源码和生成命令必须是当前候选。执行 `pnpm test:core-regressions` 的全部分组，核对每项精确测试名称及断言，不仅检查登记文件。Windows 定向回归与 Linux 完整 badcase 执行分别保留平台上下文，跳过或缺失的必需案例不能计为通过。
 

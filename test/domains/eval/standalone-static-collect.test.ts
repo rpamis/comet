@@ -85,6 +85,46 @@ function pythonAccepts(manifest: string): boolean {
 }
 
 describe('standalone static collector parity', () => {
+  it('keeps controller installations from displacing actual business artifacts in Judge input', () => {
+    const result = execFileSync(
+      'uv',
+      [
+        'run',
+        '--locked',
+        'python',
+        '-m',
+        'pytest',
+        'local/tests/scaffold/test_profiles.py',
+        '-k',
+        'generic_judge_keeps_business_artifacts_when_current_cli_snapshots_are_present',
+        '-q',
+      ],
+      { cwd: evalRoot, encoding: 'utf8', stdio: 'pipe' },
+    );
+    expect(result).toMatch(/1 passed/);
+    expect(result).not.toMatch(/failed|skipped/);
+  });
+
+  it('translates Claude context suffixes for HTTP Judges while retaining configured model identity', () => {
+    const result = execFileSync(
+      'uv',
+      [
+        'run',
+        '--locked',
+        'python',
+        '-m',
+        'pytest',
+        'local/tests/scaffold/test_profiles.py',
+        '-k',
+        'judge_provider_uses_direct_http_when_base_url_is_configured',
+        '-q',
+      ],
+      { cwd: evalRoot, encoding: 'utf8', stdio: 'pipe' },
+    );
+    expect(result).toMatch(/5 passed/);
+    expect(result).not.toMatch(/failed|skipped/);
+  });
+
   it('accepts either builtin Judge credential while preserving custom credential requirements', () => {
     const result = execFileSync(
       'uv',

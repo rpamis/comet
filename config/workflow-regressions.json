@@ -426,6 +426,44 @@
         }
       ],
       "sources": ["report:2026-10-25-051-native-classic-acceptance"]
+    },
+    {
+      "id": "eval-judge-http-context-suffix",
+      "behavior": "HTTP Judge 按 Claude Code 的模型上下文选项发送正确模型 ID，并保留配置身份。",
+      "coverageLevel": "runtime",
+      "reproduction": "CC Switch 配置 glm-5.3[1M] 时，原 HTTP 评分请求原样发送后缀，真实服务端返回模型不存在的 400；CLI 本身会去掉该上下文后缀。",
+      "expected": "仅在 HTTP 传输时去掉末尾大小写变体 [1m]，普通模型名和其他标签保持原值，配置身份不被改写。",
+      "forbidden": "修改 CC Switch 配置或全局模型映射，错误剥离中间标签或其他供应商标签，缺少评分仍冒充已评分。",
+      "rootCause": "评分器将 Claude Code 的用户配置名称直接当作 API 模型 ID，没有实现 CLI 的上下文后缀处理。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "translates Claude context suffixes for HTTP Judges while retaining configured model identity",
+          "requiredNames": [
+            "standalone static collector parity translates Claude context suffixes for HTTP Judges while retaining configured model identity"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"]
+    },
+    {
+      "id": "eval-judge-business-artifact-inputs",
+      "behavior": "Judge 读取实际业务产物，控制器注入的 CLI 和 Skill 快照不挤占评分上下文。",
+      "coverageLevel": "runtime",
+      "reproduction": "当前 CLI 验收的工作区含 _eval_current_comet 等工具快照，排序后先占满既有评分输入预算，业务 wordcount.py 没有进入评分提示。",
+      "expected": "只排除三个明确的根级控制器目录，业务源文件和普通下划线文件仍进入评分输入。",
+      "forbidden": "凭工具包内容评价业务完成质量，扩大为忽略所有下划线文件，或降低业务校验要求。",
+      "rootCause": "通用 Judge 只跳过隐藏和依赖目录，没有识别当前 CLI 评测器注入的安装快照。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "keeps controller installations from displacing actual business artifacts in Judge input",
+          "requiredNames": [
+            "standalone static collector parity keeps controller installations from displacing actual business artifacts in Judge input"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"]
     }
   ]
 }

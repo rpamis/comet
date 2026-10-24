@@ -29,6 +29,22 @@ def test_profile_registry_exposes_generic_and_comet_workflow():
     assert "generated_package" in authoring.rubric_dimensions
 
 
+def test_generic_judge_keeps_business_artifacts_when_current_cli_snapshots_are_present(tmp_path):
+    from scaffold.python.generic_llm_judge import _collect_workspace_artifacts
+
+    for name in ("_eval_current_comet", "_eval_target_skills", "_eval_trusted_oracles"):
+        directory = tmp_path / name
+        directory.mkdir()
+        for index in range(12):
+            (directory / f"{index:02}.txt").write_text("controller-installation " * 200)
+    (tmp_path / "wordcount.py").write_text("BUSINESS_CHARACTER_COUNT_IMPLEMENTATION")
+    (tmp_path / "_business.py").write_text("BUSINESS_UNDERSCORE_FILE")
+    collected = _collect_workspace_artifacts(tmp_path)
+    assert "BUSINESS_CHARACTER_COUNT_IMPLEMENTATION" in collected
+    assert "BUSINESS_UNDERSCORE_FILE" in collected
+    assert "controller-installation" not in collected
+
+
 def test_get_profile_rejects_unknown_names():
     with pytest.raises(KeyError, match="Profile not found: unknown"):
         get_profile("unknown")
@@ -1000,14 +1016,26 @@ def test_judge_session_ids_are_extracted_from_nested_agent_events():
     assert _extract_agent_session_ids(output) == ["judge-thread", "judge-session"]
 
 
-def test_judge_provider_uses_direct_http_when_base_url_is_configured(monkeypatch):
+@pytest.mark.parametrize(
+    ("configured_model", "api_model"),
+    [
+        ("judge-model", "judge-model"),
+        ("glm-5.3[1M]", "glm-5.3"),
+        ("glm-5.3[1m]", "glm-5.3"),
+        ("provider[1m]-custom", "provider[1m]-custom"),
+        ("provider[fast]", "provider[fast]"),
+    ],
+)
+def test_judge_provider_uses_direct_http_when_base_url_is_configured(
+    monkeypatch, configured_model, api_model
+):
     """Dedicated judge providers should not require Claude CLI compatibility."""
     import json
     from unittest.mock import patch
 
     from scaffold.python.judge_config import run_judge_prompt
 
-    monkeypatch.setenv("BENCH_JUDGE_MODEL", "judge-model")
+    monkeypatch.setenv("BENCH_JUDGE_MODEL", configured_model)
     monkeypatch.setenv("BENCH_JUDGE_BASE_URL", "https://judge.example/api/anthropic")
     monkeypatch.setenv("BENCH_JUDGE_AUTH_TOKEN", "judge-token")
 
@@ -1036,7 +1064,10 @@ def test_judge_provider_uses_direct_http_when_base_url_is_configured(monkeypatch
     request = urlopen.call_args.args[0]
     assert request.full_url == "https://judge.example/api/anthropic/v1/messages"
     assert request.headers["Authorization"] == "Bearer judge-token"
-    assert json.loads(request.data.decode("utf-8"))["model"] == "judge-model"
+    assert json.loads(request.data.decode("utf-8"))["model"] == api_model
+    from scaffold.python.judge_config import build_judge_invocation
+
+    assert build_judge_invocation().model == configured_model
     assert output == "[RUBRIC-JUDGE] task_completion: 1.00 - ok"
 
 

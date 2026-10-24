@@ -52,6 +52,8 @@ _SKIP_DIRS = {
     "env",
 }
 _SKIP_FILES = {"_test_context.json", "_test_results.json"}
+# 评测器注入的工具包不属于被评分的业务产物。
+_CONTROLLER_DIRS = {"_eval_current_comet", "_eval_target_skills", "_eval_trusted_oracles"}
 
 # Max chars per file, total budget across all files.
 _PER_FILE_LIMIT = 3000
@@ -69,6 +71,8 @@ def _collect_workspace_artifacts(test_dir: Path) -> str:
     total = 0
 
     for path in sorted(iter_workspace_paths(test_dir)):
+        if path.relative_to(test_dir).parts[0] in _CONTROLLER_DIRS:
+            continue
         if path.name in _SKIP_FILES:
             continue
         # Skip hidden paths.
