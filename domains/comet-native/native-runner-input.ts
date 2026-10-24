@@ -1127,6 +1127,7 @@ async function dispatchSkillVerifier(options: {
   name: string;
   checks: NativePortableCheckSummary[];
   disposition: 'executed' | 'reused';
+  inputDiagnostics?: string[];
   supervisor: NativeSupervisorState | null;
 }) {
   const verifierExecutionRef = skillExecutionRef('verifier');
@@ -1140,7 +1141,10 @@ async function dispatchSkillVerifier(options: {
   return {
     state,
     checks: options.checks,
-    runtimeCheckExecution: { disposition: options.disposition },
+    runtimeCheckExecution: {
+      disposition: options.disposition,
+      ...(options.inputDiagnostics?.length ? { inputDiagnostics: options.inputDiagnostics } : {}),
+    },
     requestChecks: null,
     verifierDispatch: verifierDispatch({
       paths: options.paths,
@@ -1626,7 +1630,12 @@ export async function applyNativeRunnerInput(options: {
         return {
           state: returned,
           checks: execution.checks,
-          runtimeCheckExecution: { disposition: execution.disposition },
+          runtimeCheckExecution: {
+            disposition: execution.disposition,
+            ...(execution.inputDiagnostics?.length
+              ? { inputDiagnostics: execution.inputDiagnostics }
+              : {}),
+          },
           requestChecks: null,
           verifierDispatch: null,
           continuation: nativePortableContinuation(returned),
@@ -1644,7 +1653,12 @@ export async function applyNativeRunnerInput(options: {
       return {
         state: execution.state,
         checks: execution.checks,
-        runtimeCheckExecution: { disposition: execution.disposition },
+        runtimeCheckExecution: {
+          disposition: execution.disposition,
+          ...(execution.inputDiagnostics?.length
+            ? { inputDiagnostics: execution.inputDiagnostics }
+            : {}),
+        },
         continuationCheckPlans: input.verification_checks,
         ...(interruptedIds.length > 0 ? { continuationRetryCheckIds: interruptedIds } : {}),
         requestChecks: null,
@@ -1779,7 +1793,12 @@ export async function applyNativeRunnerInput(options: {
       return {
         state: ready,
         checks: executedChecks,
-        runtimeCheckExecution: { disposition: checkExecution.disposition },
+        runtimeCheckExecution: {
+          disposition: checkExecution.disposition,
+          ...(checkExecution.inputDiagnostics?.length
+            ? { inputDiagnostics: checkExecution.inputDiagnostics }
+            : {}),
+        },
         continuationRetryCheckIds: interruptedIds,
         requestChecks: null,
         verifierDispatch: null,
@@ -1793,6 +1812,7 @@ export async function applyNativeRunnerInput(options: {
       name: options.name,
       checks: executedChecks,
       disposition: checkExecution.disposition,
+      inputDiagnostics: checkExecution.inputDiagnostics,
       supervisor: supervisorParentVerification ? supervisor : null,
     });
   }

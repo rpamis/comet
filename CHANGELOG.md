@@ -12,6 +12,11 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Native verification across sessions**: Validate submitted check evidence against the candidate's content rather than the submitting shell's environment, while retaining execution-environment checks when deciding whether to reuse results ([#500](https://github.com/rpamis/comet/issues/500)).
+- **Native generated check inputs**: Keep dependency trees and volatile development caches out of generated-input snapshots, retain generated types and production outputs, and reject reuse of incomplete snapshots instead of accepting stale passing results ([#501](https://github.com/rpamis/comet/issues/501)).
+- **Classic check executable changes**: Resolve the current executable before reusing check evidence, including PATH changes and newly installed higher-priority commands in long-lived sessions.
+- **Classic delivery after re-verification**: Retain validated Design and Plan document references when reopening a full workflow's verification, so a newly approved archive can complete delivery without losing its document evidence. Changed documents still require renewed validation.
+- **Personal Memory scrolling**: Keep the desktop memory list within the available height so long lists can scroll without hiding pagination or clipping the detail pane ([#499](https://github.com/rpamis/comet/issues/499)).
 - **Native SDK Shape validation**: Enforce directory structure checks for new and re-prepared SDK Shape proposals. Previously pending approvals and confirmed Build, Verify, and Archive changes retain their original document constraints and progress.
 - **Native archive with submodules**: Bind the actual commit of a clean Git submodule when it differs from the parent repository's recorded commit, so verified changes can archive without falling back to a candidate scan of unrelated ignored caches. Uncommitted submodule content still requires complete verification.
 

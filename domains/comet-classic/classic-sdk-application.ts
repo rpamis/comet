@@ -3,6 +3,10 @@ import { assertClassicSdkDeliveryInputs } from './classic-sdk-delivery-inputs.js
 import { resolveClassicStateFile } from './classic-state-file.js';
 import { classicSdkCheckDirectoryRef, classicSdkCheckLogHash } from './classic-sdk-check-record.js';
 import { archivedClassicDocumentRef } from './classic-archive-annotation.js';
+import {
+  classicArchiveDocumentOutputs,
+  assertClassicRecoveredArchiveDocuments,
+} from './classic-sdk-archive-documents.js';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { isDeepStrictEqual } from 'node:util';
@@ -412,15 +416,17 @@ const deliveryOutcomeValidator: RuntimeValidator = {
       const activeRef = actionInput.input.changeDir.replaceAll('\\', '/');
       const archiveRef = archive.archiveDirectory.replaceAll('\\', '/');
       const specsRef = path.relative(root, layout.specsDir).replaceAll('\\', '/');
-      const acceptedPlan = outputs?.['full.build.plan'] as
+      const documentBinding = classicArchiveDocumentOutputs(run, action);
+      const documentOutputs = documentBinding.outputs;
+      const acceptedPlan = documentOutputs['full.build.plan'] as
         | {
             plan?: unknown;
             designEvidence?: { ref?: unknown; contentHash?: unknown };
           }
         | undefined;
       const designDoc =
-        (outputs?.['full.design.document'] as { designDoc?: unknown } | undefined)?.designDoc ??
-        acceptedPlan?.designEvidence?.ref;
+        (documentOutputs['full.design.document'] as { designDoc?: unknown } | undefined)
+          ?.designDoc ?? acceptedPlan?.designEvidence?.ref;
       const plan = acceptedPlan?.plan;
       if (profile === 'full' && (typeof designDoc !== 'string' || typeof plan !== 'string')) {
         return { accepted: false, reason: 'Classic Archive documents are missing' };
@@ -448,6 +454,24 @@ const deliveryOutcomeValidator: RuntimeValidator = {
               stdio: ['ignore', 'pipe', 'pipe'],
             })
           : null;
+      if (
+        documentBinding.recovered &&
+        typeof designDoc === 'string' &&
+        typeof plan === 'string' &&
+        committedDesign !== null &&
+        committedPlan !== null
+      )
+        await assertClassicRecoveredArchiveDocuments({
+          projectRoot: root,
+          run,
+          archiveRef,
+          activeRef,
+          designRef: designDoc,
+          planRef: plan,
+          committedDesign,
+          committedPlan,
+          evidence: documentBinding.evidence,
+        });
       const implementationFiles = await assertClassicSdkDeliveryInputs(root, run);
       const allowed = (file: string) =>
         implementationFiles.has(file) ||

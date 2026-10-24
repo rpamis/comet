@@ -23,6 +23,7 @@ import {
   assertNativeSdkCandidateUnchanged,
   NativeSdkCandidateDriftError,
   NativeSdkCheckInputDriftError,
+  NativeSdkCheckInputSnapshotError,
   nativeSdkCanRefreshChecks,
   nativeSdkCurrentCheckSummaries,
 } from './native-sdk-checks.js';
@@ -201,7 +202,8 @@ async function checkDriftOutcome(
   projectRoot: string,
   error: NativeSdkCheckInputDriftError,
 ) {
-  let refreshChecks = nativeSdkCanRefreshChecks(run);
+  let refreshChecks =
+    !(error instanceof NativeSdkCheckInputSnapshotError) && nativeSdkCanRefreshChecks(run);
   let message = error.message;
   try {
     await assertNativeSdkCandidateUnchanged({ run, projectRoot });

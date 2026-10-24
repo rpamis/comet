@@ -7282,6 +7282,26 @@ body {
     flex: 1 1 auto;
   }
 
+  /* 列表和筛选栏必须能缩进剩余高度，避免 Grid 的自动最小高度撑开整行。 */
+  .dashboard-memory-workspace > .dashboard-memory-registry,
+  .dashboard-memory-workspace > .dashboard-memory-filter-rail {
+    min-height: 0;
+  }
+
+  .dashboard-memory-workspace > .dashboard-memory-filter-rail {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .dashboard-memory-workspace .dashboard-memory-registry-toolbar,
+  .dashboard-memory-workspace .dashboard-memory-table-head {
+    flex: 0 0 auto;
+  }
+
+  .dashboard-memory-workspace .dashboard-memory-table-body {
+    flex: 1 1 auto;
+  }
+
   .dashboard-tool-page-knowledge {
     display: flex;
     height: 100%;

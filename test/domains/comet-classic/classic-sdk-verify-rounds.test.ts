@@ -14,7 +14,7 @@ import {
   classicSdkCheckDirectoryRef,
 } from '../../../domains/comet-classic/classic-sdk-check-record.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -28,6 +28,8 @@ import { classicVerificationReportReceipt } from '../../../domains/comet-classic
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
 import { requireFileSymlink } from '../../helpers/file-symlink.js';
+import { createOpenSpecArchiveFixture } from '../../helpers/classic-openspec-fixture.js';
+import { classicArchiveDocumentOutputs } from '../../../domains/comet-classic/classic-sdk-archive-documents.js';
 
 const roots: string[] = [];
 function stopTestDescendant(pid: number) {
@@ -47,6 +49,7 @@ async function fixture(
   profile: 'full' | 'tweak' | 'hotfix',
   buildFirst = true,
   confirmedConfiguration = false,
+  entry: 'source' | 'generated' = 'source',
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic verify rounds '));
   roots.push(root);
@@ -67,7 +70,23 @@ async function fixture(
   const invoke = async (...args: string[]) => {
     const separator = args.indexOf('--');
     args.splice(separator < 0 ? args.length : separator, 0, '--json');
-    const result = await runClassicCli(args, undefined, { invocationCwd: projectRoot });
+    const result =
+      entry === 'source'
+        ? await runClassicCli(args, undefined, { invocationCwd: projectRoot })
+        : await new Promise<{ exitCode: number; stdout: string; stderr: string }>(
+            (resolve, reject) => {
+              execFile(
+                process.execPath,
+                [path.resolve('assets/skills/comet/scripts/comet-runtime.mjs'), ...args],
+                { cwd: projectRoot, timeout: 60_000, maxBuffer: 4 * 1024 * 1024 },
+                (error, stdout, stderr) => {
+                  if (error && (typeof error.code !== 'number' || error.killed || error.signal))
+                    reject(error);
+                  else resolve({ exitCode: error?.code ?? 0, stdout, stderr });
+                },
+              );
+            },
+          );
     return { ...result, response: JSON.parse(result.stdout ?? '{}') };
   };
   const cli = async (...args: string[]) => {
@@ -329,7 +348,330 @@ it('uses the committed claim without redundant inspection and rejects a stale su
   }
 });
 
+it.each(['changed-path', 'new-preferred-command'] as const)(
+  'executes the newly selected PATH command instead of reusing another executable (%s)',
+  async (mutation) => {
+    const f = await fixture('tweak', false);
+    const parent = path.dirname(f.projectRoot);
+    const command = 'comet-session-check';
+    const executableName = process.platform === 'win32' ? `${command}.cmd` : command;
+    const originalPath = process.env.PATH ?? '';
+    for (const [directory, code] of [
+      ['first-bin', 0],
+      ['second-bin', 7],
+    ] as const) {
+      const bin = path.join(parent, directory);
+      await fs.mkdir(bin);
+      const source = `require('node:fs').appendFileSync(${JSON.stringify(f.checkCount)}, ${JSON.stringify(`${directory}\n`)}); process.exit(${code});\n`;
+      const script = path.join(bin, 'check.cjs');
+      if (process.platform === 'win32') await fs.writeFile(script, source);
+      await fs.writeFile(
+        path.join(bin, executableName),
+        process.platform === 'win32'
+          ? `@echo off\r\n"${process.execPath}" "${script}"\r\n`
+          : `#!${process.execPath}\n${source}`,
+        { mode: 0o755 },
+      );
+    }
+    const argv = [command];
+    await f.put(
+      '.comet/check-policy.json',
+      JSON.stringify({ version: 2, commands: [{ argv, cwd: '.', files: ['source.js'] }] }),
+    );
+    const preferred = path.join(parent, 'preferred-bin');
+    await fs.mkdir(preferred);
+    const firstPath = [preferred, path.join(parent, 'first-bin'), originalPath].join(
+      path.delimiter,
+    );
+    vi.stubEnv('PATH', firstPath);
+    await f.cli('guard', 'example', 'build', '--apply', '--local', '--', ...argv);
+    if (mutation === 'changed-path')
+      vi.stubEnv('PATH', `${path.join(parent, 'second-bin')}${path.delimiter}${originalPath}`);
+    else
+      await fs.copyFile(
+        path.join(parent, 'second-bin', executableName),
+        path.join(preferred, executableName),
+      );
+    const verified = await f.invoke(
+      'guard',
+      'example',
+      'verify',
+      '--report',
+      f.reportRef,
+      '--apply',
+      '--local',
+      '--',
+      ...argv,
+    );
+    expect(verified.exitCode, verified.stdout).not.toBe(0);
+    expect(verified.response.data).toMatchObject({ exitCode: 7, reused: false, phase: 'build' });
+    expect(await fs.readFile(f.checkCount, 'utf8')).toBe('first-bin\nsecond-bin\n');
+  },
+);
+
+it('recovers only accepted Build document evidence after reopening Verify', async () => {
+  const f = await fixture('full');
+  const current = (await f.inspect()).run;
+  await f.cli(
+    'state',
+    'reopen-verification',
+    'example',
+    '--expected-revision',
+    String(current.revision),
+  );
+  expect((await f.verify()).exitCode).toBe(0);
+  const run = (await f.inspect()).run;
+  const action = run.actions.findLast((entry) => entry.stepId === 'full.archive.prepare')!;
+  const accepted = classicArchiveDocumentOutputs(run, action);
+  expect(accepted.recovered).toBe(true);
+  expect(Object.keys(accepted.outputs).sort()).toEqual(['full.build.plan', 'full.design.document']);
+  for (const mutation of ['invalidated', 'failed', 'unbound', 'revised'] as const) {
+    const changed = structuredClone(run);
+    const build = changed.evidenceWaits!.findLast(
+      (entry) => entry.stepId === 'full.build.check.evidence',
+    )!;
+    if (mutation === 'invalidated') build.status = 'invalidated';
+    if (mutation === 'failed')
+      changed.actions.findLast((entry) => entry.stepId === 'full.build.check')!.status = 'failed';
+    if (mutation === 'unbound') build.receipt!.contentHash = '0'.repeat(64);
+    if (mutation === 'revised') {
+      const command = changed.commands!.at(-1)!;
+      const prior = changed.actions.find((entry) => entry.stepId === 'full.verify.run')!;
+      changed.commands!.unshift({
+        ...command,
+        id: 'intervening-revision',
+        actionId: prior.id,
+        name: 'revise-plan',
+      });
+    }
+    expect(classicArchiveDocumentOutputs(changed, action), mutation).toMatchObject({
+      recovered: false,
+    });
+  }
+});
+
 describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify rounds', (profile) => {
+  it.each(['source', 'generated'] as const)(
+    'completes the %s Runtime lifecycle across sessions, declared outputs and a reopened verification',
+    async (entry) => {
+      const f = await fixture(profile, false, false, entry);
+      const git = (...args: string[]) =>
+        execFileSync(
+          'git',
+          ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', ...args],
+          { cwd: f.projectRoot, encoding: 'utf8' },
+        ).trim();
+      const openSpec = await createOpenSpecArchiveFixture(path.dirname(f.projectRoot));
+      vi.stubEnv('COMET_OPENSPEC', openSpec.command);
+      vi.stubEnv('CODEX_THREAD_ID', 'classic-build-session');
+      vi.stubEnv('COMET_CLASSIC_TEST_MODE', 'development');
+      const argv = [process.execPath, 'check.cjs'];
+      await f.put(
+        'check.cjs',
+        [
+          "const fs = require('node:fs');",
+          "if (!fs.readFileSync('source.js', 'utf8').includes('ready = true')) process.exit(7);",
+          "fs.mkdirSync('generated', { recursive: true });",
+          "fs.writeFileSync('generated/check-report.json', JSON.stringify({ generatedAt: Date.now() }));",
+          `fs.appendFileSync(${JSON.stringify(f.checkCount)}, 'checked\\n');`,
+          '',
+        ].join('\n'),
+      );
+      await f.put('.gitignore', 'generated/\n');
+      await f.put(
+        '.comet/check-policy.json',
+        JSON.stringify({
+          version: 2,
+          commands: [
+            {
+              argv,
+              cwd: '.',
+              files: ['source.js', 'check.cjs', 'generated/check-report.json'],
+              outputs: ['generated/**'],
+              env: ['COMET_CLASSIC_TEST_MODE'],
+            },
+          ],
+        }),
+      );
+      if (profile === 'full') await f.cli('handoff', 'example', 'design', '--write');
+      git('add', '--all');
+      git('commit', '-m', 'implementation');
+      await f.cli('guard', 'example', 'build', '--apply', '--local', '--', ...argv);
+      vi.stubEnv('CODEX_THREAD_ID', 'classic-verify-session');
+      vi.stubEnv('TERM', 'xterm-256color');
+      const verified = await f.cli(
+        'guard',
+        'example',
+        'verify',
+        '--report',
+        f.reportRef,
+        '--apply',
+        '--local',
+        '--',
+        ...argv,
+      );
+      expect(verified).toMatchObject({
+        phase: 'archive',
+        reused: true,
+        changedDuringExecution: [],
+      });
+      const proposal = await f.cli(
+        'state',
+        'propose-archive',
+        'example',
+        '--summary',
+        'Archive locally.',
+      );
+      await f.cli(
+        'state',
+        'decide-archive',
+        'example',
+        '--proposal-hash',
+        proposal.wait.proposalHash,
+        '--choice',
+        'local',
+      );
+      await f.put('source.js', 'export const ready = true; // revised implementation\n');
+      const blocked = await f.invoke('guard', 'example', 'archive', '--apply');
+      expect(blocked.exitCode).not.toBe(0);
+      expect(blocked.stdout).toContain('reopen-verification');
+      await expect(openSpec.invocations()).rejects.toMatchObject({ code: 'ENOENT' });
+      const stale = await f.cli('state', 'next', 'example');
+      await f.cli(
+        'state',
+        'reopen-verification',
+        'example',
+        '--expected-revision',
+        String(stale.run.revision),
+      );
+      await f.put(
+        f.reportRef,
+        '# Verification\nThe revised implementation passes the current checks.\n',
+      );
+      vi.stubEnv('CODEX_THREAD_ID', 'classic-reverify-session');
+      const reverified = await f.cli(
+        'guard',
+        'example',
+        'verify',
+        '--report',
+        f.reportRef,
+        '--apply',
+        '--local',
+        '--',
+        ...argv,
+      );
+      expect(reverified).toMatchObject({ phase: 'archive', reused: false, exitCode: 0 });
+      expect(await fs.readFile(f.checkCount, 'utf8')).toBe('checked\nchecked\n');
+      if (profile === 'full') {
+        const current = await f.cli('state', 'next', 'example');
+        await f.cli(
+          'state',
+          'reopen-verification',
+          'example',
+          '--expected-revision',
+          String(current.run.revision),
+        );
+        const repeated = await f.cli(
+          'guard',
+          'example',
+          'verify',
+          '--report',
+          f.reportRef,
+          '--apply',
+          '--local',
+          '--',
+          ...argv,
+        );
+        expect(repeated).toMatchObject({ phase: 'archive', reused: true, exitCode: 0 });
+        expect(await fs.readFile(f.checkCount, 'utf8')).toBe('checked\nchecked\n');
+      }
+      const rejected = await f.invoke(
+        'state',
+        'decide-archive',
+        'example',
+        '--proposal-hash',
+        proposal.wait.proposalHash,
+        '--choice',
+        'local',
+      );
+      expect(rejected.exitCode).not.toBe(0);
+      const finalProposal = await f.cli(
+        'state',
+        'propose-archive',
+        'example',
+        '--summary',
+        'Archive the reverified implementation locally.',
+      );
+      await f.cli(
+        'state',
+        'decide-archive',
+        'example',
+        '--proposal-hash',
+        finalProposal.wait.proposalHash,
+        '--choice',
+        'local',
+      );
+      vi.stubEnv('CODEX_THREAD_ID', 'classic-archive-session');
+      if (profile === 'full') {
+        for (const ref of ['docs/superpowers/specs/technical design.md', f.planRef]) {
+          const original = await fs.readFile(path.join(f.projectRoot, ref), 'utf8');
+          await f.put(ref, `${original}\nUnapproved document change.\n`);
+          const changed = await f.invoke('guard', 'example', 'archive', '--apply');
+          expect(changed.exitCode).not.toBe(0);
+          expect(changed.stdout).toMatch(/changed after accepted evidence/u);
+          await expect(openSpec.invocations()).rejects.toMatchObject({ code: 'ENOENT' });
+          await f.put(ref, original);
+        }
+      }
+      await f.cli('guard', 'example', 'archive', '--apply');
+      expect(await openSpec.invocations()).toEqual([
+        { args: ['archive', 'example', '--yes'], cwd: await fs.realpath(f.projectRoot) },
+      ]);
+      git('add', '--all');
+      git('commit', '-m', 'archive');
+      if (profile === 'full') {
+        const archivedRun = (await f.inspect()).run;
+        const archiveRef = (
+          archivedRun.outputs['full.archive.execute'].value as { archiveDirectory: string }
+        ).archiveDirectory;
+        const receiptRef = `${archiveRef}/.comet/archive-documents.json`;
+        for (const ref of ['docs/superpowers/specs/technical design.md', f.planRef, receiptRef]) {
+          const original = await fs.readFile(path.join(f.projectRoot, ref), 'utf8');
+          if (ref === receiptRef) {
+            const receipt = JSON.parse(original);
+            receipt.documents['docs/superpowers/specs/technical design.md'].original +=
+              '\nUnapproved receipt change.\n';
+            await f.put(ref, JSON.stringify(receipt));
+          } else await f.put(ref, `${original}\nUnapproved post-Archive content.\n`);
+          git('add', '--', ref);
+          git('commit', '--amend', '--no-edit');
+          const rejected = await f.invoke(
+            'state',
+            'complete-delivery',
+            'example',
+            '--commit',
+            git('rev-parse', 'HEAD'),
+          );
+          expect(rejected.exitCode).not.toBe(0);
+          expect(rejected.stdout).toMatch(/Classic recovered Archive document/u);
+          expect((await f.inspect()).run.revision).toBe(archivedRun.revision);
+          await f.put(ref, original);
+          git('add', '--', ref);
+          git('commit', '--amend', '--no-edit');
+        }
+      }
+      const delivered = await f.cli(
+        'state',
+        'complete-delivery',
+        'example',
+        '--commit',
+        git('rev-parse', 'HEAD'),
+      );
+      expect(delivered.nextAction.kind).toBe('done');
+      expect((await f.inspect()).run.status).toBe('completed');
+    },
+  );
+
   it('reuses the same successful command across Build and Verify after validating its inputs and log', async () => {
     const f = await fixture(profile, false);
     const argv = f.command('shared');

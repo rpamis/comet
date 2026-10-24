@@ -4229,6 +4229,9 @@ children:
   });
 
   it('recovers a real complete check receipt without running its side effect again', async () => {
+    const counterRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-complete-check-counter-'));
+    roots.push(counterRoot);
+    const counter = path.join(counterRoot, 'check-count');
     const {
       root,
       runtime,
@@ -4241,7 +4244,8 @@ children:
           executable: process.execPath,
           argv: [
             '-e',
-            "require('node:fs').appendFileSync('check-count', 'once\\n'); process.stdout.write('receipt')",
+            "require('node:fs').appendFileSync(process.argv[1], 'once\\n'); process.stdout.write('receipt')",
+            counter,
           ],
           cwdRef: '.',
           timeoutMs: 5000,
@@ -4295,14 +4299,18 @@ children:
       stepId: 'verify.verifier',
       status: 'pending',
     });
-    expect(await fs.readFile(path.join(root, 'check-count'), 'utf8')).toBe('once\n');
+    expect(await fs.readFile(counter, 'utf8')).toBe('once\n');
     expect((await recoverNativeSdkChecks(root, recovered, runtime)).revision).toBe(
       recovered.revision,
     );
-    expect(await fs.readFile(path.join(root, 'check-count'), 'utf8')).toBe('once\n');
+    expect(await fs.readFile(counter, 'utf8')).toBe('once\n');
   });
 
   it('requires explicit stopped repair for a completed check whose input drifted, without replaying its result', async () => {
+    // 计数只观测执行次数，不是本测试要制造的候选输入漂移。
+    const counterRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-check-drift-counter-'));
+    roots.push(counterRoot);
+    const counter = path.join(counterRoot, 'check-count');
     const {
       root,
       runtime,
@@ -4313,7 +4321,7 @@ children:
           id: 'once',
           name: 'Once',
           executable: process.execPath,
-          argv: ['-e', "require('node:fs').appendFileSync('check-count', 'once\\n')"],
+          argv: ['-e', "require('node:fs').appendFileSync(process.argv[1], 'once\\n')", counter],
           cwdRef: '.',
           timeoutMs: 5000,
           repeatable: false,
@@ -4513,10 +4521,13 @@ children:
     });
     expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
     expect(run.actions.find((entry) => entry.id === action.id)).toEqual(repaired);
-    expect(await fs.readFile(path.join(root, 'check-count'), 'utf8')).toBe('once\n');
+    expect(await fs.readFile(counter, 'utf8')).toBe('once\n');
   });
 
   it('reconciles an actual dead check owner into a stopped repair and completes a fresh candidate', async () => {
+    const controlRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-fresh-check-control-'));
+    roots.push(controlRoot);
+    const freshChecked = path.join(controlRoot, 'fresh-checked');
     const {
       root,
       runtime,
@@ -4699,7 +4710,7 @@ children:
               id: 'fresh',
               name: 'Fresh check',
               executable: process.execPath,
-              argv: ['-e', "require('node:fs').writeFileSync('fresh-checked','yes')"],
+              argv: ['-e', "require('node:fs').writeFileSync(process.argv[1],'yes')", freshChecked],
               cwdRef: '.',
               timeoutMs: 5000,
               repeatable: true,
@@ -4781,7 +4792,7 @@ children:
       await expect(fs.access(path.join(root, 'late-effect'))).rejects.toMatchObject({
         code: 'ENOENT',
       });
-      expect(await fs.readFile(path.join(root, 'fresh-checked'), 'utf8')).toBe('yes');
+      expect(await fs.readFile(freshChecked, 'utf8')).toBe('yes');
     } catch (error) {
       throw new Error(`${(error as Error).message}\nOwner stderr: ${stderr}`, { cause: error });
     } finally {
@@ -6439,17 +6450,20 @@ children:
   });
 
   it('reuses a completed non-repeatable Runtime check requested by the Verifier', async () => {
+    const counterRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-one-shot-counter-'));
+    roots.push(counterRoot);
+    const counter = path.join(counterRoot, 'sdk-check-count.txt');
     const check = {
       id: 'required',
       name: 'One-shot check',
       executable: process.execPath,
-      argv: ['-e', 'require("node:fs").appendFileSync("sdk-check-count.txt", "x")'],
+      argv: ['-e', 'require("node:fs").appendFileSync(process.argv[1], "x")', counter],
       cwdRef: '.',
       timeoutMs: 5_000,
       repeatable: false,
     };
     const { root, runtime, run: ready } = await dispatchedVerifier([check]);
-    expect(await fs.readFile(path.join(root, 'sdk-check-count.txt'), 'utf8')).toBe('x');
+    expect(await fs.readFile(counter, 'utf8')).toBe('x');
     const requested = await succeedLatestAction(
       runtime,
       ready,
@@ -6469,7 +6483,7 @@ children:
       context: { requestId: 'verifier-reused-check', projectRoot: root },
     });
     expect(checked.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier' });
-    expect(await fs.readFile(path.join(root, 'sdk-check-count.txt'), 'utf8')).toBe('x');
+    expect(await fs.readFile(counter, 'utf8')).toBe('x');
   });
 
   it('asks for fresh approval when the verification report changes before revalidation', async () => {
@@ -6551,14 +6565,15 @@ children:
   });
 
   it.each([
-    'environment',
+    'environment-only',
+    'generated-input',
     'input',
     'non-repeatable',
     'unknown-revalidation',
     'missing-report',
     'legacy-definition',
   ] as const)(
-    'refreshes checks and independent verification after approved report %s drift',
+    'revalidates approved report %s changes without losing valid evidence',
     async (kind) => {
       const application = nativeApplication();
       if (kind === 'legacy-definition') {
@@ -6579,7 +6594,10 @@ children:
             id: 'required',
             name: 'Runtime check',
             executable: process.execPath,
-            argv: ['-e', 'process.stdout.write("ok")'],
+            argv: [
+              '-e',
+              'process.stdout.write(require("node:fs").readFileSync("dist/check-input.txt", "utf8"))',
+            ],
             cwdRef: '.',
             timeoutMs: 5000,
             repeatable: kind !== 'non-repeatable',
@@ -6587,6 +6605,11 @@ children:
         ],
         kind === 'legacy-definition' ? 'sdk' : 'memory',
         application,
+        true,
+        async (root) => {
+          await fs.mkdir(path.join(root, 'dist'), { recursive: true });
+          await fs.writeFile(path.join(root, 'dist', 'check-input.txt'), 'checked input');
+        },
       );
       let run = await succeedLatestAction(
         runtime,
@@ -6620,8 +6643,10 @@ children:
         context: { requestId: 'native-report', projectRoot: root },
       });
       if (kind === 'missing-report') await fs.rm(path.join(changeDir, 'verification.md'));
-      else if (kind !== 'input') vi.stubEnv('NODE_ENV', 'changed-after-approval');
-      else await fs.writeFile(path.join(root, 'changed-input.txt'), 'new input');
+      else if (kind === 'input')
+        await fs.writeFile(path.join(root, 'changed-input.txt'), 'new input');
+      else if (kind !== 'environment-only')
+        await fs.writeFile(path.join(root, 'dist', 'check-input.txt'), 'changed generated input');
       const confirmation = run.waits.at(-1)!;
       run = await runtime.resolveWait({
         runId: run.runId,
@@ -6630,6 +6655,7 @@ children:
         decisionId: 'verification-approved',
         choice: 'approved',
       });
+      if (kind === 'environment-only') vi.stubEnv('NODE_ENV', 'changed-after-approval');
       if (kind === 'missing-report') {
         await expect(
           runtime.execute({
@@ -6674,6 +6700,20 @@ children:
           executorId: 'comet-native-report-revalidate',
           context: { requestId: 'native-report-revalidate', projectRoot: root },
         });
+      if (kind === 'environment-only') {
+        expect(run.state).toMatchObject({
+          phase: 'archive',
+          status: 'active',
+          verification_result: 'pass',
+        });
+        expect(run.actions.find((action) => action.stepId === 'verify.revalidate')).toMatchObject({
+          status: 'succeeded',
+        });
+        expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.prepare', status: 'pending' });
+        expect(run.actions.filter((action) => action.stepId === 'verify.checks')).toHaveLength(1);
+        expect(run.actions.filter((action) => action.stepId === 'verify.verifier')).toHaveLength(1);
+        return;
+      }
       if (kind === 'legacy-definition') {
         expect(run.status).toBe('failed');
         expect(await nativeDoctorCommand([run.runId, '--repair'], root)).toMatchObject({
@@ -7583,6 +7623,8 @@ it('requires fresh verification instead of trusting a legacy check without a can
           async execute(...args: Parameters<RuntimeExecutor['execute']>) {
             const result = await executor.execute(...args);
             const output = { ...(result.output as Record<string, never>) };
+            // 旧收据没有 v2 输入快照；只删候选摘要会制造不合法的混合格式。
+            delete output.inputSnapshot;
             delete output.candidateInputFingerprintGate;
             return { ...result, output };
           },
@@ -8341,13 +8383,16 @@ it('keeps real check stop proof through cancel and cold copy without replay', as
     id: 'once',
     name: 'Real original execution',
     executable: process.execPath,
-    argv: ['-e', "require('node:fs').appendFileSync('cold-stop-count', 'once\\n')"],
+    argv: [
+      '-e',
+      "const fs=require('node:fs'); fs.mkdirSync('dist',{recursive:true}); fs.appendFileSync('dist/cold-stop-count', 'once\\n')",
+    ],
     cwdRef: '.',
     timeoutMs: 5000,
     repeatable: false,
   };
   const f = await dispatchedVerifier([plan], 'sdk');
-  expect(await fs.readFile(path.join(f.root, 'cold-stop-count'), 'utf8')).toBe('once\n');
+  expect(await fs.readFile(path.join(f.root, 'dist', 'cold-stop-count'), 'utf8')).toBe('once\n');
   const cancelled = await runNativeCli(['cancel', f.run.runId, '--project-root', f.root, '--json']);
   expect(cancelled.exitCode, cancelled.stderr).toBe(0);
   const original = await f.runtime.inspect(f.run.runId);
@@ -8370,7 +8415,7 @@ it('keeps real check stop proof through cancel and cold copy without replay', as
       status: 'cancelled',
       diagnostics: { healthy: true },
     });
-    expect(await fs.readFile(path.join(target, 'cold-stop-count'), 'utf8')).toBe('once\n');
+    expect(await fs.readFile(path.join(target, 'dist', 'cold-stop-count'), 'utf8')).toBe('once\n');
   } finally {
     if (previous === undefined) delete process.env.COMET_DATA_DIR;
     else process.env.COMET_DATA_DIR = previous;

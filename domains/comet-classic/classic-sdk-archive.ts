@@ -24,6 +24,7 @@ import {
   recordClassicArchiveRequirements,
 } from './classic-artifact-requirements.js';
 import { annotatedMarkdown, archivedClassicDocumentRef } from './classic-archive-annotation.js';
+import { classicArchiveDocumentOutputs } from './classic-sdk-archive-documents.js';
 import { assertClassicSdkArchiveReady } from './classic-sdk-archive-preflight.js';
 import { classicSdkRemoteIdentity } from './classic-sdk-remote.js';
 import { resolveClassicLayout } from './classic-layout.js';
@@ -156,7 +157,7 @@ export async function classicArchivedArtifactMatches(
     return false;
   const digest = (text: string) => createHash('sha256').update(text).digest('hex');
   // 回执不能自选任意变换：原指针和注记种类必须来自 Archive 固定输入的文档结果。
-  const outputs = (archiveAction.input as { outputs?: Record<string, unknown> }).outputs;
+  const { outputs } = classicArchiveDocumentOutputs(run, archiveAction);
   const plan = outputs?.['full.build.plan'] as
     { plan?: string; designEvidence?: { ref?: string } } | undefined;
   const designDoc =

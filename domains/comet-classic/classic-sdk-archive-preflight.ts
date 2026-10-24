@@ -1,5 +1,9 @@
 import { assertClassicEditReviewsComplete } from './classic-edit-review.js';
-import { assertClassicPresetRequirementsCurrent } from './classic-sdk-application.js';
+import {
+  assertClassicBuildReady,
+  assertClassicPresetRequirementsCurrent,
+} from './classic-sdk-application.js';
+import { classicArchiveDocumentOutputs } from './classic-sdk-archive-documents.js';
 import { classicSdkCheckLogHash } from './classic-sdk-check-record.js';
 import { randomUUID } from 'node:crypto';
 import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
@@ -96,6 +100,30 @@ export async function assertClassicSdkArchiveReady(
       String((run.input as { changeDir: string }).changeDir),
       run,
     );
+    const pendingArchive = run.actions.find(
+      (action) =>
+        ['pending', 'running'].includes(action.status) &&
+        [`${state.workflow}.archive.preflight`, `${state.workflow}.archive.execute`].includes(
+          action.stepId,
+        ),
+    );
+    if (state.workflow === 'full' && pendingArchive) {
+      const documents = classicArchiveDocumentOutputs(run, pendingArchive);
+      const plan = documents.outputs['full.build.plan'] as
+        { plan?: unknown; designEvidence?: { ref?: unknown } } | undefined;
+      const design =
+        (documents.outputs['full.design.document'] as { designDoc?: unknown } | undefined)
+          ?.designDoc ?? plan?.designEvidence?.ref;
+      if (typeof plan?.plan !== 'string' || typeof design !== 'string')
+        throw new Error('Classic Archive documents are missing');
+      if (documents.recovered)
+        await assertClassicBuildReady(
+          projectRoot,
+          String((run.input as { changeDir: string }).changeDir),
+          state,
+          run,
+        );
+    }
     await assertClassicEditReviewsComplete(
       projectRoot,
       path.posix.basename(String((run.input as { changeDir?: string }).changeDir)),

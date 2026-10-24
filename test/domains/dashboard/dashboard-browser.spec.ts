@@ -169,6 +169,140 @@ test('searches all personal memories, pages beyond the byte budget and ignores s
   await expect(registry.getByRole('button', { name: '下一页', exact: true })).toBeVisible();
 });
 
+async function stubLongPersonalMemoryPage(page: Page) {
+  const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
+  const source = DEMO_PLUGIN_PAGES.find((entry) => entry.pluginId === 'comet.personal-memory')!;
+  const records = Array.from({ length: 33 }, (_, index) => ({
+    ...source.data.management.records[0],
+    id: `scroll-memory-${index + 1}`,
+    category: `个人记忆 ${String(index + 1).padStart(2, '0')}`,
+    text: `个人记忆 ${String(index + 1).padStart(2, '0')}：${'长内容用于验证列表和详情可独立滚动，分页始终可操作。'.repeat(35)}`,
+    memoryType: 'core-profile',
+    status: 'proven',
+    scope: 'global',
+  }));
+  const pageOf = (offset = 0, query = '') => {
+    const matching = records.filter((record) => record.text.includes(query));
+    return {
+      records: matching.slice(offset, offset + 32),
+      conflicts: [],
+      total: matching.length,
+      offset,
+      truncated: offset + 32 < matching.length,
+      ...(offset + 32 < matching.length ? { nextOffset: offset + 32 } : {}),
+    };
+  };
+  await stubContextPages(page, (pluginId) =>
+    pluginId === source.pluginId
+      ? {
+          ...source,
+          data: {
+            ...source.data,
+            management: pageOf(),
+            status: {
+              ...source.data.status,
+              counts: { active: records.length, history: 0, tombstones: 0 },
+            },
+          },
+        }
+      : DEMO_PLUGIN_PAGES.find((entry) => entry.pluginId === pluginId),
+  );
+  await page.route('**/plugins/comet.personal-memory/invoke', async (route) => {
+    const { capability, input } = route.request().postDataJSON();
+    expect(capability).toBe('manage');
+    await route.fulfill({ json: { result: pageOf(input.offset, input.query) } });
+  });
+}
+
+for (const viewport of [
+  { width: 2200, height: 1100 },
+  { width: 1600, height: 900 },
+  { width: 1280, height: 720 },
+  { width: 1280, height: 640 },
+]) {
+  test(`scrolls personal memory panes and keeps pagination reachable at ${viewport.width}x${viewport.height}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await stubLongPersonalMemoryPage(page);
+    await page.goto('/');
+    await page.getByRole('menuitem', { name: '个人记忆' }).click();
+    const list = page.locator('[data-dashboard-scroll="personal-memory-list"]');
+    const inspector = page.getByLabel('记忆应用详情', { exact: true });
+    const pagination = page.getByLabel('个人记忆分页');
+    const shell = page.locator('[data-dashboard-scroll="workspace"]');
+    await expect(list.locator('.dashboard-memory-table-row')).toHaveCount(32);
+    await expect
+      .poll(() => list.evaluate((element) => element.scrollHeight > element.clientHeight))
+      .toBe(true);
+    await expect(pagination).toBeInViewport({ ratio: 1 });
+    await list.hover();
+    await page.mouse.wheel(0, 100000);
+    await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    await expect(list.locator('.dashboard-memory-table-row').last()).toBeInViewport({ ratio: 1 });
+    const listTop = await list.evaluate((element) => element.scrollTop);
+    await expect
+      .poll(() => inspector.evaluate((element) => element.scrollHeight > element.clientHeight))
+      .toBe(true);
+    await inspector.hover();
+    await page.mouse.wheel(0, 100000);
+    await expect.poll(() => inspector.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    await expect(inspector.getByRole('heading', { name: '证据来源' })).toBeInViewport();
+    expect(await list.evaluate((element) => element.scrollTop)).toBe(listTop);
+    expect(await shell.evaluate((element) => element.scrollTop)).toBe(0);
+    await expect(pagination).toBeInViewport({ ratio: 1 });
+
+    await page.getByRole('menuitem', { name: 'Classic 工作流' }).click();
+    await page.getByRole('menuitem', { name: '个人记忆' }).click();
+    await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeCloseTo(listTop, 0);
+    await pagination.getByRole('button', { name: '下一页', exact: true }).click();
+    await expect(pagination).toContainText('当前显示 33–33 条');
+    await expect(list).toContainText('个人记忆 33');
+    await pagination.getByRole('button', { name: '上一页', exact: true }).click();
+    await expect(list.locator('.dashboard-memory-table-row')).toHaveCount(32);
+    await page.getByLabel('搜索个人记忆').fill('个人记忆 17');
+    await expect(list.locator('.dashboard-memory-table-row')).toHaveCount(1);
+    await expect(list).toContainText('个人记忆 17');
+    await expect(pagination).toBeInViewport({ ratio: 1 });
+    await page.getByLabel('搜索个人记忆').fill('');
+    await expect(list.locator('.dashboard-memory-table-row')).toHaveCount(32);
+    await list.hover();
+    await page.mouse.wheel(0, 100000);
+    await expect(list.locator('.dashboard-memory-table-row').last()).toBeInViewport({ ratio: 1 });
+  });
+}
+
+for (const viewport of [
+  { width: 1100, height: 760 },
+  { width: 820, height: 900 },
+  { width: 390, height: 844 },
+]) {
+  test(`keeps personal memory page scrolling below the desktop layout at ${viewport.width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await stubLongPersonalMemoryPage(page);
+    await page.goto('/');
+    if (viewport.width < 1024)
+      await page.getByRole('button', { name: '展开导航', exact: true }).click();
+    await page.getByRole('menuitem', { name: '个人记忆' }).click();
+    const list = page.locator('[data-dashboard-scroll="personal-memory-list"]');
+    await expect(list.locator('.dashboard-memory-table-row')).toHaveCount(32);
+    await expect(page.getByLabel('记忆应用详情', { exact: true })).toBeHidden();
+    const firstRow = list.locator('.dashboard-memory-table-row').first();
+    await firstRow.hover();
+    await page.mouse.wheel(0, 100000);
+    await expect(list.locator('.dashboard-memory-table-row').last()).toBeInViewport();
+    const pagination = page.getByLabel('个人记忆分页');
+    await expect(pagination).toBeInViewport({ ratio: 1 });
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
+      .toBe(true);
+    await pagination.getByRole('button', { name: '下一页', exact: true }).click();
+    await expect(pagination).toContainText('当前显示 33–33 条');
+  });
+}
+
 test('pages application history without rendering or reloading the complete ledger', async ({
   page,
 }) => {

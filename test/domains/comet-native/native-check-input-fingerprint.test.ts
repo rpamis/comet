@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   hasGitlinksInIndex,
   nativeCheckInputFingerprint,
+  nativeCheckInputSnapshot,
   nativeCheckInputGate,
   nativeCandidateInputGate,
 } from '../../../domains/comet-native/native-portable-checks.js';
@@ -85,6 +86,174 @@ describe('Native check input fingerprint', () => {
     } finally {
       process.env.PATH = previous;
     }
+  });
+
+  it('separates execution context from the complete candidate content snapshot', async () => {
+    const before = await nativeCheckInputSnapshot(fingerprintInput(root));
+    const prior = process.env.HTTP_PROXY;
+    process.env.HTTP_PROXY = 'http://different-fixture-proxy.test:8080';
+    try {
+      const after = await nativeCheckInputSnapshot(fingerprintInput(root));
+      expect(after.complete).toBe(true);
+      expect(after.contentFingerprint).toBe(before.contentFingerprint);
+      expect(after.fingerprint).not.toBe(before.fingerprint);
+    } finally {
+      if (prior === undefined) delete process.env.HTTP_PROXY;
+      else process.env.HTTP_PROXY = prior;
+    }
+  });
+
+  it.each(['tracked', 'untracked', 'check-cwd'])(
+    'binds nested project generated inputs without recursive dependency globs (%s)',
+    async (discovery) => {
+      await fs.writeFile(path.join(root, '.gitignore'), 'dist/\nnode_modules/\n');
+      await fs.mkdir(path.join(root, 'packages/app/dist'), { recursive: true });
+      await fs.writeFile(path.join(root, 'packages/app/package.json'), '{}');
+      await fs.writeFile(path.join(root, 'packages/app/dist/input.txt'), 'one');
+      if (discovery === 'tracked') git(root, 'add', 'packages/app/package.json');
+      if (discovery === 'check-cwd') await fs.rm(path.join(root, 'packages/app/package.json'));
+      const plans =
+        discovery === 'check-cwd'
+          ? [
+              {
+                id: 'test',
+                name: 'Test',
+                executable: process.execPath,
+                argv: ['-e', ''],
+                cwdRef: 'packages/app',
+                timeoutMs: 10_000,
+                repeatable: true,
+              },
+            ]
+          : [];
+      const input = { ...fingerprintInput(root), plans };
+      const run = vi.spyOn(gitCommands, 'runGitCommand');
+      try {
+        const before = await nativeCheckInputSnapshot(input);
+        expect(before.complete).toBe(true);
+        const beforeGate = await nativeCheckInputGate({
+          projectRoot: root,
+          candidateId: null,
+          plans,
+        });
+        await fs.writeFile(path.join(root, 'packages/app/dist/input.txt'), 'two');
+        expect((await nativeCheckInputSnapshot(input)).contentFingerprint).not.toBe(
+          before.contentFingerprint,
+        );
+        expect(
+          await nativeCheckInputGate({ projectRoot: root, candidateId: null, plans }),
+        ).not.toBe(beforeGate);
+        for (const [, args] of run.mock.calls.filter(([, args]) => args.includes('--ignored'))) {
+          expect(args).not.toContain(':(glob)**/dist/**');
+          expect(args).toContain(':(glob)packages/app/dist/**');
+        }
+      } finally {
+        run.mockRestore();
+      }
+    },
+  );
+
+  it.each(['git', 'physical'])(
+    'binds Next production artifacts while ignoring volatile output (%s)',
+    async (capture) => {
+      if (capture === 'physical') {
+        await fs.rm(path.join(root, '.git'), { recursive: true, force: true });
+        await fs.mkdir(path.join(root, '.git'));
+      } else {
+        await fs.writeFile(path.join(root, '.gitignore'), '.next/\n');
+      }
+      for (const relative of [
+        '.next/server/app/page.js',
+        '.next/server/app/logs/page.js',
+        '.next/static/chunks/main.js',
+        '.next/BUILD_ID',
+        '.next/routes-manifest.json',
+        '.next/dev/types/routes.d.ts',
+      ]) {
+        await fs.mkdir(path.dirname(path.join(root, relative)), { recursive: true });
+        await fs.writeFile(path.join(root, relative), 'one');
+      }
+      let before = await nativeCheckInputSnapshot(fingerprintInput(root));
+      expect(before.complete).toBe(true);
+      for (const relative of [
+        '.next/cache/webpack/cache.bin',
+        '.next/trace',
+        '.next/trace-build',
+        '.next/dev/server/app/page.js',
+        '.next/dev/cache/cache.bin',
+      ]) {
+        await fs.mkdir(path.dirname(path.join(root, relative)), { recursive: true });
+        await fs.writeFile(path.join(root, relative), 'volatile');
+      }
+      expect((await nativeCheckInputSnapshot(fingerprintInput(root))).contentFingerprint).toBe(
+        before.contentFingerprint,
+      );
+      for (const relative of [
+        '.next/server/app/page.js',
+        '.next/server/app/logs/page.js',
+        '.next/static/chunks/main.js',
+        '.next/BUILD_ID',
+        '.next/routes-manifest.json',
+        '.next/dev/types/routes.d.ts',
+      ]) {
+        const gate = await nativeCheckInputGate({ projectRoot: root, candidateId: null });
+        await fs.writeFile(path.join(root, relative), 'two');
+        const after = await nativeCheckInputSnapshot(fingerprintInput(root));
+        expect(after.complete).toBe(true);
+        expect(after.contentFingerprint, relative).not.toBe(before.contentFingerprint);
+        if (capture === 'git')
+          expect(
+            await nativeCheckInputGate({ projectRoot: root, candidateId: null }),
+            relative,
+          ).not.toBe(gate);
+        before = after;
+      }
+    },
+  );
+
+  it.each(['sensitive', 'size', 'symlink-root', 'symlink-ancestor'])(
+    'reports incomplete generated input instead of stable reusable evidence (%s)',
+    async (failure) => {
+      await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n.next/\npackages/\n');
+      await fs.mkdir(path.join(root, 'dist'));
+      if (failure === 'sensitive')
+        await fs.writeFile(path.join(root, 'dist/.env'), 'TOKEN=fixture');
+      if (failure === 'size') {
+        await fs.writeFile(path.join(root, 'dist/large.bin'), '');
+        await fs.truncate(path.join(root, 'dist/large.bin'), 1024 * 1024 * 1024 + 1);
+      }
+      if (failure === 'symlink-root') {
+        await fs.symlink(
+          path.join(root, 'dist'),
+          path.join(root, '.next'),
+          process.platform === 'win32' ? 'junction' : 'dir',
+        );
+      }
+      if (failure === 'symlink-ancestor') {
+        await fs.mkdir(path.join(root, '.next'));
+        await fs.mkdir(path.join(root, 'dist/types'));
+        await fs.writeFile(path.join(root, 'dist/types/input.d.ts'), 'export type Value = 1;');
+        await fs.symlink(
+          path.join(root, 'dist'),
+          path.join(root, '.next/dev'),
+          process.platform === 'win32' ? 'junction' : 'dir',
+        );
+      }
+      const snapshot = await nativeCheckInputSnapshot(fingerprintInput(root));
+      expect(snapshot.complete).toBe(false);
+      expect(snapshot.diagnostics).not.toEqual([]);
+      expect(snapshot.diagnostics.join(' ')).toMatch(/敏感|大小|链接/);
+      expect(await nativeCheckInputGate({ projectRoot: root, candidateId: null })).toBeNull();
+    },
+  );
+
+  it('captures tracked deletions as known input rather than an unreadable snapshot', async () => {
+    const before = await nativeCheckInputSnapshot(fingerprintInput(root));
+    await fs.rm(path.join(root, 'committed.txt'));
+    const after = await nativeCheckInputSnapshot(fingerprintInput(root));
+    expect(after.complete).toBe(true);
+    expect(after.contentFingerprint).not.toBe(before.contentFingerprint);
+    expect(await nativeCheckInputGate({ projectRoot: root, candidateId: null })).not.toBeNull();
   });
 
   it('excludes only Native-managed change metadata from a configured artifact root', async () => {
@@ -448,5 +617,68 @@ describe('Native check input gate', () => {
       expect(changed).toBe(true);
       expect(git(dependency, 'rev-parse', 'HEAD')).toBe(head);
     });
+  });
+});
+
+describe('Native physical check input snapshots', () => {
+  it('binds root configuration and generated Next types for non-Git subdirectory checks', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-physical-check-inputs-'));
+    try {
+      // Invalid local .git prevents discovery of an unrelated ancestor repository.
+      await fs.mkdir(path.join(root, '.git'));
+      await fs.mkdir(path.join(root, 'packages/app/.next/dev/types'), { recursive: true });
+      await fs.mkdir(path.join(root, 'packages/app/.next/cache'), { recursive: true });
+      await fs.writeFile(path.join(root, 'package-lock.json'), '{"lockfileVersion":1}');
+      const typeFile = path.join(root, 'packages/app/.next/dev/types/routes.d.ts');
+      await fs.writeFile(typeFile, 'export type Route = "/";');
+      const input = {
+        ...fingerprintInput(root),
+        plans: [
+          {
+            id: 'test',
+            name: 'Test',
+            executable: process.execPath,
+            argv: ['-e', ''],
+            cwdRef: 'packages/app',
+            timeoutMs: 10_000,
+            repeatable: true,
+          },
+        ],
+      };
+      const before = await nativeCheckInputSnapshot(input);
+      const candidate = await nativeCandidateInputGate({
+        projectRoot: root,
+        candidateId: null,
+        plans: input.plans,
+      });
+      expect(before.complete).toBe(true);
+      await fs.writeFile(typeFile, 'export type Route = "/new";');
+      const afterTypes = await nativeCheckInputSnapshot(input);
+      expect(afterTypes.contentFingerprint).not.toBe(before.contentFingerprint);
+      expect(
+        await nativeCandidateInputGate({
+          projectRoot: root,
+          candidateId: null,
+          plans: input.plans,
+        }),
+      ).toBe(candidate);
+      await fs.writeFile(path.join(root, 'packages/app/.next/cache/cache.bin'), 'cache churn');
+      expect((await nativeCheckInputSnapshot(input)).contentFingerprint).toBe(
+        afterTypes.contentFingerprint,
+      );
+      await fs.writeFile(path.join(root, 'package-lock.json'), '{"lockfileVersion":2}');
+      expect((await nativeCheckInputSnapshot(input)).contentFingerprint).not.toBe(
+        afterTypes.contentFingerprint,
+      );
+      expect(
+        await nativeCandidateInputGate({
+          projectRoot: root,
+          candidateId: null,
+          plans: input.plans,
+        }),
+      ).not.toBe(candidate);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 });

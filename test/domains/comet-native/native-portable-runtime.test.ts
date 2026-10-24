@@ -1653,9 +1653,15 @@ Ship the behavior.
     expect(completed.state.verification?.risks[0]).toMatchObject({ truncated: true });
   });
 
-  it('reruns checks when an ignored generated input changes', async () => {
+  it.each([
+    'ordinary',
+    'next-production',
+    'large-dependencies',
+    'incomplete-sensitive-input',
+    'incomplete-file-limit',
+  ])('reruns checks when an ignored generated input changes (%s)', async (fixture) => {
     execFileSync('git', ['-C', root, 'init', '-b', 'master'], { stdio: 'ignore' });
-    await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n.comet/\n');
+    await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n.next/\nnode_modules/\n.comet/\n');
     await fs.writeFile(path.join(root, 'baseline.txt'), 'baseline\n');
     execFileSync('git', ['-C', root, 'add', '.gitignore', 'baseline.txt'], { stdio: 'ignore' });
     execFileSync(
@@ -1697,31 +1703,60 @@ Ship the behavior.
         review: passedReview('ignored-generated-reviewer'),
       },
     });
+    const inputRef = fixture === 'next-production' ? '.next/server/app/page.js' : 'dist/input.txt';
     const plan = {
       id: 'generated-input',
       name: 'Generated input check',
       executable: process.execPath,
       argv: [
         '-e',
-        "process.exit(require('fs').readFileSync('dist/input.txt', 'utf8').trim() === 'good' ? 0 : 7)",
+        `process.exit(require('fs').readFileSync(${JSON.stringify(inputRef)}, 'utf8').trim() === 'good' ? 0 : 7)`,
       ],
       cwdRef: '.',
       timeoutMs: 10_000,
       repeatable: true,
     } as const;
 
-    await fs.mkdir(path.join(root, 'dist'));
-    await fs.writeFile(path.join(root, 'dist', 'input.txt'), 'good\n');
+    await fs.mkdir(path.dirname(path.join(root, inputRef)), { recursive: true });
+    await fs.writeFile(path.join(root, inputRef), 'good\n');
+    if (fixture === 'large-dependencies' || fixture === 'incomplete-file-limit') {
+      const dependency =
+        fixture === 'large-dependencies'
+          ? path.join(root, 'node_modules', 'fixture', 'dist')
+          : path.join(root, 'dist', 'many');
+      await fs.mkdir(dependency, { recursive: true });
+      for (let start = 0; start < 20_001; start += 256) {
+        await Promise.all(
+          Array.from({ length: Math.min(256, 20_001 - start) }, (_, offset) =>
+            fs.writeFile(path.join(dependency, `${start + offset}.js`), ''),
+          ),
+        );
+      }
+    }
+    if (fixture === 'incomplete-sensitive-input') {
+      await fs.writeFile(path.join(root, 'dist', '.env'), 'TOKEN=fixture');
+    }
 
     await expect(
       executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
     ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'passed' }] });
     const firstLocal = await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name));
-    await fs.writeFile(path.join(root, 'dist', 'input.txt'), 'bad\n');
+    await fs.writeFile(path.join(root, inputRef), 'bad\n');
 
-    await expect(
-      executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
-    ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'failed', exit_code: 7 }] });
+    const executed = await executeNativePortableCheckPlan({
+      paths,
+      name: state.name,
+      plans: [plan],
+    });
+    expect(executed).toMatchObject({
+      disposition: 'executed',
+      checks: [{ id: plan.id, status: 'failed', exit_code: 7 }],
+    });
+    if (fixture.startsWith('incomplete-')) {
+      expect(executed.inputDiagnostics?.join(' ')).toMatch(/敏感|文件数上限/);
+    } else {
+      expect(executed.inputDiagnostics ?? []).toEqual([]);
+    }
     const secondLocal = await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name));
     expect(firstLocal?.execution?.operationId).toBeTruthy();
     expect(secondLocal?.execution?.operationId).toBeTruthy();

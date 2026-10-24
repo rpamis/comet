@@ -103,34 +103,24 @@ function bindingDigest(policy: CheckPolicy | undefined, legacy: boolean): string
   return policy?.entryDigest ?? policy?.digest ?? '';
 }
 
-// PATH cannot change within a process, so resolving an argv[0] to an executable
-// path is cached per (command, cwd). The file identity stats stay outside the
-// cache on purpose — reinstalling or rebuilding the executable between two
-// fingerprints in one command must still be observable.
-const executablePathCache = new Map<string, string | null>();
-
 async function resolveCommandExecutablePath(command: string, cwd: string): Promise<string | null> {
-  const key = `${command}\0${cwd}`;
-  const cached = executablePathCache.get(key);
-  if (cached !== undefined) return cached;
-  const executable =
-    process.platform === 'win32'
-      ? resolveWindowsCommand(command, process.env, cwd)
-      : command.includes('/')
-        ? path.resolve(cwd, command)
-        : ((
-            await Promise.all(
-              (process.env.PATH ?? '').split(path.delimiter).map(async (dir) => {
-                const candidate = path.resolve(cwd, dir, command);
-                return await fs.access(candidate, fs.constants.X_OK).then(
-                  () => candidate,
-                  () => null,
-                );
-              }),
-            )
-          ).find((candidate) => candidate !== null) ?? null);
-  executablePathCache.set(key, executable);
-  return executable;
+  // 长生命周期调用方可能切换 PATH，同一路径也可能安装或移除优先命令。
+  // 每次核对当前解析结果，不能把前一次执行位置当作本次命令身份。
+  return process.platform === 'win32'
+    ? resolveWindowsCommand(command, process.env, cwd)
+    : command.includes('/')
+      ? path.resolve(cwd, command)
+      : ((
+          await Promise.all(
+            (process.env.PATH ?? '').split(path.delimiter).map(async (dir) => {
+              const candidate = path.resolve(cwd, dir, command);
+              return await fs.access(candidate, fs.constants.X_OK).then(
+                () => candidate,
+                () => null,
+              );
+            }),
+          )
+        ).find((candidate) => candidate !== null) ?? null);
 }
 
 export async function checkEnvironmentFingerprint(

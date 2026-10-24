@@ -365,7 +365,37 @@ interface NativeIgnoredInputFile {
 interface NativeIgnoredInputSnapshot {
   complete: boolean;
   files: NativeIgnoredInputFile[];
+  diagnostic?: string;
 }
+
+export interface NativeCheckInputSnapshot {
+  /** 环境敏感的执行摘要，仅用于决定是否复用检查。 */
+  fingerprint: string;
+  /** 检查实际读取的候选和文件内容，复核时不绑定提交命令的 shell。 */
+  contentFingerprint: string;
+  complete: boolean;
+  diagnostics: string[];
+}
+
+const NATIVE_DEPENDENCY_INPUT_DIRECTORIES = new Set([
+  'node_modules',
+  'vendor',
+  '.venv',
+  'venv',
+  '.pnpm',
+  '.pnpm-store',
+]);
+
+const NATIVE_PROJECT_INPUT_MANIFESTS = new Set([
+  'package.json',
+  'pyproject.toml',
+  'Cargo.toml',
+  'go.mod',
+  'pom.xml',
+  'build.gradle',
+  'build.gradle.kts',
+  'tsconfig.json',
+]);
 
 const NATIVE_PHYSICAL_INPUT_EXCLUDED_DIRECTORIES = new Set([
   '.agents',
@@ -460,16 +490,48 @@ function isNativeRuntimeInputPath(
   );
 }
 
-function incompleteNativeIgnoredInputSnapshot(): NativeIgnoredInputSnapshot {
-  return { complete: false, files: [] };
+function incompleteNativeIgnoredInputSnapshot(diagnostic: string): NativeIgnoredInputSnapshot {
+  return { complete: false, files: [], diagnostic };
 }
 
 function nativeGeneratedInputPathspecs(cwdRef: string): string[] {
   const prefix = cwdRef === '.' ? '' : `${cwdRef}/`;
-  return NATIVE_GENERATED_INPUT_DIRECTORIES.flatMap((directory) => [
-    `:(glob)${prefix}${directory}/**`,
-    `:(glob)${prefix}**/${directory}/**`,
-  ]);
+  // 不使用 **/dist 等任意深度匹配；它会遍历被忽略的依赖树。
+  return [
+    ...NATIVE_GENERATED_INPUT_DIRECTORIES.map((directory) => `:(glob)${prefix}${directory}/**`),
+    ...['cache', 'trace', 'trace-build', 'dev'].flatMap((name) => [
+      `:(exclude,glob)${prefix}.next/${name}`,
+      `:(exclude,glob)${prefix}.next/${name}/**`,
+    ]),
+  ];
+}
+
+function isNativeNextVolatileInputPath(relative: string): boolean {
+  const parts = relative.split('/');
+  const next = parts.lastIndexOf('.next');
+  if (next < 0) return false;
+  const [entry, child] = parts.slice(next + 1);
+  return (
+    entry === 'cache' ||
+    entry === 'trace' ||
+    entry === 'trace-build' ||
+    (entry === 'dev' && child !== undefined && child !== 'types')
+  );
+}
+
+function nativeGeneratedInputRoots(
+  plans: readonly NativeCheckPlan[],
+  stagedIndex: string,
+): string[] {
+  const roots = new Set(['.', ...plans.map(({ cwdRef }) => cwdRef)]);
+  // 已跟踪的项目清单覆盖 monorepo 子项目，不扫描 node_modules 寻找项目。
+  for (const entry of stagedIndex.split('\0')) {
+    const relative = entry.slice(entry.indexOf('\t') + 1);
+    if (!NATIVE_PROJECT_INPUT_MANIFESTS.has(path.posix.basename(relative))) continue;
+    if (relative.split('/').some((part) => NATIVE_DEPENDENCY_INPUT_DIRECTORIES.has(part))) continue;
+    roots.add(path.posix.dirname(relative));
+  }
+  return [...roots].sort();
 }
 
 function sensitiveNativeIgnoredInputPath(relative: string): boolean {
@@ -481,33 +543,73 @@ async function nativeIgnoredCheckInputSnapshot(
   plans: readonly NativeCheckPlan[],
   managedArtifactRoot?: string,
   runnerInputs: ReadonlySet<string> = new Set(),
+  stagedIndex = '',
 ): Promise<NativeIgnoredInputSnapshot> {
-  const cwdRefs = [...new Set(plans.length ? plans.map(({ cwdRef }) => cwdRef) : ['.'])];
+  const cwdRefs = nativeGeneratedInputRoots(plans, stagedIndex);
   if (cwdRefs.length === 0) return { complete: true, files: [] };
 
   let ignoredPaths: string[];
+  let realRoot: string;
   try {
+    realRoot = await fs.realpath(projectRoot);
+    const nextDevTypes: string[] = [];
+    for (const cwdRef of cwdRefs) {
+      for (const directory of [
+        ...NATIVE_GENERATED_INPUT_DIRECTORIES,
+        '.next/types',
+        '.next/dev/types',
+      ]) {
+        const ref = cwdRef === '.' ? directory : `${cwdRef}/${directory}`;
+        const target = path.resolve(projectRoot, ...ref.split('/'));
+        try {
+          const info = await fs.lstat(target);
+          if (directory === '.next/dev/types') nextDevTypes.push(`:(glob)${ref}/**`);
+          if (
+            info.isSymbolicLink() ||
+            (await fs.realpath(target)) !== path.resolve(realRoot, ...ref.split('/'))
+          ) {
+            return incompleteNativeIgnoredInputSnapshot(
+              `项目生成输入目录包含链接或超出工作区：${ref}`,
+            );
+          }
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+      }
+    }
+    const dependencyExclusions = [...NATIVE_DEPENDENCY_INPUT_DIRECTORIES].map(
+      (directory) => `:(exclude,glob)**/${directory}/**`,
+    );
+    const listIgnored = (pathspecs: string[]): string =>
+      runGitCommand(projectRoot, [
+        'ls-files',
+        '--others',
+        '--ignored',
+        '--exclude-standard',
+        '-z',
+        '--',
+        ...pathspecs,
+        ...dependencyExclusions,
+      ]);
+    // Git 的 exclude 优先于 include；单独读取 dev/types，不能把其余 dev 输出重新纳入。
+    const selected =
+      listIgnored(cwdRefs.flatMap(nativeGeneratedInputPathspecs)) +
+      (nextDevTypes.length ? `\0${listIgnored(nextDevTypes)}` : '');
     ignoredPaths = [
       ...new Set(
-        runGitCommand(projectRoot, [
-          'ls-files',
-          '--others',
-          '--ignored',
-          '--exclude-standard',
-          '-z',
-          '--',
-          ...cwdRefs.flatMap(nativeGeneratedInputPathspecs),
-        ])
+        selected
           .split('\0')
           .filter(Boolean)
           .map((relative) => relative.replaceAll('\\', '/')),
       ),
     ].sort();
   } catch {
-    return incompleteNativeIgnoredInputSnapshot();
+    return incompleteNativeIgnoredInputSnapshot('无法列出项目生成输入；本次检查不能复用旧证据');
   }
   if (ignoredPaths.length > NATIVE_IGNORED_INPUT_MAX_FILES) {
-    return incompleteNativeIgnoredInputSnapshot();
+    return incompleteNativeIgnoredInputSnapshot(
+      `项目生成输入超过文件数上限（${NATIVE_IGNORED_INPUT_MAX_FILES}）；本次检查不能复用旧证据`,
+    );
   }
 
   const files: NativeIgnoredInputFile[] = [];
@@ -516,19 +618,38 @@ async function nativeIgnoredCheckInputSnapshot(
     if (runnerInputs.has(relative)) continue;
     if (isNativeRuntimeInputPath(relative, projectRoot, managedArtifactRoot)) continue;
     const target = path.resolve(projectRoot, ...relative.split('/'));
-    if (!isInsidePath(projectRoot, target) || sensitiveNativeIgnoredInputPath(relative)) {
-      return incompleteNativeIgnoredInputSnapshot();
+    if (!isInsidePath(projectRoot, target)) {
+      return incompleteNativeIgnoredInputSnapshot(`项目生成输入超出工作区：${relative}`);
+    }
+    if (sensitiveNativeIgnoredInputPath(relative)) {
+      return incompleteNativeIgnoredInputSnapshot(
+        `项目生成输入包含敏感文件：${relative}；未读取文件内容`,
+      );
     }
     try {
+      const realTarget = await fs.realpath(target);
+      if (
+        !isInsidePath(realRoot, realTarget) ||
+        realTarget !== path.resolve(realRoot, ...relative.split('/'))
+      ) {
+        return incompleteNativeIgnoredInputSnapshot(
+          `项目生成输入路径包含链接或超出工作区：${relative}`,
+        );
+      }
       const before = await fs.lstat(target);
-      if (!before.isFile() || totalBytes + before.size > NATIVE_IGNORED_INPUT_MAX_TOTAL_BYTES) {
-        return incompleteNativeIgnoredInputSnapshot();
+      if (!before.isFile()) {
+        return incompleteNativeIgnoredInputSnapshot(`项目生成输入不是普通文件：${relative}`);
+      }
+      if (totalBytes + before.size > NATIVE_IGNORED_INPUT_MAX_TOTAL_BYTES) {
+        return incompleteNativeIgnoredInputSnapshot(
+          `项目生成输入超过大小上限（${NATIVE_IGNORED_INPUT_MAX_TOTAL_BYTES} bytes）：${relative}`,
+        );
       }
       const { digest, size } = await digestNativeInputFileContent(target);
       totalBytes += size;
       files.push({ path: relative, digest, size });
     } catch {
-      return incompleteNativeIgnoredInputSnapshot();
+      return incompleteNativeIgnoredInputSnapshot(`项目生成输入无法稳定读取：${relative}`);
     }
   }
   return { complete: true, files };
@@ -539,8 +660,11 @@ async function nativePhysicalCheckInputSnapshot(
   plans: readonly NativeCheckPlan[],
   managedArtifactRoot?: string,
   runnerInputs: ReadonlySet<string> = new Set(),
+  kind: 'check' | 'candidate' = 'check',
 ): Promise<NativeIgnoredInputSnapshot> {
-  const cwdRefs = [...new Set(plans.length ? plans.map(({ cwdRef }) => cwdRef) : ['.'])];
+  // 根配置和 lockfile 也可影响子目录内的检查。
+  const cwdRefs = ['.'];
+  void plans;
   const files = new Map<string, NativeIgnoredInputFile>();
   let totalBytes = 0;
   const isGeneratedDirectory = (name: string): boolean =>
@@ -564,10 +688,18 @@ async function nativePhysicalCheckInputSnapshot(
       const relative = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
       if (runnerInputs.has(relative)) continue;
       if (isNativeRuntimeInputPath(relative, projectRoot, managedArtifactRoot)) continue;
-      if (entry.isDirectory() && NATIVE_PHYSICAL_INPUT_EXCLUDED_DIRECTORIES.has(entry.name)) {
+      const target = path.join(directory, entry.name);
+      if (kind === 'candidate' && isGeneratedDirectory(entry.name)) continue;
+      if (isNativeNextVolatileInputPath(relative)) continue;
+      if (
+        entry.isDirectory() &&
+        (NATIVE_DEPENDENCY_INPUT_DIRECTORIES.has(entry.name) ||
+          (!insideGeneratedDirectory &&
+            NATIVE_PHYSICAL_INPUT_EXCLUDED_DIRECTORIES.has(entry.name) &&
+            !isGeneratedDirectory(entry.name)))
+      ) {
         continue;
       }
-      const target = path.join(directory, entry.name);
       if (entry.isDirectory()) {
         if (
           !(await visit(
@@ -606,7 +738,9 @@ async function nativePhysicalCheckInputSnapshot(
     if (
       !(await visit(directory, relativeDirectory, isGeneratedDirectory(path.basename(directory))))
     ) {
-      return incompleteNativeIgnoredInputSnapshot();
+      return incompleteNativeIgnoredInputSnapshot(
+        '工作区文件无法完整读取：文件数量、大小、敏感文件或读取稳定性检查未通过',
+      );
     }
   }
   return {
@@ -648,12 +782,37 @@ function nativeLocalCheckEvidenceDigest(
   });
 }
 
-export async function nativeCheckInputFingerprint(options: {
+async function nativeCheckWorkingTreeDigest(
+  projectRoot: string,
+  relative: string,
+): Promise<string> {
+  const target = path.resolve(projectRoot, ...relative.split('/'));
+  try {
+    return (await digestNativeInputFileContent(target)).digest;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return digestNativeCheckInput('comet.native.check-input.missing');
+    }
+    throw error;
+  }
+}
+
+interface NativeCheckInputOptions {
   state: NativePortableState;
   projectRoot: string;
   plans: readonly NativeCheckPlan[];
   managedArtifactRoot?: string;
-}): Promise<string> {
+}
+
+export async function nativeCheckInputFingerprint(
+  options: NativeCheckInputOptions,
+): Promise<string> {
+  return (await nativeCheckInputSnapshot(options)).fingerprint;
+}
+
+export async function nativeCheckInputSnapshot(
+  options: NativeCheckInputOptions,
+): Promise<NativeCheckInputSnapshot> {
   const runnerInputs = await nativeRunnerInputArtifactPaths(options.projectRoot);
   const exclusions = [
     ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
@@ -669,8 +828,8 @@ export async function nativeCheckInputFingerprint(options: {
     stagedDiff: null as string | null,
     submodules: null as string | null,
     untracked: [] as Array<{ path: string; digest: string | null; size: number | null }>,
-    ignored: { complete: true, files: [] as NativeIgnoredInputFile[] },
-    physical: { complete: true, files: [] as NativeIgnoredInputFile[] },
+    ignored: { complete: true, files: [] } as NativeIgnoredInputSnapshot,
+    physical: { complete: true, files: [] } as NativeIgnoredInputSnapshot,
     // An incomplete snapshot is represented deterministically. The fast gate
     // below remains null in that case, which forces a fresh check execution;
     // adding a random nonce here would make every retry look like a source edit
@@ -691,6 +850,31 @@ export async function nativeCheckInputFingerprint(options: {
       '--',
       ...exclusions,
     ]);
+    // Staged content binds through index blob ids: `ls-files --stage` names each
+    // path with its object id, which Git already defines as the content hash.
+    const stagedIndex = runGitCommand(options.projectRoot, [
+      'ls-files',
+      '--stage',
+      '-z',
+      '--',
+      ...exclusions,
+    ]);
+    gitSnapshot.stagedDiff = digestNativeCheckInput(stagedIndex);
+    gitSnapshot.submodules = hasGitlinksInIndex(stagedIndex)
+      ? runGitCommand(options.projectRoot, ['submodule', 'status', '--recursive'])
+      : '';
+    const gitlinks = new Map<string, string>();
+    const gitlinkBudget = { repositories: new Set<string>(), indexBytes: 0 };
+    for (const [relative] of parseGitlinksInIndex(stagedIndex)) {
+      try {
+        gitlinks.set(
+          relative,
+          (await readNativeCheckGitlink(options.projectRoot, relative, gitlinkBudget)).digest,
+        );
+      } catch {
+        gitSnapshot.complete = false;
+      }
+    }
     // The working-tree binding no longer digests a full `diff --binary` stream
     // (megabytes of patch text on large trees). HEAD is bound separately, so
     // naming the changed paths and hashing each one pins the same information:
@@ -707,9 +891,10 @@ export async function nativeCheckInputFingerprint(options: {
       .filter(Boolean)
       .sort();
     gitSnapshot.diff = await mapWithConcurrency(changed, 16, async (relative) => {
-      const target = path.resolve(options.projectRoot, ...relative.split('/'));
       try {
-        const { digest } = await digestNativeInputFileContent(target);
+        const digest =
+          gitlinks.get(relative) ??
+          (await nativeCheckWorkingTreeDigest(options.projectRoot, relative));
         return { path: relative, digest };
       } catch {
         return { path: relative, digest: null };
@@ -718,19 +903,6 @@ export async function nativeCheckInputFingerprint(options: {
     if (gitSnapshot.diff.some(({ digest }) => digest === null)) {
       gitSnapshot.complete = false;
     }
-    // Staged content binds through index blob ids: `ls-files --stage` names each
-    // path with its object id, which Git already defines as the content hash.
-    const stagedIndex = runGitCommand(options.projectRoot, [
-      'ls-files',
-      '--stage',
-      '-z',
-      '--',
-      ...exclusions,
-    ]);
-    gitSnapshot.stagedDiff = digestNativeCheckInput(stagedIndex);
-    gitSnapshot.submodules = hasGitlinksInIndex(stagedIndex)
-      ? runGitCommand(options.projectRoot, ['submodule', 'status', '--recursive'])
-      : '';
     const untracked = runGitCommand(options.projectRoot, [
       'ls-files',
       '--others',
@@ -759,6 +931,7 @@ export async function nativeCheckInputFingerprint(options: {
       options.plans,
       options.managedArtifactRoot,
       runnerInputs,
+      `${stagedIndex}\0${untracked.join('\0')}`,
     );
     if (!gitSnapshot.ignored.complete) {
       gitSnapshot.complete = false;
@@ -779,12 +952,24 @@ export async function nativeCheckInputFingerprint(options: {
       gitSnapshot.complete = gitSnapshot.physical.complete;
     }
   }
-  return canonicalHash('comet.native.check-input.v1', {
+  const diagnostics = [gitSnapshot.ignored.diagnostic, gitSnapshot.physical.diagnostic].filter(
+    (entry): entry is string => Boolean(entry),
+  );
+  if (!gitSnapshot.complete && diagnostics.length === 0) {
+    diagnostics.push('工作区输入无法完整读取或在采样时发生变化；不能复用旧检查证据');
+  }
+  // 诊断不进入摘要；保留旧版完整收据的比较能力，不把提示文案当成输入。
+  delete gitSnapshot.ignored.diagnostic;
+  delete gitSnapshot.physical.diagnostic;
+  const content = {
     candidateId: options.state.builder_handoff?.candidate_id ?? null,
     shapeConfirmationHash: options.state.shape_confirmation_hash ?? null,
     acceptance: options.state.acceptance.map(({ id, source, text }) => ({ id, source, text })),
     git: gitSnapshot,
     projectRoot: path.resolve(options.projectRoot),
+  };
+  const fingerprint = canonicalHash('comet.native.check-input.v1', {
+    ...content,
     machineId: os.hostname(),
     execPath: process.execPath,
     node: process.version,
@@ -801,6 +986,12 @@ export async function nativeCheckInputFingerprint(options: {
       .map(([key, value]) => [key, value ?? null] as const)
       .sort(([left], [right]) => left.localeCompare(right)),
   });
+  return {
+    fingerprint,
+    contentFingerprint: canonicalHash('comet.native.check-content.v1', content),
+    complete: gitSnapshot.complete,
+    diagnostics,
+  };
 }
 
 const NATIVE_CHECK_BOUND_ENV = new Set([
@@ -999,7 +1190,6 @@ async function readNativeCheckInputObservation(options: NativeCheckInputGateOpti
     }
     const workingTree: Array<{ path: string; digest: string | null }> = [];
     for (const changedPath of changedPaths) {
-      const target = path.resolve(options.projectRoot, ...changedPath.split('/'));
       let digest: string | null = null;
       try {
         const virtual = options.legacyArchiveOverlay?.get(changedPath);
@@ -1007,7 +1197,7 @@ async function readNativeCheckInputObservation(options: NativeCheckInputGateOpti
         digest = virtual
           ? digestNativeCheckInput((virtual.bytes ?? Buffer.from(virtual.text!)).toString('base64'))
           : (gitlinks.get(changedPath)?.digest ??
-            (await digestNativeInputFileContent(target)).digest);
+            (await nativeCheckWorkingTreeDigest(options.projectRoot, changedPath)));
       } catch {
         // 无法完整读取的工作区输入不能用于快速复用。
         return null;
@@ -1057,6 +1247,7 @@ async function nativeCheckGateFromObservation(
       options.plans ?? [],
       options.managedArtifactRoot,
       observation.runnerInputs,
+      `${observation.binding.staged}\0${observation.binding.workingTree.map(({ path }) => path).join('\0')}`,
     );
     return ignored.complete
       ? canonicalHash('comet.native.check-input-gate.v1', { ...observation.binding, ignored })
@@ -1085,6 +1276,7 @@ async function nativeCandidateCommentGate(
         options.plans ?? [],
         options.managedArtifactRoot,
         runnerInputs,
+        'candidate',
       );
       if (!physical.complete) return null;
       if (options.legacyArchiveOverlay) {
@@ -1568,6 +1760,7 @@ async function reserveNativePortableCheckPlan(options: {
       state: NativePortableState;
       local: NativeLocalExecutionState;
       plans: NativeCheckPlan[];
+      inputDiagnostics: string[];
     }
   | { kind: 'reuse'; state: NativePortableState; checks: NativePortableCheckSummary[] }
 > {
@@ -1608,12 +1801,8 @@ async function reserveNativePortableCheckPlan(options: {
       if (branch !== null && local.workspace.branch === `heads/${branch}`) {
         branch = currentBranch(options.projectRoot);
       }
-      // A null gate means the workspace could not be snapshotted completely
-      // (for example, an ignored generated tree is too large or a submodule
-      // cannot be hashed as a regular file). The full fingerprint remains
-      // deterministic, but the binding below still forces a fresh execution
-      // because incomplete evidence cannot safely reuse a prior result.
-      const inputSnapshotUncertain = gate === null;
+      // 快速摘要不可用时重新捕获完整输入。非 Git 项目仍可用完整的物理快照；
+      // 真正不完整的快照不能因为其确定性摘要相同而复用旧结果。
       // Reuse decides before the full fingerprint: a matching gate already
       // binds dirty, untracked and ignored generated inputs, so only the clean
       // tracked-tree work in the full fingerprint remains safely skippable.
@@ -1626,19 +1815,23 @@ async function reserveNativePortableCheckPlan(options: {
         path.resolve(local.workspace.projectRoot) === path.resolve(options.projectRoot) &&
         path.resolve(local.workspace.worktreeRoot) === path.resolve(options.projectRoot) &&
         local.workspace.machineId === os.hostname();
-      const inputFingerprint = gateBindingMatches
-        ? local.inputFingerprint!
-        : await nativeCheckInputFingerprint({
+      const inputSnapshot = gateBindingMatches
+        ? null
+        : await nativeCheckInputSnapshot({
             state,
             projectRoot: options.projectRoot,
             plans: options.plans,
             managedArtifactRoot: options.paths.artifactRoot,
           });
+      const inputFingerprint = inputSnapshot?.fingerprint ?? local.inputFingerprint!;
+      const inputDiagnostics = inputSnapshot?.diagnostics ?? [];
+      const forceReexecuteForIncompleteInput = inputSnapshot?.complete === false;
       const runtimeDir = nativePreferredChangeRuntimeDir(options.paths, state.name);
       const runtimeEvidenceAvailable = await hasNativeRuntimeCheckEvidence(local, runtimeDir);
       const allChecksPassed = local.checks.every((check) => check.status === 'passed');
       const retryIds = options.retryCheckIds === undefined ? null : new Set(options.retryCheckIds);
       const sameBinding =
+        !forceReexecuteForIncompleteInput &&
         local.candidateId === state.builder_handoff?.candidate_id &&
         path.resolve(local.workspace.projectRoot) === path.resolve(options.projectRoot) &&
         path.resolve(local.workspace.worktreeRoot) === path.resolve(options.projectRoot) &&
@@ -1676,6 +1869,14 @@ async function reserveNativePortableCheckPlan(options: {
         local.workspace.machineId === os.hostname();
       const forceReexecuteForMissingEvidence =
         sameBinding && allChecksPassed && !runtimeEvidenceAvailable;
+      if (
+        forceReexecuteForIncompleteInput &&
+        local.checks.some((check) => !check.repeatable && check.status !== 'planned')
+      ) {
+        throw new Error(
+          `Native 检查输入快照不完整，不能复用或自动重跑不可重复的检查：${inputDiagnostics.join('；') || '工作区输入无法完整读取'}`,
+        );
+      }
       if (retryIds && retryIds.size === 0) {
         throw new Error('Native check retry list must contain at least one ID');
       }
@@ -1703,7 +1904,10 @@ async function reserveNativePortableCheckPlan(options: {
         (local.execution !== null || local.checks.length > 0)
       ) {
         const fingerprintChanged = local.inputFingerprint !== inputFingerprint;
-        if ((inputSnapshotUncertain && !fingerprintChanged) || generatedInputsChanged) {
+        if (
+          (forceReexecuteForIncompleteInput && (!fingerprintChanged || candidateInputsUnchanged)) ||
+          generatedInputsChanged
+        ) {
           // Fall through to rebuild the local overlay and execute the current
           // plan again. The uncertain snapshot must never make prior checks
           // reusable, but it also must not reject the candidate itself.
@@ -1776,7 +1980,8 @@ async function reserveNativePortableCheckPlan(options: {
           execution.status === 'completed' &&
           allChecksPassed &&
           !forceReexecuteForMissingEvidence &&
-          !generatedInputsChanged
+          !generatedInputsChanged &&
+          !forceReexecuteForIncompleteInput
         ) {
           const requestedNames = new Map(options.plans.map(({ id, name }) => [id, name] as const));
           return {
@@ -1795,7 +2000,8 @@ async function reserveNativePortableCheckPlan(options: {
           execution.status === 'completed' &&
           !allChecksPassed &&
           !forceReexecuteForMissingEvidence &&
-          !generatedInputsChanged
+          !generatedInputsChanged &&
+          !forceReexecuteForIncompleteInput
         ) {
           throw new Error(
             `Native check plan contains a failed check (${local.checks
@@ -1838,7 +2044,8 @@ async function reserveNativePortableCheckPlan(options: {
           interrupted.length > 0 &&
           retryIds === null &&
           !forceReexecuteForMissingEvidence &&
-          !generatedInputsChanged
+          !generatedInputsChanged &&
+          !forceReexecuteForIncompleteInput
         ) {
           const requestedNames = new Map(options.plans.map(({ id, name }) => [id, name] as const));
           return {
@@ -1877,13 +2084,19 @@ async function reserveNativePortableCheckPlan(options: {
           local.execution.actor === 'runtime' &&
           local.checks.some((check) => check.status === 'interrupted') &&
           planMatches;
-        if (!sameInterruptedPlan && !forceReexecuteForMissingEvidence && !generatedInputsChanged) {
+        if (
+          !sameInterruptedPlan &&
+          !forceReexecuteForMissingEvidence &&
+          !generatedInputsChanged &&
+          !forceReexecuteForIncompleteInput
+        ) {
           throw new Error('Native check plan was already resolved with a different plan');
         }
       } else if (
         (local.execution !== null || local.checks.length > 0) &&
         !forceReexecuteForMissingEvidence &&
-        !generatedInputsChanged
+        !generatedInputsChanged &&
+        !forceReexecuteForIncompleteInput
       ) {
         throw new Error('Native check plan was already resolved with a different plan');
       }
@@ -1915,7 +2128,7 @@ async function reserveNativePortableCheckPlan(options: {
         },
         checks: options.plans.map((plan) => {
           const previous = local.checks.find((check) => check.id === plan.id);
-          if (generatedInputsChanged && previous) {
+          if ((generatedInputsChanged || forceReexecuteForIncompleteInput) && previous) {
             return localCheck(plan, operationId, options.projectRoot);
           }
           if (forceReexecuteForMissingEvidence && previous) {
@@ -1934,6 +2147,7 @@ async function reserveNativePortableCheckPlan(options: {
       await writeNativeLocalExecution(file, operation, { containedRoot: options.paths.runtimeDir });
       return {
         kind: 'execute',
+        inputDiagnostics,
         state,
         local: operation,
         plans: options.plans.filter((plan) => {
@@ -1941,6 +2155,7 @@ async function reserveNativePortableCheckPlan(options: {
           return (
             forceReexecuteForMissingEvidence ||
             generatedInputsChanged ||
+            forceReexecuteForIncompleteInput ||
             previous === undefined ||
             (previous.status === 'interrupted' && (retryIds === null || retryIds.has(previous.id)))
           );
@@ -1997,6 +2212,7 @@ export async function executeNativePortableCheckPlan(options: {
   state: NativePortableState;
   checks: NativePortableCheckSummary[];
   disposition: 'executed' | 'reused';
+  inputDiagnostics?: string[];
 }> {
   const projectRoot = options.projectRoot ?? options.paths.projectRoot;
   preflightNativeCheckPlans(projectRoot, options.plans);
@@ -2143,6 +2359,9 @@ export async function executeNativePortableCheckPlan(options: {
       supplied: [],
     }),
     disposition: 'executed',
+    ...(reservation.inputDiagnostics.length
+      ? { inputDiagnostics: reservation.inputDiagnostics }
+      : {}),
   };
 }
 
