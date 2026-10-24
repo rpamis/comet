@@ -28,6 +28,8 @@ RUN useradd --create-home --shell /bin/bash agent && \
     chown -R agent:agent /workspace
 USER agent
 ENV HOME=/home/agent
+# Claude Code 2.1.310 gateway compatibility; see acceptance-051 documentation.
+ENV ENABLE_TOOL_SEARCH=false
 ENV PYTHONPATH=/workspace
 RUN git config --global user.email "agent@eval.local" && \
     git config --global user.name "Comet Native Eval Agent" && \

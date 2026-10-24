@@ -17,6 +17,12 @@
 
 每组 `count: 1`。主执行模型、子 Agent 模型、接口和其他模型映射沿用选中的 GLM 配置，凭据仅在进程或评测容器的临时环境中提供。Classic 的既有 Superpowers 依赖仅在获得本轮明确授权后使用，不修改其原始 Skill。
 
+### Claude Code 工具兼容
+
+首轮使用 Claude Code 2.1.310 时，GLM 5.2 Verifier 只得到 ToolSearch 和少量延迟工具，搜索不到 Read、Bash 等基本工具。该表现与 [Claude Code 上游报告](https://github.com/anthropics/claude-code/issues/104309) 一致。独立小样本设置 `ENABLE_TOOL_SEARCH=false` 后，真实子 Agent 成功调用 Bash，并返回 `printf TOOL_COMPAT_OK` 的实际输出。四个当前验收任务的容器据此显式关闭工具搜索；控制器允许转发调用方的同名设置，未提供时不强制添加。CC Switch 的全局配置、模型和接口保持原值。
+
+保留原始工具缺失实验，不能把模型自述或兼容性小样本当成工作流归档成功。最终六组使用同一兼容设置，重新核对真实 Action、独立验收和 Archive。
+
 ## 候选与证据
 
 先完成实现、定向检查和构建，再记录候选 commit/tree、发布资产与完整 dist 的摘要、任务及 validator 的摘要和实际模型映射。六组最终结果必须匹配同一个候选；产品、任务或 harness 改变后，不能把旧结果当作新候选的通过证据。所有当前矩阵均使用 `COMET_NATIVE_SDK_CURRENT` 或 `COMET_CLASSIC_DOCS_LAYOUT`，不以冻结的 039/040 treatment 或 050 包作为被验收产品。

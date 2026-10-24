@@ -18,6 +18,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Evaluation authentication**: Accept either dedicated API-key or auth-token credentials for built-in Judges, so valid token-only provider configurations can start evaluation while custom agents retain their declared credential requirements.
+
 - **Dashboard loading and refresh states**: Align Personal Memory and Custom Workflow loading with their lists, and keep previously loaded Observability views visible during automatic sync, manual refresh, and tab switches so routine updates do not interrupt reading.
 - **Native incremental Shape and Hook ownership**: Preserve approved auxiliary test-plan updates, review formal comment changes within the existing workflow, and prevent compatibility Hook mutations from splitting SDK state.
 - **Workflow resume intent**: Honor explicit refusal and commit-only scope before resuming an active change, including Chinese and English requests.

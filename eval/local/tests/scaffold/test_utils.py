@@ -791,6 +791,29 @@ def test_codebuddy_forwards_official_model_variant_environment_variables():
     assert "CODEBUDDY_CODE_SUBAGENT_MODEL" in docker_sh
 
 
+@pytest.mark.parametrize("value", ["false", None])
+def test_docker_forwards_explicit_tool_search_compatibility_without_forcing_it(value):
+    environment = dict(os.environ)
+    environment.pop("ENABLE_TOOL_SEARCH", None)
+    if value is not None:
+        environment["ENABLE_TOOL_SEARCH"] = value
+    result = subprocess.run(
+        [
+            utils.BASH_EXEC,
+            "-c",
+            'source "$1"; build_env_args; printf "%s\\n" "${ENV_ARGS[@]}"',
+            "_",
+            utils._to_bash_path(utils.SHELL_DIR / "docker.sh"),
+        ],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=AGENT_FIXTURE_TIMEOUT,
+        check=True,
+    )
+    assert ("ENABLE_TOOL_SEARCH" in result.stdout.splitlines()) is (value is not None)
+
+
 def test_codex_commands_use_explicit_openai_base_url_config():
     docker_sh = (utils.SHELL_DIR / "docker.sh").read_text(encoding="utf-8")
     loop_sh = (utils.SHELL_DIR / "run-claude-loop.sh").read_text(encoding="utf-8")

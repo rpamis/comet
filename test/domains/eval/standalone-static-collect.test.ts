@@ -91,7 +91,27 @@ describe('standalone static collector parity', () => {
       ['run', '--locked', 'python', '-m', 'pytest', 'local/tests/scaffold/test_execution.py', '-q'],
       { cwd: evalRoot, encoding: 'utf8', stdio: 'pipe' },
     );
-    expect(result).toMatch(/28 passed/);
+    expect(Number(result.match(/(\d+) passed/)?.[1])).toBeGreaterThanOrEqual(28);
+    expect(result).not.toMatch(/failed|skipped/);
+  });
+
+  it('forwards explicit Claude tool search compatibility into isolated evaluation containers', () => {
+    const result = execFileSync(
+      'uv',
+      [
+        'run',
+        '--locked',
+        'python',
+        '-m',
+        'pytest',
+        'local/tests/scaffold/test_utils.py',
+        '-k',
+        'docker_forwards_explicit_tool_search_compatibility',
+        '-q',
+      ],
+      { cwd: evalRoot, encoding: 'utf8', stdio: 'pipe' },
+    );
+    expect(result).toMatch(/2 passed/);
     expect(result).not.toMatch(/failed|skipped/);
   });
 

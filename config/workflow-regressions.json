@@ -388,6 +388,44 @@
         }
       ],
       "sources": ["report:2026-10-25-051-native-classic-acceptance"]
+    },
+    {
+      "id": "native-docker-syntax-scope",
+      "behavior": "Docker Node 镜像的版本元数据不应禁用可证明范围的语法检查增量复用。",
+      "coverageLevel": "runtime",
+      "reproduction": "在官方 Node Docker 环境运行跨候选语法复用，NODE_VERSION 被误判为加载代码的 Node 选项，未变化文件也重新检查。",
+      "expected": "NODE_VERSION 保持不变时建立范围证明，版本元数据改变时执行上下文失效；NODE_OPTIONS 预加载仍禁用范围复用。",
+      "forbidden": "忽略环境变化或放行可执行预加载，仅为让测试通过清除真实 Docker 环境。",
+      "rootCause": "保守排除所有未知 NODE_ 变量时没有区分官方镜像的静态版本元数据。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-scope.test.ts",
+          "namePattern": "binds Docker NODE_VERSION metadata without disabling a proven syntax scope",
+          "requiredNames": [
+            "binds Docker NODE_VERSION metadata without disabling a proven syntax scope"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"]
+    },
+    {
+      "id": "eval-claude-tool-search-forwarding",
+      "behavior": "评测容器保留调用方明确选择的 Claude 工具兼容设置，不擅自启用或禁用。",
+      "coverageLevel": "runtime",
+      "reproduction": "真实 GLM Verifier 在 Claude Code 2.1.310 中缺少基本工具；调用方设置 ENABLE_TOOL_SEARCH=false 后，原 Docker 白名单仍丢弃该设置。",
+      "expected": "显式 false 被传入隔离容器，未提供时不强制加入；真实独立子 Agent 可运行 Bash。",
+      "forbidden": "修改全局 CC Switch 配置，改变模型映射，或把无工具的 Verifier 计为通过。",
+      "rootCause": "Docker 环境白名单未包含 Claude Code 的显式工具搜索设置。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "forwards explicit Claude tool search compatibility into isolated evaluation containers",
+          "requiredNames": [
+            "standalone static collector parity forwards explicit Claude tool search compatibility into isolated evaluation containers"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"]
     }
   ]
 }

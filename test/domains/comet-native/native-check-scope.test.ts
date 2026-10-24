@@ -62,3 +62,30 @@ it('does not establish a reusable scope for a directory replacing the syntax inp
     }),
   ).toBeNull();
 });
+
+it('binds Docker NODE_VERSION metadata without disabling a proven syntax scope', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-check-scope-docker-'));
+  roots.push(root);
+  await fs.writeFile(path.join(root, 'value.mjs'), 'export const value = 1;\n');
+  const options = {
+    projectRoot: root,
+    contract: 'approved-shape',
+    plan: {
+      id: 'syntax',
+      name: 'Syntax',
+      executable: process.execPath,
+      argv: ['--check', 'value.mjs'],
+      cwdRef: '.',
+      timeoutMs: 5_000,
+      repeatable: true,
+    },
+  };
+  vi.stubEnv('NODE_VERSION', '22.23.3');
+  const first = await captureNativeCheckScope(options);
+  expect(first).not.toBeNull();
+  expect(await captureNativeCheckScope(options)).toEqual(first);
+  vi.stubEnv('NODE_VERSION', '22.23.4');
+  expect((await captureNativeCheckScope(options))?.contextDigest).not.toBe(first?.contextDigest);
+  vi.stubEnv('NODE_OPTIONS', '--require ./preload.cjs');
+  expect(await captureNativeCheckScope(options)).toBeNull();
+});

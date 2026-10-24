@@ -71,7 +71,7 @@ export async function captureNativeCheckScope(options: {
         value &&
         (/^(?:LD_|DYLD_)/u.test(key) ||
           (/^NODE_/u.test(key) &&
-            !['NODE_ENV', 'NODE_PATH'].includes(key) &&
+            !['NODE_ENV', 'NODE_PATH', 'NODE_VERSION'].includes(key) &&
             !key.startsWith('NODE_REPL_')))
       );
     })
