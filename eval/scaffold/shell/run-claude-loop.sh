@@ -178,7 +178,7 @@ run_agent_turn() {
 
 extract_session_id() {
     python3 -c '
-import json, sys
+import json, re, sys
 for line in sys.stdin:
     try:
         value = json.loads(line)
@@ -190,7 +190,7 @@ for line in sys.stdin:
         if isinstance(item, dict):
             for key in ("session_id", "sessionId", "thread_id", "threadId"):
                 candidate = item.get(key)
-                if isinstance(candidate, str) and candidate:
+                if isinstance(candidate, str) and re.fullmatch(r"[A-Za-z0-9._:-]{1,256}", candidate):
                     print(candidate)
                     raise SystemExit(0)
             stack.extend(item.values())
@@ -342,6 +342,14 @@ except: print('')
     fi
 
     if [[ -n "$FRESH_RESUME_MARKER" && "$RESULT_TEXT" == *"$FRESH_RESUME_MARKER"* ]]; then
+        if [[ "$FRESH_RESUME_MARKER" == "COMET_SDK_RECOVERY_READY" ]]; then
+            # The read-only harness records actual SDK state before starting a new session.
+            if ! BOUNDARY="$(python3 "$SCRIPT_DIR/../python/validation/native_recovery_boundary.py" "$SESSION_ID")"; then
+                echo "[loop] invalid SDK recovery boundary; refusing a fresh session" >&2
+                exit 3
+            fi
+            echo "[loop] sdk-recovery-boundary $BOUNDARY" >&2
+        fi
         echo "[loop] fresh resume boundary detected; starting a new subject session" >&2
         SESSION_ID=""
         FRESH_PROMPT="$CONTINUE_PROMPT"

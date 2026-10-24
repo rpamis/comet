@@ -40,6 +40,7 @@ describe('release bad-case and Eval gate', () => {
     expect(steps.map((step) => step.args.join(' '))).toEqual(
       expect.arrayContaining([
         'scripts/lint/core-regressions.mjs',
+        'scripts/lint/workflow-regressions.mjs --require-acceptance',
         expect.stringContaining('local/tests/scaffold/test_regression_check.py'),
       ]),
     );
@@ -74,6 +75,19 @@ describe('release bad-case and Eval gate', () => {
     } finally {
       log.mockRestore();
     }
+  });
+
+  it('does not confuse deterministic checks with completion of additional acceptance', () => {
+    expect(
+      releaseSteps({ regressionsOnly: true }).some((step) =>
+        step.args.includes('--require-acceptance'),
+      ),
+    ).toBe(false);
+    expect(
+      releaseSteps({ regressionsOnly: false, evalReport: 'current.json' }).some((step) =>
+        step.args.includes('--require-acceptance'),
+      ),
+    ).toBe(true);
   });
 
   it('labels regressions-only success as insufficient for publication', () => {

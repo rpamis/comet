@@ -332,8 +332,9 @@ def _checkpoint_matches(source, run):
          "import { readFileSync } from 'node:fs';"
          "import { portableRunCheckpointProjectionMatches } from '/opt/comet-current/dist/domains/engine/portable-run-checkpoint.js';"
          "import YAML from '/opt/comet-current/node_modules/yaml/dist/index.js';"
+         "import { readClassicSdkDeliveryCheckpoint } from '/opt/comet-current/dist/domains/comet-classic/classic-sdk-delivery-checkpoint.js';"
          "const {source,run}=JSON.parse(readFileSync(0,'utf8'));const checkpoint=YAML.parse(source).run_checkpoint;"
-         "process.stdout.write(JSON.stringify(portableRunCheckpointProjectionMatches(checkpoint,run)));"],
+         "process.stdout.write(JSON.stringify(portableRunCheckpointProjectionMatches(checkpoint,run) || readClassicSdkDeliveryCheckpoint(checkpoint,run)!==null));"],
         input=json.dumps({"source": source, "run": run}), capture_output=True,
         text=True, encoding="utf-8", timeout=30, check=False,
     )

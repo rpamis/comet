@@ -5,6 +5,7 @@ on:
     branches:
       - master
   pull_request:
+    types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
 
 permissions:
@@ -84,12 +85,19 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Validate badcase registration and preserve baseline
+        env:
+          BADCASE_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+        run: pnpm check:badcase-registration
       - run: pnpm build
       - run: pnpm test:core-regressions
       - name: Preserve core regression evidence
@@ -261,6 +269,10 @@ jobs:
 
           cases = ET.parse("eval-static.xml").findall(".//testcase")
           required = (
+              "test_current_cli_recovery_to_archive",
+              "test_current_cli_completes_all_three_profiles_and_preserves_parked",
+              "test_existing_layout_validator_accepts_delivery_and_rejects_history_drift",
+              "test_extract_loop_binds_trusted_sdk_recovery_observation",
               "test_current_checkpoint_api_validates_generated_v1_and_v2_content",
               "test_current_runtime_owner_api_uses_workspace_identity_not_fence_target[foreign-fence]",
               "test_current_runtime_owner_api_uses_workspace_identity_not_fence_target[history-owner]",

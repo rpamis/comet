@@ -1,0 +1,28 @@
+{
+  "schema": "comet.release.bad-cases.v1",
+  "cases": [
+    {
+      "id": "continuous-badcase-registration",
+      "behavior": "用户报告修复必须映射到持久化 badcase，CI 拒绝遗漏映射、历史缩减及跳过或错文件的伪通过。",
+      "sources": ["report:2026-10-24-continuous-badcase-registration"],
+      "tests": [
+        {
+          "file": "test/scripts/badcase-registration.test.ts",
+          "namePattern": "continuous badcase registration",
+          "requiredNames": [
+            "continuous badcase registration requires each reported behavior to map to a registered case from the same source",
+            "continuous badcase registration prevents removal, source loss, assertion shrinkage and unsupported exclusion against base",
+            "continuous badcase registration registered behavior must really pass in its declared file, never skip or pass elsewhere",
+            "continuous badcase registration does not mask a skipped exact assertion with a passing duplicate or longer name",
+            "continuous badcase registration allows first incremental registry introduction but never treats an unreadable base as empty"
+          ]
+        }
+      ],
+      "coverageLevel": "unit",
+      "reproduction": "PR 声明已修复用户报告，但没有登记对应 case；或从既有清单删除映射后运行回归。",
+      "expected": "缺少同来源映射或缩减基线时登记守卫失败；登记的测试必须在指定文件实际通过。",
+      "forbidden": "空声明、错误文件同名测试、skip 或 excluded 被当作已修复证据。",
+      "rootCause": "原入口只校验历史快照，没有持续 PR 修复登记与比较基线约束。"
+    }
+  ]
+}

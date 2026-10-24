@@ -42,6 +42,7 @@ export function releaseSteps(options, repositoryRoot = root) {
       'test/repository/release-metadata.test.ts',
       'test/scripts/core-regressions.test.ts',
       'test/scripts/historical-regressions.test.ts',
+      'test/scripts/badcase-registration.test.ts',
       'test/scripts/verify-release.test.ts',
       '--maxWorkers=2',
     ]),
@@ -54,6 +55,10 @@ export function releaseSteps(options, repositoryRoot = root) {
     ]),
     ...(!options.regressionsOnly
       ? [
+          node('核对 badcase 附加验收', [
+            'scripts/lint/workflow-regressions.mjs',
+            '--require-acceptance',
+          ]),
           python('核对当前候选完整 Eval 凭证', [
             'local/scripts/regression_check.py',
             '--verify-receipt',

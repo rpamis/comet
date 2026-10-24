@@ -4,14 +4,18 @@
 
 ## 覆盖范围
 
-`--suite current` 固定为 14 组，每组 1–5 个样本。每次运行必须完成全部组合，不接受 `-k`、任务筛选或只重跑失败样本代替完整矩阵。
+`--suite current` 固定为 16 组，每组 1–5 个样本。每次运行必须完成全部组合，不接受 `-k`、任务筛选或只重跑失败样本代替完整矩阵。
 
-- 真实当前 SDK CLI：`comet-native-workflow / COMET_NATIVE_SDK_CURRENT`，以及 `comet-classic-layout-lifecycle` 的 `COMET_CLASSIC_DOCS_LAYOUT`、`COMET_CLASSIC_LEGACY_LAYOUT`，共 3 组。
-- 当前 Native bundled-runtime：clarification、clarification-depth、clarification-modes（Sequential 和 Batch 两组）、repository-fact、interrupted-transition、wave-b-decision-resume、wave-c-verification-integrity、wave-d-stagnation-stop、wave-e-parallel-safety、wave-f-dashboard-readonly，共 11 组。wave-f 还验证当前 CLI Dashboard 投影。
+当前 SDK CLI 核心发布矩阵共 5 组，直接使用当前已构建候选的 CLI 和完整 dist：
 
-这 14 组只声明现有真实模型场景覆盖，不代表 0.4.0 beta 至 0.5.0 的全部历史 issue 都已逐一建模；历史 Native/Classic badcase 另由仓库的确定性发布回归登记表逐项强制执行。
+- Native workflow：Shape → Build → 失败 Verify → 修复 → 独立 Verify → Archive。
+- Native SDK recovery：同一 candidate 的 blocked Verify → fresh session → 新独立 Verifier → Archive；检查原 Builder/check receipt 保留、不可重复检查只运行一次、Shape 测试计划行号更新不重开目标周期。要求跨 shell 保持 PATH/工作目录一致；离线 CLI 驱动另验证 TEMP/proxy 差异不使当前 v2 检查失效。模型侧在清除会话前由只读 harness 检查实际 blocked wait，并保存 candidate、原始 Action/outcome 与 Shape 摘要；最终必须绑定同一恢复 wait、保留原证据且出现新的 subject session。Agent stderr 不参与这些控制记录。独立 claim 属于协议证据，不声称能从 Run 反推出模型执行进程环境。
+- Classic layout lifecycle：docs 和 legacy 两个布局各一组完整生命周期。
+- Classic SDK recovery：同组必须完成 full、tweak、hotfix 的 Archive 和 delivery，并保留并存的 parked change；不能只完成其中一种路径。
 
-后 11 组沿用既有 portable v4 验证器，不声称全部迁移到了 SDK。冻结 Classic 业务压力任务和外部平台/模型组合也没有被冒称覆盖。若要扩展 SDK 验收，先迁移对应任务环境、提示词与验证器，再修改固定矩阵并显式建立新 baseline。
+11 组 portable v4 场景保留为 `legacy-supplemental`，仍是发布必过的补充历史覆盖，不计入 SDK 核心覆盖：clarification、clarification-depth、clarification-modes（Sequential、Batch）、repository-fact、interrupted-transition、wave-b decision/resume、wave-c verification、wave-d stagnation、wave-e parallel、wave-f dashboard。wave-f 同时验证当前 CLI Dashboard 投影，但仍不算 SDK 生命周期验收。
+
+矩阵新增后必须重新收集并审核 baseline。任务、validator、执行上下文、完整候选的身份校验不变；静态测试生成的报告和协议 fixture 不能初始化真实发布 baseline。这个矩阵不代表所有历史 issue、模型和外部平台已覆盖，历史 badcase 另由确定性发布回归登记表强制执行。
 
 `--plan` 输出精确 task/treatment/profile、覆盖层级、维度底线及样本矩阵，不调用模型。
 
@@ -84,3 +88,9 @@ uv run --locked --no-sync --no-python-downloads python local/scripts/regression_
 7. 样本缺失、重复、跳过、环境标记、损坏/非有限 rubric、伪造通过状态，以及凭证后的报告变化。
 
 这些是静态 harness 回归，不替代 Docker、真实 Agent、完整当前候选 Eval，也不证明所有模型/平台均已通过。
+
+## 新场景的无模型验证
+
+新增 `test_native_sdk_recovery.py`、`test_classic_sdk_recovery.py` 是本地脚本化协议验收：用当前构建的 `bin/comet.js` 子进程推进实际 SDK Run，并让 task validator 检查真实 owner、checkpoint、Archive 与恢复结果。负控覆盖省略恢复、错误独立会话、丢失交付及篡改 checkpoint 等。测试中的用户决定和 host outcome 明确是离线模拟，不是模型行为或真实用户审批证据。
+
+Classic 离线测试若以本地替身执行 OpenSpec archive 的目录移动，会明确保留此边界；真实 Docker 任务仍运行已支持的 OpenSpec 依赖。离线 CLI 验收、Docker 场景和真实模型 Eval 必须分别报告；新增 task 或离线通过均不能宣称该组真实模型通过。

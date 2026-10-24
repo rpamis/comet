@@ -24,11 +24,15 @@ BASELINE_SCHEMA = "comet.eval.release-baseline.v1"
 RECEIPT_SCHEMA = "comet.eval.release-receipt.v1"
 MAX_COUNT = 5
 MAX_JSON_BYTES = 8 * 1024 * 1024
-# 只选择已存在的环境和验证器；portable 场景不冒充 SDK CLI 验收。
-RELEASE_CASES = (
+# 当前 SDK 是核心发布覆盖；portable 仅作为补充历史覆盖，仍须通过。
+SDK_RELEASE_CASES = (
     ("comet-native-workflow", "COMET_NATIVE_SDK_CURRENT", "generic", "sdk-cli"),
     ("comet-classic-layout-lifecycle", "COMET_CLASSIC_DOCS_LAYOUT", "comet-workflow", "sdk-cli"),
     ("comet-classic-layout-lifecycle", "COMET_CLASSIC_LEGACY_LAYOUT", "comet-workflow", "sdk-cli"),
+    ("comet-native-sdk-recovery", "COMET_NATIVE_SDK_CURRENT", "generic", "sdk-cli"),
+    ("comet-classic-sdk-recovery", "COMET_CLASSIC_DOCS_LAYOUT", "generic", "sdk-cli"),
+)
+LEGACY_SUPPLEMENTAL_CASES = (
     ("comet-native-clarification", "COMET_NATIVE_PHASE1", "generic", "bundled-runtime"),
     ("comet-native-clarification-depth", "COMET_NATIVE_SEQUENTIAL", "generic", "bundled-runtime"),
     ("comet-native-clarification-modes", "COMET_NATIVE_SEQUENTIAL", "generic", "bundled-runtime"),
@@ -51,6 +55,7 @@ RELEASE_CASES = (
         "bundled-runtime+cli",
     ),
 )
+RELEASE_CASES = SDK_RELEASE_CASES + LEGACY_SUPPLEMENTAL_CASES
 
 
 class GateError(ValueError):
@@ -233,6 +238,7 @@ def suite_contract() -> dict:
                 "treatment": treatment,
                 "profile": profile,
                 "coverage": coverage,
+                "role": "release-core" if coverage == "sdk-cli" else "legacy-supplemental",
                 "minimums": {
                     dim: dimension_minimum(profile, dim)
                     for dim in get_profile(profile).rubric_dimensions

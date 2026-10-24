@@ -1540,3 +1540,18 @@ def test_unmarked_repetition_preserves_legacy_counter(monkeypatch):
     assert conftest._get_repetition(node) == 1
     assert conftest._get_repetition(node, advance=True) == 2
     assert conftest._get_repetition(node) == 2
+
+
+def test_extract_loop_binds_trusted_sdk_recovery_observation():
+    evidence = {"schema": "comet.eval.native-recovery-boundary.v1", "revision": 9}
+    interaction = conftest._extract_loop_interaction(
+        "[loop] role-session subject before\n"
+        + "[loop] sdk-recovery-boundary " + json.dumps(evidence) + "\n"
+        + "[loop] fresh resume boundary detected; starting a new subject session\n"
+        + "[loop] role-session subject after\n"
+    )
+    assert interaction["sdk_recovery_boundaries"] == [evidence]
+    assert interaction["role_sessions"]["subject"] == ["before", "after"]
+    assert interaction["fresh_resume_boundaries"] == 1
+    malformed = conftest._extract_loop_interaction("[loop] sdk-recovery-boundary broken\n")
+    assert malformed["sdk_recovery_boundaries"] == [{"invalid": True}]

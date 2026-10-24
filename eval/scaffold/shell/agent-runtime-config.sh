@@ -28,15 +28,20 @@ json_quote() {
 capture_agent_runtime() {
     local agent="$1" role="$2"
     shift 2
-    local token agent_status
+    local token agent_status stderr_pid
     token=$(python3 "$SCRIPT_DIR/../python/stream_capture.py" --new-token) || return $?
     local -a pipeline_status
     if {
-        if "$@"; then
+        exec 9> >(python3 -u "$SCRIPT_DIR/../python/stderr_prefix.py" >&2)
+        stderr_pid=$!
+        if "$@" 2>&9; then
             agent_status=0
         else
             agent_status=$?
         fi
+        # Finish diagnostic framing before emitting trusted records on either channel.
+        exec 9>&-
+        wait "$stderr_pid" || agent_status=74
         # A diagnostic may have no trailing newline. Start our record on its
         # own line so a failed command cannot hide its observed exit status.
         printf '\n{"type":"comet.eval.capture.end","token":"%s","exit_code":%s}\n' "$token" "$agent_status"

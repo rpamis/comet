@@ -1,0 +1,38 @@
+[metadata]
+name = "comet-classic-sdk-recovery"
+description = "Complete full, tweak and hotfix SDK delivery without consuming a coexisting change"
+difficulty = "hard"
+category = "comet"
+tags = ["comet", "classic", "sdk", "archive", "delivery", "multi-change", "badcase"]
+default_treatments = ["COMET_CLASSIC_DOCS_LAYOUT"]
+
+[template]
+required = []
+
+[environment]
+description = "Current-checkout CLI and supported OpenSpec; three local Classic deliveries with a parked SDK change"
+dockerfile = "environment/Dockerfile"
+timeout_sec = 4800
+
+[validation]
+test_scripts = "test_classic_sdk_recovery.py"
+target_artifacts = []
+timeout = 180
+
+[evaluation]
+profile = "generic"
+required_skills = ["comet"]
+expected_artifacts = [".comet/config.yaml", "docs/openspec/changes/archive", "docs/openspec/changes/parked-format/proposal.md"]
+require_skill_invocation = true
+rubric_criteria = [
+    "Uses current Classic SDK full, tweak and hotfix profiles without editing managed state",
+    "Completes each local Archive and verifies its Git delivery receipt",
+    "Preserves the untracked parked change while all three Runs advance",
+    "Checks all new features and retains existing word and line behavior",
+]
+
+[interaction]
+mode = "auto_user"
+max_turns = 18
+decision_reply = "I approve the proposed scope, current workspace isolation and direct implementation with optional reviews off. Complete only the current change's verified local Git delivery, without push or PR, and preserve parked-format untouched. Continue with the remaining specified profiles afterward."
+continue_prompt = "Invoke /comet, inspect the named Runs, and continue their exact next actions. Complete all three specified SDK profiles and verified local deliveries; do not advance, stage or commit parked-format."
