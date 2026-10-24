@@ -437,7 +437,7 @@ describe('blocked Verifier recovery command contract', () => {
         process.execPath,
         [
           '--import',
-          path.resolve('test/helpers/native-source-loader.mjs'),
+          pathToFileURL(path.resolve('test/helpers/native-source-loader.mjs')).href,
           '--input-type=module',
           '-e',
           `const { runNativeCli } = await import(${JSON.stringify(pathToFileURL(path.resolve('domains/comet-native/native-cli.ts')).href)}); process.stdout.write(JSON.stringify(await runNativeCli(${JSON.stringify(['status', f.name, '--project-root', f.projectRoot, '--json'])})));`,
