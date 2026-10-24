@@ -85,6 +85,26 @@ function pythonAccepts(manifest: string): boolean {
 }
 
 describe('standalone static collector parity', () => {
+  it('starts the trusted Native recovery boundary checker in the actual flattened container layout', () => {
+    const result = execFileSync(
+      'uv',
+      [
+        'run',
+        '--locked',
+        'python',
+        '-m',
+        'pytest',
+        'local/tests/scaffold/test_current_archive_acceptance.py',
+        '-k',
+        'native_boundary_entry_imports_in_the_flattened_docker_python_layout',
+        '-q',
+      ],
+      { cwd: evalRoot, encoding: 'utf8', stdio: 'pipe' },
+    );
+    expect(result).toMatch(/1 passed/);
+    expect(result).not.toMatch(/failed|skipped/);
+  });
+
   it('keeps the outer case timeout beyond the configured Classic execution budget', () => {
     const result = execFileSync(
       'uv',

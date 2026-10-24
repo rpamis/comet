@@ -3,6 +3,8 @@
 import json
 import importlib.util
 import shutil
+import subprocess
+import sys
 
 import pytest
 
@@ -64,6 +66,25 @@ def test_disposable_medium_fixture_ends_after_verified_archive_without_publishin
     assert "Do not create or publish Personal Memory or Project Knowledge" in prompt
     assert "does not waive verification, Archive, approval, or delivery requirements" in prompt
     assert "final completion summary and stop" in task.config.interaction.continue_prompt
+
+
+def test_native_boundary_entry_imports_in_the_flattened_docker_python_layout(tmp_path):
+    source = get_tasks_dir().parents[1] / "scaffold/python/validation"
+    target = tmp_path / "python/validation"
+    target.mkdir(parents=True)
+    for name in ("native_recovery_boundary.py", "current_sdk.py", "__init__.py"):
+        shutil.copyfile(source / name, target / name)
+    result = subprocess.run(
+        [sys.executable, "-I", str(target / "native_recovery_boundary.py"), "session"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode != 0
+    assert "No module named 'scaffold'" not in result.stderr
+    assert "FileNotFoundError" in result.stderr
+    assert "comet-state.yaml" in result.stderr
 
 
 @pytest.mark.parametrize("treatment", ["COMET_NATIVE_SDK_CURRENT", "COMET_CLASSIC_DOCS_LAYOUT"])

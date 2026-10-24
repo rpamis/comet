@@ -511,6 +511,34 @@
           ]
         }
       ]
+    },
+    {
+      "id": "eval-native-boundary-standalone-import",
+      "behavior": "Native 新会话边界校验器在真实容器扁平 Python 布局中可启动，并继续严格校验原 SDK 状态。",
+      "coverageLevel": "public-cli",
+      "reproduction": "真实GLM高难度已报告blocked边界，独立执行/opt/python/validation/native_recovery_boundary.py却通过validation包初始化导入不存在的scaffold包，控制器退出3。",
+      "expected": "独立入口从自身目录加载兄弟模块，包内调用保持原相对导入；缺少便携状态仍拒绝，真实合法边界才能开启新会话。",
+      "forbidden": "跳过边界校验、仅凭模型标记开启恢复、放宽原候选或一次性检查绑定。",
+      "rootCause": "独立脚本使用了依赖完整源码包布局的包导入，实际Docker只挂载了扁平python目录。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "starts the trusted Native recovery boundary checker in the actual flattened container layout",
+          "requiredNames": [
+            "standalone static collector parity starts the trusted Native recovery boundary checker in the actual flattened container layout"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM high Native fresh-session recovery and Archive",
+          "status": "pending",
+          "evidence": [
+            "Original failure: eval/local/logs/experiments/experiment_20261025_042537/reports/comet_native_sdk_recovery_COMET_NATIVE_SDK_CURRENT_r1_rep1_report.json"
+          ]
+        }
+      ]
     }
   ]
 }

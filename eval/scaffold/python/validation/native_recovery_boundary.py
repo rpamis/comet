@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 
 if __package__ in {None, ""}:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from validation.current_sdk import inspect_run
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from current_sdk import inspect_run
 else:
     from .current_sdk import inspect_run
 
