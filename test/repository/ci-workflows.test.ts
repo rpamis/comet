@@ -504,9 +504,14 @@ describe('CI workflows', () => {
 
     expect(modelWorkflow).toContain('workflow_dispatch:');
     expect(modelWorkflow).not.toContain('pull_request:');
-    expect(modelWorkflow).toContain(
-      'uv run python local/scripts/regression_check.py --count 1 --tolerance 0.10',
-    );
+    expect(modelWorkflow).toContain('args=(--suite current --count "$EVAL_COUNT"');
+    expect(modelWorkflow).toContain('args+=(--collect-only)');
+    expect(modelWorkflow).toContain('local/tests/scaffold/test_regression_check.py');
+    expect(modelWorkflow).not.toContain('BENCH_LOOP_MAX_TURNS');
+    const model = parse(modelWorkflow);
+    expect(model.on.workflow_dispatch.inputs.mode.options).toEqual(['validate', 'collect']);
+    expect(model.on.workflow_dispatch.inputs.count.options).toEqual(['1', '2', '3']);
+    expect(model.jobs['model-regression'].steps.at(-1).with.name).toContain('github.sha');
     expect(ciWorkflow).toContain('eval-static:');
     expect(ciWorkflow).toContain('uv sync --locked --extra dev --extra langsmith');
     expect(ciWorkflow).toContain('uv run ruff check');

@@ -122,7 +122,7 @@ async function inspectUnownedHookTargets(
       controlTarget = true;
       continue;
     }
-    if (!(await configuredHookWritePath(projectRoot, target, reservedPaths))) return null;
+    if (!(await configuredHookWritePath(projectRoot, targetPath, reservedPaths))) return null;
     configuredTarget = true;
   }
 
@@ -332,7 +332,7 @@ const readRuntimeWriteTargets = memoizedHookRead(
       for (const absolute of cometHookRuntimeTargetCandidates(
         relativeProjectRoot,
         target,
-        request.cwd,
+        request.rawCwd ?? request.cwd,
       )) {
         if (
           (await isCometHookTargetWithin(runtimeRoot, absolute)) ||

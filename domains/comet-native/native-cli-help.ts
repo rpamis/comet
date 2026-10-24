@@ -34,6 +34,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       'new <change-name>            Create a change and prepare its workspace.',
       'spec disassociate            Revoke a capability association through Runtime.',
       'spec remove                  Record a complete capability removal intent.',
+      'spec snapshot <change-name>  Verify restored approved documents and enable bounded auxiliary edits without changing the Run.',
       'spec sync <change-name> <capability> --input <json-file>  Audit local Markdown reference corrections.',
       'show <change-name>           Read formal artifacts and portable state.',
       'status [<change-name>]       Discover stable boundaries and Runner actions.',
@@ -115,6 +116,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     subcommands: [
       'disassociate <change-name>  Revoke a capability association and return to Shape.',
       'remove <change-name> <capability>  Record a capability removal.',
+      'snapshot <change-name>  Validate restored original documents and capture legacy semantic evidence.',
       'sync <change-name> <capability> --input <json-file>  Compat-only Markdown reference correction; SDK changes return to Shape for revision.',
     ],
     output: 'The updated portable state and continuation.',
@@ -133,6 +135,13 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--expected-action <action>   Must be disassociate-capability.',
     ],
     output: 'The updated portable state and continuation with the next Runner action.',
+  },
+  'spec snapshot': {
+    usage: 'comet native spec snapshot <change-name>',
+    purpose:
+      'Restore the originally approved documents first. Runtime checks their complete legacy fingerprint and saves at most 2 MiB of original evidence in this workspace Runtime. It does not approve changed requirements or change the Run, candidate, Action, claim or check receipts. Evidence is local to this workspace; repeat the verified capture after moving to another device.',
+    output:
+      'The validated original Shape identity and captured sources; no workflow state changes.',
   },
   'spec sync': {
     usage: 'comet native spec sync <change-name> <capability> --input <json-file>',

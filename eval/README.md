@@ -1,5 +1,7 @@
 # Comet Skill 评估
 
+当前 0.5.1 发布检查使用固定的 14 组当前候选矩阵；首次基线初始化、完整模型执行和无模型 badcase 分开进行。具体命令、覆盖边界及凭证要求见 [发布 Eval 检查](local/RELEASE_GATE.md)。
+
 基于 pytest 的 Skill 评估框架，用于量化衡量 Comet 工作流和任意本地 Skill 的执行质量。
 
 ## 目录结构

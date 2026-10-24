@@ -20,6 +20,7 @@ import { executeClassicSdkArchivePreflight } from '../../../domains/comet-classi
 import { recordClassicArchiveRequirements } from '../../../domains/comet-classic/classic-artifact-requirements.js';
 import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
 import { createOpenSpecArchiveFixture } from '../../helpers/classic-openspec-fixture.js';
+import { ensureCometProjectGitignore } from '../../../domains/workflow-contract/project-gitignore.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -42,6 +43,8 @@ async function fixture(
   vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
   await prepareClassicLegacyProject(projectRoot);
   execFileSync('git', ['init', '-b', 'main'], { cwd: projectRoot, stdio: 'ignore' });
+  await ensureCometProjectGitignore(projectRoot);
+  execFileSync('git', ['add', '--', '.gitignore'], { cwd: projectRoot, stdio: 'ignore' });
   execFileSync(
     'git',
     [

@@ -1,3 +1,9 @@
+import {
+  nativeShapeArtifactSnapshot,
+  nativeShapeArtifactContractHash,
+  type NativeShapeSemanticSnapshot,
+} from './native-shape-semantics.js';
+import { nativeShapeReviewAnchorMatches } from './native-shape-review-evidence.js';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   nativeLegacyArchiveGitStatus,
@@ -83,7 +89,10 @@ import {
   readNativePortableChange,
   writePortableMutation,
 } from './native-portable-storage.js';
-import { ensureNativePortableAcceptanceCurrentLocked } from './native-portable-requirements.js';
+import {
+  ensureNativePortableAcceptanceCurrentLocked,
+  readNativeApprovedShapeSemanticSnapshot,
+} from './native-portable-requirements.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import {
   nativeSourceCommentFingerprint,
@@ -397,6 +406,8 @@ const NATIVE_PROJECT_INPUT_MANIFESTS = new Set([
   'tsconfig.json',
 ]);
 
+const NATIVE_WORKTREE_INPUT_DIRECTORIES = new Set(['.worktrees']);
+
 const NATIVE_PHYSICAL_INPUT_EXCLUDED_DIRECTORIES = new Set([
   '.agents',
   '.cache',
@@ -413,7 +424,6 @@ const NATIVE_PHYSICAL_INPUT_EXCLUDED_DIRECTORIES = new Set([
   '.tmp',
   '.turbo',
   '.vscode',
-  '.worktrees',
   'coverage',
   'logs',
   'node_modules',
@@ -437,15 +447,22 @@ const NATIVE_RUNTIME_MANAGED_FILES = new Set([
   'verification.md',
 ]);
 
-function nativeRuntimeInputExclusions(projectRoot: string, managedArtifactRoot?: string): string[] {
-  if (!managedArtifactRoot) return [...NATIVE_RUNTIME_INPUT_EXCLUSIONS];
+function nativeOwnedInputExclusions(projectRoot: string, managedArtifactRoot?: string): string[] {
+  const exclusions = [
+    ...NATIVE_RUNTIME_INPUT_EXCLUSIONS,
+    ...[...NATIVE_WORKTREE_INPUT_DIRECTORIES].flatMap((directory) => [
+      `:(exclude,glob)${directory}`,
+      `:(exclude,glob)${directory}/**`,
+    ]),
+  ];
+  if (!managedArtifactRoot) return exclusions;
   const artifactRef = path.relative(projectRoot, managedArtifactRoot).replaceAll('\\', '/');
   if (path.isAbsolute(artifactRef) || artifactRef === '..' || artifactRef.startsWith('../')) {
-    return [...NATIVE_RUNTIME_INPUT_EXCLUSIONS];
+    return exclusions;
   }
   const prefix = artifactRef === '' ? '' : `${artifactRef}/`;
   return [
-    ...NATIVE_RUNTIME_INPUT_EXCLUSIONS,
+    ...exclusions,
     ...['changes', 'archive'].flatMap((directory) =>
       [...NATIVE_RUNTIME_MANAGED_FILES].map(
         (file) => `:(exclude)${prefix}comet/${directory}/**/${file}`,
@@ -454,13 +471,14 @@ function nativeRuntimeInputExclusions(projectRoot: string, managedArtifactRoot?:
   ];
 }
 
-function isNativeRuntimeInputPath(
+function isNativeOwnedInputPath(
   relative: string,
   projectRoot?: string,
   managedArtifactRoot?: string,
 ): boolean {
   const normalized = relative.replaceAll('\\', '/').replace(/^\.\//u, '');
   if (
+    NATIVE_WORKTREE_INPUT_DIRECTORIES.has(normalized.split('/')[0]) ||
     normalized === '.comet/current-change.json' ||
     normalized === '.comet/runtime' ||
     normalized.startsWith('.comet/runtime/')
@@ -504,6 +522,19 @@ function nativeGeneratedInputPathspecs(cwdRef: string): string[] {
       `:(exclude,glob)${prefix}.next/${name}/**`,
     ]),
   ];
+}
+
+// Git can return a nested repository directory even when it does not match an
+// inclusive pathspec. Only the declared generated-input roots belong here;
+// non-regular entries within those roots must still fail the complete snapshot.
+function isNativeGeneratedInputPath(relative: string, cwdRefs: readonly string[]): boolean {
+  if (isNativeNextVolatileInputPath(relative)) return false;
+  return cwdRefs.some((cwdRef) => {
+    const prefix = cwdRef === '.' ? '' : `${cwdRef}/`;
+    return NATIVE_GENERATED_INPUT_DIRECTORIES.some((directory) =>
+      relative.startsWith(`${prefix}${directory}/`),
+    );
+  });
 }
 
 function isNativeNextVolatileInputPath(relative: string): boolean {
@@ -590,6 +621,8 @@ async function nativeIgnoredCheckInputSnapshot(
         '--',
         ...pathspecs,
         ...dependencyExclusions,
+        ...nativeOwnedInputExclusions(projectRoot, managedArtifactRoot),
+        ...[...runnerInputs].map((relative) => `:(exclude,literal)${relative}`),
       ]);
     // Git 的 exclude 优先于 include；单独读取 dev/types，不能把其余 dev 输出重新纳入。
     const selected =
@@ -600,7 +633,13 @@ async function nativeIgnoredCheckInputSnapshot(
         selected
           .split('\0')
           .filter(Boolean)
-          .map((relative) => relative.replaceAll('\\', '/')),
+          .map((relative) => relative.replaceAll('\\', '/'))
+          .filter(
+            (relative) =>
+              isNativeGeneratedInputPath(relative, cwdRefs) &&
+              !runnerInputs.has(relative) &&
+              !isNativeOwnedInputPath(relative, projectRoot, managedArtifactRoot),
+          ),
       ),
     ].sort();
   } catch {
@@ -616,7 +655,7 @@ async function nativeIgnoredCheckInputSnapshot(
   let totalBytes = 0;
   for (const relative of ignoredPaths) {
     if (runnerInputs.has(relative)) continue;
-    if (isNativeRuntimeInputPath(relative, projectRoot, managedArtifactRoot)) continue;
+    if (isNativeOwnedInputPath(relative, projectRoot, managedArtifactRoot)) continue;
     const target = path.resolve(projectRoot, ...relative.split('/'));
     if (!isInsidePath(projectRoot, target)) {
       return incompleteNativeIgnoredInputSnapshot(`项目生成输入超出工作区：${relative}`);
@@ -687,7 +726,7 @@ async function nativePhysicalCheckInputSnapshot(
     for (const entry of entries) {
       const relative = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
       if (runnerInputs.has(relative)) continue;
-      if (isNativeRuntimeInputPath(relative, projectRoot, managedArtifactRoot)) continue;
+      if (isNativeOwnedInputPath(relative, projectRoot, managedArtifactRoot)) continue;
       const target = path.join(directory, entry.name);
       if (kind === 'candidate' && isGeneratedDirectory(entry.name)) continue;
       if (isNativeNextVolatileInputPath(relative)) continue;
@@ -815,7 +854,7 @@ export async function nativeCheckInputSnapshot(
 ): Promise<NativeCheckInputSnapshot> {
   const runnerInputs = await nativeRunnerInputArtifactPaths(options.projectRoot);
   const exclusions = [
-    ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+    ...nativeOwnedInputExclusions(options.projectRoot, options.managedArtifactRoot),
     ...[...runnerInputs].map((relative) => `:(exclude,literal)${relative}`),
   ];
   const gitSnapshot = {
@@ -1040,6 +1079,8 @@ interface NativeCheckInputGateOptions {
   plans?: readonly NativeCheckPlan[];
   managedArtifactRoot?: string;
   editReviewScope?: EditReviewScope;
+  shapeSemanticSnapshot?: NativeShapeSemanticSnapshot;
+  legacyShapeSemanticSnapshot?: boolean;
   legacyExecutionBinding?: boolean;
   /** 仅供 Archive 排除另外绑定的事务写入和迁移材料。 */
   archiveOwnedPaths?: readonly string[];
@@ -1149,7 +1190,7 @@ async function readNativeCheckInputObservation(options: NativeCheckInputGateOpti
   try {
     const runnerInputs = await nativeRunnerInputArtifactPaths(options.projectRoot);
     const exclusions = [
-      ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+      ...nativeOwnedInputExclusions(options.projectRoot, options.managedArtifactRoot),
       ...(options.archiveOwnedPaths ?? []).map((ref) => `:(exclude,literal)${ref}`),
       ...[...runnerInputs].map((relative) => `:(exclude,literal)${relative}`),
     ];
@@ -1174,7 +1215,7 @@ async function readNativeCheckInputObservation(options: NativeCheckInputGateOpti
     const changedPaths = parseGitStatusPaths(status).filter(
       (changedPath) =>
         !runnerInputs.has(changedPath) &&
-        !isNativeRuntimeInputPath(changedPath, options.projectRoot, options.managedArtifactRoot),
+        !isNativeOwnedInputPath(changedPath, options.projectRoot, options.managedArtifactRoot),
     );
     const gitlinks = new Map<string, Awaited<ReturnType<typeof readNativeCheckGitlink>>>();
     const beforeGitlinkBudget = { repositories: new Set<string>(), indexBytes: 0 };
@@ -1291,7 +1332,7 @@ async function nativeCandidateCommentGate(
               .split('/')
               .slice(0, -1)
               .some((part) => NATIVE_PHYSICAL_INPUT_EXCLUDED_DIRECTORIES.has(part)) &&
-            !isNativeRuntimeInputPath(ref, options.projectRoot, options.managedArtifactRoot)
+            !isNativeOwnedInputPath(ref, options.projectRoot, options.managedArtifactRoot)
           )
             files.set(ref, {
               path: ref,
@@ -1399,6 +1440,73 @@ async function nativeCandidateCommentGate(
         const reviewed = options.editReviewScope
           ? await approvedEditFingerprint(options.editReviewScope, entry.path, source.text, reviews)
           : null;
+        const shapeArtifact = options.shapeSemanticSnapshot?.artifacts.find(
+          (artifact) =>
+            options.managedArtifactRoot &&
+            options.editReviewScope &&
+            path
+              .relative(
+                options.projectRoot,
+                path.join(
+                  options.managedArtifactRoot,
+                  'comet',
+                  'changes',
+                  options.editReviewScope.change,
+                  artifact.source,
+                ),
+              )
+              .replaceAll('\\', '/') === entry.path,
+        );
+        if (shapeArtifact) {
+          const current = nativeShapeArtifactSnapshot(shapeArtifact.source, source.text);
+          const effective =
+            reviewed &&
+            options.editReviewScope &&
+            (await nativeShapeReviewAnchorMatches(
+              options.editReviewScope,
+              shapeArtifact,
+              reviewed.beforeHash,
+            ))
+              ? { ...current, commentsHash: shapeArtifact.commentsHash }
+              : current;
+          if (
+            nativeShapeArtifactContractHash(effective) ===
+            nativeShapeArtifactContractHash(shapeArtifact)
+          ) {
+            const indexed = index.get(entry.path);
+            const mode =
+              virtual?.mode ?? (await fs.lstat(path.resolve(options.projectRoot, entry.path))).mode;
+            const executable = process.platform === 'win32' ? false : Boolean(mode & 0o111);
+            const indexedSource = indexed && indexedBlobs.get(indexed.objectId);
+            if (
+              indexed &&
+              indexedSource !== undefined &&
+              (options.legacyShapeSemanticSnapshot && shapeArtifact.legacyFingerprint !== null
+                ? nativeSourceCommentFingerprint(entry.path, indexedSource) ===
+                  shapeArtifact.legacyFingerprint
+                : editContentHash(indexedSource) === shapeArtifact.contentHash) &&
+              (process.platform === 'win32' || executable === (indexed.mode === '100755'))
+            ) {
+              unchangedPaths.add(entry.path);
+              continue;
+            }
+            workingTree.push({
+              path: entry.path,
+              digest: options.legacyShapeSemanticSnapshot
+                ? shapeArtifact.legacyFingerprint
+                  ? canonicalHash('comet.native.comment-source.v1', {
+                      fingerprint: shapeArtifact.legacyFingerprint,
+                      executable,
+                    })
+                  : shapeArtifact.inputHash
+                : canonicalHash('comet.native.shape-candidate-artifact.v1', {
+                    contentHash: shapeArtifact.contentHash,
+                    executable,
+                  }),
+            });
+            continue;
+          }
+        }
         const fingerprint =
           reviewed?.fingerprint ?? nativeSourceCommentFingerprint(entry.path, source.text);
         if (!fingerprint) {
@@ -1727,6 +1835,10 @@ export async function rebindNativeCheckEvidence(options: {
     const gates = await nativeCheckInputGates({
       ...oldBinding,
       candidateId: next.builder_handoff!.candidate_id,
+      editReviewScope: nativeEditReviewScope(paths, next),
+      shapeSemanticSnapshot: (await readNativeApprovedShapeSemanticSnapshot({ paths, state: next }))
+        ?.snapshot,
+      legacyShapeSemanticSnapshot: next.shape_semantic_snapshot === undefined,
     });
     // The full capture must not adopt a source edit that happened while rebinding.
     if (
@@ -1773,6 +1885,10 @@ async function reserveNativePortableCheckPlan(options: {
       if (state.phase !== 'verify' || state.loop.stage !== 'verify-ready') {
         throw new Error('Native checks require Verify ready state');
       }
+      const shapeEvidence = await readNativeApprovedShapeSemanticSnapshot({
+        paths: options.paths,
+        state,
+      });
       const {
         gate,
         candidateGate,
@@ -1783,6 +1899,8 @@ async function reserveNativePortableCheckPlan(options: {
         plans: options.plans,
         managedArtifactRoot: options.paths.artifactRoot,
         editReviewScope: nativeEditReviewScope(options.paths, state),
+        shapeSemanticSnapshot: shapeEvidence?.snapshot,
+        legacyShapeSemanticSnapshot: !state.shape_semantic_snapshot && Boolean(shapeEvidence),
       });
       let branch = observedBranch;
       const file = nativeLocalExecutionFile(options.paths, state.name);

@@ -145,6 +145,15 @@ def expand_treatment_patterns(patterns: list[str], all_treatments: dict) -> list
 def generate_test_params(task_filter: str | None, treatment_filter: str | None, config=None):
     """Generate (task_name, treatment_name) pairs based on filters."""
     params = []
+    if config is not None and conftest._release_suite(config):
+        from scaffold.python.release_gate import RELEASE_CASES, checked_count
+        checked_count(config.getoption("--count"))
+        if task_filter or treatment_filter or any(config.getoption(flag) for flag in (
+            "--skill-path", "--eval-manifest", "--profile", "--quick",
+            "--interaction-mode", "--max-turns", "--simulator-prompt",
+        )) or read_case_selection() is not None:
+            raise ValueError("发布矩阵不允许筛选 task/treatment、改变 profile/交互或只重跑失败项")
+        return [(task, treatment) for task, treatment, _, _ in RELEASE_CASES]
     if config is not None:
         conftest._ensure_auto_generated_manifest(config, task_filter)
     all_treatments = load_treatments()
@@ -504,6 +513,10 @@ def test_task_treatment(task_name, treatment_name):
         environment_dir=task.environment_dir,
         workspace_dir=task.workspace_dir,
     )
+    # 在模型启动前读取控制器准备的真实 CLI 身份，不从模型生成的产物推断。
+    from scaffold.python.release_gate import read_json
+    build_identity_file = fixtures.test_dir / "_eval_current_comet/build-identity.json"
+    current_comet_build = read_json(build_identity_file) if build_identity_file.exists() else None
     selected_agent = conftest._resolve_eval_agent(fixtures.request_config).agent
     selected_adapter = get_agent_adapter(selected_agent)
     execution = conftest._resolve_eval_execution(fixtures.request_config)
@@ -636,6 +649,7 @@ def test_task_treatment(task_name, treatment_name):
         "case_manifest": case_manifest,
         "role_sessions": events["role_sessions"],
     }
+    events["current_comet_build"] = current_comet_build
     events["profile"] = outputs["profile"]
     events["agent"] = selected_agent
     events["role_models"] = role_models

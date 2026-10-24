@@ -1,3 +1,4 @@
+import { renderCometProjectGitignore } from '../../../domains/workflow-contract/project-gitignore.js';
 import { inspectCometHook } from '../../../domains/comet-entry/hook-router.js';
 import { isClassicSdkCancellationComplete } from '../../../domains/comet-classic/classic-sdk-run-lifecycle.js';
 import { EventEmitter } from 'node:events';
@@ -50,6 +51,7 @@ async function fixture(
   buildFirst = true,
   confirmedConfiguration = false,
   entry: 'source' | 'generated' = 'source',
+  managedIgnore?: string,
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic verify rounds '));
   roots.push(root);
@@ -59,6 +61,11 @@ async function fixture(
   vi.stubEnv('HOME', home);
   vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
   await prepareClassicLegacyProject(projectRoot);
+  if (managedIgnore !== undefined)
+    await fs.writeFile(
+      path.join(projectRoot, '.gitignore'),
+      renderCometProjectGitignore(managedIgnore),
+    );
   await fs.writeFile(path.join(projectRoot, 'source.js'), 'export const ready = true;\n');
   execFileSync('git', ['init', '-b', 'main'], { cwd: projectRoot, stdio: 'ignore' });
   execFileSync('git', ['add', '.'], { cwd: projectRoot });
@@ -454,7 +461,8 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
   it.each(['source', 'generated'] as const)(
     'completes the %s Runtime lifecycle across sessions, declared outputs and a reopened verification',
     async (entry) => {
-      const f = await fixture(profile, false, false, entry);
+      // 在候选创建前建立真实 init/update 的忽略规则，不能在检查后改写。
+      const f = await fixture(profile, false, false, entry, 'generated/\n');
       const git = (...args: string[]) =>
         execFileSync(
           'git',
@@ -477,7 +485,6 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
           '',
         ].join('\n'),
       );
-      await f.put('.gitignore', 'generated/\n');
       await f.put(
         '.comet/check-policy.json',
         JSON.stringify({
@@ -496,6 +503,7 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
       if (profile === 'full') await f.cli('handoff', 'example', 'design', '--write');
       git('add', '--all');
       git('commit', '-m', 'implementation');
+      expect(git('ls-files', '--', 'openspec/changes/example/.comet-state.lock')).toBe('');
       await f.cli('guard', 'example', 'build', '--apply', '--local', '--', ...argv);
       vi.stubEnv('CODEX_THREAD_ID', 'classic-verify-session');
       vi.stubEnv('TERM', 'xterm-256color');
@@ -660,6 +668,28 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
           git('commit', '--amend', '--no-edit');
         }
       }
+      const beforeDelivery = (await f.inspect()).run;
+      const archiveRef = (
+        beforeDelivery.outputs[`${profile}.archive.execute`].value as { archiveDirectory: string }
+      ).archiveDirectory;
+      const unapproved = `${archiveRef}/.comet-state.lock/unapproved.md`;
+      await f.put(unapproved, '# Unapproved requirements hidden in a local lock directory\n');
+      expect(git('check-ignore', '--', unapproved)).toBe(unapproved);
+      git('add', '--force', '--', unapproved);
+      git('commit', '--amend', '--no-edit');
+      const rejectedInternalFile = await f.invoke(
+        'state',
+        'complete-delivery',
+        'example',
+        '--commit',
+        git('rev-parse', 'HEAD'),
+      );
+      expect(rejectedInternalFile.exitCode).not.toBe(0);
+      expect(rejectedInternalFile.stdout).toContain(unapproved);
+      expect((await f.inspect()).run).toEqual(beforeDelivery);
+      await fs.unlink(path.join(f.projectRoot, unapproved));
+      git('add', '--update', '--', unapproved);
+      git('commit', '--amend', '--no-edit');
       const delivered = await f.cli(
         'state',
         'complete-delivery',
@@ -669,6 +699,7 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
       );
       expect(delivered.nextAction.kind).toBe('done');
       expect((await f.inspect()).run.status).toBe('completed');
+      expect(git('status', '--porcelain', '--untracked-files=no')).toBe('');
     },
   );
 

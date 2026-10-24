@@ -12,6 +12,8 @@ export interface CometHookRequest {
   toolName: string | null;
   task?: string;
   cwd?: string;
+  /** 原始绝对路径仅供物理归属检查，cwd 保持既有规范化契约。 */
+  rawCwd?: string;
   sessionId?: string;
   writes?: CometHookWriteProposal[];
 }
@@ -107,7 +109,7 @@ function readWorkingDirectory(input: Record<string, unknown>): string | undefine
   for (const key of ['cwd', 'working_directory', 'workspaceRoot'] as const) {
     const value = input[key];
     if (typeof value !== 'string' || !value.trim() || !path.isAbsolute(value.trim())) continue;
-    return path.resolve(value.trim());
+    return value.trim();
   }
   return undefined;
 }
@@ -329,7 +331,9 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
   const args = readToolArguments(input);
   const targets = collectTargets(input, args);
   const writes = collectWriteProposals(args);
-  const cwd = readWorkingDirectory(input);
+  const rawWorkingDirectory = readWorkingDirectory(input);
+  const cwd = rawWorkingDirectory ? path.resolve(rawWorkingDirectory) : undefined;
+  const rawCwd = rawWorkingDirectory !== cwd ? rawWorkingDirectory : undefined;
   const sessionId = readSessionId(input);
   if (readHookEventName(input) === 'beforeagentstart') {
     const task = readTask(input);
@@ -339,6 +343,7 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
       toolName: null,
       ...(task ? { task } : {}),
       ...(cwd ? { cwd } : {}),
+      ...(rawCwd ? { rawCwd } : {}),
       ...(sessionId ? { sessionId } : {}),
     };
   }
@@ -349,6 +354,7 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
       toolName,
       ...(writes.length ? { writes } : {}),
       ...(cwd ? { cwd } : {}),
+      ...(rawCwd ? { rawCwd } : {}),
       ...(sessionId ? { sessionId } : {}),
     };
   }
@@ -358,6 +364,7 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
       targets: [],
       toolName,
       ...(cwd ? { cwd } : {}),
+      ...(rawCwd ? { rawCwd } : {}),
       ...(sessionId ? { sessionId } : {}),
     };
   }
@@ -367,6 +374,7 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
       targets,
       toolName,
       ...(cwd ? { cwd } : {}),
+      ...(rawCwd ? { rawCwd } : {}),
       ...(sessionId ? { sessionId } : {}),
     };
   return {
@@ -374,6 +382,7 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
     targets,
     toolName: null,
     ...(cwd ? { cwd } : {}),
+    ...(rawCwd ? { rawCwd } : {}),
     ...(sessionId ? { sessionId } : {}),
   };
 }

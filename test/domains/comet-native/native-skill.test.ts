@@ -952,6 +952,64 @@ describe('Comet Native Skills', () => {
     }
   });
 
+  it('uses an explicit parallel request as the worktree choice without bypassing other approvals', async () => {
+    const zh = await read('zh', 'reference/workspace.md');
+    const en = await read('en', 'reference/workspace.md');
+    expect(zh).toContain(
+      '明确表达并行、同时处理或多个会话时，直接使用 `worktree`，不再询问三种方式',
+    );
+    expect(en).toContain(
+      'An explicit request for parallel work, simultaneous tasks, or multiple sessions selects `worktree` without asking about the three modes again',
+    );
+    expect(zh).toContain('用户已经指定 `current`、`branch` 或 `worktree` 时直接采用');
+    expect(en).toContain(
+      'directly use an explicitly chosen `current`, `branch`, or `worktree` mode',
+    );
+    expect(zh).toContain('推荐不能代替用户选择');
+    expect(en).toContain('A recommendation does not replace a choice');
+    expect(zh).toContain('只有用户确认后才执行 `git worktree remove`');
+    expect(en).toContain('Run `git worktree remove` only after user confirmation');
+    expect(await read('zh', 'reference/clarification.md')).toContain('不复用旧 Shape 批准');
+    expect(await read('en', 'reference/clarification.md')).toContain(
+      'Do not reuse the previous Shape approval',
+    );
+  });
+
+  it('separates SDK archival from authorized Git delivery and checks observed results before retrying', async () => {
+    const variants = [
+      {
+        language: 'zh' as const,
+        required: [
+          'Run completed 与业务 done 只证明 SDK 归档',
+          '先读取 Run 保存的交付结果并核对实际 Git',
+          '只补未完成动作，不重复已完成的提交或集成',
+          '按已有授权完成提交、merge、push 或 PR',
+          '分别核对提交 SHA、目标分支、远端 SHA 和真实 PR',
+          '结果未知先只读核对再恢复',
+          '没有外部交付授权时只说明已归档及当前保留位置',
+          '已有授权时继续完成，不再询问相同选择',
+        ],
+      },
+      {
+        language: 'en' as const,
+        required: [
+          'Run completed and business done prove SDK archival only',
+          'First inspect saved Run delivery results and actual Git',
+          'complete only missing work without repeating completed commits or integrations',
+          'complete authorized commit, merge, push, or PR work',
+          'Verify the actual commit SHA, target branch, remote SHA, and PR separately',
+          'Investigate unknown results read-only before recovery',
+          'Without external delivery authorization, describe the archive and retained location',
+          'with authorization, continue delivery without asking again',
+        ],
+      },
+    ];
+    for (const variant of variants) {
+      const workspace = await readAction(variant.language, 'reference/workspace.md#archive-收尾');
+      for (const required of variant.required) expect(workspace).toContain(required);
+    }
+  });
+
   it('asks about workspace isolation only when it changes the user workflow', async () => {
     const variants = [
       {

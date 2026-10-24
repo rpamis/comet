@@ -1,0 +1,656 @@
+{
+  "runtimeCommit": "aeb1a6598034e28ce46b8422d4dbd8785e607bd7",
+  "runtimeVersion": "0.5.0",
+  "brief": "# Outcome\nKeep the confirmed contract.\n# Scope\nNo product behavior change: documentation-only clarification of the existing contract.\n## Directory structure\n### Created\nNone.\n### Modified\n- README.md: clarify the existing contract.\n### Deleted\nNone.\n### Not created\nNone.\n# Non-goals\nNone.\n# Acceptance examples\n- First criterion.\n- Last criterion.\n\n## Spec → 测试名与断言计划\n| Test | 计划行号 |\n| --- | --- |\n| last criterion | planned |\n",
+  "owner": {
+    "schema": "comet.change-owner.v1",
+    "workflow": "native",
+    "change": "legacy-change",
+    "format": "sdk",
+    "application": "native",
+    "runId": "legacy-change"
+  },
+  "run": {
+    "protocolVersion": 1,
+    "schemaVersion": 1,
+    "runId": "legacy-change",
+    "revision": 6,
+    "workflow": {
+      "id": "comet-native",
+      "version": "1",
+      "hash": "fb7d10f66cb304d7b7470fdba5aef47f9dba222d8bea539632e2bba50e0743a7"
+    },
+    "definitionHashes": {
+      "[\"comet-native\",\"1\"]": "fb7d10f66cb304d7b7470fdba5aef47f9dba222d8bea539632e2bba50e0743a7"
+    },
+    "initialStateHash": "1e0a69b3644f70d6ac0d6dc646acdc7bccd4637635abbc5824979ed0f67f4562",
+    "input": {
+      "artifactRootRef": "docs",
+      "name": "legacy-change"
+    },
+    "state": {
+      "acceptance": [
+        {
+          "id": "A1",
+          "reason": null,
+          "result": "pending",
+          "source": "brief.md",
+          "text": "First criterion."
+        },
+        {
+          "id": "A2",
+          "reason": null,
+          "result": "pending",
+          "source": "brief.md",
+          "text": "Last criterion. ## Spec → 测试名与断言计划 | Test | 计划行号 | | --- | --- | | last criterion | planned |"
+        }
+      ],
+      "archived": false,
+      "blockers": [],
+      "brief": "brief.md",
+      "builder_handoff": null,
+      "created_at": "2026-10-24T12:40:56.792Z",
+      "document_constraints_version": 2,
+      "history": [],
+      "history_overflow": {
+        "dropped_entries": 0,
+        "first_dropped_at": null,
+        "last_dropped_at": null,
+        "outcome_counts": {
+          "blocked": 0,
+          "execution-error": 0,
+          "fail": 0,
+          "pass": 0,
+          "recovery": 0
+        }
+      },
+      "language": "en",
+      "loop": {
+        "attempt": 0,
+        "execution_failure_count": 0,
+        "failed_iteration_count": 0,
+        "goal_cycle": 1,
+        "iteration": 1,
+        "next_action": "submit-builder-candidate",
+        "no_progress_count": 0,
+        "previous_unresolved_ids": [],
+        "retry_epoch": 0,
+        "stage": "building"
+      },
+      "name": "legacy-change",
+      "phase": "build",
+      "schema": "comet.native.v4",
+      "shape_confirmation_hash": "65825aeecb690d558b1019ffd55ac41541826596daad002ed423d25f8b80d3f0",
+      "spec_changes": [],
+      "state_version": 3,
+      "status": "active",
+      "verification": null,
+      "verification_report": null,
+      "verification_result": "pending",
+      "workspace": {
+        "change_branch": "main",
+        "finish": null,
+        "isolation": "current",
+        "target_branch": "main"
+      }
+    },
+    "status": "running",
+    "sequence": 4,
+    "actions": [
+      {
+        "protocolVersion": 1,
+        "id": "legacy-change:1",
+        "runId": "legacy-change",
+        "stepId": "shape.prepare",
+        "type": "call_tool",
+        "ref": "native-shape-prepare",
+        "attempt": 1,
+        "input": {
+          "input": {
+            "artifactRootRef": "docs",
+            "name": "legacy-change"
+          },
+          "outputs": {}
+        },
+        "inputHash": "4607d714824e03f6f06a16f10c7bf48ff48ac9c521ae0068f06a7a9eebc382eb",
+        "status": "succeeded",
+        "retry": "manual",
+        "requiredCapabilities": [],
+        "receipts": [
+          {
+            "outcomeId": "996cb1d2-52d5-4142-856c-c9d6fb07b790",
+            "hash": "60dbbd233a70c01060d5b2c752c1f444cedbe7b64ecec6d0c6c35e697612db77"
+          }
+        ],
+        "reconciliations": [],
+        "claim": {
+          "executorId": "comet-native-cli",
+          "token": "996cb1d2-52d5-4142-856c-c9d6fb07b790"
+        },
+        "executionOrigin": {
+          "workflow": {
+            "id": "comet-native",
+            "version": "1",
+            "hash": "fb7d10f66cb304d7b7470fdba5aef47f9dba222d8bea539632e2bba50e0743a7"
+          }
+        },
+        "outcome": {
+          "actionId": "legacy-change:1",
+          "attempt": 1,
+          "claimToken": "996cb1d2-52d5-4142-856c-c9d6fb07b790",
+          "inputHash": "4607d714824e03f6f06a16f10c7bf48ff48ac9c521ae0068f06a7a9eebc382eb",
+          "outcomeId": "996cb1d2-52d5-4142-856c-c9d6fb07b790",
+          "output": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "First criterion."
+              },
+              {
+                "id": "A2",
+                "source": "brief.md",
+                "text": "Last criterion. ## Spec → 测试名与断言计划 | Test | 计划行号 | | --- | --- | | last criterion | planned |"
+              }
+            ],
+            "children": null,
+            "formalHash": "9812871a266d2e041f0543e874c01d4afee2a9a4112df104001ac1f5afc440e0",
+            "shapeConfirmationHash": "65825aeecb690d558b1019ffd55ac41541826596daad002ed423d25f8b80d3f0",
+            "specChanges": []
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "protocolVersion": 1,
+        "id": "legacy-change:3",
+        "runId": "legacy-change",
+        "stepId": "shape.revalidate",
+        "type": "call_tool",
+        "ref": "native-shape-revalidate",
+        "attempt": 1,
+        "input": {
+          "input": {
+            "artifactRootRef": "docs",
+            "name": "legacy-change"
+          },
+          "outputs": {
+            "shape.prepare": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "First criterion."
+                },
+                {
+                  "id": "A2",
+                  "source": "brief.md",
+                  "text": "Last criterion. ## Spec → 测试名与断言计划 | Test | 计划行号 | | --- | --- | | last criterion | planned |"
+                }
+              ],
+              "children": null,
+              "formalHash": "9812871a266d2e041f0543e874c01d4afee2a9a4112df104001ac1f5afc440e0",
+              "shapeConfirmationHash": "65825aeecb690d558b1019ffd55ac41541826596daad002ed423d25f8b80d3f0",
+              "specChanges": []
+            },
+            "shape.confirm": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "name": "legacy-change"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "First criterion."
+                      },
+                      {
+                        "id": "A2",
+                        "source": "brief.md",
+                        "text": "Last criterion. ## Spec → 测试名与断言计划 | Test | 计划行号 | | --- | --- | | last criterion | planned |"
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "9812871a266d2e041f0543e874c01d4afee2a9a4112df104001ac1f5afc440e0",
+                    "shapeConfirmationHash": "65825aeecb690d558b1019ffd55ac41541826596daad002ed423d25f8b80d3f0",
+                    "specChanges": []
+                  }
+                }
+              }
+            }
+          }
+        },
+        "inputHash": "4c65e426abc30f2796d2ff40aa65045073ea1388091d06bbe2fbe340faafd4b7",
+        "status": "succeeded",
+        "retry": "manual",
+        "requiredCapabilities": [],
+        "receipts": [
+          {
+            "outcomeId": "5b35d1ee-6326-4ac2-9eda-a184c74e5be4",
+            "hash": "4a1171a23479189954f90e4b6f3c956dc4bb5fe5159b6eef7b50e3234bbc07a6"
+          }
+        ],
+        "reconciliations": [],
+        "claim": {
+          "executorId": "comet-native-cli",
+          "token": "5b35d1ee-6326-4ac2-9eda-a184c74e5be4"
+        },
+        "executionOrigin": {
+          "workflow": {
+            "id": "comet-native",
+            "version": "1",
+            "hash": "fb7d10f66cb304d7b7470fdba5aef47f9dba222d8bea539632e2bba50e0743a7"
+          }
+        },
+        "outcome": {
+          "actionId": "legacy-change:3",
+          "attempt": 1,
+          "claimToken": "5b35d1ee-6326-4ac2-9eda-a184c74e5be4",
+          "inputHash": "4c65e426abc30f2796d2ff40aa65045073ea1388091d06bbe2fbe340faafd4b7",
+          "outcomeId": "5b35d1ee-6326-4ac2-9eda-a184c74e5be4",
+          "output": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "First criterion."
+              },
+              {
+                "id": "A2",
+                "source": "brief.md",
+                "text": "Last criterion. ## Spec → 测试名与断言计划 | Test | 计划行号 | | --- | --- | | last criterion | planned |"
+              }
+            ],
+            "children": null,
+            "formalHash": "9812871a266d2e041f0543e874c01d4afee2a9a4112df104001ac1f5afc440e0",
+            "shapeConfirmationHash": "65825aeecb690d558b1019ffd55ac41541826596daad002ed423d25f8b80d3f0",
+            "specChanges": []
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "protocolVersion": 1,
+        "id": "legacy-change:4",
+        "runId": "legacy-change",
+        "stepId": "build.builder",
+        "type": "handoff",
+        "ref": "native-builder",
+        "attempt": 1,
+        "input": {
+          "input": {
+            "artifactRootRef": "docs",
+            "name": "legacy-change"
+          },
+          "outputs": {
+            "shape.prepare": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "First criterion."
+                },
+                {
+                  "id": "A2",
+                  "source": "brief.md",
+                  "text": "Last criterion. ## Spec → 测试名与断言计划 | Test | 计划行号 | | --- | --- | | last criterion | planned |"
+                }
+              ],
+              "children": null,
+              "formalHash": "9812871a266d2e041f0543e874c01d4afee2a9a4112df104001ac1f5afc440e0",
+              "shapeConfirmationHash": "65825aeecb690d558b1019ffd55ac41541826596daad002ed423d25f8b80d3f0",
+              "specChanges": []
+            },
+            "shape.confirm": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "name": "legacy-change"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "First criterion."
+                      },
+                      {
+                        "id": "A2",
+                        "source": "brief.md",
+                        "text": "Last criterion. ## Spec → 测试名与断言计划 | Test | 计划行号 | | --- | --- | | last criterion | planned |"
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "9812871a266d2e041f0543e874c01d4afee2a9a4112df104001ac1f5afc440e0",
+                    "shapeConfirmationHash": "65825aeecb690d558b1019ffd55ac41541826596daad002ed423d25f8b80d3f0",
+                    "specChanges": []
+                  }
+                }
+              }
+            },
+            "shape.revalidate": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "First criterion."
+                },
+                {
+                  "id": "A2",
+                  "source": "brief.md",
+                  "text": "Last criterion. ## Spec → 测试名与断言计划 | Test | 计划行号 | | --- | --- | | last criterion | planned |"
+                }
+              ],
+              "children": null,
+              "formalHash": "9812871a266d2e041f0543e874c01d4afee2a9a4112df104001ac1f5afc440e0",
+              "shapeConfirmationHash": "65825aeecb690d558b1019ffd55ac41541826596daad002ed423d25f8b80d3f0",
+              "specChanges": []
+            }
+          }
+        },
+        "inputHash": "c251611f72b7adbbbc5445628419d83d842144b57c1250433fc6437285466309",
+        "status": "pending",
+        "retry": "manual",
+        "requiredCapabilities": [],
+        "receipts": [],
+        "reconciliations": []
+      }
+    ],
+    "actionContexts": {
+      "legacy-change:1": {
+        "sequence": 1,
+        "results": {}
+      },
+      "legacy-change:3": {
+        "sequence": 3,
+        "results": {
+          "shape.prepare": {
+            "sequence": 1,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "First criterion."
+                },
+                {
+                  "id": "A2",
+                  "source": "brief.md",
+                  "text": "Last criterion. ## Spec → 测试名与断言计划 | Test | 计划行号 | | --- | --- | | last criterion | planned |"
+                }
+              ],
+              "children": null,
+              "formalHash": "9812871a266d2e041f0543e874c01d4afee2a9a4112df104001ac1f5afc440e0",
+              "shapeConfirmationHash": "65825aeecb690d558b1019ffd55ac41541826596daad002ed423d25f8b80d3f0",
+              "specChanges": []
+            }
+          },
+          "shape.confirm": {
+            "sequence": 2,
+            "value": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "name": "legacy-change"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "First criterion."
+                      },
+                      {
+                        "id": "A2",
+                        "source": "brief.md",
+                        "text": "Last criterion. ## Spec → 测试名与断言计划 | Test | 计划行号 | | --- | --- | | last criterion | planned |"
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "9812871a266d2e041f0543e874c01d4afee2a9a4112df104001ac1f5afc440e0",
+                    "shapeConfirmationHash": "65825aeecb690d558b1019ffd55ac41541826596daad002ed423d25f8b80d3f0",
+                    "specChanges": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "legacy-change:4": {
+        "sequence": 4,
+        "results": {
+          "shape.prepare": {
+            "sequence": 1,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "First criterion."
+                },
+                {
+                  "id": "A2",
+                  "source": "brief.md",
+                  "text": "Last criterion. ## Spec → 测试名与断言计划 | Test | 计划行号 | | --- | --- | | last criterion | planned |"
+                }
+              ],
+              "children": null,
+              "formalHash": "9812871a266d2e041f0543e874c01d4afee2a9a4112df104001ac1f5afc440e0",
+              "shapeConfirmationHash": "65825aeecb690d558b1019ffd55ac41541826596daad002ed423d25f8b80d3f0",
+              "specChanges": []
+            }
+          },
+          "shape.confirm": {
+            "sequence": 2,
+            "value": {
+              "choice": "approved",
+              "proposal": {
+                "input": {
+                  "artifactRootRef": "docs",
+                  "name": "legacy-change"
+                },
+                "outputs": {
+                  "shape.prepare": {
+                    "acceptance": [
+                      {
+                        "id": "A1",
+                        "source": "brief.md",
+                        "text": "First criterion."
+                      },
+                      {
+                        "id": "A2",
+                        "source": "brief.md",
+                        "text": "Last criterion. ## Spec → 测试名与断言计划 | Test | 计划行号 | | --- | --- | | last criterion | planned |"
+                      }
+                    ],
+                    "children": null,
+                    "formalHash": "9812871a266d2e041f0543e874c01d4afee2a9a4112df104001ac1f5afc440e0",
+                    "shapeConfirmationHash": "65825aeecb690d558b1019ffd55ac41541826596daad002ed423d25f8b80d3f0",
+                    "specChanges": []
+                  }
+                }
+              }
+            }
+          },
+          "shape.revalidate": {
+            "sequence": 3,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "First criterion."
+                },
+                {
+                  "id": "A2",
+                  "source": "brief.md",
+                  "text": "Last criterion. ## Spec → 测试名与断言计划 | Test | 计划行号 | | --- | --- | | last criterion | planned |"
+                }
+              ],
+              "children": null,
+              "formalHash": "9812871a266d2e041f0543e874c01d4afee2a9a4112df104001ac1f5afc440e0",
+              "shapeConfirmationHash": "65825aeecb690d558b1019ffd55ac41541826596daad002ed423d25f8b80d3f0",
+              "specChanges": []
+            }
+          }
+        }
+      }
+    },
+    "waits": [
+      {
+        "id": "legacy-change:2",
+        "stepId": "shape.confirm",
+        "sequence": 2,
+        "status": "resolved",
+        "proposal": {
+          "input": {
+            "artifactRootRef": "docs",
+            "name": "legacy-change"
+          },
+          "outputs": {
+            "shape.prepare": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "First criterion."
+                },
+                {
+                  "id": "A2",
+                  "source": "brief.md",
+                  "text": "Last criterion. ## Spec → 测试名与断言计划 | Test | 计划行号 | | --- | --- | | last criterion | planned |"
+                }
+              ],
+              "children": null,
+              "formalHash": "9812871a266d2e041f0543e874c01d4afee2a9a4112df104001ac1f5afc440e0",
+              "shapeConfirmationHash": "65825aeecb690d558b1019ffd55ac41541826596daad002ed423d25f8b80d3f0",
+              "specChanges": []
+            }
+          }
+        },
+        "proposalHash": "f8aea91dc35e1bdd5434d0d6e28d8e4c825ab1b5a822d82b69e9927a800036b4",
+        "choices": [
+          "approved",
+          "rejected"
+        ],
+        "results": {
+          "shape.prepare": {
+            "sequence": 1,
+            "value": {
+              "acceptance": [
+                {
+                  "id": "A1",
+                  "source": "brief.md",
+                  "text": "First criterion."
+                },
+                {
+                  "id": "A2",
+                  "source": "brief.md",
+                  "text": "Last criterion. ## Spec → 测试名与断言计划 | Test | 计划行号 | | --- | --- | | last criterion | planned |"
+                }
+              ],
+              "children": null,
+              "formalHash": "9812871a266d2e041f0543e874c01d4afee2a9a4112df104001ac1f5afc440e0",
+              "shapeConfirmationHash": "65825aeecb690d558b1019ffd55ac41541826596daad002ed423d25f8b80d3f0",
+              "specChanges": []
+            }
+          }
+        },
+        "decision": {
+          "id": "8970b3cbe7f92134da077242719002c2dc91d4179e12700cb63c5119a465ffd5",
+          "choice": "approved",
+          "proposalHash": "f8aea91dc35e1bdd5434d0d6e28d8e4c825ab1b5a822d82b69e9927a800036b4"
+        }
+      }
+    ],
+    "ready": [],
+    "joins": {},
+    "outputs": {
+      "shape.prepare": {
+        "sequence": 1,
+        "value": {
+          "acceptance": [
+            {
+              "id": "A1",
+              "source": "brief.md",
+              "text": "First criterion."
+            },
+            {
+              "id": "A2",
+              "source": "brief.md",
+              "text": "Last criterion. ## Spec → 测试名与断言计划 | Test | 计划行号 | | --- | --- | | last criterion | planned |"
+            }
+          ],
+          "children": null,
+          "formalHash": "9812871a266d2e041f0543e874c01d4afee2a9a4112df104001ac1f5afc440e0",
+          "shapeConfirmationHash": "65825aeecb690d558b1019ffd55ac41541826596daad002ed423d25f8b80d3f0",
+          "specChanges": []
+        }
+      },
+      "shape.confirm": {
+        "sequence": 2,
+        "value": {
+          "choice": "approved",
+          "proposal": {
+            "input": {
+              "artifactRootRef": "docs",
+              "name": "legacy-change"
+            },
+            "outputs": {
+              "shape.prepare": {
+                "acceptance": [
+                  {
+                    "id": "A1",
+                    "source": "brief.md",
+                    "text": "First criterion."
+                  },
+                  {
+                    "id": "A2",
+                    "source": "brief.md",
+                    "text": "Last criterion. ## Spec → 测试名与断言计划 | Test | 计划行号 | | --- | --- | | last criterion | planned |"
+                  }
+                ],
+                "children": null,
+                "formalHash": "9812871a266d2e041f0543e874c01d4afee2a9a4112df104001ac1f5afc440e0",
+                "shapeConfirmationHash": "65825aeecb690d558b1019ffd55ac41541826596daad002ed423d25f8b80d3f0",
+                "specChanges": []
+              }
+            }
+          }
+        }
+      },
+      "shape.revalidate": {
+        "sequence": 3,
+        "value": {
+          "acceptance": [
+            {
+              "id": "A1",
+              "source": "brief.md",
+              "text": "First criterion."
+            },
+            {
+              "id": "A2",
+              "source": "brief.md",
+              "text": "Last criterion. ## Spec → 测试名与断言计划 | Test | 计划行号 | | --- | --- | | last criterion | planned |"
+            }
+          ],
+          "children": null,
+          "formalHash": "9812871a266d2e041f0543e874c01d4afee2a9a4112df104001ac1f5afc440e0",
+          "shapeConfirmationHash": "65825aeecb690d558b1019ffd55ac41541826596daad002ed423d25f8b80d3f0",
+          "specChanges": []
+        }
+      }
+    },
+    "children": [],
+    "lineage": []
+  }
+}

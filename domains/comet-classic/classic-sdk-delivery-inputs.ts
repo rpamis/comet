@@ -17,6 +17,7 @@ import {
   checkManifestHash,
   parseCheckManifest,
   serializeCheckManifest,
+  compileCheckPolicyInputPattern,
   compileCheckPolicyPattern,
 } from './classic-check-manifest.js';
 import type { CheckIdentity } from './classic-check-policy.js';
@@ -98,7 +99,7 @@ export async function collectClassicSdkDeliveryInputs(
     ].filter(Boolean),
   );
   const policy = await readCheckPolicy(root, identity);
-  const patterns = policy.files?.map(compileCheckPolicyPattern);
+  const patterns = policy.files?.map(compileCheckPolicyInputPattern);
   const outputs = policy.outputs?.map(compileCheckPolicyPattern) ?? [];
   const stagedDeletes = git(root, [
     'diff',
@@ -130,13 +131,14 @@ async function committedHash(
   root: string,
   ref: string,
   expected: string,
-  size: number,
+  size: number | undefined,
   trees: Map<string, string[]>,
   allowed: Set<string>,
+  revision = 'HEAD',
 ) {
   let repository = root,
     relative = ref,
-    commit = 'HEAD';
+    commit = revision;
   // 子模块的文件必须来自父提交所固定的子模块提交。
   for (;;) {
     const key = `${repository}\0${commit}`;
@@ -169,7 +171,10 @@ async function committedHash(
     new Promise<string>((resolve, reject) => {
       const gitHash = expected.startsWith('git:');
       const digest = createHash(gitHash && expected.length === 44 ? 'sha1' : 'sha256');
-      if (gitHash) digest.update(`blob ${size}\0`);
+      if (gitHash)
+        digest.update(
+          `blob ${size ?? Number(git(repository, ['cat-file', '-s', `${commit}:${relative}`]))}\0`,
+        );
       const child = spawnCommand(
         'git',
         filtered
@@ -190,7 +195,9 @@ async function committedHash(
         if (code !== 0) reject(new Error(`Classic committed input changed: ${ref}`));
         else
           resolve(
-            bytes === size ? (gitHash ? 'git:' : '') + digest.digest('hex') : 'different-size',
+            size === undefined || bytes === size
+              ? (gitHash ? 'git:' : '') + digest.digest('hex')
+              : 'different-size',
           );
       });
     });
@@ -314,6 +321,15 @@ export async function assertClassicSdkDeliveryInputs(root: string, run: Readonly
     boundReportRef = ref;
     inputs = { ...inputs, [ref]: report.contentHash };
   }
+  return assertClassicSdkDeliveryFileInputs(root, inputs, boundReportRef);
+}
+
+/** 按同一个字节及 Git 内容契约核对实现文件和 Archive 绑定产物。 */
+export async function assertClassicSdkDeliveryFileInputs(
+  root: string,
+  inputs: Record<string, string>,
+  boundReportRef?: string,
+) {
   const entries = Object.entries(inputs);
   if (
     entries.some(
@@ -360,4 +376,33 @@ export async function assertClassicSdkDeliveryInputs(root: string, run: Readonly
       );
   }
   return allowed;
+}
+
+/** 归档产物在交付范围的中间提交中也不能被换成未经批准的正文。 */
+export async function assertClassicSdkArchiveCommitInputs(
+  root: string,
+  inputs: Record<string, string>,
+  commits: Map<string, string[]>,
+  sources: Record<string, string> = {},
+  stateFiles: readonly string[] = [],
+) {
+  const trees = new Map<string, string[]>();
+  const allowed = new Set<string>();
+  for (const [commit, paths] of commits)
+    for (const ref of paths) {
+      if (!Object.hasOwn(inputs, ref) || stateFiles.includes(ref)) continue;
+      const identities = [
+        ...new Set([inputs[ref], sources[ref]].filter((hash) => hash && hash !== 'missing')),
+      ];
+      // 已删除来源仍须核对中间提交，不能用最终 missing 豁免未经批准的正文。
+      let matches = false;
+      for (const expected of identities.length ? identities : ['missing']) {
+        const actual = await committedHash(root, ref, expected, undefined, trees, allowed, commit);
+        if (actual === 'missing' || actual === expected) {
+          matches = true;
+          break;
+        }
+      }
+      if (!matches) throw new Error(`Classic 交付范围中的归档内容未经验证：${commit}:${ref}`);
+    }
 }

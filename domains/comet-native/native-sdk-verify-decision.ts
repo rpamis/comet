@@ -1,3 +1,4 @@
+import { nativeSdkCanRefreshChecks } from './native-sdk-checks.js';
 import type { RuntimeWait, WorkflowRun } from '../engine/runtime.js';
 import type { NativePortableState } from './native-portable-types.js';
 
@@ -8,6 +9,7 @@ export type NativeSdkVerifyDecisionAction =
 export function nativeSdkVerifyWaitDecisions(
   state: NativePortableState,
   wait: Pick<RuntimeWait, 'stepId' | 'choices'>,
+  run: Readonly<WorkflowRun>,
 ): { action: NativeSdkVerifyDecisionAction; choice: string }[] {
   if (state.phase !== 'verify') return [];
   const decisions: { action: NativeSdkVerifyDecisionAction; choice: string }[] = [];
@@ -28,8 +30,9 @@ export function nativeSdkVerifyWaitDecisions(
       decisions.push(
         { action: 'accept-result', choice: 'approved' },
         { action: 'revise-implementation', choice: 'rejected' },
-        { action: 'retry-verifier', choice: 'reverify' },
       );
+      if (nativeSdkCanRefreshChecks(run))
+        decisions.push({ action: 'retry-verifier', choice: 'reverify' });
     }
   }
   if (
@@ -46,6 +49,6 @@ export function nativeSdkVerifyDecisions(run: Readonly<WorkflowRun>, state: Nati
   return run.waits
     .filter((wait) => wait.status === 'pending')
     .flatMap((wait) =>
-      nativeSdkVerifyWaitDecisions(state, wait).map((decision) => ({ ...decision, wait })),
+      nativeSdkVerifyWaitDecisions(state, wait, run).map((decision) => ({ ...decision, wait })),
     );
 }

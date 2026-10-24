@@ -1776,6 +1776,8 @@ describe('update command helpers', () => {
 
     for (const project of [projectA, projectB]) {
       await fs.mkdir(path.join(project, '.claude', 'skills', 'comet'), { recursive: true });
+      // 每个登记项目有独立边界，避免临时目录的祖先仓库改变项目发现结果。
+      expect(spawnSync('git', ['init'], { cwd: project }).status).toBe(0);
       await fs.writeFile(
         path.join(project, '.claude', 'skills', 'comet', 'SKILL.md'),
         '# Comet',
@@ -1806,6 +1808,21 @@ describe('update command helpers', () => {
     expect(
       result.projects.every((project: { status: string }) => project.status === 'updated'),
     ).toBe(true);
+    for (const project of [projectA, projectB]) {
+      await expect(
+        fs.readFile(path.join(project, '.claude', 'skills', 'comet', 'SKILL.md'), 'utf8'),
+      ).resolves.toContain('comet workflow resolve . --activate --json');
+    }
+    expect(
+      mockedSpawn.mock.calls.filter(
+        (call) =>
+          path.basename(String(call[1]?.[0])).toLowerCase() === 'npm-cli.js' &&
+          call[1]?.[1] === 'install',
+      ),
+    ).toHaveLength(0);
+    await expect(fs.access(path.join(fakeHome, '.claude'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
 
     const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(fakeHome), 'utf-8')) as {
       projects: Array<{ lastSource: string }>;
@@ -1922,6 +1939,8 @@ describe('update command helpers', () => {
 
     for (const project of [projectA, projectB]) {
       await fs.mkdir(path.join(project, '.claude', 'skills', 'comet'), { recursive: true });
+      // 每个登记项目有独立边界，避免临时目录的祖先仓库改变项目发现结果。
+      expect(spawnSync('git', ['init'], { cwd: project }).status).toBe(0);
       await fs.writeFile(path.join(project, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
       await upsertProjectInstallation(project, [{ platform: 'claude', language: 'en' }], 'init', {
         homeDir: fakeHome,
@@ -1954,7 +1973,27 @@ describe('update command helpers', () => {
       }),
     ]);
     expect(result.status).toBe('incomplete');
-    expect(mockedSpawn.mock.calls.some((call) => call[1]?.includes('-g'))).toBe(true);
+    for (const project of [projectA, projectB]) {
+      await expect(
+        fs.readFile(path.join(project, '.claude', 'skills', 'comet', 'SKILL.md'), 'utf8'),
+      ).resolves.toContain('comet workflow resolve . --activate --json');
+    }
+    const targetInstalls = mockedSpawn.mock.calls.filter(
+      (call) =>
+        path.basename(String(call[1]?.[0])).toLowerCase() === 'npm-cli.js' &&
+        call[1]?.[1] === 'install' &&
+        !call[1]?.includes('--prefix'),
+    );
+    // 只尝试一次升级并回滚；后续项目既不重复全局升级，也不退回项目级 npm 安装。
+    expect(targetInstalls.map((call) => call[1]?.slice(1))).toEqual(
+      ['0.4.0-beta.8', '0.4.0-beta.7'].map((version) => [
+        'install',
+        '-g',
+        `@rpamis/comet@${version}`,
+        '--registry',
+        'https://registry.npmjs.org',
+      ]),
+    );
   });
 
   it('removes stale indexed projects that no longer have project-scope installs during all-projects update', async () => {

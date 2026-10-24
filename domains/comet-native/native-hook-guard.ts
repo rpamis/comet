@@ -37,12 +37,19 @@ import {
   returnNativePortableChangeToBuild,
   returnNativePortableChangeToShape,
 } from './native-portable-runtime.js';
-import { inspectNativePortableAcceptanceDrift } from './native-portable-requirements.js';
+import {
+  inspectNativePortableAcceptanceDrift,
+  readNativeApprovedShapeSemanticSnapshot,
+} from './native-portable-requirements.js';
 import type { NativePortableState } from './native-portable-types.js';
 import { classifyEditImpact } from '../workflow-contract/edit-impact.js';
 import { prepareEditReview, isReviewedEditProposal } from '../workflow-contract/edit-review.js';
-import { nativeEditReviewScope } from './native-edit-review.js';
+import { nativeEditReviewScope, nativeEditReviewPreparationScope } from './native-edit-review.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
+import {
+  nativeShapeArtifactSnapshot,
+  nativeShapeArtifactContractHash,
+} from './native-shape-semantics.js';
 
 const readHookProjectConfig = memoizedHookRead('nativeHookProjectConfig', readProjectConfig);
 
@@ -381,6 +388,10 @@ async function inspectPortableWriteTargets(options: {
         (target) => target === 'brief.md' || /^specs\/[^/]+\/spec\.md$/u.test(target),
       )
     ) {
+      if (state.phase !== 'shape' && state.shape_confirmation_hash) {
+        const review = await formalCommentWriteReview(paths, state, request, formalTargets);
+        if (review) return review;
+      }
       return {
         allowed: true,
         reason:
@@ -430,6 +441,15 @@ async function inspectPortableWriteTargets(options: {
     ) {
       const drift = await inspectNativePortableAcceptanceDrift({ paths, state });
       if (drift.drifted) {
+        if (sdkOwned || drift.reviewRequired) {
+          return {
+            allowed: false,
+            reason: `${drift.reason ?? 'Native confirmed requirements changed'} Read comet native status ${state.name} --json and reconcile the current SDK Action and claim before revising Shape. The Hook preserves the authoritative Run and its projection.`,
+            workflow: 'native',
+            phase: state.phase,
+            change: state.name,
+          };
+        }
         const returned = await runNativeHookMutation(() =>
           returnNativePortableChangeToShape({
             paths,
@@ -548,6 +568,66 @@ async function inspectPortableWriteTargets(options: {
     workflow: 'native',
     phase: state.phase,
     change: state.name,
+  };
+}
+
+async function formalCommentWriteReview(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+  request: NativeHookRequest,
+  targets: readonly string[],
+): Promise<NativeHookGuardResult | null> {
+  const semantic = (await readNativeApprovedShapeSemanticSnapshot({ paths, state }))?.snapshot;
+  let needsReview = false;
+  for (const source of targets) {
+    const approved = semantic?.artifacts.find((entry) => entry.source === source);
+    if (!approved) return null;
+    const file = path.join(paths.changesDir, state.name, source);
+    const relative = path.relative(paths.projectRoot, file).replaceAll('\\', '/');
+    const writes =
+      request.writes?.filter((entry) => path.resolve(paths.projectRoot, entry.path) === file) ?? [];
+    if (writes.length !== 1) return null;
+    const before = await readNativeBoundedTextFile({ root: paths.projectRoot, ref: relative });
+    const after = proposedCometHookFileContent(writes[0], before.text);
+    if (after === null) return null;
+    const previous = nativeShapeArtifactSnapshot(source, before.text);
+    const current = nativeShapeArtifactSnapshot(source, after);
+    if (
+      nativeShapeArtifactContractHash({ ...current, commentsHash: previous.commentsHash }) !==
+      nativeShapeArtifactContractHash(previous)
+    )
+      return null;
+    if (
+      current.commentsHash !== previous.commentsHash &&
+      !(
+        state.builder_handoff &&
+        (await isReviewedEditProposal(
+          nativeEditReviewScope(paths, state),
+          relative,
+          before.text,
+          after,
+        ))
+      )
+    )
+      needsReview = true;
+  }
+  if (!needsReview) return null;
+  if (state.phase === 'verify' && state.builder_handoff) {
+    const complete = { ...request, toolName: request.toolName ?? null };
+    await prepareEditReview(
+      await nativeEditReviewPreparationScope(paths, state, complete),
+      complete,
+    );
+  }
+  return {
+    allowed: false,
+    workflow: 'native',
+    phase: state.phase,
+    change: state.name,
+    reason:
+      state.phase === 'verify' && state.builder_handoff
+        ? `正式材料中的注释可能包含执行指令，不能自动忽略。保留当前候选；使用 comet edit-review show native ${state.name} 完成独立局部复核，然后原样重试编辑。`
+        : '正式材料中的注释可能包含执行指令，不能自动忽略。当前阶段没有可复核的 Verify 候选；保留原文和当前 Action/claim，或通过当前 continuation 显式修订 Shape。',
   };
 }
 

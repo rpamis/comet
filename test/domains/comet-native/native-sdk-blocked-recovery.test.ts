@@ -38,7 +38,12 @@ afterEach(async () => {
 });
 
 async function blockedFixture(
-  options: { legacy?: boolean; supervisor?: boolean; blockedChild?: boolean } = {},
+  options: {
+    legacy?: boolean;
+    supervisor?: boolean;
+    blockedChild?: boolean;
+    repeatableChecks?: boolean;
+  } = {},
 ) {
   let useReleased = Boolean(options.legacy && process.env.COMET_NATIVE_LEGACY_PACKAGE_ROOT);
   const releasedRoot = process.env.COMET_NATIVE_LEGACY_PACKAGE_ROOT;
@@ -196,7 +201,8 @@ async function blockedFixture(
       runId: name,
     });
   } else await dispatch({ operation: 'start', ...start });
-  expect((await native(['next', name])).exitCode).toBe(0);
+  const prepared = await native(['next', name]);
+  expect(prepared.exitCode, prepared.stderr || prepared.stdout).toBe(0);
   let run = await dispatch({ operation: 'inspect', runId: name });
   expect(
     (
@@ -331,7 +337,7 @@ async function blockedFixture(
           argv: ['-e', "require('node:fs').appendFileSync('check-count', 'once\\n')"],
           cwdRef: '.',
           timeoutMs: 10000,
-          repeatable: false,
+          repeatable: options.repeatableChecks ?? false,
         },
       ],
     },
@@ -504,6 +510,185 @@ describe('blocked Verifier recovery command contract', () => {
     expect(passed.actions.filter(({ stepId }) => stepId === 'verify.checks')).toHaveLength(1);
     expect(await fs.readFile(path.join(f.projectRoot, 'check-count'), 'utf8')).toBe('once\n');
   });
+
+  it.each(['accept-result', 'revise-implementation', 'revise-requirements'])(
+    'offers only executable decisions after recovered one-shot checks pass (%s)',
+    async (decision) => {
+      const f = await blockedFixture();
+      const resume = (await alternatives(f)).find(
+        ({ name }) => name === 'resolve-verifier-blocker',
+      )!;
+      expect((await executeAlternative(resume)).exitCode).toBe(0);
+      let run = await f.dispatch({ operation: 'inspect', runId: f.name });
+      const verifier = run.actions.findLast(({ status }) => status === 'pending')!;
+      const state = parseNativePortableState(run.state);
+      await f.record(
+        verifier,
+        {
+          candidateId: state.builder_handoff!.candidate_id,
+          verifierExecutionRef: 'replacement',
+          response: {
+            kind: 'final-result',
+            result: {
+              iteration: state.loop.iteration,
+              attempt: state.loop.attempt,
+              verdict: 'pass',
+              acceptance: [
+                { id: 'A1', result: 'passed', reason: 'Observed the retained candidate.' },
+              ],
+              risks: [],
+              summary: 'Independent review passed.',
+            },
+          },
+        },
+        'replacement',
+      );
+      expect((await f.native(['next', f.name])).exitCode).toBe(0);
+      run = await f.dispatch({ operation: 'inspect', runId: f.name });
+      const status = JSON.parse((await f.native(['status', f.name])).stdout!).data;
+      const commands = status.continuation.commandAlternatives as Alternative[];
+      expect(commands.map(({ name }) => name)).toEqual([
+        'accept-result',
+        'revise-implementation',
+        'revise-requirements',
+      ]);
+      expect(status.continuation.userCommunication.agentInstruction).toMatch(/one-shot|不可重复/);
+      const wait = status.pendingWaits.find(
+        (entry: { stepId: string }) => entry.stepId === 'verify.confirm',
+      );
+      expect(wait.choices).toEqual(['approved', 'rejected']);
+      expect(wait.decisionRequests.map((request: { choice: string }) => request.choice)).toEqual([
+        'approved',
+        'rejected',
+      ]);
+      const accept = commands.find(({ name }) => name === 'accept-result')!;
+      const forged = accept.commandArgs.map((arg) =>
+        arg === '--accept-result'
+          ? '--retry-verifier'
+          : arg === 'accept-result'
+            ? 'retry-verifier'
+            : arg,
+      );
+      const rejected = await executeAlternative({ name: 'retry-verifier', commandArgs: forged });
+      expect(rejected.exitCode, rejected.stdout).toBe(73);
+      expect(JSON.parse(rejected.stdout!).data.continuation.commandAlternatives).toEqual(commands);
+      await expect(
+        f.dispatch({
+          ...wait.decisionRequests[0],
+          decisionId: 'forged-reverify',
+          choice: 'reverify',
+        }),
+      ).rejects.toThrow();
+      expect(await f.dispatch({ operation: 'inspect', runId: f.name })).toEqual(run);
+      const chosen = commands.find(({ name }) => name === decision)!;
+      const staleArgs = [...chosen.commandArgs];
+      staleArgs[staleArgs.indexOf('--expected-state-version') + 1] = '1';
+      expect((await executeAlternative({ ...chosen, commandArgs: staleArgs })).exitCode).toBe(73);
+      expect(await f.dispatch({ operation: 'inspect', runId: f.name })).toEqual(run);
+      const result = await executeAlternative(chosen);
+      expect(result.exitCode, result.stdout || result.stderr).toBe(0);
+      expect(await fs.readFile(path.join(f.projectRoot, 'check-count'), 'utf8')).toBe('once\n');
+    },
+  );
+
+  it.each([true, false])(
+    'uses only the current ordinary candidate retry capability after leaving Supervisor (repeatable=%s)',
+    async (repeatable) => {
+      const f = await blockedFixture({ supervisor: true, repeatableChecks: !repeatable });
+      const revise = (await alternatives(f)).find(({ name }) => name === 'revise-requirements')!;
+      expect((await executeAlternative(revise)).exitCode).toBe(0);
+      await fs.rm(path.join(f.projectRoot, 'docs/comet/changes', f.name, 'children.yaml'));
+      expect((await f.native(['next', f.name])).exitCode).toBe(0);
+      let run = await f.dispatch({ operation: 'inspect', runId: f.name });
+      expect(
+        (
+          await f.native([
+            'next',
+            f.name,
+            '--confirmed',
+            '--summary',
+            'Confirm ordinary workflow',
+            '--expected-state-version',
+            String(parseNativePortableState(run.state).state_version),
+            '--expected-action',
+            'confirm-shape',
+          ])
+        ).exitCode,
+      ).toBe(0);
+      run = await f.dispatch({ operation: 'inspect', runId: f.name });
+      const builder = run.actions.findLast(({ status }) => status === 'pending')!;
+      expect(builder.stepId).toBe('build.builder');
+      run = await f.record(
+        builder,
+        {
+          summary: 'Ordinary candidate',
+          addressedAcceptanceIds: ['A1'],
+          acceptanceReview: fixtureAcceptanceReview(['A1']),
+          checks: [],
+          knownLimits: [],
+          submittedAt: new Date().toISOString(),
+          verificationChecks: [
+            {
+              id: 'ordinary-repeatable',
+              name: 'ordinary-repeatable',
+              executable: process.execPath,
+              argv: ['-e', 'process.exit(0)'],
+              cwdRef: '.',
+              timeoutMs: 10000,
+              repeatable,
+            },
+          ],
+        },
+        'ordinary-builder',
+      );
+      const check = run.actions.findLast(({ status }) => status === 'pending')!;
+      run = await f.dispatch({
+        operation: 'execute',
+        runId: f.name,
+        actionId: check.id,
+        executorId: 'comet-native-checks',
+      });
+      expect(run.actions.find(({ id }) => id === check.id)).toMatchObject({
+        status: 'succeeded',
+        outcome: { output: { checks: [{ id: 'ordinary-repeatable' }] } },
+      });
+      const state = parseNativePortableState(run.state);
+      await f.record(
+        run.actions.findLast(({ status }) => status === 'pending')!,
+        {
+          candidateId: state.builder_handoff!.candidate_id,
+          verifierExecutionRef: 'ordinary-verifier',
+          response: {
+            kind: 'final-result',
+            result: {
+              iteration: state.loop.iteration,
+              attempt: state.loop.attempt,
+              verdict: 'pass',
+              acceptance: [{ id: 'A1', result: 'passed', reason: 'Observed ordinary candidate.' }],
+              risks: [],
+              summary: 'Ordinary review passed.',
+            },
+          },
+        },
+        'ordinary-verifier',
+      );
+      expect((await f.native(['next', f.name])).exitCode).toBe(0);
+      const retry = (await alternatives(f)).find(({ name }) => name === 'retry-verifier')!;
+      if (repeatable) {
+        expect(retry).toBeDefined();
+        const result = await executeAlternative(retry);
+        expect(result.exitCode, result.stdout || result.stderr).toBe(0);
+      } else {
+        expect(retry).toBeUndefined();
+      }
+      run = await f.dispatch({ operation: 'inspect', runId: f.name });
+      expect(run.actions.filter(({ stepId }) => stepId === 'verify.checks')).toHaveLength(
+        repeatable ? 3 : 2,
+      );
+      expect(await fs.readFile(path.join(f.candidateRoot, 'check-count'), 'utf8')).toBe('once\n');
+    },
+    120_000,
+  );
 
   it('rejects stale proposal, state, and used outcome identities without dispatching a duplicate', async () => {
     const f = await blockedFixture();

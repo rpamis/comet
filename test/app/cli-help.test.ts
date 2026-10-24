@@ -67,6 +67,14 @@ describe('CLI help text', () => {
     expect(help.stdout).not.toMatch(/[\u3400-\u9fff]/u);
   });
 
+  it.each(['-v', '--version'])('returns the current package version for %s', (flag) => {
+    const pkg = JSON.parse(readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8'));
+    const result = runCli(flag);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe(pkg.version);
+    expect(result.stderr.trim()).toBe('');
+  });
+
   it('keeps the evaluated-workflows tagline in package metadata', () => {
     const packageJson = JSON.parse(
       readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8'),

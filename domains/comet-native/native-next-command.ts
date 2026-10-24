@@ -639,6 +639,10 @@ export async function nativeNextCommand(
         state: current,
       });
       if (drift.drifted) {
+        if (drift.reviewRequired)
+          throw new NativeUsageError(
+            drift.reason ?? 'Native formal comments require independent review',
+          );
         const state = await returnNativePortableChangeToShape({
           paths: configured.paths,
           name,
@@ -837,6 +841,10 @@ export async function nativeNextCommand(
         state: current,
       });
       if (drift.drifted) {
+        if (drift.reviewRequired)
+          throw new NativeUsageError(
+            drift.reason ?? 'Native formal comments require independent review',
+          );
         state = await returnNativePortableChangeToShape({
           paths: configured.paths,
           name,

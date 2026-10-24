@@ -293,7 +293,7 @@ describe('Native phase Hook guard', () => {
     const changeDir = path.join(paths.changesDir, 'sdk-guard');
     await fs.writeFile(
       path.join(changeDir, 'brief.md'),
-      '# Outcome\nShip the workflow.\n# Scope\nKeep compatibility.\n# Non-goals\nNone.\n# Acceptance examples\n- The workflow resumes.\n# Constraints and invariants\nPreserve state.\n# Decisions\nNone.\n# Open questions\nNone.\n# Verification expectations\nRun focused checks.\n',
+      '# Outcome\nShip the workflow.\n# Scope\nKeep compatibility.\n## Directory structure\n### Modified\n- src/: preserve the workflow.\n# Non-goals\nNone.\n# Acceptance examples\n- The workflow resumes.\n# Constraints and invariants\nPreserve state.\n# Decisions\nNone.\n# Open questions\nNone.\n# Verification expectations\nRun focused checks.\n',
     );
     await fs.mkdir(path.join(changeDir, 'specs', 'workflow'), { recursive: true });
     await fs.writeFile(
@@ -307,7 +307,7 @@ describe('Native phase Hook guard', () => {
       projectRoot,
       '--json',
     ]);
-    expect(prepared.exitCode, prepared.stderr).toBe(0);
+    expect(prepared.exitCode, prepared.stderr ?? prepared.stdout).toBe(0);
     const stateVersion = (JSON.parse(prepared.stdout!) as { data: { stateVersion: number } }).data
       .stateVersion;
     const confirmed = await runNativeCli([

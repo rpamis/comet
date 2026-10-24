@@ -272,16 +272,15 @@ function firstLines(content: string, max: number): string {
   }
   return content;
 }
-async function writeMarkdownContext(
-  projectRoot: string,
-  changeDir: string,
-  changeRef: string,
+export type ClassicHandoffSource = Pick<HandoffSource, 'reference' | 'content' | 'sha256'>;
+
+/** 渲染与写入共享同一正文，旧归档恢复可逐字核对，不重新生成工件。 */
+export function renderClassicHandoffMarkdown(
   change: string,
   mode: string,
   contextHash: string,
-  output: string,
-  sources?: readonly HandoffSource[],
-): Promise<void> {
+  sources: readonly ClassicHandoffSource[],
+): string {
   const lines: string[] = [
     '# Comet Design Handoff',
     '',
@@ -296,8 +295,7 @@ async function writeMarkdownContext(
     'OpenSpec remains the canonical capability spec. This handoff is a deterministic, source-traceable context pack, not an agent-authored summary.',
     '',
   ];
-  const material = sources ?? (await readHandoffSources(projectRoot, changeDir, changeRef));
-  for (const { reference, content, sha256 } of material) {
+  for (const { reference, content, sha256 } of sources) {
     const total = lineCount(content);
     lines.push(
       `## ${reference}`,
@@ -322,10 +320,24 @@ async function writeMarkdownContext(
     }
     lines.push('');
   }
+  return lines.join('\n');
+}
+
+async function writeMarkdownContext(
+  projectRoot: string,
+  changeDir: string,
+  changeRef: string,
+  change: string,
+  mode: string,
+  contextHash: string,
+  output: string,
+  sources?: readonly HandoffSource[],
+): Promise<void> {
+  const material = sources ?? (await readHandoffSources(projectRoot, changeDir, changeRef));
   await writeProtectedText(
     projectRoot,
     output,
-    lines.join('\n'),
+    renderClassicHandoffMarkdown(change, mode, contextHash, material),
     'Classic handoff markdown output',
   );
 }
@@ -364,7 +376,7 @@ async function writeJsonContext(
   await writeProtectedText(projectRoot, output, document, 'Classic handoff JSON output');
 }
 
-async function writeSpecProjectionForFile(reference: string, content: string): Promise<string[]> {
+function specProjectionForFile(reference: string, content: string): string[] {
   return [
     `## ${reference}`,
     '',
@@ -379,15 +391,12 @@ async function writeSpecProjectionForFile(reference: string, content: string): P
   ];
 }
 
-async function writeSpecMarkdownContext(
-  projectRoot: string,
-  changeDir: string,
+export function renderClassicSpecHandoffMarkdown(
   changeRef: string,
   change: string,
   contextHash: string,
-  output: string,
-  sources?: readonly HandoffSource[],
-): Promise<void> {
+  sources: readonly ClassicHandoffSource[],
+): string {
   const lines: string[] = [
     '# Comet Spec Context',
     '',
@@ -403,16 +412,15 @@ async function writeSpecMarkdownContext(
     '## Source References',
     '',
   ];
-  const material = sources ?? (await readHandoffSources(projectRoot, changeDir, changeRef));
-  for (const { reference, sha256 } of material) {
+  for (const { reference, sha256 } of sources) {
     lines.push(`- Source: ${reference}`, `- SHA256: ${sha256}`);
   }
   lines.push('', '## Acceptance Projection', '');
   let projected = false;
-  for (const { reference, content } of material) {
+  for (const { reference, content } of sources) {
     if (!reference.startsWith(`${changeRef}/specs/`)) continue;
     projected = true;
-    lines.push(...(await writeSpecProjectionForFile(reference, content)));
+    lines.push(...specProjectionForFile(reference, content));
   }
   if (!projected) {
     lines.push('No delta spec files found.', '');
@@ -421,10 +429,23 @@ async function writeSpecMarkdownContext(
     'Full source files remain canonical. If a required heading or scenario is missing here, regenerate the handoff or read the source spec directly. Supporting files (proposal, design, tasks) are referenced by hash only.',
     'Task hash policy: task-content-v1. Read tasks.md for live completion; task hashes ignore checkbox completion only.',
   );
+  return lines.join('\n');
+}
+
+async function writeSpecMarkdownContext(
+  projectRoot: string,
+  changeDir: string,
+  changeRef: string,
+  change: string,
+  contextHash: string,
+  output: string,
+  sources?: readonly HandoffSource[],
+): Promise<void> {
+  const material = sources ?? (await readHandoffSources(projectRoot, changeDir, changeRef));
   await writeProtectedText(
     projectRoot,
     output,
-    lines.join('\n'),
+    renderClassicSpecHandoffMarkdown(changeRef, change, contextHash, material),
     'Classic handoff spec markdown output',
   );
 }

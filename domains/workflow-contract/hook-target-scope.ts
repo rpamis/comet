@@ -15,30 +15,56 @@ function isWithin(parent: string, target: string): boolean {
   );
 }
 
-async function physicalPathForPossiblyMissingTarget(target: string): Promise<string | null> {
-  const resolved = path.resolve(target);
-  const root = path.parse(resolved).root;
-  const missingSegments: string[] = [];
-  let cursor = resolved;
+function absoluteTargetWithoutCollapsingParents(base: string, target: string): string {
+  return path.isAbsolute(target) ? target : `${base}${path.sep}${target}`;
+}
 
-  while (cursor && cursor !== root) {
-    try {
-      const physicalBase = await fs.realpath(cursor);
-      return path.join(physicalBase, ...missingSegments.reverse());
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== 'ENOENT' && code !== 'ENOTDIR') throw error;
-      missingSegments.push(path.basename(cursor));
+async function physicalPathForPossiblyMissingTarget(target: string): Promise<string> {
+  const absolute = absoluteTargetWithoutCollapsingParents(process.cwd(), target);
+  const segments = (value: string) =>
+    value.split(process.platform === 'win32' ? /[\\/]+/u : /\/+/u);
+  const root = path.parse(absolute).root;
+  let cursor = await fs.realpath(root);
+  let pending = segments(absolute.slice(root.length));
+  let links = 0;
+  while (pending.length > 0) {
+    const segment = pending.shift()!;
+    if (!segment || segment === '.') continue;
+    if (segment === '..') {
       cursor = path.dirname(cursor);
+      continue;
     }
+    const next = path.join(cursor, segment);
+    let entry;
+    try {
+      entry = await fs.lstat(next);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      if (pending.includes('..')) {
+        cursor = next;
+        continue;
+      }
+      return path.join(next, ...pending);
+    }
+    if (entry.isSymbolicLink()) {
+      if (pending.includes('..'))
+        throw new Error('Hook 目标经过链接后返回父级；请使用规范物理路径');
+      if (++links > 40) throw new Error('Hook 目标链接解析超过 40 层，无法安全确定归属');
+      const destination = await fs.readlink(next);
+      if (path.isAbsolute(destination)) {
+        const destinationRoot = path.parse(destination).root;
+        cursor = await fs.realpath(destinationRoot);
+        pending = [...segments(destination.slice(destinationRoot.length)), ...pending];
+      } else {
+        pending = [...segments(destination), ...pending];
+      }
+      continue;
+    }
+    if (pending.length > 0 && !entry.isDirectory())
+      throw new Error('Hook 目标的中间路径不是目录；请使用规范物理路径');
+    cursor = next;
   }
-
-  try {
-    const physicalRoot = await fs.realpath(root);
-    return path.join(physicalRoot, ...missingSegments.reverse());
-  } catch {
-    return null;
-  }
+  return cursor;
 }
 
 /** Runtime 禁写兼容项目相对路径和宿主 cwd 相对路径，不改变普通 phase guard 的归属。 */
@@ -47,9 +73,9 @@ export function cometHookRuntimeTargetCandidates(
   target: string,
   cwd?: string,
 ): string[] {
-  const candidates = [path.resolve(projectRoot, target)];
+  const candidates = [absoluteTargetWithoutCollapsingParents(projectRoot, target)];
   if (!path.isAbsolute(target) && cwd && path.isAbsolute(cwd)) {
-    candidates.push(path.resolve(cwd, target));
+    candidates.push(absoluteTargetWithoutCollapsingParents(cwd, target));
   }
   return [...new Set(candidates)];
 }
@@ -61,7 +87,7 @@ export async function isCometHookTargetWithin(root: string, target: string): Pro
   if (isWithin(resolvedRoot, resolvedTarget)) return true;
   const [physicalRoot, physicalTarget] = await Promise.all([
     physicalPathForPossiblyMissingTarget(resolvedRoot),
-    physicalPathForPossiblyMissingTarget(resolvedTarget),
+    physicalPathForPossiblyMissingTarget(target),
   ]);
   return physicalRoot !== null && physicalTarget !== null && isWithin(physicalRoot, physicalTarget);
 }
@@ -76,9 +102,7 @@ export async function scopeCometHookTargets(
   const externalTargets: string[] = [];
 
   for (const target of normalizeCometHookTargets(targets)) {
-    const resolvedTarget = path.isAbsolute(target)
-      ? path.resolve(target)
-      : path.resolve(resolvedProjectRoot, target);
+    const resolvedTarget = absoluteTargetWithoutCollapsingParents(resolvedProjectRoot, target);
     const physicalTarget = await physicalPathForPossiblyMissingTarget(resolvedTarget);
     const inside = physicalTarget
       ? isWithin(physicalProjectRoot, physicalTarget)

@@ -327,6 +327,11 @@ export function readPortableRunCheckpoint(value: unknown, runId: string, options
     preserveSourceRevision?: boolean;
 }): WorkflowRun | null;
 
+// @public
+export function readPortableRunCheckpointProjection(value: unknown, runId: string, options?: {
+    preserveSourceRevision?: boolean;
+}): WorkflowRun | null;
+
 // @public (undocumented)
 export function readRuntimeProjection<T extends RuntimeRecord>(store: RuntimeStore<T>, runId: string): Promise<Readonly<{
     record: T;

@@ -1,5 +1,13 @@
 import { assertClassicEditReviewsComplete } from './classic-edit-review.js';
-import { assertClassicSdkDeliveryInputs } from './classic-sdk-delivery-inputs.js';
+import {
+  readClassicArchiveManifest,
+  assertClassicArchiveExecutionReceipt,
+} from './classic-sdk-archive-manifest.js';
+import {
+  assertClassicSdkDeliveryInputs,
+  assertClassicSdkDeliveryFileInputs,
+  assertClassicSdkArchiveCommitInputs,
+} from './classic-sdk-delivery-inputs.js';
 import { resolveClassicStateFile } from './classic-state-file.js';
 import { classicSdkCheckDirectoryRef, classicSdkCheckLogHash } from './classic-sdk-check-record.js';
 import { archivedClassicDocumentRef } from './classic-archive-annotation.js';
@@ -230,7 +238,7 @@ const buildConfigurationValidator: RuntimeValidator = {
 const archiveOutcomeValidator: RuntimeValidator = {
   id: 'comet-classic-archive-outcome',
   version: '1',
-  async validate({ action, outcome, context }) {
+  async validate({ run, action, outcome, context }) {
     if (outcome.status === 'failed') return { accepted: true };
     const root = context?.projectRoot;
     const input = action.input as { input?: { changeDir?: unknown } };
@@ -273,6 +281,24 @@ const archiveOutcomeValidator: RuntimeValidator = {
       const problems = await classicArchivedRequirementsProblems(root, archived.target);
       if (problems.length > 0) {
         return { accepted: false, reason: problems.join('\n') };
+      }
+      const recorded = run.actions.find((entry) => entry.id === action.id);
+      if (
+        recorded?.status === 'succeeded' &&
+        recorded.outcome &&
+        hashRuntimeValue(recorded) === hashRuntimeValue(action) &&
+        hashRuntimeValue(recorded.outcome) === hashRuntimeValue(outcome)
+      ) {
+        // 已被权威 Run 接受的同一结果可随 portable artifact 复核，不依赖原设备缓存。
+        await readClassicArchiveManifest(root, run, recorded, output.archiveDirectory);
+      } else {
+        await assertClassicArchiveExecutionReceipt(
+          root,
+          run,
+          action,
+          output.archiveDirectory,
+          outcome.artifacts,
+        );
       }
       return { accepted: true };
     } catch (error) {
@@ -385,7 +411,6 @@ const deliveryOutcomeValidator: RuntimeValidator = {
           return { accepted: false, reason: 'Classic delivery remote changed after approval' };
         }
       }
-      const layout = await resolveClassicLayout(root);
       const head = execFileSync('git', ['rev-parse', 'HEAD'], {
         cwd: root,
         encoding: 'utf8',
@@ -415,6 +440,7 @@ const deliveryOutcomeValidator: RuntimeValidator = {
       }
       let previousCommit = approved.baseCommit;
       const changed = new Set<string>();
+      const commitPaths = new Map<string, string[]>();
       for (const row of commits) {
         const [commit, ...parents] = row.split(/\s+/u);
         if (parents.length !== 1) {
@@ -430,14 +456,15 @@ const deliveryOutcomeValidator: RuntimeValidator = {
           };
         }
         // 逐提交检查，避免先夹带未批准文件、再撤销的提交躲过最终 tree 对比。
-        for (const file of execFileSync(
+        const paths = execFileSync(
           'git',
           ['diff-tree', '--no-commit-id', '--no-renames', '--name-only', '-r', '-z', commit],
           { cwd: root, encoding: 'utf8' },
         )
           .split('\0')
-          .filter(Boolean))
-          changed.add(file);
+          .filter(Boolean);
+        commitPaths.set(commit, paths);
+        for (const file of paths) changed.add(file);
         previousCommit = commit;
       }
       const files = execFileSync(
@@ -455,7 +482,6 @@ const deliveryOutcomeValidator: RuntimeValidator = {
       ).trim();
       const activeRef = actionInput.input.changeDir.replaceAll('\\', '/');
       const archiveRef = archive.archiveDirectory.replaceAll('\\', '/');
-      const specsRef = path.relative(root, layout.specsDir).replaceAll('\\', '/');
       const documentBinding = classicArchiveDocumentOutputs(run, action);
       const documentOutputs = documentBinding.outputs;
       const acceptedPlan = documentOutputs['full.build.plan'] as
@@ -513,12 +539,38 @@ const deliveryOutcomeValidator: RuntimeValidator = {
           evidence: documentBinding.evidence,
         });
       const implementationFiles = await assertClassicSdkDeliveryInputs(root, run);
+      const archiveAction = run.actions
+        .slice()
+        .reverse()
+        .find(
+          (entry) => entry.stepId === `${profile}.archive.execute` && entry.status === 'succeeded',
+        );
+      if (!archiveAction) throw new Error('Classic delivery 缺少成功的 Archive Action');
+      const archiveManifest = await readClassicArchiveManifest(
+        root,
+        run,
+        archiveAction,
+        archiveRef,
+      );
+      for (const [ref, hash] of Object.entries(archiveManifest.optionalFiles ?? {})) {
+        const committed = execFileSync('git', ['ls-tree', '-z', 'HEAD', '--', ref], {
+          cwd: root,
+          encoding: 'utf8',
+        });
+        if (committed) archiveManifest.inputs[ref] = hash;
+      }
+      const archiveFiles = await assertClassicSdkDeliveryFileInputs(root, archiveManifest.inputs);
+      await assertClassicSdkArchiveCommitInputs(
+        root,
+        archiveManifest.inputs,
+        commitPaths,
+        archiveManifest.sources,
+        archiveManifest.stateFiles,
+      );
       const allowed = (file: string) =>
         implementationFiles.has(file) ||
-        file.startsWith(`${activeRef}/`) ||
-        file.startsWith(`${archiveRef}/`) ||
-        file.startsWith(`${specsRef}/`) ||
-        (profile === 'full' && (file === designDoc || file === plan));
+        archiveFiles.has(file) ||
+        archiveManifest.stateFiles.includes(file);
       const offendingPaths = [...changed].filter((file) => !allowed(file));
       if (offendingPaths.length) {
         return {

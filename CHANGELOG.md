@@ -13,6 +13,12 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Native incremental Shape and Hook ownership**: Preserve approved auxiliary test-plan updates, review formal comment changes within the existing workflow, and prevent compatibility Hook mutations from splitting SDK state.
+- **Workflow resume intent**: Honor explicit refusal and commit-only scope before resuming an active change, including Chinese and English requests.
+- **Classic archive evidence**: Bind delivered archive and specification outputs to their recorded execution evidence, preserve committed archive checkpoints after delivery, and keep declared-directory deletions in the approved delivery scope.
+- **Native worktree and retry boundaries**: Exclude other linked worktrees from project-generated input snapshots and show verification retry choices only when supported by the current checks.
+- **Hook path ownership**: Keep configured allow paths from bypassing workflow, Runtime, or Git ownership through ordinary or dangling symbolic links and ambiguous parent traversal.
+- **Release evaluation integrity**: Require current-candidate, complete-sample Eval evidence and mandatory historical regressions before publication; reject stale reports, failed task checks, and incomplete baselines instead of treating them as a passing release.
 - **Native blocked verification recovery**: Make advertised retry and implementation-repair commands executable for ordinary changes, retain valid candidate/check evidence, and carry the blocker resolution into the new independent verification attempt ([#505](https://github.com/rpamis/comet/issues/505)).
 - **Native acceptance boundaries**: Respect Markdown section and list-item boundaries instead of attaching later sections to the final criterion. Preserve legacy confirmed criteria only when their original full approval evidence still matches; confirmed Shape content remains protected ([#504](https://github.com/rpamis/comet/issues/504)).
 - **Classic delivery scope**: Keep unrelated change drafts out of delivery requirements, validate approved linear commit ranges, and route the compatible delivery verification entry to the owning SDK workflow without discarding its approval ([#503](https://github.com/rpamis/comet/issues/503)).

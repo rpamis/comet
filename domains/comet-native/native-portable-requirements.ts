@@ -1,3 +1,11 @@
+import { nativeShapeReviewAnchorMatches } from './native-shape-review-evidence.js';
+import {
+  nativeShapeArtifactSnapshot,
+  nativeShapeArtifactContractHash,
+  type NativeShapeSemanticSnapshot,
+} from './native-shape-semantics.js';
+import { approvedEditFingerprint } from '../workflow-contract/edit-review.js';
+import { nativeEditReviewScope } from './native-edit-review-scope.js';
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -687,6 +695,7 @@ export async function rebaseNativePortableDeltasLocked(options: {
         ...options.state,
         state_version: options.state.state_version + 1,
         spec_changes: nextSpecChanges,
+        ...(shape.semanticSnapshot ? { shape_semantic_snapshot: shape.semanticSnapshot } : {}),
         shape_confirmation_hash: nativePortableShapeConfirmationHash({
           formalHash: shape.formalHash,
           childrenHash: children?.hash ?? null,
@@ -745,17 +754,91 @@ export async function readNativePortableAcceptance(options: {
   specChanges: readonly NativePortableSpecChange[];
   /** 只在完整批准指纹仍可验证时核对旧验收快照。 */
   legacyBriefBoundaries?: boolean;
-}) {
+  captureSemanticSnapshot?: boolean;
+  /** Internal verification of original bytes, never a baseline inferred from changed files. */
+  artifactTexts?: ReadonlyMap<string, string>;
+  legacyOnly?: boolean;
+}): Promise<{
+  acceptance: import('./native-portable-acceptance.js').NativePortableAcceptanceCriterion[];
+  formalHash: string;
+  semanticSnapshot?: NativeShapeSemanticSnapshot;
+  approvedSemanticSnapshot?: NativeShapeSemanticSnapshot;
+  approvedLegacyAcceptance?: import('./native-portable-acceptance.js').NativePortableAcceptanceCriterion[];
+}> {
+  const evidence =
+    !options.legacyOnly && !options.artifactTexts
+      ? await readNativeApprovedShapeSemanticSnapshot(options)
+      : null;
+  const approvedSemanticSnapshot = options.state.shape_semantic_snapshot ?? evidence?.snapshot;
+  const readFormal = async (ref: string) => {
+    if (options.artifactTexts) {
+      const text = options.artifactTexts.get(ref);
+      if (text === undefined)
+        throw Object.assign(new Error(`Missing original Shape artifact: ${ref}`), {
+          code: 'ENOENT',
+        });
+      return { ref, text };
+    }
+    return readNativeBoundedTextFile({
+      root: nativePortableChangeDir(options.paths, options.state.name),
+      ref,
+      maxBytes: null,
+      includeHash: false,
+    });
+  };
   const changeDir = nativePortableChangeDir(options.paths, options.state.name);
-  const brief = await readNativeBoundedTextFile({
-    root: changeDir,
-    ref: 'brief.md',
-    maxBytes: null,
-    includeHash: false,
-  });
+  const brief = await readFormal('brief.md');
   if (nativeBriefHasBlockingQuestion(brief.text)) {
     throw new Error('Brief has a blocking open question');
   }
+  const semantic =
+    options.captureSemanticSnapshot === true || approvedSemanticSnapshot !== undefined;
+  const semanticSnapshot: NativeShapeSemanticSnapshot | undefined = semantic
+    ? { schema: 'comet.native.shape-semantics.v1', artifacts: [] }
+    : undefined;
+  const contentHash = async (source: string, text: string): Promise<string> => {
+    if (!semanticSnapshot)
+      return canonicalHash(
+        'comet.native.shape-artifact-content.v1',
+        normalizedShapeArtifactText(
+          text,
+          options.state.document_constraints_version !== undefined &&
+            options.state.document_constraints_version !== 1,
+        ),
+      );
+    const artifact = nativeShapeArtifactSnapshot(source, text);
+    semanticSnapshot.artifacts.push(artifact);
+    const approved = approvedSemanticSnapshot?.artifacts.find((entry) => entry.source === source);
+    if (
+      approved &&
+      approved.contractHash === artifact.contractHash &&
+      approved.commentsHash !== artifact.commentsHash &&
+      options.state.builder_handoff
+    ) {
+      const relative = path
+        .relative(options.paths.projectRoot, path.join(changeDir, source))
+        .replaceAll('\\', '/');
+      const review = await approvedEditFingerprint(
+        nativeEditReviewScope(options.paths, options.state),
+        relative,
+        text,
+      );
+      if (
+        review &&
+        (await nativeShapeReviewAnchorMatches(
+          nativeEditReviewScope(options.paths, options.state),
+          approved,
+          review.beforeHash,
+        ))
+      )
+        return nativeShapeArtifactContractHash({
+          ...artifact,
+          commentsHash: approved.commentsHash,
+        });
+    }
+    return nativeShapeArtifactContractHash(artifact);
+  };
+  const briefContentHash = await contentHash(brief.ref, brief.text);
   const specs = [];
   const specArtifacts = [];
   for (const spec of options.specChanges) {
@@ -763,21 +846,11 @@ export async function readNativePortableAcceptance(options: {
       specArtifacts.push({ ...spec, contentHash: null });
       continue;
     }
-    const source = await readNativeBoundedTextFile({
-      root: changeDir,
-      ref: spec.source,
-      maxBytes: null,
-      includeHash: false,
-    });
+    const source = await readFormal(spec.source);
     let acceptanceMarkdown = source.text;
     let deltaContentHash: string | null = null;
     if (spec.delta_source) {
-      const delta = await readNativeBoundedTextFile({
-        root: changeDir,
-        ref: spec.delta_source,
-        maxBytes: null,
-        includeHash: false,
-      });
+      const delta = await readFormal(spec.delta_source);
       const parsedDelta = parseNativeDelta(delta.text);
       acceptanceMarkdown = nativeDeltaAcceptanceMarkdown(source.text, parsedDelta);
       let canonicalMarkdown = '';
@@ -813,25 +886,13 @@ export async function readNativePortableAcceptance(options: {
     specs.push({ capability: spec.capability, source: source.ref, markdown: acceptanceMarkdown });
     specArtifacts.push({
       ...spec,
-      contentHash: canonicalHash(
-        'comet.native.shape-artifact-content.v1',
-        normalizedShapeArtifactText(
-          source.text,
-          options.state.document_constraints_version !== undefined &&
-            options.state.document_constraints_version !== 1,
-        ),
-      ),
+      contentHash: await contentHash(source.ref, source.text),
       ...(deltaContentHash === null ? {} : { deltaContentHash }),
     });
   }
   let associationContentHash: string | null = null;
   try {
-    const association = await readNativeBoundedTextFile({
-      root: changeDir,
-      ref: NATIVE_CAPABILITY_ASSOCIATION_FILE,
-      maxBytes: 64 * 1024,
-      includeHash: false,
-    });
+    const association = await readFormal(NATIVE_CAPABILITY_ASSOCIATION_FILE);
     const draft = parseCapabilityAssociationDraft(association.text);
     if (draft.workflow !== 'native') {
       throw new Error('Native capability association must use the native workflow');
@@ -863,6 +924,17 @@ export async function readNativePortableAcceptance(options: {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
+  const currentFormalHash = canonicalHash('comet.native.shape-formal-artifacts.v1', {
+    brief: {
+      source: brief.ref,
+      contentHash: briefContentHash,
+    },
+    specs: specArtifacts,
+    association: {
+      source: NATIVE_CAPABILITY_ASSOCIATION_FILE,
+      contentHash: associationContentHash,
+    },
+  });
   return {
     acceptance: buildNativePortableAcceptance({
       briefMarkdown: brief.text,
@@ -872,24 +944,15 @@ export async function readNativePortableAcceptance(options: {
         options.state.document_constraints_version !== undefined &&
         options.state.document_constraints_version !== 1,
     }),
-    formalHash: canonicalHash('comet.native.shape-formal-artifacts.v1', {
-      brief: {
-        source: brief.ref,
-        contentHash: canonicalHash(
-          'comet.native.shape-artifact-content.v1',
-          normalizedShapeArtifactText(
-            brief.text,
-            options.state.document_constraints_version !== undefined &&
-              options.state.document_constraints_version !== 1,
-          ),
-        ),
-      },
-      specs: specArtifacts,
-      association: {
-        source: NATIVE_CAPABILITY_ASSOCIATION_FILE,
-        contentHash: associationContentHash,
-      },
-    }),
+    ...(semanticSnapshot ? { semanticSnapshot } : {}),
+    ...(approvedSemanticSnapshot ? { approvedSemanticSnapshot } : {}),
+    ...(evidence?.semanticFormalHash === currentFormalHash && evidence.legacyAcceptance
+      ? { approvedLegacyAcceptance: evidence.legacyAcceptance }
+      : {}),
+    formalHash:
+      evidence?.semanticFormalHash === currentFormalHash
+        ? evidence.legacyFormalHash!
+        : currentFormalHash,
   };
 }
 
@@ -941,6 +1004,7 @@ export async function prepareNativePortableShapeConfirmation(options: {
         paths: options.paths,
         state: shapeBoundary,
         specChanges,
+        captureSemanticSnapshot: true,
       });
       const { acceptance } = shape;
       const children = await readNativeChildrenContract({
@@ -1001,6 +1065,7 @@ export async function prepareNativePortableShapeConfirmation(options: {
           ? {}
           : { document_constraints_version: shapeBoundary.document_constraints_version }),
         spec_changes: specChanges,
+        shape_semantic_snapshot: shape.semanticSnapshot,
         shape_confirmation_hash: nativePortableShapeConfirmationHash({
           formalHash: shape.formalHash,
           childrenHash: children?.hash ?? null,
@@ -1039,7 +1104,7 @@ export async function inspectNativePortableAcceptanceDrift(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
   ignoreSpecOperationFor?: ReadonlySet<string>;
-}): Promise<{ drifted: boolean; reason: string | null }> {
+}): Promise<{ drifted: boolean; reason: string | null; reviewRequired?: boolean }> {
   if (options.state.document_constraints_version !== undefined) {
     const documents = await validateNativePortableDocuments(options);
     if (!documents.valid) {
@@ -1086,8 +1151,12 @@ export async function inspectNativePortableAcceptanceDrift(options: {
   if (!sameNativePortableAcceptance(expected, acceptance)) {
     // 旧版把列表外正文并入最后一项。只有完整文档仍通过后续批准指纹校验，
     // 且旧解析结果精确匹配快照，才保留既有验收身份；不能截断已扁平化的文本猜测边界。
-    let legacyAcceptance;
-    if (options.state.phase !== 'shape' && options.state.shape_confirmation_hash !== undefined) {
+    let legacyAcceptance = shape.approvedLegacyAcceptance;
+    if (
+      !legacyAcceptance &&
+      options.state.phase !== 'shape' &&
+      options.state.shape_confirmation_hash !== undefined
+    ) {
       try {
         const legacyShape = await readNativePortableAcceptance({
           ...options,
@@ -1137,6 +1206,30 @@ export async function inspectNativePortableAcceptanceDrift(options: {
       coordinationMode: options.state.coordination_mode,
     }) !== options.state.shape_confirmation_hash
   ) {
+    const approved = shape.approvedSemanticSnapshot;
+    const current = shape.semanticSnapshot;
+    if (
+      approved &&
+      current &&
+      approved.artifacts.length === current.artifacts.length &&
+      approved.artifacts.every((entry, index) => {
+        const actual = current.artifacts[index];
+        return (
+          actual?.source === entry.source &&
+          nativeShapeArtifactContractHash({ ...actual, commentsHash: entry.commentsHash }) ===
+            nativeShapeArtifactContractHash(entry)
+        );
+      }) &&
+      approved.artifacts.some(
+        (entry, index) => entry.commentsHash !== current.artifacts[index].commentsHash,
+      )
+    ) {
+      return {
+        drifted: true,
+        reviewRequired: true,
+        reason: `Native formal comments changed and may contain Agent or tool instructions. Preserve the current candidate and Action/claim; restore the pre-edit text and prepare an independent comet edit-review for ${options.state.name}, or explicitly revise Shape when no Verify candidate exists.`,
+      };
+    }
     return {
       drifted: true,
       reason:
@@ -1192,6 +1285,7 @@ export async function ensureNativePortableAcceptanceCurrentLocked(options: {
   const drift = await inspectNativePortableAcceptanceDrift(options);
   if (!drift.drifted) return;
   const reason = drift.reason ?? 'Native confirmed requirements changed';
+  if (drift.reviewRequired) throw new Error(reason);
   await returnNativePortableStateToShapeLocked({
     paths: options.paths,
     state: options.state,
@@ -1370,6 +1464,7 @@ export async function syncNativePortableSpecReferences(options: {
         ),
         completed_at: new Date().toISOString(),
       });
+      if (shape.semanticSnapshot) next.shape_semantic_snapshot = shape.semanticSnapshot;
       next.shape_confirmation_hash = nativePortableShapeConfirmationHash({
         formalHash: shape.formalHash,
         childrenHash: null,
@@ -1472,6 +1567,7 @@ export async function markNativePortableSpecRemoval(options: {
         },
       };
       delete next.shape_confirmation_hash;
+      delete next.shape_semantic_snapshot;
       delete next.children_contract_hash;
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
@@ -1620,6 +1716,7 @@ export async function returnNativePortableStateToShapeLocked(options: {
   keepFailureBudget?: boolean;
 }): Promise<NativePortableState> {
   const { state } = options;
+  await assertChangeNotSdkOwned(options.paths.projectRoot, 'native', state.name);
   if (state.archived) throw new Error(`Native change ${state.name} is already archived`);
   const withHistory = appendNativePortableHistory(state, {
     goal_cycle: state.loop.goal_cycle,
@@ -1657,6 +1754,7 @@ export async function returnNativePortableStateToShapeLocked(options: {
     },
   };
   delete next.shape_confirmation_hash;
+  delete next.shape_semantic_snapshot;
   delete next.children_contract_hash;
   const written = await writePortableMutation({ paths: options.paths, previous: state, next });
   await writeNativeLocalExecution(
@@ -1669,4 +1767,221 @@ export async function returnNativePortableStateToShapeLocked(options: {
     { containedRoot: options.paths.runtimeDir },
   );
   return written;
+}
+
+const NATIVE_SHAPE_EVIDENCE_MAX_BYTES = 2 * 1024 * 1024;
+interface NativeLegacyShapeEvidence {
+  schema: 'comet.native.shape-original-evidence.v1';
+  shapeConfirmationHash: string;
+  childrenHash: string | null;
+  documents: Array<{ source: string; text: string }>;
+}
+
+function shapeEvidenceRef(state: NativePortableState): string {
+  if (!state.shape_confirmation_hash || !/^[a-f0-9]{64}$/u.test(state.shape_confirmation_hash))
+    throw new Error('Native Shape evidence requires an existing approved fingerprint');
+  return `shape-semantics/${state.shape_confirmation_hash}.json`;
+}
+
+/** 每次从原批准全文重新校验，不信任旁证自称的语义 hash。 */
+export async function readNativeApprovedShapeSemanticSnapshot(options: {
+  paths: NativeProjectPaths;
+  state: NativePortableState;
+}): Promise<{
+  snapshot: NativeShapeSemanticSnapshot;
+  legacyFormalHash?: string;
+  semanticFormalHash?: string;
+  legacyAcceptance?: import('./native-portable-acceptance.js').NativePortableAcceptanceCriterion[];
+} | null> {
+  if (options.state.shape_semantic_snapshot)
+    return { snapshot: options.state.shape_semantic_snapshot };
+  if (!options.state.shape_confirmation_hash) return null;
+  let text: string;
+  try {
+    text = (
+      await readNativeBoundedTextFile({
+        root: nativePreferredChangeRuntimeDir(options.paths, options.state.name),
+        ref: shapeEvidenceRef(options.state),
+        maxBytes: NATIVE_SHAPE_EVIDENCE_MAX_BYTES,
+        includeHash: false,
+      })
+    ).text;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+  let evidence: NativeLegacyShapeEvidence;
+  try {
+    evidence = JSON.parse(text) as NativeLegacyShapeEvidence;
+  } catch {
+    throw new Error('Native original Shape evidence is invalid JSON');
+  }
+  const allowedSources = new Set([
+    'brief.md',
+    NATIVE_CAPABILITY_ASSOCIATION_FILE,
+    ...options.state.spec_changes.flatMap((entry) =>
+      [entry.source, entry.delta_source].filter(
+        (source): source is string => typeof source === 'string',
+      ),
+    ),
+  ]);
+  if (
+    !evidence ||
+    Object.keys(evidence).sort().join(',') !==
+      'childrenHash,documents,schema,shapeConfirmationHash' ||
+    evidence.schema !== 'comet.native.shape-original-evidence.v1' ||
+    evidence.shapeConfirmationHash !== options.state.shape_confirmation_hash ||
+    (evidence.childrenHash !== null && !/^[a-f0-9]{64}$/u.test(evidence.childrenHash)) ||
+    !Array.isArray(evidence.documents) ||
+    evidence.documents.length === 0 ||
+    evidence.documents.length > 128 ||
+    evidence.documents.some(
+      (entry) =>
+        !entry ||
+        Object.keys(entry).sort().join(',') !== 'source,text' ||
+        !allowedSources.has(entry.source) ||
+        typeof entry.text !== 'string',
+    ) ||
+    new Set(evidence.documents.map(({ source }) => source)).size !== evidence.documents.length
+  )
+    throw new Error('Native original Shape evidence has invalid binding or documents');
+  const artifactTexts = new Map(evidence.documents.map(({ source, text }) => [source, text]));
+  const original = await readNativePortableAcceptance({
+    ...options,
+    specChanges: options.state.spec_changes,
+    artifactTexts,
+    legacyOnly: true,
+  });
+  if (
+    nativePortableShapeConfirmationHash({
+      formalHash: original.formalHash,
+      childrenHash: evidence.childrenHash,
+      coordinationMode: options.state.coordination_mode,
+    }) !== options.state.shape_confirmation_hash
+  )
+    throw new Error(
+      'Native original Shape evidence does not match the approved full fingerprint; restore the original evidence, not its claimed hashes',
+    );
+  const semantic = await readNativePortableAcceptance({
+    ...options,
+    specChanges: options.state.spec_changes,
+    artifactTexts,
+    legacyOnly: true,
+    captureSemanticSnapshot: true,
+  });
+  const legacy = await readNativePortableAcceptance({
+    ...options,
+    specChanges: options.state.spec_changes,
+    artifactTexts,
+    legacyOnly: true,
+    legacyBriefBoundaries: true,
+  });
+  return {
+    snapshot: semantic.semanticSnapshot!,
+    legacyFormalHash: original.formalHash,
+    semanticFormalHash: semantic.formalHash,
+    legacyAcceptance: legacy.acceptance,
+  };
+}
+
+/** 恢复原文后的一次性兼容迁移；不批准新需求，不修改 Run、候选、Action 或 claim。 */
+export async function captureNativeApprovedShapeSnapshot(options: {
+  paths: NativeProjectPaths;
+  state: NativePortableState;
+}): Promise<{ shapeConfirmationHash: string; sources: string[]; existing: boolean }> {
+  const { state, paths } = options;
+  if (
+    state.archived ||
+    !['build', 'verify', 'archive'].includes(state.phase) ||
+    !state.shape_confirmation_hash
+  )
+    throw new Error('Native spec snapshot requires an already confirmed active Shape');
+  const previous = await readNativeApprovedShapeSemanticSnapshot(options);
+  if (previous) {
+    const drift = await inspectNativePortableAcceptanceDrift(options);
+    if (drift.drifted) throw new Error(drift.reason ?? 'Native confirmed requirements changed');
+    return {
+      shapeConfirmationHash: state.shape_confirmation_hash,
+      sources: previous.snapshot.artifacts.map(({ source }) => source),
+      existing: true,
+    };
+  }
+  const changeDir = nativePortableChangeDir(paths, state.name);
+  const sources = [
+    ...new Set([
+      'brief.md',
+      NATIVE_CAPABILITY_ASSOCIATION_FILE,
+      ...state.spec_changes.flatMap((entry) =>
+        [entry.source, entry.delta_source].filter(
+          (source): source is string => typeof source === 'string',
+        ),
+      ),
+    ]),
+  ];
+  if (sources.length > 128)
+    throw new Error('Native spec snapshot supports at most 128 original documents');
+  const documents: NativeLegacyShapeEvidence['documents'] = [];
+  for (const source of sources) {
+    try {
+      const file = await readNativeBoundedTextFile({
+        root: changeDir,
+        ref: source,
+        maxBytes: NATIVE_SHAPE_EVIDENCE_MAX_BYTES,
+        includeHash: false,
+      });
+      documents.push({ source, text: file.text });
+    } catch (error) {
+      if (
+        source === NATIVE_CAPABILITY_ASSOCIATION_FILE &&
+        (error as NodeJS.ErrnoException).code === 'ENOENT'
+      )
+        continue;
+      throw error;
+    }
+  }
+  const artifactTexts = new Map(documents.map(({ source, text }) => [source, text]));
+  const original = await readNativePortableAcceptance({
+    ...options,
+    specChanges: state.spec_changes,
+    artifactTexts,
+    legacyOnly: true,
+  });
+  const children = await readNativeChildrenContract({
+    changeDir,
+    acceptanceIds: state.acceptance.map(({ id }) => id),
+    validation: nativeChildrenAcceptanceValidation(state),
+  });
+  const childrenHash = children?.hash ?? null;
+  if (
+    nativePortableShapeConfirmationHash({
+      formalHash: original.formalHash,
+      childrenHash,
+      coordinationMode: state.coordination_mode,
+    }) !== state.shape_confirmation_hash
+  )
+    throw new Error(
+      'Restore the complete originally approved brief, Specs, association and child plan before spec snapshot; current documents do not match the approved full fingerprint. The Run and current Action/claim are unchanged.',
+    );
+  const evidence: NativeLegacyShapeEvidence = {
+    schema: 'comet.native.shape-original-evidence.v1',
+    shapeConfirmationHash: state.shape_confirmation_hash,
+    childrenHash,
+    documents,
+  };
+  const text = JSON.stringify(evidence) + '\n';
+  if (Buffer.byteLength(text) > NATIVE_SHAPE_EVIDENCE_MAX_BYTES)
+    throw new Error(
+      'Native spec snapshot original evidence exceeds the 2 MiB limit; use explicit Shape confirmation instead',
+    );
+  await atomicWriteText(
+    path.join(nativePreferredChangeRuntimeDir(paths, state.name), shapeEvidenceRef(state)),
+    text,
+    { containedRoot: paths.runtimeDir, exclusive: true },
+  );
+  await readNativeApprovedShapeSemanticSnapshot(options);
+  return {
+    shapeConfirmationHash: state.shape_confirmation_hash,
+    sources: documents.map(({ source }) => source),
+    existing: false,
+  };
 }

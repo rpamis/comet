@@ -1,4 +1,7 @@
-import { execFileSync } from 'node:child_process';
+import { defineClassicWorkflowApplication } from '../../../domains/comet-classic/classic-sdk-application.js';
+import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
+import { build } from 'esbuild';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,6 +11,7 @@ import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { assertClassicSdkDeliveryInputs } from '../../../domains/comet-classic/classic-sdk-delivery-inputs.js';
 import { readClassicProjectFile } from '../../../domains/comet-classic/classic-protected-path.js';
 import { parseCheckManifest } from '../../../domains/comet-classic/classic-check-manifest.js';
+import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
@@ -19,8 +23,29 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
+async function publicStateRuntime(root: string) {
+  const runtime = path.join(root, 'comet-state.mjs');
+  await build({
+    entryPoints: [path.resolve('domains/comet-classic/classic-state-entry.ts')],
+    outfile: runtime,
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    banner: {
+      js: "import { createRequire as __cometCreateRequire } from 'node:module'; const require = __cometCreateRequire(import.meta.url);",
+    },
+    logLevel: 'silent',
+  });
+  return runtime;
+}
+
 async function hotfix(
-  options: { parked?: boolean; nativeRoot?: string; deliveryAction?: 'local' | 'push' } = {},
+  options: {
+    parked?: boolean;
+    nativeRoot?: string;
+    deliveryAction?: 'local' | 'push';
+    specSync?: boolean;
+  } = {},
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-delivery-scope-'));
   roots.push(root);
@@ -64,6 +89,8 @@ async function hotfix(
     await put('.comet/config.yaml', stringify(config));
   }
   await put('source.js', 'export const ready = false;\n');
+  if (options.specSync)
+    await put('openspec/specs/ready/spec.md', '# Ready\nExisting requirement.\n');
   git('init', '-b', 'main');
   git('add', '--all');
   git('commit', '-m', 'base');
@@ -96,6 +123,8 @@ async function hotfix(
   await put(`${activeRef}/proposal.md`, '# Proposal\nCorrect the ready constant.\n');
   await put(`${activeRef}/design.md`, '# Design\nKeep the existing public API.\n');
   await put(`${activeRef}/tasks.md`, '- [x] Correct the constant <!-- comet-task:impl -->\n');
+  if (options.specSync)
+    await put(`${activeRef}/specs/ready/spec.md`, '# ADDED Requirements\nReady must be true.\n');
   const open = await cli('guard', 'example', 'open');
   await cli('guard', 'example', 'open', '--apply', '--approval-hash', open.approvalHash);
   await put('source.js', 'export const ready = true;\n');
@@ -148,6 +177,11 @@ async function hotfix(
     options.deliveryAction ?? 'local',
   );
   const openSpec = await createOpenSpecArchiveFixture(root);
+  if (options.specSync)
+    await fs.appendFile(
+      openSpec.command,
+      `\nawait fs.writeFile(path.join(process.cwd(), 'openspec/specs/ready/spec.md'), '# Ready\\nExisting requirement.\\nReady must be true.\\n');\n`,
+    );
   vi.stubEnv('COMET_OPENSPEC', openSpec.command);
   await cli('guard', 'example', 'archive', '--apply');
   const archived = (await inspect()).run;
@@ -161,7 +195,13 @@ async function hotfix(
     return git('commit', '-m', 'implementation');
   };
   const commitArchive = () => {
-    git('add', '--', archiveRef, reportRef);
+    git(
+      'add',
+      '--',
+      archiveRef,
+      reportRef,
+      ...(options.specSync ? ['openspec/specs/ready/spec.md'] : []),
+    );
     git('commit', '-m', 'archive');
     return git('rev-parse', 'HEAD');
   };
@@ -176,6 +216,7 @@ async function hotfix(
     inspect,
     verified,
     archived,
+    openSpec,
     activeRef,
     archiveRef,
     reportRef,
@@ -406,4 +447,364 @@ it('recovers polluted 0.5.0 delivery inputs only under their original manifest a
   await expect(assertClassicSdkDeliveryInputs(f.projectRoot, oldRun)).rejects.toThrow(
     'inside its declared path base',
   );
+});
+
+it.each(['proposal', 'new-spec', 'manifest', 'extra-archive-file'] as const)(
+  'rejects %s changes after Archive execution without claiming or replaying delivery',
+  async (mutation) => {
+    const f = await hotfix();
+    const ref =
+      mutation === 'new-spec'
+        ? 'openspec/specs/unrelated/spec.md'
+        : `${f.archiveRef}/${mutation === 'proposal' ? 'proposal.md' : mutation === 'manifest' ? '.comet/archive-manifest.json' : 'unapproved.md'}`;
+    await f.put(ref, '# Unapproved requirement\n');
+    f.commitImplementation();
+    f.commitArchive();
+    if (mutation === 'new-spec') {
+      f.git('add', '--', ref);
+      f.git('commit', '-m', 'unverified spec');
+    }
+    const before = (await f.inspect()).run;
+    const rejected = await f.invoke(
+      'state',
+      'complete-delivery',
+      'example',
+      '--commit',
+      f.git('rev-parse', 'HEAD'),
+    );
+    expect(rejected.exitCode).not.toBe(0);
+    expect(rejected.response.stderr).toContain(ref);
+    expect((await f.inspect()).run).toEqual(before);
+    expect(await f.openSpec.invocations()).toHaveLength(1);
+  },
+);
+
+it('accepts only the actual OpenSpec delta synchronization output, not later edits to that spec', async () => {
+  const f = await hotfix({ specSync: true });
+  const ref = 'openspec/specs/ready/spec.md';
+  const produced = await fs.readFile(path.join(f.projectRoot, ref), 'utf8');
+  expect(produced).toContain('Existing requirement.');
+  expect(produced).toContain('Ready must be true.');
+  f.commitImplementation();
+  const commit = f.commitArchive();
+  await f.put(ref, '# Unverified replacement\n');
+  const before = (await f.inspect()).run;
+  const rejected = await f.invoke('state', 'complete-delivery', 'example', '--commit', commit);
+  expect(rejected.exitCode).not.toBe(0);
+  expect(rejected.response.stderr).toContain(ref);
+  expect((await f.inspect()).run).toEqual(before);
+  await f.put(ref, produced);
+  expect(
+    (await f.cli('state', 'complete-delivery', 'example', '--commit', commit)).nextAction.kind,
+  ).toBe('done');
+});
+
+it('checks the archived proposal through a freshly bundled public runtime', async () => {
+  const f = await hotfix();
+  const runtime = await publicStateRuntime(f.root);
+  await f.put(`${f.archiveRef}/proposal.md`, '# Unapproved replacement\n');
+  f.commitImplementation();
+  const commit = f.commitArchive();
+  const result = spawnSync(
+    process.execPath,
+    [runtime, 'complete-delivery', 'example', '--commit', commit, '--json'],
+    { cwd: f.projectRoot, encoding: 'utf8' },
+  );
+  expect(result.stdout, result.stderr || String(result.error)).not.toBe('');
+  expect(result.status).not.toBe(0);
+  expect(JSON.parse(result.stdout).stderr).toContain(`${f.archiveRef}/proposal.md`);
+  expect((await f.inspect()).run.status).not.toBe('completed');
+});
+
+it('restores the original archive manifest in the same Run without replaying OpenSpec', async () => {
+  const f = await hotfix();
+  const ref = `${f.archiveRef}/.comet/archive-manifest.json`;
+  const original = await fs.readFile(path.join(f.projectRoot, ref), 'utf8');
+  const before = (await f.inspect()).run;
+  await fs.unlink(path.join(f.projectRoot, ref));
+  await f.cli('archive', 'example', '--recover');
+  expect(await fs.readFile(path.join(f.projectRoot, ref), 'utf8')).toBe(original);
+  expect((await f.inspect()).run).toEqual(before);
+  expect(await f.openSpec.invocations()).toHaveLength(1);
+  f.commitImplementation();
+  const commit = f.commitArchive();
+  expect(
+    (await f.cli('state', 'complete-delivery', 'example', '--commit', commit)).nextAction.kind,
+  ).toBe('done');
+});
+
+it('delivers with portable archive evidence when the original local execution store is absent', async () => {
+  const f = await hotfix({ specSync: true });
+  await fs.rm(path.join(resolveWorkspaceRuntimeRootSync(f.projectRoot), 'archive-receipts'), {
+    recursive: true,
+  });
+  f.commitImplementation();
+  const commit = f.commitArchive();
+  expect(
+    (await f.cli('state', 'complete-delivery', 'example', '--commit', commit)).nextAction.kind,
+  ).toBe('done');
+});
+
+it('rejects a replaced archive manifest symlink and keeps the same Run pending', async () => {
+  const f = await hotfix();
+  const ref = `${f.archiveRef}/.comet/archive-manifest.json`;
+  const file = path.join(f.projectRoot, ref);
+  const original = await fs.readFile(file);
+  const outside = path.join(f.root, 'manifest-copy.json');
+  await fs.writeFile(outside, original);
+  await fs.unlink(file);
+  await fs.symlink(outside, file);
+  f.commitImplementation();
+  const commit = f.commitArchive();
+  const before = (await f.inspect()).run;
+  const rejected = await f.invoke('state', 'complete-delivery', 'example', '--commit', commit);
+  expect(rejected.exitCode).not.toBe(0);
+  expect(rejected.response.stderr).toContain('symbolic link');
+  expect((await f.inspect()).run).toEqual(before);
+});
+
+it('rejects unapproved archived requirements even when a later commit restores the produced bytes', async () => {
+  const f = await hotfix();
+  f.commitImplementation();
+  f.commitArchive();
+  const ref = `${f.archiveRef}/proposal.md`;
+  await f.put(ref, '# Unapproved requirement\n');
+  f.git('add', '--', ref);
+  f.git('commit', '-m', 'unapproved archive requirement');
+  const changed = f.git('rev-parse', 'HEAD');
+  f.git('revert', '--no-edit', changed);
+  const before = (await f.inspect()).run;
+  const rejected = await f.invoke(
+    'state',
+    'complete-delivery',
+    'example',
+    '--commit',
+    f.git('rev-parse', 'HEAD'),
+  );
+  expect(rejected.exitCode).not.toBe(0);
+  expect(rejected.response.stderr).toContain(`${changed}:${ref}`);
+  expect((await f.inspect()).run).toEqual(before);
+});
+
+it.each(['local', 'push'] as const)(
+  'keeps the committed archive checkpoint and Git delivery clean after %s completion',
+  async (deliveryAction) => {
+    const f = await hotfix({ deliveryAction });
+    f.commitImplementation();
+    const commit = f.commitArchive();
+    if (deliveryAction === 'push') f.git('push', 'origin', 'main');
+    const stateRef = `${f.archiveRef}/comet-state.yaml`;
+    const stateBefore = await fs.readFile(path.join(f.projectRoot, stateRef), 'utf8');
+    const statusBefore = f.git('status', '--porcelain', '--untracked-files=no');
+    const allStatusBefore = f.git('status', '--porcelain');
+    expect(statusBefore).toBe('');
+    expect(f.git('show', `${commit}:${stateRef}`)).toBe(stateBefore.trim());
+    const completed = await f.cli('state', 'complete-delivery', 'example', '--commit', commit);
+    expect(completed.nextAction.kind).toBe('done');
+    expect((await f.inspect()).run.status).toBe('completed');
+    expect(f.git('rev-parse', 'HEAD')).toBe(commit);
+    if (deliveryAction === 'push') {
+      expect(f.git('ls-remote', 'origin', 'refs/heads/main').split(/\s+/)[0]).toBe(commit);
+    }
+    expect(f.git('status', '--porcelain', '--untracked-files=no')).toBe(statusBefore);
+    expect(await fs.readFile(path.join(f.projectRoot, stateRef), 'utf8')).toBe(stateBefore);
+    expect(f.git('status', '--porcelain')).toBe(allStatusBefore);
+    const runtime = await publicStateRuntime(f.root);
+    const cold = spawnSync(
+      process.execPath,
+      [runtime, 'delivery', 'example', '--verify', '--json'],
+      {
+        cwd: f.projectRoot,
+        encoding: 'utf8',
+      },
+    );
+    expect(cold.status, cold.stdout || cold.stderr).toBe(0);
+    expect(JSON.parse(cold.stdout).data.delivery.verification.scope).toBe('historical-receipt');
+    expect(
+      (await createClassicSdkStateStore(f.projectRoot).readProjection!('example'))?.status,
+    ).toBe('completed');
+    expect(f.git('status', '--porcelain')).toBe(allStatusBefore);
+    expect(await fs.readFile(path.join(f.projectRoot, stateRef), 'utf8')).toBe(stateBefore);
+  },
+);
+
+it('rejects changed archived checkpoint and branch state after completed delivery', async () => {
+  const f = await hotfix();
+  f.commitImplementation();
+  const commit = f.commitArchive();
+  await f.cli('state', 'complete-delivery', 'example', '--commit', commit);
+  const stateRef = `${f.archiveRef}/comet-state.yaml`;
+  const original = await fs.readFile(path.join(f.projectRoot, stateRef), 'utf8');
+  const before = (await f.inspect()).run;
+  for (const mutate of [
+    (value: { branch_status?: string; run_checkpoint: { hash: string } }) => {
+      value.branch_status = 'handled';
+    },
+    (value: { branch_status?: string; run_checkpoint: { hash: string } }) => {
+      value.run_checkpoint.hash = '0'.repeat(64);
+    },
+  ]) {
+    const changed = parse(original);
+    mutate(changed);
+    await f.put(stateRef, stringify(changed));
+    const rejected = await f.invoke('state', 'delivery', 'example', '--verify');
+    expect(rejected.exitCode).not.toBe(0);
+    await f.put(stateRef, original);
+    expect((await f.inspect()).run).toEqual(before);
+  }
+  expect(f.git('status', '--porcelain', '--untracked-files=no')).toBe('');
+});
+
+it('restores only the portable archived baseline on another device and verifies delivery without replay', async () => {
+  const f = await hotfix();
+  f.commitImplementation();
+  const commit = f.commitArchive();
+  await f.cli('state', 'complete-delivery', 'example', '--commit', commit);
+  const copiedRoot = path.join(f.root, 'copied-project');
+  f.git('clone', '--no-hardlinks', f.projectRoot, copiedRoot);
+  const copied = async (...args: string[]) => {
+    const result = await runClassicCli([...args, '--json'], undefined, {
+      invocationCwd: copiedRoot,
+    });
+    expect(result.exitCode, result.stdout ?? result.stderr).toBe(0);
+    return JSON.parse(result.stdout).data;
+  };
+  const resumed = await copied('state', 'next', 'example');
+  expect(resumed.nextAction.kind).not.toBe('done');
+  const restored = await inspectClassicSdkRun(copiedRoot, 'example');
+  expect(restored.run.status).toBe('running');
+  expect(restored.state.branchStatus).toBe('pending');
+  expect(restored.run.waits).toEqual(f.archived.waits);
+  expect(restored.run.actions.at(-1)).toMatchObject({
+    stepId: 'hotfix.archive.deliver',
+    status: 'pending',
+  });
+  vi.stubEnv('COMET_OPENSPEC', path.join(f.root, 'must-not-execute'));
+  const completed = await copied('state', 'complete-delivery', 'example', '--commit', commit);
+  expect(completed.nextAction.kind).toBe('done');
+  expect(
+    execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], {
+      cwd: copiedRoot,
+      encoding: 'utf8',
+    }).trim(),
+  ).toBe('');
+  expect(await f.openSpec.invocations()).toHaveLength(1);
+});
+
+it('keeps the archive checkpoint immutable while an interrupted delivery is reconciled', async () => {
+  const f = await hotfix();
+  f.commitImplementation();
+  const commit = f.commitArchive();
+  const stateFile = path.join(f.projectRoot, f.archiveRef, 'comet-state.yaml');
+  const before = await fs.readFile(stateFile, 'utf8');
+  const { run, runtime } = await f.inspect();
+  const action = run.actions.at(-1)!;
+  await runtime.claim({
+    runId: run.runId,
+    expectedRevision: run.revision,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: 'test-delivery',
+    claimToken: 'interrupted-delivery',
+  });
+  expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
+  await runtime.markUnknown({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    reason: 'The process stopped before recording the verified Git delivery.',
+  });
+  expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
+  const completed = await runtime.recordOutcome({
+    runId: run.runId,
+    outcome: {
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken: 'interrupted-delivery',
+      outcomeId: 'reconciled-delivery',
+      status: 'succeeded',
+      output: { action: 'local', targetBranch: 'main', commit },
+    },
+    context: { requestId: 'reconcile-delivery', projectRoot: f.projectRoot },
+  });
+  expect(completed.status).toBe('completed');
+  expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
+  expect(f.git('status', '--porcelain', '--untracked-files=no')).toBe('');
+  expect(await f.openSpec.invocations()).toHaveLength(1);
+});
+
+it.each(['approved', 'unapproved'] as const)(
+  'checks %s active-source history before its final archive deletion',
+  async (kind) => {
+    const f = await hotfix();
+    const ref = `${f.activeRef}/proposal.md`;
+    const original = await fs.readFile(
+      path.join(f.projectRoot, f.archiveRef, 'proposal.md'),
+      'utf8',
+    );
+    await f.put(ref, kind === 'approved' ? original : '# Unapproved intermediate requirements\n');
+    f.git('add', '--', ref);
+    f.git('commit', '-m', 'active proposal before archival');
+    const intermediate = f.git('rev-parse', 'HEAD');
+    await fs.rm(path.join(f.projectRoot, f.activeRef), { recursive: true });
+    f.git('add', '--update', '--', f.activeRef);
+    f.git('commit', '-m', 'remove active proposal after archival');
+    f.commitImplementation();
+    const commit = f.commitArchive();
+    const before = (await f.inspect()).run;
+    const runtime = await publicStateRuntime(f.root);
+    const executed = spawnSync(
+      process.execPath,
+      [runtime, 'complete-delivery', 'example', '--commit', commit, '--json'],
+      { cwd: f.projectRoot, encoding: 'utf8' },
+    );
+    expect(executed.error).toBeUndefined();
+    const result = { exitCode: executed.status, response: JSON.parse(executed.stdout) };
+    if (kind === 'approved') {
+      expect(result.exitCode, executed.stdout || executed.stderr).toBe(0);
+      expect(result.response.data.nextAction.kind).toBe('done');
+      expect(f.git('status', '--porcelain', '--untracked-files=no')).toBe('');
+    } else {
+      expect(result.exitCode).not.toBe(0);
+      expect(result.response.stderr).toContain(`${intermediate}:${ref}`);
+      expect((await f.inspect()).run).toEqual(before);
+    }
+    expect(await f.openSpec.invocations()).toHaveLength(1);
+  },
+);
+
+it('revalidates a portable historical archive outcome without inventing new execution proof', async () => {
+  const f = await hotfix();
+  f.commitImplementation();
+  f.commitArchive();
+  const copiedRoot = path.join(f.root, 'historical-copy');
+  f.git('clone', '--no-hardlinks', f.projectRoot, copiedRoot);
+  const resumed = await runClassicCli(['state', 'next', 'example', '--json'], undefined, {
+    invocationCwd: copiedRoot,
+  });
+  expect(resumed.exitCode, resumed.stdout ?? resumed.stderr).toBe(0);
+  const restored = await inspectClassicSdkRun(copiedRoot, 'example');
+  const action = restored.run.actions.find((entry) => entry.stepId === 'hotfix.archive.execute')!;
+  const validator = defineClassicWorkflowApplication('hotfix').validators.find(
+    (entry) => entry.id === 'comet-classic-archive-outcome',
+  )!;
+  await expect(
+    fs.stat(path.join(resolveWorkspaceRuntimeRootSync(copiedRoot), 'archive-receipts')),
+  ).rejects.toMatchObject({ code: 'ENOENT' });
+  const context = { requestId: 'portable-historical-archive', projectRoot: copiedRoot };
+  const historical = await validator.validate({
+    run: restored.run,
+    action,
+    outcome: action.outcome!,
+    context,
+  });
+  expect(historical).toEqual({ accepted: true });
+  const altered = { ...action.outcome!, outcomeId: 'new-unexecuted-outcome' };
+  expect(
+    (await validator.validate({ run: restored.run, action, outcome: altered, context })).accepted,
+  ).toBe(false);
+  expect((await inspectClassicSdkRun(copiedRoot, 'example')).run).toEqual(restored.run);
+  expect(await f.openSpec.invocations()).toHaveLength(1);
 });

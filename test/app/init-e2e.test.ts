@@ -572,6 +572,10 @@ describe('comet init E2E', () => {
 
   it('upgrades an incompatible OpenSpec CLI before non-interactive Classic setup', async () => {
     mockExternalSuccess();
+    const projectPackage = '{"name":"user-project","private":true}\n';
+    const projectLock = '{"name":"user-project","lockfileVersion":3}\n';
+    await fs.writeFile(path.join(tmpDir, 'package.json'), projectPackage);
+    await fs.writeFile(path.join(tmpDir, 'package-lock.json'), projectLock);
     await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
     const externalSuccess = mockedExecFileSync.getMockImplementation();
     let openSpecVersion = '1.3.1';
@@ -605,6 +609,23 @@ describe('comet init E2E', () => {
           args.map(String).join(' ') === 'install -g @fission-ai/openspec@latest',
       ),
     ).toBe(true);
+    await expect(fs.readFile(path.join(tmpDir, 'package.json'), 'utf8')).resolves.toBe(
+      projectPackage,
+    );
+    await expect(fs.readFile(path.join(tmpDir, 'package-lock.json'), 'utf8')).resolves.toBe(
+      projectLock,
+    );
+    await expect(fs.lstat(path.join(tmpDir, 'node_modules'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    const installs = mockedExecFileSync.mock.calls.filter(
+      ([command, args]) =>
+        /(?:^|[/\\])npm(?:\.cmd)?$/u.test(String(command)) &&
+        Array.isArray(args) &&
+        args.includes('install'),
+    );
+    expect(installs.length).toBeGreaterThan(0);
+    for (const [, args] of installs) expect(args).toContain('-g');
   });
 
   it('supports an explicit Native artifact root through the main init command', async () => {

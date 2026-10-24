@@ -2,6 +2,7 @@ import path from 'path';
 
 import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 import { readWorkflowProjectConfig } from './project-config-reader.js';
+import { isCometHookTargetWithin, scopeCometHookTargets } from './hook-target-scope.js';
 
 export interface HookWritePolicy {
   allow_paths: readonly string[];
@@ -51,9 +52,6 @@ export async function configuredHookWritePath(
     : path.resolve(projectRoot, target);
   const absoluteProjectRoot = path.resolve(projectRoot);
   if (!isWithin(absoluteProjectRoot, absoluteTarget)) return null;
-  if (reservedPaths.some((reservedPath) => isWithin(path.resolve(reservedPath), absoluteTarget))) {
-    return null;
-  }
   const relative = projectRelativePath(projectRoot, target);
   if (!relative) return null;
   const policy = await readHookWritePolicy(projectRoot);
@@ -62,5 +60,20 @@ export async function configuredHookWritePath(
     const prefix = comparisonKey(allowPath);
     return key === prefix || key.startsWith(`${prefix}/`);
   });
-  return matched ? `${relative} (configured Hook allow path: ${matched})` : null;
+  if (!matched) return null;
+  // 放行目录中的中间链接也可能指向项目外或 Runtime，不能只检查词法前缀。
+  const scoped = await scopeCometHookTargets(projectRoot, [target]);
+  const physicalTarget = path.isAbsolute(target)
+    ? target
+    : `${absoluteProjectRoot}${path.sep}${target}`;
+  if (scoped.projectTargets.length !== 1) return null;
+  const protectedPaths = [
+    path.join(absoluteProjectRoot, '.git'),
+    path.join(absoluteProjectRoot, '.comet'),
+    ...reservedPaths,
+  ];
+  for (const reservedPath of protectedPaths) {
+    if (await isCometHookTargetWithin(path.resolve(reservedPath), physicalTarget)) return null;
+  }
+  return `${relative} (configured Hook allow path: ${matched})`;
 }

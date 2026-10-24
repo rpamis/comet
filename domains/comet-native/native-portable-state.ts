@@ -1,3 +1,4 @@
+import { parseNativeShapeSemanticSnapshot } from './native-shape-semantics.js';
 import { promises as fs } from 'node:fs';
 import {
   assertNativeBuilderAcceptanceComplete,
@@ -49,6 +50,7 @@ const ROOT_KEYS = new Set([
   'brief',
   'document_constraints_version',
   'shape_confirmation_hash',
+  'shape_semantic_snapshot',
   'children_contract_hash',
   'coordination_mode',
   'spec_changes',
@@ -849,6 +851,11 @@ export function parseNativePortableState(value: unknown): NativePortableState {
             'Native Shape confirmation hash',
           ),
         }),
+    ...(root.shape_semantic_snapshot === undefined
+      ? {}
+      : {
+          shape_semantic_snapshot: parseNativeShapeSemanticSnapshot(root.shape_semantic_snapshot),
+        }),
     ...(root.children_contract_hash === undefined
       ? {}
       : {
@@ -895,6 +902,17 @@ export function parseNativePortableState(value: unknown): NativePortableState {
     archived: booleanValue(root.archived, 'Native archived'),
     created_at: timestamp(root.created_at, 'Native created_at'),
   };
+  if (state.shape_semantic_snapshot) {
+    const expected = [
+      'brief.md',
+      ...state.spec_changes.flatMap(({ source }) => (source ? [source] : [])),
+    ].sort();
+    const actual = state.shape_semantic_snapshot.artifacts.map(({ source }) => source).sort();
+    if (!state.shape_confirmation_hash || JSON.stringify(expected) !== JSON.stringify(actual))
+      throw new Error(
+        'Native Shape semantic snapshot must match the approved artifact declarations',
+      );
+  }
   assertReferences(state);
   assertLifecycle(state);
   return state;

@@ -166,6 +166,8 @@ export interface NativePortableState {
   /** Set on changes created or returned to Shape after the document contract was introduced. */
   document_constraints_version?: 1 | 2 | 3;
   shape_confirmation_hash?: string;
+  /** Approved contract and explicit auxiliary fields; absent on hash-only legacy states. */
+  shape_semantic_snapshot?: import('./native-shape-semantics.js').NativeShapeSemanticSnapshot;
   children_contract_hash?: string;
   coordination_mode?: NativeSupervisorCoordinationMode;
   spec_changes: NativePortableSpecChange[];

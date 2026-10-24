@@ -767,8 +767,19 @@ def _copy_current_comet_cli_snapshot(environment_dir: Path, test_dir: Path) -> N
         or not source_files
     ):
         raise FileNotFoundError("Current Comet source snapshot is incomplete")
-    source_hash, source_count = _tree_digest(source_root, sorted(set(source_files)))
-    if published:
+    from scaffold.python.release_gate import current_source_identity
+
+    source_identity = current_source_identity(source_root)
+    source_hash = source_identity["sourceHash"]
+    source_count = source_identity["sourceFileCount"]
+    release = os.environ.get("COMET_EVAL_RELEASE_SUITE") == "current"
+    if release:
+        from scaffold.python.release_gate import cli_snapshot_identity
+
+        cli_snapshot_identity(source_root)
+        compiler_version = "release-dist"
+        shutil.copytree(source_root / "dist", target / "dist")
+    elif published:
         compiler_version = "published-dist"
         shutil.copytree(source_root / "dist", target / "dist")
     else:
@@ -855,8 +866,18 @@ def _copy_trusted_native_runtime_snapshot(
 # =============================================================================
 
 
+def _release_suite(config):
+    return getattr(getattr(config, "option", None), "release_suite", None)
+
+
 def pytest_addoption(parser):
     """Add CLI options for task and treatment selection."""
+    parser.addoption(
+        "--release-suite",
+        choices=["current"],
+        default=None,
+        help="完整当前候选发布矩阵，不接受 task/treatment 缩减",
+    )
     parser.addoption(
         "--task",
         action="store",
@@ -1052,6 +1073,11 @@ class ExperimentPlugin:
             experiment_id=experiment_id,
             report_outputs=report_outputs,
         )
+        if _release_suite(self.config):
+            from scaffold.python.release_gate import candidate_identity, suite_contract
+
+            self.logger.metadata["release_candidate"] = candidate_identity()
+            self.logger.metadata["release_suite"] = suite_contract()
         self.start_time = time.time()
 
         print(f"\n{'=' * 60}")
@@ -1067,6 +1093,11 @@ class ExperimentPlugin:
         if not cases:
             return
         payload = expected_case_matrix_payload(cases)
+        if _release_suite(self.config):
+            from scaffold.python.release_gate import expected_matrix
+
+            if payload != expected_matrix(self.config.getoption("--count")):
+                raise pytest.UsageError("发布矩阵被筛选或不完整；不会启动模型样本")
         _persist_expected_case_matrix(self.logger.base_dir, payload)
         self.logger.metadata["expected_case_matrix"] = {
             "schema": payload["schema"],
@@ -1125,6 +1156,10 @@ class ExperimentPlugin:
 
     def pytest_runtest_logreport(self, report):
         """Keep setup/teardown failures distinct from scored case failures."""
+        if self.logger and getattr(report, "skipped", False):
+            self.logger.metadata["pytest_skipped"] = (
+                self.logger.metadata.get("pytest_skipped", 0) + 1
+            )
         if self.logger and report.failed and report.when != "call":
             self.logger.metadata["pytest_errors"] = self.logger.metadata.get("pytest_errors", 0) + 1
 
@@ -1142,6 +1177,8 @@ class ExperimentPlugin:
         self._reload_expected_case_matrix_metadata()
         self._reload_results_from_reports()
         self.logger.metadata["pytest_exitstatus"] = int(exitstatus)
+        self.logger.metadata.setdefault("pytest_errors", 0)
+        self.logger.metadata.setdefault("pytest_skipped", 0)
 
         if self.logger.results:
             self.logger.finalize()
@@ -1762,9 +1799,14 @@ def test_dir(tmp_path):
     yield tmp_path
     if (tmp_path / ".eval-runtime-volume").is_file():
         from scaffold.python.utils import run_shell
-        result = run_shell("docker.sh", "cleanup-runtime-data", str(tmp_path), timeout=30, check=False)
+
+        result = run_shell(
+            "docker.sh", "cleanup-runtime-data", str(tmp_path), timeout=30, check=False
+        )
         if result.returncode != 0:
-            raise RuntimeError("Eval Runtime data cleanup failed: " + (result.stderr or result.stdout))
+            raise RuntimeError(
+                "Eval Runtime data cleanup failed: " + (result.stderr or result.stdout)
+            )
 
 
 @pytest.fixture
@@ -2064,6 +2106,13 @@ def record_result(test_dir, experiment_logger, request):
         treatment_name = _get_treatment_name(request.node)
         rep = _get_repetition(request.node)
         events["sample"] = rep
+        if getattr(experiment_logger, "metadata", {}).get("release_candidate"):
+            from scaffold.python.release_gate import candidate_identity
+
+            expected_candidate = experiment_logger.metadata["release_candidate"]
+            if candidate_identity() != expected_candidate:
+                raise ValueError("评估期间候选源码或 harness 已变化，请重新执行完整评估")
+            events["release_candidate"] = expected_candidate
         base_dir = experiment_logger.base_dir
 
         save_events(base_dir, treatment_name, rep, events)
@@ -2182,6 +2231,7 @@ def _build_report_payload(
         "rep": rep,
         "passed": len(failed) == 0,
         "run_id": run_id,
+        "agent_returncode": returncode,
         "checks_passed": passed,
         "checks_failed": failed,
         "sample_quality": sample_quality,
@@ -2204,6 +2254,8 @@ def _build_report_payload(
             "skill_sources": events.get("skill_sources", []),
             "eval_manifest": events.get("eval_manifest"),
             "case_manifest": events.get("case_manifest"),
+            "release_candidate": events.get("release_candidate"),
+            "current_comet_build": events.get("current_comet_build"),
             "eval_generation": events.get("eval_generation"),
             "interaction": events.get("interaction", {}),
             "artifact_references": artifact_references,
@@ -2260,9 +2312,7 @@ def fixtures(
         record_result=record_result,
         request_config=request.config,
         repetition=(
-            _get_repetition(request.node)
-            if request.node.get_closest_marker("eval_case")
-            else 1
+            _get_repetition(request.node) if request.node.get_closest_marker("eval_case") else 1
         ),
     )
     yield _current_fixtures

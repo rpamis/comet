@@ -38,7 +38,6 @@ import {
 } from '../workflow-contract/change-runtime-owner.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import {
-  nativeSdkCanRefreshChecks,
   nativeSdkCheckExecutor,
   nativeSdkCurrentCheckSummaries,
   assertNativeSdkCandidateUnchanged,
@@ -180,6 +179,7 @@ interface NativeShapeProposal {
   specChanges: NativePortableSpecChange[];
   acceptance: Array<Pick<NativePortableAcceptanceState, 'id' | 'source' | 'text'>>;
   formalHash: string;
+  semanticSnapshot?: import('./native-shape-semantics.js').NativeShapeSemanticSnapshot;
   children: { hash: string; contract: NativeChildrenContract } | null;
   shapeConfirmationHash: string;
 }
@@ -253,10 +253,11 @@ export async function collectNativeSdkShapeProposal(options: {
   const changeDir = path.join(options.paths.changesDir, state.name);
   const specChanges = await discoverNativePortableSpecChanges({ paths: options.paths, state });
   await assertNativePortableDocuments({ paths: options.paths, state, specChanges });
-  const { acceptance, formalHash } = await readNativePortableAcceptance({
+  const { acceptance, formalHash, semanticSnapshot } = await readNativePortableAcceptance({
     paths: options.paths,
     state,
     specChanges,
+    captureSemanticSnapshot: state.phase === 'shape' && state.status === 'active',
   });
   const children = await readNativeChildrenContract({
     changeDir,
@@ -270,6 +271,9 @@ export async function collectNativeSdkShapeProposal(options: {
     specChanges,
     acceptance: acceptance.map(({ id, source, text }) => ({ id, source, text })),
     formalHash,
+    ...(semanticSnapshot
+      ? { semanticSnapshot: state.shape_semantic_snapshot ?? semanticSnapshot }
+      : {}),
     children: children ? { hash: children.hash, contract: children.contract } : null,
     shapeConfirmationHash: nativePortableShapeConfirmationHash({
       formalHash,
@@ -288,6 +292,7 @@ function resetShape(state: NativePortableState): NativePortableState {
     acceptance: [],
   };
   delete next.shape_confirmation_hash;
+  delete next.shape_semantic_snapshot;
   delete next.children_contract_hash;
   delete next.coordination_mode;
   return parseNativePortableState(next);
@@ -325,6 +330,7 @@ function resetShapeForRemoval(
     },
   };
   delete next.shape_confirmation_hash;
+  delete next.shape_semantic_snapshot;
   delete next.children_contract_hash;
   delete next.coordination_mode;
   delete next.verifier_action;
@@ -369,6 +375,7 @@ function resetShapeForRequirementsRevision(
     },
   };
   delete next.shape_confirmation_hash;
+  delete next.shape_semantic_snapshot;
   delete next.children_contract_hash;
   delete next.coordination_mode;
   delete next.verifier_action;
@@ -1409,6 +1416,9 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
               document_constraints_version: nativeSdkShapeConstraintsVersion(state),
               spec_changes: proposal.specChanges,
               shape_confirmation_hash: proposal.shapeConfirmationHash,
+              ...(proposal.semanticSnapshot
+                ? { shape_semantic_snapshot: proposal.semanticSnapshot }
+                : {}),
             },
             acceptance: proposal.acceptance,
           });
@@ -2287,7 +2297,9 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
           );
           if (
             !wait ||
-            !nativeSdkVerifyWaitDecisions(state, wait).some(({ choice }) => choice === event.choice)
+            !nativeSdkVerifyWaitDecisions(state, wait, run).some(
+              ({ choice }) => choice === event.choice,
+            )
           ) {
             throw new Error('Native Verify stop decision does not match the current Run');
           }
@@ -2346,9 +2358,23 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
           return { state: state as unknown as RuntimeValue, next: ['verify.confirm'] };
         }
         if (event.kind === 'wait-resolved' && event.stepId === 'verify.confirm') {
+          const wait = run.waits.find(
+            (candidate) =>
+              candidate.stepId === event.stepId &&
+              candidate.decision?.id === event.decisionId &&
+              candidate.proposalHash === event.proposalHash,
+          );
+          if (
+            !wait ||
+            !nativeSdkVerifyWaitDecisions(state, wait, run).some(
+              ({ choice }) => choice === event.choice,
+            )
+          ) {
+            throw new Error(
+              'Native Verify confirmation does not match an executable current decision',
+            );
+          }
           if (event.choice === 'reverify') {
-            if (!nativeSdkCanRefreshChecks(run))
-              throw new Error('不可重复执行的检查不能重放；请先确认后续验证方式');
             return {
               state: parseNativePortableState({
                 ...state,

@@ -41,7 +41,10 @@ import {
 } from './native-sdk-check-execution.js';
 import { readProjectConfig } from './native-config.js';
 import { nativeProjectPaths, resolveArtifactRoot } from './native-paths.js';
-import { inspectNativePortableAcceptanceDrift } from './native-portable-requirements.js';
+import {
+  inspectNativePortableAcceptanceDrift,
+  readNativeApprovedShapeSemanticSnapshot,
+} from './native-portable-requirements.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
 import { nativeSdkSupervisorParentCandidateCommit } from './native-sdk-supervisor-parent.js';
@@ -69,9 +72,10 @@ export function nativeSdkCanRefreshChecks(run: Readonly<WorkflowRun>): boolean {
         action.status === 'succeeded',
     )
     .lastIndexOf(true);
-  const plans = nativeSdkCheckPlans(
-    run.outputs['supervisor.parent.builder']?.value ?? run.outputs['build.builder']?.value,
-  );
+  // Outputs retain earlier workflow modes. Only the latest successful Builder
+  // owns this candidate; an old Supervisor one-shot plan must not disable it.
+  const builder = run.actions[start];
+  const plans = nativeSdkCheckPlans(builder?.outcome?.output);
   for (const action of run.actions.slice(start + 1)) {
     if (action.stepId !== 'verify.requested-checks') continue;
     const outputs = record(
@@ -629,6 +633,9 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
             plans,
             managedArtifactRoot,
             editReviewScope: nativeEditReviewScope(paths, state),
+            shapeSemanticSnapshot: (await readNativeApprovedShapeSemanticSnapshot({ paths, state }))
+              ?.snapshot,
+            legacyShapeSemanticSnapshot: state.shape_semantic_snapshot === undefined,
           })
         : null;
 
@@ -709,6 +716,10 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
                   plans,
                   managedArtifactRoot,
                   editReviewScope: nativeEditReviewScope(paths, state),
+                  shapeSemanticSnapshot: (
+                    await readNativeApprovedShapeSemanticSnapshot({ paths, state })
+                  )?.snapshot,
+                  legacyShapeSemanticSnapshot: state.shape_semantic_snapshot === undefined,
                 })
               : null,
           candidateId,
@@ -1258,6 +1269,9 @@ export async function nativeSdkCandidateInputGate(options: {
     plans,
     managedArtifactRoot: await resolveArtifactRoot(executionRoot, input.artifactRootRef),
     editReviewScope: nativeEditReviewScope(paths, state),
+    shapeSemanticSnapshot: (await readNativeApprovedShapeSemanticSnapshot({ paths, state }))
+      ?.snapshot,
+    legacyShapeSemanticSnapshot: state.shape_semantic_snapshot === undefined,
   };
   return nativeCandidateInputGate({
     ...gateOptions,

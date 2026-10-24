@@ -284,6 +284,49 @@ describe('packaged Hook Router worktree isolation', () => {
     expect(result.stderr).toContain('only allowed in Build');
   });
 
+  it('allows raw Shape brief patches while denying business source patches through the packaged Router', async () => {
+    await writeProjectConfig(primary, defaultProjectConfig('docs', 'en'));
+    const created = await runNativeCli([
+      'new',
+      'raw-sdk-shape',
+      '--runtime',
+      'sdk',
+      '--project-root',
+      primary,
+      '--json',
+    ]);
+    expect(created.exitCode, created.stderr).toBe(0);
+    const home = path.join(primary, '.test-home');
+    await fs.mkdir(home);
+    const invoke = (targets: string[]) =>
+      spawnSync(process.execPath, [router, '--platform', 'codex', '--project-root', primary], {
+        cwd: primary,
+        input: [
+          '*** Begin Patch',
+          ...targets.flatMap((target) => [`*** Update File: ${target}`, '@@', '-old', '+new']),
+          '*** End Patch',
+        ].join('\n'),
+        env: { ...process.env, HOME: home, USERPROFILE: home },
+        encoding: 'utf8',
+        timeout: 20_000,
+      });
+    const brief = 'docs/comet/changes/raw-sdk-shape/brief.md';
+    const allowed = invoke([brief]);
+    expect(allowed.status, allowed.stderr).toBe(0);
+    for (const targets of [['src/app.ts'], [brief, 'src/app.ts']]) {
+      const denied = invoke(targets);
+      expect(denied.status, denied.stderr).toBe(2);
+      if (targets.length === 1) {
+        expect(denied.stderr).toContain('raw-sdk-shape');
+        expect(denied.stderr).toContain('only allowed in Build');
+      } else {
+        expect(denied.stderr).toContain(
+          'Formal Native requirements must be edited in separate actions',
+        );
+      }
+    }
+  });
+
   it('routes a linked worktree SDK Native change through the packaged Hook', async () => {
     const created = await runNativeCli([
       'new',

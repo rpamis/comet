@@ -944,6 +944,10 @@ export async function projectNativeSdkContinuation(options: {
     continuation = sdkLoopStopContinuation(run, state, verifyWait.proposalHash);
   } else if (verifyWait) {
     const retry = verifyWait.stepId === 'verify.retry';
+    const decisions = nativeSdkVerifyDecisions(run, state).filter(
+      ({ wait }) => wait.id === verifyWait.id,
+    );
+    const oneShotChecks = !retry && !decisions.some(({ action }) => action === 'retry-verifier');
     continuation = {
       ...base,
       disposition: 'await-user',
@@ -952,15 +956,17 @@ export async function projectNativeSdkContinuation(options: {
       action: retry ? 'retry-verifier' : 'confirm-skill-coordinated-pass',
       requiredInputs: ['summary', 'user-decision'],
       commandAlternatives: [
-        ...nativeSdkVerifyDecisions(run, state)
-          .filter(({ wait }) => wait.id === verifyWait.id)
-          .map(({ action, wait }) => sdkDecision(state, action, wait.proposalHash)),
+        ...decisions.map(({ action, wait }) => sdkDecision(state, action, wait.proposalHash)),
         ...(!retry ? [sdkDecision(state, 'revise-requirements')] : []),
       ],
       userCommunication: communication(
         localized(
-          'Summarize the result and evidence, then wait for an explicit decision before executing the matching option.',
-          '简要说明结果和证据，等待用户明确决定后执行对应选项。',
+          oneShotChecks
+            ? 'Summarize the result and evidence, then wait for an explicit decision. Reverification is unavailable because the current checks include one-shot commands; do not replay them. Accept the valid result or revise the candidate and confirm a new verification plan.'
+            : 'Summarize the result and evidence, then wait for an explicit decision before executing the matching option.',
+          oneShotChecks
+            ? '简要说明结果和证据，等待用户明确决定。当前检查包含不可重复执行的命令，因此不提供重新验收；不能重放它们。可接受有效结果，或修订候选并确认新的验证方式。'
+            : '简要说明结果和证据，等待用户明确决定后执行对应选项。',
         ),
         retry
           ? localized(
@@ -968,8 +974,12 @@ export async function projectNativeSdkContinuation(options: {
               '验收未正常返回可用结果。是否保留当前候选和检查，重新尝试独立验收？',
             )
           : localized(
-              'Verification passed. Accept the result for Archive, revise the implementation, or revise the requirements?',
-              '验收已通过。请选择接受结果进入归档、修改实现，或调整需求。',
+              oneShotChecks
+                ? 'Verification passed. The checks include one-shot commands, so reverification is unavailable. Accept the result for Archive, revise the implementation, or revise the requirements?'
+                : 'Verification passed. Accept the result for Archive, revise the implementation, or revise the requirements?',
+              oneShotChecks
+                ? '验收已通过。检查包含不可重复执行的命令，因此不能重新验收。请选择接受结果进入归档、修改实现，或调整需求。'
+                : '验收已通过。请选择接受结果进入归档、修改实现，或调整需求。',
             ),
       ),
     };
@@ -1393,6 +1403,15 @@ export async function projectNativeSdkContinuation(options: {
       ? {
           pendingWaits: waits.map((wait) => ({
             ...wait,
+            ...(['verify.stop', 'verify.checks-stop', 'verify.retry', 'verify.confirm'].includes(
+              wait.stepId,
+            )
+              ? {
+                  choices: nativeSdkVerifyWaitDecisions(state, wait, run).map(
+                    ({ choice }) => choice,
+                  ),
+                }
+              : {}),
             commandArgs: dispatchCommandArgs,
             decisionRequests: ([
               'verify.stop',
@@ -1400,7 +1419,7 @@ export async function projectNativeSdkContinuation(options: {
               'verify.retry',
               'verify.confirm',
             ].includes(wait.stepId)
-              ? nativeSdkVerifyWaitDecisions(state, wait).map(({ choice }) => choice)
+              ? nativeSdkVerifyWaitDecisions(state, wait, run).map(({ choice }) => choice)
               : wait.choices
             ).map((choice) => ({
               operation: 'resolve-wait',

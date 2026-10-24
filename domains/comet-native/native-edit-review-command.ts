@@ -14,7 +14,7 @@ import {
   type EditReviewCommandOptions,
 } from '../workflow-contract/edit-review.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
-import { nativeEditReviewScope } from './native-edit-review.js';
+import { nativeEditReviewScope, nativeEditReviewPreparationScope } from './native-edit-review.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { readProjectConfig } from './native-config.js';
 import { inspectNativeSdkRun } from './native-runtime-ownership.js';
@@ -53,7 +53,10 @@ export async function runNativeEditReviewCommand(options: EditReviewCommandOptio
       if (options.file) {
         const source = await fs.readFile(options.file, 'utf8');
         const request = parseCometHookRequest(source);
-        const proposal = await prepareEditReview(scope, request);
+        const proposal = await prepareEditReview(
+          await nativeEditReviewPreparationScope(paths, state, request),
+          request,
+        );
         if (proposalHash && proposalHash !== proposal.proposalHash)
           throw new Error('原编辑请求与所选复核提案不匹配');
         proposalHash = proposal.proposalHash;
@@ -69,7 +72,10 @@ export async function runNativeEditReviewCommand(options: EditReviewCommandOptio
     const source = await fs.readFile(options.file, 'utf8');
     if (options.operation === 'prepare') {
       const request = parseCometHookRequest(source);
-      const proposal = await prepareEditReview(scope, request);
+      const proposal = await prepareEditReview(
+        await nativeEditReviewPreparationScope(paths, state, request),
+        request,
+      );
       await rememberEditReviewInput(scope, proposal.proposalHash, options.file, source);
       return {
         proposal,

@@ -7074,14 +7074,17 @@ it('preserves the original pass and Wait when reverify includes a Verifier-added
     context: { requestId: 'report', projectRoot: root },
   });
   const wait = run.waits.at(-1)!;
-  await expect(
-    advanceNativeSdkChange(root, run.runId, {
-      expectedAction: 'retry-verifier',
-      expectedStateVersion: (run.state as NativePortableState).state_version,
-      proposalHash: wait.proposalHash,
-      summary: 'Please reverify',
-    }),
-  ).rejects.toThrow(/不可重复执行/);
+  const rejected = await advanceNativeSdkChange(root, run.runId, {
+    expectedAction: 'retry-verifier',
+    expectedStateVersion: (run.state as NativePortableState).state_version,
+    proposalHash: wait.proposalHash,
+    summary: 'Please reverify',
+  });
+  expect(rejected.exitCode).toBe(73);
+  expect(rejected.data.continuation).not.toBeNull();
+  expect(rejected.data.continuation.commandAlternatives.map(({ name }) => name)).not.toContain(
+    'retry-verifier',
+  );
   const final = await store.read(run.runId);
   expect(final).toEqual(run);
   expect(final!.waits.at(-1)).toMatchObject({ id: wait.id, status: 'pending' });
@@ -7120,12 +7123,26 @@ it('archives a real Git candidate through canonical writes and directory relocat
     runtime,
     run: prepared,
   } = await awaitingArchiveApplication('sdk', undefined, true, initializeArchiveGit);
+  const beforeHead = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: root,
+    encoding: 'utf8',
+  }).trim();
   const result = await runNativeCli(['archive', 'sdk-shape', '--project-root', root, '--json']);
   expect(result.exitCode, JSON.stringify(result)).toBe(0);
   expect((await runtime.inspect(prepared.runId)).state).toMatchObject({
     archived: true,
     status: 'done',
   });
+  expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()).toBe(
+    beforeHead,
+  );
+  const completed = JSON.parse(result.stdout!).data;
+  expect(completed.continuation.userCommunication.agentInstruction).toContain(
+    'Run completion alone does not prove commit, push, or PR delivery',
+  );
+  expect(completed.continuation.userCommunication.agentInstruction).toContain(
+    'Git delivery already authorized by the user',
+  );
 });
 
 it.each([

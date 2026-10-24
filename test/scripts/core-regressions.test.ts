@@ -20,6 +20,7 @@ function report(status = 'passed') {
     numFailedTestSuites: 0,
     testResults: [
       {
+        name: '',
         assertionResults: [
           { fullName: 'fixture positive', status: 'passed' },
           { fullName: 'fixture negative', status },
@@ -39,16 +40,16 @@ describe('core regression entrypoint', () => {
       expect(item.invariant.length).toBeGreaterThan(0);
       expect(item.requiredNames.length).toBeGreaterThan(0);
       for (const file of item.files) {
-        expect(file).toMatch(
-          /^test\/(?:domains\/(?:comet-native|comet-classic|engine|workflow-contract)|app)\/[^/]+\.test\.ts$/u,
-        );
+        expect(file).toMatch(/^test\/[a-zA-Z0-9_./-]+\.test\.ts$/u);
+        expect(file.split('/')).not.toContain('..');
         await expect(fs.stat(path.resolve(file))).resolves.toMatchObject({});
       }
     }
   });
 
   it('deduplicates issue selectors and rejects unknown cases rather than passing nothing', () => {
-    expect(selectCoreRegressions(['500', '501'])).toHaveLength(1);
+    const combined = selectCoreRegressions(['500', '501']);
+    expect(new Set(combined.map((entry) => entry.id)).size).toBe(combined.length);
     expect(selectCoreRegressions([])).toHaveLength(CORE_REGRESSIONS.length);
     expect(() => selectCoreRegressions(['missing'])).toThrow('Unknown core regression');
   });
@@ -64,6 +65,16 @@ describe('core regression entrypoint', () => {
 
   it('accepts only a successful result with every mandatory behavior executed', () => {
     expect(assertCoreRegressionResult(entry, report())).toBe(2);
+  });
+
+  it('does not substitute the same test title from a different file for a historical case', () => {
+    const expected = 'test/domains/comet-classic/classic-sdk-application.test.ts';
+    const input = report();
+    input.testResults[0].name = path.resolve('test/other.test.ts');
+    const required = { ...entry, requiredCases: [{ file: expected, name: 'fixture positive' }] };
+    expect(() => assertCoreRegressionResult(required, input)).toThrow('required file regression');
+    input.testResults[0].name = path.resolve(expected);
+    expect(assertCoreRegressionResult(required, input)).toBe(2);
   });
 
   it.each(['pending', 'skipped', 'todo', 'failed'])(

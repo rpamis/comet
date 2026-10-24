@@ -1,3 +1,8 @@
+import {
+  captureClassicArchiveInputs,
+  recordClassicArchiveManifest,
+} from '../../../domains/comet-classic/classic-sdk-archive-manifest.js';
+import { annotatedMarkdown } from '../../../domains/comet-classic/classic-archive-annotation.js';
 import { classicSdkRevisionApplication } from '../../../domains/comet-classic/classic-sdk-revision-application.js';
 import { classicOpenEvidenceReceipt } from '../../../domains/comet-classic/classic-sdk-application.js';
 import { defineWorkflow, hashRuntimeValue } from '../../../domains/engine/runtime.js';
@@ -701,6 +706,68 @@ async function reachFullArchiveExecuteAction(
   return { runtime, run: preflighted, projectRoot };
 }
 
+/** 归档样例经过真实的输入与输出收据边界，不再只凭目录自报成功。 */
+async function archiveWithReceipt(
+  runtime: WorkflowRuntime,
+  run: WorkflowRun,
+  projectRoot: string,
+  recordOutcome = true,
+) {
+  const action = run.actions.at(-1)!;
+  const claimToken = `${run.runId}-archive-fixture`;
+  await runtime.claim({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: 'comet-classic-archive',
+    claimToken,
+    context: { requestId: claimToken, projectRoot },
+  });
+  const claimed = await runtime.inspect(run.runId);
+  const claimedAction = claimed.actions.at(-1)!;
+  const activeRef = (run.input as { changeDir: string }).changeDir;
+  const archivedRef = 'docs/openspec/changes/archive/2026-09-24-example';
+  await recordClassicArchiveRequirements(projectRoot, path.join(projectRoot, activeRef));
+  const before = await captureClassicArchiveInputs(projectRoot, claimed, 'docs/openspec/specs');
+  await fs.mkdir(path.dirname(path.join(projectRoot, archivedRef)), { recursive: true });
+  await fs.rename(path.join(projectRoot, activeRef), path.join(projectRoot, archivedRef));
+  const state = run.state as unknown as ClassicState;
+  for (const [ref, extra] of [
+    [state.designDoc, 'status: final'],
+    [state.plan, ''],
+  ] as const) {
+    if (!ref) continue;
+    const file = path.join(projectRoot, ref.replace(activeRef + '/', archivedRef + '/'));
+    await fs.writeFile(
+      file,
+      annotatedMarkdown(await fs.readFile(file, 'utf8'), '2026-09-24-example', extra),
+    );
+  }
+  const artifacts = await recordClassicArchiveManifest(
+    projectRoot,
+    claimed,
+    claimedAction,
+    archivedRef,
+    before,
+  );
+  if (!recordOutcome) return claimed;
+  return runtime.recordOutcome({
+    runId: run.runId,
+    context: { requestId: claimToken, projectRoot },
+    outcome: {
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken,
+      outcomeId: claimToken,
+      status: 'succeeded',
+      output: { archiveDirectory: archivedRef },
+      artifacts,
+    },
+  });
+}
+
 async function commitValidLocalArchive(
   runtime: WorkflowRuntime,
   run: WorkflowRun,
@@ -708,28 +775,12 @@ async function commitValidLocalArchive(
   implementationFiles: string[] = ['source.js'],
   includeReport = true,
 ): Promise<{ pending: WorkflowRun; commit: string }> {
-  const active = path.join(projectRoot, 'docs', 'openspec', 'changes', 'example');
   const archivedRef = 'docs/openspec/changes/archive/2026-09-24-example';
-  const archived = path.join(projectRoot, ...archivedRef.split('/'));
-  await fs.mkdir(path.dirname(archived), { recursive: true });
-  await fs.rename(active, archived);
-  const pending = await completeLatestAction(
-    runtime,
-    run,
-    { archiveDirectory: archivedRef },
-    `${run.runId}-archive-files`,
-    { executorId: 'comet-classic-archive', projectRoot },
-  );
+  const pending = run.actions.at(-1)!.stepId.endsWith('.archive.deliver')
+    ? run
+    : await archiveWithReceipt(runtime, run, projectRoot);
   const designDocRef = 'docs/superpowers/specs/design.md';
   const planRef = 'docs/superpowers/plans/2026-09-24-example.md';
-  await fs.writeFile(
-    path.join(projectRoot, ...designDocRef.split('/')),
-    '---\narchived-with: 2026-09-24-example\nstatus: final\n---\n# Design\n',
-  );
-  await fs.writeFile(
-    path.join(projectRoot, ...planRef.split('/')),
-    '---\narchived-with: 2026-09-24-example\nstatus: final\n---\n# Plan\n',
-  );
   const reportRef = (pending.state as ClassicState).verificationReport!;
   execFileSync(
     'git',
@@ -870,18 +921,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
   it('keeps delivery pending after the archived change passes Archive outcome validation', async () => {
     const { runtime, run, projectRoot } =
       await reachFullArchiveExecuteAction('archive-completed-run');
-    const active = path.join(projectRoot, 'docs', 'openspec', 'changes', 'example');
-    const archivedRef = 'docs/openspec/changes/archive/2026-09-24-example';
-    const archived = path.join(projectRoot, ...archivedRef.split('/'));
-    await fs.mkdir(path.dirname(archived), { recursive: true });
-    await fs.rename(active, archived);
-    const completed = await completeLatestAction(
-      runtime,
-      run,
-      { archiveDirectory: archivedRef },
-      'archive-completed-run-outcome',
-      { executorId: 'comet-classic-archive', projectRoot },
-    );
+    const completed = await archiveWithReceipt(runtime, run, projectRoot);
     expect(completed.status).toBe('running');
     expect(completed.state).toMatchObject({ archived: true, phase: 'archive' });
     expect(completed.actions.at(-1)).toMatchObject({
@@ -894,18 +934,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
     const { runtime, run, projectRoot } = await reachFullArchiveExecuteAction(
       'archive-delivery-no-commit',
     );
-    const active = path.join(projectRoot, 'docs', 'openspec', 'changes', 'example');
-    const archivedRef = 'docs/openspec/changes/archive/2026-09-24-example';
-    const archived = path.join(projectRoot, ...archivedRef.split('/'));
-    await fs.mkdir(path.dirname(archived), { recursive: true });
-    await fs.rename(active, archived);
-    const pending = await completeLatestAction(
-      runtime,
-      run,
-      { archiveDirectory: archivedRef },
-      'archive-delivery-files',
-      { executorId: 'comet-classic-archive', projectRoot },
-    );
+    const pending = await archiveWithReceipt(runtime, run, projectRoot);
     await expect(
       completeLatestAction(
         runtime,
@@ -982,18 +1011,13 @@ describe('Classic workflow application through the public Runtime SDK', () => {
     const { runtime, run, projectRoot } = await reachFullArchiveExecuteAction(
       'archive-delivery-missing-annotations',
     );
-    const active = path.join(projectRoot, 'docs', 'openspec', 'changes', 'example');
+    const pending = await archiveWithReceipt(runtime, run, projectRoot);
     const archivedRef = 'docs/openspec/changes/archive/2026-09-24-example';
-    const archived = path.join(projectRoot, ...archivedRef.split('/'));
-    await fs.mkdir(path.dirname(archived), { recursive: true });
-    await fs.rename(active, archived);
-    const pending = await completeLatestAction(
-      runtime,
-      run,
-      { archiveDirectory: archivedRef },
-      'archive-delivery-unannotated-files',
-      { executorId: 'comet-classic-archive', projectRoot },
-    );
+    for (const ref of [
+      'docs/superpowers/specs/design.md',
+      'docs/superpowers/plans/2026-09-24-example.md',
+    ])
+      await fs.writeFile(path.join(projectRoot, ref), '# Missing annotation\n');
     execFileSync('git', ['add', '--', archivedRef], { cwd: projectRoot });
     execFileSync(
       'git',
@@ -1163,7 +1187,55 @@ describe('Classic workflow application through the public Runtime SDK', () => {
     ).toContain(extraRef);
   });
 
-  it('restores a moved Archive with its claimed Action unknown on another device', async () => {
+  it('recovers an interrupted Archive outcome from the original executor receipt without replay', async () => {
+    const { runtime, run, projectRoot } = await reachFullArchiveExecuteAction('example', {
+      projectedStore: true,
+    });
+    await registerSdkChangeOwner(projectRoot, {
+      schema: 'comet.change-owner.v1',
+      workflow: 'classic',
+      change: 'example',
+      format: 'sdk',
+      application: 'classic-full',
+      runId: run.runId,
+    });
+    const claimed = await archiveWithReceipt(runtime, run, projectRoot, false);
+    const action = claimed.actions.at(-1)!;
+    await runtime.markUnknown({
+      runId: claimed.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      reason: 'Executor stopped after recording the original Archive receipt.',
+    });
+    const unknown = await runtime.inspect(run.runId);
+    const previous = process.env.COMET_OPENSPEC;
+    process.env.COMET_OPENSPEC = path.join(projectRoot, 'must-not-execute-openspec');
+    try {
+      const recovered = await withClassicCommandContext(
+        { projectRoot, invocationCwd: projectRoot },
+        () => classicArchiveCommand(['example', '--recover']),
+      );
+      expect(recovered.exitCode, recovered.stderr).toBe(0);
+    } finally {
+      if (previous === undefined) delete process.env.COMET_OPENSPEC;
+      else process.env.COMET_OPENSPEC = previous;
+    }
+    const completed = await runtime.inspect(run.runId);
+    expect(
+      completed.actions.filter((entry) => entry.stepId === 'full.archive.execute'),
+    ).toHaveLength(1);
+    expect(
+      completed.actions.find((entry) => entry.id === action.id)?.outcome?.artifacts,
+    ).toHaveLength(1);
+    expect(completed.waits).toEqual(unknown.waits);
+    expect(completed.evidenceWaits).toEqual(unknown.evidenceWaits);
+    expect(completed.actions.at(-1)).toMatchObject({
+      stepId: 'full.archive.deliver',
+      status: 'pending',
+    });
+  });
+
+  it('keeps a copied unknown Archive blocked when no original execution receipt survives', async () => {
     const { runtime, run, projectRoot } = await reachFullArchiveExecuteAction('example', {
       projectedStore: true,
     });
@@ -1235,17 +1307,13 @@ describe('Classic workflow application through the public Runtime SDK', () => {
         path.join(restoredRoot, 'docs', 'openspec', 'changes', 'archive', '2026-09-24-example'),
       ),
     ).toBeDefined();
-    const reconciled = await withClassicCommandContext(
-      { projectRoot: restoredRoot, invocationCwd: restoredRoot },
-      () => classicArchiveCommand(['example', '--recover']),
-    );
-    expect(reconciled.exitCode, reconciled.stderr).toBe(0);
+    await expect(
+      withClassicCommandContext({ projectRoot: restoredRoot, invocationCwd: restoredRoot }, () =>
+        classicArchiveCommand(['example', '--recover']),
+      ),
+    ).rejects.toThrow('不要重放 Archive');
     const continued = await inspectClassicSdkRun(restoredRoot, 'example');
-    expect(continued.state.archived).toBe(true);
-    expect(continued.run.actions.at(-1)).toMatchObject({
-      stepId: 'full.archive.deliver',
-      status: 'pending',
-    });
+    expect(continued.run).toEqual(restored.run);
   });
 
   it('restores an archived change awaiting delivery from the copied state file', async () => {
@@ -1395,6 +1463,28 @@ describe('Classic workflow application through the public Runtime SDK', () => {
       ),
     ).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
     expect((await runtime.inspect(run.runId)).state).toMatchObject({ archived: false });
+  });
+
+  it('rejects a directory-only Archive outcome without the original executor receipt', async () => {
+    const { runtime, run, projectRoot } = await reachFullArchiveExecuteAction(
+      'archive-missing-original-receipt',
+    );
+    const activeRef = (run.input as { changeDir: string }).changeDir;
+    const archivedRef = 'docs/openspec/changes/archive/2026-09-24-example';
+    await fs.mkdir(path.dirname(path.join(projectRoot, archivedRef)), { recursive: true });
+    await fs.rename(path.join(projectRoot, activeRef), path.join(projectRoot, archivedRef));
+    await expect(
+      completeLatestAction(
+        runtime,
+        run,
+        { archiveDirectory: archivedRef },
+        'unproven-archive-outcome',
+        { executorId: 'comet-classic-archive', projectRoot },
+      ),
+    ).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
+    const rejected = await runtime.inspect(run.runId);
+    expect(rejected.state).toMatchObject({ archived: false });
+    expect(rejected.actions.at(-1)?.rejectedOutcomes?.at(-1)?.reason).toContain('缺少原始执行清单');
   });
 
   it('rejects an Archive result when required archived artifacts are missing', async () => {
@@ -3057,10 +3147,11 @@ describe('Classic workflow application through the public Runtime SDK', () => {
           phase: 'archive',
           nextAction: { kind: 'action', stepId: 'full.archive.deliver' },
         });
-        // 分别在 preflight、Archive claim 前和 claim 后复查当前 Verify 输入。
+        // 分别在 preflight、Archive claim 前后及清单读取后复查当前 Verify 输入。
         expect(snapshotActions.map(({ stepId, status }) => ({ stepId, status }))).toEqual([
           { stepId: 'full.archive.preflight', status: 'pending' },
           { stepId: 'full.archive.execute', status: 'pending' },
+          { stepId: 'full.archive.execute', status: 'running' },
           { stepId: 'full.archive.execute', status: 'running' },
         ]);
         expect(snapshotActions[0]).toEqual(beforeDrift!.actions.at(-1));

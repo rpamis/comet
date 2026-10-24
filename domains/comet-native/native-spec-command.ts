@@ -1,6 +1,8 @@
+import { captureNativeApprovedShapeSnapshot } from './native-portable-requirements.js';
+import { readNativePortableChange } from './native-portable-storage.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
-import { resolveNativeSdkCommandRoot } from './native-runtime-ownership.js';
+import { resolveNativeSdkCommandRoot, inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { disassociateNativeSdkCapability } from './native-sdk-disassociate-command.js';
 import { removeNativeSdkCapability } from './native-sdk-remove-command.js';
 import { promises as fs } from 'node:fs';
@@ -27,6 +29,22 @@ export async function nativeSpecCommand(
   projectRoot: string,
 ): Promise<DispatchResult> {
   const subcommand = requiredPositional(args, 'spec subcommand');
+  if (subcommand === 'snapshot') {
+    const name = requiredPositional(args, 'change name');
+    assertNoArguments(args);
+    const commandRoot = await resolveNativeSdkCommandRoot(projectRoot, name);
+    const { paths } = await configuredPaths(commandRoot);
+    const sdk = await readSdkChangeOwner(commandRoot, 'native', name);
+    const state = sdk
+      ? (await inspectNativeSdkRun(commandRoot, name, { readOnly: true })).state
+      : await readNativePortableChange(paths, name);
+    const snapshot = await captureNativeApprovedShapeSnapshot({ paths, state });
+    return success(
+      'spec snapshot',
+      snapshot,
+      `Validated approved Shape evidence for ${name}; the Run, candidate, Action and claim are unchanged. Auxiliary line edits may now continue.\n`,
+    );
+  }
   if (subcommand === 'sync') {
     const inputFile = takeOption(args, '--input');
     const name = requiredPositional(args, 'change name');

@@ -80,6 +80,13 @@ export function hasGlobCharacters(value: string): boolean {
   return /[*?]/u.test(value);
 }
 
+/** 输入中的字面目录覆盖后代路径；删除后目录不存在时仍保留同一声明范围。 */
+export function compileCheckPolicyInputPattern(pattern: string): (relative: string) => boolean {
+  return hasGlobCharacters(pattern)
+    ? compileCheckPolicyPattern(pattern)
+    : (relative) => relative === pattern || relative.startsWith(`${pattern}/`);
+}
+
 type PolicyPatternToken =
   | { kind: 'literal'; value: string }
   | { kind: 'question' | 'star' | 'globstar' | 'globstar-slash' };

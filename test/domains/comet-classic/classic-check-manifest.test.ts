@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   checkManifestHash,
+  compileCheckPolicyInputPattern,
   compileCheckPolicyPattern,
   diffCheckManifests,
   hasGlobCharacters,
@@ -56,6 +57,23 @@ describe('Classic check manifests', () => {
     expect(hasGlobCharacters('src/**')).toBe(true);
     expect(hasGlobCharacters('src/a?b.ts')).toBe(true);
     expect(hasGlobCharacters('src/plain.ts')).toBe(false);
+  });
+
+  it.each([
+    ['src', 'src/obsolete.js', true],
+    ['src', 'src/nested/obsolete.js', true],
+    ['src', 'src-other/obsolete.js', false],
+    ['src', 'src.js', false],
+    ['source.js', 'source.js', true],
+    ['source.js', 'source.js.bak', false],
+    ['src/*.js', 'src/obsolete.js', true],
+    ['src/*.js', 'src/nested/obsolete.js', false],
+  ])('matches input %s against %s as %s', (pattern, relative, expected) => {
+    expect(compileCheckPolicyInputPattern(pattern)(relative)).toBe(expected);
+  });
+
+  it('does not apply input directory semantics to output patterns', () => {
+    expect(compileCheckPolicyPattern('src')('src/obsolete.js')).toBe(false);
   });
 
   it.each([

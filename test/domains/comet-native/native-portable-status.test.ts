@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 
 import {
@@ -35,6 +35,7 @@ describe('Native portable status', () => {
   const roots: string[] = [];
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
   });
 
@@ -211,6 +212,82 @@ describe('Native portable status', () => {
       kind: 'acceptance',
       value: { id: 'A33' },
     });
+  });
+
+  it('bounds 32-child named Supervisor status without reading unrelated change state', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-supervisor-scale-'));
+    roots.push(root);
+    execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
+    await writeProjectConfig(root, defaultProjectConfig('docs', 'en'));
+    const paths = await nativeProjectPaths(root, 'docs');
+    await ensureNativeDirectories(paths);
+    await createNativePortableChange({ paths, name: 'scale-parent', language: 'en' });
+    const childNames = Array.from({ length: 32 }, (_, index) => `child-${index + 1}`);
+    const supervisor = (names: string[]) =>
+      createNativeSupervisorState({
+        parent: 'scale-parent',
+        targetBranch: 'main',
+        targetCommit: 'a'.repeat(40),
+        integrationBranch: 'comet/supervisor/scale-parent/integration',
+        integrationWorktree: path.join(root, '.worktrees', 'scale-parent-integration'),
+        contract: {
+          schema: 'comet.native.children.v2',
+          children: names.map((name) => ({
+            name,
+            summary: `Implement ${name}`,
+            depends_on: [],
+            covers: [],
+          })),
+        },
+      });
+    await writeNativeSupervisorState(paths, supervisor(childNames.slice(0, 1)));
+    const read = vi.spyOn(fs, 'readFile');
+    const open = vi.spyOn(fs, 'open');
+    const namedStatus = () =>
+      runNativeCli(['status', 'scale-parent', '--project-root', root, '--json']);
+    const single = await namedStatus();
+    expect(single.exitCode, single.stderr).toBe(0);
+    const singleReadCount = read.mock.calls.length + open.mock.calls.length;
+    read.mockClear();
+    open.mockClear();
+    await writeNativeSupervisorState(paths, supervisor(childNames));
+    for (const name of childNames) {
+      const unrelated = path.join(paths.changesDir, `unrelated-${name}`);
+      await fs.mkdir(unrelated, { recursive: true });
+      await fs.writeFile(path.join(unrelated, 'comet-state.yaml'), 'corrupt: [');
+    }
+    read.mockClear();
+    open.mockClear();
+    const response = await namedStatus();
+    expect(response.exitCode, response.stderr).toBe(0);
+    const readCount = read.mock.calls.length + open.mock.calls.length;
+    expect(readCount).toBeLessThanOrEqual(singleReadCount + 2);
+    const files = [...read.mock.calls, ...open.mock.calls].map(([file]) =>
+      String(file).replaceAll('\\', '/'),
+    );
+    expect(files.filter((file) => file.includes('/changes/unrelated-'))).toEqual([]);
+    const status = JSON.parse(response.stdout!).data;
+    expect(status.supervisor.summary).toMatchObject({ implementationChildren: 32 });
+    expect(Buffer.byteLength(response.stdout!)).toBeLessThan(16 * 1024);
+    expect(response.stdout).not.toContain('Implement child-');
+    expect(response.stdout).not.toContain('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    expect(status).not.toHaveProperty('history');
+    const first = await inspectNativePortableStatus({ paths, name: 'scale-parent', details: true });
+    expect(first.details?.items).toHaveLength(32);
+    expect(first.details?.nextCursor).toBeTruthy();
+    const second = await inspectNativePortableStatus({
+      paths,
+      name: 'scale-parent',
+      details: true,
+      cursor: first.details!.nextCursor!,
+    });
+    const children = [...first.details!.items, ...second.details!.items].filter(
+      ({ kind }) => kind === 'supervisor-child',
+    );
+    expect(children).toHaveLength(32);
+    expect(new Set(children.map(({ value }) => (value as { name: string }).name))).toEqual(
+      new Set(childNames),
+    );
   });
 
   it('keeps Supervisor default status compact and paginates diagnostic history', async () => {

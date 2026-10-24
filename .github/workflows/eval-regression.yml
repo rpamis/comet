@@ -1,8 +1,32 @@
-# Real model evals are intentionally manual because they consume paid API capacity.
+# 真实模型会消耗 API 预算，因此只允许明确手动启动。
 name: eval-regression
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'validate 需要已审核 baseline；首次选 collect，只收集，不发布放行'
+        type: choice
+        options:
+          - validate
+          - collect
+        default: validate
+      count:
+        description: '每组样本数；固定 14 组，不包含历史 039/040 对比'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+        default: '1'
+      workers:
+        description: '并发样本数；增加并发会提高瞬时 API 用量'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '4'
+        default: '2'
 
 permissions:
   contents: read
@@ -14,7 +38,7 @@ concurrency:
 jobs:
   model-regression:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -25,11 +49,6 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Validate the checkout SDK before spending model budget
-        run: |
-          pnpm check:generated
-          pnpm build
-          pnpm check:sdk-api
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
@@ -41,20 +60,35 @@ jobs:
       - name: Install locked Eval dependencies
         working-directory: eval
         run: uv sync --locked
+      - name: Verify deterministic gate badcases without models
+        working-directory: eval
+        run: uv run --locked --no-sync --no-python-downloads python -m pytest -q local/tests/scaffold/test_regression_check.py
+      - name: Show the complete release matrix
+        working-directory: eval
+        env:
+          EVAL_COUNT: ${{ inputs.count }}
+        run: uv run --locked --no-sync --no-python-downloads python local/scripts/regression_check.py --plan --count "$EVAL_COUNT"
       - name: Set up Docker
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
-      - name: Run regression gate
+      - name: Run complete current-candidate Eval
         working-directory: eval
         env:
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
           ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
           ANTHROPIC_MODEL: ${{ secrets.ANTHROPIC_MODEL }}
-          BENCH_LOOP_MAX_TURNS: '8'
-        run: uv run python local/scripts/regression_check.py --count 1 --tolerance 0.10
-      - name: Upload experiment logs
+          EVAL_MODE: ${{ inputs.mode }}
+          EVAL_COUNT: ${{ inputs.count }}
+          EVAL_WORKERS: ${{ inputs.workers }}
+        run: |
+          args=(--suite current --count "$EVAL_COUNT" --workers "$EVAL_WORKERS" --tolerance 0.10)
+          if [[ "$EVAL_MODE" == collect ]]; then
+            args+=(--collect-only)
+          fi
+          uv run --locked --no-sync --no-python-downloads python local/scripts/regression_check.py "${args[@]}"
+      - name: Upload complete experiment evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: eval-logs
+          name: eval-logs-${{ github.sha }}-${{ github.run_attempt }}
           path: eval/local/logs/experiments/
           if-no-files-found: warn

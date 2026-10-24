@@ -1,3 +1,4 @@
+import * as requirements from '../../../domains/comet-native/native-portable-requirements.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -165,7 +166,16 @@ None.
 | last criterion | planned |
 `;
 
-async function buildingFixture(source = brief) {
+async function buildingFixture(source = brief, legacyShape = false) {
+  const readShape = requirements.readNativePortableAcceptance;
+  // Reproduce the released hash-only proposal through the normal Runtime transitions.
+  const legacyReader = legacyShape
+    ? vi
+        .spyOn(requirements, 'readNativePortableAcceptance')
+        .mockImplementation((options) =>
+          readShape({ ...options, captureSemanticSnapshot: false, legacyOnly: true }),
+        )
+    : null;
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-acceptance-boundaries-'));
   roots.push(root);
   await fs.mkdir(path.join(root, '.git'));
@@ -240,6 +250,7 @@ async function buildingFixture(source = brief) {
   await submit(
     await collectNativeSdkShapeProposal({ paths, state: run.state as NativePortableState }),
   );
+  legacyReader?.mockRestore();
   const submitBuilder = () =>
     submit(
       {
@@ -286,7 +297,6 @@ describe('Native Shape to Builder acceptance boundaries', () => {
   );
 
   it.each([
-    ['planned', '42', 'Native Shape artifacts changed'],
     ['Last criterion.', 'Changed criterion.', 'Native confirmed acceptance criteria changed'],
     ['existing contract.', 'a different contract.', 'Native Shape artifacts changed'],
   ])(
@@ -307,7 +317,7 @@ describe('Native Shape to Builder acceptance boundaries', () => {
     const legacy = vi
       .spyOn(acceptanceParser, 'deriveBriefAcceptanceCriteria')
       .mockImplementation(acceptanceParser.deriveLegacyBriefAcceptanceCriteria);
-    const fixture = await buildingFixture();
+    const fixture = await buildingFixture(brief, true);
     legacy.mockRestore();
     const state = fixture.run.state as NativePortableState;
     // 来自 tag 0.5.0 (aeb1a65) CLI 的 prepare → confirm 持久确认指纹。
@@ -332,7 +342,7 @@ describe('Native Shape to Builder acceptance boundaries', () => {
     const legacy = vi
       .spyOn(acceptanceParser, 'deriveBriefAcceptanceCriteria')
       .mockImplementation(acceptanceParser.deriveLegacyBriefAcceptanceCriteria);
-    const fixture = await buildingFixture();
+    const fixture = await buildingFixture(brief, true);
     legacy.mockRestore();
     await fs.writeFile(path.join(fixture.changeDir, 'brief.md'), brief.replace(from, to));
     await expect(fixture.submitBuilder()).rejects.toThrow('revise-requirements on this change');
@@ -346,7 +356,7 @@ describe('Native Shape to Builder acceptance boundaries', () => {
     const legacy = vi
       .spyOn(acceptanceParser, 'deriveBriefAcceptanceCriteria')
       .mockImplementation(acceptanceParser.deriveLegacyBriefAcceptanceCriteria);
-    const fixture = await buildingFixture();
+    const fixture = await buildingFixture(brief, true);
     legacy.mockRestore();
     for (const fingerprint of [undefined, '0'.repeat(64)]) {
       const state = {

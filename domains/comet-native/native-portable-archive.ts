@@ -1287,6 +1287,7 @@ export async function archiveNativePortableChange(options: {
         });
         if (drift.drifted) {
           const reason = drift.reason ?? 'Native confirmed requirements changed';
+          if (drift.reviewRequired) throw new Error(reason);
           await returnNativePortableStateToShapeLocked({
             paths: options.paths,
             state,

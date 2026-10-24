@@ -74,6 +74,7 @@ export {
   portableRunCheckpointMatches,
   PORTABLE_RUN_CHECKPOINT_KEY,
   readPortableRunCheckpoint,
+  readPortableRunCheckpointProjection,
 } from './portable-run-checkpoint.js';
 export type { RuntimeValue } from './runtime-json.js';
 export type {

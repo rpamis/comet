@@ -1146,6 +1146,12 @@ describe('skills', () => {
         timeout: 20_000,
       });
     const configureNativeBuildChange = async (projectRoot: string): Promise<void> => {
+      // Hook 安装用例需要独立仓库边界，不能继承临时目录外的 Git 元数据。
+      const initialized = spawnSync('git', ['init', '--quiet', '-b', 'main'], {
+        cwd: projectRoot,
+        encoding: 'utf8',
+      });
+      expect(initialized.status, initialized.stderr).toBe(0);
       await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
       const paths = await nativeProjectPaths(projectRoot, '.');
       await ensureNativeDirectories(paths);

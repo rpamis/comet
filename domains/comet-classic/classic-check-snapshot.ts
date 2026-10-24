@@ -19,6 +19,7 @@ import {
 } from './classic-check-policy.js';
 import { classicTaskRequirements } from './classic-tasks.js';
 import {
+  compileCheckPolicyInputPattern,
   compileCheckPolicyPattern,
   hasGlobCharacters,
   serializeCheckManifest,
@@ -244,9 +245,7 @@ export async function collectCheckSnapshot(
   ].filter((home) => rootVariants.some((base) => home !== base && isWithinRoot(home, base)));
   const runtimeRecords = path.join(root, '.comet', 'runtime');
   const policyFileDeclared = policy.files?.some((input) =>
-    hasGlobCharacters(input)
-      ? compileCheckPolicyPattern(input)(CHECK_POLICY_PATH)
-      : CHECK_POLICY_PATH === input || CHECK_POLICY_PATH.startsWith(`${input}/`),
+    compileCheckPolicyInputPattern(input)(CHECK_POLICY_PATH),
   );
   const omitted = (absolute: string, directory = false) =>
     outputMatchers.some((matches) => {

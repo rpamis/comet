@@ -48,6 +48,69 @@ describe('Native check input fingerprint', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
+  it.each([true, false])(
+    'keeps nested linked worktrees outside the complete project input boundary (ignored=%s)',
+    async (ignored) => {
+      await fs.writeFile(
+        path.join(root, '.gitignore'),
+        `${ignored ? '.worktrees/\n' : ''}.next/\n`,
+      );
+      git(root, 'add', '.gitignore');
+      git(root, 'commit', '--quiet', '-m', 'declare input boundaries');
+      const input = fingerprintInput(root);
+      const before = await nativeCheckInputSnapshot(input);
+      const gate = await nativeCheckInputGate({ projectRoot: root, candidateId: null });
+      const side = path.join(root, '.worktrees/side');
+      git(root, 'worktree', 'add', '--quiet', '--detach', side);
+      await fs.mkdir(path.join(side, 'dist'), { recursive: true });
+      await fs.writeFile(path.join(side, 'dist/input.js'), 'other candidate');
+      const after = await nativeCheckInputSnapshot(input);
+      expect(after.complete, after.diagnostics.join('; ')).toBe(true);
+      expect(after.contentFingerprint).toBe(before.contentFingerprint);
+      expect(await nativeCheckInputGate({ projectRoot: root, candidateId: null })).toBe(gate);
+      await fs.mkdir(path.join(root, '.next/dev/types'), { recursive: true });
+      await fs.writeFile(
+        path.join(root, '.next/dev/types/routes.d.ts'),
+        'export type Route = "/";',
+      );
+      const generated = await nativeCheckInputSnapshot(input);
+      expect(generated.complete).toBe(true);
+      expect(generated.contentFingerprint).not.toBe(after.contentFingerprint);
+      expect(await nativeCheckInputGate({ projectRoot: root, candidateId: null })).not.toBe(gate);
+      const linked = await nativeCheckInputSnapshot(fingerprintInput(side));
+      expect(linked.complete).toBe(true);
+      expect(linked.contentFingerprint).not.toBe(generated.contentFingerprint);
+    },
+  );
+
+  it('rejects a non-file repository entry inside declared generated input instead of silently skipping it', async () => {
+    await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n');
+    git(root, 'add', '.gitignore');
+    git(root, 'commit', '--quiet', '-m', 'declare generated inputs');
+    git(root, 'worktree', 'add', '--quiet', '--detach', path.join(root, 'dist/nested'));
+    const snapshot = await nativeCheckInputSnapshot(fingerprintInput(root));
+    expect(snapshot.complete).toBe(false);
+    expect(snapshot.diagnostics.join('; ')).toContain('不是普通文件：dist/nested/');
+    expect(await nativeCheckInputGate({ projectRoot: root, candidateId: null })).toBeNull();
+  });
+
+  it('excludes declared Runtime-owned files inside generated roots without dropping production input', async () => {
+    const managedArtifactRoot = path.join(root, 'dist');
+    await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n');
+    const change = path.join(managedArtifactRoot, 'comet/changes/example');
+    await fs.mkdir(change, { recursive: true });
+    await fs.writeFile(path.join(change, 'comet-state.yaml'), 'state: one');
+    await fs.writeFile(path.join(managedArtifactRoot, 'production.js'), 'one');
+    const input = { ...fingerprintInput(root), managedArtifactRoot };
+    const before = await nativeCheckInputSnapshot(input);
+    await fs.writeFile(path.join(change, 'comet-state.yaml'), 'state: two');
+    expect(await nativeCheckInputSnapshot(input)).toEqual(before);
+    await fs.writeFile(path.join(managedArtifactRoot, 'production.js'), 'two');
+    const after = await nativeCheckInputSnapshot(input);
+    expect(after.complete).toBe(true);
+    expect(after.contentFingerprint).not.toBe(before.contentFingerprint);
+  });
+
   it('detects tracked submodules from the staged index stream', () => {
     expect(hasGitlinksInIndex('100644 abc\tREADME.md\0')).toBe(false);
     expect(hasGitlinksInIndex('160000 abc\tdependency\0')).toBe(true);
@@ -165,6 +228,7 @@ describe('Native check input fingerprint', () => {
       for (const relative of [
         '.next/server/app/page.js',
         '.next/server/app/logs/page.js',
+        '.next/server/.worktrees/page.js',
         '.next/static/chunks/main.js',
         '.next/BUILD_ID',
         '.next/routes-manifest.json',
@@ -191,6 +255,7 @@ describe('Native check input fingerprint', () => {
       for (const relative of [
         '.next/server/app/page.js',
         '.next/server/app/logs/page.js',
+        '.next/server/.worktrees/page.js',
         '.next/static/chunks/main.js',
         '.next/BUILD_ID',
         '.next/routes-manifest.json',
