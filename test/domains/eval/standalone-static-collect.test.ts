@@ -85,6 +85,26 @@ function pythonAccepts(manifest: string): boolean {
 }
 
 describe('standalone static collector parity', () => {
+  it('loads public treatment configurations with the current scaffold model', () => {
+    const result = execFileSync(
+      'uv',
+      [
+        'run',
+        '--locked',
+        'python',
+        '-m',
+        'pytest',
+        'local/tests/scaffold/test_treatments.py',
+        '-k',
+        'public_load_treatment',
+        '-q',
+      ],
+      { cwd: evalRoot, encoding: 'utf8', stdio: 'pipe' },
+    );
+    expect(result).toMatch(/1 passed/);
+    expect(result).not.toMatch(/failed|skipped/);
+  });
+
   it('provides the current Native shared capability reference without installing another Skill', () => {
     const result = execFileSync(
       'uv',

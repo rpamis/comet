@@ -49,6 +49,24 @@ def test_load_treatments_yaml_skips_anchor_keys(treatment_file: Path):
     assert treatments["INLINE_COMET"].claude_md == "Use the comet workflow."
 
 
+def test_public_load_treatment_preserves_current_model_and_skill_configuration(
+    treatment_file, monkeypatch
+):
+    from scaffold import Treatment, load_treatment
+
+    catalog = load_treatments_yaml(treatment_file)
+    monkeypatch.setattr("scaffold.python.treatments.load_treatments", lambda: catalog)
+    control = load_treatment("CONTROL")
+    assert isinstance(control, Treatment) and control.skills == {}
+    assert control.description == "No skills baseline" and control.claude_md is None
+    inline = load_treatment("INLINE_COMET")
+    assert isinstance(inline, Treatment)
+    assert inline.skills["inline-comet"]["sections"] == ["Shared guidance.\n"]
+    assert inline.claude_md == "Use the comet workflow."
+    with pytest.raises(KeyError, match="Treatment not found"):
+        load_treatment("MISSING")
+
+
 def test_build_treatment_skills_accepts_inline_content_and_generated_names():
     skills = build_treatment_skills(
         [

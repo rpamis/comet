@@ -596,6 +596,25 @@
           ]
         }
       ]
+    },
+    {
+      "id": "eval-public-treatment-model-compatibility",
+      "behavior": "公开Python评估入口加载现有Treatment配置，保留Skill和指导文本，未知名称明确拒绝。",
+      "coverageLevel": "unit",
+      "reproduction": "恢复051验收的预检通过公开load_treatment加载Classic时，构造当前Treatment模型因validators参数已删除而TypeError。",
+      "expected": "公开入口返回当前Treatment实例，保留空Skill、内联Skill及claude_md配置，未知名称抛出原KeyError。",
+      "forbidden": "把正常配置当成不可用，忽略Skill配置或吞掉未知名称错误。",
+      "rootCause": "配置加载器仍向不再包含validators字段的数据模型传入旧参数。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "loads public treatment configurations with the current scaffold model",
+          "requiredNames": [
+            "standalone static collector parity loads public treatment configurations with the current scaffold model"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"]
     }
   ]
 }

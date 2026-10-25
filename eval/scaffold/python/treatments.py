@@ -263,7 +263,6 @@ def load_treatment(name: str):
         description=cfg.description,
         skills=skills,
         claude_md=cfg.claude_md if cfg.claude_md else None,
-        validators=[],
     )
 
 

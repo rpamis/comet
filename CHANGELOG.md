@@ -18,6 +18,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Evaluation treatment loading**: Restore the public Python treatment loader with the current scaffold model while preserving configured Skills and workflow guidance.
 - **Evaluation provider configuration**: Accept either dedicated API-key or auth-token credentials for built-in Judges and translate Claude Code's context suffix before HTTP scoring requests, so valid provider configurations can run and receive scores. Custom agents retain their declared credential requirements.
 
 - **Dashboard loading and refresh states**: Align Personal Memory and Custom Workflow loading with their lists, and keep previously loaded Observability views visible during automatic sync, manual refresh, and tab switches so routine updates do not interrupt reading.
