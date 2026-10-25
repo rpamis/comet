@@ -1,5 +1,19 @@
 Use `/comet-native` and the current `comet` CLI, never the compat Runtime. In this Python wordcount project, create exactly one SDK change, `sentence-counting`, to add `--sentences` (split on `.`, `!`, `?`, ignore empty segments), preserving word and line counts. Test empty input, unpunctuated input, and repeated terminators.
 
+Use these exact five business acceptance cases when drafting the brief. With `--sentences --lines`, each case must print the listed word, line and sentence totals. The word and line totals come from the supplied baseline: verify them with the unchanged `wordcount.py --lines` before the first Shape confirmation. Do not invent different numeric examples or change baseline counting behavior.
+
+<!-- canonical-acceptance -->
+
+```text
+[
+  {{ "id": "A1", "input": "One. Two! Three?", "words": 3, "lines": 1, "sentences": 3 }},
+  {{ "id": "A2", "input": "", "words": 0, "lines": 0, "sentences": 0 }},
+  {{ "id": "A3", "input": "hello world", "words": 2, "lines": 1, "sentences": 1 }},
+  {{ "id": "A4", "input": "Hi!!! There... Again?", "words": 3, "lines": 1, "sentences": 3 }},
+  {{ "id": "A5", "input": "hello\nworld", "words": 2, "lines": 2, "sentences": 1 }}
+]
+```
+
 Exercise all of these boundaries on this same candidate, not separate throwaway changes:
 
 1. During Shape, write a detailed brief and complete sentence-counting specification. Include a `## Spec → 测试名与断言计划` Markdown table with columns `Test`, `Assertion`, `计划行号`. Initially use `planned` for line numbers. Request real Shape confirmation through the harness. During Build replace only those planned line numbers with actual test line ranges, without changing test names, assertions or requirements. This auxiliary edit must retain the approved Shape and goal cycle, not restart Shape.

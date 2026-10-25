@@ -71,3 +71,11 @@ Classic 高难度配置给 Agent 80 分钟，但原 pytest 外层只有 70 分�
 全部登记的确定性 badcase 已在 Linux 通过：129 个分组、743 项已执行测试，必需案例没有缺失或跳过。Issue 500–505 的对应断言也逐项核对通过；这些结果不能替代尚未完成的六组模型验收。状态、原报告及审计位于 `eval/local/logs/acceptance-051-status.json`、`eval/local/logs/acceptance-051-final-matrix/` 与 `eval/local/logs/acceptance-051-badcases/`。
 
 额度重置后使用相同固定源目录重新执行，另建运行轮次并保留这三次失败；Classic 只在获得本轮依赖授权后启动。六组真正完成之前，不生成发布通过凭证，也不发送任务完成通知。
+
+## 授权恢复与场景修正
+
+用户随后明确允许本轮所需依赖，当前 CC Switch GLM 接口已实测返回 HTTP 200。新轮次为 `authorized-20261025-0952`；仍使用原固定 051 产品快照。Classic 的 27 个所需 Skill 均已核对可加载，授权仅适用于本轮评测。
+
+新轮次的 Native 高难度模型把 `Hello there. How are you? Great!` 的基线词数 6 写成验收值 8。Runtime 正确要求重新确认正式要求，保留实现并创建第二个 goal cycle 和 Builder；这已违反固定单候选场景，控制器保存现场并提前停止，原报告退出 137，不能按通过或产品故障计入。现场位于该轮 `native-hard/early-failure/`。
+
+任务现给出五条固定业务验收示例，要求首次 Shape 确认前核对原词数和行数。回归测试实际执行未修改的基线 CLI 检查这些数值；单候选、一次性检查、独立新会话、原检查记录与 Archive 断言保持原样。受影响的高难度另建轮次复测，其余任务的输入和验证器没有改变。

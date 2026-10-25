@@ -615,6 +615,34 @@
         }
       ],
       "sources": ["report:2026-10-25-051-native-classic-acceptance"]
+    },
+    {
+      "id": "eval-native-recovery-baseline-acceptance",
+      "behavior": "Native高难度恢复任务先核对基线词数和行数，再用固定业务样例确认Shape。",
+      "coverageLevel": "unit",
+      "reproduction": "GLM为固定单候选场景编造了Words:8的验收示例，但基线实际为6；合法重新确认导致第二个goal cycle及Builder，原场景已失败并提前保存现场停止。",
+      "expected": "任务给出经未修改基线CLI核实的五条业务验收示例，确认前核对旧行为；保留单候选、一次性检查、跨会话独立验收和Archive全部断言。",
+      "forbidden": "放宽goal cycle或Builder数量断言、隐藏失败或让运行时接受错误的已批准验收标准。",
+      "rootCause": "恢复场景未固定其依赖的业务验收样例，模型在场景开始前生成了不满足基线的数字。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "binds Native recovery acceptance examples to the unchanged business baseline",
+          "requiredNames": [
+            "standalone static collector parity binds Native recovery acceptance examples to the unchanged business baseline"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM Native fixed baseline single-candidate recovery and Archive",
+          "status": "pending",
+          "evidence": [
+            "Controller-stopped failed sample: eval/local/logs/acceptance-051-final-matrix/authorized-20261025-0952/native-hard/early-failure/failure.json"
+          ]
+        }
+      ]
     }
   ]
 }

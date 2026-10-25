@@ -2,6 +2,7 @@
 
 import json
 import importlib.util
+import re
 import shutil
 import subprocess
 import sys
@@ -85,6 +86,30 @@ def test_native_boundary_entry_imports_in_the_flattened_docker_python_layout(tmp
     assert "No module named 'scaffold'" not in result.stderr
     assert "FileNotFoundError" in result.stderr
     assert "comet-state.yaml" in result.stderr
+
+
+def test_native_recovery_examples_are_bound_to_the_supplied_wordcount_baseline():
+    task = load_task("comet-native-sdk-recovery")
+    prompt = task.render_prompt()
+    match = re.search(r"<!-- canonical-acceptance -->\s*```text\s*(.*?)```", prompt, re.S)
+    assert match is not None, "Recovery task must provide baseline-verified acceptance examples"
+    cases = json.loads(match.group(1))
+    assert [case["id"] for case in cases] == ["A1", "A2", "A3", "A4", "A5"]
+    assert [case["sentences"] for case in cases] == [3, 0, 1, 3, 1]
+    script = get_tasks_dir() / "comet-native-sdk-recovery/environment/wordcount.py"
+    for case in cases:
+        result = subprocess.run(
+            [sys.executable, str(script), "--lines"],
+            input=case["input"],
+            text=True,
+            capture_output=True,
+            check=True,
+            timeout=10,
+        )
+        assert result.stdout.splitlines() == [
+            f"Words: {case['words']}", f"Lines: {case['lines']}"
+        ]
+    assert "before the first Shape confirmation" in prompt
 
 
 @pytest.mark.parametrize("treatment", ["COMET_NATIVE_SDK_CURRENT", "COMET_CLASSIC_DOCS_LAYOUT"])
