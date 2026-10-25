@@ -9,6 +9,7 @@ import { resolveClassicChangeRuntimeOwner } from './classic-runtime-ownership.js
 import { classicSdkArchiveGuard } from './classic-sdk-guard.js';
 import { findClassicSdkWorkspace } from './classic-sdk-status.js';
 import { recoverClassicSdkArchive } from './classic-sdk-archive.js';
+import { ClassicArchiveRecoveryApprovalRequired } from './classic-sdk-archive-manifest.js';
 import {
   classicArchivedRequirementsProblems,
   recordClassicArchiveRequirements,
@@ -297,10 +298,19 @@ async function verifyMainSpecsClean(projectRoot: string, specsRoot: string): Pro
 export const classicArchiveCommand: ClassicCommandHandler = withProjectContext(async (args) => {
   if (
     args.length < 1 ||
-    args.length > 2 ||
-    (args[1] !== undefined && !['--dry-run', '--recover'].includes(args[1]))
+    (args.length !== 1 && args.length !== 2 && args.length !== 5) ||
+    (args[1] !== undefined && !['--dry-run', '--recover'].includes(args[1])) ||
+    (args.length === 5 &&
+      (args[1] !== '--recover' ||
+        args[2] !== '--confirmed' ||
+        args[3] !== '--proposal-hash' ||
+        !/^[a-f0-9]{64}$/u.test(args[4])))
   ) {
-    return { exitCode: 64, stderr: 'Usage: comet archive <change-name> [--dry-run|--recover]' };
+    return {
+      exitCode: 64,
+      stderr:
+        'Usage: comet archive <change-name> [--dry-run|--recover [--confirmed --proposal-hash <sha256>]]',
+    };
   }
   const output = new ArchiveOutput();
   const change = args[0];
@@ -315,10 +325,46 @@ export const classicArchiveCommand: ClassicCommandHandler = withProjectContext(a
     if (sdkWorkspace) {
       if (recover) {
         const inspected = sdkWorkspace;
-        const continued = await recoverClassicSdkArchive(inspected.runtime, {
-          projectRoot: sdkWorkspace.projectRoot,
-          runId: inspected.run.runId,
-        });
+        let continued;
+        try {
+          continued = await recoverClassicSdkArchive(inspected.runtime, {
+            projectRoot: sdkWorkspace.projectRoot,
+            runId: inspected.run.runId,
+            confirmedProposalHash: args.length === 5 ? args[4] : undefined,
+          });
+        } catch (error) {
+          if (!(error instanceof ClassicArchiveRecoveryApprovalRequired)) throw error;
+          return {
+            exitCode: 73,
+            stderr: error.message,
+            data: {
+              ...(await classicSdkEntryData(change, {
+                run: inspected.run,
+                projectRoot: sdkWorkspace.projectRoot,
+              })),
+              recoveryApproval: error.proposal,
+              continuation: {
+                mode: 'ask',
+                kind: 'await-user',
+                automatic: false,
+                requiresUserDecision: true,
+                requiredInputs: ['confirmedProposalHash'],
+                instruction:
+                  '向用户展示完整规格变化与原批准的 delta。仅在用户确认这些结果完整实现原契约后，使用当前 proposalHash 恢复；不能自行确认未知规格输出。',
+                commandArgs: [
+                  'comet',
+                  'archive',
+                  change,
+                  '--recover',
+                  '--confirmed',
+                  '--proposal-hash',
+                  error.proposal.proposalHash,
+                  '--json',
+                ],
+              },
+            },
+          };
+        }
         return {
           exitCode: 0,
           data: {

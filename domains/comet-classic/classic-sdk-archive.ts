@@ -1,5 +1,5 @@
 import {
-  captureClassicArchiveInputs,
+  prepareClassicArchiveInputs,
   recordClassicArchiveManifest,
   recoverClassicArchiveManifest,
   readClassicArchiveManifest,
@@ -44,6 +44,7 @@ import { hasClassicManagedRunMarker, type ClassicState } from './classic-state.j
 interface ClassicSdkArchiveInput {
   runId: string;
   projectRoot: string;
+  confirmedProposalHash?: string;
 }
 
 function archiveNameMatches(name: string, change: string): boolean {
@@ -267,13 +268,14 @@ export async function runClassicSdkArchive(
     };
   }
   const { active, runInput, layout, before } = context;
-  let archiveInputs: Awaited<ReturnType<typeof captureClassicArchiveInputs>>;
+  let archiveInputs: Awaited<ReturnType<typeof prepareClassicArchiveInputs>>;
   try {
     await recordArchiveDocuments(projectRoot, run, action, runInput.changeDir);
     await recordClassicArchiveRequirements(projectRoot, active.target);
-    archiveInputs = await captureClassicArchiveInputs(
+    archiveInputs = await prepareClassicArchiveInputs(
       projectRoot,
       run,
+      action,
       path.relative(projectRoot, layout.specsDir).replaceAll('\\', '/'),
     );
     // 清单读取期间发生的输入变化也必须在副作用开始前拒绝。
@@ -534,7 +536,13 @@ export async function recoverClassicSdkArchive(
   const problems = await classicArchivedRequirementsProblems(projectRoot, archived.target);
   if (problems.length) throw new Error(problems.join('\n'));
   const archiveRef = path.relative(projectRoot, archived.target).replaceAll('\\', '/');
-  const artifacts = await recoverClassicArchiveManifest(projectRoot, run, lost, archiveRef);
+  const artifacts = await recoverClassicArchiveManifest(
+    projectRoot,
+    run,
+    lost,
+    archiveRef,
+    input.confirmedProposalHash,
+  );
   return runtime.recordOutcome({
     runId: run.runId,
     context: { requestId: `classic-sdk-archive-recovery:${run.runId}:${lost.id}`, projectRoot },

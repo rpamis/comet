@@ -10,6 +10,7 @@ import {
   nativeCheckInputSnapshot,
   nativeCheckInputGate,
   nativeCandidateInputGate,
+  nativeGeneratedCheckInputSnapshot,
 } from '../../../domains/comet-native/native-portable-checks.js';
 import * as gitCommands from '../../../platform/process/git.js';
 import { resolveWorkspaceRuntimeRoot } from '../../../domains/workflow-contract/workspace-runtime.js';
@@ -47,6 +48,40 @@ describe('Native check input fingerprint', () => {
   afterEach(async () => {
     await fs.rm(root, { recursive: true, force: true });
   });
+
+  it.each([true, false])(
+    'keeps Archive generated-only snapshots equivalent without binding moved materials (git=%s)',
+    async (useGit) => {
+      if (!useGit) await fs.rm(path.join(root, '.git'), { recursive: true, force: true });
+      await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n.worktrees/\n');
+      const active = 'docs/comet/changes/example';
+      const archive = 'docs/comet/archive/example';
+      for (const ref of [
+        'dist/output.txt',
+        '.worktrees/side/dist/noise.txt',
+        `${active}/specs/build/spec.md`,
+      ]) {
+        await fs.mkdir(path.dirname(path.join(root, ref)), { recursive: true });
+        await fs.writeFile(path.join(root, ref), 'original');
+      }
+      const input = {
+        ...fingerprintInput(root),
+        managedArtifactRoot: path.join(root, 'docs'),
+        generatedInputExclusions: [active, archive],
+      };
+      const full = await nativeCheckInputSnapshot(input);
+      const generated = await nativeGeneratedCheckInputSnapshot(input);
+      expect(full.complete).toBe(true);
+      expect(generated).toEqual({ complete: true, fingerprint: full.generatedInputFingerprint });
+      await fs.mkdir(path.dirname(path.join(root, archive)), { recursive: true });
+      await fs.rename(path.join(root, active), path.join(root, archive));
+      expect(await nativeGeneratedCheckInputSnapshot(input)).toEqual(generated);
+      await fs.writeFile(path.join(root, 'dist/output.txt'), 'changed');
+      expect((await nativeGeneratedCheckInputSnapshot(input)).fingerprint).not.toBe(
+        generated.fingerprint,
+      );
+    },
+  );
 
   it.each([true, false])(
     'keeps nested linked worktrees outside the complete project input boundary (ignored=%s)',

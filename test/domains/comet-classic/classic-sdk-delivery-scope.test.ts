@@ -2,6 +2,7 @@ import { defineClassicWorkflowApplication } from '../../../domains/comet-classic
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { build } from 'esbuild';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -16,6 +17,8 @@ import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 import { createOpenSpecArchiveFixture } from '../../helpers/classic-openspec-fixture.js';
+import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
+import { parseClassicStateDocument } from '../../../domains/comet-classic/classic-state.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -23,10 +26,10 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
-async function publicStateRuntime(root: string) {
-  const runtime = path.join(root, 'comet-state.mjs');
+async function publicStateRuntime(root: string, command: 'state' | 'archive' = 'state') {
+  const runtime = path.join(root, `comet-${command}.mjs`);
   await build({
-    entryPoints: [path.resolve('domains/comet-classic/classic-state-entry.ts')],
+    entryPoints: [path.resolve(`domains/comet-classic/classic-${command}-entry.ts`)],
     outfile: runtime,
     bundle: true,
     platform: 'node',
@@ -45,6 +48,9 @@ async function hotfix(
     nativeRoot?: string;
     deliveryAction?: 'local' | 'push';
     specSync?: boolean;
+    initialDraft?: 'unchanged' | 'modified';
+    interruptArchive?: boolean;
+    forgedBaseline?: boolean;
   } = {},
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-delivery-scope-'));
@@ -107,6 +113,7 @@ async function hotfix(
     expect(native.exitCode, native.stderr).toBe(0);
     await put('openspec/changes/parked-classic/proposal.md', '# Parked Classic proposal\n');
   }
+  if (options.initialDraft) await put('unrelated-draft.ts', 'export const unfinished = true;\n');
   const invoke = async (...args: string[]) => {
     const separator = args.indexOf('--');
     args.splice(separator < 0 ? args.length : separator, 0, '--json');
@@ -118,7 +125,53 @@ async function hotfix(
     expect(result.exitCode, result.stdout ?? result.stderr).toBe(0);
     return result.response.data;
   };
-  await cli('state', 'init', 'example', 'hotfix', '--isolation', 'current');
+  if (options.forgedBaseline) {
+    const source = 'export const ready = true;\n';
+    const hash = createHash('sha1')
+      .update(`blob ${Buffer.byteLength(source)}\0`)
+      .update(source)
+      .digest('hex');
+    const request = path.join(root, 'start.json');
+    await fs.writeFile(
+      request,
+      JSON.stringify({
+        operation: 'start',
+        runId: 'example',
+        workflow: { id: 'comet-classic-hotfix', version: '1' },
+        input: {
+          change: 'example',
+          changeDir: 'openspec/changes/example',
+          workspaceBaseline: {
+            schema: 'comet.classic.workspace-baseline.v1',
+            files: { 'source.js': `git:${hash}` },
+          },
+        },
+        initialState: parseClassicStateDocument({
+          workflow: 'hotfix',
+          phase: 'open',
+          design_doc: null,
+          plan: null,
+          verify_result: 'pending',
+          verified_at: null,
+          archived: false,
+          build_mode: 'direct',
+          tdd_mode: 'direct',
+          review_mode: 'off',
+          verify_mode: 'light',
+          isolation: 'current',
+          bound_branch: 'main',
+          auto_transition: true,
+          language: 'en',
+        }).classic,
+      }),
+    );
+    const started = await runtimeDispatchCommand({
+      application: 'classic-hotfix',
+      projectRoot,
+      request,
+    });
+    expect(started.response.status, JSON.stringify(started.response)).toBe('succeeded');
+  } else await cli('state', 'init', 'example', 'hotfix', '--isolation', 'current');
   const activeRef = 'openspec/changes/example';
   await put(`${activeRef}/proposal.md`, '# Proposal\nCorrect the ready constant.\n');
   await put(`${activeRef}/design.md`, '# Design\nKeep the existing public API.\n');
@@ -128,6 +181,8 @@ async function hotfix(
   const open = await cli('guard', 'example', 'open');
   await cli('guard', 'example', 'open', '--apply', '--approval-hash', open.approvalHash);
   await put('source.js', 'export const ready = true;\n');
+  if (options.initialDraft === 'modified')
+    await put('unrelated-draft.ts', 'export const unfinished = false;\n');
   await put('src/changes/adapter.ts', 'export const supportsChanges = true;\n');
   const argv = [
     process.execPath,
@@ -183,11 +238,20 @@ async function hotfix(
       `\nawait fs.writeFile(path.join(process.cwd(), 'openspec/specs/ready/spec.md'), '# Ready\\nExisting requirement.\\nReady must be true.\\n');\n`,
     );
   vi.stubEnv('COMET_OPENSPEC', openSpec.command);
-  await cli('guard', 'example', 'archive', '--apply');
+  if (options.interruptArchive)
+    await fs.appendFile(
+      openSpec.command,
+      '\nprocess.stderr.write("interrupted after move"); process.exitCode = 1;\n',
+    );
+  const archiveResult = await invoke('guard', 'example', 'archive', '--apply');
+  expect(archiveResult.exitCode, archiveResult.stdout ?? archiveResult.stderr).toBe(
+    options.interruptArchive ? 70 : 0,
+  );
   const archived = (await inspect()).run;
-  const archiveRef = (
-    archived.outputs['hotfix.archive.execute'].value as { archiveDirectory: string }
-  ).archiveDirectory;
+  const archiveRef =
+    (archived.outputs['hotfix.archive.execute']?.value as { archiveDirectory: string } | undefined)
+      ?.archiveDirectory ??
+    `openspec/changes/archive/${(await fs.readdir(path.join(projectRoot, 'openspec/changes/archive')))[0]}`;
   const base = (archived.outputs['hotfix.archive.preflight'].value as { baseCommit: string })
     .baseCommit;
   const commitImplementation = () => {
@@ -225,6 +289,101 @@ async function hotfix(
     commitArchive,
   };
 }
+
+it('delivers without an unchanged untracked draft that predates the change', async () => {
+  const f = await hotfix({ initialDraft: 'unchanged' });
+  f.commitImplementation();
+  const commit = f.commitArchive();
+  const runtime = await publicStateRuntime(f.root);
+  const delivered = spawnSync(
+    process.execPath,
+    [runtime, 'complete-delivery', 'example', '--commit', commit, '--json'],
+    { cwd: f.projectRoot, encoding: 'utf8' },
+  );
+  expect(delivered.status, delivered.stdout || delivered.stderr).toBe(0);
+  expect(JSON.parse(delivered.stdout).data.nextAction.kind).toBe('done');
+  expect(f.git('status', '--porcelain')).toContain('?? unrelated-draft.ts');
+  expect(await fs.readFile(path.join(f.projectRoot, 'unrelated-draft.ts'), 'utf8')).toBe(
+    'export const unfinished = true;\n',
+  );
+});
+
+it('requires delivery of an initial draft modified during the change', async () => {
+  const f = await hotfix({ initialDraft: 'modified' });
+  f.commitImplementation();
+  const commit = f.commitArchive();
+  const rejected = await f.invoke('state', 'complete-delivery', 'example', '--commit', commit);
+  expect(rejected.exitCode).not.toBe(0);
+  expect(rejected.response.stderr).toContain('omits verified implementation: unrelated-draft.ts');
+});
+
+it('does not trust a workspace baseline supplied through public dispatch start', async () => {
+  const f = await hotfix({ forgedBaseline: true });
+  const output = f.verified.actions.findLast((action) => action.stepId === 'hotfix.verify.check')!
+    .outcome!.output as { deliveryInputs: Record<string, string> };
+  expect(output.deliveryInputs).toHaveProperty('source.js');
+  f.git('add', '--', 'src/changes/adapter.ts');
+  f.git('commit', '-m', 'adapter only');
+  const commit = f.commitArchive();
+  expect(
+    (await f.invoke('state', 'complete-delivery', 'example', '--commit', commit)).exitCode,
+  ).not.toBe(0);
+});
+
+it('requires an exact user decision for specification outputs after interrupted Archive', async () => {
+  const f = await hotfix({ specSync: true, interruptArchive: true });
+  const pending = await f.invoke('archive', 'example', '--recover');
+  expect(pending.exitCode).toBe(73);
+  const proposalHash = pending.response.data.recoveryApproval.proposalHash;
+  const before = (await f.inspect()).run;
+  const ref = 'openspec/specs/ready/spec.md';
+  const original = await fs.readFile(path.join(f.projectRoot, ref), 'utf8');
+  await f.put(ref, '# Other specification output\n');
+  const stale = await f.invoke(
+    'archive',
+    'example',
+    '--recover',
+    '--confirmed',
+    '--proposal-hash',
+    proposalHash,
+  );
+  expect(stale.exitCode).toBe(73);
+  expect((await f.inspect()).run).toEqual(before);
+  await f.put(ref, original);
+  await f.cli('archive', 'example', '--recover', '--confirmed', '--proposal-hash', proposalHash);
+  expect(await f.openSpec.invocations()).toHaveLength(1);
+  f.commitImplementation();
+  const commit = f.commitArchive();
+  expect(
+    (await f.cli('state', 'complete-delivery', 'example', '--commit', commit)).nextAction.kind,
+  ).toBe('done');
+});
+
+it('recovers Archive interrupted after moving without replay or accepting changed artifacts', async () => {
+  const f = await hotfix({ interruptArchive: true });
+  const proposal = `${f.archiveRef}/proposal.md`;
+  const original = await fs.readFile(path.join(f.projectRoot, proposal), 'utf8');
+  const before = (await f.inspect()).run;
+  await f.put(proposal, '# Unapproved requirements\n');
+  expect((await f.invoke('archive', 'example', '--recover')).exitCode).not.toBe(0);
+  expect((await f.inspect()).run).toEqual(before);
+  await f.put(proposal, original);
+  const runtime = await publicStateRuntime(f.root, 'archive');
+  const restored = spawnSync(process.execPath, [runtime, 'example', '--recover', '--json'], {
+    cwd: f.projectRoot,
+    encoding: 'utf8',
+  });
+  expect(restored.status, restored.stdout || restored.stderr).toBe(0);
+  const recovered = (await f.inspect()).run;
+  await f.cli('archive', 'example', '--recover');
+  expect((await f.inspect()).run).toEqual(recovered);
+  expect(await f.openSpec.invocations()).toHaveLength(1);
+  f.commitImplementation();
+  const commit = f.commitArchive();
+  expect(
+    (await f.cli('state', 'complete-delivery', 'example', '--commit', commit)).nextAction.kind,
+  ).toBe('done');
+});
 
 it.each(['docs', 'specifications/custom'])(
   'keeps parked Native Shape and Classic drafts out of hotfix delivery inputs under %s',

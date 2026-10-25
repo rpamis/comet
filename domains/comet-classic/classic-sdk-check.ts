@@ -113,16 +113,21 @@ async function runCommand(
         finish(timedOut ? 124 : 1);
       }
     });
-    timer = setTimeout(() => {
-      timedOut = true;
-      finish(124);
-    }, timeoutMs);
-    try {
-      owned.start();
-    } catch (error) {
-      output += `\n${error instanceof Error ? error.message : String(error)}`;
-      finish(1);
-    }
+    void (async () => {
+      try {
+        // Windows 先等监管器完成启动，避免 taskkill 与进程初始化及自行清理竞争。
+        await owned.ready;
+        if (settled) return;
+        timer = setTimeout(() => {
+          timedOut = true;
+          finish(124);
+        }, timeoutMs);
+        owned.start();
+      } catch (error) {
+        output += `\n${error instanceof Error ? error.message : String(error)}`;
+        finish(1);
+      }
+    })();
   });
   // completed 只代表命令退出。监管器仍持有后代的执行边界；正常退出也必须清理，
   // 不能用组长 close 事件证明检查已静止，更不能提前采集成功快照。
@@ -336,7 +341,7 @@ export async function runClassicSdkCommandCheck(
         ...(scope === 'verify'
           ? {
               deliveryInputs:
-                (await collectClassicSdkDeliveryInputs(root, before.manifest, identity)) ?? {},
+                (await collectClassicSdkDeliveryInputs(root, before.manifest, identity, run)) ?? {},
             }
           : {}),
         checkEpoch: state.checkEpoch ?? 0,
@@ -450,7 +455,7 @@ export async function runClassicSdkCommandCheck(
       ...(scope === 'verify' && after
         ? {
             deliveryInputs:
-              (await collectClassicSdkDeliveryInputs(root, after.manifest, identity)) ?? {},
+              (await collectClassicSdkDeliveryInputs(root, after.manifest, identity, run)) ?? {},
           }
         : {}),
       tier: 'full',

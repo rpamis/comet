@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
@@ -10,7 +10,13 @@ import {
   parseWorkflowProjectConfigDocument,
   WORKFLOW_PROJECT_CONFIG_MAX_BYTES,
 } from '../workflow-contract/project-config.js';
-import type { WorkflowRun } from '../engine/runtime.js';
+import {
+  createFileRuntimeStore,
+  hashRuntimeValue,
+  type WorkflowRun,
+  type RuntimeValue,
+} from '../engine/runtime.js';
+import { resolveWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
 import { archivedClassicDocumentRef } from './classic-archive-annotation.js';
 import { isGitWorkTree } from './classic-branch-binding.js';
 import {
@@ -36,6 +42,91 @@ function git(root: string, args: string[]): string {
     maxBuffer: 256 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+}
+
+/** 初始工作区只记录内容身份；既有草稿仍参与检查，但没有变化时不属于本次交付。 */
+export async function captureClassicSdkWorkspaceBaseline(root: string) {
+  if (!isGitWorkTree(root)) return undefined;
+  let tracked: string;
+  try {
+    git(root, ['rev-parse', '--verify', 'HEAD']);
+    tracked = git(root, ['diff', 'HEAD', '--name-only', '--no-renames', '-z']);
+  } catch {
+    tracked = git(root, ['ls-files', '--cached', '-z']);
+  }
+  const paths = [
+    ...new Set(
+      [
+        ...tracked.split('\0'),
+        ...git(root, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0'),
+      ].filter(Boolean),
+    ),
+  ];
+  const regular: string[] = [];
+  const files: Record<string, string> = {};
+  for (const ref of paths) {
+    try {
+      const entry = await inspectProtectedProjectPath(root, ref, {
+        label: 'Classic initial workspace input',
+        expected: 'file',
+      });
+      if (entry.exists) regular.push(ref);
+      else files[ref] = 'missing';
+    } catch {
+      // 无法证明身份的路径不能获得交付豁免。
+    }
+  }
+  const first = hashGitPaths(root, regular);
+  const second = hashGitPaths(root, regular);
+  for (const [ref, hash] of first) if (second.get(ref) === hash) files[ref] = `git:${hash}`;
+  return { schema: 'comet.classic.workspace-baseline.v1', files };
+}
+
+interface WorkspaceBaselineReceipt {
+  runId: string;
+  revision: number;
+  inputHash: string;
+  files: Record<string, string>;
+}
+async function workspaceBaselineStore(root: string) {
+  return createFileRuntimeStore<WorkspaceBaselineReceipt>({
+    rootDir: path.join(await resolveWorkspaceRuntimeRoot(root), 'classic-delivery-baselines'),
+  });
+}
+
+/** 只有 Runtime 的初始捕获能授予豁免；公开 start input 不能自报文件摘要。 */
+export async function bindClassicSdkWorkspaceBaseline(
+  root: string,
+  input: Record<string, RuntimeValue>,
+) {
+  const baseline = await captureClassicSdkWorkspaceBaseline(root);
+  if (!baseline) return input;
+  const ref = randomUUID();
+  const bound = { ...input, workspaceBaseline: { ref } };
+  const receipt = {
+    runId: ref,
+    revision: 1,
+    inputHash: hashRuntimeValue(bound),
+    files: baseline.files,
+  };
+  if (!(await (await workspaceBaselineStore(root)).compareAndSwap(ref, null, receipt)))
+    throw new Error('Classic 初始工作区收据已存在，不能替换');
+  return bound;
+}
+
+async function initialWorkspaceFiles(
+  root: string,
+  run?: Readonly<WorkflowRun>,
+): Promise<Record<string, string>> {
+  const input = run?.input as { workspaceBaseline?: { ref?: unknown } } | undefined;
+  const ref = input?.workspaceBaseline?.ref;
+  if (!run || typeof ref !== 'string' || !/^[a-f0-9-]{36}$/u.test(ref)) return {};
+  const first = run.actions[0]?.input as { input?: RuntimeValue } | undefined;
+  if (!first?.input) return {};
+  const receipt = await (await workspaceBaselineStore(root)).read(ref);
+  return receipt?.revision === 1 && receipt.inputHash === hashRuntimeValue(first.input)
+    ? receipt.files
+    : {};
 }
 
 async function foreignChangeRoots(root: string): Promise<string[]> {
@@ -78,6 +169,7 @@ export async function collectClassicSdkDeliveryInputs(
   root: string,
   manifest: string,
   identity: CheckIdentity,
+  run?: Readonly<WorkflowRun>,
 ) {
   if (!isGitWorkTree(root)) return undefined;
   let hasHead = true;
@@ -120,10 +212,11 @@ export async function collectClassicSdkDeliveryInputs(
     ...parseCheckManifest(manifest),
     ...stagedDeletes.map((p) => ({ p, h: 'missing', s: null, m: null })),
   ]);
+  const baseline = await initialWorkspaceFiles(root, run);
   return Object.fromEntries(
-    Object.entries(await implementationInputs(root, manifest)).filter(([ref]) =>
-      [...changed].some((name) => ref === name || ref.startsWith(`${name}/`)),
-    ),
+    Object.entries(await implementationInputs(root, manifest))
+      .filter(([ref]) => [...changed].some((name) => ref === name || ref.startsWith(`${name}/`)))
+      .filter(([ref, hash]) => !Object.hasOwn(baseline, ref) || baseline[ref] !== hash),
   );
 }
 

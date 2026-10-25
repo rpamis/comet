@@ -378,6 +378,7 @@ export interface NativeCheckInputSnapshot {
   fingerprint: string;
   /** 检查实际读取的候选和文件内容，复核时不绑定提交命令的 shell。 */
   contentFingerprint: string;
+  generatedInputFingerprint: string;
   complete: boolean;
   diagnostics: string[];
 }
@@ -591,11 +592,15 @@ async function nativeIgnoredCheckInputSnapshot(
   managedArtifactRoot?: string,
   runnerInputs: ReadonlySet<string> = new Set(),
   stagedIndex = '',
+  repositories = new Set<string>(),
 ): Promise<NativeIgnoredInputSnapshot> {
   let ignoredPaths: string[];
   let realRoot: string;
   try {
     realRoot = await fs.realpath(projectRoot);
+    if (repositories.has(realRoot))
+      return incompleteNativeIgnoredInputSnapshot('项目生成输入包含重复的子仓库路径');
+    repositories.add(realRoot);
     const ignoredEntries = runGitCommand(projectRoot, [
       'ls-files',
       '--others',
@@ -700,7 +705,51 @@ async function nativeIgnoredCheckInputSnapshot(
       return incompleteNativeIgnoredInputSnapshot(`项目生成输入无法稳定读取：${relative}`);
     }
   }
-  return { complete: true, files };
+  // 父仓 ls-files 不进入 gitlink；每个子仓必须按自己的 ignore 规则收集生成输入。
+  for (const [relative] of parseGitlinksInIndex(stagedIndex)) {
+    if (relative.split('/').some((part) => NATIVE_DEPENDENCY_INPUT_DIRECTORIES.has(part))) continue;
+    try {
+      const child = path.resolve(projectRoot, ...relative.split('/'));
+      const info = await fs.lstat(child);
+      const realChild = await fs.realpath(child);
+      if (
+        !info.isDirectory() ||
+        info.isSymbolicLink() ||
+        realChild !== path.resolve(realRoot, ...relative.split('/')) ||
+        !isInsidePath(realRoot, realChild) ||
+        (await fs.realpath(runGitCommand(child, ['rev-parse', '--show-toplevel']))) !== realChild
+      )
+        return incompleteNativeIgnoredInputSnapshot(`项目生成输入子仓库不可用：${relative}`);
+      const childPlans = plans.flatMap((plan) => {
+        const cwdRef = path.posix.relative(relative, plan.cwdRef);
+        return cwdRef === '..' || cwdRef.startsWith('../') || path.posix.isAbsolute(cwdRef)
+          ? []
+          : [{ ...plan, cwdRef: cwdRef || '.' }];
+      });
+      const childInputs = new Set(
+        [...runnerInputs]
+          .filter((ref) => ref.startsWith(`${relative}/`))
+          .map((ref) => ref.slice(relative.length + 1)),
+      );
+      const snapshot = await nativeIgnoredCheckInputSnapshot(
+        child,
+        childPlans,
+        managedArtifactRoot,
+        childInputs,
+        runGitCommand(child, ['ls-files', '--stage', '-z']),
+        repositories,
+      );
+      if (!snapshot.complete)
+        return incompleteNativeIgnoredInputSnapshot(`子仓库 ${relative}：${snapshot.diagnostic}`);
+      files.push(...snapshot.files.map((file) => ({ ...file, path: `${relative}/${file.path}` })));
+    } catch {
+      return incompleteNativeIgnoredInputSnapshot(`无法完整读取子仓库生成输入：${relative}`);
+    }
+  }
+  return {
+    complete: true,
+    files: files.sort((left, right) => left.path.localeCompare(right.path, 'en')),
+  };
 }
 
 async function nativePhysicalCheckInputSnapshot(
@@ -845,12 +894,87 @@ interface NativeCheckInputOptions {
   projectRoot: string;
   plans: readonly NativeCheckPlan[];
   managedArtifactRoot?: string;
+  /** Archive 材料另有内容绑定，仅从归档期间的生成输入摘要排除。 */
+  generatedInputExclusions?: readonly string[];
 }
 
 export async function nativeCheckInputFingerprint(
   options: NativeCheckInputOptions,
 ): Promise<string> {
   return (await nativeCheckInputSnapshot(options)).fingerprint;
+}
+
+/** Archive 已分别绑定源码，只读取生成输入，避免每次复核再扫描完整源码树。 */
+export async function nativeGeneratedCheckInputSnapshot(options: NativeCheckInputOptions) {
+  const runnerInputs = await nativeRunnerInputArtifactPaths(options.projectRoot);
+  const exclusions = [
+    ...nativeOwnedInputExclusions(options.projectRoot, options.managedArtifactRoot),
+    ...[...runnerInputs].map((relative) => `:(exclude,literal)${relative}`),
+  ];
+  let ignored: NativeIgnoredInputSnapshot = { complete: true, files: [] };
+  let physical: NativeIgnoredInputSnapshot = { complete: true, files: [] };
+  let gitView = false;
+  try {
+    runGitCommand(options.projectRoot, ['rev-parse', 'HEAD']);
+    gitView = true;
+    const indexArgs = ['ls-files', '--stage', '-z', '--', ...exclusions];
+    const index = runGitCommand(options.projectRoot, indexArgs);
+    const untracked = runGitCommand(options.projectRoot, [
+      'ls-files',
+      '--others',
+      '--exclude-standard',
+      '-z',
+      '--',
+      ...exclusions,
+    ]);
+    ignored = await nativeIgnoredCheckInputSnapshot(
+      options.projectRoot,
+      options.plans,
+      options.managedArtifactRoot,
+      runnerInputs,
+      `${index}\0${untracked}`,
+    );
+    if (index !== runGitCommand(options.projectRoot, indexArgs))
+      return { complete: false, fingerprint: null };
+  } catch {
+    if (gitView) return { complete: false, fingerprint: null };
+    physical = await nativePhysicalCheckInputSnapshot(
+      options.projectRoot,
+      options.plans,
+      options.managedArtifactRoot,
+      runnerInputs,
+    );
+  }
+  return {
+    complete: ignored.complete && physical.complete,
+    fingerprint: generatedInputsFingerprint(ignored, physical, options.generatedInputExclusions),
+  };
+}
+
+function generatedInputsFingerprint(
+  ignored: NativeIgnoredInputSnapshot,
+  physical: NativeIgnoredInputSnapshot,
+  exclusions: readonly string[] = [],
+) {
+  const included = (ref: string) =>
+    !exclusions.some((excluded) => ref === excluded || ref.startsWith(`${excluded}/`));
+  return canonicalHash('comet.native.generated-inputs.v1', {
+    ignored: {
+      complete: ignored.complete,
+      files: ignored.files.filter(({ path: ref }) => included(ref)),
+    },
+    physical: physical.files.filter(
+      ({ path: ref }) =>
+        included(ref) &&
+        ref
+          .split('/')
+          .some((part) =>
+            NATIVE_GENERATED_INPUT_DIRECTORIES.includes(
+              part as (typeof NATIVE_GENERATED_INPUT_DIRECTORIES)[number],
+            ),
+          ),
+    ),
+  });
 }
 
 export async function nativeCheckInputSnapshot(
@@ -1044,6 +1168,11 @@ export async function nativeCheckInputSnapshot(
   return {
     fingerprint,
     contentFingerprint: canonicalHash('comet.native.check-content.v1', content),
+    generatedInputFingerprint: generatedInputsFingerprint(
+      gitSnapshot.ignored,
+      gitSnapshot.physical,
+      options.generatedInputExclusions,
+    ),
     complete: gitSnapshot.complete,
     diagnostics,
   };

@@ -14,6 +14,7 @@ import {
 import { defineClassicWorkflowApplication } from './classic-sdk-application.js';
 import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
+import { bindClassicSdkWorkspaceBaseline } from './classic-sdk-delivery-inputs.js';
 
 /** Caller holds the Classic per-change ownership lock. */
 export async function createClassicSdkRun(options: {
@@ -25,6 +26,15 @@ export async function createClassicSdkRun(options: {
   recoverySourceHash?: string;
   recoverySource?: string;
 }): Promise<WorkflowRun> {
+  const initialInput = {
+    change: options.name,
+    changeDir: path.relative(options.projectRoot, options.changeDir).replaceAll('\\', '/'),
+    ...(options.recoverySourceHash ? { recoverySourceHash: options.recoverySourceHash } : {}),
+    ...(options.recoverySource ? { recoverySource: options.recoverySource } : {}),
+  };
+  const input = options.recoverySourceHash
+    ? initialInput
+    : await bindClassicSdkWorkspaceBaseline(options.projectRoot, initialInput);
   const application = defineClassicWorkflowApplication(options.profile);
   const persistentStore = createClassicSdkStateStore(options.projectRoot);
   const store: RuntimeStore<WorkflowRun> = {
@@ -63,12 +73,7 @@ export async function createClassicSdkRun(options: {
   return runtime.start({
     runId: options.name,
     workflow: { id: application.workflow.id, version: application.workflow.version },
-    input: {
-      change: options.name,
-      changeDir: path.relative(options.projectRoot, options.changeDir).replaceAll('\\', '/'),
-      ...(options.recoverySourceHash ? { recoverySourceHash: options.recoverySourceHash } : {}),
-      ...(options.recoverySource ? { recoverySource: options.recoverySource } : {}),
-    },
+    input,
     initialState: options.initialState,
   });
 }

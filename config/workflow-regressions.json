@@ -1172,6 +1172,133 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-gitlink-generated-input-binding",
+      "behavior": "Native 绑定 Git 子仓中被忽略的生成输入，输入变化后拒绝旧检查；恢复原内容后仍可正常归档。",
+      "sources": [
+        "report:2026-10-25-native-classic-core-review",
+        "https://github.com/rpamis/comet/issues/501",
+        "https://github.com/rpamis/comet/issues/506"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "8deff743 中检查 cwd=dependency，读取被子仓忽略的 dist/output.txt；good 检查通过后改成 bad，原命令退出 1，但 Verifier 和 Archive 仍通过。",
+      "expected": "干净及 dirty 子仓的生成输入变化均拒绝陈旧证据，公开 Archive 不完成；恢复原内容后的有效独立验收可完成归档。",
+      "forbidden": "仅绑定 gitlink HEAD/status 就忽略实际生成输入，或为拦截变化而永久阻止合法归档。",
+      "rootCause": "父仓 ls-files 不进入 gitlink，子仓摘要只读取 Git status 路径，两处均遗漏 ignored 生成文件。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^rejects changed gitlink generated inputs and archives restored inputs \\(dirty=(?:false|true)\\)$",
+          "requiredNames": [
+            "rejects changed gitlink generated inputs and archives restored inputs (dirty=false)",
+            "rejects changed gitlink generated inputs and archives restored inputs (dirty=true)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "blocked Verifier recovery command contract rejects changed gitlink generated output at the public Archive boundary",
+          "requiredNames": [
+            "blocked Verifier recovery command contract rejects changed gitlink generated output at the public Archive boundary"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "archives ignored build artifact roots without treating its own moved documents as generated drift",
+          "requiredNames": [
+            "archives ignored build artifact roots without treating its own moved documents as generated drift"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-archive-prepared-input-recovery",
+      "behavior": "Classic 在 OpenSpec 副作用前保存原执行输入，搬迁后中断可在同一 Run 核对恢复且不重放归档。",
+      "sources": ["report:2026-10-25-native-classic-core-review"],
+      "coverageLevel": "public-cli",
+      "reproduction": "8deff743 的 OpenSpec fixture 实际 rename 后退出 1，Action unknown；连续两次 archive --recover 要求恢复从未生成的 manifest/receipt。",
+      "expected": "公开 bundle 拒绝变动的归档工件，原内容恢复后核对执行前记录并完成原 Action；缺少原结果的规格同步必须由用户确认完整精确输出，变化后旧确认失效；重复恢复不重复调用 OpenSpec，仍可交付。",
+      "forbidden": "无原输入时补造成功证据、接受篡改内容、批准未知规格同步或重新执行已经发生的归档。",
+      "rootCause": "归档完成后才保存执行清单，恢复却强制依赖该清单，缺少执行前的持久化输入。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "recovers Archive interrupted after moving without replay or accepting changed artifacts",
+          "requiredNames": [
+            "recovers Archive interrupted after moving without replay or accepting changed artifacts"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "requires an exact user decision for specification outputs after interrupted Archive",
+          "requiredNames": [
+            "requires an exact user decision for specification outputs after interrupted Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-preexisting-workspace-delivery-scope",
+      "behavior": "Classic current 隔离保留创建 change 前已有且未变的源码草稿，发生实际修改的草稿仍须交付。",
+      "sources": [
+        "report:2026-10-25-native-classic-core-review",
+        "https://github.com/rpamis/comet/issues/503"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "8deff743 在 state init 前已有 unrelated-draft.ts，未改该文件但 Verify 将其列入 deliveryInputs，归档后只提交本次修复会报 omits verified implementation。",
+      "expected": "公开 complete-delivery 成功且未变草稿保持未跟踪；本次修改过的原有草稿遗漏时仍拒绝交付。",
+      "forbidden": "强迫提交无关既有文件、删除草稿换取通过，或把既有路径上的新实现也豁免交付。",
+      "rootCause": "交付范围直接采用相对 HEAD 的全工作区变更和全部未跟踪路径，没有绑定 change 创建时的内容。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "delivers without an unchanged untracked draft that predates the change",
+          "requiredNames": [
+            "delivers without an unchanged untracked draft that predates the change"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "requires delivery of an initial draft modified during the change",
+          "requiredNames": ["requires delivery of an initial draft modified during the change"]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "does not trust a workspace baseline supplied through public dispatch start",
+          "requiredNames": [
+            "does not trust a workspace baseline supplied through public dispatch start"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-short-timeout-supervisor-startup",
+      "behavior": "Classic SDK 极短检查超时保留真实整树停止证明并返回 timeout，不因监管器启动竞争进入 unknown。",
+      "sources": ["report:2026-10-25-native-classic-core-review"],
+      "coverageLevel": "public-cli",
+      "reproduction": "8deff743 中项目 timeout=25ms、Node 等待 200ms 的公开 SDK check 返回 70/stop-unconfirmed，而 1000ms 对照返回正常 124。",
+      "expected": "25ms 检查返回 124；登记期限独立于执行期限，调用方在监管器就绪后处理超时，仍核对整树终止。",
+      "forbidden": "把不明终止当作成功、仅凭组长退出批准写入，或通过延长测试 timeout 掩盖失败。",
+      "rootCause": "监管器登记期限沿用命令期限，且调用方可在监管器就绪之前开始 taskkill，形成自清理竞争。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-check-defaults.test.ts",
+          "namePattern": "applies project timeout to the public sdk check run",
+          "requiredNames": ["applies project timeout to the public sdk check run"]
+        },
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "受管命令的整树终止证明 短命令时限不让尚未启动命令的监管器抢先自清理",
+          "requiredNames": ["受管命令的整树终止证明 短命令时限不让尚未启动命令的监管器抢先自清理"]
+        },
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "受管命令的整树终止证明 Windows 等待调用方核对整树终止时保留原监管器身份",
+          "requiredNames": [
+            "受管命令的整树终止证明 Windows 等待调用方核对整树终止时保留原监管器身份"
+          ]
+        }
+      ]
     }
   ]
 }

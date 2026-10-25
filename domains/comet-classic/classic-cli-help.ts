@@ -139,6 +139,7 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
     archive: [
       'comet archive <change-name> [--dry-run|--recover]',
       '--recover reconciles one moved SDK Archive after the original executor has stopped; it never runs OpenSpec Archive again.',
+      'If interrupted specification synchronization has no original result receipt, review recoveryApproval.changes with the user, then use --recover --confirmed --proposal-hash <current-hash>. Changed outputs invalidate that decision; do not self-confirm.',
     ],
     validate: ['comet classic validate <change-name>'],
     workspace: [

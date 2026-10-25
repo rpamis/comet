@@ -32,7 +32,8 @@ const stop = (reason) => {
   if (reason !== 'completed') send({ type: 'interrupted', reason });
   // Eval 的 owner 必须在监管器仍存活时确认 taskkill；不要同时自杀造成竞态。
   if (process.platform === 'win32' && ownerConfirmsTermination && process.connected) {
-    setTimeout(terminate, 5000);
+    // 调用方仍在线时给系统整树核对留出期限；断连仍立即清理，不能先退出丢失原 PID 身份。
+    setTimeout(terminate, 30000);
     return;
   }
   terminate();
@@ -68,6 +69,7 @@ process.on('message', (message) => {
 });
 // 未登记的监管器不能启动命令，登记方丢失或永久卡住也不会留下常驻进程。
 setTimeout(() => { if (!started) stop('registration-timeout'); }, Number(process.argv[1]) || 30000).unref();
+send({ type: 'ready' });
 `;
 
 export interface OwnedProcessInstance {
@@ -90,6 +92,7 @@ export function spawnOwnedCommand(
   child: ChildProcessByStdio<null, Readable, Readable>;
   start: () => void;
   instanceId: string;
+  ready: Promise<void>;
 } {
   if (!Number.isSafeInteger(options.timeoutMs) || options.timeoutMs < 1)
     throw new Error('受管命令时限必须是正整数');
@@ -100,7 +103,8 @@ export function spawnOwnedCommand(
     [
       '-e',
       SUPERVISOR,
-      String(options.timeoutMs),
+      // 登记期限独立于命令期限，避免极短命令时限与调用方的整树终止相互竞争。
+      '30000',
       options.confirmTermination ? 'confirm-termination' : '',
     ],
     {
@@ -111,8 +115,33 @@ export function spawnOwnedCommand(
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     },
   ) as ChildProcessByStdio<null, Readable, Readable>;
+  const ready = new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      child.off('message', onMessage);
+      child.off('error', onError);
+      child.off('close', onClose);
+    };
+    const onMessage = (message: unknown) => {
+      if ((message as { type?: unknown } | null)?.type !== 'ready') return;
+      cleanup();
+      resolve();
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const onClose = () => {
+      cleanup();
+      reject(new Error('检查监管进程在就绪前退出'));
+    };
+    child.on('message', onMessage);
+    child.once('error', onError);
+    child.once('close', onClose);
+  });
+  void ready.catch(() => {});
   return {
     child,
+    ready,
     instanceId: randomUUID(),
     start: () => {
       if (!child.connected) throw new Error('检查监管进程在登记完成前退出');

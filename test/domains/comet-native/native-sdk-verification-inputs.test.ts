@@ -35,17 +35,82 @@ import type { NativeCheckPlan } from '../../../domains/comet-native/native-check
 
 type ReceiptFault = 'null-snapshot' | 'unknown-schema' | 'missing-candidate' | 'incomplete';
 
+const gitlinkOutputCheck: NativeCheckPlan = {
+  id: 'gitlink-output',
+  name: 'Read generated output in the child repository',
+  executable: process.execPath,
+  argv: [
+    '-e',
+    'if (require("node:fs").readFileSync("dist/output.txt", "utf8") !== "good") process.exit(1)',
+  ],
+  cwdRef: 'dependency',
+  timeoutMs: 5_000,
+  repeatable: true,
+};
+
 const roots: string[] = [];
 afterEach(async () => {
   vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
+it.each([false, true])(
+  'rejects changed gitlink generated inputs and archives restored inputs (dirty=%s)',
+  async (dirty) => {
+    const prepared = await checkedCandidate({
+      prepareProject: async (root) => {
+        const child = path.join(root, 'dependency');
+        await fs.mkdir(child);
+        const git = (cwd: string, args: string[]) =>
+          execFileSync(
+            'git',
+            ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', ...args],
+            { cwd, stdio: 'pipe' },
+          );
+        git(child, ['init', '--quiet']);
+        await writeProjectFile(child, '.gitignore', 'dist/\n');
+        await writeProjectFile(child, 'source.js', 'source\n');
+        git(child, ['add', '.']);
+        git(child, ['commit', '-qm', 'child']);
+        git(root, ['add', 'dependency']);
+        git(root, ['commit', '-qm', 'gitlink']);
+        if (dirty) await writeProjectFile(child, 'source.js', 'dirty source\n');
+        await writeProjectFile(child, 'dist/output.txt', 'good');
+      },
+      verificationChecks: [gitlinkOutputCheck],
+    });
+    const child = path.join(prepared.root, 'dependency');
+    await writeProjectFile(child, 'dist/output.txt', 'bad');
+    expect(() =>
+      execFileSync(gitlinkOutputCheck.executable, gitlinkOutputCheck.argv, { cwd: child }),
+    ).toThrow();
+    await expect(submitVerifierResult(prepared)).rejects.toThrow(/检查输入已变化/);
+    await writeProjectFile(child, 'dist/output.txt', 'good');
+    const run = await prepared.runtime.inspect(prepared.run.runId);
+    const verified = await submitVerifierResult(
+      { ...prepared, run },
+      'pass',
+      'verifier-restored-result',
+    );
+    await completeArchive(prepared, verified);
+  },
+);
+
 async function writeProjectFile(root: string, relative: string, content: string) {
   const file = path.join(root, relative);
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, content);
 }
+
+it('archives ignored build artifact roots without treating its own moved documents as generated drift', async () => {
+  const prepared = await checkedCandidate({
+    artifactRootRef: 'build',
+    prepareProject: async (root) => {
+      await fs.appendFile(path.join(root, '.git/info/exclude'), '\nbuild/\n');
+    },
+  });
+  await completeArchive(prepared, await submitVerifierResult(prepared));
+});
 
 async function succeedLatestAction(
   runtime: ReturnType<typeof createRuntime>,
@@ -88,6 +153,7 @@ async function succeedLatestAction(
 async function checkedCandidate(
   options: {
     legacyReceipt?: boolean;
+    artifactRootRef?: string;
     receiptFault?: ReceiptFault;
     checkSource?: string;
     executeChecks?: boolean;
@@ -125,9 +191,10 @@ async function checkedCandidate(
     ],
     { cwd: root },
   );
-  await writeProjectConfig(root, defaultProjectConfig('docs', 'en'));
+  const artifactRootRef = options.artifactRootRef ?? 'docs';
+  await writeProjectConfig(root, defaultProjectConfig(artifactRootRef, 'en'));
   await options.prepareProject?.(root);
-  const paths = await nativeProjectPaths(root, 'docs');
+  const paths = await nativeProjectPaths(root, artifactRootRef);
   await ensureNativeDirectories(paths);
   const changeDir = path.join(paths.changesDir, 'verification-inputs');
   await fs.mkdir(changeDir);
@@ -216,7 +283,7 @@ Run focused Native checks.
   let run = await runtime.start({
     runId: 'verification-inputs',
     workflow: { id: application.workflow.id, version: application.workflow.version },
-    input: { name: 'verification-inputs', artifactRootRef: 'docs' },
+    input: { name: 'verification-inputs', artifactRootRef },
     initialState,
   });
   run = await succeedLatestAction(
@@ -367,12 +434,19 @@ async function completeArchive(
     'comet-native-archive-apply',
     'comet-native-archive-finalize',
   ]) {
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId,
-      context: { requestId: executorId, projectRoot: root },
-    });
+    try {
+      run = await runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId,
+        context: { requestId: executorId, projectRoot: root },
+      });
+    } catch (error) {
+      const failed = await runtime.inspect(run.runId);
+      throw new Error(`${executorId}: ${failed.actions.at(-1)?.reason ?? failed.reason}`, {
+        cause: error,
+      });
+    }
   }
   expect(run).toMatchObject({ status: 'completed', state: { archived: true, status: 'done' } });
   expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.finalize', status: 'succeeded' });

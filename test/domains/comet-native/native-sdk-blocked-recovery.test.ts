@@ -54,6 +54,7 @@ async function blockedFixture(
     misclaimedVerifier?: boolean;
     inProjectRequests?: boolean;
     dirtyEmbedded?: boolean;
+    generatedEmbedded?: boolean;
     directPass?: boolean;
   } = {},
 ) {
@@ -115,11 +116,16 @@ async function blockedFixture(
     await fs.mkdir(child);
     git(['init', '-q'], child);
     await fs.writeFile(path.join(child, 'value.txt'), 'baseline\n');
+    if (options.generatedEmbedded) await fs.writeFile(path.join(child, '.gitignore'), 'dist/\n');
     git(['add', '.'], child);
     git(['commit', '-qm', 'child'], child);
     git(['add', 'dependency']);
     git(['commit', '-qm', 'gitlink']);
     await fs.writeFile(path.join(child, 'value.txt'), 'verified dirty child\n');
+    if (options.generatedEmbedded) {
+      await fs.mkdir(path.join(child, 'dist'));
+      await fs.writeFile(path.join(child, 'dist/output.txt'), 'good');
+    }
   }
   let count = 0;
   let legacyRuntime: WorkflowRuntime | undefined;
@@ -463,6 +469,8 @@ async function archiveReadyFixture(
     deferredRevalidation?: boolean;
     dirtyEmbedded?: boolean;
     directPass?: boolean;
+    generatedEmbedded?: boolean;
+    verificationChecks?: NativeCheckPlan[];
   } = {},
 ) {
   const f = await blockedFixture({
@@ -470,6 +478,8 @@ async function archiveReadyFixture(
     inProjectRequests: options.inProjectRequests,
     dirtyEmbedded: options.dirtyEmbedded,
     directPass: options.directPass,
+    generatedEmbedded: options.generatedEmbedded,
+    verificationChecks: options.verificationChecks,
   });
   if (!options.directPass) {
     const resume = (await alternatives(f)).find(({ name }) => name === 'resolve-verifier-blocker')!;
@@ -541,6 +551,34 @@ async function archiveReadyFixture(
 }
 
 describe('blocked Verifier recovery command contract', () => {
+  it('rejects changed gitlink generated output at the public Archive boundary', async () => {
+    const f = await archiveReadyFixture({
+      dirtyEmbedded: true,
+      generatedEmbedded: true,
+      directPass: true,
+      verificationChecks: [
+        {
+          id: 'child-output',
+          name: 'Validate child output',
+          executable: process.execPath,
+          argv: [
+            '-e',
+            'if (require("node:fs").readFileSync("dist/output.txt", "utf8") !== "good") process.exit(1)',
+          ],
+          cwdRef: 'dependency',
+          timeoutMs: 10000,
+          repeatable: true,
+        },
+      ],
+    });
+    await fs.writeFile(path.join(f.projectRoot, 'dependency/dist/output.txt'), 'bad');
+    const archived = await f.native(['archive', f.name]);
+    expect(archived.exitCode).not.toBe(0);
+    expect(
+      parseNativePortableState((await f.dispatch({ operation: 'inspect', runId: f.name })).state)
+        .archived,
+    ).toBe(false);
+  });
   it('reports candidate drift in read-only Archive and Doctor without changing the accepted Run', async () => {
     const f = await archiveReadyFixture();
     const before = await f.dispatch({ operation: 'inspect', runId: f.name });

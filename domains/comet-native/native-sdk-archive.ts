@@ -11,6 +11,9 @@ import {
   assertNativeSdkCandidateUnchanged,
   nativeSdkCandidateInputGate,
   NativeSdkCandidateDriftError,
+  assertNativeSdkArchiveCheckInputs,
+  NativeSdkCheckInputDriftError,
+  NativeSdkCheckInputSnapshotError,
 } from './native-sdk-checks.js';
 
 import { hashProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
@@ -79,7 +82,11 @@ export function nativeSdkRetryableArchiveFinalization(run: Readonly<WorkflowRun>
 }
 
 /** Spec 内容由归档事务核对；搬迁材料另行逐文件绑定，不能借目录排除隐藏实现漂移。 */
-async function archiveCandidateBinding(run: Readonly<WorkflowRun>, projectRoot: string) {
+async function archiveCandidateBinding(
+  run: Readonly<WorkflowRun>,
+  projectRoot: string,
+  includeGeneratedInputs = true,
+) {
   const state = parseNativePortableState(run.state);
   const input = run.input as { artifactRootRef: string };
   const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, { readOnly: true });
@@ -118,12 +125,18 @@ async function archiveCandidateBinding(run: Readonly<WorkflowRun>, projectRoot: 
     }
   }
   await visit(source);
-  const candidateGate = await nativeSdkCandidateInputGate({ run, projectRoot, archiveOwnedPaths });
+  const candidateGate = await nativeSdkCandidateInputGate({
+    run,
+    projectRoot,
+    archiveOwnedPaths,
+    includeGeneratedInputs,
+  });
   if (candidateGate === null)
     throw new NativeSdkCandidateDriftError(
       'Native Archive 无法完整复核候选实现；请恢复候选或重新验收',
     );
-  return hashRuntimeValue({ candidateGate, materials });
+  const binding = hashRuntimeValue({ candidateGate, materials });
+  return includeGeneratedInputs ? `v2:${binding}` : binding;
 }
 
 async function assertArchiveCandidate(run: Readonly<WorkflowRun>, projectRoot: string) {
@@ -170,7 +183,13 @@ async function assertArchiveCandidate(run: Readonly<WorkflowRun>, projectRoot: s
     }
     return;
   }
-  if ((await archiveCandidateBinding(run, projectRoot)) !== preflight.candidateBinding)
+  if (
+    (await archiveCandidateBinding(
+      run,
+      projectRoot,
+      preflight.candidateBinding.startsWith('v2:'),
+    )) !== preflight.candidateBinding
+  )
     throw new NativeSdkCandidateDriftError(
       'Native Archive 候选实现或搬迁材料已变化；请恢复已确认候选后重试，或在写入 Specs 前重新验收',
     );
@@ -239,6 +258,18 @@ async function inspectArchivePreflightOutput(
 ) {
   const bound = await archivePreflightBinding(run, action, projectRoot);
   await assertNativeSdkCandidateUnchanged({ run, projectRoot, requireEvidence: true });
+  try {
+    await assertNativeSdkArchiveCheckInputs({ run, projectRoot });
+  } catch (error) {
+    if (
+      !(error instanceof NativeSdkCheckInputDriftError) &&
+      !(error instanceof NativeSdkCheckInputSnapshotError)
+    )
+      throw error;
+    throw new NativeSdkCandidateDriftError(
+      `Native 归档前检查输入已变化或无法完整复核；请恢复原输入或重新验收：${error.message}`,
+    );
+  }
   const candidateBinding = await archiveCandidateBinding(run, projectRoot);
   const report = await hashProtectedProjectFile(projectRoot, bound.reportRef, {
     label: 'Native SDK verification report',

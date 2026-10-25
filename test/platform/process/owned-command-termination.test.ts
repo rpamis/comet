@@ -7,7 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runOwnedCommand } from '../../../platform/process/run-owned-command.js';
 import * as termination from '../../../platform/process/terminate-process-tree.js';
 import { terminateProcessTreeConfirmed } from '../../../platform/process/terminate-process-tree.js';
-import type { OwnedProcessInstance } from '../../../platform/process/owned-command.js';
+import {
+  spawnOwnedCommand,
+  type OwnedProcessInstance,
+} from '../../../platform/process/owned-command.js';
 
 const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
 const systemRoot = process.env.SystemRoot;
@@ -77,6 +80,39 @@ afterEach(async () => {
 });
 
 describe('受管命令的整树终止证明', () => {
+  it.skipIf(process.platform !== 'win32')(
+    'Windows 等待调用方核对整树终止时保留原监管器身份',
+    async () => {
+      const terminate = termination.terminateProcessTreeConfirmed;
+      vi.spyOn(termination, 'terminateProcessTreeConfirmed').mockImplementation(async (child) => {
+        await new Promise((resolve) => setTimeout(resolve, 6000));
+        return terminate(child);
+      });
+      const output = await runOwnedCommand(process.execPath, ['-e', 'console.log("done")'], {
+        cwd: directory,
+        env: process.env,
+        timeoutMs: 10000,
+      });
+      expect(output).toBe('done\n');
+    },
+    20000,
+  );
+  it('短命令时限不让尚未启动命令的监管器抢先自清理', async () => {
+    const owned = spawnOwnedCommand(process.execPath, ['-e', 'setTimeout(() => {}, 200)'], {
+      cwd: directory,
+      timeoutMs: 25,
+      confirmTermination: true,
+    });
+    processes.push(owned.child);
+    await owned.ready;
+    const messages: unknown[] = [];
+    owned.child.on('message', (message) => messages.push(message));
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(messages).toEqual([]);
+    expect(await alive(owned.child.pid!)).toBe(true);
+    expect(await terminateProcessTreeConfirmed(owned.child)).toBe(true);
+    await untilDead(owned.child.pid!);
+  });
   it('POSIX 自清理后的短暂 EPERM 只有在整组消失后才能确认停止', async () => {
     Object.defineProperty(process, 'platform', { ...platform, value: 'darwin' });
     const pid = 2147483002;

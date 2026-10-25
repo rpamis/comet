@@ -54,7 +54,11 @@ import {
   nativeSupervisorIntegrationWorktree,
 } from './native-supervisor-workspace.js';
 import { toNativePortableText } from './native-portable-text.js';
-import { nativeCheckInputSnapshot, nativeCandidateInputGate } from './native-portable-checks.js';
+import {
+  nativeCheckInputSnapshot,
+  nativeCandidateInputGate,
+  nativeGeneratedCheckInputSnapshot,
+} from './native-portable-checks.js';
 import { nativeEditReviewScope } from './native-edit-review.js';
 import type { NativePortableCheckSummary } from './native-portable-types.js';
 import {
@@ -1243,6 +1247,24 @@ export async function nativeSdkCurrentCheckSummaries(options: {
   run: Readonly<WorkflowRun>;
   projectRoot: string;
 }): Promise<NativePortableCheckSummary[]> {
+  return currentCheckSummaries(options, 'verify');
+}
+
+/** Archive 只读复核原检查，不改变 Verifier 的阶段要求或推进状态。 */
+export async function assertNativeSdkArchiveCheckInputs(options: {
+  run: Readonly<WorkflowRun>;
+  projectRoot: string;
+}): Promise<void> {
+  await currentCheckSummaries(options, 'archive');
+}
+
+async function currentCheckSummaries(
+  options: {
+    run: Readonly<WorkflowRun>;
+    projectRoot: string;
+  },
+  phase: 'verify' | 'archive',
+): Promise<NativePortableCheckSummary[]> {
   const { run, projectRoot } = options;
   const state = parseNativePortableState(run.state);
   const candidateStart = run.actions
@@ -1260,7 +1282,7 @@ export async function nativeSdkCurrentCheckSummaries(options: {
         ['succeeded', 'failed'].includes(entry.status),
     );
   if (
-    state.phase !== 'verify' ||
+    state.phase !== phase ||
     !state.builder_handoff ||
     !actions.some((entry) => entry.stepId === 'verify.checks') ||
     actions.some((entry) => entry.claim?.executorId !== nativeSdkCheckExecutor.id || !entry.outcome)
@@ -1374,6 +1396,7 @@ export async function nativeSdkCandidateInputGate(options: {
   archiveOwnedPaths?: readonly string[];
   legacyArchiveOverlay?: NativeLegacyArchiveOverlay;
   legacyExecutionBinding?: boolean;
+  includeGeneratedInputs?: boolean;
 }): Promise<string | null> {
   const state = parseNativePortableState(options.run.state);
   if (!state.builder_handoff) return null;
@@ -1416,12 +1439,23 @@ export async function nativeSdkCandidateInputGate(options: {
       ?.snapshot,
     legacyShapeSemanticSnapshot: state.shape_semantic_snapshot === undefined,
   };
-  return nativeCandidateInputGate({
+  const candidate = await nativeCandidateInputGate({
     ...gateOptions,
     archiveOwnedPaths: options.archiveOwnedPaths,
     legacyArchiveOverlay: options.legacyArchiveOverlay,
     legacyExecutionBinding: options.legacyExecutionBinding,
   });
+  if (!options.includeGeneratedInputs || candidate === null) return candidate;
+  const snapshot = await nativeGeneratedCheckInputSnapshot({
+    state,
+    projectRoot: executionRoot,
+    plans,
+    managedArtifactRoot: gateOptions.managedArtifactRoot,
+    generatedInputExclusions: options.archiveOwnedPaths,
+  });
+  return snapshot.complete
+    ? hashRuntimeValue({ candidate, generatedInputs: snapshot.fingerprint })
+    : null;
 }
 
 export async function nativeSdkSupervisorChildCheckSummaries(options: {
