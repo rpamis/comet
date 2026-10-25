@@ -20,7 +20,9 @@ from scaffold.python.validation.current_archive import inspect_completed_archive
 
 @pytest.mark.parametrize(
     "case",
-    json.loads((get_tasks_dir().parent / "acceptance-051.json").read_text(encoding="utf-8"))["cases"],
+    json.loads((get_tasks_dir().parent / "acceptance-051.json").read_text(encoding="utf-8"))[
+        "cases"
+    ],
     ids=lambda case: case["workflow"] + "-" + case["difficulty"],
 )
 def test_051_matrix_prepares_each_selected_workflow_without_cross_workflow_oracles(
@@ -47,8 +49,11 @@ def test_051_matrix_prepares_each_selected_workflow_without_cross_workflow_oracl
 
 @pytest.mark.parametrize(
     ("skills", "error"),
-    [({}, ValueError), ({"comet-native": {}}, FileNotFoundError),
-     ({"comet-native": {}, "comet-classic": {}}, FileNotFoundError)],
+    [
+        ({}, ValueError),
+        ({"comet-native": {}}, FileNotFoundError),
+        ({"comet-native": {}, "comet-classic": {}}, FileNotFoundError),
+    ],
 )
 def test_native_oracle_requires_its_selected_source_even_with_mixed_skills(tmp_path, skills, error):
     environment = get_tasks_dir() / "comet-small-cli-archive/environment"
@@ -151,9 +156,7 @@ def test_native_recovery_examples_are_bound_to_the_supplied_wordcount_baseline()
             check=True,
             timeout=10,
         )
-        assert result.stdout.splitlines() == [
-            f"Words: {case['words']}", f"Lines: {case['lines']}"
-        ]
+        assert result.stdout.splitlines() == [f"Words: {case['words']}", f"Lines: {case['lines']}"]
     assert "before the first Shape confirmation" in prompt
 
 
@@ -162,12 +165,17 @@ def test_classic_parked_proposal_instruction_matches_the_exact_preserved_content
     prompt = task.render_prompt()
     match = re.search(r"<!-- parked-proposal-command -->\s*```bash\n(.*?)```", prompt, re.S)
     assert match is not None, "Classic task must provide the deterministic parked proposal command"
-    validator = ast.parse((task.validation_dir / "test_classic_sdk_recovery.py").read_text(encoding="utf-8"))
+    validator = ast.parse(
+        (task.validation_dir / "test_classic_sdk_recovery.py").read_text(encoding="utf-8")
+    )
     expected = next(
         ast.literal_eval(node.value)
         for node in validator.body
         if isinstance(node, ast.Assign)
-        and any(isinstance(target, ast.Name) and target.id == "PARKED_PROPOSAL" for target in node.targets)
+        and any(
+            isinstance(target, ast.Name) and target.id == "PARKED_PROPOSAL"
+            for target in node.targets
+        )
     )
     proposal = tmp_path / "docs/openspec/changes/parked-format/proposal.md"
     proposal.parent.mkdir(parents=True)
@@ -182,7 +190,9 @@ def test_native_recovery_task_declares_its_fixed_canonical_spec_and_numeric_line
     canonical = "docs/comet/specs/sentence-counting/spec.md"
     assert canonical in task.config.evaluation.expected_artifacts
     assert canonical in task.config.validation.target_artifacts
-    assert canonical in prompt, "Task must disclose the same canonical artifact required by validation"
+    assert canonical in prompt, (
+        "Task must disclose the same canonical artifact required by validation"
+    )
     assert "capability `sentence-counting`" in prompt
     assert "numeric line ranges such as `28-32`" in prompt
     assert "do not put filenames or paths in that column" in prompt
