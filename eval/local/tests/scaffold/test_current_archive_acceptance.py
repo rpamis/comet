@@ -12,7 +12,7 @@ import pytest
 import conftest
 from scaffold import load_treatment
 
-from scaffold.python.utils import BASH_EXEC
+from scaffold.python.utils import BASH_EXEC, run_shell
 from scaffold.python.paths import get_tasks_dir
 from scaffold.python.tasks import load_task
 from scaffold.python.validation.current_archive import inspect_completed_archive
@@ -109,6 +109,39 @@ def test_outer_case_timeout_covers_the_configured_hard_classic_budget():
     assert timeout >= task.config.timeout_sec + task.config.validation.timeout + 120
     # 本轮接受 --agent-timeout 10800，外层仍须留出验证、评分和清理时间。
     assert timeout >= 10_800 + task.config.validation.timeout + 120
+    for name in (
+        "comet-small-cli-archive",
+        "comet-counter-refactor-archive",
+        "comet-native-sdk-recovery",
+        "comet-classic-sdk-recovery",
+    ):
+        assert load_task(name).config.timeout_sec >= 10_800
+
+
+def test_completion_detector_accepts_verified_requested_runs_without_repeating_finished_work(
+    monkeypatch,
+):
+    monkeypatch.delenv("COMET_EVAL_APPLICATION_ID", raising=False)
+    statements = [
+        (
+            "Unchanged. The three specified Runs are `completed` with next action `done` "
+            "and verified local deliveries; `parked-format` remains `open`, untracked, untouched.",
+            0,
+        ),
+        ("All requested Runs are completed with verified local deliveries.", 0),
+        ("All three specified profiles were completed and delivered earlier in this session.", 0),
+        ("Two of the three specified profiles were completed and delivered.", 1),
+        ("If all three specified profiles were completed and delivered, stop.", 1),
+        ("Two of the three specified Runs are completed with verified local deliveries.", 1),
+        ("The three specified Runs are not completed with verified local deliveries.", 1),
+        ("All requested Runs are `not completed` with verified local deliveries.", 1),
+        ("If all requested Runs are completed with verified local deliveries, stop.", 1),
+        ("The three specified Runs are completed but local delivery remains pending.", 1),
+        ("Child workflow complete; parent workflow is not complete.", 1),
+    ]
+    for text, expected in statements:
+        result = run_shell("completion-point.sh", text, check=False)
+        assert result.returncode == expected, (text, result.stdout, result.stderr)
 
 
 def test_disposable_medium_fixture_ends_after_verified_archive_without_publishing_learning():

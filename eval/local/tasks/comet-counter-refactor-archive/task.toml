@@ -10,7 +10,7 @@ required = []
 [environment]
 description = "Current-checkout Comet CLI and supported OpenSpec, with an isolated Git project"
 dockerfile = "environment/Dockerfile"
-timeout_sec = 2400
+timeout_sec = 10800
 [validation]
 test_scripts = "test_archive_task.py"
 target_artifacts = []

@@ -470,7 +470,7 @@
       "behavior": "评测外层期限覆盖任务声明及本轮显式三小时执行预算，并保留验证、评分和清理时间。",
       "coverageLevel": "unit",
       "reproduction": "真实 runner 的timeout marker为4200秒，而高难度Classic配置允许Agent执行4800秒，另需180秒验证和评分。",
-      "expected": "保留任务声明的Agent预算；本轮可显式设置三小时执行期限，四小时外层期限覆盖执行、验证、评分及清理。",
+      "expected": "四份分级任务清单默认三小时执行期限，显式覆盖保持可用；四小时外层期限覆盖执行、验证、评分及清理。",
       "forbidden": "外层比任务预算先终止，或缩短Agent预算来掩盖配置不一致。",
       "rootCause": "外层固定期限未随当前高难度任务预算调整。",
       "tests": [
@@ -760,6 +760,37 @@
           "status": "pending",
           "evidence": [
             "Controller-stopped attempt: eval/local/logs/acceptance-051-final-matrix/quota-reset-20261025-1125/native-hard/early-failure/failure.json"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-requested-runs-completion",
+      "behavior": "指定多个 Run 已完成并交付时，控制器识别真实结束陈述，不反复唤起已完成任务。",
+      "sources": [
+        "report:2026-10-25-051-native-classic-acceptance",
+        "report:2026-10-25-long-eval-budget"
+      ],
+      "coverageLevel": "unit",
+      "reproduction": "真实 GLM Classic 高难度已通过公开 CLI 确认三个 Run completed/done 及本地交付，但控制器不识别其结束陈述，连续七次以上要求继续。",
+      "expected": "识别全体指定 Run 或 profile 的明确完成与交付陈述，随后继续执行原任务的严格产物、Runtime、归档和交付校验。",
+      "forbidden": "把部分完成、条件句、否定、待交付或仅子流程完成当成任务完成，或绕过任务校验器。",
+      "rootCause": "结束语识别只覆盖 workflow 和 archive 的固定表述，遗漏多个指定 Run 的完成与交付表述。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "stops after verified requested Run deliveries without dropping incomplete or child-only cases",
+          "requiredNames": [
+            "standalone static collector parity stops after verified requested Run deliveries without dropping incomplete or child-only cases"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM Classic requested Run completion followed by unchanged strict Archive and delivery validation",
+          "status": "pending",
+          "evidence": [
+            "eval/local/logs/acceptance-051-final-matrix/fixed-277d6ae4-20261025/classic-hard/controller-hotfix/hotfix.json"
           ]
         }
       ]

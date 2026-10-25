@@ -33,6 +33,15 @@ if [[ "$TEXT" =~ $NEGATED_PATTERN ]]; then
     exit 1
 fi
 
+# 多个指定 Run 的交付完成也是结束陈述；最终真伪仍由任务校验器核对。
+# 只识别句首明确的全体对象，不能把部分完成或条件句当成完成。
+REQUESTED_RUNS_COMPLETION_PATTERN='(^|[.!?;[:cntrl:]])[[:space:]]*(all[[:space:]]+(specified|requested)|the[[:space:]]+(three|3)[[:space:]]+(specified|requested))[[:space:]]+runs[[:space:]]+(are[[:space:]]+)?completed[^.!?;[:cntrl:]]*verified[[:space:]]+local[[:space:]]+deliveries'
+COMPLETION_TEXT="${TEXT//\`/}"
+REQUESTED_PROFILES_COMPLETION_PATTERN='(^|[.!?;[:cntrl:]])[[:space:]]*all[[:space:]]+(three|3)[[:space:]]+(specified|requested)[[:space:]]+profiles[[:space:]]+(were|are)[[:space:]]+completed[[:space:]]+and[[:space:]]+delivered'
+if [[ "$COMPLETION_TEXT" =~ $REQUESTED_RUNS_COMPLETION_PATTERN || "$COMPLETION_TEXT" =~ $REQUESTED_PROFILES_COMPLETION_PATTERN ]]; then
+    exit 0
+fi
+
 COMPLETION_PATTERN='archive(d)?([[:space:]]+is)?[[:space:]]+(complete|completed)|change([[:space:]]+is)?[[:space:]]+archived|native[[:space:]]+change[^[:cntrl:]]*[^[:alnum:]_]archived|archived[[:space:]]+(at|to)|completed[[:space:]]+through[[:space:]]+archive|completed[[:space:]]+through[[:space:]]+all[[:space:]]+phases[[:space:]]+and[[:space:]]+archived|terminal[[:space:]]+archived[[:space:]]+state|fully[[:space:]]+archived|workflow([[:space:]]+is)?[[:space:]]+(complete|completed)|all[[:space:]]+(5|five)[[:space:]]+phases([[:space:]]+are)?[[:space:]]+(complete|completed|recorded)'
 BOUNDED_COMPLETION_PATTERN="(^|[^[:alnum:]_])($COMPLETION_PATTERN)([^[:alnum:]_]|$)"
 if [[ "$TEXT" =~ $BOUNDED_COMPLETION_PATTERN ]]; then

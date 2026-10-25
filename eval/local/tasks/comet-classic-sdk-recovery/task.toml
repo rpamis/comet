@@ -12,7 +12,7 @@ required = []
 [environment]
 description = "Current-checkout CLI and supported OpenSpec; three local Classic deliveries with a parked SDK change"
 dockerfile = "environment/Dockerfile"
-timeout_sec = 4800
+timeout_sec = 10800
 
 [validation]
 test_scripts = "test_classic_sdk_recovery.py"

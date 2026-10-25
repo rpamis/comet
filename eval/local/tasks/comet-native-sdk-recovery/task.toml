@@ -12,7 +12,7 @@ required = []
 [environment]
 description = "Python workspace with the current-checkout Comet CLI and Native Skill, without OpenSpec or external workflow Skills."
 dockerfile = "environment/Dockerfile"
-timeout_sec = 1800
+timeout_sec = 10800
 
 [validation]
 test_scripts = "test_native_sdk_recovery.py"

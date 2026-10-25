@@ -286,6 +286,27 @@ describe('standalone static collector parity', () => {
     expect(result).not.toMatch(/failed|skipped/);
   });
 
+  it('stops after verified requested Run deliveries without dropping incomplete or child-only cases', () => {
+    const result = execFileSync(
+      'uv',
+      [
+        'run',
+        '--locked',
+        'python',
+        '-m',
+        'pytest',
+        'local/tests/scaffold/test_current_archive_acceptance.py',
+        'local/tests/scaffold/test_utils.py',
+        '-k',
+        'completion_detector or completion_point',
+        '-q',
+      ],
+      { cwd: evalRoot, encoding: 'utf8', stdio: 'pipe' },
+    );
+    expect(result).toMatch(/11 passed/);
+    expect(result).not.toMatch(/failed|skipped/);
+  });
+
   it('ends disposable medium fixtures after verified Archive without persisting learning', () => {
     const result = execFileSync(
       'uv',
