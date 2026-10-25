@@ -79,3 +79,7 @@ Classic 高难度配置给 Agent 80 分钟，但原 pytest 外层只有 70 分�
 新轮次的 Native 高难度模型把 `Hello there. How are you? Great!` 的基线词数 6 写成验收值 8。Runtime 正确要求重新确认正式要求，保留实现并创建第二个 goal cycle 和 Builder；这已违反固定单候选场景，控制器保存现场并提前停止，原报告退出 137，不能按通过或产品故障计入。现场位于该轮 `native-hard/early-failure/`。
 
 任务现给出五条固定业务验收示例，要求首次 Shape 确认前核对原词数和行数。回归测试实际执行未修改的基线 CLI 检查这些数值；单候选、一次性检查、独立新会话、原检查记录与 Archive 断言保持原样。受影响的高难度另建轮次复测，其余任务的输入和验证器没有改变。
+
+Classic 首轮 full 已完成 Archive，但控制器注入的 `.claude`、`_eval_current_comet` 等工具未被 Git 排除，交付校验将其视为待提交的检查输入。原错误明确指出缺少 `.claude/CLAUDE.md`，补入后又指出缺少工作流 Rule。控制器保留错误和现场后停止该失败样本；不放宽产品交付检查来容纳工具污染。
+
+当前 Classic 场景现由控制器标记，在模型启动前于容器中准备 Git，把固定工具路径登记到 `.git/info/exclude`。用户 `.gitignore` 及原排除规则保持不变，模型重写 `.gitignore` 也不会移除控制器规则。真实 Docker/Git 已验证幂等、工具排除，以及业务与 `parked-format` 文件仍可见；Native 与未标记场景不初始化 Git，不更改其输入。仅受影响的 Classic 场景重新运行。

@@ -1874,6 +1874,7 @@ def setup_test_context(test_dir):
             if item.name in {
                 CURRENT_COMET_CLI_MARKER,
                 TRUSTED_NATIVE_RUNTIME_MARKER,
+                ".eval-classic-git-excludes",
             }:
                 continue
             dest = test_dir / item.name
@@ -1890,7 +1891,7 @@ def setup_test_context(test_dir):
     def _copy_workspace(workspace_dir: Path) -> None:
         """Copy a bounded project fixture without replacing the task Dockerfile."""
         for item in workspace_dir.iterdir():
-            if item.name in {"Dockerfile", CURRENT_COMET_CLI_MARKER, TRUSTED_NATIVE_RUNTIME_MARKER}:
+            if item.name in {"Dockerfile", CURRENT_COMET_CLI_MARKER, TRUSTED_NATIVE_RUNTIME_MARKER, ".eval-classic-git-excludes"}:
                 continue
             dest = test_dir / item.name
             if item.is_dir():
@@ -1971,6 +1972,14 @@ def setup_test_context(test_dir):
 
         agent = _resolve_eval_agent(_plugin.config).agent if _plugin else "claude-code"
         skills_root = test_dir / _agent_project_root(agent) / "skills"
+        if (
+            environment_dir
+            and (environment_dir / CURRENT_COMET_CLI_MARKER).is_file()
+            and "comet-classic" in (skills or {})
+        ):
+            (test_dir / ".eval-classic-git-excludes").write_bytes(
+                b"comet.eval.classic-git-excludes.v1\n"
+            )
         native_entry = skills_root / "comet-native/SKILL.md"
         if (
             environment_dir

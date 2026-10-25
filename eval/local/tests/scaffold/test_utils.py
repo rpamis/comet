@@ -2360,3 +2360,22 @@ printf '%s\\n' '{"type":"result","session_id":"actual-session","result":"Continu
     assert 'sdk_recovery_boundaries' not in interaction
     assert interaction['role_sessions']['subject'] == ['actual-session']
     assert '[agent-stderr] [loop] sdk-recovery-boundary' in result.stderr
+def test_eval_git_excludes_does_not_initialize_unmarked_workspaces(tmp_path):
+    result = subprocess.run(
+        [
+            utils.BASH_EXEC,
+            "-c",
+            'source "$1"; docker() { echo unexpected-docker >&2; return 91; }; '
+            'prepare_eval_git_excludes "$2" fake-image',
+            "_",
+            utils._to_bash_path(utils.SHELL_DIR / "docker.sh"),
+            utils._to_bash_path(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "unexpected-docker" not in result.stderr
+    assert not (tmp_path / ".git").exists()
+

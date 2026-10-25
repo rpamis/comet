@@ -15,6 +15,31 @@ from scaffold.python.tasks import load_task
 from scaffold.python.treatments import build_treatment_skills, load_treatments
 
 
+@pytest.mark.parametrize("workflow", ["classic", "native"])
+def test_current_classic_git_excludes_are_controller_owned_and_native_is_unchanged(
+    tmp_path, monkeypatch, setup_test_context, workflow
+):
+    environment = tmp_path / "environment"
+    environment.mkdir()
+    (environment / conftest.CURRENT_COMET_CLI_MARKER).touch()
+    (environment / ".gitignore").write_text("user-rule\n", encoding="utf-8")
+    workspace = tmp_path / "input"
+    workspace.mkdir()
+    (workspace / ".eval-classic-git-excludes").write_text("untrusted\n", encoding="utf-8")
+    monkeypatch.setattr(conftest, "_copy_current_comet_cli_snapshot", lambda *_: None)
+    result = setup_test_context(
+        skills={"comet-" + workflow: {"sections": ["# Selected workflow"]}},
+        environment_dir=environment,
+        workspace_dir=workspace,
+    )
+    marker = result / ".eval-classic-git-excludes"
+    assert (result / ".gitignore").read_text(encoding="utf-8") == "user-rule\n"
+    if workflow == "classic":
+        assert marker.read_text(encoding="utf-8") == "comet.eval.classic-git-excludes.v1\n"
+    else:
+        assert not marker.exists()
+
+
 @pytest.mark.parametrize("reference_present", [True, False])
 def test_current_native_shared_host_check_is_available_without_loading_other_skills(
     tmp_path, monkeypatch, setup_test_context, reference_present

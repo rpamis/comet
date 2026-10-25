@@ -85,6 +85,27 @@ function pythonAccepts(manifest: string): boolean {
 }
 
 describe('standalone static collector parity', () => {
+  it('isolates Classic controller tooling from Git inputs without altering Native fixtures', () => {
+    const result = execFileSync(
+      'uv',
+      [
+        'run',
+        '--locked',
+        'python',
+        '-m',
+        'pytest',
+        'local/tests/scaffold/test_conftest_helpers.py',
+        'local/tests/scaffold/test_utils.py',
+        '-k',
+        'current_classic_git_excludes or eval_git_excludes_does_not_initialize',
+        '-q',
+      ],
+      { cwd: evalRoot, encoding: 'utf8', stdio: 'pipe' },
+    );
+    expect(result).toMatch(/3 passed/);
+    expect(result).not.toMatch(/failed|skipped/);
+  });
+
   it('binds Native recovery acceptance examples to the unchanged business baseline', () => {
     const result = execFileSync(
       'uv',

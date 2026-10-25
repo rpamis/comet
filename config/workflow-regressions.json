@@ -643,6 +643,39 @@
           ]
         }
       ]
+    },
+    {
+      "id": "eval-classic-injected-tooling-delivery",
+      "behavior": "Classic当前CLI评估不把控制器注入的工具文件当作待交付实现，保留真实业务输入和未推进需求。",
+      "coverageLevel": "unit",
+      "reproduction": "真实Classic full已归档，交付拒绝提示提交缺少.claude/CLAUDE.md，补入后继续缺少guard Rule；未忽略的工具树超过1000文件，模型随后错误修改检查策略。",
+      "expected": "仅控制器标记的当前Classic场景预先初始化隔离Git并将已知工具路径加入.git/info/exclude；保留用户.gitignore、已有exclude规则、业务和parked路径，重复准备幂等。Native和未标记场景不初始化Git。",
+      "forbidden": "放宽产品交付校验、忽略业务或停放需求、把不可信workspace marker当成授权、改变Native场景或隐藏失败。",
+      "rootCause": "控制器注入文件未被Git排除，污染了Classic真实验证及交付输入。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "isolates Classic controller tooling from Git inputs without altering Native fixtures",
+          "requiredNames": [
+            "standalone static collector parity isolates Classic controller tooling from Git inputs without altering Native fixtures"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"],
+      "additionalAcceptance": [
+        {
+          "layer": "real Docker Git tooling exclusion and idempotence",
+          "status": "verified",
+          "evidence": ["eval/local/logs/acceptance-051-classic-git-exclude-proof.json"]
+        },
+        {
+          "layer": "real GLM Classic easy medium hard Archive and local delivery",
+          "status": "pending",
+          "evidence": [
+            "Controller-stopped failure: eval/local/logs/acceptance-051-final-matrix/authorized-20261025-0952/classic-hard/early-failure/failure.json"
+          ]
+        }
+      ]
     }
   ]
 }
