@@ -10,6 +10,8 @@ import {
   parseGitStatusPaths,
   readGitStatusPorcelain,
   readGitBlobs,
+  runGitCommandAsync,
+  readGitStatusPorcelainAsync,
 } from '../../platform/process/git.js';
 
 describe('Git process helpers', () => {
@@ -46,6 +48,21 @@ describe('Git process helpers', () => {
     await fs.rm(path.join(projectRoot, '.comet', 'current-change.json'));
 
     expect(gitStatusPaths(projectRoot)).toEqual(['.comet/current-change.json']);
+  });
+
+  it('reads asynchronous Git queries without changing porcelain bytes or hiding failures', async () => {
+    await fs.writeFile(path.join(projectRoot, '.comet', 'current-change.json'), 'edited\n');
+    await fs.writeFile(path.join(projectRoot, 'untracked space '), 'new\n');
+    expect(await readGitStatusPorcelainAsync(projectRoot)).toBe(
+      readGitStatusPorcelain(projectRoot),
+    );
+    expect(await runGitCommandAsync(projectRoot, ['rev-parse', 'HEAD'])).toMatch(/^[a-f0-9]{40}$/u);
+    expect(
+      await runGitCommandAsync(path.relative(process.cwd(), projectRoot), ['rev-parse', 'HEAD']),
+    ).toBe(await runGitCommandAsync(projectRoot, ['rev-parse', 'HEAD']));
+    await expect(
+      runGitCommandAsync(projectRoot, ['rev-parse', '--verify', 'missing-ref']),
+    ).rejects.toThrow('git rev-parse --verify missing-ref failed');
   });
 
   it('parses both rename paths and preserves leading status whitespace and path whitespace', () => {

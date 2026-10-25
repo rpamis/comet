@@ -102,6 +102,28 @@ describe('Git worktree inspection', () => {
     ).toBeNull();
   });
 
+  it('inspects an exact checkout root once and rereads later branch changes', () => {
+    const before = snapshotCometRuntimeMetrics();
+    expect(inspectGitWorktree(secondary).currentBranch).toBe('feature/secondary');
+    expect(snapshotCometRuntimeMetrics().gitCommands - before.gitCommands).toBe(1);
+    expect(spawnSync('git', ['-C', secondary, 'checkout', '--detach']).status).toBe(0);
+    expect(inspectGitWorktree(secondary)).toMatchObject({
+      isGitWorktree: true,
+      isSecondaryWorktree: true,
+      currentBranch: null,
+    });
+  });
+
+  it('does not treat a bare repository as a working checkout', () => {
+    const bare = path.join(primary, 'bare.git');
+    expect(spawnSync('git', ['init', '--bare', bare]).status).toBe(0);
+    expect(inspectGitWorktree(bare)).toMatchObject({
+      isGitWorktree: false,
+      currentWorktreeRoot: null,
+      currentBranch: null,
+    });
+  });
+
   it('reads current worktree identity and branch without a redundant Git process', () => {
     vi.mocked(execFileSync).mockClear();
     expect(inspectGitWorktree(secondary)).toMatchObject({

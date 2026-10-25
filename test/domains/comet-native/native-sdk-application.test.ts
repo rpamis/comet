@@ -1,4 +1,6 @@
 import { build } from 'esbuild';
+import { withCometRuntimeMetrics } from '../../../platform/process/runtime-metrics.js';
+import { readRuntimePerformanceRecords } from '../../../platform/process/runtime-performance.js';
 import { inspectNativeSdkCancellation } from '../../../domains/comet-native/native-sdk-cancellation.js';
 import * as nativeSdkChecks from '../../../domains/comet-native/native-sdk-checks.js';
 import { nativeCandidateInputGate } from '../../../domains/comet-native/native-portable-checks.js';
@@ -7216,6 +7218,51 @@ it('archives a real Git candidate through canonical writes and directory relocat
     'Git delivery already authorized by the user',
   );
 });
+
+it.each(['source', 'bundle'] as const)(
+  'bounds Git work for public next and archive without skipping candidate validation (%s)',
+  async (entry) => {
+    const { root, runtime, run } = await awaitingArchiveApplication(
+      'sdk',
+      undefined,
+      true,
+      initializeArchiveGit,
+    );
+    const invoke = async (command: 'next' | 'archive') => {
+      if (entry === 'source')
+        return withCometRuntimeMetrics(() =>
+          runNativeCli([command, 'sdk-shape', '--project-root', root, '--json']),
+        );
+      const stdout = execFileSync(
+        process.execPath,
+        [
+          path.resolve('assets/skills/comet-native/scripts/comet-native-runtime.mjs'),
+          command,
+          'sdk-shape',
+          '--project-root',
+          root,
+          '--json',
+        ],
+        { cwd: root, encoding: 'utf8', timeout: 60_000 },
+      );
+      const record = (await readRuntimePerformanceRecords(root)).records.find(
+        (record) => record.command === command,
+      )!;
+      expect(record).toBeDefined();
+      return { result: { exitCode: 0, stdout }, metrics: record };
+    };
+    const next = await invoke('next');
+    expect(next.result.exitCode, JSON.stringify(next.result)).toBe(0);
+    const archive = await invoke('archive');
+    expect(archive.result.exitCode, JSON.stringify(archive.result)).toBe(0);
+    expect((await runtime.inspect(run.runId)).state).toMatchObject({
+      archived: true,
+      status: 'done',
+    });
+    expect(next.metrics.gitCommands).toBeLessThanOrEqual(40);
+    expect(archive.metrics.gitCommands).toBeLessThanOrEqual(46);
+  },
+);
 
 it.each([
   'implementation.js',

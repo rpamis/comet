@@ -23,7 +23,9 @@ import path from 'node:path';
 import {
   parseGitStatusPaths,
   readGitStatusPorcelain,
+  readGitStatusPorcelainAsync,
   runGitCommand,
+  runGitCommandAsync,
   readGitBlobs,
 } from '../../platform/process/git.js';
 import {
@@ -509,16 +511,12 @@ function incompleteNativeIgnoredInputSnapshot(diagnostic: string): NativeIgnored
   return { complete: false, files: [], diagnostic };
 }
 
-function nativeGeneratedInputPathspecs(cwdRef: string): string[] {
+function nativeGeneratedInputExclusions(cwdRef: string): string[] {
   const prefix = cwdRef === '.' ? '' : `${cwdRef}/`;
-  // 不使用 **/dist 等任意深度匹配；它会遍历被忽略的依赖树。
-  return [
-    ...NATIVE_GENERATED_INPUT_DIRECTORIES.map((directory) => `:(glob)${prefix}${directory}/**`),
-    ...['cache', 'trace', 'trace-build', 'dev'].flatMap((name) => [
-      `:(exclude,glob)${prefix}.next/${name}`,
-      `:(exclude,glob)${prefix}.next/${name}/**`,
-    ]),
-  ];
+  return ['cache', 'trace', 'trace-build', 'dev'].flatMap((name) => [
+    `:(exclude,glob)${prefix}.next/${name}`,
+    `:(exclude,glob)${prefix}.next/${name}/**`,
+  ]);
 }
 
 // Git can return a nested repository directory even when it does not match an
@@ -586,6 +584,24 @@ function sensitiveNativeIgnoredInputPath(relative: string): boolean {
   return /(?:^|\/)(?:\.env(?:\..*)?|[^/]+\.(?:key|pem|p12|pfx))$/iu.test(relative);
 }
 
+/** 一次读取提交和分支；保持既有摘要的字段和值。 */
+function nativeGitHead(projectRoot: string): { head: string; branch: string } {
+  const [head, ref] = runGitCommand(projectRoot, [
+    'rev-parse',
+    'HEAD',
+    '--symbolic-full-name',
+    'HEAD',
+  ]).split(/\r?\n/u);
+  if (!head || !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(head) || !ref)
+    throw new Error('Native 检查输入中的 Git HEAD 无效');
+  return { head, branch: ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : '' };
+}
+
+/** 等待所有探测结束再返回失败，避免残留查询占用工作区。 */
+async function nativeGitQueries(projectRoot: string, commands: readonly (readonly string[])[]) {
+  return mapWithConcurrency(commands, 4, (args) => runGitCommandAsync(projectRoot, args));
+}
+
 async function nativeIgnoredCheckInputSnapshot(
   projectRoot: string,
   plans: readonly NativeCheckPlan[],
@@ -610,7 +626,10 @@ async function nativeIgnoredCheckInputSnapshot(
       '-z',
     ]);
     const cwdRefs = nativeGeneratedInputRoots(plans, stagedIndex, ignoredEntries);
-    const nextDevTypes: string[] = [];
+    const selections: Array<{ ref: string; exclusions: string[] }> = [];
+    const roots = new Map<string, string | null>();
+    const rootStamp = (info: import('node:fs').Stats) =>
+      `${info.dev}:${info.ino}:${info.birthtimeMs}:${info.mode}`;
     for (const cwdRef of cwdRefs) {
       for (const directory of [
         ...NATIVE_GENERATED_INPUT_DIRECTORIES,
@@ -621,7 +640,7 @@ async function nativeIgnoredCheckInputSnapshot(
         const target = path.resolve(projectRoot, ...ref.split('/'));
         try {
           const info = await fs.lstat(target);
-          if (directory === '.next/dev/types') nextDevTypes.push(`:(glob)${ref}/**`);
+          roots.set(target, rootStamp(info));
           if (
             info.isSymbolicLink() ||
             (await fs.realpath(target)) !== path.resolve(realRoot, ...ref.split('/'))
@@ -630,31 +649,53 @@ async function nativeIgnoredCheckInputSnapshot(
               `项目生成输入目录包含链接或超出工作区：${ref}`,
             );
           }
+          if (directory !== '.next/types')
+            selections.push({
+              ref,
+              exclusions:
+                directory === '.next/dev/types' ? [] : nativeGeneratedInputExclusions(cwdRef),
+            });
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+          roots.set(target, null);
         }
       }
     }
     const dependencyExclusions = [...NATIVE_DEPENDENCY_INPUT_DIRECTORIES].map(
       (directory) => `:(exclude,glob)**/${directory}/**`,
     );
-    const listIgnored = (pathspecs: string[]): string =>
-      runGitCommand(projectRoot, [
-        'ls-files',
-        '--others',
-        '--ignored',
-        '--exclude-standard',
-        '-z',
-        '--',
-        ...pathspecs,
-        ...dependencyExclusions,
-        ...nativeOwnedInputExclusions(projectRoot, managedArtifactRoot),
-        ...[...runnerInputs].map((relative) => `:(exclude,literal)${relative}`),
-      ]);
-    // Git 的 exclude 优先于 include；单独读取 dev/types，不能把其余 dev 输出重新纳入。
-    const selected =
-      listIgnored(cwdRefs.flatMap(nativeGeneratedInputPathspecs)) +
-      (nextDevTypes.length ? `\0${listIgnored(nextDevTypes)}` : '');
+    // 多个 glob 路径会让 Git 进入无关的 ignored 依赖和本地工作区。
+    // 每次只选择一个实际存在的字面目录；并行查询仍受统一上限约束。
+    const selected = (
+      await nativeGitQueries(
+        projectRoot,
+        selections.map(({ ref, exclusions }) => [
+          'ls-files',
+          '--others',
+          '--ignored',
+          '--exclude-standard',
+          '-z',
+          '--',
+          `:(literal)${ref}/`,
+          ...exclusions,
+          ...dependencyExclusions,
+          ...nativeOwnedInputExclusions(projectRoot, managedArtifactRoot),
+          ...[...runnerInputs].map((relative) => `:(exclude,literal)${relative}`),
+        ]),
+      )
+    ).join('\0');
+    // 只复查根的存在与身份；Next cache/trace 等已排除内容可改变目录时间。
+    for (const [target, before] of roots) {
+      const after = await fs
+        .lstat(target)
+        .then(rootStamp)
+        .catch((error: NodeJS.ErrnoException) => {
+          if (error.code === 'ENOENT') return null;
+          throw error;
+        });
+      if (after !== before)
+        return incompleteNativeIgnoredInputSnapshot('项目生成输入目录在采样期间发生变化');
+    }
     ignoredPaths = [
       ...new Set(
         selected
@@ -918,15 +959,26 @@ export async function nativeGeneratedCheckInputSnapshot(options: NativeCheckInpu
     runGitCommand(options.projectRoot, ['rev-parse', 'HEAD']);
     gitView = true;
     const indexArgs = ['ls-files', '--stage', '-z', '--', ...exclusions];
-    const index = runGitCommand(options.projectRoot, indexArgs);
-    const untracked = runGitCommand(options.projectRoot, [
+    const listing = await runGitCommandAsync(options.projectRoot, [
       'ls-files',
+      '--stage',
       '--others',
       '--exclude-standard',
+      '-t',
       '-z',
       '--',
       ...exclusions,
     ]);
+    const indexed: string[] = [];
+    const others: string[] = [];
+    for (const entry of listing.split('\0').filter(Boolean)) {
+      if (entry.startsWith('? ')) others.push(entry.slice(2));
+      else if (/^[A-Z] [0-7]{6} [a-f0-9]{40}(?:[a-f0-9]{24})? [0-3]\t/su.test(entry))
+        indexed.push(entry.slice(2));
+      else return { complete: false, fingerprint: null };
+    }
+    const index = indexed.length ? indexed.join('\0') + '\0' : '';
+    const untracked = others.length ? others.join('\0') + '\0' : '';
     ignored = await nativeIgnoredCheckInputSnapshot(
       options.projectRoot,
       options.plans,
@@ -1004,41 +1056,43 @@ export async function nativeCheckInputSnapshot(
     reuseNonce: null as string | null,
   };
   let stableGitView = false;
+  let submodulesQuery: Promise<string | null> | undefined;
   try {
-    gitSnapshot.head = runGitCommand(options.projectRoot, ['rev-parse', 'HEAD']);
+    const head = nativeGitHead(options.projectRoot);
+    gitSnapshot.head = head.head;
     stableGitView = true;
-    gitSnapshot.branch = runGitCommand(options.projectRoot, ['branch', '--show-current']);
-    gitSnapshot.status = runGitCommand(options.projectRoot, [
-      'status',
-      '--porcelain=v1',
-      '-z',
-      '--untracked-files=all',
-      '--ignore-submodules=none',
-      '--',
-      ...exclusions,
-    ]);
+    gitSnapshot.branch = head.branch;
     // Staged content binds through index blob ids: `ls-files --stage` names each
     // path with its object id, which Git already defines as the content hash.
-    const stagedIndex = runGitCommand(options.projectRoot, [
-      'ls-files',
-      '--stage',
-      '-z',
-      '--',
-      ...exclusions,
-    ]);
+    const [stagedIndex, changedOutput, untrackedOutput, status] = await nativeGitQueries(
+      options.projectRoot,
+      [
+        ['ls-files', '--stage', '-z', '--', ...exclusions],
+        ['diff', '--name-only', '--ignore-submodules=none', '-z', 'HEAD', '--', ...exclusions],
+        ['ls-files', '--others', '--exclude-standard', '-z', '--', ...exclusions],
+        [
+          'status',
+          '--porcelain=v1',
+          '-z',
+          '--untracked-files=all',
+          '--ignore-submodules=none',
+          '--',
+          ...exclusions,
+        ],
+      ],
+    );
+    gitSnapshot.status = status;
     gitSnapshot.stagedDiff = digestNativeCheckInput(stagedIndex);
     gitSnapshot.submodules = '';
     if (hasGitlinksInIndex(stagedIndex)) {
-      try {
-        gitSnapshot.submodules = runGitCommand(options.projectRoot, [
-          'submodule',
-          'status',
-          '--recursive',
-        ]);
-      } catch {
+      submodulesQuery = runGitCommandAsync(options.projectRoot, [
+        'submodule',
+        'status',
+        '--recursive',
+      ]).catch(() => {
         // 聚合仓可以只有 gitlink 而没有 .gitmodules；实际子仓仍在下方逐一读取。
-        gitSnapshot.submodules = null;
-      }
+        return null;
+      });
     }
     const gitlinks = new Map<string, string>();
     const gitlinkBudget = { repositories: new Set<string>(), indexBytes: 0 };
@@ -1057,18 +1111,7 @@ export async function nativeCheckInputSnapshot(
     // (megabytes of patch text on large trees). HEAD is bound separately, so
     // naming the changed paths and hashing each one pins the same information:
     // any working-tree difference changes the path set or one of the digests.
-    const changed = runGitCommand(options.projectRoot, [
-      'diff',
-      '--name-only',
-      '--ignore-submodules=none',
-      '-z',
-      'HEAD',
-      '--',
-      ...exclusions,
-    ])
-      .split('\0')
-      .filter(Boolean)
-      .sort();
+    const changed = changedOutput.split('\0').filter(Boolean).sort();
     gitSnapshot.diff = await mapWithConcurrency(changed, 16, async (relative) => {
       try {
         const digest =
@@ -1082,17 +1125,7 @@ export async function nativeCheckInputSnapshot(
     if (gitSnapshot.diff.some(({ digest }) => digest === null)) {
       gitSnapshot.complete = false;
     }
-    const untracked = runGitCommand(options.projectRoot, [
-      'ls-files',
-      '--others',
-      '--exclude-standard',
-      '-z',
-      '--',
-      ...exclusions,
-    ])
-      .split('\0')
-      .filter(Boolean)
-      .sort();
+    const untracked = untrackedOutput.split('\0').filter(Boolean).sort();
     gitSnapshot.untracked = await mapWithConcurrency(untracked, 16, async (relative) => {
       const target = path.resolve(options.projectRoot, ...relative.split('/'));
       try {
@@ -1131,6 +1164,7 @@ export async function nativeCheckInputSnapshot(
       gitSnapshot.complete = gitSnapshot.physical.complete;
     }
   }
+  if (submodulesQuery) gitSnapshot.submodules = await submodulesQuery;
   const diagnostics = [gitSnapshot.ignored.diagnostic, gitSnapshot.physical.diagnostic].filter(
     (entry): entry is string => Boolean(entry),
   );
@@ -1374,9 +1408,16 @@ async function readNativeCheckInputObservation(
       ...(options.archiveOwnedPaths ?? []).map((ref) => `:(exclude,literal)${ref}`),
       ...[...runnerInputs].map((relative) => `:(exclude,literal)${relative}`),
     ];
-    const head = runGitCommand(options.projectRoot, ['rev-parse', 'HEAD']);
-    const branch = runGitCommand(options.projectRoot, ['branch', '--show-current']);
-    const actualStatus = readGitStatusPorcelain(options.projectRoot, exclusions);
+    const { head, branch } = nativeGitHead(options.projectRoot);
+    const queries = await Promise.allSettled([
+      readGitStatusPorcelainAsync(options.projectRoot, exclusions),
+      runGitCommandAsync(options.projectRoot, ['ls-files', '--stage', '-z', '--', ...exclusions]),
+    ]);
+    const failure = queries.find((query) => query.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
+    const [actualStatus, staged] = queries.map(
+      (query) => (query as PromiseFulfilledResult<string>).value,
+    );
     const status = options.legacyArchiveOverlay
       ? nativeLegacyArchiveGitStatus(
           options.projectRoot,
@@ -1384,13 +1425,6 @@ async function readNativeCheckInputObservation(
           options.legacyArchiveOverlay,
         )
       : actualStatus;
-    const staged = runGitCommand(options.projectRoot, [
-      'ls-files',
-      '--stage',
-      '-z',
-      '--',
-      ...exclusions,
-    ]);
     if (head === null || status === null) return null;
     const changedPaths = parseGitStatusPaths(status).filter(
       (changedPath) =>

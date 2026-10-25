@@ -18,6 +18,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Native command performance**: Avoid scanning unrelated ignored dependencies, temporary directories, and local worktrees when validating generated inputs, preventing repeated Git timeouts during Next and Archive. Reduce redundant Git queries while retaining fresh candidate, submodule, and generated-input checks.
 - **Evaluation treatment loading**: Restore the public Python treatment loader with the current scaffold model while preserving configured Skills and workflow guidance.
 - **Native Verifier startup recovery**: Let the original claimant report a failed Verifier execution even when it was claimed with the Builder identity or the approved documents have changed. Preserve the candidate and checks for recovery while still rejecting non-independent verification results.
 - **Evaluation provider configuration**: Accept either dedicated API-key or auth-token credentials for built-in Judges and translate Claude Code's context suffix before HTTP scoring requests, so valid provider configurations can run and receive scores. Custom agents retain their declared credential requirements.

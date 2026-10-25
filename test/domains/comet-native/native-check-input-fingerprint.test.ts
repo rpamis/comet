@@ -46,6 +46,7 @@ describe('Native check input fingerprint', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fs.rm(root, { recursive: true, force: true });
   });
 
@@ -225,7 +226,7 @@ describe('Native check input fingerprint', () => {
             ]
           : [];
       const input = { ...fingerprintInput(root), plans };
-      const run = vi.spyOn(gitCommands, 'runGitCommand');
+      const run = vi.spyOn(gitCommands, 'runGitCommandAsync');
       try {
         const before = await nativeCheckInputSnapshot(input);
         expect(before.complete).toBe(true);
@@ -241,11 +242,13 @@ describe('Native check input fingerprint', () => {
         expect(
           await nativeCheckInputGate({ projectRoot: root, candidateId: null, plans }),
         ).not.toBe(beforeGate);
-        for (const [, args] of run.mock.calls.filter(
+        const queries = run.mock.calls.filter(
           ([, args]) => args.includes('--ignored') && args.includes('--'),
-        )) {
+        );
+        expect(queries.length).toBeGreaterThan(0);
+        for (const [, args] of queries) {
           expect(args).not.toContain(':(glob)**/dist/**');
-          expect(args).toContain(':(glob)packages/app/dist/**');
+          expect(args).toContain(':(literal)packages/app/dist/');
         }
       } finally {
         run.mockRestore();
@@ -267,6 +270,80 @@ describe('Native check input fingerprint', () => {
     const after = await nativeCheckInputSnapshot(input);
     expect(after.contentFingerprint).not.toBe(before.contentFingerprint);
     expect(await nativeCheckInputGate({ projectRoot: root, candidateId: null })).not.toBe(gate);
+  });
+
+  it('restricts ignored input queries to literal generated roots instead of traversing unrelated trees', async () => {
+    await fs.writeFile(path.join(root, '.gitignore'), 'dist/\nnode_modules/\n.tmp/\n');
+    await fs.mkdir(path.join(root, 'dist'), { recursive: true });
+    await fs.mkdir(path.join(root, 'packages/app/dist'), { recursive: true });
+    await fs.mkdir(path.join(root, 'node_modules/pkg/dist'), { recursive: true });
+    await fs.writeFile(path.join(root, 'dist/output.txt'), 'root');
+    await fs.writeFile(path.join(root, 'packages/app/dist/output.txt'), 'nested');
+    await fs.writeFile(path.join(root, 'node_modules/pkg/dist/output.txt'), 'excluded');
+    const sync = vi.spyOn(gitCommands, 'runGitCommand');
+    const async = vi.spyOn(gitCommands, 'runGitCommandAsync');
+    const input = fingerprintInput(root);
+    const before = await nativeGeneratedCheckInputSnapshot(input);
+    expect(before.complete).toBe(true);
+    const queries = [...sync.mock.calls, ...async.mock.calls].filter(
+      ([, args]) => args.includes('--ignored') && args.includes('--'),
+    );
+    expect(queries.length).toBeGreaterThan(0);
+    for (const [, args] of queries) {
+      const positive = args
+        .slice(args.indexOf('--') + 1)
+        .filter((arg) => !arg.startsWith(':(exclude'));
+      expect(positive).toHaveLength(1);
+      expect(positive[0]).toMatch(/^:\(literal\).+\/$/u);
+    }
+    await fs.writeFile(path.join(root, 'node_modules/pkg/dist/output.txt'), 'unrelated');
+    expect(await nativeGeneratedCheckInputSnapshot(input)).toEqual(before);
+    await fs.writeFile(path.join(root, 'packages/app/dist/output.txt'), 'changed');
+    expect((await nativeGeneratedCheckInputSnapshot(input)).fingerprint).not.toBe(
+      before.fingerprint,
+    );
+  });
+
+  it('rejects a generated root appearing while the selected directories are queried', async () => {
+    await fs.writeFile(path.join(root, '.gitignore'), 'dist/\nbuild/\n');
+    await fs.mkdir(path.join(root, 'dist'));
+    await fs.writeFile(path.join(root, 'dist/output.txt'), 'verified');
+    const query = gitCommands.runGitCommandAsync;
+    let changed = false;
+    vi.spyOn(gitCommands, 'runGitCommandAsync').mockImplementation(async (cwd, args) => {
+      const result = await query(cwd, args);
+      if (args.includes('--ignored') && !changed) {
+        changed = true;
+        await fs.mkdir(path.join(root, 'build'));
+        await fs.writeFile(path.join(root, 'build/new.js'), 'unverified');
+      }
+      return result;
+    });
+    expect((await nativeGeneratedCheckInputSnapshot(fingerprintInput(root))).complete).toBe(false);
+    expect(changed).toBe(true);
+  });
+
+  it('keeps volatile Next output churn outside the generated root identity fence', async () => {
+    await fs.writeFile(path.join(root, '.gitignore'), '.next/\n');
+    await fs.mkdir(path.join(root, '.next/types'), { recursive: true });
+    await fs.writeFile(path.join(root, '.next/types/routes.d.ts'), 'export type Route = "/";');
+    const input = fingerprintInput(root);
+    const before = await nativeGeneratedCheckInputSnapshot(input);
+    expect(before.complete).toBe(true);
+    const query = gitCommands.runGitCommandAsync;
+    let changed = false;
+    vi.spyOn(gitCommands, 'runGitCommandAsync').mockImplementation(async (cwd, args) => {
+      const result = await query(cwd, args);
+      if (args.includes(':(literal).next/') && !changed) {
+        changed = true;
+        await fs.mkdir(path.join(root, '.next/cache'), { recursive: true });
+        await fs.writeFile(path.join(root, '.next/cache/state'), 'volatile');
+        await fs.writeFile(path.join(root, '.next/trace'), 'volatile');
+      }
+      return result;
+    });
+    expect(await nativeGeneratedCheckInputSnapshot(input)).toEqual(before);
+    expect(changed).toBe(true);
   });
 
   it.each(['git', 'physical'])(

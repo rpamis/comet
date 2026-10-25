@@ -1299,6 +1299,79 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-next-git-query-budget",
+      "behavior": "Native next 在重新核对候选与归档状态时限制重复 Git 查询，保持合法推进和归档可完成。",
+      "sources": ["report:2026-10-25-native-git-performance"],
+      "coverageLevel": "public-cli",
+      "reproduction": "e8fdaebc 最小真实 Git SDK 项目从公开 CLI 推进到 Archive 前，next 调用 56 次 Git；原始可观察记录中 next 最慢 411 秒、成功 archive 调用 228 次 Git。",
+      "expected": "同一最小输入的 next 调用不超过 40 次 Git；source 与生成 bundle 都正常完成，最终原 Run 已归档。",
+      "forbidden": "用省略候选内容、生成输入、子模块或归档边界检查来降低调用次数；复用跨命令的陈旧内容。",
+      "rootCause": "提交与分支、索引与未跟踪路径分别启动进程，独立只读查询串行执行，准确 checkout 根也重复探测。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "bounds Git work for public next and archive without skipping candidate validation",
+          "requiredNames": [
+            "bounds Git work for public next and archive without skipping candidate validation (source)",
+            "bounds Git work for public next and archive without skipping candidate validation (bundle)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-git-query-budget",
+      "behavior": "Native archive 在重新核对候选与归档状态时限制重复 Git 查询，保持合法推进和归档可完成。",
+      "sources": ["report:2026-10-25-native-git-performance"],
+      "coverageLevel": "public-cli",
+      "reproduction": "e8fdaebc 最小真实 Git SDK 项目从公开 CLI 推进到 Archive 前，archive 调用 66 次 Git；原始可观察记录中 next 最慢 411 秒、成功 archive 调用 228 次 Git。",
+      "expected": "同一最小输入的 archive 调用不超过 46 次 Git；source 与生成 bundle 都正常完成，最终原 Run 已归档。",
+      "forbidden": "用省略候选内容、生成输入、子模块或归档边界检查来降低调用次数；复用跨命令的陈旧内容。",
+      "rootCause": "提交与分支、索引与未跟踪路径分别启动进程，独立只读查询串行执行，准确 checkout 根也重复探测。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "bounds Git work for public next and archive without skipping candidate validation",
+          "requiredNames": [
+            "bounds Git work for public next and archive without skipping candidate validation (source)",
+            "bounds Git work for public next and archive without skipping candidate validation (bundle)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-generated-input-literal-query-scope",
+      "behavior": "Native 生成输入扫描只进入实际生成目录，避免 ignored glob 穿过无关本地工作区、依赖和临时目录导致 30 秒 Git 超时；采样期间生成根发生变化必须拒绝复用。",
+      "sources": ["report:2026-10-25-native-git-performance"],
+      "coverageLevel": "runtime",
+      "reproduction": "e8fdaebc 在 Comet 当前目录采样输入，Git ls-files 的多个 glob 进入 .worktrees、.tmp 和依赖目录，30 秒 ETIMEDOUT，完整采样约 35.6 秒并报告不完整。",
+      "expected": "每个 ignored 内容查询只选一个字面生成目录，生成内容变动改变摘要，无关依赖内容不进入摘要，采样期间出现新生成根报告不完整。",
+      "forbidden": "查询无关 ignored 树、漏掉嵌套项目生成输入、忽略采样期间新增的生成根或绑定旧证据。",
+      "rootCause": "多个 glob pathspec 没有共同的字面前缀，Git 在最终匹配和排除前遍历其他 ignored 目录。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "Native check input fingerprint restricts ignored input queries to literal generated roots instead of traversing unrelated trees",
+          "requiredNames": [
+            "Native check input fingerprint restricts ignored input queries to literal generated roots instead of traversing unrelated trees"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "Native check input fingerprint rejects a generated root appearing while the selected directories are queried",
+          "requiredNames": [
+            "Native check input fingerprint rejects a generated root appearing while the selected directories are queried"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "Native check input fingerprint keeps volatile Next output churn outside the generated root identity fence",
+          "requiredNames": [
+            "Native check input fingerprint keeps volatile Next output churn outside the generated root identity fence"
+          ]
+        }
+      ]
     }
   ]
 }

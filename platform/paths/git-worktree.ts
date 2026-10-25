@@ -224,10 +224,12 @@ function inspectGitWorktree(projectPath: string): GitWorktreeContext {
           currentBranch: null,
         };
     }
+    const entries = readGitWorktrees(projectPath);
+    // Native 已持有准确的 checkout 根；列表同时给出其分支和主工作区，
+    // 不再为同一根额外启动 rev-parse。子目录查询仍由 Git 解析实际归属。
+    const direct = gitWorktreeContextFromEntries(projectPath, entries);
+    if (direct && fs.existsSync(path.join(projectPath, '.git'))) return direct;
     const currentWorktreeRoot = path.resolve(runGit(projectPath, ['rev-parse', '--show-toplevel']));
-    const entries =
-      readScope.getStore()?.get(canonicalPathForComparison(currentWorktreeRoot)) ??
-      readGitWorktrees(projectPath);
     const context = gitWorktreeContextFromEntries(currentWorktreeRoot, entries);
     // Use one fresh worktree-list observation for both identity and branch.
     // A missing entry must fail closed rather than borrow another worktree's branch.
@@ -253,7 +255,6 @@ function listGitWorktrees(projectPath: string): GitWorktreeEntry[] {
           canonicalPathForComparison(projectPath),
       );
     if (observed) return observed.map((entry) => ({ ...entry }));
-    runGit(projectPath, ['rev-parse', '--is-inside-work-tree']);
     return readGitWorktrees(projectPath);
   } catch {
     return [];

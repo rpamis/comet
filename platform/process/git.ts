@@ -3,6 +3,7 @@ import { lstatSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 
 import { measureCometGitCommand } from './runtime-metrics.js';
+import { ExternalCommandError, runExternalCommandAsync } from './external-command.js';
 
 const GIT_TIMEOUT_MS = 30_000;
 const GIT_MAX_BUFFER = 8 * 1024 * 1024;
@@ -43,6 +44,21 @@ function executeGitCommand(cwd: string, args: readonly string[]): string {
 
 export function runGitCommand(cwd: string, args: readonly string[]): string {
   return executeGitCommand(cwd, args).trim();
+}
+
+async function executeGitCommandAsync(cwd: string, args: readonly string[]): Promise<string> {
+  try {
+    return await runExternalCommandAsync('git', ['-C', cwd, ...args], {
+      timeoutMs: GIT_TIMEOUT_MS,
+      maxBufferBytes: GIT_MAX_BUFFER,
+    });
+  } catch (error) {
+    throw new GitCommandError(cwd, args, error instanceof ExternalCommandError ? error.stderr : '');
+  }
+}
+
+export async function runGitCommandAsync(cwd: string, args: readonly string[]): Promise<string> {
+  return (await executeGitCommandAsync(cwd, args)).trim();
 }
 
 /** 合并前只导入源检出中已有的 gitlink 提交，不切换子仓 HEAD 或改写工作区。 */
@@ -188,7 +204,18 @@ export function assertValidGitBranchName(cwd: string, branch: string): void {
 }
 
 export function readGitStatusPorcelain(cwd: string, pathspecs: readonly string[] = []): string {
-  return executeGitCommand(cwd, [
+  return executeGitCommand(cwd, gitStatusPorcelainArgs(pathspecs));
+}
+
+export function readGitStatusPorcelainAsync(
+  cwd: string,
+  pathspecs: readonly string[] = [],
+): Promise<string> {
+  return executeGitCommandAsync(cwd, gitStatusPorcelainArgs(pathspecs));
+}
+
+function gitStatusPorcelainArgs(pathspecs: readonly string[]): string[] {
+  return [
     'status',
     '--porcelain=v1',
     '-z',
@@ -196,7 +223,7 @@ export function readGitStatusPorcelain(cwd: string, pathspecs: readonly string[]
     '--ignore-submodules=none',
     '--',
     ...pathspecs,
-  ]);
+  ];
 }
 
 export function gitStatusPaths(cwd: string): string[] {
