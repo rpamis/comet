@@ -85,6 +85,26 @@ function pythonAccepts(manifest: string): boolean {
 }
 
 describe('standalone static collector parity', () => {
+  it('binds Classic parked proposal instructions to the unchanged exact preservation validator', () => {
+    const result = execFileSync(
+      'uv',
+      [
+        'run',
+        '--locked',
+        'python',
+        '-m',
+        'pytest',
+        'local/tests/scaffold/test_current_archive_acceptance.py',
+        '-k',
+        'classic_parked_proposal',
+        '-q',
+      ],
+      { cwd: evalRoot, encoding: 'utf8', stdio: 'pipe' },
+    );
+    expect(result).toMatch(/1 passed/);
+    expect(result).not.toMatch(/failed|skipped/);
+  });
+
   it('prepares all six current workflow fixtures with only their selected trusted oracles', () => {
     const result = execFileSync(
       'uv',

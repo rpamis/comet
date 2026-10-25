@@ -1,6 +1,7 @@
 """当前 Native/Classic 分级归档用例必须保留执行身份与终态检查。"""
 
 import json
+import ast
 import importlib.util
 import re
 import shutil
@@ -151,6 +152,22 @@ def test_native_recovery_examples_are_bound_to_the_supplied_wordcount_baseline()
             f"Words: {case['words']}", f"Lines: {case['lines']}"
         ]
     assert "before the first Shape confirmation" in prompt
+
+
+def test_classic_parked_proposal_instruction_matches_the_exact_preserved_content():
+    task = load_task("comet-classic-sdk-recovery")
+    prompt = task.render_prompt()
+    match = re.search(r"<!-- parked-proposal -->\s*```text\n(.*?)```", prompt, re.S)
+    assert match is not None, "Classic task must specify the exact parked proposal text"
+    validator = ast.parse((task.validation_dir / "test_classic_sdk_recovery.py").read_text(encoding="utf-8"))
+    expected = next(
+        ast.literal_eval(node.value)
+        for node in validator.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "PARKED_PROPOSAL" for target in node.targets)
+    )
+    assert match.group(1) == expected
+    assert expected == "# Parked format\nKeep this unrelated formatting request pending.\n"
 
 
 @pytest.mark.parametrize("treatment", ["COMET_NATIVE_SDK_CURRENT", "COMET_CLASSIC_DOCS_LAYOUT"])

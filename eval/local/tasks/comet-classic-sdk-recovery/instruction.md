@@ -1,10 +1,12 @@
 Use the installed current Comet CLI and Classic SDK workflow to extend wordcount-cli. Use the configured docs layout, current workspace isolation and local Git delivery only. Initialize Git if needed and commit the supplied source/tests as the baseline. Do not create remotes, push, open PRs, edit managed state/checkpoints or fabricate Run records.
 
-Before starting the work, create an SDK tweak change named `parked-format`, leave it at Open, and add its proposal.md containing exactly:
+Before starting the work, create an SDK tweak change named `parked-format`, leave it at Open, and add its proposal.md containing exactly the following UTF-8 text, with no blank line between the two lines and one final newline:
 
+<!-- parked-proposal -->
+```text
 # Parked format
-
 Keep this unrelated formatting request pending.
+```
 
 Do not implement, archive, commit or advance that change. It must coexist with the following three changes, which you must complete in order using their specified profiles:
 

@@ -704,6 +704,34 @@
           ]
         }
       ]
+    },
+    {
+      "id": "eval-classic-parked-proposal-exact-text",
+      "behavior": "Classic 并存需求的任务说明与严格保留校验使用同一份精确文本。",
+      "coverageLevel": "unit",
+      "reproduction": "真实 GLM 按任务说明在标题和正文间保留空行，原校验器要求没有空行，导致 parked_change 失败。",
+      "expected": "任务显式给出 UTF-8 两行内容和最终换行，测试与未修改的校验器常量逐字符比较。",
+      "forbidden": "放宽或删除并存需求的内容、状态、Git 未跟踪及交付输入隔离断言。",
+      "rootCause": "自然语言 Markdown 展示引入空行，与精确字符串和 Git 摘要校验不一致。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "binds Classic parked proposal instructions to the unchanged exact preservation validator",
+          "requiredNames": [
+            "standalone static collector parity binds Classic parked proposal instructions to the unchanged exact preservation validator"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM Classic full tweak hotfix Archive and delivery with parked change preserved",
+          "status": "pending",
+          "evidence": [
+            "Original failure retained: eval/local/logs/acceptance-051-final-matrix/classic-tooling-retry-20261025/classic-hard/runs/experiments/experiment_20261025_104205/reports/comet_classic_sdk_recovery_COMET_CLASSIC_DOCS_LAYOUT_r1_rep1_report.json"
+          ]
+        }
+      ]
     }
   ]
 }
