@@ -732,6 +732,34 @@
           ]
         }
       ]
+    },
+    {
+      "id": "eval-native-recovery-explicit-artifact-contract",
+      "behavior": "Native 高难度任务明确告知固定校验所需的 capability、规范路径和纯数字行号格式。",
+      "coverageLevel": "unit",
+      "reproduction": "模型使用 wordcount-cli capability 并在计划行号中填写文件路径；前者必然不满足固定规范路径，后者被 Runtime 正确识别为正式内容变化。任务未明确这些输入约束。",
+      "expected": "渲染任务显式指定 sentence-counting capability 和元数据要求的 canonical spec；辅助列使用数字范围，文件路径在确认前写入其他位置。",
+      "forbidden": "放宽规范产物、单候选、Shape 批准、一次性检查、恢复或归档断言来容纳不完整任务说明。",
+      "rootCause": "校验器的固定路径和辅助字段格式没有完整出现在模型可见任务中。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "binds Native recovery inputs to its required canonical spec and numeric line format",
+          "requiredNames": [
+            "standalone static collector parity binds Native recovery inputs to its required canonical spec and numeric line format"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM Native fixed artifact single candidate blocked recovery and Archive",
+          "status": "pending",
+          "evidence": [
+            "Controller-stopped attempt: eval/local/logs/acceptance-051-final-matrix/quota-reset-20261025-1125/native-hard/early-failure/failure.json"
+          ]
+        }
+      ]
     }
   ]
 }

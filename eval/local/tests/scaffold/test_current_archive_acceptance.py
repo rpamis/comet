@@ -170,6 +170,18 @@ def test_classic_parked_proposal_instruction_matches_the_exact_preserved_content
     assert expected == "# Parked format\nKeep this unrelated formatting request pending.\n"
 
 
+def test_native_recovery_task_declares_its_fixed_canonical_spec_and_numeric_line_format():
+    task = load_task("comet-native-sdk-recovery")
+    prompt = task.render_prompt()
+    canonical = "docs/comet/specs/sentence-counting/spec.md"
+    assert canonical in task.config.evaluation.expected_artifacts
+    assert canonical in task.config.validation.target_artifacts
+    assert canonical in prompt, "Task must disclose the same canonical artifact required by validation"
+    assert "capability `sentence-counting`" in prompt
+    assert "numeric line ranges such as `28-32`" in prompt
+    assert "do not put filenames or paths in that column" in prompt
+
+
 @pytest.mark.parametrize("treatment", ["COMET_NATIVE_SDK_CURRENT", "COMET_CLASSIC_DOCS_LAYOUT"])
 def test_archive_validation_rejects_a_handwritten_terminal_flag(tmp_path, treatment):
     directory = (
