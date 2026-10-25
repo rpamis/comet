@@ -88,6 +88,68 @@ describe('Native workspace finish recovery', () => {
     ).toThrow();
   });
 
+  it('fetches missing gitlink commits from the change checkout before an authorized worktree merge', async () => {
+    const target = path.join(projectRoot, 'aggregate');
+    const change = path.join(projectRoot, 'aggregate-change');
+    const dependency = path.join(target, 'dependency');
+    await fs.mkdir(dependency, { recursive: true });
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync(
+        'git',
+        ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', ...args],
+        { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+      ).trim();
+    git(target, 'init', '-q', '-b', 'main');
+    await fs.writeFile(path.join(target, '.gitignore'), '.comet/runtime\n');
+    git(dependency, 'init', '-q');
+    await fs.writeFile(path.join(dependency, 'value.txt'), 'baseline\n');
+    git(dependency, 'add', '.');
+    git(dependency, 'commit', '-qm', 'baseline');
+    git(target, 'add', 'dependency', '.gitignore');
+    git(target, 'commit', '-qm', 'baseline');
+    git(target, 'worktree', 'add', '-q', '-b', 'change', change);
+    git(change, 'clone', '-q', '--no-local', dependency, path.join(change, 'dependency'));
+    await fs.writeFile(path.join(dependency, 'value.txt'), 'target\n');
+    git(dependency, 'commit', '-qam', 'target');
+    const targetChild = git(dependency, 'rev-parse', 'HEAD');
+    git(target, 'add', 'dependency');
+    git(target, 'commit', '-qm', 'target pointer');
+    const changeDependency = path.join(change, 'dependency');
+    git(changeDependency, 'fetch', '-q', dependency, targetChild);
+    git(changeDependency, 'checkout', '-q', '--detach', targetChild);
+    await fs.writeFile(path.join(changeDependency, 'value.txt'), 'change\n');
+    git(changeDependency, 'commit', '-qam', 'change');
+    const changeChild = git(changeDependency, 'rev-parse', 'HEAD');
+    git(change, 'add', 'dependency');
+    git(change, 'commit', '-qm', 'change pointer');
+    expect(() => git(dependency, 'cat-file', '-e', `${changeChild}^{commit}`)).toThrow();
+    const paths = await nativeProjectPaths(change, 'docs');
+    const archiveDir = path.join(paths.archiveDir, '2026-10-25-gitlink-merge');
+    await fs.mkdir(archiveDir, { recursive: true });
+    await fs.writeFile(path.join(archiveDir, 'brief.md'), 'Archive the verified gitlink.\n');
+    const result = await finishArchivedNativeWorkspace({
+      paths,
+      state: { name: 'gitlink-merge', spec_changes: [] } as unknown as NativeChangeState,
+      name: 'gitlink-merge',
+      archiveDir,
+      transactionId: 'gitlink-merge-transaction',
+      plan: {
+        finish: 'merge',
+        changeRoot: change,
+        primaryRoot: target,
+        changeBranch: 'change',
+        targetBranch: 'main',
+        targetRoot: target,
+        remote: null,
+        isolation: 'worktree',
+      },
+    });
+    expect(result.merged).toBe(true);
+    expect(git(dependency, 'cat-file', '-t', changeChild)).toBe('commit');
+    expect(git(target, 'ls-tree', 'HEAD', 'dependency')).toContain(changeChild);
+    expect(git(dependency, 'rev-parse', 'HEAD')).toBe(targetChild);
+  });
+
   it('keeps malformed finish journals visible and quarantines them only on explicit repair', async () => {
     const paths = await nativeProjectPaths(projectRoot, '.');
     await fs.mkdir(paths.transactionsDir, { recursive: true });

@@ -85,6 +85,39 @@ beforeEach(() => {
 });
 
 describe('Native Archive command stop boundaries', () => {
+  it.each(['approval', 'evidence'] as const)(
+    'does not advance accepted-result revalidation past a pending %s boundary',
+    async (boundary) => {
+      const current = inspection();
+      current.state.phase = 'verify';
+      current.state.loop.stage = 'verify-ready';
+      current.run.actions = [archiveAction('verify.revalidate', 'native-report-revalidate')];
+      current.run.waits = [
+        {
+          id: 'accepted',
+          stepId: 'verify.confirm',
+          status: 'resolved',
+          decision: { choice: 'approved' },
+        },
+      ] as never;
+      const pending = {
+        id: 'extension-boundary',
+        stepId: 'custom.approval',
+        status: 'pending',
+        proposalHash: 'extension',
+        proposal: { summary: 'Review extension.' },
+        choices: ['approved'],
+        kind: 'extension',
+      };
+      if (boundary === 'approval') current.run.waits.push(pending as never);
+      else current.run.evidenceWaits!.push(pending as never);
+      mocked.inspect.mockResolvedValue(current);
+      const result = await archiveNativeSdkChange(options);
+      expect(result.exitCode).toBe(73);
+      expect(mocked.execute).not.toHaveBeenCalled();
+    },
+  );
+
   it('rejects legacy Spec backup during dry-run', async () => {
     mocked.inspect.mockResolvedValue(inspection());
     await expect(

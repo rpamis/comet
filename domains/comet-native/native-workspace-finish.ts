@@ -6,7 +6,12 @@ import os from 'node:os';
 import { atomicWriteJson } from './native-atomic-file.js';
 import { readNativeStatusRecord } from './native-archived-status.js';
 import { runExternalCommand } from '../../platform/process/external-command.js';
-import { gitBranchRemote, gitStatusPaths, runGitCommand } from '../../platform/process/git.js';
+import {
+  gitBranchRemote,
+  gitStatusPaths,
+  runGitCommand,
+  fetchGitlinkCommitsForMerge,
+} from '../../platform/process/git.js';
 import { inspectGitWorktree, listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
 
 import { canonicalSpecPath } from './native-artifacts.js';
@@ -1357,6 +1362,7 @@ export async function finishArchivedNativeWorkspace(options: {
       /* The recorded change still needs its authorized merge. */
     }
     if (!alreadyMerged) {
+      fetchGitlinkCommitsForMerge(mergeRoot, options.plan.changeRoot, result.commit);
       const message =
         options.plan.mergeMessage ?? (await defaultMergeMessage(options.plan, mergeRoot));
       if (journal) {

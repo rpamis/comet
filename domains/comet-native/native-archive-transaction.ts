@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { renameWithRetry } from '../../platform/fs/transient-retry.js';
 
 import { atomicWriteJson } from './native-atomic-file.js';
 import { sameNativeFileObject } from './native-file-identity.js';
@@ -984,7 +985,16 @@ async function applyMove(
     );
   }
   await fs.mkdir(path.dirname(target), { recursive: true });
-  await fs.rename(source, target);
+  try {
+    await renameWithRetry(source, target);
+  } catch (error) {
+    if (['EPERM', 'EACCES', 'EBUSY'].includes((error as NodeJS.ErrnoException).code ?? ''))
+      throw new Error(
+        `Native Archive 无法移动 ${source} -> ${target}：外部进程可能仍持有目录句柄。请暂停相关 Agent、编辑器或 CodeGraph 文件监听，释放占用后通过原 Archive 恢复入口继续；原事务和内容已保留。`,
+        { cause: error },
+      );
+    throw error;
+  }
   await assertContent({
     target,
     expectedHash: operation.expectedSourceHash!,

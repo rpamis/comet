@@ -827,6 +827,351 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-dirty-gitlink-archive",
+      "behavior": "dirty 嵌套或独立 Git 子仓必须绑定实际内容，完整检查和接受后能够归档，验收后再次修改子仓必须被拒绝。",
+      "sources": ["https://github.com/rpamis/comet/issues/506"],
+      "coverageLevel": "public-cli",
+      "reproduction": "修复前 HEAD 475666a3 的真实 SDK 检查因 dirty 子仓判为快照不完整；npm 0.5.0 在 dirty 子仓与忽略的链接缓存并存时返回 null 候选摘要。",
+      "expected": "读取 HEAD、索引、状态、实际修改字节和递归子仓；合法候选完成原 Run 归档。",
+      "forbidden": "dirty 标记代替内容摘要、null 摘要死锁、子仓后续修改沿用原验收，或读取无关忽略缓存。",
+      "rootCause": "目录 gitlink 不能按普通文件读取；干净子仓的特判不能处理内部 dirty，物理扫描回退又受无关忽略材料影响。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "Native SDK verification input binding archives a verified dirty embedded repository and rejects subsequent dirty content drift",
+          "requiredNames": [
+            "Native SDK verification input binding archives a verified dirty embedded repository and rejects subsequent dirty content drift"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "blocked Verifier recovery command contract excludes validated in-project SDK request transport while preserving ordinary source inputs",
+          "requiredNames": [
+            "blocked Verifier recovery command contract excludes validated in-project SDK request transport while preserving ordinary source inputs"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-request-transport-inputs",
+      "behavior": "已校验的未跟踪 SDK 请求传输文件不形成自身漂移；只读 inspect 重用已登记文件不写登记，普通或已跟踪文件仍绑定。",
+      "sources": ["https://github.com/rpamis/comet/issues/506"],
+      "coverageLevel": "public-cli",
+      "reproduction": "项目内重复写入 dispatch 请求后，SDK 验收或 Archive 报检查/候选输入漂移；同一文件改写为 inspect 也触发漂移。",
+      "expected": "在写入入口校验并登记当前请求，识别原 Run 已登记文件中的严格 inspect；正式源码和未登记材料仍绑定。",
+      "forbidden": "按文件名或任意 JSON 全局排除、排除已跟踪源码、跨 Run 复用 inspect，或只读 inspect 写入元数据。",
+      "rootCause": "SDK 请求没有接入已有的输入材料登记；内容变动使旧登记摘要失配。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "blocked Verifier recovery command contract excludes validated in-project SDK request transport while preserving ordinary source inputs",
+          "requiredNames": [
+            "blocked Verifier recovery command contract excludes validated in-project SDK request transport while preserving ordinary source inputs"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-runner-input-artifacts.test.ts",
+          "namePattern": "recognizes a read-only inspection in an already validated SDK request file without writing bookkeeping",
+          "requiredNames": [
+            "validated Native Runner input boundaries recognizes a read-only inspection in an already validated SDK request file without writing bookkeeping"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-runner-input-artifacts.test.ts",
+          "namePattern": "keeps tracked input files in the candidate even if they were registered before staging",
+          "requiredNames": [
+            "validated Native Runner input boundaries keeps tracked input files in the candidate even if they were registered before staging"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-runner-input-artifacts.test.ts",
+          "namePattern": "excludes retained validated payloads while binding other untracked JSON and changed payload bytes",
+          "requiredNames": [
+            "validated Native Runner input boundaries excludes retained validated payloads while binding other untracked JSON and changed payload bytes"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-builder-submitted-at-diagnostic",
+      "behavior": "Builder 时间戳格式错误必须点名 submittedAt 并给出规范 UTC 毫秒格式。",
+      "sources": ["https://github.com/rpamis/comet/issues/506"],
+      "coverageLevel": "runtime",
+      "reproduction": "提交 2026-10-23T01:00:00.00Z，修复前误报领取会话或完整候选缺失。",
+      "expected": "拒绝非规范时间戳并输出 .000Z 的规范值和实际值。",
+      "forbidden": "放行无效字段或继续输出误导的会话领取错误。",
+      "rootCause": "日期校验与身份、候选结构共用一个笼统错误。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: submittedAt",
+          "requiredNames": [
+            "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: submittedAt"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-builder-check-result-diagnostic",
+      "behavior": "Builder 检查结果枚举错误必须定位检查下标并显示允许值和实际值。",
+      "sources": ["https://github.com/rpamis/comet/issues/506"],
+      "coverageLevel": "runtime",
+      "reproduction": "checks[0].result 为 pass，修复前只报 check summary invalid。",
+      "expected": "输出 checks[0].result、passed/failed/not-run 与实际 pass。",
+      "forbidden": "放行无效字段或继续输出误导的会话领取错误。",
+      "rootCause": "检查摘要结构与枚举错误共用泛化错误。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: checks\\.result",
+          "requiredNames": [
+            "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: checks.result"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-builder-review-evidence-diagnostic",
+      "behavior": "Builder 验收证据必须是具体字符串数组；错误定位验收项 ID、下标和字段。",
+      "sources": ["https://github.com/rpamis/comet/issues/506"],
+      "coverageLevel": "runtime",
+      "reproduction": "A1 的 evidence 传单个字符串，修复前没有验收项 ID 或具体元素要求。",
+      "expected": "报错包含 A1、evidence、字符串数组及每条 4000 字符限制。",
+      "forbidden": "放行无效字段或继续输出误导的会话领取错误。",
+      "rootCause": "校验器只输出数组下标和 array，未说明具体验收项与元素类型。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview\\.evidence",
+          "requiredNames": [
+            "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview.evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-builder-review-note-diagnostic",
+      "behavior": "Builder 自审 note 保持必填，并在空值错误中定位验收项 ID 和字段。",
+      "sources": ["https://github.com/rpamis/comet/issues/506"],
+      "coverageLevel": "runtime",
+      "reproduction": "A1 的 note 为空，修复前只显示数组下标，报告者误认为它可选。",
+      "expected": "拒绝空 note，提示具体说明及长度上限，保留 A1 定位。",
+      "forbidden": "放行无效字段或继续输出误导的会话领取错误。",
+      "rootCause": "自审必填契约没有在字段诊断中关联验收项身份。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview\\.note",
+          "requiredNames": [
+            "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: acceptanceReview.note"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-verifier-position-diagnostic",
+      "behavior": "Verifier 提交旧轮次时必须显示当前预期与实际 iteration/attempt，并允许原领取更正后继续。",
+      "sources": ["https://github.com/rpamis/comet/issues/506"],
+      "coverageLevel": "runtime",
+      "reproduction": "当前 attempt=1 时提交 attempt=999，原错误只报 stale。",
+      "expected": "拒绝旧位置，报告 expected/received；用新 outcomeId 和当前模板可继续。",
+      "forbidden": "接受陈旧位置、丢失原领取或错误地重用被拒收据。",
+      "rootCause": "陈旧位置错误没有具体轮次和更正入口。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "Native SDK Workflow Application does not reserve a check ID or command from a rejected Verifier request",
+          "requiredNames": [
+            "Native SDK Workflow Application does not reserve a check ID or command from a rejected Verifier request"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-rejected-check-request-no-baseline",
+      "behavior": "被拒绝的检查请求不占用检查 ID 或 argv 基线；已接受计划的真实冲突仍须阻止。",
+      "sources": ["https://github.com/rpamis/comet/issues/506"],
+      "coverageLevel": "runtime",
+      "reproduction": "先提交错误 attempt 下的失败 argv，再以原 claim 和同一 ID 提交正确 argv；当前分支未复现污染，新增断言固定现有保护。",
+      "expected": "拒绝记录保留，但正确计划可执行并 passed；已接受计划不能同 ID 偷换命令。",
+      "forbidden": "把被拒请求或失败收据纳入已接受命令基线，或为放行而移除真实冲突保护。",
+      "rootCause": "当前实现仅读取 succeeded 的历史 Verifier Action；报告的污染尚未复现，不能声称修改了该规则。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "Native SDK Workflow Application does not reserve a check ID or command from a rejected Verifier request",
+          "requiredNames": [
+            "Native SDK Workflow Application does not reserve a check ID or command from a rejected Verifier request"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "rejects a conflicting command reused under the same Verifier check ID",
+          "requiredNames": [
+            "Native SDK Workflow Application rejects a conflicting command reused under the same Verifier check ID"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-awaits-accepted-revalidation",
+      "behavior": "SDK 接受结果后仍 pending 的 revalidate 由 Archive 完成，不额外消耗验证失败次数。",
+      "sources": ["https://github.com/rpamis/comet/issues/506"],
+      "coverageLevel": "public-cli",
+      "reproduction": "用公开 resolve-wait 接受结果并立即 archive，修复前返回无 pending Archive Action。",
+      "expected": "执行原 verify.revalidate 一次后完成归档，failed_iteration_count 保持不变。",
+      "forbidden": "跳过重验、复用未知或活跃 Action、回退 Verify 或因等待而烧失败预算。",
+      "rootCause": "Archive 只识别 archive 阶段，没有接续已获批准的重验。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "blocked Verifier recovery command contract finishes pending accepted-result revalidation before Archive without consuming another Verify failure",
+          "requiredNames": [
+            "blocked Verifier recovery command contract finishes pending accepted-result revalidation before Archive without consuming another Verify failure"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-archive-command.test.ts",
+          "namePattern": "does not advance accepted-result revalidation past a pending (approval|evidence) boundary",
+          "requiredNames": [
+            "Native Archive command stop boundaries does not advance accepted-result revalidation past a pending approval boundary",
+            "Native Archive command stop boundaries does not advance accepted-result revalidation past a pending evidence boundary"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-directory-sharing-recovery",
+      "behavior": "目录短暂占用时退避重试，持续占用时说明原因并保留原 Archive 事务，释放后继续且不重复搬迁。",
+      "sources": ["https://github.com/rpamis/comet/issues/506"],
+      "coverageLevel": "runtime",
+      "reproduction": "移动 change 目录时第一次 rename 抛 EPERM；另在 Windows 用 CreateFile 持有不共享删除的真实目录句柄。",
+      "expected": "短暂占用恢复成功；持续占用产生目录句柄提示，同一事务在释放后完成。",
+      "forbidden": "丢弃事务、复制后静默留下双份权威目录、重复完成搬迁，或宣称外部 watcher 已停止。",
+      "rootCause": "Archive move 直接调用 fs.rename，没有使用已有的瞬时错误退避。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-archive-transaction.test.ts",
+          "namePattern": "Native Archive transaction V2 public lifecycle retries a transient archive directory sharing violation without repeating completed moves",
+          "requiredNames": [
+            "Native Archive transaction V2 public lifecycle retries a transient archive directory sharing violation without repeating completed moves"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "Windows directory sharing violation and transaction recovery",
+          "status": "verified",
+          "evidence": [
+            "2026-10-25 Windows: pnpm exec vitest run test/domains/comet-native/native-archive-transaction.test.ts -t \"real Windows directory handle\" passed.",
+            "CreateFile 持续持有目录句柄时原事务保留；释放后读取并恢复相同 transaction ID，重复调用仍只有一份归档。该测试在非 Windows 平台不执行。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-worktree-missing-gitlink-object",
+      "behavior": "已授权 worktree 合并前导入目标子仓缺失的 change 提交对象，不切换目标子仓或覆盖其内容。",
+      "sources": ["https://github.com/rpamis/comet/issues/506"],
+      "coverageLevel": "runtime",
+      "reproduction": "父仓两侧同时前进 gitlink，目标子仓没有 change 侧提交；修复前 Git 报 Recursive merging with submodules currently only supports trivial cases。",
+      "expected": "从本地 change 子仓导入固定提交对象后合并成功；目标子仓 HEAD 保持原值。",
+      "forbidden": "自动选择真实的分叉冲突、切换子仓分支、覆盖 dirty 内容，或从不安全目录读取。",
+      "rootCause": "父仓共享提交图不表示独立子仓具有 change 侧提交对象。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-workspace-finish.test.ts",
+          "namePattern": "Native workspace finish recovery fetches missing gitlink commits from the change checkout before an authorized worktree merge",
+          "requiredNames": [
+            "Native workspace finish recovery fetches missing gitlink commits from the change checkout before an authorized worktree merge"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-readonly-candidate-diagnostics",
+      "behavior": "Archive dry-run 与 Doctor 能报告无法复核的候选和明确阻塞，不改变已接受 Run。",
+      "sources": ["https://github.com/rpamis/comet/issues/506"],
+      "coverageLevel": "public-cli",
+      "reproduction": "接受后修改 candidate.txt；修复前 dry-run ready=true/空 blockers，Doctor 未标记候选异常。",
+      "expected": "dry-run ready=false 且 blockers 非空，Doctor unhealthy 并说明候选问题；revision 与 state 保持不变。",
+      "forbidden": "诊断健康但候选不能归档、只读调用修改验收或重跑检查。",
+      "rootCause": "只读预检和 Doctor 只检查步骤、存储与执行状态，未复核候选。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "blocked Verifier recovery command contract reports candidate drift in read-only Archive and Doctor without changing the accepted Run",
+          "requiredNames": [
+            "blocked Verifier recovery command contract reports candidate drift in read-only Archive and Doctor without changing the accepted Run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "task-unavailable-context-cli-diagnostic",
+      "behavior": "不可用的 project-memory 展开返回可解析的 CLI 错误，不泄漏 Node 异常栈；有效记忆仍能完整展开。",
+      "sources": ["https://github.com/rpamis/comet/issues/506"],
+      "coverageLevel": "public-cli",
+      "reproduction": "真实 Node 进程通过 task facade 展开 project-memory:missing-lesson；修复前抛出文件路径和 Node 栈。",
+      "expected": "exit 1 并输出 TASK_FAILED 与目标 ID；有效、来源匹配的记忆可读。",
+      "forbidden": "以成功伪装失败、注入失效记忆，或输出未处理的异常栈。",
+      "rootCause": "task 快速入口绕过完整 CLI 的错误处理。",
+      "tests": [
+        {
+          "file": "test/app/comet-task-context-process.test.ts",
+          "namePattern": "an unavailable project memory expansion returns a CLI diagnostic without a Node stack",
+          "requiredNames": [
+            "an unavailable project memory expansion returns a CLI diagnostic without a Node stack"
+          ]
+        },
+        {
+          "file": "test/app/comet-task-context-process.test.ts",
+          "namePattern": "checks completion receipts in the real helper process and refuses stale-source lessons",
+          "requiredNames": [
+            "checks completion receipts in the real helper process and refuses stale-source lessons"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "knowledge-get-without-index-refresh",
+      "behavior": "按 ID 读取已有知识记录不依赖无关全文索引刷新或其时间预算。",
+      "sources": ["https://github.com/rpamis/comet/issues/506"],
+      "coverageLevel": "runtime",
+      "reproduction": "对真实 Local Provider 注入 refresh 的 index-budget 诊断；修复前 get 也触发该刷新并输出误导诊断。",
+      "expected": "读取相同持久记录且 diagnostics 为空，不调用 refresh；远程策略和记录管理行为保留。",
+      "forbidden": "因无关索引预算阻塞直接读取，或为消除诊断而掩盖查询自身的错误。",
+      "rootCause": "get 和搜索准备共用刷新流程，尽管 get 只读记录存储。",
+      "tests": [
+        {
+          "file": "test/app/project-knowledge-command.test.ts",
+          "namePattern": "comet knowledge commands lists, gets, corrects, and forgets Records without project files",
+          "requiredNames": [
+            "comet knowledge commands lists, gets, corrects, and forgets Records without project files"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-failure-business-state",
+      "behavior": "Archive 在接受前被拒绝时也保留业务阶段、验收状态、候选及恢复信息。",
+      "sources": ["https://github.com/rpamis/comet/issues/506"],
+      "coverageLevel": "public-cli",
+      "reproduction": "处于 blocked Verify 时执行 archive，修复前 exit 73 的 agent.phase 和 preserved candidate 为 null。",
+      "expected": "exit 73 保留 summary、verify 阶段、blocked 结论、候选 ID 和原恢复信息。",
+      "forbidden": "只返回协议错误并迫使用户另跑 status，或伪造归档完成状态。",
+      "rootCause": "早期拒绝分支没有投影 SDK 业务状态，通用恢复只读取 portable state。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "blocked Verifier recovery command contract retains business status and candidate details when Archive is rejected before acceptance",
+          "requiredNames": [
+            "blocked Verifier recovery command contract retains business status and candidate details when Archive is rejected before acceptance"
+          ]
+        }
+      ]
     }
   ]
 }

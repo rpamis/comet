@@ -93,6 +93,8 @@ async function checkedCandidate(
     executeChecks?: boolean;
     verificationChecks?: NativeCheckPlan[];
     files?: Record<string, string>;
+    prepareProject?: (root: string) => Promise<void>;
+    builderOverrides?: Record<string, unknown>;
   } = {},
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-sdk-verification-inputs-'));
@@ -124,6 +126,7 @@ async function checkedCandidate(
     { cwd: root },
   );
   await writeProjectConfig(root, defaultProjectConfig('docs', 'en'));
+  await options.prepareProject?.(root);
   const paths = await nativeProjectPaths(root, 'docs');
   await ensureNativeDirectories(paths);
   const changeDir = path.join(paths.changesDir, 'verification-inputs');
@@ -268,18 +271,27 @@ Run focused Native checks.
       review: null,
       submittedAt: '2026-10-23T01:00:00.000Z',
       verificationChecks: options.verificationChecks ?? [check],
+      ...options.builderOverrides,
     },
     'builder-session',
   );
   expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.checks', status: 'pending' });
   if (options.executeChecks === false)
     return { root, paths, changeDir, runtime, store, run, check };
-  run = await runtime.execute({
-    runId: run.runId,
-    actionId: run.actions.at(-1)!.id,
-    executorId: 'comet-native-checks',
-    context: { requestId: 'runtime-checks', projectRoot: root },
-  });
+  try {
+    run = await runtime.execute({
+      runId: run.runId,
+      actionId: run.actions.at(-1)!.id,
+      executorId: 'comet-native-checks',
+      context: { requestId: 'runtime-checks', projectRoot: root },
+    });
+  } catch (error) {
+    const failed = await store.read(run.runId);
+    throw new Error(
+      `Native fixture check execution failed: ${failed?.actions.at(-1)?.reason ?? 'no persisted reason'}`,
+      { cause: error },
+    );
+  }
   expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
   expect(await nativeSdkCurrentCheckSummaries({ run, projectRoot: root })).toMatchObject(
     (options.verificationChecks ?? [check]).map(({ id }) => ({ id, status: 'passed' })),
@@ -295,6 +307,7 @@ Run focused Native checks.
 async function submitVerifierResult(
   prepared: Awaited<ReturnType<typeof checkedCandidate>>,
   verdict: 'pass' | 'fail' = 'pass',
+  receipt = 'verifier-final-result',
 ) {
   const { root, runtime, run } = prepared;
   const state = run.state as unknown as NativePortableState;
@@ -302,7 +315,7 @@ async function submitVerifierResult(
     runtime,
     run,
     root,
-    'verifier-final-result',
+    receipt,
     {
       candidateId: state.builder_handoff!.candidate_id,
       verifierExecutionRef: 'verifier-session',
@@ -427,6 +440,106 @@ async function approveCheckRepair(
 }
 
 describe('Native SDK verification input binding', () => {
+  it.each([
+    [
+      'submittedAt',
+      { submittedAt: '2026-10-23T01:00:00.00Z' },
+      /submittedAt.*2026-10-23T01:00:00\.000Z/u,
+    ],
+    [
+      'checks.result',
+      { checks: [{ name: 'check', result: 'pass' }] },
+      /checks\[0\]\.result.*passed.*failed.*not-run.*pass/u,
+    ],
+    [
+      'acceptanceReview.evidence',
+      {
+        acceptanceReview: [
+          { id: 'A1', status: 'implemented-with-evidence', evidence: 'proof', note: 'Done.' },
+        ],
+      },
+      /acceptance_review\[0\].*A1.*evidence.*array.*string/u,
+    ],
+    [
+      'acceptanceReview.note',
+      {
+        acceptanceReview: [
+          { id: 'A1', status: 'implemented-with-evidence', evidence: ['proof'], note: '' },
+        ],
+      },
+      /acceptance_review\[0\].*A1.*note.*concrete/u,
+    ],
+  ])(
+    'reports the exact invalid Builder field without misleading claim diagnostics: %s',
+    async (_field, builderOverrides, expected) => {
+      await expect(
+        checkedCandidate({ builderOverrides: builderOverrides as Record<string, unknown> }),
+      ).rejects.toThrow(expected as RegExp);
+    },
+  );
+
+  it('archives a verified dirty embedded repository and rejects subsequent dirty content drift', async () => {
+    const prepared = await checkedCandidate({
+      prepareProject: async (root) => {
+        const child = path.join(root, 'dependency');
+        await fs.mkdir(child);
+        execFileSync('git', ['init', '--quiet'], { cwd: child });
+        await fs.writeFile(path.join(child, 'value.txt'), 'baseline\n');
+        execFileSync('git', ['add', '.'], { cwd: child });
+        execFileSync(
+          'git',
+          [
+            '-c',
+            'user.name=Fixture',
+            '-c',
+            'user.email=fixture@example.test',
+            'commit',
+            '--quiet',
+            '-m',
+            'child',
+          ],
+          { cwd: child },
+        );
+        execFileSync('git', ['add', 'dependency'], { cwd: root, stdio: 'pipe' });
+        execFileSync(
+          'git',
+          [
+            '-c',
+            'user.name=Fixture',
+            '-c',
+            'user.email=fixture@example.test',
+            'commit',
+            '--quiet',
+            '-m',
+            'gitlink',
+          ],
+          { cwd: root },
+        );
+        await fs.appendFile(path.join(root, '.gitignore'), '.pnpm-store/\n');
+        await fs.symlink(
+          child,
+          path.join(root, '.pnpm-store'),
+          process.platform === 'win32' ? 'junction' : 'dir',
+        );
+        await fs.writeFile(path.join(child, 'value.txt'), 'verified dirty value\n');
+      },
+    });
+    const output = prepared.run.outputs['verify.checks'].value as {
+      candidateInputFingerprintGate: string | null;
+      inputSnapshot: { complete: boolean };
+    };
+    expect(output.candidateInputFingerprintGate).toMatch(/^[a-f0-9]{64}$/u);
+    expect(output.inputSnapshot.complete).toBe(true);
+    const dirty = path.join(prepared.root, 'dependency/value.txt');
+    await fs.writeFile(dirty, 'unverified dirty value\n');
+    await expect(submitVerifierResult(prepared)).rejects.toThrow(/候选|输入|candidate|input/iu);
+    await fs.writeFile(dirty, 'verified dirty value\n');
+    prepared.run = (await prepared.store.read(prepared.run.runId))!;
+    const verified = await submitVerifierResult(prepared, 'pass', 'restored-verifier-result');
+    await completeArchive(prepared, verified);
+    expect(await fs.readFile(dirty, 'utf8')).toBe('verified dirty value\n');
+  });
+
   it.each(['package-declaration', 'execution-environment', 'tampered-log', 'unproven-command'])(
     'does not reuse stale or unproven check evidence for a successor candidate: %s',
     async (fault) => {

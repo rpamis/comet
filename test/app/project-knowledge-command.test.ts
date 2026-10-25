@@ -373,6 +373,27 @@ describe('comet knowledge commands', () => {
       await expect(
         projectKnowledgeGetCommand(root, { json: true, cacheRoot, id: record.id }),
       ).resolves.toMatchObject({ result: { record: { id: record.id } } });
+      const originalApply = LocalProjectKnowledgeProvider.prototype.apply;
+      const refresh = vi
+        .spyOn(LocalProjectKnowledgeProvider.prototype, 'apply')
+        .mockImplementation(async function (request) {
+          if (request.kind === 'refresh')
+            return {
+              changed: false,
+              diagnostics: [
+                { code: 'index-budget', message: 'Fixture refresh exhausted its index budget.' },
+              ],
+            };
+          return originalApply.call(this, request);
+        });
+      try {
+        await expect(
+          projectKnowledgeGetCommand(root, { json: true, cacheRoot, id: record.id }),
+        ).resolves.toMatchObject({ result: { record: { id: record.id } }, diagnostics: [] });
+        expect(refresh.mock.calls.some(([request]) => request.kind === 'refresh')).toBe(false);
+      } finally {
+        refresh.mockRestore();
+      }
       await expect(
         projectKnowledgeCorrectCommand(root, {
           json: true,

@@ -488,6 +488,20 @@ function builderCandidateState(
   const output = outcome.output as Record<string, unknown> | null;
   const sessionId = action.claim?.sessionId;
   if (
+    output &&
+    (typeof output.submittedAt !== 'string' ||
+      Number.isNaN(Date.parse(output.submittedAt)) ||
+      new Date(output.submittedAt).toISOString() !== output.submittedAt)
+  ) {
+    const expected =
+      typeof output.submittedAt === 'string' && !Number.isNaN(Date.parse(output.submittedAt))
+        ? new Date(output.submittedAt).toISOString()
+        : 'YYYY-MM-DDTHH:mm:ss.sssZ';
+    throw new Error(
+      `Native Builder submittedAt must be a canonical UTC timestamp (${expected}); received ${JSON.stringify(output.submittedAt)}`,
+    );
+  }
+  if (
     state.phase !== 'build' ||
     !['build.builder', 'supervisor.parent.builder'].includes(action.stepId) ||
     action.type !== 'handoff' ||
@@ -506,8 +520,12 @@ function builderCandidateState(
   ) {
     throw new Error('Native Builder result needs a claimed host session and a complete candidate');
   }
-  const checks = output.checks.map((value) => {
+  const checks = output.checks.map((value, index) => {
     const check = value as Record<string, unknown> | null;
+    if (check && !['passed', 'failed', 'not-run'].includes(String(check.result)))
+      throw new Error(
+        `Native Builder checks[${index}].result must be passed, failed, or not-run; received ${JSON.stringify(check.result)}`,
+      );
     if (
       !check ||
       typeof check.name !== 'string' ||

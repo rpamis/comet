@@ -130,6 +130,14 @@ export async function runTaskFacade(args: readonly string[]): Promise<boolean> {
   const parsed = parseTaskArgs(args);
   if (!parsed) return false;
   const { cometTaskCommand } = await import('./comet-task.js');
-  await cometTaskCommand(parsed.targetPath, parsed.options);
+  try {
+    await cometTaskCommand(parsed.targetPath, parsed.options);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (parsed.options.json)
+      console.log(JSON.stringify({ error: { code: 'TASK_FAILED', message } }));
+    else console.error(`Error: ${message}`);
+    process.exitCode = 1;
+  }
   return true;
 }

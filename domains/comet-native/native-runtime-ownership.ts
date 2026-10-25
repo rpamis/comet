@@ -50,6 +50,26 @@ import { validateNativeSdkFailedIntegrationRepair } from './native-sdk-superviso
 import { readProjectConfig } from './native-config.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { nativeProjectPaths } from './native-paths.js';
+import { registerNativeRunnerInputArtifactLocked } from './native-runner-input-artifacts.js';
+
+/** 在已绑定的 SDK 入口登记请求文件；只读 inspect 不调用此写入口。 */
+export async function registerNativeSdkRequestInput(options: {
+  projectRoot: string;
+  artifactRootRef: string;
+  file: string;
+  runId: string;
+  validateContent: (content: string) => void;
+}): Promise<void> {
+  const paths = await nativeProjectPaths(options.projectRoot, options.artifactRootRef);
+  await withNativeMutationLock(paths, 'sdk-request-input', () =>
+    registerNativeRunnerInputArtifactLocked({
+      paths,
+      file: options.file,
+      runtimeRunId: options.runId,
+      validateContent: options.validateContent,
+    }),
+  );
+}
 import { parseNativePortableState } from './native-portable-state.js';
 import { recoverPristineNativeSdkChange } from './native-sdk-create.js';
 import { createNativeSdkStateStore } from './native-sdk-state-store.js';

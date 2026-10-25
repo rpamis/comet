@@ -12,6 +12,7 @@ const MAX_INPUT_BYTES = 8 * 1024 * 1024;
 interface RunnerInputArtifact {
   path: string;
   digest: string;
+  runtimeRunId?: string;
 }
 
 function digest(bytes: Buffer): string {
@@ -51,10 +52,16 @@ async function readRegistry(projectRoot: string): Promise<RunnerInputArtifact[]>
         typeof row.path !== 'string' ||
         relativeInputPath(projectRoot, row.path) !== row.path ||
         typeof row.digest !== 'string' ||
-        !/^[a-f0-9]{64}$/u.test(row.digest)
+        !/^[a-f0-9]{64}$/u.test(row.digest) ||
+        (row.runtimeRunId !== undefined &&
+          (typeof row.runtimeRunId !== 'string' || !row.runtimeRunId.trim()))
       )
         throw new Error('Invalid Native Runner input artifact');
-      return { path: row.path, digest: row.digest };
+      return {
+        path: row.path,
+        digest: row.digest,
+        ...(row.runtimeRunId ? { runtimeRunId: row.runtimeRunId } : {}),
+      };
     });
   } catch {
     // Missing or damaged local bookkeeping never removes a candidate input.
@@ -86,8 +93,25 @@ async function matchingArtifacts(projectRoot: string): Promise<RunnerInputArtifa
         label: 'Native Runner input artifact',
       });
       const relative = relativeInputPath(projectRoot, read.realPath);
-      if (relative && !tracked.has(gitPathKey(relative)) && digest(read.bytes) === row.digest)
-        matching.push({ path: relative, digest: row.digest });
+      let matches = digest(read.bytes) === row.digest;
+      if (!matches && row.runtimeRunId) {
+        const request: unknown = JSON.parse(read.bytes.toString('utf8'));
+        if (request && typeof request === 'object' && !Array.isArray(request)) {
+          const inspect = request as Record<string, unknown>;
+          // 只读 inspect 不写登记；仅识别原 Run 已登记文件中的严格只读载荷。
+          matches =
+            inspect.operation === 'inspect' &&
+            inspect.runId === row.runtimeRunId &&
+            Object.keys(inspect).every((key) =>
+              ['operation', 'runId', 'requestId', 'protocolVersion'].includes(key),
+            ) &&
+            (inspect.requestId === undefined ||
+              (typeof inspect.requestId === 'string' && Boolean(inspect.requestId.trim()))) &&
+            (inspect.protocolVersion === undefined || inspect.protocolVersion === 1);
+        }
+      }
+      if (relative && !tracked.has(gitPathKey(relative)) && matches)
+        matching.push({ ...row, path: relative });
     } catch {
       // Replaced, missing, linked or unstable files remain ordinary inputs.
     }
@@ -104,6 +128,7 @@ export async function registerNativeRunnerInputArtifactLocked(options: {
   paths: NativeProjectPaths;
   file: string;
   validateContent: (content: string) => void;
+  runtimeRunId?: string;
 }): Promise<void> {
   const relative = relativeInputPath(options.paths.projectRoot, options.file);
   if (!relative) return;
@@ -127,7 +152,14 @@ export async function registerNativeRunnerInputArtifactLocked(options: {
     );
   await atomicWriteJson(
     path.join(options.paths.workspaceRuntimeRoot, ...REGISTRY_REF.split('/')),
-    [...current, { path: physicalRelative, digest: digest(read.bytes) }],
+    [
+      ...current,
+      {
+        path: physicalRelative,
+        digest: digest(read.bytes),
+        ...(options.runtimeRunId ? { runtimeRunId: options.runtimeRunId } : {}),
+      },
+    ],
     { containedRoot: options.paths.runtimeDir },
   );
 }

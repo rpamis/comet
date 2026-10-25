@@ -37,6 +37,21 @@ beforeAll(async () => {
   });
   await fs.writeFile(path.join(root, 'package.json'), '{"type":"module"}');
   await build({
+    entryPoints: ['app/commands/task-facade.ts'],
+    outfile: path.join(root, 'facade.mjs'),
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    define: { __COMET_VERSION__: '"0.5.1"' },
+    banner: {
+      js: "import { createRequire as taskTestRequire } from 'node:module'; const require = taskTestRequire(import.meta.url);",
+    },
+  });
+  await fs.writeFile(
+    path.join(root, 'facade-runner.mjs'),
+    "import { runTaskFacade } from './facade.mjs'; await runTaskFacade(process.argv.slice(2));\n",
+  );
+  await build({
     entryPoints: ['app/commands/project-knowledge.ts'],
     outfile: path.join(root, 'knowledge.mjs'),
     bundle: true,
@@ -105,6 +120,31 @@ test('a new project with no memory returns an empty successful response', async 
   const result = await run(home, project);
   expect(JSON.parse(result.stdout)).toEqual({ context: [] });
   expect(result.stderr).not.toMatch(/timed out|exceeded/i);
+});
+
+test('an unavailable project memory expansion returns a CLI diagnostic without a Node stack', async () => {
+  const { home, project } = await fixture('missing-expansion');
+  const error = await execFileAsync(
+    process.execPath,
+    [
+      path.join(root, 'facade-runner.mjs'),
+      project,
+      '--task',
+      'Read the recorded resolution',
+      '--expand-context',
+      'project-memory:missing-lesson',
+      '--json',
+    ],
+    { env: fixtureEnvironment(home), timeout: 18000, windowsHide: true },
+  ).catch((error) => error);
+  expect(error.code).toBe(1);
+  expect(error.stderr).not.toMatch(/\n\s+at |Node\.js v|file:\/\//u);
+  expect(JSON.parse(error.stdout)).toMatchObject({
+    error: {
+      code: 'TASK_FAILED',
+      message: expect.stringContaining('project-memory:missing-lesson'),
+    },
+  });
 });
 test('associates real task-context retrieval with its explicitly selected Change', async () => {
   const { home, project } = await fixture('trace-retrieval');
@@ -289,6 +329,15 @@ test('checks completion receipts in the real helper process and refuses stale-so
   );
   const receipt = JSON.parse(written.stdout);
   expect(receipt.entry).toMatchObject({ workflow: 'native', change: 'current' });
+  const expanded = JSON.parse(
+    (
+      await run(home, project, {
+        task: 'Retry once',
+        expandContext: `project-memory:${receipt.slug}`,
+      })
+    ).stdout,
+  );
+  expect(expanded.expansion.content).toContain('Retry once after a transient failure.');
   const options = {
     complete: true,
     workflow: 'native',

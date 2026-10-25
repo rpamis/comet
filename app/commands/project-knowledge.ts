@@ -139,7 +139,7 @@ export async function projectKnowledgeGetCommand(
   const diagnostics: ProjectKnowledgeDiagnostic[] = [];
   const provider = await createProvider(projectRoot, options, diagnostics);
   try {
-    await readyProjectKnowledge(projectRoot, provider, diagnostics);
+    await readyProjectKnowledge(projectRoot, provider, diagnostics, true);
     const result = await provider.query({ kind: 'get', id: required(options.id, '--id') });
     const output = { provider: providerName(provider), result, diagnostics };
     print(output, options);

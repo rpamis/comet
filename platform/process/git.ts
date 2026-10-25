@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process';
+import { lstatSync, realpathSync } from 'node:fs';
+import path from 'node:path';
 
 import { measureCometGitCommand } from './runtime-metrics.js';
 
@@ -41,6 +43,66 @@ function executeGitCommand(cwd: string, args: readonly string[]): string {
 
 export function runGitCommand(cwd: string, args: readonly string[]): string {
   return executeGitCommand(cwd, args).trim();
+}
+
+/** 合并前只导入源检出中已有的 gitlink 提交，不切换子仓 HEAD 或改写工作区。 */
+export function fetchGitlinkCommitsForMerge(
+  targetRoot: string,
+  sourceRoot: string,
+  sourceCommit: string,
+): void {
+  const sourceTree = runGitCommand(sourceRoot, ['ls-tree', '-r', '-z', sourceCommit]);
+  const targetTree = runGitCommand(targetRoot, ['ls-tree', '-r', '-z', 'HEAD']);
+  const base = runGitCommand(targetRoot, ['merge-base', 'HEAD', sourceCommit]);
+  const baseTree = runGitCommand(targetRoot, ['ls-tree', '-r', '-z', base]);
+  const gitlinks = (tree: string) =>
+    new Map(
+      tree.split('\0').flatMap((record) => {
+        const entry = record.match(/^160000 commit ([a-f0-9]{40}(?:[a-f0-9]{24})?)\t(.+)$/su);
+        return entry ? [[entry[2], entry[1]]] : [];
+      }),
+    );
+  const targetLinks = gitlinks(targetTree);
+  const baseLinks = gitlinks(baseTree);
+  for (const record of sourceTree.split('\0')) {
+    const entry = record.match(/^160000 commit ([a-f0-9]{40}(?:[a-f0-9]{24})?)\t(.+)$/su);
+    if (!entry) continue;
+    const [, commit, ref] = entry;
+    if (targetLinks.get(ref) === commit || targetLinks.get(ref) === baseLinks.get(ref)) continue;
+    if (path.isAbsolute(ref) || ref.split('/').some((part) => part === '..' || part === '.git'))
+      throw new Error(`Unsafe Git submodule path: ${ref}`);
+    const resolveCheckout = (root: string) => {
+      const checkout = path.resolve(root, ...ref.split('/'));
+      const physical = path.resolve(realpathSync(root), ...ref.split('/'));
+      const stat = lstatSync(checkout);
+      if (
+        !stat.isDirectory() ||
+        stat.isSymbolicLink() ||
+        realpathSync(checkout) !== physical ||
+        realpathSync(runGitCommand(checkout, ['rev-parse', '--show-toplevel'])) !== physical
+      )
+        throw new Error(`Git 子仓 ${ref} 未初始化或路径不安全；请先恢复子仓检出再重试合并`);
+      return checkout;
+    };
+    const target = resolveCheckout(targetRoot);
+    try {
+      runGitCommand(target, ['cat-file', '-e', `${commit}^{commit}`]);
+      continue;
+    } catch {
+      /* 目标只缺对象；从已验证的本地 change 检出读取。 */
+    }
+    const source = resolveCheckout(sourceRoot);
+    try {
+      runGitCommand(source, ['cat-file', '-e', `${commit}^{commit}`]);
+      runGitCommand(target, ['fetch', '--no-tags', '--no-write-fetch-head', '--', source, commit]);
+      runGitCommand(target, ['cat-file', '-e', `${commit}^{commit}`]);
+    } catch (error) {
+      throw new Error(
+        `Git 子仓 ${ref} 无法从 ${source} 导入合并所需提交 ${commit}；请先在目标子仓 fetch 该提交后重试原合并`,
+        { cause: error },
+      );
+    }
+  }
 }
 
 /** 源文件比较保留前后空白和换行，不能使用会 trim 的命令输出。 */

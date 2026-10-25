@@ -97,6 +97,8 @@ export async function projectNativeSdkStatus(
     acceptance: summary.acceptance,
     unresolvedAcceptanceIds: summary.unresolved_acceptance_ids,
     verificationResult: state.verification_result,
+    candidateId: state.builder_handoff?.candidate_id ?? null,
+    shapeConfirmationHash: state.shape_confirmation_hash ?? null,
     blockers: summary.blockers,
     workspace: projectNativePortableWorkspace({ projectRoot: options.projectRoot }, state),
     run: {

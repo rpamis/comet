@@ -40,7 +40,7 @@ export function parseNativeBuilderAcceptanceReview(
     if (!entry || typeof entry !== 'object' || Array.isArray(entry))
       throw new Error('Native Builder acceptance review entry must be an object');
     const row = entry as Record<string, unknown>;
-    const label = `Native Builder acceptance_review[${index}]`;
+    const label = `Native Builder acceptance_review[${index}]${typeof row.id === 'string' ? ` (${row.id})` : ''}`;
     assertNativeInputKeys(
       row,
       ['id', 'status', 'evidence', 'note'],
@@ -48,11 +48,16 @@ export function parseNativeBuilderAcceptanceReview(
       `/acceptance_review/${index}`,
     );
     const status = nativeEnumText(row.status, NATIVE_ACCEPTANCE_REVIEW_STATUSES, `${label}.status`);
-    if (!Array.isArray(row.evidence)) throw new Error(`${label}.evidence must be an array`);
+    if (!Array.isArray(row.evidence))
+      throw new Error(
+        `${label}.evidence must be an array of concrete strings of at most 4000 characters; received ${typeof row.evidence}`,
+      );
     return {
       id: text(row.id, `${label}.id`),
       status,
-      evidence: row.evidence.map((value) => text(value, `${label}.evidence`)),
+      evidence: row.evidence.map((value, evidenceIndex) =>
+        text(value, `${label}.evidence[${evidenceIndex}]`),
+      ),
       note: text(row.note, `${label}.note`),
     };
   });

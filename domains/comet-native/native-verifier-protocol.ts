@@ -233,7 +233,9 @@ export function validateNativeTrustedVerifierEnvelope(options: {
     response.kind === 'final-result' ? response.result.iteration : response.iteration;
   const attempt = response.kind === 'final-result' ? response.result.attempt : response.attempt;
   if (iteration !== binding.iteration || attempt !== binding.attempt) {
-    throw new Error('Native Verifier result is stale for the current iteration or attempt');
+    throw new Error(
+      `Native Verifier result is stale for the current iteration or attempt: expected iteration=${binding.iteration}, attempt=${binding.attempt}; received iteration=${iteration}, attempt=${attempt}. Inspect the current action and use its outputTemplate before submitting a new outcomeId`,
+    );
   }
   if (response.kind === 'request-checks') return response;
 

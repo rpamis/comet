@@ -1008,6 +1008,20 @@ export async function runtimeDispatchCommand(
       );
     }
     const context = { requestId, projectRoot, invocationCwd, environment };
+    if (application === 'native' && boundRun && request.operation !== 'inspect') {
+      const { registerNativeSdkRequestInput } =
+        await import('../../domains/comet-native/native-runtime-ownership.js');
+      await registerNativeSdkRequestInput({
+        projectRoot,
+        artifactRootRef: (boundRun.input as { artifactRootRef: string }).artifactRootRef,
+        file: requestFile,
+        runId: String(request.runId),
+        validateContent: (content) => {
+          if (JSON.stringify(parseRequest(JSON.parse(content))) !== JSON.stringify(request))
+            invalid('SDK 请求文件在读取后发生变化，请重新提交原请求');
+        },
+      });
+    }
     let data =
       request.operation === 'inspect' && boundRun
         ? boundRun

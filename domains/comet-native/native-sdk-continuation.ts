@@ -154,7 +154,7 @@ function nativeSdkOutcomeOutput(
         { name: '<check-name>', result: '<passed|failed|not-run>', note: '<actual-result>' },
       ],
       knownLimits: ['<actual-limit-or-remove-entry>'],
-      submittedAt: '<ISO-8601-UTC-time>',
+      submittedAt: '<YYYY-MM-DDTHH:mm:ss.sssZ; use new Date().toISOString()>',
       verificationChecks: [check],
       ...(action.stepId === 'supervisor.parent.builder'
         ? { candidateCommit: '<current-integration-HEAD>' }

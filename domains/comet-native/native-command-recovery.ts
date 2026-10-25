@@ -69,8 +69,14 @@ export async function withNativeCommandRecovery(
     recoveryArgs: null,
     preconditions: ['Inspect the original Action before retrying; preserve its receipts.'],
     preserved: {
-      candidateId: (object(state.builder_handoff).candidate_id as string | undefined) ?? null,
-      shapeConfirmationHash: (state.shape_confirmation_hash as string | undefined) ?? null,
+      candidateId:
+        (object(state.builder_handoff).candidate_id as string | undefined) ??
+        (data.candidateId as string | undefined) ??
+        null,
+      shapeConfirmationHash:
+        (state.shape_confirmation_hash as string | undefined) ??
+        (data.shapeConfirmationHash as string | undefined) ??
+        null,
     },
   };
   let recovery = object(data.recovery).schema

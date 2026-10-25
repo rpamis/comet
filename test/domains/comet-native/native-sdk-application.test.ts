@@ -6056,6 +6056,78 @@ children:
     ).rejects.toThrow(/OUTCOME_REJECTED/);
   });
 
+  it('does not reserve a check ID or command from a rejected Verifier request', async () => {
+    const { root, runtime, store, run: ready } = await dispatchedVerifier();
+    const candidateId = (ready.state as NativePortableState).builder_handoff!.candidate_id;
+    const action = ready.actions.at(-1)!;
+    const context = { requestId: 'rejected-request', projectRoot: root };
+    await runtime.claim({
+      runId: ready.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'native-host',
+      sessionId: 'verifier-session-1',
+      claimToken: 'original-verifier-claim',
+      context,
+    });
+    const submit = (outcomeId: string, attempt: number, code: string) =>
+      runtime.recordOutcome({
+        runId: ready.runId,
+        context,
+        outcome: {
+          actionId: action.id,
+          attempt: action.attempt,
+          inputHash: action.inputHash,
+          claimToken: 'original-verifier-claim',
+          outcomeId,
+          status: 'succeeded',
+          output: {
+            candidateId,
+            verifierExecutionRef: 'verifier-session-1',
+            response: {
+              kind: 'request-checks',
+              iteration: 1,
+              attempt,
+              checks: [
+                {
+                  id: 'corrected-check',
+                  name: 'Check',
+                  executable: process.execPath,
+                  argv: ['-e', code],
+                  cwdRef: '.',
+                  timeoutMs: 5000,
+                  repeatable: true,
+                },
+              ],
+            },
+          },
+        },
+      });
+    await expect(submit('rejected-plan', 999, 'process.exit(1)')).rejects.toThrow(
+      /expected iteration=1, attempt=1; received iteration=1, attempt=999/u,
+    );
+    const corrected = await submit('corrected-plan', 1, 'process.exit(0)');
+    expect(corrected.actions.at(-1)).toMatchObject({
+      stepId: 'verify.requested-checks',
+      status: 'pending',
+    });
+    expect(
+      (await store.read(ready.runId))!.actions.find(({ id }) => id === action.id)!.receipts,
+    ).toHaveLength(2);
+    const checked = await runtime.execute({
+      runId: corrected.runId,
+      actionId: corrected.actions.at(-1)!.id,
+      executorId: 'comet-native-checks',
+      context,
+    });
+    expect(checked.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
+    expect(
+      (checked.outputs['verify.requested-checks'].value as { checks: { status: string }[] })
+        .checks[0].status,
+    ).toBe('passed');
+  });
+
   it('rejects a Verifier check ID that conflicts with a required Runtime check', async () => {
     const {
       root,

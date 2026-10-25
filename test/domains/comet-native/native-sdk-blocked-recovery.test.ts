@@ -52,6 +52,9 @@ async function blockedFixture(
     syntaxFiles?: boolean;
     bundleCommands?: boolean;
     misclaimedVerifier?: boolean;
+    inProjectRequests?: boolean;
+    dirtyEmbedded?: boolean;
+    directPass?: boolean;
   } = {},
 ) {
   let useReleased = Boolean(options.legacy && process.env.COMET_NATIVE_LEGACY_PACKAGE_ROOT);
@@ -107,6 +110,17 @@ async function blockedFixture(
   git(['config', 'user.email', 'comet-test@example.com']);
   git(['add', '.']);
   git(['commit', '-qm', 'candidate']);
+  if (options.dirtyEmbedded) {
+    const child = path.join(projectRoot, 'dependency');
+    await fs.mkdir(child);
+    git(['init', '-q'], child);
+    await fs.writeFile(path.join(child, 'value.txt'), 'baseline\n');
+    git(['add', '.'], child);
+    git(['commit', '-qm', 'child'], child);
+    git(['add', 'dependency']);
+    git(['commit', '-qm', 'gitlink']);
+    await fs.writeFile(path.join(child, 'value.txt'), 'verified dirty child\n');
+  }
   let count = 0;
   let legacyRuntime: WorkflowRuntime | undefined;
   async function dispatch(request: Record<string, unknown>) {
@@ -117,7 +131,10 @@ async function blockedFixture(
         executorId: String(request.executorId),
         context: { requestId: `legacy-check-${++count}`, projectRoot },
       });
-    const requestFile = path.join(root, `request-${++count}.json`);
+    count += 1;
+    const requestFile = options.inProjectRequests
+      ? path.join(projectRoot, 'dispatch-request.json')
+      : path.join(root, `request-${count}.json`);
     await fs.writeFile(requestFile, JSON.stringify(request));
     const result = await (useReleased ? releasedDispatch! : runtimeDispatchCommand)({
       application: 'native',
@@ -401,16 +418,20 @@ async function blockedFixture(
         result: {
           iteration: state.loop.iteration,
           attempt: state.loop.attempt,
-          verdict: 'blocked',
+          verdict: options.directPass ? 'pass' : 'blocked',
           acceptance: [
             {
               id: 'A1',
-              result: 'blocked',
-              reason: 'The requested independent model was unavailable.',
+              result: options.directPass ? 'passed' : 'blocked',
+              reason: options.directPass
+                ? 'Independently verified the candidate.'
+                : 'The requested independent model was unavailable.',
             },
           ],
           risks: [],
-          summary: 'Use the correct independent model, without changing requirements.',
+          summary: options.directPass
+            ? 'All acceptance passed.'
+            : 'Use the correct independent model, without changing requirements.',
         },
       },
     },
@@ -436,50 +457,77 @@ async function executeAlternative(action: Alternative) {
   );
 }
 
-async function archiveReadyFixture() {
-  const f = await blockedFixture({ bundleCommands: true });
-  const resume = (await alternatives(f)).find(({ name }) => name === 'resolve-verifier-blocker')!;
-  expect(
-    (
-      await f.native(
-        resume.commandArgs
-          .slice(2)
-          .map((arg) => (arg === '<summary>' ? 'The independent verifier is available.' : arg)),
-      )
-    ).exitCode,
-  ).toBe(0);
-  const run = await f.dispatch({ operation: 'inspect', runId: f.name });
-  const state = parseNativePortableState(run.state);
-  await f.record(
-    run.actions.findLast(({ status }) => status === 'pending')!,
-    {
-      candidateId: state.builder_handoff!.candidate_id,
-      verifierExecutionRef: 'archive-verifier',
-      response: {
-        kind: 'final-result',
-        result: {
-          iteration: state.loop.iteration,
-          attempt: state.loop.attempt,
-          verdict: 'pass',
-          acceptance: [
-            {
-              id: 'A1',
-              result: 'passed',
-              reason: 'Independently verified the retained candidate.',
-            },
-          ],
-          risks: [],
-          summary: 'All acceptance passed.',
+async function archiveReadyFixture(
+  options: {
+    inProjectRequests?: boolean;
+    deferredRevalidation?: boolean;
+    dirtyEmbedded?: boolean;
+    directPass?: boolean;
+  } = {},
+) {
+  const f = await blockedFixture({
+    bundleCommands: true,
+    inProjectRequests: options.inProjectRequests,
+    dirtyEmbedded: options.dirtyEmbedded,
+    directPass: options.directPass,
+  });
+  if (!options.directPass) {
+    const resume = (await alternatives(f)).find(({ name }) => name === 'resolve-verifier-blocker')!;
+    expect(
+      (
+        await f.native(
+          resume.commandArgs
+            .slice(2)
+            .map((arg) => (arg === '<summary>' ? 'The independent verifier is available.' : arg)),
+        )
+      ).exitCode,
+    ).toBe(0);
+    const run = await f.dispatch({ operation: 'inspect', runId: f.name });
+    const state = parseNativePortableState(run.state);
+    await f.record(
+      run.actions.findLast(({ status }) => status === 'pending')!,
+      {
+        candidateId: state.builder_handoff!.candidate_id,
+        verifierExecutionRef: 'archive-verifier',
+        response: {
+          kind: 'final-result',
+          result: {
+            iteration: state.loop.iteration,
+            attempt: state.loop.attempt,
+            verdict: 'pass',
+            acceptance: [
+              {
+                id: 'A1',
+                result: 'passed',
+                reason: 'Independently verified the retained candidate.',
+              },
+            ],
+            risks: [],
+            summary: 'All acceptance passed.',
+          },
         },
       },
-    },
-    'archive-verifier',
-  );
+      'archive-verifier',
+    );
+  }
   expect((await f.native(['next', f.name])).exitCode).toBe(0);
   const data = JSON.parse((await f.native(['status', f.name])).stdout!).data;
   const approval = (data.continuation.commandAlternatives as Alternative[]).find(
     ({ name }) => name === 'accept-result',
   )!;
+  if (options.deferredRevalidation) {
+    const current = await f.dispatch({ operation: 'inspect', runId: f.name });
+    const wait = current.waits.findLast(({ status }) => status === 'pending')!;
+    await f.dispatch({
+      operation: 'resolve-wait',
+      runId: f.name,
+      waitId: wait.id,
+      proposalHash: wait.proposalHash,
+      decisionId: 'approve-with-pending-revalidation',
+      choice: 'approved',
+    });
+    return f;
+  }
   expect(
     (
       await f.native(
@@ -493,6 +541,69 @@ async function archiveReadyFixture() {
 }
 
 describe('blocked Verifier recovery command contract', () => {
+  it('reports candidate drift in read-only Archive and Doctor without changing the accepted Run', async () => {
+    const f = await archiveReadyFixture();
+    const before = await f.dispatch({ operation: 'inspect', runId: f.name });
+    await fs.writeFile(path.join(f.projectRoot, 'candidate.txt'), 'unverified change\n');
+    const preview = JSON.parse((await f.native(['archive', f.name, '--dry-run'])).stdout!);
+    expect(preview.data).toMatchObject({ ready: false });
+    expect(preview.data.blockers.length).toBeGreaterThan(0);
+    const doctor = JSON.parse((await f.native(['doctor', f.name])).stdout!);
+    expect(doctor.data).toMatchObject({ healthy: false });
+    expect(JSON.stringify(doctor.data.findings)).toMatch(/candidate|候选/iu);
+    const after = await f.dispatch({ operation: 'inspect', runId: f.name });
+    expect(after.revision).toBe(before.revision);
+    expect(after.state).toEqual(before.state);
+  });
+
+  it('retains business status and candidate details when Archive is rejected before acceptance', async () => {
+    const f = await blockedFixture({ bundleCommands: true });
+    const response = await f.native(['archive', f.name]);
+    expect(response.exitCode).toBe(73);
+    const output = JSON.parse(response.stdout!);
+    expect(output.summary).toEqual(expect.any(String));
+    expect(output.agent.phase).toBe('verify');
+    expect(output.data).toMatchObject({
+      phase: 'verify',
+      verificationResult: 'blocked',
+      schema: 'comet.native.sdk-status.v1',
+    });
+    expect(output.data.recovery.preserved.candidateId).toBe(
+      parseNativePortableState(f.run.state).builder_handoff!.candidate_id,
+    );
+  });
+
+  it('excludes validated in-project SDK request transport while preserving ordinary source inputs', async () => {
+    const f = await archiveReadyFixture({
+      inProjectRequests: true,
+      dirtyEmbedded: true,
+      directPass: true,
+    });
+    await f.dispatch({ operation: 'inspect', runId: f.name });
+    const archived = await f.native(['archive', f.name]);
+    expect(archived.exitCode, archived.stdout ?? archived.stderr).toBe(0);
+    expect((await f.dispatch({ operation: 'inspect', runId: f.name })).state).toMatchObject({
+      archived: true,
+    });
+    expect(await fs.readFile(path.join(f.projectRoot, 'dependency/value.txt'), 'utf8')).toBe(
+      'verified dirty child\n',
+    );
+  });
+
+  it('finishes pending accepted-result revalidation before Archive without consuming another Verify failure', async () => {
+    const f = await archiveReadyFixture({ deferredRevalidation: true });
+    const before = await f.dispatch({ operation: 'inspect', runId: f.name });
+    expect(before.actions.at(-1)).toMatchObject({ stepId: 'verify.revalidate', status: 'pending' });
+    const archived = await f.native(['archive', f.name]);
+    expect(archived.exitCode, archived.stdout ?? archived.stderr).toBe(0);
+    const after = await f.dispatch({ operation: 'inspect', runId: f.name });
+    expect(after.state).toMatchObject({ archived: true });
+    expect(parseNativePortableState(after.state).loop.failed_iteration_count).toEqual(
+      parseNativePortableState(before.state).loop.failed_iteration_count,
+    );
+    expect(after.actions.filter(({ stepId }) => stepId === 'verify.revalidate')).toHaveLength(1);
+  });
+
   it.each(['running', 'changed-requirements', 'unknown'])(
     'ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: %s',
     async (scenario) => {

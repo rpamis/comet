@@ -51,6 +51,7 @@ Fixed applications support inspect-storage-index, audit-storage-index and rebuil
 Audit/rebuild require the expectedEpoch from inspection; storage operations reject application-file and root-dir.
 
 The request file is a JSON object, for example {"operation":"inspect","runId":"change-name"}.
+Store request files outside the project checkout, for example in the operating system temporary directory. Read-only inspect/query does not register new in-project transport files; an unregistered or tracked request remains a candidate input.
 Built-in applications: native, classic-full, classic-hotfix, classic-tweak.
 Use --application <id> to resume an application already selected in this project.
 Choose one application selector, or use --workflow with --root-dir for a portable workflow.

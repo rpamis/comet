@@ -22,6 +22,7 @@ import { loadOwnedNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime
 import { restoreNativeSupervisorChildArchiveMaterials } from './native-sdk-supervisor-archive.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { randomUUID } from 'node:crypto';
+import { assertNativeSdkCandidateUnchanged } from './native-sdk-checks.js';
 import { hashRuntimeValue, type WorkflowRun, type RuntimeValue } from '../engine/runtime.js';
 import { nativeSdkNextAction, nativeSdkPendingActions } from './native-sdk-continuation.js';
 
@@ -52,7 +53,16 @@ export async function archiveNativeSdkChange(
   options: Parameters<typeof archiveNativeSdkChangeValue>[0],
 ): Promise<DispatchResult> {
   try {
-    return await archiveNativeSdkChangeValue(options);
+    const result = await archiveNativeSdkChangeValue(options);
+    const data =
+      result.data && typeof result.data === 'object'
+        ? (result.data as Record<string, unknown>)
+        : {};
+    if (result.exitCode === 0 || data.schema === 'comet.native.sdk-status.v1') return result;
+    const inspection = await inspectNativeSdkRun(options.projectRoot, options.name, {
+      readOnly: true,
+    });
+    return { ...result, data: { ...(await projectNativeSdkStatus(options, inspection)), ...data } };
   } catch (error) {
     if (error instanceof NativeUsageError) throw error;
     const inspection = await inspectNativeSdkRun(options.projectRoot, options.name, {
@@ -249,9 +259,58 @@ async function archiveNativeSdkChangeValue(options: {
         }
       : result;
   }
-  const pending = run.actions.find((action) => action.status === 'pending');
+  let pending = run.actions.find((action) => action.status === 'pending');
+  if (
+    !options.dryRun &&
+    pending?.stepId === 'verify.revalidate' &&
+    nativeSdkPendingActions(run).length === 1 &&
+    nativeSdkNextAction(run, state)?.id === pending.id &&
+    !run.actions.some((action) => ['running', 'unknown'].includes(action.status)) &&
+    run.waits.some(
+      (wait) =>
+        wait.stepId === 'verify.confirm' &&
+        wait.status === 'resolved' &&
+        wait.decision?.choice === 'approved',
+    )
+  ) {
+    const { runtime, executors } = await loadOwnedNativeSdkRuntime(
+      options.projectRoot,
+      options.name,
+    );
+    const executor = executors.find((entry) => entry.supports(pending!));
+    if (!executor) throw new Error('Native accepted result has no revalidation executor');
+    run = await runtime.execute({
+      runId: run.runId,
+      expectedRevision: run.revision,
+      actionId: pending.id,
+      executorId: executor.id,
+      context: { requestId: randomUUID(), projectRoot: options.projectRoot },
+    });
+    state = parseNativePortableState(run.state);
+    inspection.run = run;
+    inspection.state = state;
+    pending = run.actions.find((action) => action.status === 'pending');
+  }
   if (options.dryRun) {
-    const ready = state.phase === 'archive' && pendingArchiveAction(run) !== null;
+    let ready = state.phase === 'archive' && pendingArchiveAction(run) !== null;
+    const blockers: string[] = [];
+    if (!ready)
+      blockers.push(
+        run.reason ??
+          `Native Archive is waiting at ${pending?.stepId ?? state.loop.next_action ?? state.phase}`,
+      );
+    if (ready) {
+      try {
+        await assertNativeSdkCandidateUnchanged({
+          run,
+          projectRoot: options.projectRoot,
+          requireEvidence: true,
+        });
+      } catch (error) {
+        ready = false;
+        blockers.push((error as Error).message);
+      }
+    }
     const delivery =
       ready && pending?.stepId === 'supervisor.parent.deliver'
         ? await inspectNativeSdkSupervisorDelivery(run, pending, options.projectRoot)
@@ -262,11 +321,16 @@ async function archiveNativeSdkChangeValue(options: {
       phase: state.phase,
       status: run.status,
       ready,
+      blockers,
       ...(delivery ? { delivery } : {}),
     });
   }
   if (state.phase !== 'archive' || run.status === 'cancelled') {
     return {
+      ...success('archive', {
+        change: options.name,
+        ...(await projectNativeSdkStatus(options, { ...inspection, run, state })),
+      }),
       command: 'archive',
       exitCode: 73,
       error: {

@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -93,6 +94,103 @@ describe('Native Archive transaction V2 public lifecycle', () => {
     expect(committed.status).toBe('committed');
     expect(nativeArchiveTransactionPaths(paths, initial.id).journal).toContain(initial.id);
   });
+
+  it('retries a transient archive directory sharing violation without repeating completed moves', async () => {
+    const initial = await journal('62345678-abcd', 'watched-change');
+    await createNativeArchiveTransactionV2(paths, initial);
+    const original = fs.rename.bind(fs);
+    let attempts = 0;
+    const rename = vi.spyOn(fs, 'rename').mockImplementation(async (source, target) => {
+      if (String(source) === path.join(paths.changesDir, 'watched-change') && ++attempts === 1)
+        throw Object.assign(new Error('watcher holds directory'), { code: 'EPERM' });
+      return original(source, target);
+    });
+    try {
+      const applied = await applyNativeArchiveTransactionV2(paths, initial);
+      await applyNativeArchiveTransactionV2(paths, applied);
+      expect(attempts).toBe(2);
+      expect(
+        await inspectNativeArchiveContent(path.join(paths.archiveDir, '2026-08-12-watched-change')),
+      ).toMatchObject({ hash: initial.operations[0].expectedSourceHash });
+    } finally {
+      rename.mockRestore();
+    }
+  });
+
+  it.runIf(process.platform === 'win32')(
+    'preserves and resumes the same Archive transaction after a real Windows directory handle is released',
+    async () => {
+      const initial = await journal('72345678-abcd', 'locked-change');
+      await createNativeArchiveTransactionV2(paths, initial);
+      const script = path.join(root, 'directory-lock.ps1');
+      await fs.writeFile(
+        script,
+        `
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class DirectoryLock {
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  public static extern IntPtr CreateFile(string path, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+  [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr handle);
+}
+'@
+$handle = [DirectoryLock]::CreateFile($env:COMET_TEST_LOCK_DIRECTORY, 2147483648, 3, [IntPtr]::Zero, 3, 0x02000000, [IntPtr]::Zero)
+if ($handle -eq [IntPtr](-1)) { throw 'Cannot acquire test directory handle' }
+try { [Console]::WriteLine('ready'); [Console]::Out.Flush(); while (-not (Test-Path -LiteralPath $env:COMET_TEST_LOCK_RELEASE)) { Start-Sleep -Milliseconds 50 } }
+finally { [DirectoryLock]::CloseHandle($handle) | Out-Null }
+`,
+      );
+      const release = path.join(root, 'release-lock');
+      const holder = spawn(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-File', script],
+        {
+          windowsHide: true,
+          env: {
+            ...process.env,
+            COMET_TEST_LOCK_DIRECTORY: path.join(paths.changesDir, 'locked-change'),
+            COMET_TEST_LOCK_RELEASE: release,
+          },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      );
+      try {
+        await new Promise<void>((resolve, reject) => {
+          holder.once('error', reject);
+          holder.once('exit', (code) =>
+            reject(new Error(`Directory holder exited early: ${code}`)),
+          );
+          holder.stdout.on('data', (data) => {
+            if (String(data).includes('ready')) resolve();
+          });
+        });
+        await expect(applyNativeArchiveTransactionV2(paths, initial)).rejects.toThrow(
+          /目录句柄.*原事务/u,
+        );
+        expect(
+          await inspectNativeArchiveContent(path.join(paths.changesDir, 'locked-change')),
+        ).toMatchObject({ hash: initial.operations[0].expectedSourceHash });
+        const exited = new Promise<void>((resolve) => holder.once('exit', () => resolve()));
+        await fs.writeFile(release, 'release');
+        await exited;
+        const recorded = await readNativeArchiveTransactionV2(paths, initial.id);
+        expect(recorded.id).toBe(initial.id);
+        const applied = await applyNativeArchiveTransactionV2(paths, recorded);
+        await applyNativeArchiveTransactionV2(paths, applied);
+        expect(
+          await inspectNativeArchiveContent(
+            path.join(paths.archiveDir, '2026-08-12-locked-change'),
+          ),
+        ).toMatchObject({ hash: initial.operations[0].expectedSourceHash });
+        expect(
+          await inspectNativeArchiveContent(path.join(paths.changesDir, 'locked-change')),
+        ).toBeNull();
+      } finally {
+        holder.kill();
+      }
+    },
+  );
 
   it('publishes same-volume candidates when user data is on another volume and cleans staging', async () => {
     const initial = await journal('52345678-abcd', 'cross-volume-change');

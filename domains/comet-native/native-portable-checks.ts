@@ -903,16 +903,27 @@ export async function nativeCheckInputSnapshot(
       ...exclusions,
     ]);
     gitSnapshot.stagedDiff = digestNativeCheckInput(stagedIndex);
-    gitSnapshot.submodules = hasGitlinksInIndex(stagedIndex)
-      ? runGitCommand(options.projectRoot, ['submodule', 'status', '--recursive'])
-      : '';
+    gitSnapshot.submodules = '';
+    if (hasGitlinksInIndex(stagedIndex)) {
+      try {
+        gitSnapshot.submodules = runGitCommand(options.projectRoot, [
+          'submodule',
+          'status',
+          '--recursive',
+        ]);
+      } catch {
+        // 聚合仓可以只有 gitlink 而没有 .gitmodules；实际子仓仍在下方逐一读取。
+        gitSnapshot.submodules = null;
+      }
+    }
     const gitlinks = new Map<string, string>();
     const gitlinkBudget = { repositories: new Set<string>(), indexBytes: 0 };
     for (const [relative] of parseGitlinksInIndex(stagedIndex)) {
       try {
         gitlinks.set(
           relative,
-          (await readNativeCheckGitlink(options.projectRoot, relative, gitlinkBudget)).digest,
+          (await readNativeCheckGitlink(options.projectRoot, relative, gitlinkBudget, 0, true))
+            .digest,
         );
       } catch {
         gitSnapshot.complete = false;
@@ -925,6 +936,7 @@ export async function nativeCheckInputSnapshot(
     const changed = runGitCommand(options.projectRoot, [
       'diff',
       '--name-only',
+      '--ignore-submodules=none',
       '-z',
       'HEAD',
       '--',
@@ -1114,6 +1126,7 @@ async function readNativeCheckGitlink(
   relative: string,
   budget: { repositories: Set<string>; indexBytes: number },
   depth = 0,
+  allowDirty = false,
 ): Promise<{ head: string; digest: string; observationHash: string }> {
   if (
     depth >= NATIVE_CHECK_GITLINK_MAX_DEPTH ||
@@ -1145,20 +1158,39 @@ async function readNativeCheckGitlink(
   }
   // 显式包含未跟踪文件和嵌套子模块，不能受 submodule.*.ignore 配置影响。
   const status = readGitStatusPorcelain(realTarget);
-  if (status !== '') throw new Error('Native 检查输入中的子模块有未提交内容');
+  if (status !== '' && !allowDirty)
+    throw new Error(`Native 检查输入中的子模块 ${relative} 有未提交内容`);
   const index = runGitCommand(realTarget, ['ls-files', '--stage', '-z']);
   budget.indexBytes += Buffer.byteLength(index);
   if (budget.indexBytes > NATIVE_CHECK_GITLINK_MAX_INDEX_BYTES) {
     throw new Error('Native 检查输入中的子模块索引超出读取上限');
   }
-  const nested: Array<{ path: string; observationHash: string }> = [];
+  const nested: Array<{ path: string; digest: string; observationHash: string }> = [];
+  let dirty = status !== '';
   for (const [childPath, objectId] of parseGitlinksInIndex(index)) {
-    const child = await readNativeCheckGitlink(realTarget, childPath, budget, depth + 1);
-    if (child.head !== objectId) {
+    const child = await readNativeCheckGitlink(
+      realTarget,
+      childPath,
+      budget,
+      depth + 1,
+      allowDirty,
+    );
+    if (!allowDirty && child.head !== objectId) {
       throw new Error('Native 检查输入中的嵌套子模块 HEAD 与索引不一致');
     }
-    nested.push({ path: childPath, observationHash: child.observationHash });
+    dirty ||= child.digest !== digestNativeCheckInput(`gitlink:${objectId}`);
+    nested.push({ path: childPath, digest: child.digest, observationHash: child.observationHash });
   }
+  const childPaths = new Set(nested.map((child) => child.path));
+  const readWorkingTree = async () => {
+    const result: Array<{ path: string; digest: string }> = [];
+    for (const ref of parseGitStatusPaths(status).sort()) {
+      if (childPaths.has(ref)) continue;
+      result.push({ path: ref, digest: await nativeCheckWorkingTreeDigest(realTarget, ref) });
+    }
+    return result;
+  };
+  const workingTree = allowDirty ? await readWorkingTree() : [];
   const afterStatus = readGitStatusPorcelain(realTarget);
   const afterIndex = runGitCommand(realTarget, ['ls-files', '--stage', '-z']);
   const afterHead = runGitCommand(realTarget, ['rev-parse', '--verify', 'HEAD']);
@@ -1171,13 +1203,24 @@ async function readNativeCheckGitlink(
     !after.isDirectory() ||
     after.isSymbolicLink() ||
     before.ino !== after.ino ||
-    before.dev !== after.dev
+    before.dev !== after.dev ||
+    (allowDirty &&
+      canonicalHash('gitlink-files', workingTree) !==
+        canonicalHash('gitlink-files', await readWorkingTree()))
   ) {
     throw new Error('Native 检查输入中的子模块有未提交内容或在读取时变化');
   }
   return {
     head,
-    digest: digestNativeCheckInput(`gitlink:${head}`),
+    digest: dirty
+      ? canonicalHash('comet.native.dirty-gitlink.v1', {
+          head,
+          index,
+          status,
+          workingTree,
+          nested: nested.map(({ path, digest }) => ({ path, digest })),
+        })
+      : digestNativeCheckInput(`gitlink:${head}`),
     // 仅比较本次前后采样；持久摘要仍由干净的顶层 HEAD 传递绑定嵌套提交。
     observationHash: canonicalHash('comet.native.check-gitlink-observation.v1', {
       head,
@@ -1186,11 +1229,15 @@ async function readNativeCheckGitlink(
       ino: after.ino,
       dev: after.dev,
       nested,
+      workingTree,
     }),
   };
 }
 
-async function readNativeCheckInputObservation(options: NativeCheckInputGateOptions) {
+async function readNativeCheckInputObservation(
+  options: NativeCheckInputGateOptions,
+  allowDirty = false,
+) {
   try {
     const runnerInputs = await nativeRunnerInputArtifactPaths(options.projectRoot);
     const exclusions = [
@@ -1228,6 +1275,8 @@ async function readNativeCheckInputObservation(options: NativeCheckInputGateOpti
         options.projectRoot,
         relative,
         beforeGitlinkBudget,
+        0,
+        allowDirty,
       );
       // 未初始化的子模块可能不出现在 status 中，仍须核对子仓库身份与 HEAD。
       if (!changedPaths.includes(relative) && observed.head !== objectId) return null;
@@ -1251,7 +1300,13 @@ async function readNativeCheckInputObservation(options: NativeCheckInputGateOpti
     }
     const afterGitlinkBudget = { repositories: new Set<string>(), indexBytes: 0 };
     for (const [relative, before] of gitlinks) {
-      const after = await readNativeCheckGitlink(options.projectRoot, relative, afterGitlinkBudget);
+      const after = await readNativeCheckGitlink(
+        options.projectRoot,
+        relative,
+        afterGitlinkBudget,
+        0,
+        allowDirty,
+      );
       if (after.observationHash !== before.observationHash) return null;
     }
     workingTree.sort((left, right) => left.path.localeCompare(right.path, 'en'));
@@ -1597,14 +1652,17 @@ async function nativeCheckInputGates(options: NativeCheckInputGateOptions) {
         ? currentBranch(options.projectRoot)
         : observation.binding.branch || null,
     gate: await nativeCheckGateFromObservation(options, observation),
-    candidateGate: await nativeCandidateCommentGate(options, observation),
+    candidateGate: await nativeCandidateCommentGate(
+      options,
+      observation ?? (await readNativeCheckInputObservation(options, true)),
+    ),
   };
 }
 
 export async function nativeCandidateInputGate(
   options: NativeCheckInputGateOptions,
 ): Promise<string | null> {
-  return nativeCandidateCommentGate(options, await readNativeCheckInputObservation(options));
+  return nativeCandidateCommentGate(options, await readNativeCheckInputObservation(options, true));
 }
 
 export function authoritativePortableChecks(options: {

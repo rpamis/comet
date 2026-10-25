@@ -445,7 +445,9 @@ export async function submitNativePortableVerifierResult(options: {
       if (parsedResponse.kind !== 'request-checks')
         await assertNativeEditReviewsComplete(options.paths, state);
       if (position.iteration !== state.loop.iteration || position.attempt !== state.loop.attempt) {
-        throw new Error('Native Verifier result is stale for the current iteration or attempt');
+        throw new Error(
+          `Native Verifier result is stale for the current iteration or attempt: expected iteration=${state.loop.iteration}, attempt=${state.loop.attempt}; received iteration=${position.iteration}, attempt=${position.attempt}. Inspect the current Verifier input before submitting again`,
+        );
       }
       let runtimeChecks: NativePortableCheckSummary[] = [];
       let finalResult: ReturnType<typeof applyNativeVerifierEnvelope>;

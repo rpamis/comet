@@ -83,6 +83,33 @@ describe('validated Native Runner input boundaries', () => {
     expect(await gate()).not.toBe(before);
   });
 
+  it('recognizes a read-only inspection in an already validated SDK request file without writing bookkeeping', async () => {
+    const file = path.join(root, 'request.json');
+    await fs.writeFile(file, JSON.stringify({ operation: 'claim', runId: 'demo' }));
+    await registerNativeRunnerInputArtifactLocked({
+      paths: await nativeProjectPaths(root, 'docs'),
+      file,
+      runtimeRunId: 'demo',
+      validateContent: () => undefined,
+    });
+    const registryFile = path.join(resolveWorkspaceRuntimeRootSync(root), registry);
+    const before = await fs.readFile(registryFile, 'utf8');
+    await fs.writeFile(
+      file,
+      JSON.stringify({ operation: 'inspect', runId: 'demo', requestId: 'fresh-id' }),
+    );
+    expect(await nativeRunnerInputArtifactPaths(root)).toEqual(new Set(['request.json']));
+    expect(await fs.readFile(registryFile, 'utf8')).toBe(before);
+    for (const payload of [
+      { operation: 'inspect', runId: 'other' },
+      { operation: 'inspect', runId: 'demo', source: 'ordinary input' },
+      { feature: true },
+    ]) {
+      await fs.writeFile(file, JSON.stringify(payload));
+      expect(await nativeRunnerInputArtifactPaths(root)).toEqual(new Set());
+    }
+  });
+
   it.runIf(process.platform === 'win32')(
     'keeps tracked paths bound when supplied with different casing',
     async () => {
