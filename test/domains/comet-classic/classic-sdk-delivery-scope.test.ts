@@ -323,8 +323,19 @@ it('rejects merge commits, disconnected history and a mismatched delivered HEAD 
   expect(stale.response.stderr).toContain(head);
   expect(stale.response.stderr).toContain(f.base);
   const tree = f.git('rev-parse', `${head}^{tree}`);
+  // 同秒提交的默认日期排序可能先返回 side，提前触发连续性检查。
+  // 固定父子时间，确保此处确实核查 merge 的两个父提交和对应身份。
+  const headTime = Number(f.git('show', '-s', '--format=%ct', head));
+  vi.stubEnv('GIT_COMMITTER_DATE', `${headTime + 1} +0000`);
   const side = f.git('commit-tree', tree, '-p', head, '-m', 'side');
+  vi.stubEnv('GIT_COMMITTER_DATE', `${headTime + 2} +0000`);
   const merge = f.git('commit-tree', tree, '-p', head, '-p', side, '-m', 'merge');
+  expect(f.git('rev-list', '--reverse', `${f.base}..${merge}`, '--').split('\n')).toEqual([
+    f.git('rev-parse', `${head}^`),
+    head,
+    side,
+    merge,
+  ]);
   f.git('update-ref', 'refs/heads/main', merge, head);
   const rejected = await f.invoke('state', 'complete-delivery', 'example', '--commit', merge);
   expect(rejected.exitCode).not.toBe(0);
