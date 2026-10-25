@@ -9,15 +9,55 @@ import {
   type WorkflowRun,
 } from '../engine/runtime.js';
 import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
-import { classicSdkRevisionApplication } from './classic-sdk-revision-application.js';
+import {
+  classicSdkRevisionApplication,
+  classicArchiveRepairAction,
+} from './classic-sdk-revision-application.js';
+import { assertClassicArchiveUnchanged } from './classic-sdk-archive-manifest.js';
 import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
 import { inspectClassicSdkRun } from './classic-sdk-status.js';
+
+/** 只更新当前工作区的分支绑定；原 Action、审批和执行收据继续保留。 */
+export async function rebindClassicSdkWork(
+  projectRoot: string,
+  change: string,
+): Promise<WorkflowRun> {
+  const branch = liveGitBranch(projectRoot);
+  if (!isGitWorkTree(projectRoot) || !branch)
+    throw new Error('Cannot rebind without a checked-out Git branch');
+  const { run, state } = await inspectClassicSdkRun(projectRoot, change, {
+    allowBranchRebind: true,
+  });
+  if (
+    !state.boundBranch ||
+    state.archived ||
+    ['completed', 'cancelled'].includes(run.status) ||
+    run.actions.some(
+      (action) =>
+        ['running', 'unknown'].includes(action.status) ||
+        (action.status === 'cancelled' && action.claim && !action.cancellation),
+    )
+  )
+    throw new Error('Classic rebind requires an active bound Run with no unresolved execution');
+  if (state.boundBranch === branch) return run;
+  const next = { ...run, revision: run.revision + 1, state: { ...state, boundBranch: branch } };
+  if (liveGitBranch(projectRoot) !== branch)
+    throw new Error('Git branch changed during rebind; read the current state again');
+  if (
+    !(await createClassicSdkStateStore(projectRoot).compareAndSwap(run.runId, run.revision, next))
+  )
+    throw new RuntimeProtocolError(
+      'REVISION_CONFLICT',
+      'Run 已变化，未更新分支绑定；重新读取当前 revision',
+    );
+  return next;
+}
 
 /** 同一 CAS 同时升级已核验的内置定义和重开当前阶段，保留全部审批与结果历史。 */
 export async function reviseClassicSdkWork(options: {
   projectRoot: string;
   change: string;
-  name: 'revise-design' | 'revise-plan' | 'reopen-verification';
+  name: 'revise-design' | 'revise-plan' | 'reopen-verification' | 'repair-archive';
   expectedRevision: number;
 }): Promise<WorkflowRun> {
   const { projectRoot, change, name, expectedRevision } = options;
@@ -54,6 +94,11 @@ export async function reviseClassicSdkWork(options: {
   );
   const definition = defineWorkflow(application.workflow);
   const upgraded = preserveRuntimeExecutionOrigins(run);
+  if (name === 'repair-archive') {
+    const action = classicArchiveRepairAction(run);
+    if (!action) throw new Error('Classic Archive 执行结果未知或尚未失败；先核对原执行');
+    await assertClassicArchiveUnchanged(projectRoot, run, action);
+  }
   upgraded.workflow.hash = hashRuntimeValue(definition);
   upgraded.definitionHashes[JSON.stringify([definition.id, definition.version])] =
     hashRuntimeValue(definition);
@@ -73,6 +118,7 @@ export async function reviseClassicSdkWork(options: {
     commandId,
     name,
     input: { expectedRevision, fromPhase: state.phase },
+    context: { requestId: commandId, projectRoot },
   });
   if (name === 'revise-design') {
     // 同一修订提交必须同时切换业务阶段，正式 Design 入口才能核对新 Action。
@@ -95,6 +141,21 @@ export async function reviseClassicSdkWork(options: {
       branchStatus: 'pending',
       verifyFailures: 0,
     };
+  }
+  if (name === 'repair-archive') {
+    revised.state = {
+      ...(revised.state as object),
+      phase: 'open',
+      verifyResult: 'pending',
+      verifiedAt: null,
+      verificationReport: null,
+      archiveConfirmation: null,
+      branchStatus: 'pending',
+      verifyFailures: 0,
+      buildPause: null,
+    };
+    const action = classicArchiveRepairAction(run)!;
+    await assertClassicArchiveUnchanged(projectRoot, run, action);
   }
   const store = createClassicSdkStateStore(projectRoot);
   if (!(await store.compareAndSwap(run.runId, expectedRevision, revised))) {

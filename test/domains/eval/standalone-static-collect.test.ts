@@ -85,6 +85,26 @@ function pythonAccepts(manifest: string): boolean {
 }
 
 describe('standalone static collector parity', () => {
+  it('preserves exact provided check bytes across LF and CRLF without accepting mutations or duplicate execution', () => {
+    const result = execFileSync(
+      'uv',
+      [
+        'run',
+        '--locked',
+        'python',
+        '-m',
+        'pytest',
+        'local/tests/scaffold/test_current_archive_acceptance.py',
+        '-k',
+        'exact_distributed_script_bytes or missing_distributed_script_digest',
+        '-q',
+      ],
+      { cwd: evalRoot, encoding: 'utf8', stdio: 'pipe' },
+    );
+    expect(result).toMatch(/6 passed/);
+    expect(result).not.toMatch(/failed|skipped/);
+  });
+
   it('binds Native recovery inputs to its required canonical spec and numeric line format', () => {
     const result = execFileSync(
       'uv',

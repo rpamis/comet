@@ -108,6 +108,7 @@ export function createClassicSdkStateStore(
     store?: RuntimeStore<WorkflowRun>;
     identity?: ApplicationIdentity;
     readOnly?: boolean;
+    allowBranchRebind?: boolean;
   } = {},
   projectionRead = false,
 ): RuntimeStore<WorkflowRun> {
@@ -214,7 +215,9 @@ export function createClassicSdkStateStore(
       !['full', 'hotfix', 'tweak'].includes(profile) ||
       saved.workflow.id !== `comet-classic-${profile}` ||
       (state.workflow !== profile && !isClassicSdkApprovedUpgrade(saved, profile)) ||
-      (state.boundBranch !== null && state.boundBranch !== liveGitBranch(projectRoot))
+      (!options.allowBranchRebind &&
+        state.boundBranch !== null &&
+        state.boundBranch !== liveGitBranch(projectRoot))
     ) {
       throw new Error(`Classic portable Run checkpoint for ${runId} does not match its state`);
     }

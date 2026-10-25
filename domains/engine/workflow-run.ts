@@ -159,14 +159,15 @@ export interface RuntimeEvidenceValidator {
 export interface RuntimeCommandValidator {
   id: string;
   version: string;
+  /** failed/completed 默认不能接收命令；应用核对恢复条件后才显式允许，cancelled 始终拒绝。 */
   validate(input: {
     run: Readonly<WorkflowRun>;
     name: string;
     input: RuntimeValue;
     context?: RuntimeInvocationContext;
   }):
-    | (RuntimeValidation & { allowCompleted?: boolean })
-    | Promise<RuntimeValidation & { allowCompleted?: boolean }>;
+    | (RuntimeValidation & { allowCompleted?: boolean; allowFailed?: boolean })
+    | Promise<RuntimeValidation & { allowCompleted?: boolean; allowFailed?: boolean }>;
 }
 
 export interface RuntimeExecutor {

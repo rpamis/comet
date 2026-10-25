@@ -31,8 +31,330 @@ import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
 import { requireFileSymlink } from '../../helpers/file-symlink.js';
 import { createOpenSpecArchiveFixture } from '../../helpers/classic-openspec-fixture.js';
 import { classicArchiveDocumentOutputs } from '../../../domains/comet-classic/classic-sdk-archive-documents.js';
+import * as openSpecCommands from '../../../domains/comet-classic/classic-openspec-command.js';
 
 const roots: string[] = [];
+
+describe('Classic SDK Archive input repair', () => {
+  it.each(['source', 'generated'] as const)(
+    'repairs a full Archive without effects and delivers the same Run through %s',
+    async (entry) => {
+      const f = await failedArchive(false, 'full', entry);
+      const run = (await f.inspect()).run;
+      expect(run.status).toBe('failed');
+      await f.cli(
+        'state',
+        'repair-archive',
+        'example',
+        '--expected-revision',
+        String(run.revision),
+      );
+      await f.put(
+        'openspec/changes/example/specs/ready/spec.md',
+        '# Ready\n## ADDED Requirements\n### Requirement: Ready\nThe system SHALL be ready.\n#### Scenario: Ready\n- **WHEN** checked\n- **THEN** ready\n',
+      );
+      const open = await f.cli('guard', 'example', 'open');
+      await f.cli('guard', 'example', 'open', '--apply', '--approval-hash', open.approvalHash);
+      await f.configure();
+      await f.build();
+      expect((await f.verify()).exitCode).toBe(0);
+      const proposal = await f.cli(
+        'state',
+        'propose-archive',
+        'example',
+        '--summary',
+        'Archive corrected full inputs.',
+      );
+      await f.cli(
+        'state',
+        'decide-archive',
+        'example',
+        '--proposal-hash',
+        proposal.wait.proposalHash,
+        '--choice',
+        'local',
+      );
+      await f.cli('guard', 'example', 'archive', '--apply');
+      const git = (...args: string[]) =>
+        execFileSync('git', args, {
+          cwd: f.projectRoot,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }).trim();
+      git('add', '--all');
+      git(
+        '-c',
+        'user.name=Test',
+        '-c',
+        'user.email=test@example.invalid',
+        'commit',
+        '-m',
+        'archive',
+      );
+      await f.cli('state', 'complete-delivery', 'example', '--commit', git('rev-parse', 'HEAD'));
+      const final = (await f.inspect()).run;
+      expect(final.runId).toBe(run.runId);
+      expect(final.status).toBe('completed');
+      expect(await f.openSpec.invocations()).toHaveLength(2);
+    },
+  );
+  it('requires fresh verification and Archive approval after rebinding to a divergent branch', async () => {
+    const f = await fixture('tweak', true, false, 'source', '');
+    const openSpec = await createOpenSpecArchiveFixture(path.dirname(f.projectRoot));
+    vi.stubEnv('COMET_OPENSPEC', openSpec.command);
+    expect((await f.verify()).exitCode).toBe(0);
+    const proposed = await f.cli(
+      'state',
+      'propose-archive',
+      'example',
+      '--summary',
+      'Archive main locally.',
+    );
+    await f.cli(
+      'state',
+      'decide-archive',
+      'example',
+      '--proposal-hash',
+      proposed.wait.proposalHash,
+      '--choice',
+      'local',
+    );
+    const git = (...args: string[]) =>
+      execFileSync('git', args, {
+        cwd: f.projectRoot,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim();
+    git('checkout', '-b', 'next');
+    await f.put('source.js', 'export const ready = true; // changed branch\n');
+    git('add', '--all');
+    git(
+      '-c',
+      'user.name=Test',
+      '-c',
+      'user.email=test@example.invalid',
+      'commit',
+      '-m',
+      'divergent branch',
+    );
+    const before = (await f.inspect()).run;
+    await f.cli('state', 'rebind', 'example');
+    const rebound = (await f.inspect()).run;
+    expect(rebound.actions).toEqual(before.actions);
+    expect(rebound.waits).toEqual(before.waits);
+    expect((await f.invoke('guard', 'example', 'archive', '--apply')).exitCode).not.toBe(0);
+    await expect(openSpec.invocations()).rejects.toMatchObject({ code: 'ENOENT' });
+    await f.cli(
+      'state',
+      'reopen-verification',
+      'example',
+      '--expected-revision',
+      String(rebound.revision),
+    );
+    expect((await f.verify()).exitCode).toBe(0);
+    expect(
+      (
+        await f.invoke(
+          'state',
+          'decide-archive',
+          'example',
+          '--proposal-hash',
+          proposed.wait.proposalHash,
+          '--choice',
+          'local',
+        )
+      ).exitCode,
+    ).not.toBe(0);
+    const fresh = await f.cli(
+      'state',
+      'propose-archive',
+      'example',
+      '--summary',
+      'Archive next locally.',
+    );
+    await f.cli(
+      'state',
+      'decide-archive',
+      'example',
+      '--proposal-hash',
+      fresh.wait.proposalHash,
+      '--choice',
+      'local',
+    );
+    await f.cli('guard', 'example', 'archive', '--apply');
+    git('add', '--all');
+    git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'archive');
+    await f.cli('state', 'complete-delivery', 'example', '--commit', git('rev-parse', 'HEAD'));
+    expect((await f.inspect()).run.status).toBe('completed');
+    expect(await openSpec.invocations()).toHaveLength(1);
+  });
+  async function failedArchive(
+    legacyUnknown = false,
+    profile: 'tweak' | 'full' = 'tweak',
+    entry: 'source' | 'generated' = 'source',
+  ) {
+    const f = await fixture(profile, true, false, entry, '', '# Empty delta\n');
+    const openSpec = await createOpenSpecArchiveFixture(path.dirname(f.projectRoot));
+    const source = await fs.readFile(openSpec.command, 'utf8');
+    await fs.writeFile(
+      openSpec.command,
+      source.replace(
+        'await fs.rename(source, target);',
+        "if ((await fs.readFile(path.join(source, 'specs/ready/spec.md'), 'utf8')).includes('Empty delta')) { console.log('Invalid delta; no files changed'); process.exit(1); }\nawait fs.rename(source, target);",
+      ),
+    );
+    vi.stubEnv('COMET_OPENSPEC', openSpec.command);
+    expect((await f.verify()).exitCode).toBe(0);
+    const proposal = await f.cli(
+      'state',
+      'propose-archive',
+      'example',
+      '--summary',
+      'Archive locally.',
+    );
+    await f.cli(
+      'state',
+      'decide-archive',
+      'example',
+      '--proposal-hash',
+      proposal.wait.proposalHash,
+      '--choice',
+      'local',
+    );
+    if (legacyUnknown) {
+      const execute = openSpecCommands.executeClassicOpenSpec;
+      vi.spyOn(openSpecCommands, 'executeClassicOpenSpec').mockImplementationOnce(
+        async (...args) => ({ ...(await execute(...args)), executionCompleted: false }),
+      );
+    }
+    await f.invoke('guard', 'example', 'archive', '--apply');
+    return { ...f, openSpec };
+  }
+
+  it.each([false, true])(
+    'reopens the same Run after a stopped Archive without effects and completes fresh approval and delivery (legacy unknown: %s)',
+    async (legacyUnknown) => {
+      const f = await failedArchive(legacyUnknown);
+      const { runtime } = await f.inspect();
+      let { run } = await f.inspect();
+      const action = run.actions.find((a) => a.stepId === 'tweak.archive.execute')!;
+      expect(action.status).toBe(legacyUnknown ? 'unknown' : 'failed');
+      if (!legacyUnknown)
+        expect(action.outcome?.output).toMatchObject({
+          reason: expect.stringContaining('Invalid delta'),
+        });
+      // 旧版把已退出进程标为 unknown；原领取方仍可如实补回失败结果。
+      if (action.status === 'unknown') {
+        const blocked = await f.invoke(
+          'state',
+          'repair-archive',
+          'example',
+          '--expected-revision',
+          String(run.revision),
+        );
+        expect(blocked.exitCode).not.toBe(0);
+        expect((await f.inspect()).run).toEqual(run);
+        run = await runtime.recordOutcome({
+          runId: run.runId,
+          outcome: {
+            actionId: action.id,
+            attempt: action.attempt,
+            inputHash: action.inputHash,
+            claimToken: action.claim!.token,
+            outcomeId: randomUUID(),
+            status: 'failed',
+            output: { archiveStarted: true, reason: 'Invalid delta; no files changed' },
+          },
+        });
+      }
+      const originalAction = structuredClone(run.actions.find((a) => a.id === action.id));
+      const repaired = await f.cli(
+        'state',
+        'repair-archive',
+        'example',
+        '--expected-revision',
+        String(run.revision),
+      );
+      expect(repaired.run.id).toBe(run.runId);
+      const after = (await f.inspect()).run;
+      expect(after.actions.find((a) => a.id === action.id)).toEqual(originalAction);
+      expect((after.state as { phase: string }).phase).toBe('open');
+      expect(await f.openSpec.invocations()).toHaveLength(1);
+      await f.put(
+        'openspec/changes/example/specs/ready/spec.md',
+        '# Ready\n## ADDED Requirements\n### Requirement: Ready\nThe system SHALL be ready.\n#### Scenario: Ready\n- **WHEN** checked\n- **THEN** ready\n',
+      );
+      const open = await f.cli('guard', 'example', 'open');
+      await f.cli('guard', 'example', 'open', '--apply', '--approval-hash', open.approvalHash);
+      await f.build();
+      expect((await f.verify()).exitCode).toBe(0);
+      const proposal = await f.cli(
+        'state',
+        'propose-archive',
+        'example',
+        '--summary',
+        'Archive corrected inputs locally.',
+      );
+      await f.cli(
+        'state',
+        'decide-archive',
+        'example',
+        '--proposal-hash',
+        proposal.wait.proposalHash,
+        '--choice',
+        'local',
+      );
+      await f.cli('guard', 'example', 'archive', '--apply');
+      const git = (...args: string[]) =>
+        execFileSync('git', args, { cwd: f.projectRoot, encoding: 'utf8' }).trim();
+      git('add', '--all');
+      git(
+        '-c',
+        'user.name=Test',
+        '-c',
+        'user.email=test@example.invalid',
+        'commit',
+        '-m',
+        'archive',
+      );
+      await f.cli('state', 'complete-delivery', 'example', '--commit', git('rev-parse', 'HEAD'));
+      expect((await f.inspect()).run.status).toBe('completed');
+      expect(await f.openSpec.invocations()).toHaveLength(2);
+    },
+  );
+
+  it.each(['changed specifications', 'partial archive directory'])(
+    'rejects Archive input repair for %s and stale revisions',
+    async (effect) => {
+      const f = await failedArchive();
+      const { run } = await f.inspect();
+      await f.put(
+        effect === 'changed specifications'
+          ? 'openspec/specs/partial/spec.md'
+          : 'openspec/changes/archive/2026-10-25-example-copy/proposal.md',
+        '# External partial update\n',
+      );
+      const result = await f.invoke(
+        'state',
+        'repair-archive',
+        'example',
+        '--expected-revision',
+        String(run.revision),
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect((await f.inspect()).run.revision).toBe(run.revision);
+      expect(await f.openSpec.invocations()).toHaveLength(1);
+      const stale = await f.invoke(
+        'state',
+        'repair-archive',
+        'example',
+        '--expected-revision',
+        String(run.revision - 1),
+      );
+      expect(stale.exitCode).not.toBe(0);
+    },
+  );
+});
 function stopTestDescendant(pid: number) {
   try {
     process.kill(pid, 'SIGKILL');
@@ -52,6 +374,7 @@ async function fixture(
   confirmedConfiguration = false,
   entry: 'source' | 'generated' = 'source',
   managedIgnore?: string,
+  deltaSpec?: string,
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic verify rounds '));
   roots.push(root);
@@ -110,73 +433,77 @@ async function fixture(
   await put(`${changeDir}/proposal.md`, '# Proposal\nCorrect the ready constant.\n');
   await put(`${changeDir}/design.md`, '# Design\nKeep the existing public API.\n');
   await put(`${changeDir}/tasks.md`, '- [x] Implement the change <!-- comet-task:impl -->\n');
+  if (deltaSpec) await put(`${changeDir}/specs/ready/spec.md`, deltaSpec);
   const open = await cli('guard', 'example', 'open');
   await cli('guard', 'example', 'open', '--apply', '--approval-hash', open.approvalHash);
   const planRef = 'docs/superpowers/plans/work plan.md';
-  if (profile === 'full') {
-    const design = await cli(
-      'state',
-      'propose-design',
-      'example',
-      '--proposal',
-      'Keep the existing public API.',
-    );
-    await cli(
-      'state',
-      'decide-design',
-      'example',
-      '--proposal-hash',
-      design.wait.proposalHash,
-      '--choice',
-      'approved',
-    );
-    const designRef = 'docs/superpowers/specs/technical design.md';
-    await put(
-      designRef,
-      '---\ncomet_change: example\nrole: technical-design\ncanonical_spec: openspec\n---\n# Technical design\nKeep the existing public API.\n',
-    );
-    await cli(
-      'state',
-      'complete-design',
-      'example',
-      '--design-doc',
-      designRef,
-      '--approval-hash',
-      design.wait.proposalHash,
-    );
-    await put(
-      'build configuration.json',
-      JSON.stringify({
-        build_mode: 'executing-plans',
-        tdd_mode: 'tdd',
-        review_mode: 'standard',
-        subagent_dispatch: null,
-      }),
-    );
-    const build = await cli(
-      'state',
-      'propose-build',
-      'example',
-      '--file',
-      'build configuration.json',
-      ...(confirmedConfiguration ? ['--confirmed'] : []),
-    );
-    if (!confirmedConfiguration)
+  const configure = async () => {
+    if (profile === 'full') {
+      const design = await cli(
+        'state',
+        'propose-design',
+        'example',
+        '--proposal',
+        'Keep the existing public API.',
+      );
       await cli(
         'state',
-        'decide-build',
+        'decide-design',
         'example',
         '--proposal-hash',
-        build.wait.proposalHash,
+        design.wait.proposalHash,
         '--choice',
         'approved',
       );
-    await put(
-      planRef,
-      `<!-- comet-task-authority: ${changeDir}/tasks.md -->\n# Plan\n<!-- comet-task-ref:impl -->\nCheck the ready constant.\n`,
-    );
-    await cli('state', 'submit-plan', 'example', '--plan', planRef);
-  }
+      const designRef = 'docs/superpowers/specs/technical design.md';
+      await put(
+        designRef,
+        '---\ncomet_change: example\nrole: technical-design\ncanonical_spec: openspec\n---\n# Technical design\nKeep the existing public API.\n',
+      );
+      await cli(
+        'state',
+        'complete-design',
+        'example',
+        '--design-doc',
+        designRef,
+        '--approval-hash',
+        design.wait.proposalHash,
+      );
+      await put(
+        'build configuration.json',
+        JSON.stringify({
+          build_mode: 'executing-plans',
+          tdd_mode: 'tdd',
+          review_mode: 'standard',
+          subagent_dispatch: null,
+        }),
+      );
+      const build = await cli(
+        'state',
+        'propose-build',
+        'example',
+        '--file',
+        'build configuration.json',
+        ...(confirmedConfiguration ? ['--confirmed'] : []),
+      );
+      if (!confirmedConfiguration)
+        await cli(
+          'state',
+          'decide-build',
+          'example',
+          '--proposal-hash',
+          build.wait.proposalHash,
+          '--choice',
+          'approved',
+        );
+      await put(
+        planRef,
+        `<!-- comet-task-authority: ${changeDir}/tasks.md -->\n# Plan\n<!-- comet-task-ref:impl -->\nCheck the ready constant.\n`,
+      );
+      await cli('state', 'submit-plan', 'example', '--plan', planRef);
+    }
+  };
+  await configure();
   const checkCount = path.join(root, 'checks');
   const command = (label: string, exitCode = 0) => [
     process.execPath,
@@ -247,6 +574,7 @@ async function fixture(
   };
   return {
     projectRoot,
+    configure,
     profile,
     cli,
     invoke,

@@ -39,7 +39,18 @@ def assert_once_check(plan: dict, receipt: dict) -> None:
     )
 
 
-def assert_recovery(run: dict, archived: Path) -> None:
+def assert_once_artifacts(context: dict) -> None:
+    expected = context.get("environment_file_hashes", {}).get("recovery_once.py")
+    assert isinstance(expected, str) and re.fullmatch(r"[a-f0-9]{64}", expected), (
+        "Missing provided one-shot script digest"
+    )
+    assert (WORKSPACE / ".cache/comet-sdk-recovery/check-count").read_text() == "once\n"
+    assert hashlib.sha256((WORKSPACE / "recovery_once.py").read_bytes()).hexdigest() == expected, (
+        "One-shot check script was modified"
+    )
+
+
+def assert_recovery(run: dict, archived: Path, context: dict) -> None:
     """Inspect authoritative current Run actions, never Agent-authored receipts."""
     assert run["workflow"]["id"] == "comet-native" and run["status"] == "completed", (
         "Run not completed"
@@ -100,11 +111,7 @@ def assert_recovery(run: dict, archived: Path) -> None:
     assert len(once_receipts) == 1
     assert once_receipts[0]["status"] == "passed" and once_receipts[0]["exitCode"] == 0
     assert_once_check(once[0], once_receipts[0])
-    assert (WORKSPACE / ".cache/comet-sdk-recovery/check-count").read_text() == "once\n"
-    assert (
-        hashlib.sha256((WORKSPACE / "recovery_once.py").read_bytes()).hexdigest()
-        == "3ea516dcb7aecd76d403541370475ffb97279e78e538aba4155021f84b486345"
-    ), "One-shot check script was modified"
+    assert_once_artifacts(context)
     history = [entry["outcome"] for entry in state["history"]]
     assert (
         history.index("blocked") < history.index("recovery") < len(history) - 1
@@ -175,8 +182,8 @@ def check_recovery() -> dict:
             package=PACKAGE,
             cli=CLI,
         )
-        assert_recovery(run, archives[0])
         context = json.loads((WORKSPACE / "_test_context.json").read_text())
+        assert_recovery(run, archives[0], context)
         assert_boundary(run, context.get("interaction", {}))
         return {"check": name, "status": "passed"}
     except (

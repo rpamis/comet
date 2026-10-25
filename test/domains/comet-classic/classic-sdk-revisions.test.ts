@@ -21,6 +21,7 @@ import { recordClassicArchiveRequirements } from '../../../domains/comet-classic
 import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
 import { createOpenSpecArchiveFixture } from '../../helpers/classic-openspec-fixture.js';
 import { ensureCometProjectGitignore } from '../../../domains/workflow-contract/project-gitignore.js';
+import { prepareClassicArchiveInputs } from '../../../domains/comet-classic/classic-sdk-archive-manifest.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -1064,7 +1065,7 @@ describe('Classic upgraded preset archive recovery', () => {
     } else {
       const action = preflighted.actions.at(-1)!;
       expect(action.stepId).toBe('full.archive.execute');
-      await runtime.claim({
+      const claimed = await runtime.claim({
         runId: run.runId,
         actionId: action.id,
         attempt: action.attempt,
@@ -1074,6 +1075,13 @@ describe('Classic upgraded preset archive recovery', () => {
       });
       const active = path.join(f.projectRoot, f.change);
       await recordClassicArchiveRequirements(f.projectRoot, active);
+      // 模拟真实归档边界：先保存原执行输入，再发生外部目录搬迁。
+      await prepareClassicArchiveInputs(
+        f.projectRoot,
+        claimed,
+        claimed.actions.at(-1)!,
+        'openspec/specs',
+      );
       await fs.rename(active, path.join(path.dirname(active), 'archive', '2026-10-20-example'));
     }
     const cold = await f.inspect();
@@ -1155,12 +1163,19 @@ describe('Classic upgraded preset archive recovery', () => {
     }
 
     if (profile === 'hotfix') {
-      await fs.rename(
-        resolveWorkspaceRuntimeRootSync(f.projectRoot),
-        path.join(f.projectRoot, '.comet/runtime-before-moved-restore'),
-      );
+      const originalRuntime = path.join(f.projectRoot, '.comet/runtime-before-moved-restore');
+      await fs.rename(resolveWorkspaceRuntimeRootSync(f.projectRoot), originalRuntime);
       await f.ok('state', 'next', 'example');
       expect((await f.inspect()).run.actions.at(-1)?.status).toBe('unknown');
+      // 便携检查点不能补造外部执行前的文件快照，必须带回原设备保存的收据。
+      const missing = await f.cli('archive', 'example', '--recover');
+      expect(missing.exitCode).not.toBe(0);
+      expect(missing.stderr).toContain('缺少原始执行清单');
+      await fs.cp(
+        path.join(originalRuntime, 'archive-inputs'),
+        path.join(resolveWorkspaceRuntimeRootSync(f.projectRoot), 'archive-inputs'),
+        { recursive: true },
+      );
     }
     expect((await f.ok('state', 'next', 'example')).continuation.commandArgs).toEqual([
       'comet',

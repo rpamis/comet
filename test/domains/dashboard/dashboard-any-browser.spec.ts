@@ -1028,6 +1028,7 @@ test('Any self-source links retain detail and Eval returns to the originating ev
 
 test('Any completes an in-flight Run read while discovery is still indexing', async ({ page }) => {
   let finished = 0;
+  let sourceCount = 4;
   await page.route('**/api/dashboard/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith('/projects'))
@@ -1060,7 +1061,7 @@ test('Any completes an in-flight Run read while discovery is still indexing', as
           ...readApplicationDemo('application-runs', {}),
           indexing: true,
           indexedCount: 3,
-          sourceCount: 4,
+          sourceCount,
         },
       });
     if (url.pathname.endsWith('/application-run')) {
@@ -1085,10 +1086,7 @@ test('Any completes an in-flight Run read while discovery is still indexing', as
   await page.getByRole('menuitem', { name: '自定义工作流' }).click();
   const indexingStatus = page.locator('.any-indexing-status');
   await expect(indexingStatus).toContainText(/正在同步列表\s*3 \/ 4/);
-  await expect(indexingStatus.locator('.any-indexing-status-track > span')).toHaveAttribute(
-    'style',
-    'width: 75%;',
-  );
+  await expect(indexingStatus.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '75');
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
     await indexingStatus.evaluate((element) => element.scrollWidth <= element.clientWidth),
@@ -1096,6 +1094,45 @@ test('Any completes an in-flight Run read while discovery is still indexing', as
   await page.setViewportSize({ width: 1280, height: 720 });
   await expect(page.getByRole('tab', { name: '步骤', exact: true })).toBeVisible({ timeout: 6500 });
   expect(finished).toBeGreaterThan(0);
+
+  // 同步提示在两种主题、语言及放大字号下都保持可读，数量到齐时仍表示同步中。
+  sourceCount = 3;
+  for (const appearance of [
+    { theme: 'light', language: 'zh', scale: '100' },
+    { theme: 'dark', language: 'zh', scale: '125' },
+    { theme: 'light', language: 'en', scale: '125' },
+    { theme: 'dark', language: 'en', scale: '125' },
+  ]) {
+    await page.addInitScript((value) => {
+      localStorage.setItem('comet-theme', value.theme);
+      localStorage.setItem('comet-dashboard-language', value.language);
+      localStorage.setItem('comet-dashboard-font-scale', value.scale);
+    }, appearance);
+    await page.reload();
+    await expect(indexingStatus).toContainText('3 / 3');
+    await expect(indexingStatus.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+    await expect(indexingStatus.locator('.ant-spin')).toBeVisible();
+    for (const width of [1600, 1280, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(
+        await indexingStatus.evaluate((element) => {
+          const line = element.querySelector('.any-indexing-status-line')!;
+          const count = line.querySelector('strong')!;
+          const label = line.querySelector(':scope > span:not(.ant-spin)')!;
+          return (
+            element.scrollWidth <= element.clientWidth &&
+            label.getBoundingClientRect().right <= count.getBoundingClientRect().left
+          );
+        }),
+      ).toBe(true);
+      if (width === 1600 || width === 390)
+        await page.locator('.any-explorer').screenshot({
+          path: test
+            .info()
+            .outputPath(`indexing-${appearance.theme}-${appearance.language}-${width}.png`),
+        });
+    }
+  }
 });
 
 test('Any pages mixed creation and application records with the same query', async ({ page }) => {

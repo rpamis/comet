@@ -7,6 +7,52 @@ import {
 } from '../engine/runtime.js';
 import { defineClassicWorkflowApplication } from './classic-sdk-application.js';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
+import { assertClassicArchiveUnchanged } from './classic-sdk-archive-manifest.js';
+
+export function classicArchiveRepairAction(run: Readonly<WorkflowRun>) {
+  const state = run.state as unknown as ClassicState;
+  if (
+    state.archived ||
+    state.phase !== 'archive' ||
+    !['failed', 'running'].includes(run.status) ||
+    run.actions.some((action) => ['running', 'unknown', 'pending'].includes(action.status)) ||
+    run.waits.some((wait) => wait.status === 'pending') ||
+    run.evidenceWaits?.some((wait) => wait.status === 'pending')
+  )
+    return null;
+  return (
+    run.actions
+      .slice()
+      .reverse()
+      .find(
+        (action) =>
+          action.stepId === `${state.workflow}.archive.execute` && action.status === 'failed',
+      ) ?? null
+  );
+}
+
+const archiveRepairValidator: RuntimeCommandValidator = {
+  id: 'comet-classic-archive-repair-command',
+  version: '1',
+  async validate({ run, name, input, context }) {
+    const requested = input as { expectedRevision?: unknown; fromPhase?: unknown } | null;
+    const action = classicArchiveRepairAction(run);
+    if (
+      name !== 'repair-archive' ||
+      !action ||
+      !context?.projectRoot ||
+      requested?.expectedRevision !== run.revision ||
+      requested.fromPhase !== 'archive' ||
+      Object.keys(requested).length !== 2
+    )
+      return {
+        accepted: false,
+        reason: 'Classic Archive requires a stopped failed execution and the current revision',
+      };
+    await assertClassicArchiveUnchanged(context.projectRoot, run, action);
+    return { accepted: true, allowFailed: true };
+  },
+};
 
 const revisionValidator: RuntimeCommandValidator = {
   id: 'comet-classic-revision-command',
@@ -121,17 +167,44 @@ const verificationRevisionValidator: RuntimeCommandValidator = {
 export function classicSdkRevisionApplication(
   profile: ClassicProfile,
   verification: boolean | 'full' = true,
+  archiveRepair = true,
 ) {
   const base = defineClassicWorkflowApplication(profile);
+  const fullOpen =
+    archiveRepair && verification === 'full' && profile !== 'full'
+      ? defineClassicWorkflowApplication('full').workflow
+      : null;
   return {
     ...base,
     workflow: {
       ...base.workflow,
+      ...(fullOpen
+        ? {
+            steps: {
+              ...base.workflow.steps,
+              ...Object.fromEntries(
+                Object.entries(fullOpen.steps).filter(([id]) => id.startsWith('full.open')),
+              ),
+            },
+          }
+        : {}),
       transitions: [
         ...(base.workflow.transitions ?? []),
+        ...(fullOpen?.transitions?.filter((edge) => edge.from.startsWith('full.open')) ?? []),
         { from: 'full.design.evidence', to: 'full.build.plan' },
       ],
       commands: {
+        ...(archiveRepair
+          ? {
+              'repair-archive': {
+                stepId: `${verification === 'full' ? 'full' : profile}.open`,
+                validator: {
+                  id: archiveRepairValidator.id,
+                  version: archiveRepairValidator.version,
+                },
+              },
+            }
+          : {}),
         ...(verification
           ? {
               'reopen-verification': {
@@ -154,6 +227,7 @@ export function classicSdkRevisionApplication(
       },
     },
     commandValidators: [
+      ...(archiveRepair ? [archiveRepairValidator] : []),
       revisionValidator,
       ...(verification
         ? [
@@ -195,12 +269,14 @@ export function classicSdkApplicationForRun(
     return { ...application, workflow: previous };
   };
   for (const verification of [true, 'full', false] as const) {
-    const application = classicSdkRevisionApplication(profile, verification);
-    if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(application.workflow)))
-      return application;
-    const previous = compatible(application);
-    if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previous.workflow)))
-      return options.upgradePresetRequirements ? application : previous;
+    for (const archiveRepair of [true, false]) {
+      const application = classicSdkRevisionApplication(profile, verification, archiveRepair);
+      if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(application.workflow)))
+        return application;
+      const previous = compatible(application);
+      if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previous.workflow)))
+        return options.upgradePresetRequirements ? application : previous;
+    }
   }
   const base = { ...defineClassicWorkflowApplication(profile), commandValidators: [] };
   const previous = compatible(base);

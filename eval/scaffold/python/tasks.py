@@ -201,7 +201,10 @@ class Task:
         """
         if self.manifest_expectations is not None:
             from scaffold.python.inline_tasks import make_inline_expectations_validator
-            from scaffold.python.application_eval import application_eval_context, application_runs_validator
+            from scaffold.python.application_eval import (
+                application_eval_context,
+                application_runs_validator,
+            )
 
             validators = [make_inline_expectations_validator(self.manifest_expectations)]
             if application_eval_context() is not None:
@@ -219,6 +222,7 @@ class Task:
                     target_artifacts=vc.target_artifacts,
                     timeout=vc.timeout,
                     data_dir=self.data_dir if self.data_dir.exists() else None,
+                    environment_dir=self.environment_dir,
                 )
             ]
 

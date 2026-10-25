@@ -9,6 +9,7 @@ import { classicSdkNextAction, findClassicSdkWorkspace } from './classic-sdk-sta
 import { inspectClassicSdkActionRecovery } from './classic-sdk-check-recovery.js';
 import type { ClassicState } from './classic-state.js';
 import { classicTaskContextRequest } from './classic-task-context.js';
+import { classicArchiveRepairAction } from './classic-sdk-revision-application.js';
 
 /** 当前 Run 的有界视图；保留所有并行动作，不把历史输入重复展开。 */
 export function classicSdkRunSummary(run: WorkflowRun, details = false) {
@@ -296,6 +297,14 @@ export function classicSdkContinuation(
     ...args,
     '--json',
   ];
+  if (classicArchiveRepairAction(run))
+    return result({
+      mode: 'execute',
+      commandArgs: command('repair-archive', '--expected-revision', String(run.revision)),
+      requiredInputs: [],
+      instruction:
+        '归档进程已失败。此命令先核对原输入和规格均未变化、没有归档目录，再重开 Open 修正输入；保留原失败记录并重新确认需求、验收和交付。核对失败时保留现场并恢复原执行。',
+    });
   if (run.status === 'cancelled' && !isClassicSdkCancellationComplete(run))
     return result({
       mode: 'reconcile',

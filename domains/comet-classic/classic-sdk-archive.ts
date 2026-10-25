@@ -1,5 +1,6 @@
 import {
   prepareClassicArchiveInputs,
+  assertClassicArchiveUnchanged,
   recordClassicArchiveManifest,
   recoverClassicArchiveManifest,
   readClassicArchiveManifest,
@@ -291,6 +292,7 @@ export async function runClassicSdkArchive(
   }
   const result = await executeClassicOpenSpec(['archive', runInput.change, '--yes'], projectRoot);
   if (result.exitCode !== 0) {
+    const diagnostic = [result.stderr, result.stdout].filter(Boolean).join('\n');
     if (result.executionStarted === false)
       return {
         status: 'failed',
@@ -299,7 +301,26 @@ export async function runClassicSdkArchive(
           reason: result.stderr ?? 'OpenSpec Archive did not start',
         },
       };
-    throw new Error(result.stderr ?? `OpenSpec Archive exited with code ${result.exitCode}`);
+    // 已收到进程退出结果后才核对副作用；超时或连接中断仍由原领取方恢复。
+    if (!result.executionCompleted)
+      throw new Error(diagnostic || 'OpenSpec Archive execution has an unresolved result');
+    try {
+      await assertClassicArchiveUnchanged(projectRoot, run, action);
+    } catch (error) {
+      throw new Error(
+        [diagnostic, error instanceof Error ? error.message : String(error)]
+          .filter(Boolean)
+          .join('\n'),
+        { cause: error },
+      );
+    }
+    return {
+      status: 'failed',
+      output: {
+        archiveStarted: true,
+        reason: diagnostic || `OpenSpec Archive exited with code ${result.exitCode}`,
+      },
+    };
   }
   const after = await archiveEntries(layout.archiveDir, runInput.change);
   const created = [...after].filter((name) => !before.has(name));

@@ -487,7 +487,6 @@ export interface RuntimeClaim {
 export interface RuntimeCommandValidator {
     // (undocumented)
     id: string;
-    // (undocumented)
     validate(input: {
         run: Readonly<WorkflowRun>;
         name: string;
@@ -495,8 +494,10 @@ export interface RuntimeCommandValidator {
         context?: RuntimeInvocationContext;
     }): (RuntimeValidation & {
         allowCompleted?: boolean;
+        allowFailed?: boolean;
     }) | Promise<RuntimeValidation & {
         allowCompleted?: boolean;
+        allowFailed?: boolean;
     }>;
     // (undocumented)
     version: string;

@@ -76,6 +76,7 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'propose-archive <change-name> --summary <text> [--remote <name>] [--pr-base <branch>] (SDK)',
       'decide-archive <change-name> --proposal-hash <sha256> --choice <local|push|pr|reverify|later> (SDK)',
       'reopen-verification <change-name> --expected-revision <number> (SDK; before Archive execution)',
+      'repair-archive <change-name> --expected-revision <number> (SDK; stopped failure with unchanged Archive inputs)',
       'complete-delivery <change-name> --commit <sha> [--pr-url <url>] (SDK)',
       'transition <change-name> <event>',
       'transition <change-name> verify-fail --reason <text> (SDK)',
@@ -281,6 +282,10 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'comet state reopen-verification <change-name> --expected-revision <number>',
       '保留当前修改和审计历史，取消未执行的归档或验收工作并重开 Verify；通过后必须重新批准 Archive。',
       '仅支持尚未执行归档、活动目录仍存在且没有 running/unknown Action 的内置 SDK Run。旧 revision 不生效。',
+    ],
+    'repair-archive': [
+      'comet state repair-archive <change-name> --expected-revision <number>',
+      'Verify that the failed Archive left its original inputs and specifications unchanged and created no archive directory, then reopen Open on the same Run. Correct the inputs and obtain fresh approval and verification. Unknown execution results must be reconciled first.',
     ],
     'revise-plan': [
       'comet state revise-plan <change-name> --expected-revision <number>',

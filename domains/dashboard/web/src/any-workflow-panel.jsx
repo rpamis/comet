@@ -1,7 +1,20 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useDashboardMotion } from './dashboard-motion.jsx';
 import { useDashboardViewState } from './dashboard-view-state.js';
-import { Alert, Button, Collapse, Drawer, Empty, Input, Skeleton, Tabs, Tag, Tooltip } from 'antd';
+import {
+  Alert,
+  Button,
+  Collapse,
+  Drawer,
+  Empty,
+  Input,
+  Progress,
+  Skeleton,
+  Spin,
+  Tabs,
+  Tag,
+  Tooltip,
+} from 'antd';
 import {
   AimOutlined,
   AppstoreOutlined,
@@ -9,6 +22,7 @@ import {
   CopyOutlined,
   FileTextOutlined,
   InfoCircleOutlined,
+  LoadingOutlined,
   ReloadOutlined,
   RightOutlined,
   SearchOutlined,
@@ -1001,17 +1015,28 @@ export function AnyWorkflowPanel({
           ) : (
             <div className="any-entity-list">
               {page?.indexing && (
-                <div className="any-indexing-status" role="status" aria-live="polite">
+                <div
+                  className="any-indexing-status"
+                  role="status"
+                  aria-label={t('正在同步列表')}
+                  aria-live="polite"
+                >
                   <div className="any-indexing-status-line">
-                    <span className="any-indexing-status-dot" aria-hidden="true" />
+                    <Spin size="small" indicator={<LoadingOutlined spin />} aria-hidden="true" />
                     <span>{t('正在同步列表')}</span>
                     <strong>
                       {page.indexedCount} / {page.sourceCount}
                     </strong>
                   </div>
-                  <div className="any-indexing-status-track" aria-hidden="true">
-                    <span style={{ width: `${indexingProgress}%` }} />
-                  </div>
+                  <Progress
+                    percent={indexingProgress}
+                    status="active"
+                    showInfo={false}
+                    strokeWidth={3}
+                    strokeColor="var(--color-accent)"
+                    railColor="var(--color-border-soft)"
+                    aria-label={t('正在同步列表')}
+                  />
                 </div>
               )}
               {[

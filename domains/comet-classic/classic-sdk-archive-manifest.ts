@@ -37,6 +37,7 @@ interface ArchiveSnapshot {
   specSources: Record<string, string>;
   optionalFiles: Files;
   documents: Record<string, { original: string; extraFields: string }>;
+  archiveEntries?: string[];
 }
 interface ArchiveManifest {
   schema: 'comet.classic.archive-manifest.v1';
@@ -158,6 +159,12 @@ export async function captureClassicArchiveInputs(
     files[ref] = digest(original);
   }
   const specs = await tree(root, specsRef);
+  const archive = await inspectProtectedProjectPath(
+    root,
+    `${path.posix.dirname(activeRef)}/archive`,
+    { label: 'Classic archive directory', expected: 'directory' },
+  );
+  const archiveEntries = archive.exists ? (await fs.readdir(archive.target)).sort() : [];
   const specSources: Record<string, string> = {};
   for (const [ref, expected] of Object.entries(specs)) {
     const source = await readClassicProjectFile(root, ref, {
@@ -176,6 +183,7 @@ export async function captureClassicArchiveInputs(
     specSources,
     optionalFiles: await migrationFiles(root, activeRef),
     documents,
+    archiveEntries,
   };
 }
 
@@ -191,6 +199,56 @@ function preparationStore(root: string) {
       rootDir: path.join(runtimeRoot, 'archive-inputs', 'classic'),
     }),
   );
+}
+
+/** 仅在原输入和规格均未改变、也没有归档目录时证明执行未产生可见效果。 */
+export async function assertClassicArchiveUnchanged(
+  root: string,
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+): Promise<void> {
+  const activeRef = (run.input as { changeDir: string }).changeDir;
+  const active = await inspectProtectedProjectPath(root, activeRef, {
+    label: 'Classic active change',
+    expected: 'directory',
+  });
+  if (!active.exists)
+    throw new Error('Classic Archive 已搬迁或缺少活动目录；核对原执行，不能重开输入');
+  const archiveRef = `${path.posix.dirname(activeRef)}/archive`;
+  const archive = await inspectProtectedProjectPath(root, archiveRef, {
+    label: 'Classic archive directory',
+    expected: 'directory',
+  });
+  if (
+    archive.exists &&
+    (await fs.readdir(archive.target)).some(
+      (name) => /^\d{4}-\d{2}-\d{2}-/u.test(name) && name.slice(11) === run.runId,
+    )
+  )
+    throw new Error('Classic Archive 已有归档目录；核对原执行，禁止重复归档');
+  const execution = runtimeExecutionBinding(run, action);
+  const prepared = await (await preparationStore(root)).read(hashRuntimeValue(execution));
+  if (!prepared) {
+    if (
+      action.status === 'failed' &&
+      (action.outcome?.output as { archiveStarted?: unknown } | null)?.archiveStarted === false
+    )
+      return;
+    throw new Error('Classic Archive 缺少原执行前输入；不能证明没有副作用');
+  }
+  if (
+    prepared.runId !== hashRuntimeValue(execution) ||
+    prepared.revision !== 1 ||
+    hashRuntimeValue(prepared.execution) !== hashRuntimeValue(execution) ||
+    prepared.verified !== verificationBinding(run) ||
+    prepared.snapshot.activeRef !== activeRef
+  )
+    throw new Error('Classic Archive 原执行前输入不匹配');
+  const current = await captureClassicArchiveInputs(root, run, prepared.snapshot.specsRef);
+  // 旧收据没有目录列表，只按原来固定命名核对；新执行同时拒绝非标准的部分归档目录。
+  if (prepared.snapshot.archiveEntries === undefined) delete current.archiveEntries;
+  if (hashRuntimeValue(current) !== hashRuntimeValue(prepared.snapshot))
+    throw new Error('Classic Archive 输入或规格已变化；核对原执行，不能证明没有副作用');
 }
 
 /** 在任何外部副作用之前持久保存原 Action 的输入，供搬迁中断后核对。 */

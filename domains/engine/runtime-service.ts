@@ -288,7 +288,8 @@ function callbackValidation<T extends { accepted: boolean; reason?: string }>(va
     !captured ||
     typeof captured.accepted !== 'boolean' ||
     (captured.reason !== undefined && typeof captured.reason !== 'string') ||
-    ('allowCompleted' in captured && typeof captured.allowCompleted !== 'boolean')
+    ('allowCompleted' in captured && typeof captured.allowCompleted !== 'boolean') ||
+    ('allowFailed' in captured && typeof captured.allowFailed !== 'boolean')
   )
     throw new RuntimeProtocolError('INVALID_VALIDATION', '验证器必须返回布尔 accepted 和有效原因');
   return captured;
@@ -889,13 +890,14 @@ export function createRuntime(options: CreateRuntimeOptions) {
         : undefined;
       if (!declared) throw new RuntimeProtocolError('COMMAND_NOT_FOUND', '工作流未声明此命令');
       const stepId = declared.stepId;
-      if (['failed', 'cancelled'].includes(before.status)) {
+      if (before.status === 'cancelled') {
         throw new RuntimeProtocolError('RUN_TERMINAL', '已停止的 Run 不能接受命令');
       }
       if (before.actions.some((action) => ['running', 'unknown'].includes(action.status))) {
         throw new RuntimeProtocolError('ACTION_IN_FLIGHT', '已有 Action 的执行结果不明，不能中断');
       }
       let allowCompleted = false;
+      let allowFailed = false;
       if (declared.validator) {
         const validator = commandValidators.get(referenceKey(declared.validator));
         if (!validator) {
@@ -921,6 +923,10 @@ export function createRuntime(options: CreateRuntimeOptions) {
           );
         }
         allowCompleted = checked.accepted && checked.allowCompleted === true;
+        allowFailed = checked.accepted && checked.allowFailed === true;
+        if (before.status === 'failed' && !allowFailed) {
+          throw new RuntimeProtocolError('RUN_TERMINAL', '已停止的 Run 不能接受命令');
+        }
         if (before.status === 'completed' && !allowCompleted) {
           throw new RuntimeProtocolError('RUN_TERMINAL', '已停止的 Run 不能接受命令');
         }
@@ -934,7 +940,14 @@ export function createRuntime(options: CreateRuntimeOptions) {
       if (before.status === 'completed' && !allowCompleted) {
         throw new RuntimeProtocolError('RUN_TERMINAL', '已停止的 Run 不能接受命令');
       }
+      if (before.status === 'failed' && !allowFailed) {
+        throw new RuntimeProtocolError('RUN_TERMINAL', '已停止的 Run 不能接受命令');
+      }
       const next = copyRuntimeSnapshot(before);
+      if (before.status === 'failed') {
+        next.status = 'running';
+        delete next.reason;
+      }
       next.actions = next.actions.map((action) =>
         action.status === 'pending'
           ? cancelRuntimeAction(action, `命令 ${command.name} 已取代待执行 Action`)

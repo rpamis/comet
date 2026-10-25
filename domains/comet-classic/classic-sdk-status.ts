@@ -72,7 +72,7 @@ export function classicSdkNextAction(run: WorkflowRun) {
 export async function inspectClassicSdkRun(
   projectRoot: string,
   name: string,
-  options: { readOnly?: boolean } = {},
+  options: { readOnly?: boolean; allowBranchRebind?: boolean } = {},
 ): Promise<{
   run: WorkflowRun;
   state: ClassicState;
@@ -90,7 +90,7 @@ export async function inspectClassicSdkRun(
       `Classic change ${name} belongs to application ${owner.application}; use comet runtime dispatch --application ${owner.application} to continue its Run. Built-in commands cannot bypass composition checks.`,
     );
   const profile = owner.application.slice('classic-'.length) as ClassicProfile;
-  const store = createClassicSdkStateStore(projectRoot, { readOnly: options.readOnly });
+  const store = createClassicSdkStateStore(projectRoot, options);
   const saved = await store.read(owner.runId);
   const application = classicSdkApplicationForRun(profile, saved);
   let initialRead = true;

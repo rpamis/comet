@@ -202,7 +202,11 @@ describe('workflow-owned state transitions', () => {
           id: 'recover-guard',
           version: '1',
           validate({ input }) {
-            return { accepted: true, allowCompleted: input === 'recover-known-blocker' };
+            return {
+              accepted: true,
+              allowCompleted: input === 'recover-known-blocker',
+              allowFailed: input === 'recover-known-failure',
+            };
           },
         },
       ],
@@ -334,6 +338,16 @@ describe('workflow-owned state transitions', () => {
         input: 'recover-known-blocker',
       }),
     ).rejects.toMatchObject({ code: 'RUN_TERMINAL' });
+    const repaired = await runtime.dispatchCommand({
+      runId: failedRun.runId,
+      expectedRevision: failedRun.revision,
+      commandId: 'verified-failed-recovery',
+      name: 'recover',
+      input: 'recover-known-failure',
+    });
+    expect(repaired.status).toBe('running');
+    expect(repaired.actions[0]).toEqual(failedRun.actions[0]);
+    expect(repaired.actions.at(-1)).toMatchObject({ stepId: 'recover', status: 'pending' });
   });
 
   it('validates an external command before replacing pending work', async () => {

@@ -133,7 +133,7 @@ export async function assertClassicOpenSpecAvailable(startPath = process.cwd()):
 export async function executeClassicOpenSpec(
   args: readonly string[],
   startPath = process.cwd(),
-): Promise<ClassicCommandResult & { executionStarted?: false }> {
+): Promise<ClassicCommandResult & { executionStarted?: false; executionCompleted?: boolean }> {
   const openSpecArgs = normalizedArguments(args);
   if (openSpecArgs.length === 0) {
     return {
@@ -183,6 +183,7 @@ export async function executeClassicOpenSpec(
   }
   return {
     exitCode: result.status ?? 1,
+    executionCompleted: result.status !== null && result.signal === null,
     stdout: result.stdout || undefined,
     stderr: result.stderr || undefined,
   };

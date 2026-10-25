@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import hashlib
 import json
 import os
 import shutil
@@ -80,7 +81,13 @@ class Driver:
 
     def run(self, args, *, ok=True):
         result = subprocess.run(
-            args, cwd=self.root, env=self.env, capture_output=True, text=True, timeout=90
+            args,
+            cwd=self.root,
+            env=self.env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=90,
         )
         if ok:
             assert result.returncode == 0, (args, result.stdout, result.stderr)
@@ -190,7 +197,7 @@ Run test_wordcount.py.
 | --- | --- | --- |
 | test_sentence_count | result equals three | planned |
 """
-    (change / "brief.md").write_text(brief)
+    (change / "brief.md").write_text(brief, encoding="utf-8")
     (change / "specs/sentence-counting").mkdir(parents=True)
     (change / "specs/sentence-counting/spec.md").write_text(
         "# Sentences\nSplit on punctuation; ignore empty segments.\n"
@@ -212,7 +219,7 @@ Run test_wordcount.py.
     )
     run = driver.inspect()
     builder = pending(run, "build.builder")
-    (change / "brief.md").write_text(brief.replace("| planned |", "| 28-29 |"))
+    (change / "brief.md").write_text(brief.replace("| planned |", "| 28-29 |"), encoding="utf-8")
     source = (
         (driver.root / "wordcount.py")
         .read_text()
@@ -352,38 +359,47 @@ def exercise_cli_recovery_to_archive(tmp_path, monkeypatch, *, explicit_path):
     assert (ROOT / "dist/app/cli/index.js").is_file(), (
         "Build the current candidate first; no skipped release coverage"
     )
+    provided = {
+        "environment_file_hashes": {
+            "recovery_once.py": hashlib.sha256(
+                (TASK / "environment/recovery_once.py").read_bytes()
+            ).hexdigest()
+        }
+    }
     driver = Driver(tmp_path / "project", monkeypatch, explicit_path=explicit_path)
     run = build_recovery(driver)
     assert run["status"] == "completed"
     module = validator()
     module.WORKSPACE, module.PACKAGE, module.CLI = driver.root, ROOT, driver.cli
     archived = next((driver.root / "docs/comet/archive").glob("*-" + driver.name))
-    module.assert_recovery(run, archived)
+    module.assert_recovery(run, archived, provided)
     # This metadata only unit-tests the harness boundary predicate. No model was called.
     context = driver.root / "_test_context.json"
     context.write_text(
         json.dumps(
             {
+                **provided,
                 "interaction": {
                     "fresh_resume_boundaries": 1,
                     "sdk_recovery_boundaries": [driver.boundary],
                     "role_sessions": {"subject": ["subject-before", "subject-after"]},
-                }
+                },
             }
         )
     )
     assert module.check_recovery() == {"check": "sdk_recovery", "status": "passed"}
     assert module.check_feature()["status"] == "passed"
-    context.write_text(json.dumps({"interaction": {"fresh_resume_boundaries": 0}}))
+    context.write_text(json.dumps({**provided, "interaction": {"fresh_resume_boundaries": 0}}))
     assert module.check_recovery()["status"] == "failed"
     context.write_text(
         json.dumps(
             {
+                **provided,
                 "interaction": {
                     "fresh_resume_boundaries": 1,
                     "sdk_recovery_boundaries": [driver.boundary],
                     "role_sessions": {"subject": ["subject-before", "subject-after"]},
-                }
+                },
             }
         )
     )
@@ -413,7 +429,7 @@ def exercise_cli_recovery_to_archive(tmp_path, monkeypatch, *, explicit_path):
         invalid = copy.deepcopy(run)
         mutate(invalid)
         with pytest.raises((AssertionError, KeyError, ValueError)):
-            module.assert_recovery(invalid, archived)
+            module.assert_recovery(invalid, archived, provided)
     for field, value in [("executable", "echo"), ("argv", ["other.py"]), ("cwdRef", "other")]:
         invalid = copy.deepcopy(run)
         plans = next(a for a in invalid["actions"] if a["stepId"] == "build.builder")["outcome"][
@@ -421,7 +437,7 @@ def exercise_cli_recovery_to_archive(tmp_path, monkeypatch, *, explicit_path):
         ]["verificationChecks"]
         next(p for p in plans if p["id"] == "recovery-once")[field] = value
         with pytest.raises(AssertionError):
-            module.assert_recovery(invalid, archived)
+            module.assert_recovery(invalid, archived, provided)
     valid_interaction = json.loads(context.read_text())["interaction"]
     for field in ["waitId", "candidateId", "handoffHash", "counterHash", "shapeHash"]:
         invalid = copy.deepcopy(valid_interaction)

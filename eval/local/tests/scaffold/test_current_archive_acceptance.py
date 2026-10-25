@@ -2,6 +2,7 @@
 
 import json
 import ast
+import hashlib
 import importlib.util
 import re
 import shutil
@@ -16,6 +17,82 @@ from scaffold.python.utils import BASH_EXEC, run_shell
 from scaffold.python.paths import get_tasks_dir
 from scaffold.python.tasks import load_task
 from scaffold.python.validation.current_archive import inspect_completed_archive
+
+
+@pytest.mark.parametrize(
+    ("provided", "observed", "count", "accepted"),
+    [
+        (b"print('once')\n", b"print('once')\n", "once\n", True),
+        (b"print('once')\r\n", b"print('once')\r\n", "once\n", True),
+        (b"print('once')\r\n", b"print('once')\n", "once\n", False),
+        (b"print('once')\n", b"print('changed')\n", "once\n", False),
+        (b"print('once')\n", b"print('once')\n", "once\nonce\n", False),
+    ],
+    ids=["lf", "crlf", "changed-endings", "changed-content", "repeated-check"],
+)
+def test_native_recovery_validates_exact_distributed_script_bytes(
+    tmp_path, monkeypatch, provided, observed, count, accepted
+):
+    task = load_task("comet-native-sdk-recovery")
+    environment = tmp_path / "environment"
+    environment.mkdir()
+    script = environment / "recovery_once.py"
+    script.write_bytes(provided)
+    task._environment_dir = environment
+    validator = task.load_validators()[0]
+    # The baseline must already be captured before the subject can change any files.
+    script.write_bytes(b"changed after validator preparation\n")
+    workspace = tmp_path / "workspace"
+    (workspace / "docs/comet/archive").mkdir(parents=True)
+    spec_file = workspace / "docs/comet/specs/sentence-counting/spec.md"
+    spec_file.parent.mkdir(parents=True)
+    spec_file.write_text("spec\n")
+    (workspace / "recovery_once.py").write_bytes(observed)
+    counter = workspace / ".cache/comet-sdk-recovery/check-count"
+    counter.parent.mkdir(parents=True)
+    counter.write_text(count)
+    spec = importlib.util.spec_from_file_location(
+        "native_recovery_validator", task.validation_dir / "test_native_sdk_recovery.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, "WORKSPACE", workspace)
+
+    def execute_validation(test_dir, *_args, **_kwargs):
+        context = json.loads((test_dir / "_test_context.json").read_text())
+        assert context["environment_file_hashes"] == {
+            "recovery_once.py": hashlib.sha256(provided).hexdigest()
+        }
+        try:
+            module.assert_once_artifacts(context)
+            return {"passed": ["sdk_recovery"], "failed": []}
+        except AssertionError as error:
+            return {"passed": [], "failed": [str(error)]}
+
+    # Replace only the container boundary; exercise the real context and artifact checks.
+    monkeypatch.setattr("scaffold.python.utils.run_eval_in_docker", execute_validation)
+    passed, failed = validator(
+        workspace,
+        {"environment_file_hashes": {"recovery_once.py": hashlib.sha256(observed).hexdigest()}},
+    )
+    assert (passed == ["sdk_recovery"] and not failed) is accepted
+    if not accepted:
+        assert failed
+
+
+def test_native_recovery_rejects_a_missing_distributed_script_digest(tmp_path, monkeypatch):
+    task = load_task("comet-native-sdk-recovery")
+    spec = importlib.util.spec_from_file_location(
+        "native_recovery_validator", task.validation_dir / "test_native_sdk_recovery.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, "WORKSPACE", tmp_path)
+    counter = tmp_path / ".cache/comet-sdk-recovery/check-count"
+    counter.parent.mkdir(parents=True)
+    counter.write_text("once\n")
+    with pytest.raises(AssertionError, match="provided one-shot script digest"):
+        module.assert_once_artifacts({})
 
 
 @pytest.mark.parametrize(

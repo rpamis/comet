@@ -8,12 +8,12 @@ import {
 } from './classic-runtime-paths.js';
 import { inspectClassicSdkRevisionReadiness } from './classic-sdk-revision-readiness.js';
 import { inspectClassicSdkActionRecovery } from './classic-sdk-check-recovery.js';
-import { reviseClassicSdkWork } from './classic-sdk-revision.js';
+import { reviseClassicSdkWork, rebindClassicSdkWork } from './classic-sdk-revision.js';
 import { measureCometGitCommand } from '../../platform/process/runtime-metrics.js';
 import { spawnSync } from 'child_process';
 import path from 'path';
 import { Document, parseDocument } from 'yaml';
-import { samePath } from '../../platform/paths/git-worktree.js';
+import { samePath, inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
 import { formatCliCommandArgs } from '../workflow-contract/output-envelope.js';
 import { classicSdkEntryData as sdkEntryData } from './classic-sdk-output.js';
@@ -2237,6 +2237,7 @@ function requiredExact(args: string[], count: number, usage: string): void {
 }
 
 const MUTATING_STATE_COMMANDS = new Set([
+  'repair-archive',
   'reopen-verification',
   'init',
   'restore',
@@ -2292,6 +2293,8 @@ async function assertStateChangeNotSdkOwned(
   }
   if (
     subcommand === 'delivery' ||
+    subcommand === 'rebind' ||
+    subcommand === 'repair-archive' ||
     subcommand === 'reopen-verification' ||
     subcommand === 'next' ||
     subcommand === 'restore' ||
@@ -2388,6 +2391,18 @@ async function selectChange(
 
 async function rebind(output: CommandOutput, name: string): Promise<void> {
   validateChangeName(name);
+  const projectRoot = classicCommandProjectRoot();
+  if (await readSdkChangeOwner(projectRoot, 'classic', name)) {
+    const invocationRoot = inspectGitWorktree(classicCommandInvocationCwd()).currentWorktreeRoot;
+    const changeRoot = inspectGitWorktree(projectRoot).currentWorktreeRoot;
+    if (!invocationRoot || !changeRoot || !samePath(invocationRoot, changeRoot))
+      fail('ERROR: rebind must run in the change workspace');
+    const run = await rebindClassicSdkWork(projectRoot, name);
+    output.stderr.push(
+      green(`[REBIND] bound_branch: ${(run.state as unknown as ClassicState).boundBranch}`),
+    );
+    return;
+  }
   const { directory } = await stateFile(name);
   const boundBranch = await readField(name, 'bound_branch');
   if (!boundBranch || boundBranch === 'null') {
@@ -2825,7 +2840,8 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
       } else if (
         subcommand === 'revise-design' ||
         subcommand === 'revise-plan' ||
-        subcommand === 'reopen-verification'
+        subcommand === 'reopen-verification' ||
+        subcommand === 'repair-archive'
       ) {
         if (
           rest.length !== 3 ||

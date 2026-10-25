@@ -2,6 +2,25 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "eval-provided-check-byte-identity",
+      "behavior": "一次性检查脚本按实际分发的原始字节校验，未修改的 LF 和 CRLF 均可通过，修改内容或换行、重复执行以及缺少可信摘要均被拒绝。",
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"],
+      "coverageLevel": "unit",
+      "reproduction": "Native 高难度实际分发 CRLF 脚本且归档时原样保留，验证器却比较写死的 LF 摘要，误报脚本被修改。",
+      "expected": "在模型开始前由控制器捕获任务环境文件的字节摘要，验证时覆盖输出中同名字段，并与最终脚本的原始字节比较。",
+      "forbidden": "按规范化换行比较而放过真实修改、信任模型提供的摘要、在模型执行后重新采集基线，或放过一次性计数重复。",
+      "rootCause": "验证器把某次 LF 检出的脚本摘要当成所有平台实际分发内容的摘要。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "preserves exact provided check bytes across LF and CRLF without accepting mutations or duplicate execution",
+          "requiredNames": [
+            "standalone static collector parity preserves exact provided check bytes across LF and CRLF without accepting mutations or duplicate execution"
+          ]
+        }
+      ]
+    },
+    {
       "id": "continuous-badcase-registration",
       "behavior": "用户报告修复必须映射到持久化 badcase，CI 拒绝遗漏映射、历史缩减及跳过或错文件的伪通过。",
       "sources": ["report:2026-10-24-continuous-badcase-registration"],
@@ -1369,6 +1388,61 @@
           "namePattern": "Native check input fingerprint keeps volatile Next output churn outside the generated root identity fence",
           "requiredNames": [
             "Native check input fingerprint keeps volatile Next output churn outside the generated root identity fence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-archive-failed-input-repair",
+      "behavior": "Classic 已退出且未产生归档副作用的失败可在同一 Run 重开 Open 修正输入，保留原执行记录，重新审批、验收并完成归档交付；未知结果、规格变化和部分目录副作用仍被拒绝。",
+      "sources": ["https://github.com/rpamis/comet/issues/507"],
+      "coverageLevel": "public-cli",
+      "reproduction": "051 原归档进程因无效 delta 退出 1，原领取方补交 failed 后 Run 停止，已确认 Archive 无法改写输入或重新确认。",
+      "expected": "repair-archive 按 revision 核对原输入和规格、归档目录后重开原 Run；source 和生成 bundle 的 full 流程均完成新的确认与本地交付。",
+      "forbidden": "自动重放未知执行、丢弃原 claim/outcome、忽略部分规格或目录变更、复用旧审批直接归档。",
+      "rootCause": "失败 Run 缺少由应用核验无副作用后重新安排输入修订的命令；已退出进程仍一律被记录为 unknown，且标准输出中的诊断丢失。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "reopens the same Run after a stopped Archive without effects and completes fresh approval and delivery|rejects Archive input repair for (changed specifications|partial archive directory) and stale revisions|repairs a full Archive without effects and delivers the same Run through (source|generated)",
+          "requiredNames": [
+            "Classic SDK Archive input repair reopens the same Run after a stopped Archive without effects and completes fresh approval and delivery (legacy unknown: false)",
+            "Classic SDK Archive input repair reopens the same Run after a stopped Archive without effects and completes fresh approval and delivery (legacy unknown: true)",
+            "Classic SDK Archive input repair rejects Archive input repair for changed specifications and stale revisions",
+            "Classic SDK Archive input repair rejects Archive input repair for partial archive directory and stale revisions",
+            "Classic SDK Archive input repair repairs a full Archive without effects and delivers the same Run through source",
+            "Classic SDK Archive input repair repairs a full Archive without effects and delivers the same Run through generated"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-branch-rebind",
+      "behavior": "Classic SDK 在分支切换、旧分支删除和便携恢复后保留原 Run 重绑定；执行结果未知或投影篡改时拒绝，旧批准不能授权分歧分支。",
+      "sources": ["https://github.com/rpamis/comet/issues/508"],
+      "coverageLevel": "public-cli",
+      "reproduction": "SDK 管理的 change 调用 state rebind 被旧 YAML 写入保护拒绝，切换分支或删除旧分支后不能按公开命令恢复绑定。",
+      "expected": "在当前 change 工作区以 CAS 更新原 Run 的 boundBranch，并同步便携检查点；重新验收和批准后可完成新分支归档交付。",
+      "forbidden": "改写便携投影冒充权威更新、丢弃原执行/审批历史、跨工作区重绑定、复用原分支批准交付新分支或中断未知执行。",
+      "rootCause": "rebind 未接入 SDK 所有权允许的状态更新路径；便携恢复也无针对显式重绑定的受限分支漂移入口。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-rebind.test.ts",
+          "namePattern": "rebinds the same Run after the original branch is (switched|deleted|portable)|rebinds a full docs-layout Run from its portable checkpoint after deletion of its old branch|rejects rebinding with an unresolved original Action or detached HEAD|rejects edited portable branch fields rather than trusting a rewritten projection",
+          "requiredNames": [
+            "Classic SDK branch rebinding rebinds the same Run after the original branch is switched",
+            "Classic SDK branch rebinding rebinds the same Run after the original branch is deleted",
+            "Classic SDK branch rebinding rebinds the same Run after the original branch is portable",
+            "Classic SDK branch rebinding rebinds a full docs-layout Run from its portable checkpoint after deletion of its old branch",
+            "Classic SDK branch rebinding rejects rebinding with an unresolved original Action or detached HEAD",
+            "Classic SDK branch rebinding rejects edited portable branch fields rather than trusting a rewritten projection"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "requires fresh verification and Archive approval after rebinding to a divergent branch",
+          "requiredNames": [
+            "Classic SDK Archive input repair requires fresh verification and Archive approval after rebinding to a divergent branch"
           ]
         }
       ]

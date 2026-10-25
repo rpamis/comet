@@ -458,17 +458,14 @@
   padding: 2px 10px 16px;
 }
 .any-indexing-status {
-  margin: 10px 0 4px;
-  padding: 10px 12px;
-  border: 1px solid var(--color-border-soft);
-  border-radius: 8px;
-  background: color-mix(in oklab, var(--color-accent-soft) 38%, var(--color-bg));
+  margin: 10px 0 0;
+  padding: 4px 6px 0;
 }
 .any-indexing-status-line {
   display: flex;
   align-items: center;
-  gap: 7px;
-  color: var(--color-fg-2);
+  gap: 8px;
+  color: var(--color-muted);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -477,29 +474,20 @@
   color: var(--color-meta);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
+  font-weight: 400;
   white-space: nowrap;
 }
-.any-indexing-status-dot {
-  width: 7px;
-  height: 7px;
+.any-indexing-status .ant-spin {
   flex: 0 0 auto;
-  border-radius: 50%;
-  background: var(--color-accent-active);
+  color: var(--color-accent);
 }
-.any-indexing-status-track {
-  height: 3px;
-  margin-top: 8px;
-  overflow: hidden;
-  border-radius: 3px;
-  background: var(--color-border-soft);
+.any-indexing-status .ant-spin .anticon {
+  font-size: 14px;
 }
-.any-indexing-status-track span {
+.any-indexing-status .ant-progress {
   display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--color-accent-active);
-  transition: width 180ms ease;
+  margin: 0;
+  line-height: 1;
 }
 .any-list-label {
   padding: 16px 10px 10px;
