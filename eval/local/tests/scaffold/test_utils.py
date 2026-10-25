@@ -2378,4 +2378,3 @@ def test_eval_git_excludes_does_not_initialize_unmarked_workspaces(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "unexpected-docker" not in result.stderr
     assert not (tmp_path / ".git").exists()
-

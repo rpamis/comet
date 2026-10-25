@@ -83,3 +83,5 @@ Classic 高难度配置给 Agent 80 分钟，但原 pytest 外层只有 70 分�
 Classic 首轮 full 已完成 Archive，但控制器注入的 `.claude`、`_eval_current_comet` 等工具未被 Git 排除，交付校验将其视为待提交的检查输入。原错误明确指出缺少 `.claude/CLAUDE.md`，补入后又指出缺少工作流 Rule。控制器保留错误和现场后停止该失败样本；不放宽产品交付检查来容纳工具污染。
 
 当前 Classic 场景现由控制器标记，在模型启动前于容器中准备 Git，把固定工具路径登记到 `.git/info/exclude`。用户 `.gitignore` 及原排除规则保持不变，模型重写 `.gitignore` 也不会移除控制器规则。真实 Docker/Git 已验证幂等、工具排除，以及业务与 `parked-format` 文件仍可见；Native 与未标记场景不初始化 Git，不更改其输入。仅受影响的 Classic 场景重新运行。
+
+Classic 中难度随后在模型启动前暴露了共享环境的 Native 校验器路由错误，低难度也受影响。控制器现仅在明确选择 Classic 且没有选择 Native 时跳过该专用快照；Native 来源缺失、不可用或混合选择仍拒绝。六组环境准备和三项拒绝检查已实际运行；这层只证明依赖、安装与校验器选择，真实模型、SDK Archive 和交付仍各自验收。

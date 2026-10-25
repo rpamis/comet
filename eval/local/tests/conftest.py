@@ -840,6 +840,8 @@ def _copy_trusted_native_runtime_snapshot(
     """Snapshot the controller-selected Native runtime before the Agent starts."""
     if not (environment_dir / TRUSTED_NATIVE_RUNTIME_MARKER).is_file():
         return
+    if "comet-classic" in (skills or {}) and "comet-native" not in (skills or {}):
+        return
     config = (skills or {}).get("comet-native")
     if not isinstance(config, dict):
         raise ValueError("Trusted Native oracle requires the comet-native Skill source")

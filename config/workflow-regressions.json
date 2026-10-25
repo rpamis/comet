@@ -676,6 +676,34 @@
           ]
         }
       ]
+    },
+    {
+      "id": "eval-shared-current-workflow-oracle-routing",
+      "behavior": "六组当前Native和Classic场景可准备完整执行环境，校验器跟随实际选择的workflow。",
+      "coverageLevel": "unit",
+      "reproduction": "Classic中难度启动前因共享fixture携带Native oracle标记而要求不存在的comet-native Skill，直接ValueError；相同问题也影响Classic低难度。",
+      "expected": "仅明确选择Classic且没有Native时跳过Native专用快照；Native缺失、不可用或混合选择时仍核对其真实来源；六组准备均验证对应Skill和隔离标记。",
+      "forbidden": "给Classic注入Native Skill绕过失败、跳过Native来源检查、把环境准备成功冒充真实模型或SDK归档通过。",
+      "rootCause": "共享任务环境的Native校验标记被误当成所有treatment都选择了Native。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "prepares all six current workflow fixtures with only their selected trusted oracles",
+          "requiredNames": [
+            "standalone static collector parity prepares all six current workflow fixtures with only their selected trusted oracles"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM Classic easy and medium SDK Archive and delivery",
+          "status": "pending",
+          "evidence": [
+            "Pre-model setup failure: eval/local/logs/acceptance-051-final-matrix/classic-tooling-retry-20261025/classic-medium/runner.log"
+          ]
+        }
+      ]
     }
   ]
 }

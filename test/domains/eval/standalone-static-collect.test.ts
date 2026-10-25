@@ -85,6 +85,26 @@ function pythonAccepts(manifest: string): boolean {
 }
 
 describe('standalone static collector parity', () => {
+  it('prepares all six current workflow fixtures with only their selected trusted oracles', () => {
+    const result = execFileSync(
+      'uv',
+      [
+        'run',
+        '--locked',
+        'python',
+        '-m',
+        'pytest',
+        'local/tests/scaffold/test_current_archive_acceptance.py',
+        '-k',
+        '051_matrix_prepares or native_oracle_requires',
+        '-q',
+      ],
+      { cwd: evalRoot, encoding: 'utf8', stdio: 'pipe' },
+    );
+    expect(result).toMatch(/9 passed/);
+    expect(result).not.toMatch(/failed|skipped/);
+  });
+
   it('isolates Classic controller tooling from Git inputs without altering Native fixtures', () => {
     const result = execFileSync(
       'uv',

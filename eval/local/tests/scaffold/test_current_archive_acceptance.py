@@ -8,10 +8,51 @@ import subprocess
 import sys
 
 import pytest
+import conftest
+from scaffold import load_treatment
 
 from scaffold.python.paths import get_tasks_dir
 from scaffold.python.tasks import load_task
 from scaffold.python.validation.current_archive import inspect_completed_archive
+
+
+@pytest.mark.parametrize(
+    "case",
+    json.loads((get_tasks_dir().parent / "acceptance-051.json").read_text(encoding="utf-8"))["cases"],
+    ids=lambda case: case["workflow"] + "-" + case["difficulty"],
+)
+def test_051_matrix_prepares_each_selected_workflow_without_cross_workflow_oracles(
+    case, monkeypatch, setup_test_context
+):
+    reference = get_tasks_dir().parents[2] / "assets/skills/comet/reference/host-check.md"
+
+    def snapshot(_environment, workspace):
+        target = workspace / "_eval_current_comet/assets/skills/comet/reference/host-check.md"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(reference.read_bytes())
+
+    monkeypatch.setattr(conftest, "_copy_current_comet_cli_snapshot", snapshot)
+    treatment = load_treatment(case["treatment"])
+    task = load_task(case["task"])
+    workspace = setup_test_context(
+        skills=treatment.skills, claude_md=treatment.claude_md, environment_dir=task.environment_dir
+    )
+    native = case["workflow"] == "native"
+    assert (workspace / "_eval_trusted_oracles/comet-native-runtime.mjs").is_file() == native
+    assert (workspace / ".eval-classic-git-excludes").is_file() == (not native)
+    assert (workspace / ".claude/skills/brainstorming/SKILL.md").is_file() == (not native)
+
+
+@pytest.mark.parametrize(
+    ("skills", "error"),
+    [({}, ValueError), ({"comet-native": {}}, FileNotFoundError),
+     ({"comet-native": {}, "comet-classic": {}}, FileNotFoundError)],
+)
+def test_native_oracle_requires_its_selected_source_even_with_mixed_skills(tmp_path, skills, error):
+    environment = get_tasks_dir() / "comet-small-cli-archive/environment"
+    with pytest.raises(error):
+        conftest._copy_trusted_native_runtime_snapshot(environment, tmp_path, skills)
+    assert not (tmp_path / "_eval_trusted_oracles").exists()
 
 
 @pytest.mark.parametrize(
