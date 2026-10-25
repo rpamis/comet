@@ -102,6 +102,8 @@ def test_outer_case_timeout_covers_the_configured_hard_classic_budget():
     )
     task = load_task("comet-classic-sdk-recovery")
     assert timeout >= task.config.timeout_sec + task.config.validation.timeout + 120
+    # 本轮接受 --agent-timeout 10800，外层仍须留出验证、评分和清理时间。
+    assert timeout >= 10_800 + task.config.validation.timeout + 120
 
 
 def test_disposable_medium_fixture_ends_after_verified_archive_without_publishing_learning():

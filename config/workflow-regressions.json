@@ -467,10 +467,10 @@
     },
     {
       "id": "eval-outer-timeout-budget",
-      "behavior": "评测外层期限完整覆盖已配置的 Classic 高难度执行、验证和评分预算。",
+      "behavior": "评测外层期限覆盖任务声明及本轮显式三小时执行预算，并保留验证、评分和清理时间。",
       "coverageLevel": "unit",
       "reproduction": "真实 runner 的timeout marker为4200秒，而高难度Classic配置允许Agent执行4800秒，另需180秒验证和评分。",
-      "expected": "外层期限覆盖任务声明的Agent、验证与评分预算，Agent自身期限不变。",
+      "expected": "保留任务声明的Agent预算；本轮可显式设置三小时执行期限，四小时外层期限覆盖执行、验证、评分及清理。",
       "forbidden": "外层比任务预算先终止，或缩短Agent预算来掩盖配置不一致。",
       "rootCause": "外层固定期限未随当前高难度任务预算调整。",
       "tests": [
@@ -482,7 +482,10 @@
           ]
         }
       ],
-      "sources": ["report:2026-10-25-051-native-classic-acceptance"]
+      "sources": [
+        "report:2026-10-25-051-native-classic-acceptance",
+        "report:2026-10-25-long-eval-budget"
+      ]
     },
     {
       "id": "eval-medium-optional-learning-completion",
