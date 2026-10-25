@@ -760,6 +760,39 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-verifier-failure-original-claim",
+      "behavior": "误用 Builder 身份领取的 Verifier 可以通过原 claim 记录真实执行失败，保留候选和检查，并由新的独立 Verifier 完成归档。",
+      "sources": [
+        "report:2026-10-25-native-incremental-recovery",
+        "report:2026-10-25-051-native-classic-acceptance"
+      ],
+      "coverageLevel": "public-cli",
+      "reproduction": "真实 GLM 在 verify.verifier 使用 Builder session 领取，Runtime 不仅拒绝其通过和 blocked 结果，还拒绝原失败模板，Action 无法结束；正式文档变化也会先阻断失败收据。",
+      "expected": "仅原 Action/attempt/inputHash/claimToken 可记录执行失败；失败不形成验收结论，保留原 Shape、候选和一次性检查，新独立 Verifier 通过后经公开 CLI Archive。正式文档恢复原批准内容前不能提交有效验收。",
+      "forbidden": "原 Builder 自验通过或以 blocked 伪造独立结果、错误 claim 接管、重复失败推进、重跑一次性检查、接受未批准的文档。",
+      "rootCause": "把验收结果的独立性和新鲜度要求用于记录运行失败，导致原领取不能安全结束；Supervisor 的失败路径已正确区别这两类结果。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks",
+          "requiredNames": [
+            "blocked Verifier recovery command contract ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: running",
+            "blocked Verifier recovery command contract ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: changed-requirements",
+            "blocked Verifier recovery command contract ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: unknown"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM Native current-candidate verification recovery and Archive",
+          "status": "pending",
+          "evidence": [
+            "Original current-051 failure: eval/local/logs/acceptance-051-final-matrix/explicit-native-contract-20261025/native-hard"
+          ]
+        }
+      ]
     }
   ]
 }

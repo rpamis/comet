@@ -735,6 +735,7 @@ function verifierResultState(
   return { state: applied.state, requestChecks: applied.response.kind === 'request-checks' };
 }
 
+/** 失败收据结束原领取，不产生验收结论；后继 Verifier 仍须独立。 */
 function verifierExecutionFailureState(
   run: Readonly<WorkflowRun>,
   action: Readonly<RuntimeAction>,
@@ -747,13 +748,12 @@ function verifierExecutionFailureState(
     action.stepId !== 'verify.verifier' ||
     action.type !== 'handoff' ||
     !action.claim?.sessionId ||
-    action.claim.sessionId === state.builder_handoff?.builder_execution_ref ||
     !output ||
     typeof output.summary !== 'string' ||
     !output.summary.trim()
   ) {
     throw new Error(
-      'Native Verifier execution failure needs a claimed independent session and summary',
+      'Native Verifier execution failure needs the original claimed session and summary',
     );
   }
   return recordNativeVerifierExecutionError({ state, summary: output.summary });
@@ -925,6 +925,10 @@ const verifierValidator: RuntimeValidator = {
       return { accepted: false, reason: 'Native Verifier result lacks its project binding' };
     }
     try {
+      if (outcome.status === 'failed') {
+        verifierExecutionFailureState(run, action, outcome);
+        return { accepted: true };
+      }
       const config = await readProjectConfig(context.projectRoot);
       if (
         !config ||
@@ -955,8 +959,7 @@ const verifierValidator: RuntimeValidator = {
         await nativeSdkCurrentCheckSummaries({ run, projectRoot: context.projectRoot });
         await assertNativeEditReviewsComplete(paths, state);
       }
-      if (outcome.status === 'failed') verifierExecutionFailureState(run, action, outcome);
-      else verifierResultState(run, action, outcome);
+      verifierResultState(run, action, outcome);
       return { accepted: true };
     } catch (error) {
       return { accepted: false, reason: error instanceof Error ? error.message : String(error) };

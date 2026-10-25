@@ -1,11 +1,10 @@
 Use the installed current Comet CLI and Classic SDK workflow to extend wordcount-cli. Use the configured docs layout, current workspace isolation and local Git delivery only. Initialize Git if needed and commit the supplied source/tests as the baseline. Do not create remotes, push, open PRs, edit managed state/checkpoints or fabricate Run records.
 
-Before starting the work, create an SDK tweak change named `parked-format`, leave it at Open, and add its proposal.md containing exactly the following UTF-8 text, with no blank line between the two lines and one final newline:
+Before starting the work, create an SDK tweak change named `parked-format` and leave it at Open. Then execute this exact shell command to write its proposal.md. The command writes two UTF-8 lines with one final newline; only its output belongs in the proposal file:
 
-<!-- parked-proposal -->
-```text
-# Parked format
-Keep this unrelated formatting request pending.
+<!-- parked-proposal-command -->
+```bash
+printf '%s\n' '# Parked format' 'Keep this unrelated formatting request pending.' > docs/openspec/changes/parked-format/proposal.md
 ```
 
 Do not implement, archive, commit or advance that change. It must coexist with the following three changes, which you must complete in order using their specified profiles:

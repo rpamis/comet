@@ -12,6 +12,7 @@ import pytest
 import conftest
 from scaffold import load_treatment
 
+from scaffold.python.utils import BASH_EXEC
 from scaffold.python.paths import get_tasks_dir
 from scaffold.python.tasks import load_task
 from scaffold.python.validation.current_archive import inspect_completed_archive
@@ -154,11 +155,11 @@ def test_native_recovery_examples_are_bound_to_the_supplied_wordcount_baseline()
     assert "before the first Shape confirmation" in prompt
 
 
-def test_classic_parked_proposal_instruction_matches_the_exact_preserved_content():
+def test_classic_parked_proposal_instruction_matches_the_exact_preserved_content(tmp_path):
     task = load_task("comet-classic-sdk-recovery")
     prompt = task.render_prompt()
-    match = re.search(r"<!-- parked-proposal -->\s*```text\n(.*?)```", prompt, re.S)
-    assert match is not None, "Classic task must specify the exact parked proposal text"
+    match = re.search(r"<!-- parked-proposal-command -->\s*```bash\n(.*?)```", prompt, re.S)
+    assert match is not None, "Classic task must provide the deterministic parked proposal command"
     validator = ast.parse((task.validation_dir / "test_classic_sdk_recovery.py").read_text(encoding="utf-8"))
     expected = next(
         ast.literal_eval(node.value)
@@ -166,7 +167,10 @@ def test_classic_parked_proposal_instruction_matches_the_exact_preserved_content
         if isinstance(node, ast.Assign)
         and any(isinstance(target, ast.Name) and target.id == "PARKED_PROPOSAL" for target in node.targets)
     )
-    assert match.group(1) == expected
+    proposal = tmp_path / "docs/openspec/changes/parked-format/proposal.md"
+    proposal.parent.mkdir(parents=True)
+    subprocess.run([BASH_EXEC, "-c", match.group(1)], cwd=tmp_path, check=True, timeout=15)
+    assert proposal.read_bytes() == expected.encode("utf-8")
     assert expected == "# Parked format\nKeep this unrelated formatting request pending.\n"
 
 
@@ -180,6 +184,8 @@ def test_native_recovery_task_declares_its_fixed_canonical_spec_and_numeric_line
     assert "capability `sentence-counting`" in prompt
     assert "numeric line ranges such as `28-32`" in prompt
     assert "do not put filenames or paths in that column" in prompt
+    assert "claimRequest.sessionId" in prompt
+    assert "never use the Builder's session" in prompt
 
 
 @pytest.mark.parametrize("treatment", ["COMET_NATIVE_SDK_CURRENT", "COMET_CLASSIC_DOCS_LAYOUT"])

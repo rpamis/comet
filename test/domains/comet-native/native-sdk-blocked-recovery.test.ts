@@ -33,6 +33,7 @@ import {
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import type { NativeCheckPlan } from '../../../domains/comet-native/native-check-executor.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import { hasNativeSdkPortableStopEvidence } from '../../../domains/comet-native/native-sdk-check-execution.js';
 
 const roots: string[] = [];
 // Windows 上未修改基线的双工作区修复案例需约 125 秒；保留全部断言并给完整事务留出执行时间。
@@ -50,6 +51,7 @@ async function blockedFixture(
     verificationChecks?: NativeCheckPlan[];
     syntaxFiles?: boolean;
     bundleCommands?: boolean;
+    misclaimedVerifier?: boolean;
   } = {},
 ) {
   let useReleased = Boolean(options.legacy && process.env.COMET_NATIVE_LEGACY_PACKAGE_ROOT);
@@ -143,7 +145,12 @@ async function blockedFixture(
     }
     return (useReleased ? releasedNative! : runNativeCli)(argv);
   }
-  async function record(action: RuntimeAction, output: RuntimeValue, sessionId: string) {
+  async function record(
+    action: RuntimeAction,
+    output: RuntimeValue,
+    sessionId: string,
+    outcomeId = `${action.id}-result`,
+  ) {
     const claimed = await dispatch({
       operation: 'claim',
       runId: name,
@@ -162,7 +169,7 @@ async function blockedFixture(
         attempt: action.attempt,
         inputHash: action.inputHash,
         claimToken: claimed.actions.find(({ id }) => id === action.id)!.claim!.token,
-        outcomeId: `${action.id}-result`,
+        outcomeId,
         status: 'succeeded',
         output,
       },
@@ -370,6 +377,20 @@ async function blockedFixture(
     executorId: 'comet-native-checks',
   });
   const state = parseNativePortableState(run.state);
+  if (options.misclaimedVerifier) {
+    const action = run.actions.find(({ status }) => status === 'pending')!;
+    run = await dispatch({
+      operation: 'claim',
+      runId: name,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'native-host',
+      sessionId: 'builder',
+      claimToken: 'misclaimed-verifier',
+    });
+    return { root, projectRoot, candidateRoot, name, run, dispatch, native, record };
+  }
   run = await record(
     run.actions.find(({ status }) => status === 'pending')!,
     {
@@ -427,9 +448,9 @@ async function archiveReadyFixture() {
       )
     ).exitCode,
   ).toBe(0);
-  let run = await f.dispatch({ operation: 'inspect', runId: f.name });
+  const run = await f.dispatch({ operation: 'inspect', runId: f.name });
   const state = parseNativePortableState(run.state);
-  run = await f.record(
+  await f.record(
     run.actions.findLast(({ status }) => status === 'pending')!,
     {
       candidateId: state.builder_handoff!.candidate_id,
@@ -472,6 +493,154 @@ async function archiveReadyFixture() {
 }
 
 describe('blocked Verifier recovery command contract', () => {
+  it.each(['running', 'changed-requirements', 'unknown'])(
+    'ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: %s',
+    async (scenario) => {
+      const changedRequirements = scenario === 'changed-requirements';
+      const unknown = scenario === 'unknown';
+      const f = await blockedFixture({ misclaimedVerifier: true, bundleCommands: true });
+      const action = f.run.actions.findLast(({ stepId }) => stepId === 'verify.verifier')!;
+      const original = parseNativePortableState(f.run.state);
+      const checks = f.run.actions.find(({ stepId }) => stepId === 'verify.checks')!;
+      const request = {
+        operation: 'record-outcome',
+        runId: f.name,
+        outcome: {
+          actionId: action.id,
+          attempt: action.attempt,
+          inputHash: action.inputHash,
+          claimToken: action.claim!.token,
+          outcomeId: 'misclaimed-verifier-failure',
+          status: 'failed',
+          output: {
+            summary:
+              'The Builder claimed the Verifier by mistake; no independent verification ran.',
+          },
+        },
+      };
+      for (const verdict of ['pass', 'blocked'] as const) {
+        await expect(
+          f.dispatch({
+            ...request,
+            outcome: {
+              ...request.outcome,
+              outcomeId: `self-verification-${verdict}`,
+              status: 'succeeded',
+              output: {
+                candidateId: original.builder_handoff!.candidate_id,
+                verifierExecutionRef: 'builder',
+                response: {
+                  kind: 'final-result',
+                  result: {
+                    iteration: original.loop.iteration,
+                    attempt: original.loop.attempt,
+                    verdict,
+                    acceptance: [
+                      {
+                        id: 'A1',
+                        result: verdict === 'pass' ? 'passed' : 'blocked',
+                        reason: 'Not independent.',
+                      },
+                    ],
+                    risks: [],
+                    summary: 'Not independent.',
+                  },
+                },
+              },
+            },
+          }),
+        ).rejects.toThrow(/independent/);
+      }
+      await expect(
+        f.dispatch({
+          ...request,
+          outcome: { ...request.outcome, claimToken: 'not-the-original-claim' },
+        }),
+      ).rejects.toThrow();
+      const spec = path.join(f.projectRoot, 'docs/comet/changes', f.name, 'specs/example/spec.md');
+      const approvedSpec = await fs.readFile(spec, 'utf8');
+      if (changedRequirements)
+        await fs.writeFile(spec, approvedSpec + '\nA newly requested requirement.\n');
+      if (unknown)
+        await f.dispatch({
+          operation: 'mark-unknown',
+          runId: f.name,
+          actionId: action.id,
+          attempt: action.attempt,
+          reason: 'The original host ended without a usable independent verification result.',
+        });
+      const failed = await f.dispatch(request);
+      expect(failed.actions.find(({ id }) => id === action.id)).toMatchObject({ status: 'failed' });
+      expect(failed.state).toMatchObject({
+        phase: 'verify',
+        shape_confirmation_hash: original.shape_confirmation_hash,
+        builder_handoff: { candidate_id: original.builder_handoff!.candidate_id },
+        loop: { goal_cycle: 1, execution_failure_count: 1 },
+      });
+      expect(failed.actions.find(({ id }) => id === checks.id)).toEqual(checks);
+      expect((await f.dispatch(request)).revision).toBe(failed.revision);
+      const replacement = failed.actions.findLast(({ status }) => status === 'pending')!;
+      expect(replacement).toMatchObject({ stepId: 'verify.verifier' });
+      expect(replacement.id).not.toBe(action.id);
+      const verification = {
+        candidateId: original.builder_handoff!.candidate_id,
+        verifierExecutionRef: 'independent-replacement',
+        response: {
+          kind: 'final-result',
+          result: {
+            iteration: original.loop.iteration,
+            attempt: parseNativePortableState(failed.state).loop.attempt,
+            verdict: 'pass',
+            acceptance: [
+              {
+                id: 'A1',
+                result: 'passed',
+                reason: 'Independently verified the retained candidate.',
+              },
+            ],
+            risks: [],
+            summary: 'Independent verification passed.',
+          },
+        },
+      };
+      if (changedRequirements) {
+        await expect(
+          f.record(replacement, verification, 'independent-replacement', 'rejected-stale-shape'),
+        ).rejects.toThrow('Shape artifacts changed');
+        await fs.writeFile(spec, approvedSpec);
+      }
+      let run = await f.record(replacement, verification, 'independent-replacement');
+      expect(run.actions.find(({ id }) => id === checks.id)).toEqual(checks);
+      expect((await f.native(['next', f.name])).exitCode).toBe(0);
+      const approval = (await alternatives(f)).find(({ name }) => name === 'accept-result')!;
+      expect(approval).toBeDefined();
+      expect(
+        (
+          await f.native(
+            approval.commandArgs
+              .slice(2)
+              .map((arg) =>
+                arg === '<summary>' ? 'Approve the independently verified result.' : arg,
+              ),
+          )
+        ).exitCode,
+      ).toBe(0);
+      const archived = await f.native(['archive', f.name]);
+      expect(archived.exitCode, archived.stderr || archived.stdout).toBe(0);
+      run = await f.dispatch({ operation: 'inspect', runId: f.name });
+      expect(run.status).toBe('completed');
+      const archivedCheck = run.actions.find(({ id }) => id === checks.id)!;
+      const { executionStop: oldStop, ...oldCheck } = checks;
+      const { executionStop: newStop, ...newCheck } = archivedCheck;
+      expect(newCheck).toEqual(oldCheck);
+      if (oldStop) expect(newStop).toEqual(oldStop);
+      else expect(hasNativeSdkPortableStopEvidence(run, archivedCheck)).toBe(true);
+      expect(run.actions.find(({ id }) => id === action.id)).toMatchObject({ status: 'failed' });
+      expect(run.actions.filter(({ stepId }) => stepId === 'verify.checks')).toHaveLength(1);
+      expect(await fs.readFile(path.join(f.projectRoot, 'check-count'), 'utf8')).toBe('once\n');
+    },
+  );
+
   it('recovers an interrupted Archive through its emitted CLI command after removing an occupied destination without replaying checks or Specs', async () => {
     const f = await archiveReadyFixture();
     let run = await f.dispatch({ operation: 'inspect', runId: f.name });
@@ -562,7 +731,7 @@ describe('blocked Verifier recovery command contract', () => {
       shape_confirmation_hash: original.shape_confirmation_hash,
     });
     await fs.writeFile(path.join(f.projectRoot, 'left.mjs'), 'export const left = 2;\n');
-    run = await f.record(
+    await f.record(
       run.actions.findLast(({ status }) => status === 'pending')!,
       {
         summary: 'Repair the left module.',
@@ -588,7 +757,7 @@ describe('blocked Verifier recovery command contract', () => {
       reusedFrom: { candidateId: original.builder_handoff!.candidate_id },
     });
     const state = parseNativePortableState(run.state);
-    run = await f.record(
+    await f.record(
       run.actions.findLast(({ status }) => status === 'pending')!,
       {
         candidateId: state.builder_handoff!.candidate_id,
