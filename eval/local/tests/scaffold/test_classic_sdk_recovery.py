@@ -24,6 +24,30 @@ def load_validator():
     return module
 
 
+def test_post_archive_repair_selects_cache_regenerated_by_original_command(tmp_path):
+    instruction = (TASK / "instruction.md").read_text(encoding="utf-8")
+    assert "__pycache__/test_wordcount.*.pyc" in instruction
+    assert "Do not create a different cache" in instruction
+    for name in ("wordcount.py", "test_wordcount.py", "verify_coexistence.py"):
+        shutil.copyfile(TASK / "environment" / name, tmp_path / name)
+    proposal = tmp_path / "docs/openspec/changes/parked-format/proposal.md"
+    proposal.parent.mkdir(parents=True)
+    proposal.write_bytes(b"# Parked format\nKeep this unrelated formatting request pending.\n")
+    for _ in range(2):
+        result = subprocess.run(
+            [sys.executable, "-I", "verify_coexistence.py"],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        caches = list((tmp_path / "__pycache__").glob("test_wordcount.*.pyc"))
+        assert len(caches) == 1
+        assert not list((tmp_path / "__pycache__").glob("wordcount.*.pyc"))
+        caches[0].unlink()
+
+
 def test_scoped_verify_requires_bound_coexistence_observation(tmp_path):
     module = load_validator()
     script = (TASK / "environment/verify_coexistence.py").read_bytes()
