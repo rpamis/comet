@@ -2833,7 +2833,10 @@ describe('skills', () => {
       expect(zhDecisionPoint).toContain('存在 `AskUserQuestion` 时，使用它展示单选/多选选项');
       expect(zhDecisionPoint).toContain('若无法使用 `AskUserQuestion`');
       expect(zhDecisionPoint).toContain('本会话后续决策点不得反复重试它');
-      expect(zhDecisionPoint).toContain('否则在对话中提出明确选项并等待用户回复');
+      expect(zhDecisionPoint).toContain('否则在对话中提出明确选项');
+      expect(zhDecisionPoint).toContain('结束当前回复');
+      expect(zhDecisionPoint).toContain('用户针对所展示内容的实际回复');
+      expect(zhDecisionPoint).toContain('收到回复前，不执行对应的批准命令或应用确认哈希');
       expect(zhDecisionPoint).toContain('不得用推荐规则、默认值、历史偏好');
       expect(zhOpen).toContain('### 1b. 整理需求并确定 Change 名称');
       expect(zhOpen).toContain('范围与命名都明确时直接继续');
@@ -3269,9 +3272,12 @@ describe('skills', () => {
         .toContain('Use `AskUserQuestion` for single-select or multi-select choices');
       expect(enDecisionPoint).toContain('If `AskUserQuestion` cannot be used');
       expect(enDecisionPoint).toContain('Do not repeatedly retry it at later decision points');
-      expect
-        .soft(enDecisionPoint)
-        .toContain('otherwise present clear text options and wait for the reply');
+      expect.soft(enDecisionPoint).toContain('otherwise present clear text options');
+      expect(enDecisionPoint).toContain('end the current response');
+      expect(enDecisionPoint).toContain("user's actual reply about the presented content");
+      expect(enDecisionPoint).toContain(
+        'Do not run the corresponding approval command or apply a confirmation hash before that reply',
+      );
       expect
         .soft(enDecisionPoint)
         .toContain('Never substitute recommendations, defaults, historical preferences');

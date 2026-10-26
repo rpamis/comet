@@ -11,6 +11,31 @@ async function englishSkill(name: string): Promise<string> {
 }
 
 describe('Classic Chinese Skill SDK routing', () => {
+  it.each(['comet-classic', 'comet-open', 'comet-design'])(
+    'ends the response before newly presented %s content can be approved in Chinese',
+    async (name) => {
+      const skill = await chineseSkill(name);
+      expect(skill).toContain('必须展示后结束当前回复');
+      expect(skill).toContain('不能在同一回复中执行批准命令');
+      expect(skill).toContain('仅为留档展示');
+      expect(skill).toContain('直接实施、关闭可选审查及本地提交授权');
+      expect(skill).toContain('同一未变');
+    },
+  );
+  it.each(['comet-classic', 'comet-open', 'comet-design'])(
+    'ends the response before newly presented %s content can be approved in English',
+    async (name) => {
+      const skill = await englishSkill(name);
+      expect(skill).toContain('end the current response after presenting it');
+      expect(skill).toContain('Do not execute an approval command in that same response');
+      expect(skill).toContain('standing authorization');
+      expect(skill).toContain('for the record');
+      expect(skill).toContain(
+        'permission to implement directly, disable optional reviews, or commit locally',
+      );
+      expect(skill).toContain('same unchanged');
+    },
+  );
   it('loads Open and Design Skills and enforces the confirmed reply rule at the Chinese entry', async () => {
     const skill = await chineseSkill('comet-classic');
     expect(skill).toContain('**立即执行：** 使用 Skill 工具加载 comet-open 技能。禁止跳过此步骤。');

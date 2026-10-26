@@ -3212,6 +3212,39 @@
           ]
         }
       ]
+    },
+    {
+      "id": "classic-presented-proposal-response-boundary",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "behavior": "Classic首次展示尚未获批的Open产物或Design提案后结束当前回复，收到针对当前内容的实际用户回复后才批准。",
+      "coverageLevel": "unit",
+      "reproduction": "真实最难Classic样本recovery051_classic_retry_89ff41a837144ecea52dc797d2de9cb1加载了当前入口和阶段Skill，仍以standing authorization及for the record为由在同一回复内展示后自行批准Open与Design，实际对应用户回复为零。",
+      "expected": "入口和两个阶段均明确结束回复并等待实际回复；直接实施、关闭可选审查和本地提交授权不能替代新产物批准；已明确获批的同一未变内容继续复用。",
+      "forbidden": "展示后同一回复立即执行批准，或把任务授权及留档说明当作实际用户回复；为修复而重复询问已有效批准的未变内容。",
+      "rootCause": "旧规则仅在文本提问时要求结束回复，模型把展示解释为留档而未实际提问，自行沿用初始任务授权。",
+      "tests": [
+        {
+          "file": "test/domains/skill/classic-sdk-skill-routing.test.ts",
+          "namePattern": "ends the response before newly presented",
+          "requiredNames": [
+            "Classic Chinese Skill SDK routing ends the response before newly presented comet-classic content can be approved in Chinese",
+            "Classic Chinese Skill SDK routing ends the response before newly presented comet-open content can be approved in Chinese",
+            "Classic Chinese Skill SDK routing ends the response before newly presented comet-design content can be approved in Chinese",
+            "Classic Chinese Skill SDK routing ends the response before newly presented comet-classic content can be approved in English",
+            "Classic Chinese Skill SDK routing ends the response before newly presented comet-open content can be approved in English",
+            "Classic Chinese Skill SDK routing ends the response before newly presented comet-design content can be approved in English"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real hardest Classic task with actual post-presentation user replies and unchanged recovery assertions",
+          "status": "pending",
+          "evidence": [
+            "f3ebf349 model sample retained as failed: Open and Design approved with no scoped user reply. Six focused contracts fail before the instruction correction. Fresh Classic model acceptance is required; static contracts cannot close it."
+          ]
+        }
+      ]
     }
   ]
 }

@@ -216,7 +216,7 @@ After all OpenSpec artifacts and content checks are complete, use `runtimeFormat
 
 This final review confirms the change name, scope, and artifact content together. Step 1b does not replace it; do not add a separate routine summary/name approval before it either.
 
-A request to "author and confirm artifacts" does not approve the artifacts produced afterward, even if it specifies every feature, file content, and example. First present the current reviewable artifacts and wait for the user's actual reply about those contents. Without a reply, do not run an approval command or claim that the user has confirmed. When asking in text, end the current response and wait for the answer. Reuse explicit confirmation of the same unchanged artifacts without asking again.
+A request to "author and confirm artifacts" does not approve the artifacts produced afterward, even if it specifies every feature, file content, and example. First present the current reviewable artifacts and wait for the user's actual reply about those contents. Without a reply, do not run an approval command or claim that the user has confirmed. For newly presented content that is not already explicitly approved, end the current response after presenting it and wait for the user's actual reply. Do not execute an approval command in that same response. Calling the task "standing authorization" or presenting a proposal "for the record" is not a user reply; permission to implement directly, disable optional reviews, or commit locally does not approve new Open artifacts or Design proposals. Reuse explicit confirmation of the same unchanged artifacts without asking again.
 
 Present a single-choice question with this summary and both options:
 

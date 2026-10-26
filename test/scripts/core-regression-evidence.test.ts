@@ -140,7 +140,7 @@ describe('cross-platform core regression evidence', () => {
     temporary.push(root);
     await fs.mkdir(path.join(root, 'test/scripts'), { recursive: true });
     await fs.writeFile(path.join(root, 'package.json'), '{"name":"fixture","type":"module"}\n');
-    await fs.writeFile(path.join(root, '.gitignore'), 'node_modules/\ncoverage/\n');
+    await fs.writeFile(path.join(root, '.gitignore'), '/node_modules\ncoverage/\n');
     await fs.writeFile(
       path.join(root, 'test/scripts/example.test.ts'),
       `import { it, expect } from 'vitest';\nit('native-fixture', () => expect(true).toBe(true));\nit('${windowsGroup}', () => expect(true).toBe(true));\n`,
@@ -206,6 +206,40 @@ describe('cross-platform core regression evidence', () => {
     await expect(verifyCoreRegressionReceipt(root, entries, completeFile)).rejects.toThrow(
       /dirty/iu,
     );
+    if (process.platform !== 'win32') {
+      execFileSync(
+        'git',
+        ['add', '--force', '--', 'node_modules', 'test/scripts/example.test.ts'],
+        {
+          cwd: root,
+        },
+      );
+      expect(
+        execFileSync('git', ['ls-files', '--stage', '--', 'node_modules'], {
+          cwd: root,
+          encoding: 'utf8',
+        }),
+      ).toMatch(/^120000 /u);
+      execFileSync(
+        'git',
+        [
+          '-c',
+          'user.name=Fixture',
+          '-c',
+          'user.email=fixture@example.test',
+          '-c',
+          'commit.gpgsign=false',
+          'commit',
+          '--quiet',
+          '-m',
+          'deliberately tracked dependency link',
+        ],
+        { cwd: root },
+      );
+      await expect(coreRegressionCandidateIdentity(root)).rejects.toThrow(
+        /Unstable core regression input: node_modules/u,
+      );
+    }
   }, 60_000);
   it('combines only complete original CI platform records for the current clean candidate', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-core-ci-'));

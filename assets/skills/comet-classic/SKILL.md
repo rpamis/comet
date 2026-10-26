@@ -17,7 +17,7 @@ When the current SDK Action specifies `comet-design`:
 
 **Immediately execute:** Use the Skill tool to load the comet-design skill. Skipping this step is prohibited.
 
-After the skill loads, continue the current Run and its corresponding phase. A request to "author and confirm artifacts" does not approve the artifacts produced afterward, even if it specifies every feature, file content, and example. First present the current reviewable artifacts and wait for the user's actual reply about those contents. Without a reply, do not run an approval command or claim that the user has confirmed. When asking in text, end the current response and wait for the answer. Reuse explicit confirmation of the same unchanged artifacts without asking again.
+After the skill loads, continue the current Run and its corresponding phase. A request to "author and confirm artifacts" does not approve the artifacts produced afterward, even if it specifies every feature, file content, and example. First present the current reviewable artifacts and wait for the user's actual reply about those contents. Without a reply, do not run an approval command or claim that the user has confirmed. For newly presented content that is not already explicitly approved, end the current response after presenting it and wait for the user's actual reply. Do not execute an approval command in that same response. Calling the task "standing authorization" or presenting a proposal "for the record" is not a user reply; permission to implement directly, disable optional reviews, or commit locally does not approve new Open artifacts or Design proposals. Reuse explicit confirmation of the same unchanged artifacts without asking again.
 
 ## 1. Resolve the Target and Workspace
 
