@@ -85,7 +85,7 @@ export async function coreRegressionCandidateIdentity(projectRoot) {
     }).trim();
   const revision = git('rev-parse', 'HEAD');
   const assertClean = () => {
-    if (git('status', '--porcelain', '--untracked-files=normal'))
+    if (git('status', '--porcelain', '--untracked-files=normal', '--ignore-submodules=dirty'))
       throw new Error(
         'Core regression candidate has dirty or untracked inputs; commit the reviewed candidate first',
       );

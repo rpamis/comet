@@ -14,6 +14,16 @@ from scaffold.python.paths import get_tasks_dir
 from scaffold.python.tasks import list_tasks, load_task
 
 
+def test_current_classic_treatments_follow_the_required_unified_entry_before_classic():
+    from scaffold.python.treatments import load_treatments
+
+    treatments = load_treatments()
+    for name in ("COMET_CLASSIC_DOCS_LAYOUT", "COMET_CLASSIC_LEGACY_LAYOUT"):
+        guidance = treatments[name].claude_md
+        assert guidance.startswith("Begin by invoking /comet for this Classic task")
+        assert "routing to /comet-classic" in guidance
+
+
 BASIC_TASK_TOML = """
 [metadata]
 name = "test-basic"

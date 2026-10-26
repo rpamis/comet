@@ -1770,6 +1770,78 @@ def test_decision_point_detector_accepts_numbered_archive_reply():
     assert result.returncode == 0
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Please reply 1 or 2.",
+        "Please reply **1** or **2**",
+        "The new delivery scope is above.\nReply 1 or 2.",
+    ],
+)
+def test_decision_point_detector_accepts_plain_numeric_approval_options(text):
+    assert utils.run_shell("decision-point.sh", text, check=False).returncode == 0
+
+
+@pytest.mark.parametrize("turn", [2, 5, 6, 7])
+def test_decision_point_detector_accepts_original_104058_choice_replies(turn):
+    fixture = Path(__file__).parents[1] / "fixtures/classic-104058-decision-replies.json"
+    record = json.loads(fixture.read_text(encoding="utf8"))
+    assert record["experiment"] == "recovery051_classic_output_20261026_104058"
+    text = next(case["text"] for case in record["cases"] if case["turn"] == turn)
+    assert utils.run_shell("decision-point.sh", text, check=False).returncode == 0
+
+
+def test_claude_loop_sends_a_real_reply_to_plain_numeric_approval(tmp_path: Path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake = fake_bin / "claude"
+    fake.write_text(
+        """#!/usr/bin/env bash
+printf '%s\\n' '{"type":"system","session_id":"subject-1"}'
+case "$*" in
+  *"APPROVE CURRENT PROPOSAL"*)
+    printf '%s\\n' '{"type":"result","subtype":"success","session_id":"subject-1","result":"Workflow completed through all phases and archived."}' ;;
+  *)
+    printf '%s\\n' '{"type":"result","subtype":"success","session_id":"subject-1","result":"Current delivery proposal is above. Please reply 1 or 2."}' ;;
+esac
+""",
+        encoding="utf8",
+        newline="\n",
+    )
+    fake.chmod(0o755)
+    result = subprocess.run(
+        [
+            utils.BASH_EXEC,
+            utils._to_bash_path(utils.SHELL_DIR / "run-claude-loop.sh"),
+            "Implement the requested change.",
+            "--max-turns",
+            "3",
+            "--decision-reply",
+            "APPROVE CURRENT PROPOSAL",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf8",
+        errors="replace",
+        timeout=AGENT_FIXTURE_TIMEOUT,
+        check=False,
+        env=_isolated_fake_agent_env(fake_bin, "claude"),
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stderr.count("deterministic decision reply applied") == 1
+    assert "no decision point and not complete" not in result.stderr
+    assert "finished after 2 turns" in result.stderr
+    assert "workflow completion detected" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["The user replied 1 or 2 earlier. Done.", "Recorded reply 1 or 2 in the historical summary."],
+)
+def test_decision_point_detector_does_not_reopen_historical_numeric_replies(text):
+    assert utils.run_shell("decision-point.sh", text, check=False).returncode == 1
+
+
 @pytest.mark.parametrize("text", ["**Do you approve this spec?**", "**是否批准当前方案？**"])
 def test_decision_point_accepts_markdown_questions(text):
     assert utils.run_shell("decision-point.sh", text, check=False).returncode == 0

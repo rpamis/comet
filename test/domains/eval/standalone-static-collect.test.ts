@@ -87,6 +87,29 @@ function pythonAccepts(manifest: string): boolean {
 describe('standalone static collector parity', () => {
   it.each<[string, string, number?]>([
     [
+      'recognizes every approval request preserved from the original Classic failure',
+      'local/tests/scaffold/test_utils.py::test_decision_point_detector_accepts_original_104058_choice_replies',
+      4,
+    ],
+    [
+      'sends an actual approval reply for numeric delivery options instead of a continuation nudge',
+      'local/tests/scaffold/test_utils.py::test_claude_loop_sends_a_real_reply_to_plain_numeric_approval',
+    ],
+    [
+      'aligns both Classic layout treatments with the required unified entry',
+      'local/tests/scaffold/test_tasks.py::test_current_classic_treatments_follow_the_required_unified_entry_before_classic',
+    ],
+    [
+      'keeps destructive and unbound shell cleanup rejected',
+      'local/tests/scaffold/test_profiles.py::test_generic_safety_keeps_dangerous_or_unbound_cleanup_blocked',
+      18,
+    ],
+    [
+      'accepts explicit temporary cleanup APIs without relaxing shell deletion patterns',
+      'local/tests/scaffold/test_profiles.py::test_generic_safety_accepts_explicit_temporary_resource_cleanup',
+      2,
+    ],
+    [
       'keeps the approved hardest-task matrix at three independent successes per workflow',
       'local/tests/scaffold/test_regression_check.py::test_recovery_release_requires_all_three_samples_of_both_hard_tasks',
     ],

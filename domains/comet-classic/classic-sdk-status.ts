@@ -20,6 +20,9 @@ import {
 import { resolveClassicStateFile } from './classic-state-file.js';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
 
+export const classicSdkCheckInstruction =
+  '执行当前检查 Action；Runtime 会绑定原命令、输入快照和收据，并校验后续证据。默认单次真实执行；--local 不是执行位置开关，而是允许确定性检查复用。任务要求每阶段真实执行、命令有副作用或读取外部状态时，禁止添加 --local；只有任务允许且完整输入和执行条件确定时才显式选择复用。';
+
 /** 仅投影本次读取或提交的 Run；后续操作仍须重新校验版本与证据。 */
 export function classicSdkNextAction(run: WorkflowRun) {
   if (run.status === 'completed') return { kind: 'done' } as const;
@@ -46,6 +49,7 @@ export function classicSdkNextAction(run: WorkflowRun) {
       attempt: action.attempt,
       inputHash: action.inputHash,
       ...(ref ? { ref } : {}),
+      ...(ref === 'classic-check' ? { instruction: classicSdkCheckInstruction } : {}),
     };
   }
   const evidence = run.evidenceWaits?.find((wait) => wait.status === 'pending');

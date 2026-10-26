@@ -107,6 +107,20 @@ describe('Classic next-step source projection', () => {
     expect(build.completion?.instruction).toContain('不得重复 task-complete');
   });
 
+  it('keeps fresh-check requirements visible before opting into local reuse', () => {
+    const run = fixture('full.build.check');
+    const before = structuredClone(run);
+    const continuation = classicSdkContinuation(run, root, 'demo');
+    const next = classicSdkNextAction(run);
+    expect(next).toMatchObject({ instruction: continuation.instruction });
+    expect(continuation.instruction).toContain('--local');
+    expect(continuation.instruction).toContain('不是执行位置');
+    expect(continuation.instruction).toContain('每阶段真实执行');
+    expect(continuation.instruction).toContain('禁止');
+    expect(continuation.commandArgs).not.toContain('--local');
+    expect(run).toEqual(before);
+  });
+
   it('requests a full delivery commit hash from the actual Git HEAD', () => {
     const delivery = classicSdkContinuation(
       fixture('full.archive.deliver', 'comet-archive'),

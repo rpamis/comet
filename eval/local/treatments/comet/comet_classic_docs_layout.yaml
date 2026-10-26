@@ -3,7 +3,8 @@
 COMET_CLASSIC_DOCS_LAYOUT:
   description: 'Current Comet Classic workflow with docs/openspec and docs/superpowers roots'
   claude_md: |
-    Begin by invoking /comet-classic. Initialize a new Classic project with
+    Begin by invoking /comet for this Classic task, then follow its Classic
+    routing to /comet-classic. Initialize a new Classic project with
     classic.artifact_layout `docs`. Resolve paths with `comet classic root show`
     and execute every OpenSpec command through `comet classic openspec --`.
     The terminal project must use docs/openspec and docs/superpowers without
@@ -112,7 +113,8 @@ COMET_CLASSIC_DOCS_LAYOUT:
 COMET_CLASSIC_LEGACY_LAYOUT:
   description: 'Current Comet Classic workflow with the explicit root-level legacy OpenSpec layout'
   claude_md: |
-    Begin by invoking /comet-classic. This is the current legacy-compatibility
+    Begin by invoking /comet for this Classic task, then follow its Classic
+    routing to /comet-classic. This is the current legacy-compatibility
     scenario: initialize the project with an explicit
     classic.artifact_layout `legacy`, resolve paths with
     `comet classic root show`, and execute every OpenSpec command through

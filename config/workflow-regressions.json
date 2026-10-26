@@ -2,6 +2,139 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "eval-native-temporary-resource-safety-guidance",
+      "behavior": "固定Native恢复任务明确临时JSON资源清理要求，保留原危险命令评分及全部业务恢复断言。",
+      "coverageLevel": "unit",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "reproduction": "Native104058三条mktemp后rm-rf清理命中原保守规则；旧报告安全和效率均为0。词法例外被Review实测动态文件描述符改写变量的反例否决，评分保持原样。",
+      "expected": "任务使用TemporaryDirectory或精确unlink后rmdir；原rm-rf、reset-hard和下载脚本管道规则及历史反例保留，所有冷恢复与一次性检查仍必做。",
+      "forbidden": "按Shell变量名放宽删除、修改旧报告评分，或为过安全检查删除原业务和恢复要求。",
+      "rootCause": "任务未说明固定保守删除模式也适用于临时请求文件；仅凭变量名不能确认Shell目标绑定。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "keeps destructive and unbound shell cleanup rejected",
+          "requiredNames": [
+            "standalone static collector parity keeps destructive and unbound shell cleanup rejected"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "accepts explicit temporary cleanup APIs without relaxing shell deletion patterns",
+          "requiredNames": [
+            "standalone static collector parity accepts explicit temporary cleanup APIs without relaxing shell deletion patterns"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "binds the Native recovery task to its fixed completion Run and brief table location",
+          "requiredNames": [
+            "standalone static collector parity binds the Native recovery task to its fixed completion Run and brief table location"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real Native hardest-task completion with explicit temporary cleanup and original safety floor",
+          "status": "pending",
+          "evidence": [
+            "Original 104058 failures remain unchanged. Targeted fixtures verify only their declared deterministic boundary; current model acceptance is still required."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-fresh-check-opt-in-guidance",
+      "behavior": "Classic检查投影明确单次执行为默认，逐阶段真实检查或副作用检查不能误加local复用选项。",
+      "coverageLevel": "unit",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "reproduction": "104058在Build与Verify都加--local，Verify复用Build原收据，helper只执行两次；任务明确禁止可复用，原validator与执行计数正确拒绝。当前提示断言在修改前失败。",
+      "expected": "nextAction与continuation共用复用前提，命令模板默认不含--local，不变更Run；完整输入确定且任务允许时仍可显式复用。",
+      "forbidden": "把--local当本机执行位置、要求真实执行时仍复用、删减三次执行或原reused:false断言。",
+      "rootCause": "检查交接只给执行及收据说明，用户的真实执行要求未在复用选择附近得到提示。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-output.test.ts",
+          "namePattern": "keeps fresh-check requirements visible before opting into local reuse",
+          "requiredNames": [
+            "Classic next-step source projection keeps fresh-check requirements visible before opting into local reuse"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real Classic post-archive repair retaining all original non-reusable check and counter assertions",
+          "status": "pending",
+          "evidence": [
+            "Original 104058 failures remain unchanged. Targeted fixtures verify only their declared deterministic boundary; current model acceptance is still required."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-classic-unified-entry-treatment",
+      "behavior": "当前Classic treatment与任务要求保持统一入口一致，先加载comet再按Classic路由进入。",
+      "coverageLevel": "unit",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "reproduction": "104058任务要求/comet且校验其真实调用，但treatment要求首先/comet-classic，合法Classic直接入口因此仍不满足本例明确入口要求。两个布局的精确契约修改前失败。",
+      "expected": "docs与legacy treatment先调用/comet并进入/comet-classic，保留两个布局与真实Skill调用检查。",
+      "forbidden": "删除required comet断言、把文本提及当真实Skill调用，或改变任务布局与业务验收。",
+      "rootCause": "固定任务和treatment对入口给出冲突指令。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "aligns both Classic layout treatments with the required unified entry",
+          "requiredNames": [
+            "standalone static collector parity aligns both Classic layout treatments with the required unified entry"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real configured GLM Classic hardest-task unified entry and original Skill checks",
+          "status": "pending",
+          "evidence": [
+            "Original 104058 failures remain unchanged. Targeted fixtures verify only their declared deterministic boundary; current model acceptance is still required."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-plain-numeric-choice-reply",
+      "behavior": "模型展示新提案并要求回复数字选项时，控制器发送本次决定的真实回复，不用继续提示代替批准。",
+      "coverageLevel": "unit",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "reproduction": "Classic附加104058第7轮展示重检后的范围并请求Please reply 1 or 2；控制器漏判，发送nudge，第8轮记录批准。三个纯数字请求用例修改前均失败。 原同轮第2、5、6轮还分别遗漏reply with your choice、1, 2, or 3和1–5；保存原完整回复及报告摘要后，四个原始回复回归先3失败1通过，再全部通过。",
+      "expected": "识别当前数字选项请求并发送确定性决定回复；历史回复摘要不重新提问，根流程完成后结束。",
+      "forbidden": "漏掉当前确认、把nudge当批准、仅凭Runtime Wait resolved倒推真实回复，或将历史数字摘要当新请求。",
+      "rootCause": "确认语句识别支持问题和字母选项，遗漏直接数字选项回复。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "sends an actual approval reply for numeric delivery options instead of a continuation nudge",
+          "requiredNames": [
+            "standalone static collector parity sends an actual approval reply for numeric delivery options instead of a continuation nudge"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "recognizes every approval request preserved from the original Classic failure",
+          "requiredNames": [
+            "standalone static collector parity recognizes every approval request preserved from the original Classic failure"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real Classic new delivery scope presented after recheck and approved by its actual reply",
+          "status": "pending",
+          "evidence": [
+            "Original 104058 failures remain unchanged. Targeted fixtures verify only their declared deterministic boundary; current model acceptance is still required."
+          ]
+        }
+      ]
+    },
+    {
       "id": "native-outcome-output-repair-diagnostic",
       "behavior": "Native结果漏写output或把业务字段放到结果顶层时，公开CLI指出outcome.output并保留原领取，合法修正后可以继续原Action。",
       "coverageLevel": "public-cli",
@@ -101,6 +234,13 @@
           "requiredNames": [
             "cross-platform core regression evidence does not start a coordinator with foreign code or a caller-supplied reduced plan"
           ]
+        },
+        {
+          "file": "test/scripts/core-regression-evidence.test.ts",
+          "namePattern": "ignores unrelated submodule content but rejects a changed gitlink revision",
+          "requiredNames": [
+            "cross-platform core regression evidence ignores unrelated submodule content but rejects a changed gitlink revision"
+          ]
         }
       ],
       "additionalAcceptance": [
@@ -108,7 +248,8 @@
           "layer": "actual Windows and Linux complete core catalog followed by bound release experiment",
           "status": "pending",
           "evidence": [
-            "20 targeted Node tests passed, including actual isolated Git/Vitest child execution and read-only proof verification; Python release harness fixtures and the prepared Linux tool probe passed. Full same-candidate cross-platform execution and formal model matrix remain unverified."
+            "20 targeted Node tests passed, including actual isolated Git/Vitest child execution and read-only proof verification; Python release harness fixtures and the prepared Linux tool probe passed. Full same-candidate cross-platform execution and formal model matrix remain unverified.",
+            "7452 first preflight preserved three Windows mandatory passes, then rejected only the unrelated website CRLF dirtiness in the same physical Linux mount; no model started. A real parent/child Git fixture now accepts unrelated child content but rejects changed HEAD and staged gitlink; website remains untouched."
           ]
         }
       ]

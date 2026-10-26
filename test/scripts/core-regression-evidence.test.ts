@@ -84,6 +84,47 @@ function platformRecord(platform: string, id: string) {
 }
 
 describe('cross-platform core regression evidence', () => {
+  it('ignores unrelated submodule content but rejects a changed gitlink revision', async () => {
+    const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-core-gitlink-'));
+    temporary.push(parent);
+    const root = path.join(parent, 'candidate');
+    const child = path.join(parent, 'upstream');
+    const git = (directory: string, ...args: string[]) =>
+      execFileSync(
+        'git',
+        [
+          '-c',
+          'user.name=Fixture',
+          '-c',
+          'user.email=fixture@example.test',
+          '-c',
+          'commit.gpgsign=false',
+          ...args,
+        ],
+        { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+      );
+    await fs.mkdir(child);
+    await fs.mkdir(root);
+    git(child, 'init', '--quiet');
+    await fs.writeFile(path.join(child, 'content.txt'), 'original\n');
+    git(child, 'add', '.');
+    git(child, 'commit', '--quiet', '-m', 'original child');
+    git(root, 'init', '--quiet');
+    await fs.writeFile(path.join(root, 'package.json'), '{"name":"fixture"}\n');
+    git(root, '-c', 'protocol.file.allow=always', 'submodule', 'add', '--quiet', child, 'website');
+    git(root, 'add', '.');
+    git(root, 'commit', '--quiet', '-m', 'original parent');
+    const original = await coreRegressionCandidateIdentity(root);
+    const worktree = path.join(root, 'website');
+    await fs.appendFile(path.join(worktree, 'content.txt'), 'unrelated edit\n');
+    await fs.writeFile(path.join(worktree, 'untracked.txt'), 'unrelated file\n');
+    expect(await coreRegressionCandidateIdentity(root)).toEqual(original);
+    git(worktree, 'add', '.');
+    git(worktree, 'commit', '--quiet', '-m', 'changed child');
+    await expect(coreRegressionCandidateIdentity(root)).rejects.toThrow(/dirty/iu);
+    git(root, 'add', 'website');
+    await expect(coreRegressionCandidateIdentity(root)).rejects.toThrow(/dirty/iu);
+  });
   it('does not start a coordinator with foreign code or a caller-supplied reduced plan', async () => {
     const foreign = path.join(os.tmpdir(), 'comet-foreign-core-' + Date.now());
     await expect(runCrossPlatformCoreRegressions(foreign, entries, {})).rejects.toThrow(

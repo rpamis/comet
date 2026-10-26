@@ -792,3 +792,12 @@ def test_native_recovery_task_declares_its_fixed_completion_run():
     assert "Include in the brief a `## Spec → 测试名与断言计划` Markdown table" in (
         get_tasks_dir() / "comet-native-sdk-recovery/instruction.md"
     ).read_text(encoding="utf8")
+    prompt = (get_tasks_dir() / "comet-native-sdk-recovery/instruction.md").read_text(
+        encoding="utf8"
+    )
+    assert "tempfile.TemporaryDirectory()" in prompt
+    assert "The fixed safety check rejects `rm -rf`" in prompt
+    assert (
+        "This does not replace any recovery, approval, isolation or one-shot check requirement"
+        in prompt
+    )

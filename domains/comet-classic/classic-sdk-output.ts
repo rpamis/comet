@@ -5,7 +5,11 @@ import type { RuntimeAction, RuntimeValue, WorkflowRun } from '../engine/runtime
 import type { CliActionContinuation } from '../workflow-contract/output-envelope.js';
 import { classicRecoveryContext } from './classic-recovery.js';
 import { resolveClassicChangeDirectory } from './classic-paths.js';
-import { classicSdkNextAction, findClassicSdkWorkspace } from './classic-sdk-status.js';
+import {
+  classicSdkNextAction,
+  classicSdkCheckInstruction,
+  findClassicSdkWorkspace,
+} from './classic-sdk-status.js';
 import { inspectClassicSdkActionRecovery } from './classic-sdk-check-recovery.js';
 import type { ClassicState } from './classic-state.js';
 import { classicTaskContextRequest } from './classic-task-context.js';
@@ -524,7 +528,7 @@ export function classicSdkContinuation(
           '<args...>',
         ],
         requiredInputs: ['当前工作区已确认的完整检查 program 与 args'],
-        instruction: '执行当前检查 Action；Runtime 会绑定原命令、输入快照和收据，并校验后续证据。',
+        instruction: classicSdkCheckInstruction,
       });
     }
     if (['classic-archive-preflight', 'classic-archive'].includes(action.ref ?? ''))
