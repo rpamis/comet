@@ -2,6 +2,41 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "classic-delivery-recheck-request-direct-use",
+      "behavior": "归档后输出修复直接展示原检查的可提交请求及派发命令，在大段批准历史前说明下一步，避免猜测检查命令或读取Runtime源码。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "public-cli",
+      "reproduction": "130336补充模型业务oracle通过，但交付重检时三次误用check run/rerun，继而连续41次读源码；原continuation.request排在大量批准上下文之后。相同projection断言在475a80失败，隔离修正后32项通过，公开CLI原完整修复用例使用返回请求也通过。",
+      "expected": "JSON先给当前nextAction和continuation，在累计context前提供绑定原runId、revision、actionId的execute请求；正常检查仍默认单次，重检后须展示新范围并取得对应实际回复。",
+      "forbidden": "省略或改写历史批准、自动批准新范围、重注册其他检查命令、放宽原命令或输入绑定、重复Archive，或通过提高效率预算消除失败。",
+      "rootCause": "执行请求虽然已存在，但输出先展开累计批准；nextAction也没有说明交付重检必须直接派发该固定请求。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-output.test.ts",
+          "namePattern": "shows the original delivery recheck request before large approval context",
+          "requiredNames": [
+            "Classic next-step source projection shows the original delivery recheck request before large approval context"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "repairs late declared check outputs after Archive without replaying Archive or committing generated files",
+          "requiredNames": [
+            "Classic candidate revisions repairs late declared check outputs after Archive without replaying Archive or committing generated files"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM Classic post-Archive repair using the published recheck request with original approval, safety and efficiency assertions",
+          "status": "pending",
+          "evidence": [
+            "Original failed experiment recovery051_classic_output_20261026_130336 preserved: all business invariants passed, but new scope approval and efficiency failed (202 turns, 187 tools, 2844.207 seconds). Isolated projection 32/32 and public CLI repair 1/1 passed; real model rerun still pending."
+          ]
+        }
+      ]
+    },
+    {
       "id": "release-suite-frozen-task-prebuild",
       "behavior": "固定发布矩阵在收集时登记同一批真实任务，Docker预构建只读取已冻结任务，不能因缺少单个Skill任务解析而启动失败。",
       "sources": ["report:2026-10-26-051-release-closure"],

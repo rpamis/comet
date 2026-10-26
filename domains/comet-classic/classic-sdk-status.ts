@@ -21,7 +21,10 @@ import { resolveClassicStateFile } from './classic-state-file.js';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
 
 export const classicSdkCheckInstruction =
-  '执行当前检查 Action；Runtime 会绑定原命令、输入快照和收据，并校验后续证据。默认单次真实执行；--local 不是执行位置开关，而是允许确定性检查复用。任务要求每阶段真实执行、命令有副作用或读取外部状态时，禁止添加 --local；只有任务允许且完整输入和执行条件确定时才显式选择复用。';
+  '执行当前检查 Action；Runtime 会绑定原命令、输入快照和收据，并校验后续证据。默认单次真实执行；--local 不是执行位置开关，而是允许确定性检查复用。任务要求每阶段真实执行、命令有副作用或读取外部状态时，禁止添加 --local；只有任务允许且完整输入和执行条件确定时才显式选择复用。使用 --json 时解析完整 stdout，stderr 单独保留，不合并后截断解析。';
+
+export const classicSdkDeliveryCheckInstruction =
+  '交付修复检查已固定原 Verify 命令。将 data.continuation.request 原样保存为 JSON 文件，按 data.continuation.commandArgs 调用 runtime dispatch；不使用 check run 或 check rerun 重新登记检查。Runtime 仍校验原命令、输入和收据，不重放 Archive。检查成功后展示新交付范围，结束当前回复并等待用户针对本范围的实际回答。使用 --json 时解析完整 stdout，stderr 单独保留。';
 
 /** 仅投影本次读取或提交的 Run；后续操作仍须重新校验版本与证据。 */
 export function classicSdkNextAction(run: WorkflowRun) {
@@ -49,7 +52,13 @@ export function classicSdkNextAction(run: WorkflowRun) {
       attempt: action.attempt,
       inputHash: action.inputHash,
       ...(ref ? { ref } : {}),
-      ...(ref === 'classic-check' ? { instruction: classicSdkCheckInstruction } : {}),
+      ...(ref === 'classic-check'
+        ? {
+            instruction: action.stepId.endsWith('.delivery.check')
+              ? classicSdkDeliveryCheckInstruction
+              : classicSdkCheckInstruction,
+          }
+        : {}),
     };
   }
   const evidence = run.evidenceWaits?.find((wait) => wait.status === 'pending');

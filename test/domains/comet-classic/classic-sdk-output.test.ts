@@ -58,6 +58,48 @@ function fixture(stepId = 'full.build.check', ref = 'classic-check'): WorkflowRu
 const root = '/tmp/project with spaces';
 
 describe('Classic next-step source projection', () => {
+  it('shows the original delivery recheck request before large approval context', () => {
+    const run = fixture('full.delivery.check');
+    run.state = { ...(run.state as object), phase: 'archive', archived: true };
+    run.waits = [
+      {
+        id: 'approved-open',
+        stepId: 'full.open.confirm',
+        sequence: 1,
+        status: 'resolved',
+        proposal: { details: 'LARGE_APPROVAL_CONTEXT_' + 'x'.repeat(12000) },
+        proposalHash: 'approved-open-hash',
+        choices: ['approved', 'rejected'],
+        results: {},
+        decision: { id: 'actual-reply', choice: 'approved', proposalHash: 'approved-open-hash' },
+      },
+    ];
+    run.actionContexts['action-1'] = {
+      sequence: 2,
+      results: { 'full.open.confirm': { sequence: 1, value: { approved: true } } },
+    };
+    const before = structuredClone(run);
+    const continuation = classicSdkContinuation(run, root, 'demo');
+    expect(continuation).toMatchObject({
+      mode: 'execute',
+      request: {
+        operation: 'execute',
+        runId: 'demo',
+        expectedRevision: 7,
+        actionId: 'action-1',
+        executorId: 'comet-classic-check',
+      },
+    });
+    const serialized = JSON.stringify(continuation);
+    expect(serialized.indexOf('"request":')).toBeLessThan(
+      serialized.indexOf('LARGE_APPROVAL_CONTEXT_'),
+    );
+    expect(serialized).toContain('LARGE_APPROVAL_CONTEXT_');
+    expect(classicSdkNextAction(run)?.instruction).toContain('data.continuation.request');
+    expect(continuation.instruction).toContain('data.continuation.request');
+    expect(run).toEqual(before);
+  });
+
   it.each(['design', 'delivery'])(
     'keeps task authorization separate from new %s proposal approval',
     (kind) => {

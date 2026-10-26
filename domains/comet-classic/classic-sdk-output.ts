@@ -8,6 +8,7 @@ import { resolveClassicChangeDirectory } from './classic-paths.js';
 import {
   classicSdkNextAction,
   classicSdkCheckInstruction,
+  classicSdkDeliveryCheckInstruction,
   findClassicSdkWorkspace,
 } from './classic-sdk-status.js';
 import { inspectClassicSdkActionRecovery } from './classic-sdk-check-recovery.js';
@@ -280,7 +281,6 @@ export function classicSdkContinuation(
     schema: 'comet.classic.continuation.v1' as const,
     cwd: projectRoot,
     run: { id: run.runId, revision: run.revision, status: run.status },
-    current,
     automatic: state.autoTransition ?? true,
     ...(!['completed', 'cancelled'].includes(run.status) && !state.archived
       ? { contextRequest: classicTaskContextRequest(state, projectRoot, undefined, run.runId) }
@@ -308,7 +308,7 @@ export function classicSdkContinuation(
       };
     },
   ) {
-    return { ...base, ...continuation };
+    return { ...base, ...continuation, current };
   }
   const command = (operation: string, ...args: string[]) => [
     'comet',
@@ -510,8 +510,7 @@ export function classicSdkContinuation(
             actionId: action.id,
             executorId: 'comet-classic-check',
           },
-          instruction:
-            '沿用原 Verify 命令检查补声明的输出范围；不重做归档，检查后须确认新的交付提案。',
+          instruction: classicSdkDeliveryCheckInstruction,
         });
       const scope = action.stepId.includes('.build.') ? 'build' : 'verify';
       return result({
@@ -706,12 +705,6 @@ export async function classicSdkEntryData(
     change,
     runtimeFormat: 'sdk' as const,
     phase: state.phase,
-    configuration: state,
-    delivery: state.phase === 'archive' ? classicSdkDeliverySummary(run) : null,
-    projectRoot,
-    workspace: { projectRoot },
-    ...(editReviews.length ? { editReviews } : {}),
-    run: classicSdkRunSummary(run, details),
     nextAction:
       observation.openApprovalHash &&
       normalContinuation.mode === 'ask' &&
@@ -721,6 +714,12 @@ export async function classicSdkEntryData(
     continuation: edit
       ? { ...normalContinuation, ...edit, skill: undefined, completion: undefined }
       : normalContinuation,
+    configuration: state,
+    delivery: state.phase === 'archive' ? classicSdkDeliverySummary(run) : null,
+    projectRoot,
+    workspace: { projectRoot },
+    ...(editReviews.length ? { editReviews } : {}),
+    run: classicSdkRunSummary(run, details),
   };
   try {
     const { directory } = await resolveClassicChangeDirectory(change, projectRoot);

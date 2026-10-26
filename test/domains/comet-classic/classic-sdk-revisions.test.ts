@@ -454,15 +454,20 @@ describe('Classic candidate revisions', () => {
     expect((await f.inspect()).run.revision).toBe(repairing.revision);
     const request = path.join(path.dirname(f.projectRoot), 'delivery-recheck.json');
     await fs.writeFile(failFlag, 'fail this actual command');
-    await fs.writeFile(
-      request,
-      JSON.stringify({
-        operation: 'execute',
-        runId: before.runId,
-        actionId: repairing.actions.at(-1)!.id,
-        executorId: 'comet-classic-check',
-      }),
+    const recheck = await f.ok('state', 'next', 'example');
+    expect(recheck.continuation.request).toMatchObject({
+      operation: 'execute',
+      runId: before.runId,
+      expectedRevision: repairing.revision,
+      actionId: repairing.actions.at(-1)!.id,
+      executorId: 'comet-classic-check',
+    });
+    const serialized = JSON.stringify(recheck);
+    expect(serialized.indexOf('"continuation":')).toBeLessThan(
+      serialized.indexOf('"configuration":'),
     );
+    expect(recheck.nextAction.instruction).toContain('data.continuation.request');
+    await fs.writeFile(request, JSON.stringify(recheck.continuation.request));
     const checked = await runtimeDispatchCommand(
       { request, application: 'classic-full', projectRoot: f.projectRoot },
       { invocationCwd: f.projectRoot },
