@@ -211,6 +211,64 @@ def required_steps(profile):
     return steps
 
 
+def require_post_archive_output_repair(run):
+    if not isinstance(run, dict):
+        raise ValueError("Missing authoritative full Run for post-Archive repair")
+    actions = run.get("actions", [])
+    checks = []
+    for step in ("full.build.check", "full.verify.check", "full.delivery.check"):
+        successful = [
+            action
+            for action in actions
+            if action.get("stepId") == step and action.get("status") == "succeeded"
+        ]
+        if (
+            len(successful) != 1
+            or successful[0].get("outcome", {}).get("output", {}).get("reused") is not False
+        ):
+            raise ValueError("Post-Archive repair requires three original non-reused checks")
+        checks.append(successful[0])
+    archives = [action for action in actions if action.get("stepId") == "full.archive.execute"]
+    if len(archives) != 1 or archives[0].get("status") != "succeeded":
+        raise ValueError("Post-Archive repair must not replay Archive")
+    original_inputs = checks[1].get("outcome", {}).get("output", {}).get("deliveryInputs", {})
+    if not any(ref.startswith("__pycache__/") and ref.endswith(".pyc") for ref in original_inputs):
+        raise ValueError("Original Verify must bind the Python cache before output repair")
+    sequence = run.get("actionContexts", {}).get(checks[2]["id"], {}).get("sequence")
+    if type(sequence) is not int or not any(
+        wait.get("stepId") == "full.delivery.confirm"
+        and wait.get("status") == "resolved"
+        and wait.get("decision", {}).get("choice") == "approved"
+        and type(wait.get("sequence")) is int
+        and wait["sequence"] > sequence
+        for wait in run.get("waits", [])
+    ):
+        raise ValueError("New delivery scope must be approved after the actual recheck")
+
+
+def validate_post_archive_output_repair():
+    require_post_archive_output_repair(INSPECTIONS.get("classic:sentence-full", {}).get("run"))
+    history = subprocess.run(
+        [
+            "git",
+            "log",
+            "--all",
+            "--format=",
+            "--name-only",
+            "--",
+            ":(glob)**/__pycache__/**",
+            ":(glob)**/*.pyc",
+        ],
+        cwd=WORKSPACE,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    ).stdout
+    if history.strip():
+        raise ValueError("Python caches must never enter Git history")
+
+
 def validate_archive(name, profile):
     matches = list((WORKSPACE / CHANGES / "archive").glob(f"????-??-??-{name}"))
     if len(matches) != 1 or (WORKSPACE / CHANGES / name).exists():
@@ -410,6 +468,7 @@ def main():
     checks += [
         (name, lambda n=name, p=profile: validate_archive(n, p)) for name, profile in CASES.items()
     ]
+    checks.append(("post_archive_output_repair", validate_post_archive_output_repair))
     for name, check in checks:
         try:
             check()

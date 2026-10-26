@@ -138,6 +138,15 @@ describe('standalone static collector parity', () => {
       'local/tests/scaffold/test_regression_check.py::test_recovery_release_requires_all_three_samples_of_both_hard_tasks',
     ],
     [
+      'accepts exactly one requested passing sample of each hardest task',
+      'local/tests/scaffold/test_regression_check.py::test_recovery_release_accepts_one_requested_sample_of_each_hard_task',
+    ],
+    [
+      'requires the combined hardest Classic task to retain original post-Archive repair guards',
+      'local/tests/scaffold/test_sdk_task_validators.py::test_classic_hardest_post_archive_repair_retains_original_guards',
+      6,
+    ],
+    [
       'revalidates the complete six-sample recovery receipt without accepting the full-suite baseline',
       'local/tests/scaffold/test_regression_check.py::test_recovery_release_receipt_requires_six_independent_passing_samples',
     ],

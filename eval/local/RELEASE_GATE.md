@@ -4,14 +4,14 @@
 
 ## 覆盖范围
 
-本轮 051 验收按用户要求使用 `--suite recovery --count 3`：仅运行 `comet-native-sdk-recovery / COMET_NATIVE_SDK_CURRENT` 和 `comet-classic-sdk-recovery / COMET_CLASSIC_DOCS_LAYOUT`，各执行三个独立样本，六个样本必须全部通过。这里要求 3/3，通过一次不算达标；失败样本不能筛掉后补成三次成功。任务原断言、审批/安全/恢复维度及效率底线不变，确定性 badcase 核心回归和最终安装包验收仍需通过。附加问题若不在两个任务的原覆盖中，仍需保留对应的实际验收证据。
+本轮 051 验收按用户最新要求使用 `--suite recovery --count 1`：仅运行 `comet-native-sdk-recovery / COMET_NATIVE_SDK_CURRENT` 和 `comet-classic-sdk-recovery / COMET_CLASSIC_DOCS_LAYOUT` 各一次，两个样本必须全部通过。Classic 保留 full、tweak、hotfix 及 parked 并存要求，并在同一 full Run 验证归档后缓存输出修复、新检查和新范围批准，不另启动付费补充任务。原业务、审批、安全、恢复及效率底线不变；确定性核心回归和安装包验收继续保留。`--count 3` 仍是可选的六样本全部通过模式，不与本轮两样本记录混用。
 
 ```bash
-uv run --locked --no-sync --no-python-downloads python local/scripts/regression_check.py --suite recovery --count 3 --plan
-uv run --locked --no-sync --no-python-downloads python local/scripts/regression_check.py --suite recovery --count 3 --collect-only --workers 2
+uv run --locked --no-sync --no-python-downloads python local/scripts/regression_check.py --suite recovery --count 1 --plan
+uv run --locked --no-sync --no-python-downloads python local/scripts/regression_check.py --suite recovery --count 1 --collect-only --workers 2
 # 审核同一完整实验后初始化独立基线，再复核；不覆盖完整16组的基线。
-uv run --locked --no-sync --no-python-downloads python local/scripts/regression_check.py --suite recovery --count 3 --experiment release_<id> --initialize-baseline local/recovery_release_baseline.json
-uv run --locked --no-sync --no-python-downloads python local/scripts/regression_check.py --suite recovery --count 3 --experiment release_<id> --baseline local/recovery_release_baseline.json
+uv run --locked --no-sync --no-python-downloads python local/scripts/regression_check.py --suite recovery --count 1 --experiment release_<id> --initialize-baseline local/recovery_release_baseline.json
+uv run --locked --no-sync --no-python-downloads python local/scripts/regression_check.py --suite recovery --count 1 --experiment release_<id> --baseline local/recovery_release_baseline.json
 ```
 
 以下完整矩阵保留为显式 `--suite current` 的覆盖说明，本轮不要求执行。两个范围的实验、矩阵摘要及基线不能互换，也不能把六个最高难度样本称为完整16组通过。

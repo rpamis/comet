@@ -40,5 +40,5 @@ completion_runs = [
     { name = "characters-tweak", profile = "tweak" },
     { name = "missing-file-hotfix", profile = "hotfix" },
 ]
-decision_reply = "I approve the proposed scope, current workspace isolation and direct implementation with optional reviews off. Complete only the current change's verified local Git delivery, without push or PR, and preserve parked-format untouched. Continue with the remaining specified profiles afterward."
+decision_reply = "I approve only the decision requested for the current phase and the scope actually presented in your immediately preceding response. Current workspace isolation, direct implementation and optional reviews off are approved. This reply does not approve other phases, future proposals or revised delivery scope; present each new requested decision and wait for a separate reply. Local Git delivery only, without push or PR; preserve parked-format untouched. Continue with the remaining specified profiles afterward."
 continue_prompt = "Invoke /comet, inspect the named Runs, and continue their exact next actions. Complete all three specified SDK profiles and verified local deliveries; do not advance, stage or commit parked-format."

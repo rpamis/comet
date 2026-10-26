@@ -308,8 +308,8 @@ def release_cases(suite: str = "current", count: int | None = None) -> tuple:
         raise GateError("未知发布验收范围")
     if count is not None:
         checked_count(count)
-        if suite == "recovery" and count != 3:
-            raise GateError("最高难度恢复验收要求 Native 与 Classic 各 3 次全部通过")
+        if suite == "recovery" and count not in {1, 3}:
+            raise GateError("最高难度恢复验收支持每项 1 次或 3 次；全部请求的样本都必须通过")
     return RECOVERY_RELEASE_CASES if suite == "recovery" else RELEASE_CASES
 
 

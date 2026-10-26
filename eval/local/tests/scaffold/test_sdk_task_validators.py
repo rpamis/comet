@@ -89,6 +89,57 @@ def _validator(task: str, script: str):
     return module
 
 
+@pytest.mark.parametrize(
+    "broken",
+    [None, "missing-check", "reused", "repeated-archive", "early-approval", "missing-cache"],
+)
+def test_classic_hardest_post_archive_repair_retains_original_guards(broken):
+    validator = _validator("comet-classic-sdk-recovery", "test_classic_sdk_recovery.py")
+    run = {
+        "actions": [
+            {
+                "id": step,
+                "stepId": step,
+                "status": "succeeded",
+                "outcome": {"output": {"reused": False}},
+            }
+            for step in [
+                "full.build.check",
+                "full.verify.check",
+                "full.archive.execute",
+                "full.delivery.check",
+            ]
+        ],
+        "actionContexts": {"full.delivery.check": {"sequence": 3}},
+        "waits": [
+            {
+                "stepId": "full.delivery.confirm",
+                "status": "resolved",
+                "sequence": 4,
+                "decision": {"choice": "approved"},
+            }
+        ],
+    }
+    run["actions"][1]["outcome"]["output"]["deliveryInputs"] = {
+        "__pycache__/wordcount.cpython-311.pyc": "original-cache-hash"
+    }
+    if broken == "missing-check":
+        run["actions"].pop()
+    elif broken == "reused":
+        run["actions"][-1]["outcome"]["output"]["reused"] = True
+    elif broken == "repeated-archive":
+        run["actions"].append(dict(run["actions"][2]))
+    elif broken == "early-approval":
+        run["waits"][0]["sequence"] = 2
+    elif broken == "missing-cache":
+        run["actions"][1]["outcome"]["output"]["deliveryInputs"] = {}
+    if broken is None:
+        validator.require_post_archive_output_repair(run)
+    else:
+        with pytest.raises(ValueError):
+            validator.require_post_archive_output_repair(run)
+
+
 def test_classic_current_layout_rejects_terminal_compat_state_without_sdk_owner(tmp_path: Path):
     validator = _validator("comet-classic-layout-lifecycle", "test_classic_layout_lifecycle.py")
     validator.WORKSPACE = tmp_path

@@ -2,6 +2,53 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "eval-recovery-single-requested-sample",
+      "behavior": "按用户本轮要求只执行最高难度Native与Classic各一次，两个请求样本必须都通过；三次模式仍要求六个全部通过。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "runtime",
+      "reproduction": "用户明确把本轮各三次缩减为各一次；原收据规则拒绝count1。新增两样本完整收据断言在旧规则失败。",
+      "expected": "count1对应两任务各r1并严格校验同候选、全部断言与原维度底线；count3仍须六个独立样本，不混用两种样本数量。",
+      "forbidden": "把一次通过写成3/3、删除count3负例、从三次失败报告中挑一次冒充本轮一次，或降低审批、安全和效率底线。",
+      "rootCause": "前一轮固定三次的范围约束没有随用户最新明确样本数量更新。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "accepts exactly one requested passing sample of each hardest task",
+          "requiredNames": [
+            "standalone static collector parity accepts exactly one requested passing sample of each hardest task"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-classic-hardest-includes-post-archive-repair",
+      "behavior": "在原Classic最高难度三流程任务中，同时验证full同Run归档后的Python缓存输出修复，保持原全部业务与并存保护。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "runtime",
+      "reproduction": "130336补充任务业务通过但新范围自批及效率失败；本轮用户限定仅两项付费任务，故将该边界合并进原sentence-full，不能静默免去验收。前轮Classic r2实际执行rm-rf缓存清理，原安全评分正确拒绝。",
+      "expected": "full/tweak/hotfix及parked原断言全部保留；原Verify绑定实际pyc，三个非复用成功检查、Archive一次、重检后新批准且Git历史无缓存；清理仅unlink及空目录rmdir。",
+      "forbidden": "另启动第三个付费任务、删除原三个流程或并存断言、通过重放Archive或复用检查伪造恢复、提交缓存、递归删除或用早先条件授权自批新范围。",
+      "rootCause": "原最高难度任务没有强制Archive后缓存修复；独立补充验收会超过用户最新明确的付费样本范围。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "requires the combined hardest Classic task to retain original post-Archive repair guards",
+          "requiredNames": [
+            "standalone static collector parity requires the combined hardest Classic task to retain original post-Archive repair guards"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real hardest Classic single run with all original three profiles and post-Archive cache repair, actual new approval, unchanged safety and efficiency floors",
+          "status": "pending",
+          "evidence": [
+            "216 Python contract/validator tests passed; 2 capability-dependent tests skipped and not counted as model evidence. Original 429 experiments and their safety/approval/cost failures are preserved. Current combined real model acceptance not yet run."
+          ]
+        }
+      ]
+    },
+    {
       "id": "classic-delivery-recheck-request-direct-use",
       "behavior": "归档后输出修复直接展示原检查的可提交请求及派发命令，在大段批准历史前说明下一步，避免猜测检查命令或读取Runtime源码。",
       "sources": ["report:2026-10-26-051-release-closure"],

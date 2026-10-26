@@ -361,7 +361,24 @@ def test_recovery_release_requires_all_three_samples_of_both_hard_tasks(monkeypa
     assert len(plan["matrix"]["cases"]) == 6
     assert {case["rep"] for case in plan["matrix"]["cases"]} == {1, 2, 3}
     assert len(gate.suite_contract()["cases"]) == 16
-    assert cli.main(["--suite", "recovery", "--count", "1", "--plan"]) != 0
+    assert cli.main(["--suite", "recovery", "--count", "2", "--plan"]) != 0
+
+
+def test_recovery_release_accepts_one_requested_sample_of_each_hard_task(recovery_experiment):
+    experiment = recovery_experiment
+    for file in (experiment.root / "reports").glob("*.json"):
+        if gate.read_json(file)["rep"] != 1:
+            file.unlink()
+    write(experiment.root / "expected-case-matrix.json", gate.expected_matrix(1, "recovery"))
+    receipt = cli.make_receipt(experiment.root, 1, experiment.baseline, 0.1, "recovery")
+    assert receipt["sampleCount"] == 2
+    assert {sample["rep"] for sample in receipt["samples"]} == {1}
+    assert {sample["task"] for sample in receipt["samples"]} == {
+        "comet-native-sdk-recovery",
+        "comet-classic-sdk-recovery",
+    }
+    write(experiment.root / cli.RECEIPT_FILE, receipt)
+    cli.verify_receipt(experiment.root / cli.RECEIPT_FILE)
 
 
 def test_regression_check_help_imports_from_eval_working_directory():
