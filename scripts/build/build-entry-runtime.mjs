@@ -34,6 +34,7 @@ const hookRouterGuardExternal = {
 async function bundledRuntime(entry, plugins = []) {
   const result = await build({
     absWorkingDir: repoRoot,
+    tsconfig: path.join(repoRoot, 'tsconfig.json'),
     entryPoints: [entry],
     bundle: true,
     write: false,

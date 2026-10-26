@@ -46,6 +46,7 @@ export async function buildNativeFacade(
   const version = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8')).version;
   return build({
     absWorkingDir: root,
+    tsconfig: path.join(root, 'tsconfig.json'),
     entryPoints: ['app/commands/native.ts'],
     outfile: outputPath,
     bundle: true,

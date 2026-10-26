@@ -3107,6 +3107,25 @@
           ]
         }
       ]
+    },
+    {
+      "id": "runtime-build-location-consistency",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "behavior": "隔离候选位于node_modules内时，四类Runtime构建读取同一项目配置并生成与普通目录相同的产物。",
+      "coverageLevel": "public-cli",
+      "reproduction": "同一最小项目分别置于临时普通目录和node_modules下，调用实际四个构建脚本；旧代码第一个构建产物不相同。",
+      "expected": "Classic、Native、Entry与Native facade构建均成功，两种位置的对应输出逐字节相同。",
+      "forbidden": "隔离构建静默忽略项目TypeScript配置，导致冻结候选和发布目录产物漂移。",
+      "rootCause": "esbuild自动配置发现跳过node_modules内部项目，构建脚本未显式绑定tsconfig。",
+      "tests": [
+        {
+          "file": "test/scripts/runtime-build-location.test.ts",
+          "namePattern": "builds identical strict runtime bundles inside and outside node_modules",
+          "requiredNames": [
+            "builds identical strict runtime bundles inside and outside node_modules"
+          ]
+        }
+      ]
     }
   ]
 }

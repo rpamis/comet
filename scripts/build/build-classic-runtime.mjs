@@ -35,6 +35,7 @@ const banner = {
 
 const esbuildOptions = {
   absWorkingDir: repoRoot,
+  tsconfig: path.join(repoRoot, 'tsconfig.json'),
   bundle: true,
   write: false,
   platform: 'node',
