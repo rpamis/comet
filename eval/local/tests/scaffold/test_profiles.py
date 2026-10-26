@@ -1107,6 +1107,7 @@ def test_judge_provider_uses_direct_http_when_base_url_is_configured(
     assert request.full_url == "https://judge.example/api/anthropic/v1/messages"
     assert request.headers["Authorization"] == "Bearer judge-token"
     assert json.loads(request.data.decode("utf-8"))["model"] == api_model
+    assert json.loads(request.data.decode("utf-8"))["max_tokens"] >= 8192
     from scaffold.python.judge_config import build_judge_invocation
 
     assert build_judge_invocation().model == configured_model

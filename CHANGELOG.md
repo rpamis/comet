@@ -21,6 +21,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Eval scoring reliability**: Keep recovery hashes containing `429` from being mislabeled as API rate limits, and allow reasoning-based judges enough output space to return their scores.
+
 - **Classic Archive input repair**: Reopen a stopped, failed archive on the same Run only after confirming that its original inputs and specifications are unchanged and no archive directory was created. Preserve the original failure, show OpenSpec diagnostics, and require fresh approval and verification before delivery ([#507](https://github.com/rpamis/comet/issues/507)).
 - **Classic SDK branch rebinding**: Let `state rebind` update the original Run after switching or deleting its former branch, including recovery from a portable checkpoint. Preserve execution history, reject unresolved work, and require new verification and Archive approval for the new branch ([#508](https://github.com/rpamis/comet/issues/508)).
 

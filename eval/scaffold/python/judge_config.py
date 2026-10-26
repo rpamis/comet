@@ -165,7 +165,8 @@ def _run_judge_http(prompt: str, invocation: JudgeInvocation, timeout: int = 120
     body = json.dumps(
         {
             "model": model,
-            "max_tokens": 2048,
+            # 推理模型共用输出预算；2048 token 曾在评分文本前耗尽。
+            "max_tokens": 8192,
             "messages": [{"role": "user", "content": prompt}],
         }
     ).encode("utf-8")

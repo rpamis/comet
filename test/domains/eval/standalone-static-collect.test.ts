@@ -87,6 +87,21 @@ function pythonAccepts(manifest: string): boolean {
 describe('standalone static collector parity', () => {
   it.each<[string, string, number?]>([
     [
+      'does not mistake recovery hashes for rate limits',
+      'local/tests/scaffold/test_sample_quality.py::test_completed_recovery_hash_is_not_a_rate_limit',
+      3,
+    ],
+    [
+      'keeps actual rate limits excluded after hash classification repair',
+      'local/tests/scaffold/test_sample_quality.py::test_real_rate_limit_is_still_excluded',
+      3,
+    ],
+    [
+      'reserves Judge output space after reasoning without changing model identity',
+      'local/tests/scaffold/test_profiles.py::test_judge_provider_uses_direct_http_when_base_url_is_configured',
+      5,
+    ],
+    [
       'excludes prior generated Eval output while binding real release inputs',
       'local/tests/scaffold/test_regression_check.py::test_candidate_harness_ignores_old_eval_outputs_but_binds_authored_skill_inputs',
     ],

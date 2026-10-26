@@ -20,7 +20,7 @@ _RUNNER_TIMEOUT_RE = re.compile(
     re.I,
 )
 _RATE_LIMIT_RE = re.compile(
-    r"(429|rate[_ -]?limit|insufficient quota|quota exceeded)",
+    r"((?<![A-Za-z0-9])429(?![A-Za-z0-9])|rate[_ -]?limit|insufficient quota|quota exceeded)",
     re.I,
 )
 _AUTH_RE = re.compile(

@@ -3,12 +3,38 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from scaffold.python.sample_quality import (
     include_in_analysis,
     infer_sample_quality,
     quality_from_report,
     sample_quality_dict,
 )
+
+
+@pytest.mark.parametrize(
+    "identity", ["a" * 20 + "429" + "b" * 41, "429" + "a" * 61, "a" * 61 + "429"]
+)
+def test_completed_recovery_hash_is_not_a_rate_limit(identity):
+    quality = infer_sample_quality(
+        events={"duration_seconds": 42, "total_tokens": 1000, "total_cost_usd": 0.12},
+        stdout=json.dumps({"type": "result", "duration_ms": 42000}) + "\n",
+        stderr="[loop] sdk-recovery-boundary " + json.dumps({"inputHash": identity}),
+        checks_failed=[],
+        returncode=0,
+    )
+    assert quality.status == "included"
+    assert quality.reason_code == "valid_signal"
+
+
+@pytest.mark.parametrize(
+    "message", ["HTTP 429", "status=429", "429 rate_limit_error: insufficient quota"]
+)
+def test_real_rate_limit_is_still_excluded(message):
+    quality = infer_sample_quality(stderr=message)
+    assert quality.status == "excluded"
+    assert quality.reason_code == "rate_limited"
 
 
 def test_api_timeout_is_excluded_from_analysis():

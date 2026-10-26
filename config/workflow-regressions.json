@@ -3245,6 +3245,63 @@
           ]
         }
       ]
+    },
+    {
+      "id": "eval-recovery-hash-rate-limit-classification",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "behavior": "Eval区分恢复摘要中的429与真实HTTP限流，保留限流、超时和网络失败的原有拦截。",
+      "coverageLevel": "unit",
+      "reproduction": "真实Native实验recovery051_native_current_792a6b50c942480eb9d681389c371d9d成功完成；stderr中两个SHA256含429，旧分类器标为环境失败。相同原始stderr和完整遥测在边界修正后归为有效信号。",
+      "expected": "SHA256任意位置的429不当作状态码；HTTP 429、status=429与rate_limit_error仍排除，其他环境失败仍保持原断言。",
+      "forbidden": "为通过发布忽略真实限流、丢弃原报告或修改实际效率分。",
+      "rootCause": "限流正则未限制429的词边界，误命中结构化恢复摘要。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "does not mistake recovery hashes for rate limits|keeps actual rate limits excluded after hash classification repair",
+          "requiredNames": [
+            "standalone static collector parity does not mistake recovery hashes for rate limits",
+            "standalone static collector parity keeps actual rate limits excluded after hash classification repair"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "read-only reclassification of preserved real Native stderr and unchanged complete telemetry",
+          "status": "verified",
+          "evidence": [
+            "native-quality-hash-429-prototype.json retains raw stderr SHA256 c910b50c752ff1fb868745370224fea8c08b0094da80a1e990abe3c9b9a36a64, exact two false matches, old flagged and repaired included classifications. Six real-error negatives remain excluded. Original model report remains unchanged and efficiency remains 0."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-reasoning-judge-visible-output-budget",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "behavior": "推理型Judge在有界输出预算内返回可见评分，不在推理耗尽预算后静默缺少所有评分。",
+      "coverageLevel": "unit",
+      "reproduction": "同一真实Native产物、模型和评分提示HTTP 200却stop_reason=max_tokens，仅返回thinking；2048输出token全部耗尽，无可见分数。8192预算隔离复评返回end_turn、thinking加text以及全部7个分数。",
+      "expected": "保留模型身份、凭据隔离、评分标准和原任务产物；预算足以容纳推理与评分，记录原失败并另存复评。",
+      "forbidden": "将thinking当作评分、默认补分、重写原报告、放宽业务及效率底线或更换模型。",
+      "rootCause": "Judge HTTP传输固定2048 token，未为强制推理模型的可见评分保留空间。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "reserves Judge output space after reasoning without changing model identity",
+          "requiredNames": [
+            "standalone static collector parity reserves Judge output space after reasoning without changing model identity"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real configured Judge rerun on preserved Native artifacts with identical prompt and scoring dimensions",
+          "status": "verified",
+          "evidence": [
+            "native-judge-only-20261026-185447: HTTP200/max_tokens/thinking-only at2048; native-judge-budget-prototype-20261026-185626: HTTP200/end_turn with all7 dimensions at8192, same prompt SHA256 24afa620d11932dee72ae6ea9a38df0013761e4ea9b5eaebd873a223204e1b30 and original report SHA256 eb5a77d606fd422c92c92665875ff73102549abf9b01d90236a541192181cfce. Completion1.0, output quality0.9, adherence1.0, custom0-3 each1.0. Subject not rerun; efficiency0 remains failure."
+          ]
+        }
+      ]
     }
   ]
 }
