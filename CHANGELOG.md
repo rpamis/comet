@@ -54,6 +54,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Native archive coordination and recovery**: Finish an accepted result's pending revalidation before archiving, diagnose unavailable candidates in read-only previews and Doctor, retain business state in rejected Archive responses, and retry temporary directory sharing violations while preserving the original transaction for recovery after persistent file watchers release their handles ([#506](https://github.com/rpamis/comet/issues/506)).
 - **Direct context access**: Report unavailable task-context expansions without a Node stack trace and read existing knowledge records without an unrelated index refresh or its budget diagnostics ([#506](https://github.com/rpamis/comet/issues/506)).
 
+### Security
+
+- **Dependency security updates**: Upgrade CLI, Dashboard, test tooling, and Eval dependencies to patched releases, covering DOMPurify, undici, fast-uri, Vitest, Pillow, virtualenv, filelock, OpenTelemetry, and certificate trust updates. Keep both JavaScript lockfiles aligned and require patched Python dependencies when resolving the Eval environment.
+
 ## What's Changed [0.5.0] - 2026-10-23
 
 Comet v0.5.0 is now available. This release focuses on the following capabilities.

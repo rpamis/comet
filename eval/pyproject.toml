@@ -44,3 +44,12 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.uv]
+constraint-dependencies = [
+    "certifi>=2026.10.19",
+    "filelock>=4.2.1",
+    "opentelemetry-api>=1.45.1",
+    "pillow>=13.0.0",
+    "virtualenv>=21.14.9",
+]
