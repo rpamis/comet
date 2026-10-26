@@ -7,6 +7,18 @@ description: 'Comet Classic workflow entry. Use when the user explicitly invokes
 
 Classic has five phases: Open → Design → Build → Verify → Archive. OpenSpec manages specifications and archiving. Superpowers provides design methods and the planning, execution, and review methods selected by the user. The full workflow requires brainstorming and design confirmation; hotfix/tweak follow their preset steps.
 
+Load the corresponding Comet phase Skill before authoring artifacts, calling OpenSpec, or running phase-advancement commands. Do not execute the entire workflow from this entry's phase table alone. For a current `decision`, `evidence`, or `reconcile`, resolve the existing Run without replaying completed phase actions.
+
+For a new full change, or when the current SDK Action specifies `comet-open`:
+
+**Immediately execute:** Use the Skill tool to load the comet-open skill. Skipping this step is prohibited.
+
+When the current SDK Action specifies `comet-design`:
+
+**Immediately execute:** Use the Skill tool to load the comet-design skill. Skipping this step is prohibited.
+
+After the skill loads, continue the current Run and its corresponding phase. A request to "author and confirm artifacts" does not approve the artifacts produced afterward, even if it specifies every feature, file content, and example. First present the current reviewable artifacts and wait for the user's actual reply about those contents. Without a reply, do not run an approval command or claim that the user has confirmed. When asking in text, end the current response and wait for the answer. Reuse explicit confirmation of the same unchanged artifacts without asking again.
+
 ## 1. Resolve the Target and Workspace
 
 On a new task or host change, read and perform the [host capability check](../comet/reference/host-check.md) before approving Open. When execution configuration changes, check only capabilities required by the new strategy.

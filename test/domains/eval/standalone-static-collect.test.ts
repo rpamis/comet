@@ -144,7 +144,7 @@ describe('standalone static collector parity', () => {
     [
       'requires the combined hardest Classic task to retain original post-Archive repair guards',
       'local/tests/scaffold/test_sdk_task_validators.py::test_classic_hardest_post_archive_repair_retains_original_guards',
-      6,
+      15,
     ],
     [
       'revalidates the complete six-sample recovery receipt without accepting the full-suite baseline',

@@ -211,7 +211,30 @@ def required_steps(profile):
     return steps
 
 
-def require_post_archive_output_repair(run):
+def assert_original_check_cache(original_output, original_manifest):
+    if not isinstance(original_manifest, str) or hashlib.sha256(
+        original_manifest.encode()
+    ).hexdigest() != original_output.get("manifestHash"):
+        raise ValueError("Missing or changed original check input manifest")
+    try:
+        entries = [json.loads(line) for line in original_manifest.splitlines() if line]
+    except (TypeError, ValueError) as error:
+        raise ValueError("Invalid original check input manifest") from error
+    if not all(isinstance(entry, dict) for entry in entries) or not any(
+        isinstance(entry.get("p"), str)
+        and re.fullmatch(r"__pycache__/[^/]+[.]pyc", entry["p"])
+        and isinstance(entry.get("h"), str)
+        and re.fullmatch(r"(?:[a-f0-9]{64}|git:[a-f0-9]{40}(?:[a-f0-9]{24})?)", entry["h"])
+        and type(entry.get("s")) is int
+        and entry["s"] > 0
+        and isinstance(entry.get("m"), str)
+        and re.fullmatch(r"-?[0-9]+", entry["m"])
+        for entry in entries
+    ):
+        raise ValueError("Original check must bind the Python cache before output repair")
+
+
+def require_post_archive_output_repair(run, original_manifests=None):
     if not isinstance(run, dict):
         raise ValueError("Missing authoritative full Run for post-Archive repair")
     actions = run.get("actions", [])
@@ -231,9 +254,12 @@ def require_post_archive_output_repair(run):
     archives = [action for action in actions if action.get("stepId") == "full.archive.execute"]
     if len(archives) != 1 or archives[0].get("status") != "succeeded":
         raise ValueError("Post-Archive repair must not replay Archive")
-    original_inputs = checks[1].get("outcome", {}).get("output", {}).get("deliveryInputs", {})
-    if not any(ref.startswith("__pycache__/") and ref.endswith(".pyc") for ref in original_inputs):
-        raise ValueError("Original Verify must bind the Python cache before output repair")
+    if not isinstance(original_manifests, dict):
+        raise ValueError("Missing original check input manifests")
+    for check in checks[:2]:
+        assert_original_check_cache(
+            check.get("outcome", {}).get("output", {}), original_manifests.get(check["id"])
+        )
     sequence = run.get("actionContexts", {}).get(checks[2]["id"], {}).get("sequence")
     if type(sequence) is not int or not any(
         wait.get("stepId") == "full.delivery.confirm"
@@ -247,7 +273,34 @@ def require_post_archive_output_repair(run):
 
 
 def validate_post_archive_output_repair():
-    require_post_archive_output_repair(INSPECTIONS.get("classic:sentence-full", {}).get("run"))
+    run = INSPECTIONS.get("classic:sentence-full", {}).get("run")
+    if not isinstance(run, dict):
+        raise ValueError("Missing authoritative full Run for post-Archive repair")
+    manifests = {}
+    for action in run.get("actions", []):
+        if (
+            action.get("stepId") not in {"full.build.check", "full.verify.check"}
+            or action.get("status") != "succeeded"
+        ):
+            continue
+        manifests[action["id"]] = node(
+            "dist/domains/comet-classic/classic-sdk-check-record.js",
+            "const {readFileSync}=await import('node:fs');"
+            "const files=await import("
+            + json.dumps(
+                (RUNTIME_ROOT / "dist/domains/comet-classic/classic-protected-path.js").as_uri()
+            )
+            + ");const context=JSON.parse(readFileSync(0,'utf8'));"
+            "const action=context.run.actions.find(item=>item.id===context.actionId);"
+            "if(!action?.outcome)throw Error('Missing original check Action');"
+            "await api.assertClassicSdkCheckReceipt(process.argv[1],context.run,action,"
+            "{status:action.outcome.status,output:action.outcome.output});"
+            "process.stdout.write(JSON.stringify(await files.readClassicProjectFile("
+            'process.argv[1],action.outcome.output.manifestRef,{label:"eval original check manifest"})));',
+            str(WORKSPACE),
+            source=json.dumps({"run": run, "actionId": action["id"]}),
+        )
+    require_post_archive_output_repair(run, manifests)
     history = subprocess.run(
         [
             "git",

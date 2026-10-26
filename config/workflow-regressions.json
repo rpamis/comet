@@ -2793,6 +2793,20 @@
           "requiredNames": [
             "Classic Chinese Skill SDK routing requires the actual reply to the presented English content before approving comet-design"
           ]
+        },
+        {
+          "file": "test/domains/skill/classic-sdk-skill-routing.test.ts",
+          "namePattern": "loads Open and Design Skills and enforces the confirmed reply rule at the Chinese entry",
+          "requiredNames": [
+            "Classic Chinese Skill SDK routing loads Open and Design Skills and enforces the confirmed reply rule at the Chinese entry"
+          ]
+        },
+        {
+          "file": "test/domains/skill/classic-sdk-skill-routing.test.ts",
+          "namePattern": "loads Open and Design Skills and enforces the confirmed reply rule at the English entry",
+          "requiredNames": [
+            "Classic Chinese Skill SDK routing loads Open and Design Skills and enforces the confirmed reply rule at the English entry"
+          ]
         }
       ],
       "additionalAcceptance": [
@@ -2803,7 +2817,8 @@
             "Original reports remain unchanged; deterministic tests and replay are not model acceptance.",
             "Configured-model experiment recovery051_classic_output_20261026_064026 failed before the nextAction guidance fix; preserved and explicitly early-stopped after observed self-approval. Not a pass or environment exclusion.",
             "073158 remains an early-stopped approval failure. Chinese phase-Skill clarification drafted; English sync requires user confirmation. Do not promote model acceptance from contracts.",
-            "User confirmed Chinese phase guidance; English synchronized with the same negative example. Both English cases failed before sync, then all 34 Native/Classic bilingual route contracts passed. Real model acceptance still pending."
+            "User confirmed Chinese phase guidance; English synchronized with the same negative example. Both English cases failed before sync, then all 34 Native/Classic bilingual route contracts passed. Real model acceptance still pending.",
+            "recovery051_classic_retry_5c80a95de970415f884d69dd52374e03 retained as a proven failure: Open and Design approved with zero actual scoped user replies; full Run and authoritative session message hashes saved before explicit early stop. The already-confirmed reply rule is now repeated at the Classic entry with explicit phase-Skill loading; both new bilingual contracts failed before the entry update. Model acceptance remains pending."
           ]
         }
       ]
@@ -3055,6 +3070,20 @@
             "Classic Chinese Skill SDK routing keeps text-only approval pauses explicit in the shared decision protocol in skills-zh",
             "Classic Chinese Skill SDK routing keeps text-only approval pauses explicit in the shared decision protocol in skills"
           ]
+        },
+        {
+          "file": "test/domains/skill/classic-sdk-skill-routing.test.ts",
+          "namePattern": "loads Open and Design Skills and enforces the confirmed reply rule at the Chinese entry",
+          "requiredNames": [
+            "Classic Chinese Skill SDK routing loads Open and Design Skills and enforces the confirmed reply rule at the Chinese entry"
+          ]
+        },
+        {
+          "file": "test/domains/skill/classic-sdk-skill-routing.test.ts",
+          "namePattern": "loads Open and Design Skills and enforces the confirmed reply rule at the English entry",
+          "requiredNames": [
+            "Classic Chinese Skill SDK routing loads Open and Design Skills and enforces the confirmed reply rule at the English entry"
+          ]
         }
       ],
       "additionalAcceptance": [
@@ -3065,7 +3094,8 @@
             "064026 retained as early-stopped Open and Design self-approval failure. Unit checks do not prove actual user confirmation.",
             "073158 remains an early-stopped approval failure. Chinese phase-Skill clarification drafted; English sync requires user confirmation. Do not promote model acceptance from contracts.",
             "User confirmed Chinese phase guidance; English synchronized with the same negative example. Both English cases failed before sync, then all 34 Native/Classic bilingual route contracts passed. Real model acceptance still pending.",
-            "081645 still self-approved Open with zero actual replies after reading the shared decision-point reference. Original source and normalized installed English Skill contents match; evidence retained before explicit early stop. The same approved text-only pause rule is now explicit in that shared reference; both new contracts failed before the reference update. Model acceptance remains pending."
+            "081645 still self-approved Open with zero actual replies after reading the shared decision-point reference. Original source and normalized installed English Skill contents match; evidence retained before explicit early stop. The same approved text-only pause rule is now explicit in that shared reference; both new contracts failed before the reference update. Model acceptance remains pending.",
+            "recovery051_classic_retry_5c80a95de970415f884d69dd52374e03 retained as a proven failure: Open and Design approved with zero actual scoped user replies; full Run and authoritative session message hashes saved before explicit early stop. The already-confirmed reply rule is now repeated at the Classic entry with explicit phase-Skill loading; both new bilingual contracts failed before the entry update. Model acceptance remains pending."
           ]
         }
       ]
@@ -3151,6 +3181,34 @@
           "status": "pending",
           "evidence": [
             "Original failed full.delivery.check preserved in hard-two-20261026-152305/classic-failed-run-before-stop.json. Current instruction contract failed before clarification; real helper and bridge tests pass afterward. Model rerun remains pending."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-classic-original-manifest-cache-binding",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "behavior": "Classic归档输出恢复验收从原Build和Verify的可信执行收据及原始输入清单证明缓存绑定，不把待Git交付文件当作全部检查输入。",
+      "coverageLevel": "unit",
+      "reproduction": "原真实Verify清单绑定ignored缓存，deliveryInputs正确只包含待交付源码和测试；旧oracle因deliveryInputs不含缓存误拒绝。已保存真实Build/Verify清单和原执行收据核对结果，旧六类反例迁移到真实清单并保留。",
+      "expected": "先核对原Action执行收据，再受保护读取原manifestRef，按原文SHA256核对manifestHash；Build和Verify均须有非missing、有效摘要和完整stat的缓存项，保留三次非复用检查、Archive一次及后置真实批准。",
+      "forbidden": "只看deliveryInputs或当前文件、仅新检查绑定缓存、伪造Run cache claim、缺失或篡改清单、跳过Build绑定或放宽原审批和副作用断言。",
+      "rootCause": "deliveryInputs仅表示本轮可交付Git变化，ignored缓存应由原检查manifest证明；验收器混淆了两个集合。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "requires the combined hardest Classic task to retain original post-Archive repair guards",
+          "requiredNames": [
+            "standalone static collector parity requires the combined hardest Classic task to retain original post-Archive repair guards"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real hardest Classic task with original execution receipts and both original check manifests, unchanged approval and safety assertions",
+          "status": "pending",
+          "evidence": [
+            "Both read-only reviews confirmed the old field mismatch and equivalent-or-stronger correction. Current Python validators 54 passed, 2 unrelated skips. Retained full.build.check and full.verify.check evidence came from actual Runtime APIs with originalReceiptValidated true; the associated model sample remains an approval failure and is not promoted to pass. Fresh Classic model acceptance remains pending."
           ]
         }
       ]

@@ -1,6 +1,7 @@
 """Current-checkout workflow Eval must not accept compat artifacts as SDK proof."""
 
 import importlib.util
+import hashlib
 import json
 import os
 import subprocess
@@ -91,7 +92,23 @@ def _validator(task: str, script: str):
 
 @pytest.mark.parametrize(
     "broken",
-    [None, "missing-check", "reused", "repeated-archive", "early-approval", "missing-cache"],
+    [
+        None,
+        "missing-check",
+        "reused",
+        "repeated-archive",
+        "early-approval",
+        "missing-cache",
+        "missing-manifest",
+        "changed-manifest",
+        "missing-hash",
+        "false-run-claim",
+        "missing-cache-value",
+        "invalid-json",
+        "missing-stat",
+        "missing-build-cache",
+        "new-check-only-cache",
+    ],
 )
 def test_classic_hardest_post_archive_repair_retains_original_guards(broken):
     validator = _validator("comet-classic-sdk-recovery", "test_classic_sdk_recovery.py")
@@ -120,9 +137,23 @@ def test_classic_hardest_post_archive_repair_retains_original_guards(broken):
             }
         ],
     }
-    run["actions"][1]["outcome"]["output"]["deliveryInputs"] = {
-        "__pycache__/wordcount.cpython-311.pyc": "original-cache-hash"
-    }
+    manifest = (
+        json.dumps(
+            {
+                "p": "__pycache__/test_wordcount.cpython-311-pytest-9.1.1.pyc",
+                "h": "a" * 64,
+                "s": 123,
+                "m": "123000000",
+            }
+        )
+        + "\n"
+    )
+    manifests = {action["id"]: manifest for action in run["actions"][:2]}
+    for action in run["actions"][:2]:
+        action["outcome"]["output"].update(
+            manifestHash=hashlib.sha256(manifest.encode()).hexdigest(),
+            deliveryInputs={"wordcount.py": "b" * 64, "test_wordcount.py": "c" * 64},
+        )
     if broken == "missing-check":
         run["actions"].pop()
     elif broken == "reused":
@@ -131,13 +162,56 @@ def test_classic_hardest_post_archive_repair_retains_original_guards(broken):
         run["actions"].append(dict(run["actions"][2]))
     elif broken == "early-approval":
         run["waits"][0]["sequence"] = 2
-    elif broken == "missing-cache":
-        run["actions"][1]["outcome"]["output"]["deliveryInputs"] = {}
+    elif broken in {
+        "missing-cache",
+        "false-run-claim",
+        "missing-build-cache",
+        "new-check-only-cache",
+    }:
+        empty = json.dumps({"p": "wordcount.py", "h": "b" * 64, "s": 123, "m": "123000000"}) + "\n"
+        targets = run["actions"][:1] if broken == "missing-build-cache" else run["actions"][:2]
+        for action in targets:
+            manifests[action["id"]] = empty
+            action["outcome"]["output"]["manifestHash"] = hashlib.sha256(empty.encode()).hexdigest()
+        if broken == "false-run-claim":
+            run["actions"][1]["outcome"]["output"]["deliveryInputs"]["__pycache__/fake.pyc"] = (
+                "a" * 64
+            )
+        if broken == "new-check-only-cache":
+            run["actions"][-1]["outcome"]["output"]["deliveryInputs"] = {
+                "__pycache__/fake.pyc": "a" * 64
+            }
+    elif broken == "missing-manifest":
+        manifests.pop("full.verify.check")
+    elif broken == "changed-manifest":
+        manifests["full.verify.check"] += "\n"
+    elif broken == "missing-hash":
+        run["actions"][1]["outcome"]["output"].pop("manifestHash")
+    elif broken in {"missing-cache-value", "invalid-json", "missing-stat"}:
+        changed = (
+            manifest.replace("a" * 64, "missing") if broken == "missing-cache-value" else "{broken"
+        )
+        if broken == "missing-stat":
+            changed = (
+                json.dumps(
+                    {
+                        "p": "__pycache__/test_wordcount.cpython-311-pytest-9.1.1.pyc",
+                        "h": "a" * 64,
+                        "s": None,
+                        "m": None,
+                    }
+                )
+                + "\n"
+            )
+        manifests["full.verify.check"] = changed
+        run["actions"][1]["outcome"]["output"]["manifestHash"] = hashlib.sha256(
+            changed.encode()
+        ).hexdigest()
     if broken is None:
-        validator.require_post_archive_output_repair(run)
+        validator.require_post_archive_output_repair(run, manifests)
     else:
         with pytest.raises(ValueError):
-            validator.require_post_archive_output_repair(run)
+            validator.require_post_archive_output_repair(run, manifests)
 
 
 def test_classic_current_layout_rejects_terminal_compat_state_without_sdk_owner(tmp_path: Path):

@@ -11,6 +11,30 @@ async function englishSkill(name: string): Promise<string> {
 }
 
 describe('Classic Chinese Skill SDK routing', () => {
+  it('loads Open and Design Skills and enforces the confirmed reply rule at the Chinese entry', async () => {
+    const skill = await chineseSkill('comet-classic');
+    expect(skill).toContain('**立即执行：** 使用 Skill 工具加载 comet-open 技能。禁止跳过此步骤。');
+    expect(skill).toContain(
+      '**立即执行：** 使用 Skill 工具加载 comet-design 技能。禁止跳过此步骤。',
+    );
+    expect(skill).toContain('不能代替生成后产物的批准');
+    expect(skill).toContain('实际回复');
+    expect(skill).toContain('结束当前回复');
+    expect(skill).toContain('同一未变');
+  });
+  it('loads Open and Design Skills and enforces the confirmed reply rule at the English entry', async () => {
+    const skill = await englishSkill('comet-classic');
+    expect(skill).toContain(
+      '**Immediately execute:** Use the Skill tool to load the comet-open skill. Skipping this step is prohibited.',
+    );
+    expect(skill).toContain(
+      '**Immediately execute:** Use the Skill tool to load the comet-design skill. Skipping this step is prohibited.',
+    );
+    expect(skill).toContain('does not approve');
+    expect(skill).toContain('actual reply');
+    expect(skill).toContain('end the current response');
+    expect(skill).toContain('same unchanged');
+  });
   it.each([
     ['skills-zh', '结束当前回复', '实际回复', '编写并确认'],
     ['skills', 'end the current response', 'actual reply', 'author and confirm'],

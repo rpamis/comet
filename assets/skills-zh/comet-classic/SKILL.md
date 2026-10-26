@@ -7,6 +7,18 @@ description: 'Comet Classic 工作流入口。当用户明确调用 /comet-class
 
 Classic 分为 Open → Design → Build → Verify → Archive 五个阶段。OpenSpec 管理需求规格与归档，Superpowers 提供设计方法，以及用户选定的规划、执行和审查方法。完整流程（full）必须经过 brainstorming 和设计确认；hotfix/tweak 使用各自的预设步骤。
 
+编写阶段产物、调用 OpenSpec 或执行阶段推进命令前，先加载对应的 Comet 阶段 Skill；不能只读本入口的阶段表后自行执行整个流程。当前是 `decision`、`evidence` 或 `reconcile` 时，按现有 Run 处理，不重做已完成的阶段动作。
+
+新建 full change，或当前 SDK Action 指定 `comet-open` 时：
+
+**立即执行：** 使用 Skill 工具加载 comet-open 技能。禁止跳过此步骤。
+
+当前 SDK Action 指定 `comet-design` 时：
+
+**立即执行：** 使用 Skill 工具加载 comet-design 技能。禁止跳过此步骤。
+
+技能加载后，继续当前 Run 和对应阶段。用户要求“编写并确认产物”或已逐项给出功能、文件内容和示例，不能代替生成后产物的批准。先展示本次可审阅的产物，再等待用户针对这些内容的实际回复；没有回复时不执行批准命令，也不自行转述“用户已确认”。用文本提问时，应结束当前回复以等待回答。同一未变产物已经获得明确确认时沿用，不重复询问。
+
 ## 1. 确定目标与工作区
 
 开始新任务或更换宿主时，必须读取并执行[宿主能力核对](../comet/reference/host-check.md)，在批准 Open 前确认当前流程所需的能力。执行配置改变后，只补核对新策略需要的能力。
