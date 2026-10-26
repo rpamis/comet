@@ -5,6 +5,7 @@ Never commit Python caches, including in the baseline. For temporary requests or
 Before starting the work, create an SDK tweak change named `parked-format` and leave it at Open. Then execute this exact shell command to write its proposal.md. The command writes two UTF-8 lines with one final newline; only its output belongs in the proposal file:
 
 <!-- parked-proposal-command -->
+
 ```bash
 printf '%s\n' '# Parked format' 'Keep this unrelated formatting request pending.' > docs/openspec/changes/parked-format/proposal.md
 ```
