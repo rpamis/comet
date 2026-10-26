@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { WorkflowRun } from '../../../domains/engine/runtime.js';
 import { createRuntimeAction } from '../../../domains/engine/runtime-action.js';
 import { parseClassicStateDocument } from '../../../domains/comet-classic/classic-state.js';
+import { classicSdkNextAction } from '../../../domains/comet-classic/classic-sdk-status.js';
 import {
   classicSdkContinuation,
   classicSdkRunSummary,
@@ -57,6 +58,73 @@ function fixture(stepId = 'full.build.check', ref = 'classic-check'): WorkflowRu
 const root = '/tmp/project with spaces';
 
 describe('Classic next-step source projection', () => {
+  it.each(['design', 'delivery'])(
+    'keeps task authorization separate from new %s proposal approval',
+    (kind) => {
+      const run = fixture();
+      run.actions = [];
+      run.status = 'waiting';
+      run.waits = [
+        {
+          id: 'decision-1',
+          stepId: `full.${kind}.confirm`,
+          status: 'pending',
+          proposal: { summary: 'Actual design' },
+          proposalHash: 'current-proposal',
+          choices: ['approved', 'rejected'],
+          results: {},
+          sequence: 1,
+        },
+      ];
+      const before = structuredClone(run);
+      const continuation = classicSdkContinuation(run, root, 'demo');
+      expect(continuation.mode).toBe('ask');
+      expect(continuation.instruction).toContain('目标、直接实施或本地提交授权');
+      expect(continuation.instruction).toContain('不能代替');
+      expect(continuation.instruction).toContain('不得自行记录 approved');
+      expect(continuation.instruction).toContain('即使任务已逐项规定内容');
+      if (kind === 'delivery') {
+        expect(continuation.instruction).toContain('本次重检完成后');
+        expect(continuation.instruction).toContain('条件式授权');
+        expect(continuation.instruction).toContain('结束当前回复');
+      }
+      expect(classicSdkNextAction(run)).toMatchObject({
+        kind: 'decision',
+        proposalHash: 'current-proposal',
+        instruction: continuation.instruction,
+      });
+      expect(run).toEqual(before);
+    },
+  );
+
+  it('avoids repeating accepted task completion writes', () => {
+    const build = classicSdkContinuation(
+      fixture('full.build.execute', 'comet-build'),
+      root,
+      'demo',
+    );
+    expect(build.completion?.instruction).toContain('只补尚未完成');
+    expect(build.completion?.instruction).toContain('不得重复 task-complete');
+  });
+
+  it('requests a full delivery commit hash from the actual Git HEAD', () => {
+    const delivery = classicSdkContinuation(
+      fixture('full.archive.deliver', 'comet-archive'),
+      root,
+      'demo',
+    );
+    expect(delivery.completion?.requiredInputs[0]).toContain('git rev-parse HEAD');
+  });
+
+  it('uses the current terminal delivery receipt instead of an archived baseline', () => {
+    const run = fixture();
+    run.status = 'completed';
+    run.actions = [];
+    expect(classicSdkContinuation(run, root, 'demo').instruction).toContain(
+      '归档 YAML 保留交付前基线',
+    );
+  });
+
   it('distinguishes manual Skill entry from an already running executor', () => {
     const run = fixture('full.build.execute', 'comet-build');
     run.state = { ...(run.state as object), autoTransition: false };
@@ -329,6 +397,7 @@ describe('Classic next-step source projection', () => {
       ],
     });
     expect(preview.requiredInputs).toEqual([expect.stringContaining('明确批准')]);
+    expect(preview.instruction).toContain('初始任务不能代替');
   });
 
   it('keeps current Skill scope, activation, approved delivery and manual completion without cumulative receipts', () => {

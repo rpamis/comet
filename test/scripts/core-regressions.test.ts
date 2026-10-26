@@ -77,6 +77,42 @@ describe('core regression entrypoint', () => {
     expect(assertCoreRegressionResult(required, input)).toBe(2);
   });
 
+  it.each([
+    [
+      'win32',
+      'D:\\isolated\\candidate',
+      'D:\\isolated\\candidate\\test\\scripts\\core-regressions.test.ts',
+    ],
+    ['linux', '/isolated/candidate', '/isolated/candidate/test/scripts/core-regressions.test.ts'],
+  ])(
+    'checks original %s report paths against their recorded project root',
+    (platform, projectRoot, file) => {
+      const required = {
+        ...entry,
+        requiredCases: [
+          { file: 'test/scripts/core-regressions.test.ts', name: 'fixture positive', exact: true },
+        ],
+      };
+      const input = report();
+      input.testResults[0].name = file;
+      expect(assertCoreRegressionResult(required, input, { platform, projectRoot })).toBe(2);
+      expect(input.testResults[0].name).toBe(file);
+      expect(() =>
+        assertCoreRegressionResult(required, input, {
+          platform,
+          projectRoot: projectRoot + '/other',
+        }),
+      ).toThrow();
+      expect(() =>
+        assertCoreRegressionResult(required, input, { platform, projectRoot: 'relative' }),
+      ).toThrow();
+      input.testResults[0].name = projectRoot + '/other/core-regressions.test.ts';
+      expect(() =>
+        assertCoreRegressionResult(required, input, { platform, projectRoot }),
+      ).toThrow();
+    },
+  );
+
   it('preserves legacy fragments but never masks a skipped exact identity or mixed duplicate', () => {
     const file = 'test/scripts/core-regressions.test.ts';
     const required = {

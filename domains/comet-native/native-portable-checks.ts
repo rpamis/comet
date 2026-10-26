@@ -22,8 +22,10 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   parseGitStatusPaths,
+  parseGitStatusUntrackedPaths,
   readGitStatusPorcelain,
   readGitStatusPorcelainAsync,
+  readGitStatusObservationAsync,
   runGitCommand,
   runGitCommandAsync,
   readGitBlobs,
@@ -1064,24 +1066,19 @@ export async function nativeCheckInputSnapshot(
     gitSnapshot.branch = head.branch;
     // Staged content binds through index blob ids: `ls-files --stage` names each
     // path with its object id, which Git already defines as the content hash.
-    const [stagedIndex, changedOutput, untrackedOutput, status] = await nativeGitQueries(
-      options.projectRoot,
-      [
+    const queries = await Promise.allSettled([
+      nativeGitQueries(options.projectRoot, [
         ['ls-files', '--stage', '-z', '--', ...exclusions],
         ['diff', '--name-only', '--ignore-submodules=none', '-z', 'HEAD', '--', ...exclusions],
-        ['ls-files', '--others', '--exclude-standard', '-z', '--', ...exclusions],
-        [
-          'status',
-          '--porcelain=v1',
-          '-z',
-          '--untracked-files=all',
-          '--ignore-submodules=none',
-          '--',
-          ...exclusions,
-        ],
-      ],
-    );
-    gitSnapshot.status = status;
+      ]),
+      readGitStatusPorcelainAsync(options.projectRoot, exclusions),
+    ]);
+    const failure = queries.find((query) => query.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
+    const [stagedIndex, changedOutput] = (queries[0] as PromiseFulfilledResult<string[]>).value;
+    const status = (queries[1] as PromiseFulfilledResult<string>).value;
+    // 指纹保留历史 trim 行为；路径解析使用同次读取的完整原文。
+    gitSnapshot.status = status.trim();
     gitSnapshot.stagedDiff = digestNativeCheckInput(stagedIndex);
     gitSnapshot.submodules = '';
     if (hasGitlinksInIndex(stagedIndex)) {
@@ -1125,7 +1122,7 @@ export async function nativeCheckInputSnapshot(
     if (gitSnapshot.diff.some(({ digest }) => digest === null)) {
       gitSnapshot.complete = false;
     }
-    const untracked = untrackedOutput.split('\0').filter(Boolean).sort();
+    const untracked = parseGitStatusUntrackedPaths(status);
     gitSnapshot.untracked = await mapWithConcurrency(untracked, 16, async (relative) => {
       const target = path.resolve(options.projectRoot, ...relative.split('/'));
       try {
@@ -1408,16 +1405,19 @@ async function readNativeCheckInputObservation(
       ...(options.archiveOwnedPaths ?? []).map((ref) => `:(exclude,literal)${ref}`),
       ...[...runnerInputs].map((relative) => `:(exclude,literal)${relative}`),
     ];
-    const { head, branch } = nativeGitHead(options.projectRoot);
     const queries = await Promise.allSettled([
-      readGitStatusPorcelainAsync(options.projectRoot, exclusions),
+      readGitStatusObservationAsync(options.projectRoot, exclusions),
       runGitCommandAsync(options.projectRoot, ['ls-files', '--stage', '-z', '--', ...exclusions]),
     ]);
     const failure = queries.find((query) => query.status === 'rejected');
     if (failure?.status === 'rejected') throw failure.reason;
-    const [actualStatus, staged] = queries.map(
-      (query) => (query as PromiseFulfilledResult<string>).value,
-    );
+    const {
+      head,
+      branch,
+      status: actualStatus,
+    } = (queries[0] as PromiseFulfilledResult<{ head: string; branch: string; status: string }>)
+      .value;
+    const staged = (queries[1] as PromiseFulfilledResult<string>).value;
     const status = options.legacyArchiveOverlay
       ? nativeLegacyArchiveGitStatus(
           options.projectRoot,

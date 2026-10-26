@@ -5,6 +5,34 @@ set -uo pipefail
 TEXT="${1:-}"
 shopt -s nocasematch
 
+# 任务列明 SDK Run 时，只读核对全部终态；失败时不能回退到模型文案。
+if [[ -n "${COMET_EVAL_COMPLETION_RUNS:-}" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    python3 -I - "$SCRIPT_DIR/../python/validation/current_sdk.py" <<'PY'
+import importlib.util
+import json
+import os
+import sys
+from pathlib import Path
+try:
+    spec = importlib.util.spec_from_file_location("comet_completion_probe", sys.argv[1])
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+except Exception as error:
+    print(f"completion probe unavailable: {type(error).__name__}", file=sys.stderr)
+    raise SystemExit(2)
+try:
+    completed = module.requested_runs_completed(Path.cwd(), json.loads(os.environ["COMET_EVAL_COMPLETION_RUNS"]))
+except (ValueError, TypeError):
+    completed = False
+except Exception as error:
+    print(f"completion probe unavailable: {type(error).__name__}", file=sys.stderr)
+    raise SystemExit(2)
+raise SystemExit(0 if completed else 1)
+PY
+    exit $?
+fi
+
 # SDK 应用以评估绑定的根 Run 为准，子流程文案不能结束评估。
 if [[ -n "${COMET_EVAL_APPLICATION_ID:-}" ]]; then
     node --input-type=module <<'JS'

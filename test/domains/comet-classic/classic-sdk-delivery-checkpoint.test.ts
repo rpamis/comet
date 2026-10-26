@@ -44,7 +44,13 @@ async function setup(profile = 'hotfix', large = false) {
           { from: confirm, to: archive, on: 'local' },
           { from: archive, to: deliver },
         ],
+        commands: {
+          'continue-delivery': { stepId: deliver, validator: { id: 'continue', version: '1' } },
+        },
       },
+    ],
+    commandValidators: [
+      { id: 'continue', version: '1', validate: () => ({ accepted: true, allowFailed: true }) },
     ],
     transitionHandlers: [
       {
@@ -140,6 +146,37 @@ async function setup(profile = 'hotfix', large = false) {
 }
 
 describe('immutable Classic archive delivery checkpoints', () => {
+  it('keeps only the exact prior failed output when a new delivery is pending', async () => {
+    const { runtime, baseline, claim, finish, deliver } = await setup();
+    const failed = await finish(await claim(baseline), 'failed', {
+      summary: 'Stopped before Git delivery.',
+    });
+    const resumed = await runtime.dispatchCommand({
+      runId: baseline.runId,
+      name: 'continue-delivery',
+      commandId: 'continue-delivery-1',
+      expectedRevision: failed.revision,
+      input: null,
+    });
+    expect(resumed.actions.at(-1)?.id).not.toBe(failed.actions.at(-1)?.id);
+    expect(resumed.outputs[deliver]).toEqual(failed.outputs[deliver]);
+    const saved = encodePortableRunCheckpoint(createPortableRunCheckpoint(resumed));
+    expect(readClassicSdkDeliveryCheckpoint(saved, resumed)).not.toBeNull();
+    const completed = await finish(await claim(resumed));
+    expect(readClassicSdkDeliveryCheckpoint(saved, completed)?.state).toEqual(resumed.state);
+    for (const field of ['value', 'sequence', 'prior-outcome', 'prior-status'] as const) {
+      const altered = structuredClone(resumed);
+      const prior = altered.actions.find((action) => action.id === failed.actions.at(-1)!.id)!;
+      if (field === 'value') altered.outputs[deliver].value = { summary: 'Other output' };
+      if (field === 'sequence')
+        altered.outputs[deliver].sequence =
+          altered.actionContexts[altered.actions.at(-1)!.id].sequence;
+      if (field === 'prior-outcome')
+        prior.outcome!.output = { summary: 'Other historical outcome' };
+      if (field === 'prior-status') prior.status = 'succeeded';
+      expect(() => readClassicSdkDeliveryCheckpoint(saved, altered)).toThrow();
+    }
+  });
   it.each(['full', 'tweak', 'hotfix'])(
     'keeps %s baseline through claim and completion',
     async (profile) => {

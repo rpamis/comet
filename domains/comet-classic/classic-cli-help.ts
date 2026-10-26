@@ -69,6 +69,8 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'decide-build <change-name> --proposal-hash <sha256> --choice <approved|rejected>',
       'submit-plan <change-name> --plan <repo-relative-ref> [--pause]',
       'revise-plan <change-name> --expected-revision <number> (SDK full workflow)',
+      'continue-build <change-name> --expected-revision <number> (SDK; resume a stopped failed Builder with preserved work)',
+      'continue-work <change-name> --expected-revision <number> (SDK; continue a settled failed Skill from preserved work)',
       'continue-plan <change-name> --proposal-hash <sha256>',
       'complete-build <change-name>',
       'propose-escalation <change-name> --reason <text> (SDK hotfix/tweak)',
@@ -77,6 +79,8 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'decide-archive <change-name> --proposal-hash <sha256> --choice <local|push|pr|reverify|later> (SDK)',
       'reopen-verification <change-name> --expected-revision <number> (SDK; before Archive execution)',
       'repair-archive <change-name> --expected-revision <number> (SDK; stopped failure with unchanged Archive inputs)',
+      'repair-delivery <change-name> --expected-revision <number> (SDK; recheck declared generated outputs after Archive)',
+      'decide-delivery-repair <change-name> --proposal-hash <hash> --choice <approved|later>',
       'complete-delivery <change-name> --commit <sha> [--pr-url <url>] (SDK)',
       'transition <change-name> <event>',
       'transition <change-name> verify-fail --reason <text> (SDK)',
@@ -273,7 +277,7 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
     ],
     'revise-design': [
       'comet state revise-design <change-name> --expected-revision <number>',
-      'Reopens SDK full Design for a revised proposal from Design or stopped Build work, retaining prior decisions and implementation history.',
+      'Reopens SDK full Design from Design, Build, Verify, or Archive before side effects; retains implementation, configuration and decision history. Reconcile running or unknown work first.',
       'Use the current Run revision from state next or state check --recover. A stale revision is rejected.',
       'Then propose-design with the revised design and any agreed Spec Patch, obtain a new explicit user decision, and decide-design with the new proposal hash.',
       'Revision does not approve the new design. Old approval hashes do not authorize changed requirements.',
@@ -283,9 +287,29 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       '保留当前修改和审计历史，取消未执行的归档或验收工作并重开 Verify；通过后必须重新批准 Archive。',
       '仅支持尚未执行归档、活动目录仍存在且没有 running/unknown Action 的内置 SDK Run。旧 revision 不生效。',
     ],
+    'continue-build': [
+      'comet state continue-build <change-name> --expected-revision <number>',
+      'Resume a stopped failed Builder, or return Verify or pre-execution Archive to Build on the same SDK Run. Preserve partial work and task completion; invalidate verification and Archive authorization.',
+      'Changed full requirements still require revise-design; changed hotfix/tweak scope requires propose-escalation and a new scope decision. Never replay unknown executions.',
+    ],
+    'continue-work': [
+      'comet state continue-work <change-name> --expected-revision <number>',
+      'Create successor work for the original failed Skill on the same Run. Preserve completed stages, decisions, partial artifacts and the original failure receipt. Reject running, unknown, stale, or cancelled work.',
+    ],
     'repair-archive': [
       'comet state repair-archive <change-name> --expected-revision <number>',
       'Verify that the failed Archive left its original inputs and specifications unchanged and created no archive directory, then reopen Open on the same Run. Correct the inputs and obtain fresh approval and verification. Unknown execution results must be reconciled first.',
+    ],
+    'repair-delivery': [
+      'comet state repair-delivery <change-name> --expected-revision <number>',
+      '归档已完成、交付尚未完成时，在同一 SDK Run 补充检查输出声明并重新检查。保留原归档、业务批准和执行历史，不重放 OpenSpec。',
+      '在 .comet/check-policy.json 为原 Verify 命令声明 outputs，保持完整输入范围；不支持通过 files 缩小范围。仅允许排除原批准基线未追踪的生成物，原实现和归档内容必须保持一致。',
+      '先核对并移除这些临时生成物。Runtime 必须证明原检查实际重新生成了它们，才会创建新的交付确认；不会自动删除文件、提交或推送。',
+      '随后沿 state next 的原检查请求推进，展示新的交付范围，并取得当前 proposalHash 的明确批准。旧批准不能直接完成本次修复后的交付。',
+    ],
+    'decide-delivery-repair': [
+      'comet state decide-delivery-repair <change-name> --proposal-hash <hash> --choice <approved|later>',
+      '核对补声明的输出、原检查结果和保留的归档，再确认当前交付范围。approved 只恢复当前已核验范围的交付；later 保持等待，不提交或重做归档。',
     ],
     'revise-plan': [
       'comet state revise-plan <change-name> --expected-revision <number>',

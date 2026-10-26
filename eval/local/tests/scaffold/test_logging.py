@@ -35,6 +35,67 @@ def test_save_artifacts_excludes_nested_git_metadata(tmp_path: Path):
     assert not (snapshot / ".git").exists()
 
 
+def test_save_artifacts_never_replays_python_or_one_shot_outputs(tmp_path: Path, monkeypatch):
+    import conftest
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    source = "raise SystemExit('artifact collection must not execute this file')\n"
+    (workspace / "recovery_once.py").write_text(source, encoding="utf8")
+    counter = tmp_path / "replayed"
+
+    def execute(*args, **kwargs):
+        counter.write_text("duplicate side effect", encoding="utf8")
+        return False, "one-shot script was replayed"
+
+    monkeypatch.setattr(conftest, "run_python_in_docker", execute)
+    conftest._save_artifacts(tmp_path, "READ_ONLY", 1, workspace)
+    assert not counter.exists(), "Artifact collection replayed a one-shot side effect"
+    assert (workspace / "recovery_once.py").read_text(encoding="utf8") == source
+    saved = tmp_path / "artifacts/read_only_rep1"
+    assert (saved / "claude/recovery_once.py").read_text(encoding="utf8") == source
+    assert list((saved / "execution").iterdir()) == []
+
+
+def test_save_artifacts_preserves_sdk_inspection_with_integrity_and_redaction(
+    tmp_path, monkeypatch
+):
+    import hashlib
+    from conftest import _save_artifacts
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("FIXTURE_AGENT_API_KEY", "fixture-inspection-secret")
+    evidence = {
+        "run": {
+            "revision": 42,
+            "claim": {"token": "original-claim"},
+            "output": "fixture-inspection-secret",
+            "password": "unknown-env-password",
+            "apiKey": "unknown-camel-api-key",
+            "authToken": "unknown-camel-auth-token",
+            "actions": [{"outcome": {"claimToken": "original-outcome-claim"}}],
+        }
+    }
+    _save_artifacts(tmp_path, "TRUSTED", 1, workspace, validation_evidence=evidence)
+    saved = tmp_path / "artifacts/trusted_rep1/execution"
+    source = json.dumps(evidence, sort_keys=True, separators=(",", ":"))
+    persisted = (saved / "sdk-inspections.json").read_text()
+    integrity = json.loads((saved / "sdk-inspections-integrity.json").read_text())
+    assert "fixture-inspection-secret" not in persisted
+    assert "unknown-env-password" not in persisted and "original-claim" not in persisted
+    assert all(
+        value not in persisted
+        for value in ("unknown-camel-api-key", "unknown-camel-auth-token", "original-outcome-claim")
+    )
+    assert json.loads(persisted)["run"]["revision"] == 42
+    assert integrity == {
+        "sourceHash": hashlib.sha256(source.encode()).hexdigest(),
+        "persistedHash": hashlib.sha256(persisted.encode()).hexdigest(),
+        "redacted": True,
+    }
+
+
 @pytest.mark.parametrize(
     "treatment",
     [

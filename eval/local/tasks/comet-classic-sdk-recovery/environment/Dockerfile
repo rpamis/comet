@@ -25,6 +25,7 @@ RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 # Existing wordcount code (extended during the task).
 COPY wordcount.py /workspace/wordcount.py
 COPY test_wordcount.py /workspace/test_wordcount.py
+COPY verify_coexistence.py /workspace/verify_coexistence.py
 COPY current-comet.sh /usr/local/bin/comet
 RUN chmod 0755 /usr/local/bin/comet
 

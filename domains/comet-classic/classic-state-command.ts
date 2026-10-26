@@ -2237,7 +2237,11 @@ function requiredExact(args: string[], count: number, usage: string): void {
 }
 
 const MUTATING_STATE_COMMANDS = new Set([
+  'continue-build',
+  'continue-work',
   'repair-archive',
+  'repair-delivery',
+  'decide-delivery-repair',
   'reopen-verification',
   'init',
   'restore',
@@ -2293,8 +2297,12 @@ async function assertStateChangeNotSdkOwned(
   }
   if (
     subcommand === 'delivery' ||
+    subcommand === 'continue-build' ||
+    subcommand === 'continue-work' ||
     subcommand === 'rebind' ||
     subcommand === 'repair-archive' ||
+    subcommand === 'repair-delivery' ||
+    subcommand === 'decide-delivery-repair' ||
     subcommand === 'reopen-verification' ||
     subcommand === 'next' ||
     subcommand === 'restore' ||
@@ -2733,6 +2741,35 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
             ? `Build configuration proposed for ${rest[0]}; user decision is pending.`
             : `Build configuration ${rest[4]} for ${rest[0]}.`,
         );
+      } else if (subcommand === 'decide-delivery-repair') {
+        if (
+          rest.length !== 5 ||
+          rest[1] !== '--proposal-hash' ||
+          rest[3] !== '--choice' ||
+          !['approved', 'later'].includes(rest[4])
+        )
+          fail(
+            'Usage: comet state decide-delivery-repair <change-name> --proposal-hash <hash> --choice <approved|later>',
+          );
+        validateChangeName(rest[0]);
+        const workspace = await findClassicSdkWorkspace(classicCommandProjectRoot(), rest[0]);
+        if (!workspace) fail(`ERROR: Classic change '${rest[0]}' is not owned by an SDK Run`);
+        const wait = workspace.run.waits.find(
+          (w) =>
+            w.status === 'pending' && w.stepId === `${workspace.state.workflow}.delivery.confirm`,
+        );
+        if (!wait || wait.proposalHash !== rest[2])
+          fail('Classic delivery repair approval is stale or missing');
+        const run = await workspace.runtime.resolveWait({
+          runId: workspace.run.runId,
+          expectedRevision: workspace.run.revision,
+          waitId: wait.id,
+          proposalHash: rest[2],
+          choice: rest[4],
+          decisionId: `classic-delivery-repair-${wait.id}-${rest[2]}-${rest[4]}`,
+          context: { requestId: randomUUID(), projectRoot: workspace.projectRoot },
+        });
+        await nextSdk(output, rest[0], run, workspace.projectRoot);
       } else if (subcommand === 'propose-archive' || subcommand === 'decide-archive') {
         const proposing = subcommand === 'propose-archive';
         if (!rest[0]) {
@@ -2839,8 +2876,11 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         output.stdout.push(`Archive delivery recorded for ${rest[0]}.`);
       } else if (
         subcommand === 'revise-design' ||
+        subcommand === 'continue-build' ||
+        subcommand === 'continue-work' ||
         subcommand === 'revise-plan' ||
         subcommand === 'reopen-verification' ||
+        subcommand === 'repair-delivery' ||
         subcommand === 'repair-archive'
       ) {
         if (

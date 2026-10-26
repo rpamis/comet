@@ -11,13 +11,66 @@ import tempfile
 
 import yaml
 
+from scaffold.python.validation.current_sdk import sdk_inspection_evidence
+
 WORKSPACE = Path("/workspace")
 RUNTIME_ROOT = Path("/opt/comet-current")
 CLI = ["comet"]
+COEXISTENCE_PYTHON = "/usr/bin/python3"
 CHANGES = Path("docs/openspec/changes")
 CASES = {"sentence-full": "full", "characters-tweak": "tweak", "missing-file-hotfix": "hotfix"}
 PARKED = "parked-format"
 PARKED_PROPOSAL = "# Parked format\nKeep this unrelated formatting request pending.\n"
+INSPECTIONS = {}
+
+
+def assert_scoped_coexistence(manifest, evidence, context, log, script):
+    """范围检查用执行日志证明并存，不把未声明的文件当成命令输入。"""
+    expected = context.get("environment_file_hashes", {}).get("verify_coexistence.py")
+    if (
+        not isinstance(expected, str)
+        or not re.fullmatch(r"[a-f0-9]{64}", expected)
+        or hashlib.sha256(script).hexdigest() != expected
+    ):
+        raise ValueError("Missing or changed provided coexistence helper")
+    blob = b"blob " + str(len(script)).encode() + b"\0" + script
+    script_hashes = {
+        expected,
+        "git:" + hashlib.sha1(blob).hexdigest(),
+        "git:" + hashlib.sha256(blob).hexdigest(),
+    }
+    entries = [json.loads(line) for line in manifest.splitlines() if line]
+    bound = [entry for entry in entries if entry.get("p") == "verify_coexistence.py"]
+    if len(bound) != 1 or bound[0].get("h") not in script_hashes:
+        raise ValueError("Verify manifest does not bind the provided coexistence helper")
+    if (
+        evidence.get("argv") not in [[COEXISTENCE_PYTHON, "-I", "verify_coexistence.py"]]
+        or evidence.get("cwd") != "."
+        or evidence.get("exitCode") != 0
+        or not evidence.get("inputBefore")
+        or evidence.get("inputBefore") != evidence.get("inputAfter")
+        or hashlib.sha256(log.encode()).hexdigest() != evidence.get("contentHash")
+    ):
+        raise ValueError(
+            "Coexistence observation is not bound to the successful Runtime Verify check"
+        )
+    prefix = "COMET_EVAL_COEXISTENCE "
+    observations = [
+        json.loads(line[len(prefix) :]) for line in log.splitlines() if line.startswith(prefix)
+    ]
+    expected_observation = {
+        "path": f"{CHANGES.as_posix()}/{PARKED}/proposal.md",
+        "sha256": hashlib.sha256(PARKED_PROPOSAL.encode()).hexdigest(),
+    }
+    if observations != [
+        {
+            "schema": "comet.eval.classic-coexistence.v1",
+            "before": expected_observation,
+            "after": expected_observation,
+            "exitCode": 0,
+        }
+    ]:
+        raise ValueError("Missing, repeated or incorrect Runtime coexistence observation")
 
 
 def invoke(args, *, source=None):
@@ -108,6 +161,7 @@ def inspect_run(name, profile, directory, *, require_checkpoint=True):
         or run.get("workflow", {}).get("id") != f"comet-classic-{profile}"
     ):
         raise ValueError(f"{name}: inspect returned the wrong SDK Run")
+    INSPECTIONS[f"classic:{name}"] = sdk_inspection_evidence("classic", f"classic-{profile}", run)
     # 新建 Open 还没有 checkpoint；此例仍须由真实 owner 和 inspect 返回未推进的 Run。
     if not require_checkpoint and "run_checkpoint" not in state:
         return run, state
@@ -186,7 +240,7 @@ def validate_archive(name, profile):
     if (
         "wordcount.py" not in inputs
         or not any(Path(ref).name.startswith("test_") for ref in inputs)
-        or any(ref.startswith(f"{CHANGES}/{PARKED}/") for ref in inputs)
+        or any(ref.startswith(f"{CHANGES.as_posix()}/{PARKED}/") for ref in inputs)
     ):
         raise ValueError(f"{name}: verification must bind source/tests, not the parked change")
     manifest = node(
@@ -202,19 +256,35 @@ def validate_archive(name, profile):
         "git:"
         + subprocess.run(
             ["git", "hash-object", "--stdin"],
-            input=PARKED_PROPOSAL,
+            input=PARKED_PROPOSAL.encode(),
             cwd=WORKSPACE,
             capture_output=True,
-            text=True,
             check=True,
             timeout=10,
-        ).stdout.strip()
+        )
+        .stdout.decode("ascii")
+        .strip()
     )
     if not any(
-        entry.get("p") == f"{CHANGES}/{PARKED}/proposal.md" and entry.get("h") == parked_hash
+        entry.get("p") == f"{CHANGES.as_posix()}/{PARKED}/proposal.md"
+        and entry.get("h") == parked_hash
         for entry in (json.loads(line) for line in manifest.splitlines() if line)
     ):
-        raise ValueError(f"{name}: parked change did not coexist during verification")
+        # 保留完整输入清单的历史证明；范围检查另需绑定可信脚本及原执行日志。
+        log = node(
+            "dist/domains/comet-classic/classic-protected-path.js",
+            "process.stdout.write(JSON.stringify(await api.readClassicProjectFile(process.argv[1],process.argv[2],{label:'eval coexistence log'})));",
+            str(WORKSPACE),
+            evidence.get("receiptRef", ""),
+        )
+        script = node(
+            "dist/domains/comet-classic/classic-protected-path.js",
+            "process.stdout.write(JSON.stringify(await api.readClassicProjectFile(process.argv[1],process.argv[2],{label:'eval coexistence helper'})));",
+            str(WORKSPACE),
+            "verify_coexistence.py",
+        ).encode()
+        context = json.loads((WORKSPACE / "_test_context.json").read_text())
+        assert_scoped_coexistence(manifest, evidence, context, log, script)
     archive = next(a for a in reversed(successful) if a["stepId"] == f"{profile}.archive.execute")
     if archive.get("outcome", {}).get("output", {}).get("archiveDirectory") != (
         directory.relative_to(WORKSPACE).as_posix()
@@ -330,6 +400,7 @@ def validate_layout():
 
 
 def main():
+    INSPECTIONS.clear()
     passed, failed = [], []
     checks = [
         ("docs_layout", validate_layout),
@@ -352,7 +423,7 @@ def main():
             yaml.YAMLError,
         ) as error:
             failed.append(f"{name}: {error}")
-    output = {"passed": passed, "failed": failed}
+    output = {"passed": passed, "failed": failed, "validation_evidence": INSPECTIONS}
     (WORKSPACE / os.environ.get("BENCH_TEST_RESULTS", "_test_results.json")).write_text(
         json.dumps(output, indent=2)
     )

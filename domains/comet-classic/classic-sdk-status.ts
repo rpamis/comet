@@ -65,6 +65,14 @@ export function classicSdkNextAction(run: WorkflowRun) {
         waitId: decision.id,
         proposalHash: decision.proposalHash,
         choices: decision.choices,
+        instruction:
+          decision.stepId.endsWith('.design.confirm') ||
+          decision.stepId.endsWith('.delivery.confirm')
+            ? '展示当前正式提案及选项，等待用户对本次 proposalHash 的明确决定。即使任务已逐项规定内容，也不能把初始任务当作后来新提案的批准；须先展示本次方案，再等待相应回复。目标、直接实施或本地提交授权不能代替新设计或新交付范围的确认；不得自行记录 approved。当前未变提案已有明确批准时沿用，不重复询问。' +
+              (decision.stepId.endsWith('.delivery.confirm')
+                ? '本交付范围在本次重检完成后才形成；先展示本次范围，再结束当前回复，等待针对它的实际回答。早先在 Open、Design 或原交付阶段给出的条件式授权，不能当作本提案展示后的回答；条件后来满足，也不表示用户已经审阅本次提案。'
+                : '')
+            : '展示当前提案和选项；取得本次决定后才执行请求。',
       }
     : null;
 }

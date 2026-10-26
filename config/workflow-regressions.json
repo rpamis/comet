@@ -2,6 +2,450 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "native-outcome-output-repair-diagnostic",
+      "behavior": "Native结果漏写output或把业务字段放到结果顶层时，公开CLI指出outcome.output并保留原领取，合法修正后可以继续原Action。",
+      "coverageLevel": "public-cli",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "reproduction": "recovery051_native_20261026_104058的E67漏outcome.output，E68至E87用20次工具查源码；本轮新增公开Native dispatch断言在修改前失败。",
+      "expected": "保留原结构错误并指出outcome.output和本次领取的outcomeRequest；无效请求退出64，Run与领取不变；原领取的合法真实失败结果可以提交，不重新领取或执行。",
+      "forbidden": "自动搬移字段、生成业务结果或批准、输出领取凭据、写入被拒结果，或者为修正请求重开Action。",
+      "rootCause": "通用结构错误先拒绝顶层未知业务字段，没有给出结果正文的具体路径和原模板修正入口。",
+      "tests": [
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "diagnoses misplaced outcome fields without changing the original claim",
+          "requiredNames": [
+            "Native dispatch CLI presentation diagnoses misplaced outcome fields without changing the original claim"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real configured GLM Native hardest recovery with original cost and safety floors",
+          "status": "pending",
+          "evidence": [
+            "Original 104058 trace retains the malformed request and twenty-call investigation; diagnostic CLI replay passed, while final three independent model samples remain unverified."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "release-core-cross-platform-original-evidence",
+      "behavior": "发布核心回归由实际执行器完成全部平台分组，保留原始报告并绑定当前候选、测试与运行器。",
+      "coverageLevel": "runtime",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "reproduction": "原单平台发布前置检查在Windows文件符号链接处EPERM，在Linux又必须拒绝跳过Windows身份案例；跨副本的进度报告不能证明同一最终候选全部通过。新增原平台上下文与实际分区记录用例在旧实现失败。",
+      "expected": "固定协调器亲自执行完整Windows和Linux分组，按原平台绝对路径检查原始JSON；仅当完整计划、全部必需案例和前后实际输入一致时保存完成记录，发布模型与凭证绑定该记录。",
+      "forbidden": "修改报告路径、合并不同候选通过记录、忽略跳过案例、缩减分组、使用已修改的测试或原始记录、向无模型核心回归转发真实模型凭据。",
+      "rootCause": "单平台执行与当前核心目录的跨平台必要断言不兼容，且此前未将完整原始核心执行记录绑定到正式模型实验和最终凭证。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "combines both actual CI core partitions before launching paid models",
+          "requiredNames": [
+            "standalone static collector parity combines both actual CI core partitions before launching paid models"
+          ]
+        },
+        {
+          "file": "test/scripts/core-regression-evidence.test.ts",
+          "namePattern": "combines only complete original CI platform records for the current clean candidate",
+          "requiredNames": [
+            "cross-platform core regression evidence combines only complete original CI platform records for the current clean candidate"
+          ]
+        },
+        {
+          "file": "test/repository/ci-workflows.test.ts",
+          "namePattern": "requires both actual core platforms before the paid Eval job",
+          "requiredNames": [
+            "CI workflows requires both actual core platforms before the paid Eval job"
+          ]
+        },
+        {
+          "file": "test/scripts/core-regression-evidence.test.ts",
+          "namePattern": "records only this platform using real commands and preserves exact raw reports",
+          "requiredNames": [
+            "cross-platform core regression evidence records only this platform using real commands and preserves exact raw reports"
+          ]
+        },
+        {
+          "file": "test/scripts/core-regression-evidence.test.ts",
+          "namePattern": "assigns complete groups without removing any registered behavior",
+          "requiredNames": [
+            "cross-platform core regression evidence assigns complete groups without removing any registered behavior"
+          ]
+        },
+        {
+          "file": "test/scripts/core-regression-evidence.test.ts",
+          "namePattern": "checks original Windows and Linux reports without rewriting paths",
+          "requiredNames": [
+            "cross-platform core regression evidence checks original Windows and Linux reports without rewriting paths"
+          ]
+        },
+        {
+          "file": "test/scripts/core-regression-evidence.test.ts",
+          "namePattern": "rejects missing platforms, stale inputs, altered reports, skipped cases and wrong commands",
+          "requiredNames": [
+            "cross-platform core regression evidence rejects missing platforms, stale inputs, altered reports, skipped cases and wrong commands"
+          ]
+        },
+        {
+          "file": "test/scripts/core-regression-evidence.test.ts",
+          "namePattern": "binds tests, helpers, configuration and product inputs and rejects dirty tracked sources",
+          "requiredNames": [
+            "cross-platform core regression evidence binds tests, helpers, configuration and product inputs and rejects dirty tracked sources"
+          ]
+        },
+        {
+          "file": "test/scripts/core-regression-evidence.test.ts",
+          "namePattern": "does not start a coordinator with foreign code or a caller-supplied reduced plan",
+          "requiredNames": [
+            "cross-platform core regression evidence does not start a coordinator with foreign code or a caller-supplied reduced plan"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "actual Windows and Linux complete core catalog followed by bound release experiment",
+          "status": "pending",
+          "evidence": [
+            "20 targeted Node tests passed, including actual isolated Git/Vitest child execution and read-only proof verification; Python release harness fixtures and the prepared Linux tool probe passed. Full same-candidate cross-platform execution and formal model matrix remain unverified."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-acceptance-format-repair-diagnostic",
+      "behavior": "Native 验收区只有表格时指出当前文件、章节和可复制的列表格式，保留用户要求的表格并在原 Shape 修复。",
+      "coverageLevel": "unit",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "reproduction": "recovery051_native_20261026_084234 的E28仅报至少一个验收条件，E29至E54用26次工具调查解析器；相同表格输入的新诊断断言在旧代码失败。",
+      "expected": "明确指向brief路径与Acceptance examples，说明顶层Markdown列表及示例；补上同义列表后保留表格且只产生原A1验收项。",
+      "forbidden": "把未解析表格当作已有正式验收、丢掉用户要求的表格、改变验收含义或要求重建change。",
+      "rootCause": "零验收错误没有说明实际支持的格式或原位置修复方法。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-acceptance.test.ts",
+          "namePattern": "explains how to repair table-only acceptance without dropping the requested table",
+          "requiredNames": [
+            "Native portable acceptance explains how to repair table-only acceptance without dropping the requested table"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM Native acceptance-format repair without Runtime source search",
+          "status": "pending",
+          "evidence": [
+            "Original 084234 remains 24/24 business checks with efficiency 0; the 26-call format investigation is retained, not rescored."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-claim-template-direct-use",
+      "behavior": "Native领取响应先提供本Action结果模板和上下文请求，直接提取完整JSON，避免截断后猜协议或搜索Runtime源码。",
+      "coverageLevel": "runtime",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "reproduction": "084234的E62把claim响应截为4000字节，E190的48.8KB响应又经6次grep和sed找字段；主控与Builder合计73次Runtime源码查找。原模板本身齐全，新增顺序与提取指引断言在旧代码失败。",
+      "expected": "outcomeRequest及当前Action的contextRequest位于大状态前，保留完整Action、原领取和所有验收项；接收方按本次请求完成真实独立验收与回传。",
+      "forbidden": "截取半份JSON、混合stderr、把原始SDK Run当Native状态投影，或通过删减验收和伪造结果降低调用数。",
+      "rootCause": "大状态排在必要模板之前，缺少当前响应字段路径与原始Run结构的直接说明。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "binds a separate Verifier handoff and accepts its filled outcome template",
+          "requiredNames": [
+            "Native SDK Workflow Application binds a separate Verifier handoff and accepts its filled outcome template"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM Native direct claim/context/outcome templates with original recovery assertions",
+          "status": "pending",
+          "evidence": [
+            "084234: 248 tools, 199 turns, 3133 seconds; original results preserved. Runtime contracts do not prove model efficiency."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-archive-json-task-wait",
+      "behavior": "Native后台Archive跟踪原任务完成，再解析原stdout完整JSON，避免辅助轮询和把平台状态装饰当JSON。",
+      "coverageLevel": "runtime",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "reproduction": "084234的E227至E235执行9次工具调用，含辅助轮询、空读及解析exited尾注失败；E239至E241用tail截漂亮打印JSON，重复读取同阶段上下文。新指引断言在旧代码失败。",
+      "expected": "等待原后台句柄，完成后分开读取stdout和stderr并一次解析完整JSON；原Archive副作用、结果与重复执行保护保留。",
+      "forbidden": "原任务仍运行时重启Archive、因等待超时认定执行失败，或把失败和未知结果当成功。",
+      "rootCause": "Runtime续行只说明执行下一动作，没有说明后台结果文件和JSON边界。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "waits for the original Archive task before parsing complete stdout JSON",
+          "requiredNames": [
+            "Native SDK Workflow Application waits for the original Archive task before parsing complete stdout JSON"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM Native Archive original-task waiting and complete result parsing",
+          "status": "pending",
+          "evidence": [
+            "Original 084234 completed correctly after three outer turns, but retained avoidable background-output polling and JSON parsing failures."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-native-terminal-run-completion",
+      "behavior": "Native 固定 Run 已完成时按可信终态结束模型交互，不因回复措辞继续唤起；未完成、错误归属和异常不能当作完成。",
+      "coverageLevel": "unit",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "reproduction": "recovery051_native_20261026_073158 的 sentence-counting 已 completed/archive/done，控制器仍额外唤起四轮；原 stderr、Run 与失败报告保留。旧代码的 Native 完成查询和固定任务声明两项新增测试均失败。",
+      "expected": "只读核对固定 Native owner、当前 CLI Run 和归档 checkpoint 后，在根 Run 完成、无残留动作或等待且 archive.finalize 成功时结束交互；实际业务结果仍由原校验器判断。",
+      "forbidden": "通过模型文案判断指定 Native Run 已完成、推进并存 change、接受未完成或错误 owner，或将查询基础设施异常当作未完成而反复催促。",
+      "rootCause": "Native 固定任务没有声明完成 Run，控制器依赖回复措辞，未识别合法的终态回复。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "requires the requested Native owner and terminal Run before ending the model loop",
+          "requiredNames": [
+            "standalone static collector parity requires the requested Native owner and terminal Run before ending the model loop"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "binds the Native recovery task to its fixed completion Run and brief table location",
+          "requiredNames": [
+            "standalone static collector parity binds the Native recovery task to its fixed completion Run and brief table location"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "ends the Native model loop on trusted completion without requiring completion words",
+          "requiredNames": [
+            "standalone static collector parity ends the Native model loop on trusted completion without requiring completion words"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM Native blocked recovery and terminal Run completion probe",
+          "status": "pending",
+          "evidence": [
+            "Original experiment recovery051_native_20261026_073158: 16/17 checks, 171 turns, 207 tools, 3232 seconds; original failure and repeated terminal nudges retained."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-requested-run-probe-standalone-bootstrap",
+      "behavior": "指定 Classic Run 的完成探针在容器分离挂载中直接加载可信只读脚本，不导入工作区或 PYTHONPATH 中的替身模块。",
+      "coverageLevel": "unit",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "reproduction": "recovery051_classic_20261026_030844 的全部业务断言通过，但 validation 包初始化依赖未挂载的 scaffold 命名空间，完成探针持续失败。新增四组分离挂载及模块注入用例在修复前全部失败。",
+      "expected": "相同只读脚本在分离挂载中可用，已完成返回 0，未完成返回 1，且不受工作区及 PYTHONPATH 同名模块影响。",
+      "forbidden": "依赖容器外包布局、加载任务工作区中的替身 json 模块，或因加载失败回退到完成文案。",
+      "rootCause": "以包导入单文件探针触发无关初始化，且 Python 搜索路径包含不可信工作区。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "loads the completion probe across separate mounts without workspace or PYTHONPATH injection",
+          "requiredNames": [
+            "standalone static collector parity loads the completion probe across separate mounts without workspace or PYTHONPATH injection"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM Classic completion probe in separated read-only container mounts",
+          "status": "pending",
+          "evidence": [
+            "Original failed experiment: recovery051_classic_20261026_030844; completion-bootstrap-red.log records four unchanged failing fixtures."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-completion-probe-failure-stops-controller",
+      "behavior": "完成探针不可用时 Eval 控制器明确失败退出，避免反复唤起已经完成的模型流程。",
+      "coverageLevel": "unit",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "reproduction": "recovery051_classic_20261026_030844 在完成探针持续异常后仍运行至 18 轮；固定异常探针用例在旧控制器重复调用三次并返回成功。进一步定向复现发现执行器缺失、权限、超时和子进程失败被 helper 吞成未完成。",
+      "expected": "第一次探针基础设施异常即以退出码 2 结束并保留诊断，不重复调用 Agent。",
+      "forbidden": "将探针异常当作任务未完成继续催促，或当作已完成返回成功。",
+      "rootCause": "控制器将探针的所有非零退出码都解释为任务未完成。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "stops on an unavailable completion probe without repeatedly invoking the agent",
+          "requiredNames": [
+            "standalone static collector parity stops on an unavailable completion probe without repeatedly invoking the agent"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "stops only after every requested owned Classic Run has completed delivery",
+          "requiredNames": [
+            "standalone static collector parity stops only after every requested owned Classic Run has completed delivery"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-native-failed-artifact-cold-boundary-evidence",
+      "behavior": "Native Eval 产物检查失败时仍核对冷恢复边界，并在清理前保留原始权威 Run；只接受可信校验器生成的证据，留存时脱敏并注明完整性。",
+      "coverageLevel": "unit",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "reproduction": "recovery051_native_20261025_220723 在 brief 断言失败后跳过冷恢复边界；SDK volume 清理后无法从规范化 checkpoint 复原原结果哈希。",
+      "expected": "失败检查与冷恢复检查均执行；可信查询记录原 Run 和各 Action 结果摘要。留存正文先按结构脱敏，源摘要、留存摘要与脱敏标志分别记录，不把已脱敏正文冒充原始证据。",
+      "forbidden": "第一个断言失败掩盖边界错误、将模型输出当可信查询、规范化或脱敏后仍声称正文是原始字节、保存提供商凭据或原 claim token，或遗漏 camelCase 凭据字段。",
+      "rootCause": "顺序断言提前退出，收集器没有留存外部 Runtime 中的权威查询结果。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "checks cold recovery boundaries even after artifact failure and retains the original SDK Run",
+          "requiredNames": [
+            "standalone static collector parity checks cold recovery boundaries even after artifact failure and retains the original SDK Run"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "archives trusted SDK inspections with explicit integrity and credential redaction",
+          "requiredNames": [
+            "standalone static collector parity archives trusted SDK inspections with explicit integrity and credential redaction"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "retains only trusted validator evidence even when the task fails",
+          "requiredNames": [
+            "standalone static collector parity retains only trusted validator evidence even when the task fails"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM Native recovery with authoritative inspection retained before SDK cleanup",
+          "status": "pending",
+          "evidence": [
+            "Original failed experiment: recovery051_native_20261025_220723; immutable reports retained."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-requested-runs-authoritative-completion",
+      "behavior": "Classic 多 Run 任务按固定清单查询真实 SDK 归属、checkpoint、全部完成和交付 Action，忽略未列入任务的 parked Run。",
+      "coverageLevel": "unit",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "reproduction": "recovery051_classic_20261025_220723 的三个指定 Run 均 completed 且交付成功，控制器仍反复要求继续并耗尽 18 轮自动交互。",
+      "expected": "全部指定根 Run 完成交付才停止自动续行，后续严格任务校验照常执行。",
+      "forbidden": "按某个 Run、子 Run 或模型完成文案提前停止；查询失败时回退到完成文案；推进 excluded parked change。",
+      "rootCause": "多任务终止依赖模型文案，没有固定 Run 清单的权威终态查询。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "stops only after every requested owned Classic Run has completed delivery",
+          "requiredNames": [
+            "standalone static collector parity stops only after every requested owned Classic Run has completed delivery"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM Classic requested Run completion without repeated terminal nudges",
+          "status": "pending",
+          "evidence": [
+            "Original failed experiment: recovery051_classic_20261025_220723; authoritative terminal inspection retained in prior diagnostics."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-classic-scoped-parked-coexistence-observation",
+      "behavior": "Classic 声明范围检查通过可信辅助脚本和原 Runtime 日志证明 parked proposal 在执行前后共存，不强求它成为实现输入。",
+      "coverageLevel": "unit",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "reproduction": "recovery051_classic_20261025_220723 的 tweak/hotfix 合法声明源文件和测试输入，验证器却以未包含 parked 文件推断其不存在。",
+      "expected": "完整输入清单的原证明继续有效；范围清单必须额外绑定分发前脚本摘要、原脚本输入身份、原执行命令及成功日志中的两次准确观测。",
+      "forbidden": "只凭最终文件存在通过、接受伪造或重复观测、脚本或日志变化、失败检查、不同命令或不稳定输入。 辅助脚本及其 pytest 子进程不得从工作区或 PYTHONPATH 导入替身模块。",
+      "rootCause": "把命令依赖范围误用为工作区所有文件存在性的清单。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "requires a bound execution observation for parked coexistence outside scoped check inputs",
+          "requiredNames": [
+            "standalone static collector parity requires a bound execution observation for parked coexistence outside scoped check inputs"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "rejects workspace module and PYTHONPATH injection into the coexistence observer and pytest",
+          "requiredNames": [
+            "standalone static collector parity rejects workspace module and PYTHONPATH injection into the coexistence observer and pytest"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM Classic SDK recovery with scoped check coexistence and unchanged parked assertions",
+          "status": "pending",
+          "evidence": [
+            "Original failed experiment: recovery051_classic_20261025_220723; scoped-manifest diagnostic retained."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-native-once-name-id-binding",
+      "behavior": "Native Eval 按唯一检查名称选择一次性计划，并按计划的真实 ID 绑定原始收据，拒绝重名、重复 ID、错误收据和重放。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "unit",
+      "reproduction": "recovery051_native_20261025_220723 的计划 name 为 recovery-once、id 为 check-recovery-once，原验证器硬编码按 id=recovery-once 查找，误报已有通过收据缺失。",
+      "expected": "任意合法且唯一的原计划 ID 均可与同名检查的原收据匹配；命令、工作目录、不可重复属性、成功状态与原证据约束全部保留。",
+      "forbidden": "接受同名多计划、重复 ID、错名或错 ID 收据、重复收据、可重复计划、失败结果或不同命令。",
+      "rootCause": "验证器混淆用户指定的检查名称与 Runtime 计划身份。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "binds a uniquely named one-shot check to its original identity and rejects mismatched evidence",
+          "requiredNames": [
+            "standalone static collector parity binds a uniquely named one-shot check to its original identity and rejects mismatched evidence"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real GLM Native recovery using current candidate and unchanged receipt and fresh-session boundaries",
+          "status": "pending",
+          "evidence": [
+            "Original failed experiment: recovery051_native_20261025_220723; exact source and independent diagnosis retained in docs/architecture/051-low-cost-recovery.zh.md"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-artifact-collection-no-replay",
+      "behavior": "Eval 收集工作区产物只读取和脱敏复制文件，不执行 Python 文件或重复一次性副作用。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "unit",
+      "reproduction": "在工作区保留 recovery_once.py，旧收集器复制文件后再次调用 Docker 执行该文件；最小探针记录到第二次副作用。",
+      "expected": "收集前后原文件不变，报告保留源文件；只有登记的验证器负责执行，收集阶段无脚本执行。",
+      "forbidden": "为生成 execution 输出而补跑任意工作区脚本、再次尝试一次性检查，或在正式验证完成后改变现场。",
+      "rootCause": "产物收集器混入对根目录 Python 文件的自动执行。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "collects Python artifacts without repeating execution or one-shot side effects",
+          "requiredNames": [
+            "standalone static collector parity collects Python artifacts without repeating execution or one-shot side effects"
+          ]
+        }
+      ]
+    },
+    {
       "id": "eval-provided-check-byte-identity",
       "behavior": "一次性检查脚本按实际分发的原始字节校验，未修改的 LF 和 CRLF 均可通过，修改内容或换行、重复执行以及缺少可信摘要均被拒绝。",
       "sources": ["report:2026-10-25-051-native-classic-acceptance"],
@@ -1322,9 +1766,12 @@
     {
       "id": "native-next-git-query-budget",
       "behavior": "Native next 在重新核对候选与归档状态时限制重复 Git 查询，保持合法推进和归档可完成。",
-      "sources": ["report:2026-10-25-native-git-performance"],
+      "sources": [
+        "report:2026-10-25-native-git-performance",
+        "report:2026-10-26-051-release-closure"
+      ],
       "coverageLevel": "public-cli",
-      "reproduction": "e8fdaebc 最小真实 Git SDK 项目从公开 CLI 推进到 Archive 前，next 调用 56 次 Git；原始可观察记录中 next 最慢 411 秒、成功 archive 调用 228 次 Git。",
+      "reproduction": "e8fdaebc 最小真实 Git SDK 项目从公开 CLI 推进到 Archive 前，next 调用 56 次 Git；原始可观察记录中 next 最慢 411 秒、成功 archive 调用 228 次 Git。 051 当前 Linux 原断言复验分别观察 next 42/41 次；未降低原40/46预算，重复 status/untracked 查询的实际调用栈保留。",
       "expected": "同一最小输入的 next 调用不超过 40 次 Git；source 与生成 bundle 都正常完成，最终原 Run 已归档。",
       "forbidden": "用省略候选内容、生成输入、子模块或归档边界检查来降低调用次数；复用跨命令的陈旧内容。",
       "rootCause": "提交与分支、索引与未跟踪路径分别启动进程，独立只读查询串行执行，准确 checkout 根也重复探测。",
@@ -1342,9 +1789,12 @@
     {
       "id": "native-archive-git-query-budget",
       "behavior": "Native archive 在重新核对候选与归档状态时限制重复 Git 查询，保持合法推进和归档可完成。",
-      "sources": ["report:2026-10-25-native-git-performance"],
+      "sources": [
+        "report:2026-10-25-native-git-performance",
+        "report:2026-10-26-051-release-closure"
+      ],
       "coverageLevel": "public-cli",
-      "reproduction": "e8fdaebc 最小真实 Git SDK 项目从公开 CLI 推进到 Archive 前，archive 调用 66 次 Git；原始可观察记录中 next 最慢 411 秒、成功 archive 调用 228 次 Git。",
+      "reproduction": "e8fdaebc 最小真实 Git SDK 项目从公开 CLI 推进到 Archive 前，archive 调用 66 次 Git；原始可观察记录中 next 最慢 411 秒、成功 archive 调用 228 次 Git。 051 当前 Linux 原断言复验分别观察 next 42/41 次；未降低原40/46预算，重复 status/untracked 查询的实际调用栈保留。",
       "expected": "同一最小输入的 archive 调用不超过 46 次 Git；source 与生成 bundle 都正常完成，最终原 Run 已归档。",
       "forbidden": "用省略候选内容、生成输入、子模块或归档边界检查来降低调用次数；复用跨命令的陈旧内容。",
       "rootCause": "提交与分支、索引与未跟踪路径分别启动进程，独立只读查询串行执行，准确 checkout 根也重复探测。",
@@ -1443,6 +1893,867 @@
           "namePattern": "requires fresh verification and Archive approval after rebinding to a divergent branch",
           "requiredNames": [
             "Classic SDK Archive input repair requires fresh verification and Archive approval after rebinding to a divergent branch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-pending-builder-requirements-revision",
+      "behavior": "Native 尚未领取的普通 Builder 支持在原需求中修订要求，拒绝陈旧修订且不执行被取代的任务。",
+      "sources": ["report:2026-10-25-low-cost-workflow-recovery"],
+      "coverageLevel": "runtime",
+      "reproduction": "Native 尚未领取的普通 Builder 支持在原需求中修订要求，拒绝陈旧修订且不执行被取代的任务。 旧行为与隔离复现记录见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "Native 尚未领取的普通 Builder 支持在原需求中修订要求，拒绝陈旧修订且不执行被取代的任务。",
+      "forbidden": "重新创建或删除原需求、丢失已有工作、复用旧批准授权新内容、领取未结束的原执行或重复原副作用。",
+      "rootCause": "原实现仅允许失败 Builder 的 build.resume，尚未领取的 Builder 没有修订决定。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-requirements-recovery.test.ts",
+          "namePattern": "revises a pending ordinary Builder through its current continuation without executing it",
+          "requiredNames": [
+            "Native SDK requirements recovery revises a pending ordinary Builder through its current continuation without executing it"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-branch-rebind-cold-resume",
+      "behavior": "Native 分支重命名后从本地 Run 或便携检查点接管，保留原执行、批准与工作；重复接管不新增修订。",
+      "sources": ["report:2026-10-25-low-cost-workflow-recovery"],
+      "coverageLevel": "runtime",
+      "reproduction": "Native 分支重命名后从本地 Run 或便携检查点接管，保留原执行、批准与工作；重复接管不新增修订。 旧行为与隔离复现记录见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "Native 分支重命名后从本地 Run 或便携检查点接管，保留原执行、批准与工作；重复接管不新增修订。",
+      "forbidden": "重新创建或删除原需求、丢失已有工作、复用旧批准授权新内容、领取未结束的原执行或重复原副作用。",
+      "rootCause": "原入口没有普通 SDK Run 的分支接管路径；冷恢复要求原分支绑定。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-requirements-recovery.test.ts",
+          "namePattern": "rebinds an ordinary Native Run after branch rename without recreating work",
+          "requiredNames": [
+            "Native SDK requirements recovery rebinds an ordinary Native Run after branch rename without recreating work (cold=false)",
+            "Native SDK requirements recovery rebinds an ordinary Native Run after branch rename without recreating work (cold=true)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-branch-stop-before-rebind",
+      "behavior": "分支变化时禁止接管未结束的 Builder，但允许原领取回报真实失败，再接管原需求。",
+      "sources": ["report:2026-10-25-low-cost-workflow-recovery"],
+      "coverageLevel": "runtime",
+      "reproduction": "分支变化时禁止接管未结束的 Builder，但允许原领取回报真实失败，再接管原需求。 旧行为与隔离复现记录见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "分支变化时禁止接管未结束的 Builder，但允许原领取回报真实失败，再接管原需求。",
+      "forbidden": "重新创建或删除原需求、丢失已有工作、复用旧批准授权新内容、领取未结束的原执行或重复原副作用。",
+      "rootCause": "分支校验不能同时阻断结束原执行所需的收据，否则重命名分支会造成互相等待。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-requirements-recovery.test.ts",
+          "namePattern": "rejects Native branch takeover while the original Builder is unresolved and preserves its claim",
+          "requiredNames": [
+            "Native SDK requirements recovery rejects Native branch takeover while the original Builder is unresolved and preserves its claim"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-revise-design-after-verify",
+      "behavior": "Classic 在 Verify 发现设计变化后，诊断和实际修订入口一致，保留实现、任务和 Build 配置并重新批准设计。",
+      "sources": ["report:2026-10-25-low-cost-workflow-recovery"],
+      "coverageLevel": "runtime",
+      "reproduction": "Classic 在 Verify 发现设计变化后，诊断和实际修订入口一致，保留实现、任务和 Build 配置并重新批准设计。 旧行为与隔离复现记录见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "Classic 在 Verify 发现设计变化后，诊断和实际修订入口一致，保留实现、任务和 Build 配置并重新批准设计。",
+      "forbidden": "重新创建或删除原需求、丢失已有工作、复用旧批准授权新内容、领取未结束的原执行或重复原副作用。",
+      "rootCause": "验收要求 revise-design，但修订验证器只允许 Design 或 Build。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "revises changed Design from Verify and preserves completed implementation and Build configuration",
+          "requiredNames": [
+            "Classic candidate revisions revises changed Design from Verify and preserves completed implementation and Build configuration"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-revise-plan-after-archive-approval",
+      "behavior": "Classic 归档副作用开始前可修订计划，保留完成任务并撤销旧交付批准。",
+      "sources": ["report:2026-10-25-low-cost-workflow-recovery"],
+      "coverageLevel": "runtime",
+      "reproduction": "Classic 归档副作用开始前可修订计划，保留完成任务并撤销旧交付批准。 旧行为与隔离复现记录见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "Classic 归档副作用开始前可修订计划，保留完成任务并撤销旧交付批准。",
+      "forbidden": "重新创建或删除原需求、丢失已有工作、复用旧批准授权新内容、领取未结束的原执行或重复原副作用。",
+      "rootCause": "计划修订与漂移诊断仅检查 Build，后期计划变化没有可执行的合法恢复入口。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "revises the accepted plan from Archive before side effects and rejects the old delivery approval",
+          "requiredNames": [
+            "Classic candidate revisions revises the accepted plan from Archive before side effects and rejects the old delivery approval"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-interrupted-builder-continuation",
+      "behavior": "Classic Builder 的原领取可提交真实失败，保留部分实现并在同一 Run 继续。",
+      "sources": ["report:2026-10-25-low-cost-workflow-recovery"],
+      "coverageLevel": "runtime",
+      "reproduction": "Classic Builder 的原领取可提交真实失败，保留部分实现并在同一 Run 继续。 旧行为与隔离复现记录见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "Classic Builder 的原领取可提交真实失败，保留部分实现并在同一 Run 继续。",
+      "forbidden": "重新创建或删除原需求、丢失已有工作、复用旧批准授权新内容、领取未结束的原执行或重复原副作用。",
+      "rootCause": "Build 转换处理器把真实失败当作非法结果，原 Action 持续运行并阻止后续修订。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "records an interrupted Builder failure and resumes its partial work on the same Run",
+          "requiredNames": [
+            "Classic candidate revisions records an interrupted Builder failure and resumes its partial work on the same Run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-interrupted-skill-continuation",
+      "behavior": "Classic 设计及计划 Skill 中断后保持原批准与失败记录，拒绝接管在途执行，并从相同步骤创建后续工作。",
+      "sources": ["report:2026-10-25-low-cost-workflow-recovery"],
+      "coverageLevel": "runtime",
+      "reproduction": "Classic 设计及计划 Skill 中断后保持原批准与失败记录，拒绝接管在途执行，并从相同步骤创建后续工作。 旧行为与隔离复现记录见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "Classic 设计及计划 Skill 中断后保持原批准与失败记录，拒绝接管在途执行，并从相同步骤创建后续工作。",
+      "forbidden": "重新创建或删除原需求、丢失已有工作、复用旧批准授权新内容、领取未结束的原执行或重复原副作用。",
+      "rootCause": "设计、计划阶段的失败不能正常结束或创建后续执行，通用 retry 又不能把部分执行声称为未执行。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "continues interrupted (full\\.design\\.handoff|full\\.build\\.plan) work without resetting completed stages",
+          "requiredNames": [
+            "Classic candidate revisions continues interrupted full.design.handoff work without resetting completed stages",
+            "Classic candidate revisions continues interrupted full.build.plan work without resetting completed stages"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-preset-requirements-revision",
+      "behavior": "Classic tweak 和 hotfix 在 Verify 修改要求后返回原 Build，仅重新确认当前范围并继续验收。",
+      "sources": ["report:2026-10-25-low-cost-workflow-recovery"],
+      "coverageLevel": "runtime",
+      "reproduction": "Classic tweak 和 hotfix 在 Verify 修改要求后返回原 Build，仅重新确认当前范围并继续验收。 旧行为与隔离复现记录见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "Classic tweak 和 hotfix 在 Verify 修改要求后返回原 Build，仅重新确认当前范围并继续验收。",
+      "forbidden": "重新创建或删除原需求、丢失已有工作、复用旧批准授权新内容、领取未结束的原执行或重复原副作用。",
+      "rootCause": "预设要求漂移提示先回 Build，但后期只有重开 Verify 的入口。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "returns (tweak|hotfix) from Verify to Build for changed scope and confirms only the new scope",
+          "requiredNames": [
+            "Classic SDK Archive input repair returns tweak from Verify to Build for changed scope and confirms only the new scope",
+            "Classic SDK Archive input repair returns hotfix from Verify to Build for changed scope and confirms only the new scope"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-implementation-repair-continuation",
+      "behavior": "Native 归档前修改实现后按输出中的恢复命令建立后继候选，保留 Shape、历史一次性检查并完成独立验收与归档。",
+      "sources": ["report:2026-10-25-low-cost-workflow-recovery"],
+      "coverageLevel": "public-cli",
+      "reproduction": "Native 归档前修改实现后按输出中的恢复命令建立后继候选，保留 Shape、历史一次性检查并完成独立验收与归档。 旧行为与隔离复现记录见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "Native 归档前修改实现后按输出中的恢复命令建立后继候选，保留 Shape、历史一次性检查并完成独立验收与归档。",
+      "forbidden": "重新创建或删除原需求、丢失已有工作、复用旧批准授权新内容、领取未结束的原执行或重复原副作用。",
+      "rootCause": "候选漂移已经回到 Verify，但命令输出覆盖了具体原因且恢复命令为空，容易反复执行 Archive。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "repairs an implementation edited after Archive approval using the emitted recovery command and original Shape",
+          "requiredNames": [
+            "blocked Verifier recovery command contract repairs an implementation edited after Archive approval using the emitted recovery command and original Shape"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-branch-and-archive-repair-combination",
+      "behavior": "Native 已验收候选在分支重命名并修改实现后，可在原 Run 接管并返修，完成独立验收与归档，历史一次性检查不重复。",
+      "sources": ["report:2026-10-25-low-cost-workflow-recovery"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在隔离项目批准归档后重命名分支并修改代码。原入口没有分支接管，候选漂移输出又没有可执行的返修命令。",
+      "expected": "按 select --rebind 与当前恢复命令继续同一 Run，保留 Shape、原失败及检查，后继候选独立验收并归档。",
+      "forbidden": "改名后静默领取旧分支任务、重建需求、复用旧批准授权新实现、把旧漂移持续绑定到已开始修复的新工作，或重复历史一次性检查。",
+      "rootCause": "分支接管、候选失效与恢复输出没有组成完整正常流程，恢复投影还可能把历史失败当作当前阻塞。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "recovers a branch rename followed by implementation changes without replaying one-shot checks",
+          "requiredNames": [
+            "blocked Verifier recovery command contract recovers a branch rename followed by implementation changes without replaying one-shot checks"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-archived-branch-recovery-boundary",
+      "behavior": "Classic 归档后切换分支时，未完成交付只提示切回原分支；已完成 Run 的查询仍保持完成，不提示非法重绑。",
+      "sources": ["report:2026-10-25-low-cost-workflow-recovery"],
+      "coverageLevel": "runtime",
+      "reproduction": "在已归档但尚未交付的原 Run 切换分支后调用 state next，旧投影给出 state rebind，但该命令拒绝已归档 Run；完成交付后的查询也会被错误替换为分支恢复。",
+      "expected": "归档副作用和原绑定保持不变，未交付时返回可执行的 git switch；完成交付后返回 done，查询不推进 revision。",
+      "forbidden": "重绑已归档 Run、重复归档、改变已完成 Run，或给 git switch 附加 Comet 专用的 --json 参数。",
+      "rootCause": "分支漂移投影没有区分归档副作用已完成与 Run 已完成的边界，并向所有恢复命令追加 --json。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "preserves archive references after revised-plan delivery",
+          "requiredNames": [
+            "Classic candidate revisions preserves archive references after revised-plan delivery"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-archived-output-repair",
+      "behavior": "Classic 归档后可在同一 Run 补声明检查生成物、重检并取得新批准，完成不含缓存的交付。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "public-cli",
+      "reproduction": "旧入口在 Archive 后不能重开 Verify，删除误收生成物后交付被原输入阻塞。 逐项日志与断言映射见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "原命令真实再生成可变化的输出；输出之后再清除仍可交付；保留原 Verify 与 Archive。",
+      "forbidden": "重放 Archive、强迫提交缓存、伪造通过或复用旧批准。",
+      "rootCause": "归档后没有绑定原执行与不可变 checkpoint 的输出修复入口。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "repairs late declared check outputs after Archive without replaying Archive or committing generated files",
+          "requiredNames": [
+            "Classic candidate revisions repairs late declared check outputs after Archive without replaying Archive or committing generated files"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "built Classic command bundle and installed package delivery recovery",
+          "status": "verified",
+          "evidence": [
+            "Source CLI assertions cover this behavior; generated and installed candidate verification remains pending.",
+            "2026-10-26 installed candidate SHA-256 a2fc9d9fff2b736cf3bde00c046c74d49c1727d87591b6dd6daefb65128638fc; node_modules/.cache/recovery-051-release/installed-delivery-final.log and installed-bundle-delivery.log passed all corresponding source, checkpoint, scope, failed/unknown check and delivery continuation assertions. Actual checks 5, Archive 1, generated output absent from commit. OpenSpec uses explicit directory-move fixture; real model acceptance remains separate."
+          ]
+        },
+        {
+          "layer": "real GLM Classic post-Archive output repair and final delivery",
+          "status": "pending",
+          "evidence": [
+            "Original failed experiment recovery051_classic_20261025_220723 retained; new experiment is required."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-delivery-repair-source-exclusion",
+      "behavior": "交付输出修复拒绝把仍存在的新增实现文件排除为生成物。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "public-cli",
+      "reproduction": "同一公开 CLI 案例补 outputs 同时包含 generated/** 和 new-adapter.mjs，早期实现错误接受。 逐项日志与断言映射见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "拒绝该声明并保持原 Run 完全不变；只有检查前缺失且由原命令生成的输出可排除。",
+      "forbidden": "按 outputs 声明直接剔除未交付源码。",
+      "rootCause": "原输入存在的文件也可被声明输出直接剔除。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "repairs late declared check outputs after Archive without replaying Archive or committing generated files",
+          "requiredNames": [
+            "Classic candidate revisions repairs late declared check outputs after Archive without replaying Archive or committing generated files"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "built Classic command bundle and installed package delivery recovery",
+          "status": "verified",
+          "evidence": [
+            "Source CLI assertions cover this behavior; generated and installed candidate verification remains pending.",
+            "2026-10-26 installed candidate SHA-256 a2fc9d9fff2b736cf3bde00c046c74d49c1727d87591b6dd6daefb65128638fc; node_modules/.cache/recovery-051-release/installed-delivery-final.log and installed-bundle-delivery.log passed all corresponding source, checkpoint, scope, failed/unknown check and delivery continuation assertions. Actual checks 5, Archive 1, generated output absent from commit. OpenSpec uses explicit directory-move fixture; real model acceptance remains separate."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-delivery-repair-baseline-input-drift",
+      "behavior": "交付修复核对原基线中未改动的实现文件，拒绝未经验证的代码变化。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "public-cli",
+      "reproduction": "原已提交 implementation.mjs 在归档后由 42 改为 99，早期实现只核对待交付差异而接受修复。 逐项日志与断言映射见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "拒绝漂移且不改变 Run；恢复原内容后可完成。",
+      "forbidden": "仅核对原 deliveryInputs，遗漏旧 manifest 中的基线代码。",
+      "rootCause": "误把原待提交内容清单当成全部验证输入。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "repairs late declared check outputs after Archive without replaying Archive or committing generated files",
+          "requiredNames": [
+            "Classic candidate revisions repairs late declared check outputs after Archive without replaying Archive or committing generated files"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "built Classic command bundle and installed package delivery recovery",
+          "status": "verified",
+          "evidence": [
+            "Source CLI assertions cover this behavior; generated and installed candidate verification remains pending.",
+            "2026-10-26 installed candidate SHA-256 a2fc9d9fff2b736cf3bde00c046c74d49c1727d87591b6dd6daefb65128638fc; node_modules/.cache/recovery-051-release/installed-delivery-final.log and installed-bundle-delivery.log passed all corresponding source, checkpoint, scope, failed/unknown check and delivery continuation assertions. Actual checks 5, Archive 1, generated output absent from commit. OpenSpec uses explicit directory-move fixture; real model acceptance remains separate."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-delivery-repair-checkpoint-read-race",
+      "behavior": "读取权威 Run 后归档 checkpoint 被编辑时，不得用新摘要为旧 Run 背书。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "runtime",
+      "reproduction": "持有原 Run 后改写 comet-state.yaml 的 run_checkpoint.hash，再捕获修复证明，早期实现接受。 逐项日志与断言映射见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "重新读取的完整 checkpoint 必须匹配原 Run 或严格归档交付基线，否则拒绝。",
+      "forbidden": "把后来读取的任意快照摘要直接绑定到先前权威 Run。",
+      "rootCause": "读取快照摘要时未核对同一读取中的状态和 Run 身份。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "repairs late declared check outputs after Archive without replaying Archive or committing generated files",
+          "requiredNames": [
+            "Classic candidate revisions repairs late declared check outputs after Archive without replaying Archive or committing generated files"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "built Classic command bundle and installed package delivery recovery",
+          "status": "verified",
+          "evidence": [
+            "Source CLI assertions cover this behavior; generated and installed candidate verification remains pending.",
+            "2026-10-26 installed candidate SHA-256 a2fc9d9fff2b736cf3bde00c046c74d49c1727d87591b6dd6daefb65128638fc; node_modules/.cache/recovery-051-release/installed-delivery-final.log and installed-bundle-delivery.log passed all corresponding source, checkpoint, scope, failed/unknown check and delivery continuation assertions. Actual checks 5, Archive 1, generated output absent from commit. OpenSpec uses explicit directory-move fixture; real model acceptance remains separate."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-archived-delivery-skill-continuation",
+      "behavior": "归档交付 Skill 真实失败后在原 Run 续行，保留批准目标、归档上下文和新修复检查。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "public-cli",
+      "reproduction": "未修订 Run 首次 continue-work 会因定义升级错误拒绝 checkpoint；修复后续行又曾丢新检查和摘要。 逐项日志与断言映射见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "首次与已修订 Run 均可续行，state next 直接给出原目标、归档和相关批准，最终完成交付。",
+      "forbidden": "要求重建需求、丢批准关联、修改旧 Action inputHash、接受伪造历史输出或重复 Archive。",
+      "rootCause": "定义升级后用新 Run 核对旧 checkpoint，续行又清除了原交付上下文。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "repairs late declared check outputs after Archive without replaying Archive or committing generated files",
+          "requiredNames": [
+            "Classic candidate revisions repairs late declared check outputs after Archive without replaying Archive or committing generated files"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "preserves archive references after revised-plan delivery",
+          "requiredNames": [
+            "Classic candidate revisions preserves archive references after revised-plan delivery"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-checkpoint.test.ts",
+          "namePattern": "keeps only the exact prior failed output when a new delivery is pending",
+          "requiredNames": [
+            "immutable Classic archive delivery checkpoints keeps only the exact prior failed output when a new delivery is pending"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "built Classic command bundle and installed package delivery recovery",
+          "status": "verified",
+          "evidence": [
+            "Source CLI assertions cover this behavior; generated and installed candidate verification remains pending.",
+            "2026-10-26 installed candidate SHA-256 a2fc9d9fff2b736cf3bde00c046c74d49c1727d87591b6dd6daefb65128638fc; node_modules/.cache/recovery-051-release/installed-delivery-final.log and installed-bundle-delivery.log passed all corresponding source, checkpoint, scope, failed/unknown check and delivery continuation assertions. Actual checks 5, Archive 1, generated output absent from commit. OpenSpec uses explicit directory-move fixture; real model acceptance remains separate."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-delivery-recheck-failed-continuation",
+      "behavior": "归档后的新检查真实失败并停止后，可修正执行条件并在原 Run 再检查。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "public-cli",
+      "reproduction": "命令实际退出 9 后，早期 repair-delivery 仅允许 pending delivery，无法再推进。 逐项日志与断言映射见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "保留失败执行与收据，state next 给出修复命令，重新检查成功后仍需新批准。",
+      "forbidden": "把失败改写为成功、接管 running/unknown 检查或重放归档。",
+      "rootCause": "恢复入口没有涵盖自己产生的 settled failed check。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "repairs late declared check outputs after Archive without replaying Archive or committing generated files",
+          "requiredNames": [
+            "Classic candidate revisions repairs late declared check outputs after Archive without replaying Archive or committing generated files"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "built Classic command bundle and installed package delivery recovery",
+          "status": "verified",
+          "evidence": [
+            "Source CLI assertions cover this behavior; generated and installed candidate verification remains pending.",
+            "2026-10-26 installed candidate SHA-256 a2fc9d9fff2b736cf3bde00c046c74d49c1727d87591b6dd6daefb65128638fc; node_modules/.cache/recovery-051-release/installed-delivery-final.log and installed-bundle-delivery.log passed all corresponding source, checkpoint, scope, failed/unknown check and delivery continuation assertions. Actual checks 5, Archive 1, generated output absent from commit. OpenSpec uses explicit directory-move fixture; real model acceptance remains separate."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-delivery-recheck-lost-reply",
+      "behavior": "归档后检查已完成但回传丢失时，从原 Runtime 收据补记原结果，不再次执行命令。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "public-cli",
+      "reproduction": "隔离公开 CLI 案例实际执行检查并保存收据，不提交 outcome，再标记 unknown 并恢复。 逐项日志与断言映射见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "按 state check archive --recover 回填原 claim、命令和结果；执行计数不增加。",
+      "forbidden": "从 unknown 直接重开修复、编造成功或再次执行已完成检查。",
+      "rootCause": "新检查入口必须复用既有可信执行恢复协议，不能以归档已完成为由跳过原收据。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "repairs late declared check outputs after Archive without replaying Archive or committing generated files",
+          "requiredNames": [
+            "Classic candidate revisions repairs late declared check outputs after Archive without replaying Archive or committing generated files"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "built Classic command bundle and installed package delivery recovery",
+          "status": "verified",
+          "evidence": [
+            "Source CLI assertions cover this behavior; generated and installed candidate verification remains pending.",
+            "2026-10-26 installed candidate SHA-256 a2fc9d9fff2b736cf3bde00c046c74d49c1727d87591b6dd6daefb65128638fc; node_modules/.cache/recovery-051-release/installed-delivery-final.log and installed-bundle-delivery.log passed all corresponding source, checkpoint, scope, failed/unknown check and delivery continuation assertions. Actual checks 5, Archive 1, generated output absent from commit. OpenSpec uses explicit directory-move fixture; real model acceptance remains separate."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-delivery-repair-scope-revision",
+      "behavior": "交付修复未领取时可重选范围；等待批准时范围变化必须重检并使旧批准失效。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "public-cli",
+      "reproduction": "同一案例在 pending check 再修复，并在确认前修改 outputs 声明重新修复。 逐项日志与断言映射见 docs/architecture/051-low-cost-recovery.zh.md。",
+      "expected": "取消旧待执行检查或旧等待项，保留历史，新范围实际检查后只接受当前 proposalHash。",
+      "forbidden": "用旧批准推进新范围、重复已取消检查或在执行中修改范围。",
+      "rootCause": "恢复入口需要同时涵盖自己的未领取工作和未决批准，且绑定每次新范围。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "repairs late declared check outputs after Archive without replaying Archive or committing generated files",
+          "requiredNames": [
+            "Classic candidate revisions repairs late declared check outputs after Archive without replaying Archive or committing generated files"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "built Classic command bundle and installed package delivery recovery",
+          "status": "verified",
+          "evidence": [
+            "Source CLI assertions cover this behavior; generated and installed candidate verification remains pending.",
+            "2026-10-26 installed candidate SHA-256 a2fc9d9fff2b736cf3bde00c046c74d49c1727d87591b6dd6daefb65128638fc; node_modules/.cache/recovery-051-release/installed-delivery-final.log and installed-bundle-delivery.log passed all corresponding source, checkpoint, scope, failed/unknown check and delivery continuation assertions. Actual checks 5, Archive 1, generated output absent from commit. OpenSpec uses explicit directory-move fixture; real model acceptance remains separate."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-plan-revision-pause-preservation",
+      "behavior": "Classic 在 Build 的计划暂停点修订计划时保留原暂停选择，并拒绝旧计划的批准。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "public-cli",
+      "reproduction": "受影响文件完整回归 45 通过、1 失败；原 pause=true 案例在 revise-plan 后发现 buildPause 从 plan-ready 变为 null。",
+      "expected": "Build 内的计划修订保持已有状态和暂停选择；新计划需要当前批准，旧 proposalHash 和旧领取均被拒绝，合法路径仍可完成 Build。",
+      "forbidden": "静默清空用户暂停选择、复用旧批准或通过修改原断言让检查通过。",
+      "rootCause": "从后续阶段返回 Build 的恢复逻辑也用于 Build 内计划修订，统一清除了 buildPause。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "revises a plan from execute or plan-ready",
+          "requiredNames": [
+            "Classic candidate revisions revises a plan from execute or plan-ready (pause=false), binding the new candidate and rejecting stale handles",
+            "Classic candidate revisions revises a plan from execute or plan-ready (pause=true), binding the new candidate and rejecting stale handles"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "installed package paused plan revision and stale approval rejection",
+          "status": "verified",
+          "evidence": [
+            "Source CLI recheck: classic-plan-pause-recheck.log, 2 passed; installed package probe pending.",
+            "2026-10-26 installed candidate SHA-256 a2fc9d9fff2b736cf3bde00c046c74d49c1727d87591b6dd6daefb65128638fc; node_modules/.cache/recovery-051-release/installed-plan-pause-green.log passed unchanged paused-plan and stale-approval assertions."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-design-approval-source-guidance",
+      "behavior": "新设计提案需要当前提案的明确确认；固定全新 Eval 任务缺少实际回复数量证据时拒绝放行。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "unit",
+      "reproduction": "recovery051_classic_20261026_043339 有两个新 Design 批准，但实际用户交互为零；原 17/17 通过不能证明用户批准。 原配置诊断 recovery051_classic_output_20261026_064026 再现0回复但新Design已批准；Agent把任务指定内容当批准，输出管道只保留data.nextAction、丢continuation提示。现场、原摘要及早停137失败保留在model-aux-output-approval-v2/early-failure。 recovery051_classic_output_20261026_073158 再次出现0实际回复而Open已批准，并继续自行批准Design；现场保留后早停，pytest失败/Agent137。Runtime提示不足以保证模型遵循，新增紧邻批准步骤的中文Skill反例，两个契约先红后绿。",
+      "expected": "展示当前正式提案再取得本次决定，已有未变批准保留；交互数量底线检查后仍须逐条审查真实顺序。 仅消费data.nextAction也能取得同一完整确认要求；不新增状态或重开有效历史批准。",
+      "forbidden": "从目标授权推断设计批准、模型自批，或仅凭 resolved Wait 宣称真实用户批准。",
+      "rootCause": "旧交接或验收缺少该项具体约束；原状态与副作用校验不作放宽。 旧data.nextAction缺少confirmation指令；现与continuation共用相同instruction，明确逐项指定目标不批准后来形成的提案。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-output.test.ts",
+          "namePattern": "keeps task authorization separate from new design proposal approval",
+          "requiredNames": [
+            "Classic next-step source projection keeps task authorization separate from new design proposal approval"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "rejects fresh Classic design or delivery approvals without actual user interaction evidence",
+          "requiredNames": [
+            "standalone static collector parity rejects fresh Classic design or delivery approvals without actual user interaction evidence"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "requires explicit fresh Classic proposal interaction configuration without reapproving historical runs",
+          "requiredNames": [
+            "standalone static collector parity requires explicit fresh Classic proposal interaction configuration without reapproving historical runs"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-cli-arguments.test.ts",
+          "namePattern": "records a Classic SDK Design proposal with a source-traceable handoff",
+          "requiredNames": [
+            "Classic public argument safety records a Classic SDK Design proposal with a source-traceable handoff"
+          ]
+        },
+        {
+          "file": "test/domains/skill/classic-sdk-skill-routing.test.ts",
+          "namePattern": "requires the actual reply to the presented content before approving comet-design",
+          "requiredNames": [
+            "Classic Chinese Skill SDK routing requires the actual reply to the presented content before approving comet-design"
+          ]
+        },
+        {
+          "file": "test/domains/skill/classic-sdk-skill-routing.test.ts",
+          "namePattern": "requires the actual reply to the presented English content before approving comet-design",
+          "requiredNames": [
+            "Classic Chinese Skill SDK routing requires the actual reply to the presented English content before approving comet-design"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real configured GLM current candidate with original task assertions and explicit proposal approval review",
+          "status": "pending",
+          "evidence": [
+            "Original reports remain unchanged; deterministic tests and replay are not model acceptance.",
+            "Configured-model experiment recovery051_classic_output_20261026_064026 failed before the nextAction guidance fix; preserved and explicitly early-stopped after observed self-approval. Not a pass or environment exclusion.",
+            "073158 remains an early-stopped approval failure. Chinese phase-Skill clarification drafted; English sync requires user confirmation. Do not promote model acceptance from contracts.",
+            "User confirmed Chinese phase guidance; English synchronized with the same negative example. Both English cases failed before sync, then all 34 Native/Classic bilingual route contracts passed. Real model acceptance still pending."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-delivery-repair-approval-source-guidance",
+      "behavior": "归档后改变交付输出范围需要新批准，不能由原本地提交授权或继续提示替代。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "unit",
+      "reproduction": "recovery051_classic_output_20261026_044416 完成新检查后自批 delivery.confirm，控制器仅发送继续提示，没有用户回复。",
+      "expected": "新范围成功重检后展示当前提案并确认；固定 Eval 的实际回复数量必须覆盖新提案，具体绑定另审查。",
+      "forbidden": "以原 Archive 授权、通用继续提示或 Runtime 决定记录冒充本次用户批准。",
+      "rootCause": "旧交接或验收缺少该项具体约束；原状态与副作用校验不作放宽。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-output.test.ts",
+          "namePattern": "keeps task authorization separate from new delivery proposal approval",
+          "requiredNames": [
+            "Classic next-step source projection keeps task authorization separate from new delivery proposal approval"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "rejects fresh Classic design or delivery approvals without actual user interaction evidence",
+          "requiredNames": [
+            "standalone static collector parity rejects fresh Classic design or delivery approvals without actual user interaction evidence"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "requires explicit fresh Classic proposal interaction configuration without reapproving historical runs",
+          "requiredNames": [
+            "standalone static collector parity requires explicit fresh Classic proposal interaction configuration without reapproving historical runs"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real configured GLM current candidate with original task assertions and explicit proposal approval review",
+          "status": "pending",
+          "evidence": [
+            "Original reports remain unchanged; deterministic tests and replay are not model acceptance.",
+            "Configured-model experiment recovery051_classic_output_20261026_064026 failed before the nextAction guidance fix; preserved and explicitly early-stopped after observed self-approval. Not a pass or environment exclusion.",
+            "084234 retains an actual approval of jointly presented unchanged Open/Design content; that reuse is valid. Its later delivery scope was created only after the recheck and approved without a new reply. The latest Runtime guidance explicitly rejects this earlier conditional authorization as approval of the later proposal; original assertions and failure report remain unchanged."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-completed-task-progress-guidance",
+      "behavior": "Build 复用已有稳定任务 ID 和已完成记录，只补缺失完成项。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "unit",
+      "reproduction": "上述 Classic 困难原轨迹在 tasks 已全 completed 后仍逐项 task-complete，并曾从错误字段取得 None ID。",
+      "expected": "当前交接明确只补未完成项，缺 ID 时先补齐，不重复已完成写入。",
+      "forbidden": "猜测任务 ID、对已完成任务重复写入，或为省调用跳过真实完成回报。",
+      "rootCause": "旧交接或验收缺少该项具体约束；原状态与副作用校验不作放宽。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-output.test.ts",
+          "namePattern": "avoids repeating accepted task completion writes",
+          "requiredNames": [
+            "Classic next-step source projection avoids repeating accepted task completion writes"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real configured GLM current candidate with original task assertions and explicit proposal approval review",
+          "status": "pending",
+          "evidence": [
+            "Original reports remain unchanged; deterministic tests and replay are not model acceptance."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-full-delivery-commit-guidance",
+      "behavior": "交付直接使用 Git HEAD 的完整哈希，避免先用短 SHA 提交失败再查询。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "unit",
+      "reproduction": "原轨迹工具115使用短SHA被拒绝，116补查，117改完整SHA后才成功。",
+      "expected": "requiredInputs 明确使用 git rev-parse HEAD 的完整提交哈希，原提交范围和授权检查保留。",
+      "forbidden": "为接受短 SHA 放宽原提交身份校验。",
+      "rootCause": "旧交接或验收缺少该项具体约束；原状态与副作用校验不作放宽。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-output.test.ts",
+          "namePattern": "requests a full delivery commit hash from the actual Git HEAD",
+          "requiredNames": [
+            "Classic next-step source projection requests a full delivery commit hash from the actual Git HEAD"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real configured GLM current candidate with original task assertions and explicit proposal approval review",
+          "status": "pending",
+          "evidence": [
+            "Original reports remain unchanged; deterministic tests and replay are not model acceptance."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-terminal-delivery-receipt-guidance",
+      "behavior": "已完成交付直接采用当前 done 回执，冷恢复才复核，不从归档前基线猜当前状态。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "unit",
+      "reproduction": "原轨迹工具185至192继续解析归档YAML旧Run状态并补查，尽管实际交付已完成。",
+      "expected": "明确归档YAML保留交付前不可变基线；当前回执有效时结束，冷恢复或事实变化后按公开JSON命令复核。",
+      "forbidden": "修改归档checkpoint来表示交付完成、重放Archive，或省略必要冷恢复复核。",
+      "rootCause": "旧交接或验收缺少该项具体约束；原状态与副作用校验不作放宽。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-output.test.ts",
+          "namePattern": "uses the current terminal delivery receipt instead of an archived baseline",
+          "requiredNames": [
+            "Classic next-step source projection uses the current terminal delivery receipt instead of an archived baseline"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real configured GLM current candidate with original task assertions and explicit proposal approval review",
+          "status": "pending",
+          "evidence": [
+            "Original reports remain unchanged; deterministic tests and replay are not model acceptance."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-shared-archive-sdk-inspection-export",
+      "behavior": "低中难度共享任务导出原始SDK查询结果，供批准检查与清理后审查使用。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "unit",
+      "reproduction": "Review发现两个 test_archive_task.py 丢弃 inspect_completed_archive 返回Run，导致新增批准底线收到空证据；四个原样用例均缺 validation_evidence。",
+      "expected": "复用同一次实际查询，Native/Classic 均导出原Run和摘要；后续终态检查失败仍保留已查询结果，不多执行一次查询。",
+      "forbidden": "用模型输出冒充查询、丢弃失败前证据，或新增重复SDK检查。",
+      "rootCause": "旧交接或验收缺少该项具体约束；原状态与副作用校验不作放宽。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "exports the original SDK Run from shared archive tasks before any later terminal failure",
+          "requiredNames": [
+            "standalone static collector parity exports the original SDK Run from shared archive tasks before any later terminal failure"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real configured GLM current candidate with original task assertions and explicit proposal approval review",
+          "status": "pending",
+          "evidence": [
+            "Original reports remain unchanged; deterministic tests and replay are not model acceptance."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-single-character-dirty-input-snapshot",
+      "behavior": "单字符已跟踪文件在未暂存修改时仍可完整绑定当前输入，未跟踪内容变化须失效旧检查。",
+      "reproduction": "本轮 Git 查询优化 Review 复现：trim 将原 M a 状态的前导空格裁掉，新 untracked 解析异常；同一真实 Git 用例在修正前 complete=false。",
+      "expected": "同次完整原文用于路径解析，历史 fingerprint.status 保留 trim 值；重复未变快照相同，未跟踪内容变化后指纹改变。",
+      "forbidden": "将合法项目判为输入不完整、忽略未跟踪文件，或改变已有指纹语义以回避失败。",
+      "rootCause": "新解析路径复用了已裁剪状态；改为保留原始 NUL 文本供解析。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "keeps a complete snapshot for a single-character dirty tracked path and binds untracked edits",
+          "requiredNames": [
+            "Native check input fingerprint keeps a complete snapshot for a single-character dirty tracked path and binds untracked edits"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "unit"
+    },
+    {
+      "id": "native-git-status-head-compatibility",
+      "behavior": "合并 Git 状态读取须保留原 HEAD、分支和 v1 状态字节，包括重命名、冲突、子仓与非普通 HEAD。",
+      "reproduction": "新增 helper 前真实用例因缺入口失败；初版在非 heads 符号 HEAD 返回 (NULL)/(null)，且同名合法分支与 detached 标记有歧义。Windows 与 Linux 原失败日志保留。",
+      "expected": "正常分支单次读取；歧义标记追加完整 ref 和 HEAD 复核；特殊路径、冲突、子仓和排除路径逐字等价旧观察，残缺或未知记录拒绝。",
+      "forbidden": "改写原分支身份、状态字节、错误接受截断记录，或减少前后快照/CAS保护。",
+      "rootCause": "v2 分支伪状态可能与合法分支重名，平台 Git 还存在 NULL 大小写差异；按完整 ref 复核歧义。",
+      "tests": [
+        {
+          "file": "test/platform/git-process.test.ts",
+          "namePattern": "binds HEAD and branch|preserves legacy status",
+          "requiredNames": [
+            "Git process helpers binds HEAD and branch to the same observation while preserving exact legacy porcelain bytes",
+            "Git process helpers preserves legacy status for conflicts, submodule changes, exclusions and malformed observations"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "unit"
+    },
+    {
+      "id": "classic-open-preview-user-approval-guidance",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "behavior": "全新Open产物预览后取得当前产物的实际用户确认；仅消费nextAction也保留确认要求。",
+      "coverageLevel": "unit",
+      "reproduction": "原配置模型诊断 recovery051_classic_output_20261026_064026 的非thinking轨迹展示Open review后直接guard open --apply，控制器0回复。原Run full.open.confirm已approved；仅continuation携带ask提示，data.nextAction无提示。两个投影/命令断言及Open交互底线先失败，原现场与早停137日志保留。 recovery051_classic_output_20261026_073158 再次出现0实际回复而Open已批准，并继续自行批准Design；现场保留后早停，pytest失败/Agent137。Runtime提示不足以保证模型遵循，新增紧邻批准步骤的中文Skill反例，两个契约先红后绿。",
+      "rootCause": "将清晰任务等同生成后产物批准，且只读取nextAction会丢失Open预览的确认指令；原交互底线未包含full.open.confirm。",
+      "expected": "有效Open预览的nextAction复用同一确认指令；保留Action、原输入哈希和真实contentHash绑定，不新增Wait。相同未变产物已有明确批准时沿用；fresh任务数量底线包含Open，仍须审查实际回复顺序。",
+      "forbidden": "用初始任务替代未展示产物的批准、模型自批，或要求已批准且未变化的产物重新确认。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-output.test.ts",
+          "namePattern": "uses the exact Open preview hash only behind an explicit user decision",
+          "requiredNames": [
+            "Classic next-step source projection uses the exact Open preview hash only behind an explicit user decision"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-cli-arguments.test.ts",
+          "namePattern": "advances Classic SDK full Open only with the artifact hash shown for approval",
+          "requiredNames": [
+            "Classic public argument safety advances Classic SDK full Open only with the artifact hash shown for approval"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "rejects fresh Classic design or delivery approvals without actual user interaction evidence",
+          "requiredNames": [
+            "standalone static collector parity rejects fresh Classic design or delivery approvals without actual user interaction evidence"
+          ]
+        },
+        {
+          "file": "test/domains/skill/classic-sdk-skill-routing.test.ts",
+          "namePattern": "requires the actual reply to the presented content before approving comet-open",
+          "requiredNames": [
+            "Classic Chinese Skill SDK routing requires the actual reply to the presented content before approving comet-open"
+          ]
+        },
+        {
+          "file": "test/domains/skill/classic-sdk-skill-routing.test.ts",
+          "namePattern": "requires the actual reply to the presented English content before approving comet-open",
+          "requiredNames": [
+            "Classic Chinese Skill SDK routing requires the actual reply to the presented English content before approving comet-open"
+          ]
+        },
+        {
+          "file": "test/domains/skill/classic-sdk-skill-routing.test.ts",
+          "namePattern": "keeps text-only approval pauses explicit in the shared decision protocol",
+          "requiredNames": [
+            "Classic Chinese Skill SDK routing keeps text-only approval pauses explicit in the shared decision protocol in skills-zh",
+            "Classic Chinese Skill SDK routing keeps text-only approval pauses explicit in the shared decision protocol in skills"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real configured GLM current candidate with original task assertions and explicit proposal approval review",
+          "status": "pending",
+          "evidence": [
+            "064026 retained as early-stopped Open and Design self-approval failure. Unit checks do not prove actual user confirmation.",
+            "073158 remains an early-stopped approval failure. Chinese phase-Skill clarification drafted; English sync requires user confirmation. Do not promote model acceptance from contracts.",
+            "User confirmed Chinese phase guidance; English synchronized with the same negative example. Both English cases failed before sync, then all 34 Native/Classic bilingual route contracts passed. Real model acceptance still pending.",
+            "081645 still self-approved Open with zero actual replies after reading the shared decision-point reference. Original source and normalized installed English Skill contents match; evidence retained before explicit early stop. The same approved text-only pause rule is now explicit in that shared reference; both new contracts failed before the reference update. Model acceptance remains pending."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-user-artifact-location-retention",
+      "sources": [
+        "report:2026-10-25-low-cost-workflow-recovery",
+        "report:2026-10-26-051-release-closure"
+      ],
+      "behavior": "Native Shape、Build和独立Verify保留用户明确指定的产物位置、必需章节和格式，恢复时不以其他文件中的同类内容代替。",
+      "coverageLevel": "unit",
+      "reproduction": "recovery051_native_20261025_220723 将要求位于brief的测试计划放在Spec；仅修正检查name/id误配后，原brief位置断言仍失败。中文契约先红后绿，用户明确确认后同步英文，英文同一契约先红后绿。",
+      "expected": "Shape在brief约束登记原位置并准备内容，Build按原位置补齐并将可自动检查项纳入Runtime计划，Verifier核对位置、章节与格式，缺项或错位不通过。",
+      "forbidden": "移动到模板默认位置、用另一文件中同类内容抵消遗漏、静默变更正式约束或放宽原固定产物验收。",
+      "rootCause": "原Skill没有将用户指定的产物落点贯穿Shape交接、Build自查和独立验收，模型沿模板误放文件。",
+      "tests": [
+        {
+          "file": "test/domains/skill/native-sdk-skill-routing.test.ts",
+          "namePattern": "preserves user-specified artifact locations through Shape, Build and independent Verify",
+          "requiredNames": [
+            "Chinese Native SDK Skill route preserves user-specified artifact locations through Shape, Build and independent Verify"
+          ]
+        },
+        {
+          "file": "test/domains/skill/native-sdk-skill-routing.test.ts",
+          "namePattern": "keeps confirmed artifact-location requirements in the English Native route",
+          "requiredNames": [
+            "Chinese Native SDK Skill route keeps confirmed artifact-location requirements in the English Native route"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real configured GLM Native current candidate with unchanged brief placement, cold recovery, independent verification and Archive assertions",
+          "status": "pending",
+          "evidence": [
+            "Original failed experiment recovery051_native_20261025_220723 retained. Chinese and English Skill contracts do not establish model compliance."
           ]
         }
       ]

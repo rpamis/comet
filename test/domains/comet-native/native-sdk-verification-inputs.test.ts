@@ -589,12 +589,18 @@ describe('Native SDK verification input binding', () => {
           ],
           { cwd: root },
         );
-        await fs.appendFile(path.join(root, '.gitignore'), '.pnpm-store/\n');
+        await fs.appendFile(path.join(root, '.gitignore'), '.pnpm-store\n');
         await fs.symlink(
           child,
           path.join(root, '.pnpm-store'),
           process.platform === 'win32' ? 'junction' : 'dir',
         );
+        expect(
+          execFileSync('git', ['check-ignore', '--', '.pnpm-store'], {
+            cwd: root,
+            encoding: 'utf8',
+          }).trim(),
+        ).toBe('.pnpm-store');
         await fs.writeFile(path.join(child, 'value.txt'), 'verified dirty value\n');
       },
     });

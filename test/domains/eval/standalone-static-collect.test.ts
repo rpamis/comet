@@ -85,6 +85,115 @@ function pythonAccepts(manifest: string): boolean {
 }
 
 describe('standalone static collector parity', () => {
+  it.each<[string, string, number?]>([
+    [
+      'keeps the approved hardest-task matrix at three independent successes per workflow',
+      'local/tests/scaffold/test_regression_check.py::test_recovery_release_requires_all_three_samples_of_both_hard_tasks',
+    ],
+    [
+      'revalidates the complete six-sample recovery receipt without accepting the full-suite baseline',
+      'local/tests/scaffold/test_regression_check.py::test_recovery_release_receipt_requires_six_independent_passing_samples',
+    ],
+    [
+      'rejects a failed or missing third recovery sample and duplicate executions',
+      'local/tests/scaffold/test_regression_check.py::test_recovery_release_never_selects_one_success_out_of_three',
+      5,
+    ],
+    [
+      'combines both actual CI core partitions before launching paid models',
+      'local/tests/scaffold/test_regression_check.py::test_ci_preflight_combines_complete_original_platform_jobs_before_models',
+    ],
+    [
+      'binds a uniquely named one-shot check to its original identity and rejects mismatched evidence',
+      'local/tests/scaffold/test_native_sdk_recovery.py::test_named_one_shot_requires_unique_plan_and_original_receipt_identity',
+    ],
+    [
+      'collects Python artifacts without repeating execution or one-shot side effects',
+      'local/tests/scaffold/test_logging.py::test_save_artifacts_never_replays_python_or_one_shot_outputs',
+    ],
+    [
+      'checks cold recovery boundaries even after artifact failure and retains the original SDK Run',
+      'local/tests/scaffold/test_native_sdk_recovery.py::test_failed_native_artifact_still_checks_cold_boundary_and_retains_authoritative_run',
+    ],
+    [
+      'archives trusted SDK inspections with explicit integrity and credential redaction',
+      'local/tests/scaffold/test_logging.py::test_save_artifacts_preserves_sdk_inspection_with_integrity_and_redaction',
+    ],
+    [
+      'retains only trusted validator evidence even when the task fails',
+      'local/tests/scaffold/test_utils.py::test_execution_validator_retains_failed_trusted_inspection_and_discards_subject_evidence',
+    ],
+    [
+      'stops only after every requested owned Classic Run has completed delivery',
+      'local/tests/scaffold/test_sdk_task_validators.py::test_requested_classic_completion_requires_every_owned_delivery',
+    ],
+    [
+      'requires the requested Native owner and terminal Run before ending the model loop',
+      'local/tests/scaffold/test_sdk_task_validators.py::test_requested_native_completion_uses_owned_terminal_run_without_prose',
+    ],
+    [
+      'binds the Native recovery task to its fixed completion Run and brief table location',
+      'local/tests/scaffold/test_sdk_task_validators.py::test_native_recovery_task_declares_its_fixed_completion_run',
+    ],
+    [
+      'ends the Native model loop on trusted completion without requiring completion words',
+      'local/tests/scaffold/test_utils.py::test_native_terminal_probe_ends_without_requiring_completion_words',
+      2,
+    ],
+    [
+      'rejects fresh Classic design or delivery approvals without actual user interaction evidence',
+      'local/tests/scaffold/test_sdk_task_validators.py::test_new_classic_proposals_cannot_pass_without_actual_user_interaction',
+    ],
+    [
+      'requires explicit fresh Classic proposal interaction configuration without reapproving historical runs',
+      'local/tests/scaffold/test_tasks.py::test_task_declares_classic_proposal_interaction_only_for_fresh_scenarios',
+    ],
+    [
+      'exports the original SDK Run from shared archive tasks before any later terminal failure',
+      'local/tests/scaffold/test_current_archive_acceptance.py::test_shared_archive_tasks_export_the_original_inspected_run_even_after_terminal_failure',
+      4,
+    ],
+    [
+      'loads the completion probe across separate mounts without workspace or PYTHONPATH injection',
+      'local/tests/scaffold/test_utils.py::test_requested_run_probe_loads_standalone_helper_without_package_imports',
+      4,
+    ],
+    [
+      'stops on an unavailable completion probe without repeatedly invoking the agent',
+      'local/tests/scaffold/test_utils.py::test_requested_run_probe_bootstrap_failure_stops_loop_without_terminal_nudges',
+    ],
+    [
+      'requires a bound execution observation for parked coexistence outside scoped check inputs',
+      'local/tests/scaffold/test_classic_sdk_recovery.py::test_scoped_verify_requires_bound_coexistence_observation',
+    ],
+    [
+      'rejects workspace module and PYTHONPATH injection into the coexistence observer and pytest',
+      'local/tests/scaffold/test_classic_sdk_recovery.py::test_coexistence_helper_isolates_workspace_modules_and_pythonpath',
+    ],
+  ])('%s', (_name, selector, expectedCount = 1) => {
+    const output = execFileSync(
+      'uv',
+      [
+        'run',
+        '--locked',
+        '--no-sync',
+        '--no-python-downloads',
+        'python',
+        '-m',
+        'pytest',
+        '-q',
+        selector,
+      ],
+      {
+        cwd: evalRoot,
+        encoding: 'utf8',
+        timeout: 60_000,
+        env: { ...process.env, PYTHONUTF8: '1' },
+      },
+    );
+    expect(output).toContain(`${expectedCount} passed`);
+  });
+
   it('preserves exact provided check bytes across LF and CRLF without accepting mutations or duplicate execution', () => {
     const result = execFileSync(
       'uv',

@@ -4,6 +4,7 @@ import { normalizeWorkflowRelativePath } from '../workflow-contract/project-conf
 
 import { validateClassicSdkDeliveryCandidate } from './classic-sdk-application.js';
 import { inspectClassicSdkRun } from './classic-sdk-status.js';
+import { classicDeliveryActionContext } from './classic-sdk-delivery-repair-model.js';
 
 /** Submit an already performed Git delivery only after its approved evidence validates. */
 export async function completeClassicSdkDelivery(options: {
@@ -112,7 +113,10 @@ export async function verifyClassicSdkDelivery(projectRoot: string, change: stri
           prUrl?: unknown;
         }
       | undefined;
-    const outputs = (action?.input as { outputs?: Record<string, unknown> } | undefined)?.outputs;
+    const outputs = action
+      ? (classicDeliveryActionContext(run, action)?.outputs ??
+        (action.input as { outputs?: Record<string, unknown> }).outputs)
+      : undefined;
     const approved = outputs?.[`${profile}.archive.preflight`] as
       | {
           deliveryAction?: unknown;

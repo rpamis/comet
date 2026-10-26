@@ -51,6 +51,8 @@ Read the section for the current action. Follow links within it only when their 
 
 Investigate facts that can be established without the user. Ask only about decisions that change user-visible outcomes and cannot be inferred reliably. For simple requests, list unresolved questions and dependencies; maintain a decision tree only when several decisions affect one another. Before asking under `native.clarification_mode`, save this round's unresolved questions in the brief. Immediately copy confirmed conclusions into the relevant brief sections and complete target Specs. Keep unanswered parts `[blocking]`.
 
+Record the user's explicitly requested file locations, required sections, and artifact formats in the brief constraints, and prepare those contents as requested. Do not move them to another file because of a default location in a template. During handoff and recovery, check artifacts against these confirmed constraints rather than retaining only the business examples.
+
 Complete when requirements sources are fully processed within the coverage boundary and classified by purpose, all outcome-affecting decisions and assumptions are resolved, no `[blocking]` remains, the user explicitly confirms the outcome, scope, key decisions, all acceptance items, and non-goals, and Runtime has entered Build.
 
 New or reconfirmed briefs need outcome, scope, non-goals, and acceptance examples. Add constraints, decisions, open questions, or special verification requirements when applicable. Runtime also checks formal paths and a complete target Spec or concrete no-product-behavior-change reason. Repair reported artifacts and rerun continuation. Existing later-phase changes retain progress until Shape.
@@ -81,6 +83,8 @@ Apply the same rules when the user explicitly adds to the current scope.
 
 One confirmed Supervisor Shape authorizes all children within that scope. Dispatch and integrate as Runtime directs, then automatically perform final verification of every Supervisor acceptance item. Follow [Supervisor coordination](reference/commands.md#supervisor-coordination) for coordinator, Builder, and Verifier responsibilities. A child is complete only after Runtime accepts its verification and confirms integration.
 
+Before submitting a candidate, check files, sections, and formats at the original locations recorded in the brief, and complete missing artifacts. Add requirements that can be checked automatically to the current Runtime check plan, checking their actual contents rather than only finding equivalent content in another file. Follow the existing revision and confirmation flow when changing approved formal content.
+
 Complete when the implementation and relevant checks are ready for verification, Runtime accepts the Builder handoff, and the phase is Verify.
 
 ## Verify
@@ -89,7 +93,7 @@ For SDK, follow [SDK Verify protocol](reference/commands.md#sdk-verify-protocol)
 
 For Compat, immediately launch a new read-only Verifier under [Verify protocol](reference/commands.md#verify-protocol), passing the unchanged task package. Dispatch alone is registration: report running only after the platform accepts startup and the Verifier reports `verifier-started`. Handle startup failures immediately. Use inline acceptance text or page through every scopeId.
 
-The Verifier independently assesses all acceptance items, reuses Runtime checks matching implementation, workspace, and inputs, and adds missing or invalidated evidence. Read files and logs on demand. After a wait-tool timeout, keep waiting for the same Verifier. Record errors only for platform-confirmed failure, execution timeout, task loss, or completion without a usable result. Continue from current state after Runtime accepts the complete outcome.
+The Verifier independently assesses all acceptance items and checks the artifact locations, required sections, and formats recorded in the brief. Equivalent content in another file does not satisfy these requirements; report missing or misplaced content and do not pass the current candidate. Reuse Runtime checks matching implementation, workspace, and inputs, and add missing or invalidated evidence. Read files and logs on demand. After a wait-tool timeout, keep waiting for the same Verifier. Record errors only for platform-confirmed failure, execution timeout, task loss, or completion without a usable result. Continue from current state after Runtime accepts the complete outcome.
 
 Run `--accept-result` only after explicit user acceptance. Compat automated-check-only results also need explicit acceptance; isolated workspaces can accept results and choose delivery in one reply through the `--finish` alternative. SDK retains independent verification and does not use those Compat options.
 

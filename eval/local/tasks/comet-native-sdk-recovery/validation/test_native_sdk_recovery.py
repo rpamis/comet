@@ -10,7 +10,7 @@ import subprocess
 import traceback
 from pathlib import Path
 
-from scaffold.python.validation.current_sdk import inspect_run
+from scaffold.python.validation.current_sdk import inspect_run, sdk_inspection_evidence
 from scaffold.python.validation.native_recovery_boundary import digest
 
 WORKSPACE = Path("/workspace")
@@ -48,6 +48,23 @@ def assert_once_artifacts(context: dict) -> None:
     assert hashlib.sha256((WORKSPACE / "recovery_once.py").read_bytes()).hexdigest() == expected, (
         "One-shot check script was modified"
     )
+
+
+def assert_once_evidence(plans: list[dict], receipts: list[dict]) -> tuple[dict, dict]:
+    """Bind the uniquely named check to its original plan and receipt identities."""
+    identifiers = [plan.get("id") for plan in plans]
+    assert all(isinstance(value, str) and value for value in identifiers)
+    assert len(identifiers) == len(set(identifiers)), "Duplicate Runtime check identities"
+    once = [plan for plan in plans if plan.get("name") == "recovery-once"]
+    assert len(once) == 1, "Expected exactly one check named recovery-once"
+    plan = once[0]
+    matches = [receipt for receipt in receipts if receipt.get("id") == plan["id"]]
+    assert len(matches) == 1, "Missing or duplicate original one-shot receipt"
+    receipt = matches[0]
+    assert receipt.get("name") == plan["name"], "One-shot receipt name does not match its plan"
+    assert receipt["status"] == "passed" and receipt["exitCode"] == 0
+    assert_once_check(plan, receipt)
+    return plan, receipt
 
 
 def assert_recovery(run: dict, archived: Path, context: dict) -> None:
@@ -101,16 +118,11 @@ def assert_recovery(run: dict, archived: Path, context: dict) -> None:
         "Check mutated candidate inputs"
     )
     plans = result(builder)["verificationChecks"]
-    once = [p for p in plans if p.get("id") == "recovery-once"]
-    assert len(once) == 1 and once[0]["repeatable"] is False
+    assert_once_evidence(plans, receipt["checks"])
     business = {p["id"] for p in plans if "pytest" in p.get("argv", [])}
     assert business and any(
         c["id"] in business and c["status"] == "passed" for c in receipt["checks"]
     ), "No Runtime business-test evidence"
-    once_receipts = [c for c in receipt["checks"] if c["id"] == "recovery-once"]
-    assert len(once_receipts) == 1
-    assert once_receipts[0]["status"] == "passed" and once_receipts[0]["exitCode"] == 0
-    assert_once_check(once[0], once_receipts[0])
     assert_once_artifacts(context)
     history = [entry["outcome"] for entry in state["history"]]
     assert (
@@ -165,7 +177,7 @@ def assert_boundary(run, interaction):
     )
 
 
-def check_recovery() -> dict:
+def check_recovery(evidence: dict | None = None) -> dict:
     name = "sdk_recovery"
     try:
         archives = list((WORKSPACE / "docs/comet/archive").glob("*-" + NAME))
@@ -182,9 +194,31 @@ def check_recovery() -> dict:
             package=PACKAGE,
             cli=CLI,
         )
+        if evidence is not None:
+            evidence[f"native:{NAME}"] = sdk_inspection_evidence("native", "native", run)
         context = json.loads((WORKSPACE / "_test_context.json").read_text())
-        assert_recovery(run, archives[0], context)
-        assert_boundary(run, context.get("interaction", {}))
+        # 两组断言均执行，产物错误不能掩盖冷恢复时原证据被替换的问题。
+        failures = []
+        for check in (
+            lambda: assert_recovery(run, archives[0], context),
+            lambda: assert_boundary(run, context.get("interaction", {})),
+        ):
+            try:
+                check()
+            except (
+                AssertionError,
+                KeyError,
+                TypeError,
+                ValueError,
+                OSError,
+                IndexError,
+                StopIteration,
+                subprocess.SubprocessError,
+            ) as error:
+                frame = traceback.extract_tb(error.__traceback__)[-1]
+                failures.append(f"{type(error).__name__} at {frame.name}:{frame.lineno}: {error}")
+        if failures:
+            return {"check": name, "status": "failed", "reason": "; ".join(failures)}
         return {"check": name, "status": "passed"}
     except (
         AssertionError,
@@ -229,12 +263,14 @@ def check_feature() -> dict:
 
 
 def main():
-    results = [check_recovery(), check_feature()]
+    evidence = {}
+    results = [check_recovery(evidence), check_feature()]
     output = {
         "passed": [r["check"] for r in results if r["status"] == "passed"],
         "failed": [
             f"{r['check']}: {r.get('reason', '')}" for r in results if r["status"] == "failed"
         ],
+        "validation_evidence": evidence,
     }
     (WORKSPACE / os.environ.get("BENCH_TEST_RESULTS", "_test_results.json")).write_text(
         json.dumps(output)

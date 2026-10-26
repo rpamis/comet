@@ -114,7 +114,9 @@ export function buildNativePortableAcceptance(options: {
     seen.add(duplicateKey);
   }
   if (derived.length === 0) {
-    throw new Error('Native change must define at least one acceptance criterion');
+    throw new Error(
+      `Native change must define at least one acceptance criterion. In ${briefSource}, write each criterion as a top-level Markdown list item under Acceptance examples, for example: "- Input hello prints Words: 1." Keep requested tables; a table alone does not create formal acceptance items. Alternatively use complete Scenario: blocks in the target Specs. Add the explicit criteria without changing their meaning, then retry the same Shape step; do not recreate the change.`,
+    );
   }
 
   return derived.map((item, index) => ({

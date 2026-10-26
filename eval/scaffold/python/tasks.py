@@ -87,6 +87,8 @@ class EvaluationConfig:
     required_skills: list[str] = field(default_factory=list)
     expected_artifacts: list[str] = field(default_factory=list)
     require_skill_invocation: bool = False
+    # 仅供从空白 Run 开始、要求实际用户回复的新 Classic 提案场景。
+    require_classic_proposal_interaction: bool = False
     rubric_criteria: list[str] = field(default_factory=list)
     native_terminal: str = "archive"
 
@@ -103,6 +105,7 @@ class InteractionConfig:
     decision_replies: list[str] = field(default_factory=list)
     continue_prompt: str = "Please continue with the next phase of the workflow."
     fresh_resume_marker: str | None = None
+    completion_runs: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -283,11 +286,17 @@ def load_task(name: str | Path, tasks_dir: Path | None = None) -> Task:
     ):
         inferred_profile = "comet-workflow"
 
+    proposal_interaction = evaluation.get("require_classic_proposal_interaction", False)
+    if type(proposal_interaction) is not bool:
+        raise ValueError(
+            f"Task {task_name} has invalid evaluation.require_classic_proposal_interaction"
+        )
     evaluation_config = EvaluationConfig(
         profile=inferred_profile,
         required_skills=evaluation.get("required_skills", []),
         expected_artifacts=evaluation.get("expected_artifacts", []),
         require_skill_invocation=bool(evaluation.get("require_skill_invocation", False)),
+        require_classic_proposal_interaction=proposal_interaction,
         rubric_criteria=evaluation.get("rubric_criteria", []),
         native_terminal=evaluation.get("native_terminal", "archive"),
     )
@@ -310,6 +319,7 @@ def load_task(name: str | Path, tasks_dir: Path | None = None) -> Task:
             "Please continue with the next phase of the workflow.",
         ),
         fresh_resume_marker=interaction.get("fresh_resume_marker"),
+        completion_runs=interaction.get("completion_runs", []),
     )
 
     config = TaskConfig(

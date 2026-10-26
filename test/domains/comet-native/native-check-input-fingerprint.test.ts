@@ -130,6 +130,22 @@ describe('Native check input fingerprint', () => {
     expect(await nativeCheckInputGate({ projectRoot: root, candidateId: null })).toBeNull();
   });
 
+  it('keeps a complete snapshot for a single-character dirty tracked path and binds untracked edits', async () => {
+    await fs.writeFile(path.join(root, 'a'), 'base\n');
+    git(root, 'add', 'a');
+    git(root, 'commit', '--quiet', '-m', 'single-character path');
+    await fs.writeFile(path.join(root, 'a'), 'dirty\n');
+    await fs.writeFile(path.join(root, 'untracked'), 'first\n');
+    const input = fingerprintInput(root);
+    const before = await nativeCheckInputSnapshot(input);
+    expect(before.complete, before.diagnostics.join('; ')).toBe(true);
+    expect(await nativeCheckInputSnapshot(input)).toEqual(before);
+    await fs.writeFile(path.join(root, 'untracked'), 'second\n');
+    const after = await nativeCheckInputSnapshot(input);
+    expect(after.complete, after.diagnostics.join('; ')).toBe(true);
+    expect(after.contentFingerprint).not.toBe(before.contentFingerprint);
+  });
+
   it('excludes declared Runtime-owned files inside generated roots without dropping production input', async () => {
     const managedArtifactRoot = path.join(root, 'dist');
     await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n');

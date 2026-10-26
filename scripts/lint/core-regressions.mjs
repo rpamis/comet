@@ -211,7 +211,14 @@ export function coreRegressionArgs(entry, reportFile) {
   ];
 }
 
-export function assertCoreRegressionResult(entry, report) {
+export function assertCoreRegressionResult(entry, report, context = {}) {
+  const platform = context.platform ?? process.platform;
+  if (!['win32', 'linux', 'darwin'].includes(platform))
+    throw new Error(`${entry.id}: unsupported report platform`);
+  const reportPath = platform === 'win32' ? path.win32 : path.posix;
+  const projectRoot = context.projectRoot ?? repositoryRoot;
+  if (!reportPath.isAbsolute(projectRoot))
+    throw new Error(`${entry.id}: report project root must be absolute`);
   const assertions = (report.testResults ?? []).flatMap((file) => file.assertionResults ?? []);
   const passed = assertions.filter((test) => test.status === 'passed');
   if (
@@ -229,13 +236,14 @@ export function assertCoreRegressionResult(entry, report) {
   }
   for (const required of entry.requiredCases ?? []) {
     const normalize = (value) => {
-      const resolved = path.resolve(value).replaceAll('\\', '/');
-      return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+      if (!reportPath.isAbsolute(value)) return null;
+      const resolved = reportPath.normalize(value).replaceAll('\\', '/');
+      return platform === 'win32' ? resolved.toLowerCase() : resolved;
     };
     const file = (report.testResults ?? []).find(
       (result) =>
         typeof result.name === 'string' &&
-        normalize(result.name) === normalize(path.join(repositoryRoot, required.file)),
+        normalize(result.name) === normalize(reportPath.join(projectRoot, required.file)),
     );
     const matches = (file?.assertionResults ?? []).filter((test) =>
       required.exact
@@ -265,17 +273,78 @@ export function assertCoreRegressionResult(entry, report) {
   return passed.length;
 }
 
-function main(argv) {
+async function main(argv) {
   const selectors = [];
   let list = false;
+  let recordPlatform;
+  let recordAll;
+  let verifyEvidence;
+  let crossPlatform = false;
+  let combinePlatforms = false;
+  const platformFiles = [];
+  const crossOptions = {};
+  const crossArguments = {
+    '--linux-image': 'linuxImage',
+    '--linux-node-modules': 'linuxNodeModules',
+    '--linux-venv': 'linuxVenv',
+    '--output': 'outputFile',
+  };
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === '--list') list = true;
     else if (argv[index] === '--case' && argv[index + 1]) selectors.push(argv[++index]);
+    else if (argv[index] === '--record-platform' && argv[index + 1]) recordPlatform = argv[++index];
+    else if (argv[index] === '--record-all' && argv[index + 1]) recordAll = argv[++index];
+    else if (argv[index] === '--verify-evidence' && argv[index + 1]) verifyEvidence = argv[++index];
+    else if (argv[index] === '--cross-platform') crossPlatform = true;
+    else if (argv[index] === '--combine-platform-evidence') combinePlatforms = true;
+    else if (argv[index] === '--platform-record' && argv[index + 1])
+      platformFiles.push(argv[++index]);
+    else if (crossArguments[argv[index]] && argv[index + 1])
+      crossOptions[crossArguments[argv[index]]] = argv[++index];
     else throw new Error(`Unknown or incomplete argument: ${argv[index]}`);
   }
   const entries = selectCoreRegressions(selectors);
+  if (
+    [recordPlatform, recordAll, verifyEvidence, crossPlatform, combinePlatforms].filter(Boolean)
+      .length > 1 ||
+    ([recordPlatform, recordAll, verifyEvidence, crossPlatform, combinePlatforms].some(Boolean) &&
+      (list || selectors.length))
+  )
+    throw new Error('Platform evidence must execute its complete assigned partition');
+  if (Object.keys(crossOptions).length && !crossPlatform && !combinePlatforms)
+    throw new Error('Linux runner arguments require --cross-platform');
+  if (platformFiles.length && !combinePlatforms)
+    throw new Error('Platform records require --combine-platform-evidence');
+  if (
+    combinePlatforms &&
+    (platformFiles.length !== 2 ||
+      !crossOptions.outputFile ||
+      Object.keys(crossOptions).length !== 1)
+  )
+    throw new Error('CI evidence requires two complete platform records and an output file');
+  if (
+    crossPlatform &&
+    !['linuxImage', 'linuxNodeModules', 'linuxVenv', 'outputFile'].every(
+      (key) => typeof crossOptions[key] === 'string' && crossOptions[key],
+    )
+  )
+    throw new Error(
+      'Cross-platform regressions require a prepared Linux image, dependencies, virtual environment and output file',
+    );
   if (list) {
     console.log(JSON.stringify(entries, null, 2));
+    return;
+  }
+  if (verifyEvidence) {
+    const { verifyCoreRegressionReceipt } = await import('./core-regression-evidence.mjs');
+    const receipt = await verifyCoreRegressionReceipt(repositoryRoot, entries, verifyEvidence);
+    console.log(
+      JSON.stringify({
+        evidenceHash: receipt.evidenceHash,
+        groups: receipt.groups,
+        tests: receipt.tests,
+      }),
+    );
     return;
   }
   const run = (args) => {
@@ -287,6 +356,43 @@ function main(argv) {
   // 不自动重建或忽略失效产物：开发者必须先构建将要交付的 Runtime。
   for (const name of ['runtime-schemas', 'classic-runtime', 'native-runtime', 'entry-runtime'])
     run([`scripts/build/build-${name}.mjs`, '--check']);
+  if (combinePlatforms) {
+    const { combineCoreRegressionPlatforms } = await import('./core-regression-evidence.mjs');
+    const receipt = await combineCoreRegressionPlatforms(
+      repositoryRoot,
+      entries,
+      platformFiles,
+      crossOptions.outputFile,
+    );
+    console.log(
+      `Core regressions verified: ${receipt.groups} complete groups from both CI platforms. Evidence: ${path.resolve(crossOptions.outputFile)}`,
+    );
+    return;
+  }
+  if (recordAll) {
+    const { runSinglePlatformCoreRegressions } = await import('./core-regression-evidence.mjs');
+    const receipt = await runSinglePlatformCoreRegressions(repositoryRoot, entries, recordAll);
+    console.log(
+      `Core regressions passed: ${receipt.groups} complete groups. Evidence: ${path.resolve(recordAll)}`,
+    );
+    return;
+  }
+  if (crossPlatform) {
+    const { runCrossPlatformCoreRegressions } = await import('./core-regression-evidence.mjs');
+    const evidence = await runCrossPlatformCoreRegressions(repositoryRoot, entries, crossOptions);
+    console.log(
+      `Core regressions passed: ${evidence.groups} groups, ${evidence.tests} executed tests across both platforms. Evidence: ${path.resolve(crossOptions.outputFile)}`,
+    );
+    return;
+  }
+  if (recordPlatform) {
+    const { recordCoreRegressionPlatform } = await import('./core-regression-evidence.mjs');
+    const record = await recordCoreRegressionPlatform(repositoryRoot, entries, recordPlatform);
+    console.log(
+      `Platform core regressions passed: ${record.platform}, ${record.groups.length} complete groups. The other platform is still required.`,
+    );
+    return;
+  }
   const vitest = path.join(path.dirname(require.resolve('vitest/package.json')), 'vitest.mjs');
   const reports = path.join(repositoryRoot, 'coverage', 'core-regressions');
   mkdirSync(reports, { recursive: true });
@@ -302,10 +408,8 @@ function main(argv) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try {
-    main(process.argv.slice(2));
-  } catch (error) {
+  main(process.argv.slice(2)).catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
-  }
+  });
 }

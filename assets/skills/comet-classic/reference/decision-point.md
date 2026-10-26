@@ -22,10 +22,12 @@ Ask related questions together when they can be answered together. Do not re-ask
 A pause or stop applies only to actions that depend on the decision or are blocked by the current problem. Other investigation, evidence preparation, and permitted work within the same authorized scope may continue. This does not allow bypassing phase Guards, implementing unconfirmed scope, or choosing for the user.
 
 - Decision points are blocking points. Wait for an explicit user choice before continuing dependent work.
-- Use `AskUserQuestion` for single-select or multi-select choices when it is present; otherwise present clear text options and wait for the reply.
+- Use `AskUserQuestion` for single-select or multi-select choices when it is present; otherwise present clear text options and end the current response, waiting for the user's actual reply about the presented content. Do not run the corresponding approval command or apply a confirmation hash before that reply. The absence of a structured question tool does not mean approval has been given.
 - If `AskUserQuestion` cannot be used, record that structured questions are unavailable for this session. Do not repeatedly retry it at later decision points; use text options directly.
 - Never substitute recommendations, defaults, historical preferences, or an assumption that the user would agree for current confirmation.
 - Before an explicit choice, do not write the corresponding state fields, execute the corresponding branch operation, or automatically continue to the next phase.
+
+An initial request that says "author and confirm artifacts" or specifies complete features, file contents, and examples does not approve artifacts or designs produced afterward. Present the current content and wait for the actual reply. Reuse explicit approval of the same unchanged content without asking again.
 
 ## Presenting execution configuration
 

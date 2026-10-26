@@ -342,6 +342,14 @@ describe('Classic public argument safety', () => {
     const preview = await classicGuardCommand([name, 'open'], options());
     expect(preview.exitCode, preview.stderr).toBe(0);
     expect(preview.data).toMatchObject({ change: name, phase: 'open' });
+    expect(preview.data).toMatchObject({
+      nextAction: {
+        kind: 'action',
+        stepId: 'full.open',
+        instruction: expect.stringContaining('初始任务不能代替'),
+      },
+      continuation: { mode: 'ask' },
+    });
     const approvalHash = (preview.data as { approvalHash?: string }).approvalHash;
     expect(approvalHash).toMatch(/^[a-f0-9]{64}$/u);
 
@@ -394,6 +402,7 @@ describe('Classic public argument safety', () => {
       nextAction: {
         kind: 'decision',
         stepId: 'full.design.confirm',
+        instruction: expect.stringContaining('即使任务已逐项规定内容'),
         waitId: expect.any(String),
         proposalHash: (proposed.data as { wait: { proposalHash: string } }).wait.proposalHash,
         choices: expect.any(Array),
@@ -1790,7 +1799,7 @@ describe('Classic public argument safety', () => {
       expectedRevision: run.revision,
       context: { requestId: 'full-build-open-evidence', projectRoot: root },
     });
-    run = await approveFullOpen(runtime, run);
+    await approveFullOpen(runtime, run);
     const proposed = await classicStateCommand(
       ['propose-design', name, '--proposal', 'Use the design'],
       options(),
@@ -2014,7 +2023,7 @@ describe('Classic public argument safety', () => {
       },
     });
     const receipt = await classicOpenEvidenceReceipt(root, `openspec/changes/${name}`);
-    run = await runtime.recordEvidence({
+    await runtime.recordEvidence({
       runId: name,
       evidenceId: run.evidenceWaits![0].id,
       kind: 'classic-open-artifacts',

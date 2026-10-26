@@ -8,10 +8,12 @@ from pathlib import Path
 
 import yaml
 
-from scaffold.python.validation.current_sdk import inspect_run
+from scaffold.python.validation.current_sdk import inspect_run, sdk_inspection_evidence
 
 
-def inspect_completed_archive(workspace: Path, name: str, treatment: str) -> dict:
+def inspect_completed_archive(
+    workspace: Path, name: str, treatment: str, *, evidence: dict | None = None
+) -> dict:
     native = treatment == "COMET_NATIVE_SDK_CURRENT"
     if not native and treatment != "COMET_CLASSIC_DOCS_LAYOUT":
         raise ValueError("Expected a current Native or Classic CLI treatment")
@@ -24,6 +26,10 @@ def inspect_completed_archive(workspace: Path, name: str, treatment: str) -> dic
     archive = archives[0]
     state_file = archive / "comet-state.yaml"
     run = inspect_run(workspace, workflow, name, "native" if native else "classic-full", state_file)
+    if evidence is not None:
+        evidence[f"{workflow}:{name}"] = sdk_inspection_evidence(
+            workflow, "native" if native else "classic-full", run
+        )
     state = yaml.safe_load(state_file.read_text(encoding="utf-8"))
     if (
         run.get("status") != "completed"

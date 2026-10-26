@@ -36,8 +36,26 @@ export function nativeSdkRequirementsRevisionAllowed(
   if (['verify', 'archive'].includes(state.phase)) return proposalHash === undefined;
   if (state.phase !== 'build') return false;
   if (state.children_contract_hash) return proposalHash === undefined;
+  const pending = nativeSdkPendingBuilderRevisionHash(run);
+  if (pending) return proposalHash === pending;
   const wait = nativeSdkStoppedBuilderWait(run);
   return wait !== undefined && wait.proposalHash === proposalHash;
+}
+
+/** 尚未领取的 Builder 可以被当前修订取代；哈希绑定原 Action，不能使用旧入口。 */
+export function nativeSdkPendingBuilderRevisionHash(run: Readonly<WorkflowRun>): string | null {
+  const state = parseNativePortableState(run.state);
+  if (
+    state.phase !== 'build' ||
+    state.children_contract_hash ||
+    !['running', 'waiting'].includes(run.status) ||
+    run.actions.some((action) => ['running', 'unknown'].includes(action.status))
+  )
+    return null;
+  const pending = run.actions.filter((action) => action.status === 'pending');
+  if (pending.length !== 1 || pending[0].stepId !== 'build.builder') return null;
+  const { id: actionId, attempt, inputHash } = pending[0];
+  return hashRuntimeValue({ actionId, attempt, inputHash });
 }
 
 export const nativeSdkReviseCommandValidator: RuntimeCommandValidator = {

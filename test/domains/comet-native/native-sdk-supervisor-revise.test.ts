@@ -787,7 +787,8 @@ it('executes the actual returned Shape continuation with summary and guards with
   ]);
   expect(summaryOnly.response, JSON.stringify(summaryOnly)).not.toHaveProperty('error');
   expect((await f.inspect()).state).toMatchObject({ phase: 'shape', status: 'await-user' });
-}, 180000);
+  // 多次独立 CLI 核对版本、动作和阶段边界；每条命令仍保留原执行期限。
+}, 300000);
 
 it('reintegrates an already included Child after public Shape reconfirmation (same)', async () => {
   const f = await supervisor();

@@ -214,6 +214,105 @@ export function readGitStatusPorcelainAsync(
   return executeGitCommandAsync(cwd, gitStatusPorcelainArgs(pathspecs));
 }
 
+/** 一次读取分支、HEAD 和工作区状态，仍保留既有指纹使用的 v1 原文。 */
+export async function readGitStatusObservationAsync(
+  cwd: string,
+  pathspecs: readonly string[] = [],
+): Promise<{ head: string; branch: string; status: string }> {
+  const raw = await executeGitCommandAsync(cwd, [
+    'status',
+    '--porcelain=v2',
+    '--branch',
+    '-z',
+    '--untracked-files=all',
+    '--ignore-submodules=none',
+    '--',
+    ...pathspecs,
+  ]);
+  const observation = parseGitStatusObservation(raw);
+  // Git 的伪状态与同名合法分支有歧义；仅在这两种情况下按原完整 ref 规则复核。
+  if (raw.split('\0').some((record) => /^# branch\.head \((?:detached|null)\)$/iu.test(record))) {
+    const [head, ref] = (
+      await runGitCommandAsync(cwd, ['rev-parse', 'HEAD', '--symbolic-full-name', 'HEAD'])
+    ).split(/\r?\n/u);
+    if (head !== observation.head || !ref)
+      throw new Error('Git HEAD changed during status observation');
+    observation.branch = ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : '';
+  }
+  return observation;
+}
+
+export function parseGitStatusObservation(raw: string): {
+  head: string;
+  branch: string;
+  status: string;
+} {
+  if (!raw.endsWith('\0')) throw new Error('Git status returned an incomplete observation');
+  const records = raw.slice(0, -1).split('\0');
+  let head: string | undefined;
+  let branch: string | undefined;
+  let status = '';
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    if (record.startsWith('# branch.oid ')) {
+      const value = record.slice(13);
+      if (head !== undefined || !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(value))
+        throw new Error('Git status returned an invalid HEAD');
+      head = value;
+    } else if (record.startsWith('# branch.head ')) {
+      const value = record.slice(14);
+      if (branch !== undefined || !value || /[\r\n]/u.test(value))
+        throw new Error('Git status returned an invalid branch');
+      branch = /^\((?:detached|null)\)$/iu.test(value) ? '' : value;
+    } else if (record.startsWith('# ')) {
+      // Git 允许未来扩展头字段；它们不改变现有指纹。
+      continue;
+    } else if (record.startsWith('? ') || record.startsWith('! ')) {
+      if (record.length < 3) throw new Error('Git status returned an empty path');
+      status += `${record[0]}${record[0]} ${record.slice(2)}\0`;
+    } else {
+      const kind = record[0];
+      const metadataCount = kind === '1' ? 8 : kind === '2' ? 9 : kind === 'u' ? 10 : 0;
+      if (!metadataCount) throw new Error('Git status returned an unknown record');
+      // 只分隔元数据，路径中的空格、换行与反斜杠必须逐字保留。
+      let cursor = 0;
+      const fields: string[] = [];
+      for (let field = 0; field < metadataCount; field += 1) {
+        const separator = record.indexOf(' ', cursor);
+        if (separator < 0) throw new Error('Git status returned incomplete metadata');
+        fields.push(record.slice(cursor, separator));
+        cursor = separator + 1;
+      }
+      const ref = record.slice(cursor);
+      if (
+        !ref ||
+        !/^[.MADRCUT]{2}$/u.test(fields[1]) ||
+        !/^(?:N\.\.\.|S[.C][.M][.U])$/u.test(fields[2])
+      )
+        throw new Error('Git status returned invalid metadata');
+      const modes = kind === 'u' ? 4 : 3;
+      const hashes = kind === 'u' ? 3 : 2;
+      if (
+        fields.slice(3, 3 + modes).some((mode) => !/^[0-7]{6}$/u.test(mode)) ||
+        fields
+          .slice(3 + modes, 3 + modes + hashes)
+          .some((hash) => !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(hash)) ||
+        (kind === '2' && !/^[RC]\d{1,3}$/u.test(fields[8]))
+      )
+        throw new Error('Git status returned invalid metadata');
+      status += `${fields[1].replaceAll('.', ' ')} ${ref}\0`;
+      if (kind === '2') {
+        const source = records[++index];
+        if (!source) throw new Error('Git status returned an incomplete rename record');
+        status += `${source}\0`;
+      }
+    }
+  }
+  if (head === undefined || branch === undefined)
+    throw new Error('Git status returned an incomplete HEAD observation');
+  return { head, branch, status };
+}
+
 function gitStatusPorcelainArgs(pathspecs: readonly string[]): string[] {
   return [
     'status',
@@ -234,21 +333,43 @@ export function gitStatusPaths(cwd: string): string[] {
 
 /** Parse the same untrimmed NUL-delimited observation used by the caller. */
 export function parseGitStatusPaths(raw: string): string[] {
+  return [
+    ...new Set(
+      parseGitStatusEntries(raw).flatMap((entry) =>
+        entry.paths.map((ref) => ref.replaceAll('\\', '/')),
+      ),
+    ),
+  ].sort();
+}
+
+/** 从同一次完整 status 观察取得未跟踪路径，避免再执行 ls-files。 */
+export function parseGitStatusUntrackedPaths(raw: string): string[] {
+  return [
+    ...new Set(
+      parseGitStatusEntries(raw)
+        .filter((entry) => entry.status === '??')
+        .flatMap((entry) => entry.paths),
+    ),
+  ].sort();
+}
+
+function parseGitStatusEntries(raw: string): Array<{ status: string; paths: string[] }> {
   if (!raw) return [];
   const records = raw.split('\0').filter(Boolean);
-  const paths: string[] = [];
+  const entries: Array<{ status: string; paths: string[] }> = [];
   for (let index = 0; index < records.length; index += 1) {
     const record = records[index];
     if (record.length < 4) throw new Error('Git status returned an invalid porcelain record');
-    paths.push(record.slice(3).replaceAll('\\', '/'));
+    const paths = [record.slice(3)];
     if (record[0] === 'R' || record[0] === 'C' || record[1] === 'R' || record[1] === 'C') {
       const source = records[index + 1];
       if (!source) throw new Error('Git status returned an incomplete rename record');
-      paths.push(source.replaceAll('\\', '/'));
+      paths.push(source);
       index += 1;
     }
+    entries.push({ status: record.slice(0, 2), paths });
   }
-  return [...new Set(paths)].sort();
+  return entries;
 }
 
 export function gitBranchRemote(cwd: string, branch: string): string {

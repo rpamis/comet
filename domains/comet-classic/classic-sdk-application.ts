@@ -40,6 +40,7 @@ import {
   inspectProtectedProjectPath,
   readProtectedProjectFile,
 } from '../workflow-contract/protected-project-path.js';
+import { normalizeWorkflowRelativePath } from '../workflow-contract/project-config.js';
 import {
   classicArchivedRequirementsProblems,
   readClassicArtifactRequirements,
@@ -73,6 +74,7 @@ import {
 } from './classic-tasks.js';
 import { applyClassicTransition } from './classic-transitions.js';
 import { classicVerificationReportReceipt } from './classic-verification-report.js';
+import { classicDeliveryActionContext } from './classic-sdk-delivery-repair-model.js';
 
 export interface ClassicWorkflowApplication {
   workflow: DefineWorkflowOptions;
@@ -356,7 +358,7 @@ const deliveryOutcomeValidator: RuntimeValidator = {
       input?: { changeDir?: unknown };
       outputs?: Record<string, unknown>;
     };
-    const outputs = actionInput.outputs;
+    const outputs = classicDeliveryActionContext(run, action)?.outputs ?? actionInput.outputs;
     const approved = outputs?.[`${profile}.archive.preflight`] as
       | {
           deliveryAction?: unknown;
@@ -693,20 +695,23 @@ export async function classicOpenEvidenceReceipt(
   for (const file of requirements.files) {
     const relative = path.relative(projectRoot, file).replaceAll('\\', '/');
     if (options.designRequirements && relative === `${inspected.relative}/design.md`) continue;
-    const hashed = await hashProtectedProjectFile(projectRoot, relative, {
-      label: 'Classic Open artifact',
-    });
-    if (hashed.stat.size === 0) throw new Error(`Classic Open artifact is empty: ${relative}`);
-    let digest = hashed.digest;
+    let digest: string;
     if (
       relative === `${inspected.relative}/tasks.md` &&
       (options.designRequirements ||
         options.presetRequirements ||
         options.taskCheckboxes === 'ignore')
     ) {
-      const source = await readClassicProjectFile(projectRoot, relative, {
-        label: 'Classic task requirements',
-      });
+      const taskFile = await readProtectedProjectFile(
+        projectRoot,
+        relative,
+        Number.MAX_SAFE_INTEGER,
+        {
+          label: 'Classic task requirements',
+        },
+      );
+      if (taskFile.stat.size === 0) throw new Error(`Classic Open artifact is empty: ${relative}`);
+      const source = taskFile.bytes.toString('utf8');
       digest = options.designRequirements
         ? classicTaskRevision(source)
         : createHash('sha256')
@@ -716,6 +721,12 @@ export async function classicOpenEvidenceReceipt(
               }),
             )
             .digest('hex');
+    } else {
+      const hashed = await hashProtectedProjectFile(projectRoot, relative, {
+        label: 'Classic Open artifact',
+      });
+      if (hashed.stat.size === 0) throw new Error(`Classic Open artifact is empty: ${relative}`);
+      digest = hashed.digest;
     }
     entries.push([relative, digest]);
   }
@@ -730,16 +741,12 @@ export async function classicDesignEvidenceReceipt(
   projectRoot: string,
   designDocRef: string,
 ): Promise<{ ref: string; contentHash: string }> {
-  const inspected = await inspectProtectedProjectPath(projectRoot, designDocRef, {
-    label: 'Classic Design document',
-    expected: 'file',
-  });
-  if (!inspected.exists) throw new Error('Classic Design document does not exist');
-  const hashed = await hashProtectedProjectFile(projectRoot, inspected.relative, {
+  const ref = normalizeWorkflowRelativePath(designDocRef, 'Classic Design document');
+  const hashed = await hashProtectedProjectFile(projectRoot, ref, {
     label: 'Classic Design document',
   });
   if (hashed.stat.size === 0) throw new Error('Classic Design document is empty');
-  return { ref: inspected.relative, contentHash: hashed.digest };
+  return { ref, contentHash: hashed.digest };
 }
 
 /** Reuse only the document accepted by the latest Design evidence. */
@@ -775,9 +782,7 @@ export async function classicPlanEvidenceReceipt(
   planRef: string,
   changeDirRef: string,
 ): Promise<{ ref: string; contentHash: string }> {
-  const readiness = await inspectClassicPlanReadiness(projectRoot, planRef, {
-    requireNonempty: true,
-  });
+  const readiness = await inspectClassicPlanReadiness(projectRoot, planRef);
   if (readiness.status !== 'ready') throw new Error('Classic Build plan is not ready');
   const change = await inspectProtectedProjectPath(projectRoot, changeDirRef, {
     label: 'Classic change',
@@ -793,6 +798,7 @@ export async function classicPlanEvidenceReceipt(
       label: 'Classic tasks',
     }),
   ]);
+  if (!planFile.bytes.toString('utf8').trim()) throw new Error('Classic Build plan is not ready');
   const mapping = validateClassicTaskPlan(
     planFile.bytes.toString('utf8'),
     tasksRef,
@@ -2021,6 +2027,10 @@ export function defineClassicWorkflowApplication(
     transitionHandler: {
       ...transitionRef,
       apply({ run, event }) {
+        if (event.kind === 'action-outcome' && event.outcome.status === 'failed') {
+          const interrupted = run.actions.find((action) => action.id === event.outcome.actionId);
+          if (interrupted?.type === 'invoke_skill') return { state: run.state!, next: [] };
+        }
         if (fullApplication && event.stepId.startsWith('full.')) {
           return fullApplication.transitionHandler.apply({ run, event });
         }
@@ -2302,10 +2312,12 @@ export function defineClassicWorkflowApplication(
               run.commands?.some(
                 (command) =>
                   command.name === 'revise-design' &&
-                  (
-                    run.actions.find((action) => action.id === command.actionId)?.input as
-                      { activation?: { fromPhase?: string } } | undefined
-                  )?.activation?.fromPhase === 'build',
+                  ['build', 'verify', 'archive'].includes(
+                    (
+                      run.actions.find((action) => action.id === command.actionId)?.input as
+                        { activation?: { fromPhase?: string } } | undefined
+                    )?.activation?.fromPhase ?? '',
+                  ),
               )
                 ? 'full.build.plan'
                 : 'full.build.configure',

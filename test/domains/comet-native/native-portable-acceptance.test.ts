@@ -7,6 +7,35 @@ import {
 } from '../../../domains/comet-native/native-portable-acceptance.js';
 
 describe('Native portable acceptance', () => {
+  it('explains how to repair table-only acceptance without dropping the requested table', () => {
+    const table =
+      '# Acceptance examples\n| Input | Expected |\n| --- | --- |\n| hello | Words: 1 |\n';
+    let diagnostic = '';
+    try {
+      buildNativePortableAcceptance({
+        briefMarkdown: table,
+        briefSource: 'docs/comet/changes/demo/brief.md',
+      });
+    } catch (error) {
+      diagnostic = (error as Error).message;
+    }
+    expect(diagnostic).toContain('docs/comet/changes/demo/brief.md');
+    expect(diagnostic).toContain('Acceptance examples');
+    expect(diagnostic).toContain('top-level Markdown list');
+    expect(diagnostic).toContain('Keep requested tables');
+    expect(diagnostic).toContain('- Input hello prints Words: 1.');
+    const repaired = buildNativePortableAcceptance({
+      briefMarkdown: table + '\n- Input hello prints Words: 1.\n',
+      briefSource: 'docs/comet/changes/demo/brief.md',
+    });
+    expect(repaired).toEqual([
+      {
+        id: 'A1',
+        source: 'docs/comet/changes/demo/brief.md',
+        text: 'Input hello prints Words: 1.',
+      },
+    ]);
+  });
   it('assigns readable sequential IDs without content hashes', () => {
     const acceptance = buildNativePortableAcceptance({
       briefMarkdown: `# Acceptance examples

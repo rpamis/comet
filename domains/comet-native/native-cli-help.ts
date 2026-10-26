@@ -182,7 +182,10 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     ],
   },
   select: {
-    usage: 'comet native select <change-name>',
+    usage: 'comet native select <change-name> [--rebind]',
+    options: [
+      '--rebind  Explicitly bind the same stopped SDK Run to the current Git branch; preserve work and approvals, and reject unresolved executions.',
+    ],
     purpose: 'Select one Native change after validating its workspace binding.',
     output: 'The selected change record.',
   },

@@ -67,14 +67,16 @@ def main():
         )
     )
     results = [check_feature(WORKSPACE)]
+    evidence = {}
     try:
         inspect_completed_archive(
-            WORKSPACE, "character-counting", context.get("treatment_name", "")
+            WORKSPACE, "character-counting", context.get("treatment_name", ""), evidence=evidence
         )
         results.append({"check": "current_sdk_archive", "status": "passed"})
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         results.append({"check": "current_sdk_archive", "status": "failed", "reason": str(error)})
     output = {
+        "validation_evidence": evidence,
         "passed": [r["check"] for r in results if r["status"] == "passed"],
         "failed": [
             r["check"] + ": " + r.get("reason", "") for r in results if r["status"] == "failed"

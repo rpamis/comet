@@ -5,6 +5,7 @@ import {
   classicOpenEvidenceReceipt,
   classicAcceptedDesignEvidence,
   classicPlanEvidenceReceipt,
+  assertClassicPresetRequirementsCurrent,
 } from './classic-sdk-application.js';
 import type { ClassicState } from './classic-state.js';
 import { classicVerificationReportReceipt } from './classic-verification-report.js';
@@ -30,6 +31,32 @@ export async function inspectClassicSdkRevisionReadiness(projectRoot: string, ru
       commandArgs: ['comet', 'state', command, change, '--expected-revision', String(revision)],
     });
   };
+  if (
+    state.workflow !== 'full' &&
+    !state.archived &&
+    ['build', 'verify', 'archive'].includes(state.phase) &&
+    !run.waits.some(
+      (wait) =>
+        wait.status === 'pending' && wait.stepId === `${state.workflow}.build.escalation-confirm`,
+    )
+  ) {
+    try {
+      await assertClassicPresetRequirementsCurrent(projectRoot, input.changeDir, run);
+    } catch (error) {
+      problems.push({
+        code: 'CLASSIC_EVIDENCE_DRIFT',
+        message: error instanceof Error ? error.message : String(error),
+        remediation:
+          state.phase === 'build'
+            ? 'Propose the revised scope and obtain a fresh explicit decision.'
+            : 'Return to Build with the preserved implementation, then confirm the revised preset scope.',
+        commandArgs:
+          state.phase === 'build'
+            ? ['comet', 'state', 'propose-escalation', change, '--reason', '<scope-change>']
+            : ['comet', 'state', 'continue-build', change, '--expected-revision', String(revision)],
+      });
+    }
+  }
   if (
     state.workflow === 'full' &&
     state.phase === 'design' &&
@@ -61,7 +88,8 @@ export async function inspectClassicSdkRevisionReadiness(projectRoot: string, ru
   let requirementsDrift = false;
   if (
     state.workflow === 'full' &&
-    state.phase === 'build' &&
+    ['build', 'verify', 'archive'].includes(state.phase) &&
+    !state.archived &&
     !run.actions.some(
       (action) => action.stepId === 'full.design.handoff' && action.status === 'pending',
     )
@@ -77,7 +105,8 @@ export async function inspectClassicSdkRevisionReadiness(projectRoot: string, ru
   if (
     !requirementsDrift &&
     state.workflow === 'full' &&
-    state.phase === 'build' &&
+    ['build', 'verify', 'archive'].includes(state.phase) &&
+    !state.archived &&
     state.plan &&
     !run.actions.some(
       (action) => action.stepId === 'full.build.plan' && action.status === 'pending',

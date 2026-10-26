@@ -34,8 +34,55 @@ import { classicArchiveDocumentOutputs } from '../../../domains/comet-classic/cl
 import * as openSpecCommands from '../../../domains/comet-classic/classic-openspec-command.js';
 
 const roots: string[] = [];
+// Windows full 生命周期包含多轮归档与真实进程树核对，使用有界预算保留完整断言。
+const fullLifecycleTimeout = process.platform === 'win32' ? 180_000 : undefined;
 
 describe('Classic SDK Archive input repair', () => {
+  it.each(['tweak', 'hotfix'] as const)(
+    'returns %s from Verify to Build for changed scope and confirms only the new scope',
+    async (profile) => {
+      const f = await fixture(profile, true, false, 'source', '');
+      const before = (await f.inspect()).run;
+      expect(before.state).toMatchObject({ phase: 'verify' });
+      await f.put(
+        'openspec/changes/example/proposal.md',
+        '# Proposal\nThe revised scope keeps the public API.\n',
+      );
+      await f.cli(
+        'state',
+        'continue-build',
+        'example',
+        '--expected-revision',
+        String(before.revision),
+      );
+      const returned = (await f.inspect()).run;
+      expect(returned.runId).toBe(before.runId);
+      expect(returned.state).toMatchObject({
+        phase: 'build',
+        verifyResult: 'pending',
+        archiveConfirmation: null,
+      });
+      const scope = await f.cli(
+        'state',
+        'propose-escalation',
+        'example',
+        '--reason',
+        'The user revised the same preset scope.',
+      );
+      await f.cli(
+        'state',
+        'decide-escalation',
+        'example',
+        '--proposal-hash',
+        scope.wait.proposalHash,
+        '--choice',
+        'continue',
+      );
+      expect((await f.inspect()).run.runId).toBe(before.runId);
+      await f.build();
+      expect((await f.verify()).exitCode).toBe(0);
+    },
+  );
   it.each(['source', 'generated'] as const)(
     'repairs a full Archive without effects and delivers the same Run through %s',
     async (entry) => {
@@ -97,6 +144,7 @@ describe('Classic SDK Archive input repair', () => {
       expect(final.status).toBe('completed');
       expect(await f.openSpec.invocations()).toHaveLength(2);
     },
+    fullLifecycleTimeout,
   );
   it('requires fresh verification and Archive approval after rebinding to a divergent branch', async () => {
     const f = await fixture('tweak', true, false, 'source', '');
@@ -1029,6 +1077,7 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
       expect((await f.inspect()).run.status).toBe('completed');
       expect(git('status', '--porcelain', '--untracked-files=no')).toBe('');
     },
+    profile === 'full' ? fullLifecycleTimeout : undefined,
   );
 
   it('reuses the same successful command across Build and Verify after validating its inputs and log', async () => {

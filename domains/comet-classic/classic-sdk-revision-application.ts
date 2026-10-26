@@ -1,13 +1,132 @@
 import {
   defineWorkflow,
   hashRuntimeValue,
+  preserveRuntimeExecutionOrigins,
   type WorkflowRun,
   type RuntimeCommandValidator,
   type DefineWorkflowOptions,
+  type RuntimeExecutor,
+  type RuntimeValidator,
 } from '../engine/runtime.js';
 import { defineClassicWorkflowApplication } from './classic-sdk-application.js';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
 import { assertClassicArchiveUnchanged } from './classic-sdk-archive-manifest.js';
+import { classicDeliveryRepairCheckpointHash } from './classic-sdk-delivery-repair.js';
+import { classicDeliveryActionContext } from './classic-sdk-delivery-repair-model.js';
+import { withClassicDeliveryRepair } from './classic-sdk-delivery-repair-application.js';
+
+export function classicInterruptedSkill(run: Readonly<WorkflowRun>) {
+  const last = run.actions.at(-1);
+  return run.status === 'failed' &&
+    last?.status === 'failed' &&
+    last.type === 'invoke_skill' &&
+    !run.actions.some((action) => ['running', 'unknown', 'pending'].includes(action.status)) &&
+    !run.waits.some((wait) => wait.status === 'pending') &&
+    !run.evidenceWaits?.some((wait) => wait.status === 'pending')
+    ? last
+    : null;
+}
+const workContinuationValidator: RuntimeCommandValidator = {
+  id: 'comet-classic-work-continuation-command',
+  version: '1',
+  async validate({ run, name, input, context }) {
+    const value = input as {
+      expectedRevision?: unknown;
+      fromPhase?: unknown;
+      interruptedActionId?: unknown;
+      deliveryCheckpointHash?: unknown;
+    } | null;
+    const failed = classicInterruptedSkill(run);
+    const repaired = failed && classicDeliveryActionContext(run, failed);
+    const checkpointCurrent =
+      !repaired ||
+      (context?.projectRoot &&
+        value?.deliveryCheckpointHash ===
+          (await classicDeliveryRepairCheckpointHash(context.projectRoot, run)));
+    const accepted =
+      name === 'continue-work' &&
+      failed !== null &&
+      value?.expectedRevision === run.revision &&
+      value.fromPhase === (run.state as unknown as ClassicState).phase &&
+      value.interruptedActionId === failed.id &&
+      Object.keys(value).length === (repaired ? 4 : 3) &&
+      Boolean(checkpointCurrent);
+    return {
+      accepted,
+      allowFailed: accepted,
+      reason:
+        'Classic continuation requires the original settled failed Skill and current revision',
+    };
+  },
+};
+const workContinuationExecutor: RuntimeExecutor = {
+  id: 'comet-classic-work-continuation',
+  capabilities: [],
+  supports: (action) => action.ref === 'classic-work-continuation',
+  async execute(action, _context, run) {
+    const id = (action.input as { activation?: { interruptedActionId?: string } }).activation
+      ?.interruptedActionId;
+    const failed = run?.actions.find((entry) => entry.id === id);
+    if (!failed || failed.status !== 'failed' || failed.type !== 'invoke_skill')
+      throw new Error('Classic original failed Skill is missing');
+    return {
+      status: 'succeeded',
+      output: { interruptedActionId: failed.id, resumeStepId: failed.stepId },
+    };
+  },
+};
+const workContinuationOutcomeValidator: RuntimeValidator = {
+  id: 'comet-classic-work-continuation-outcome',
+  version: '1',
+  validate({ run, action, outcome }) {
+    const id = (action.input as { activation?: { interruptedActionId?: string } }).activation
+      ?.interruptedActionId;
+    const failed = run.actions.find((entry) => entry.id === id);
+    return {
+      accepted:
+        action.claim?.executorId === workContinuationExecutor.id &&
+        outcome.status === 'succeeded' &&
+        failed?.status === 'failed' &&
+        failed.type === 'invoke_skill' &&
+        hashRuntimeValue(outcome.output) ===
+          hashRuntimeValue({ interruptedActionId: failed.id, resumeStepId: failed.stepId }),
+      reason: 'Classic continuation does not match its original failed Skill',
+    };
+  },
+};
+
+export function classicInterruptedBuilder(run: Readonly<WorkflowRun>) {
+  const state = run.state as unknown as ClassicState;
+  const last = run.actions.at(-1);
+  return state.phase === 'build' &&
+    run.status === 'failed' &&
+    !state.archived &&
+    last?.status === 'failed' &&
+    last.stepId === `${state.workflow}.build.execute` &&
+    !run.actions.some((action) => ['running', 'unknown', 'pending'].includes(action.status))
+    ? last
+    : null;
+}
+
+const buildContinuationValidator: RuntimeCommandValidator = {
+  id: 'comet-classic-build-continuation-command',
+  version: '1',
+  validate({ run, name, input }) {
+    const request = input as { expectedRevision?: unknown; fromPhase?: unknown } | null;
+    const state = run.state as unknown as ClassicState;
+    const accepted =
+      name === 'continue-build' &&
+      (classicInterruptedBuilder(run) !== null || canReopenClassicVerification(run)) &&
+      request?.expectedRevision === run.revision &&
+      request.fromPhase === state.phase &&
+      Object.keys(request).length === 2;
+    return {
+      accepted,
+      allowFailed: accepted,
+      reason: 'Classic Build continuation requires the current stopped failed Builder',
+    };
+  },
+};
 
 export function classicArchiveRepairAction(run: Readonly<WorkflowRun>) {
   const state = run.state as unknown as ClassicState;
@@ -82,16 +201,21 @@ const revisionValidator: RuntimeCommandValidator = {
             'full.build.check',
             'full.build.check.evidence',
           ];
+    const laterPhase =
+      ['verify', 'archive'].includes(state.phase) && canReopenClassicVerification(run);
     return {
       accepted:
         state.workflow === 'full' &&
-        (state.phase === phase || (name === 'revise-design' && state.phase === 'build')) &&
+        (state.phase === phase ||
+          (name === 'revise-design' && state.phase === 'build') ||
+          laterPhase) &&
         !state.archived &&
         requested?.expectedRevision === run.revision &&
         Object.keys(requested).length === 2 &&
         requested.fromPhase === state.phase &&
         pending.length === 1 &&
-        (designAllowed.includes(pending[0].stepId) ||
+        (laterPhase ||
+          designAllowed.includes(pending[0].stepId) ||
           (name === 'revise-design' &&
             state.phase === 'build' &&
             [
@@ -168,8 +292,31 @@ export function classicSdkRevisionApplication(
   profile: ClassicProfile,
   verification: boolean | 'full' = true,
   archiveRepair = true,
+  buildContinuation = true,
+  workContinuation = true,
+  sourceRun?: Readonly<WorkflowRun>,
 ) {
   const base = defineClassicWorkflowApplication(profile);
+  const continuationValidator: RuntimeCommandValidator = {
+    ...workContinuationValidator,
+    async validate(context) {
+      if (!sourceRun) return workContinuationValidator.validate(context);
+      const expected =
+        context.run.workflow.hash === sourceRun.workflow.hash
+          ? (structuredClone(sourceRun) as WorkflowRun)
+          : preserveRuntimeExecutionOrigins(sourceRun as WorkflowRun);
+      expected.workflow.hash = context.run.workflow.hash;
+      expected.definitionHashes[
+        JSON.stringify([context.run.workflow.id, context.run.workflow.version])
+      ] = context.run.workflow.hash;
+      if (hashRuntimeValue(expected) !== hashRuntimeValue(context.run))
+        return {
+          accepted: false,
+          reason: 'Classic continuation no longer matches its authoritative source Run',
+        };
+      return workContinuationValidator.validate({ ...context, run: sourceRun });
+    },
+  };
   const fullOpen =
     archiveRepair && verification === 'full' && profile !== 'full'
       ? defineClassicWorkflowApplication('full').workflow
@@ -178,22 +325,57 @@ export function classicSdkRevisionApplication(
     ...base,
     workflow: {
       ...base.workflow,
-      ...(fullOpen
-        ? {
-            steps: {
-              ...base.workflow.steps,
-              ...Object.fromEntries(
-                Object.entries(fullOpen.steps).filter(([id]) => id.startsWith('full.open')),
-              ),
-            },
-          }
-        : {}),
+      steps: {
+        ...base.workflow.steps,
+        ...(workContinuation
+          ? {
+              'classic.resume-work': {
+                type: 'call_tool' as const,
+                ref: 'classic-work-continuation',
+                validator: {
+                  id: workContinuationOutcomeValidator.id,
+                  version: workContinuationOutcomeValidator.version,
+                },
+              },
+            }
+          : {}),
+        ...Object.fromEntries(
+          Object.entries(fullOpen?.steps ?? {}).filter(([id]) => id.startsWith('full.open')),
+        ),
+      },
       transitions: [
         ...(base.workflow.transitions ?? []),
         ...(fullOpen?.transitions?.filter((edge) => edge.from.startsWith('full.open')) ?? []),
         { from: 'full.design.evidence', to: 'full.build.plan' },
+        ...(workContinuation
+          ? Object.entries(base.workflow.steps)
+              .filter(([, step]) => step.type === 'invoke_skill')
+              .map(([to]) => ({ from: 'classic.resume-work', to }))
+          : []),
       ],
       commands: {
+        ...(workContinuation
+          ? {
+              'continue-work': {
+                stepId: 'classic.resume-work',
+                validator: {
+                  id: workContinuationValidator.id,
+                  version: workContinuationValidator.version,
+                },
+              },
+            }
+          : {}),
+        ...(buildContinuation
+          ? {
+              'continue-build': {
+                stepId: `${verification === 'full' ? 'full' : profile}.build.execute`,
+                validator: {
+                  id: buildContinuationValidator.id,
+                  version: buildContinuationValidator.version,
+                },
+              },
+            }
+          : {}),
         ...(archiveRepair
           ? {
               'repair-archive': {
@@ -227,6 +409,8 @@ export function classicSdkRevisionApplication(
       },
     },
     commandValidators: [
+      ...(workContinuation ? [continuationValidator] : []),
+      ...(buildContinuation ? [buildContinuationValidator] : []),
       ...(archiveRepair ? [archiveRepairValidator] : []),
       revisionValidator,
       ...(verification
@@ -249,6 +433,47 @@ export function classicSdkRevisionApplication(
           ]
         : []),
     ],
+    executors: [...base.executors, ...(workContinuation ? [workContinuationExecutor] : [])],
+    validators: [
+      ...base.validators,
+      ...(workContinuation ? [workContinuationOutcomeValidator] : []),
+    ],
+    transitionHandler: {
+      ...base.transitionHandler,
+      apply(context: Parameters<typeof base.transitionHandler.apply>[0]) {
+        if (
+          context.event.kind === 'action-outcome' &&
+          context.event.stepId === 'classic.resume-work' &&
+          context.event.outcome.status === 'succeeded'
+        ) {
+          const output = context.event.outcome.output as {
+            resumeStepId: string;
+            interruptedActionId: string;
+          };
+          const failed = context.run.actions.find(
+            (entry) => entry.id === output.interruptedActionId,
+          );
+          const repairId = failed?.stepId.endsWith('.archive.deliver')
+            ? (failed.input as { activation?: { deliveryRepairCheckId?: string } }).activation
+                ?.deliveryRepairCheckId
+            : undefined;
+          return {
+            state: context.run.state!,
+            next: [
+              {
+                stepId: output.resumeStepId,
+                input: {
+                  interruptedActionId: output.interruptedActionId,
+                  ...(repairId ? { deliveryRepairCheckId: repairId } : {}),
+                  summary: 'Continue preserved partial work; do not repeat completed side effects.',
+                },
+              },
+            ],
+          };
+        }
+        return base.transitionHandler.apply(context);
+      },
+    },
   };
 }
 
@@ -258,6 +483,15 @@ export function classicSdkApplicationForRun(
   run: WorkflowRun | null,
   options: { upgradePresetRequirements?: boolean } = {},
 ) {
+  const effective = (run?.state as unknown as ClassicState | undefined)?.workflow ?? profile;
+  const repair = withClassicDeliveryRepair(
+    classicSdkRevisionApplication(
+      profile,
+      effective === 'full' && profile !== 'full' ? 'full' : true,
+    ),
+    effective,
+  );
+  if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(repair.workflow))) return repair;
   const compatible = <T extends { workflow: DefineWorkflowOptions }>(application: T) => {
     const previous = structuredClone(application.workflow);
     const step = previous.steps[`${profile}.build.execute`];
@@ -270,12 +504,22 @@ export function classicSdkApplicationForRun(
   };
   for (const verification of [true, 'full', false] as const) {
     for (const archiveRepair of [true, false]) {
-      const application = classicSdkRevisionApplication(profile, verification, archiveRepair);
-      if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(application.workflow)))
-        return application;
-      const previous = compatible(application);
-      if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previous.workflow)))
-        return options.upgradePresetRequirements ? application : previous;
+      for (const buildContinuation of [true, false]) {
+        for (const workContinuation of [true, false]) {
+          const application = classicSdkRevisionApplication(
+            profile,
+            verification,
+            archiveRepair,
+            buildContinuation,
+            workContinuation,
+          );
+          if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(application.workflow)))
+            return application;
+          const previous = compatible(application);
+          if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previous.workflow)))
+            return options.upgradePresetRequirements ? application : previous;
+        }
+      }
     }
   }
   const base = { ...defineClassicWorkflowApplication(profile), commandValidators: [] };

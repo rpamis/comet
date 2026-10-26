@@ -15,6 +15,11 @@ from scaffold.python.execution import (
 )
 
 
+@pytest.mark.parametrize("key", ["apiKey", "authToken", "accessToken", "claimToken", "api-key", "claim_token"])
+def test_redacts_camel_and_separated_credential_fields_without_environment_values(key):
+    assert redact_sensitive({"nested": [{key: "unknown-fixture-value"}]}, {}) == {"nested": [{key: "[REDACTED]"}]}
+
+
 def test_managed_dashboard_can_explicitly_disable_inherited_judge():
     main = resolve_execution(cli_agent="codex", cli_model="subject")
     judge = resolve_judge(

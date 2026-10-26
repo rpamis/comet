@@ -160,7 +160,17 @@ function validateOutcome(value: RuntimeValue): void {
   try {
     parseRuntimeOutcome(value);
   } catch (error) {
-    if (error instanceof RuntimeProtocolError) invalid(`outcome 无效：${error.message}`);
+    if (error instanceof RuntimeProtocolError) {
+      const missingOutput =
+        value !== null &&
+        typeof value === 'object' &&
+        !Array.isArray(value) &&
+        !Object.hasOwn(value, 'output');
+      const guidance = missingOutput
+        ? '；缺少 outcome.output，业务结果应放在其中。请按本次领取响应的 outcomeRequest 修正，保留原 Action 身份与领取绑定，不要重新领取或执行'
+        : '';
+      invalid(`outcome 无效：${error.message}${guidance}`);
+    }
     throw error;
   }
 }

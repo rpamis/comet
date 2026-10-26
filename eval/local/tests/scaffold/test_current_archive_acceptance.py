@@ -20,6 +20,86 @@ from scaffold.python.validation.current_archive import inspect_completed_archive
 
 
 @pytest.mark.parametrize(
+    "task,name",
+    [
+        ("comet-small-cli-archive", "character-counting"),
+        ("comet-counter-refactor-archive", "counter-dispatch"),
+    ],
+)
+@pytest.mark.parametrize(
+    "workflow,treatment",
+    [("classic", "COMET_CLASSIC_DOCS_LAYOUT"), ("native", "COMET_NATIVE_SDK_CURRENT")],
+)
+def test_shared_archive_tasks_export_the_original_inspected_run_even_after_terminal_failure(
+    tmp_path, monkeypatch, task, name, workflow, treatment
+):
+    from scaffold.python.validation import current_archive
+    from types import SimpleNamespace
+
+    path = get_tasks_dir() / task / "validation/test_archive_task.py"
+    spec = importlib.util.spec_from_file_location("shared_archive_export", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.WORKSPACE = tmp_path
+    monkeypatch.setenv("BENCH_TEST_CONTEXT", "_test_context.json")
+    monkeypatch.setenv("BENCH_TEST_RESULTS", "_test_results.json")
+    (tmp_path / "_test_context.json").write_text(json.dumps({"treatment_name": treatment}))
+    root = tmp_path / ("docs/comet" if workflow == "native" else "docs/openspec/changes")
+    archive = root / "archive" / ("2026-10-26-" + name)
+    archive.mkdir(parents=True)
+    (archive / "comet-state.yaml").write_text(
+        "phase: archive\narchived: true\nverify_result: pass\nacceptance: [{result: passed}]\n"
+    )
+    canonical = (
+        tmp_path
+        / ("docs/comet/specs" if workflow == "native" else "docs/openspec/specs")
+        / name
+        / "spec.md"
+    )
+    canonical.parent.mkdir(parents=True)
+    canonical.write_text("# Original canonical capability\n")
+    action = {
+        "id": "original-action",
+        "stepId": "archive.finalize" if workflow == "native" else "full.archive.deliver",
+        "status": "succeeded",
+        "outcome": {"output": {"action": "local", "commit": "original-commit"}},
+    }
+    original = {
+        "runId": name,
+        "revision": 42,
+        "status": "completed",
+        "actions": [action],
+        "waits": [],
+    }
+    calls = []
+
+    def inspect(*args):
+        calls.append(args)
+        return original
+
+    monkeypatch.setattr(current_archive, "inspect_run", inspect)
+    monkeypatch.setattr(
+        current_archive.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(stdout='{"exitCode":0}'),
+    )
+    monkeypatch.setattr(
+        module, "check_feature", lambda _: {"check": "business_behavior", "status": "passed"}
+    )
+    for succeeds in (True, False):
+        if not succeeds:
+            canonical.unlink()
+        assert module.main() == (0 if succeeds else 1)
+        output = json.loads((tmp_path / "_test_results.json").read_text())
+        observed = output["validation_evidence"][workflow + ":" + name]
+        assert observed["run"] == original
+        assert observed["workflow"] == workflow
+        assert observed["application"] == ("native" if workflow == "native" else "classic-full")
+        assert observed["runHash"] and observed["actionEvidence"][0]["id"] == "original-action"
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
     ("provided", "observed", "count", "accepted"),
     [
         (b"print('once')\n", b"print('once')\n", "once\n", True),

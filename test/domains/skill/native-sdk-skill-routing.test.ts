@@ -11,6 +11,36 @@ const englishNativeCommands = path.resolve('assets/skills/comet-native/reference
 const englishNativeRecovery = path.resolve('assets/skills/comet-native/reference/recovery.md');
 
 describe('Chinese Native SDK Skill route', () => {
+  it('preserves user-specified artifact locations through Shape, Build and independent Verify', async () => {
+    const skill = (await fs.readFile(nativeSkill, 'utf8')).replaceAll('\r\n', '\n');
+    const shape = skill.split('\n## Shape\n')[1].split('\n## Build ↔ Verify Loop\n')[0];
+    const build = skill.split('\n## Build\n')[1].split('\n## Verify\n')[0];
+    const verify = skill.split('\n## Verify\n')[1].split('\n## Archive\n')[0];
+    expect(shape).toContain('用户明确指定的文件位置、必需章节和产物格式');
+    expect(shape).toContain('写入 brief 的约束');
+    expect(shape).toContain('不能因模板默认位置而改放其他文件');
+    expect(build).toContain('按 brief 中登记的原位置');
+    expect(build).toContain('补齐遗漏产物');
+    expect(verify).toContain('同时核对 brief 中登记的产物位置、必需章节和格式');
+    expect(verify).toContain('不能用另一文件中的同类内容代替');
+  });
+
+  it('keeps confirmed artifact-location requirements in the English Native route', async () => {
+    const skill = (await fs.readFile(englishNativeSkill, 'utf8')).replaceAll('\r\n', '\n');
+    const shape = skill.split('\n## Shape\n')[1].split('\n## Build ↔ Verify Loop\n')[0];
+    const build = skill.split('\n## Build\n')[1].split('\n## Verify\n')[0];
+    const verify = skill.split('\n## Verify\n')[1].split('\n## Archive\n')[0];
+    expect(shape).toContain(
+      'explicitly requested file locations, required sections, and artifact formats',
+    );
+    expect(shape).toContain('brief constraints');
+    expect(shape).toContain('default location in a template');
+    expect(build).toContain('original locations recorded in the brief');
+    expect(build).toContain('current Runtime check plan');
+    expect(verify).toContain('another file');
+    expect(verify).toContain('do not pass the current candidate');
+  });
+
   it.each(['skills', 'skills-zh'])(
     'separates SDK claims, outcomes, and verification in %s',
     async (root) => {

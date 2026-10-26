@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import hashlib
 import os
+import shutil
 import subprocess
 import sys
 import uuid
@@ -28,6 +30,7 @@ if str(EVAL_ROOT) not in sys.path:
 from scaffold.python.paths import get_logs_dir  # noqa: E402
 from scaffold.python.release_gate import (  # noqa: E402
     BASELINE_SCHEMA,
+    CORE_RECEIPT_FILE,
     RECEIPT_SCHEMA,
     RELEASE_CASES,
     GateError,
@@ -38,6 +41,7 @@ from scaffold.python.release_gate import (  # noqa: E402
     expected_matrix,
     means_from_evidence,
     read_json,
+    release_cases,
     suite_contract,
     validate_baseline,
     validate_experiment,
@@ -55,7 +59,7 @@ def _write_json(path: Path, value: dict, *, exclusive: bool = False) -> None:
         stream.write(json.dumps(value, indent=2, ensure_ascii=False) + "\n")
 
 
-def _prepare_candidate() -> None:
+def _prepare_candidate(core_runner: dict | None = None) -> Path:
     """显式完整运行才构建；查询、复核和初始化不调用构建或模型。"""
     commands = [
         ["node", f"scripts/build/{script}", "--check"]
@@ -66,26 +70,83 @@ def _prepare_candidate() -> None:
             "build-entry-runtime.mjs",
         )
     ]
+    proof = (
+        EVAL_ROOT.parent / "coverage/core-regressions" / ("preflight-" + uuid.uuid4().hex + ".json")
+    )
+    core_command = ["node", "scripts/lint/core-regressions.mjs"]
+    if core_runner and core_runner.get("platformRecords"):
+        records = core_runner["platformRecords"]
+        if len(records) != 2 or set(core_runner) != {"platformRecords"}:
+            raise GateError("CI 核心回归需要两个平台的完整原始记录")
+        core_command.append("--combine-platform-evidence")
+        for record in records:
+            core_command.extend(["--platform-record", str(record)])
+        core_command.extend(["--output", str(proof)])
+    elif core_runner:
+        if not all(core_runner.get(key) for key in ("linuxImage", "linuxNodeModules", "linuxVenv")):
+            raise GateError("跨平台核心回归需要已准备的 Linux 镜像、Node 依赖和 Python 环境")
+        core_command.extend(
+            [
+                "--cross-platform",
+                "--linux-image",
+                str(core_runner["linuxImage"]),
+                "--linux-node-modules",
+                str(core_runner["linuxNodeModules"]),
+                "--linux-venv",
+                str(core_runner["linuxVenv"]),
+                "--output",
+                str(proof),
+            ]
+        )
+    else:
+        core_command.extend(["--record-all", str(proof)])
     commands.extend(
         [
             ["node", "build.js"],
             ["node", "scripts/release/check-sdk-api.mjs"],
-            ["node", "scripts/lint/core-regressions.mjs"],
+            core_command,
         ]
     )
     for command in commands:
-        result = subprocess.run(command, cwd=EVAL_ROOT.parent, check=False)
+        environment = {
+            key: value
+            for key, value in os.environ.items()
+            if not key.upper().startswith(("ANTHROPIC_", "OPENAI_", "BENCH_JUDGE_"))
+            and key.upper() not in {"BENCH_API_KEY", "BENCH_AUTH_TOKEN"}
+        }
+        environment["PYTHON_DOTENV_DISABLED"] = "1"
+        result = subprocess.run(command, cwd=EVAL_ROOT.parent, check=False, env=environment)
         if result.returncode != 0:
             raise GateError(f"模型启动前检查失败：{' '.join(command)}；未启动模型")
+    if proof.is_symlink() or not proof.is_file():
+        raise GateError("核心回归未生成完整执行凭证；未启动模型")
+    return proof
 
 
-def _run_eval(count: int, model: str | None = None, workers: int = 2) -> str:
+def _run_eval(
+    count: int,
+    model: str | None = None,
+    workers: int = 2,
+    core_runner: dict | None = None,
+    suite: str = "current",
+) -> str:
     """预先分配唯一实验 ID；任何 pytest 非零都停止，不搜索旧报告。"""
     checked_count(count)
-    _prepare_candidate()
+    release_cases(suite, count)
+    proof_file = _prepare_candidate(core_runner) if core_runner else _prepare_candidate()
     experiment_id = "release_" + uuid.uuid4().hex
     experiment_dir = get_logs_dir() / "experiments" / experiment_id
     experiment_dir.mkdir(parents=True, exist_ok=False)
+    proof = read_json(proof_file)
+    records_name = proof.get("recordsFile")
+    if (
+        not isinstance(records_name, str)
+        or not records_name.endswith(".records.json")
+        or any(char in records_name for char in "/\\:")
+    ):
+        raise GateError("核心回归记录引用无效；未启动模型")
+    shutil.copy2(proof_file, experiment_dir / CORE_RECEIPT_FILE)
+    shutil.copy2(proof_file.parent / records_name, experiment_dir / records_name)
     env = dict(os.environ)
     for key in env:
         if key.startswith("COMET_EVAL_") and key not in {"COMET_EVAL_EXPERIMENT_ID"}:
@@ -93,7 +154,7 @@ def _run_eval(count: int, model: str | None = None, workers: int = 2) -> str:
     env.update(
         {
             "COMET_EVAL_EXPERIMENT_ID": experiment_id,
-            "COMET_EVAL_RELEASE_SUITE": "current",
+            "COMET_EVAL_RELEASE_SUITE": suite,
             "BENCH_SUITE_ROOT": str(EVAL_ROOT / "local"),
             "BENCH_TASKS_DIR": str(EVAL_ROOT / "local/tasks"),
             "BENCH_TREATMENTS_DIR": str(EVAL_ROOT / "local/treatments"),
@@ -107,7 +168,7 @@ def _run_eval(count: int, model: str | None = None, workers: int = 2) -> str:
         "-m",
         "pytest",
         "local/tests/tasks/test_tasks.py::test_task_treatment",
-        "--release-suite=current",
+        f"--release-suite={suite}",
         f"--count={count}",
         "-v",
         f"-n={workers}",
@@ -121,6 +182,9 @@ def _run_eval(count: int, model: str | None = None, workers: int = 2) -> str:
         {
             "experiment_id": experiment_id,
             "pytest_exitstatus": result.returncode,
+            "coreReceiptHash": hashlib.sha256(
+                (experiment_dir / CORE_RECEIPT_FILE).read_bytes()
+            ).hexdigest(),
         },
     )
     if result.returncode != 0:
@@ -142,8 +206,10 @@ def resolve_experiment(value: str) -> Path:
     return experiment.resolve()
 
 
-def make_receipt(experiment: Path, count: int, baseline: dict, tolerance: float) -> dict:
-    evidence = validate_experiment(experiment, count, candidate_identity())
+def make_receipt(
+    experiment: Path, count: int, baseline: dict, tolerance: float, suite: str = "current"
+) -> dict:
+    evidence = validate_experiment(experiment, count, candidate_identity(), suite)
     compare_baseline(evidence, baseline, tolerance)
     return {
         "schema": RECEIPT_SCHEMA,
@@ -166,7 +232,9 @@ def verify_receipt(path: Path) -> None:
     baseline = receipt.get("baseline")
     if not isinstance(baseline, dict):
         raise GateError("凭证缺少已审核 baseline")
-    expected = make_receipt(path.parent, count, baseline, receipt.get("tolerance"))
+    expected = make_receipt(
+        path.parent, count, baseline, receipt.get("tolerance"), receipt.get("suite", "current")
+    )
     if digest_json(receipt) != digest_json(expected):
         raise GateError("凭证内容与原始报告、baseline 或当前候选不一致")
     print(
@@ -177,11 +245,17 @@ def verify_receipt(path: Path) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--suite", choices=["current"], default="current", help=f"固定当前版 {len(RELEASE_CASES)} 组矩阵"
+        "--suite",
+        choices=["current", "recovery"],
+        default="current",
+        help=f"current 为完整 {len(RELEASE_CASES)} 组；recovery 为 Native/Classic 最高难度各 3 次全部通过",
     )
     parser.add_argument("--experiment", help="只复核指定完整实验，不重新调用模型")
     parser.add_argument(
-        "--count", type=int, default=1, help=f"每组样本数 1–5；完整矩阵共 {len(RELEASE_CASES)}×count 个样本"
+        "--count",
+        type=int,
+        default=1,
+        help=f"每组样本数 1–5；完整矩阵共 {len(RELEASE_CASES)}×count 个样本",
     )
     parser.add_argument(
         "--baseline", type=Path, default=BASELINE_FILE, help="已审核的新 schema 基线"
@@ -193,6 +267,19 @@ def main(argv: list[str] | None = None) -> int:
         "--workers", type=int, choices=range(1, 5), default=2, help="并发 worker 数 1–4"
     )
     parser.add_argument("--model", help="模型名称；凭据仅从环境读取")
+    parser.add_argument(
+        "--core-linux-image", help="Windows 跨平台核心回归使用的已准备 Linux Docker 镜像"
+    )
+    parser.add_argument(
+        "--core-linux-node-modules", type=Path, help="已按锁文件安装的 Linux node_modules 目录"
+    )
+    parser.add_argument("--core-linux-venv", type=Path, help="已准备的 Linux Python 虚拟环境目录")
+    parser.add_argument(
+        "--core-platform-records",
+        type=Path,
+        nargs=2,
+        help="固定 CI 两个平台任务实际生成的完整原始记录",
+    )
     parser.add_argument("--plan", action="store_true", help="输出矩阵与质量底线，不调用模型")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
@@ -205,15 +292,37 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         checked_count(args.count)
+        release_cases(args.suite, args.count)
         if not 0 <= args.tolerance <= 0.10:
             raise GateError("tolerance 必须在 0–0.10 范围内")
+        core_runner = None
+        if args.core_platform_records:
+            if (
+                args.experiment
+                or args.verify_receipt
+                or any((args.core_linux_image, args.core_linux_node_modules, args.core_linux_venv))
+            ):
+                raise GateError("CI 平台记录仅用于新实验，不能与 Linux 协调参数混用")
+            core_runner = {
+                "platformRecords": [file.resolve() for file in args.core_platform_records]
+            }
+        if any((args.core_linux_image, args.core_linux_node_modules, args.core_linux_venv)):
+            if not all((args.core_linux_image, args.core_linux_node_modules, args.core_linux_venv)):
+                raise GateError("跨平台核心回归的三个 Linux 参数必须一起提供")
+            if args.experiment or args.verify_receipt:
+                raise GateError("复核已有实验不能改变核心回归执行配置")
+            core_runner = {
+                "linuxImage": args.core_linux_image,
+                "linuxNodeModules": args.core_linux_node_modules.resolve(),
+                "linuxVenv": args.core_linux_venv.resolve(),
+            }
         if args.plan:
             print(
                 json.dumps(
                     {
-                        **suite_contract(),
+                        **suite_contract(args.suite),
                         "count": args.count,
-                        "matrix": expected_matrix(args.count),
+                        "matrix": expected_matrix(args.count, args.suite),
                     },
                     indent=2,
                     ensure_ascii=False,
@@ -231,10 +340,18 @@ def main(argv: list[str] | None = None) -> int:
             raise GateError("复用实验不能改变模型；请启动新实验")
         baseline = None
         if not args.collect_only and not args.initialize_baseline:
-            baseline = validate_baseline(read_json(args.baseline))
-        experiment_id = args.experiment or _run_eval(args.count, args.model, args.workers)
+            baseline = validate_baseline(read_json(args.baseline), args.suite)
+        experiment_id = args.experiment or (
+            _run_eval(args.count, args.model, args.workers, core_runner, suite=args.suite)
+            if args.suite != "current"
+            else (
+                _run_eval(args.count, args.model, args.workers, core_runner)
+                if core_runner
+                else _run_eval(args.count, args.model, args.workers)
+            )
+        )
         experiment = resolve_experiment(experiment_id)
-        evidence = validate_experiment(experiment, args.count, candidate_identity())
+        evidence = validate_experiment(experiment, args.count, candidate_identity(), args.suite)
         if args.collect_only:
             print(f"[regression] 完整实验通过绝对质量检查：{experiment}；尚未发布放行")
             return 0
@@ -248,13 +365,13 @@ def main(argv: list[str] | None = None) -> int:
                 "createdAt": datetime.now(timezone.utc).isoformat(),
                 "dimensions": means_from_evidence(evidence),
             }
-            validate_baseline(payload)
+            validate_baseline(payload, args.suite)
             _write_json(args.initialize_baseline, payload, exclusive=True)
             print(
                 f"[regression] 新基线已创建：{args.initialize_baseline}；请审核并使用 --baseline 复核实验"
             )
             return 0
-        receipt = make_receipt(experiment, args.count, baseline, args.tolerance)
+        receipt = make_receipt(experiment, args.count, baseline, args.tolerance, args.suite)
         path = experiment / RECEIPT_FILE
         _write_json(path, receipt)
         print(f"[regression] PASS：{receipt['sampleCount']} 个样本；baseline 未改动；凭证：{path}")

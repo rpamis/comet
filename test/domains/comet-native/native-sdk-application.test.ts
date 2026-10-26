@@ -527,6 +527,19 @@ async function awaitingArchiveFinalization(storeKind: 'memory' | 'file' = 'memor
 }
 
 describe('Native SDK Workflow Application', () => {
+  it('waits for the original Archive task before parsing complete stdout JSON', async () => {
+    const { root, run } = await awaitingArchiveApplication();
+    const projection = await projectNativeSdkContinuation({
+      run,
+      state: run.state as unknown as NativePortableState,
+      projectRoot: root,
+    });
+    const instruction = projection.continuation.userCommunication.agentInstruction;
+    expect(instruction).toContain('stdout');
+    expect(instruction).toContain('stderr');
+    expect(instruction).toMatch(/original task|原任务/u);
+    expect(instruction).toMatch(/complete JSON|完整 JSON/u);
+  });
   it('binds a separate Verifier handoff and accepts its filled outcome template', async () => {
     const { root, runtime, run: prepared } = await dispatchedVerifier();
     const action = prepared.actions.at(-1)!;
@@ -560,6 +573,14 @@ describe('Native SDK Workflow Application', () => {
       projectRoot: root,
     });
     const template = projection.outcomeRequest!;
+    const fields = Object.keys(projection);
+    expect(fields.indexOf('outcomeRequest')).toBeLessThan(fields.indexOf('state'));
+    expect(fields.indexOf('contextRequest')).toBeGreaterThanOrEqual(0);
+    expect(fields.indexOf('contextRequest')).toBeLessThan(fields.indexOf('state'));
+    expect(projection.outcomeTemplateInstruction).toContain('stdout');
+    expect(projection.outcomeTemplateInstruction).toContain('stderr');
+    expect(projection.outcomeTemplateInstruction).toContain('data.outcomeRequest');
+    expect(projection.outcomeTemplateInstruction).toContain('data.contextRequest');
     const output = template.outcome.output as {
       candidateId: string;
       verifierExecutionRef: string;
@@ -4592,7 +4613,8 @@ children:
             () => false,
           ),
         'owner check did not start',
-        10000,
+        // 先为完整源码冷加载预留启动时间，不改变检查自身的时限。
+        30000,
       );
       owner.kill('SIGTERM');
       await waitForProcessExit(owner);

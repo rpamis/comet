@@ -1,10 +1,18 @@
+import {
+  classicDeliveryActionContext,
+  classicDeliveryRepairForAction,
+} from './classic-sdk-delivery-repair-model.js';
+import {
+  classicForeignChangeRoots as foreignChangeRoots,
+  isClassicInputUnderRoot as underRoot,
+  collectClassicSdkImplementationInputs,
+} from './classic-sdk-implementation-inputs.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { spawnCommand } from '../../platform/process/spawn-command.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
-import { readWorkflowProjectConfigDocument } from '../workflow-contract/project-config-reader.js';
 import {
   normalizeWorkflowRelativePath,
   parseWorkflowProjectConfigDocument,
@@ -18,6 +26,8 @@ import {
 } from '../engine/runtime.js';
 import { resolveWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
 import { archivedClassicDocumentRef } from './classic-archive-annotation.js';
+import { assertClassicDeliveryRepairCurrent } from './classic-sdk-delivery-repair.js';
+import { assertClassicSdkCheckReceipt } from './classic-sdk-check-record.js';
 import { isGitWorkTree } from './classic-branch-binding.js';
 import {
   checkManifestHash,
@@ -29,7 +39,6 @@ import {
 import type { CheckIdentity } from './classic-check-policy.js';
 import { readCheckPolicy } from './classic-check-policy.js';
 import { hashGitPaths } from './classic-check-snapshot.js';
-import { resolveClassicLayout } from './classic-layout.js';
 import { hashClassicProjectFile, readClassicProjectFile } from './classic-protected-path.js';
 import { classicSdkCheckDirectoryRef } from './classic-sdk-check-record.js';
 
@@ -129,41 +138,6 @@ async function initialWorkspaceFiles(
     : {};
 }
 
-async function foreignChangeRoots(root: string): Promise<string[]> {
-  const config = await readWorkflowProjectConfigDocument(root, {
-    allowPartialProject: true,
-    allowMissingNativeFields: true,
-  });
-  // 检查可以依赖其他 change 的草稿，但检查覆盖不代表获准交付这些草稿。
-  return config?.native ? [path.posix.join(config.native.artifact_root, 'comet', 'changes')] : [];
-}
-
-function underRoot(ref: string, roots: string[]) {
-  return roots.some((root) => ref === root || ref.startsWith(`${root}/`));
-}
-
-async function implementationInputs(
-  root: string,
-  manifest: string,
-  foreignRoots?: string[],
-): Promise<Record<string, string>> {
-  const layout = await resolveClassicLayout(root);
-  const roots = [
-    '.comet',
-    layout.openSpecRoot,
-    layout.superpowersRoot,
-    ...(foreignRoots ?? (await foreignChangeRoots(root))),
-  ].map((ref) => (path.isAbsolute(ref) ? path.relative(root, ref).replaceAll('\\', '/') : ref));
-  return Object.fromEntries(
-    parseCheckManifest(manifest)
-      .filter(
-        ({ p }) =>
-          !p.includes('\0') && !p.split('/').includes('node_modules') && !underRoot(p, roots),
-      )
-      .map(({ p, h }) => [p, h]),
-  );
-}
-
 /** 只携带本轮检查覆盖的待提交文件，供归档交付及跨设备恢复核对。 */
 export async function collectClassicSdkDeliveryInputs(
   root: string,
@@ -214,7 +188,7 @@ export async function collectClassicSdkDeliveryInputs(
   ]);
   const baseline = await initialWorkspaceFiles(root, run);
   return Object.fromEntries(
-    Object.entries(await implementationInputs(root, manifest))
+    Object.entries(await collectClassicSdkImplementationInputs(root, manifest))
       .filter(([ref]) => [...changed].some((name) => ref === name || ref.startsWith(`${name}/`)))
       .filter(([ref, hash]) => !Object.hasOwn(baseline, ref) || baseline[ref] !== hash),
   );
@@ -317,11 +291,25 @@ function matchesCleanIndex(root: string, ref: string, expected: string) {
 /** 交付必须包含已验证的待提交内容；工作区里的修复不能代替提交。 */
 export async function assertClassicSdkDeliveryInputs(root: string, run: Readonly<WorkflowRun>) {
   const profile = (run.state as { workflow: string }).workflow;
-  const output = run.actions
+  let output = run.actions
     .slice()
     .reverse()
     .find((action) => action.stepId === `${profile}.verify.check` && action.status === 'succeeded')
     ?.outcome?.output as Record<string, unknown> | undefined;
+  const delivery = run.actions
+    .slice()
+    .reverse()
+    .find((entry) => entry.stepId === `${profile}.archive.deliver`);
+  const deliveryContext = delivery && classicDeliveryActionContext(run, delivery);
+  if (deliveryContext?.repairCheckId) {
+    const checked = run.actions.find((entry) => entry.id === deliveryContext.repairCheckId)!;
+    await assertClassicSdkCheckReceipt(root, run, checked, {
+      status: checked.outcome!.status,
+      output: checked.outcome!.output,
+    });
+    await assertClassicDeliveryRepairCurrent(root, run, classicDeliveryRepairForAction(checked));
+    output = checked.outcome!.output as Record<string, unknown>;
+  }
   let inputs = output?.deliveryInputs as Record<string, string> | undefined;
   let verifiedManifest: string | undefined;
   const readVerifiedManifest = async () => {
@@ -344,7 +332,7 @@ export async function assertClassicSdkDeliveryInputs(root: string, run: Readonly
       git(root, ['ls-files', '--cached', '--others', '--exclude-standard', '-z']).split('\0'),
     );
     inputs = Object.fromEntries(
-      Object.entries(await implementationInputs(root, manifest, [])).filter(
+      Object.entries(await collectClassicSdkImplementationInputs(root, manifest, [])).filter(
         ([ref, hash]) => versioned.has(ref) || hash === 'missing',
       ),
     );

@@ -9,6 +9,7 @@ import {
   inspectNativeSdkRun,
 } from '../../../domains/comet-native/native-runtime-ownership.js';
 import type { WorkflowRun } from '../../../domains/engine/runtime.js';
+import { createPortableRunCheckpoint } from '../../../domains/engine/runtime.js';
 import type { NativePortableState } from '../../../domains/comet-native/native-portable-types.js';
 
 const roots: string[] = [];
@@ -16,10 +17,25 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
-async function fixture(supervisor = false) {
+async function fixture(supervisor = false, committed = false) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-sdk-requirements-recovery-'));
   roots.push(root);
   execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
+  if (committed)
+    execFileSync(
+      'git',
+      [
+        '-c',
+        'user.name=Test',
+        '-c',
+        'user.email=test@example.invalid',
+        'commit',
+        '--allow-empty',
+        '-m',
+        'fixture',
+      ],
+      { cwd: root, stdio: 'ignore' },
+    );
   const name = 'revise-current-requirements';
   const cli = async (args: string[]) => {
     const result = await runNativeCli([...args, '--project-root', root, '--json']);
@@ -120,6 +136,114 @@ async function fixture(supervisor = false) {
 }
 
 describe('Native SDK requirements recovery', () => {
+  it('rejects Native branch takeover while the original Builder is unresolved and preserves its claim', async () => {
+    const f = await fixture(false, true);
+    const before = await f.confirm();
+    const action = before.actions.find(
+      (entry) => entry.stepId === 'build.builder' && entry.status === 'pending',
+    )!;
+    const claimed = await f.runtime.claim({
+      runId: f.name,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'original-host',
+      sessionId: 'original-session',
+      claimToken: 'original-claim',
+    });
+    execFileSync('git', ['branch', '-m', 'renamed-work'], { cwd: f.root, stdio: 'ignore' });
+    const status = await f.cli(['status', f.name]);
+    expect(status.data.diagnostics.healthy).toBe(false);
+    expect(status.data.continuation.commandArgs).toEqual(
+      expect.arrayContaining(['select', '--rebind']),
+    );
+    expect((await f.cli(['select', f.name, '--rebind'])).exitCode).not.toBe(0);
+    expect((await f.inspect()).run).toEqual(claimed);
+    const settled = await f.runtime.recordOutcome({
+      runId: f.name,
+      outcome: {
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        claimToken: 'original-claim',
+        outcomeId: 'stopped-on-new-branch',
+        status: 'failed',
+        output: { summary: 'The original Builder stopped after the branch was renamed.' },
+      },
+      context: { projectRoot: f.root, requestId: 'original-stopped' },
+    });
+    expect(settled.actions.find((entry) => entry.id === action.id)).toMatchObject({
+      status: 'failed',
+    });
+    expect((await f.cli(['select', f.name, '--rebind'])).exitCode).toBe(0);
+    expect((await f.inspect()).state.workspace.change_branch).toBe('renamed-work');
+  });
+  it.each([false, true])(
+    'rebinds an ordinary Native Run after branch rename without recreating work (cold=%s)',
+    async (cold) => {
+      const f = await fixture(false, true);
+      const before = await f.confirm();
+      execFileSync('git', ['branch', '-m', 'renamed-work'], { cwd: f.root, stdio: 'ignore' });
+      if (cold) {
+        const { resolveWorkspaceRuntimeRootSync } =
+          await import('../../../domains/workflow-contract/workspace-runtime.js');
+        const runDirectory = path.join(resolveWorkspaceRuntimeRootSync(f.root), 'sdk-runs/native');
+        await fs.rename(runDirectory, runDirectory + '-original');
+      }
+      const rebound = await f.cli(['select', f.name, '--rebind']);
+      expect(rebound.exitCode, rebound.error?.message).toBe(0);
+      const after = (await f.inspect()).run;
+      expect(after.runId).toBe(before.runId);
+      expect(after.actions).toEqual(
+        cold ? createPortableRunCheckpoint(before).run.actions : before.actions,
+      );
+      expect(after.waits).toEqual(before.waits);
+      expect(after.state).toMatchObject({
+        workspace: { change_branch: 'renamed-work' },
+        shape_confirmation_hash: (before.state as NativePortableState).shape_confirmation_hash,
+      });
+      const repeated = await f.cli(['select', f.name, '--rebind']);
+      expect(repeated.exitCode, repeated.error?.message).toBe(0);
+      expect((await f.inspect()).run.revision).toBe(after.revision);
+    },
+  );
+  it('revises a pending ordinary Builder through its current continuation without executing it', async () => {
+    const f = await fixture();
+    const before = await f.confirm();
+    const builder = before.actions.find(
+      ({ stepId, status }) => stepId === 'build.builder' && status === 'pending',
+    )!;
+    await f.editRequirements();
+    const status = await f.cli(['next', f.name]);
+    const revision = (status.data.continuation.commandAlternatives ?? []).find(
+      ({ name }: { name: string }) => name === 'revise-requirements',
+    );
+    expect(revision).toBeDefined();
+    const revised = JSON.parse(
+      (
+        await runNativeCli(
+          revision.commandArgs
+            .slice(2)
+            .map((arg: string) =>
+              arg === '<summary>' ? 'User revised requirements before Builder execution.' : arg,
+            ),
+        )
+      ).stdout!,
+    );
+    expect(revised.exitCode, revised.error?.message).toBe(0);
+    const after = (await f.inspect()).run;
+    expect(after.runId).toBe(before.runId);
+    expect(after.state).toMatchObject({ phase: 'shape' });
+    expect(after.actions.find(({ id }) => id === builder.id)).toMatchObject({
+      status: 'cancelled',
+      attempt: 1,
+    });
+    expect(after.actions.find(({ id }) => id === builder.id)?.claim).toBeUndefined();
+    expect((await f.cli(revision.commandArgs.slice(2))).exitCode).not.toBe(0);
+    await f.cli(['next', f.name]);
+    await f.confirm();
+    expect((await f.inspect()).state.phase).toBe('build');
+  });
   it('keeps a pending Shape approvable across blank lines and soft line wrapping', async () => {
     const f = await fixture();
     const original = (await f.inspect()).run;

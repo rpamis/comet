@@ -1,4 +1,6 @@
 import path from 'node:path';
+import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
+import { parseNativePortableState } from './native-portable-state.js';
 import { createFileRuntimeStore, type WorkflowRun } from '../engine/runtime.js';
 import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
 import { readWorkflowApplicationStorageDisposition } from '../workflow-application/index.js';
@@ -100,6 +102,19 @@ export async function inspectNativeSdkRunDiagnostics(
     }
   }
   const issues = [
+    ...(!parseNativePortableState(run.state).archived &&
+    parseNativePortableState(run.state).workspace.change_branch &&
+    inspectGitWorktree(projectRoot).currentBranch !==
+      parseNativePortableState(run.state).workspace.change_branch
+      ? [
+          {
+            code: 'native-workspace-branch-mismatch',
+            runId: run.runId,
+            message: '当前分支与原 Run 绑定不一致；切回原分支，或确认接管并核对原执行已结束。',
+            nextCommand: `comet native select ${run.runId} --rebind --json`,
+          },
+        ]
+      : []),
     ...candidateIssues,
     ...(!storageSettled
       ? [

@@ -28,6 +28,12 @@ import {
   writeClassicProjectText,
 } from './classic-protected-path.js';
 import type { ClassicState } from './classic-state.js';
+import { assertClassicDeliveryRepairCurrent } from './classic-sdk-delivery-repair.js';
+import {
+  classicDeliveryRepairInputs,
+  classicDeliveryRepairForAction,
+  isClassicDeliveryRepairCheck,
+} from './classic-sdk-delivery-repair-model.js';
 import {
   classicSdkCheckRecordRef,
   classicSdkCheckDirectoryRef,
@@ -181,15 +187,25 @@ async function checkedInput(
   }
   const timeoutMs = await resolveClassicCheckTimeout(root, input.timeoutMs);
   const state = run.state as ClassicState | undefined;
-  const changeDirRef =
+  let changeDirRef =
     run.input !== null &&
     typeof run.input === 'object' &&
     !Array.isArray(run.input) &&
     typeof run.input.changeDir === 'string'
       ? run.input.changeDir
       : null;
-  const scope = state?.phase === 'build' ? 'build' : state?.phase === 'verify' ? 'verify' : null;
+  const repairing = state && isClassicDeliveryRepairCheck(run, action);
+  const scope =
+    state?.phase === 'build' ? 'build' : state?.phase === 'verify' || repairing ? 'verify' : null;
   const profile = state?.workflow;
+  if (repairing) {
+    const original = run.actions.find(
+      (a) => a.id === classicDeliveryRepairForAction(action).archiveActionId,
+    );
+    changeDirRef =
+      (original?.outcome?.output as { archiveDirectory?: string } | undefined)?.archiveDirectory ??
+      null;
+  }
   if (
     !profile ||
     !classicSdkRunMatchesProfile(run, profile) ||
@@ -199,7 +215,7 @@ async function checkedInput(
     (scope === 'verify' && !state.verificationReport) ||
     !changeDirRef ||
     action.runId !== run.runId ||
-    action.stepId !== `${profile}.${scope}.check` ||
+    (!repairing && action.stepId !== `${profile}.${scope}.check`) ||
     action.type !== 'call_tool' ||
     action.ref !== 'classic-check'
   ) {
@@ -224,6 +240,9 @@ export function classicSdkCheckCommand(
   action: Readonly<RuntimeAction>,
   projectRoot: string,
 ): ClassicSdkCheckInput {
+  if (isClassicDeliveryRepairCheck(run, action)) {
+    return { runId: run.runId, projectRoot, ...classicDeliveryRepairForAction(action).command };
+  }
   const scope = (run.state as unknown as ClassicState).phase;
   if (scope !== 'build' && scope !== 'verify') throw new Error('Classic check scope is invalid');
   const label = `Classic input.checkCommands.${scope} must declare literal argv`;
@@ -436,8 +455,28 @@ export async function runClassicSdkCommandCheck(
         return [...diff.added, ...diff.removed, ...diff.changed].slice(0, 100);
       })()
     : [];
+  let regeneration: Record<string, string> | undefined;
+  let regenerationFailure: string | undefined;
+  if (isClassicDeliveryRepairCheck(run, action)) {
+    try {
+      regeneration = (
+        await assertClassicDeliveryRepairCurrent(
+          root,
+          run,
+          classicDeliveryRepairForAction(action),
+          'checked',
+          after?.manifest,
+        )
+      ).regeneratedOutputs;
+    } catch (error) {
+      regenerationFailure = error instanceof Error ? error.message : String(error);
+    }
+  }
   const outcome: Pick<RuntimeOutcome, 'status' | 'output'> = {
-    status: result.exitCode === 0 && before.digest === inputAfter ? 'succeeded' : 'failed',
+    status:
+      result.exitCode === 0 && before.digest === inputAfter && !regenerationFailure
+        ? 'succeeded'
+        : 'failed',
     output: {
       scope,
       argv: identity.argv,
@@ -462,6 +501,17 @@ export async function runClassicSdkCommandCheck(
       checkEpoch: state.checkEpoch ?? 0,
       reusable: input.reusable === true,
       reused: false,
+      ...(isClassicDeliveryRepairCheck(run, action)
+        ? {
+            deliveryRepair: classicDeliveryRepairForAction(action) as unknown as RuntimeValue,
+            deliveryInputs: classicDeliveryRepairInputs(
+              run,
+              classicDeliveryRepairForAction(action),
+            ),
+            ...(regeneration ? { regeneratedOutputs: regeneration } : {}),
+            ...(regenerationFailure ? { regenerationFailure } : {}),
+          }
+        : {}),
     },
   };
   await recordClassicSdkCheckReceipt(root, run, action, outcome);

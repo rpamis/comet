@@ -286,9 +286,9 @@ it('runs a real disk Skill, repairs a failed candidate, restores cold and retain
       }),
     ]),
   );
-  let run = await f.submitBuilder(f.pending(f.run, 'build.builder'), 'missing requirement\n');
+  await f.submitBuilder(f.pending(f.run, 'build.builder'), 'missing requirement\n');
   await f.native(['next', f.name]);
-  run = await f.dispatch({ operation: 'inspect', runId: f.name });
+  let run = await f.dispatch({ operation: 'inspect', runId: f.name });
   const firstReview = f.pending(run, 'native.extension.candidate.candidate-review');
   expect(firstReview).toBeTruthy();
   expect(f.pending(run, 'verify.verifier')).toBeUndefined();
@@ -307,7 +307,7 @@ it('runs a real disk Skill, repairs a failed candidate, restores cold and retain
   );
   run = await f.dispatch(reviewStatus.pendingAction.executeRequest);
   expect((run.state as { phase: string }).phase).toBe('build');
-  run = await f.submitBuilder(f.pending(run, 'build.builder'), 'approved\n', 'repair-builder');
+  await f.submitBuilder(f.pending(run, 'build.builder'), 'approved\n', 'repair-builder');
   await f.native(['next', f.name]);
   run = await f.dispatch({ operation: 'inspect', runId: f.name });
   const secondReview = f.pending(run, 'native.extension.candidate.candidate-review');
@@ -363,7 +363,7 @@ it('runs a real disk Skill, repairs a failed candidate, restores cold and retain
   ).toMatchObject({ allowed: false });
   const verifier = f.pending(run, 'verify.verifier');
   run = await f.claim(verifier, 'independent-verifier');
-  run = await f.record(
+  await f.record(
     run.actions.find(({ id }) => id === verifier.id)!,
     {
       candidateId: (run.state as { builder_handoff: { candidate_id: string } }).builder_handoff
@@ -444,13 +444,14 @@ it('runs a real disk Skill, repairs a failed candidate, restores cold and retain
   expect((await f.dispatch({ operation: 'inspect', runId: f.name })).actions).toEqual(
     createPortableRunCheckpoint(run).run.actions,
   );
-}, 120000);
+  // 覆盖实际磁盘 Skill、独立进程与验收前后两次冷恢复的完整生命周期。
+}, 180000);
 
 it('rejects fake loaded/pass evidence and stale artifacts while preserving the claimed Action', async () => {
   const f = await fixture();
-  let run = await f.submitBuilder(f.pending(f.run, 'build.builder'), 'not acceptable\n');
+  await f.submitBuilder(f.pending(f.run, 'build.builder'), 'not acceptable\n');
   await f.native(['next', f.name]);
-  run = await f.dispatch({ operation: 'inspect', runId: f.name });
+  let run = await f.dispatch({ operation: 'inspect', runId: f.name });
   const review = f.pending(run, 'native.extension.candidate.candidate-review');
   run = await f.dispatch({
     operation: 'claim',
@@ -753,9 +754,9 @@ it('does not discard an unknown Child when another review requires Shape revisio
 
 it('requires protected Shape revision for a review-discovered requirement change', async () => {
   const f = await fixture();
-  let run = await f.submitBuilder(f.pending(f.run, 'build.builder'), 'NEEDS-REQUIREMENTS\n');
+  await f.submitBuilder(f.pending(f.run, 'build.builder'), 'NEEDS-REQUIREMENTS\n');
   await f.native(['next', f.name]);
-  run = await f.dispatch({ operation: 'inspect', runId: f.name });
+  let run = await f.dispatch({ operation: 'inspect', runId: f.name });
   await fs.appendFile(
     path.join(f.change, 'brief.md'),
     '\n# Decisions\nReview changed the confirmed design.\n',

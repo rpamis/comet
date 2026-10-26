@@ -20,6 +20,7 @@ target_artifacts = []
 timeout = 180
 
 [evaluation]
+require_classic_proposal_interaction = true
 profile = "generic"
 required_skills = ["comet"]
 expected_artifacts = [".comet/config.yaml", "docs/openspec/changes/archive", "docs/openspec/changes/parked-format/proposal.md"]
@@ -34,5 +35,10 @@ rubric_criteria = [
 [interaction]
 mode = "auto_user"
 max_turns = 18
+completion_runs = [
+    { name = "sentence-full", profile = "full" },
+    { name = "characters-tweak", profile = "tweak" },
+    { name = "missing-file-hotfix", profile = "hotfix" },
+]
 decision_reply = "I approve the proposed scope, current workspace isolation and direct implementation with optional reviews off. Complete only the current change's verified local Git delivery, without push or PR, and preserve parked-format untouched. Continue with the remaining specified profiles afterward."
 continue_prompt = "Invoke /comet, inspect the named Runs, and continue their exact next actions. Complete all three specified SDK profiles and verified local deliveries; do not advance, stage or commit parked-format."

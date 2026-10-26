@@ -28,6 +28,69 @@ def validator():
     return module
 
 
+def test_failed_native_artifact_still_checks_cold_boundary_and_retains_authoritative_run(
+    tmp_path, monkeypatch
+):
+    module = validator()
+    module.WORKSPACE = tmp_path
+    archive = tmp_path / "docs/comet/archive/2026-10-26-sentence-counting"
+    archive.mkdir(parents=True)
+    (tmp_path / "_test_context.json").write_text(json.dumps({"interaction": {"fixture": True}}))
+    run = {
+        "runId": "sentence-counting",
+        "revision": 42,
+        "actions": [
+            {
+                "id": "original-action",
+                "attempt": 1,
+                "inputHash": "original-input",
+                "claim": {"token": "original-claim"},
+                "outcome": {"status": "succeeded", "claimToken": "original-claim"},
+            }
+        ],
+    }
+    monkeypatch.setattr(module, "inspect_run", lambda *_args, **_kwargs: run)
+    calls = []
+
+    def fail_artifact(*_):
+        calls.append("recovery")
+        raise AssertionError("No resolved test line range")
+
+    def fail_boundary(actual, interaction):
+        calls.append("boundary")
+        assert actual is run and interaction == {"fixture": True}
+        raise AssertionError("Original evidence changed")
+
+    monkeypatch.setattr(module, "assert_recovery", fail_artifact)
+    monkeypatch.setattr(module, "assert_boundary", fail_boundary)
+    evidence = {}
+    result = module.check_recovery(evidence)
+    assert result["status"] == "failed"
+    assert (
+        "No resolved test line range" in result["reason"]
+        and "Original evidence changed" in result["reason"]
+    )
+    assert calls == ["recovery", "boundary"]
+    inspected = evidence["native:sentence-counting"]
+    assert inspected["run"] == run and inspected["run"] is not run
+    original_hash = hashlib.sha256(
+        json.dumps(run, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert inspected["runHash"] == original_hash
+    assert inspected["actionEvidence"] == [
+        {
+            "id": "original-action",
+            "attempt": 1,
+            "inputHash": "original-input",
+            "outcomeHash": hashlib.sha256(
+                json.dumps(
+                    run["actions"][0]["outcome"], sort_keys=True, separators=(",", ":")
+                ).encode()
+            ).hexdigest(),
+        }
+    ]
+
+
 def test_one_shot_receipt_accepts_only_the_bound_direct_or_fixed_path_command():
     module = validator()
     direct = dict(executable="python3", argv=["recovery_once.py"], cwdRef=".", repeatable=False)
@@ -53,6 +116,46 @@ def test_one_shot_receipt_accepts_only_the_bound_direct_or_fixed_path_command():
         invalid = dict(fixed, argv=[prefix, "python3", "recovery_once.py"])
         with pytest.raises(AssertionError):
             module.assert_once_check(invalid, dict(argvDisplay=invalid["argv"], cwdRef="."))
+
+
+def test_named_one_shot_requires_unique_plan_and_original_receipt_identity():
+    module = validator()
+    plan = dict(
+        id="check-recovery-once",
+        name="recovery-once",
+        executable="python3",
+        argv=["recovery_once.py"],
+        cwdRef=".",
+        repeatable=False,
+    )
+    receipt = dict(
+        id=plan["id"],
+        name=plan["name"],
+        argvDisplay=plan["argv"],
+        cwdRef=".",
+        status="passed",
+        exitCode=0,
+    )
+    assert module.assert_once_evidence([plan], [receipt]) == (plan, receipt)
+    canonical = dict(plan, id="recovery-once")
+    assert module.assert_once_evidence([canonical], [dict(receipt, id=canonical["id"])]) == (
+        canonical,
+        dict(receipt, id=canonical["id"]),
+    )
+    invalid = [
+        ([dict(plan, name="other", id="recovery-once")], [dict(receipt, id="recovery-once")]),
+        ([plan, dict(plan, id="duplicate-name")], [receipt]),
+        ([plan, dict(plan, name="other")], [receipt]),
+        ([plan], [dict(receipt, id="another-plan")]),
+        ([plan], [dict(receipt, name="another-name")]),
+        ([plan], [receipt, receipt]),
+        ([dict(plan, repeatable=True)], [receipt]),
+        ([plan], [dict(receipt, status="failed", exitCode=1)]),
+        ([plan], [dict(receipt, argvDisplay=["another.py"])]),
+    ]
+    for plans, receipts in invalid:
+        with pytest.raises(AssertionError):
+            module.assert_once_evidence(plans, receipts)
 
 
 class Driver:
@@ -90,7 +193,7 @@ class Driver:
             timeout=90,
         )
         if ok:
-            assert result.returncode == 0, (args, result.stdout, result.stderr)
+            assert result.returncode == 0, f"{args}\n{result.stdout}\n{result.stderr}"
         return result
 
     def native(self, *args, ok=True):

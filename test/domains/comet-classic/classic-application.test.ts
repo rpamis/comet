@@ -501,7 +501,8 @@ it.each([
   async ({ configured, explicit, exitCode }) => {
     const f = await fixture('tweak', [], undefined, {
       build: {
-        argv: [process.execPath, '-e', 'setTimeout(() => {}, 200)'],
+        // 仅超时分支保持命令存活到终止；正常完成和覆盖分支沿用原时长。
+        argv: [process.execPath, '-e', `setTimeout(() => {}, ${exitCode === 124 ? 20000 : 200})`],
         ...(explicit === undefined ? {} : { timeoutMs: explicit }),
       },
     });

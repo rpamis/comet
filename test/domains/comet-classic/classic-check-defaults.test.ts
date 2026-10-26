@@ -69,7 +69,8 @@ it.each(['compat', 'sdk'] as const)(
       '--',
       process.execPath,
       '-e',
-      'setTimeout(() => {}, 200)',
+      // 保持命令存活到超时终止，避免它在 Windows taskkill 枚举期间自然退出。
+      'setTimeout(() => {}, 20000)',
     );
     expect(result.exitCode, result.stdout).toBe(124);
     expect(result.response.data.timeoutMs).toBe(25);

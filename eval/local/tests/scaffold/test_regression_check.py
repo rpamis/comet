@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import copy
 import json
+import hashlib
 import subprocess
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import conftest
@@ -45,6 +47,42 @@ def execution_identity():
     )
 
 
+def test_candidate_harness_hash_binds_core_tests_helpers_and_vitest_configuration(
+    tmp_path, monkeypatch
+):
+    files = [
+        "pnpm-lock.yaml",
+        "eval/local/tests/conftest.py",
+        "eval/local/tests/tasks/test_tasks.py",
+        "eval/local/scripts/regression_check.py",
+        "eval/pyproject.toml",
+        "eval/uv.lock",
+        "test/helpers/example.ts",
+        "vitest.config.ts",
+    ]
+    for name in files:
+        target = tmp_path / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("original\n", encoding="utf8")
+    write(tmp_path / "package.json", {"version": "0.5.1"})
+    monkeypatch.setattr(gate.subprocess, "run", lambda *_, **__: SimpleNamespace(stdout="a" * 40))
+    monkeypatch.setattr(
+        gate, "current_source_identity", lambda _: {"sourceHash": "b" * 64, "sourceFileCount": 1}
+    )
+    monkeypatch.setattr(
+        gate,
+        "cli_snapshot_identity",
+        lambda _: {"cliSnapshotHash": "c" * 64, "cliSnapshotFileCount": 1},
+    )
+    original = gate.candidate_identity(tmp_path)
+    (tmp_path / "test/helpers/example.ts").write_text("changed helper\n", encoding="utf8")
+    changed_test = gate.candidate_identity(tmp_path)
+    assert changed_test["revision"] == original["revision"]
+    assert changed_test["harnessHash"] != original["harnessHash"]
+    (tmp_path / "vitest.config.ts").write_text("changed runner configuration\n", encoding="utf8")
+    assert gate.candidate_identity(tmp_path)["harnessHash"] != changed_test["harnessHash"]
+
+
 @pytest.fixture
 def experiment(tmp_path, monkeypatch):
     candidate = {
@@ -59,7 +97,6 @@ def experiment(tmp_path, monkeypatch):
         "cliSnapshotHash": "f" * 64,
         "cliSnapshotFileCount": 10,
     }
-    monkeypatch.setattr(cli, "_prepare_candidate", lambda: None)
     monkeypatch.setattr(cli, "candidate_identity", lambda: copy.deepcopy(candidate))
     monkeypatch.setattr(cli, "get_logs_dir", lambda: tmp_path / "logs")
     root = tmp_path / "logs/experiments/release_test"
@@ -76,7 +113,30 @@ def experiment(tmp_path, monkeypatch):
         },
     )
     write(root / "expected-case-matrix.json", gate.expected_matrix(1))
-    write(root / "launch-result.json", {"experiment_id": root.name, "pytest_exitstatus": 0})
+    records_name = "fixture-core.records.json"
+    records = "[]"
+    write(
+        root / gate.CORE_RECEIPT_FILE,
+        {
+            "schema": "comet.core-regression-evidence.v1",
+            "recordsFile": records_name,
+            "recordsHash": hashlib.sha256(records.encode()).hexdigest(),
+            "fixture": True,
+        },
+    )
+    (root / records_name).write_text(records, encoding="utf8")
+    write(
+        root / "launch-result.json",
+        {
+            "experiment_id": root.name,
+            "pytest_exitstatus": 0,
+            "coreReceiptHash": hashlib.sha256(
+                (root / gate.CORE_RECEIPT_FILE).read_bytes()
+            ).hexdigest(),
+        },
+    )
+    monkeypatch.setattr(cli, "_prepare_candidate", lambda: root / gate.CORE_RECEIPT_FILE)
+    monkeypatch.setattr(gate, "_verify_core_receipt_with_node", lambda _: None)
     identity = execution_identity()
     for index, case in enumerate(gate.suite_contract()["cases"]):
         task, treatment = case["task"], case["treatment"]
@@ -135,6 +195,77 @@ def mutate_report(experiment, transform, filename="00.json"):
     write(path, value)
 
 
+@pytest.fixture
+def recovery_experiment(experiment):
+    # 合成独立样本只用于验证发布检查器，不能作为真实模型通过记录。
+    root = experiment.root
+    originals = [gate.read_json(file) for file in (root / "reports").glob("*.json")]
+    for file in (root / "reports").glob("*.json"):
+        file.unlink()
+    for index, case in enumerate(gate.suite_contract("recovery")["cases"]):
+        original = next(
+            report for report in originals if report["events_summary"]["task"] == case["task"]
+        )
+        for rep in range(1, 4):
+            report = copy.deepcopy(original)
+            report["rep"] = rep
+            report["run_id"] = f"synthetic-{index}-{rep}"
+            report["name"] = f"{case['task']}-{case['treatment']}-r{rep}"
+            report["events_summary"]["sample"] = rep
+            write(root / f"reports/{index}-{rep}.json", report)
+    metadata = gate.read_json(root / "metadata.json")
+    metadata["release_suite"] = gate.suite_contract("recovery")
+    write(root / "metadata.json", metadata)
+    write(root / "expected-case-matrix.json", gate.expected_matrix(3, "recovery"))
+    experiment.baseline.update(
+        suiteHash=gate.digest_json(gate.suite_contract("recovery")),
+        count=3,
+        dimensions={
+            gate.case_key(case["task"], case["treatment"]): {dim: 1.0 for dim in case["minimums"]}
+            for case in gate.suite_contract("recovery")["cases"]
+        },
+    )
+    write(experiment.baseline_file, experiment.baseline)
+    return experiment
+
+
+def test_recovery_release_receipt_requires_six_independent_passing_samples(recovery_experiment):
+    experiment = recovery_experiment
+    receipt = cli.make_receipt(experiment.root, 3, experiment.baseline, 0.1, "recovery")
+    assert receipt["sampleCount"] == 6 and receipt["suite"] == "recovery"
+    write(experiment.root / cli.RECEIPT_FILE, receipt)
+    cli.verify_receipt(experiment.root / cli.RECEIPT_FILE)
+    with pytest.raises(gate.GateError):
+        cli.make_receipt(experiment.root, 3, experiment.baseline, 0.1)
+
+
+@pytest.mark.parametrize(
+    "change", ["failed-third", "missing-third", "duplicate-run", "zero-safety", "zero-efficiency"]
+)
+def test_recovery_release_never_selects_one_success_out_of_three(recovery_experiment, change):
+    experiment = recovery_experiment
+    file = experiment.root / "reports/0-3.json"
+    report = gate.read_json(file)
+    if change == "missing-third":
+        file.unlink()
+    else:
+        if change == "failed-third":
+            report.update(passed=False, checks_failed=["recovery: failed"])
+        elif change == "duplicate-run":
+            report["run_id"] = gate.read_json(experiment.root / "reports/0-1.json")["run_id"]
+        else:
+            dimension = change.removeprefix("zero-")
+            report["checks_passed"] = [
+                line
+                for line in report["checks_passed"]
+                if not line.startswith(f"[RUBRIC] {dimension}:")
+            ]
+            report["checks_passed"].append(f"[RUBRIC] {dimension}: 0.00")
+        write(file, report)
+    with pytest.raises(gate.GateError):
+        cli.make_receipt(experiment.root, 3, experiment.baseline, 0.1, "recovery")
+
+
 def run_existing(experiment, *args):
     return cli.main(
         ["--experiment", experiment.root.name, "--baseline", str(experiment.baseline_file), *args]
@@ -145,6 +276,21 @@ def test_help_and_plan_are_no_model_operations(monkeypatch, capsys):
     monkeypatch.setattr(cli.subprocess, "run", lambda *a, **k: pytest.fail("must not launch"))
     assert cli.main(["--plan"]) == 0
     assert '"sdk-cli"' in capsys.readouterr().out
+
+
+def test_recovery_release_requires_all_three_samples_of_both_hard_tasks(monkeypatch, capsys):
+    monkeypatch.setattr(cli.subprocess, "run", lambda *a, **k: pytest.fail("must not launch"))
+    assert cli.main(["--suite", "recovery", "--count", "3", "--plan"]) == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["suite"] == "recovery"
+    assert {(case["task"], case["treatment"]) for case in plan["cases"]} == {
+        ("comet-native-sdk-recovery", "COMET_NATIVE_SDK_CURRENT"),
+        ("comet-classic-sdk-recovery", "COMET_CLASSIC_DOCS_LAYOUT"),
+    }
+    assert len(plan["matrix"]["cases"]) == 6
+    assert {case["rep"] for case in plan["matrix"]["cases"]} == {1, 2, 3}
+    assert len(gate.suite_contract()["cases"]) == 16
+    assert cli.main(["--suite", "recovery", "--count", "1", "--plan"]) != 0
 
 
 def test_regression_check_help_imports_from_eval_working_directory():
@@ -627,17 +773,109 @@ def test_preflight_failure_stops_before_model_launch(monkeypatch):
     assert calls[0] == ["node", "scripts/build/build-runtime-schemas.mjs", "--check"]
 
 
-def test_preflight_uses_local_node_without_implicit_package_manager_install(monkeypatch):
+def test_launch_requires_bound_core_regression_evidence(tmp_path):
+    write(tmp_path / "launch-result.json", {"experiment_id": tmp_path.name, "pytest_exitstatus": 0})
+    with pytest.raises(gate.GateError, match="核心回归|core"):
+        gate.validate_launch_result(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "change", ["missing-summary", "changed-summary", "missing-records", "changed-records"]
+)
+def test_launch_rejects_missing_or_changed_original_core_evidence(experiment, change):
+    root = experiment.root
+    summary = root / gate.CORE_RECEIPT_FILE
+    records = root / json.loads(summary.read_text(encoding="utf8"))["recordsFile"]
+    target = summary if change.endswith("summary") else records
+    if change.startswith("missing"):
+        target.unlink()
+    else:
+        target.write_text(target.read_text(encoding="utf8") + " ", encoding="utf8")
+    with pytest.raises(gate.GateError):
+        gate.validate_launch_result(root)
+
+
+def test_cross_platform_preflight_executes_both_platforms_without_forwarding_model_keys(
+    tmp_path, monkeypatch
+):
     calls = []
+    monkeypatch.setattr(cli, "EVAL_ROOT", tmp_path / "eval")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "fixture-secret")
+    monkeypatch.setenv("BENCH_JUDGE_API_KEY", "fixture-judge-secret")
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        if "scripts/lint/core-regressions.mjs" in command:
+            write(Path(command[-1]), {})
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(cli.subprocess, "run", run)
+    proof = cli._prepare_candidate(
+        {
+            "linuxImage": "fixture-image",
+            "linuxNodeModules": "fixture-modules",
+            "linuxVenv": "fixture-venv",
+        }
+    )
+    assert proof.is_file()
+    command = calls[-1][0]
+    assert command[:2] == ["node", "scripts/lint/core-regressions.mjs"]
+    assert "--cross-platform" in command and "--case" not in command
+    assert all(
+        "ANTHROPIC_AUTH_TOKEN" not in kwargs["env"] and "BENCH_JUDGE_API_KEY" not in kwargs["env"]
+        for _, kwargs in calls
+    )
+    assert all(kwargs["env"]["PYTHON_DOTENV_DISABLED"] == "1" for _, kwargs in calls)
+    assert cli.os.environ["ANTHROPIC_AUTH_TOKEN"] == "fixture-secret"
+
+
+def test_preflight_uses_local_node_without_implicit_package_manager_install(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(cli, "EVAL_ROOT", tmp_path / "eval")
+
+    def run(command, **kwargs):
+        calls.append(command)
+        if "scripts/lint/core-regressions.mjs" in command:
+            write(Path(command[-1]), {})
+        return SimpleNamespace(returncode=0)
+
     monkeypatch.setattr(
         cli.subprocess,
         "run",
-        lambda command, **kwargs: calls.append(command) or SimpleNamespace(returncode=0),
+        run,
     )
     cli._prepare_candidate()
     assert ["node", "build.js"] in calls
-    assert ["node", "scripts/lint/core-regressions.mjs"] in calls
+    assert any(
+        command[:2] == ["node", "scripts/lint/core-regressions.mjs"]
+        and "--record-all" in command
+        and "--case" not in command
+        for command in calls
+    )
     assert all(command[0] == "node" for command in calls)
+
+
+def test_ci_preflight_combines_complete_original_platform_jobs_before_models(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(cli, "EVAL_ROOT", tmp_path / "eval")
+
+    def run(command, **kwargs):
+        calls.append(command)
+        if "scripts/lint/core-regressions.mjs" in command:
+            write(Path(command[-1]), {})
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(cli.subprocess, "run", run)
+    cli._prepare_candidate({"platformRecords": ["windows.json", "linux.json"]})
+    command = calls[-1]
+    assert command[:3] == [
+        "node",
+        "scripts/lint/core-regressions.mjs",
+        "--combine-platform-evidence",
+    ]
+    assert command[3:7] == ["--platform-record", "windows.json", "--platform-record", "linux.json"]
+    assert "--case" not in command and "--record-all" not in command
+    assert ["node", "build.js"] in calls
 
 
 def test_tolerated_drop_does_not_ratchet_baseline_down(experiment):

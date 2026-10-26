@@ -15,6 +15,7 @@
 #   --continue-prompt TEXT    Nudge used when the workflow should continue
 #   --decision-pattern TEXT   Extra case-insensitive substring to treat as a decision point
 #   --fresh-resume-marker TEXT  Start the following turn in a new subject session
+#   --completion-runs JSON   Fixed SDK Run identities required to finish
 #
 # Env: ANTHROPIC_AUTH_TOKEN / ANTHROPIC_BASE_URL / ANTHROPIC_MODEL for the proxy.
 # Stdout: concatenated stream-json from every subject turn (for event extraction).
@@ -43,6 +44,7 @@ DECISION_REPLY=""
 DECISION_REPLY_STEPS=()
 CONTINUE_PROMPT="Please continue with the next phase of the comet workflow."
 FRESH_RESUME_MARKER=""
+COMPLETION_RUNS=""
 DECISION_PATTERNS=()
 PLUGIN_ARGS=()
 while [[ $# -gt 0 ]]; do
@@ -73,6 +75,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --continue-prompt) CONTINUE_PROMPT="$2"; shift 2 ;;
         --fresh-resume-marker) FRESH_RESUME_MARKER="$2"; shift 2 ;;
+        --completion-runs) COMPLETION_RUNS="$2"; shift 2 ;;
         --decision-pattern)
             DECISION_PATTERNS+=("$2")
             shift 2
@@ -356,11 +359,16 @@ except: print('')
         continue
     fi
 
-    # Completion is task-validated from exported artifacts after the loop. Stop
-    # only on an explicit, non-negated workflow/archive completion statement.
-    if bash "$SCRIPT_DIR/completion-point.sh" "$RESULT_TEXT"; then
+    # 指定 Run 时读取真实交付状态；探针不可用时终止，避免反复催促已完成的流程。
+    COMPLETION_STATUS=0
+    COMET_EVAL_COMPLETION_RUNS="$COMPLETION_RUNS" bash "$SCRIPT_DIR/completion-point.sh" "$RESULT_TEXT" || COMPLETION_STATUS=$?
+    if [[ $COMPLETION_STATUS -eq 0 ]]; then
         echo "[loop] workflow completion detected; ending" >&2
         break
+    fi
+    if [[ $COMPLETION_STATUS -gt 1 ]]; then
+        echo "[loop] completion probe unavailable; ending evaluation" >&2
+        exit 2
     fi
 
     if bash "$SCRIPT_DIR/decision-point.sh" "$RESULT_TEXT" "${DECISION_PATTERNS[@]}"; then

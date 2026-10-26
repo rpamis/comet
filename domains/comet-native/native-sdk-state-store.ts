@@ -274,6 +274,7 @@ export function createNativeSdkStateStore(
     store?: RuntimeStore<WorkflowRun>;
     identity?: ApplicationIdentity;
     readOnly?: boolean;
+    allowBranchRebind?: boolean;
   } = {},
   projectionRead = false,
 ): RuntimeStore<WorkflowRun> {
@@ -372,11 +373,12 @@ export function createNativeSdkStateStore(
     ) {
       throw new Error(`Native portable Run checkpoint for ${runId} does not match its state`);
     }
-    assertPortableWorkspaceBindingCurrent(projectRoot, {
-      isolation: state.workspace.isolation,
-      changeBranch: state.workspace.change_branch,
-      targetBranch: state.workspace.target_branch,
-    });
+    if (!options.allowBranchRebind)
+      assertPortableWorkspaceBindingCurrent(projectRoot, {
+        isolation: state.workspace.isolation,
+        changeBranch: state.workspace.change_branch,
+        targetBranch: state.workspace.target_branch,
+      });
     assertSupervisorWorkspacesAvailable(saved, state, projectRoot);
     const hasSourceRevision =
       (data[PORTABLE_RUN_CHECKPOINT_KEY] as { sourceRevision?: unknown }).sourceRevision !==
@@ -637,6 +639,54 @@ export function createNativeSdkStateStore(
     async compareAndSwap(runId, expectedRevision, next) {
       if (options.readOnly) throw new Error('Native SDK diagnostic store is read-only');
       await assertWorkspaceRuntimeCurrent();
+      const binding = parseNativePortableState(next.state).workspace;
+      try {
+        assertPortableWorkspaceBindingCurrent(projectRoot, {
+          isolation: binding.isolation,
+          changeBranch: binding.change_branch,
+          targetBranch: binding.target_branch,
+        });
+      } catch (error) {
+        const previous = await store.read(runId);
+        const newlyClaimed = next.actions.some(
+          (action) =>
+            action.status === 'running' &&
+            !previous?.actions.some(
+              (original) =>
+                original.id === action.id &&
+                original.status === 'running' &&
+                original.attempt === action.attempt &&
+                isDeepStrictEqual(original.claim, action.claim),
+            ),
+        );
+        const reconcilesOriginal = previous?.actions.some(
+          (original) =>
+            ['running', 'unknown'].includes(original.status) &&
+            next.actions.some(
+              (action) =>
+                action.id === original.id &&
+                action.attempt === original.attempt &&
+                isDeepStrictEqual(action.claim, original.claim),
+            ),
+        );
+        const acknowledgesStop = previous?.actions.some(
+          (original) =>
+            original.claim &&
+            !original.executionStop &&
+            next.actions.some(
+              (action) =>
+                action.id === original.id &&
+                action.executionStop &&
+                isDeepStrictEqual(action.claim, original.claim),
+            ),
+        );
+        // 分支变化不能阻止原领取回报结果或停止事实；接管前仍禁止领取新执行。
+        if (
+          newlyClaimed ||
+          (next.status !== 'cancelled' && !reconcilesOriginal && !acknowledgesStop)
+        )
+          throw error;
+      }
       const committed =
         next.status === 'cancelled'
           ? await commitNativeSdkCancellation({ projectRoot, store, runId, expectedRevision, next })

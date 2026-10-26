@@ -10,6 +10,74 @@ import pytest
 import yaml
 
 from scaffold.python.paths import get_tasks_dir
+from scaffold.python.validation import current_sdk
+
+
+def test_new_classic_proposals_cannot_pass_without_actual_user_interaction():
+    def inspection(waits, workflow="classic"):
+        return {
+            "schema": "comet.eval.sdk-inspection.v1",
+            "workflow": workflow,
+            "application": "classic-full" if workflow == "classic" else "native",
+            "run": {"runId": "original", "waits": waits},
+        }
+
+    def approved(step, digest):
+        return {
+            "id": digest,
+            "stepId": step,
+            "status": "resolved",
+            "proposalHash": digest,
+            "decision": {"choice": "approved"},
+        }
+
+    evidence = {
+        "trusted.py": {
+            "original": inspection(
+                [
+                    approved("full.design.confirm", "design-1"),
+                    approved("full.design.confirm", "design-2"),
+                    approved("full.delivery.confirm", "delivery-1"),
+                ]
+            )
+        }
+    }
+    check = current_sdk.classic_new_proposal_approval_issues
+    open_only = {"trusted": inspection([approved("full.open.confirm", "open-1")])}
+    assert check(open_only, {})
+    assert (
+        check(
+            open_only,
+            {
+                "mode": "auto_user",
+                "actual_turns": 2,
+                "decision_points": 1,
+                "deterministic_replies": 1,
+            },
+        )
+        == []
+    )
+    assert check(
+        evidence,
+        {"mode": "auto_user", "actual_turns": 1, "decision_points": 0, "deterministic_replies": 0},
+    )
+    assert check(
+        evidence,
+        {"mode": "auto_user", "actual_turns": 3, "decision_points": 2, "deterministic_replies": 2},
+    )
+    interaction = {
+        "mode": "auto_user",
+        "actual_turns": 4,
+        "decision_points": 3,
+        "deterministic_replies": 3,
+    }
+    assert check(evidence, interaction) == []
+    assert check({"first": evidence, "duplicate": evidence}, interaction) == []
+    assert check(evidence, {**interaction, "actual_turns": 1})
+    assert check(evidence, {**interaction, "deterministic_replies": True})
+    assert check({"trusted": inspection([approved("shape.confirm", "shape")], "native")}, {}) == []
+    assert check({"trusted": inspection([approved("full.archive.confirm", "local")])}, {}) == []
+    assert check({}, {}) == []
 
 
 def _validator(task: str, script: str):
@@ -57,16 +125,20 @@ def test_native_current_workflow_rejects_portable_archive_without_sdk_owner(tmp_
     assert result["status"] == "failed"
 
 
-@pytest.mark.parametrize("entry", ["fence", "invalid-json", "wrong-schema", "relative-target", "change-local"])
+@pytest.mark.parametrize(
+    "entry", ["fence", "invalid-json", "wrong-schema", "relative-target", "change-local"]
+)
 def test_native_current_workflow_accepts_only_valid_runtime_fence(tmp_path: Path, entry: str):
     validator = _validator("comet-native-workflow", "test_native_workflow.py")
     validator.WORKSPACE = tmp_path
     (tmp_path / ".comet").mkdir()
     identity = "a" * 64
     fence = {
-        "schema": "comet.workspace-runtime-migration.v1", "workspaceId": identity,
+        "schema": "comet.workspace-runtime-migration.v1",
+        "workspaceId": identity,
         "source": "/workspace/.comet/runtime",
-        "target": f"/opt/comet-eval-data/workspaces/{identity}/runtime", "kind": "directory",
+        "target": f"/opt/comet-eval-data/workspaces/{identity}/runtime",
+        "kind": "directory",
     }
     if entry == "wrong-schema":
         fence["schema"] = "unrelated"
@@ -80,8 +152,12 @@ def test_native_current_workflow_accepts_only_valid_runtime_fence(tmp_path: Path
     assert validator.check_isolation()["status"] == ("passed" if entry == "fence" else "failed")
 
 
-@pytest.mark.parametrize("scenario", ["new", "legacy", "both", "directory", "symlink", "parent-link"])
-def test_classic_state_selection_preserves_names_and_rejects_unsafe_sources(tmp_path: Path, scenario: str):
+@pytest.mark.parametrize(
+    "scenario", ["new", "legacy", "both", "directory", "symlink", "parent-link"]
+)
+def test_classic_state_selection_preserves_names_and_rejects_unsafe_sources(
+    tmp_path: Path, scenario: str
+):
     validator = _validator("comet-classic-layout-lifecycle", "test_classic_layout_lifecycle.py")
     validator.WORKSPACE = tmp_path
     archive = tmp_path / "archive"
@@ -101,7 +177,13 @@ def test_classic_state_selection_preserves_names_and_rejects_unsafe_sources(tmp_
         (archive / ".comet.yaml").write_text("workflow: full\n", encoding="utf-8")
     if scenario == "parent-link":
         link = tmp_path / "linked"
-        result = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(archive)], capture_output=True) if os.name == "nt" else None
+        result = (
+            subprocess.run(
+                ["cmd", "/c", "mklink", "/J", str(link), str(archive)], capture_output=True
+            )
+            if os.name == "nt"
+            else None
+        )
         if result is not None and result.returncode != 0:
             pytest.skip("This host cannot create the directory link attack fixture")
         if os.name != "nt":
@@ -139,10 +221,21 @@ const wrongStorage=structuredClone(v2); wrongStorage.storageHash='0'.repeat(64);
 const wrongRevision=structuredClone(v2); wrongRevision.sourceRevision++;
 console.log(JSON.stringify({{status:run.status,schemas:[v1.schema,v2.schema],v1:check(v1),v2:check(v2),changed:check(changed),wrongStorage:check(wrongStorage),wrongRevision:check(wrongRevision)}}));
 """
-    result = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True, timeout=30, check=True)
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
     assert json.loads(result.stdout) == {
-        "status": "completed", "schemas": ["comet.workflow-run-checkpoint.v1", "comet.workflow-run-checkpoint.v2"],
-        "v1": True, "v2": True, "changed": False, "wrongStorage": False, "wrongRevision": False,
+        "status": "completed",
+        "schemas": ["comet.workflow-run-checkpoint.v1", "comet.workflow-run-checkpoint.v2"],
+        "v1": True,
+        "v2": True,
+        "changed": False,
+        "wrongStorage": False,
+        "wrongRevision": False,
     }
 
 
@@ -225,7 +318,9 @@ def test_native_current_workflow_requires_failed_then_passed_verify(tmp_path: Pa
     ],
 )
 @pytest.mark.parametrize("runtime_layout", ["legacy", "external"])
-@pytest.mark.parametrize("checkpoint_schema", ["comet.workflow-run-checkpoint.v1", "comet.workflow-run-checkpoint.v2"])
+@pytest.mark.parametrize(
+    "checkpoint_schema", ["comet.workflow-run-checkpoint.v1", "comet.workflow-run-checkpoint.v2"]
+)
 def test_current_validator_inspects_matching_completed_sdk_run(
     tmp_path: Path,
     monkeypatch,
@@ -249,7 +344,9 @@ def test_current_validator_inspects_matching_completed_sdk_run(
     else:
         archived = tmp_path / "docs/comet/archive/2026-09-30-sentence-counting"
     archived.mkdir(parents=True)
-    runtime_root = tmp_path / (".comet/runtime" if runtime_layout == "legacy" else "external-runtime")
+    runtime_root = tmp_path / (
+        ".comet/runtime" if runtime_layout == "legacy" else "external-runtime"
+    )
     owner = runtime_root / "change-owner-history" / workflow / "sentence-counting.json"
     owner.parent.mkdir(parents=True)
     owner.write_text(
@@ -283,7 +380,10 @@ def test_current_validator_inspects_matching_completed_sdk_run(
         if args[0] == "node":
             if "portableRunCheckpointProjectionMatches" in args[3]:
                 payload = json.loads(kwargs["input"])
-                assert yaml.safe_load(payload["source"])["run_checkpoint"]["schema"] == checkpoint_schema
+                assert (
+                    yaml.safe_load(payload["source"])["run_checkpoint"]["schema"]
+                    == checkpoint_schema
+                )
                 assert payload["run"]["status"] == "completed"
                 return subprocess.CompletedProcess(args, 0, json.dumps(checkpoint_matches), "")
             assert "readSdkChangeOwner" in args[3]
@@ -338,8 +438,12 @@ def test_current_validator_inspects_matching_completed_sdk_run(
     assert validator.check_sdk_run()["status"] == "failed"
 
 
-@pytest.mark.parametrize("scenario", ["foreign-fence", "history-owner", "owner-symlink", "runtime-symlink"])
-def test_current_runtime_owner_api_uses_workspace_identity_not_fence_target(tmp_path: Path, scenario: str):
+@pytest.mark.parametrize(
+    "scenario", ["foreign-fence", "history-owner", "owner-symlink", "runtime-symlink"]
+)
+def test_current_runtime_owner_api_uses_workspace_identity_not_fence_target(
+    tmp_path: Path, scenario: str
+):
     repository = Path(__file__).resolve().parents[4]
     owner_module = repository / "dist/domains/workflow-contract/change-runtime-owner.js"
     paths_module = repository / "dist/platform/paths/workspace-runtime.js"
@@ -347,7 +451,11 @@ def test_current_runtime_owner_api_uses_workspace_identity_not_fence_target(tmp_
         pytest.skip("Current Runtime build is required for its real read-only API contract")
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    environment = {key: value for key, value in os.environ.items() if key.upper() in {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP"}}
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key.upper() in {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP"}
+    }
     environment["COMET_DATA_DIR"] = str(tmp_path / "data")
     source = f"""
 import fs from 'node:fs';
@@ -375,7 +483,14 @@ try {{
  console.log(JSON.stringify({{result,unchanged:before===fs.readFileSync(path.join(root,'.comet/runtime'),'utf8')}}));
 }} catch (error) {{ console.log(JSON.stringify({{rejected:true,unchanged:before===fs.readFileSync(path.join(root,'.comet/runtime'),'utf8')}})); }}
 """
-    result = subprocess.run(["node", "--input-type=module", "-e", source, str(workspace), scenario], env=environment, capture_output=True, text=True, timeout=30, check=True)
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", source, str(workspace), scenario],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
     response = json.loads(result.stdout)
     if response.get("unsupported"):
         pytest.skip("This host cannot create the symlink attack fixture")
@@ -468,7 +583,12 @@ def test_classic_sdk_phase_validation_uses_verified_run_actions_not_compat_event
         if args[0] == "node":
             if "portableRunCheckpointProjectionMatches" in args[3]:
                 return subprocess.CompletedProcess(args, 0, "true", "")
-            return subprocess.CompletedProcess(args, 0, owner_path.read_text(encoding="utf-8") if owner_path.exists() else "null", "")
+            return subprocess.CompletedProcess(
+                args,
+                0,
+                owner_path.read_text(encoding="utf-8") if owner_path.exists() else "null",
+                "",
+            )
         request = json.loads(Path(args[-1]).read_text(encoding="utf-8"))
         assert request == {"operation": "inspect", "runId": "sentence-counting"}
         return subprocess.CompletedProcess(
@@ -507,3 +627,168 @@ def test_classic_sdk_phase_validation_uses_verified_run_actions_not_compat_event
     run["actions"][0]["status"] = "succeeded"
     owner_path.unlink()
     assert validator.check_workflow_phases()["status"] == "failed"
+
+
+def test_requested_classic_completion_requires_every_owned_delivery(tmp_path, monkeypatch):
+    requests = [
+        {"name": "sentence-full", "profile": "full"},
+        {"name": "characters-tweak", "profile": "tweak"},
+        {"name": "missing-file-hotfix", "profile": "hotfix"},
+    ]
+    runs = {}
+    for request in requests:
+        name, profile = request.values()
+        archive = tmp_path / "docs/openspec/changes/archive" / f"2026-10-26-{name}"
+        archive.mkdir(parents=True)
+        (archive / "comet-state.yaml").write_text("fixture")
+        runs[name] = {
+            "runId": name,
+            "workflow": {"id": f"comet-classic-{profile}"},
+            "status": "completed",
+            "lineage": [],
+            "waits": [],
+            "evidenceWaits": [],
+            "actions": [{"stepId": f"{profile}.archive.deliver", "status": "succeeded"}],
+        }
+    observed = []
+
+    def inspect(workspace, workflow, name, application, state_file):
+        assert workspace == tmp_path and workflow == "classic"
+        assert application == "classic-" + next(r["profile"] for r in requests if r["name"] == name)
+        assert state_file.read_text() == "fixture"
+        observed.append(name)
+        return runs[name]
+
+    monkeypatch.setattr(current_sdk, "inspect_run", inspect)
+    # The excluded parked Run is deliberately not terminal and must not be inspected.
+    runs["parked-format"] = {"status": "waiting"}
+    assert current_sdk.requested_classic_runs_completed(tmp_path, requests)
+    assert observed == [r["name"] for r in requests]
+    assert current_sdk.requested_runs_completed(tmp_path, requests)
+    for mutation in (
+        {"status": "waiting"},
+        {"lineage": ["parent"]},
+        {"runId": "another"},
+        {"workflow": {"id": "comet-classic-full"}},
+        {"actions": []},
+        {"actions": [{"stepId": "hotfix.archive.deliver", "status": "unknown"}]},
+        {"waits": [{"status": "pending"}]},
+        {"evidenceWaits": [{"status": "pending"}]},
+    ):
+        original = runs["missing-file-hotfix"]
+        runs["missing-file-hotfix"] = {**original, **mutation}
+        assert not current_sdk.requested_classic_runs_completed(tmp_path, requests), mutation
+        runs["missing-file-hotfix"] = original
+    for malformed in (
+        [],
+        requests + requests[:1],
+        [{"name": "../escape", "profile": "full"}],
+        [{"name": "x", "profile": "other"}],
+    ):
+        assert not current_sdk.requested_classic_runs_completed(tmp_path, malformed)
+    monkeypatch.setattr(
+        current_sdk, "inspect_run", lambda *_: (_ for _ in ()).throw(ValueError("owner mismatch"))
+    )
+    assert not current_sdk.requested_classic_runs_completed(tmp_path, requests)
+    # 查询基础设施不可用必须向控制器报告，不能当作 Run 尚未完成。
+    for unavailable in (
+        FileNotFoundError("missing node"),
+        PermissionError("unreadable store"),
+        subprocess.TimeoutExpired("node", 30),
+        subprocess.CalledProcessError(1, "node"),
+    ):
+        monkeypatch.setattr(
+            current_sdk,
+            "inspect_run",
+            lambda *_, error=unavailable: (_ for _ in ()).throw(error),
+        )
+        with pytest.raises(type(unavailable)):
+            current_sdk.requested_classic_runs_completed(tmp_path, requests)
+
+
+def test_requested_native_completion_uses_owned_terminal_run_without_prose(tmp_path, monkeypatch):
+    requests = [{"workflow": "native", "name": "sentence-counting"}]
+    archive = tmp_path / "docs/comet/archive/2026-10-26-sentence-counting"
+    archive.mkdir(parents=True)
+    state_file = archive / "comet-state.yaml"
+    state_file.write_text("fixture")
+    run = {
+        "runId": "sentence-counting",
+        "workflow": {"id": "comet-native"},
+        "status": "completed",
+        "lineage": [],
+        "state": {"phase": "archive", "status": "done", "archived": True},
+        "actions": [{"stepId": "archive.finalize", "status": "succeeded"}],
+        "waits": [],
+        "evidenceWaits": [],
+    }
+    observed = []
+
+    def inspect(workspace, workflow, name, application, checkpoint):
+        assert (workspace, workflow, name, application, checkpoint) == (
+            tmp_path,
+            "native",
+            "sentence-counting",
+            "native",
+            state_file,
+        )
+        observed.append(name)
+        return run
+
+    monkeypatch.setattr(current_sdk, "inspect_run", inspect)
+    assert current_sdk.requested_runs_completed(tmp_path, requests)
+    assert observed == ["sentence-counting"]
+    for mutation in (
+        {"status": "waiting"},
+        {"runId": "another"},
+        {"workflow": {"id": "comet-classic-full"}},
+        {"lineage": ["parent"]},
+        {"state": {"phase": "archive", "status": "done", "archived": False}},
+        {"actions": []},
+        {"actions": [{"stepId": "archive.finalize", "status": "unknown"}]},
+        {"actions": [*run["actions"], {"stepId": "verify.checks", "status": "running"}]},
+        {"waits": [{"status": "pending"}]},
+        {"evidenceWaits": [{"status": "pending"}]},
+    ):
+        original = run
+        run = {**run, **mutation}
+        assert not current_sdk.requested_runs_completed(tmp_path, requests), mutation
+        run = original
+    for malformed in (
+        [],
+        requests * 2,
+        [{"workflow": "native", "name": "../escape"}],
+        [{"workflow": "other", "name": "sentence-counting"}],
+        [{"workflow": "native", "name": "sentence-counting", "profile": "full"}],
+    ):
+        assert not current_sdk.requested_runs_completed(tmp_path, malformed)
+    active = tmp_path / "docs/comet/changes/sentence-counting"
+    active.mkdir(parents=True)
+    assert not current_sdk.requested_runs_completed(tmp_path, requests)
+    active.rmdir()
+    monkeypatch.setattr(
+        current_sdk, "inspect_run", lambda *_: (_ for _ in ()).throw(ValueError("owner mismatch"))
+    )
+    assert not current_sdk.requested_runs_completed(tmp_path, requests)
+    for error in (
+        FileNotFoundError("node"),
+        PermissionError("store"),
+        subprocess.TimeoutExpired("node", 30),
+    ):
+        monkeypatch.setattr(
+            current_sdk, "inspect_run", lambda *_, error=error: (_ for _ in ()).throw(error)
+        )
+        with pytest.raises(type(error)):
+            current_sdk.requested_runs_completed(tmp_path, requests)
+
+
+def test_native_recovery_task_declares_its_fixed_completion_run():
+    import tomllib
+
+    task = tomllib.loads((get_tasks_dir() / "comet-native-sdk-recovery/task.toml").read_text())
+    assert task["interaction"]["completion_runs"] == [
+        {"workflow": "native", "name": "sentence-counting"}
+    ]
+    assert "Include in the brief a `## Spec → 测试名与断言计划` Markdown table" in (
+        get_tasks_dir() / "comet-native-sdk-recovery/instruction.md"
+    ).read_text(encoding="utf8")

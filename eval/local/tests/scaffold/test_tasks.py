@@ -70,6 +70,30 @@ def test_load_task_parses_validation_and_setup(mock_tasks_dir: Path):
     assert task.config.setup.template_vars == {"artifact_name": "result-{run_id}.json"}
 
 
+def test_task_declares_classic_proposal_interaction_only_for_fresh_scenarios(mock_tasks_dir):
+    path = mock_tasks_dir / "test-basic/task.toml"
+    assert (
+        load_task(
+            "test-basic", mock_tasks_dir
+        ).config.evaluation.require_classic_proposal_interaction
+        is False
+    )
+    path.write_text(
+        BASIC_TASK_TOML + "\n[evaluation]\nrequire_classic_proposal_interaction = true\n"
+    )
+    assert (
+        load_task(
+            "test-basic", mock_tasks_dir
+        ).config.evaluation.require_classic_proposal_interaction
+        is True
+    )
+    path.write_text(
+        BASIC_TASK_TOML + '\n[evaluation]\nrequire_classic_proposal_interaction = "true"\n'
+    )
+    with pytest.raises(ValueError, match="require_classic_proposal_interaction"):
+        load_task("test-basic", mock_tasks_dir)
+
+
 def test_load_task_parses_evaluation_and_interaction(mock_tasks_dir: Path):
     task_dir = mock_tasks_dir / "test-basic"
     task_dir.joinpath("task.toml").write_text(
@@ -92,6 +116,7 @@ decision_reply = "Use the recommended option."
 decision_replies = ["First reply.", "Second reply."]
 continue_prompt = "Please continue."
 fresh_resume_marker = "COLD_RESUME_READY"
+completion_runs = [{name = "sentence-full", profile = "full"}]
 """
     )
 
@@ -110,6 +135,7 @@ fresh_resume_marker = "COLD_RESUME_READY"
     assert task.config.interaction.decision_replies == ["First reply.", "Second reply."]
     assert task.config.interaction.continue_prompt == "Please continue."
     assert task.config.interaction.fresh_resume_marker == "COLD_RESUME_READY"
+    assert task.config.interaction.completion_runs == [{"name": "sentence-full", "profile": "full"}]
 
 
 def test_comet_tasks_default_to_comet_workflow_profile():

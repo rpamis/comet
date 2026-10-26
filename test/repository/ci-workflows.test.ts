@@ -529,6 +529,41 @@ describe('CI workflows', () => {
     expect(workflow).toContain('throw new Error(`External installer failures:');
   });
 
+  it('requires both actual core platforms before the paid Eval job', async () => {
+    const source = await readWorkflow('eval-regression.yml');
+    const workflow = parse(source);
+    const core = workflow.jobs['core-regressions'];
+    expect(core.needs).toEqual(['candidate-build']);
+    expect(workflow.jobs['candidate-build']['runs-on']).toBe('ubuntu-latest');
+    expect(core.steps.some((step: { run?: string }) => step.run === 'pnpm build')).toBe(false);
+    for (const jobName of ['core-regressions', 'model-regression'])
+      expect(
+        workflow.jobs[jobName].steps.some(
+          (step: { with?: Record<string, string> }) =>
+            step.with?.name === 'eval-candidate-dist-${{ github.sha }}-${{ github.run_attempt }}',
+        ),
+      ).toBe(true);
+    expect(core.strategy.matrix.os).toEqual(['ubuntu-latest', 'windows-latest']);
+    expect(
+      core.steps.some((step: { run?: string }) => step.run?.includes('--record-platform')),
+    ).toBe(true);
+    expect(workflow.jobs['model-regression'].needs).toEqual(['core-regressions']);
+    expect(source).toContain('--core-platform-records');
+    expect(source).toContain(
+      'core-platform-windows-latest-${{ github.sha }}-${{ github.run_attempt }}',
+    );
+    expect(source).toContain(
+      'core-platform-ubuntu-latest-${{ github.sha }}-${{ github.run_attempt }}',
+    );
+    expect(source).toContain('git config --global core.autocrlf false');
+    for (const job of Object.values(workflow.jobs) as Array<{
+      steps: Array<{ uses?: string; with?: Record<string, unknown> }>;
+    }>)
+      expect(job.steps.find((step) => step.uses?.startsWith('actions/checkout@'))?.with?.ref).toBe(
+        '${{ github.sha }}',
+      );
+  });
+
   it('runs dependency review and CodeQL with least-privilege permissions', async () => {
     const workflow = await readWorkflow('security.yml');
     const dependabot = await fs.readFile('.github/dependabot.yml', 'utf8');
@@ -578,7 +613,7 @@ describe('CI workflows', () => {
       ),
     );
 
-    expect(workflow).toMatch(/^  issues:\s*$/m);
+    expect(workflow).toMatch(/^ {2}issues:\s*$/m);
     expect(workflow).toContain('types: [opened, edited]');
     expect(workflow).toContain('issues: write');
     expect(workflow).toContain('actions/github-script@d746ffe35508b1917358783b479e04febd2b8f71');
@@ -686,8 +721,8 @@ describe('CI workflows', () => {
   it('greets first-time contributors from the trusted base workflow', async () => {
     const workflow = await readWorkflow('greeting-guideline-pr.yml');
 
-    expect(workflow).toMatch(/^  pull_request_target:$/m);
-    expect(workflow).not.toMatch(/^  pull_request:$/m);
+    expect(workflow).toMatch(/^ {2}pull_request_target:$/m);
+    expect(workflow).not.toMatch(/^ {2}pull_request:$/m);
     expect(workflow).toContain('pull-requests: write');
     expect(workflow).not.toContain('actions/checkout');
   });

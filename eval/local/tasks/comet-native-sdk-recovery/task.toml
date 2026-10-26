@@ -33,6 +33,7 @@ rubric_criteria = [
 
 [interaction]
 mode = "auto_user"
+completion_runs = [{workflow = "native", name = "sentence-counting"}]
 max_turns = 12
 decision_reply = "I confirm the proposed scope and choose resolve-verifier-blocker: retain the original candidate and checks, use a new independent verifier, and accept and archive only after all acceptance items pass."
 continue_prompt = "This is a fresh session. Invoke /comet-native, inspect sentence-counting from disk, and follow the exact resolve-verifier-blocker continuation. Preserve the candidate and original checks. Use a separate shell process for the verifier context command with the same explicit PATH and working directory as the recorded checks. Finish independent verification and Archive."

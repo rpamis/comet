@@ -180,6 +180,46 @@ async function verifierOutcomeFixture() {
 }
 
 describe('Native dispatch CLI presentation', () => {
+  it('diagnoses misplaced outcome fields without changing the original claim', async () => {
+    const f = await builderFixture();
+    const claimed = await cli(f.root, f.requestFile);
+    const before = (await inspectNativeSdkRun(f.root, f.name)).run;
+    const template = structuredClone(claimed.data.failureOutcomeRequest);
+    template.outcome.outcomeId = 'builder-original-failure';
+    template.outcome.output = { summary: 'The fixture Builder execution failed.' };
+    const { output, ...identity } = template.outcome;
+    await fs.writeFile(
+      f.requestFile,
+      JSON.stringify({
+        ...template,
+        outcome: { ...identity, ...output, response: { kind: 'execution-failure' } },
+      }),
+    );
+    const rejected = await runtimeDispatchCommand({
+      application: 'native',
+      projectRoot: f.root,
+      request: f.requestFile,
+    });
+    expect(rejected.exitCode).toBe(64);
+    expect(rejected.response.error?.code).toBe('INVALID_REQUEST');
+    expect(rejected.response.error?.message).toContain('outcome.output');
+    expect(rejected.response.error?.message).toContain('outcomeRequest');
+    expect(rejected.response.error?.message).not.toContain(f.request.claimToken);
+    expect((await inspectNativeSdkRun(f.root, f.name)).run).toEqual(before);
+    await fs.writeFile(f.requestFile, JSON.stringify(template));
+    const accepted = await runtimeDispatchCommand({
+      application: 'native',
+      projectRoot: f.root,
+      request: f.requestFile,
+    });
+    expect(accepted.exitCode).toBe(0);
+    const finished = (await inspectNativeSdkRun(f.root, f.name)).run;
+    expect(finished.actions.find((action) => action.id === f.request.actionId)).toMatchObject({
+      status: 'failed',
+      claim: { token: f.request.claimToken },
+      outcome: { outcomeId: 'builder-original-failure', output },
+    });
+  });
   it('recovers a rejected Builder after formal Spec drift through the original failure receipt and reconfirms the same change', async () => {
     const f = await builderFixture();
     await cli(f.root, f.requestFile);

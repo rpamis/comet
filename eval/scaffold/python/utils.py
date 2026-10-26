@@ -655,6 +655,9 @@ def make_execution_validator(
 
     def validate_execution(test_dir, outputs):
         passed, failed = [], []
+        # 此字段只由重新拷贝的可信校验器生成，不接受模型传入的同名字段。
+        if outputs is not None:
+            outputs["validation_evidence"] = {}
         for artifact in artifacts:
             if any(c in artifact for c in "*?["):
                 if not list(test_dir.glob(artifact)):
@@ -671,6 +674,8 @@ def make_execution_validator(
             results = run_eval_in_docker(
                 test_dir, validation_dir, script, timeout=timeout, data_dir=data_dir
             )
+            if outputs is not None and isinstance(results.get("validation_evidence"), dict):
+                outputs["validation_evidence"][script] = results["validation_evidence"]
             script_passed, script_failed = _normalise_validation_results(results)
             passed.extend(script_passed)
             failed.extend(script_failed)

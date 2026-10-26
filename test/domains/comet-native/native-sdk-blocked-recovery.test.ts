@@ -550,7 +550,113 @@ async function archiveReadyFixture(
   return f;
 }
 
+async function finishRepairedCandidate(
+  f: Awaited<ReturnType<typeof archiveReadyFixture>>,
+  shape: string | null,
+) {
+  const after = await f.dispatch({ operation: 'inspect', runId: f.name });
+  const live = JSON.parse((await f.native(['status', f.name])).stdout!).data;
+  expect(live.recovery?.code).not.toBe('candidate-drift');
+  await f.record(
+    after.actions.findLast((action) => action.status === 'pending')!,
+    {
+      summary: 'Keep the user implementation revision.',
+      addressedAcceptanceIds: ['A1'],
+      acceptanceReview: fixtureAcceptanceReview(['A1']),
+      checks: [],
+      knownLimits: [],
+      submittedAt: new Date().toISOString(),
+      verificationChecks: [
+        {
+          id: 'revision-check',
+          name: 'Verify the user revision',
+          executable: process.execPath,
+          argv: [
+            '-e',
+            "if (!require('node:fs').readFileSync('candidate.txt','utf8').includes('user implementation revision')) process.exit(1)",
+          ],
+          cwdRef: '.',
+          timeoutMs: 10000,
+          repeatable: true,
+        },
+      ],
+    },
+    'repair-builder',
+  );
+  expect((await f.native(['next', f.name])).exitCode).toBe(0);
+  const checked = await f.dispatch({ operation: 'inspect', runId: f.name });
+  const state = parseNativePortableState(checked.state);
+  await f.record(
+    checked.actions.findLast((action) => action.status === 'pending')!,
+    {
+      candidateId: state.builder_handoff!.candidate_id,
+      verifierExecutionRef: 'repair-verifier',
+      response: {
+        kind: 'final-result',
+        result: {
+          iteration: state.loop.iteration,
+          attempt: state.loop.attempt,
+          verdict: 'pass',
+          acceptance: [
+            {
+              id: 'A1',
+              result: 'passed',
+              reason: 'Independently verified the retained user revision.',
+            },
+          ],
+          risks: [],
+          summary: 'The successor candidate meets all acceptance.',
+        },
+      },
+    },
+    'repair-verifier',
+  );
+  expect((await f.native(['next', f.name])).exitCode).toBe(0);
+  const approve = (await alternatives(f)).find((option) => option.name === 'accept-result')!;
+  expect(
+    (
+      await f.native(
+        approve.commandArgs
+          .slice(2)
+          .map((arg) => (arg === '<summary>' ? 'Approve the verified revision.' : arg)),
+      )
+    ).exitCode,
+  ).toBe(0);
+  const archived = await f.native(['archive', f.name]);
+  expect(archived.exitCode, archived.stdout).toBe(0);
+  expect((await f.dispatch({ operation: 'inspect', runId: f.name })).state).toMatchObject({
+    archived: true,
+    shape_confirmation_hash: shape,
+  });
+  expect(await fs.readFile(path.join(f.projectRoot, 'check-count'), 'utf8')).toBe('once\n');
+}
+
 describe('blocked Verifier recovery command contract', () => {
+  it('recovers a branch rename followed by implementation changes without replaying one-shot checks', async () => {
+    const f = await archiveReadyFixture({ directPass: true });
+    const original = await f.dispatch({ operation: 'inspect', runId: f.name });
+    const shape = parseNativePortableState(original.state).shape_confirmation_hash;
+    execFileSync('git', ['branch', '-m', 'renamed-candidate'], {
+      cwd: f.projectRoot,
+      stdio: 'ignore',
+    });
+    const rebound = await f.native(['select', f.name, '--rebind']);
+    expect(rebound.exitCode, rebound.stdout).toBe(0);
+    await fs.writeFile(path.join(f.projectRoot, 'candidate.txt'), 'user implementation revision\n');
+    const blocked = JSON.parse((await f.native(['archive', f.name])).stdout!);
+    expect(blocked.data.phase).toBe('verify');
+    expect(blocked.data.recovery.code).toBe('candidate-drift');
+    expect(blocked.data.continuation.userCommunication.message).not.toMatch(
+      /failure budget|失败预算/u,
+    );
+    const repaired = await f.native(
+      blocked.data.recovery.recoveryArgs
+        .slice(2)
+        .map((arg: string) => (arg === '<summary>' ? 'Keep the work after branch takeover.' : arg)),
+    );
+    expect(repaired.exitCode, repaired.stdout).toBe(0);
+    await finishRepairedCandidate(f, shape);
+  });
   it('rejects changed gitlink generated output at the public Archive boundary', async () => {
     const f = await archiveReadyFixture({
       dirtyEmbedded: true,
@@ -592,6 +698,38 @@ describe('blocked Verifier recovery command contract', () => {
     const after = await f.dispatch({ operation: 'inspect', runId: f.name });
     expect(after.revision).toBe(before.revision);
     expect(after.state).toEqual(before.state);
+  });
+
+  it('repairs an implementation edited after Archive approval using the emitted recovery command and original Shape', async () => {
+    const f = await archiveReadyFixture({ directPass: true });
+    const before = await f.dispatch({ operation: 'inspect', runId: f.name });
+    const shape = parseNativePortableState(before.state).shape_confirmation_hash;
+    await fs.writeFile(path.join(f.projectRoot, 'candidate.txt'), 'user implementation revision\n');
+    const blocked = JSON.parse((await f.native(['archive', f.name])).stdout!);
+    expect(blocked.exitCode).not.toBe(0);
+    expect(blocked.data.phase).toBe('verify');
+    expect(blocked.data.recovery.code).toBe('candidate-drift');
+    expect(blocked.data.recovery.recoveryArgs).toEqual(
+      expect.arrayContaining(['--revise-implementation']),
+    );
+    const repaired = await f.native(
+      blocked.data.recovery.recoveryArgs
+        .slice(2)
+        .map((arg: string) => (arg === '<summary>' ? 'Retain the revised implementation.' : arg)),
+    );
+    expect(repaired.exitCode, repaired.stdout).toBe(0);
+    const after = await f.dispatch({ operation: 'inspect', runId: f.name });
+    expect(after.runId).toBe(before.runId);
+    expect(parseNativePortableState(after.state)).toMatchObject({
+      phase: 'build',
+      shape_confirmation_hash: shape,
+    });
+    expect(
+      after.actions.some(
+        (action) => action.stepId === 'build.builder' && action.status === 'pending',
+      ),
+    ).toBe(true);
+    await finishRepairedCandidate(f, shape);
   });
 
   it('retains business status and candidate details when Archive is rejected before acceptance', async () => {

@@ -107,6 +107,7 @@ describe('Classic OpenSpec adapter', () => {
     );
     expect(result).toEqual({
       exitCode: 9,
+      executionCompleted: true,
       stdout: '{"changes":[]}\n',
       stderr: 'warning\n',
     });
@@ -148,6 +149,7 @@ describe('Classic OpenSpec adapter', () => {
 
     expect(result).toEqual({
       exitCode: 0,
+      executionCompleted: true,
       stdout: 'standalone root is independent\n',
       stderr: undefined,
     });

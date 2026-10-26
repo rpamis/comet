@@ -3,9 +3,201 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import re
 import subprocess
 import tempfile
 from pathlib import Path
+
+
+def sdk_inspection_evidence(workflow: str, application: str, run: dict) -> dict:
+    """保留实际只读查询结果，不规范化 revision、领取或原始执行结果。"""
+    source = json.dumps(run, sort_keys=True, separators=(",", ":"))
+    return {
+        "schema": "comet.eval.sdk-inspection.v1",
+        "workflow": workflow,
+        "application": application,
+        "runHash": hashlib.sha256(source.encode()).hexdigest(),
+        "run": json.loads(source),
+        "actionEvidence": [
+            {
+                "id": action["id"],
+                "attempt": action.get("attempt"),
+                "inputHash": action.get("inputHash"),
+                "outcomeHash": hashlib.sha256(
+                    json.dumps(
+                        action.get("outcome"), sort_keys=True, separators=(",", ":")
+                    ).encode()
+                ).hexdigest(),
+            }
+            for action in run.get("actions", [])
+            if isinstance(action.get("id"), str)
+        ],
+    }
+
+
+def classic_new_proposal_approval_issues(evidence: dict, interaction: dict) -> list[str]:
+    """全新固定任务的交互数量底线；不能代替逐条回复与提案的来源审查。"""
+    proposals = set()
+
+    def visit(value):
+        if not isinstance(value, dict):
+            return
+        if value.get("schema") == "comet.eval.sdk-inspection.v1":
+            if value.get("workflow") != "classic" or value.get("application") != "classic-full":
+                return
+            run = value.get("run", {})
+            for wait in run.get("waits", []):
+                if (
+                    wait.get("stepId")
+                    in ("full.open.confirm", "full.design.confirm", "full.delivery.confirm")
+                    and wait.get("status") == "resolved"
+                    and wait.get("decision", {}).get("choice") == "approved"
+                ):
+                    proposals.add((run.get("runId"), wait["stepId"], wait.get("proposalHash")))
+            return
+        for child in value.values():
+            visit(child)
+
+    visit(evidence)
+    required = len(proposals)
+    if not required:
+        return []
+    counts = [
+        interaction.get(key) for key in ("actual_turns", "decision_points", "deterministic_replies")
+    ]
+    if any(type(value) is not int or value < 0 for value in counts):
+        return ["Classic new proposal approvals lack trusted user interaction counts"]
+    turns, decisions, deterministic = counts
+    simulator = interaction.get("role_sessions", {}).get("simulator", [])
+    replies = decisions if isinstance(simulator, list) and simulator else deterministic
+    if (
+        interaction.get("mode") != "auto_user"
+        or decisions < required
+        or replies < required
+        or turns <= required
+        or deterministic > decisions
+    ):
+        return [
+            f"Classic new proposal approvals lack user replies: proposals={required}, decisions={decisions}, replies={replies}, turns={turns}"
+        ]
+    return []
+
+
+def requested_runs_completed(workspace: Path, requests: list[dict]) -> bool:
+    """按固定任务声明查询终态，不依赖模型用哪句话表示完成。"""
+    if not isinstance(requests, list) or not requests:
+        return False
+    if not all(
+        isinstance(request, dict) and request.get("workflow") == "native" for request in requests
+    ):
+        return requested_classic_runs_completed(workspace, requests)
+    names = set()
+    try:
+        for request in requests:
+            if set(request) != {"workflow", "name"}:
+                return False
+            name = request["name"]
+            if (
+                not isinstance(name, str)
+                or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name)
+                or name in names
+            ):
+                return False
+            names.add(name)
+            if (workspace / "docs/comet/changes" / name).exists():
+                return False
+            archives = list((workspace / "docs/comet/archive").glob(f"????-??-??-{name}"))
+            if len(archives) != 1:
+                return False
+            state_file = archives[0] / "comet-state.yaml"
+            if not state_file.is_file():
+                return False
+            run = inspect_run(workspace, "native", name, "native", state_file)
+            state = run.get("state", {})
+            if (
+                run.get("runId") != name
+                or run.get("workflow", {}).get("id") != "comet-native"
+                or run.get("status") != "completed"
+                or run.get("lineage") != []
+                or state.get("phase") != "archive"
+                or state.get("status") != "done"
+                or state.get("archived") is not True
+                or any(
+                    a.get("status") in ("pending", "running", "unknown")
+                    for a in run.get("actions", [])
+                )
+                or any(
+                    w.get("status") == "pending"
+                    for w in [*run.get("waits", []), *run.get("evidenceWaits", [])]
+                )
+                or not any(
+                    a.get("stepId") == "archive.finalize" and a.get("status") == "succeeded"
+                    for a in run.get("actions", [])
+                )
+            ):
+                return False
+    except (ValueError, TypeError, KeyError):
+        return False
+    return True
+
+
+def requested_classic_runs_completed(workspace: Path, requests: list[dict]) -> bool:
+    """只查询固定任务指定的 Run；不推进未列出的并存需求。"""
+    if not isinstance(requests, list) or not requests:
+        return False
+    names = set()
+    try:
+        for request in requests:
+            if not isinstance(request, dict) or set(request) != {"name", "profile"}:
+                return False
+            name, profile = request["name"], request["profile"]
+            if (
+                not isinstance(name, str)
+                or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name)
+                or name in names
+                or profile not in ("full", "tweak", "hotfix")
+            ):
+                return False
+            names.add(name)
+            # 此判定仅用于声明 docs layout 的 Classic SDK 任务。
+            root = workspace / "docs/openspec/changes"
+            if (root / name).exists():
+                return False
+            archives = list((root / "archive").glob(f"????-??-??-{name}"))
+            if len(archives) != 1:
+                return False
+            states = [
+                p
+                for p in (archives[0] / "comet-state.yaml", archives[0] / ".comet.yaml")
+                if p.exists()
+            ]
+            if len(states) != 1:
+                return False
+            run = inspect_run(workspace, "classic", name, f"classic-{profile}", states[0])
+            if (
+                run.get("runId") != name
+                or run.get("workflow", {}).get("id") != f"comet-classic-{profile}"
+                or run.get("status") != "completed"
+                or run.get("lineage") != []
+                or any(
+                    a.get("status") in ("pending", "running", "unknown")
+                    for a in run.get("actions", [])
+                )
+                or any(
+                    w.get("status") == "pending"
+                    for w in [*run.get("waits", []), *run.get("evidenceWaits", [])]
+                )
+                or not any(
+                    a.get("stepId") == f"{profile}.archive.deliver"
+                    and a.get("status") == "succeeded"
+                    for a in run.get("actions", [])
+                )
+            ):
+                return False
+    except (ValueError, TypeError, KeyError):
+        return False
+    return True
 
 
 def inspect_run(

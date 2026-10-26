@@ -22,6 +22,7 @@ REPOSITORY_ROOT = EVAL_ROOT.parent
 CANDIDATE_SCHEMA = "comet.eval.release-candidate.v1"
 BASELINE_SCHEMA = "comet.eval.release-baseline.v1"
 RECEIPT_SCHEMA = "comet.eval.release-receipt.v1"
+CORE_RECEIPT_FILE = "core-regressions.json"
 MAX_COUNT = 5
 MAX_JSON_BYTES = 8 * 1024 * 1024
 # 当前 SDK 是核心发布覆盖；portable 仅作为补充历史覆盖，仍须通过。
@@ -56,6 +57,11 @@ LEGACY_SUPPLEMENTAL_CASES = (
     ),
 )
 RELEASE_CASES = SDK_RELEASE_CASES + LEGACY_SUPPLEMENTAL_CASES
+RECOVERY_RELEASE_CASES = tuple(
+    case
+    for case in SDK_RELEASE_CASES
+    if case[0] in {"comet-native-sdk-recovery", "comet-classic-sdk-recovery"}
+)
 
 
 class GateError(ValueError):
@@ -168,6 +174,12 @@ def candidate_identity(root: Path = REPOSITORY_ROOT) -> dict:
             "uv.lock",
         )
     )
+    evaluation_files.extend(
+        path
+        for path in regular_tree_files(root / "test")
+        if "__pycache__" not in path.parts and path.suffix not in {".pyc", ".pyo"}
+    )
+    evaluation_files.extend(path for path in root.glob("vitest*config.*") if path.is_file())
     return {
         "schema": CANDIDATE_SCHEMA,
         "revision": git_rev("HEAD"),
@@ -210,14 +222,54 @@ def validate_candidate(candidate: dict) -> None:
         raise GateError("候选 packageVersion 缺失")
 
 
-def validate_launch_result(experiment: Path) -> None:
+def _verify_core_receipt_with_node(file: Path) -> None:
+    result = subprocess.run(
+        ["node", "scripts/lint/core-regressions.mjs", "--verify-evidence", str(file)],
+        cwd=REPOSITORY_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise GateError(f"核心回归原始证据或当前候选不匹配：{result.stderr.strip()}")
+
+
+def validate_core_regressions(experiment: Path, expected_hash: str) -> dict:
+    file = experiment / CORE_RECEIPT_FILE
+    receipt = read_json(file)
+    if hashlib.sha256(file.read_bytes()).hexdigest() != expected_hash:
+        raise GateError("核心回归凭证与本次启动记录不匹配")
+    name = receipt.get("recordsFile")
+    if (
+        not isinstance(name, str)
+        or not name.endswith(".records.json")
+        or any(char in name for char in "/\\:")
+    ):
+        raise GateError("核心回归原始记录引用必须位于凭证同目录")
+    records = experiment / name
+    if (
+        records.is_symlink()
+        or not records.is_file()
+        or hashlib.sha256(records.read_bytes()).hexdigest() != receipt.get("recordsHash")
+    ):
+        raise GateError("核心回归原始记录缺失或被修改")
+    _verify_core_receipt_with_node(file)
+    return {"coreReceiptHash": expected_hash, "receipt": receipt}
+
+
+def validate_launch_result(experiment: Path) -> dict:
     launch = read_json(experiment / "launch-result.json")
     if (
-        set(launch) != {"experiment_id", "pytest_exitstatus"}
+        set(launch) != {"experiment_id", "pytest_exitstatus", "coreReceiptHash"}
         or launch.get("experiment_id") != experiment.name
         or _integer(launch.get("pytest_exitstatus"), "launch.pytest_exitstatus") != 0
     ):
-        raise GateError("缺少本次成功的独立 pytest 启动记录")
+        raise GateError("缺少本次成功的独立 pytest 启动记录或核心回归凭证")
+    if not isinstance(launch["coreReceiptHash"], str) or not re.fullmatch(
+        r"[a-f0-9]{64}", launch["coreReceiptHash"]
+    ):
+        raise GateError("核心回归凭证摘要无效")
+    return validate_core_regressions(experiment, launch["coreReceiptHash"])
 
 
 def dimension_minimum(profile: str, dim: str) -> float:
@@ -229,9 +281,19 @@ def dimension_minimum(profile: str, dim: str) -> float:
     return 1.0
 
 
-def suite_contract() -> dict:
+def release_cases(suite: str = "current", count: int | None = None) -> tuple:
+    if suite not in {"current", "recovery"}:
+        raise GateError("未知发布验收范围")
+    if count is not None:
+        checked_count(count)
+        if suite == "recovery" and count != 3:
+            raise GateError("最高难度恢复验收要求 Native 与 Classic 各 3 次全部通过")
+    return RECOVERY_RELEASE_CASES if suite == "recovery" else RELEASE_CASES
+
+
+def suite_contract(suite: str = "current") -> dict:
     return {
-        "suite": "current",
+        "suite": suite,
         "cases": [
             {
                 "task": task,
@@ -244,16 +306,16 @@ def suite_contract() -> dict:
                     for dim in get_profile(profile).rubric_dimensions
                 },
             }
-            for task, treatment, profile, coverage in RELEASE_CASES
+            for task, treatment, profile, coverage in release_cases(suite)
         ],
     }
 
 
-def expected_matrix(count: int) -> dict:
+def expected_matrix(count: int, suite: str = "current") -> dict:
     checked_count(count)
     return expected_case_matrix_payload(
         (task, treatment, rep)
-        for task, treatment, _, _ in RELEASE_CASES
+        for task, treatment, _, _ in release_cases(suite, count)
         for rep in range(1, count + 1)
     )
 
@@ -299,10 +361,12 @@ def report_dimensions(report: dict, case: dict) -> dict[str, float]:
     return {dim: scores[dim] for dim in case["minimums"]}
 
 
-def validate_experiment(experiment: Path, count: int, candidate: dict) -> dict:
-    matrix = expected_matrix(count)
+def validate_experiment(
+    experiment: Path, count: int, candidate: dict, suite: str = "current"
+) -> dict:
+    matrix = expected_matrix(count, suite)
     validate_candidate(candidate)
-    validate_launch_result(experiment)
+    core = validate_launch_result(experiment)
     metadata = read_json(experiment / "metadata.json")
     if (
         metadata.get("experiment_id") != experiment.name
@@ -319,7 +383,7 @@ def validate_experiment(experiment: Path, count: int, candidate: dict) -> dict:
         raise GateError("发布样本包含跳过项")
     if digest_json(metadata.get("release_candidate")) != digest_json(candidate):
         raise GateError("实验不是当前 Git revision、产品内容或 Eval harness 的候选")
-    if digest_json(metadata.get("release_suite")) != digest_json(suite_contract()):
+    if digest_json(metadata.get("release_suite")) != digest_json(suite_contract(suite)):
         raise GateError("实验的发布矩阵/质量底线与当前契约不匹配")
     raw_matrix = read_json(experiment / "expected-case-matrix.json")
     if not isinstance(raw_matrix.get("cases"), list) or any(
@@ -331,7 +395,7 @@ def validate_experiment(experiment: Path, count: int, candidate: dict) -> dict:
     if actual_matrix != parse_expected_case_matrix(matrix):
         raise GateError("收集的矩阵缺失、重复或含有未授权组合")
     expected = {(case["task"], case["treatment"], case["rep"]) for case in matrix["cases"]}
-    cases = {(c["task"], c["treatment"]): c for c in suite_contract()["cases"]}
+    cases = {(c["task"], c["treatment"]): c for c in suite_contract(suite)["cases"]}
     reports_dir = experiment / "reports"
     if reports_dir.is_symlink():
         raise GateError("报告目录不能是符号链接")
@@ -340,9 +404,14 @@ def validate_experiment(experiment: Path, count: int, candidate: dict) -> dict:
         raise GateError(f"报告数量不完整：需要 {len(expected)}，实际 {len(paths)}")
     samples = []
     seen = set()
+    sample_run_ids = set()
     snapshot_hashes = set()
     for path in paths:
         report = read_json(path)
+        run_id = report.get("run_id")
+        if not isinstance(run_id, str) or not run_id.strip() or run_id in sample_run_ids:
+            raise GateError("样本执行身份缺失或重复，不能复用一次执行充当多次通过")
+        sample_run_ids.add(run_id)
         events = report.get("events_summary")
         if not isinstance(events, dict):
             raise GateError("报告缺少事件证据")
@@ -408,6 +477,7 @@ def validate_experiment(experiment: Path, count: int, candidate: dict) -> dict:
                 "task": key[0],
                 "treatment": key[1],
                 "rep": key[2],
+                "runId": run_id,
                 "report": path.name,
                 "reportHash": digest_json(report),
                 "dimensions": dimensions,
@@ -422,8 +492,9 @@ def validate_experiment(experiment: Path, count: int, candidate: dict) -> dict:
         raise GateError("样本矩阵不完整或实际 CLI 构建内容不一致")
     return {
         "candidate": candidate,
-        "suite": "current",
-        "suiteHash": digest_json(suite_contract()),
+        "coreReceiptHash": core["coreReceiptHash"],
+        "suite": suite,
+        "suiteHash": digest_json(suite_contract(suite)),
         "count": count,
         "sampleCount": len(samples),
         "matrixHash": matrix["matrix_hash"],
@@ -442,13 +513,13 @@ def means_from_evidence(evidence: dict) -> dict:
     }
 
 
-def validate_baseline(baseline: dict) -> dict:
+def validate_baseline(baseline: dict, suite: str = "current") -> dict:
     if baseline.get("schema") != BASELINE_SCHEMA or baseline.get("suiteHash") != digest_json(
-        suite_contract()
+        suite_contract(suite)
     ):
         raise GateError("baseline 缺失、仍是旧维度 schema 或矩阵已变化；请明确初始化新文件")
     dimensions = baseline.get("dimensions")
-    cases = suite_contract()["cases"]
+    cases = suite_contract(suite)["cases"]
     if not isinstance(dimensions, dict) or set(dimensions) != {
         case_key(c["task"], c["treatment"]) for c in cases
     }:
@@ -468,11 +539,12 @@ def validate_baseline(baseline: dict) -> dict:
         raise GateError("baseline 缺少来源")
     validate_candidate(baseline["sourceCandidate"])
     checked_count(baseline.get("count"))
+    release_cases(suite, baseline.get("count"))
     return baseline
 
 
 def compare_baseline(evidence: dict, baseline: dict, tolerance: float) -> None:
-    validate_baseline(baseline)
+    validate_baseline(baseline, evidence.get("suite", "current"))
     _score(tolerance, "tolerance")
     if tolerance > 0.10:
         raise GateError("发布允许的回退幅度不能超过 0.10")

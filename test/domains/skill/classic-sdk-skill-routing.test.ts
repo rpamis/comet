@@ -11,6 +11,41 @@ async function englishSkill(name: string): Promise<string> {
 }
 
 describe('Classic Chinese Skill SDK routing', () => {
+  it.each([
+    ['skills-zh', '结束当前回复', '实际回复', '编写并确认'],
+    ['skills', 'end the current response', 'actual reply', 'author and confirm'],
+  ])(
+    'keeps text-only approval pauses explicit in the shared decision protocol in %s',
+    async (root, stop, reply, request) => {
+      const reference = await readFile(
+        path.resolve('assets', root, 'comet-classic/reference/decision-point.md'),
+        'utf8',
+      );
+      expect(reference).toContain(stop);
+      expect(reference).toContain(reply);
+      expect(reference).toContain(request);
+    },
+  );
+  it.each(['comet-open', 'comet-design'])(
+    'requires the actual reply to the presented content before approving %s',
+    async (name) => {
+      const skill = await chineseSkill(name);
+      expect(skill).toContain('不能代替');
+      expect(skill).toContain('实际回复');
+      expect(skill).toContain('结束当前回复');
+      expect(skill).toContain('同一未变');
+    },
+  );
+  it.each(['comet-open', 'comet-design'])(
+    'requires the actual reply to the presented English content before approving %s',
+    async (name) => {
+      const skill = await englishSkill(name);
+      expect(skill).toContain('does not approve');
+      expect(skill).toContain('actual reply');
+      expect(skill).toContain('end the current response');
+      expect(skill).toContain('same unchanged');
+    },
+  );
   it.each(['skills', 'skills-zh'])(
     'shares creation order and early host checks in %s',
     async (root) => {

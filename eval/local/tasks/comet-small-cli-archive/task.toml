@@ -16,6 +16,7 @@ test_scripts = "test_archive_task.py"
 target_artifacts = []
 timeout = 180
 [evaluation]
+require_classic_proposal_interaction = true
 profile = "generic"
 require_skill_invocation = true
 rubric_criteria = ["Preserves existing behavior", "Uses the current SDK and approval protocol", "Completes actual Archive and any required local delivery"]

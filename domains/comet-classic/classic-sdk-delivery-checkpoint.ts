@@ -1,4 +1,5 @@
 import { hashJsonValueProjection } from '../../platform/fs/json-value-pool.js';
+import { isClassicDeliveryRepairCheckpoint } from './classic-sdk-delivery-repair-model.js';
 import { validateRuntimeActionSnapshot } from '../engine/runtime-action.js';
 import {
   portableRunCheckpointProjectionMatches,
@@ -41,6 +42,7 @@ export function readClassicSdkDeliveryCheckpoint(
   options: { projection?: boolean } = {},
 ): WorkflowRun | null {
   if (object(run.state).archived !== true) return null;
+  if (isClassicDeliveryRepairCheckpoint(value, run)) return null;
   const baseline = (
     options.projection ? readPortableRunCheckpointProjection : readPortableRunCheckpoint
   )(value, run.runId, { preserveSourceRevision: true });
@@ -66,6 +68,24 @@ export function readClassicSdkDeliveryCheckpoint(
       `Classic SDK Run ${run.runId} does not match its archived delivery checkpoint; restore the original checkpoint and reconcile delivery on the same Run without changing its Archive or Verify history`,
     );
   };
+  const deliveryOutput = baseline.outputs[stepId];
+  const deliverySequence = baseline.actionContexts[delivery.id]?.sequence;
+  const ownDeliveryOutput =
+    deliveryOutput !== undefined && deliveryOutput.sequence === deliverySequence;
+  const historicalDeliveryOutput =
+    deliveryOutput !== undefined &&
+    !ownDeliveryOutput &&
+    baseline.actions.some(
+      (previous) =>
+        previous.id !== delivery.id &&
+        previous.stepId === stepId &&
+        previous.status === 'failed' &&
+        previous.outcome?.status === 'failed' &&
+        baseline.actionContexts[previous.id]?.sequence === deliveryOutput.sequence &&
+        deliverySequence !== undefined &&
+        deliveryOutput.sequence < deliverySequence &&
+        equal(previous.outcome.output, deliveryOutput.value),
+    );
   if (
     state.branchStatus !== 'pending' ||
     delivery.type !== 'invoke_skill' ||
@@ -76,9 +96,8 @@ export function readClassicSdkDeliveryCheckpoint(
     delivery.reconciliations.some((item, index) => item.attempt !== index + 1) ||
     delivery.receipts.length >= delivery.attempt ||
     (delivery.rejectedOutcomes?.length ?? 0) !== 0 ||
-    (delivery.receipts.length !== 0) !== Object.hasOwn(baseline.outputs, stepId) ||
-    (Object.hasOwn(baseline.outputs, stepId) &&
-      baseline.outputs[stepId].sequence !== baseline.actionContexts[delivery.id].sequence) ||
+    (delivery.receipts.length !== 0) !== ownDeliveryOutput ||
+    (deliveryOutput !== undefined && !ownDeliveryOutput && !historicalDeliveryOutput) ||
     delivery.reason !== undefined ||
     baseline.reason !== undefined ||
     !baseline.actions.some(
@@ -154,6 +173,11 @@ export function readClassicSdkDeliveryCheckpoint(
       invalid();
   } else if (
     Object.hasOwn(run.outputs, stepId) &&
+    !(
+      historicalDeliveryOutput &&
+      equal(run.outputs[stepId], deliveryOutput) &&
+      current.receipts.length === (current.rejectedOutcomes?.length ?? 0)
+    ) &&
     (current.attempt === 1 ||
       current.receipts.length === (current.rejectedOutcomes?.length ?? 0) ||
       run.outputs[stepId].sequence !== baseline.actionContexts[delivery.id].sequence)

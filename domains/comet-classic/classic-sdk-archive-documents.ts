@@ -9,6 +9,7 @@ import {
 import { annotatedMarkdown, archivedClassicDocumentRef } from './classic-archive-annotation.js';
 import { readClassicProjectFile } from './classic-protected-path.js';
 import { classicTaskRevision } from './classic-tasks.js';
+import { classicDeliveryActionContext } from './classic-sdk-delivery-repair-model.js';
 
 interface DocumentReceipt {
   ref: string;
@@ -25,6 +26,12 @@ export function classicArchiveDocumentOutputs(
   run: Readonly<WorkflowRun>,
   action: Readonly<RuntimeAction>,
 ): ArchiveDocumentOutputs {
+  const delivery = classicDeliveryActionContext(run, action);
+  if (delivery) {
+    const archive = run.actions.find((entry) => entry.id === delivery.archiveActionId);
+    if (!archive) throw new Error('Classic delivery recovery is missing its original Archive');
+    return classicArchiveDocumentOutputs(run, archive);
+  }
   const outputs = (action.input as { outputs?: Record<string, unknown> }).outputs ?? {};
   if (outputs['full.build.plan'] !== undefined) return { outputs, recovered: false };
   const actionSequence = run.actionContexts[action.id]?.sequence;

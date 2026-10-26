@@ -2,6 +2,9 @@
 
 import importlib.util
 import json
+import hashlib
+import os
+import sys
 from pathlib import Path
 import shutil
 import subprocess
@@ -19,6 +22,108 @@ def load_validator():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_scoped_verify_requires_bound_coexistence_observation(tmp_path):
+    module = load_validator()
+    script = (TASK / "environment/verify_coexistence.py").read_bytes()
+    expected = hashlib.sha256(script).hexdigest()
+    context = {"environment_file_hashes": {"verify_coexistence.py": expected}}
+    script_blob = hashlib.sha1(b"blob " + str(len(script)).encode() + b"\0" + script).hexdigest()
+    manifest = json.dumps({"p": "verify_coexistence.py", "h": "git:" + script_blob})
+    observation = {
+        "path": "docs/openspec/changes/parked-format/proposal.md",
+        "sha256": hashlib.sha256(module.PARKED_PROPOSAL.encode()).hexdigest(),
+    }
+    record = {
+        "schema": "comet.eval.classic-coexistence.v1",
+        "before": observation,
+        "after": observation,
+        "exitCode": 0,
+    }
+    log = "pytest passed\nCOMET_EVAL_COEXISTENCE " + json.dumps(record) + "\n"
+    evidence = {
+        "argv": ["/usr/bin/python3", "-I", "verify_coexistence.py"],
+        "cwd": ".",
+        "exitCode": 0,
+        "inputBefore": "same",
+        "inputAfter": "same",
+        "contentHash": hashlib.sha256(log.encode()).hexdigest(),
+    }
+    module.assert_scoped_coexistence(manifest, evidence, context, log, script)
+    for corrupted in (
+        {"argv": ["python3", "other.py"]},
+        {"argv": ["python3", "verify_coexistence.py"]},
+        {"argv": ["python3", "-I", "verify_coexistence.py"]},
+        {"argv": ["./python3", "-I", "verify_coexistence.py"]},
+        {"cwd": "subdir"},
+        {"exitCode": 1},
+        {"contentHash": "wrong"},
+        {"inputAfter": "changed"},
+    ):
+        with pytest.raises(ValueError):
+            module.assert_scoped_coexistence(
+                manifest, {**evidence, **corrupted}, context, log, script
+            )
+    for bad_log in (
+        "",
+        log + log,
+        log.replace(observation["sha256"], "changed"),
+        log.replace('"exitCode": 0', '"exitCode": 1'),
+    ):
+        with pytest.raises(ValueError):
+            module.assert_scoped_coexistence(
+                manifest,
+                {**evidence, "contentHash": hashlib.sha256(bad_log.encode()).hexdigest()},
+                context,
+                bad_log,
+                script,
+            )
+    for bad_manifest, bad_source, bad_context in (
+        ("", script, context),
+        (manifest.replace(script_blob, "0" * 40), script, context),
+        (manifest, script + b"# modified", context),
+        (manifest, script, {}),
+    ):
+        with pytest.raises(ValueError):
+            module.assert_scoped_coexistence(bad_manifest, evidence, bad_context, log, bad_source)
+
+
+def test_coexistence_helper_isolates_workspace_modules_and_pythonpath(tmp_path):
+    helper = tmp_path / "verify_coexistence.py"
+    shutil.copyfile(TASK / "environment/verify_coexistence.py", helper)
+    (tmp_path / "pathlib.py").write_text("raise RuntimeError('shadow-pathlib')\n")
+    (tmp_path / "pytest.py").write_text("print('shadow-pytest'); raise SystemExit(0)\n")
+    injection = tmp_path / "injection"
+    injection.mkdir()
+    (injection / "subprocess.py").write_text("raise RuntimeError('shadow-subprocess')\n")
+    env = {**os.environ, "PYTHONPATH": str(injection)}
+
+    def execute():
+        return subprocess.run(
+            [sys.executable, "-I", str(helper)],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+        )
+
+    missing = execute()
+    assert missing.returncode != 0 and "FileNotFoundError" in missing.stderr
+    assert "shadow-pathlib" not in missing.stderr and "shadow-subprocess" not in missing.stderr
+    proposal = tmp_path / "docs/openspec/changes/parked-format/proposal.md"
+    proposal.parent.mkdir(parents=True)
+    proposal.write_bytes(b"# Parked format\nKeep this unrelated formatting request pending.\n")
+    (tmp_path / "test_failure.py").write_text("def test_actual_failure():\n    assert False\n")
+    failed = execute()
+    assert failed.returncode == 1 and "1 failed" in failed.stdout
+    assert "shadow-pytest" not in failed.stdout
+    marker = next(
+        line for line in failed.stdout.splitlines() if line.startswith("COMET_EVAL_COEXISTENCE ")
+    )
+    assert json.loads(marker.removeprefix("COMET_EVAL_COEXISTENCE "))["exitCode"] == 1
 
 
 @pytest.fixture(scope="module")
@@ -45,7 +150,7 @@ def completed(tmp_path_factory):
     def put(ref, text):
         path = project / ref
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8", newline="\n")
 
     def git(*args):
         result = subprocess.run(
@@ -94,6 +199,19 @@ def completed(tmp_path_factory):
     put(".gitignore", "/.comet/\n__pycache__/\n.pytest_cache/\n")
     for name in ("wordcount.py", "test_wordcount.py"):
         put(name, (TASK / "environment" / name).read_text())
+    shutil.copyfile(TASK / "environment/verify_coexistence.py", project / "verify_coexistence.py")
+    put(
+        "_test_context.json",
+        json.dumps(
+            {
+                "environment_file_hashes": {
+                    "verify_coexistence.py": hashlib.sha256(
+                        (TASK / "environment/verify_coexistence.py").read_bytes()
+                    ).hexdigest()
+                }
+            }
+        ),
+    )
     git("init", "-b", "main")
     git("add", ".")
     git("commit", "-m", "baseline")
@@ -114,6 +232,7 @@ fs.renameSync(path.join(base,name), target);
     validator.WORKSPACE = project
     validator.RUNTIME_ROOT = REPO
     validator.CLI = ["node", str(REPO / "bin/comet.js")]
+    validator.COEXISTENCE_PYTHON = sys.executable
     original_invoke = validator.invoke
 
     def invoke(args, *, source=None):
@@ -241,6 +360,27 @@ fs.renameSync(path.join(base,name), target);
         cli("guard", name, "build", "--apply", "--local", "--", "python3", "test_wordcount.py")
         report = f"docs/superpowers/reports/{name}.md"
         put(report, "# Verification\nBaseline and feature behavior checked.\n")
+        if profile != "full":
+            put(
+                ".comet/check-policy.json",
+                json.dumps(
+                    {
+                        "version": 2,
+                        "commands": [
+                            {
+                                "argv": [sys.executable, "-I", "verify_coexistence.py"],
+                                "cwd": ".",
+                                "files": [
+                                    "wordcount.py",
+                                    "test_wordcount.py",
+                                    "verify_coexistence.py",
+                                ],
+                                "outputs": ["__pycache__/**", ".pytest_cache/**"],
+                            }
+                        ],
+                    }
+                ),
+            )
         cli(
             "guard",
             name,
@@ -250,8 +390,11 @@ fs.renameSync(path.join(base,name), target);
             "--apply",
             "--local",
             "--",
-            "python3",
-            "test_wordcount.py",
+            *(
+                ["python3", "test_wordcount.py"]
+                if profile == "full"
+                else [sys.executable, "-I", "verify_coexistence.py"]
+            ),
         )
         proposed = cli("state", "propose-archive", name, "--summary", f"Deliver {name}")
         cli(
@@ -382,7 +525,9 @@ def test_existing_layout_validator_accepts_delivery_and_rejects_history_drift(
 
     def local_runtime(args, **kwargs):
         # 仅将容器安装路径映射到当前 build；Node 仍实际执行产品校验器。
-        return real_run([arg.replace("/opt/comet-current", str(REPO)) for arg in args], **kwargs)
+        return real_run(
+            [arg.replace("/opt/comet-current", REPO.as_uri()) for arg in args], **kwargs
+        )
 
     monkeypatch.setattr(
         legacy,

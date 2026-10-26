@@ -146,9 +146,9 @@ def generate_test_params(task_filter: str | None, treatment_filter: str | None, 
     """Generate (task_name, treatment_name) pairs based on filters."""
     params = []
     if config is not None and conftest._release_suite(config):
-        from scaffold.python.release_gate import RELEASE_CASES, checked_count
+        from scaffold.python.release_gate import release_cases
 
-        checked_count(config.getoption("--count"))
+        cases = release_cases(conftest._release_suite(config), config.getoption("--count"))
         if (
             task_filter
             or treatment_filter
@@ -167,7 +167,7 @@ def generate_test_params(task_filter: str | None, treatment_filter: str | None, 
             or read_case_selection() is not None
         ):
             raise ValueError("发布矩阵不允许筛选 task/treatment、改变 profile/交互或只重跑失败项")
-        return [(task, treatment) for task, treatment, _, _ in RELEASE_CASES]
+        return [(task, treatment) for task, treatment, _, _ in cases]
     if config is not None:
         conftest._ensure_auto_generated_manifest(config, task_filter)
     all_treatments = load_treatments()
@@ -677,6 +677,14 @@ def test_task_treatment(task_name, treatment_name):
     events["eval_generation"] = outputs["eval_generation"]
 
     passed, failed = run_validators(validators, fixtures.test_dir, outputs)
+    if task.config.evaluation.require_classic_proposal_interaction:
+        from scaffold.python.validation.current_sdk import classic_new_proposal_approval_issues
+
+        failed.extend(
+            classic_new_proposal_approval_issues(
+                outputs.get("validation_evidence", {}), outputs["interaction"]
+            )
+        )
     passed, failed = adapt_checks_for_native(
         fixtures.test_dir,
         outputs,
@@ -713,6 +721,7 @@ def test_task_treatment(task_name, treatment_name):
     # These fields are local evidence as well; Langfuse applies its own bounded
     # capture policy before sending them remotely.
     events["task"] = task.name
+    events["validation_evidence"] = outputs.get("validation_evidence", {})
     if "application_coverage" in outputs:
         events["application_coverage"] = outputs["application_coverage"]
         events["application_executed_steps"] = outputs["application_executed_steps"]
