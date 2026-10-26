@@ -695,7 +695,10 @@ def test_release_hash_binds_build_install_bin_dist_and_lock_changes(tmp_path, re
     assert gate.current_source_identity(tmp_path) != before
 
 
-def test_release_snapshot_uses_actual_distribution_without_recompiling(tmp_path, monkeypatch):
+@pytest.mark.parametrize("suite", ["current", "recovery"])
+def test_release_snapshot_uses_actual_distribution_without_recompiling(
+    tmp_path, monkeypatch, suite
+):
     source = tmp_path / "candidate"
     files = {
         "package.json": "{}",
@@ -715,7 +718,7 @@ def test_release_snapshot_uses_actual_distribution_without_recompiling(tmp_path,
     env.mkdir()
     (env / conftest.CURRENT_COMET_CLI_MARKER).touch()
     monkeypatch.setenv("BENCH_COMET_SOURCE_ROOT", str(source))
-    monkeypatch.setenv("COMET_EVAL_RELEASE_SUITE", "current")
+    monkeypatch.setenv("COMET_EVAL_RELEASE_SUITE", suite)
     monkeypatch.setattr(
         conftest,
         "_build_current_comet_dist",
@@ -729,6 +732,38 @@ def test_release_snapshot_uses_actual_distribution_without_recompiling(tmp_path,
     assert (
         snapshot / "dist/app/commands/native.bundle.js"
     ).read_text() == "// actual bundled facade"
+
+
+@pytest.mark.parametrize("suite", ["current", "recovery", None])
+def test_release_preflight_uses_fixed_suite_artifact_root_without_standalone_target(
+    tmp_path, monkeypatch, suite
+):
+    from scaffold.python import utils
+
+    config = SimpleNamespace(
+        args=["local/tests/tasks/test_tasks.py::test_task_treatment"],
+        option=SimpleNamespace(collectonly=False, release_suite=suite),
+        getoption=lambda *_: None,
+    )
+    execution = SimpleNamespace(agent="claude-code", model="test", base_url=None)
+    monkeypatch.setattr(conftest, "require_workspace_artifact_support", lambda: None)
+    monkeypatch.setattr(utils, "load_eval_environment", lambda: None)
+    monkeypatch.setattr(conftest, "_resolve_eval_execution", lambda _: execution)
+    monkeypatch.setattr(conftest, "_resolve_eval_judge", lambda _: None)
+    monkeypatch.setattr(conftest, "preflight_credentials", lambda *_: [])
+    monkeypatch.setattr(conftest, "build_agent_environment", lambda _: {})
+    monkeypatch.setattr(conftest, "check_docker_available", lambda: True)
+    monkeypatch.setattr(conftest.shutil, "which", lambda _: "available-tool")
+    logs = tmp_path / "release-logs"
+    monkeypatch.setenv("BENCH_LOGS_DIR", str(logs))
+    if suite is None:
+        with pytest.raises(pytest.UsageError, match="Eval context is missing"):
+            conftest._normal_run_preflight(config)
+        assert not logs.exists()
+    else:
+        conftest._normal_run_preflight(config)
+        assert logs.is_dir()
+        assert config._comet_execution is execution
 
 
 @pytest.mark.parametrize(

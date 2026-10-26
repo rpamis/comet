@@ -455,8 +455,13 @@ def _normal_run_preflight(config) -> None:
         raise pytest.UsageError("Docker CLI or daemon is unavailable")
     context = getattr(config, "_comet_eval_context", None)
     if context is None:
-        raise pytest.UsageError("Eval context is missing before normal-run preflight")
-    artifact_root = Path(context.artifact_root)
+        if not _release_suite(config):
+            raise pytest.UsageError("Eval context is missing before normal-run preflight")
+        from scaffold.python.paths import get_logs_dir
+
+        artifact_root = get_logs_dir()
+    else:
+        artifact_root = Path(context.artifact_root)
     artifact_root.mkdir(parents=True, exist_ok=True)
     try:
         with tempfile.NamedTemporaryFile(dir=artifact_root, prefix=".preflight-", delete=True):
@@ -787,7 +792,7 @@ def _copy_current_comet_cli_snapshot(environment_dir: Path, test_dir: Path) -> N
     source_identity = current_source_identity(source_root)
     source_hash = source_identity["sourceHash"]
     source_count = source_identity["sourceFileCount"]
-    release = os.environ.get("COMET_EVAL_RELEASE_SUITE") == "current"
+    release = os.environ.get("COMET_EVAL_RELEASE_SUITE") in {"current", "recovery"}
     if release:
         from scaffold.python.release_gate import cli_snapshot_identity
 

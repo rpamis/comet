@@ -2,6 +2,44 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "release-suite-fixed-artifact-preflight",
+      "behavior": "固定发布套件使用明确的套件输出目录完成启动检查，不能误要求单个Skill目标；普通独立评估仍要求目标上下文。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "runtime",
+      "reproduction": "b4445c 的六样本实际启动在模型调用前退出4：Eval context is missing before normal-run preflight；current和recovery两项相同断言在旧实现失败。",
+      "expected": "固定发布套件使用明确的套件输出目录完成启动检查，不能误要求单个Skill目标；普通独立评估仍要求目标上下文。",
+      "forbidden": "绕过凭据、Docker、输出目录可写性或完整矩阵检查；改变固定任务、评分底线、候选和真实CLI绑定；将启动失败计作模型通过。",
+      "rootCause": "固定套件已有完整矩阵与显式输出根，却套用了独立Skill评估的必填目标上下文检查。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "preflights fixed release suites without requiring a standalone target",
+          "requiredNames": [
+            "standalone static collector parity preflights fixed release suites without requiring a standalone target"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "release-recovery-frozen-cli-snapshot",
+      "behavior": "recovery与current发布套件都使用已冻结的真实dist，不重新编译替代CLI。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "runtime",
+      "reproduction": "新增recovery参数后，原禁止重新编译的同一快照断言在旧实现失败，current原断言保持通过。",
+      "expected": "recovery与current发布套件都使用已冻结的真实dist，不重新编译替代CLI。",
+      "forbidden": "绕过凭据、Docker、输出目录可写性或完整矩阵检查；改变固定任务、评分底线、候选和真实CLI绑定；将启动失败计作模型通过。",
+      "rootCause": "CLI快照路径只识别current，没有识别新增recovery套件。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "uses the actual frozen CLI distribution for both release suites",
+          "requiredNames": [
+            "standalone static collector parity uses the actual frozen CLI distribution for both release suites"
+          ]
+        }
+      ]
+    },
+    {
       "id": "release-candidate-unreadable-skill-inputs",
       "behavior": "候选 Skill 输入目录无法枚举时明确拒绝不完整身份，不能静默跳过目录。",
       "sources": ["report:2026-10-26-051-release-closure"],

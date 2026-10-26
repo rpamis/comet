@@ -96,6 +96,16 @@ describe('standalone static collector parity', () => {
       4,
     ],
     [
+      'preflights fixed release suites without requiring a standalone target',
+      'local/tests/scaffold/test_regression_check.py::test_release_preflight_uses_fixed_suite_artifact_root_without_standalone_target',
+      3,
+    ],
+    [
+      'uses the actual frozen CLI distribution for both release suites',
+      'local/tests/scaffold/test_regression_check.py::test_release_snapshot_uses_actual_distribution_without_recompiling',
+      2,
+    ],
+    [
       'recognizes every approval request preserved from the original Classic failure',
       'local/tests/scaffold/test_utils.py::test_decision_point_detector_accepts_original_104058_choice_replies',
       4,
