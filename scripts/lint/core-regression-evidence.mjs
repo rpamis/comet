@@ -95,11 +95,14 @@ export async function coreRegressionCandidateIdentity(projectRoot) {
   const directories = new Set();
   const gitlinks = [];
   const visit = async (relative) => {
+    const skillPath = relative.startsWith('eval/local/skills/');
+    if (skillPath && /\/\.comet\/eval(?:\/|$)/u.test(relative)) return;
     const absolute = path.join(root, relative);
     const stat = await fs.lstat(absolute);
     if (stat.isSymbolicLink()) throw new Error(`Linked core regression input: ${relative}`);
     if (stat.isDirectory()) {
-      directories.add(relative);
+      // 只忽略生成输出的容器目录；其中其他正式配置和文件仍正常读取。
+      if (!(skillPath && relative.endsWith('/.comet'))) directories.add(relative);
       for (const entry of await fs.readdir(absolute, { withFileTypes: true })) {
         if (
           ['node_modules', '.git', '__pycache__'].includes(entry.name) ||

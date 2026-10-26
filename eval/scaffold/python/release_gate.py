@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -86,8 +87,23 @@ def read_json(path: Path) -> dict:
     return value
 
 
-def regular_tree_files(root: Path) -> list[Path]:
+def regular_tree_files(root: Path, *, exclude_generated_eval: bool = False) -> list[Path]:
     files = []
+    if exclude_generated_eval:
+        for current, directories, names in os.walk(root):
+            parent = Path(current)
+            for name in directories[:]:
+                if parent.name == ".comet" and name == "eval":
+                    directories.remove(name)
+                elif (parent / name).is_symlink():
+                    raise GateError(f"候选目录包含符号链接：{parent / name}")
+            for name in names:
+                file = parent / name
+                if file.is_symlink():
+                    raise GateError(f"候选目录包含符号链接：{file}")
+                if file.is_file():
+                    files.append(file)
+        return sorted(files)
     for path in sorted(root.rglob("*")):
         if path.is_symlink():
             raise GateError(f"候选目录包含符号链接：{path}")
@@ -161,7 +177,9 @@ def candidate_identity(root: Path = REPOSITORY_ROOT) -> dict:
     for directory in ("scaffold", "local/tasks", "local/treatments", "local/skills"):
         evaluation_files.extend(
             path
-            for path in regular_tree_files(root / "eval" / directory)
+            for path in regular_tree_files(
+                root / "eval" / directory, exclude_generated_eval=directory == "local/skills"
+            )
             if "__pycache__" not in path.parts and path.suffix not in {".pyc", ".pyo"}
         )
     evaluation_files.extend(

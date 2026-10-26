@@ -348,6 +348,8 @@ describe('cross-platform core regression evidence', () => {
       'test/helpers/example.ts': 'export const value = 1;\n',
       'domains/example/index.ts': 'export const value = 1;\n',
       'config/workflow-regressions.json': '{}\n',
+      'eval/local/skills/example/SKILL.md': '# Authored skill\n',
+      '.gitignore': 'eval/local/skills/**/.comet/eval/\n',
     };
     for (const [file, content] of Object.entries(files)) {
       await fs.mkdir(path.dirname(path.join(root, file)), { recursive: true });
@@ -374,6 +376,12 @@ describe('cross-platform core regression evidence', () => {
     const before = await coreRegressionCandidateIdentity(root);
     expect(before.inputHash).toMatch(/^[a-f0-9]{64}$/u);
     expect(before.inputFileCount).toBe(Object.keys(files).length);
+    const generated = path.join(root, 'eval/local/skills/example/.comet/eval/runs/old.json');
+    await fs.mkdir(path.dirname(generated), { recursive: true });
+    await fs.writeFile(generated, '{"result":"old output"}\n');
+    expect(await coreRegressionCandidateIdentity(root)).toEqual(before);
+    await fs.writeFile(generated, '{"result":"changed output"}\n');
+    expect(await coreRegressionCandidateIdentity(root)).toEqual(before);
     await fs.appendFile(path.join(root, 'test/helpers/example.ts'), '// changed\n');
     await expect(coreRegressionCandidateIdentity(root)).rejects.toThrow(/dirty|未提交/iu);
     execFileSync('git', ['add', '.'], { cwd: root });
@@ -411,5 +419,32 @@ describe('cross-platform core regression evidence', () => {
       writeFileSync(path.join(root, 'domains/example/late.ts'), 'export const late = true;\n');
     };
     await expect(coreRegressionCandidateIdentity(root)).rejects.toThrow(/unstable|changed|变化/iu);
+    const stable = await coreRegressionCandidateIdentity(root);
+    const authoredConfig = 'eval/local/skills/example/.comet/config.yaml';
+    await fs.appendFile(path.join(root, '.git/info/exclude'), '\n' + authoredConfig + '\n');
+    await fs.writeFile(path.join(root, authoredConfig), 'authored: true\n');
+    const withConfig = await coreRegressionCandidateIdentity(root);
+    expect(withConfig.revision).toBe(stable.revision);
+    expect(withConfig.inputHash).not.toBe(stable.inputHash);
+    execFileSync('git', ['add', '-f', path.relative(root, generated)], { cwd: root });
+    execFileSync(
+      'git',
+      [
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.test',
+        '-c',
+        'commit.gpgsign=false',
+        'commit',
+        '--quiet',
+        '-m',
+        'explicitly tracked fixture',
+      ],
+      { cwd: root },
+    );
+    const trackedOutput = await coreRegressionCandidateIdentity(root);
+    expect(trackedOutput.inputFileCount).toBe(withConfig.inputFileCount + 1);
+    expect(trackedOutput.inputHash).not.toBe(withConfig.inputHash);
   });
 });

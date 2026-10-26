@@ -50,6 +50,8 @@ uv run --locked --no-sync --no-python-downloads python local/scripts/regression_
 
 核心回归默认在当前平台执行全部登记组，并保留实际命令和原始 Vitest JSON；必需案例被跳过仍算失败。在 Windows 无法创建测试所需的文件符号链接时，可预先准备含 Node、pnpm、Python、uv 和 Git 的 Linux Docker 镜像，以及按仓库锁文件安装的 Linux Node 依赖和 Python 虚拟环境，再给完整运行追加以下三个参数：
 
+候选身份中的Skill输入不包含`eval/local/skills/**/.comet/eval/`里的旧运行输出、缓存或锁；固定任务安装Skill时本就排除这些生成物。真实Skill文件、其他正式`.comet`配置、任务、验证器和依赖锁继续绑定，核心记录还保留Git跟踪文件的检查。该排除不适用于任意ignored文件，也不影响本次实际模型报告必须完整保留的要求。
+
 ```powershell
 uv run --locked --no-sync --no-python-downloads python local/scripts/regression_check.py --collect-only --count 1 --workers 2 --core-linux-image <prepared-image> --core-linux-node-modules <absolute-linux-node_modules> --core-linux-venv <absolute-linux-venv>
 ```

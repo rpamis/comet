@@ -87,6 +87,10 @@ function pythonAccepts(manifest: string): boolean {
 describe('standalone static collector parity', () => {
   it.each<[string, string, number?]>([
     [
+      'excludes prior generated Eval output while binding real release inputs',
+      'local/tests/scaffold/test_regression_check.py::test_candidate_harness_ignores_old_eval_outputs_but_binds_authored_skill_inputs',
+    ],
+    [
       'recognizes every approval request preserved from the original Classic failure',
       'local/tests/scaffold/test_utils.py::test_decision_point_detector_accepts_original_104058_choice_replies',
       4,

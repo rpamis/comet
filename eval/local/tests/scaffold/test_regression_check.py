@@ -83,6 +83,54 @@ def test_candidate_harness_hash_binds_core_tests_helpers_and_vitest_configuratio
     assert gate.candidate_identity(tmp_path)["harnessHash"] != changed_test["harnessHash"]
 
 
+def test_candidate_harness_ignores_old_eval_outputs_but_binds_authored_skill_inputs(
+    tmp_path, monkeypatch
+):
+    for name in [
+        "pnpm-lock.yaml",
+        "eval/local/tests/conftest.py",
+        "eval/local/tests/tasks/test_tasks.py",
+        "eval/local/scripts/regression_check.py",
+        "eval/pyproject.toml",
+        "eval/uv.lock",
+        "eval/local/skills/example/SKILL.md",
+        "eval/local/tasks/example/instruction.md",
+    ]:
+        file = tmp_path / name
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text("original\n", encoding="utf8")
+    write(tmp_path / "package.json", {"version": "0.5.1"})
+    monkeypatch.setattr(gate.subprocess, "run", lambda *_, **__: SimpleNamespace(stdout="a" * 40))
+    monkeypatch.setattr(
+        gate, "current_source_identity", lambda _: {"sourceHash": "b" * 64, "sourceFileCount": 1}
+    )
+    monkeypatch.setattr(
+        gate,
+        "cli_snapshot_identity",
+        lambda _: {"cliSnapshotHash": "c" * 64, "cliSnapshotFileCount": 1},
+    )
+    original = gate.candidate_identity(tmp_path)
+    output = tmp_path / "eval/local/skills/example/.comet/eval/runs/old.json"
+    output.parent.mkdir(parents=True)
+    output.write_text('{"old":"output"}\n', encoding="utf8")
+    assert gate.candidate_identity(tmp_path) == original
+    output.write_text('{"changed":"output"}\n', encoding="utf8")
+    assert gate.candidate_identity(tmp_path) == original
+    for name in [
+        "eval/local/skills/example/SKILL.md",
+        "eval/local/tasks/example/instruction.md",
+        "eval/local/tests/tasks/test_tasks.py",
+        "eval/uv.lock",
+    ]:
+        file = tmp_path / name
+        previous = file.read_text(encoding="utf8")
+        file.write_text("changed\n", encoding="utf8")
+        assert gate.candidate_identity(tmp_path)["harnessHash"] != original["harnessHash"], name
+        file.write_text(previous, encoding="utf8")
+    (output.parents[2] / "config.yaml").write_text("authored: true\n", encoding="utf8")
+    assert gate.candidate_identity(tmp_path)["harnessHash"] != original["harnessHash"]
+
+
 @pytest.fixture
 def experiment(tmp_path, monkeypatch):
     candidate = {

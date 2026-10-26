@@ -2,6 +2,32 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "release-candidate-generated-eval-output-exclusion",
+      "behavior": "固定发布候选身份排除Skill包中的旧Eval生成输出，仍绑定真实Skill、任务、验证器、锁文件和明确跟踪的文件。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "runtime",
+      "reproduction": "056fc7候选前置在Linux扫描约20分钟仍未进入用例；28,446项来自两个旧基准Skill的.comet/eval/cache、locks、runs，Git跟踪为0，实际Skill复制本来就忽略生成目录。缓存创建或变化不应改变候选的两个新增断言在旧实现均失败。",
+      "expected": "仅裁掉eval/local/skills下.comet/eval生成子树；生成输出创建与变化不影响身份，Skill正文、任务、验证器、锁和其他.comet正式配置变化仍失效，Git跟踪文件继续兜底。",
+      "forbidden": "排除整个.comet、任意ignored源码或正式输入，读取旧运行产物冒充本轮输入，或把停止的前置和未执行的模型记为通过。",
+      "rootCause": "源码身份递归读取Skill父目录时没有区分既有生成输出命名空间，导致旧实验产物污染候选和前置成本。",
+      "tests": [
+        {
+          "file": "test/scripts/core-regression-evidence.test.ts",
+          "namePattern": "binds tests, helpers, configuration and product inputs and rejects dirty tracked sources",
+          "requiredNames": [
+            "cross-platform core regression evidence binds tests, helpers, configuration and product inputs and rejects dirty tracked sources"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "excludes prior generated Eval output while binding real release inputs",
+          "requiredNames": [
+            "standalone static collector parity excludes prior generated Eval output while binding real release inputs"
+          ]
+        }
+      ]
+    },
+    {
       "id": "eval-native-temporary-resource-safety-guidance",
       "behavior": "固定Native恢复任务明确临时JSON资源清理要求，保留原危险命令评分及全部业务恢复断言。",
       "coverageLevel": "unit",
