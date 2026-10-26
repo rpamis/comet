@@ -2,6 +2,98 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "native-509-environment-candidate-binding",
+      "sources": ["https://github.com/rpamis/comet/issues/509"],
+      "behavior": "非Git协调根中的独立子仓包含已跟踪、未跟踪或被忽略的环境配置时，候选采集按原输入范围计算摘要，不因文件名返回空摘要。",
+      "coverageLevel": "unit",
+      "reproduction": "旧051源码在相同双子仓临时项目中，无.env时返回摘要，提交.env.development后连续3次返回null，直接以子仓为根正常；新增三个跟踪状态对照在修改前失败。",
+      "expected": "候选摘要非空、相同内容可复核；范围内配置内容变化使候选与检查摘要失效；结果不包含配置原文。",
+      "forbidden": "按.env文件名否决候选、直接跳过配置内容、向证据输出配置原文，或配置变化后复用旧摘要。",
+      "rootCause": "非Git回退的物理扫描按敏感文件名直接判定不完整，没有区分本地摘要采集与原文导出。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "binds environment files in independent child repositories under a non-Git root",
+          "requiredNames": [
+            "Native physical check input snapshots binds environment files in independent child repositories under a non-Git root (tracked)",
+            "Native physical check input snapshots binds environment files in independent child repositories under a non-Git root (untracked)",
+            "Native physical check input snapshots binds environment files in independent child repositories under a non-Git root (ignored)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-509-environment-archive",
+      "sources": ["https://github.com/rpamis/comet/issues/509"],
+      "behavior": "非Git协调根的两个独立子仓含已提交环境文件时，真实检查、独立Verifier结果、用户批准及Archive可完成；配置变化仍阻塞旧验收归档。",
+      "coverageLevel": "public-cli",
+      "reproduction": "新增双子仓案例在旧代码的真实检查执行阶段因输入快照不完整失败；同一案例修复后通过生成命令bundle的验收批准与归档。",
+      "expected": "检查收据包含完整输入和候选摘要，配置变化由Archive预览和doctor只读检出；恢复原内容后按原批准完成归档，重复Archive不改变终态或配置文件。",
+      "forbidden": "空摘要通过归档、修改配置后沿用旧验收、诊断推进状态、配置原文进入收据或重复归档产生新副作用。",
+      "rootCause": "物理扫描对.env的文件名拦截使候选和完整输入绑定同时不可用，合法工作流无法进入归档。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "archives tracked environment files in non-Git child repositories and rejects stale environment evidence",
+          "requiredNames": [
+            "blocked Verifier recovery command contract archives tracked environment files in non-Git child repositories and rejects stale environment evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-509-capture-failure-diagnostics",
+      "sources": ["https://github.com/rpamis/comet/issues/509"],
+      "behavior": "本次检查的候选采集失败时，报告收据中的路径和原因，在Archive之前也由只读诊断暴露，不误报为旧检查。",
+      "coverageLevel": "unit",
+      "reproduction": "相同损坏收据样本的空候选摘要在旧代码被报告为旧检查，且Archive之前没有候选诊断；修复后的断言要求具体采集失败原因和只读诊断。",
+      "expected": "明确本次采集未建立摘要、失败路径与排除读取问题后重新验收的前提；doctor不健康且不改变Run。",
+      "forbidden": "把null摘要当作undefined旧收据、无效反复验收建议、健康诊断或只读检查修改状态。",
+      "rootCause": "归档校验合并处理null与缺字段，doctor只在已生成Archive预检Action后检查候选。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "diagnoses a failed candidate capture before Archive without mislabeling it as legacy evidence",
+          "requiredNames": [
+            "diagnoses a failed candidate capture before Archive without mislabeling it as legacy evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-user-input-filename-hashing",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/509",
+        "report:2026-10-26-native-user-defined-inputs"
+      ],
+      "behavior": "用户明确要求范围内.env及密钥扩展名文件可参与本地内容摘要；无法读取或路径不安全时仍拒绝建立可复用证据。",
+      "coverageLevel": "unit",
+      "reproduction": "用户明确要求Comet不得按文件名否决其项目输入；旧代码拒绝dist中的.env、.env.local、.key和.pem，新增摘要及内容变化断言在旧代码失败。",
+      "expected": "范围内普通文件按内容绑定且不输出原文；读取失败返回具体路径并禁止候选复用。历史敏感材料反例保留原名称与.env样本，以实际EACCES故障继续验证不完整输入不可复用。",
+      "forbidden": "扩大扫描到原范围外、修改原文导出保护、吞掉读取失败、绕过链接限制或降低历史不完整证据断言。",
+      "rootCause": "本地指纹计算复用了文件名敏感性否决，将用户管理的配置和原文导出混淆。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "hashes environment and key filenames in generated inputs without exposing their contents|reports unreadable environment inputs by path without reusable evidence|reports incomplete generated input instead of stable reusable evidence",
+          "requiredNames": [
+            "Native physical check input snapshots hashes environment and key filenames in generated inputs without exposing their contents",
+            "Native physical check input snapshots reports unreadable environment inputs by path without reusable evidence",
+            "Native check input fingerprint reports incomplete generated input instead of stable reusable evidence (sensitive)",
+            "Native check input fingerprint reports incomplete generated input instead of stable reusable evidence (symlink-root)",
+            "Native check input fingerprint reports incomplete generated input instead of stable reusable evidence (symlink-ancestor)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "rejects checks whose initially incomplete generated inputs disappear during execution",
+          "requiredNames": [
+            "Native SDK verification input binding rejects checks whose initially incomplete generated inputs disappear during execution"
+          ]
+        }
+      ]
+    },
+    {
       "id": "eval-recovery-single-requested-sample",
       "behavior": "按用户本轮要求只执行最高难度Native与Classic各一次，两个请求样本必须都通过；三次模式仍要求六个全部通过。",
       "sources": ["report:2026-10-26-051-release-closure"],
@@ -2745,7 +2837,10 @@
     {
       "id": "classic-design-approval-source-guidance",
       "behavior": "新设计提案需要当前提案的明确确认；固定全新 Eval 任务缺少实际回复数量证据时拒绝放行。",
-      "sources": ["report:2026-10-26-051-release-closure"],
+      "sources": [
+        "report:2026-10-26-051-release-closure",
+        "report:2026-10-26-classic-authorization-policy"
+      ],
       "coverageLevel": "unit",
       "reproduction": "recovery051_classic_20261026_043339 有两个新 Design 批准，但实际用户交互为零；原 17/17 通过不能证明用户批准。 原配置诊断 recovery051_classic_output_20261026_064026 再现0回复但新Design已批准；Agent把任务指定内容当批准，输出管道只保留data.nextAction、丢continuation提示。现场、原摘要及早停137失败保留在model-aux-output-approval-v2/early-failure。 recovery051_classic_output_20261026_073158 再次出现0实际回复而Open已批准，并继续自行批准Design；现场保留后早停，pytest失败/Agent137。Runtime提示不足以保证模型遵循，新增紧邻批准步骤的中文Skill反例，两个契约先红后绿。",
       "expected": "展示当前正式提案再取得本次决定，已有未变批准保留；交互数量底线检查后仍须逐条审查真实顺序。 仅消费data.nextAction也能取得同一完整确认要求；不新增状态或重开有效历史批准。",
@@ -2818,7 +2913,8 @@
             "Configured-model experiment recovery051_classic_output_20261026_064026 failed before the nextAction guidance fix; preserved and explicitly early-stopped after observed self-approval. Not a pass or environment exclusion.",
             "073158 remains an early-stopped approval failure. Chinese phase-Skill clarification drafted; English sync requires user confirmation. Do not promote model acceptance from contracts.",
             "User confirmed Chinese phase guidance; English synchronized with the same negative example. Both English cases failed before sync, then all 34 Native/Classic bilingual route contracts passed. Real model acceptance still pending.",
-            "recovery051_classic_retry_5c80a95de970415f884d69dd52374e03 retained as a proven failure: Open and Design approved with zero actual scoped user replies; full Run and authoritative session message hashes saved before explicit early stop. The already-confirmed reply rule is now repeated at the Classic entry with explicit phase-Skill loading; both new bilingual contracts failed before the entry update. Model acceptance remains pending."
+            "recovery051_classic_retry_5c80a95de970415f884d69dd52374e03 retained as a proven failure: Open and Design approved with zero actual scoped user replies; full Run and authoritative session message hashes saved before explicit early stop. The already-confirmed reply rule is now repeated at the Classic entry with explicit phase-Skill loading; both new bilingual contracts failed before the entry update. Model acceptance remains pending.",
+            "2026-10-26 user-confirmed requirement revision: authorization may precede artifact creation and may explicitly delegate bounded decisions. Preserve original case IDs and histories; test the new-decision branch plus authorized continuation. The former unconditional post-generation-reply assumption is superseded, not silently declared equivalent. Fresh model evidence under the revised contract remains pending."
           ]
         }
       ]
@@ -2826,7 +2922,10 @@
     {
       "id": "classic-delivery-repair-approval-source-guidance",
       "behavior": "归档后改变交付输出范围需要新批准，不能由原本地提交授权或继续提示替代。",
-      "sources": ["report:2026-10-26-051-release-closure"],
+      "sources": [
+        "report:2026-10-26-051-release-closure",
+        "report:2026-10-26-classic-authorization-policy"
+      ],
       "coverageLevel": "unit",
       "reproduction": "recovery051_classic_output_20261026_044416 完成新检查后自批 delivery.confirm，控制器仅发送继续提示，没有用户回复。",
       "expected": "新范围成功重检后展示当前提案并确认；固定 Eval 的实际回复数量必须覆盖新提案，具体绑定另审查。",
@@ -2862,7 +2961,8 @@
           "evidence": [
             "Original reports remain unchanged; deterministic tests and replay are not model acceptance.",
             "Configured-model experiment recovery051_classic_output_20261026_064026 failed before the nextAction guidance fix; preserved and explicitly early-stopped after observed self-approval. Not a pass or environment exclusion.",
-            "084234 retains an actual approval of jointly presented unchanged Open/Design content; that reuse is valid. Its later delivery scope was created only after the recheck and approved without a new reply. The latest Runtime guidance explicitly rejects this earlier conditional authorization as approval of the later proposal; original assertions and failure report remain unchanged."
+            "084234 retains an actual approval of jointly presented unchanged Open/Design content; that reuse is valid. Its later delivery scope was created only after the recheck and approved without a new reply. The latest Runtime guidance explicitly rejects this earlier conditional authorization as approval of the later proposal; original assertions and failure report remain unchanged.",
+            "2026-10-26 user-confirmed requirement revision: authorization may precede artifact creation and may explicitly delegate bounded decisions. Preserve original case IDs and histories; test the new-decision branch plus authorized continuation. The former unconditional post-generation-reply assumption is superseded, not silently declared equivalent. Fresh model evidence under the revised contract remains pending."
           ]
         }
       ]
@@ -3020,7 +3120,10 @@
     },
     {
       "id": "classic-open-preview-user-approval-guidance",
-      "sources": ["report:2026-10-26-051-release-closure"],
+      "sources": [
+        "report:2026-10-26-051-release-closure",
+        "report:2026-10-26-classic-authorization-policy"
+      ],
       "behavior": "全新Open产物预览后取得当前产物的实际用户确认；仅消费nextAction也保留确认要求。",
       "coverageLevel": "unit",
       "reproduction": "原配置模型诊断 recovery051_classic_output_20261026_064026 的非thinking轨迹展示Open review后直接guard open --apply，控制器0回复。原Run full.open.confirm已approved；仅continuation携带ask提示，data.nextAction无提示。两个投影/命令断言及Open交互底线先失败，原现场与早停137日志保留。 recovery051_classic_output_20261026_073158 再次出现0实际回复而Open已批准，并继续自行批准Design；现场保留后早停，pytest失败/Agent137。Runtime提示不足以保证模型遵循，新增紧邻批准步骤的中文Skill反例，两个契约先红后绿。",
@@ -3095,7 +3198,8 @@
             "073158 remains an early-stopped approval failure. Chinese phase-Skill clarification drafted; English sync requires user confirmation. Do not promote model acceptance from contracts.",
             "User confirmed Chinese phase guidance; English synchronized with the same negative example. Both English cases failed before sync, then all 34 Native/Classic bilingual route contracts passed. Real model acceptance still pending.",
             "081645 still self-approved Open with zero actual replies after reading the shared decision-point reference. Original source and normalized installed English Skill contents match; evidence retained before explicit early stop. The same approved text-only pause rule is now explicit in that shared reference; both new contracts failed before the reference update. Model acceptance remains pending.",
-            "recovery051_classic_retry_5c80a95de970415f884d69dd52374e03 retained as a proven failure: Open and Design approved with zero actual scoped user replies; full Run and authoritative session message hashes saved before explicit early stop. The already-confirmed reply rule is now repeated at the Classic entry with explicit phase-Skill loading; both new bilingual contracts failed before the entry update. Model acceptance remains pending."
+            "recovery051_classic_retry_5c80a95de970415f884d69dd52374e03 retained as a proven failure: Open and Design approved with zero actual scoped user replies; full Run and authoritative session message hashes saved before explicit early stop. The already-confirmed reply rule is now repeated at the Classic entry with explicit phase-Skill loading; both new bilingual contracts failed before the entry update. Model acceptance remains pending.",
+            "2026-10-26 user-confirmed requirement revision: authorization may precede artifact creation and may explicitly delegate bounded decisions. Preserve original case IDs and histories; test the new-decision branch plus authorized continuation. The former unconditional post-generation-reply assumption is superseded, not silently declared equivalent. Fresh model evidence under the revised contract remains pending."
           ]
         }
       ]
@@ -3215,7 +3319,10 @@
     },
     {
       "id": "classic-presented-proposal-response-boundary",
-      "sources": ["report:2026-10-26-051-release-closure"],
+      "sources": [
+        "report:2026-10-26-051-release-closure",
+        "report:2026-10-26-classic-authorization-policy"
+      ],
       "behavior": "Classic首次展示尚未获批的Open产物或Design提案后结束当前回复，收到针对当前内容的实际用户回复后才批准。",
       "coverageLevel": "unit",
       "reproduction": "真实最难Classic样本recovery051_classic_retry_89ff41a837144ecea52dc797d2de9cb1加载了当前入口和阶段Skill，仍以standing authorization及for the record为由在同一回复内展示后自行批准Open与Design，实际对应用户回复为零。",
@@ -3241,7 +3348,8 @@
           "layer": "real hardest Classic task with actual post-presentation user replies and unchanged recovery assertions",
           "status": "pending",
           "evidence": [
-            "f3ebf349 model sample retained as failed: Open and Design approved with no scoped user reply. Six focused contracts fail before the instruction correction. Fresh Classic model acceptance is required; static contracts cannot close it."
+            "f3ebf349 model sample retained as failed: Open and Design approved with no scoped user reply. Six focused contracts fail before the instruction correction. Fresh Classic model acceptance is required; static contracts cannot close it.",
+            "2026-10-26 user-confirmed requirement revision: authorization may precede artifact creation and may explicitly delegate bounded decisions. Preserve original case IDs and histories; test the new-decision branch plus authorized continuation. The former unconditional post-generation-reply assumption is superseded, not silently declared equivalent. Fresh model evidence under the revised contract remains pending."
           ]
         }
       ]
@@ -3299,6 +3407,81 @@
           "status": "verified",
           "evidence": [
             "native-judge-only-20261026-185447: HTTP200/max_tokens/thinking-only at2048; native-judge-budget-prototype-20261026-185626: HTTP200/end_turn with all7 dimensions at8192, same prompt SHA256 24afa620d11932dee72ae6ea9a38df0013761e4ea9b5eaebd873a223204e1b30 and original report SHA256 eb5a77d606fd422c92c92665875ff73102549abf9b01d90236a541192181cfce. Completion1.0, output quality0.9, adherence1.0, custom0-3 each1.0. Subject not rerun; efficiency0 remains failure."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-prior-authorization-reuse",
+      "sources": [
+        "report:2026-10-26-classic-authorization-policy",
+        "report:2026-10-26-051-release-closure"
+      ],
+      "behavior": "Classic沿用用户已批准的内容和明确委托授权，只有超出授权、发生实质变化或用户明确要求逐阶段确认时才增加问答。",
+      "coverageLevel": "unit",
+      "reproduction": "用户明确否定产物生成后必须新增回复的一刀切规则，并确认授权可来自当前请求或已有记录。旧Skill、Runtime提示和Eval按所有新提案计回复数，导致已有授权仍被重复要求确认。",
+      "expected": "阶段入口使用同一授权协议；记录批准或委托的实际依据，授权仍覆盖则推进；没有覆盖的新决定继续等待；当前哈希仍绑定当前产物。",
+      "forbidden": "固定重复询问已授权事项、把详尽任务机械判为无授权、把Agent自选伪称用户已确认，或因沿用授权跳过Runtime内容哈希及验证。",
+      "rootCause": "把授权来源与产物生成后的回复时序混淆，并把固定Eval中的提案类型一律视为尚未授权。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-output.test.ts",
+          "namePattern": "keeps task authorization separate from new (design|delivery) proposal approval|uses the exact Open preview hash only behind an explicit user decision",
+          "requiredNames": [
+            "Classic next-step source projection keeps task authorization separate from new design proposal approval",
+            "Classic next-step source projection keeps task authorization separate from new delivery proposal approval",
+            "Classic next-step source projection uses the exact Open preview hash only behind an explicit user decision"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "reuses prior authorization while binding a required new reply to its pending proposal|rejects invalid explicit decision interaction scopes",
+          "requiredNames": [
+            "standalone static collector parity reuses prior authorization while binding a required new reply to its pending proposal",
+            "standalone static collector parity rejects invalid explicit decision interaction scopes"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real hardest Classic current candidate with bounded task delegation and original separate post-Archive delivery reply",
+          "status": "pending",
+          "evidence": [
+            "User explicitly confirmed prior approval or delegated authority may be reused and authorized English synchronization. Previous samples remain original failures under their old task contract; they are not reclassified as passes. Current task keeps all three profiles, parked coexistence, original manifests, non-reusable checks, Archive-once, local delivery, safety and efficiency requirements."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-classic-current-proposal-reply-binding",
+      "sources": [
+        "report:2026-10-26-classic-authorization-policy",
+        "report:2026-10-26-051-release-closure"
+      ],
+      "behavior": "需要新回复的Classic提案由控制器在回复前只读记录原待决定Wait，验收将该实际回复绑定到同一Run、Wait、阶段与proposalHash。",
+      "coverageLevel": "unit",
+      "reproduction": "旧验收只按全部Open/Design/交付提案数与全局回复计数比较，无法区分已有授权与明确要求新回复的范围，也不能阻止用早先回复冒充后来交付提案批准。",
+      "expected": "任务可精确声明需新回复的阶段；未声明时保留旧完整检查。显式范围必须有控制器生成的原待决定项绑定，其他Run、Wait、Hash、已批准后才补的事件和Subject伪造日志均不能通过。",
+      "forbidden": "删除未授权批准反例、关闭交互检查、只因全局回复数足够而批准新范围，或读取并存需求后推进其状态。",
+      "rootCause": "交互底线缺少任务授权范围与实际回复所针对提案的对应关系。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "reuses prior authorization while binding a required new reply to its pending proposal|observes only requested pending Classic decisions without changing their state|keeps subject output outside trusted decision reply evidence|rejects fresh Classic design or delivery approvals without actual user interaction evidence",
+          "requiredNames": [
+            "standalone static collector parity reuses prior authorization while binding a required new reply to its pending proposal",
+            "standalone static collector parity observes only requested pending Classic decisions without changing their state",
+            "standalone static collector parity keeps subject output outside trusted decision reply evidence",
+            "standalone static collector parity rejects fresh Classic design or delivery approvals without actual user interaction evidence"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real hardest Classic post-Archive repair with controller-bound reply to the original pending delivery proposal",
+          "status": "pending",
+          "evidence": [
+            "New scope and task-loader contracts first failed on old code. Existing no-authority tests remain unchanged and still require actual replies. The controller probe reuses current SDK owner and checkpoint inspection; the shell does not persist user reply text, only its hash and pending Wait identity."
           ]
         }
       ]

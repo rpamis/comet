@@ -56,6 +56,7 @@ async function blockedFixture(
     dirtyEmbedded?: boolean;
     generatedEmbedded?: boolean;
     directPass?: boolean;
+    nonGitEnvironment?: boolean;
   } = {},
 ) {
   let useReleased = Boolean(options.legacy && process.env.COMET_NATIVE_LEGACY_PACKAGE_ROOT);
@@ -111,6 +112,18 @@ async function blockedFixture(
   git(['config', 'user.email', 'comet-test@example.com']);
   git(['add', '.']);
   git(['commit', '-qm', 'candidate']);
+  if (options.nonGitEnvironment) {
+    for (const name of ['server', 'client']) {
+      const child = path.join(projectRoot, name);
+      await fs.mkdir(child);
+      git(['init', '-q'], child);
+      await fs.writeFile(path.join(child, 'index.js'), 'export const value = 1;\n');
+      await fs.writeFile(path.join(child, '.env.development'), 'VUE_APP_BASE_API=/api\n');
+      git(['add', '.'], child);
+      git(['commit', '-qm', 'synthetic environment'], child);
+    }
+    await fs.rm(path.join(projectRoot, '.git'), { recursive: true, force: true });
+  }
   if (options.dirtyEmbedded) {
     const child = path.join(projectRoot, 'dependency');
     await fs.mkdir(child);
@@ -207,8 +220,8 @@ async function blockedFixture(
       language: 'en',
       workspace: {
         isolation: 'current',
-        change_branch: 'main',
-        target_branch: 'main',
+        change_branch: options.nonGitEnvironment ? null : 'main',
+        target_branch: options.nonGitEnvironment ? null : 'main',
         finish: null,
       },
     }),
@@ -373,7 +386,9 @@ async function blockedFixture(
     run.actions.find(({ status }) => status === 'pending')!,
     {
       summary: 'Implemented candidate',
-      candidateCommit: git(['rev-parse', 'HEAD'], candidateRoot),
+      ...(options.nonGitEnvironment
+        ? {}
+        : { candidateCommit: git(['rev-parse', 'HEAD'], candidateRoot) }),
       addressedAcceptanceIds: ['A1'],
       acceptanceReview: fixtureAcceptanceReview(['A1']),
       checks: [],
@@ -471,6 +486,7 @@ async function archiveReadyFixture(
     directPass?: boolean;
     generatedEmbedded?: boolean;
     verificationChecks?: NativeCheckPlan[];
+    nonGitEnvironment?: boolean;
   } = {},
 ) {
   const f = await blockedFixture({
@@ -480,6 +496,7 @@ async function archiveReadyFixture(
     directPass: options.directPass,
     generatedEmbedded: options.generatedEmbedded,
     verificationChecks: options.verificationChecks,
+    nonGitEnvironment: options.nonGitEnvironment,
   });
   if (!options.directPass) {
     const resume = (await alternatives(f)).find(({ name }) => name === 'resolve-verifier-blocker')!;
@@ -632,6 +649,54 @@ async function finishRepairedCandidate(
 }
 
 describe('blocked Verifier recovery command contract', () => {
+  it('archives tracked environment files in non-Git child repositories and rejects stale environment evidence', async () => {
+    const f = await archiveReadyFixture({
+      directPass: true,
+      nonGitEnvironment: true,
+      verificationChecks: ['server', 'client'].map((cwdRef) => ({
+        id: cwdRef,
+        name: `Read ${cwdRef} environment`,
+        executable: process.execPath,
+        argv: [
+          '-e',
+          'require("node:assert/strict").ok(require("node:fs").readFileSync(".env.development", "utf8").trim())',
+        ],
+        cwdRef,
+        timeoutMs: 5000,
+        repeatable: true,
+      })),
+    });
+    const checked = await f.dispatch({ operation: 'inspect', runId: f.name });
+    const output = checked.outputs['verify.checks'].value as {
+      candidateInputFingerprintGate: string;
+      inputSnapshot: { complete: boolean };
+    };
+    expect(output.candidateInputFingerprintGate).toMatch(/^[a-f0-9]{64}$/u);
+    expect(output.inputSnapshot.complete).toBe(true);
+    expect(JSON.stringify(output)).not.toContain('VUE_APP_BASE_API=/api');
+    const file = path.join(f.projectRoot, 'client/.env.development');
+    await fs.writeFile(file, 'VUE_APP_BASE_API=/unverified\n');
+    const preview = JSON.parse((await f.native(['archive', f.name, '--dry-run'])).stdout!);
+    expect(preview.data.ready).toBe(false);
+    const doctor = JSON.parse((await f.native(['doctor', f.name])).stdout!);
+    expect(doctor.data.healthy).toBe(false);
+    expect(JSON.stringify(doctor.data.findings)).toMatch(/candidate|候选/iu);
+    expect((await f.dispatch({ operation: 'inspect', runId: f.name })).revision).toBe(
+      checked.revision,
+    );
+    await fs.writeFile(file, 'VUE_APP_BASE_API=/api\n');
+    const archived = await f.native(['archive', f.name]);
+    expect(archived.exitCode, archived.stdout ?? archived.stderr).toBe(0);
+    const completed = await f.dispatch({ operation: 'inspect', runId: f.name });
+    expect(completed.state).toMatchObject({ archived: true, status: 'done' });
+    expect(await fs.readFile(file, 'utf8')).toBe('VUE_APP_BASE_API=/api\n');
+    const again = await f.native(['archive', f.name]);
+    expect(again.exitCode, again.stdout ?? again.stderr).toBe(0);
+    expect((await f.dispatch({ operation: 'inspect', runId: f.name })).state).toEqual(
+      completed.state,
+    );
+  });
+
   it('recovers a branch rename followed by implementation changes without replaying one-shot checks', async () => {
     const f = await archiveReadyFixture({ directPass: true });
     const original = await f.dispatch({ operation: 'inspect', runId: f.name });

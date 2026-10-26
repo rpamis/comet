@@ -7,18 +7,6 @@ description: 'Comet Classic workflow entry. Use when the user explicitly invokes
 
 Classic has five phases: Open → Design → Build → Verify → Archive. OpenSpec manages specifications and archiving. Superpowers provides design methods and the planning, execution, and review methods selected by the user. The full workflow requires brainstorming and design confirmation; hotfix/tweak follow their preset steps.
 
-Load the corresponding Comet phase Skill before authoring artifacts, calling OpenSpec, or running phase-advancement commands. Do not execute the entire workflow from this entry's phase table alone. For a current `decision`, `evidence`, or `reconcile`, resolve the existing Run without replaying completed phase actions.
-
-For a new full change, or when the current SDK Action specifies `comet-open`:
-
-**Immediately execute:** Use the Skill tool to load the comet-open skill. Skipping this step is prohibited.
-
-When the current SDK Action specifies `comet-design`:
-
-**Immediately execute:** Use the Skill tool to load the comet-design skill. Skipping this step is prohibited.
-
-After the skill loads, continue the current Run and its corresponding phase. A request to "author and confirm artifacts" does not approve the artifacts produced afterward, even if it specifies every feature, file content, and example. First present the current reviewable artifacts and wait for the user's actual reply about those contents. Without a reply, do not run an approval command or claim that the user has confirmed. For newly presented content that is not already explicitly approved, end the current response after presenting it and wait for the user's actual reply. Do not execute an approval command in that same response. Calling the task "standing authorization" or presenting a proposal "for the record" is not a user reply; permission to implement directly, disable optional reviews, or commit locally does not approve new Open artifacts or Design proposals. Reuse explicit confirmation of the same unchanged artifacts without asking again.
-
 ## 1. Resolve the Target and Workspace
 
 On a new task or host change, read and perform the [host capability check](../comet/reference/host-check.md) before approving Open. When execution configuration changes, check only capabilities required by the new strategy.
@@ -67,6 +55,16 @@ Project experience and personal preferences are stored separately: before task c
 | verify                        | `/comet-verify`: run acceptance checks, reverify repairs, and perform the only final integrated review          |
 | archive / verify_result: pass | `/comet-archive`: confirm archiving, commit only this change's files, and complete the selected delivery method |
 
+The corresponding Skill performs phase work; load it before authoring artifacts, calling OpenSpec, or advancing. Resolve `decision`, `evidence`, and `reconcile` on the current Run without repeating phase work.
+
+For new full / Open, or an Action specifying `comet-open`:
+
+**Immediately execute:** Use the Skill tool to load the comet-open skill. Skipping this step is prohibited.
+
+For an Action specifying `comet-design`:
+
+**Immediately execute:** Use the Skill tool to load the comet-design skill. Skipping this step is prohibited.
+
 Recommend a lightweight workflow only for a new request. Enter directly when its risk fits the preset and the user has explicitly selected it. When the Agent makes the recommendation, explain why, present hotfix/tweak and full with their effects, and wait for confirmation. Never silently downgrade an existing full change. Assess public APIs, data migrations, security, concurrency, and cross-module design by their actual risks; a small file count does not waive necessary steps.
 
 For hotfix/tweak, SDK must read and follow [Preset scope](reference/sdk-methods.md#preset-scope) and reuse valid `rulings.md` authorization; Compat follows the chosen preset's `reference/compat.md`. Review scope when only file count exceeds the threshold, asking only when a new decision is needed. Upgrade after the user's choice, using the Run continuation or matching Compat command. Use `verify_mode` for verification depth; keep workflow and escalation decisions separate.
@@ -77,10 +75,10 @@ On session recovery, external changes, or discrepancies between actual work and 
 
 After phase exit checks pass, follow `comet-classic/reference/auto-transition.md`: read `agent.continuation` from the successful result and load only its next Skill. Query again only when reusable state is unavailable, session recovery lacks context, or external state changes. `auto_transition: false` controls the next Skill invocation, not the phase already advanced by Guard. For `NEXT: manual`, show HINT and end the invocation without adding a confirmation question.
 
-Decision points block dependent work until the user answers explicitly. Before the first clarification or confirmation, read `comet-classic/reference/decision-point.md` and follow its options, recommendation reasons, per-option effects, and `AskUserQuestion` priority. Reuse it when already in context. Automatic handoff or a single recommended solution cannot skip these confirmations:
+First check existing approval, delegated authority, and the user's requested confirmation method. Wait for an explicit answer when a new decision is needed. Before the first clarification or confirmation, read `comet-classic/reference/decision-point.md` and follow its options, recommendation reasons, per-option effects, and `AskUserQuestion` priority. Reuse it when already in context. Check authorization for the following matters under that protocol. Continue when existing authority still covers them; ask only when a new decision is needed:
 
 - If the target change, PRD split, or workspace isolation still needs a choice, ask related questions together and wait.
-- At the end of Open, obtain final confirmation of the name, scope, and artifacts. After Design develops a proposal, obtain confirmation of the formal design. In both cases, present a reviewable result before waiting for approval or requested adjustments.
+- At the end of Open, obtain final confirmation of the name, scope, and artifacts. After Design develops a proposal, obtain confirmation of the formal design. In both cases, check current content against existing authority. Present a reviewable result and wait when a user decision is needed.
 - Before Build writes a plan, ask about execution/TDD/review configuration only when it is missing or the user requests a change. After a user-requested `plan-ready` pause, wait for an explicit instruction to continue.
 - In Verify, ask when accepting deviations, resolving implementation/Spec disagreement, or choosing how to proceed after the automatic-repair limit. In Archive, confirm archiving and the delivery method.
 - Ask when upgrading a preset to the full workflow, or when Build needs to expand scope, redesign, or split a change.

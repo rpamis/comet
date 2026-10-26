@@ -693,7 +693,9 @@ def test_task_treatment(task_name, treatment_name):
 
         failed.extend(
             classic_new_proposal_approval_issues(
-                outputs.get("validation_evidence", {}), outputs["interaction"]
+                outputs.get("validation_evidence", {}),
+                outputs["interaction"],
+                required_steps=task.config.evaluation.classic_proposal_interaction_steps,
             )
         )
     passed, failed = adapt_checks_for_native(

@@ -395,6 +395,29 @@ except: print('')
         if [[ -z "$USER_REPLY" ]]; then
             USER_REPLY="Yes, please proceed with the recommended option."
         fi
+        if [[ -n "$COMPLETION_RUNS" ]]; then
+            if ! DECISION_CONTEXT="$(COMET_EVAL_COMPLETION_RUNS="$COMPLETION_RUNS" COMET_EVAL_DECISION_REPLY="$USER_REPLY" COMET_EVAL_TURN="$TURN" python3 -I - "$SCRIPT_DIR/../python/validation/current_sdk.py" <<'PY'
+import hashlib
+import importlib.util
+import json
+import os
+import sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("comet_decision_probe", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+print(json.dumps({
+    "turn": int(os.environ["COMET_EVAL_TURN"]),
+    "replyHash": hashlib.sha256(os.environ["COMET_EVAL_DECISION_REPLY"].encode()).hexdigest(),
+    "decisions": module.requested_classic_decisions(Path.cwd(), json.loads(os.environ["COMET_EVAL_COMPLETION_RUNS"])),
+}))
+PY
+            )"; then
+                echo "[loop] decision evidence unavailable; ending evaluation" >&2
+                exit 3
+            fi
+            echo "[loop] sdk-decision-reply $DECISION_CONTEXT" >&2
+        fi
         echo "[loop] simulated reply (${#USER_REPLY} chars)" >&2
         continue
     fi

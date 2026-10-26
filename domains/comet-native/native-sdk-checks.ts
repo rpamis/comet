@@ -1372,8 +1372,18 @@ export async function assertNativeSdkCandidateUnchanged(options: {
     );
   const recorded = (current?.outcome?.output as unknown as NativeSdkCheckOutcome | undefined)
     ?.candidateInputFingerprintGate;
+  if (current && recorded === null) {
+    if (options.requireEvidence) {
+      const output = current.outcome?.output as unknown as NativeSdkCheckOutcome;
+      const diagnostics = output.inputSnapshot?.diagnostics ?? [];
+      throw new NativeSdkCandidateDriftError(
+        `Native 本次检查未建立候选实现摘要${diagnostics.length ? `：${diagnostics.join('；')}` : '：候选输入采集失败或不完整'}；先排除输入读取问题，再通过原工作流重新验收，不能直接归档或复用旧证据`,
+      );
+    }
+    return;
+  }
   // 旧收据没有语义摘要；显式重新验收建立绑定，不能据此复用旧成功证据。
-  if (!current || recorded === undefined || recorded === null) {
+  if (!current || recorded === undefined) {
     if (options.requireEvidence)
       throw new NativeSdkCandidateDriftError(
         'Native 旧检查缺少候选实现摘要；请通过原工作流重新验收',

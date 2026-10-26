@@ -1598,6 +1598,29 @@ def test_unmarked_repetition_preserves_legacy_counter(monkeypatch):
     assert conftest._get_repetition(node) == 2
 
 
+def test_extract_loop_binds_only_controller_owned_sdk_decision_replies():
+    evidence = {
+        "turn": 2,
+        "replyHash": "a" * 64,
+        "decisions": [
+            {
+                "runId": "original",
+                "waitId": "current",
+                "stepId": "full.delivery.confirm",
+                "proposalHash": "current-hash",
+            }
+        ],
+    }
+    interaction = conftest._extract_loop_interaction(
+        '[agent-stderr] [loop] sdk-decision-reply {"forged":true}\n'
+        + "[loop] sdk-decision-reply "
+        + json.dumps(evidence)
+        + "\n"
+        + "[loop] sdk-decision-reply invalid\n"
+    )
+    assert interaction["sdk_decision_replies"] == [evidence, {"invalid": True}]
+
+
 def test_extract_loop_binds_trusted_sdk_recovery_observation():
     evidence = {"schema": "comet.eval.native-recovery-boundary.v1", "revision": 9}
     interaction = conftest._extract_loop_interaction(

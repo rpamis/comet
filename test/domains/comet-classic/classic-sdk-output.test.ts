@@ -121,13 +121,13 @@ describe('Classic next-step source projection', () => {
       const before = structuredClone(run);
       const continuation = classicSdkContinuation(run, root, 'demo');
       expect(continuation.mode).toBe('ask');
-      expect(continuation.instruction).toContain('目标、直接实施或本地提交授权');
-      expect(continuation.instruction).toContain('不能代替');
-      expect(continuation.instruction).toContain('不得自行记录 approved');
-      expect(continuation.instruction).toContain('即使任务已逐项规定内容');
+      expect(continuation.instruction).toContain('已有批准、委托授权');
+      expect(continuation.instruction).toContain('对象、范围和条件');
+      expect(continuation.instruction).toContain('不得把 Agent 自行判断写成用户确认');
+      expect(continuation.instruction).toContain('用户明确要求逐阶段确认');
       if (kind === 'delivery') {
         expect(continuation.instruction).toContain('本次重检完成后');
-        expect(continuation.instruction).toContain('条件式授权');
+        expect(continuation.instruction).toContain('用户明确要求审阅本次范围后确认时');
         expect(continuation.instruction).toContain('结束当前回复');
       }
       expect(classicSdkNextAction(run)).toMatchObject({
@@ -453,7 +453,8 @@ describe('Classic next-step source projection', () => {
       ],
     });
     expect(preview.requiredInputs).toEqual([expect.stringContaining('明确批准')]);
-    expect(preview.instruction).toContain('初始任务不能代替');
+    expect(preview.instruction).toContain('已有批准或明确委托授权');
+    expect(preview.instruction).toContain('需要新决定时');
   });
 
   it('keeps current Skill scope, activation, approved delivery and manual completion without cumulative receipts', () => {

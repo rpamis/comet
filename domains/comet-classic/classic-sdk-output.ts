@@ -433,8 +433,8 @@ export function classicSdkContinuation(
         observation.openApprovalHash,
         '--json',
       ],
-      requiredInputs: ['用户明确批准本次 Open 产物与范围'],
-      instruction: `展示当前 Open 产物并取得明确批准。初始任务不能代替生成后产物的确认；先展示本次产物再等待对应回复。用户已明确确认同一未变产物时沿用，不重复询问。批准仅绑定 contentHash=${observation.openApprovalHash}；内容变化后重新预检和确认。`,
+      requiredInputs: ['当前 Open 产物与范围的明确批准或有效委托授权'],
+      instruction: `核对当前 Open 产物是否处于已有批准或明确委托授权的范围内。授权仍覆盖时记录依据并继续；需要新决定时展示内容并等待答复。不得把 Agent 自行判断写成用户确认。使用当前 contentHash=${observation.openApprovalHash} 记录决定；内容变化后重新预检，只确认超出授权的部分。`,
     });
   if (nextAction?.kind === 'decision') {
     const wait = current.waits.find((entry) => entry.id === nextAction.waitId)!;
@@ -461,7 +461,7 @@ export function classicSdkContinuation(
             ...(operation === 'continue-plan' ? [] : ['--choice', '<user-choice>']),
           )
         : dispatch,
-      requiredInputs: [`用户对当前 proposalHash 的明确决定：${wait.choices.join('|')}`],
+      requiredInputs: [`当前 proposalHash 的有效批准或委托授权：${wait.choices.join('|')}`],
       instruction: nextAction.instruction,
       request: wait.request,
     });

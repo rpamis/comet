@@ -89,6 +89,7 @@ class EvaluationConfig:
     require_skill_invocation: bool = False
     # 仅供从空白 Run 开始、要求实际用户回复的新 Classic 提案场景。
     require_classic_proposal_interaction: bool = False
+    classic_proposal_interaction_steps: list[str] | None = None
     rubric_criteria: list[str] = field(default_factory=list)
     native_terminal: str = "archive"
 
@@ -291,12 +292,28 @@ def load_task(name: str | Path, tasks_dir: Path | None = None) -> Task:
         raise ValueError(
             f"Task {task_name} has invalid evaluation.require_classic_proposal_interaction"
         )
+    interaction_steps = evaluation.get("classic_proposal_interaction_steps")
+    if interaction_steps is not None and (
+        not proposal_interaction
+        or not isinstance(interaction_steps, list)
+        or not interaction_steps
+        or any(
+            not isinstance(step, str)
+            or step not in {"full.open.confirm", "full.design.confirm", "full.delivery.confirm"}
+            for step in interaction_steps
+        )
+        or len(set(interaction_steps)) != len(interaction_steps)
+    ):
+        raise ValueError(
+            f"Task {task_name} has invalid evaluation.classic_proposal_interaction_steps"
+        )
     evaluation_config = EvaluationConfig(
         profile=inferred_profile,
         required_skills=evaluation.get("required_skills", []),
         expected_artifacts=evaluation.get("expected_artifacts", []),
         require_skill_invocation=bool(evaluation.get("require_skill_invocation", False)),
         require_classic_proposal_interaction=proposal_interaction,
+        classic_proposal_interaction_steps=interaction_steps,
         rubric_criteria=evaluation.get("rubric_criteria", []),
         native_terminal=evaluation.get("native_terminal", "archive"),
     )

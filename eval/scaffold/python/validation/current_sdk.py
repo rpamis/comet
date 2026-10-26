@@ -36,8 +36,19 @@ def sdk_inspection_evidence(workflow: str, application: str, run: dict) -> dict:
     }
 
 
-def classic_new_proposal_approval_issues(evidence: dict, interaction: dict) -> list[str]:
-    """全新固定任务的交互数量底线；不能代替逐条回复与提案的来源审查。"""
+def classic_new_proposal_approval_issues(
+    evidence: dict, interaction: dict, *, required_steps: list[str] | None = None
+) -> list[str]:
+    """按任务声明核对需要新回复的决定；已授权事项不强制重复问答。"""
+    supported = {"full.open.confirm", "full.design.confirm", "full.delivery.confirm"}
+    if required_steps is not None and (
+        not isinstance(required_steps, list)
+        or not required_steps
+        or any(not isinstance(step, str) or step not in supported for step in required_steps)
+        or len(set(required_steps)) != len(required_steps)
+    ):
+        return ["Classic proposal interaction scope is invalid"]
+    steps = supported if required_steps is None else set(required_steps)
     proposals = set()
 
     def visit(value):
@@ -49,12 +60,13 @@ def classic_new_proposal_approval_issues(evidence: dict, interaction: dict) -> l
             run = value.get("run", {})
             for wait in run.get("waits", []):
                 if (
-                    wait.get("stepId")
-                    in ("full.open.confirm", "full.design.confirm", "full.delivery.confirm")
+                    wait.get("stepId") in steps
                     and wait.get("status") == "resolved"
                     and wait.get("decision", {}).get("choice") == "approved"
                 ):
-                    proposals.add((run.get("runId"), wait["stepId"], wait.get("proposalHash")))
+                    proposals.add(
+                        (run.get("runId"), wait.get("id"), wait["stepId"], wait.get("proposalHash"))
+                    )
             return
         for child in value.values():
             visit(child)
@@ -81,7 +93,79 @@ def classic_new_proposal_approval_issues(evidence: dict, interaction: dict) -> l
         return [
             f"Classic new proposal approvals lack user replies: proposals={required}, decisions={decisions}, replies={replies}, turns={turns}"
         ]
+    if required_steps is not None:
+        bound = set()
+        events = interaction.get("sdk_decision_replies", [])
+        for event in events if isinstance(events, list) else []:
+            if (
+                not isinstance(event, dict)
+                or type(event.get("turn")) is not int
+                or not 1 <= event["turn"] < turns
+                or not re.fullmatch(r"[a-f0-9]{64}", str(event.get("replyHash", "")))
+                or not isinstance(event.get("decisions"), list)
+            ):
+                continue
+            for decision in event.get("decisions", []):
+                if isinstance(decision, dict):
+                    identity = tuple(
+                        decision.get(key) for key in ("runId", "waitId", "stepId", "proposalHash")
+                    )
+                    if all(isinstance(value, str) and value for value in identity):
+                        bound.add(identity)
+        if not proposals <= bound:
+            return [
+                "Classic new proposal approval lacks a reply bound to its original pending Wait"
+            ]
     return []
+
+
+def requested_classic_decisions(workspace: Path, requests: list[dict]) -> list[dict]:
+    """回复前只读记录指定 Run 的待决定项，作为本次回复的绑定依据。"""
+    if not isinstance(requests, list):
+        raise ValueError("Invalid decision requests")
+    decisions = []
+    names = set()
+    for request in requests:
+        if isinstance(request, dict) and request.get("workflow") == "native":
+            continue
+        if not isinstance(request, dict) or set(request) != {"name", "profile"}:
+            raise ValueError("Invalid Classic decision request")
+        name, profile = request["name"], request["profile"]
+        if (
+            not isinstance(name, str)
+            or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name)
+            or name in names
+            or profile not in ("full", "tweak", "hotfix")
+        ):
+            raise ValueError("Invalid Classic decision request")
+        names.add(name)
+        if profile != "full":
+            continue
+        root = workspace / "docs/openspec/changes"
+        locations = (
+            [root / name]
+            if (root / name).exists()
+            else list((root / "archive").glob(f"????-??-??-{name}"))
+        )
+        if not locations:
+            continue
+        if len(locations) != 1:
+            raise ValueError("Ambiguous Classic decision location")
+        state_file = locations[0] / "comet-state.yaml"
+        if not state_file.is_file():
+            continue
+        run = inspect_run(workspace, "classic", name, "classic-full", state_file)
+        for wait in run.get("waits", []):
+            if wait.get("status") == "pending":
+                decisions.append(
+                    {
+                        "runId": name,
+                        "waitId": wait["id"],
+                        "stepId": wait["stepId"],
+                        "proposalHash": wait["proposalHash"],
+                    }
+                )
+    return decisions
 
 
 def requested_runs_completed(workspace: Path, requests: list[dict]) -> bool:

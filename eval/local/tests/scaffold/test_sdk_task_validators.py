@@ -81,6 +81,133 @@ def test_new_classic_proposals_cannot_pass_without_actual_user_interaction():
     assert check({}, {}) == []
 
 
+def test_classic_explicit_reply_scope_preserves_prior_authorization_and_binds_the_new_reply():
+    evidence = {
+        "trusted": {
+            "schema": "comet.eval.sdk-inspection.v1",
+            "workflow": "classic",
+            "application": "classic-full",
+            "run": {
+                "runId": "original",
+                "waits": [
+                    {
+                        "id": step,
+                        "stepId": step,
+                        "status": "resolved",
+                        "proposalHash": step + "-hash",
+                        "decision": {"choice": "approved"},
+                    }
+                    for step in [
+                        "full.open.confirm",
+                        "full.design.confirm",
+                        "full.delivery.confirm",
+                    ]
+                ],
+            },
+        }
+    }
+    interaction = {
+        "mode": "auto_user",
+        "actual_turns": 2,
+        "decision_points": 1,
+        "deterministic_replies": 1,
+        "sdk_decision_replies": [
+            {
+                "turn": 1,
+                "replyHash": "a" * 64,
+                "decisions": [
+                    {
+                        "runId": "original",
+                        "waitId": "full.delivery.confirm",
+                        "stepId": "full.delivery.confirm",
+                        "proposalHash": "full.delivery.confirm-hash",
+                    }
+                ],
+            }
+        ],
+    }
+    check = current_sdk.classic_new_proposal_approval_issues
+    steps = ["full.delivery.confirm"]
+    assert check(evidence, interaction, required_steps=steps) == []
+    assert check(evidence, {**interaction, "sdk_decision_replies": []}, required_steps=steps)
+    for field in ["runId", "waitId", "stepId", "proposalHash"]:
+        changed = json.loads(json.dumps(interaction))
+        changed["sdk_decision_replies"][0]["decisions"][0][field] = "other"
+        assert check(evidence, changed, required_steps=steps)
+    changed = json.loads(json.dumps(interaction))
+    changed["sdk_decision_replies"][0]["turn"] = 2
+    assert check(evidence, changed, required_steps=steps)
+    assert check(evidence, interaction)
+    for invalid in [
+        [],
+        ["full.unknown.confirm"],
+        "full.delivery.confirm",
+        ["full.delivery.confirm"] * 2,
+    ]:
+        assert check(evidence, interaction, required_steps=invalid)
+
+
+def test_classic_reply_probe_observes_only_original_pending_requested_waits(tmp_path, monkeypatch):
+    root = tmp_path / "docs/openspec/changes"
+    active = root / "requested"
+    active.mkdir(parents=True)
+    state = active / "comet-state.yaml"
+    state.write_text("managed fixture")
+    before = state.read_bytes()
+    calls = []
+
+    def inspect(workspace, workflow, name, application, state_file):
+        calls.append((workspace, workflow, name, application, state_file))
+        return {
+            "waits": [
+                {
+                    "id": "current",
+                    "stepId": "full.delivery.confirm",
+                    "status": "pending",
+                    "proposalHash": "current-hash",
+                },
+                {
+                    "id": "old",
+                    "stepId": "full.design.confirm",
+                    "status": "resolved",
+                    "proposalHash": "old-hash",
+                },
+            ]
+        }
+
+    monkeypatch.setattr(current_sdk, "inspect_run", inspect)
+    requests = [{"name": "requested", "profile": "full"}, {"name": "other", "profile": "tweak"}]
+    expected = [
+        {
+            "runId": "requested",
+            "waitId": "current",
+            "stepId": "full.delivery.confirm",
+            "proposalHash": "current-hash",
+        }
+    ]
+    assert current_sdk.requested_classic_decisions(tmp_path, requests) == expected
+    assert calls == [(tmp_path, "classic", "requested", "classic-full", state)]
+    assert state.read_bytes() == before
+    archived = root / "archive/2026-10-26-requested"
+    archived.parent.mkdir()
+    active.rename(archived)
+    assert current_sdk.requested_classic_decisions(tmp_path, requests) == expected
+    assert calls[-1][-1] == archived / "comet-state.yaml"
+    assert (
+        current_sdk.requested_classic_decisions(
+            tmp_path, [{"workflow": "native", "name": "native"}]
+        )
+        == []
+    )
+    for invalid in [
+        [{"name": "../other", "profile": "full"}],
+        requests[:1] * 2,
+        [{"name": "requested", "profile": "unknown"}],
+    ]:
+        with pytest.raises(ValueError):
+            current_sdk.requested_classic_decisions(tmp_path, invalid)
+
+
 def _validator(task: str, script: str):
     path = get_tasks_dir() / task / "validation" / script
     spec = importlib.util.spec_from_file_location(f"{task}_validator", path)

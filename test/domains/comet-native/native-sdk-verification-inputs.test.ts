@@ -27,7 +27,9 @@ import {
 import {
   nativeSdkCurrentCheckSummaries,
   recoverNativeSdkChecks,
+  assertNativeSdkCandidateUnchanged,
 } from '../../../domains/comet-native/native-sdk-checks.js';
+import { inspectNativeSdkRunDiagnostics } from '../../../domains/comet-native/native-sdk-diagnostics.js';
 import { inspectNativeSdkCheckExecutions } from '../../../domains/comet-native/native-sdk-check-execution.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
@@ -50,6 +52,7 @@ const gitlinkOutputCheck: NativeCheckPlan = {
 
 const roots: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
@@ -110,6 +113,35 @@ it('archives ignored build artifact roots without treating its own moved documen
     },
   });
   await completeArchive(prepared, await submitVerifierResult(prepared));
+});
+
+it('diagnoses a failed candidate capture before Archive without mislabeling it as legacy evidence', async () => {
+  const prepared = await checkedCandidate();
+  // 模拟旧执行留下的空摘要收据；不通过此损坏收据推进正常流程。
+  const run = structuredClone(prepared.run);
+  const check = run.actions.findLast((action) => action.stepId === 'verify.checks')!;
+  const output = check.outcome!.output as Record<string, RuntimeValue>;
+  output.candidateInputFingerprintGate = null;
+  output.inputSnapshot = {
+    ...(output.inputSnapshot as Record<string, RuntimeValue>),
+    complete: false,
+    diagnostics: ['工作区输入无法完整读取：client/.env.development（文件无法读取）'],
+  };
+  await expect(
+    assertNativeSdkCandidateUnchanged({ run, projectRoot: prepared.root, requireEvidence: true }),
+  ).rejects.toThrow(/本次检查未建立候选实现摘要.*client\/\.env\.development/u);
+  const before = JSON.stringify(run);
+  const diagnosis = await inspectNativeSdkRunDiagnostics(prepared.root, run);
+  expect(diagnosis.healthy).toBe(false);
+  expect(diagnosis.issues).toContainEqual(
+    expect.objectContaining({
+      code: 'native-check-candidate-unavailable',
+      message: expect.stringContaining('client/.env.development'),
+      nextCommand: `comet native status ${run.runId} --json`,
+    }),
+  );
+  expect(JSON.stringify(diagnosis)).not.toContain('旧检查');
+  expect(JSON.stringify(run)).toBe(before);
 });
 
 async function succeedLatestAction(
@@ -856,6 +888,14 @@ describe('Native SDK verification input binding', () => {
     const { root, runtime, store, run } = prepared;
     await fs.appendFile(path.join(root, '.git/info/exclude'), '\ndist/\n');
     await writeProjectFile(root, 'dist/.env', 'PUBLIC_TEST_FIXTURE=true\n');
+    const open = fs.open;
+    vi.spyOn(fs, 'open').mockImplementation((file, flags, mode) => {
+      if (path.resolve(String(file)) === path.join(root, 'dist/.env'))
+        return Promise.reject(
+          Object.assign(new Error('fixture access denied'), { code: 'EACCES' }),
+        );
+      return open(file, flags, mode);
+    });
     await expect(
       runtime.execute({
         runId: run.runId,

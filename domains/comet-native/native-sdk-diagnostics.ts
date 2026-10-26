@@ -70,28 +70,45 @@ export async function inspectNativeSdkRunDiagnostics(
   const preflight = [...run.actions]
     .reverse()
     .find((action) => action.stepId === 'archive.prepare');
+  const candidateId = parseNativePortableState(run.state).builder_handoff?.candidate_id;
+  const currentCheck = [...run.actions]
+    .reverse()
+    .find(
+      (action) =>
+        candidateId &&
+        ['verify.checks', 'verify.requested-checks'].includes(action.stepId) &&
+        action.status === 'succeeded' &&
+        (action.outcome?.output as { candidateId?: unknown } | undefined)?.candidateId ===
+          candidateId,
+    );
+  const failedCandidateCapture =
+    (currentCheck?.outcome?.output as { candidateInputFingerprintGate?: unknown } | undefined)
+      ?.candidateInputFingerprintGate === null;
   if (
-    preflight &&
-    ['pending', 'failed'].includes(preflight.status) &&
-    !run.actions
-      .slice(run.actions.indexOf(preflight) + 1)
-      .some(
-        (action) =>
-          ['build.builder', 'verify.checks', 'verify.requested-checks'].includes(action.stepId) &&
-          action.status === 'succeeded',
-      )
+    failedCandidateCapture ||
+    (preflight &&
+      ['pending', 'failed'].includes(preflight.status) &&
+      !run.actions
+        .slice(run.actions.indexOf(preflight) + 1)
+        .some(
+          (action) =>
+            ['build.builder', 'verify.checks', 'verify.requested-checks'].includes(action.stepId) &&
+            action.status === 'succeeded',
+        ))
   ) {
     try {
       await assertNativeSdkCandidateUnchanged({ run, projectRoot, requireEvidence: true });
     } catch (error) {
       candidateIssues.push({
-        code: 'native-archive-candidate-unavailable',
+        code: failedCandidateCapture
+          ? 'native-check-candidate-unavailable'
+          : 'native-archive-candidate-unavailable',
         runId: run.runId,
         message: (error as Error).message,
         nextCommand: `comet native status ${run.runId} --json`,
       });
     }
-    if (preflight.status === 'failed' && candidateIssues.length === 0) {
+    if (preflight?.status === 'failed' && candidateIssues.length === 0) {
       const output = preflight.outcome?.output as { message?: string; reason?: string } | undefined;
       candidateIssues.push({
         code: 'native-archive-preflight-blocked',

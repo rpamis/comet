@@ -210,15 +210,15 @@ Use the most recent successful `comet state artifacts <name> --json` result to c
 
 Then inspect content: proposal must cover the problem, goals, scope, and non-goals; design must cover high-level decisions and data flow; tasks must be explicit. If the schema returns specs or other artifacts, check their content against their instructions too. The presence of proposal, design, and tasks does not make other required content optional.
 
-### 5. Ask the user to confirm the artifacts
+### 5. Check authorization and complete Open
 
-After all OpenSpec artifacts and content checks are complete, use `runtimeFormat` from the current valid response; run `comet state next <name> --json` only if ownership information is missing or external state has changed. For SDK, run `comet guard <change-name> open --json` to obtain the preview, content summary, and `data.approvalHash`; repair any failed checks. Then **pause under `comet-classic/reference/decision-point.md` and wait for explicit user confirmation**. Do not apply the phase guard or advance automatically before confirmation.
+After all OpenSpec artifacts and content checks are complete, use `runtimeFormat` from the current valid response; run `comet state next <name> --json` only if ownership information is missing or external state has changed. For SDK, run `comet guard <change-name> open --json` to obtain the preview, content summary, and `data.approvalHash`; repair any failed checks. Then check authorization under `comet-classic/reference/decision-point.md`. If no valid authority covers the current artifacts, ask for a decision before applying the phase guard.
 
-This final review confirms the change name, scope, and artifact content together. Step 1b does not replace it; do not add a separate routine summary/name approval before it either.
+The final review checks the change name, scope, and artifact content against the authorized requirements. Do not add routine summary or naming confirmation when name and scope are already clear.
 
-A request to "author and confirm artifacts" does not approve the artifacts produced afterward, even if it specifies every feature, file content, and example. First present the current reviewable artifacts and wait for the user's actual reply about those contents. Without a reply, do not run an approval command or claim that the user has confirmed. For newly presented content that is not already explicitly approved, end the current response after presenting it and wait for the user's actual reply. Do not execute an approval command in that same response. Calling the task "standing authorization" or presenting a proposal "for the record" is not a user reply; permission to implement directly, disable optional reviews, or commit locally does not approve new Open artifacts or Design proposals. Reuse explicit confirmation of the same unchanged artifacts without asking again.
+Check current artifacts against existing authorization under `comet-classic/reference/decision-point.md`. Record the basis and continue when authority still covers the content. Present the matters requiring confirmation and wait only when a new decision is needed.
 
-Present a single-choice question with this summary and both options:
+When user confirmation is needed, present a single-choice question with this summary and both options:
 
 **Summary:**
 

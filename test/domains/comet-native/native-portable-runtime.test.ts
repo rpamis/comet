@@ -1735,6 +1735,14 @@ Ship the behavior.
     }
     if (fixture === 'incomplete-sensitive-input') {
       await fs.writeFile(path.join(root, 'dist', '.env'), 'TOKEN=fixture');
+      const open = fs.open;
+      vi.spyOn(fs, 'open').mockImplementation((file, flags, mode) => {
+        if (path.resolve(String(file)) === path.join(root, 'dist/.env'))
+          return Promise.reject(
+            Object.assign(new Error('fixture access denied'), { code: 'EACCES' }),
+          );
+        return open(file, flags, mode);
+      });
     }
 
     await expect(
@@ -1753,7 +1761,7 @@ Ship the behavior.
       checks: [{ id: plan.id, status: 'failed', exit_code: 7 }],
     });
     if (fixture.startsWith('incomplete-')) {
-      expect(executed.inputDiagnostics?.join(' ')).toMatch(/敏感|文件数上限/);
+      expect(executed.inputDiagnostics?.join(' ')).toMatch(/无法稳定读取|文件数上限/);
     } else {
       expect(executed.inputDiagnostics ?? []).toEqual([]);
     }

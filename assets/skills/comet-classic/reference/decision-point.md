@@ -8,26 +8,26 @@ All comet sub-skills with user decision points share this protocol. Every step l
 
 Distinguish user decisions, automatic handling, and stop conditions:
 
-- **User decision**: two or more valid actions differ in scope, behavior, responsibility for risk, or irreversible outcomes. The user must choose. Explicit phase requirements to approve artifacts or designs are also user decisions: offer approval, adjustment, or deferral. A single technically recommended solution does not authorize automatic approval.
-- **Automatic handling**: exactly one safe next action remains within the request, such as repairing a failure with a known cause, reconciling state from evidence, retrying an idempotent check, or following saved configuration. Execute and report without another confirmation.
+- **User decision**: the current matter lacks valid approval or delegated authority, and the choice affects scope, behavior, responsibility for risk, or irreversible outcomes. Ask the user to decide. Honor an explicit request for confirmation at each phase; clarify unclear authorization boundaries.
+- **Automatic handling**: current content has explicit approval, or the user explicitly delegated decisions within an agreed scope. Check that the authority still applies and continue. Known in-scope repairs, evidence-based state reconciliation, idempotent checks, and valid saved configuration also require no extra confirmation.
 - **Stop condition**: a missing dependency, corrupt state, path escape, or unavailable external command leaves no valid next action. Report the blocker and recovery condition without inventing choices.
 - **Manual handoff**: `NEXT: manual` returns control; it is not a new user decision point. Print `HINT`, end the invocation, and do not ask whether to continue.
 
 Only the first category requires a decision. Open/Design questions about unclear scope, solutions, or acceptance requirements must also use the format below. If facts, paths, or other missing information cannot be represented by real options, state what is missing and request it without inventing answers.
 
-Ask related questions together when they can be answered together. Do not re-ask saved choices that remain valid. Do not add preflight checks to predict whether a later tool or operation might fail and filter out options. Present all workflow-supported choices; execute the selected action, and stop with the original error if it fails. If a configuration field has only one workflow-valid value, explain why and apply it without a separate pause. This rule does not replace explicit phase confirmation requirements.
+Ask related questions together when they can be answered together. Do not re-ask saved choices that remain valid. Do not add preflight checks to predict whether a later tool or operation might fail and filter out options. Present all workflow-supported choices; execute the selected action, and stop with the original error if it fails. If a configuration field has only one workflow-valid value, explain why and apply it without a separate pause. Honor an explicit user request for confirmation at each phase.
 
 ## Core Rules
 
 A pause or stop applies only to actions that depend on the decision or are blocked by the current problem. Other investigation, evidence preparation, and permitted work within the same authorized scope may continue. This does not allow bypassing phase Guards, implementing unconfirmed scope, or choosing for the user.
 
-- Decision points are blocking points. Wait for an explicit user choice before continuing dependent work.
-- Use `AskUserQuestion` for single-select or multi-select choices when it is present; otherwise present clear text options and end the current response, waiting for the user's actual reply about the presented content. Do not run the corresponding approval command or apply a confirmation hash before that reply. The absence of a structured question tool does not mean approval has been given.
+- When a new user decision is needed, pause dependent actions until an explicit answer arrives.
+- When a question is needed, use `AskUserQuestion` for single-select or multi-select choices when available; otherwise present clear text options and end the current response, then wait for the actual answer before running dependent commands. The absence of a structured question tool does not grant authorization.
 - If `AskUserQuestion` cannot be used, record that structured questions are unavailable for this session. Do not repeatedly retry it at later decision points; use text options directly.
 - Never substitute recommendations, defaults, historical preferences, or an assumption that the user would agree for current confirmation.
 - Before an explicit choice, do not write the corresponding state fields, execute the corresponding branch operation, or automatically continue to the next phase.
 
-An initial request that says "author and confirm artifacts" or specifies complete features, file contents, and examples does not approve artifacts or designs produced afterward. Present the current content and wait for the actual reply. Reuse explicit approval of the same unchanged content without asking again.
+Authorization may come from the current request or an existing record; it need not follow artifact creation. Check its object, scope, and conditions against current content. Reuse authority that still applies, and ask only about substantial changes beyond it. Record the actual basis for the decision; do not describe an Agent's own choice as user confirmation.
 
 ## Presenting execution configuration
 

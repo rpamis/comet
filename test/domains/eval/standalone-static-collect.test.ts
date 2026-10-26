@@ -87,6 +87,22 @@ function pythonAccepts(manifest: string): boolean {
 describe('standalone static collector parity', () => {
   it.each<[string, string, number?]>([
     [
+      'reuses prior authorization while binding a required new reply to its pending proposal',
+      'local/tests/scaffold/test_sdk_task_validators.py::test_classic_explicit_reply_scope_preserves_prior_authorization_and_binds_the_new_reply',
+    ],
+    [
+      'observes only requested pending Classic decisions without changing their state',
+      'local/tests/scaffold/test_sdk_task_validators.py::test_classic_reply_probe_observes_only_original_pending_requested_waits',
+    ],
+    [
+      'rejects invalid explicit decision interaction scopes',
+      'local/tests/scaffold/test_tasks.py::test_task_limits_new_reply_requirements_to_the_explicit_decision_scope',
+    ],
+    [
+      'keeps subject output outside trusted decision reply evidence',
+      'local/tests/scaffold/test_conftest_helpers.py::test_extract_loop_binds_only_controller_owned_sdk_decision_replies',
+    ],
+    [
       'does not mistake recovery hashes for rate limits',
       'local/tests/scaffold/test_sample_quality.py::test_completed_recovery_hash_is_not_a_rate_limit',
       3,

@@ -427,8 +427,18 @@ describe('Native check input fingerprint', () => {
     async (failure) => {
       await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n.next/\npackages/\n');
       await fs.mkdir(path.join(root, 'dist'));
-      if (failure === 'sensitive')
+      if (failure === 'sensitive') {
         await fs.writeFile(path.join(root, 'dist/.env'), 'TOKEN=fixture');
+        // .env 可以参与摘要；本反例继续验证敏感内容不可读取时不能复用证据。
+        const open = fs.open;
+        vi.spyOn(fs, 'open').mockImplementation((file, flags, mode) => {
+          if (path.resolve(String(file)) === path.join(root, 'dist/.env'))
+            return Promise.reject(
+              Object.assign(new Error('fixture access denied'), { code: 'EACCES' }),
+            );
+          return open(file, flags, mode);
+        });
+      }
       if (failure === 'symlink-root') {
         await fs.symlink(
           path.join(root, 'dist'),
@@ -449,7 +459,7 @@ describe('Native check input fingerprint', () => {
       const snapshot = await nativeCheckInputSnapshot(fingerprintInput(root));
       expect(snapshot.complete).toBe(false);
       expect(snapshot.diagnostics).not.toEqual([]);
-      expect(snapshot.diagnostics.join(' ')).toMatch(/敏感|链接/);
+      expect(snapshot.diagnostics.join(' ')).toMatch(/无法稳定读取|链接/);
       expect(await nativeCheckInputGate({ projectRoot: root, candidateId: null })).toBeNull();
     },
   );
@@ -838,6 +848,123 @@ describe('Native check input gate', () => {
 });
 
 describe('Native physical check input snapshots', () => {
+  it('reports unreadable environment inputs by path without reusable evidence', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-509-unreadable-'));
+    try {
+      const file = path.join(root, '.env.development');
+      await fs.writeFile(file, 'SYNTHETIC_CONTENT=must-not-appear\n');
+      const open = fs.open;
+      vi.spyOn(fs, 'open').mockImplementation((target, flags, mode) => {
+        if (String(target) === file)
+          return Promise.reject(
+            Object.assign(new Error('fixture access denied'), { code: 'EACCES' }),
+          );
+        return open(target, flags, mode);
+      });
+      const snapshot = await nativeCheckInputSnapshot(fingerprintInput(root));
+      expect(snapshot.complete).toBe(false);
+      expect(snapshot.diagnostics.join(' ')).toContain('.env.development');
+      expect(snapshot.diagnostics.join(' ')).toContain('文件无法读取');
+      expect(JSON.stringify(snapshot)).not.toContain('must-not-appear');
+      expect(
+        await nativeCandidateInputGate({ projectRoot: root, candidateId: 'unreadable' }),
+      ).toBeNull();
+    } finally {
+      vi.restoreAllMocks();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['tracked', 'untracked', 'ignored'])(
+    'binds environment files in independent child repositories under a non-Git root (%s)',
+    async (tracking) => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-509-inputs-'));
+      try {
+        for (const name of ['server', 'client']) {
+          const child = path.join(root, name);
+          await fs.mkdir(child);
+          git(child, 'init', '--quiet');
+          git(child, 'config', 'user.email', 'fixture@example.invalid');
+          git(child, 'config', 'user.name', 'Fixture');
+          await fs.writeFile(path.join(child, 'index.js'), 'export const value = 1;\n');
+          await fs.writeFile(
+            path.join(child, '.gitignore'),
+            tracking === 'ignored' ? '.env*\n' : '',
+          );
+          git(child, 'add', '.');
+          git(child, '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'baseline');
+        }
+        const input = {
+          ...fingerprintInput(root),
+          candidateId: 'issue-509',
+          managedArtifactRoot: path.join(root, 'docs'),
+          plans: ['server', 'client'].map((cwdRef) => ({
+            id: cwdRef,
+            name: cwdRef,
+            executable: process.execPath,
+            argv: ['-e', 'process.exit(0)'],
+            cwdRef,
+            timeoutMs: 1000,
+            repeatable: true,
+          })),
+        };
+        const baseline = await nativeCandidateInputGate(input);
+        expect(baseline).toMatch(/^[a-f0-9]{64}$/u);
+        const child = path.join(root, 'client');
+        const file = path.join(child, '.env.development');
+        const content = 'VUE_APP_BASE_API=/synthetic-509\n';
+        await fs.writeFile(file, content);
+        if (tracking === 'tracked') {
+          git(child, 'add', '.env.development');
+          git(child, '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'environment');
+        }
+        const gate = await nativeCandidateInputGate(input);
+        expect(gate).toMatch(/^[a-f0-9]{64}$/u);
+        expect(gate).not.toBe(baseline);
+        expect(await nativeCandidateInputGate(input)).toBe(gate);
+        const snapshot = await nativeCheckInputSnapshot(input);
+        expect(snapshot.complete).toBe(true);
+        expect(JSON.stringify(snapshot)).not.toContain(content.trim());
+        await fs.writeFile(file, 'VUE_APP_BASE_API=/changed\n');
+        expect(await nativeCandidateInputGate(input)).not.toBe(gate);
+        expect((await nativeCheckInputSnapshot(input)).contentFingerprint).not.toBe(
+          snapshot.contentFingerprint,
+        );
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it('hashes environment and key filenames in generated inputs without exposing their contents', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-509-generated-'));
+    try {
+      git(root, 'init', '--quiet');
+      git(root, 'config', 'user.email', 'fixture@example.invalid');
+      git(root, 'config', 'user.name', 'Fixture');
+      await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n');
+      git(root, 'add', '.');
+      git(root, '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'baseline');
+      await fs.mkdir(path.join(root, 'dist'));
+      const input = fingerprintInput(root);
+      const contents = 'synthetic-509-content-only-for-hashing';
+      for (const name of ['.env', '.env.local', 'fixture.key', 'fixture.pem']) {
+        await fs.writeFile(path.join(root, 'dist', name), contents);
+      }
+      const before = await nativeCheckInputSnapshot(input);
+      expect(before.complete).toBe(true);
+      expect(JSON.stringify(before)).not.toContain(contents);
+      for (const name of ['.env', '.env.local', 'fixture.key', 'fixture.pem']) {
+        const gate = await nativeCheckInputGate({ projectRoot: root, candidateId: null });
+        expect(gate).toMatch(/^[a-f0-9]{64}$/u);
+        await fs.writeFile(path.join(root, 'dist', name), `${contents}-changed`);
+        expect(await nativeCheckInputGate({ projectRoot: root, candidateId: null })).not.toBe(gate);
+      }
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('binds root configuration and generated Next types for non-Git subdirectory checks', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-physical-check-inputs-'));
     try {

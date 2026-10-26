@@ -108,8 +108,15 @@ def _extract_loop_interaction(stderr: str | None) -> dict[str, Any]:
             boundaries.append(json.loads(raw))
         except json.JSONDecodeError:
             boundaries.append({"invalid": True})
+    decision_replies = []
+    for raw in re.findall(r"^\[loop\] sdk-decision-reply (.+)$", source, re.MULTILINE):
+        try:
+            decision_replies.append(json.loads(raw))
+        except json.JSONDecodeError:
+            decision_replies.append({"invalid": True})
     return {
         **({"sdk_recovery_boundaries": boundaries} if boundaries else {}),
+        **({"sdk_decision_replies": decision_replies} if decision_replies else {}),
         "actual_turns": _extract_loop_turns(source),
         "decision_points": len(
             re.findall(r"^\[loop\] decision point detected", source, re.MULTILINE)

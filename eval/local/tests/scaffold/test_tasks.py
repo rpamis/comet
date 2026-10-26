@@ -104,6 +104,23 @@ def test_task_declares_classic_proposal_interaction_only_for_fresh_scenarios(moc
         load_task("test-basic", mock_tasks_dir)
 
 
+def test_task_limits_new_reply_requirements_to_the_explicit_decision_scope(mock_tasks_dir):
+    path = mock_tasks_dir / "test-basic/task.toml"
+    prefix = BASIC_TASK_TOML + "\n[evaluation]\nrequire_classic_proposal_interaction = true\n"
+    path.write_text(prefix + 'classic_proposal_interaction_steps = ["full.delivery.confirm"]\n')
+    task = load_task("test-basic", mock_tasks_dir)
+    assert task.config.evaluation.classic_proposal_interaction_steps == ["full.delivery.confirm"]
+    for invalid in [
+        "[]",
+        '["full.unknown.confirm"]',
+        '"full.delivery.confirm"',
+        '["full.delivery.confirm", "full.delivery.confirm"]',
+    ]:
+        path.write_text(prefix + "classic_proposal_interaction_steps = " + invalid + "\n")
+        with pytest.raises(ValueError, match="classic_proposal_interaction_steps"):
+            load_task("test-basic", mock_tasks_dir)
+
+
 def test_load_task_parses_evaluation_and_interaction(mock_tasks_dir: Path):
     task_dir = mock_tasks_dir / "test-basic"
     task_dir.joinpath("task.toml").write_text(

@@ -7,18 +7,6 @@ description: 'Comet Classic 工作流入口。当用户明确调用 /comet-class
 
 Classic 分为 Open → Design → Build → Verify → Archive 五个阶段。OpenSpec 管理需求规格与归档，Superpowers 提供设计方法，以及用户选定的规划、执行和审查方法。完整流程（full）必须经过 brainstorming 和设计确认；hotfix/tweak 使用各自的预设步骤。
 
-编写阶段产物、调用 OpenSpec 或执行阶段推进命令前，先加载对应的 Comet 阶段 Skill；不能只读本入口的阶段表后自行执行整个流程。当前是 `decision`、`evidence` 或 `reconcile` 时，按现有 Run 处理，不重做已完成的阶段动作。
-
-新建 full change，或当前 SDK Action 指定 `comet-open` 时：
-
-**立即执行：** 使用 Skill 工具加载 comet-open 技能。禁止跳过此步骤。
-
-当前 SDK Action 指定 `comet-design` 时：
-
-**立即执行：** 使用 Skill 工具加载 comet-design 技能。禁止跳过此步骤。
-
-技能加载后，继续当前 Run 和对应阶段。用户要求“编写并确认产物”或已逐项给出功能、文件内容和示例，不能代替生成后产物的批准。先展示本次可审阅的产物，再等待用户针对这些内容的实际回复；没有回复时不执行批准命令，也不自行转述“用户已确认”。本次首次展示且尚未明确获批的内容，必须展示后结束当前回复，等待随后实际回复；不能在同一回复中执行批准命令。“按任务要求完成”或“仅为留档展示”不是用户回复，直接实施、关闭可选审查及本地提交授权也不批准新的 Open 产物或 Design 提案。同一未变产物已经获得明确确认时沿用，不重复询问。
-
 ## 1. 确定目标与工作区
 
 开始新任务或更换宿主时，必须读取并执行[宿主能力核对](../comet/reference/host-check.md)，在批准 Open 前确认当前流程所需的能力。执行配置改变后，只补核对新策略需要的能力。
@@ -67,6 +55,16 @@ comet state select <change-name> --json
 | verify                        | `/comet-verify`：执行验收、修复后复验、完成唯一一次最终集成审查              |
 | archive / verify_result: pass | `/comet-archive`：确认归档、只提交当前 change 的文件、完成用户选定的交付方式 |
 
+阶段工作由对应 Skill 执行；编写产物、调用 OpenSpec 或推进前先加载它。`decision`、`evidence` 和 `reconcile` 沿用当前 Run，不重做阶段工作。
+
+新 full / Open，或当前 Action 指定 `comet-open` 时：
+
+**立即执行：** 使用 Skill 工具加载 comet-open 技能。禁止跳过此步骤。
+
+当前 Action 指定 `comet-design` 时：
+
+**立即执行：** 使用 Skill 工具加载 comet-design 技能。禁止跳过此步骤。
+
 只有新需求才考虑推荐轻量流程：风险符合预设要求且用户已明确选择时直接进入；由 Agent 推荐时，说明依据，并展示 hotfix/tweak 与保留 full 的选项及各自影响，等待用户确认。不得擅自把已有 full change 改成轻量流程。公共 API、数据迁移、安全、并发或跨模块设计应按实际风险处理，不能因为文件少就省略必要步骤。
 
 运行 hotfix/tweak 时，SDK 必须读取并执行[预设范围复核](reference/sdk-methods.md#预设范围复核)，按该节核对并复用仍有效的 `rulings.md` 授权；Compat 读取所选预设的 `reference/compat.md` 中“升级判定”。仅文件数超限时先核对范围和已有授权，需要新决定时才展示继续预设或升级 full 的选项。用户选择升级后，使用当前 Run 的 continuation 或 Compat 对应命令推进。`verify_mode` 只决定验证级别，不能替代 workflow 选择或预设升级确认。
@@ -77,10 +75,10 @@ comet state select <change-name> --json
 
 阶段退出检查通过后，按 `comet-classic/reference/auto-transition.md` 读取成功结果中的 `agent.continuation`，只加载它指定的下一 Skill。没有可复用的状态信息、会话恢复时缺少上下文，或发生外部变化时，才重新查询。`auto_transition: false` 只控制是否调用下一 Skill，不改变 Guard 已更新的 phase；`NEXT: manual` 时按 HINT 提示用户并结束本次调用，不追加确认。
 
-决策点是阻塞点：需要用户决定的步骤必须等到明确答复后再继续。首次需要向用户澄清或确认时，必须先读取 `comet-classic/reference/decision-point.md`，按其中的选项式提问、推荐理由、每项影响和 `AskUserQuestion` 优先规则执行；已在当前上下文中时直接复用。以下确认不能因“只有一个推荐方案”或自动衔接而跳过：
+先核对已有批准、委托授权和用户要求的确认方式；需要新决定时，等待明确答复后再继续。首次需要向用户澄清或确认时，必须先读取 `comet-classic/reference/decision-point.md`，按其中的选项式提问、推荐理由、每项影响和 `AskUserQuestion` 优先规则执行；已在当前上下文中时直接复用。以下事项按该协议核对授权；已有授权仍覆盖时继续，需要新决定时才提问：
 
 - 目标 change、PRD 拆分与工作区隔离仍需要用户选择时，把相关问题放在一起询问，并等待选择。
-- Open 产物完成后，请用户最终确认名称、范围和产物；Design 形成方案后，请用户确认正式设计。两者都先提供可以检查的结果，再等待批准或调整意见。
+- Open 产物完成后，请用户最终确认名称、范围和产物；Design 形成方案后，请用户确认正式设计。两者都按已有授权核对当前内容；需要用户决定时，提供可检查的结果并等待答复。
 - Build 写计划前，只有执行/TDD/review 配置缺失或用户要求更改时，才请用户补充或修改；用户主动要求 `plan-ready` 暂停后，等明确继续指令再恢复。
 - Verify 中需要接受偏差、处理实现与 Spec 不一致的问题，或达到自动修复上限后决定如何继续；Archive 中需要选择归档与交付方式。
 - 需要从预设升级为完整流程，或 Build 中需要扩大范围、重新设计、拆分 change。

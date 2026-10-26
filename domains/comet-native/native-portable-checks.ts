@@ -582,10 +582,6 @@ function nativeGeneratedInputRoots(
   return [...roots].sort();
 }
 
-function sensitiveNativeIgnoredInputPath(relative: string): boolean {
-  return /(?:^|\/)(?:\.env(?:\..*)?|[^/]+\.(?:key|pem|p12|pfx))$/iu.test(relative);
-}
-
 /** 一次读取提交和分支；保持既有摘要的字段和值。 */
 function nativeGitHead(projectRoot: string): { head: string; branch: string } {
   const [head, ref] = runGitCommand(projectRoot, [
@@ -723,11 +719,6 @@ async function nativeIgnoredCheckInputSnapshot(
     if (!isInsidePath(projectRoot, target)) {
       return incompleteNativeIgnoredInputSnapshot(`项目生成输入超出工作区：${relative}`);
     }
-    if (sensitiveNativeIgnoredInputPath(relative)) {
-      return incompleteNativeIgnoredInputSnapshot(
-        `项目生成输入包含敏感文件：${relative}；未读取文件内容`,
-      );
-    }
     try {
       const realTarget = await fs.realpath(target);
       if (
@@ -806,6 +797,11 @@ async function nativePhysicalCheckInputSnapshot(
   const cwdRefs = ['.'];
   void plans;
   const files = new Map<string, NativeIgnoredInputFile>();
+  let diagnostic = '';
+  const unreadable = (relative: string, reason: string): false => {
+    diagnostic = `工作区输入无法完整读取：${relative || '.'}（${reason}）`;
+    return false;
+  };
   const isGeneratedDirectory = (name: string): boolean =>
     NATIVE_GENERATED_INPUT_DIRECTORIES.includes(
       name as (typeof NATIVE_GENERATED_INPUT_DIRECTORIES)[number],
@@ -820,7 +816,7 @@ async function nativePhysicalCheckInputSnapshot(
     try {
       entries = await fs.readdir(directory, { withFileTypes: true });
     } catch {
-      return false;
+      return unreadable(relativeDirectory, '无法列出目录');
     }
     entries.sort((left, right) => left.name.localeCompare(right.name, 'en'));
     for (const entry of entries) {
@@ -851,8 +847,8 @@ async function nativePhysicalCheckInputSnapshot(
         }
         continue;
       }
-      if (sensitiveNativeIgnoredInputPath(relative)) return false;
-      if (!entry.isFile()) return false;
+      // 候选绑定只保存内容摘要；不能根据文件名否决用户的项目输入。
+      if (!entry.isFile()) return unreadable(relative, '不是普通文件或包含链接');
       try {
         const { digest, size } = await digestNativeInputFileContent(target);
         files.set(relative, {
@@ -861,7 +857,7 @@ async function nativePhysicalCheckInputSnapshot(
           size,
         });
       } catch {
-        return false;
+        return unreadable(relative, '文件无法读取或读取期间发生变化');
       }
     }
     return true;
@@ -873,9 +869,7 @@ async function nativePhysicalCheckInputSnapshot(
     if (
       !(await visit(directory, relativeDirectory, isGeneratedDirectory(path.basename(directory))))
     ) {
-      return incompleteNativeIgnoredInputSnapshot(
-        '工作区文件无法完整读取：文件数量、大小、敏感文件或读取稳定性检查未通过',
-      );
+      return incompleteNativeIgnoredInputSnapshot(diagnostic);
     }
   }
   return {
