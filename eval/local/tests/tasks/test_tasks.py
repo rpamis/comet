@@ -42,7 +42,12 @@ from scaffold.python.agents import get_agent_adapter
 from scaffold.python.execution import redact_sensitive
 from scaffold.python.manifest_tasks import load_manifest_tasks
 from scaffold.python.eval_context import resolve_eval_context
-from scaffold.python.task_resolution import build_task_catalogue, resolve_task_set
+from scaffold.python.task_resolution import (
+    ResolvedTask,
+    ResolvedTaskSet,
+    build_task_catalogue,
+    resolve_task_set,
+)
 from scaffold.python.paths import get_tasks_dir
 from scaffold.python.tasks import list_tasks, load_task
 from scaffold.python.treatments import TreatmentConfig, build_treatment_skills, load_treatments
@@ -167,6 +172,12 @@ def generate_test_params(task_filter: str | None, treatment_filter: str | None, 
             or read_case_selection() is not None
         ):
             raise ValueError("发布矩阵不允许筛选 task/treatment、改变 profile/交互或只重跑失败项")
+        selected = tuple(
+            ResolvedTask(name, "bundled", load_task(name, tasks_dir=get_tasks_dir()))
+            for name in dict.fromkeys(task for task, _, _, _ in cases)
+        )
+        config._comet_frozen_task_set = ResolvedTaskSet("explicit", selected, None)
+        config._comet_resolved_tasks = {item.name: item.task for item in selected}
         return [(task, treatment) for task, treatment, _, _ in cases]
     if config is not None:
         conftest._ensure_auto_generated_manifest(config, task_filter)

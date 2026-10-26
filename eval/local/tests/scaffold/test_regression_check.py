@@ -766,6 +766,30 @@ def test_release_preflight_uses_fixed_suite_artifact_root_without_standalone_tar
         assert config._comet_execution is execution
 
 
+@pytest.mark.parametrize("suite,count", [("current", 1), ("recovery", 3)])
+def test_release_collection_freezes_exact_tasks_for_docker_prebuild(suite, count):
+    from local.tests.tasks import test_tasks as task_runner
+
+    options = {"--count": count}
+    config = SimpleNamespace(
+        option=SimpleNamespace(release_suite=suite),
+        getoption=lambda flag: options.get(flag),
+    )
+    pairs = task_runner.generate_test_params(None, None, config)
+    expected = {task for task, _, _, _ in gate.release_cases(suite, count)}
+    assert {task for task, _ in pairs} == expected
+    frozen = getattr(config, "_comet_frozen_task_set", None)
+    assert frozen is not None
+    assert {item.name for item in frozen.tasks} == expected
+    assert len(frozen.tasks) == len(expected)
+    assert all(item.provenance == "bundled" for item in frozen.tasks)
+    assert set(config._comet_resolved_tasks) == expected
+    selected = conftest._docker_environment_dirs_for_request(
+        SimpleNamespace(config=config), gate.EVAL_ROOT / "local/tasks"
+    )
+    assert set(selected) == {item.task.environment_dir for item in frozen.tasks}
+
+
 @pytest.mark.parametrize(
     "field,value", [("snapshotHash", "0" * 64), ("compilerVersion", "test-compiler")]
 )

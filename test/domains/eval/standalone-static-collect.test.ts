@@ -106,6 +106,11 @@ describe('standalone static collector parity', () => {
       2,
     ],
     [
+      'freezes the exact fixed release tasks before Docker image preparation',
+      'local/tests/scaffold/test_regression_check.py::test_release_collection_freezes_exact_tasks_for_docker_prebuild',
+      2,
+    ],
+    [
       'recognizes every approval request preserved from the original Classic failure',
       'local/tests/scaffold/test_utils.py::test_decision_point_detector_accepts_original_104058_choice_replies',
       4,

@@ -2,6 +2,25 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "release-suite-frozen-task-prebuild",
+      "behavior": "固定发布矩阵在收集时登记同一批真实任务，Docker预构建只读取已冻结任务，不能因缺少单个Skill任务解析而启动失败。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "runtime",
+      "reproduction": "f416316e实际六样本收集成功后，六项均在prebuild_docker_image因缺少_comet_frozen_task_set报错，未调用模型；current和recovery两项回归在原实现均失败。",
+      "expected": "冻结固定矩阵中去重后的实际bundled任务及原环境目录，不生成替代任务，不改变各任务的三次样本身份。",
+      "forbidden": "跳过Docker准备、把未冻结或其他任务目录混入本轮、过滤矩阵或将setup error当作模型通过。",
+      "rootCause": "发布矩阵分支直接返回task/treatment配对，没有同步当前Docker准备步骤所需的统一冻结任务集。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "freezes the exact fixed release tasks before Docker image preparation",
+          "requiredNames": [
+            "standalone static collector parity freezes the exact fixed release tasks before Docker image preparation"
+          ]
+        }
+      ]
+    },
+    {
       "id": "release-suite-fixed-artifact-preflight",
       "behavior": "固定发布套件使用明确的套件输出目录完成启动检查，不能误要求单个Skill目标；普通独立评估仍要求目标上下文。",
       "sources": ["report:2026-10-26-051-release-closure"],
