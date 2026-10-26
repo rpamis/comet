@@ -57,6 +57,7 @@ def test_candidate_harness_hash_binds_core_tests_helpers_and_vitest_configuratio
         "eval/local/scripts/regression_check.py",
         "eval/pyproject.toml",
         "eval/uv.lock",
+        "eval/local/skills/example/SKILL.md",
         "test/helpers/example.ts",
         "vitest.config.ts",
     ]
@@ -81,6 +82,28 @@ def test_candidate_harness_hash_binds_core_tests_helpers_and_vitest_configuratio
     assert changed_test["harnessHash"] != original["harnessHash"]
     (tmp_path / "vitest.config.ts").write_text("changed runner configuration\n", encoding="utf8")
     assert gate.candidate_identity(tmp_path)["harnessHash"] != changed_test["harnessHash"]
+
+
+@pytest.mark.parametrize("location", ["root", "nested"])
+@pytest.mark.parametrize("error_type", [PermissionError, OSError])
+def test_candidate_skill_enumeration_rejects_unreadable_directories(
+    tmp_path, monkeypatch, location, error_type
+):
+    skills = tmp_path / "skills"
+    skill = skills / "example"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("original skill\n", encoding="utf8")
+    unavailable = skills if location == "root" else skill
+    scandir = gate.os.scandir
+
+    def unreadable(path):
+        if Path(path) == unavailable:
+            raise error_type(13, "unavailable Skill directory", str(path))
+        return scandir(path)
+
+    monkeypatch.setattr(gate.os, "scandir", unreadable)
+    with pytest.raises(gate.GateError, match="不能完整读取候选目录"):
+        gate.regular_tree_files(skills, exclude_generated_eval=True)
 
 
 def test_candidate_harness_ignores_old_eval_outputs_but_binds_authored_skill_inputs(

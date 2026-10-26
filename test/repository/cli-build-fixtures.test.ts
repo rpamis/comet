@@ -16,6 +16,7 @@ beforeEach(() => {
   probes.readProcessIdentity.mockResolvedValue('synthetic-process-identity');
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const root of roots.splice(0)) {
     expect(path.relative(os.tmpdir(), root).startsWith('comet-cli-build-fixture-')).toBe(true);
     await fs.rm(root, { recursive: true, force: true });
@@ -73,6 +74,28 @@ it('rejects a successful build process that still leaves compiled modules incomp
     "import fs from 'node:fs';fs.writeFileSync('dist/app/cli/index.js','still partial');\n",
   );
   await expect(ensureCliBuilt(root)).rejects.toThrow('CLI build outputs are incomplete');
+});
+
+it('reuses complete fresh CLI outputs without creating a build lock in a read-only candidate', async () => {
+  const root = await fixture();
+  await ensureCliBuilt(root);
+  const open = vi.spyOn(fs, 'open').mockImplementation(async () => {
+    throw Object.assign(new Error('read-only candidate'), { code: 'EROFS' });
+  });
+  await ensureCliBuilt(root);
+  expect(open).not.toHaveBeenCalled();
+  expect(await fs.readFile(path.join(root, 'build-count.txt'), 'utf8')).toBe('build\n');
+});
+
+it('waits for a live build owner even when compiled CLI outputs are fresh', async () => {
+  const root = await fixture();
+  await ensureCliBuilt(root);
+  const prior = await owner(root, 10 * 60_000);
+  await expect(
+    ensureCliBuilt(root, { lockOptions: { timeoutMs: 40, retryMs: 5 } }),
+  ).rejects.toThrow('Timed out waiting');
+  expect(await fs.readFile(prior.ref, 'utf8')).toBe(prior.bytes);
+  expect(await fs.readFile(path.join(root, 'build-count.txt'), 'utf8')).toBe('build\n');
 });
 
 it('does not take a live build lock just because its timestamp is old', async () => {

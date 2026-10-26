@@ -90,7 +90,11 @@ def read_json(path: Path) -> dict:
 def regular_tree_files(root: Path, *, exclude_generated_eval: bool = False) -> list[Path]:
     files = []
     if exclude_generated_eval:
-        for current, directories, names in os.walk(root):
+
+        def unreadable(error: OSError) -> None:
+            raise GateError(f"不能完整读取候选目录：{error.filename or root}") from error
+
+        for current, directories, names in os.walk(root, onerror=unreadable):
             parent = Path(current)
             for name in directories[:]:
                 if parent.name == ".comet" and name == "eval":

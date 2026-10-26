@@ -2,6 +2,50 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "release-candidate-unreadable-skill-inputs",
+      "behavior": "候选 Skill 输入目录无法枚举时明确拒绝不完整身份，不能静默跳过目录。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "runtime",
+      "reproduction": "e3e4b7 的最小临时 Skill 目录注入真实 os.scandir PermissionError 后返回空输入列表；四项根目录/子目录与权限/I/O 错误断言均在旧实现失败。",
+      "expected": "任何正式 Skill 输入目录读取失败均抛出 GateError，正常生成输出排除和其他正式输入绑定继续有效。",
+      "forbidden": "把无法读取的 Skill 目录按空目录继续生成完整候选身份，或为了处理异常扩大生成输出排除范围。",
+      "rootCause": "新增 os.walk 遍历没有提供 onerror，Python 默认吞掉 scandir 异常。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "rejects unreadable Skill directories instead of accepting incomplete candidate inputs",
+          "requiredNames": [
+            "standalone static collector parity rejects unreadable Skill directories instead of accepting incomplete candidate inputs"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "release-core-read-only-cli-build",
+      "behavior": "只读候选已有完整且最新 CLI 时直接复用，不创建仓库构建锁；已有构建者和缺失编译模块继续阻塞或重建。",
+      "sources": ["report:2026-10-26-051-release-closure"],
+      "coverageLevel": "public-cli",
+      "reproduction": "e3e4b7 跨平台前置的 history-app-cli-help 在 /repo 只读挂载上创建 .comet-test-build.lock，因 EROFS 整个 suite 失败；相同只读文件系统负例在旧 helper 失败。",
+      "expected": "完整、新鲜且没有已有 owner 的 CLI 可在只读目录查询帮助；存在活跃 owner 仍等待，缺少任一编译输出仍重建并复核。",
+      "forbidden": "放宽候选源码为可写、跳过完整编译输出检查、夺取活跃或未知 owner 的锁，或把 suite 失败产生的 skipped 用例计为通过。",
+      "rootCause": "测试构建 helper 在检查是否需要构建前无条件取得写锁。",
+      "tests": [
+        {
+          "file": "test/repository/cli-build-fixtures.test.ts",
+          "namePattern": "reuses complete fresh CLI outputs|waits for a live build owner even when compiled CLI outputs are fresh",
+          "requiredNames": [
+            "reuses complete fresh CLI outputs without creating a build lock in a read-only candidate",
+            "waits for a live build owner even when compiled CLI outputs are fresh"
+          ]
+        },
+        {
+          "file": "test/app/cli-help.test.ts",
+          "namePattern": "uses consistent English guidance in root help",
+          "requiredNames": ["CLI help text uses consistent English guidance in root help"]
+        }
+      ]
+    },
+    {
       "id": "release-candidate-generated-eval-output-exclusion",
       "behavior": "固定发布候选身份排除Skill包中的旧Eval生成输出，仍绑定真实Skill、任务、验证器、锁文件和明确跟踪的文件。",
       "sources": ["report:2026-10-26-051-release-closure"],

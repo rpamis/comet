@@ -91,6 +91,11 @@ describe('standalone static collector parity', () => {
       'local/tests/scaffold/test_regression_check.py::test_candidate_harness_ignores_old_eval_outputs_but_binds_authored_skill_inputs',
     ],
     [
+      'rejects unreadable Skill directories instead of accepting incomplete candidate inputs',
+      'local/tests/scaffold/test_regression_check.py::test_candidate_skill_enumeration_rejects_unreadable_directories',
+      4,
+    ],
+    [
       'recognizes every approval request preserved from the original Classic failure',
       'local/tests/scaffold/test_utils.py::test_decision_point_detector_accepts_original_104058_choice_replies',
       4,
