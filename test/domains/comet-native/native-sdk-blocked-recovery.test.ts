@@ -17,6 +17,7 @@ import {
 } from '../../../domains/comet-native/native-portable-state.js';
 import {
   createRuntime,
+  createFileRuntimeStore,
   defineWorkflow,
   hashRuntimeValue,
   type RuntimeAction,
@@ -24,6 +25,7 @@ import {
   type WorkflowRuntime,
 } from '../../../domains/engine/runtime.js';
 import { defineNativeWorkflowApplication } from '../../../domains/comet-native/native-sdk-application.js';
+import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { nativeSdkBeforeBlockedVerifierRecovery } from '../../../domains/comet-native/native-sdk-definition.js';
 import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
 import {
@@ -417,8 +419,17 @@ async function blockedFixture(
   const state = parseNativePortableState(run.state);
   if (options.misclaimedVerifier) {
     const action = run.actions.find(({ status }) => status === 'pending')!;
-    run = await dispatch({
-      operation: 'claim',
+    // 重现旧版已接受的错误领取；当前 Native 入口会在领取阶段拒绝它。
+    const application = defineNativeWorkflowApplication();
+    const legacy = createRuntime({
+      ...application,
+      workflows: [application.workflow],
+      transitionHandlers: [application.transitionHandler],
+      store: createFileRuntimeStore({
+        rootDir: path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'sdk-runs', 'native'),
+      }),
+    });
+    run = await legacy.claim({
       runId: name,
       actionId: action.id,
       attempt: action.attempt,
@@ -712,7 +723,7 @@ describe('blocked Verifier recovery command contract', () => {
     const blocked = JSON.parse((await f.native(['archive', f.name])).stdout!);
     expect(blocked.data.phase).toBe('verify');
     expect(blocked.data.recovery.code).toBe('candidate-drift');
-    expect(blocked.data.continuation.userCommunication.message).not.toMatch(
+    expect(JSON.stringify(blocked.data.continuation.userCommunication)).not.toMatch(
       /failure budget|失败预算/u,
     );
     const repaired = await f.native(

@@ -481,6 +481,10 @@ export async function inspectNativeSdkPendingArchiveDrift(options: {
   message: string;
 } | null> {
   const { run, action, projectRoot } = options;
+  if (action.stepId === 'archive.finalize') {
+    await archiveFinalizeBinding(run, action, projectRoot);
+    return null;
+  }
   if (!['archive.prepare', 'archive.execute'].includes(action.stepId)) return null;
   const state = parseNativePortableState(run.state);
   const input = run.input as { artifactRootRef: string };

@@ -4,6 +4,7 @@ import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { beforeEach, afterEach, it, expect, vi } from 'vitest';
 import { createRuntime } from '../../../domains/engine/runtime.js';
+import { getCurrentVersion } from '../../../platform/version/version.js';
 import {
   loadWorkflowApplication,
   inspectApplicationArtifactFiles,
@@ -25,7 +26,7 @@ beforeEach(async () => {
       id: 'design-build',
       version: '1',
       base: 'standalone',
-      runtimeVersion: '0.5.0',
+      runtimeVersion: getCurrentVersion(),
       entrySkill: 'SKILL.md',
       module: 'application.mjs',
       skills: [],

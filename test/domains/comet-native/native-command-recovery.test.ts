@@ -32,6 +32,24 @@ async function project() {
   return { root, paths };
 }
 
+it.each([
+  ['unable to create ref.lock', true],
+  ['WORKTREE /candidate is LOCKED', true],
+  ['unable to create\nref.lock', false],
+  ['worktree\nlocked', false],
+  ['worktree'.repeat(20_000), false],
+  ['unable to create'.repeat(20_000), false],
+])('classifies Git lock diagnostics without crossing lines (%#)', async (message, locked) => {
+  const { root } = await project();
+  const result = await withNativeCommandRecovery(
+    { command: 'archive', exitCode: 73, error: { code: 'conflict', message } },
+    { projectRoot: root, onlyLocks: true },
+  );
+  expect((result.data as { recovery?: { code: string } } | undefined)?.recovery?.code).toBe(
+    locked ? 'git-lock' : undefined,
+  );
+});
+
 it('reports a directory occupying a project lock path without advertising deletion as lock repair', async () => {
   const { root, paths } = await project();
   const file = path.join(paths.locksDir, 'interrupted.lock');

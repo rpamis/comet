@@ -100,8 +100,12 @@ describe('Native workspace finish recovery', () => {
         { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
       ).trim();
     git(target, 'init', '-q', '-b', 'main');
+    git(target, 'config', 'user.name', 'Fixture');
+    git(target, 'config', 'user.email', 'fixture@example.test');
     await fs.writeFile(path.join(target, '.gitignore'), '.comet/runtime\n');
     git(dependency, 'init', '-q');
+    git(dependency, 'config', 'user.name', 'Fixture');
+    git(dependency, 'config', 'user.email', 'fixture@example.test');
     await fs.writeFile(path.join(dependency, 'value.txt'), 'baseline\n');
     git(dependency, 'add', '.');
     git(dependency, 'commit', '-qm', 'baseline');
@@ -109,6 +113,8 @@ describe('Native workspace finish recovery', () => {
     git(target, 'commit', '-qm', 'baseline');
     git(target, 'worktree', 'add', '-q', '-b', 'change', change);
     git(change, 'clone', '-q', '--no-local', dependency, path.join(change, 'dependency'));
+    git(path.join(change, 'dependency'), 'config', 'user.name', 'Fixture');
+    git(path.join(change, 'dependency'), 'config', 'user.email', 'fixture@example.test');
     await fs.writeFile(path.join(dependency, 'value.txt'), 'target\n');
     git(dependency, 'commit', '-qam', 'target');
     const targetChild = git(dependency, 'rev-parse', 'HEAD');

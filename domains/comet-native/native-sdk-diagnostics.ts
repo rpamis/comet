@@ -70,7 +70,8 @@ export async function inspectNativeSdkRunDiagnostics(
   const preflight = [...run.actions]
     .reverse()
     .find((action) => action.stepId === 'archive.prepare');
-  const candidateId = parseNativePortableState(run.state).builder_handoff?.candidate_id;
+  const state = parseNativePortableState(run.state);
+  const candidateId = state.builder_handoff?.candidate_id;
   const currentCheck = [...run.actions]
     .reverse()
     .find(
@@ -86,7 +87,8 @@ export async function inspectNativeSdkRunDiagnostics(
       ?.candidateInputFingerprintGate === null;
   if (
     failedCandidateCapture ||
-    (preflight &&
+    (state.phase === 'archive' &&
+      preflight &&
       ['pending', 'failed'].includes(preflight.status) &&
       !run.actions
         .slice(run.actions.indexOf(preflight) + 1)

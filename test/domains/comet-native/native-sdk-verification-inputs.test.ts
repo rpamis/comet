@@ -941,6 +941,25 @@ describe('Native SDK verification input binding', () => {
     });
   });
 
+  it('rejects stale verification for generated input inside an entirely ignored parent and archives restored input', async () => {
+    const prepared = await checkedCandidate({
+      files: { 'scratch/app/dist/input.json': 'original' },
+      prepareProject: async (root) => {
+        await fs.appendFile(path.join(root, '.gitignore'), 'scratch/\n');
+      },
+      checkSource:
+        'require("node:fs").readFileSync("scratch/app/dist/input.json", "utf8"); process.stdout.write("verified");',
+    });
+    const check = prepared.run.actions.find((action) => action.stepId === 'verify.checks')!;
+    await writeProjectFile(prepared.root, 'scratch/app/dist/input.json', 'changed');
+    await expect(submitVerifierResult(prepared)).rejects.toThrow('OUTCOME_REJECTED');
+    await writeProjectFile(prepared.root, 'scratch/app/dist/input.json', 'original');
+    const current = { ...prepared, run: (await prepared.store.read(prepared.run.runId))! };
+    const verified = await submitVerifierResult(current, 'pass', 'restored-generated-input');
+    expect(verified.actions.find((action) => action.id === check.id)).toEqual(check);
+    await completeArchive(current, verified);
+  });
+
   it.each<ReceiptFault>(['null-snapshot', 'unknown-schema', 'missing-candidate', 'incomplete'])(
     'rejects a %s receipt instead of falling back to matching legacy fingerprints',
     async (receiptFault) => {

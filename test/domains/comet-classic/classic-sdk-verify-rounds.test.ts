@@ -430,7 +430,11 @@ async function fixture(
   managedIgnore?: string,
   deltaSpec?: string,
 ) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic verify rounds '));
+  // 固定 macOS 临时工作区深度，保持绝对路径探测预算不受 /var/folders 随机层级影响。
+  const temporaryRoot = process.platform === 'darwin' ? await fs.realpath('/tmp') : os.tmpdir();
+  const root = await fs.realpath(
+    await fs.mkdtemp(path.join(temporaryRoot, 'classic verify rounds ')),
+  );
   roots.push(root);
   const projectRoot = path.join(root, 'project');
   const home = path.join(root, 'home');

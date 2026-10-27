@@ -547,12 +547,44 @@ function isNativeNextVolatileInputPath(relative: string): boolean {
   );
 }
 
-function nativeGeneratedInputRoots(
+async function nativeGeneratedInputRoots(
+  projectRoot: string,
   plans: readonly NativeCheckPlan[],
   stagedIndex: string,
   ignoredEntries: string,
-): string[] {
+): Promise<{ cwdRefs: string[]; discovery: Map<string, string> }> {
   const roots = new Set(['.', ...plans.map(({ cwdRef }) => cwdRef)]);
+  const discovery = new Map<string, string>();
+  const visit = async (relative: string): Promise<void> => {
+    const parts = relative.split('/').filter(Boolean);
+    if (
+      parts.some(
+        (part) =>
+          NATIVE_DEPENDENCY_INPUT_DIRECTORIES.has(part) ||
+          NATIVE_WORKTREE_INPUT_DIRECTORIES.has(part),
+      )
+    )
+      return;
+    if (isNativeOwnedInputPath(relative, projectRoot)) return;
+    const generated = parts.findIndex((part) =>
+      NATIVE_GENERATED_INPUT_DIRECTORIES.includes(
+        part as (typeof NATIVE_GENERATED_INPUT_DIRECTORIES)[number],
+      ),
+    );
+    if (generated !== -1) {
+      roots.add(parts.slice(0, generated).join('/') || '.');
+      return;
+    }
+    const target = path.resolve(projectRoot, ...parts);
+    const stat = await fs.lstat(target);
+    if (stat.isSymbolicLink()) throw new Error('Generated input discovery contains a link');
+    if (!stat.isDirectory()) return;
+    discovery.set(target, `${stat.dev}:${stat.ino}:${stat.mtimeMs}:${stat.ctimeMs}`);
+    const directory = await fs.opendir(target);
+    for await (const entry of directory) {
+      if (entry.isDirectory() || entry.isSymbolicLink()) await visit(`${relative}/${entry.name}`);
+    }
+  };
   // 已跟踪的项目清单覆盖 monorepo 子项目，不扫描 node_modules 寻找项目。
   for (const entry of stagedIndex.split('\0')) {
     const relative = entry.slice(entry.indexOf('\t') + 1);
@@ -578,8 +610,9 @@ function nativeGeneratedInputRoots(
       )
         roots.add(parts.slice(0, index).join('/') || '.');
     }
+    if (entry.endsWith('/')) await visit(entry.replace(/\/$/u, ''));
   }
-  return [...roots].sort();
+  return { cwdRefs: [...roots].sort(), discovery };
 }
 
 /** 一次读取提交和分支；保持既有摘要的字段和值。 */
@@ -623,7 +656,12 @@ async function nativeIgnoredCheckInputSnapshot(
       '--directory',
       '-z',
     ]);
-    const cwdRefs = nativeGeneratedInputRoots(plans, stagedIndex, ignoredEntries);
+    const { cwdRefs, discovery } = await nativeGeneratedInputRoots(
+      projectRoot,
+      plans,
+      stagedIndex,
+      ignoredEntries,
+    );
     const selections: Array<{ ref: string; exclusions: string[] }> = [];
     const roots = new Map<string, string | null>();
     const rootStamp = (info: import('node:fs').Stats) =>
@@ -682,6 +720,11 @@ async function nativeIgnoredCheckInputSnapshot(
         ]),
       )
     ).join('\0');
+    for (const [directory, before] of discovery) {
+      const stat = await fs.lstat(directory);
+      if (`${stat.dev}:${stat.ino}:${stat.mtimeMs}:${stat.ctimeMs}` !== before)
+        return incompleteNativeIgnoredInputSnapshot('项目生成输入的父目录在采样期间发生变化');
+    }
     // 只复查根的存在与身份；Next cache/trace 等已排除内容可改变目录时间。
     for (const [target, before] of roots) {
       const after = await fs
@@ -952,8 +995,6 @@ export async function nativeGeneratedCheckInputSnapshot(options: NativeCheckInpu
   let physical: NativeIgnoredInputSnapshot = { complete: true, files: [] };
   let gitView = false;
   try {
-    runGitCommand(options.projectRoot, ['rev-parse', 'HEAD']);
-    gitView = true;
     const indexArgs = ['ls-files', '--stage', '-z', '--', ...exclusions];
     const listing = await runGitCommandAsync(options.projectRoot, [
       'ls-files',
@@ -965,6 +1006,7 @@ export async function nativeGeneratedCheckInputSnapshot(options: NativeCheckInpu
       '--',
       ...exclusions,
     ]);
+    gitView = true;
     const indexed: string[] = [];
     const others: string[] = [];
     for (const entry of listing.split('\0').filter(Boolean)) {

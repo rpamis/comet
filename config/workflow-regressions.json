@@ -4220,6 +4220,205 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-ignored-parent-generated-input-binding",
+      "sources": ["https://github.com/rpamis/comet/pull/510#discussion_r4385630080"],
+      "behavior": "被整体忽略的父目录内的生成输入仍绑定检查，修改后拒绝旧验收，恢复后保留原检查归档。",
+      "coverageLevel": "runtime",
+      "reproduction": "旧051对 scratch/ 整体忽略时，改写 scratch/app/dist/input.json 后生成摘要不变；新增同一断言先失败。",
+      "expected": "发现嵌套生成目录，排除依赖目录，改变真实输入后拒绝旧验收，恢复原文后完成归档。",
+      "forbidden": "遗漏生成输入却标记完整、遍历依赖、复用陈旧验收或重跑原检查。",
+      "rootCause": "Git --directory 折叠 ignored 父目录，根发现只解析已返回的目录名称。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "binds generated inputs inside an entirely ignored parent without traversing dependencies",
+          "requiredNames": [
+            "Native check input fingerprint binds generated inputs inside an entirely ignored parent without traversing dependencies"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "rejects stale verification for generated input inside an entirely ignored parent and archives restored input",
+          "requiredNames": [
+            "Native SDK verification input binding rejects stale verification for generated input inside an entirely ignored parent and archives restored input"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ci-node-regressions-prepare-python-environment",
+      "sources": ["https://github.com/rpamis/comet/pull/510#discussion_r4385630081"],
+      "behavior": "运行依赖 Eval 的 Node 回归前，CI 显式安装 Python、uv 并同步锁定依赖。",
+      "coverageLevel": "unit",
+      "reproduction": "旧 core-regressions 未安装 uv 或同步环境，Node22 的 standalone-static-collect 也因缺少 pytest 等依赖失败。",
+      "expected": "quality、core-regressions、node-compatibility 均先准备锁定 Eval 环境。",
+      "forbidden": "测试依赖预装环境或隐式下载环境后才偶然通过。",
+      "rootCause": "新增直接调用 uv --no-sync 的回归未配套 CI 环境准备。",
+      "tests": [
+        {
+          "file": "test/repository/ci-workflows.test.ts",
+          "namePattern": "prepares locked Python dependencies before Node regression jobs invoke the Eval harness",
+          "requiredNames": [
+            "CI workflows prepares locked Python dependencies before Node regression jobs invoke the Eval harness"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hook-windows-short-path-ownership",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/40459417300/job/122040652901"],
+      "behavior": "Windows 短路径下的项目文件仍进入 Hook 阶段和 change 归属检查。",
+      "coverageLevel": "public-cli",
+      "reproduction": "旧 bundle 在 RUNNER~1 临时项目中把本项目文件判为外部文件，允许跨 change 写入。",
+      "expected": "短路径正确归属项目，跨 change 写入被拒绝，真实外部和链接目标仍按原规则处理。",
+      "forbidden": "因短路径绕过 Guard，或将外部路径误作项目内路径。",
+      "rootCause": "逐段物理路径没有统一 Windows 短名称。",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/hook-target-scope.test.ts",
+          "namePattern": "keeps canonical and Windows short-name project targets in scope",
+          "requiredNames": [
+            "scopeCometHookTargets keeps canonical and Windows short-name project targets in scope"
+          ]
+        },
+        {
+          "file": "test/repository/comet-entry-runtime-assets.test.ts",
+          "namePattern": "blocks a selected Classic change from writing another Classic change artifact",
+          "requiredNames": [
+            "Comet entry resolver runtime release asset blocks a selected Classic change from writing another Classic change artifact"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-missing-shape-fingerprint-recovery",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/40459417300/job/122040652946"],
+      "behavior": "缺少确认摘要的旧 Shape 状态保留重新准备和确认入口。",
+      "coverageLevel": "public-cli",
+      "reproduction": "旧 parser 在原确认函数运行前拒绝语义快照，status 返回 invalid，无法回到 Shape。",
+      "expected": "拒绝旧确认，恢复同一 change 的 Shape，不能进入 Build。",
+      "forbidden": "自动批准缺失摘要，或无法通过原流程修复。",
+      "rootCause": "语义快照解析提前要求已有批准摘要，遮蔽原有边界恢复。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "fails closed when a persisted Shape confirmation boundary has no fingerprint",
+          "requiredNames": [
+            "Native portable Runtime vertical path fails closed when a persisted Shape confirmation boundary has no fingerprint"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-joint-shape-confirmation.test.ts",
+          "namePattern": "rejects a legacy pending boundary with no Shape fingerprint",
+          "requiredNames": [
+            "Native joint Supervisor Shape decision rejects a legacy pending boundary with no Shape fingerprint"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-preview-applied-specs",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/40459417300/job/122040652959"],
+      "behavior": "归档预览识别原事务已应用的 Specs，允许完成待执行的归档步骤且保持只读。",
+      "coverageLevel": "runtime",
+      "reproduction": "旧 dry-run 在 archive.execute 后用归档前的通用摘要复核，合法 checkpoint 2 的 ready 为 false。",
+      "expected": "三个归档检查点均可只读预览并完成，真实候选变化仍拒绝。",
+      "forbidden": "预览执行副作用，接受实际候选漂移，或阻塞原事务收尾。",
+      "rootCause": "预览没有复用归档动作自身的候选与事务绑定。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "completes Archive from persisted checkpoint",
+          "requiredNames": [
+            "Native SDK Workflow Application completes Archive from persisted checkpoint 0 without replaying completed Actions",
+            "Native SDK Workflow Application completes Archive from persisted checkpoint 1 without replaying completed Actions",
+            "Native SDK Workflow Application completes Archive from persisted checkpoint 2 without replaying completed Actions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-legacy-archive-drift-repair-wait",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/40459417300/job/122040652959"],
+      "behavior": "旧失败 Archive 迁移后继续原 Run 的 Verify 修复步骤。",
+      "coverageLevel": "runtime",
+      "reproduction": "原迁移成功产生 verify.stop ready token 后，诊断仍以 Archive 候选漂移阻止该 token 执行。",
+      "expected": "保留原失败记录和审批，进入同一 Run 的 Verify 修复等待。",
+      "forbidden": "重新归档，复用失效验收，或一直停在没有恢复入口的状态。",
+      "rootCause": "诊断把已经转入 Verify 的旧归档失败仍作为当前 Archive 阻塞。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "upgrades a legacy failed Archive drift into the original Verify repair Wait",
+          "requiredNames": [
+            "upgrades a legacy failed Archive drift into the original Verify repair Wait"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-cancellation-pending-cleanup-diagnostic",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/40459417300/job/122040653049"],
+      "behavior": "取消状态的诊断同时保留未完成清理和未知项目锁的恢复信息。",
+      "coverageLevel": "public-cli",
+      "reproduction": "旧 doctor 在遇到未知根锁时提前返回，丢失 sdk-cancellation-cleanup-pending。",
+      "expected": "未清理时报告清理与锁；原取消已清理时具名检查成功，全局检查仍报告其他锁。",
+      "forbidden": "把未完成清理标为完成，或移除其他流程仍持有的锁。",
+      "rootCause": "项目锁的提前返回没有组合具名取消 Run 的诊断。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+          "namePattern": "reports pending selection cleanup and the retained root lock age gate instead of declaring cancellation complete",
+          "requiredNames": [
+            "Native cancellation lifecycle reports pending selection cleanup and the retained root lock age gate instead of declaring cancellation complete"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-workspace-recovery-preserves-reason",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/40459417300/job/122040653159"],
+      "behavior": "工作区归属发生变化时保留具体恢复原因与原状态。",
+      "coverageLevel": "public-cli",
+      "reproduction": "旧恢复包装覆盖既有 workspace-mismatch 原因，返回泛化诊断。",
+      "expected": "保留工作区不匹配原因和恢复命令，不修改 Run。",
+      "forbidden": "覆盖原原因、继续使用旧验收选择或改变状态。",
+      "rootCause": "统一恢复输出没有回退读取已经存在的具体 reason。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+          "namePattern": "replaces acceptance choices with workspace recovery without mutating state",
+          "requiredNames": [
+            "Native v4 public CLI surface replaces acceptance choices with workspace recovery without mutating state"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-git-lock-diagnostic-linear-scan",
+      "sources": ["https://github.com/rpamis/comet/pull/510#discussion_r4385625074"],
+      "behavior": "Git 锁错误分类以线性扫描处理长错误信息，并保持单行匹配。",
+      "coverageLevel": "unit",
+      "reproduction": "CodeQL 确认旧非锚定重复正则对大量 worktree 或 unable to create 重复内容呈超线性匹配。",
+      "expected": "长输入快速完成，大小写与原有单行锁诊断保持一致。",
+      "forbidden": "长错误拖慢恢复、跨行误报锁。",
+      "rootCause": "错误分类使用可能多次回溯的非锚定正则。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-command-recovery.test.ts",
+          "namePattern": "classifies Git lock diagnostics without crossing lines",
+          "requiredNames": [
+            "classifies Git lock diagnostics without crossing lines (0)",
+            "classifies Git lock diagnostics without crossing lines (1)",
+            "classifies Git lock diagnostics without crossing lines (2)",
+            "classifies Git lock diagnostics without crossing lines (3)",
+            "classifies Git lock diagnostics without crossing lines (4)",
+            "classifies Git lock diagnostics without crossing lines (5)"
+          ]
+        }
+      ]
     }
   ]
 }

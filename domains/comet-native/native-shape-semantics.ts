@@ -117,14 +117,13 @@ export function nativeShapeArtifactSnapshot(
       return Object.fromEntries(
         Object.entries(token)
           .filter(([key]) => FIELDS.has(key) && !(key === 'text' && Array.isArray(token.tokens)))
-          .map(([key, child]) => [
-            key,
-            key === 'text' && token.type === 'text' && typeof child === 'string' && prose
-              ? child
-                  .replace(/[\t ]*\n[\t ]*/gu, ' ')
-                  .replace(trimTrailing ? /[\t ]+$/u : /$^/u, '')
-              : normalize(child, proseToken, false, [...structuralPath, key]),
-          ]),
+          .map(([key, child]) => {
+            if (key === 'text' && token.type === 'text' && typeof child === 'string' && prose) {
+              const text = child.replace(/[\t ]*\n[\t ]*/gu, ' ');
+              return [key, trimTrailing ? text.replace(/[\t ]+$/u, '') : text];
+            }
+            return [key, normalize(child, proseToken, false, [...structuralPath, key])];
+          }),
       );
     }
     return value;

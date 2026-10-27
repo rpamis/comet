@@ -216,6 +216,9 @@ def test_classic_layout_lifecycle_uses_current_cli_and_compatible_openspec():
         ),
         ("local/tasks/comet-native-sdk-recovery/environment", {"@fission-ai/openspec": "^1.11.0"}),
         ("local/tasks/comet-classic-sdk-recovery/environment", {"@fission-ai/openspec": "^1.11.0"}),
+        ("local/tasks/comet-classic-full-recovery/environment", {"@fission-ai/openspec": "^1.11.0"}),
+        ("local/tasks/comet-small-cli-archive/environment", {"@fission-ai/openspec": "^1.11.0"}),
+        ("local/tasks/comet-counter-refactor-archive/environment", {"@fission-ai/openspec": "^1.11.0"}),
         ("local/tasks/comet-native-wave-f-dashboard-readonly/environment", {}),
     ],
 )
@@ -271,7 +274,7 @@ def test_comet_task_index_lists_real_tasks():
     index = yaml.safe_load(index_path.read_text(encoding="utf-8"))
     names = [task["name"] for task in index["tasks"]]
     assert sorted(names) == sorted(list_tasks())
-    assert len(names) == 36
+    assert len(names) == 37
     assert set(names) == {
         "authoring-skill-smoke",
         "comet-small-cli-archive",
@@ -279,6 +282,7 @@ def test_comet_task_index_lists_real_tasks():
         "comet-agent-memory-routing",
         "comet-api-cache-ttl",
         "comet-classic-layout-lifecycle",
+        "comet-classic-full-recovery",
         "comet-classic-sdk-recovery",
         "comet-native-sdk-recovery",
         "comet-cross-file-refactor",

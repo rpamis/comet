@@ -97,6 +97,25 @@ import {
   recoverSdkChangeOwnerToActive,
 } from '../../../domains/workflow-contract/change-runtime-owner.js';
 
+/** 归档阻塞保留原错误；未完成的 Action 通过退出码 73 返回恢复信息。 */
+async function expectArchiveFailure(
+  operation: ReturnType<typeof archiveNativeSdkChange>,
+  expected?: string | RegExp,
+) {
+  let message: string;
+  try {
+    const result = await operation;
+    expect(result.exitCode, JSON.stringify(result)).toBe(73);
+    expect(result.error?.code).toBe('blocked');
+    message = result.error!.message;
+  } catch (error) {
+    if (!(error instanceof Error) || error.name === 'AssertionError') throw error;
+    message = error.message;
+  }
+  if (typeof expected === 'string') expect(message).toContain(expected);
+  else if (expected) expect(message).toMatch(expected);
+}
+
 function expectOriginalActionFacts(run: WorkflowRun, expected: WorkflowRun['actions']) {
   const actual = run.actions.filter((action) => expected.some(({ id }) => id === action.id));
   expect(actual).toHaveLength(expected.length);
@@ -660,7 +679,7 @@ describe('Native SDK Workflow Application', () => {
         throw new Error('Host lost after persisting the actual Archive receipt');
       },
     );
-    await expect(archiveNativeSdkChange(options)).rejects.toThrow('EXECUTION_UNKNOWN');
+    await expectArchiveFailure(archiveNativeSdkChange(options), 'EXECUTION_UNKNOWN');
     const interrupted = await runtime.inspect(run.runId);
     expect(interrupted.actions.at(-1)).toMatchObject({
       stepId: 'archive.finalize',
@@ -735,9 +754,19 @@ describe('Native SDK Workflow Application', () => {
       };
       const before = await files(root);
       const preview = await archiveNativeSdkChange({ ...options, dryRun: true });
-      expect(preview.data).toMatchObject({ ready: true });
+      expect(preview.data, JSON.stringify(preview.data.blockers)).toMatchObject({ ready: true });
       expect(await runtime.inspect(run.runId)).toEqual(run);
       expect(await files(root)).toEqual(before);
+      if (checkpoint === 2) {
+        const driftFile = path.join(root, 'unexpected-implementation.js');
+        await fs.writeFile(driftFile, 'export const changed = true;');
+        const changed = await files(root);
+        const blocked = await archiveNativeSdkChange({ ...options, dryRun: true });
+        expect(blocked.data).toMatchObject({ ready: false });
+        expect(await runtime.inspect(run.runId)).toEqual(run);
+        expect(await files(root)).toEqual(changed);
+        await fs.rm(driftFile);
+      }
       const result = await archiveNativeSdkChange(options);
       expect(result.exitCode).toBe(0);
       expect(result.data).toMatchObject({
@@ -6647,6 +6676,7 @@ children:
       plans: [],
       managedArtifactRoot: paths.artifactRoot,
       editReviewScope: nativeEditReviewScope(paths, state),
+      shapeSemanticSnapshot: state.shape_semantic_snapshot,
       legacyExecutionBinding: true,
     });
     const legacyRun = structuredClone(run);
@@ -8383,9 +8413,10 @@ it.for(['untracked-update', 'non-git-update'])(
     const backupRef = await legacyArchiveOriginalsBackup(fixture);
     const linked = path.join(path.dirname(backupRef), 'linked.json');
     await fs.symlink(backupRef, linked, 'file');
-    await expect(
+    await expectArchiveFailure(
       archiveNativeSdkChange({ ...fixture.options, legacySpecBackup: linked }),
-    ).rejects.toThrow(/symbolic|symlink/i);
+      /symbolic|symlink/i,
+    );
   },
 );
 
@@ -8395,7 +8426,7 @@ it.each(['create', 'tracked-update', 'untracked-update', 'non-git-update'])(
     const prepared = await interruptedLegacyArchive(kind);
     const { root, runtime, run, state, options, original, inspectNativeSdkArchiveSpecs } = prepared;
     if (kind === 'untracked-update' || kind === 'non-git-update') {
-      await expect(archiveNativeSdkChange(options)).rejects.toThrow(/原文/);
+      await expectArchiveFailure(archiveNativeSdkChange(options), /原文/);
       const backupRef = await legacyArchiveOriginalsBackup(prepared);
       const validBackup = await fs.readFile(backupRef, 'utf8');
       const parsedBackup = JSON.parse(validBackup);
@@ -8409,23 +8440,24 @@ it.each(['create', 'tracked-update', 'untracked-update', 'non-git-update'])(
         { ...parsedBackup, files: [{ ref: parsedBackup.files[0].ref, content: 'wrong original' }] },
       ]) {
         await fs.writeFile(backupRef, JSON.stringify(invalid));
-        await expect(
+        await expectArchiveFailure(
           archiveNativeSdkChange({ ...options, legacySpecBackup: backupRef }),
-        ).rejects.toThrow();
+        );
         expect(await fs.readFile(backupRef, 'utf8')).toBe(JSON.stringify(invalid));
       }
       await fs.writeFile(backupRef, ' '.repeat(8 * 1024 * 1024 + 1));
-      await expect(
+      await expectArchiveFailure(
         archiveNativeSdkChange({ ...options, legacySpecBackup: backupRef }),
-      ).rejects.toThrow();
+      );
       await fs.writeFile(backupRef, validBackup);
-      await expect(
+      await expectArchiveFailure(
         archiveNativeSdkChange({ ...options, legacySpecBackup: '../outside.json' }),
-      ).rejects.toThrow();
+      );
       await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("changed");');
-      await expect(
+      await expectArchiveFailure(
         archiveNativeSdkChange({ ...options, legacySpecBackup: backupRef }),
-      ).rejects.toThrow(/候选实现/);
+        /候选实现/,
+      );
       await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = true;');
       const { importNativeSdkArchiveOriginals } =
         await import('../../../domains/comet-native/native-sdk-archive-originals.js');
@@ -8483,7 +8515,7 @@ it.each(['create', 'tracked-update', 'untracked-update', 'non-git-update'])(
       expect(await fs.readFile(backupRef, 'utf8')).toBe(validBackup);
     } else {
       await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("changed");');
-      await expect(archiveNativeSdkChange(options)).rejects.toThrow(/候选实现/);
+      await expectArchiveFailure(archiveNativeSdkChange(options), /候选实现/);
       await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = true;');
       expect((await archiveNativeSdkChange(options)).exitCode).toBe(0);
     }
@@ -8816,7 +8848,8 @@ it.each([
       recover: true,
       confirmed: false,
     });
-    expect(again.exitCode).toBe(73);
+    expect(again.exitCode).toBe(0);
+    expect(again.data).toMatchObject({ alreadyArchived: true, historicalRecovery: true });
     expect((await f.runtime.inspect(f.run.runId)).revision).toBe(completed.revision);
   },
 );
@@ -8843,7 +8876,7 @@ it.each(['implementation', 'material', 'spec', 'report', 'transaction-id', 'spec
           ? JSON.stringify({ ...JSON.parse(original), next_spec_index: 0 })
           : `${original}\nChanged after interruption.\n`;
     await fs.writeFile(file, changed);
-    await expect(
+    await expectArchiveFailure(
       archiveNativeSdkChange({
         projectRoot: f.root,
         name: f.run.runId,
@@ -8851,7 +8884,7 @@ it.each(['implementation', 'material', 'spec', 'report', 'transaction-id', 'spec
         recover: true,
         confirmed: false,
       }),
-    ).rejects.toThrow();
+    );
     expect(await fs.readFile(file, 'utf8')).toBe(changed);
     expect(await fs.readFile(f.transactionFile, 'utf8')).toBe(
       file === f.transactionFile ? changed : transaction,
@@ -8901,7 +8934,7 @@ it('does not overwrite a changed pre-finalization report while resuming the orig
   const reportFile = path.join(f.changeDir, 'verification.md');
   const changed = `${await fs.readFile(reportFile, 'utf8')}\nUnconfirmed report change.\n`;
   await fs.writeFile(reportFile, changed);
-  await expect(
+  await expectArchiveFailure(
     archiveNativeSdkChange({
       projectRoot: f.root,
       name: f.run.runId,
@@ -8909,7 +8942,8 @@ it('does not overwrite a changed pre-finalization report while resuming the orig
       recover: true,
       confirmed: false,
     }),
-  ).rejects.toThrow(/报告/);
+    /报告/,
+  );
   expect(await fs.readFile(reportFile, 'utf8')).toBe(changed);
   expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)).toEqual(f.action);
 });
@@ -8923,7 +8957,7 @@ it('rejects a rewritten frozen transaction even when the canonical Spec matches 
   transaction.spec_changes[0].result_hash = createHash('sha256').update(content).digest('hex');
   await fs.writeFile(f.transactionFile, JSON.stringify(transaction));
   await fs.writeFile(specFile, content);
-  await expect(
+  await expectArchiveFailure(
     archiveNativeSdkChange({
       projectRoot: f.root,
       name: f.run.runId,
@@ -8931,7 +8965,8 @@ it('rejects a rewritten frozen transaction even when the canonical Spec matches 
       recover: true,
       confirmed: false,
     }),
-  ).rejects.toThrow(/冻结 Spec/);
+    /冻结 Spec/,
+  );
   expect(await fs.readFile(specFile, 'utf8')).toBe(content);
   expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)).toEqual(f.action);
 });
@@ -8941,7 +8976,7 @@ it('rejects a changed aligned report before moving the active change during reco
   const reportFile = path.join(f.changeDir, 'verification.md');
   const report = `${await fs.readFile(reportFile, 'utf8')}\nUnconfirmed report change.\n`;
   await fs.writeFile(reportFile, report);
-  await expect(
+  await expectArchiveFailure(
     archiveNativeSdkChange({
       projectRoot: f.root,
       name: f.run.runId,
@@ -8949,7 +8984,8 @@ it('rejects a changed aligned report before moving the active change during reco
       recover: true,
       confirmed: false,
     }),
-  ).rejects.toThrow(/报告/);
+    /报告/,
+  );
   expect(await fs.readFile(reportFile, 'utf8')).toBe(report);
   await expect(fs.access(f.archiveDir)).rejects.toMatchObject({ code: 'ENOENT' });
   expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)).toEqual(f.action);
@@ -8958,7 +8994,7 @@ it('rejects a changed aligned report before moving the active change during reco
 it('keeps recovery blocked when neither the original transaction nor a complete receipt survived', async () => {
   const f = await interruptArchiveFinalization('move-journal');
   await fs.rm(f.transactionFile);
-  await expect(
+  await expectArchiveFailure(
     archiveNativeSdkChange({
       projectRoot: f.root,
       name: f.run.runId,
@@ -8966,7 +9002,8 @@ it('keeps recovery blocked when neither the original transaction nor a complete 
       recover: true,
       confirmed: false,
     }),
-  ).rejects.toThrow(/receipt/);
+    /receipt/,
+  );
   expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)).toEqual(f.action);
   await expect(fs.access(f.transactionFile)).rejects.toMatchObject({ code: 'ENOENT' });
 });

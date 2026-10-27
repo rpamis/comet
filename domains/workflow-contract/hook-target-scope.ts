@@ -62,7 +62,7 @@ async function physicalPathForPossiblyMissingTarget(target: string): Promise<str
     }
     if (pending.length > 0 && !entry.isDirectory())
       throw new Error('Hook 目标的中间路径不是目录；请使用规范物理路径');
-    cursor = next;
+    cursor = await fs.realpath(next);
   }
   return cursor;
 }

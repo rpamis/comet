@@ -233,6 +233,7 @@ describe('Native cancellation lifecycle', () => {
       doctor.data.findings.some(
         (finding: { code: string }) => finding.code === 'sdk-cancellation-cleanup-pending',
       ),
+      JSON.stringify(doctor.data),
     ).toBe(true);
     expect(JSON.parse(await fs.readFile(lock, 'utf8'))).toEqual(owner);
     // 受控假持有者自行释放它创建的锁；不是让 Runtime 绕过未知 owner 的保护。
@@ -258,6 +259,7 @@ describe('Native cancellation lifecycle', () => {
     await fs.writeFile(lock, JSON.stringify(owner));
     expect((await f.cli(['next', f.name])).exitCode).toBe(0);
     expect((await f.cli(['doctor', f.name, '--repair'])).data.healthy).toBe(true);
+    expect((await f.cli(['doctor'])).data.healthy).toBe(false);
     expect(JSON.parse(await fs.readFile(lock, 'utf8'))).toEqual(owner);
     expect(await readCometCurrentSelection(f.root)).toMatchObject({
       status: 'selected',

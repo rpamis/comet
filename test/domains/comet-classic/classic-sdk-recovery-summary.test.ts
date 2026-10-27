@@ -173,7 +173,10 @@ describe('Classic SDK compact entry and recovery summaries', () => {
       claimToken: 'original-claim',
     });
     const waiting = await cli('state', 'next', 'demo');
-    expect(waiting.agent.continuation).toMatchObject({ mode: 'wait', commandArgs: null });
+    expect(waiting.agent.continuation).toMatchObject({
+      mode: 'wait',
+      commandArgs: ['comet', 'state', 'check', 'demo', 'design', '--recover', '--json'],
+    });
     expect(waiting.agent.continuation.currentRef).toBe('data.continuation.current');
     expect(waiting.data.continuation.current.actions[0].claim.token).toBe('original-claim');
     expect((await inspectClassicSdkRun(projectRoot, 'demo')).run.revision).toBe(running.revision);

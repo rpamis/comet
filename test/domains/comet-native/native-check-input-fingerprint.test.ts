@@ -288,6 +288,29 @@ describe('Native check input fingerprint', () => {
     expect(await nativeCheckInputGate({ projectRoot: root, candidateId: null })).not.toBe(gate);
   });
 
+  it('binds generated inputs inside an entirely ignored parent without traversing dependencies', async () => {
+    await fs.writeFile(path.join(root, '.gitignore'), 'scratch/\n');
+    await fs.mkdir(path.join(root, 'scratch/app/dist'), { recursive: true });
+    await fs.mkdir(path.join(root, 'scratch/node_modules/pkg/dist'), { recursive: true });
+    await fs.writeFile(path.join(root, 'scratch/app/dist/input.json'), 'first');
+    await fs.writeFile(path.join(root, 'scratch/node_modules/pkg/dist/input.json'), 'dependency');
+    const directories = vi.spyOn(fs, 'opendir');
+    const input = fingerprintInput(root);
+    const before = await nativeGeneratedCheckInputSnapshot(input);
+    expect(before.complete).toBe(true);
+    await fs.writeFile(path.join(root, 'scratch/node_modules/pkg/dist/input.json'), 'changed');
+    expect(await nativeGeneratedCheckInputSnapshot(input)).toEqual(before);
+    await fs.writeFile(path.join(root, 'scratch/app/dist/input.json'), 'second');
+    const after = await nativeGeneratedCheckInputSnapshot(input);
+    expect(after.complete).toBe(true);
+    expect(after.fingerprint).not.toBe(before.fingerprint);
+    expect(
+      directories.mock.calls.some(([directory]) =>
+        String(directory).includes(`${path.sep}node_modules`),
+      ),
+    ).toBe(false);
+  });
+
   it('restricts ignored input queries to literal generated roots instead of traversing unrelated trees', async () => {
     await fs.writeFile(path.join(root, '.gitignore'), 'dist/\nnode_modules/\n.tmp/\n');
     await fs.mkdir(path.join(root, 'dist'), { recursive: true });

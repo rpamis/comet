@@ -374,8 +374,8 @@ describe('SDK ownership in shared project status', () => {
     const first = await withCometRuntimeMetrics(() => inspectCometProjectStatus(root));
     const second = await withCometRuntimeMetrics(() => inspectCometProjectStatus(root));
     expect(first.result.workflows.native.changes).toHaveLength(3);
-    expect(first.metrics.gitCommands).toBe(2);
-    expect(second.metrics.gitCommands).toBe(2);
+    expect(first.metrics.gitCommands).toBe(1);
+    expect(second.metrics.gitCommands).toBe(1);
     expect(second.result).toEqual(first.result);
   });
 

@@ -647,39 +647,59 @@ export async function nativeDoctorCommand(
     ['active', 'unknown', 'malformed'].includes(lock.status),
   );
   if (unresolvedLocks.length) {
+    const inspection = name
+      ? await inspectNativeSdkRun(projectRoot, name, { readOnly: true }).catch(() => null)
+      : null;
+    const cancellation =
+      inspection?.run.status === 'cancelled'
+        ? await inspectNativeSdkCancellation({ projectRoot, run: inspection.run })
+        : null;
+    if (inspection && cancellation?.quiescent && !cancellation.cleanupRequired) {
+      return success('doctor', {
+        ...(await projectNativeSdkStatus({ projectRoot, name: name! }, inspection)),
+        healthy: true,
+        repaired: false,
+        findings: [],
+      });
+    }
     return unhealthyDoctor({
       healthy: false,
       repaired: false,
       change: name,
-      findings: unresolvedLocks.map((lock) => ({
-        code: `native-project-${lock.kind === 'coordinator' ? 'coordinator' : 'lock'}-${lock.status}`,
-        path: lock.file,
-        owner: lock.owner,
-        token: lock.token,
-        message:
-          lock.identity === null
-            ? `The lock path is not a regular owner record: ${lock.file}. Inspect its type and resolve the path conflict after stopping all writers; doctor will not delete it.`
-            : lock.status === 'active'
-              ? 'The original Native writer is still alive; wait for that operation to finish.'
-              : 'The original Native lock owner is unknown. Confirm all original and concurrent writers have stopped before repairing this exact record.',
-        diagnosticArgs: nativeRecoveryCommand(['comet', 'native', 'doctor'], projectRoot),
-        ...(lock.status !== 'active' && lock.token
-          ? {
-              recoveryArgs: nativeRecoveryCommand(
-                [
-                  'comet',
-                  'native',
-                  'doctor',
-                  '--repair',
-                  '--confirmed',
-                  '--lock-token',
-                  lock.token!,
-                ],
-                projectRoot,
-              ),
-            }
-          : {}),
-      })),
+      findings: [
+        ...unresolvedLocks.map((lock) => ({
+          code: `native-project-${lock.kind === 'coordinator' ? 'coordinator' : 'lock'}-${lock.status}`,
+          path: lock.file,
+          owner: lock.owner,
+          token: lock.token,
+          message:
+            lock.identity === null
+              ? `The lock path is not a regular owner record: ${lock.file}. Inspect its type and resolve the path conflict after stopping all writers; doctor will not delete it.`
+              : lock.status === 'active'
+                ? 'The original Native writer is still alive; wait for that operation to finish.'
+                : 'The original Native lock owner is unknown. Confirm all original and concurrent writers have stopped before repairing this exact record.',
+          diagnosticArgs: nativeRecoveryCommand(['comet', 'native', 'doctor'], projectRoot),
+          ...(lock.status !== 'active' && lock.token
+            ? {
+                recoveryArgs: nativeRecoveryCommand(
+                  [
+                    'comet',
+                    'native',
+                    'doctor',
+                    '--repair',
+                    '--confirmed',
+                    '--lock-token',
+                    lock.token!,
+                  ],
+                  projectRoot,
+                ),
+              }
+            : {}),
+        })),
+        ...(cancellation?.cleanupRequired
+          ? [{ code: 'sdk-cancellation-cleanup-pending', ...cancellation.cleanup }]
+          : []),
+      ],
     });
   }
   const owner = name ? await readChangeRuntimeOwner(projectRoot, 'native', name) : null;

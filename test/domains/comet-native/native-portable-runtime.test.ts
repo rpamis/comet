@@ -1760,7 +1760,7 @@ Ship the behavior.
       disposition: 'executed',
       checks: [{ id: plan.id, status: 'failed', exit_code: 7 }],
     });
-    if (fixture.startsWith('incomplete-')) {
+    if (fixture === 'incomplete-sensitive-input') {
       expect(executed.inputDiagnostics?.join(' ')).toMatch(/无法稳定读取|文件数上限/);
     } else {
       expect(executed.inputDiagnostics ?? []).toEqual([]);

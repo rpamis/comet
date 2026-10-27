@@ -73,7 +73,7 @@ describe('personal memory Dashboard callbacks', () => {
       useDemo: true,
       pluginPage: {
         data: {
-          management: {
+          retrieval: {
             records: [
               { id: 'old', text: 'Old preference', memoryType: 'core-profile', status: 'proven' },
               {

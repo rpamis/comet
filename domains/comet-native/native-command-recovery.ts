@@ -59,10 +59,28 @@ export async function withNativeCommandRecovery(
   const finish = object(data.workspaceFinishResult);
   const actualReason =
     typeof finish.message === 'string' ? finish.message : (result.error?.message ?? '');
+  const reasonLower = actualReason.toLowerCase();
+  const reasonLines = reasonLower.split('\n');
+  const worktreeLocked = reasonLines.some((line) => {
+    const start = line.indexOf('worktree');
+    return start !== -1 && line.indexOf('locked', start + 'worktree'.length + 1) !== -1;
+  });
+  const gitLocked =
+    reasonLower.includes('index.lock') ||
+    reasonLower.includes('cannot lock ref') ||
+    worktreeLocked ||
+    reasonLines.some((line) => {
+      const start = line.indexOf('unable to create');
+      return start !== -1 && line.indexOf('.lock', start + 'unable to create'.length + 1) !== -1;
+    });
   const base: NativeRecovery = {
     schema: 'comet.native.recovery.v1',
     code: 'runtime-recovery-required',
-    reason: result.error?.message ?? 'Inspect the original execution and its retained evidence.',
+    reason:
+      result.error?.message ??
+      (typeof object(data.recovery).reason === 'string'
+        ? (object(data.recovery).reason as string)
+        : 'Inspect the original execution and its retained evidence.'),
     affectedPaths: [],
     owner: null,
     diagnosticArgs,
@@ -284,11 +302,7 @@ export async function withNativeCommandRecovery(
           : 'Inspect the recorded owner; ordinary doctor repair only takes over a lock it can safely identify.',
       ],
     };
-  } else if (
-    /(?:index\.lock|cannot lock ref|unable to create[^\n]+\.lock|worktree[^\n]+locked)/iu.test(
-      actualReason,
-    )
-  ) {
+  } else if (gitLocked) {
     const gitRoot = typeof finish.targetRoot === 'string' ? finish.targetRoot : root;
     const paths: string[] = [];
     try {
@@ -296,7 +310,7 @@ export async function withNativeCommandRecovery(
         paths.push(
           path.resolve(gitRoot, runGitCommand(gitRoot, ['rev-parse', '--git-path', 'index.lock'])),
         );
-      else if (/worktree[^\n]+locked/iu.test(actualReason))
+      else if (worktreeLocked)
         paths.push(
           path.join(
             path.resolve(gitRoot, runGitCommand(gitRoot, ['rev-parse', '--git-dir'])),

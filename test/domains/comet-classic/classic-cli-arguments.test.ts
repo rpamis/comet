@@ -346,7 +346,7 @@ describe('Classic public argument safety', () => {
       nextAction: {
         kind: 'action',
         stepId: 'full.open',
-        instruction: expect.stringContaining('初始任务不能代替'),
+        instruction: expect.stringContaining('不得把 Agent 自行判断写成用户确认'),
       },
       continuation: { mode: 'ask' },
     });
@@ -402,7 +402,7 @@ describe('Classic public argument safety', () => {
       nextAction: {
         kind: 'decision',
         stepId: 'full.design.confirm',
-        instruction: expect.stringContaining('即使任务已逐项规定内容'),
+        instruction: expect.stringContaining('已有批准、委托授权的对象、范围和条件'),
         waitId: expect.any(String),
         proposalHash: (proposed.data as { wait: { proposalHash: string } }).wait.proposalHash,
         choices: expect.any(Array),

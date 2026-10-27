@@ -39,11 +39,12 @@ describe('Chinese Classic efficiency contracts', () => {
     ]) {
       expect(presentation).toContain(requirement);
     }
-    expect(decisions).toContain('存在 `AskUserQuestion` 时，使用它展示单选/多选选项');
+    expect(decisions).toContain('需要提问时，存在 `AskUserQuestion` 就使用它展示单选/多选选项');
     expect(decisions).toContain('本会话后续决策点不得反复重试它');
     expect(presentation).toContain('待定决定保持未确认');
-    expect(decisions).toContain('阶段明确要求的产物/设计批准也属于用户决策点');
-    expect(decisions).toContain('此规则不替代阶段明确要求的用户确认');
+    expect(decisions).toContain('用户明确要求逐阶段确认时遵守该要求');
+    expect(decisions).toContain('核对授权的对象、范围和条件与当前内容是否一致');
+    expect(decisions).toContain('发生实质变化时只确认超出授权的部分');
     for (const name of ['comet-classic', 'comet-open', 'comet-design']) {
       const skill = await readSkill(zhSkillRoot, name);
       expect(skill, name).toContain('comet-classic/reference/decision-point.md');
@@ -693,14 +694,14 @@ describe('Comet workflow optimization contracts', () => {
       zhSkillRoot,
       '### 1b. 整理需求并确定 Change 名称',
       '范围与命名都明确时直接继续',
-      '最终审视同时确认 change 名称、范围和产物内容',
+      '最终审视核对 change 名称、范围和产物内容是否符合已获授权的要求',
     ],
     [
       'English',
       skillRoot,
       '### 1b. Summarize requirements and choose the change name',
       'Continue directly when scope and name are clear',
-      'This final review confirms the change name, scope, and artifact content together',
+      'The final review checks the change name, scope, and artifact content against the authorized requirements',
     ],
   ])(
     '%s open flow avoids a redundant pre-artifact confirmation',

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const git = vi.hoisted(() => ({
+  fetchGitlinkCommitsForMerge: vi.fn(),
   gitBranchRemote: vi.fn(),
   gitStatusPaths: vi.fn(),
   gitWorktreeIsClean: vi.fn(),

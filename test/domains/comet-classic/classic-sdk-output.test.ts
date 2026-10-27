@@ -320,7 +320,11 @@ describe('Classic next-step source projection', () => {
       sessionId: 'original-session',
     };
     const running = classicSdkContinuation(run, root, 'demo');
-    expect(running).toMatchObject({ mode: 'wait', commandArgs: null, requiredInputs: [] });
+    expect(running).toMatchObject({
+      mode: 'wait',
+      commandArgs: ['comet', 'state', 'check', 'demo', 'build', '--recover', '--json'],
+      requiredInputs: [],
+    });
     expect(running.current.actions[0].claim).toEqual(run.actions[0].claim);
     run.actions[0].status = 'unknown';
     const unknown = classicSdkContinuation(run, root, 'demo');

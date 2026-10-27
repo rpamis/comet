@@ -903,12 +903,14 @@ export function parseNativePortableState(value: unknown): NativePortableState {
     created_at: timestamp(root.created_at, 'Native created_at'),
   };
   if (state.shape_semantic_snapshot) {
+    if (!state.shape_confirmation_hash && state.phase !== 'shape')
+      throw new Error('Native Shape semantic snapshot requires its approval fingerprint');
     const expected = [
       'brief.md',
       ...state.spec_changes.flatMap(({ source }) => (source ? [source] : [])),
     ].sort();
     const actual = state.shape_semantic_snapshot.artifacts.map(({ source }) => source).sort();
-    if (!state.shape_confirmation_hash || JSON.stringify(expected) !== JSON.stringify(actual))
+    if (JSON.stringify(expected) !== JSON.stringify(actual))
       throw new Error(
         'Native Shape semantic snapshot must match the approved artifact declarations',
       );

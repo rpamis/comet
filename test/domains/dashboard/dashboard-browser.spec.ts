@@ -421,11 +421,11 @@ for (const viewport of [
     await expect(list).toContainText('个人记忆 33');
     await pagination.getByRole('button', { name: '上一页', exact: true }).click();
     await expect(list.locator('.dashboard-memory-table-row')).toHaveCount(32);
-    await page.getByLabel('搜索个人记忆').fill('个人记忆 17');
+    await page.getByRole('textbox', { name: '搜索个人记忆', exact: true }).fill('个人记忆 17');
     await expect(list.locator('.dashboard-memory-table-row')).toHaveCount(1);
     await expect(list).toContainText('个人记忆 17');
     await expect(pagination).toBeInViewport({ ratio: 1 });
-    await page.getByLabel('搜索个人记忆').fill('');
+    await page.getByRole('textbox', { name: '搜索个人记忆', exact: true }).fill('');
     await expect(list.locator('.dashboard-memory-table-row')).toHaveCount(32);
     await list.hover();
     await page.mouse.wheel(0, 100000);
@@ -1787,13 +1787,15 @@ test('restores memory and knowledge reading state when switching workspaces', as
     .locator('.dashboard-memory-filter-rail button')
     .filter({ hasText: '协作约定' })
     .click();
-  await page.getByLabel('搜索个人记忆').fill('Dashboard');
+  await page.getByRole('textbox', { name: '搜索个人记忆', exact: true }).fill('Dashboard');
   await page.getByRole('menuitem', { name: '项目知识' }).click();
   await expect(page.locator('.comet-header-search')).toHaveCount(0);
   await page.getByRole('tab', { name: '项目规范', exact: true }).click();
   await page.getByLabel('搜索项目知识记录').fill('测试');
   await page.getByRole('menuitem', { name: '个人记忆' }).click();
-  await expect(page.getByLabel('搜索个人记忆')).toHaveValue('Dashboard');
+  await expect(page.getByRole('textbox', { name: '搜索个人记忆', exact: true })).toHaveValue(
+    'Dashboard',
+  );
   await expect(memory.locator('.dashboard-memory-filter-rail button.is-active')).toContainText(
     '协作约定',
   );
@@ -4992,7 +4994,7 @@ test('keeps personal memory context and application history easy to scan', async
   await expect(contextItems).toHaveCount(4);
   await expect(contextBar).toContainText('本地提供器');
   await expect(contextBar).toContainText('当前项目');
-  await expect(contextBar).toContainText('3 条记忆');
+  await expect(contextBar).toContainText('11 条记忆');
   await expect(contextBar).toContainText('历史：1 条');
   await expect(contextItems.first()).toHaveCSS('font-size', '13px');
   await expect(contextItems.nth(1)).toHaveCSS('border-left-width', '1px');
@@ -7010,7 +7012,10 @@ for (const workspace of ['个人记忆', '项目知识'] as const) {
     expect(
       await page.evaluate(() => (window as DashboardTestWindow).pluginMotionTransforms),
     ).toEqual([]);
-    const search = page.getByLabel(personal ? '搜索个人记忆' : '搜索项目知识记录');
+    const search = page.getByRole('textbox', {
+      name: personal ? '搜索个人记忆' : '搜索项目知识记录',
+      exact: true,
+    });
     await search.fill('Dashboard');
     await search.fill('');
     const count = await page.evaluate(
@@ -7596,7 +7601,7 @@ test('keeps plugin content visible during refresh after a structured first-load 
   release();
   const surface = page.locator('.dashboard-tool-page-memory');
   await expect(surface).toBeVisible();
-  const search = page.getByLabel('搜索个人记忆');
+  const search = page.getByRole('textbox', { name: '搜索个人记忆', exact: true });
   await search.fill('Dashboard');
   const before = requests;
   await page.getByRole('button', { name: '立即刷新', exact: true }).click();

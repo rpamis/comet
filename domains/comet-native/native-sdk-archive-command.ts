@@ -11,6 +11,7 @@ import {
   NATIVE_SDK_ARCHIVE_STEPS,
   nativeSdkRetryableArchivePreflight,
   nativeSdkRetryableArchiveFinalization,
+  inspectNativeSdkPendingArchiveDrift,
 } from './native-sdk-archive.js';
 import { recoverNativeSdkSupervisorCleanupOutcome } from './native-sdk-supervisor-cleanup.js';
 import {
@@ -301,11 +302,20 @@ async function archiveNativeSdkChangeValue(options: {
       );
     if (ready) {
       try {
-        await assertNativeSdkCandidateUnchanged({
-          run,
-          projectRoot: options.projectRoot,
-          requireEvidence: true,
-        });
+        if (pending?.stepId.startsWith('archive.')) {
+          const drift = await inspectNativeSdkPendingArchiveDrift({
+            run,
+            action: pending,
+            projectRoot: options.projectRoot,
+          });
+          if (drift) throw new Error(drift.message);
+        } else {
+          await assertNativeSdkCandidateUnchanged({
+            run,
+            projectRoot: options.projectRoot,
+            requireEvidence: true,
+          });
+        }
       } catch (error) {
         ready = false;
         blockers.push((error as Error).message);

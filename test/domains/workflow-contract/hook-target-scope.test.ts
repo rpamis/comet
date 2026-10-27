@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { execFileSync } from 'node:child_process';
 
 import { scopeCometHookTargets } from '../../../domains/workflow-contract/hook-target-scope.js';
 
@@ -42,6 +43,22 @@ describe('scopeCometHookTargets', () => {
         'src/new-file.ts',
       ]),
     ).resolves.toEqual({ projectTargets: ['src/new-file.ts'], externalTargets: [] });
+  });
+
+  it('keeps canonical and Windows short-name project targets in scope', async () => {
+    const shortRoot =
+      process.platform === 'win32'
+        ? execFileSync('cmd.exe', ['/d', '/c', 'for %I in (.) do @echo %~sI'], {
+            cwd: root,
+            encoding: 'utf8',
+            windowsVerbatimArguments: true,
+          }).trim()
+        : root;
+    const target = path.join(shortRoot, 'src', 'new-file.ts');
+    await expect(scopeCometHookTargets(await fs.realpath(root), [target])).resolves.toEqual({
+      projectTargets: [target],
+      externalTargets: [],
+    });
   });
 
   it('treats a project path redirected through a symlink or junction as external', async () => {

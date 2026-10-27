@@ -41,6 +41,25 @@ function classifyIssue(
 }
 
 describe('CI workflows', () => {
+  it('prepares locked Python dependencies before Node regression jobs invoke the Eval harness', async () => {
+    const workflow = parse(await readWorkflow('ci.yml'));
+    for (const name of ['quality', 'core-regressions', 'node-compatibility']) {
+      const steps = workflow.jobs[name].steps;
+      const python = steps.findIndex((step: { uses?: string }) =>
+        step.uses?.startsWith('actions/setup-python@'),
+      );
+      const uv = steps.findIndex((step: { uses?: string }) =>
+        step.uses?.startsWith('astral-sh/setup-uv@'),
+      );
+      const sync = steps.findIndex(
+        (step: { run?: string }) => step.run === 'uv sync --locked --extra dev --extra langsmith',
+      );
+      expect(python).toBeGreaterThanOrEqual(0);
+      expect(uv).toBeGreaterThan(python);
+      expect(sync).toBeGreaterThan(uv);
+      expect(steps[sync]['working-directory']).toBe('eval');
+    }
+  });
   it('validates pull requests and master pushes without duplicating development branch runs', async () => {
     for (const name of ['ci.yml', 'security.yml']) {
       const workflow = parse(await readWorkflow(name));
