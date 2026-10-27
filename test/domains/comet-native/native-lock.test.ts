@@ -7,10 +7,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   acquireNativeLock,
   diagnoseNativeLock,
+  inspectNativeLockRecovery,
+  inspectNativeProjectLocks,
   isProcessAlive,
   NATIVE_LOCK_UNKNOWN_TAKEOVER_MS,
   readNativeLock,
   releaseNativeLock,
+  repairNativeProjectLock,
   takeOverNativeStaleLock,
   withNativeLockRecovery,
 } from '../../../domains/comet-native/native-lock.js';
@@ -32,6 +35,135 @@ describe('Native operation locks', () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     await fs.rm(projectRoot, { recursive: true, force: true });
+  });
+
+  it('reports missing recovery records without creating a lock directory', async () => {
+    const file = path.join(paths.locksDir, 'missing.lock');
+    await expect(inspectNativeLockRecovery(file)).resolves.toEqual({
+      file,
+      status: 'missing',
+      owner: null,
+      identity: null,
+      token: null,
+    });
+    await expect(inspectNativeProjectLocks(paths)).resolves.toEqual([]);
+    await expect(fs.access(paths.locksDir)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('lists lock and coordinator records while preserving unrelated files and directories', async () => {
+    const coordinator = path.join(paths.locksDir, '.coordinator');
+    await fs.mkdir(coordinator, { recursive: true });
+    await fs.writeFile(path.join(paths.locksDir, 'broken.lock'), 'interrupted JSON');
+    await fs.writeFile(path.join(coordinator, 'broken.claim'), 'interrupted claim');
+    await fs.mkdir(path.join(paths.locksDir, 'directory.lock'));
+    await fs.mkdir(path.join(coordinator, 'directory.claim'));
+    await fs.writeFile(path.join(paths.locksDir, 'notes.txt'), 'keep');
+    await fs.writeFile(path.join(coordinator, 'notes.txt'), 'keep');
+
+    const records = await inspectNativeProjectLocks(paths);
+    expect(records).toHaveLength(4);
+    for (const [directory, kind, suffix] of [
+      [paths.locksDir, 'lock', 'lock'],
+      [coordinator, 'coordinator', 'claim'],
+    ] as const) {
+      expect(records).toContainEqual(
+        expect.objectContaining({
+          file: path.join(directory, `broken.${suffix}`),
+          kind,
+          status: 'malformed',
+          token: expect.stringMatching(/^[a-f0-9]{64}$/u),
+          contentDigest: expect.any(String),
+        }),
+      );
+      expect(records).toContainEqual(
+        expect.objectContaining({
+          file: path.join(directory, `directory.${suffix}`),
+          kind,
+          status: 'malformed',
+          token: null,
+        }),
+      );
+      expect(await fs.readFile(path.join(directory, 'notes.txt'), 'utf8')).toBe('keep');
+    }
+  });
+
+  it.each(['lock', 'coordinator'] as const)(
+    'repairs only the confirmed malformed %s record and retains its original bytes',
+    async (kind) => {
+      const coordinator = path.join(paths.locksDir, '.coordinator');
+      await fs.mkdir(coordinator, { recursive: true });
+      const file =
+        kind === 'lock'
+          ? path.join(paths.locksDir, 'broken.lock')
+          : path.join(coordinator, 'broken.claim');
+      const bytes = 'partial record from interrupted process';
+      await fs.writeFile(file, bytes);
+      const record = (await inspectNativeProjectLocks(paths)).find((entry) => entry.file === file)!;
+      await expect(repairNativeProjectLock(paths, record.token!, false)).rejects.toThrow(
+        'not confirmed',
+      );
+      expect(await fs.readFile(file, 'utf8')).toBe(bytes);
+      await repairNativeProjectLock(paths, record.token!, true);
+      await expect(fs.access(file)).rejects.toMatchObject({ code: 'ENOENT' });
+      const quarantined = (await fs.readdir(coordinator)).filter((name) =>
+        name.endsWith('.repaired'),
+      );
+      expect(quarantined).toHaveLength(1);
+      expect(await fs.readFile(path.join(coordinator, quarantined[0]), 'utf8')).toBe(bytes);
+      await expect(inspectNativeProjectLocks(paths)).resolves.toEqual([]);
+      await expect(repairNativeProjectLock(paths, record.token!, true)).rejects.toThrow('changed');
+    },
+  );
+
+  it('rejects an old repair token after the malformed record changes', async () => {
+    await fs.mkdir(paths.locksDir, { recursive: true });
+    const file = path.join(paths.locksDir, 'broken.lock');
+    await fs.writeFile(file, 'old partial record');
+    const before = await inspectNativeLockRecovery(file);
+    await fs.writeFile(file, 'replacement partial record');
+    const after = await inspectNativeLockRecovery(file);
+    expect(after.token).not.toBe(before.token);
+    await expect(repairNativeProjectLock(paths, before.token!, true)).rejects.toThrow('changed');
+    expect(await fs.readFile(file, 'utf8')).toBe('replacement partial record');
+  });
+
+  it('preserves a live lock even when its exact repair token and stop confirmation are supplied', async () => {
+    const lock = await acquireNativeLock(paths, 'active', 'still running');
+    try {
+      const record = await inspectNativeLockRecovery(lock.file);
+      expect(record.status).toBe('active');
+      await expect(repairNativeProjectLock(paths, record.token!, true)).rejects.toThrow(
+        'live owner',
+      );
+      expect(await readNativeLock(lock.file)).toEqual(lock.owner);
+    } finally {
+      await releaseNativeLock(lock);
+    }
+  });
+
+  it('removes a confirmed stopped owner without touching another operation lock', async () => {
+    await fs.mkdir(paths.locksDir, { recursive: true });
+    const file = path.join(paths.locksDir, 'stopped.lock');
+    await fs.writeFile(
+      file,
+      JSON.stringify({
+        id: 'stopped-owner',
+        pid: 2_147_483_647,
+        hostname: os.hostname(),
+        createdAt: '2026-07-14T00:00:00.000Z',
+        operation: 'interrupted operation',
+      }),
+    );
+    const other = await acquireNativeLock(paths, 'other', 'other operation');
+    try {
+      const record = await inspectNativeLockRecovery(file);
+      expect(record.status).toBe('stale');
+      await repairNativeProjectLock(paths, record.token!, true);
+      await expect(readNativeLock(file)).resolves.toBeNull();
+      expect(await readNativeLock(other.file)).toEqual(other.owner);
+    } finally {
+      await releaseNativeLock(other);
+    }
   });
 
   it.each(['released', 'active', 'replaced'])(
