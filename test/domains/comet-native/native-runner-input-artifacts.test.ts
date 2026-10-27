@@ -83,6 +83,36 @@ describe('validated Native Runner input boundaries', () => {
     expect(await gate()).not.toBe(before);
   });
 
+  it('recognizes validated request files through a project parent alias without hiding ordinary inputs', async () => {
+    const aliasParent = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-runner-parent-alias-'));
+    try {
+      const link = path.join(aliasParent, 'parent');
+      await fs.symlink(path.dirname(root), link, process.platform === 'win32' ? 'junction' : 'dir');
+      const aliasRoot = path.join(link, path.basename(root));
+      const before = await gate();
+      await fs.writeFile(
+        path.join(root, 'handoff.json'),
+        JSON.stringify({ kind: 'dispatch-verifier' }),
+      );
+      await registerNativeRunnerInputArtifactLocked({
+        paths: await nativeProjectPaths(aliasRoot, 'docs'),
+        file: path.join(aliasRoot, 'handoff.json'),
+        validateContent: (content) => {
+          expect(JSON.parse(content).kind).toBe('dispatch-verifier');
+        },
+      });
+      expect(await nativeRunnerInputArtifactPaths(aliasRoot)).toEqual(new Set(['handoff.json']));
+      expect(await gate()).toBe(before);
+      await fs.writeFile(path.join(root, 'ordinary.json'), '{"changed":true}');
+      expect(await gate()).not.toBe(before);
+      await fs.rm(path.join(root, 'ordinary.json'));
+      git('add', 'handoff.json');
+      expect(await nativeRunnerInputArtifactPaths(aliasRoot)).toEqual(new Set());
+    } finally {
+      await fs.rm(aliasParent, { recursive: true, force: true });
+    }
+  });
+
   it('recognizes a read-only inspection in an already validated SDK request file without writing bookkeeping', async () => {
     const file = path.join(root, 'request.json');
     await fs.writeFile(file, JSON.stringify({ operation: 'claim', runId: 'demo' }));

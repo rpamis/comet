@@ -1,4 +1,6 @@
 import { promises as fs } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -31,6 +33,118 @@ function report(status = 'passed') {
 }
 
 describe('core regression entrypoint', () => {
+  it('collects every failed group and executes later groups through the real CLI', async () => {
+    const root = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), 'comet-core-all-errors-')),
+    );
+    try {
+      for (const ref of ['scripts/lint', 'scripts/build', 'config', 'test/scripts'])
+        await fs.mkdir(path.join(root, ref), { recursive: true });
+      for (const name of ['core-regressions', 'workflow-regressions', 'historical-regressions'])
+        await fs.copyFile(`scripts/lint/${name}.mjs`, path.join(root, `scripts/lint/${name}.mjs`));
+      await fs.writeFile(path.join(root, 'package.json'), '{"type":"module"}');
+      await fs.symlink(
+        path.resolve('node_modules'),
+        path.join(root, 'node_modules'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+      for (const name of ['runtime-schemas', 'classic-runtime', 'native-runtime', 'entry-runtime'])
+        await fs.writeFile(
+          path.join(root, `scripts/build/build-${name}.mjs`),
+          "import fs from 'node:fs'; if (!process.argv.includes('--check')) process.exit(2); fs.appendFileSync('preflight.txt', 'checked\\n');",
+        );
+      const items = ['first', 'middle', 'last'].map((name) => ({
+        id: `fixture-${name}`,
+        sources: ['report:fixture'],
+        behavior: `Execute ${name}`,
+        coverageLevel: 'unit',
+        reproduction: 'fixture',
+        expected: 'Execute every group',
+        forbidden: 'Hide a failure',
+        rootCause: 'fixture',
+        tests: [
+          {
+            file: `test/scripts/${name}.test.ts`,
+            namePattern: `fixture ${name}`,
+            requiredNames: [`fixture ${name}`],
+          },
+        ],
+      }));
+      await fs.writeFile(
+        path.join(root, 'config/workflow-regressions.json'),
+        JSON.stringify({ schema: 'comet.release.bad-cases.v1', cases: items }),
+      );
+      await fs.writeFile(
+        path.join(root, 'config/historical-workflow-regressions.json'),
+        JSON.stringify({
+          schema: 'comet.release.historical-bad-cases.v1',
+          inventory: { complete: true, sourceIssueNumbers: [1], outOfScopeIssues: [] },
+          issues: [
+            {
+              number: 1,
+              cases: [
+                {
+                  id: 'history-fixture',
+                  behavior: 'Retain the passing case',
+                  status: 'covered',
+                  tests: items[1].tests,
+                },
+              ],
+            },
+          ],
+        }),
+      );
+      for (const name of ['first', 'middle', 'last'])
+        await fs.writeFile(
+          path.join(root, `test/scripts/${name}.test.ts`),
+          `import {it,expect} from 'vitest'; import fs from 'node:fs'; it('fixture ${name}', () => { fs.writeFileSync('${name}.marker','executed'); expect(${name === 'middle'}).toBe(true); });`,
+        );
+      const result = spawnSync(
+        process.execPath,
+        [
+          path.join(root, 'scripts/lint/core-regressions.mjs'),
+          '--case',
+          'fixture-first',
+          '--case',
+          'fixture-middle',
+          '--case',
+          'fixture-last',
+        ],
+        { cwd: root, encoding: 'utf8', timeout: 90_000 },
+      );
+      expect(result.status, result.stdout + result.stderr).toBe(1);
+      for (const name of ['first', 'middle', 'last'])
+        expect(await fs.readFile(path.join(root, `${name}.marker`), 'utf8')).toBe('executed');
+      expect(result.stderr).toContain('registered-fixture-first');
+      expect(result.stderr).toContain('registered-fixture-last');
+      const summary = JSON.parse(
+        await fs.readFile(path.join(root, 'coverage/core-regressions/summary.json'), 'utf8'),
+      );
+      expect(summary).toMatchObject({ groups: 3, passed: 1, tests: 1 });
+      expect(summary.failures.map((failure: { id: string }) => failure.id)).toEqual([
+        'registered-fixture-first',
+        'registered-fixture-last',
+      ]);
+      expect(
+        (await fs.readFile(path.join(root, 'preflight.txt'), 'utf8')).trim().split('\n'),
+      ).toHaveLength(4);
+      await fs.writeFile(
+        path.join(root, 'scripts/build/build-runtime-schemas.mjs'),
+        'process.exit(2);',
+      );
+      const blocked = spawnSync(
+        process.execPath,
+        [path.join(root, 'scripts/lint/core-regressions.mjs'), '--case', 'fixture-middle'],
+        { cwd: root, encoding: 'utf8' },
+      );
+      expect(blocked.status, blocked.stdout + blocked.stderr).toBe(1);
+      await expect(
+        fs.stat(path.join(root, 'coverage/core-regressions/summary.json')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
   it('keeps every reported issue linked to an executable case and invariant', async () => {
     expect(new Set(CORE_REGRESSIONS.map((item) => item.id)).size).toBe(CORE_REGRESSIONS.length);
     for (const issue of [500, 501, 502, 503, 504, 505]) {

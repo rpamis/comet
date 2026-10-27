@@ -1,5 +1,6 @@
 import { resolveWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
 import { createHash } from 'node:crypto';
+import { realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { runGitCommand } from '../../platform/process/git.js';
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
@@ -85,6 +86,7 @@ async function matchingArtifacts(projectRoot: string): Promise<RunnerInputArtifa
   if (!registry.length) return [];
   const tracked = trackedPaths(projectRoot);
   if (!tracked) return [];
+  const physicalProjectRoot = await realpath(projectRoot);
   const matching: RunnerInputArtifact[] = [];
   for (const row of registry) {
     if (tracked.has(gitPathKey(row.path))) continue;
@@ -92,7 +94,7 @@ async function matchingArtifacts(projectRoot: string): Promise<RunnerInputArtifa
       const read = await readProtectedProjectFile(projectRoot, row.path, MAX_INPUT_BYTES, {
         label: 'Native Runner input artifact',
       });
-      const relative = relativeInputPath(projectRoot, read.realPath);
+      const relative = relativeInputPath(physicalProjectRoot, read.realPath);
       let matches = digest(read.bytes) === row.digest;
       if (!matches && row.runtimeRunId) {
         const request: unknown = JSON.parse(read.bytes.toString('utf8'));
@@ -141,7 +143,10 @@ export async function registerNativeRunnerInputArtifactLocked(options: {
     { label: 'Native Runner input artifact' },
   );
   options.validateContent(read.bytes.toString('utf8'));
-  const physicalRelative = relativeInputPath(options.paths.projectRoot, read.realPath);
+  const physicalRelative = relativeInputPath(
+    await realpath(options.paths.projectRoot),
+    read.realPath,
+  );
   if (!physicalRelative || tracked.has(gitPathKey(physicalRelative))) return;
   const current = (await matchingArtifacts(options.paths.projectRoot)).filter(
     (row) => gitPathKey(row.path) !== gitPathKey(physicalRelative),

@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { measureCometGitCommandAsync } from '../../platform/process/runtime-metrics.js';
@@ -583,8 +584,11 @@ async function gitWorktreeIdentity(projectRoot: string): Promise<{
         }),
       ),
     ]);
-    const absoluteRoot = path.resolve(rootOutput.trim());
-    const relativeRoot = path.relative(projectRoot, absoluteRoot).replaceAll('\\', '/');
+    const [physicalProjectRoot, absoluteRoot] = await Promise.all([
+      realpath(projectRoot),
+      realpath(rootOutput.trim()),
+    ]);
+    const relativeRoot = path.relative(physicalProjectRoot, absoluteRoot).replaceAll('\\', '/');
     if (
       relativeRoot === '..' ||
       relativeRoot.startsWith('../') ||

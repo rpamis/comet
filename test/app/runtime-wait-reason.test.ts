@@ -10,7 +10,9 @@ afterEach(async () => {
 });
 
 it('accepts a reason only as bounded text in the public resolve-wait request and preserves it after reopening', async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-cli-wait-reason-'));
+  const root = await fs.realpath(
+    await fs.mkdtemp(path.join(os.tmpdir(), 'comet-cli-wait-reason-')),
+  );
   roots.push(root);
   const workflow = path.join(root, 'workflow.json');
   await fs.writeFile(

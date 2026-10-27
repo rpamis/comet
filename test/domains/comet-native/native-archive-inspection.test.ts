@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -51,6 +52,92 @@ None.
 # Verification expectations
 Run the focused check.
 `;
+
+it('issues automated Git-bound verification receipts through a project parent alias', async () => {
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'comet-receipt-alias-')));
+  try {
+    const physical = path.join(root, 'physical');
+    const alias = path.join(root, 'alias');
+    await fs.mkdir(physical);
+    await fs.symlink(physical, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    const projectRoot = path.join(alias, 'project');
+    await fs.mkdir(projectRoot);
+    const git = (...args: string[]) =>
+      execFileSync('git', args, { cwd: projectRoot, encoding: 'utf8' }).trim();
+    git('init', '-q');
+    await fs.writeFile(path.join(projectRoot, 'feature.txt'), 'before\n');
+    git('add', '.');
+    git(
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.invalid',
+      'commit',
+      '-qm',
+      'fixture',
+    );
+    const commit = git('rev-parse', 'HEAD');
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    const created = await createNativeChange({
+      paths,
+      verificationProtocol: 'legacy-v1',
+      name: 'receipt-alias',
+      language: 'en',
+    });
+    await fs.writeFile(path.join(nativeChangeDir(paths, created.name), 'brief.md'), brief);
+    await fs.writeFile(path.join(projectRoot, 'feature.txt'), 'after\n');
+    const buildState: NativeChangeState = { ...created, phase: 'build', approval: 'implicit' };
+    const build = await prepareNativeBuildEvidence({
+      paths,
+      state: buildState,
+      artifactRefs: ['feature.txt'],
+    });
+    const state: NativeChangeState = {
+      ...buildState,
+      phase: 'verify',
+      implementation_scope: build.scopeRef,
+    };
+    await writeNativeChange(paths, state);
+    const contract = await collectNativeContractFiles({
+      changeDir: nativeChangeDir(paths, state.name),
+      briefRef: state.brief,
+      specChanges: state.spec_changes,
+    });
+    const result = await issueNativeAutomatedCheckReceipt({
+      paths,
+      name: state.name,
+      acceptanceIds: contract.contract.acceptance.map(({ id }) => id),
+      command: process.execPath,
+      args: ['-e', 'process.exit(0)'],
+    });
+    expect(result.receipt.status).toBe('passed');
+    expect(result.receipt.evidence).toMatchObject({
+      worktree: { provider: 'git', root: '.', beforeCommit: commit, afterCommit: commit },
+    });
+    const changed = await issueNativeAutomatedCheckReceipt({
+      paths,
+      name: state.name,
+      acceptanceIds: contract.contract.acceptance.map(({ id }) => id),
+      command: process.execPath,
+      args: [
+        '-e',
+        `require('node:child_process').execFileSync('git', ${JSON.stringify(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-qm', 'changed identity'])})`,
+      ],
+    });
+    expect(git('rev-parse', 'HEAD')).not.toBe(commit);
+    expect(changed.receipt.status).toBe('blocked');
+    expect(changed.receipt.evidence).toMatchObject({
+      worktree: {
+        provider: 'git',
+        root: '.',
+        beforeCommit: commit,
+        afterCommit: git('rev-parse', 'HEAD'),
+      },
+    });
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
 
 describe('Native Archive inspection', () => {
   let projectRoot: string;

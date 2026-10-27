@@ -51,11 +51,25 @@ async function hotfix(
     initialDraft?: 'unchanged' | 'modified';
     interruptArchive?: boolean;
     forgedBaseline?: boolean;
+    projectAlias?: boolean;
   } = {},
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-delivery-scope-'));
   roots.push(root);
-  const projectRoot = path.join(root, 'project');
+  let projectBase = root;
+  if (options.projectAlias) {
+    const physicalBase = path.join(root, 'physical');
+    await fs.mkdir(physicalBase);
+    projectBase = path.join(root, 'project-alias');
+    await fs.symlink(physicalBase, projectBase, process.platform === 'win32' ? 'junction' : 'dir');
+    if (process.platform === 'win32')
+      projectBase = execFileSync('cmd.exe', ['/d', '/c', 'for %I in (.) do @echo %~sI'], {
+        cwd: projectBase,
+        encoding: 'utf8',
+        windowsVerbatimArguments: true,
+      }).trim();
+  }
+  const projectRoot = path.join(projectBase, 'project');
   const home = path.join(root, 'home');
   await fs.mkdir(home);
   vi.stubEnv('HOME', home);
@@ -517,7 +531,7 @@ it('rejects merge commits, disconnected history and a mismatched delivered HEAD 
 });
 
 it('requires final verified implementation bytes throughout multi-commit delivery', async () => {
-  const f = await hotfix();
+  const f = await hotfix({ projectAlias: true });
   f.commitImplementation();
   f.commitArchive();
   await f.put('source.js', 'export const ready = false;\n');

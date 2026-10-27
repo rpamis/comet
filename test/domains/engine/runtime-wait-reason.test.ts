@@ -14,7 +14,7 @@ afterEach(async () => {
 });
 
 async function fixture() {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-wait-reason-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'comet-wait-reason-')));
   roots.push(root);
   const workflow = {
     id: 'review',

@@ -1,6 +1,6 @@
 import { loadWorkflowRegressions } from './workflow-regressions.mjs';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -347,6 +347,12 @@ async function main(argv) {
     );
     return;
   }
+  const reports = path.join(repositoryRoot, 'coverage', 'core-regressions');
+  const summaryFile = path.join(reports, 'summary.json');
+  if (![combinePlatforms, crossPlatform, recordAll, recordPlatform].some(Boolean)) {
+    mkdirSync(reports, { recursive: true });
+    rmSync(summaryFile, { force: true });
+  }
   const run = (args) => {
     const result = spawnSync(process.execPath, args, { cwd: repositoryRoot, stdio: 'inherit' });
     if (result.error) throw result.error;
@@ -394,16 +400,34 @@ async function main(argv) {
     return;
   }
   const vitest = path.join(path.dirname(require.resolve('vitest/package.json')), 'vitest.mjs');
-  const reports = path.join(repositoryRoot, 'coverage', 'core-regressions');
-  mkdirSync(reports, { recursive: true });
   let total = 0;
+  const failures = [];
   for (const entry of entries) {
     console.log(`\n${entry.id}: ${entry.invariant}`);
     const reportFile = path.join(reports, `${entry.id}.json`);
-    rmSync(reportFile, { force: true });
-    run([vitest, ...coreRegressionArgs(entry, reportFile)]);
-    total += assertCoreRegressionResult(entry, JSON.parse(readFileSync(reportFile, 'utf8')));
+    try {
+      rmSync(reportFile, { force: true });
+      run([vitest, ...coreRegressionArgs(entry, reportFile)]);
+      total += assertCoreRegressionResult(entry, JSON.parse(readFileSync(reportFile, 'utf8')));
+    } catch (error) {
+      // 继续执行后续组，一轮收齐问题；失败、缺失报告和跳过仍不能算通过。
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push({ id: entry.id, message });
+      console.error(`${entry.id}: ${message}`);
+    }
   }
+  writeFileSync(
+    summaryFile,
+    JSON.stringify(
+      { groups: entries.length, passed: entries.length - failures.length, tests: total, failures },
+      null,
+      2,
+    ) + '\n',
+  );
+  if (failures.length)
+    throw new Error(
+      `Core regressions failed: ${failures.length}/${entries.length} groups.\n${failures.map(({ id, message }) => `${id}: ${message}`).join('\n')}`,
+    );
   console.log(`\nCore regressions passed: ${entries.length} groups, ${total} executed tests.`);
 }
 

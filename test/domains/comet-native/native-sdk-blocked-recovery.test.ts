@@ -56,6 +56,7 @@ async function blockedFixture(
     bundleCommands?: boolean;
     misclaimedVerifier?: boolean;
     inProjectRequests?: boolean;
+    projectAlias?: boolean;
     dirtyEmbedded?: boolean;
     generatedEmbedded?: boolean;
     directPass?: boolean;
@@ -77,7 +78,14 @@ async function blockedFixture(
     : undefined;
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-blocked-recovery-'));
   roots.push(root);
-  const projectRoot = path.join(root, 'project');
+  let projectBase = root;
+  if (options.projectAlias) {
+    const physicalBase = path.join(root, 'physical');
+    await fs.mkdir(physicalBase);
+    projectBase = path.join(root, 'project-alias');
+    await fs.symlink(physicalBase, projectBase, process.platform === 'win32' ? 'junction' : 'dir');
+  }
+  const projectRoot = path.join(projectBase, 'project');
   const name = 'blocked-candidate';
   const change = path.join(projectRoot, 'docs/comet/changes', name);
   await fs.mkdir(path.join(change, 'specs/example'), { recursive: true });
@@ -868,6 +876,8 @@ describe('blocked Verifier recovery command contract', () => {
   it('excludes validated in-project SDK request transport while preserving ordinary source inputs', async () => {
     const f = await archiveReadyFixture({
       inProjectRequests: true,
+      projectAlias: true,
+      bundleCommands: true,
       dirtyEmbedded: true,
       directPass: true,
     });

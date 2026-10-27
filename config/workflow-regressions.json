@@ -4518,6 +4518,89 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-runner-request-parent-alias",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/40493220406/job/122152726636"],
+      "behavior": "通过项目父目录别名访问时，已验证的请求传输文件仍从候选输入中排除，普通文件和已跟踪文件仍受内容绑定。",
+      "coverageLevel": "public-cli",
+      "reproduction": "dfd4833a 的 macOS SDK 验收把项目内请求误判为输入变化；新增父目录链接案例在旧登记逻辑返回空集合，先失败。",
+      "expected": "按同一物理项目根登记和复核请求文件，保留原检查与候选并完成生成命令包归档。",
+      "forbidden": "目录别名使请求写入失效旧验收、跳过普通或已跟踪输入，或链接和损坏登记被误当成有效请求。",
+      "rootCause": "请求文件的 realPath 与含别名的项目根直接计算相对路径，合法请求未能登记或匹配。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-runner-input-artifacts.test.ts",
+          "namePattern": "recognizes validated request files through a project parent alias without hiding ordinary inputs",
+          "requiredNames": [
+            "validated Native Runner input boundaries recognizes validated request files through a project parent alias without hiding ordinary inputs"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "excludes validated in-project SDK request transport while preserving ordinary source inputs",
+          "requiredNames": [
+            "blocked Verifier recovery command contract excludes validated in-project SDK request transport while preserving ordinary source inputs"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "badcase-complete-failure-collection",
+      "sources": ["report:2026-10-27-badcase-ci-repeated-failures"],
+      "behavior": "badcase 任一组失败后仍执行其余组，一轮汇总全部失败，整体退出失败并保留每组原始报告。",
+      "coverageLevel": "public-cli",
+      "reproduction": "旧执行器的真实 CLI 夹具首组失败后缺少 middle.marker 和最后一组报告；同一案例修改后执行三组并报告两组失败。",
+      "expected": "后续成功组与失败组均实际执行，预检保留，汇总准确记录失败且退出码非零。",
+      "forbidden": "遇首个失败退出、跳过后续组、复用旧报告或有失败仍以成功退出。",
+      "rootCause": "串行分组执行直接抛出第一个子进程或报告错误，剩余组没有执行。",
+      "tests": [
+        {
+          "file": "test/scripts/core-regressions.test.ts",
+          "namePattern": "collects every failed group and executes later groups through the real CLI",
+          "requiredNames": [
+            "core regression entrypoint collects every failed group and executes later groups through the real CLI"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "test-physical-temporary-roots",
+      "sources": ["report:2026-10-27-badcase-ci-repeated-failures"],
+      "behavior": "badcase、完整套件和 SDK 测试使用相同的真实临时根，子进程继承该根；目录别名由专项案例显式构造。",
+      "coverageLevel": "runtime",
+      "reproduction": "向子 Vitest 注入目录链接形式的临时根，旧共享初始化保留别名并导致物理根断言失败，新初始化同案例通过。",
+      "expected": "临时根和隔离数据根均是实际物理路径，子进程与测试进程一致，执行结束恢复原环境。",
+      "forbidden": "不同 CI 入口依赖隐式目录别名差异、正常 RuntimeStore 夹具误入符号链接边界，或移除真实链接/短路径的专项覆盖。",
+      "rootCause": "共享测试初始化只分配数据目录，未统一临时根；SDK CI 另有规范化步骤，badcase 与其环境不同。",
+      "tests": [
+        {
+          "file": "test/repository/test-environment.test.ts",
+          "namePattern": "keeps fixture and subprocess temporary roots physical when the inherited directory is an alias",
+          "requiredNames": [
+            "keeps fixture and subprocess temporary roots physical when the inherited directory is an alias"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-automated-receipt-git-parent-alias",
+      "sources": ["report:2026-10-27-badcase-ci-repeated-failures"],
+      "behavior": "通过项目父目录别名执行自动验证时，成功命令仍产生绑定真实 Git 工作区的通过收据；执行中变更提交仍被阻塞。",
+      "coverageLevel": "runtime",
+      "reproduction": "核对同类路径比较时新增真实 Git 项目父目录链接案例，旧代码把成功命令收据标为 blocked；物理路径比较修正后通过。",
+      "expected": "兼容收据执行保留 Git 根和前后提交身份，正常检查通过，执行中提交变化仍阻塞。",
+      "forbidden": "把路径别名当成非 Git 工作区、错误阻塞成功检查，或接受执行中 Git 身份变化。",
+      "rootCause": "Git 输出物理工作区根，自动收据却相对于含目录别名的项目根计算边界并降级为 none。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-archive-inspection.test.ts",
+          "namePattern": "issues automated Git-bound verification receipts through a project parent alias",
+          "requiredNames": [
+            "issues automated Git-bound verification receipts through a project parent alias"
+          ]
+        }
+      ]
     }
   ]
 }
