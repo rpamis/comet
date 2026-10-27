@@ -2,7 +2,7 @@ import {
   registerSdkChangeOwner,
   type SdkChangeOwner,
 } from '../../../domains/workflow-contract/change-runtime-owner.js';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -52,12 +52,20 @@ async function fixture(
   mode: 'sdk' | 'compat' = 'sdk',
   specText = '# Worker\nThe worker returns one.\n',
   briefText = brief,
+  options: { projectAlias?: boolean } = {},
 ) {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'native-shape-incremental-'));
   roots.push(base);
-  const root = path.join(base, 'project'),
-    home = path.join(base, 'home');
+  let projectBase = base;
+  if (options.projectAlias) {
+    const physicalBase = path.join(base, 'physical');
+    await fs.mkdir(physicalBase);
+    projectBase = path.join(base, 'project-alias');
+    await fs.symlink(physicalBase, projectBase, process.platform === 'win32' ? 'junction' : 'dir');
+  }
+  const root = path.join(projectBase, 'project');
   await fs.mkdir(root);
+  const home = path.join(base, 'home');
   await fs.mkdir(home);
   vi.stubEnv('HOME', home);
   vi.stubEnv('USERPROFILE', home);
@@ -450,11 +458,26 @@ describe('Native Shape incremental contract', () => {
   });
 
   it('prepares an applied document review through the public CLI without rewriting the user file', async () => {
-    const f = await fixture();
+    const f = await fixture('sdk', undefined, undefined, { projectAlias: true });
     await f.finishBuilder();
     const after = brief + '\n<!-- The user clarified this example. -->\n';
     await fs.writeFile(f.briefFile, after);
-    const output = execFileSync(
+    const original = (await runNativeEditReviewCommand({
+      projectRoot: f.root,
+      name: f.name,
+      operation: 'prepare-applied',
+    })) as { originalPaths: string[] };
+    const blob = execFileSync('git', ['hash-object', '-w', '--stdin'], {
+      cwd: f.root,
+      input: brief,
+      encoding: 'utf8',
+    }).trim();
+    const ref = path.relative(f.root, f.briefFile).replaceAll('\\', '/');
+    execFileSync('git', ['update-index', '--add', '--cacheinfo', `100644,${blob},${ref}`], {
+      cwd: f.root,
+    });
+    await fs.rm(original.originalPaths[0]);
+    const output = spawnSync(
       process.execPath,
       [
         path.resolve('bin/comet.js'),
@@ -468,10 +491,12 @@ describe('Native Shape incremental contract', () => {
       ],
       { cwd: f.root, encoding: 'utf8', timeout: 60_000 },
     );
-    const result = JSON.parse(output);
+    expect(output.status, output.stdout || output.stderr || String(output.error)).toBe(0);
+    const result = JSON.parse(output.stdout);
     expect(result.ok).toBe(true);
     expect(result.data.proposal.edits).toHaveLength(1);
     expect(await fs.readFile(f.briefFile, 'utf8')).toBe(after);
+    expect(await fs.readFile(original.originalPaths[0], 'utf8')).toBe(brief);
   });
 
   it('keeps later user edits and supersedes stale pending and completed applied reviews', async () => {

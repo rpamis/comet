@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { realpath } from 'node:fs/promises';
 import type { EditReviewScope } from '../workflow-contract/edit-review.js';
 import { atomicWriteText } from './native-atomic-file.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
@@ -121,8 +122,11 @@ async function findApprovedOriginalInGit(
   };
   try {
     const root = (await git('git', ['rev-parse', '--show-toplevel'], options)).stdout.trim();
-    const absolute = path.resolve(paths.changesDir, state.name, approved.source);
-    const relative = path.relative(root, absolute).replaceAll('\\', '/');
+    const [physicalRoot, absolute] = await Promise.all([
+      realpath(root),
+      realpath(path.resolve(paths.changesDir, state.name, approved.source)),
+    ]);
+    const relative = path.relative(physicalRoot, absolute).replaceAll('\\', '/');
     if (!relative || relative.startsWith('../') || path.isAbsolute(relative)) return null;
     try {
       const staged = (await git('git', ['show', `:${relative}`], options)).stdout;

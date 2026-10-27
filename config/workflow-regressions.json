@@ -4497,6 +4497,27 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-approved-original-git-path-alias",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/40483968168/job/122121678638"],
+      "behavior": "工作区路径使用目录别名时，缺失的已批准原文仍能从匹配的 Git 内容恢复并继续已应用编辑复核。",
+      "coverageLevel": "public-cli",
+      "reproduction": "8c0dc520 的 macOS 回归两项找不到匹配原文；本地以 Windows junction 临时根重现同两项及公开 CLI 案例，共三项先失败。",
+      "expected": "用一致的物理路径定位 Git 原文，核对原批准摘要后恢复 LF 或 CRLF 原文，保留用户当前编辑和原 Run。",
+      "forbidden": "目录别名导致原文恢复永久阻塞、改写当前用户文件、接受伪造原文或陈旧编辑结果。",
+      "rootCause": "Git 返回规范工作区根，而原文路径仍含目录别名，两种写法计算出仓库外相对路径。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "reviews an already applied formal comment using the approved original without restoring the file|prepares an applied document review through the public CLI without rewriting the user file|recovers a large CRLF approved original from matching Git LF content for applied review",
+          "requiredNames": [
+            "Native Shape incremental contract reviews an already applied formal comment using the approved original without restoring the file",
+            "Native Shape incremental contract prepares an applied document review through the public CLI without rewriting the user file",
+            "Native Shape incremental contract recovers a large CRLF approved original from matching Git LF content for applied review"
+          ]
+        }
+      ]
     }
   ]
 }

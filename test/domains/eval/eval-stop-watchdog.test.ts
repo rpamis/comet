@@ -118,6 +118,10 @@ describe.skipIf(process.platform !== 'linux')('independent Eval stop watchdog', 
     expect(
       await readEvalJson(await evalRunPath(project, 'run', 'process-cleanup.json')),
     ).toMatchObject({ child, confirmed: true });
+    // 上述断言已证明后台自行停止；清理前等原操作收尾，重复 Stop 不应重做容器清理。
+    const cleanupCalls = docker.mock.calls.length;
+    await requestStopEvalRun(project, 'run');
+    expect(docker).toHaveBeenCalledTimes(cleanupCalls);
   });
 
   it('continues a persisted expired stop on a cold manager import', async () => {
