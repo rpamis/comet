@@ -28,25 +28,25 @@ json_quote() {
 capture_agent_runtime() {
     local agent="$1" role="$2"
     shift 2
-    local token agent_status stderr_pid
+    local token agent_status
     token=$(python3 "$SCRIPT_DIR/../python/stream_capture.py" --new-token) || return $?
-    local -a pipeline_status
+    local -a pipeline_status agent_pipeline_status
     if {
-        exec 9> >(python3 -u "$SCRIPT_DIR/../python/stderr_prefix.py" >&2)
-        stderr_pid=$!
-        if "$@" 2>&9; then
-            agent_status=0
+        # 普通管道会等待诊断流结束；Bash 3.2 不能 wait 进程替换产生的 PID。
+        if "$@" 2>&1 1>&3 | python3 -u "$SCRIPT_DIR/../python/stderr_prefix.py" >&2; then
+            agent_pipeline_status=("${PIPESTATUS[@]}")
         else
-            agent_status=$?
+            agent_pipeline_status=("${PIPESTATUS[@]}")
         fi
-        # Finish diagnostic framing before emitting trusted records on either channel.
-        exec 9>&-
-        wait "$stderr_pid" || agent_status=74
+        agent_status="${agent_pipeline_status[0]}"
+        if [[ "${agent_pipeline_status[1]}" -ne 0 ]]; then
+            agent_status=74
+        fi
         # A diagnostic may have no trailing newline. Start our record on its
         # own line so a failed command cannot hide its observed exit status.
         printf '\n{"type":"comet.eval.capture.end","token":"%s","exit_code":%s}\n' "$token" "$agent_status"
         exit "$agent_status"
-    } | python3 "$SCRIPT_DIR/../python/stream_capture.py" --agent "$agent" --role "$role" --stream-token "$token"; then
+    } 3>&1 | python3 "$SCRIPT_DIR/../python/stream_capture.py" --agent "$agent" --role "$role" --stream-token "$token"; then
         pipeline_status=("${PIPESTATUS[@]}")
     else
         pipeline_status=("${PIPESTATUS[@]}")

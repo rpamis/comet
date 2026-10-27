@@ -268,6 +268,36 @@ describe('standalone static collector parity', () => {
       2,
     ],
     [
+      'preserves literal simulator context with empty optional loop arguments',
+      'local/tests/scaffold/test_utils.py::test_claude_loop_preserves_literal_simulator_context_with_empty_optional_arguments[False]',
+    ],
+    [
+      'preserves custom simulator context and subject-only plugin arguments',
+      'local/tests/scaffold/test_utils.py::test_claude_loop_preserves_literal_simulator_context_with_empty_optional_arguments[True]',
+    ],
+    [
+      'preserves Agent exit status and diagnostic framing across shell versions',
+      'local/tests/scaffold/test_utils.py::test_agent_runtime_capture_preserves_exit_and_frames_diagnostics',
+      2,
+    ],
+    [
+      'rejects a failed diagnostic framer instead of accepting successful Agent output',
+      'local/tests/scaffold/test_utils.py::test_agent_runtime_capture_rejects_failed_diagnostic_framing',
+    ],
+    [
+      'requires a pending decision before matching custom decision patterns across shell versions',
+      'local/tests/scaffold/test_utils.py::test_decision_point_patterns_require_an_unresolved_decision_signal',
+    ],
+    [
+      'preserves timeout status while cleaning only the registered Agent container across shell versions',
+      'local/tests/scaffold/test_utils.py::test_shell_timeout_cleans_only_its_registered_turn',
+    ],
+    [
+      'rejects cleanup of unowned or uninspectable Agent containers across shell versions',
+      'local/tests/scaffold/test_utils.py::test_shell_cleanup_refuses_unowned_or_uninspectable_container',
+      2,
+    ],
+    [
       'rejects fresh Classic design or delivery approvals without actual user interaction evidence',
       'local/tests/scaffold/test_sdk_task_validators.py::test_new_classic_proposals_cannot_pass_without_actual_user_interaction',
     ],

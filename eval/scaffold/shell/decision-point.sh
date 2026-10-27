@@ -31,7 +31,7 @@ done <<< "$TEXT"
 
 UNRESOLVED_PATTERN='(^|[^[:alnum:]_])(unresolved|blocking|need your (input|answer|decision|preference)|waiting for your (input|answer|decision|preference))([^[:alnum:]_]|$)'
 for pattern in "$@"; do
-    if [[ -n "$pattern" && "${TEXT,,}" == *"${pattern,,}"* && "$TEXT" =~ $UNRESOLVED_PATTERN ]]; then
+    if [[ -n "$pattern" && "$TEXT" == *"$pattern"* && "$TEXT" =~ $UNRESOLVED_PATTERN ]]; then
         exit 0
     fi
 done

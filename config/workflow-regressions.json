@@ -4601,6 +4601,167 @@
           ]
         }
       ]
+    },
+    {
+      "id": "ci-macos-core-evidence-fixture",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/40503237824/job/122186636945"],
+      "behavior": "macOS 执行真实证据记录夹具时采用既有单平台模式，默认 Linux/Windows 发布分区仍保持原有完整性检查。",
+      "coverageLevel": "runtime",
+      "reproduction": "451e8d2e 的 macOS 完整 badcase 在真实记录夹具返回 No core regression partition for darwin。",
+      "expected": "macOS 实际运行夹具的全部分组并保存原始报告；默认跨平台模式仍拒绝缺少平台的证据，已有输出与陈旧输入仍拒绝。",
+      "forbidden": "把 macOS 当成 Linux 伪造记录、改动默认发布分区，或跳过真实子进程和报告校验。",
+      "rootCause": "测试无条件使用只划分 Linux/Windows 的默认发布计划，却要求在当前 macOS 平台记录。",
+      "tests": [
+        {
+          "file": "test/scripts/core-regression-evidence.test.ts",
+          "namePattern": "records only this platform using real commands and preserves exact raw reports",
+          "requiredNames": [
+            "cross-platform core regression evidence records only this platform using real commands and preserves exact raw reports"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-bash32-simulator-prompt-parsing",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/40503237824/job/122186636945"],
+      "behavior": "macOS Bash 3.2 可解析并执行默认和自定义模拟用户提示词，保留用户文本与主体专用插件参数边界。",
+      "coverageLevel": "public-cli",
+      "reproduction": "用 GNU Bash 3.2.57 执行同一失败 Python 案例与新增两种提示词案例，旧脚本在未启动 Agent 前报 unexpected EOF while looking for matching parenthesis。",
+      "expected": "默认和自定义模拟用户回合均可完成；引号、百分号和 shell 字面文本保留，插件参数仅传给主体。",
+      "forbidden": "模板解析失败阻止整个 Eval、执行文本中的 shell 表达式，或向模拟用户传递主体专用插件。",
+      "rootCause": "命令替换中的未引用 heredoc 触发 Bash 3.2 对模板文本的解析差异。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "preserves literal simulator context with empty optional loop arguments",
+          "requiredNames": [
+            "standalone static collector parity preserves literal simulator context with empty optional loop arguments"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "preserves custom simulator context and subject-only plugin arguments",
+          "requiredNames": [
+            "standalone static collector parity preserves custom simulator context and subject-only plugin arguments"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-bash32-empty-loop-arguments",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/40503237824/job/122186636945"],
+      "behavior": "Bash 3.2 在未指定模型或插件时仍可运行交互 Eval，并维持原批准回复和终态判定。",
+      "coverageLevel": "public-cli",
+      "reproduction": "消除解析故障后，同一 Bash 3.2.57 回归继续在 PLUGIN_ARGS 空数组扩展处报 unbound variable；修正后原审批和 Native 完成案例通过。",
+      "expected": "空数组扩展为零个参数，已提供的参数保留；正常批准完成，探针不可用时只执行一轮并失败停止。",
+      "forbidden": "空模型、插件或决策参数阻塞执行、插入空参数，或因探针错误反复运行 Agent。",
+      "rootCause": "循环驱动沿用在 Bash 3.2 的 nounset 下不接受空数组的展开形式。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "preserves literal simulator context with empty optional loop arguments",
+          "requiredNames": [
+            "standalone static collector parity preserves literal simulator context with empty optional loop arguments"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "stops on an unavailable completion probe without repeatedly invoking the agent",
+          "requiredNames": [
+            "standalone static collector parity stops on an unavailable completion probe without repeatedly invoking the agent"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-bash32-agent-capture-status",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/40503237824/job/122186636945"],
+      "behavior": "Bash 3.2 的 Agent 输出捕获保留真实退出码和诊断边界，诊断处理失败仍使执行失败。",
+      "coverageLevel": "public-cli",
+      "reproduction": "移除前两处阻塞后，Bash 3.2.57 的正常命令和退出 7 命令均被 wait 进程替换 PID 错误转换为 74；新增直接捕获案例先失败。",
+      "expected": "正常命令保留 0，失败命令保留 7；诊断流结束后再输出可信终态；诊断处理器失败返回 74。",
+      "forbidden": "成功命令误判失败、丢失实际非零退出码、诊断伪装可信控制记录，或诊断处理失败仍通过。",
+      "rootCause": "Bash 3.2 无法按普通子进程等待进程替换产生的 PID；改用普通管道等待两端并核对退出状态。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "preserves Agent exit status and diagnostic framing across shell versions",
+          "requiredNames": [
+            "standalone static collector parity preserves Agent exit status and diagnostic framing across shell versions"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "rejects a failed diagnostic framer instead of accepting successful Agent output",
+          "requiredNames": [
+            "standalone static collector parity rejects a failed diagnostic framer instead of accepting successful Agent output"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-bash32-decision-patterns",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/40503237824/job/122186636945"],
+      "behavior": "Bash 3.2 的自定义决策关键词保持大小写无关匹配，只有真实未决请求才能触发回复。",
+      "coverageLevel": "public-cli",
+      "reproduction": "扩大到同一工具文件后，既有正反向案例在 Bash 3.2.57 因 TEXT 双逗号展开报 bad substitution。",
+      "expected": "未决请求匹配关键词后触发回复，普通历史说明继续不触发。",
+      "forbidden": "使用 Bash 4 专有展开导致匹配失败，或把普通关键词出现误当成待用户决定。",
+      "rootCause": "自定义关键词分支使用 Bash 4 的小写转换，没有复用已启用的 nocasematch。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "requires a pending decision before matching custom decision patterns across shell versions",
+          "requiredNames": [
+            "standalone static collector parity requires a pending decision before matching custom decision patterns across shell versions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-bash32-timeout-container-cleanup",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/40503237824/job/122186636945"],
+      "behavior": "Bash 3.2 超时后仍只清理本轮已登记容器并保留原超时退出码。",
+      "coverageLevel": "public-cli",
+      "reproduction": "既有单轮容器假执行器案例在 Bash 3.2.57 的退出 trap 中报 container_name 未绑定，丢失 124 状态。",
+      "expected": "退出时使用已绑定的容器身份，清理后保留 124；归属不匹配或无法检查时仍拒绝删除。",
+      "forbidden": "在局部变量离开作用域后丢失容器身份、不清理本轮容器、跨轮删除，或把清理失败当作成功。",
+      "rootCause": "EXIT trap 延后展开函数局部变量；Bash 3.2 执行 trap 时该变量已不在作用域。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "preserves timeout status while cleaning only the registered Agent container across shell versions",
+          "requiredNames": [
+            "standalone static collector parity preserves timeout status while cleaning only the registered Agent container across shell versions"
+          ]
+        },
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "rejects cleanup of unowned or uninspectable Agent containers across shell versions",
+          "requiredNames": [
+            "standalone static collector parity rejects cleanup of unowned or uninspectable Agent containers across shell versions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ci-macos-empty-environment-arguments",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/40503237824/job/122186636945"],
+      "behavior": "Bash 3.2 的工具搜索环境转发测试可验证显式 false 与完全未配置两种情况。",
+      "coverageLevel": "runtime",
+      "reproduction": "451e8d2e 的 macOS 转发测试失败；本地同版 Bash 在未配置分支的测试 printf 处报 ENV_ARGS 未绑定。",
+      "expected": "显式 false 保留配置名；未配置时不产生该转发参数，测试仍正常退出。",
+      "forbidden": "测试自身的空数组展开失败遮蔽产品行为，或为使测试通过而默认开启工具搜索。",
+      "rootCause": "产品已使用兼容空数组展开，但该测试命令仍使用 Bash 3.2 nounset 不接受的形式。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "forwards explicit Claude tool search compatibility into isolated evaluation containers",
+          "requiredNames": [
+            "standalone static collector parity forwards explicit Claude tool search compatibility into isolated evaluation containers"
+          ]
+        }
+      ]
     }
   ]
 }

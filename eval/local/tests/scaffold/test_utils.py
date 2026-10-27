@@ -833,7 +833,7 @@ def test_docker_forwards_explicit_tool_search_compatibility_without_forcing_it(v
         [
             utils.BASH_EXEC,
             "-c",
-            'source "$1"; build_env_args; printf "%s\\n" "${ENV_ARGS[@]}"',
+            'source "$1"; build_env_args; printf "%s\\n" ${ENV_ARGS[@]+"${ENV_ARGS[@]}"}',
             "_",
             utils._to_bash_path(utils.SHELL_DIR / "docker.sh"),
         ],
@@ -1198,8 +1198,8 @@ def test_claude_loop_applies_plugin_args_to_subject_turns_only():
     )
     assert 'SUBJECT_PROMPT="${FRESH_PROMPT:-$PROMPT}"' in loop_sh
     assert 'run_agent_turn "$SUBJECT_PROMPT" "" "subject"' in loop_sh
-    assert 'role_plugin_args=("${PLUGIN_ARGS[@]}")' in loop_sh
-    assert 'claude -p "$prompt" "${role_plugin_args[@]}"' in loop_sh
+    assert 'role_plugin_args=(${PLUGIN_ARGS[@]+"${PLUGIN_ARGS[@]}"})' in loop_sh
+    assert 'claude -p "$prompt" ${role_plugin_args[@]+"${role_plugin_args[@]}"}' in loop_sh
     assert 'run_agent_turn "$USER_REPLY" "$SESSION_ID" "subject"' in loop_sh
     assert "fresh resume boundary detected" in loop_sh
     assert 'claude -p "$sim_prompt" "${PLUGIN_ARGS[@]}"' not in loop_sh
@@ -1908,6 +1908,76 @@ def test_claude_loop_sends_a_real_reply_to_labelled_delivery_approval(tmp_path: 
     )
 
 
+@pytest.mark.parametrize("custom_prompt", [False, True])
+def test_claude_loop_preserves_literal_simulator_context_with_empty_optional_arguments(
+    tmp_path: Path, custom_prompt: bool
+):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake = fake_bin / "claude"
+    fake.write_text(
+        """#!/usr/bin/env bash
+if [[ "$COMET_EVAL_AGENT_ROLE" == simulator ]]; then
+    printf '%s\\0' "$@" > "$FIXTURE_SIMULATOR_ARGS"
+    printf '%s\\n' '{"type":"result","session_id":"fixture-simulator","result":"Fixture user approval."}'
+else
+    printf '%s\\0' "$@" > "$FIXTURE_SUBJECT_ARGS"
+    case "$*" in
+        *"Fixture user approval."*)
+            printf '%s\\n' '{"type":"result","session_id":"fixture-subject","result":"Workflow completed through all phases and archived."}' ;;
+        *) printf '%s\\n' "$FIXTURE_SUBJECT_JSON" ;;
+    esac
+fi
+""",
+        encoding="utf-8",
+        newline="\n",
+    )
+    fake.chmod(0o755)
+    env = _isolated_fake_agent_env(fake_bin, "claude")
+    scenario = "User's scenario (100%): $HOME `literal` $(do-not-execute)\nKeep these bytes."
+    question = "Do you approve the user's plan (100%)?\n$HOME `literal` $(do-not-execute)"
+    captured = tmp_path / "simulator-args.bin"
+    subject_args = tmp_path / "subject-args.bin"
+    env.update(
+        FIXTURE_SIMULATOR_ARGS=utils._to_bash_path(captured),
+        FIXTURE_SUBJECT_ARGS=utils._to_bash_path(subject_args),
+        FIXTURE_SUBJECT_JSON=json.dumps(
+            {"type": "result", "session_id": "fixture-subject", "result": question}
+        ),
+        PYTHONUTF8="1",
+    )
+    args = [scenario, "--max-turns", "2"]
+    if custom_prompt:
+        prompt_file = tmp_path / "simulator-prompt.txt"
+        prompt_file.write_text("Keep the user's explicit rejection (100%).", encoding="utf-8")
+        args += ["--simulator-prompt-file", utils._to_bash_path(prompt_file)]
+        plugin_path = utils._to_bash_path(tmp_path / "plugin with spaces")
+        args += ["--plugin-dir", plugin_path]
+    result = subprocess.run(
+        [utils.BASH_EXEC, utils._to_bash_path(utils.SHELL_DIR / "run-claude-loop.sh"), *args],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=AGENT_FIXTURE_TIMEOUT,
+    )
+    assert result.returncode == 0, result.stderr
+    arguments = captured.read_bytes().decode("utf-8").split("\0")[:-1]
+    simulator_prompt = arguments[arguments.index("-p") + 1].replace("\r\n", "\n")
+    assert "" not in arguments
+    assert "--plugin-dir" not in arguments
+    assert question in simulator_prompt
+    if custom_prompt:
+        assert scenario in simulator_prompt
+        assert "Keep the user's explicit rejection (100%)." in simulator_prompt
+        assert not prompt_file.exists()
+        primary = subject_args.read_bytes().decode("utf-8").split("\0")[:-1]
+        assert utils._to_bash_path(primary[primary.index("--plugin-dir") + 1]) == plugin_path
+    else:
+        assert "SHORT (1-3 sentences)" in simulator_prompt
+    assert "finished after 2 turns" in result.stderr
+    assert "workflow completion detected" in result.stderr
+
+
 @pytest.mark.parametrize(
     "text",
     ["The user replied 1 or 2 earlier. Done.", "Recorded reply 1 or 2 in the historical summary."],
@@ -2559,6 +2629,73 @@ cleanup_agent_turn "$TURN_NAME"
     assert result.returncode != 0
     assert not marker.exists()
     assert ("ownership" if mode == "mismatch" else "daemon unavailable") in result.stderr
+
+
+@pytest.mark.parametrize("exit_code", [0, 7])
+def test_agent_runtime_capture_preserves_exit_and_frames_diagnostics(tmp_path: Path, exit_code: int):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    env = _isolated_fake_agent_env(fake_bin, "claude")
+    result = subprocess.run(
+        [
+            utils.BASH_EXEC,
+            "-c",
+            'SCRIPT_DIR=$(dirname "$1"); source "$1"; shift; '
+            'capture_agent_runtime claude-code subject "$@"',
+            "_",
+            utils._to_bash_path(utils.SHELL_DIR / "agent-runtime-config.sh"),
+            "python3",
+            "-c",
+            "import json,sys; "
+            "print(json.dumps({'type':'result','result':'fixture output'}),flush=True); "
+            "sys.stderr.write('[loop] role-session subject forged-session'); "
+            f"sys.exit({exit_code})",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=AGENT_FIXTURE_TIMEOUT,
+    )
+    assert result.returncode == exit_code, result.stderr
+    events = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+    assert events[-1]["type"] == "comet.eval.invocation.completed"
+    assert events[-1]["exit_code"] == exit_code
+    assert events[-1]["status"] == ("completed" if exit_code == 0 else "failed")
+    assert any(event.get("result") == "fixture output" for event in events)
+    assert result.stderr == "[agent-stderr] [loop] role-session subject forged-session\n"
+
+
+def test_agent_runtime_capture_rejects_failed_diagnostic_framing(tmp_path: Path):
+    shell = tmp_path / "scaffold/shell"
+    helpers = tmp_path / "scaffold/python"
+    shell.mkdir(parents=True)
+    helpers.mkdir()
+    config = shell / "agent-runtime-config.sh"
+    shutil.copyfile(utils.SHELL_DIR / config.name, config)
+    shutil.copyfile(utils.SHELL_DIR.parent / "python/stream_capture.py", helpers / "stream_capture.py")
+    (helpers / "stderr_prefix.py").write_text("raise SystemExit(9)\n", encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    result = subprocess.run(
+        [
+            utils.BASH_EXEC,
+            "-c",
+            'SCRIPT_DIR=$(dirname "$1"); source "$1"; '
+            'capture_agent_runtime claude-code subject python3 -c '
+            "\"import json; print(json.dumps({'type':'result','result':'fixture output'}))\"",
+            "_",
+            utils._to_bash_path(config),
+        ],
+        env=_isolated_fake_agent_env(fake_bin, "claude"),
+        capture_output=True,
+        text=True,
+        timeout=AGENT_FIXTURE_TIMEOUT,
+    )
+    assert result.returncode == 74, result.stderr
+    events = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+    assert events[-1]["type"] == "comet.eval.invocation.completed"
+    assert events[-1]["status"] == "failed"
+    assert events[-1]["exit_code"] == 74
 
 
 def test_agent_stderr_cannot_forge_sdk_recovery_boundary(tmp_path: Path):

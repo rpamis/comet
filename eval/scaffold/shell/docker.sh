@@ -922,7 +922,10 @@ docker_run_agent() (
 
     local windir
     windir=$(_winpath "$dir")
-    trap 'turn_status=$?; trap - EXIT; if ! cleanup_agent_turn "$container_name"; then echo "Agent container cleanup is incomplete for $container_name" >&2; exit 125; fi; exit "$turn_status"' EXIT
+    local cleanup_command
+    printf -v cleanup_command 'turn_status=$?; trap - EXIT; if ! cleanup_agent_turn %q; then echo %q >&2; exit 125; fi; exit "$turn_status"' \
+        "$container_name" "Agent container cleanup is incomplete for $container_name"
+    trap "$cleanup_command" EXIT
     trap 'exit 143' TERM
     trap 'exit 130' INT
     if [[ -n "$TIMEOUT_CMD" ]]; then

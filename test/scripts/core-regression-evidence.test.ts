@@ -169,10 +169,12 @@ describe('cross-platform core regression evidence', () => {
       { cwd: root },
     );
     const outputFile = path.join(root, 'coverage/platform.json');
-    const record = await recordCoreRegressionPlatform(root, entries, outputFile);
+    // 默认发布分区固定为 Linux/Windows；macOS 用已支持的单平台模式执行同一夹具。
+    const recordOptions = process.platform === 'darwin' ? { singlePlatform: true } : {};
+    const record = await recordCoreRegressionPlatform(root, entries, outputFile, recordOptions);
     expect(record.platform).toBe(process.platform);
     expect(record.projectRoot).toBe(root);
-    expect(record.groups).toHaveLength(1);
+    expect(record.groups).toHaveLength(recordOptions.singlePlatform ? entries.length : 1);
     expect(record.groups[0].id).toBe(
       process.platform === 'win32' ? windowsGroup : 'native-fixture',
     );
@@ -184,9 +186,15 @@ describe('cross-platform core regression evidence', () => {
     expect(() => assertCoreRegressionEvidence(entries, record.identity, [record])).toThrow(
       /Missing/iu,
     );
-    await expect(recordCoreRegressionPlatform(root, entries, outputFile)).rejects.toThrow(
-      /exist/iu,
-    );
+    if (recordOptions.singlePlatform)
+      expect(() =>
+        assertCoreRegressionEvidence(entries, record.identity, [record], {
+          singlePlatform: process.platform,
+        }),
+      ).not.toThrow();
+    await expect(
+      recordCoreRegressionPlatform(root, entries, outputFile, recordOptions),
+    ).rejects.toThrow(/exist/iu);
     const completeFile = path.join(root, 'coverage/complete.json');
     const complete = await runSinglePlatformCoreRegressions(root, entries, completeFile);
     expect(complete.groups).toBe(entries.length);
