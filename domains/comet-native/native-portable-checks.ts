@@ -561,7 +561,11 @@ async function nativeGeneratedInputRoots(
       parts.some(
         (part) =>
           NATIVE_DEPENDENCY_INPUT_DIRECTORIES.has(part) ||
-          NATIVE_WORKTREE_INPUT_DIRECTORIES.has(part),
+          NATIVE_WORKTREE_INPUT_DIRECTORIES.has(part) ||
+          (NATIVE_PHYSICAL_INPUT_EXCLUDED_DIRECTORIES.has(part) &&
+            !NATIVE_GENERATED_INPUT_DIRECTORIES.includes(
+              part as (typeof NATIVE_GENERATED_INPUT_DIRECTORIES)[number],
+            )),
       )
     )
       return;

@@ -727,6 +727,8 @@ describe('Native SDK verification input binding', () => {
   );
 
   it('reuses only unchanged Runtime-proven check inputs across a repaired candidate and retains the approved Shape', async () => {
+    // Python CI 的动态库路径不属于这个隔离执行样例；注入环境另测拒绝复用。
+    vi.stubEnv('LD_LIBRARY_PATH', undefined);
     const plans = ['left', 'right'].map((name) => ({
       id: name,
       name: `Check ${name} syntax`,
@@ -808,6 +810,30 @@ describe('Native SDK verification input binding', () => {
     const prepared = await checkedCandidate();
     const completed = await submitVerifierResult(prepared);
     await completeArchive(prepared, completed);
+  });
+
+  it('archives with unrelated ignored cache links while keeping generated inputs bound', async () => {
+    const prepared = await checkedCandidate({
+      prepareProject: async (root) => {
+        await fs.appendFile(path.join(root, '.gitignore'), '.cache/\n');
+        const target = path.join(root, 'cache-target');
+        await fs.mkdir(target);
+        await fs.mkdir(path.join(root, '.cache'));
+        await fs.symlink(
+          target,
+          path.join(root, '.cache', 'ordinary-link'),
+          process.platform === 'win32' ? 'junction' : 'dir',
+        );
+      },
+    });
+    const check = prepared.run.actions.find((action) => action.stepId === 'verify.checks')!;
+    await writeProjectFile(prepared.root, '.next/server/app/page.js', 'changed');
+    await expect(submitVerifierResult(prepared)).rejects.toThrow('OUTCOME_REJECTED');
+    await writeProjectFile(prepared.root, '.next/server/app/page.js', 'good');
+    const current = { ...prepared, run: (await prepared.store.read(prepared.run.runId))! };
+    const verified = await submitVerifierResult(current, 'pass', 'restored-cache-link-input');
+    expect(verified.actions.find((action) => action.id === check.id)).toEqual(check);
+    await completeArchive(current, verified);
   });
 
   it.each(['HTTP_PROXY', 'PATH', 'TEMP'])(

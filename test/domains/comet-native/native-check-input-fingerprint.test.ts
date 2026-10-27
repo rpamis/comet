@@ -14,6 +14,7 @@ import {
 } from '../../../domains/comet-native/native-portable-checks.js';
 import * as gitCommands from '../../../platform/process/git.js';
 import { resolveWorkspaceRuntimeRoot } from '../../../domains/workflow-contract/workspace-runtime.js';
+import { requireFileSymlink } from '../../helpers/file-symlink.js';
 
 function git(root: string, ...args: string[]): string {
   return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' });
@@ -310,6 +311,41 @@ describe('Native check input fingerprint', () => {
       ),
     ).toBe(false);
   });
+
+  it.for(['directory', 'file'] as const)(
+    'keeps unrelated ignored cache links outside generated input discovery (%s)',
+    async (kind, context) => {
+      if (kind === 'file') await requireFileSymlink(context);
+      await fs.writeFile(path.join(root, '.gitignore'), '.cache/\ndist/\n');
+      await fs.mkdir(path.join(root, '.cache'));
+      await fs.mkdir(path.join(root, 'dist'));
+      const target = path.join(root, 'cache-link-target');
+      if (kind === 'file') await fs.writeFile(target, 'unrelated cache');
+      else {
+        await fs.mkdir(target);
+        await fs.writeFile(path.join(target, 'input.txt'), 'linked input');
+      }
+      await fs.symlink(
+        target,
+        path.join(root, '.cache', 'ordinary-link'),
+        kind === 'file' ? 'file' : process.platform === 'win32' ? 'junction' : 'dir',
+      );
+      await fs.writeFile(path.join(root, 'dist', 'input.txt'), 'first');
+      const input = fingerprintInput(root);
+      const before = await nativeGeneratedCheckInputSnapshot(input);
+      expect(before.complete).toBe(true);
+      await fs.writeFile(path.join(root, 'dist', 'input.txt'), 'second');
+      expect((await nativeGeneratedCheckInputSnapshot(input)).fingerprint).not.toBe(
+        before.fingerprint,
+      );
+      await fs.symlink(
+        target,
+        path.join(root, 'dist', 'input-link'),
+        kind === 'file' ? 'file' : process.platform === 'win32' ? 'junction' : 'dir',
+      );
+      expect((await nativeGeneratedCheckInputSnapshot(input)).complete).toBe(false);
+    },
+  );
 
   it('restricts ignored input queries to literal generated roots instead of traversing unrelated trees', async () => {
     await fs.writeFile(path.join(root, '.gitignore'), 'dist/\nnode_modules/\n.tmp/\n');

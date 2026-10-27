@@ -4419,6 +4419,84 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-ignored-cache-link-boundary",
+      "sources": ["https://github.com/rpamis/comet/pull/510#discussion_r4386096194"],
+      "behavior": "忽略缓存内的无关链接不阻塞验收，生成输入的变化和实际范围内的链接仍阻止复用。",
+      "coverageLevel": "runtime",
+      "reproduction": "856bd277 的目录发现进入 .cache 并拒绝其中普通链接；相同目录 junction 用例和真实 SDK 验收均先失败。文件链接变体在具备权限的平台执行。",
+      "expected": "排除原有缓存边界，生成输入仍绑定；恢复原输入后保留原检查并完成归档。",
+      "forbidden": "缓存链接导致完整快照失败、生成输入变化后接受旧验收，或把实际生成输入链接作为普通文件复用。",
+      "rootCause": "新增 ignored 父目录发现没有沿用既有物理输入缓存排除。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "keeps unrelated ignored cache links outside generated input discovery",
+          "requiredNames": [
+            "Native check input fingerprint keeps unrelated ignored cache links outside generated input discovery (directory)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "archives with unrelated ignored cache links while keeping generated inputs bound",
+          "requiredNames": [
+            "Native SDK verification input binding archives with unrelated ignored cache links while keeping generated inputs bound"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ci-python-loader-environment-isolation",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/40467090141/job/122065507698"],
+      "behavior": "隔离执行的正向测试不继承 Python CI 注入的动态库路径，同时保留注入环境拒绝复用的反例。",
+      "coverageLevel": "unit",
+      "reproduction": "模拟 setup-python 的 LD_LIBRARY_PATH，856bd277 的跨候选复用正向用例失败，与 Ubuntu CI 的 logRef 和 reusedFrom 差异一致。",
+      "expected": "正向夹具使用隔离环境，动态库和 NODE_OPTIONS 注入仍不能建立窄范围证明。",
+      "forbidden": "放宽产品注入限制、删除复用断言，或依赖 runner 恰好没有动态库路径。",
+      "rootCause": "正向复用测试继承了 CI 安装 Python 后新增的 LD_LIBRARY_PATH。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-scope.test.ts",
+          "namePattern": "captures a stable complete input proof for an isolated Node syntax check",
+          "requiredNames": [
+            "captures a stable complete input proof for an isolated Node syntax check"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "reuses only unchanged Runtime-proven check inputs across a repaired candidate and retains the approved Shape",
+          "requiredNames": [
+            "Native SDK verification input binding reuses only unchanged Runtime-proven check inputs across a repaired candidate and retains the approved Shape"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "runs incremental repair and Archive through the generated CLI without repeating unchanged scoped checks",
+          "requiredNames": [
+            "blocked Verifier recovery command contract runs incremental repair and Archive through the generated CLI without repeating unchanged scoped checks"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-delivery-short-path-input-diagnostic",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/40467090141/job/122065507774"],
+      "behavior": "通过 Windows 短目录名进入工作区时，交付仍核对实际实现文件并报告验证内容变化。",
+      "coverageLevel": "public-cli",
+      "reproduction": "当前 CI 的 RUNNER~1 路径触发 Git outside repository；本地在真实 8.3 临时目录运行相同公开交付回归复现。",
+      "expected": "按同一物理路径比较 Git 索引；拒绝未验证实现，保留原 Run，并报告 source.js 的实际变化。",
+      "forbidden": "用不同目录拼写构造仓库外路径、丢失输入变化原因，或接受未经验证的实现。",
+      "rootCause": "Git 返回规范目录名，索引回退却从含短名称的文件路径计算相对路径。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "requires final verified implementation bytes throughout multi-commit delivery",
+          "requiredNames": [
+            "requires final verified implementation bytes throughout multi-commit delivery"
+          ]
+        }
+      ]
     }
   ]
 }

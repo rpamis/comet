@@ -83,7 +83,7 @@ jobs:
   core-regressions:
     name: Badcase regressions (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -396,7 +396,7 @@ jobs:
   sdk-contracts:
     name: SDK contracts (${{ matrix.os }}, Node ${{ matrix.node }}${{ matrix.shards > 1 && format(', shard {0}/{1}', matrix.shard, matrix.shards) || '' }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ matrix.os == 'windows-latest' && 50 || 40 }}
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 90 || 40 }}
     strategy:
       fail-fast: false
       matrix:

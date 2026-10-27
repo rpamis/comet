@@ -430,7 +430,7 @@ async function fixture(
   managedIgnore?: string,
   deltaSpec?: string,
 ) {
-  // 固定 macOS 临时工作区深度，保持绝对路径探测预算不受 /var/folders 随机层级影响。
+  // 项目、HOME 与 Runtime 数据使用同一临时根，避免探测预算受平台临时目录深度影响。
   const temporaryRoot = process.platform === 'darwin' ? await fs.realpath('/tmp') : os.tmpdir();
   const root = await fs.realpath(
     await fs.mkdtemp(path.join(temporaryRoot, 'classic verify rounds ')),
@@ -440,6 +440,7 @@ async function fixture(
   const home = path.join(root, 'home');
   await fs.mkdir(home);
   vi.stubEnv('HOME', home);
+  vi.stubEnv('COMET_DATA_DIR', root);
   vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
   await prepareClassicLegacyProject(projectRoot);
   if (managedIgnore !== undefined)

@@ -533,6 +533,21 @@ it('requires final verified implementation bytes throughout multi-commit deliver
   );
   expect(rejected.exitCode).not.toBe(0);
   expect(rejected.response.stderr).toContain('verified implementation changed: source.js');
+  const bundled = spawnSync(
+    process.execPath,
+    [
+      path.resolve('assets/skills/comet/scripts/comet-state.mjs'),
+      'complete-delivery',
+      'example',
+      '--commit',
+      f.git('rev-parse', 'HEAD'),
+      '--json',
+    ],
+    { cwd: f.projectRoot, encoding: 'utf8' },
+  );
+  expect(bundled.stdout, bundled.stderr || String(bundled.error)).not.toBe('');
+  expect(bundled.status).not.toBe(0);
+  expect(JSON.parse(bundled.stdout).stderr).toContain('verified implementation changed: source.js');
   expect((await f.inspect()).run).toEqual(before);
 });
 

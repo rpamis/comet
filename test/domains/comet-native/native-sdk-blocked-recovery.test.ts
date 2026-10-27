@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadOwnedNativeSdkRuntime } from '../../../domains/comet-native/native-runtime-ownership.js';
 import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
@@ -41,6 +41,7 @@ const roots: string[] = [];
 // Windows 上未修改基线的双工作区修复案例需约 125 秒；保留全部断言并给完整事务留出执行时间。
 const supervisorRecoveryTimeout = process.platform === 'win32' ? 240_000 : 120_000;
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
@@ -1096,6 +1097,7 @@ describe('blocked Verifier recovery command contract', () => {
   });
 
   it('runs incremental repair and Archive through the generated CLI without repeating unchanged scoped checks', async () => {
+    vi.stubEnv('LD_LIBRARY_PATH', undefined);
     const plans = ['left', 'right'].map((name) => ({
       id: name,
       name: `${name} syntax`,

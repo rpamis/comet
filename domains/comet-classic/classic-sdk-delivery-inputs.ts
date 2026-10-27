@@ -9,6 +9,7 @@ import {
 } from './classic-sdk-implementation-inputs.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { stat } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { spawnCommand } from '../../platform/process/spawn-command.js';
@@ -273,11 +274,11 @@ async function committedHash(
 }
 
 function matchesCleanIndex(root: string, ref: string, expected: string) {
-  const repository = git(path.dirname(path.join(root, ref)), [
-    'rev-parse',
-    '--show-toplevel',
-  ]).trim();
-  const relative = path.relative(repository, path.join(root, ref)).replaceAll('\\', '/');
+  const target = realpathSync.native(path.join(root, ref));
+  const repository = realpathSync.native(
+    git(path.dirname(target), ['rev-parse', '--show-toplevel']).trim(),
+  );
+  const relative = path.relative(repository, target).replaceAll('\\', '/');
   const entry = git(repository, ['ls-files', '--stage', '-z', '--', relative]).split('\0')[0];
   if (!entry || entry.split(' ')[1] !== expected.slice(4)) return false;
   try {

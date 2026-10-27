@@ -11,6 +11,7 @@ afterEach(async () => {
 });
 
 it('captures a stable complete input proof for an isolated Node syntax check', async () => {
+  vi.stubEnv('LD_LIBRARY_PATH', undefined);
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-check-scope-'));
   roots.push(root);
   await fs.writeFile(path.join(root, 'value.mjs'), 'export const value = 1;\n');
@@ -40,9 +41,13 @@ it('captures a stable complete input proof for an isolated Node syntax check', a
   ).toBeNull();
   vi.stubEnv('NODE_OPTIONS', '--require ./preload.cjs');
   expect(await captureNativeCheckScope(options)).toBeNull();
+  vi.stubEnv('NODE_OPTIONS', undefined);
+  vi.stubEnv('LD_LIBRARY_PATH', '/unproven-loader-path');
+  expect(await captureNativeCheckScope(options)).toBeNull();
 });
 
 it('does not establish a reusable scope for a directory replacing the syntax input', async () => {
+  vi.stubEnv('LD_LIBRARY_PATH', undefined);
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-check-scope-directory-'));
   roots.push(root);
   await fs.mkdir(path.join(root, 'value.mjs'));
@@ -64,6 +69,7 @@ it('does not establish a reusable scope for a directory replacing the syntax inp
 });
 
 it('binds Docker NODE_VERSION metadata without disabling a proven syntax scope', async () => {
+  vi.stubEnv('LD_LIBRARY_PATH', undefined);
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-check-scope-docker-'));
   roots.push(root);
   await fs.writeFile(path.join(root, 'value.mjs'), 'export const value = 1;\n');

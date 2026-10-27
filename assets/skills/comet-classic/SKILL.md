@@ -27,7 +27,7 @@ If both `comet-state.yaml` and `.comet.yaml` exist, including dangling symlinks,
 
 Continue from selection when it supplies Runtime ownership, phase, revision, and nextAction. Run `comet state next <change-name> --json` only for missing information, external changes, or an expired response.
 
-Transfer the actual state file, change documents, referenced artifacts, code, and project configuration together; checkpoints omit separate child worktrees and uncommitted code. For a copied SDK change with `run_checkpoint`, named `state select` or `state next` restores its phase, Actions, and approvals. Confirm the original device's execution stopped before continuing external work; reconcile unknown outcomes before retrying. Only if an older state has no checkpoint and the entry reports missing Run history, inspect formal documents, explain that restoration returns to Open and needs fresh approvals/checks, and obtain consent before `comet state restore <change-name> --confirmed`.
+Transfer the actual state file, change documents, referenced artifacts, code, and project configuration together; checkpoints omit separate child worktrees and uncommitted code. For a copied SDK change with `run_checkpoint`, named `state select` or `state next` restores its saved phase, Actions, and approvals. Confirm the original device's execution stopped before continuing external work; reconcile unknown outcomes before retrying. Only if an older state has no checkpoint and the entry reports missing Run history, inspect formal documents, explain that restoration returns to Open and needs fresh approvals/checks, and obtain consent before `comet state restore <change-name> --confirmed`.
 
 When `agent.continuation.mode` exists, follow `comet-classic/reference/auto-transition.md`: execute, wait, ask, reconcile, or finish. Use `nextAction.kind` below only for older responses without `mode`.
 
@@ -41,9 +41,9 @@ Reuse results and context for the same tasks. Follow returned state and `agent.c
 
 On workspace/phase entry, phase changes, Agent handoff or recovery, follow [Task Context and Artifact Language](reference/scripts.md#task-context-and-artifact-language). Take one snapshot using the continuation or claimed Action's `contextRequest`; use the configured artifact language and expand only missing Context Manifest content. Report actual usage outcomes and save a checkpoint at task end.
 
-Before completion, follow the task-context learning check and record `submitted`, `no-observation`, or `not-run`. Personal Memory stores reusable user information, never task summaries, progress, command output, or test results.
+Before completion, record the task-context learning check as `submitted`, `no-observation`, or `not-run`. Personal Memory stores reusable user information, never task summaries, progress, command output, or test results.
 
-Before completion, save validated, reusable project experience with `comet knowledge remember`; Personal Memory holds user preferences and stable collaboration habits. Commands and filtering rules are in [Task Context and Artifact Language](reference/scripts.md#task-context-and-artifact-language).
+Save validated project experience with `comet knowledge remember`. Project experience and personal preferences are stored separately; Personal Memory holds user preferences and stable collaboration habits. Commands and filtering rules: [Task Context and Artifact Language](reference/scripts.md#task-context-and-artifact-language).
 
 | Runtime route or phase        | Entry and responsibility                                                                                        |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------- |

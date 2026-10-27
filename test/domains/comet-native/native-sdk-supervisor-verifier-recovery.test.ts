@@ -407,7 +407,7 @@ async function oldCustomFixture(
     if (${JSON.stringify(mode)} === 'transfer-builder') {
       const builder=f.pending(run,'supervisor.child.builder');
       await (await import('node:fs/promises')).writeFile(builder.input.activation.worktree+'/draft.txt','retained original draft');
-      process.stdout.write(JSON.stringify({projectRoot:f.projectRoot,name:f.name,file:f.file,run,sibling}));
+      await new Promise(resolve => process.stdout.write(JSON.stringify({projectRoot:f.projectRoot,name:f.name,file:f.file,run,sibling}), resolve));
       process.exit(0);
     }
     run=await f.submitBuilder(f.pending(run,'supervisor.child.builder'),'approved\\n','original-builder');
