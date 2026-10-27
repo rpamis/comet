@@ -2,6 +2,34 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "native-verifier-builder-identity-claim-recovery",
+      "sources": ["report:2026-10-27-native-verifier-identity-recovery"],
+      "behavior": "Verifier 使用 Builder 身份领取时立即拒绝，保留原待领取任务和候选，让独立执行者直接领取。",
+      "coverageLevel": "runtime",
+      "reproduction": "在051旧代码通过 Native dispatch 以 Builder 的会话领取 Verifier，领取错误地成功并占用任务。",
+      "expected": "拒绝冲突身份并提示实际独立任务引用，Run 不变，独立会话可领取原 Action。",
+      "forbidden": "接受 Builder 身份、消耗领取或检查证据、重建候选或阻塞独立会话。",
+      "rootCause": "领取时没有检查 Verifier 身份与 Builder 是否冲突，直到提交结果才拒绝。",
+      "tests": [
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "rejects a Builder identity before claiming a Verifier and accepts an independent retry",
+          "requiredNames": [
+            "Native dispatch CLI presentation rejects a Builder identity before claiming a Verifier and accepts an independent retry"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "verified",
+          "evidence": [
+            "051_native_glm53flash_identity_fix_20261027: GLM 5.3 Flash one sample, 24/24 checks, rejected the Builder identity and completed the original Run after an independent verifier and cross-session recovery; source identity was captured while dist was being rebuilt, while the affected compiled module and runtime bundles were checked against the final build."
+          ]
+        }
+      ]
+    },
+    {
       "id": "native-509-environment-candidate-binding",
       "sources": ["https://github.com/rpamis/comet/issues/509"],
       "behavior": "非Git协调根中的独立子仓包含已跟踪、未跟踪或被忽略的环境配置时，候选采集按原输入范围计算摘要，不因文件名返回空摘要。",

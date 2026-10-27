@@ -30,6 +30,7 @@ import {
   PORTABLE_RUN_CHECKPOINT_KEY,
   readPortableRunCheckpoint,
   readRuntimeProjection,
+  RuntimeProtocolError,
   type RuntimeStore,
   type WorkflowRun,
 } from '../engine/runtime.js';
@@ -639,7 +640,28 @@ export function createNativeSdkStateStore(
     async compareAndSwap(runId, expectedRevision, next) {
       if (options.readOnly) throw new Error('Native SDK diagnostic store is read-only');
       await assertWorkspaceRuntimeCurrent();
-      const binding = parseNativePortableState(next.state).workspace;
+      const state = parseNativePortableState(next.state);
+      const verifier = next.actions.find(
+        (action) =>
+          action.stepId === 'verify.verifier' &&
+          action.status === 'running' &&
+          action.claim?.sessionId === state.builder_handoff?.builder_execution_ref,
+      );
+      if (verifier?.claim?.sessionId && expectedRevision !== null) {
+        const previous = await store.read(runId);
+        if (
+          previous?.revision === expectedRevision &&
+          previous.actions.some(
+            (action) => action.id === verifier.id && action.status === 'pending',
+          )
+        ) {
+          throw new RuntimeProtocolError(
+            'VERIFIER_SESSION_NOT_INDEPENDENT',
+            'Verifier session matches the Builder. The Action remains pending: use the actual independent Agent task or session reference and retry this claim. An inherited environment session ID may belong to the Builder.',
+          );
+        }
+      }
+      const binding = state.workspace;
       try {
         assertPortableWorkspaceBindingCurrent(projectRoot, {
           isolation: binding.isolation,

@@ -10,6 +10,7 @@ import { inspectNativeSdkRun } from '../../domains/comet-native/native-runtime-o
 import { nativeProjectPaths } from '../../domains/comet-native/native-paths.js';
 import { fixtureAcceptanceReview } from '../helpers/native-builder-acceptance-review.js';
 import { nativeSdkReportExecutor } from '../../domains/comet-native/native-sdk-report.js';
+import type { RuntimeAction } from '../../domains/engine/runtime.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -93,7 +94,14 @@ async function cli(root: string, request: string, details = false) {
   }
 }
 
-async function verifierOutcomeFixture() {
+async function verifierOutcomeFixture(
+  beforeClaim?: (fixture: {
+    root: string;
+    name: string;
+    requestFile: string;
+    action: RuntimeAction;
+  }) => Promise<void>,
+) {
   const fixture = await builderFixture();
   const { root, name } = fixture;
   await cli(root, fixture.requestFile);
@@ -138,6 +146,7 @@ async function verifierOutcomeFixture() {
     (entry) => entry.stepId === 'verify.verifier' && entry.status === 'pending',
   )!;
   expect(action).toBeDefined();
+  await beforeClaim?.({ root, name, requestFile, action });
   await submit({
     operation: 'claim',
     runId: name,
@@ -180,6 +189,42 @@ async function verifierOutcomeFixture() {
 }
 
 describe('Native dispatch CLI presentation', () => {
+  it('rejects a Builder identity before claiming a Verifier and accepts an independent retry', async () => {
+    const fixture = await verifierOutcomeFixture(async ({ root, name, requestFile, action }) => {
+      const before = (await inspectNativeSdkRun(root, name)).run;
+      await fs.writeFile(
+        requestFile,
+        JSON.stringify({
+          operation: 'claim',
+          runId: name,
+          actionId: action.id,
+          attempt: action.attempt,
+          inputHash: action.inputHash,
+          executorId: 'native-host',
+          sessionId: 'builder-session',
+          claimToken: 'wrong-verifier-token',
+        }),
+      );
+      const rejected = await runtimeDispatchCommand({
+        application: 'native',
+        projectRoot: root,
+        request: requestFile,
+      });
+      expect(rejected.response.status).toBe('failed');
+      expect(rejected.response.error?.code).toBe('VERIFIER_SESSION_NOT_INDEPENDENT');
+      expect(rejected.response.error?.message).toContain('independent');
+      const after = (await inspectNativeSdkRun(root, name)).run;
+      expect(after).toEqual(before);
+      expect(after.actions.find((entry) => entry.id === action.id)).toMatchObject({
+        status: 'pending',
+      });
+    });
+    const run = (await inspectNativeSdkRun(fixture.root, fixture.name)).run;
+    expect(run.actions.find((entry) => entry.id === fixture.action.id)).toMatchObject({
+      status: 'running',
+      claim: { sessionId: 'independent-verifier' },
+    });
+  });
   it('diagnoses misplaced outcome fields without changing the original claim', async () => {
     const f = await builderFixture();
     const claimed = await cli(f.root, f.requestFile);
