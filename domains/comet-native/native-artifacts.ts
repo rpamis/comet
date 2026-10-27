@@ -50,6 +50,8 @@ export interface NativeBriefValidationOptions {
   compact?: boolean;
   /** Require the directory structure section under Scope (document constraints v3). */
   structure?: boolean;
+  /** Portable Shape validates its actual complete document without a size budget. */
+  maxBytes?: number | null;
 }
 
 export class NativeDocumentConstraintError extends Error {
@@ -377,7 +379,10 @@ export async function validateNativeBrief(
       await readNativeBoundedTextFile({
         root: changeDir,
         ref: briefRef,
-        maxBytes: NATIVE_ARTIFACT_VALIDATION_LIMITS.maxFileBytes,
+        maxBytes:
+          options.maxBytes === undefined
+            ? NATIVE_ARTIFACT_VALIDATION_LIMITS.maxFileBytes
+            : options.maxBytes,
       })
     ).text;
   } catch (error) {

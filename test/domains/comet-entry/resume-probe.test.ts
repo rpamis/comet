@@ -30,6 +30,8 @@ import {
 } from '../../../domains/comet-native/native-config.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { createNativeSdkChange } from '../../../domains/comet-native/native-sdk-create.js';
+import { inspectNativeSdkRun } from '../../../domains/comet-native/native-runtime-ownership.js';
+import { closeNativeSdkHistory } from '../../../domains/comet-native/native-sdk-history.js';
 import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
 import {
   nativeSelectionFile,
@@ -408,8 +410,175 @@ describe('Comet entry resume probe v2', () => {
     const beforeProject = await snapshot(projectRoot);
     const beforeRuntime = await snapshot(runtimeRoot);
     const result = await resolveCometEntryResumeProbe(projectRoot, input('继续 missing-run'));
-    expect(result.action).toBe('ask_user');
-    expect(result.nextCommand).toBeNull();
+    expect(result.action).toBe('auto_resume');
+    expect(result.nextCommand).toBe('/comet-native');
+    expect(await snapshot(projectRoot)).toEqual(beforeProject);
+    expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);
+  });
+
+  it('directs a named missing Native Run to a read-only diagnosis', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    const original = await createNativeSdkChange({
+      paths,
+      name: 'missing-run',
+      language: 'en',
+      workspaceBinding: { isolation: 'current', changeBranch: null, targetBranch: null },
+    });
+    const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
+    await fs.rm(path.join(runtimeRoot, 'sdk-runs/native'), { recursive: true });
+    const beforeProject = await snapshot(projectRoot);
+    const beforeRuntime = await snapshot(runtimeRoot);
+    const result = await resolveCometEntryResumeProbe(projectRoot, input('继续 missing-run'));
+    expect(result).toMatchObject({
+      workflow: 'native',
+      changeName: 'missing-run',
+      action: 'auto_resume',
+      reasonCode: 'native-checkpoint-recoverable',
+      diagnosticCommand: 'comet native doctor missing-run --json',
+    });
+    expect(await snapshot(projectRoot)).toEqual(beforeProject);
+    expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);
+    const selected = await runNativeCli([
+      'select',
+      'missing-run',
+      '--project-root',
+      projectRoot,
+      '--json',
+    ]);
+    expect(selected.exitCode).toBe(73);
+    expect(selected.stdout).toContain('comet native doctor missing-run');
+    const diagnosis = await runNativeCli([
+      'doctor',
+      'missing-run',
+      '--project-root',
+      projectRoot,
+      '--json',
+    ]);
+    expect(diagnosis.stdout).toContain('sdk-run-recoverable');
+    expect(await snapshot(projectRoot)).toEqual(beforeProject);
+    expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);
+    const repaired = await runNativeCli([
+      'doctor',
+      'missing-run',
+      '--repair',
+      '--confirmed',
+      '--project-root',
+      projectRoot,
+      '--json',
+    ]);
+    expect(repaired.exitCode, repaired.stdout).toBe(0);
+    const { run } = await inspectNativeSdkRun(projectRoot, 'missing-run', { readOnly: true });
+    expect(run.runId).toBe(original.runId);
+    expect(run.actions).toEqual(original.actions);
+  });
+
+  it('continues the sole active Native Run when an unrelated closed Run is corrupt', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    await createNativeSdkChange({
+      paths,
+      name: 'old-run',
+      language: 'en',
+      workspaceBinding: { isolation: 'current', changeBranch: null, targetBranch: null },
+    });
+    expect(
+      (await runNativeCli(['cancel', 'old-run', '--project-root', projectRoot, '--json'])).exitCode,
+    ).toBe(0);
+    const { run } = await inspectNativeSdkRun(projectRoot, 'old-run');
+    expect(await closeNativeSdkHistory({ projectRoot, run })).toBe(true);
+    await createNativeSdkChange({
+      paths,
+      name: 'target-run',
+      language: 'en',
+      workspaceBinding: { isolation: 'current', changeBranch: null, targetBranch: null },
+    });
+    const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
+    const id = createHash('sha256').update(JSON.stringify('old-run')).digest('hex');
+    await fs.writeFile(
+      path.join(runtimeRoot, 'sdk-runs/native/.runtime-store-v2', id, 'checkpoint.json'),
+      '{bad',
+    );
+    const beforeProject = await snapshot(projectRoot);
+    const beforeRuntime = await snapshot(runtimeRoot);
+    expect(await resolveCometEntryResumeProbe(projectRoot, input('继续'))).toMatchObject({
+      action: 'auto_resume',
+      changeName: 'target-run',
+      nextCommand: '/comet-native',
+    });
+    expect(await snapshot(projectRoot)).toEqual(beforeProject);
+    expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);
+  });
+
+  it('retains an unreadable active Native Run as an ambiguous candidate', async () => {
+    expect(spawnSync('git', ['init', '-q', projectRoot]).status).toBe(0);
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    await createNativeSdkChange({
+      paths,
+      name: 'damaged-run',
+      language: 'en',
+      workspaceBinding: { isolation: 'current', changeBranch: null, targetBranch: null },
+    });
+    await createNative(projectRoot, 'target-run');
+    const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
+    const id = createHash('sha256').update(JSON.stringify('damaged-run')).digest('hex');
+    await fs.writeFile(
+      path.join(runtimeRoot, 'sdk-runs/native/.runtime-store-v2', id, 'checkpoint.json'),
+      '{bad',
+    );
+    const result = await resolveCometEntryResumeProbe(projectRoot, input('继续'));
+    expect(result).toMatchObject({ action: 'ask_user', reasonCode: 'multiple-native-changes' });
+    expect(result.candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'damaged-run', phase: 'invalid' }),
+        expect.objectContaining({ name: 'target-run', phase: 'shape' }),
+      ]),
+    );
+    expect(await resolveCometEntryResumeProbe(projectRoot, input('继续 target-run'))).toMatchObject(
+      {
+        action: 'auto_resume',
+        changeName: 'target-run',
+      },
+    );
+  });
+
+  it('resumes a named Native Run despite an unrelated damaged active owner', async () => {
+    expect(spawnSync('git', ['init', '-q', projectRoot]).status).toBe(0);
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    await createNativeSdkChange({
+      paths,
+      name: 'damaged-run',
+      language: 'en',
+      workspaceBinding: { isolation: 'current', changeBranch: null, targetBranch: null },
+    });
+    await createNative(projectRoot, 'target-run');
+    const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
+    await fs.writeFile(path.join(runtimeRoot, 'change-owners/native/damaged-run.json'), '{bad');
+    const beforeProject = await snapshot(projectRoot);
+    const beforeRuntime = await snapshot(runtimeRoot);
+    expect(await resolveCometEntryResumeProbe(projectRoot, input('继续 target-run'))).toMatchObject(
+      {
+        action: 'auto_resume',
+        changeName: 'target-run',
+      },
+    );
+    const ambiguous = await resolveCometEntryResumeProbe(projectRoot, input('继续'));
+    expect(ambiguous).toMatchObject({ action: 'ask_user', reasonCode: 'multiple-native-changes' });
+    expect(ambiguous.candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'damaged-run', phase: 'invalid' }),
+        expect.objectContaining({ name: 'target-run' }),
+      ]),
+    );
+    expect(
+      await resolveCometEntryResumeProbe(projectRoot, input('继续 damaged-run')),
+    ).toMatchObject({
+      action: 'ask_user',
+      changeName: 'damaged-run',
+      diagnosticCommand: 'comet native doctor damaged-run --json',
+    });
     expect(await snapshot(projectRoot)).toEqual(beforeProject);
     expect(await snapshot(runtimeRoot)).toEqual(beforeRuntime);
   });
@@ -439,8 +608,16 @@ describe('Comet entry resume probe v2', () => {
       resolveCometEntryResumeProbe(projectRoot, input('继续 target-run')),
     ).resolves.toMatchObject({ action: 'auto_resume', changeName: 'target-run' });
     await expect(resolveCometEntryResumeProbe(projectRoot, input('继续'))).resolves.toMatchObject({
+      action: 'auto_resume',
+      changeName: 'target-run',
+    });
+    await expect(
+      resolveCometEntryResumeProbe(projectRoot, input('继续 unrelated-run')),
+    ).resolves.toMatchObject({
       action: 'ask_user',
-      reasonCode: 'native-state-invalid',
+      reasonCode: 'native-change-invalid',
+      changeName: 'unrelated-run',
+      diagnosticCommand: 'comet native doctor unrelated-run --json',
     });
   });
 

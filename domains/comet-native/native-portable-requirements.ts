@@ -232,6 +232,7 @@ export async function validateNativePortableDocuments(options: {
         strict: true,
         compact: compactConstraints,
         structure: structureConstraints,
+        maxBytes: null,
       })
     ).findings,
   ];
@@ -246,7 +247,7 @@ export async function validateNativePortableDocuments(options: {
       })
     ).text;
   } catch {
-    // validateNativeBrief already reports the bounded/missing read failure.
+    // validateNativeBrief already reports the read failure.
   }
   const specChanges = options.specChanges ?? options.state.spec_changes;
   const targetSpecs = specChanges.filter(({ operation }) => operation !== 'remove');
@@ -1232,7 +1233,7 @@ export async function inspectNativePortableAcceptanceDrift(options: {
       return {
         drifted: true,
         reviewRequired: true,
-        reason: `Native formal comments changed and may contain Agent or tool instructions. Preserve the current candidate and Action/claim; restore the pre-edit text and prepare an independent comet edit-review for ${options.state.name}, or explicitly revise Shape when no Verify candidate exists.`,
+        reason: `Native formal comments changed and may contain Agent or tool instructions. Preserve the current candidate, Action/claim and edited files. With a current Verify candidate, use comet edit-review prepare-applied native ${options.state.name} for an independent review; Runtime recovers the approved original from its evidence or matching Git history. If the original cannot be recovered or no Verify candidate exists, reconcile any running Builder and use the current continuation to revise-requirements on this same change, retaining the edited files.`,
       };
     }
     return {

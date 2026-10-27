@@ -32,8 +32,19 @@ export const NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH =
 export const NATIVE_SDK_PRE_EDIT_REVIEW_HASH =
   'a4fa2f7ad12c5c7dd37374f9cb5f1154f2c686e3b3b5473533154c01fdcdd9ea';
 
-export function nativeSdkBeforeBlockedVerifierRecovery(workflow: DefineWorkflowOptions) {
+/** 定义新增实现修订入口前的原 Run，保留其余全部步骤及转移。 */
+export function nativeSdkBeforeImplementationRevision(workflow: DefineWorkflowOptions) {
   const previous = structuredClone(workflow);
+  if (previous.commands) delete previous.commands['revise-implementation'];
+  delete previous.steps['repair.implementation'];
+  previous.transitions = (previous.transitions ?? []).filter(
+    ({ from, to }) => from !== 'repair.implementation' && to !== 'repair.implementation',
+  );
+  return previous;
+}
+
+export function nativeSdkBeforeBlockedVerifierRecovery(workflow: DefineWorkflowOptions) {
+  const previous = nativeSdkBeforeImplementationRevision(workflow);
   const stop = previous.steps['verify.stop'];
   if (stop?.type === 'ask_user' && Array.isArray(stop.choices))
     stop.choices = stop.choices.filter((choice) => choice !== 'retry');
@@ -130,6 +141,7 @@ export function nativeSdkLegacyDefinitions(workflow: DefineWorkflowOptions) {
     NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH,
   ];
   return [
+    nativeSdkBeforeImplementationRevision(workflow),
     nativeSdkBeforeBlockedVerifierRecovery(workflow),
     nativeSdkBeforeIntegrationRepairRecovery(workflow),
     nativeSdkBeforeArchiveCandidateRecovery(workflow),

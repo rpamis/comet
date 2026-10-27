@@ -283,9 +283,11 @@ export async function writeNativeVerificationReport(options: {
   file: string;
   state: NativePortableState;
   supervisor?: NativeSupervisorState;
+  beforeCommit?: () => void | Promise<void>;
 }): Promise<void> {
   await atomicWriteText(
     options.file,
     renderNativeVerificationReport(options.state, options.supervisor),
+    { beforeCommit: options.beforeCommit },
   );
 }

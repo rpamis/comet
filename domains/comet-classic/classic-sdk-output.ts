@@ -395,14 +395,14 @@ export function classicSdkContinuation(
       commandArgs:
         action.stepId === `${state.workflow}.archive.execute`
           ? command('check', 'archive', '--recover')
-          : null,
+          : command('check', state.phase, '--recover'),
       requiredInputs: [],
       instruction:
         action.stepId === `${state.workflow}.archive.execute`
           ? '等待原归档执行器返回结果，不得重放。仅确认原执行器已停止且回报丢失后，读取 state check archive --recover 给出的 markUnknownRequest，通过 runtime dispatch 提交，再运行 comet archive ' +
             change +
             ' --recover。'
-          : '等待原领取方返回本次执行结果；不要重新派发或把仍在运行的工作判为 unknown。',
+          : '等待原领取方返回本次执行结果；也可运行只读恢复检查核对原领取和产物。确认原执行已停止之前，不得标记 unknown 或重新派发。',
     });
   if (action?.status === 'unknown')
     return result({

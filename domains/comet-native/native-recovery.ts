@@ -5,6 +5,7 @@ export type NativeRecoveryCode =
   | 'archive-blocked'
   | 'archive-preflight-blocked'
   | 'candidate-drift'
+  | 'verification-report-drift'
   | 'shape-drift'
   | 'execution-unresolved'
   | 'lock-active'

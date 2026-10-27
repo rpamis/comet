@@ -150,6 +150,11 @@ export async function inspectClassicSdkActionRecovery(projectRoot: string, run: 
     record?.status === 'completed' && record.result && action.claim
       ? (record.result as { status: 'succeeded' | 'failed'; output: unknown })
       : null;
+  const interruptedBuilder =
+    action.type === 'invoke_skill' &&
+    action.status === 'unknown' &&
+    action.stepId === `${(run.state as { workflow?: string }).workflow}.build.execute` &&
+    action.claim;
   return {
     status: record?.status === 'stop-unconfirmed' ? 'stop-unconfirmed' : 'outcome-unknown',
     blocked: true,
@@ -180,6 +185,11 @@ export async function inspectClassicSdkActionRecovery(projectRoot: string, run: 
         ? '已找到本次执行结果记录。核对命令、日志、输入快照与退出码后，使用 recordOutcomeRequest 回填原结果；之后仍需通过正常检查证据校验。'
         : '未找到本次完整结果。日志、外部 marker 或进程结束本身不能证明检查通过；联系原执行器取回完整结果，不得编造成功收据。',
       '只有已核实原尝试完全未执行时，才可先 mark-unknown，再重新读取当前 revision 并填写 retryRequestTemplate 的真实核对证据；已经执行或仍不明时不得声明 not-executed。',
+      ...(interruptedBuilder
+        ? [
+            '仅在核实原 Builder 和其执行的工作均已停止、已核对部分产物及外部副作用、且没有可信成功结果时，可填写 interruptedOutcomeRequestTemplate：记录实际停止事实与原领取令牌，回填失败后按最新状态继续 Build；不要删除或覆盖已有工作。',
+          ]
+        : []),
     ],
     dispatch: {
       application,
@@ -221,6 +231,22 @@ export async function inspectClassicSdkActionRecovery(projectRoot: string, run: 
               status: completed.status,
               output: completed.output,
             },
+          },
+        }
+      : {}),
+    ...(interruptedBuilder
+      ? {
+          interruptedOutcomeRequestTemplate: {
+            operation: 'record-outcome',
+            ...requestBase,
+            outcome: {
+              ...original,
+              claimToken: '<原领取令牌>',
+              outcomeId: '<本次结果的唯一标识>',
+              status: 'failed',
+              output: { summary: '<填写核实停止、部分产物和外部副作用的事实与来源>' },
+            },
+            context: { projectRoot: path.resolve(projectRoot) },
           },
         }
       : {}),

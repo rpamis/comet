@@ -42,7 +42,7 @@ export interface EditReviewCommandOptions {
   proposalHash?: string;
 }
 export interface EditReviewAuthority {
-  kind: 'runtime-verifier' | 'user-confirmed';
+  kind: 'runtime-verifier' | 'user-confirmed' | 'runtime-superseded';
   executionRef: string;
 }
 export interface EditReviewClaim {
@@ -100,6 +100,7 @@ export interface EditReviewProposal {
   edits: ReviewedEdit[];
   generation: number;
   proposalHash: string;
+  applied?: true;
 }
 export interface ReviewReceipt {
   schema: 'comet.edit-review.receipt.v1';
@@ -142,15 +143,21 @@ async function directory(scope: EditReviewScope, write = false): Promise<string>
 async function currentContent(
   scope: EditReviewScope,
   ref: string,
+  applied = false,
 ): Promise<{ text: string; hash: string; executable: boolean } | null> {
   const target = await inspectProtectedProjectPath(scope.projectRoot, ref, {
     label: '编辑复核目标',
     expected: 'file',
   });
   if (!target.exists) return null;
-  const source = await readProtectedProjectFile(scope.projectRoot, ref, MAX_BYTES, {
-    label: '编辑复核目标',
-  });
+  const source = await readProtectedProjectFile(
+    scope.projectRoot,
+    ref,
+    applied ? Number.MAX_SAFE_INTEGER : MAX_BYTES,
+    {
+      label: '编辑复核目标',
+    },
+  );
   const text = decoder.decode(source.bytes);
   if (text.includes('\0')) throw new Error('编辑复核只接受完整 UTF-8 文本');
   return {
@@ -190,8 +197,11 @@ function parseProposal(value: unknown): EditReviewProposal {
     schema: proposal.schema,
     binding: proposal.binding,
     edits: proposal.edits,
+    ...(proposal.applied === true ? { applied: true as const } : {}),
     generation: proposal.generation,
   };
+  if (proposal.applied !== undefined && proposal.applied !== true)
+    throw new Error('编辑复核应用状态无效');
   if (objectHash(body) !== proposal.proposalHash) throw new Error('编辑复核请求 hash 不匹配');
   for (const edit of proposal.edits) {
     if (
@@ -220,7 +230,10 @@ function parseReceipt(value: unknown, hash: string): ReviewReceipt | null {
     ) ||
     typeof receipt.summary !== 'string' ||
     !receipt.summary.trim() ||
-    !['runtime-verifier', 'user-confirmed'].includes(receipt.authority?.kind) ||
+    !['runtime-verifier', 'user-confirmed', 'runtime-superseded'].includes(
+      receipt.authority?.kind,
+    ) ||
+    (receipt.authority?.kind === 'runtime-superseded' && receipt.decision !== 'discard') ||
     !receipt.authority.executionRef
   )
     throw new Error('编辑复核结果无效');
@@ -279,6 +292,16 @@ async function editReviewInputReference(scope: EditReviewScope, proposalHash: st
   } catch {
     return null;
   }
+}
+
+export async function readEditReviewInput(
+  scope: EditReviewScope,
+  proposalHash: string,
+): Promise<string | null> {
+  const reference = await editReviewInputReference(scope, proposalHash);
+  if (!reference) return null;
+  const source = await fs.readFile(reference.file, 'utf8');
+  return editContentHash(source) === reference.hash ? source : null;
 }
 
 /** 编辑复核只授权一份具体差异，不领取或完成原工作流的正式 Verify Action。 */
@@ -366,8 +389,9 @@ export async function claimEditReview(
           ? [`读取原始编辑请求：${input.file}；摘要：${input.hash}`]
           : ['与提案摘要匹配的原始编辑请求；缺失时不得批准']),
       ],
-      instruction:
-        '只读核对差异、使用方和当前验收条件，再填写 recordTemplate；通过后重试原编辑并刷新失效检查。会话标识仅关联执行，不表示宿主身份已认证。',
+      instruction: proposal.applied
+        ? '只读核对当前文件、已批准原文、使用方和验收条件，再填写 recordTemplate；编辑已经应用，保留用户文件并刷新失效检查。会话标识仅关联执行，不表示平台身份已认证。'
+        : '只读核对差异、使用方和当前验收条件，再填写 recordTemplate；通过后重试原编辑并刷新失效检查。会话标识仅关联执行，不表示平台身份已认证。',
     },
   };
 }
@@ -415,6 +439,36 @@ export async function editReviewContinuation(
   sdk: boolean,
 ): Promise<CliActionContinuation | null> {
   for (const review of reviews) {
+    if (review.receipt?.authority.kind === 'runtime-superseded') continue;
+    const canClaim = sdk || Boolean(review.applied);
+    if (scope.workflow === 'native' && (review.applied || !review.receipt)) {
+      for (const edit of review.edits) {
+        const formal = scope.formalPrefixes.some(
+          (prefix) =>
+            edit.path === prefix || edit.path.startsWith(prefix.replace(/\/$/u, '') + '/'),
+        );
+        if (!formal) continue;
+        const current = await currentContent(scope, edit.path, true);
+        const expected = review.applied ? edit.afterHash : edit.beforeHash;
+        if ((current?.hash ?? null) !== expected) {
+          return {
+            mode: 'execute',
+            commandArgs: [
+              'comet',
+              'edit-review',
+              'prepare-applied',
+              'native',
+              scope.change,
+              '--project-root',
+              scope.projectRoot,
+              '--json',
+            ],
+            requiredInputs: [],
+            instruction: '文件已再次修改；保留当前内容并准备复核最新修改，旧提案会标记为过期。',
+          };
+        }
+      }
+    }
     const command = [
       'comet',
       'edit-review',
@@ -428,8 +482,8 @@ export async function editReviewContinuation(
     if (!review.receipt) {
       const input = await editReviewInputReference(scope, review.proposalHash);
       return {
-        mode: sdk ? 'execute' : 'ask',
-        commandArgs: sdk
+        mode: canClaim ? 'execute' : 'ask',
+        commandArgs: canClaim
           ? [
               'comet',
               'edit-review',
@@ -446,7 +500,7 @@ export async function editReviewContinuation(
               '--json',
             ]
           : command,
-        requiredInputs: sdk
+        requiredInputs: canClaim
           ? ['独立复核会话标识', ...(!input ? ['原始编辑请求'] : [])]
           : ['用户明确确认具体编辑复核结果'],
         instruction:
@@ -462,7 +516,7 @@ export async function editReviewContinuation(
       };
     if (review.receipt.decision === 'non-behavioral')
       for (const edit of review.edits) {
-        const current = await currentContent(scope, edit.path);
+        const current = await currentContent(scope, edit.path, review.applied);
         if (current?.hash === edit.beforeHash && edit.beforeHash !== edit.afterHash) {
           const input = await editReviewInputReference(scope, review.proposalHash);
           return {
@@ -493,6 +547,7 @@ export async function editReviewContinuation(
 export async function prepareEditReview(
   scope: EditReviewScope,
   request: CometHookRequest,
+  appliedOriginals?: ReadonlyMap<string, string>,
 ): Promise<EditReviewProposal> {
   if (
     request.intent !== 'write' ||
@@ -523,11 +578,27 @@ export async function prepareEditReview(
       (proposal) => path.resolve(request.cwd ?? scope.projectRoot, proposal.path) === absolute,
     );
     if (proposals.length !== 1) throw new Error('编辑复核不能推测或合并不明确的写入');
-    const before = await currentContent(scope, ref);
-    if (!before) throw new Error('新增、删除或重命名文件需要原工作流修订');
-    const after = proposedCometHookFileContent(proposals[0], before?.text ?? '');
-    if (after === null || Buffer.byteLength(after) > MAX_BYTES || after.includes('\0'))
+    const current = await currentContent(scope, ref, Boolean(appliedOriginals));
+    if (!current) throw new Error('新增、删除或重命名文件需要原工作流修订');
+    const original = appliedOriginals?.get(ref);
+    if (appliedOriginals && original === undefined) throw new Error('缺少已批准的原始文件');
+    const before =
+      original === undefined
+        ? current
+        : {
+            text: original,
+            hash: editContentHash(original),
+            executable: current.executable,
+          };
+    const after = proposedCometHookFileContent(proposals[0], before.text);
+    if (
+      after === null ||
+      (!appliedOriginals && Buffer.byteLength(after) > MAX_BYTES) ||
+      after.includes('\0')
+    )
       throw new Error('编辑复核无法完整重建写入内容');
+    if (appliedOriginals && after !== current.text)
+      throw new Error('已应用文件与待复核内容不匹配，请重新读取');
     const impact = classifyEditImpact(ref, before?.text ?? '', after);
     if (impact.kind === 'implementation-changed' || impact.kind === 'requirements-changed')
       throw new Error(`本地判定已确认实现或需求变化：${impact.reason}`);
@@ -544,11 +615,14 @@ export async function prepareEditReview(
     schema: 'comet.edit-review.request.v1' as const,
     binding: await binding(scope),
     edits,
+    ...(appliedOriginals ? { applied: true as const } : {}),
   };
   const root = await directory(scope, true);
   return withRecoverableFileLock(path.join(root, '.lock'), async () => {
     const previous = (await inspectEditReviews(scope)).filter(
-      (review) => objectHash(review.edits) === objectHash(edits),
+      (review) =>
+        Boolean(review.applied) === Boolean(appliedOriginals) &&
+        objectHash(review.edits) === objectHash(edits),
     );
     const current = previous.find((review) => review.receipt?.decision !== 'discard');
     if (current) {
@@ -556,6 +630,7 @@ export async function prepareEditReview(
         schema: current.schema,
         binding: current.binding,
         edits: current.edits,
+        ...(current.applied ? { applied: true as const } : {}),
         generation: current.generation,
         proposalHash: current.proposalHash,
       };
@@ -611,6 +686,42 @@ export async function inspectEditReviews(scope: EditReviewScope): Promise<EditRe
   return reviews;
 }
 
+/** 最新文件替换了待审的已应用编辑时，只作废旧提案，不批准当前内容。 */
+export async function supersedeStaleAppliedEditReviews(scope: EditReviewScope): Promise<void> {
+  const reviews = await inspectEditReviews(scope);
+  const root = await directory(scope, true);
+  for (const review of reviews) {
+    if (review.receipt?.decision === 'discard' || (!review.applied && review.receipt)) continue;
+    if (
+      !review.applied &&
+      !review.edits.every((edit) =>
+        scope.formalPrefixes.some(
+          (prefix) =>
+            edit.path === prefix || edit.path.startsWith(prefix.replace(/\/$/u, '') + '/'),
+        ),
+      )
+    )
+      continue;
+    let stale = false;
+    for (const edit of review.edits) {
+      const current = await currentContent(scope, edit.path, true);
+      if ((current?.hash ?? null) !== (review.applied ? edit.afterHash : edit.beforeHash))
+        stale = true;
+    }
+    if (!stale) continue;
+    const receipt: ReviewReceipt = {
+      schema: 'comet.edit-review.receipt.v1',
+      proposalHash: review.proposalHash,
+      decision: 'discard',
+      summary: '文件再次变化，保留当前文件并复核最新内容。',
+      authority: { kind: 'runtime-superseded', executionRef: 'current-file-changed' },
+    };
+    await withRecoverableFileLock(path.join(root, '.lock'), () =>
+      writeOnce(root, `${review.proposalHash}.discard.json`, receipt),
+    );
+  }
+}
+
 export async function recordEditReview(
   scope: EditReviewScope,
   input: EditReviewInput,
@@ -631,7 +742,9 @@ export async function recordEditReview(
   );
   if (!proposal) throw new Error('编辑复核请求不属于当前候选或已失效');
   for (const edit of proposal.edits) {
-    const current = await currentContent(scope, edit.path);
+    const current = await currentContent(scope, edit.path, proposal.applied);
+    if (proposal.receipt?.authority.kind === 'runtime-superseded')
+      throw new Error('编辑提案已被新内容替代，请复核当前文件');
     if ((current?.hash ?? null) !== edit.beforeHash && current?.hash !== edit.afterHash)
       throw new Error('当前文件与待复核差异不匹配');
     if (input.decision === 'discard' && (current?.hash ?? null) !== edit.beforeHash)
@@ -687,10 +800,11 @@ export async function assertEditReviewsComplete(scope: EditReviewScope): Promise
         `编辑复核确认 ${review.receipt.decision}；请通过原工作流修订，或丢弃尚未应用的编辑`,
       );
     for (const edit of review.edits) {
-      const current = await currentContent(scope, edit.path);
+      const current = await currentContent(scope, edit.path, review.applied);
       if (current && current.executable !== edit.executable)
         throw new Error('编辑复核目标的执行权限不匹配');
       if (review.receipt.decision === 'discard') {
+        if (review.receipt.authority.kind === 'runtime-superseded') continue;
         if (!reaches(approvedEdges(reviews, edit.path), edit.beforeHash, current?.hash ?? null))
           throw new Error('丢弃的编辑与当前文件不匹配');
         continue;

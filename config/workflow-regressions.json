@@ -3581,6 +3581,617 @@
           ]
         }
       ]
+    },
+    {
+      "id": "manual-recovery-named-native-checkpoint",
+      "behavior": "指定 Native 需求的本机 Run 丢失但便携检查点有效时，入口保留目标并引导原 Run 恢复。",
+      "reproduction": "临时项目删除本机 SDK Run，旧入口返回 ask_user 且没有续行命令；同一回归在旧代码失败。",
+      "expected": "只读探测识别目标并进入原 Native 恢复流程，诊断后沿用原 Run 与 Action。",
+      "forbidden": "探测时写入状态、创建新 Run、跳过对原执行的核对。",
+      "rootCause": "入口将可验证的便携恢复异常按普通无效状态处理。",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/comet-entry/resume-probe.test.ts",
+          "namePattern": "directs a named missing Native Run to a read-only diagnosis",
+          "requiredNames": [
+            "Comet entry resume probe v2 directs a named missing Native Run to a read-only diagnosis"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-closed-native-history",
+      "behavior": "损坏的已关闭 Native 历史不阻挡唯一有效的活动需求恢复。",
+      "reproduction": "临时项目关闭旧 Run 后损坏其 checkpoint，旧探测将其当作当前阻塞而不能选择有效需求。",
+      "expected": "探测跳过已关闭历史并保持只读；活动需求明确时继续原流程。",
+      "forbidden": "忽略无法确认归属的活动需求，或修改损坏的历史记录。",
+      "rootCause": "入口将已关闭历史与活动候选一并读取。",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/comet-entry/resume-probe.test.ts",
+          "namePattern": "continues the sole active Native Run when an unrelated closed Run is corrupt",
+          "requiredNames": [
+            "Comet entry resume probe v2 continues the sole active Native Run when an unrelated closed Run is corrupt"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-damaged-native-owner",
+      "behavior": "无关活动需求的归属记录损坏时，具名有效需求仍能恢复，未具名时保留歧义。",
+      "reproduction": "临时项目损坏其他活动 owner 文件，旧入口提前失败而无法恢复具名目标。",
+      "expected": "逐项只读识别候选；具名有效需求可继续，未具名时报告损坏候选。",
+      "forbidden": "静默忽略可能仍活动的损坏需求或写入其他需求。",
+      "rootCause": "入口在解析目标前整批验证活动归属，一条损坏记录导致全局失败。",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/comet-entry/resume-probe.test.ts",
+          "namePattern": "resumes a named Native Run despite an unrelated damaged active owner",
+          "requiredNames": [
+            "Comet entry resume probe v2 resumes a named Native Run despite an unrelated damaged active owner"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-classic-stale-build",
+      "behavior": "Classic Build 检查后用户修改代码，失效证据回退并保留用户工作，包括 preset 升级 full 的 Run。",
+      "reproduction": "临时项目先完成 Build 检查再修改代码；旧 tweak 的证据停在 pending，升级 full 的 preset 同样无法恢复。",
+      "expected": "原 Run 将旧证据标记失效，回到 Build，保留修改并在新检查后进入 Verify。",
+      "forbidden": "接受旧证据、丢弃用户修改、重复旧检查结果或替换 Run 身份。",
+      "rootCause": "preset 缺少证据失效转移，升级 full 后的原工作流身份也需保留。",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "preserves user changes and returns tweak to Build after a stale check receipt",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery preserves user changes and returns tweak to Build after a stale check receipt"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "preserves user changes and returns hotfix to Build after a stale check receipt",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery preserves user changes and returns hotfix to Build after a stale check receipt"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "recovers a stale Build check after tweak is upgraded to full",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery recovers a stale Build check after tweak is upgraded to full"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "recovers a stale Build check after hotfix is upgraded to full",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery recovers a stale Build check after hotfix is upgraded to full"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "recovers stale Build evidence on a Run created with the previous preset definition",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery recovers stale Build evidence on a Run created with the previous preset definition"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "recovers an edited tweak through the generated Classic CLI",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery recovers an edited tweak through the generated Classic CLI"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real Classic model continuation after user edits",
+          "status": "pending",
+          "evidence": [
+            "The isolated Classic model attempt could not continue because the command execution policy rejected read-only PowerShell commands. The same Run and user-edited file remained intact; no model continuation is claimed."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-classic-stale-verify",
+      "behavior": "Classic Verify 检查证据失效时给出保留用户修改的重新验证入口。",
+      "reproduction": "临时项目检查后修改代码，旧 Guard 不提供可执行的重新验证指引。",
+      "expected": "full、tweak、hotfix 的检查与 Guard 都提示重开 Verify 并重新验收。",
+      "forbidden": "重新提交旧收据或丢失用户修改。",
+      "rootCause": "旧证据拒绝响应没有投影已有 reopen-verification 命令。",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "guides a stale full Verify check receipt back to verification without losing user edits",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery guides a stale full Verify check receipt back to verification without losing user edits"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "guides a stale tweak Verify check receipt back to verification without losing user edits",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery guides a stale tweak Verify check receipt back to verification without losing user edits"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "guides a stale hotfix Verify check receipt back to verification without losing user edits",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery guides a stale hotfix Verify check receipt back to verification without losing user edits"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real Classic model continuation after user edits",
+          "status": "pending",
+          "evidence": [
+            "The isolated Classic model attempt could not continue because the command execution policy rejected read-only PowerShell commands. The same Run and user-edited file remained intact; no model continuation is claimed."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-classic-interrupted-builder",
+      "behavior": "Classic Builder 中途中断后给出原执行诊断及保留部分产物的续行路径。",
+      "reproduction": "临时项目领取 Builder 后中断；旧 next 仅提示等待，缺少恢复命令和停止后的失败结果模板。",
+      "expected": "只读诊断原领取；确认停止并核对实际结果后，在同一 Run 记录失败并继续。",
+      "forbidden": "未经核实重派执行、伪造成功结果或覆盖部分用户工作。",
+      "rootCause": "普通 Builder 运行状态的续行投影未连接已有检查恢复入口。",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "provides a read-only recovery command for an interrupted running Builder",
+          "requiredNames": [
+            "Classic SDK stale Build check recovery provides a read-only recovery command for an interrupted running Builder"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real Classic model continuation after user edits",
+          "status": "pending",
+          "evidence": [
+            "The isolated Classic model attempt could not continue because the command execution policy rejected read-only PowerShell commands. The same Run and user-edited file remained intact; no model continuation is claimed."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-applied-comment",
+      "behavior": "Native 用户直接修改已批准文档的注释后，可保留当前文件并根据原文进行复核。",
+      "reproduction": "用户在 Verify 阶段直接编辑已批准正式文档注释，旧恢复要求先恢复旧文本才能复核。",
+      "expected": "Agent 自动准备差异并沿原候选复核；可匹配的原文从记录或 Git 恢复，保留当前文件。",
+      "forbidden": "未审阅直接接受修改，改写用户文件，或将真实需求变化作为注释直接通过。",
+      "rootCause": "通用编辑复核以当前磁盘文件作为旧文，缺少已应用修改的原文和连续编辑处理。",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "reviews an already applied formal comment using the approved original without restoring the file",
+          "requiredNames": [
+            "Native Shape incremental contract reviews an already applied formal comment using the approved original without restoring the file"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "prepares an applied document review through the public CLI without rewriting the user file",
+          "requiredNames": [
+            "Native Shape incremental contract prepares an applied document review through the public CLI without rewriting the user file"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real model recovery and continuation",
+          "status": "pending",
+          "evidence": [
+            "Runtime regression covers the deterministic continuation. A real-model run with the final candidate is still required.",
+            "A real Codex model inspected the user-applied comment and prepared review, but independent reviewer creation failed; the Run and edited file were preserved and Archive was not completed."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-implementation",
+      "behavior": "用户已授权继续且实现修改仍在需求范围内时，Native 沿同一 Run 直接进入实现修订。",
+      "reproduction": "验收后用户修改实现，旧 continuation 要求重复用户决定，新增 Runtime CLI 断言在旧代码失败。",
+      "expected": "Agent 核对修改和已有授权，保留用户文件、原需求与检查，继续建立后继候选并验收。",
+      "forbidden": "将需求变化当作已批准、自动接受新候选或重放一次性检查。",
+      "rootCause": "候选漂移的续行投影无条件要求再次用户确认。",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "continues an authorized implementation edit without requesting the same decision again",
+          "requiredNames": [
+            "continues an authorized implementation edit without requesting the same decision again"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "hands the existing user revision to the successor Builder without requiring a rewrite",
+          "requiredNames": [
+            "blocked Verifier recovery command contract hands the existing user revision to the successor Builder without requiring a rewrite"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real model recovery and continuation",
+          "status": "pending",
+          "evidence": [
+            "Runtime regression covers the deterministic continuation. A real-model run with the final candidate is still required."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-repeat-edit",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "behavior": "用户在已应用复核期间再次编辑时保留最新文件并继续审阅。",
+      "coverageLevel": "runtime",
+      "reproduction": "旧待审或已完成提案与新内容不匹配时阻挡当前工作；新的临时项目回归覆盖连续手工编辑和遗留 Hook 提案。",
+      "expected": "保留最新文本，沿当前候选审阅并使被替代的提案不再阻塞。",
+      "forbidden": "覆盖用户文件，或把未审阅的新内容视为通过。",
+      "rootCause": "复核记录未将已被更新内容替代的旧提案从当前待办中解除。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "keeps later user edits and supersedes stale pending and completed applied reviews",
+          "requiredNames": [
+            "Native Shape incremental contract keeps later user edits and supersedes stale pending and completed applied reviews"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-large-crlf",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "behavior": "Native 恢复已批准的大型 CRLF 文档时可从匹配的 Git 内容重建原文。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时项目的已批准文档超过 1 MiB 且 Git 内容使用 LF，旧实现无法恢复并将 brief 判为缺失。",
+      "expected": "按批准摘要核对 Git 内容和换行形式，完整读取实际 Shape 并保留用户修改。",
+      "forbidden": "使用摘要不匹配的原文或按文件大小误报缺失。",
+      "rootCause": "已应用审阅和 Shape 读取使用固定大小与单一换行的原文假设。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "recovers a large CRLF approved original from matching Git LF content for applied review",
+          "requiredNames": [
+            "Native Shape incremental contract recovers a large CRLF approved original from matching Git LF content for applied review"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-compat-edit",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "behavior": "Native Compat 用户已应用的正式文档修改可由独立模型会话审阅而无需重复用户确认。",
+      "coverageLevel": "runtime",
+      "reproduction": "Compat 临时项目中用户直接修改注释，旧应用复核路径要求重新向用户确认。",
+      "expected": "审阅当前修改并按已有流程继续，保留当前文件和用户已有决定。",
+      "forbidden": "未审阅接受变更，或改变普通未应用编辑的确认要求。",
+      "rootCause": "Compat 已应用修改缺少独立会话复核路径。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "reviews an applied Compat formal edit without asking for another user confirmation",
+          "requiredNames": [
+            "Native Shape incremental contract reviews an applied Compat formal edit without asking for another user confirmation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-build-edit",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "behavior": "Native Build 中的正式注释修改保留当前文件并给出可执行的需求修订指引。",
+      "coverageLevel": "runtime",
+      "reproduction": "Build 临时项目尚无 Verify 候选时，统一提示复核会指向当前不可执行的 Verify 入口。",
+      "expected": "维持现有工作，按原阶段继续或通过现有需求修订路径处理。",
+      "forbidden": "要求用户回滚修改或指向不存在的 Verify 候选。",
+      "rootCause": "文档漂移提示未区分是否存在 Verify 候选。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "keeps a Build comment edit and points to requirement revision when no Verify candidate exists",
+          "requiredNames": [
+            "Native Shape incremental contract keeps a Build comment edit and points to requirement revision when no Verify candidate exists"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-archive-ready",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "behavior": "Archive 已准备但尚未执行时，用户修改实现可直接沿同一 Run 回到 Build。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时 Git 项目确认验收并完成 Archive 准备后修改实现；旧状态输出仍给归档，直接修订使用已关闭决定而失败。",
+      "expected": "只读状态和 doctor 给出当前恢复命令；保留需求、用户文件与原 Run，修订后进入 Build。",
+      "forbidden": "执行或伪造归档结果、丢失用户工作、自动接受新候选或重复调用造成重复推进。",
+      "rootCause": "旧续行仅根据已失败的 Archive Action 判断候选漂移，缺少已准备但未领取归档时的修订命令。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reports edited Archive-ready code before any Archive write and continues the same Run",
+          "requiredNames": [
+            "reports edited Archive-ready code before any Archive write and continues the same Run"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "revises a previous-definition Archive-ready Run without executing its Archive Action",
+          "requiredNames": [
+            "revises a previous-definition Archive-ready Run without executing its Archive Action"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real Codex model continuation from Archive-ready to Build",
+          "status": "verified",
+          "evidence": [
+            "Intermediate candidate Runtime 8d88bcd1d83c4e9b3070259060c6630b8e006e90f6f633459a3ebbe75b20b1c6 reached Build with the same Run and user edit. Subsequent source changes required a final-candidate rerun.",
+            "Final candidate Native Runtime SHA-256 d38cb3ab43beee75e1848ec8c9a2024b6db7c033d24ad4eac1bc7bdf74f30359. The controller changed true to !false; the real Codex model inspected the edit and resumed the original Run without a repeated user decision.",
+            "The original Run reached Build with a pending Builder and the user-edited file preserved. The initial Archive-ready state was constructed by a Runtime test helper with no prior checks; the model did not execute the new Builder or independent verification and reported verifier subagent creation unavailable.",
+            "Trace and controller evidence are retained in the isolated D:/comet-manual-model-finalverify-247516df0e6d4512a73d3267dacccb12 directory."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-archive-report-edit",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "behavior": "Archive 准备后用户修改验证报告时提供保留原文的重新验证路径。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时项目修改 verification.md 后，旧状态查询吞掉报告内容漂移并继续显示归档。",
+      "expected": "指出报告变化并给出重新验证方向，不把用户旧报告当成新的验证结果。",
+      "forbidden": "静默将修改后的报告视为已验证或执行归档。",
+      "rootCause": "报告差异抛出普通错误，候选漂移检查未将它作为可诊断的状态。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "retains a user-edited report at Archive-ready and chooses the appropriate revision",
+          "requiredNames": [
+            "retains a user-edited report at Archive-ready and chooses the appropriate revision"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-archive-requirements-edit",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "behavior": "Archive 准备后同时修改需求和代码时先沿原 Run 修订需求。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时项目同时修改 Spec 和代码，原批准不能直接覆盖新的验收范围。",
+      "expected": "保留当前文件，向模型提供需求修订路径并按原流程确认。",
+      "forbidden": "沿旧 Shape 直接派发实现并接受未经确认的需求。",
+      "rootCause": "旧状态投影没有区分正式需求变化与仅有实现变化。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "retains a user-edited requirements-and-code at Archive-ready and chooses the appropriate revision",
+          "requiredNames": [
+            "retains a user-edited requirements-and-code at Archive-ready and chooses the appropriate revision"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real model recovery and continuation",
+          "status": "pending",
+          "evidence": [
+            "Deterministic Runtime regression covers this case. A real-model run with the final candidate is still required."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-archive-check-history",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "behavior": "Archive-ready 修订保留已经完成的一次性检查。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时项目完成真实一次性与普通检查后修改实现，再回到 Build。",
+      "expected": "保留原检查来源和日志，一次性检查只执行一次；后继验收仍使用有效证据。",
+      "forbidden": "重放一次性检查、将失效证据标成通过或更换 Run。",
+      "rootCause": "旧恢复路径缺少针对已准备 Archive 的检查历史续行。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "preserves completed one-shot checks while revising edited Archive-ready code",
+          "requiredNames": [
+            "preserves completed one-shot checks while revising edited Archive-ready code"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-revision-interruption",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "behavior": "Archive-ready 的只读实现修订中断时可沿原领取恢复。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时项目模拟只读修订 Action 结果未知或被拒绝后重新进入。",
+      "expected": "核对原 claim 和当前内容，保留同一 Run 与用户文件后继续。",
+      "forbidden": "重派未知副作用、伪造旧执行成功或让已取消的归档动作被执行。",
+      "rootCause": "修订 Action 被替换后，中途退出或输入变化缺少原领取续行。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reconciles a unknown read-only implementation revision using the original claim",
+          "requiredNames": [
+            "reconciles a unknown read-only implementation revision using the original claim"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reconciles a rejected read-only implementation revision using the original claim",
+          "requiredNames": [
+            "reconciles a rejected read-only implementation revision using the original claim"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-user-report-preserved",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "behavior": "重新验收生成报告时保留用户编辑的前一份验证报告。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时项目在 Archive-ready 修改 verification.md 并完成后继验收；旧报告生成器覆盖了用户内容。",
+      "expected": "Builder 和 Verifier 能读取该修改作为待核对输入，生成新报告前保存可追溯原文并在状态中提供引用。",
+      "forbidden": "静默丢失用户修改或把旧报告当成本轮验证通过证据。",
+      "rootCause": "报告生成直接原子替换既有文件，没有区分用户编辑。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "retains the user-edited verification report when the successor report is generated",
+          "requiredNames": [
+            "retains the user-edited verification report when the successor report is generated"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real model recovery and continuation",
+          "status": "pending",
+          "evidence": [
+            "Deterministic Runtime regression covers this case. A real-model run with the final candidate is still required."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-moved-report",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "behavior": "Archive 前用户移动验证报告后可重验且保留移走的文件。",
+      "coverageLevel": "runtime",
+      "reproduction": "在 archive.prepare 或 archive.execute 前移动 verification.md，旧状态吞掉缺失错误并继续显示归档。",
+      "expected": "状态给出重新验证路径，新报告可生成，用户移走的原文保留。",
+      "forbidden": "覆盖移走的文件、把缺失报告当通过或伪造备份。",
+      "rootCause": "候选复核将缺失报告错误当作没有漂移。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "offers revalidation when the user moved the report before archive.prepare",
+          "requiredNames": [
+            "offers revalidation when the user moved the report before archive.prepare"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "offers revalidation when the user moved the report before archive.execute",
+          "requiredNames": [
+            "offers revalidation when the user moved the report before archive.execute"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "generates a missing report without overwriting a user-moved file or inventing a backup",
+          "requiredNames": [
+            "generates a missing report without overwriting a user-moved file or inventing a backup"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-unreadable-report",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "behavior": "验证报告无法正常读取时状态准确说明阻塞。",
+      "coverageLevel": "runtime",
+      "reproduction": "将验证报告路径替换成目录，旧只读检查忽略错误并显示可归档。",
+      "expected": "报告实际读取错误，保留当前 Run 和文件。",
+      "forbidden": "提供归档命令或隐瞒读取失败。",
+      "rootCause": "候选检查将非漂移的文件系统错误转换成空结果。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reports a non-file verification path without offering Archive or changing the Run",
+          "requiredNames": [
+            "reports a non-file verification path without offering Archive or changing the Run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-archive-formal-comment",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "behavior": "Archive 前用户仅修改正式文档注释时可在原 Run 复核并继续。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时项目在 archive.prepare 前或 archive.execute 待执行时修改已批准文档注释，旧续行要求重新确认 Shape。",
+      "expected": "模型审阅当前注释并保留文件，按原阶段继续；检查证据失效时仍重验。",
+      "forbidden": "要求用户先恢复旧文件、将正式需求变化当作注释、移动材料后丢失复核关系。",
+      "rootCause": "Archive 阶段未区分可审阅注释和正式需求变更，且归档移动后复核引用需要映射。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reviews a user-applied formal comment at Archive-ready and continues without revising Shape",
+          "requiredNames": [
+            "reviews a user-applied formal comment at Archive-ready and continues without revising Shape"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reviews a user-applied formal comment before Archive preflight and continues",
+          "requiredNames": [
+            "reviews a user-applied formal comment before Archive preflight and continues"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-running-revision",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "behavior": "只读修订动作领取后进程退出，仍能在原 Run 中恢复。",
+      "coverageLevel": "runtime",
+      "reproduction": "真实子进程领取只读修订动作并退出后，旧续行只提示等待 running Action。",
+      "expected": "沿原 claim 重新核对并恢复，保留用户文件，不重复执行 Archive。",
+      "forbidden": "伪造原执行停止、重派归档或更换 Run。",
+      "rootCause": "原续行只处理 unknown 和 rejected，遗漏领取后直接退出的 running 状态。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "continues a read-only revision after its claiming process exits without reporting an outcome",
+          "requiredNames": [
+            "continues a read-only revision after its claiming process exits without reporting an outcome"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-reviewed-requirements",
+      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "behavior": "独立复核认定已应用编辑改变需求时，沿原 Run 提供可执行需求修订命令。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时项目的用户修改经复核判为 requirements-changed，旧状态停在 review-edit 而不提供修订命令。",
+      "expected": "保留用户文件并回到同一 Run 的 Shape，按原流程等待新的用户确认。",
+      "forbidden": "自动批准变更、覆盖用户修改或使用旧批准继续。",
+      "rootCause": "已应用编辑复核的需求变更结果没有映射到现有需求修订续行。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "continues a user-applied requirements change through the original Shape confirmation",
+          "requiredNames": [
+            "continues a user-applied requirements change through the original Shape confirmation"
+          ]
+        }
+      ]
     }
   ]
 }

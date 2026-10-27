@@ -781,6 +781,11 @@ export async function classicSdkVerifyGuard(options: {
       data: {
         ...(checked.data as Record<string, unknown>),
         ...(failed.data as Record<string, unknown>),
+        ...('issues' in checked.data &&
+        Array.isArray(checked.data.issues) &&
+        checked.data.issues.some((issue) => issue.code === 'CLASSIC_EVIDENCE_DRIFT')
+          ? { continuation: checked.data.continuation }
+          : {}),
       },
     };
   }

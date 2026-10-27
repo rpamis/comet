@@ -3,6 +3,7 @@ export { nativeEditReviewScope } from './native-edit-review-scope.js';
 import {
   captureNativeShapeReviewAnchor,
   nativeShapeReviewAnchorMatches,
+  readApprovedShapeOriginal,
 } from './native-shape-review-evidence.js';
 import { readNativeApprovedShapeSemanticSnapshot } from './native-portable-requirements.js';
 import path from 'node:path';
@@ -19,6 +20,7 @@ import {
 import {
   assertEditReviewsComplete,
   approvedEditFingerprint,
+  prepareEditReview,
   type EditReviewScope,
 } from '../workflow-contract/edit-review.js';
 import type { NativeProjectPaths } from './native-types.js';
@@ -29,6 +31,83 @@ export async function assertNativeEditReviewsComplete(
   state: NativePortableState,
 ): Promise<void> {
   if (state.builder_handoff) await assertEditReviewsComplete(nativeEditReviewScope(paths, state));
+}
+
+/** 只复核已应用的正式材料注释；原文必须来自当前 Shape 的可信快照。 */
+export async function prepareNativeAppliedFormalReview(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+  request: CometHookRequest,
+) {
+  const scope = nativeEditReviewScope(paths, state);
+  const snapshot = (await readNativeApprovedShapeSemanticSnapshot({ paths, state }))?.snapshot;
+  if (!snapshot || !request.targets.length)
+    throw new Error('缺少已批准的 Shape 原文，须恢复原文或修订需求');
+  const originals = new Map<string, string>();
+  const originalPaths: string[] = [];
+  for (const target of request.targets) {
+    const absolute = path.resolve(request.cwd ?? paths.projectRoot, target);
+    const source = path
+      .relative(path.join(paths.changesDir, state.name), absolute)
+      .replaceAll('\\', '/');
+    const relative = path.relative(paths.projectRoot, absolute).replaceAll('\\', '/');
+    const approved = snapshot.artifacts.find((entry) => entry.source === source);
+    if (!approved) throw new Error('已应用编辑不是当前已批准的正式材料');
+    let original;
+    try {
+      original = await readApprovedShapeOriginal(paths, state, approved);
+    } catch {
+      throw new Error('已批准的原文缺失或不匹配；保留当前文件，恢复可信原文或修订 Shape');
+    }
+    const current = await readNativeBoundedTextFile({
+      root: paths.projectRoot,
+      ref: relative,
+      maxBytes: null,
+    });
+    const actual = nativeShapeArtifactSnapshot(source, current.text);
+    if (
+      nativeShapeArtifactContractHash({ ...actual, commentsHash: approved.commentsHash }) !==
+      nativeShapeArtifactContractHash(approved)
+    )
+      throw new Error('正式需求或验收内容改变，必须通过 Shape 修订');
+    await captureNativeShapeReviewAnchor(scope, approved, original.text, true);
+    originals.set(relative, original.text);
+    originalPaths.push(original.path);
+  }
+  const proposal = await prepareEditReview({ ...scope, formalPrefixes: [] }, request, originals);
+  return { proposal, originalPaths };
+}
+
+/** 选择一份已修改的正式材料，由 Runtime 构造复核请求，避免要求用户手工准备 JSON。 */
+export async function nativeAppliedFormalReviewRequest(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+) {
+  const snapshot = (await readNativeApprovedShapeSemanticSnapshot({ paths, state }))?.snapshot;
+  if (!snapshot) throw new Error('缺少已批准的 Shape 快照；保留当前修改并修订需求');
+  const scope = nativeEditReviewScope(paths, state);
+  for (const approved of snapshot.artifacts) {
+    const absolute = path.join(paths.changesDir, state.name, approved.source);
+    const relative = path.relative(paths.projectRoot, absolute).replaceAll('\\', '/');
+    const current = await readNativeBoundedTextFile({
+      root: paths.projectRoot,
+      ref: relative,
+      maxBytes: null,
+    });
+    const actual = nativeShapeArtifactSnapshot(approved.source, current.text);
+    if (actual.commentsHash !== approved.commentsHash) {
+      const reviewed = await approvedEditFingerprint(scope, relative, current.text);
+      if (reviewed && (await nativeShapeReviewAnchorMatches(scope, approved, reviewed.beforeHash)))
+        continue;
+      const request = {
+        cometApplied: true,
+        tool_name: 'Write',
+        tool_input: { file_path: absolute, content: current.text },
+      };
+      return JSON.stringify(request);
+    }
+  }
+  return null;
 }
 
 /** 正式材料仅开放已批准契约不变的注释差异，不开放任意文档给通用复核。 */

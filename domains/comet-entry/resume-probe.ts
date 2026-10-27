@@ -28,7 +28,6 @@ import {
   assertNativePortableChangeNotOrphaned,
   inspectPristineNativeSdkChange,
   inspectNativeSdkRun,
-  listNativeSdkChangeNames,
 } from '../comet-native/native-runtime-ownership.js';
 import {
   isNativePortableChange,
@@ -49,7 +48,11 @@ import type {
   NativeProjectPaths,
 } from '../comet-native/native-types.js';
 import type { NativePortableState } from '../comet-native/native-portable-types.js';
-import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import {
+  listSdkResumeCandidates,
+  readSdkChangeOwner,
+} from '../workflow-contract/change-runtime-owner.js';
+import { isNativeSdkRunRecoveryRequiredError } from '../comet-native/native-sdk-state-store.js';
 import { resolveCometEntry } from './resolve-entry.js';
 import type { CometEntryResolutionSource, CometEntrySkill, CometWorkflow } from './types.js';
 
@@ -80,6 +83,7 @@ export interface CometEntryResumeProbeResult {
   changeName: string | null;
   phase: string | null;
   nextCommand: '/comet-native' | '/comet-classic' | null;
+  diagnosticCommand?: string;
   confidence: CometResumeProbeConfidence;
   reasonCode: string;
   reason: string;
@@ -96,6 +100,7 @@ interface ResultOptions {
   confidence: CometResumeProbeConfidence;
   reasonCode: string;
   reason: string;
+  diagnosticCommand?: string;
   evidence?: CometResumeProbeEvidence[];
   candidates?: CometEntryResumeProbeCandidate[];
 }
@@ -292,6 +297,7 @@ function result(options: ResultOptions): CometEntryResumeProbeResult {
     changeName: options.change?.name ?? null,
     phase: options.change?.phase ?? null,
     nextCommand,
+    ...(options.diagnosticCommand ? { diagnosticCommand: options.diagnosticCommand } : {}),
     confidence: options.confidence,
     reasonCode: options.reasonCode,
     reason: options.reason,
@@ -492,14 +498,23 @@ async function resolveNativeResumeProbe(
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root, {
     readOnly: true,
   });
-  const sdkNames = await listNativeSdkChangeNames(projectRoot, { readOnly: true });
+  // Closed owners are not active resume candidates. Their Run bodies are only
+  // inspected when explicitly named, so damaged history cannot block current work.
+  const { active: sdkNames, history: historicalNames } = await listSdkResumeCandidates(
+    projectRoot,
+    'native',
+  );
   const legacyNames = await listNativeChangeNames(paths);
-  const knownNames = [...new Set([...legacyNames, ...sdkNames])].sort((left, right) =>
-    left.localeCompare(right, 'en'),
+  const knownNames = [...new Set([...legacyNames, ...sdkNames, ...historicalNames])].sort(
+    (left, right) => left.localeCompare(right, 'en'),
   );
   const explicitlyNamed = namesInUtterance(intent.positiveText, knownNames);
   // A named request needs the named Run, not every unrelated historical Run.
-  const inspectedNames = explicitlyNamed.length > 0 ? explicitlyNamed : knownNames;
+  const historicalNameSet = new Set(historicalNames);
+  const inspectedNames =
+    explicitlyNamed.length > 0
+      ? explicitlyNamed
+      : knownNames.filter((name) => !historicalNameSet.has(name));
   const sdkObservations = new Map<string, ReturnType<typeof inspectNativeSdkRun>>();
   const inspectSdk = (name: string) => {
     let observation = sdkObservations.get(name);
@@ -509,16 +524,22 @@ async function resolveNativeResumeProbe(
     }
     return observation;
   };
-  const sdkNameSet = new Set(sdkNames);
+  const sdkNameSet = new Set([...sdkNames, ...historicalNames]);
   const names = (
     await inspectCandidates(inspectedNames, async (name) => {
       if (!sdkNameSet.has(name)) return name;
-      const { run, state } = await inspectSdk(name);
-      if (run.status === 'cancelled')
-        return (await isNativeSdkCancellationComplete({ projectRoot, run })) ? null : name;
-      return (run.status === 'running' || run.status === 'waiting') && state.status !== 'done'
-        ? name
-        : null;
+      try {
+        const { run, state } = await inspectSdk(name);
+        if (run.status === 'cancelled')
+          return (await isNativeSdkCancellationComplete({ projectRoot, run })) ? null : name;
+        return (run.status === 'running' || run.status === 'waiting') && state.status !== 'done'
+          ? name
+          : null;
+      } catch {
+        // An unreadable active Run may still own work. Keep it as an invalid
+        // candidate instead of choosing a different change or hiding its name.
+        return name;
+      }
     })
   ).filter((name): name is string => name !== null);
   let selectedName: string | null = null;
@@ -649,6 +670,7 @@ async function resolveNativeResumeProbe(
   let targetState: NativeChangeState | NativePortableState | null = null;
   let targetPortableStatus: NativePortableStatusProjection | null = null;
   let targetStateError: string | null = null;
+  let recoverableCheckpoint = false;
   if (target) {
     try {
       if (await readSdkChangeOwner(projectRoot, 'native', target.name, { readOnly: true })) {
@@ -667,7 +689,29 @@ async function resolveNativeResumeProbe(
         targetState = await readNativeChange(paths, target.name);
       }
     } catch (error) {
-      targetStateError = error instanceof Error ? error.message : String(error);
+      if (
+        isNativeSdkRunRecoveryRequiredError(error) &&
+        error.change === target.name &&
+        !historicalNameSet.has(target.name) &&
+        path.resolve(error.projectRoot) === path.resolve(projectRoot)
+      ) {
+        try {
+          // The store already validated the checkpoint and workspace. Reading
+          // the portable state stays read-only; the Native entry will diagnose
+          // and restore the same Run before continuing any work.
+          targetState = await readNativePortableChange(paths, target.name);
+          if (targetState.archived || targetState.status === 'done')
+            throw new Error(`Native change ${target.name} is already archived or complete`, {
+              cause: error,
+            });
+          target.phase = targetState.phase;
+          recoverableCheckpoint = true;
+        } catch (stateError) {
+          targetStateError = stateError instanceof Error ? stateError.message : String(stateError);
+        }
+      } else {
+        targetStateError = error instanceof Error ? error.message : String(error);
+      }
     }
   }
   if (!target || targetStateError || !targetState) {
@@ -692,7 +736,8 @@ async function resolveNativeResumeProbe(
       change: { name: targetName, phase: target?.phase ?? 'invalid' },
       confidence: 'low',
       reasonCode: 'native-change-invalid',
-      reason: targetStateError ?? `selected Native change ${targetName} is unavailable`,
+      reason: `${targetStateError ?? `selected Native change ${targetName} is unavailable`}; diagnose with comet native doctor ${targetName} --json before deciding how to recover`,
+      diagnosticCommand: `comet native doctor ${targetName} --json`,
       evidence: [{ source: 'state', quote: `change: ${targetName}` }],
       candidates,
     });
@@ -762,12 +807,19 @@ async function resolveNativeResumeProbe(
     action: 'auto_resume',
     change: { name: target.name, phase: target.phase },
     confidence: 'high',
-    reasonCode: exactName
-      ? 'native-change-named'
-      : selectedName === target.name
-        ? 'native-change-selected'
-        : 'single-native-change-related',
-    reason: 'configured Native workflow has one unambiguous related resume target',
+    reasonCode: recoverableCheckpoint
+      ? 'native-checkpoint-recoverable'
+      : exactName
+        ? 'native-change-named'
+        : selectedName === target.name
+          ? 'native-change-selected'
+          : 'single-native-change-related',
+    reason: recoverableCheckpoint
+      ? `Native Run ${target.name} has a validated portable checkpoint. Enter Native and inspect with comet native doctor ${target.name} --json; confirm the original execution has stopped and reconcile unknown results before restoring the same Run.`
+      : 'configured Native workflow has one unambiguous related resume target',
+    ...(recoverableCheckpoint
+      ? { diagnosticCommand: `comet native doctor ${target.name} --json` }
+      : {}),
     evidence: [
       { source: 'state', quote: `phase: ${target.phase}` },
       ...(exactName ? [{ source: 'user' as const, quote: target.name }] : related),

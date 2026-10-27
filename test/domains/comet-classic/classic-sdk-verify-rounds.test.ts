@@ -7,7 +7,13 @@ import * as spawnedCommands from '../../../platform/process/owned-command.js';
 import * as processTermination from '../../../platform/process/terminate-process-tree.js';
 import * as processIdentity from '../../../platform/process/process-identity.js';
 import { inspectClassicSdkActionRecovery } from '../../../domains/comet-classic/classic-sdk-check-recovery.js';
-import { hashRuntimeValue, createFileRuntimeStore } from '../../../domains/engine/runtime.js';
+import {
+  hashRuntimeValue,
+  createFileRuntimeStore,
+  defineWorkflow,
+} from '../../../domains/engine/runtime.js';
+import { classicSdkApplicationForRun } from '../../../domains/comet-classic/classic-sdk-revision-application.js';
+import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
 import { resolveClassicLocalTarget } from '../../../domains/comet-classic/classic-runtime-paths.js';
 import { parse, stringify } from 'yaml';
 import {
@@ -485,8 +491,8 @@ async function fixture(
   const open = await cli('guard', 'example', 'open');
   await cli('guard', 'example', 'open', '--apply', '--approval-hash', open.approvalHash);
   const planRef = 'docs/superpowers/plans/work plan.md';
-  const configure = async () => {
-    if (profile === 'full') {
+  const configure = async (effectiveProfile: 'full' | 'tweak' | 'hotfix' = profile) => {
+    if (effectiveProfile === 'full') {
       const design = await cli(
         'state',
         'propose-design',
@@ -1666,6 +1672,274 @@ describe('Classic SDK interrupted check recovery', () => {
     await f.build();
     expect(await fs.readFile(f.checkCount, 'utf8')).toBe('build\n');
   });
+});
+
+describe('Classic SDK stale Build check recovery', () => {
+  it(
+    'recovers an edited tweak through the generated Classic CLI',
+    async () => {
+      const f = await fixture('tweak', false, false, 'generated');
+      await f.cli('state', 'complete-build', 'example');
+      const { runtime, run } = await f.inspect();
+      const argv = f.command('generated-stale-build');
+      await executeClassicSdkCommandCheck(runtime, {
+        runId: run.runId,
+        projectRoot: f.projectRoot,
+        argv,
+      });
+      await f.put('source.js', 'export const ready = false; // user edit\n');
+      const stale = await f.invoke('check', 'run', 'example', 'build', '--', ...argv);
+      expect(stale.exitCode).not.toBe(0);
+      const recovered = (await f.inspect()).run;
+      expect(recovered.runId).toBe(run.runId);
+      expect(recovered.evidenceWaits?.at(-1)?.status).toBe('invalidated');
+      await f.build();
+      expect((await f.inspect()).state.phase).toBe('verify');
+      expect(await fs.readFile(path.join(f.projectRoot, 'source.js'), 'utf8')).toContain(
+        'user edit',
+      );
+      expect(await fs.readFile(f.checkCount, 'utf8')).toBe('generated-stale-build\nbuild\n');
+    },
+    fullLifecycleTimeout,
+  );
+
+  it.each(['tweak', 'hotfix'] as const)(
+    'recovers a stale Build check after %s is upgraded to full',
+    async (profile) => {
+      const f = await fixture(profile, false);
+      const proposal = await f.cli(
+        'state',
+        'propose-escalation',
+        'example',
+        '--reason',
+        'A full design is needed.',
+      );
+      await f.cli(
+        'state',
+        'decide-escalation',
+        'example',
+        '--proposal-hash',
+        proposal.wait.proposalHash,
+        '--choice',
+        'upgrade',
+      );
+      await f.configure('full');
+      await f.cli('state', 'complete-build', 'example');
+      const { runtime, run } = await f.inspect();
+      expect(run.workflow.id).toBe(`comet-classic-${profile}`);
+      const argv = f.command('upgraded-before-edit');
+      await executeClassicSdkCommandCheck(runtime, {
+        runId: run.runId,
+        projectRoot: f.projectRoot,
+        argv,
+      });
+      await f.put('source.js', 'export const ready = false; // user edit\n');
+      const stale = await f.invoke('check', 'run', 'example', 'build', '--', ...argv);
+      expect(stale.exitCode).not.toBe(0);
+      const after = (await f.inspect()).run;
+      expect(after.runId).toBe(run.runId);
+      expect(after.workflow.id).toBe(`comet-classic-${profile}`);
+      expect(after.evidenceWaits?.at(-1)).toMatchObject({
+        stepId: 'full.build.check.evidence',
+        status: 'invalidated',
+      });
+      expect(after.actions.at(-1)).toMatchObject({
+        stepId: 'full.build.execute',
+        status: 'pending',
+      });
+      await f.build();
+      expect((await f.inspect()).state.phase).toBe('verify');
+      expect(await fs.readFile(path.join(f.projectRoot, 'source.js'), 'utf8')).toContain(
+        'user edit',
+      );
+    },
+    fullLifecycleTimeout,
+  );
+  it.each(['full', 'tweak', 'hotfix'] as const)(
+    'guides a stale %s Verify check receipt back to verification without losing user edits',
+    async (profile) => {
+      const f = await fixture(profile, true);
+      await f.acceptReport();
+      const { runtime, run } = await f.inspect();
+      const argv = f.command('verify-before-edit');
+      await executeClassicSdkCommandCheck(runtime, {
+        runId: run.runId,
+        projectRoot: f.projectRoot,
+        argv,
+      });
+      await f.put('source.js', 'export const ready = false; // user verify edit\n');
+      const stale = await f.invoke('check', 'run', 'example', 'verify', '--', ...argv);
+      expect(stale.exitCode).not.toBe(0);
+      expect(stale.stdout).toContain('reopen-verification');
+      const guarded = await f.invoke(
+        'guard',
+        'example',
+        'verify',
+        '--report',
+        f.reportRef,
+        '--apply',
+        '--',
+        ...argv,
+      );
+      expect(guarded.exitCode).not.toBe(0);
+      expect(guarded.response.data.continuation.commandArgs).toContain('reopen-verification');
+      const before = (await f.inspect()).run;
+      expect(before.runId).toBe(run.runId);
+      await f.cli(
+        'state',
+        'reopen-verification',
+        'example',
+        '--expected-revision',
+        String(before.revision),
+      );
+      expect((await f.verify()).exitCode).toBe(0);
+      expect(await fs.readFile(path.join(f.projectRoot, 'source.js'), 'utf8')).toContain(
+        'user verify edit',
+      );
+    },
+    fullLifecycleTimeout,
+  );
+  it(
+    'recovers stale Build evidence on a Run created with the previous preset definition',
+    async () => {
+      const f = await fixture('tweak', false);
+      await f.cli('state', 'complete-build', 'example');
+      const { runtime, run } = await f.inspect();
+      const argv = f.command('previous-definition');
+      const checked = await executeClassicSdkCommandCheck(runtime, {
+        runId: run.runId,
+        projectRoot: f.projectRoot,
+        argv,
+      });
+      const application = classicSdkApplicationForRun('tweak', checked);
+      const previous = structuredClone(application.workflow);
+      previous.transitions = previous.transitions!.filter(
+        (edge) => !(edge.from === 'tweak.build.check.evidence' && edge.on === 'invalidated'),
+      );
+      const hash = hashRuntimeValue(defineWorkflow(previous));
+      const old = structuredClone(checked);
+      old.workflow.hash = hash;
+      old.definitionHashes[JSON.stringify([old.workflow.id, old.workflow.version])] = hash;
+      old.revision++;
+      expect(
+        await createClassicSdkStateStore(f.projectRoot).compareAndSwap(
+          run.runId,
+          checked.revision,
+          old,
+        ),
+      ).toBe(true);
+      await f.put('source.js', 'export const ready = false; // user edit\n');
+      const stale = await f.invoke('check', 'run', 'example', 'build', '--', ...argv);
+      expect(stale.exitCode).not.toBe(0);
+      const recovered = (await f.inspect()).run;
+      expect(recovered.runId).toBe(run.runId);
+      expect(recovered.evidenceWaits?.at(-1)?.status).toBe('invalidated');
+      await f.build();
+      expect((await f.inspect()).state.phase).toBe('verify');
+      expect(await fs.readFile(f.checkCount, 'utf8')).toBe('previous-definition\nbuild\n');
+    },
+    fullLifecycleTimeout,
+  );
+  it('provides a read-only recovery command for an interrupted running Builder', async () => {
+    const f = await fixture('tweak', false);
+    const { run, runtime } = await f.inspect();
+    const action = run.actions.find((entry) => entry.stepId === 'tweak.build.execute')!;
+    const claimed = await runtime.claim({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'original-builder',
+      claimToken: 'original-claim',
+    });
+    const next = await f.cli('state', 'next', 'example');
+    expect(next.continuation.commandArgs).toEqual([
+      'comet',
+      'state',
+      'check',
+      'example',
+      'build',
+      '--recover',
+      '--json',
+    ]);
+    expect(next.continuation.instruction).toContain('停止');
+    expect((await f.inspect()).run).toEqual(claimed);
+    await f.put('partial.txt', 'user work retained\n');
+    const before = await f.invoke('state', 'check', 'example', 'build', '--recover');
+    expect(before.response.data.recovery).not.toHaveProperty('interruptedOutcomeRequestTemplate');
+    await runtime.markUnknown({
+      runId: run.runId,
+      expectedRevision: claimed.revision,
+      actionId: action.id,
+      attempt: action.attempt,
+      reason: 'Original executor confirmed stopped.',
+    });
+    const diagnosed = await f.invoke('state', 'check', 'example', 'build', '--recover');
+    const template = diagnosed.response.data.recovery.interruptedOutcomeRequestTemplate;
+    expect(template.outcome).toMatchObject({ actionId: action.id, status: 'failed' });
+    const failed = await runtime.recordOutcome({
+      ...template,
+      outcome: {
+        ...template.outcome,
+        claimToken: 'original-claim',
+        outcomeId: 'interrupted-builder',
+        output: { summary: 'Original executor stopped; partial work retained.' },
+      },
+      context: { projectRoot: f.projectRoot },
+    });
+    await f.cli(
+      'state',
+      'continue-build',
+      'example',
+      '--expected-revision',
+      String(failed.revision),
+    );
+    const resumed = (await f.inspect()).run;
+    expect(resumed.runId).toBe(run.runId);
+    expect(resumed.actions.at(-1)).toMatchObject({
+      stepId: 'tweak.build.execute',
+      status: 'pending',
+    });
+    expect(await fs.readFile(path.join(f.projectRoot, 'partial.txt'), 'utf8')).toBe(
+      'user work retained\n',
+    );
+  });
+
+  it.each(['tweak', 'hotfix'] as const)(
+    'preserves user changes and returns %s to Build after a stale check receipt',
+    async (profile) => {
+      const f = await fixture(profile, false);
+      await f.cli('state', 'complete-build', 'example');
+      const { runtime, run } = await f.inspect();
+      const argv = f.command('before-edit');
+      await executeClassicSdkCommandCheck(runtime, {
+        runId: run.runId,
+        projectRoot: f.projectRoot,
+        argv,
+      });
+      await f.put('source.js', 'export const ready = false; // user edit\n');
+      const stale = await f.invoke('check', 'run', 'example', 'build', '--', ...argv);
+      expect(stale.exitCode).not.toBe(0);
+      const after = (await f.inspect()).run;
+      expect(after.runId).toBe(run.runId);
+      expect(after.evidenceWaits?.at(-1)).toMatchObject({
+        stepId: `${profile}.build.check.evidence`,
+        status: 'invalidated',
+      });
+      expect(after.actions.at(-1)).toMatchObject({
+        stepId: `${profile}.build.execute`,
+        status: 'pending',
+      });
+      expect(await fs.readFile(f.checkCount, 'utf8')).toBe('before-edit\n');
+      expect(await fs.readFile(path.join(f.projectRoot, 'source.js'), 'utf8')).toContain(
+        'user edit',
+      );
+      await f.build();
+      expect((await f.inspect()).state.phase).toBe('verify');
+      expect(await fs.readFile(f.checkCount, 'utf8')).toBe('before-edit\nbuild\n');
+    },
+    fullLifecycleTimeout,
+  );
 });
 
 describe('Classic SDK original execution receipts', () => {

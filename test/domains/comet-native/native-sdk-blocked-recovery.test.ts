@@ -487,10 +487,11 @@ async function archiveReadyFixture(
     generatedEmbedded?: boolean;
     verificationChecks?: NativeCheckPlan[];
     nonGitEnvironment?: boolean;
+    bundleCommands?: boolean;
   } = {},
 ) {
   const f = await blockedFixture({
-    bundleCommands: true,
+    bundleCommands: options.bundleCommands ?? true,
     inProjectRequests: options.inProjectRequests,
     dirtyEmbedded: options.dirtyEmbedded,
     directPass: options.directPass,
@@ -794,7 +795,45 @@ describe('blocked Verifier recovery command contract', () => {
         (action) => action.stepId === 'build.builder' && action.status === 'pending',
       ),
     ).toBe(true);
+    const successor = after.actions.find(
+      (action) => action.stepId === 'build.builder' && action.status === 'pending',
+    )!;
+    expect(successor.input).toMatchObject({
+      activation: {
+        repairContext: {
+          candidateHandling: 'review-existing-work-first',
+          instruction: expect.stringContaining('submit it unchanged'),
+        },
+      },
+    });
+    expect(await fs.readFile(path.join(f.projectRoot, 'candidate.txt'), 'utf8')).toBe(
+      'user implementation revision\n',
+    );
     await finishRepairedCandidate(f, shape);
+  });
+
+  it('hands the existing user revision to the successor Builder without requiring a rewrite', async () => {
+    const f = await archiveReadyFixture({ directPass: true, bundleCommands: false });
+    await fs.writeFile(path.join(f.projectRoot, 'candidate.txt'), 'user implementation revision\n');
+    const blocked = JSON.parse((await f.native(['archive', f.name])).stdout!);
+    expect(blocked.data.recovery.code).toBe('candidate-drift');
+    const repaired = await f.native(
+      blocked.data.recovery.recoveryArgs
+        .slice(2)
+        .map((arg: string) => (arg === '<summary>' ? 'Keep the user revision.' : arg)),
+    );
+    expect(repaired.exitCode, repaired.stdout).toBe(0);
+    const after = await f.dispatch({ operation: 'inspect', runId: f.name });
+    const successor = after.actions.find(
+      (action: RuntimeAction) => action.stepId === 'build.builder' && action.status === 'pending',
+    );
+    expect(successor.input.activation.repairContext).toMatchObject({
+      candidateHandling: 'review-existing-work-first',
+      instruction: expect.stringContaining('submit it unchanged'),
+    });
+    expect(await fs.readFile(path.join(f.projectRoot, 'candidate.txt'), 'utf8')).toBe(
+      'user implementation revision\n',
+    );
   });
 
   it('retains business status and candidate details when Archive is rejected before acceptance', async () => {

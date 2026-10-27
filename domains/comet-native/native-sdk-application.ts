@@ -58,6 +58,9 @@ import {
   nativeSdkReviseCommandValidator,
   nativeSdkReviseExecutor,
   nativeSdkReviseValidator,
+  nativeSdkImplementationRevisionCommandValidator,
+  nativeSdkImplementationRevisionExecutor,
+  nativeSdkImplementationRevisionValidator,
 } from './native-sdk-revise.js';
 import {
   nativeSdkReportExecutor,
@@ -1005,6 +1008,13 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
       version: '1',
       entry: 'shape.prepare',
       commands: {
+        'revise-implementation': {
+          stepId: 'repair.implementation',
+          validator: {
+            id: nativeSdkImplementationRevisionCommandValidator.id,
+            version: nativeSdkImplementationRevisionCommandValidator.version,
+          },
+        },
         'revise-requirements': {
           stepId: 'shape.revise',
           validator: {
@@ -1043,6 +1053,14 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
       transitionHandler: { id: 'comet-native-transition', version: '1' },
       stateValidator: { id: nativeStateValidator.id, version: nativeStateValidator.version },
       steps: {
+        'repair.implementation': {
+          type: 'call_tool',
+          ref: 'native-revise-implementation',
+          validator: {
+            id: nativeSdkImplementationRevisionValidator.id,
+            version: nativeSdkImplementationRevisionValidator.version,
+          },
+        },
         'shape.revise': {
           type: 'call_tool',
           ref: 'native-revise-requirements',
@@ -1286,6 +1304,11 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         },
       },
       transitions: [
+        { from: 'repair.implementation', to: 'archive.prepare' },
+        { from: 'repair.implementation', to: 'archive.execute' },
+        { from: 'repair.implementation', to: 'shape.prepare' },
+        { from: 'repair.implementation', to: 'build.builder' },
+        { from: 'repair.implementation', to: 'supervisor.parent.builder' },
         { from: 'shape.revise', to: 'shape.prepare' },
         { from: 'shape.remove', to: 'shape.prepare' },
         { from: 'shape.disassociate', to: 'shape.prepare' },
@@ -1396,6 +1419,50 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
       version: '1',
       apply({ run, event }) {
         const state = parseNativePortableState(run.state);
+        if (event.kind === 'action-outcome' && event.stepId === 'repair.implementation') {
+          if (event.outcome.status !== 'succeeded')
+            return { state: state as unknown as RuntimeValue, next: [] };
+          const output = event.outcome.output as {
+            drift: boolean;
+            requirementsChanged: boolean;
+            archiveStep: string;
+            reason: string;
+          };
+          if (!output.drift)
+            return { state: state as unknown as RuntimeValue, next: [output.archiveStep] };
+          if (output.requirementsChanged)
+            return {
+              state: resetShapeForRequirementsRevision(
+                state,
+                output.reason,
+              ) as unknown as RuntimeValue,
+              next: ['shape.prepare'],
+            };
+          const returned = returnNativeCandidateToBuild({ state, reason: output.reason });
+          const verifier = [...run.actions]
+            .reverse()
+            .find((action) => action.stepId === 'verify.verifier' && action.status === 'succeeded');
+          if (!verifier)
+            throw new Error('Native implementation revision has no original Verifier result');
+          return {
+            state: returned as unknown as RuntimeValue,
+            next: state.children_contract_hash
+              ? [
+                  {
+                    stepId: 'supervisor.parent.builder',
+                    input: supervisorParentRepairActivation(run, {
+                      failedVerifierActionId: verifier.id,
+                    }),
+                  },
+                ]
+              : [
+                  {
+                    stepId: 'build.builder',
+                    input: { repairContext: nativeBuilderRepairContext(returned, run) },
+                  },
+                ],
+          };
+        }
         if (event.kind === 'action-outcome' && event.stepId === 'shape.revise') {
           if (event.outcome.status !== 'succeeded') {
             return { state: state as unknown as RuntimeValue, next: [] };
@@ -2230,7 +2297,13 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             };
           }
           const reserved = reserveNativeVerifierAttempt(state);
-          return { state: reserved as unknown as RuntimeValue, next: ['verify.verifier'] };
+          const userEditedReport = nativeUserEditedReportContext(reserved, run);
+          return {
+            state: reserved as unknown as RuntimeValue,
+            next: userEditedReport
+              ? [{ stepId: 'verify.verifier', input: { userEditedReport } }]
+              : ['verify.verifier'],
+          };
         }
         if (event.kind === 'action-outcome' && event.stepId === 'verify.verifier') {
           const action = run.actions.find((candidate) => candidate.id === event.outcome.actionId);
@@ -2588,6 +2661,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
       },
     },
     validators: [
+      nativeSdkImplementationRevisionValidator,
       nativeSdkReviseValidator,
       nativeSdkRemoveValidator,
       nativeSdkDisassociateValidator,
@@ -2614,11 +2688,13 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
     stateValidators: [nativeStateValidator],
     validateRecovery: validateNativeSdkSupervisorRecovery,
     commandValidators: [
+      nativeSdkImplementationRevisionCommandValidator,
       nativeSdkReviseCommandValidator,
       nativeSdkRemoveCommandValidator,
       nativeSdkDisassociateCommandValidator,
     ],
     executors: [
+      nativeSdkImplementationRevisionExecutor,
       nativeSdkReviseExecutor,
       nativeSdkRemoveExecutor,
       nativeSdkDisassociateExecutor,
@@ -2637,4 +2713,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
     ],
   };
 }
-import { nativeBuilderRepairContext } from './native-task-context.js';
+import {
+  nativeBuilderRepairContext,
+  nativeUserEditedReportContext,
+} from './native-task-context.js';

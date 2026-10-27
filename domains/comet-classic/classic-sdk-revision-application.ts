@@ -481,7 +481,7 @@ export function classicSdkRevisionApplication(
 export function classicSdkApplicationForRun(
   profile: ClassicProfile,
   run: WorkflowRun | null,
-  options: { upgradePresetRequirements?: boolean } = {},
+  options: { upgradePresetRequirements?: boolean; upgradeBuildCheckRecovery?: boolean } = {},
 ) {
   const effective = (run?.state as unknown as ClassicState | undefined)?.workflow ?? profile;
   const repair = withClassicDeliveryRepair(
@@ -502,6 +502,22 @@ export function classicSdkApplicationForRun(
     if (step?.validator?.id === 'comet-classic-preset-scope') delete step.validator;
     return { ...application, workflow: previous };
   };
+  const withoutBuildCheckRecovery = <T extends { workflow: DefineWorkflowOptions }>(
+    application: T,
+  ) => ({
+    ...application,
+    workflow: {
+      ...application.workflow,
+      transitions: application.workflow.transitions?.filter(
+        (edge) =>
+          !(
+            profile !== 'full' &&
+            edge.from === `${profile}.build.check.evidence` &&
+            edge.on === 'invalidated'
+          ),
+      ),
+    },
+  });
   for (const verification of [true, 'full', false] as const) {
     for (const archiveRepair of [true, false]) {
       for (const buildContinuation of [true, false]) {
@@ -515,16 +531,36 @@ export function classicSdkApplicationForRun(
           );
           if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(application.workflow)))
             return application;
+          const previousRecovery = withoutBuildCheckRecovery(application);
+          if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previousRecovery.workflow)))
+            return options.upgradeBuildCheckRecovery ? application : previousRecovery;
           const previous = compatible(application);
           if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previous.workflow)))
             return options.upgradePresetRequirements ? application : previous;
+          const previousBoth = withoutBuildCheckRecovery(previous);
+          if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previousBoth.workflow)))
+            return options.upgradePresetRequirements
+              ? application
+              : options.upgradeBuildCheckRecovery
+                ? previous
+                : previousBoth;
         }
       }
     }
   }
   const base = { ...defineClassicWorkflowApplication(profile), commandValidators: [] };
   const previous = compatible(base);
+  const oldRecovery = withoutBuildCheckRecovery(base);
+  if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(oldRecovery.workflow)))
+    return options.upgradeBuildCheckRecovery ? base : oldRecovery;
   if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previous.workflow)))
     return options.upgradePresetRequirements ? base : previous;
+  const previousBoth = withoutBuildCheckRecovery(previous);
+  if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previousBoth.workflow)))
+    return options.upgradePresetRequirements
+      ? base
+      : options.upgradeBuildCheckRecovery
+        ? previous
+        : previousBoth;
   return base;
 }

@@ -620,6 +620,35 @@ export async function listSdkChangePartitions(
   );
 }
 
+/** Resume discovery keeps unreadable active owners as candidates for diagnosis. */
+export async function listSdkResumeCandidates(
+  projectRoot: string,
+  workflow: CometProjectWorkflow,
+): Promise<{ active: string[]; history: string[] }> {
+  const roots = await ownerRuntimeRoots(projectRoot);
+  return withStableOwnerPartitions(
+    roots,
+    async () => {
+      const partitions = await ownerPartitions(projectRoot, workflow, { readOnly: true });
+      const names = [...partitions.active].sort((left, right) => left.localeCompare(right, 'en'));
+      const owners = await readSdkChangeOwners(projectRoot, workflow, names);
+      return {
+        active: names.filter((name) => {
+          const result = owners.get(name);
+          return (
+            result?.status === 'rejected' ||
+            (result?.status === 'fulfilled' && result.value !== null)
+          );
+        }),
+        history: [...partitions.history]
+          .filter((name) => !partitions.active.has(name))
+          .sort((left, right) => left.localeCompare(right, 'en')),
+      };
+    },
+    true,
+  );
+}
+
 function sameOwner(left: ChangeRuntimeOwner, right: ChangeRuntimeOwner): boolean {
   return (
     JSON.stringify(Object.entries(left).sort()) === JSON.stringify(Object.entries(right).sort())

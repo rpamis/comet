@@ -1961,6 +1961,7 @@ export function defineClassicWorkflowApplication(
               { from: `${profile}.build.check`, to: `${profile}.build.check.evidence` },
               { from: `${profile}.build.check`, to: followingStep, on: 'failed' },
               { from: `${profile}.build.check.evidence`, to: `${profile}.verify.run` },
+              { from: `${profile}.build.check.evidence`, to: followingStep, on: 'invalidated' },
               { from: `${profile}.verify.run`, to: `${profile}.verify.report.evidence` },
               { from: `${profile}.verify.run`, to: `${profile}.build.execute` },
               { from: `${profile}.verify.report.evidence`, to: `${profile}.verify.check` },
@@ -2481,11 +2482,10 @@ export function defineClassicWorkflowApplication(
           };
         }
         if (
-          profile === 'full' &&
           event.kind === 'evidence-invalidated' &&
-          event.stepId === 'full.build.check.evidence'
+          event.stepId === `${profile}.build.check.evidence`
         ) {
-          return { state: run.state!, next: ['full.build.execute'] };
+          return { state: run.state!, next: [`${profile}.build.execute`] };
         }
         if (
           profile === 'full' &&

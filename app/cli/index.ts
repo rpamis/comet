@@ -75,7 +75,9 @@ program
 
 program
   .command('edit-review <operation> <workflow> <change>')
-  .description('Prepare, claim, record, or show a concrete Verify edit review')
+  .description(
+    'Prepare, claim, record, or show a Verify edit review; Native prepare-applied reviews existing edits',
+  )
   .option('--project-root <path>', '当前工作区路径')
   .option('--file <path>', 'prepare/claim 的完整 Hook 请求或 record 的复核结果 JSON')
   .option('--confirmed', 'Compat 用户已明确确认这份具体复核结果')

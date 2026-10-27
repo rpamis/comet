@@ -36,6 +36,7 @@ describe('built CLI smoke', () => {
     const help = runCli('edit-review', '--help');
     expect(help.status).toBe(0);
     expect(help.stdout).toContain('--confirmed');
+    expect(help.stdout).toContain('prepare-applied');
     const invalid = runCli('edit-review', 'show', 'unknown', 'demo', '--json');
     expect(invalid.status).toBe(1);
     expect(JSON.parse(invalid.stdout)).toMatchObject({

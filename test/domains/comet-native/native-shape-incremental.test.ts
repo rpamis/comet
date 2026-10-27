@@ -51,6 +51,7 @@ const brief =
 async function fixture(
   mode: 'sdk' | 'compat' = 'sdk',
   specText = '# Worker\nThe worker returns one.\n',
+  briefText = brief,
 ) {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'native-shape-incremental-'));
   roots.push(base);
@@ -78,7 +79,7 @@ async function fixture(
   ).toBe(0);
   const change = path.join(root, 'docs/comet/changes', name);
   const briefFile = path.join(change, 'brief.md');
-  await fs.writeFile(briefFile, brief);
+  await fs.writeFile(briefFile, briefText);
   await fs.mkdir(path.join(change, 'specs/worker'), { recursive: true });
   await fs.writeFile(path.join(change, 'specs/worker/spec.md'), specText);
   const preparedResult = await cli('next', name, '--summary', 'Ready for Shape approval.');
@@ -338,6 +339,343 @@ describe('Native Shape incremental contract', () => {
     expect(
       (await inspectNativeHookGuard(f.root, f.request(f.briefFile, injected), f.name)).allowed,
     ).toBe(false);
+    expect((await f.inspect()).run).toEqual(before.run);
+  });
+
+  it('reviews an already applied formal comment using the approved original without restoring the file', async () => {
+    const f = await fixture();
+    await f.finishBuilder();
+    const before = await f.inspect();
+    const after = brief + '\n<!-- Explanation: the assertion maps to the worker result. -->\n';
+    await fs.writeFile(f.briefFile, after);
+    const prepared = (await runNativeEditReviewCommand({
+      projectRoot: f.root,
+      name: f.name,
+      operation: 'prepare-applied',
+    })) as {
+      proposal: { proposalHash: string; edits: { beforeHash: string; afterHash: string }[] };
+      originalPaths: string[];
+      continuation: { commandArgs: string[] };
+    };
+    const args = prepared.continuation.commandArgs;
+    const file = args[args.indexOf('--file') + 1];
+    expect(file).toBeTruthy();
+    expect(prepared.proposal.edits[0].beforeHash).not.toBe(prepared.proposal.edits[0].afterHash);
+    const claimed = (await runNativeEditReviewCommand({
+      projectRoot: f.root,
+      name: f.name,
+      operation: 'claim',
+      proposalHash: prepared.proposal.proposalHash,
+      sessionId: 'independent-reviewer',
+    })) as {
+      recordTemplate: Record<string, unknown>;
+      originalPaths: string[];
+      continuation: { instruction: string };
+    };
+    expect(claimed.originalPaths).toEqual(prepared.originalPaths);
+    expect(claimed.continuation.instruction).toContain('编辑已经应用');
+    expect(claimed.continuation.instruction).not.toContain('重试原编辑');
+    const result = path.join(f.base, 'review-applied.json');
+    await fs.writeFile(
+      result,
+      JSON.stringify({
+        ...claimed.recordTemplate,
+        decision: 'non-behavioral',
+        summary: 'Only the explanation changed.',
+      }),
+    );
+    const original = await fs.readFile(prepared.originalPaths[0], 'utf8');
+    await fs.writeFile(prepared.originalPaths[0], 'forged original');
+    await expect(
+      runNativeEditReviewCommand({
+        projectRoot: f.root,
+        name: f.name,
+        operation: 'record',
+        file: result,
+      }),
+    ).rejects.toThrow('原文');
+    await fs.writeFile(prepared.originalPaths[0], original);
+    const originalRequest = await fs.readFile(file, 'utf8');
+    await fs.writeFile(file, '{}');
+    await expect(
+      runNativeEditReviewCommand({
+        projectRoot: f.root,
+        name: f.name,
+        operation: 'record',
+        file: result,
+      }),
+    ).rejects.toThrow('原始请求');
+    await fs.writeFile(file, originalRequest);
+    await fs.writeFile(f.briefFile, after + '\n<!-- newer edit -->\n');
+    await expect(
+      runNativeEditReviewCommand({
+        projectRoot: f.root,
+        name: f.name,
+        operation: 'record',
+        file: result,
+      }),
+    ).rejects.toThrow('不匹配');
+    await fs.writeFile(f.briefFile, after);
+    await fs.rm(prepared.originalPaths[0]);
+    await expect(
+      runNativeEditReviewCommand({
+        projectRoot: f.root,
+        name: f.name,
+        operation: 'record',
+        file: result,
+      }),
+    ).rejects.toThrow('原文');
+    expect(await fs.readFile(f.briefFile, 'utf8')).toBe(after);
+    const blob = execFileSync('git', ['hash-object', '-w', '--stdin'], {
+      cwd: f.root,
+      input: brief,
+      encoding: 'utf8',
+    }).trim();
+    const ref = path.relative(f.root, f.briefFile).replaceAll('\\', '/');
+    execFileSync('git', ['update-index', '--add', '--cacheinfo', `100644,${blob},${ref}`], {
+      cwd: f.root,
+    });
+    await runNativeEditReviewCommand({
+      projectRoot: f.root,
+      name: f.name,
+      operation: 'record',
+      file: result,
+    });
+    expect(await fs.readFile(f.briefFile, 'utf8')).toBe(after);
+    expect(await fs.readFile(prepared.originalPaths[0], 'utf8')).toBe(brief);
+    expect(
+      await inspectNativePortableAcceptanceDrift({ paths: f.paths, state: before.state }),
+    ).toEqual({ drifted: false, reason: null });
+    expect((await f.inspect()).run).toEqual(before.run);
+  });
+
+  it('prepares an applied document review through the public CLI without rewriting the user file', async () => {
+    const f = await fixture();
+    await f.finishBuilder();
+    const after = brief + '\n<!-- The user clarified this example. -->\n';
+    await fs.writeFile(f.briefFile, after);
+    const output = execFileSync(
+      process.execPath,
+      [
+        path.resolve('bin/comet.js'),
+        'edit-review',
+        'prepare-applied',
+        'native',
+        f.name,
+        '--project-root',
+        f.root,
+        '--json',
+      ],
+      { cwd: f.root, encoding: 'utf8', timeout: 60_000 },
+    );
+    const result = JSON.parse(output);
+    expect(result.ok).toBe(true);
+    expect(result.data.proposal.edits).toHaveLength(1);
+    expect(await fs.readFile(f.briefFile, 'utf8')).toBe(after);
+  });
+
+  it('keeps later user edits and supersedes stale pending and completed applied reviews', async () => {
+    const f = await fixture();
+    await f.finishBuilder();
+    const before = await f.inspect();
+    const prepare = async () =>
+      (await runNativeEditReviewCommand({
+        projectRoot: f.root,
+        name: f.name,
+        operation: 'prepare-applied',
+      })) as { proposal: { proposalHash: string } };
+    const review = async (proposalHash: string, sessionId: string) => {
+      const claimed = (await runNativeEditReviewCommand({
+        projectRoot: f.root,
+        name: f.name,
+        operation: 'claim',
+        proposalHash,
+        sessionId,
+      })) as { recordTemplate: Record<string, unknown> };
+      const file = path.join(f.base, `${sessionId}.json`);
+      await fs.writeFile(
+        file,
+        JSON.stringify({
+          ...claimed.recordTemplate,
+          decision: 'non-behavioral',
+          summary: 'Reviewed the current explanation.',
+        }),
+      );
+      await runNativeEditReviewCommand({
+        projectRoot: f.root,
+        name: f.name,
+        operation: 'record',
+        file,
+      });
+    };
+    expect(
+      (
+        await inspectNativeHookGuard(
+          f.root,
+          f.request(f.briefFile, brief + '\n<!-- An earlier proposal. -->\n'),
+          f.name,
+        )
+      ).allowed,
+    ).toBe(false);
+    await fs.writeFile(f.briefFile, brief + '\n<!-- First edit. -->\n');
+    const firstResume = (await runNativeEditReviewCommand({
+      projectRoot: f.root,
+      name: f.name,
+      operation: 'show',
+    })) as { continuation: { commandArgs: string[] } };
+    expect(firstResume.continuation.commandArgs).toContain('prepare-applied');
+    const first = await prepare();
+    await fs.writeFile(f.briefFile, brief + '\n<!-- Second edit. -->\n');
+    const second = await prepare();
+    expect(second.proposal.proposalHash).not.toBe(first.proposal.proposalHash);
+    await review(second.proposal.proposalHash, 'second-reviewer');
+    expect(
+      await inspectNativePortableAcceptanceDrift({ paths: f.paths, state: before.state }),
+    ).toEqual({ drifted: false, reason: null });
+    const final = brief + '\n<!-- Third edit. -->\n';
+    await fs.writeFile(f.briefFile, final);
+    const thirdResume = (await runNativeEditReviewCommand({
+      projectRoot: f.root,
+      name: f.name,
+      operation: 'show',
+    })) as { continuation: { commandArgs: string[] } };
+    expect(thirdResume.continuation.commandArgs).toContain('prepare-applied');
+    const third = await prepare();
+    await review(third.proposal.proposalHash, 'third-reviewer');
+    expect(await fs.readFile(f.briefFile, 'utf8')).toBe(final);
+    expect(
+      await inspectNativePortableAcceptanceDrift({ paths: f.paths, state: before.state }),
+    ).toEqual({ drifted: false, reason: null });
+    const { assertNativeEditReviewsComplete } =
+      await import('../../../domains/comet-native/native-edit-review.js');
+    await expect(assertNativeEditReviewsComplete(f.paths, before.state)).resolves.toBeUndefined();
+    expect((await f.inspect()).run).toEqual(before.run);
+  });
+
+  it('recovers a large CRLF approved original from matching Git LF content for applied review', async () => {
+    const approved = (brief + '\n<!-- ' + 'a'.repeat(1_100_000) + ' -->\n').replaceAll(
+      '\n',
+      '\r\n',
+    );
+    const f = await fixture('sdk', '# Worker\nThe worker returns one.\n', approved);
+    await f.finishBuilder();
+    const before = await f.inspect();
+    const edited = approved + '\r\n<!-- User explanation. -->\r\n';
+    await fs.writeFile(f.briefFile, edited);
+    const prepared = (await runNativeEditReviewCommand({
+      projectRoot: f.root,
+      name: f.name,
+      operation: 'prepare-applied',
+    })) as { proposal: { proposalHash: string }; originalPaths: string[] };
+    await fs.rm(prepared.originalPaths[0]);
+    const blob = execFileSync('git', ['hash-object', '-w', '--stdin'], {
+      cwd: f.root,
+      input: approved.replaceAll('\r\n', '\n'),
+      encoding: 'utf8',
+    }).trim();
+    const ref = path.relative(f.root, f.briefFile).replaceAll('\\', '/');
+    execFileSync('git', ['update-index', '--add', '--cacheinfo', `100644,${blob},${ref}`], {
+      cwd: f.root,
+    });
+    const claim = (await runNativeEditReviewCommand({
+      projectRoot: f.root,
+      name: f.name,
+      operation: 'claim',
+      proposalHash: prepared.proposal.proposalHash,
+      sessionId: 'large-file-reviewer',
+    })) as { recordTemplate: Record<string, unknown> };
+    const result = path.join(f.base, 'large-review.json');
+    await fs.writeFile(
+      result,
+      JSON.stringify({
+        ...claim.recordTemplate,
+        decision: 'non-behavioral',
+        summary: 'Reviewed the additional comment.',
+      }),
+    );
+    await runNativeEditReviewCommand({
+      projectRoot: f.root,
+      name: f.name,
+      operation: 'record',
+      file: result,
+    });
+    expect(await fs.readFile(f.briefFile, 'utf8')).toBe(edited);
+    expect(await fs.readFile(prepared.originalPaths[0], 'utf8')).toBe(approved);
+    expect(
+      await inspectNativePortableAcceptanceDrift({ paths: f.paths, state: before.state }),
+    ).toEqual({ drifted: false, reason: null });
+  });
+
+  it('reviews an applied Compat formal edit without asking for another user confirmation', async () => {
+    const f = await fixture('compat');
+    const { submitNativePortableBuilderCandidate } =
+      await import('../../../domains/comet-native/native-portable-runtime.js');
+    const { createNativeRunnerChannel } =
+      await import('../../../domains/comet-native/native-runner-protocol.js');
+    await submitNativePortableBuilderCandidate({
+      paths: f.paths,
+      name: f.name,
+      input: {
+        identity: createNativeRunnerChannel().captureExecutionIdentity({
+          identityProvider: 'test-host',
+          executionRef: 'compat-builder',
+        }),
+        candidateId: 'compat-candidate',
+        summary: 'Preserved the worker.',
+        addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
+      },
+    });
+    const before = await f.state();
+    const edited = brief + '\n<!-- Clarify the worker output. -->\n';
+    await fs.writeFile(f.briefFile, edited);
+    const prepared = (await runNativeEditReviewCommand({
+      projectRoot: f.root,
+      name: f.name,
+      operation: 'prepare-applied',
+    })) as { proposal: { proposalHash: string }; continuation: { mode: string } };
+    expect(prepared.continuation.mode).toBe('execute');
+    const claim = (await runNativeEditReviewCommand({
+      projectRoot: f.root,
+      name: f.name,
+      operation: 'claim',
+      proposalHash: prepared.proposal.proposalHash,
+      sessionId: 'compat-independent-reviewer',
+    })) as { recordTemplate: Record<string, unknown> };
+    const result = path.join(f.base, 'compat-review.json');
+    await fs.writeFile(
+      result,
+      JSON.stringify({
+        ...claim.recordTemplate,
+        decision: 'non-behavioral',
+        summary: 'Reviewed the current explanation.',
+      }),
+    );
+    await runNativeEditReviewCommand({
+      projectRoot: f.root,
+      name: f.name,
+      operation: 'record',
+      file: result,
+    });
+    expect(await fs.readFile(f.briefFile, 'utf8')).toBe(edited);
+    expect(await inspectNativePortableAcceptanceDrift({ paths: f.paths, state: before })).toEqual({
+      drifted: false,
+      reason: null,
+    });
+  });
+
+  it('keeps a Build comment edit and points to requirement revision when no Verify candidate exists', async () => {
+    const f = await fixture();
+    const before = await f.inspect();
+    const edited = brief + '\n<!-- User explanation. -->\n';
+    await fs.writeFile(f.briefFile, edited);
+    const drift = await inspectNativePortableAcceptanceDrift({
+      paths: f.paths,
+      state: before.state,
+    });
+    expect(drift.reason).toContain('no Verify candidate exists');
+    expect(drift.reason).toContain('revise-requirements');
+    expect(await fs.readFile(f.briefFile, 'utf8')).toBe(edited);
     expect((await f.inspect()).run).toEqual(before.run);
   });
 

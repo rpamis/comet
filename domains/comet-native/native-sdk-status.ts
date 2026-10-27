@@ -10,6 +10,8 @@ import { nativeProjectPaths } from './native-paths.js';
 import { projectNativePortableWorkspace } from './native-portable-status.js';
 import { projectNativeSdkContinuation } from './native-sdk-continuation.js';
 import { nativePortableStateSummary } from './native-portable-summary.js';
+import path from 'node:path';
+import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
 
 export { isNativeSdkCancellationComplete } from './native-sdk-cancellation.js';
 
@@ -71,6 +73,30 @@ export async function projectNativeSdkStatus(
   const actions = statusRecords(run.actions, options.details);
   const waits = statusRecords(run.waits, options.details);
   const evidenceWaits = statusRecords(run.evidenceWaits ?? [], options.details);
+  const preservedReports = run.actions.flatMap((action) => {
+    const output = action.outcome?.output as
+      { preservedReportRef?: unknown; preservedReportSha256?: unknown } | undefined;
+    if (
+      action.stepId !== 'verify.report' ||
+      action.status !== 'succeeded' ||
+      typeof output?.preservedReportRef !== 'string' ||
+      !/^native\/preserved-verification\/[a-f0-9]{64}\/[a-f0-9]{64}\.md$/u.test(
+        output.preservedReportRef,
+      ) ||
+      typeof output.preservedReportSha256 !== 'string'
+    )
+      return [];
+    return [
+      {
+        ref: output.preservedReportRef,
+        path: path.join(
+          resolveWorkspaceRuntimeRootSync(options.projectRoot),
+          ...output.preservedReportRef.split('/'),
+        ),
+        sha256: output.preservedReportSha256,
+      },
+    ];
+  });
   const editReviews = state.builder_handoff
     ? await inspectEditReviews(
         nativeEditReviewScope(
@@ -90,6 +116,7 @@ export async function projectNativeSdkStatus(
       : {}),
     name: options.name,
     ...(editReviews.length ? { editReviews } : {}),
+    ...(preservedReports.length ? { preservedReports } : {}),
     language: state.language,
     phase: state.phase,
     status: cancellation?.status ?? state.status,
@@ -160,6 +187,12 @@ export async function projectNativeSdkStatus(
       state,
       projectRoot: options.projectRoot,
       applicationId: application?.identity.id,
+      implementationRevisionAvailable:
+        !application ||
+        application.implementation.workflows.some(
+          (workflow) =>
+            workflow.id === 'comet-native' && Boolean(workflow.commands?.['revise-implementation']),
+        ),
       skillExecutors: application?.implementation.executors,
       editReviews,
       cancellationObservation: cancellation,

@@ -16,7 +16,10 @@ import {
   NativeSdkCheckInputSnapshotError,
 } from './native-sdk-checks.js';
 
-import { hashProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
+import {
+  hashProtectedProjectFile,
+  inspectProtectedProjectPath,
+} from '../workflow-contract/protected-project-path.js';
 import {
   type RuntimeAction,
   type RuntimeExecutor,
@@ -38,6 +41,15 @@ import {
 } from './native-portable-archive.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { readNativePortableTransaction } from './native-portable-transactions.js';
+import { readNativeApprovedShapeSemanticSnapshot } from './native-portable-requirements.js';
+import { nativeEditReviewScope } from './native-edit-review-scope.js';
+import { nativeShapeReviewAnchorMatches } from './native-shape-review-evidence.js';
+import {
+  nativeShapeArtifactContractHash,
+  nativeShapeArtifactSnapshot,
+} from './native-shape-semantics.js';
+import { readNativeBoundedTextFile } from './native-bounded-file.js';
+import { approvedEditFingerprint, inspectEditReviews } from '../workflow-contract/edit-review.js';
 
 export const NATIVE_SDK_ARCHIVE_STEPS = [
   ['supervisor.parent.deliver', 'native-supervisor-parent-deliver'],
@@ -106,6 +118,9 @@ async function archiveCandidateBinding(
     },
   );
   const materials: Array<{ ref: string; digest: string; mode: number }> = [];
+  const shape = (await readNativeApprovedShapeSemanticSnapshot({ paths, state }))?.snapshot;
+  const scope = state.builder_handoff ? nativeEditReviewScope(paths, state) : null;
+  let reviews: Awaited<ReturnType<typeof inspectEditReviews>> | undefined;
   async function visit(directory: string) {
     const stat = await fs.lstat(directory);
     if (!stat.isDirectory() || stat.isSymbolicLink())
@@ -117,9 +132,33 @@ async function archiveCandidateBinding(
       const stat = await fs.lstat(file);
       if (stat.isDirectory()) await visit(file);
       else {
-        const { digest } = await hashProtectedProjectFile(projectRoot, ref(file), {
+        let { digest } = await hashProtectedProjectFile(projectRoot, ref(file), {
           label: 'Native Archive material',
         });
+        const approved = shape?.artifacts.find((artifact) => artifact.source === relative);
+        if (scope && approved && digest !== approved.contentHash) {
+          reviews ??= await inspectEditReviews(scope);
+          const current = await readNativeBoundedTextFile({
+            root: projectRoot,
+            ref: ref(file),
+            maxBytes: null,
+          });
+          const reviewedRef = ref(path.join(paths.changesDir, state.name, approved.source));
+          const reviewed =
+            current.hash === digest
+              ? await approvedEditFingerprint(scope, reviewedRef, current.text, reviews)
+              : null;
+          const observed = nativeShapeArtifactSnapshot(approved.source, current.text);
+          if (
+            reviewed &&
+            (await nativeShapeReviewAnchorMatches(scope, approved, reviewed.beforeHash)) &&
+            nativeShapeArtifactContractHash({
+              ...observed,
+              commentsHash: approved.commentsHash,
+            }) === nativeShapeArtifactContractHash(approved)
+          )
+            digest = approved.contentHash;
+        }
         materials.push({ ref: relative, digest, mode: stat.mode & 0o777 });
       }
     }
@@ -429,6 +468,70 @@ async function archiveUnappliedDrift(
   if (await readNativePortableTransaction(paths, { kind: 'archive', change: state.name }))
     return null;
   return { ready: false, reason: 'candidate-drift', message: error.message };
+}
+
+/** 只读检查待执行的归档动作；不会调用归档执行器或写入 Specs。 */
+export async function inspectNativeSdkPendingArchiveDrift(options: {
+  run: Readonly<WorkflowRun>;
+  action: Readonly<RuntimeAction>;
+  projectRoot: string;
+}): Promise<{
+  ready: false;
+  reason: 'candidate-drift' | 'report-drift' | 'report-missing';
+  message: string;
+} | null> {
+  const { run, action, projectRoot } = options;
+  if (!['archive.prepare', 'archive.execute'].includes(action.stepId)) return null;
+  const state = parseNativePortableState(run.state);
+  const input = run.input as { artifactRootRef: string };
+  const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, { readOnly: true });
+  const changeRef = path
+    .relative(projectRoot, path.join(paths.changesDir, state.name))
+    .replaceAll('\\', '/');
+  const change = await inspectProtectedProjectPath(projectRoot, changeRef, {
+    label: 'Native change directory',
+    expected: 'directory',
+  });
+  if (!change.exists) throw new Error('Native change directory is missing');
+  const report = await inspectProtectedProjectPath(projectRoot, `${changeRef}/verification.md`, {
+    label: 'Native SDK verification report',
+    expected: 'file',
+  });
+  if (!report.exists)
+    return {
+      ready: false,
+      reason: 'report-missing',
+      message:
+        'Native verification report is missing; keep existing files and reverify the candidate',
+    };
+  if (action.stepId === 'archive.prepare') {
+    try {
+      const output = await archivePreflightOutput(run, action, projectRoot);
+      return !output.ready && 'reason' in output && output.reason === 'candidate-drift'
+        ? { ready: false, reason: 'candidate-drift', message: output.message }
+        : null;
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === 'Native verification report changed after Archive confirmation'
+      )
+        return { ready: false, reason: 'report-drift', message: error.message };
+      throw error;
+    }
+  }
+  try {
+    await archiveApplyBinding(run, action, projectRoot);
+    return null;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === 'Native verification report changed after Archive preflight'
+    )
+      return { ready: false, reason: 'report-drift', message: error.message };
+    const drift = await archiveUnappliedDrift(run, projectRoot, error);
+    if (drift) return { ready: false, reason: 'candidate-drift', message: drift.message };
+    throw error;
+  }
 }
 
 export const nativeSdkArchiveApplyExecutor: RuntimeExecutor = {

@@ -37,6 +37,7 @@ import {
 import { nativeSdkCheckValidator } from './native-sdk-checks.js';
 import {
   nativeSdkBeforeVerifierRecovery,
+  nativeSdkBeforeImplementationRevision,
   nativeSdkBeforeBlockedVerifierRecovery,
   nativeSdkBeforeIntegrationRepairRecovery,
   nativeSdkLegacyDefinitions,
@@ -239,6 +240,7 @@ export async function inspectNativeSdkDefinitionUpgrade(
     if (!workflow) return null;
     store = application.store;
     previousDefinitions = [
+      nativeSdkBeforeImplementationRevision(workflow),
       nativeSdkBeforeBlockedVerifierRecovery(workflow),
       nativeSdkBeforeIntegrationRepairRecovery(workflow),
       nativeSdkBeforeVerifierRecovery(workflow),
