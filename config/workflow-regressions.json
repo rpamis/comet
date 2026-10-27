@@ -4762,6 +4762,50 @@
           ]
         }
       ]
+    },
+    {
+      "id": "ci-v8-pending-import-missing-hits",
+      "sources": [
+        "https://github.com/rpamis/comet/pull/510/checks?check_run_id=122362528278",
+        "https://github.com/vitest-dev/vitest/issues/10581"
+      ],
+      "behavior": "一个测试 worker 在模块导入完成前退出时，其他 worker 已执行的返回语句仍计入源码覆盖率。",
+      "coverageLevel": "unit",
+      "reproduction": "Vitest 4.1.12 在 Linux Node 24.22.1 和 Windows 的相同两文件案例中，将已执行的第 16 行返回语句记为零次；补入上游 #10643 的初始化后为一次。",
+      "expected": "真实执行一次的函数和返回语句均记录一次，原 70% patch 门槛保持不变。",
+      "forbidden": "待完成导入的缺失偏移使已执行源码变成未覆盖，或通过降低门槛掩盖错误。",
+      "rootCause": "Vitest 仅在模块求值结束后记录包装器偏移，退出时尚未完成的模块以零偏移参与跨 worker 合并。",
+      "tests": [
+        {
+          "file": "test/repository/coverage-runtime.test.ts",
+          "namePattern": "keeps executed and uncalled source ranges distinct when another worker exits during import",
+          "requiredNames": [
+            "keeps executed and uncalled source ranges distinct when another worker exits during import"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ci-v8-pending-import-false-hits",
+      "sources": [
+        "https://github.com/rpamis/comet/pull/510/checks?check_run_id=122362528278",
+        "https://github.com/vitest-dev/vitest/issues/10581"
+      ],
+      "behavior": "一个测试 worker 的待完成导入不能把从未调用的函数和异常分支记为已覆盖。",
+      "coverageLevel": "unit",
+      "reproduction": "相同案例在未修补的 Vitest 4.1.12 中把 uncovered2 记为一次，并将未执行的抛错语句记为命中；同一断言在补入上游修复后保持零次。",
+      "expected": "两个未调用函数与三个未执行抛错语句全部为零，两个测试本身仍通过。",
+      "forbidden": "错误源码偏移把未执行的函数或分支算作命中，造成虚假的覆盖率通过。",
+      "rootCause": "未完成模块没有预先登记包装器偏移，合并时其他函数的命中落到未调用函数及相邻语句。",
+      "tests": [
+        {
+          "file": "test/repository/coverage-runtime.test.ts",
+          "namePattern": "keeps executed and uncalled source ranges distinct when another worker exits during import",
+          "requiredNames": [
+            "keeps executed and uncalled source ranges distinct when another worker exits during import"
+          ]
+        }
+      ]
     }
   ]
 }

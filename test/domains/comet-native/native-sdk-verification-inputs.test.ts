@@ -386,8 +386,22 @@ Run focused Native checks.
     });
   } catch (error) {
     const failed = await store.read(run.runId);
+    const executions = failed
+      ? (await inspectNativeSdkCheckExecutions({ projectRoot: root, run: failed })).map(
+          ({ actionId, owner, process, phase, quiescent, reason, execution }) => ({
+            actionId,
+            owner,
+            process,
+            phase,
+            quiescent,
+            reason,
+            child: execution?.child,
+            terminationUnconfirmed: execution?.terminationUnconfirmed,
+          }),
+        )
+      : [];
     throw new Error(
-      `Native fixture check execution failed: ${failed?.actions.at(-1)?.reason ?? 'no persisted reason'}`,
+      `Native fixture check execution failed: ${failed?.actions.at(-1)?.reason ?? 'no persisted reason'}; executions: ${JSON.stringify(executions)}`,
       { cause: error },
     );
   }

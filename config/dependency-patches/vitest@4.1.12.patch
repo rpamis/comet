@@ -1,0 +1,18 @@
+diff --git a/dist/module-evaluator.js b/dist/module-evaluator.js
+index d7703b70eaebe617b39890d0fd4c2f4ab22cdc59..5e0dd89e580faaca506f14fe34c8218d7214c629 100644
+--- a/dist/module-evaluator.js
++++ b/dist/module-evaluator.js
+@@ -198,6 +198,13 @@ class VitestModuleEvaluator {
+ 		};
+ 		// this will always be 1 element because it's cached after load
+ 		const importer = module.importers.values().next().value;
++		// Initialize execution info in case worker exited before module evaluation finished
++		this.options.moduleExecutionInfo?.set(options.filename, {
++			duration: 0,
++			selfTime: 0,
++			startOffset: codeDefinition.length,
++			importer
++		});
+ 		const finishModuleExecutionInfo = this.debug.startCalculateModuleExecutionInfo(options.filename, {
+ 			startOffset: codeDefinition.length,
+ 			importer

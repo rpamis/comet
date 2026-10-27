@@ -154,6 +154,9 @@
       "esbuild": "0.28.2",
       "postcss": "8.5.26",
       "undici": "7.30.1"
+    },
+    "patchedDependencies": {
+      "vitest@4.1.12": "config/dependency-patches/vitest@4.1.12.patch"
     }
   },
   "engines": {

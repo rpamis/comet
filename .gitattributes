@@ -13,6 +13,7 @@
 *.sh text eol=lf
 *.bash text eol=lf
 *.bats text eol=lf
+*.patch text eol=lf
 .husky/* text eol=lf
 
 *.png binary
