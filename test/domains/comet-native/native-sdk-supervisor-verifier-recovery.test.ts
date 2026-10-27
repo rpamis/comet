@@ -1,12 +1,11 @@
 import { hasNativeSdkPortableStopEvidence } from '../../../domains/comet-native/native-sdk-check-execution.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
-import { sourceHooks } from '../../helpers/native-source-loader.mjs';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { prepareNativeApplication } from '../../helpers/native-application.js';
 import {
   loadOwnedNativeSdkRuntime as sourceLoadOwnedNativeSdkRuntime,
@@ -29,6 +28,7 @@ import {
 } from '../../../domains/engine/runtime.js';
 import { readWorkflowApplicationRun as sourceReadWorkflowApplicationRun } from '../../../domains/workflow-application/index.js';
 
+// 源码加载器只用于下面的独立 Node 进程；本进程通过公开导出加载已构建应用，避免覆盖率合并两种编译结果。
 const packageRoot = process.env.COMET_NATIVE_TEST_PACKAGE_ROOT;
 const { loadOwnedNativeSdkRuntime, inspectNativeSdkDefinitionUpgrade } = packageRoot
   ? ((await import(
@@ -65,7 +65,6 @@ const { runNativeCli } = packageRoot
 
 type Fixture = Awaited<ReturnType<typeof prepareNativeApplication>>;
 const roots: string[] = [];
-afterAll(() => sourceHooks.deregister());
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });

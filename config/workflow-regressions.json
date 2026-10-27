@@ -4806,6 +4806,25 @@
           ]
         }
       ]
+    },
+    {
+      "id": "ci-v8-native-loader-source-collision",
+      "sources": ["https://github.com/rpamis/comet/pull/510/checks?check_run_id=122445256376"],
+      "behavior": "Supervisor 恢复测试加载真实应用时，不覆盖其他测试已经执行的源码覆盖率。",
+      "coverageLevel": "runtime",
+      "reproduction": "e76 在同一轮真实 Native 锁测试与 Supervisor 恢复测试中，将成功的 inspectNativeProjectLocks 调用记为零；Linux 原始 V8 数据显示同一源码 URL 分别对应 76915 与 20517 字符的编译结果。",
+      "expected": "恢复案例继续核对真实应用失败、兄弟任务推进及仅重试原审查，锁测试的已执行函数仍有命中，原覆盖率门槛保持不变。",
+      "forbidden": "全局 Node 源码加载器将不同编译结果按同一 URL 合并，覆盖已执行语句；或通过跳过恢复案例、删除断言、排除源码或降低门槛掩盖错误。",
+      "rootCause": "恢复套件在 Vitest 进程中注册 esbuild 的 Node 加载器，磁盘应用的原生 require 与 Vite 编译对同一 .ts URL 上报不同的 V8 范围；它们被按 URL 合并。",
+      "tests": [
+        {
+          "file": "test/repository/coverage-runtime.test.ts",
+          "namePattern": "preserves source coverage while Supervisor recovery loads the built application",
+          "requiredNames": [
+            "preserves source coverage while Supervisor recovery loads the built application"
+          ]
+        }
+      ]
     }
   ]
 }

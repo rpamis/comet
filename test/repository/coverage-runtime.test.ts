@@ -3,7 +3,75 @@ import { promises as fs } from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { expect, it } from 'vitest';
+
+it('preserves source coverage while Supervisor recovery loads the built application', async () => {
+  const repositoryRoot = path.resolve('.');
+  const root = await fs.realpath(
+    await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-coverage-')),
+  );
+  try {
+    const config = path.join(root, 'vitest.config.mjs');
+    const report = path.join(root, 'report');
+    await fs.writeFile(
+      config,
+      `import base from ${JSON.stringify(pathToFileURL(path.join(repositoryRoot, 'vitest.config.ts')).href)};
+export default { ...base, test: { ...base.test,
+  include: ['test/domains/comet-native/native-lock.test.ts', 'test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts'],
+  maxWorkers: 1,
+  coverage: { ...base.test.coverage, include: ['domains/comet-native/native-lock.ts'], reporter: ['json'], reportsDirectory: ${JSON.stringify(report)} }
+} };
+`,
+    );
+    const vitest = path.join(
+      path.dirname(createRequire(import.meta.url).resolve('vitest/package.json')),
+      'vitest.mjs',
+    );
+    const resultsFile = path.join(root, 'results.json');
+    const result = spawnSync(
+      process.execPath,
+      [
+        vitest,
+        'run',
+        '--config',
+        config,
+        '--coverage',
+        '--reporter=json',
+        `--outputFile=${resultsFile}`,
+        '-t',
+        'Native operation locks|preserves a real custom application failure and receipts, advances its sibling, and retries only its review',
+      ],
+      { cwd: repositoryRoot, encoding: 'utf8', timeout: 180_000, windowsHide: true },
+    );
+    const tests = JSON.parse(await fs.readFile(resultsFile, 'utf8'));
+    expect(tests.numFailedTests, result.stdout + result.stderr).toBe(0);
+    expect(
+      tests.testResults.flatMap(
+        (suite: { assertionResults: { title: string; status: string }[] }) =>
+          suite.assertionResults
+            .filter((test) => test.status === 'passed')
+            .map((test) => test.title),
+      ),
+    ).toContain(
+      'preserves a real custom application failure and receipts, advances its sibling, and retries only its review',
+    );
+    const coverage = JSON.parse(
+      await fs.readFile(path.join(report, 'coverage-final.json'), 'utf8'),
+    );
+    const subject = coverage[path.join(repositoryRoot, 'domains/comet-native/native-lock.ts')];
+    const inspected = Object.entries(subject.fnMap).find(
+      ([, fn]) => (fn as { name: string }).name === 'inspectNativeProjectLocks',
+    )!;
+    expect(
+      subject.f[inspected[0]],
+      'successful lock inspections must retain their source hits',
+    ).toBeGreaterThan(0);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+}, 240_000);
 
 it('keeps executed and uncalled source ranges distinct when another worker exits during import', async () => {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'comet-coverage-')));
