@@ -527,7 +527,7 @@ describe('Native check input gate', () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-check-gate-'));
+    root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'comet-check-gate-')));
     git(root, 'init', '--quiet');
     git(root, 'config', 'user.email', 'test@example.com');
     git(root, 'config', 'user.name', 'Test');
