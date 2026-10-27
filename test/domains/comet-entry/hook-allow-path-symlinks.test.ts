@@ -24,7 +24,9 @@ const cases = (
 it.each(cases)(
   'handles an allowlisted $placement symlink to $destination without confusing ownership',
   async ({ destination, placement }) => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-hook-allow-symlink-'));
+    const root = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), 'comet-hook-allow-symlink-')),
+    );
     roots.push(root);
     const home = path.join(root, 'home');
     await fs.mkdir(home);
@@ -115,7 +117,9 @@ const danglingCases = (
 it.each(danglingCases)(
   'resolves a dangling $link file link to $destination before deciding the Hook allowance',
   async ({ destination, link }) => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-hook-dangling-'));
+    const root = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), 'comet-hook-dangling-')),
+    );
     roots.push(root);
     const projectRoot = path.join(root, 'project');
     const dataRoot = path.join(root, 'data');
@@ -200,7 +204,9 @@ it.each(danglingCases)(
 it.each(['cycle', 'over-depth'] as const)(
   'fails closed for an allowlisted %s link chain without hanging',
   async (mode) => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-hook-link-bound-'));
+    const root = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), 'comet-hook-link-bound-')),
+    );
     roots.push(root);
     vi.stubEnv('COMET_DATA_DIR', path.join(root, 'data'));
     const projectRoot = path.join(root, 'project');
@@ -231,7 +237,9 @@ it.each(['target', 'cwd'] as const)(
   'keeps physical parent traversal in the raw Hook %s from escaping into Runtime',
   async (mode) => {
     const { parseCometHookRequest } = await import('../../../platform/process/hook-adapter.js');
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-hook-parent-traversal-'));
+    const root = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), 'comet-hook-parent-traversal-')),
+    );
     roots.push(root);
     vi.stubEnv('COMET_DATA_DIR', path.join(root, 'data'));
     const projectRoot = path.join(root, 'project');
@@ -288,16 +296,28 @@ it.each(['target', 'cwd'] as const)(
       code: 'ENOENT',
     });
     await fs.writeFile(rawTarget, 'physical traversal proof');
-    expect(await fs.readFile(path.join(runtimeRoot, 'new-runtime-state.json'), 'utf8')).toBe(
-      'physical traversal proof',
-    );
+    if (process.platform === 'win32') {
+      // Windows 的文件写入会先折叠 junction 后的 ..；守卫仍拒绝该原始路径。
+      expect(await fs.readFile(path.resolve(rawTarget), 'utf8')).toBe('physical traversal proof');
+      await expect(fs.stat(path.join(runtimeRoot, 'new-runtime-state.json'))).rejects.toMatchObject(
+        {
+          code: 'ENOENT',
+        },
+      );
+    } else {
+      expect(await fs.readFile(path.join(runtimeRoot, 'new-runtime-state.json'), 'utf8')).toBe(
+        'physical traversal proof',
+      );
+    }
   },
 );
 
 it.each(['project-local', 'external'] as const)(
   'preserves a normal parent traversal to a missing %s rule without symlinks',
   async (destination) => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-hook-ordinary-parent-'));
+    const root = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), 'comet-hook-ordinary-parent-')),
+    );
     roots.push(root);
     vi.stubEnv('COMET_DATA_DIR', path.join(root, 'data'));
     const projectRoot = path.join(root, 'project');

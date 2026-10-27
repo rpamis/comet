@@ -105,9 +105,12 @@ describe('Git process helpers', () => {
     execFileSync('git', ['switch', '--detach', 'HEAD'], { cwd: projectRoot, stdio: 'ignore' });
     await check();
     const id = 'a'.repeat(64);
+    // 分别创建大小写变体，避免文件系统把 (NULL) 与 (null) 视为同一分支。
     for (const branch of ['(detached)', '(NULL)', '(null)']) {
       execFileSync('git', ['switch', '-c', branch], { cwd: projectRoot, stdio: 'ignore' });
       await check();
+      execFileSync('git', ['switch', '--detach', 'HEAD'], { cwd: projectRoot, stdio: 'ignore' });
+      execFileSync('git', ['branch', '-D', branch], { cwd: projectRoot, stdio: 'ignore' });
     }
     execFileSync('git', ['update-ref', 'refs/remotes/origin/main', 'HEAD'], { cwd: projectRoot });
     execFileSync('git', ['symbolic-ref', 'HEAD', 'refs/remotes/origin/main'], { cwd: projectRoot });

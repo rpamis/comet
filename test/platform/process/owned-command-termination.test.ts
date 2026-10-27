@@ -80,23 +80,20 @@ afterEach(async () => {
 });
 
 describe('受管命令的整树终止证明', () => {
-  it.skipIf(process.platform !== 'win32')(
-    'Windows 等待调用方核对整树终止时保留原监管器身份',
-    async () => {
-      const terminate = termination.terminateProcessTreeConfirmed;
-      vi.spyOn(termination, 'terminateProcessTreeConfirmed').mockImplementation(async (child) => {
-        await new Promise((resolve) => setTimeout(resolve, 6000));
-        return terminate(child);
-      });
-      const output = await runOwnedCommand(process.execPath, ['-e', 'console.log("done")'], {
-        cwd: directory,
-        env: process.env,
-        timeoutMs: 10000,
-      });
-      expect(output).toBe('done\n');
-    },
-    20000,
-  );
+  // 各平台都执行延迟收尾；Windows 还须保留 taskkill 核对所需的监管器身份。
+  it('Windows 等待调用方核对整树终止时保留原监管器身份', async () => {
+    const terminate = termination.terminateProcessTreeConfirmed;
+    vi.spyOn(termination, 'terminateProcessTreeConfirmed').mockImplementation(async (child) => {
+      await new Promise((resolve) => setTimeout(resolve, 6000));
+      return terminate(child);
+    });
+    const output = await runOwnedCommand(process.execPath, ['-e', 'console.log("done")'], {
+      cwd: directory,
+      env: process.env,
+      timeoutMs: 10000,
+    });
+    expect(output).toBe('done\n');
+  }, 20000);
   it('短命令时限不让尚未启动命令的监管器抢先自清理', async () => {
     const owned = spawnOwnedCommand(process.execPath, ['-e', 'setTimeout(() => {}, 200)'], {
       cwd: directory,

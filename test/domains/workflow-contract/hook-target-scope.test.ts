@@ -11,8 +11,10 @@ describe('scopeCometHookTargets', () => {
   let externalRoot: string;
 
   beforeEach(async () => {
-    root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-hook-scope-project-'));
-    externalRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-hook-scope-external-'));
+    root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'comet-hook-scope-project-')));
+    externalRoot = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), 'comet-hook-scope-external-')),
+    );
   });
 
   afterEach(async () => {
