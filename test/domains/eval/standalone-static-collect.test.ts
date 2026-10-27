@@ -14,6 +14,32 @@ const packageRoot = repository;
 const evalRoot = path.join(repository, 'eval');
 const temporary: string[] = [];
 
+it('accepts the system Python one-shot recovery command and rejects changed execution evidence', () => {
+  const output = execFileSync(
+    'uv',
+    [
+      'run',
+      '--locked',
+      '--no-sync',
+      '--no-python-downloads',
+      'python',
+      '-m',
+      'pytest',
+      'local/tests/scaffold/test_native_sdk_recovery.py',
+      '-q',
+      '-k',
+      'one_shot or named_one',
+    ],
+    {
+      cwd: evalRoot,
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: { ...process.env, PYTHON_DOTENV_DISABLED: '1', PYTHONUTF8: '1' },
+    },
+  );
+  expect(output).toContain('3 passed');
+});
+
 afterEach(async () => {
   await Promise.all(
     temporary.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })),
@@ -149,6 +175,20 @@ describe('standalone static collector parity', () => {
     [
       'sends an actual approval reply for numeric delivery options instead of a continuation nudge',
       'local/tests/scaffold/test_utils.py::test_claude_loop_sends_a_real_reply_to_plain_numeric_approval',
+    ],
+    [
+      'recognizes labelled delivery questions without requiring an interrogative opening',
+      'local/tests/scaffold/test_utils.py::test_decision_point_detector_accepts_labelled_delivery_questions',
+      6,
+    ],
+    [
+      'keeps labelled delivery approval history closed',
+      'local/tests/scaffold/test_utils.py::test_decision_point_detector_keeps_labelled_delivery_history_closed',
+      6,
+    ],
+    [
+      'sends an actual approval reply for labelled delivery options instead of a continuation nudge',
+      'local/tests/scaffold/test_utils.py::test_claude_loop_sends_a_real_reply_to_labelled_delivery_approval',
     ],
     [
       'aligns both Classic layout treatments with the required unified entry',
@@ -457,7 +497,7 @@ describe('standalone static collector parity', () => {
         'pytest',
         'local/tests/scaffold/test_native_sdk_recovery.py',
         '-k',
-        'one_shot_receipt',
+        'test_one_shot_receipt_accepts_only_the_bound_direct_or_fixed_path_command',
         '-q',
       ],
       { cwd: evalRoot, encoding: 'utf8', stdio: 'pipe' },

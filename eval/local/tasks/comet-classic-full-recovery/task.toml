@@ -1,0 +1,43 @@
+[metadata]
+name = "comet-classic-full-recovery"
+description = "Complete full SDK Archive and output-repair delivery while preserving a parked change"
+difficulty = "hard"
+category = "comet"
+tags = ["comet", "classic", "sdk", "archive", "delivery", "multi-change", "badcase"]
+default_treatments = ["COMET_CLASSIC_DOCS_LAYOUT"]
+
+[template]
+required = []
+
+[environment]
+description = "Current-checkout CLI and supported OpenSpec; one full Classic delivery with a parked SDK change"
+dockerfile = "environment/Dockerfile"
+timeout_sec = 10800
+
+[validation]
+test_scripts = "test_classic_sdk_recovery.py"
+target_artifacts = []
+timeout = 180
+
+[evaluation]
+require_classic_proposal_interaction = true
+classic_proposal_interaction_steps = ["full.delivery.confirm"]
+profile = "generic"
+required_skills = ["comet"]
+expected_artifacts = [".comet/config.yaml", "docs/openspec/changes/archive", "docs/openspec/changes/parked-format/proposal.md"]
+require_skill_invocation = true
+rubric_criteria = [
+    "Uses the current Classic SDK full profile without editing managed state",
+    "Completes full local Archive and verifies its Git delivery receipt",
+    "Preserves the untracked parked change while the full Run advances",
+    "Checks all new features and retains existing word and line behavior",
+]
+
+[interaction]
+mode = "auto_user"
+max_turns = 18
+completion_runs = [
+    { name = "sentence-full", profile = "full" },
+]
+decision_reply = "I approve only the decision requested for the current phase and the scope actually presented in your immediately preceding response. Current workspace isolation, direct implementation and optional reviews off are approved. This reply does not approve other phases, future proposals or revised delivery scope; present each new requested decision and wait for a separate reply. Local Git delivery only, without push or PR; preserve parked-format untouched."
+continue_prompt = "Invoke /comet, inspect the named Runs, and continue their exact next actions. Read independent files together and parse complete public CLI JSON responses using their current request templates. Keep operations sequential and stop on errors or required user decisions. Complete the full SDK profile and verified local delivery; do not advance, stage or commit parked-format. Once sentence-full's original Run and approved delivery are actually completed and verified, report completion and stop; optional memory or knowledge learning is outside this isolated task. Preserve the separate actual user reply and new scope approval; do not repeat original checks or Archive."

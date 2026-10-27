@@ -9,6 +9,7 @@ import {
   assertClassicSdkArchiveCommitInputs,
 } from './classic-sdk-delivery-inputs.js';
 import { resolveClassicStateFile } from './classic-state-file.js';
+import { readClassicSdkDeliveryCheckpoint } from './classic-sdk-delivery-checkpoint.js';
 import { classicSdkCheckDirectoryRef, classicSdkCheckLogHash } from './classic-sdk-check-record.js';
 import { archivedClassicDocumentRef } from './classic-archive-annotation.js';
 import {
@@ -335,10 +336,11 @@ async function onlyRuntimeCheckpointChanged(
   if (
     !readPortableRunCheckpoint(beforeData[PORTABLE_RUN_CHECKPOINT_KEY], run.runId) ||
     !readPortableRunCheckpoint(afterData[PORTABLE_RUN_CHECKPOINT_KEY], run.runId) ||
-    !portableRunCheckpointMatches(
+    (!portableRunCheckpointMatches(
       afterData[PORTABLE_RUN_CHECKPOINT_KEY],
       createPortableRunCheckpoint(run),
-    )
+    ) &&
+      !readClassicSdkDeliveryCheckpoint(afterData[PORTABLE_RUN_CHECKPOINT_KEY], run))
   ) {
     return false;
   }

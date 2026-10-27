@@ -118,6 +118,20 @@ def test_one_shot_receipt_accepts_only_the_bound_direct_or_fixed_path_command():
             module.assert_once_check(invalid, dict(argvDisplay=invalid["argv"], cwdRef="."))
 
 
+def test_one_shot_receipt_accepts_system_python_with_original_arguments():
+    module = validator()
+    plan = dict(
+        executable="/usr/bin/python3", argv=["recovery_once.py"], cwdRef=".", repeatable=False
+    )
+    receipt = dict(argvDisplay=plan["argv"], cwdRef=".")
+    module.assert_once_check(plan, receipt)
+    for executable in ("/tmp/python3", "/usr/bin/python2", "sh"):
+        with pytest.raises(AssertionError):
+            module.assert_once_check(dict(plan, executable=executable), receipt)
+    with pytest.raises(AssertionError):
+        module.assert_once_check(dict(plan, argv=["other.py"]), receipt)
+
+
 def test_named_one_shot_requires_unique_plan_and_original_receipt_identity():
     module = validator()
     plan = dict(

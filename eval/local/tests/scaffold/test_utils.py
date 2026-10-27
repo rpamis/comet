@@ -1791,7 +1791,56 @@ def test_decision_point_detector_accepts_original_104058_choice_replies(turn):
     assert utils.run_shell("decision-point.sh", text, check=False).returncode == 0
 
 
-def test_claude_loop_sends_a_real_reply_to_plain_numeric_approval(tmp_path: Path):
+@pytest.mark.parametrize(
+    "question",
+    [
+        "💬 **Q｜Approve the output-only delivery scope and finish local delivery? (single-select)**",
+        "## Q1: Approve the repaired delivery scope?",
+        "**Q｜是否批准修复后的交付范围？（单选）**",
+    ],
+)
+@pytest.mark.parametrize("locale", ["C", "C.UTF-8"])
+def test_decision_point_detector_accepts_labelled_delivery_questions(question, locale):
+    text = question + "\nA. approved\nB. later\nI will wait for your reply before continuing."
+    assert _labelled_decision_result(text, locale) == 0
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Archived decision Q｜Approve the delivery scope? Answer recorded.\nDelivery completed.",
+        "Delivery completed.\nQ｜The earlier scope approval is recorded.\nChecks passed.",
+        "Q｜Approve the delivery scope? — approved earlier.\nNo new decision pending.",
+    ],
+)
+@pytest.mark.parametrize("locale", ["C", "C.UTF-8"])
+def test_decision_point_detector_keeps_labelled_delivery_history_closed(text, locale):
+    assert _labelled_decision_result(text, locale) == 1
+
+
+def _labelled_decision_result(text: str, locale: str):
+    # 先完整传入 UTF-8 问题，再切换正则环境，避免 MSYS 在 C 环境启动时改写参数。
+    result = subprocess.run(
+        [
+            utils.BASH_EXEC,
+            "-c",
+            'export LC_ALL="$1"; source "$2" "$3"',
+            "labelled-decision",
+            locale,
+            utils._to_bash_path(utils.SHELL_DIR / "decision-point.sh"),
+            text,
+        ],
+        env={**os.environ, "LC_ALL": "C.UTF-8"},
+        capture_output=True,
+        timeout=AGENT_FIXTURE_TIMEOUT,
+        check=False,
+    )
+    return result.returncode
+
+
+def _assert_claude_loop_sends_actual_approval(tmp_path: Path, question: str):
+    import shlex
+
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     fake = fake_bin / "claude"
@@ -1802,13 +1851,24 @@ case "$*" in
   *"APPROVE CURRENT PROPOSAL"*)
     printf '%s\\n' '{"type":"result","subtype":"success","session_id":"subject-1","result":"Workflow completed through all phases and archived."}' ;;
   *)
-    printf '%s\\n' '{"type":"result","subtype":"success","session_id":"subject-1","result":"Current delivery proposal is above. Please reply 1 or 2."}' ;;
+    printf '%s\\n' __APPROVAL_RESULT__ ;;
 esac
-""",
+""".replace(
+            "__APPROVAL_RESULT__",
+            shlex.quote(
+                json.dumps(
+                    dict(type="result", subtype="success", session_id="subject-1", result=question)
+                )
+            ),
+        ),
         encoding="utf8",
         newline="\n",
     )
     fake.chmod(0o755)
+    env = _isolated_fake_agent_env(fake_bin, "claude")
+    # 与实际 Eval 容器保持 UTF-8；Windows 上的 Python shim 不能用本地编码丢弃问题。
+    env["PYTHONUTF8"] = "1"
+    env["LC_ALL"] = "C.UTF-8"
     result = subprocess.run(
         [
             utils.BASH_EXEC,
@@ -1825,13 +1885,27 @@ esac
         errors="replace",
         timeout=AGENT_FIXTURE_TIMEOUT,
         check=False,
-        env=_isolated_fake_agent_env(fake_bin, "claude"),
+        env=env,
     )
     assert result.returncode == 0, result.stderr
     assert result.stderr.count("deterministic decision reply applied") == 1
     assert "no decision point and not complete" not in result.stderr
     assert "finished after 2 turns" in result.stderr
     assert "workflow completion detected" in result.stderr
+
+
+def test_claude_loop_sends_a_real_reply_to_plain_numeric_approval(tmp_path: Path):
+    _assert_claude_loop_sends_actual_approval(
+        tmp_path, "Current delivery proposal is above. Please reply 1 or 2."
+    )
+
+
+def test_claude_loop_sends_a_real_reply_to_labelled_delivery_approval(tmp_path: Path):
+    _assert_claude_loop_sends_actual_approval(
+        tmp_path,
+        "💬 **Q｜Approve the output-only delivery scope and finish local delivery? (single-select)**\n"
+        "A. approved\nB. later\nI will wait for your reply before continuing.",
+    )
 
 
 @pytest.mark.parametrize(

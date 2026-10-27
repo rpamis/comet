@@ -2,6 +2,18 @@ Use `/comet-native` and the current `comet` CLI, never the compat Runtime. In th
 
 Use capability `sentence-counting`. Author its change specification at `docs/comet/changes/sentence-counting/specs/sentence-counting/spec.md`; Archive must publish the canonical specification at `docs/comet/specs/sentence-counting/spec.md`.
 
+## Execution discipline
+
+After invoking the required Skill, the first workflow command in this fresh fixture can be `comet native new sentence-counting --project-root /workspace --json`. Follow its actual continuation. Do not probe absent project state, repeat initialization, search bundled JavaScript, or collect command help when the current response already supplies the required command, paths and request templates.
+
+Read independent small source, test and reference files together. Within one phase, batch already authorized shell operations in one tool call, keeping CLI operations sequential and stopping on an error or a decision that needs a new user reply. A small temporary Python helper may call the public CLI, parse its complete JSON stdout and carry the exact latest response into the next request. Keep stderr separate; do not truncate JSON with `head`, search for its first brace, reconstruct stale action identities, or edit Runtime-owned files.
+
+Each independent verifier still receives its own real execution reference, retrieves its own context and checks every acceptance item. The controlled blocked execution must honestly report blocked without performing an independent review; it must not spend time re-reading implementation or running acceptance tests that it cannot independently assess. Preserve all recovery and approval boundaries below.
+
+In the Builder check plan, `executable` is separate from `argv`: never repeat the executable as the first argument. For example, the one-shot check uses `executable: "python3"`, `argv: ["recovery_once.py"]`, `cwdRef: "."`, `repeatable: false`; the test check uses `executable: "python3"`, `argv: ["-m", "pytest", "-q"]`, `cwdRef: "."`. Apply the same explicit PATH to both. Confirm this command shape before submitting the single Builder handoff: a failed check followed by a replacement handoff still violates this task's original-check uniqueness requirement, even if the script did not run.
+
+After the requested SDK Run is completed and its Archive and authorized delivery are actually verified, report completion and stop. This isolated core-workflow task does not request optional memory or knowledge learning, indexing, daemon setup, extra features or additional workflow runs. Do not perform those after-completion operations.
+
 Use these exact five business acceptance cases when drafting the brief. With `--sentences --lines`, each case must print the listed word, line and sentence totals. The word and line totals come from the supplied baseline: verify them with the unchanged `wordcount.py --lines` before the first Shape confirmation. Do not invent different numeric examples or change baseline counting behavior.
 
 <!-- canonical-acceptance -->

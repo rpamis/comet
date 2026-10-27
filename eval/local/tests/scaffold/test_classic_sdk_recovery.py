@@ -24,6 +24,45 @@ def load_validator():
     return module
 
 
+def test_full_recovery_variant_preserves_shared_archive_and_repair_assertions():
+    import ast
+    from scaffold.python.tasks import load_task
+
+    full = REPO / "eval/local/tasks/comet-classic-full-recovery"
+    original_tree = ast.parse(
+        (TASK / "validation/test_classic_sdk_recovery.py").read_text(encoding="utf-8")
+    )
+    full_tree = ast.parse(
+        (full / "validation/test_classic_sdk_recovery.py").read_text(encoding="utf-8")
+    )
+    original = {node.name: node for node in original_tree.body if isinstance(node, ast.FunctionDef)}
+    variant = {node.name: node for node in full_tree.body if isinstance(node, ast.FunctionDef)}
+    for name in original.keys() - {"validate_features"}:
+        assert ast.dump(variant[name]) == ast.dump(original[name]), name
+    task = load_task("comet-classic-full-recovery")
+    assert task.config.difficulty == "hard"
+    assert task.config.interaction.completion_runs == [{"name": "sentence-full", "profile": "full"}]
+    assert task.config.evaluation.classic_proposal_interaction_steps == ["full.delivery.confirm"]
+    spec = importlib.util.spec_from_file_location(
+        "classic_full_recovery_validator", full / "validation/test_classic_sdk_recovery.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.CASES == {"sentence-full": "full"}
+    assert load_validator().CASES == {
+        "sentence-full": "full",
+        "characters-tweak": "tweak",
+        "missing-file-hotfix": "hotfix",
+    }
+    for name in ("Dockerfile", "wordcount.py", "test_wordcount.py", "verify_coexistence.py"):
+        assert (full / "environment" / name).read_bytes() == (
+            TASK / "environment" / name
+        ).read_bytes()
+    assert "Do not create or implement characters-tweak or missing-file-hotfix" in (
+        full / "instruction.md"
+    ).read_text(encoding="utf-8")
+
+
 def test_post_archive_repair_selects_cache_regenerated_by_original_command(tmp_path):
     instruction = (TASK / "instruction.md").read_text(encoding="utf-8")
     assert "__pycache__/test_wordcount.*.pyc" in instruction

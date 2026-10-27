@@ -263,6 +263,135 @@ describe('Classic candidate revisions', () => {
       ]);
     },
   );
+  it('completes full delivery when repair approval changes only the committed archive checkpoint', async () => {
+    const f = await fixture();
+    const openSpec = await createOpenSpecArchiveFixture(path.dirname(f.projectRoot));
+    vi.stubEnv('COMET_OPENSPEC', openSpec.command);
+    const git = (...args: string[]) =>
+      execFileSync('git', args, { cwd: f.projectRoot, encoding: 'utf8' }).trim();
+    const commit = () => {
+      git(
+        '-c',
+        'user.name=Test',
+        '-c',
+        'user.email=test@example.invalid',
+        'commit',
+        '-m',
+        'verified delivery',
+      );
+      return git('rev-parse', 'HEAD');
+    };
+    await f.prepareBuild();
+    await f.ok('state', 'submit-plan', 'example', '--plan', f.plan);
+    git('add', '--', f.change, f.plan, 'configuration.json', '.comet/config.yaml');
+    commit();
+    await f.put('implementation.mjs', 'export const answer = 42;\n');
+    await f.put(`${f.change}/tasks.md`, '- [x] Implement the adapter <!-- comet-task:impl -->\n');
+    await f.put('generated/check-output.bin', 'actual output');
+    const command = [
+      process.execPath,
+      '-e',
+      "require('node:fs').writeFileSync('generated/check-output.bin','actual output')",
+    ];
+    await f.ok('guard', 'example', 'build', '--apply', '--', ...command);
+    const report = 'docs/superpowers/reports/verify.md';
+    await f.put(report, '# Verification\nCurrent implementation and tests pass.\n');
+    await f.ok('guard', 'example', 'verify', '--report', report, '--apply', '--', ...command);
+    const proposal = await f.ok(
+      'state',
+      'propose-archive',
+      'example',
+      '--summary',
+      'Deliver locally.',
+    );
+    await f.ok(
+      'state',
+      'decide-archive',
+      'example',
+      '--proposal-hash',
+      proposal.wait.proposalHash,
+      '--choice',
+      'local',
+    );
+    await f.ok('guard', 'example', 'archive', '--apply');
+    const archived = (await f.inspect()).run;
+    await f.put(
+      '.comet/check-policy.json',
+      JSON.stringify({
+        version: 2,
+        commands: [{ argv: command, cwd: '.', outputs: ['generated/**'] }],
+      }),
+    );
+    await fs.unlink(path.join(f.projectRoot, 'generated/check-output.bin'));
+    await f.ok(
+      'state',
+      'repair-delivery',
+      'example',
+      '--expected-revision',
+      String(archived.revision),
+    );
+    const next = await f.ok('state', 'next', 'example');
+    const request = path.join(path.dirname(f.projectRoot), 'direct-delivery-recheck.json');
+    await fs.writeFile(request, JSON.stringify(next.continuation.request));
+    const result = await runtimeDispatchCommand(
+      { request, application: 'classic-full', projectRoot: f.projectRoot },
+      { invocationCwd: f.projectRoot },
+    );
+    expect(result.response.status).toBe('succeeded');
+    const waiting = (await f.inspect()).run;
+    const decision = waiting.waits.find((wait) => wait.status === 'pending')!;
+    const archiveRef = (
+      archived.outputs['full.archive.execute'].value as { archiveDirectory: string }
+    ).archiveDirectory;
+    git('add', '--', f.change, archiveRef, f.plan, report, 'implementation.mjs');
+    const sha = commit();
+    expect(
+      (await f.cli('state', 'complete-delivery', 'example', '--commit', sha)).exitCode,
+    ).not.toBe(0);
+    expect((await f.inspect()).run).toEqual(waiting);
+    await f.ok(
+      'state',
+      'decide-delivery-repair',
+      'example',
+      '--proposal-hash',
+      decision.proposalHash,
+      '--choice',
+      'approved',
+    );
+    const approved = (await f.inspect()).run;
+    const stateFile = path.join(f.projectRoot, archiveRef, 'comet-state.yaml');
+    const committedState = await fs.readFile(stateFile, 'utf8');
+    const proposalFile = path.join(f.projectRoot, archiveRef, 'proposal.md');
+    const proposalSource = await fs.readFile(proposalFile, 'utf8');
+    await fs.writeFile(proposalFile, proposalSource + '\nUnapproved scope change.\n');
+    expect(
+      (await f.cli('state', 'complete-delivery', 'example', '--commit', sha)).exitCode,
+    ).not.toBe(0);
+    expect((await f.inspect()).run).toEqual(approved);
+    await fs.writeFile(proposalFile, proposalSource);
+    const deliveryResult = JSON.parse(
+      execFileSync(
+        process.execPath,
+        [
+          path.resolve('assets/skills/comet/scripts/comet-state.mjs'),
+          'complete-delivery',
+          'example',
+          '--commit',
+          sha,
+          '--json',
+        ],
+        { cwd: f.projectRoot, encoding: 'utf8' },
+      ),
+    );
+    expect(deliveryResult.exitCode).toBe(0);
+    const delivered = deliveryResult.data;
+    expect(delivered.nextAction.kind).toBe('done');
+    expect((await f.inspect()).run.status).toBe('completed');
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(committedState);
+    expect(approved.actions.filter((a) => a.stepId === 'full.archive.execute')).toHaveLength(1);
+    expect(git('ls-tree', '-r', '--name-only', sha, '--', 'generated')).toBe('');
+  }, 120_000);
+
   it('repairs late declared check outputs after Archive without replaying Archive or committing generated files', async () => {
     const f = await fixture();
     const openSpec = await createOpenSpecArchiveFixture(path.dirname(f.projectRoot));

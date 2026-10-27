@@ -3485,6 +3485,102 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-recovery-system-python-eval-evidence",
+      "sources": ["report:2026-10-26-051-glm-flash-core-eval"],
+      "behavior": "Native 恢复评估接受容器提供的绝对路径 Python，仍绑定原一次性脚本、参数、目录与唯一收据。",
+      "coverageLevel": "unit",
+      "reproduction": "原 GLM 样本使用 /usr/bin/python3 recovery_once.py 并完成 SDK Archive；旧 validator 报 Unexpected one-shot executable。相同断言的新增定向测试在修改前失败、修改后通过。",
+      "expected": "容器系统 Python 与已支持的 python3 命令具有相同的一次性检查约束；验收继续核对脚本摘要、计数、候选和跨会话证据。",
+      "forbidden": "接受临时目录的同名解释器、其他脚本、可重复标记、错误目录或不匹配的原收据。",
+      "rootCause": "评估断言只枚举 PATH 命令和 env 包装，遗漏同一容器安装的 /usr/bin/python3。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "accepts the system Python one-shot recovery command and rejects changed execution evidence",
+          "requiredNames": [
+            "accepts the system Python one-shot recovery command and rejects changed execution evidence"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real Native SDK recovery with CC Switch GLM 5.3 Flash",
+          "status": "verified",
+          "evidence": [
+            "Original model experiment: 051_native_glm53flash_hard_20261026. Actual Run completed and Archive finalized; validator rejected /usr/bin/python3. New one-sample rerun required.",
+            "Actual model experiment eval/local/logs/experiments/051_native_glm53flash_corefix_20261026: pytest exit 0, Agent exit 0, passed=true, no failed checks, all 8 baseline checks passed, Judge enabled_and_successful.",
+            "Authoritative native:sentence-counting Run completed, Archive executed and finalized once, verify.checks executed once, original candidate and controller-bound cross-session recovery checks passed; recovery-once counter remained once.",
+            "The old actual sample used /usr/bin/python3. Its exact executable branch is covered by the new failing-before/passing-after Python regression and foreign-path negative controls; the new model selected python3 for its own check plans. Model acceptance verifies the complete recovery flow, not a second model execution of the absolute-path variant."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-full-delivery-runtime-checkpoint-after-repair-approval",
+      "sources": ["report:2026-10-26-051-glm-flash-core-eval"],
+      "behavior": "Classic full 在归档已提交后批准修复交付范围，允许 Runtime 自身的 checkpoint 更新通过交付领取后的二次校验。",
+      "coverageLevel": "public-cli",
+      "reproduction": "公开 Classic CLI 完成 full、Archive 和真实输出重检，先提交归档再批准新范围，complete-delivery 在领取 Action 后报 OUTCOME_REJECTED: 归档目录与交付 HEAD 不一致。新增测试在旧代码失败。",
+      "expected": "同一 Run 完成交付，Archive 只执行一次，已提交归档的 Runtime checkpoint 不因交付领取而反复要求新提交。",
+      "forbidden": "未批准就交付、接受被改写的归档需求或陈旧/篡改的 checkpoint、重放 Archive 或夹带未批准的路径。",
+      "rootCause": "交付验证允许精确匹配当前 Run 的 checkpoint，却未接受本领域已验证的不可变交付前 checkpoint；领取 Action 后两份 Runtime 进度不同导致合法更新被误拒。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "completes full delivery when repair approval changes only the committed archive checkpoint",
+          "requiredNames": [
+            "Classic candidate revisions completes full delivery when repair approval changes only the committed archive checkpoint"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real Classic full-only post-Archive recovery and local delivery with CC Switch GLM 5.3 Flash",
+          "status": "verified",
+          "evidence": [
+            "Original composite experiment 051_classic_glm53flash_hard_20261026 repeatedly reproduced runtime-only archive dirty rejections. New public CLI regression fails before the fix and passes afterward; full-only model rerun required.",
+            "Actual full-only model experiment eval/local/logs/experiments/051_classic_glm53flash_corefix_20261026: pytest exit 0, Agent exit 0, passed=true, no failed checks, all 5 baseline checks passed, Judge enabled_and_successful.",
+            "Authoritative classic:sentence-full Run completed, Archive executed exactly once, three original Runtime checks succeeded without reuse, post-Archive output-repair and subsequent approval checks passed, local delivery commit 83c543f3bba234373652802e0ac51055ea8fe91c matches actual Git HEAD; parked-format stayed Open and unarchived.",
+            "The public comet-state.mjs regression separately reproduces commit-before-repair-approval: old code rejects after claiming delivery, fixed code completes the same Run while still rejecting unapproved delivery and edited archived requirements."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-labelled-delivery-question-actual-reply",
+      "sources": ["report:2026-10-27-051-efficiency-eval"],
+      "behavior": "Eval 交互器识别行首 Q 标签的交付确认问题，发送单独的实际批准回复，并保持已答历史摘要关闭。",
+      "coverageLevel": "public-cli",
+      "reproduction": "051_classic_glm53flash_efficiency1_20261027 展示 Q｜Approve ...? (single-select) 后等待，旧 decision-point.sh 未识别，连续发送续行提示，正式报告因没有实际批准回复而失败。相同问句的检测和 mock CLI 交互回归先在旧脚本失败。",
+      "expected": "识别明确的当前确认问题，使用配置的用户回复继续下一次模型调用；C 与 UTF-8 正则环境一致，已答历史摘要不再触发回复。",
+      "forbidden": "把续行提示当成批准、由模型输出伪造交互器回复、重复打开历史批准，或取消真实回复与原待决提案绑定的断言。",
+      "rootCause": "问句识别仅覆盖疑问词开头或句首祈使请求，漏掉 Markdown/emoji 前缀后的 Q 标签祈使问句；整段末尾还有选项与等待说明，末尾问号规则也无法命中。",
+      "tests": [
+        {
+          "file": "test/domains/eval/standalone-static-collect.test.ts",
+          "namePattern": "recognizes labelled delivery questions without requiring an interrogative opening|keeps labelled delivery approval history closed|sends an actual approval reply for labelled delivery options instead of a continuation nudge",
+          "requiredNames": [
+            "standalone static collector parity recognizes labelled delivery questions without requiring an interrogative opening",
+            "standalone static collector parity keeps labelled delivery approval history closed",
+            "standalone static collector parity sends an actual approval reply for labelled delivery options instead of a continuation nudge"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real Classic full-only recovery with controller-bound actual reply to the pending repaired-delivery proposal",
+          "status": "verified",
+          "evidence": [
+            "Original real model failure retained at eval/local/logs/experiments/051_classic_glm53flash_efficiency1_20261027: Agent exit 0, five artifact/Runtime checks passed, actual-reply assertion failed with proposals=1, decisions=0, replies=0. Efficiency remains an observation under the latest user instruction.",
+            "New detector and actual mock CLI reply tests first failed on the original script; retain the unchanged actual user reply validator for the next real-model sample.",
+            "Actual experiment eval/local/logs/experiments/051_classic_glm53flash_replyfix_20261027: pytest exit 0, Agent exit 0, passed=true, checks_failed empty, five artifact/Runtime checks passed and Judge enabled_and_successful. The controller recorded one separate reply bound to full.delivery.confirm; the authoritative sentence-full Run completed with one full.archive.execute and three fresh successful check actions (reused=false).",
+            "Actual local delivery commit 3e46fffc44f0d13f060de7f567de1ac0887c3497 matches the retained fixture Git HEAD. The repair preserved original Verify argv/cwd, and parked-format stayed Open and unarchived. Native and Classic used the same frozen CLI snapshot d2d7eb861b4d8300fd0b165902f583adb80b5cca48fd0b6aed8903d45ee8468d.",
+            "The new model asked Reply with your choice rather than using the exact Q-labelled question from the original failure. The labelled syntax branch has failing-before/passing-after detector and actual mock CLI-loop evidence; this real-model sample proves the unchanged controller-bound reply and complete delivery contract. It is not claimed as another model execution of that exact textual variant. Efficiency 0.33 is observational under the user's revised core-only acceptance scope."
+          ]
+        }
+      ]
     }
   ]
 }

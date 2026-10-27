@@ -14,6 +14,7 @@ fi
 
 INTERROGATIVE_PATTERN='(^|[[:space:]])(how|what|which|would|could|can|should|is|are|do|does|will|where|when|who)[[:space:]]+[^?？]*[?？]|(是否|怎样|如何|哪个|哪种|要不要)[^？]*？'
 LABELLED_QUESTION_PATTERN='(question|问题)[*[:space:]]*:[*[:space:]]*(whether|how|what|which|would|could|can|should|is|are|do|does|will|where|when|who|是否|怎样|如何|哪个|哪种|要不要)'
+Q_LABELLED_QUESTION_PATTERN='^([[:space:]#>]|💬)*Q[0-9]*[[:space:]]*(\||｜|:)[[:space:]]*.*(\?|？)([[:space:]]*(\((single[- ]select|multiple[- ]select)\)|（(单选|多选)）))?[[:space:]]*$'
 NUMERIC_REPLY_PATTERN='(^|[.!。！][[:space:]]*)(please[[:space:]]+)?reply[[:space:]]+[0-9]+([[:space:]]*(or|,|/|–|—|-)[[:space:]]*(or[[:space:]]+)?[0-9]+)+([[:space:]]|[.!。！]|$)'
 CHOICE_REPLY_PATTERN='(^|[.!。！][[:space:]]*)(please[[:space:]]+)?reply[[:space:]]+(with[[:space:]]+)?your[[:space:]]+choice([[:space:]]|[.!。！]|$)'
 REQUEST_PATTERN='(^|[.!。！][[:space:]]*)(please[[:space:]]+)?(confirm|choose|approve|select|provide|enter)[[:space:]]|(^|[.!。！][[:space:]]*)(would you|could you|can you|shall we|do you want|which (option|approach|name))|(please[[:space:]]+)?(reply|respond)[^.!?。！？]*(confirm|approve)|(^|[.!。！][[:space:]]*)(please[[:space:]]+)?reply[[:space:]]+one[[:space:]]+of[[:space:]]+|(^|[.!。！][[:space:]]*)(please[[:space:]]+)?reply[[:space:]]+[^[:alnum:]]*Q[0-9]+:'
@@ -23,7 +24,7 @@ REQUEST_PATTERN='(^|[.!。！][[:space:]]*)(please[[:space:]]+)?(confirm|choose|
 # examples such as `?!` on a later line; treating the whole response as one regex
 # span incorrectly turns that summary into another simulated user round.
 while IFS= read -r line; do
-    if [[ "$line" =~ $INTERROGATIVE_PATTERN || "$line" =~ $LABELLED_QUESTION_PATTERN || "$line" =~ $REQUEST_PATTERN || "$line" =~ $NUMERIC_REPLY_PATTERN || "$line" =~ $CHOICE_REPLY_PATTERN ]]; then
+    if [[ "$line" =~ $INTERROGATIVE_PATTERN || "$line" =~ $LABELLED_QUESTION_PATTERN || "$line" =~ $Q_LABELLED_QUESTION_PATTERN || "$line" =~ $REQUEST_PATTERN || "$line" =~ $NUMERIC_REPLY_PATTERN || "$line" =~ $CHOICE_REPLY_PATTERN ]]; then
         exit 0
     fi
 done <<< "$TEXT"

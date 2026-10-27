@@ -19,6 +19,12 @@ tasks:
       - COMET_NATIVE_SDK_CURRENT
     description: Current SDK blocked-verifier recovery preserving candidate checks across a fresh session and incremental Shape line updates.
 
+  - name: comet-classic-full-recovery
+    category: comet
+    default_treatments:
+      - COMET_CLASSIC_DOCS_LAYOUT
+    description: Full-only SDK Archive and output-repair delivery with a parked change; preserves the composite task's full recovery assertions.
+
   - name: comet-classic-sdk-recovery
     category: comet
     default_treatments:

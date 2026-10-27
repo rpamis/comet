@@ -21,7 +21,7 @@ NAME = "sentence-counting"
 
 def assert_once_check(plan: dict, receipt: dict) -> None:
     argv = plan["argv"]
-    if plan["executable"] == "python3":
+    if plan["executable"] in {"python3", "/usr/bin/python3"}:
         assert argv == ["recovery_once.py"], "Unexpected one-shot Python arguments"
     else:
         assert plan["executable"] in {"env", "/usr/bin/env"}, "Unexpected one-shot executable"
