@@ -4,7 +4,11 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { RaceSafeReadError, readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
+import {
+  RaceSafeReadError,
+  readFileRaceSafe,
+  hashFileRaceSafe,
+} from '../../platform/fs/race-safe-read.js';
 
 // Windows note: the primitive's win32 branch opens with plain O_RDONLY
 // (Node exposes no O_NOFOLLOW there) and relies on the same lstat/realpath
@@ -31,6 +35,29 @@ describe('race-safe bounded file read', () => {
     expect(result.realPath).toBe(await fs.realpath(file));
     expect(result.stat.isFile()).toBe(true);
   });
+
+  it.each(['read', 'hash'] as const)(
+    'rejects same-inode writes with restored mtime during the %s window',
+    async (mode) => {
+      const file = path.join(root, 'source.unknown');
+      await fs.writeFile(file, 'first');
+      const originalTime = new Date('2020-01-01T00:00:00.000Z');
+      await fs.utimes(file, originalTime, originalTime);
+      const options = {
+        bigint: true,
+        hooks: {
+          beforeFinalCheck: async () => {
+            await fs.writeFile(file, 'later');
+            await fs.utimes(file, originalTime, originalTime);
+          },
+        },
+      };
+      await expect(
+        mode === 'read' ? readFileRaceSafe(file, 1024, options) : hashFileRaceSafe(file, options),
+      ).rejects.toMatchObject({ reason: 'changed' });
+      expect(await fs.readFile(file, 'utf8')).toBe('later');
+    },
+  );
 
   it.skipIf(process.platform === 'win32')(
     'rejects a pre-existing symlink before opening it',

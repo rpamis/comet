@@ -5,11 +5,13 @@ import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as runStore from '../../../domains/comet-classic/classic-run-store.js';
+import * as checkSnapshots from '../../../domains/comet-classic/classic-check-snapshot.js';
 import { parse } from 'yaml';
 import { annotatedMarkdown } from '../../../domains/comet-classic/classic-archive.js';
 import { ensureClassicRuntimeRun } from '../../../domains/comet-classic/classic-runtime-run.js';
 import { readRunState } from '../../../domains/engine/state.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
+import { runClassicEditReviewCommand } from '../../../domains/comet-classic/classic-edit-review-command.js';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const scriptByCommand: Record<string, string> = {
@@ -20,6 +22,7 @@ const scriptByCommand: Record<string, string> = {
 const temporary: string[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     temporary
       .splice(0)
@@ -179,6 +182,180 @@ async function fakeOpenSpec(
 }
 
 describe('Classic archive command', () => {
+  it.each([false, true])(
+    'supplements the accepted Compat check in the original Run without replay (failure=%s)',
+    async (failure) => {
+      const dir = await makeProject();
+      const previous = process.cwd();
+      const previousOpenSpec = process.env.COMET_OPENSPEC;
+      const counter = `${dir}-check-count`;
+      process.chdir(dir);
+      const cli = async (...args: string[]) => {
+        const result = await runClassicCli(args);
+        expect(result.exitCode, result.stderr).toBe(0);
+        return result;
+      };
+      try {
+        await cli('state', 'init', 'demo', 'hotfix', '--runtime', 'compat');
+        const changeDir = path.join(dir, 'openspec/changes/demo');
+        await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\nPreserve behavior.\n');
+        await fs.writeFile(path.join(changeDir, 'design.md'), '# Design\nPreserve behavior.\n');
+        await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] Preserve behavior\n');
+        await fs.writeFile(path.join(dir, 'explanation.unknown'), 'original explanation');
+        await fs.writeFile(
+          path.join(changeDir, 'verification-report.md'),
+          '# Verification\nBehavior checked.\n',
+        );
+        const fake = await fakeOpenSpec(dir, 'success');
+        process.env.COMET_OPENSPEC = fake.command;
+        await cli('state', 'transition', 'demo', 'open-complete');
+        await cli('state', 'set', 'demo', 'isolation', 'current');
+        await cli(
+          'state',
+          'set',
+          'demo',
+          'verification_report',
+          'openspec/changes/demo/verification-report.md',
+        );
+        const command = `const fs=require('node:fs'); fs.appendFileSync(${JSON.stringify(counter)},'x'); process.exit(fs.readFileSync('explanation.unknown','utf8').includes('FAIL')?7:0)`;
+        await cli(
+          'check',
+          'run',
+          'demo',
+          'build',
+          '--local',
+          '--',
+          process.execPath,
+          '-e',
+          command,
+        );
+        await cli('guard', 'demo', 'build', '--apply');
+        await cli(
+          'state',
+          'set',
+          'demo',
+          'verification_report',
+          'openspec/changes/demo/verification-report.md',
+        );
+        await cli(
+          'check',
+          'run',
+          'demo',
+          'verify',
+          '--local',
+          '--',
+          process.execPath,
+          '-e',
+          `${command}; //verify`,
+        );
+        await cli('guard', 'demo', 'verify', '--apply');
+        await cli('state', 'transition', 'demo', 'archive-confirm');
+        const accepted = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+        const report = await fs.readFile(path.join(changeDir, 'verification-report.md'), 'utf8');
+        const originalCount = await fs.readFile(counter, 'utf8');
+        await fs.writeFile(
+          path.join(dir, 'explanation.unknown'),
+          failure ? 'FAIL documentation check' : 'revised explanation',
+        );
+        const refused = await runClassicCli(['archive', 'demo']);
+        expect(refused.exitCode).not.toBe(0);
+        expect(await fs.stat(fake.log).catch(() => null)).toBeNull();
+        const observed = (await runClassicEditReviewCommand({
+          projectRoot: dir,
+          name: 'demo',
+          operation: 'observe',
+          sessionId: 'current-agent',
+        })) as {
+          recordTemplate: Record<string, unknown>;
+          observation: { refreshInputTemplate: Record<string, unknown> };
+        };
+        const file = `${dir}-supplement.json`;
+        temporary.push(file);
+        await fs.writeFile(
+          file,
+          JSON.stringify({
+            ...observed.recordTemplate,
+            decision: 'non-behavioral',
+            summary: 'Explanation preserves accepted behavior; refresh documentation check.',
+            retainedCheckActionIds: [],
+          }),
+        );
+        await runClassicEditReviewCommand({
+          projectRoot: dir,
+          name: 'demo',
+          operation: 'record',
+          file,
+        });
+        await fs.writeFile(
+          file,
+          JSON.stringify({
+            ...observed.observation.refreshInputTemplate,
+            summary: 'Only refresh original documentation check.',
+          }),
+        );
+        if (!failure) {
+          const originalAppend = runStore.appendTrajectory;
+          const append = vi
+            .spyOn(runStore, 'appendTrajectory')
+            .mockImplementation(async (...args) => {
+              await originalAppend(...args);
+              if (args[2].type === 'command_check_started') {
+                append.mockRestore();
+                vi.spyOn(checkSnapshots, 'collectCheckSnapshot').mockRejectedValueOnce(
+                  new Error('supplemental input capture interrupted before launch'),
+                );
+              }
+            });
+          await expect(
+            runClassicEditReviewCommand({
+              projectRoot: dir,
+              name: 'demo',
+              operation: 'refresh-checks',
+              file,
+            }),
+          ).rejects.toThrow('before launch');
+          expect(await fs.readFile(counter, 'utf8')).toBe(originalCount);
+          const resumed = (await runClassicEditReviewCommand({
+            projectRoot: dir,
+            name: 'demo',
+            operation: 'observe',
+            sessionId: 'current-agent',
+          })) as { observation: { refreshInputTemplate: Record<string, unknown> } };
+          expect(resumed.observation.refreshInputTemplate).toEqual(
+            observed.observation.refreshInputTemplate,
+          );
+        }
+        const refreshed = (await runClassicEditReviewCommand({
+          projectRoot: dir,
+          name: 'demo',
+          operation: 'refresh-checks',
+          file,
+        })) as { check: { exitCode: number; action: { id: string } } };
+        const repeated = (await runClassicEditReviewCommand({
+          projectRoot: dir,
+          name: 'demo',
+          operation: 'refresh-checks',
+          file,
+        })) as typeof refreshed;
+        expect(refreshed.check.exitCode).toBe(failure ? 7 : 0);
+        expect(repeated.check.action.id).toBe(refreshed.check.action.id);
+        expect(await fs.readFile(counter, 'utf8')).toBe(`${originalCount}x`);
+        expect(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')).toBe(accepted);
+        expect(await fs.readFile(path.join(changeDir, 'verification-report.md'), 'utf8')).toBe(
+          report,
+        );
+        const archived = await runClassicCli(['archive', 'demo']);
+        expect(archived.exitCode, archived.stderr).toBe(failure ? 70 : 0);
+        if (failure) expect(await fs.stat(fake.log).catch(() => null)).toBeNull();
+        else expect((await fs.readFile(fake.log, 'utf8')).trim().split('\n')).toHaveLength(1);
+      } finally {
+        process.chdir(previous);
+        if (previousOpenSpec === undefined) delete process.env.COMET_OPENSPEC;
+        else process.env.COMET_OPENSPEC = previousOpenSpec;
+        await fs.rm(counter, { force: true });
+      }
+    },
+  );
   it('preserves a configuration update committed while preparing the pending action', async () => {
     const dir = await makeProject();
     await seedArchiveChange(dir);

@@ -2428,7 +2428,10 @@
     {
       "id": "classic-revise-design-after-verify",
       "behavior": "Classic 在 Verify 发现设计变化后，诊断和实际修订入口一致，保留实现、任务和 Build 配置并重新批准设计。",
-      "sources": ["report:2026-10-25-low-cost-workflow-recovery"],
+      "sources": [
+        "report:2026-10-25-low-cost-workflow-recovery",
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
       "coverageLevel": "runtime",
       "reproduction": "Classic 在 Verify 发现设计变化后，诊断和实际修订入口一致，保留实现、任务和 Build 配置并重新批准设计。 旧行为与隔离复现记录见 docs/architecture/051-low-cost-recovery.zh.md。",
       "expected": "Classic 在 Verify 发现设计变化后，诊断和实际修订入口一致，保留实现、任务和 Build 配置并重新批准设计。",
@@ -2447,7 +2450,10 @@
     {
       "id": "classic-revise-plan-after-archive-approval",
       "behavior": "Classic 归档副作用开始前可修订计划，保留完成任务并撤销旧交付批准。",
-      "sources": ["report:2026-10-25-low-cost-workflow-recovery"],
+      "sources": [
+        "report:2026-10-25-low-cost-workflow-recovery",
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
       "coverageLevel": "runtime",
       "reproduction": "Classic 归档副作用开始前可修订计划，保留完成任务并撤销旧交付批准。 旧行为与隔离复现记录见 docs/architecture/051-low-cost-recovery.zh.md。",
       "expected": "Classic 归档副作用开始前可修订计划，保留完成任务并撤销旧交付批准。",
@@ -3911,7 +3917,10 @@
     },
     {
       "id": "manual-recovery-native-compat-edit",
-      "sources": ["report:2026-10-27-manual-workflow-recovery"],
+      "sources": [
+        "report:2026-10-27-manual-workflow-recovery",
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
       "behavior": "Native Compat 用户已应用的正式文档修改可由独立模型会话审阅而无需重复用户确认。",
       "coverageLevel": "runtime",
       "reproduction": "Compat 临时项目中用户直接修改注释，旧应用复核路径要求重新向用户确认。",
@@ -4822,6 +4831,756 @@
           "namePattern": "preserves source coverage while Supervisor recovery loads the built application",
           "requiredNames": [
             "preserves source coverage while Supervisor recovery loads the built application"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-language-neutral-raw-edit-observation",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "任意语言和二进制内容按原始输入观察，Git 暂存和空提交与字节变化分离。",
+      "coverageLevel": "runtime",
+      "reproduction": "旧实现将候选与 Git 身份及语言适配绑定；本分支同一临时 Git 项目对混合语言、未知后缀、二进制、暂存和空提交进行对照。",
+      "expected": "相同内容保持内容摘要；真实字节变化可观察，不要求项目编译器。",
+      "forbidden": "按语言或 Git 元数据误判实现变化，或忽略未知文件。",
+      "rootCause": "候选语义与语言规则、Git 身份和实际输入混在同一判定。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "observes raw mixed-language and binary changes without a compiler and separates Git metadata",
+          "requiredNames": [
+            "Native check input fingerprint observes raw mixed-language and binary changes without a compiler and separates Git metadata"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 current candidate: real model acceptance has not run. Deterministic Runtime evidence does not replace it."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-current-agent-edit-judgment",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "连续编辑由当前 Agent 合并判断，原领取和未受影响检查保留，新编辑使旧判断失效。",
+      "coverageLevel": "unit",
+      "reproduction": "旧独立编辑复核需要新审查会话；同一当前 Agent claim、二进制/新增/删除输入和精确保留检查由共享契约定向对照。",
+      "expected": "当前 Action 可记录判断，只保留明确选中的真实检查，迟到编辑拒绝旧收据。",
+      "forbidden": "额外独立审查、凭摘要伪造检查成功、复用未覆盖的新内容。",
+      "rootCause": "编辑判断与当前执行上下文断开，检查有效性只能整体作废。",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/edit-review.test.ts",
+          "namePattern": "batches raw binary, added and deleted files and rejects edits after observation",
+          "requiredNames": [
+            "bound edit reviews batches raw binary, added and deleted files and rejects edits after observation"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 current candidate: real model acceptance has not run. Deterministic Runtime evidence does not replace it."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-compat-batched-edit-and-approved-refresh",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Compat 十次保存合并判断后仅补受影响检查，接受后补检查保留报告、批准和执行来源。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时 Compat change 经真实 Shape、Builder、检查、独立 Verifier 和接受，编辑后直接归档被拒绝；观察并判断后两次相同补检查请求只执行一次。",
+      "expected": "A 检查更新，B 原收据与执行次数保留，原状态和报告不变，最终可归档。",
+      "forbidden": "未判断直接归档、B 重跑、重复请求重复副作用、替换原验收报告。",
+      "rootCause": "Compat 证据恢复按整体候选重建，接受后的补检查缺少原地路径。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "continues Compat after batched unknown-language edits and retains only the Agent-selected real check",
+          "requiredNames": [
+            "Native portable Archive continues Compat after batched unknown-language edits and retains only the Agent-selected real check"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 current candidate: real model acceptance has not run. Deterministic Runtime evidence does not replace it."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-approved-selective-check-refresh",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Native SDK 已接受候选只补受影响检查，新失败阻止旧成功归档。",
+      "coverageLevel": "runtime",
+      "reproduction": "在临时 SDK Run 原 Archive 前编辑说明，由当前 Agent 仅保留 B，使用固定原计划补 A，并分别让 A 成功和失败。",
+      "expected": "原 state、Wait 与 report 保持，A 执行两次、B 一次，失败时不能归档。",
+      "forbidden": "新检查替换用户决定、全组重跑、旧成功掩盖新失败。",
+      "rootCause": "原检查与接受流程绑定过紧，缺少保留原报告的补检查命令。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "refreshes only the affected check after approval and preserves the report and decision",
+          "requiredNames": [
+            "Native SDK verification input binding refreshes only the affected check after approval and preserves the report and decision (failure=false)",
+            "Native SDK verification input binding refreshes only the affected check after approval and preserves the report and decision (failure=true)"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 current candidate: real model acceptance has not run. Deterministic Runtime evidence does not replace it."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-approved-check-refresh",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Classic SDK 在原 Archive 批准后补原 Verify 检查，原批准和报告保持，新失败阻止归档。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时 Classic SDK Run 通过 Build、Verify 和归档批准；编辑说明后使用原实际检查命令，分别验证成功和失败。",
+      "expected": "Build 不重跑，Verify 补一次，原 Run 状态、决定和报告不变。",
+      "forbidden": "重新生成批准、采用替换命令、忽略新失败。",
+      "rootCause": "补检查缺少原实际 Action 与原已接受报告的共同绑定。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "refreshes only the Verify check after Archive approval without replacing the report or decision",
+          "requiredNames": [
+            "Classic SDK Agent input judgment refreshes only the Verify check after Archive approval without replacing the report or decision (failure=false)",
+            "Classic SDK Agent input judgment refreshes only the Verify check after Archive approval without replacing the report or decision (failure=true)"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 current candidate: real model acceptance has not run. Deterministic Runtime evidence does not replace it."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-compat-formal-edit-continuation",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Classic Compat 正式说明变化经当前 Agent 判断后保持原 handoff，再次编辑不能复用旧判断。",
+      "coverageLevel": "runtime",
+      "reproduction": "通过真实 Compat handoff 保存原文，在 design.md 补说明后对照原文判断，核对原 handoff 摘要和状态，再追加新内容。",
+      "expected": "经判断的说明保留原摘要和状态，新内容重新需要判断。",
+      "forbidden": "修改原文来伪装批准、补造过去原文、对新增编辑沿用旧判断。",
+      "rootCause": "正式来源直接按当前摘要使整个 handoff 失效。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-handoff.test.ts",
+          "namePattern": "retains the Compat handoff after the current Agent judges an applied formal edit",
+          "requiredNames": [
+            "Classic handoff command retains the Compat handoff after the current Agent judges an applied formal edit"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 current candidate: real model acceptance has not run. Deterministic Runtime evidence does not replace it."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-compat-approved-check-refresh",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Classic Compat 接受后补原检查保留 Run、报告与批准，相同请求不重放，失败阻止实际归档。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时项目使用公开命令处理器正常 Open、Build、Verify、archive-confirm；说明编辑先阻止归档，再由当前 Agent 判断和补检查，重复相同请求。",
+      "expected": "补检查执行一次，状态和报告不变；成功可归档，失败时 OpenSpec 归档进程不启动。",
+      "forbidden": "未判断新内容被直接接受、重复副作用、失败后沿用旧成功。",
+      "rootCause": "原 Compat 检查执行没有请求幂等与原报告接受证据，归档没有重新消费原实际检查。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-archive.test.ts",
+          "namePattern": "supplements the accepted Compat check in the original Run without replay",
+          "requiredNames": [
+            "Classic archive command supplements the accepted Compat check in the original Run without replay (failure=false)",
+            "Classic archive command supplements the accepted Compat check in the original Run without replay (failure=true)"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 current candidate: real model acceptance has not run. Deterministic Runtime evidence does not replace it."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "platform-same-inode-content-read-race",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "读取或散列期间同 inode 写入并恢复 mtime 时拒绝把旧内容绑定到新 stat。",
+      "coverageLevel": "runtime",
+      "reproduction": "同一 race-safe-read 用例在只检查 inode 身份的旧实现 read/hash 两种窗口均失败；当前实现检查大小、模式及 mtime/ctime，完整定向文件通过。",
+      "expected": "两种窗口都拒绝不稳定内容，不能产生完整输入或旧检查复用证明。",
+      "forbidden": "返回旧字节或旧摘要同时附带新文件身份状态。",
+      "rootCause": "读前读后只核对 inode 创建身份，没有比较同 inode 内容修改的 ctime 等状态。",
+      "tests": [
+        {
+          "file": "test/platform/race-safe-read.test.ts",
+          "namePattern": "rejects same-inode writes with restored mtime during the",
+          "requiredNames": [
+            "race-safe bounded file read rejects same-inode writes with restored mtime during the read window",
+            "race-safe bounded file read rejects same-inode writes with restored mtime during the hash window"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 current candidate: real model acceptance has not run. Deterministic Runtime evidence does not replace it."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-raw-final-cache-directory-fence",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Native 缓存补读结束前新增生成输入时拒绝混合快照。",
+      "coverageLevel": "runtime",
+      "reproduction": "在隔离临时项目执行登记的精确场景；旧行为与当前证据见 052 验证记录。",
+      "expected": "保留原目录观察直到全部补读结束；新增实际输入使快照不完整。",
+      "forbidden": "用新 tracked 内容和遗漏的 generated 清单拼成完整快照。",
+      "rootCause": "缓存补读发生在原目录观察结束之后，未再核对初始目录范围。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "rejects generated inputs added while repairing",
+          "requiredNames": [
+            "Native check input fingerprint rejects generated inputs added while repairing a cached leaf at the final capture fence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-raw-clean-git-inputs",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Classic 在 Git 显示干净时仍观察实际字节变化。",
+      "coverageLevel": "runtime",
+      "reproduction": "在隔离临时项目执行登记的精确场景；旧行为与当前证据见 052 验证记录。",
+      "expected": "assume-unchanged、CRLF、clean filter、checkStat minimal 均改变内容摘要并显式报告输入变化。",
+      "forbidden": "使用 index 对象代替当前工作区字节，从而继续沿用旧成功。",
+      "rootCause": "Git clean 状态被错误用作物理内容未变的证明。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-check-snapshot.test.ts",
+          "namePattern": "binds physical input bytes even when Git considers the worktree clean",
+          "requiredNames": [
+            "Classic check input snapshots binds physical input bytes even when Git considers the worktree clean (assume-unchanged)",
+            "Classic check input snapshots binds physical input bytes even when Git considers the worktree clean (crlf)",
+            "Classic check input snapshots binds physical input bytes even when Git considers the worktree clean (clean-filter)",
+            "Classic check input snapshots binds physical input bytes even when Git considers the worktree clean (checkstat-minimal)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-raw-batch-parent-containment",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Classic 批量读取时临时替换父目录并恢复仍须拒绝混合输入。",
+      "coverageLevel": "runtime",
+      "reproduction": "在隔离临时项目执行登记的精确场景；旧行为与当前证据见 052 验证记录。",
+      "expected": "保留原路径与用户字节，发现读取到的内容与稳定父目录下内容不一致。",
+      "forbidden": "Git 读取临时外部目录后，将其摘要与恢复后的原叶子身份组合成完整清单。",
+      "rootCause": "目录排除规则只比较过滤后的名称，未复核身份改变期间的实际输入。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-check-snapshot.test.ts",
+          "namePattern": "rejects a temporary parent junction while batch hashing",
+          "requiredNames": [
+            "Classic check input snapshots rejects a temporary parent junction while batch hashing without discarding excluded output writes"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-accepted-candidate-input-binding",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Classic 补检查中新增文件仍需当前 Agent 判断，不能被下一次检查自动接纳。",
+      "coverageLevel": "runtime",
+      "reproduction": "在隔离临时项目执行登记的精确场景；旧行为与当前证据见 052 验证记录。",
+      "expected": "始终对照原已接受候选；新增变化未判断时不执行新检查，判断后保留原报告和批准续行。",
+      "forbidden": "后一次 post-check 清单覆盖原候选，静默采用未判断的实现。",
+      "rootCause": "仅对比最新检查输入，没有独立绑定原已验收的内容。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "keeps the accepted candidate baseline when a supplemental check changes inputs during execution",
+          "requiredNames": [
+            "Classic SDK Agent input judgment keeps the accepted candidate baseline when a supplemental check changes inputs during execution"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-compat-proven-prelaunch-retry",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Classic 仅对 Runtime 已证明尚未启动的检查在原 Action 重试。",
+      "coverageLevel": "runtime",
+      "reproduction": "在隔离临时项目执行登记的精确场景；旧行为与当前证据见 052 验证记录。",
+      "expected": "记录未执行证据，原 Action 增加 attempt，命令实际执行一次且重复请求复读原结果。",
+      "forbidden": "一次启动前异常造成永久死路，或重放已经启动的进程。",
+      "rootCause": "started 记录没有区分预留后快照失败和实际进程执行。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+          "namePattern": "retries only a proven prelaunch failure in the same check Action",
+          "requiredNames": [
+            "Classic command check evidence retries only a proven prelaunch failure in the same check Action without replaying a process"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-compat-unknown-check-no-replay",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Classic 原进程已执行但结果未落盘时，旧请求和新请求都不得重放。",
+      "coverageLevel": "runtime",
+      "reproduction": "在隔离临时项目执行登记的精确场景；旧行为与当前证据见 052 验证记录。",
+      "expected": "保留未知执行及其具体身份，计数副作用仅出现一次，旧成功不重新可用。",
+      "forbidden": "用不同请求 ID 绕过未知执行并重复产生副作用。",
+      "rootCause": "请求幂等只核对同 ID，没有约束前一次未完成执行。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+          "namePattern": "refuses both old and new request IDs when the process ran but its completion receipt is unknown",
+          "requiredNames": [
+            "Classic command check evidence refuses both old and new request IDs when the process ran but its completion receipt is unknown"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-check-no-alias-replay",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Native SDK 与 Compat 不因检查改名或 repeatable 标记变化而重放原不可重复执行。",
+      "coverageLevel": "runtime",
+      "reproduction": "运行隔离真实 Runtime 回归，核对候选、报告、原执行与副作用计数。",
+      "expected": "原调用身份独立于展示 ID 和后来的可重复标记，原执行结果与副作用保持一次。",
+      "forbidden": "重命名后重跑已完成的一次性命令。",
+      "rootCause": "原执行身份或事务来源未贯穿编辑后的续行边界。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "Native SDK verification input binding does not replay a one-shot SDK command after the Verifier changes its ID and repeatable flag",
+          "requiredNames": [
+            "Native SDK verification input binding does not replay a one-shot SDK command after the Verifier changes its ID and repeatable flag"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay",
+          "requiredNames": [
+            "Native portable Archive keeps a completed non-repeatable check when an alias or stale Verifier request attempts replay"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-compat-interrupted-approved-refresh",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Native Compat 补检查启动前中断保留原始来源，修复输入后继续同 Run，重复请求不重放。",
+      "coverageLevel": "runtime",
+      "reproduction": "运行隔离真实 Runtime 回归，核对候选、报告、原执行与副作用计数。",
+      "expected": "原批准、报告、候选及 source rawInputRef 保留；未执行不伪装通过，完成请求只复读原结果。",
+      "forbidden": "中断清除原始输入导致永久恢复死路，或把旧成功当作本次成功。",
+      "rootCause": "原执行身份或事务来源未贯穿编辑后的续行边界。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "Native portable Archive resumes an interrupted approved check without losing its source or replaying the completed request",
+          "requiredNames": [
+            "Native portable Archive resumes an interrupted approved check without losing its source or replaying the completed request"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-applied-spec-transaction-preserved",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Native Archive 已应用 Spec 后出现额外编辑时保留原事务并阻止覆盖编辑。",
+      "coverageLevel": "runtime",
+      "reproduction": "运行隔离真实 Runtime 回归，核对候选、报告、原执行与副作用计数。",
+      "expected": "按原事务诊断实际冲突；恢复原已应用内容后继续，不重新应用已完成步骤。",
+      "forbidden": "删除原事务重开归档，覆盖用户内容或重复执行已完成步骤。",
+      "rootCause": "原执行身份或事务来源未贯穿编辑后的续行边界。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "Native portable Archive preserves the original Archive transaction when an applied Spec is edited before resume",
+          "requiredNames": [
+            "Native portable Archive preserves the original Archive transaction when an applied Spec is edited before resume"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-formal-review-source-retirement",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "正式材料新批准只退役该来源的旧判断，其他来源的判断继续有效。",
+      "coverageLevel": "unit",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "同一 scope 内按具体批准来源区分适用编辑。",
+      "forbidden": "全局删除旧判断，或让无关正式来源丢失有效判断。",
+      "rootCause": "正式判断仅绑定创建时间或整体 scope，没有绑定具体来源批准。",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/edit-review.test.ts",
+          "namePattern": "^(?:bound edit reviews keeps unaffected source judgments while a new approval retires only the corresponding formal edits)$",
+          "requiredNames": [
+            "bound edit reviews keeps unaffected source judgments while a new approval retires only the corresponding formal edits"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-formal-negative-review-reapproval",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "原负判断涉及的相同字节经真实新批准后，不再阻塞新的正式来源。",
+      "coverageLevel": "unit",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "以新批准身份退役旧 negative，而不是要求用户恢复旧文字。",
+      "forbidden": "requirements-changed 永久阻塞合法新批准，或仅凭相同内容假造批准。",
+      "rootCause": "旧负判断身份没有跟随正式批准来源更新。",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/edit-review.test.ts",
+          "namePattern": "^(?:bound edit reviews does not keep an old negative decision active after the same bytes receive a new source approval)$",
+          "requiredNames": [
+            "bound edit reviews does not keep an old negative decision active after the same bytes receive a new source approval"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-implementation-revision-not-acceptance",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "已应用的当前 Agent 实现变化只允许进入修订，不等价于原候选通过。",
+      "coverageLevel": "unit",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "只为实际 applied/runtime-agent implementation-changed 开放修订；新字节、未应用、requirements-changed 仍阻塞。",
+      "forbidden": "将实现变化收据加入普通等价内容，或让未判断的新字节通过修订边界。",
+      "rootCause": "接受候选与进入授权内修订使用了同一完成条件。",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/edit-review.test.ts",
+          "namePattern": "^(?:bound edit reviews allows an applied current-Agent implementation decision only for revision and never treats it as equivalent accepted content)$",
+          "requiredNames": [
+            "bound edit reviews allows an applied current-Agent implementation decision only for revision and never treats it as equivalent accepted content"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-canonical-source-edit-continuation",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Classic canonical Spec 的原文来自真实批准来源，普通编辑经当前 Agent 判断后保留批准。",
+      "coverageLevel": "runtime",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "原始字节可核对；真实需求变化走原修订并新批准。",
+      "forbidden": "读取编辑后的当前文件补造旧原文，或新批准仍被旧负判断阻塞。",
+      "rootCause": "canonical 来源未纳入正式原文及批准身份。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "^(?:Classic candidate revisions retains approved canonical source after the current Agent judges its original raw bytes)$",
+          "requiredNames": [
+            "Classic candidate revisions retains approved canonical source after the current Agent judges its original raw bytes"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 当前新增 A4/formalSource 行为尚无真实模型证明；确定性 Runtime 检查不替代模型语义判断。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-preset-source-reapproval",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "preset 的 canonical 编辑沿用真实 Open 来源，只有实际新 scope 决定才更新身份。",
+      "coverageLevel": "runtime",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "prepare/observe 不假造新来源；明确 continue/escalation 后更新批准身份。",
+      "forbidden": "原 Open 后的 ordinary 编辑要求重开流程，或只靠文件变化更新授权。",
+      "rootCause": "preset 无 Design/Plan 时缺少真实 Open 与后续 scope 决定的统一来源。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "^(?:Classic candidate revisions retains preset canonical edits under the real Open and retires them only after the actual new scope decision)$",
+          "requiredNames": [
+            "Classic candidate revisions retains preset canonical edits under the real Open and retires them only after the actual new scope decision"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 当前新增 A4/formalSource 行为尚无真实模型证明；确定性 Runtime 检查不替代模型语义判断。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-plan-source-edit-continuation",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "已接受 Plan 补充说明由当前 Builder 判断后继续原计划和原批准。",
+      "coverageLevel": "runtime",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "原 Plan 证据仍有效，真实原文与当前差异可核对。",
+      "forbidden": "把当前 Plan 补造为过去已接受原文，或因说明变化重新批准计划。",
+      "rootCause": "Plan 原始来源未在实际接受边界固定。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "^(?:Classic candidate revisions keeps accepted Plan evidence after the current Builder judges an applied explanation)$",
+          "requiredNames": [
+            "Classic candidate revisions keeps accepted Plan evidence after the current Builder judges an applied explanation"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 当前新增 A4/formalSource 行为尚无真实模型证明；确定性 Runtime 检查不替代模型语义判断。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-design-source-edit-continuation",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Design 的已应用与待应用普通编辑保留对应已批准设计来源。",
+      "coverageLevel": "runtime",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "两种编辑位置都核对原设计字节和当前 Agent 判断。",
+      "forbidden": "对编辑后字节补造旧批准，或把未应用提案当作已应用。",
+      "rootCause": "Design 当前路径摘要代替了真实批准原文。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "^(?:Classic candidate revisions keeps accepted Design evidence after the current Agent judges a raw formatting edit \\(already applied: false\\)|Classic candidate revisions keeps accepted Design evidence after the current Agent judges a raw formatting edit \\(already applied: true\\))$",
+          "requiredNames": [
+            "Classic candidate revisions keeps accepted Design evidence after the current Agent judges a raw formatting edit (already applied: false)",
+            "Classic candidate revisions keeps accepted Design evidence after the current Agent judges a raw formatting edit (already applied: true)"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 当前新增 A4/formalSource 行为尚无真实模型证明；确定性 Runtime 检查不替代模型语义判断。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-compat-plan-source-edit-continuation",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Compat Plan 原文由真实 Build 转换捕获，Verify 编辑判断可保留原 handoff。",
+      "coverageLevel": "runtime",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "真实 Build 过渡生成原文来源；后续当前 Agent 判断可继续 Verify。",
+      "forbidden": "在判断时把已改文件当成过去原文，或缺少来源时静默通过。",
+      "rootCause": "Compat 仅保留旧摘要，没有实际过渡的原文身份。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-handoff.test.ts",
+          "namePattern": "^(?:Classic handoff command continues Compat Verify after the current Agent judges the Plan captured by the real Build transition)$",
+          "requiredNames": [
+            "Classic handoff command continues Compat Verify after the current Agent judges the Plan captured by the real Build transition"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 当前新增 A4/formalSource 行为尚无真实模型证明；确定性 Runtime 检查不替代模型语义判断。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-compat-preset-open-source-capture",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Compat preset canonical 原文仅在实际 Open guard 转换捕获。",
+      "coverageLevel": "runtime",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "只读观察不能建立批准原文；真正 Open 过渡后可轻量判断。",
+      "forbidden": "未执行实际 guard 就补造原文或授权，或要求 preset 生成无关 Design/Plan。",
+      "rootCause": "preset 缺少设计交接时没有可靠 canonical 原文捕获点。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-handoff.test.ts",
+          "namePattern": "^(?:Classic handoff command captures Compat preset canonical originals only at the actual Open transition)$",
+          "requiredNames": [
+            "Classic handoff command captures Compat preset canonical originals only at the actual Open transition"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 当前新增 A4/formalSource 行为尚无真实模型证明；确定性 Runtime 检查不替代模型语义判断。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-sdk-authorized-implementation-continuation",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Native 授权内 A 行为改变从 Verify/Archive 沿公开续行进入同 Run 后继候选，只补 A 并保留 B 一次性执行。",
+      "coverageLevel": "runtime",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "Builder pending/claim/outcome 可继续；Shape 批准和原历史保留，新 Verifier、报告、结果接受和一次 Archive。",
+      "forbidden": "旧负判断遮蔽修订或 Builder、把变化实现冒称 non-behavioral、重放 B 或沿用旧报告接受新候选。",
+      "rootCause": "编辑复核投影先覆盖原修订入口，普通 scope 又保留旧候选到 Builder 提交。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:A4 continues an Agent-reviewed behavior change from verify and retains only the unaffected one-shot check|A4 continues an Agent-reviewed behavior change from archive and retains only the unaffected one-shot check)$",
+          "requiredNames": [
+            "A4 continues an Agent-reviewed behavior change from verify and retains only the unaffected one-shot check",
+            "A4 continues an Agent-reviewed behavior change from archive and retains only the unaffected one-shot check"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 当前新增 A4/formalSource 行为尚无真实模型证明；确定性 Runtime 检查不替代模型语义判断。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-authorized-implementation-continuation",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Classic 授权内 A 行为改变从 Verify/Archive 进入同 Run Build，B 保留，新 Verify 与 Archive 接受。",
+      "coverageLevel": "runtime",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "continue-build 正确投影和更新工作轮次；原 Design/Plan 通过原接受来源用于 Archive。",
+      "forbidden": "旧负判断遮住 Builder、强迫重交 Plan、丢失 Archive 正式来源或重复 B 副作用。",
+      "rootCause": "原 ordinary scope 未退役，且 command 新链没有带回真实已接受文档来源。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "^(?:Classic candidate revisions resumes an actual implementation revision from verify with declared inputs, retaining only B|Classic candidate revisions resumes an actual implementation revision from archive with declared inputs, retaining only B)$",
+          "requiredNames": [
+            "Classic candidate revisions resumes an actual implementation revision from verify with declared inputs, retaining only B",
+            "Classic candidate revisions resumes an actual implementation revision from archive with declared inputs, retaining only B"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 当前新增 A4/formalSource 行为尚无真实模型证明；确定性 Runtime 检查不替代模型语义判断。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-implementation-revision-archive-documents",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Classic continue-build 的新执行链恢复原接受 Design/Plan 来源并完成单次 Archive。",
+      "coverageLevel": "runtime",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "仅沿显式原 Build 接受链递归恢复原正式来源，不重交 Plan，不借较老成功遮蔽最近失败。",
+      "forbidden": "新链丢失正式材料导致 Archive documents missing，或无绑定沿用任意历史 Design/Plan。",
+      "rootCause": "command 创建空 results 新链，而原正式材料恢复只支持 reopen-verification。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "^(?:Classic candidate revisions resumes an actual implementation revision from verify with declared inputs, retaining only B|Classic candidate revisions resumes an actual implementation revision from archive with declared inputs, retaining only B)$",
+          "requiredNames": [
+            "Classic candidate revisions resumes an actual implementation revision from verify with declared inputs, retaining only B",
+            "Classic candidate revisions resumes an actual implementation revision from archive with declared inputs, retaining only B"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 当前新增 A4/formalSource 行为尚无真实模型证明；确定性 Runtime 检查不替代模型语义判断。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-revision-report-input-isolation",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "behavior": "Classic 返回 Build 时，未改变的真实旧 Verify 报告不使默认范围 B 检查误失效。",
+      "coverageLevel": "runtime",
+      "reproduction": "在当前隔离 fixture 通过所列精确 selector 重现；对应实际 JSON、失败性质和执行边界见 evidence-matrix.json。",
+      "expected": "只按真实 resolved report 的 exact 内容及原 raw/Git 摘要识别 Runtime 输出，显式 files 仍绑定。",
+      "forbidden": "宽泛忽略报告目录、忽略用户修改，或将 B 一次性检查重跑。",
+      "rootCause": "返回 Build 清空当前 report 引用，磁盘旧报告重新进入默认全项目输入。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+          "namePattern": "^(?:Classic candidate revisions resumes an actual implementation revision from archive with default inputs, retaining only B)$",
+          "requiredNames": [
+            "Classic candidate revisions resumes an actual implementation revision from archive with default inputs, retaining only B"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 当前新增 A4/formalSource 行为尚无真实模型证明；确定性 Runtime 检查不替代模型语义判断。"
           ]
         }
       ]

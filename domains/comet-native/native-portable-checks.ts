@@ -1,4 +1,12 @@
 import {
+  readCurrentLocalExecution,
+  preservedLocalChecksForVersion,
+} from './native-local-execution-binding.js';
+export {
+  readCurrentLocalExecution,
+  preservedLocalChecksForVersion,
+} from './native-local-execution-binding.js';
+import {
   nativeShapeArtifactSnapshot,
   nativeShapeArtifactContractHash,
   type NativeShapeSemanticSnapshot,
@@ -11,7 +19,6 @@ import {
 } from './native-archive-legacy-overlay.js';
 import { promises as fs } from 'node:fs';
 import {
-  activeNativeVerifierAction,
   completeNativeVerifierAction,
   currentNativeVerifierAction,
   nativeVerifierActionExecutionRef,
@@ -31,11 +38,22 @@ import {
   readGitBlobs,
 } from '../../platform/process/git.js';
 import {
+  approvedEditHash,
   approvedEditFingerprint,
   inspectEditReviews,
   type EditReviewScope,
+  isCheckInputRetained,
+  assertEditReviewsComplete,
 } from '../workflow-contract/edit-review.js';
-import { editContentHash } from '../workflow-contract/edit-impact.js';
+import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
+import { hashRuntimeValue, type RuntimeValue } from '../engine/runtime.js';
+import {
+  hashProtectedProjectFile,
+  inspectProtectedProjectPath,
+  ensureProtectedProjectDirectory,
+  readProtectedProjectFile,
+  createProtectedProjectReadSession,
+} from '../workflow-contract/protected-project-path.js';
 import { isNeutralDocumentPath } from '../workflow-contract/neutral-document-path.js';
 import { readProjectConfig } from './native-config.js';
 import { nativeEditReviewScope } from './native-edit-review.js';
@@ -50,6 +68,7 @@ import {
   inspectNativeCheckProcessTreeLiveness,
   isNativeCheckTerminationUnconfirmedError,
   nativeCheckPlanKey,
+  nativeCheckInvocationKey,
   nativePortableArgvDisplay,
   preflightNativeCheckPlans,
   resolveNativeCheckCwd,
@@ -98,10 +117,8 @@ import {
   readNativeApprovedShapeSemanticSnapshot,
 } from './native-portable-requirements.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
-import {
-  nativeSourceCommentFingerprint,
-  supportsNativeSourceComments,
-} from './native-source-comments.js';
+import { readNativePortableTransaction } from './native-portable-transactions.js';
+import { renderNativeVerificationReport } from './native-verification-report-v2.js';
 
 export function localCheckCwdRef(projectRoot: string, cwd: string): string {
   const relative = path.relative(path.resolve(projectRoot), path.resolve(cwd));
@@ -283,6 +300,8 @@ function resetNativeCheckForExecution(
   return {
     ...localCheck(plan, operationId, projectRoot),
     executionCount: previous.executionCount,
+    // 原输入收据仅保留来源；新尝试的 planned/interrupted 状态和空 evidenceDigest 禁止把它算作成功。
+    ...(previous.rawInput ? { rawInput: previous.rawInput } : {}),
   };
 }
 
@@ -385,6 +404,884 @@ export interface NativeCheckInputSnapshot {
   generatedInputFingerprint: string;
   complete: boolean;
   diagnostics: string[];
+}
+
+export interface NativeRawInputSnapshot {
+  schema: 'comet.native.raw-input.v1';
+  projectRoot: string;
+  files: Array<{ path: string; hash: string; mode: string; generated?: true }>;
+  complete: boolean;
+  diagnostics: string[];
+  contentHash: string;
+  contextHash: string;
+  git: { head: string; branch: string; status: string; index: string } | null;
+  hashCache?: Array<{ path: string; gitObjectId?: string; statKey: string }>;
+  repositories?: Array<{
+    path: string;
+    head: string;
+    branch: string;
+    status: string;
+    index: string;
+  }>;
+}
+
+/** 一次观察只读取原始字节。Git 身份另存，不进入实现内容摘要。 */
+export async function nativeRawInputSnapshot(options: {
+  projectRoot: string;
+  managedArtifactRoot?: string;
+  excludedPaths?: readonly string[];
+  legacyArchiveOverlay?: NativeLegacyArchiveOverlay;
+  previous?: NativeRawInputSnapshot;
+}): Promise<NativeRawInputSnapshot> {
+  const root = await fs.realpath(options.projectRoot);
+  const managedArtifactRoot = options.managedArtifactRoot
+    ? await fs.realpath(options.managedArtifactRoot).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOENT') throw error;
+        const relative = path.relative(
+          path.resolve(options.projectRoot),
+          path.resolve(options.managedArtifactRoot!),
+        );
+        return path.resolve(root, relative);
+      })
+    : undefined;
+  const runnerInputs = await nativeRunnerInputArtifactPaths(root);
+  const excluded = (ref: string) =>
+    runnerInputs.has(ref) ||
+    isNativeOwnedInputPath(ref, root, managedArtifactRoot) ||
+    (options.excludedPaths ?? []).some((owned) => ref === owned || ref.startsWith(`${owned}/`));
+  const diagnostics: string[] = [];
+  const files: NativeRawInputSnapshot['files'] = [];
+  let git: NativeRawInputSnapshot['git'] = null;
+  let selection: string[] = [];
+  let index = '';
+  let physical = false;
+  const observeGit = async () => {
+    const results = await Promise.allSettled([
+      readGitStatusObservationAsync(root, [], { allowUnborn: true, includeIgnored: true }),
+      runGitCommandAsync(root, [
+        'ls-files',
+        '--stage',
+        '--others',
+        '--exclude-standard',
+        '-v',
+        '-z',
+      ]),
+    ]);
+    const failed = results.find((result) => result.status === 'rejected');
+    if (failed?.status === 'rejected') throw failed.reason;
+    const index: string[] = [],
+      untracked: string[] = [],
+      flags: string[] = [];
+    for (const entry of (results[1] as PromiseFulfilledResult<string>).value
+      .split('\0')
+      .filter(Boolean)) {
+      if (entry.startsWith('? ')) {
+        untracked.push(entry.slice(2));
+        continue;
+      }
+      const match = entry.match(/^([A-Za-z]) (\d{6} [a-f0-9]+ [0-3]\t(.+))$/su);
+      if (!match) throw new Error('Git 原始输入枚举格式无效');
+      index.push(match[2]);
+      flags.push(`${match[1]} ${match[3]}`);
+    }
+    const nul = (entries: string[]) => (entries.length ? `${entries.join('\0')}\0` : '');
+    return {
+      ...(results[0] as PromiseFulfilledResult<{ head: string; branch: string; status: string }>)
+        .value,
+      index: nul(index),
+      untracked: nul(untracked),
+      flags: nul(flags),
+    };
+  };
+  let before: Awaited<ReturnType<typeof observeGit>> | undefined;
+  try {
+    before = await observeGit();
+    index = before.index;
+    git = {
+      head: before.head,
+      branch: before.branch,
+      status: before.status,
+      index: digestNativeCheckInput(index),
+    };
+    const tracked = index
+      .split('\0')
+      .filter(Boolean)
+      .map((record) => {
+        const match = record.match(/^(100644|100755|120000|160000) [a-f0-9]+ 0\t(.+)$/su);
+        if (!match) throw new Error('Git 输入存在未解决的索引冲突');
+        return match[2];
+      });
+    selection = [...new Set([...tracked, ...before.untracked.split('\0').filter(Boolean)])];
+  } catch (error) {
+    // 只有确实没有仓库时才选物理树；仓库查询失败不能静默缩小输入范围。
+    try {
+      await runGitCommandAsync(root, ['rev-parse', '--show-toplevel']);
+      diagnostics.push(`Git 输入读取失败：${String(error)}`);
+    } catch {
+      physical = true;
+      const snapshot = await nativePhysicalCheckInputSnapshot(
+        root,
+        [],
+        managedArtifactRoot,
+        runnerInputs,
+        'paths',
+      );
+      if (!snapshot.complete) diagnostics.push(snapshot.diagnostic ?? '物理输入读取不完整');
+      selection = snapshot.files.map((file) => file.path);
+    }
+  }
+  const links = parseGitlinksInIndex(index);
+  const objectIds = (value: string) =>
+    new Map(
+      value.split('\0').flatMap((record) => {
+        const match = record.match(/^(?:100644|100755) ([a-f0-9]+) 0\t(.+)$/su);
+        return match ? [[match[2], match[1]] as const] : [];
+      }),
+    );
+  const indexed = objectIds(index);
+  const trusted = (observation: NonNullable<typeof before>) => {
+    const dirty = new Set(parseGitStatusPaths(observation.status));
+    return new Set(
+      observation.flags
+        .split('\0')
+        .filter((record) => record.startsWith('H ') && !dirty.has(record.slice(2)))
+        .map((record) => record.slice(2)),
+    );
+  };
+  const clean = before ? trusted(before) : new Set<string>();
+  const previous =
+    !options.legacyArchiveOverlay &&
+    options.previous?.complete &&
+    options.previous.projectRoot === root
+      ? options.previous
+      : null;
+  const oldFiles = new Map(previous?.files.map((file) => [file.path, file]) ?? []);
+  const oldCache = new Map(previous?.hashCache?.map((entry) => [entry.path, entry]) ?? []);
+  const hashCache: NonNullable<NativeRawInputSnapshot['hashCache']> = [];
+  const reused = new Set<string>();
+  const nestedFiles: NativeRawInputSnapshot['files'] = [];
+  const nestedRepositories: NonNullable<NativeRawInputSnapshot['repositories']> = [];
+  const statKey = (stat: import('node:fs').BigIntStats) =>
+    [stat.dev, stat.ino, stat.size, stat.mode, stat.birthtimeNs, stat.mtimeNs, stat.ctimeNs].join(
+      ':',
+    );
+  const generated = new Set<string>();
+  const rawSessionOptions: Parameters<typeof createProtectedProjectReadSession>[2] = {
+    ignoredDirectoryEntries: (ref) =>
+      /(?:^|\/)\.next(?:\/dev)?$/u.test(ref)
+        ? (entry) => isNativeNextVolatileInputPath(`${ref}/${entry.name}`)
+        : undefined,
+  };
+  const readSession = await createProtectedProjectReadSession(
+    root,
+    'Native 原始输入',
+    rawSessionOptions,
+  );
+  if (before) {
+    try {
+      const ignoredEntries = before.status
+        .split('\0')
+        .filter((record) => record.startsWith('!! '))
+        .map((record) => record.slice(3))
+        .join('\0');
+      const { cwdRefs } = await nativeGeneratedInputRoots(
+        root,
+        [],
+        `${index}\0${before.untracked}`,
+        ignoredEntries,
+        (ref) => readSession.observeDirectory(ref),
+      );
+      const visited = new Set<string>();
+      const selected = new Set(selection);
+      const visit = async (ref: string): Promise<void> => {
+        if (visited.has(ref) || excluded(ref) || isNativeNextVolatileInputPath(ref)) return;
+        visited.add(ref);
+        const target = path.resolve(root, ...ref.split('/'));
+        const stat = await fs.lstat(target);
+        if (stat.isSymbolicLink()) throw new Error(`原始输入目录包含链接：${ref}`);
+        if (!stat.isDirectory()) {
+          if (!selected.has(ref)) generated.add(ref);
+          return;
+        }
+        await readSession.observeDirectory(ref);
+        for (const entry of await fs.readdir(target, { withFileTypes: true })) {
+          if (entry.isDirectory() && NATIVE_DEPENDENCY_INPUT_DIRECTORIES.has(entry.name)) continue;
+          await visit(`${ref}/${entry.name}`);
+        }
+      };
+      for (const cwd of cwdRefs)
+        for (const name of NATIVE_GENERATED_INPUT_DIRECTORIES) {
+          const ref = cwd === '.' ? name : `${cwd}/${name}`;
+          try {
+            await visit(ref);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+          }
+        }
+      selection = [...new Set([...selection, ...generated])];
+    } catch (error) {
+      diagnostics.push(`生成输入枚举不完整：${String(error)}`);
+    }
+  }
+  const observed = await mapWithConcurrency(
+    selection.filter((ref) => !excluded(ref)).sort(),
+    16,
+    async (ref) => {
+      try {
+        if (links.has(ref)) {
+          const directory = await inspectProtectedProjectPath(root, ref, {
+            label: `Native 子仓输入 ${ref}`,
+            expected: 'directory',
+          });
+          if (!directory.exists) throw new Error('子仓目录缺失');
+          const childRoot = await fs.realpath(path.resolve(root, ref));
+          if (
+            (await fs.realpath(
+              (await runGitCommandAsync(childRoot, ['rev-parse', '--show-toplevel'])).trim(),
+            )) !== childRoot
+          )
+            throw new Error('子仓 Git 根与目录不匹配');
+          const prefix = `${ref}/`;
+          const childPrevious = previous
+            ? {
+                ...previous,
+                projectRoot: childRoot,
+                files: previous.files
+                  .filter((file) => file.path.startsWith(prefix))
+                  .map((file) => ({ ...file, path: file.path.slice(prefix.length) })),
+                hashCache: previous.hashCache
+                  ?.filter((file) => file.path.startsWith(prefix))
+                  .map((file) => ({ ...file, path: file.path.slice(prefix.length) })),
+              }
+            : undefined;
+          const nested = await nativeRawInputSnapshot({
+            projectRoot: childRoot,
+            previous: childPrevious,
+          });
+          if (!nested.complete) throw new Error(nested.diagnostics.join('；'));
+          nestedFiles.push(
+            ...nested.files.map((file) => ({ ...file, path: `${prefix}${file.path}` })),
+          );
+          hashCache.push(
+            ...(nested.hashCache ?? []).map((entry) => ({
+              ...entry,
+              path: `${prefix}${entry.path}`,
+            })),
+          );
+          nestedRepositories.push(
+            ...(nested.repositories ?? []).map((repository) => ({
+              ...repository,
+              path: repository.path === '.' ? ref : `${prefix}${repository.path}`,
+            })),
+          );
+          return {
+            path: ref,
+            hash: digestNativeCheckInput('comet.native.raw-gitlink.v1'),
+            mode: '160000',
+          };
+        }
+        const cached = oldCache.get(ref),
+          old = oldFiles.get(ref);
+        const objectId = indexed.get(ref);
+        if (old && cached && objectId && clean.has(ref) && cached.gitObjectId === objectId) {
+          await readSession.observePath(ref);
+          // 暂取旧摘要；最终叶子身份匹配原记录后才算本次观察完成，不给旧摘要绑定新 stat。
+          reused.add(ref);
+          hashCache.push({ ...cached });
+          return old;
+        }
+        const file = await readSession.hash(ref);
+        hashCache.push({
+          path: ref,
+          ...(objectId && clean.has(ref) ? { gitObjectId: objectId } : {}),
+          statKey: statKey(file.stat as import('node:fs').BigIntStats),
+        });
+        return {
+          path: ref,
+          hash: file.digest,
+          mode:
+            process.platform === 'win32'
+              ? '100644'
+              : Number(file.stat.mode) & 0o111
+                ? '100755'
+                : '100644',
+          ...(generated.has(ref) ? { generated: true as const } : {}),
+        };
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT' && !physical) return null;
+        diagnostics.push(`${ref}：${String(error)}`);
+        return null;
+      }
+    },
+  );
+  files.push(...observed.filter((file): file is NonNullable<typeof file> => file !== null));
+  files.push(...nestedFiles);
+  files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  if (options.legacyArchiveOverlay) {
+    const entries = new Map(files.map((file) => [file.path, file]));
+    for (const [ref, original] of options.legacyArchiveOverlay) {
+      if (excluded(ref)) continue;
+      if (original.text === null) entries.delete(ref);
+      else
+        entries.set(ref, {
+          path: ref,
+          hash: createHash('sha256')
+            .update(original.bytes ?? Buffer.from(original.text))
+            .digest('hex'),
+          mode:
+            process.platform === 'win32' || !original.mode || !(original.mode & 0o111)
+              ? '100644'
+              : '100755',
+        });
+    }
+    files.splice(
+      0,
+      files.length,
+      ...[...entries.values()].sort((a, b) => a.path.localeCompare(b.path, 'en')),
+    );
+  }
+  const finalSession = await createProtectedProjectReadSession(
+    root,
+    'Native 原始输入结束复核',
+    rawSessionOptions,
+  );
+  const repairSession = await createProtectedProjectReadSession(
+    root,
+    'Native 原始输入缓存失效读取',
+    rawSessionOptions,
+  );
+  const positions = new Map(files.map((file, index) => [file.path, index]));
+  let repaired = false;
+  await mapWithConcurrency(hashCache, 16, async (entry) => {
+    try {
+      const { stat: current } = await finalSession.stat(entry.path);
+      if (statKey(current) !== entry.statKey && reused.has(entry.path)) {
+        // 本次尚未实际读取此叶子；缓存失效时首次读取当前字节，再对全部叶子完成新鲜复查。
+        const actual = await repairSession.hash(entry.path);
+        entry.statKey = statKey(actual.stat as import('node:fs').BigIntStats);
+        const position = positions.get(entry.path)!;
+        files[position] = {
+          ...files[position],
+          hash: actual.digest,
+          mode:
+            process.platform === 'win32' || !(Number(actual.stat.mode) & 0o111)
+              ? '100644'
+              : '100755',
+        };
+        reused.delete(entry.path);
+        repaired = true;
+      } else if (statKey(current) !== entry.statKey)
+        diagnostics.push(`原始输入在观察期间变化：${entry.path}`);
+    } catch (error) {
+      diagnostics.push(`原始输入结束复核失败：${entry.path}（${String(error)}）`);
+    }
+  });
+  try {
+    await finalSession.finish();
+  } catch (error) {
+    diagnostics.push(`原始输入结束目录复核不完整：${String(error)}`);
+  }
+  try {
+    await repairSession.finish();
+  } catch (error) {
+    diagnostics.push(`原始输入缓存读取目录复核不完整：${String(error)}`);
+  }
+  if (repaired) {
+    const completed = await createProtectedProjectReadSession(
+      root,
+      'Native 原始输入缓存更新后复核',
+      rawSessionOptions,
+    );
+    await mapWithConcurrency(hashCache, 16, async (entry) => {
+      try {
+        if (statKey((await completed.stat(entry.path)).stat) !== entry.statKey)
+          diagnostics.push(`原始输入在缓存读取期间变化：${entry.path}`);
+      } catch (error) {
+        diagnostics.push(`原始输入缓存复核失败：${entry.path}（${String(error)}）`);
+      }
+    });
+    try {
+      await completed.finish();
+    } catch (error) {
+      diagnostics.push(`原始输入缓存目录复核不完整：${String(error)}`);
+    }
+  }
+  if (before) {
+    try {
+      const after = await observeGit();
+      const afterClean = trusted(after),
+        afterIndex = objectIds(after.index);
+      for (const ref of reused) {
+        const entry = oldCache.get(ref)!;
+        if (!afterClean.has(ref) || afterIndex.get(ref) !== entry.gitObjectId)
+          diagnostics.push(`复用的原始输入在采样时变化：${ref}`);
+      }
+      const selectedPaths = (observation: typeof after) =>
+        [
+          ...new Set([
+            ...observation.index
+              .split('\0')
+              .filter(Boolean)
+              .map((record) => record.slice(record.indexOf('\t') + 1)),
+            ...observation.untracked.split('\0').filter(Boolean),
+            ...observation.status
+              .split('\0')
+              .filter((record) => record.startsWith('!! '))
+              .map((record) => record.slice(3)),
+          ]),
+        ]
+          .filter((ref) => !excluded(ref))
+          .sort();
+      // status 可因 Git 刷新子模块状态或用户暂存而变化；输入范围只比较实际路径。
+      if (JSON.stringify(selectedPaths(before)) !== JSON.stringify(selectedPaths(after)))
+        diagnostics.push('Git 输入范围在读取期间变化');
+    } catch (error) {
+      diagnostics.push(`Git 输入复查失败：${String(error)}`);
+    }
+  }
+  try {
+    await readSession.finish();
+  } catch (error) {
+    diagnostics.push(`原始输入目录观察不完整：${String(error)}`);
+  }
+  return {
+    schema: 'comet.native.raw-input.v1',
+    projectRoot: root,
+    files,
+    complete: diagnostics.length === 0,
+    diagnostics,
+    contentHash: canonicalHash('comet.native.raw-content.v1', {
+      projectRoot: root,
+      files: files.map(({ path, hash, mode }) => ({ path, hash, mode })),
+    }),
+    contextHash: canonicalHash('comet.native.raw-context.v1', {
+      machine: os.hostname(),
+      execPath: process.execPath,
+      node: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      environment: Object.entries(process.env)
+        .map(([name, value]) => [name, value ?? null])
+        .sort(([a], [b]) => String(a).localeCompare(String(b))),
+    }),
+    git,
+    hashCache: options.legacyArchiveOverlay
+      ? []
+      : hashCache.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
+    repositories: [...(git ? [{ path: '.', ...git }] : []), ...nestedRepositories].sort((a, b) =>
+      a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
+    ),
+  };
+}
+
+export async function saveNativeRawInput(
+  root: string,
+  directory: string,
+  snapshot: NativeRawInputSnapshot,
+) {
+  const hash = hashRuntimeValue(snapshot as unknown as RuntimeValue);
+  const target = await ensureProtectedProjectDirectory(root, directory, {
+    label: 'Native 原始输入记录',
+  });
+  const ref = `${directory}/${hash}.json`;
+  try {
+    await atomicWriteContainedText(path.join(target, `${hash}.json`), JSON.stringify(snapshot), {
+      containedRoot: root,
+      exclusive: true,
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    await readNativeRawInput(root, directory, ref);
+  }
+  return ref;
+}
+
+export async function readNativeRawInput(
+  root: string,
+  directory: string,
+  ref: string,
+): Promise<NativeRawInputSnapshot> {
+  const prefix = `${directory}/`;
+  if (
+    typeof ref !== 'string' ||
+    !ref.startsWith(prefix) ||
+    !/^[a-f0-9]{64}\.json$/u.test(ref.slice(prefix.length))
+  )
+    throw new Error('Native 原始输入记录引用无效');
+  const content = await readProtectedProjectFile(root, ref, Number.MAX_SAFE_INTEGER, {
+    label: 'Native 原始输入记录',
+  });
+  const snapshot = JSON.parse(content.bytes.toString('utf8')) as NativeRawInputSnapshot;
+  if (
+    snapshot.schema !== 'comet.native.raw-input.v1' ||
+    hashRuntimeValue(snapshot as unknown as RuntimeValue) !== ref.slice(prefix.length, -5)
+  )
+    throw new Error('Native 原始输入记录已变化');
+  return snapshot;
+}
+
+export function nativeRawInputChanges(
+  before: NativeRawInputSnapshot,
+  after: NativeRawInputSnapshot,
+) {
+  const left = new Map(before.files.map((file) => [file.path, file]));
+  const right = new Map(after.files.map((file) => [file.path, file]));
+  return [...new Set([...left.keys(), ...right.keys()])].flatMap((ref) => {
+    const a = left.get(ref),
+      b = right.get(ref);
+    return a?.hash === b?.hash && a?.mode === b?.mode
+      ? []
+      : [
+          {
+            path: ref,
+            beforeHash: a?.hash ?? 'missing',
+            afterHash: b?.hash ?? 'missing',
+            beforeMode: a?.mode ?? 'missing',
+            afterMode: b?.mode ?? 'missing',
+          },
+        ];
+  });
+}
+
+export async function nativeRawCandidateHash(
+  snapshot: NativeRawInputSnapshot,
+  scope: EditReviewScope,
+  formalPaths: readonly string[] = [],
+): Promise<string | null> {
+  if (!snapshot.complete) return null;
+  const reviews = await inspectEditReviews(scope);
+  const files: NativeRawInputSnapshot['files'] = [];
+  for (const file of snapshot.files) {
+    // 正式契约由 Shape 的批准绑定单独核对，不作为实现改动再次处理。
+    if (formalPaths.includes(file.path)) continue;
+    const reviewed = await approvedEditHash(scope, file.path, file.hash, reviews, file.mode);
+    if (reviewed && !reviewed.semantic) {
+      if (reviewed.beforeHash !== null)
+        files.push({ ...file, hash: reviewed.beforeHash, mode: reviewed.beforeMode ?? file.mode });
+    } else files.push(file);
+  }
+  const present = new Set(snapshot.files.map((file) => file.path));
+  const deleted = new Map(
+    reviews.flatMap((review) =>
+      review.edits
+        .filter((edit) => edit.afterHash === 'missing')
+        .map((edit) => [edit.path, edit] as const),
+    ),
+  );
+  for (const [ref, edit] of deleted) {
+    if (present.has(ref) || formalPaths.includes(ref)) continue;
+    const reviewed = await approvedEditHash(scope, ref, 'missing', reviews);
+    if (reviewed && !reviewed.semantic && reviewed.beforeHash !== null)
+      files.push({
+        path: ref,
+        hash: reviewed.beforeHash,
+        mode: edit.beforeMode ?? (edit.executable ? '100755' : '100644'),
+      });
+  }
+  files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  return canonicalHash('comet.native.raw-candidate.v1', {
+    projectRoot: snapshot.projectRoot,
+    files: files.map(({ path, hash, mode }) => ({ path, hash, mode })),
+  });
+}
+
+export async function nativeRawCandidateInputHash(
+  snapshot: NativeRawInputSnapshot,
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+) {
+  const approved = await readNativeApprovedShapeSemanticSnapshot({ paths, state });
+  const formal = (approved?.snapshot.artifacts ?? []).map((artifact) =>
+    path
+      .relative(paths.projectRoot, path.join(paths.changesDir, state.name, artifact.source))
+      .replaceAll('\\', '/'),
+  );
+  return nativeRawCandidateHash(snapshot, nativeEditReviewScope(paths, state), formal);
+}
+
+function portableRawDirectory(paths: NativeProjectPaths, name: string) {
+  return `${path.relative(paths.workspaceRuntimeRoot, nativePreferredChangeRuntimeDir(paths, name)).replaceAll('\\', '/')}/inputs`;
+}
+
+export async function captureNativePortableCandidateInputs(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+  projectRoot = paths.projectRoot,
+) {
+  const snapshot = await nativeRawInputSnapshot({
+    projectRoot,
+    managedArtifactRoot: paths.artifactRoot,
+  });
+  return {
+    rawInputRef: await saveNativeRawInput(
+      paths.workspaceRuntimeRoot,
+      portableRawDirectory(paths, state.name),
+      snapshot,
+    ),
+    candidateInputFingerprintGate: await nativeRawCandidateInputHash(snapshot, paths, state),
+    inputFingerprint: hashRuntimeValue({
+      content: snapshot.contentHash,
+      context: snapshot.contextHash,
+    }),
+    inputFingerprintGate: hashRuntimeValue({
+      content: snapshot.contentHash,
+      context: snapshot.contextHash,
+    }),
+  };
+}
+
+export function nativePortableCheckExecutionRef(check: NativeLocalCheckState) {
+  return check.rawInput?.executionRef ?? `native-check:${check.operationId}`;
+}
+
+async function portableRawSnapshot(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+  ref: string,
+) {
+  return readNativeRawInput(
+    paths.workspaceRuntimeRoot,
+    portableRawDirectory(paths, state.name),
+    ref,
+  );
+}
+
+export async function observeNativePortableRawInputs(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+  local: NativeLocalExecutionState,
+) {
+  if (!local.rawInputRef)
+    throw new Error(
+      '旧执行没有原始输入记录；保留旧证据，沿用原检查建立新记录，不能从当前文件补造旧快照',
+    );
+  const original = await portableRawSnapshot(paths, state, local.rawInputRef);
+  const current = await nativeRawInputSnapshot({
+    projectRoot: local.workspace.worktreeRoot,
+    managedArtifactRoot: paths.artifactRoot,
+    previous: original,
+  });
+  if (!original.complete || !current.complete)
+    throw new Error(
+      `原始输入观察不完整：${[...original.diagnostics, ...current.diagnostics].join('；')}`,
+    );
+  const changes = nativeRawInputChanges(original, current);
+  for (const check of local.checks) {
+    if (!check.rawInput) continue;
+    const after = await portableRawSnapshot(paths, state, check.rawInput.afterRef);
+    changes.push(...nativeRawInputChanges(after, current));
+  }
+  const currentRef = await saveNativeRawInput(
+    paths.workspaceRuntimeRoot,
+    portableRawDirectory(paths, state.name),
+    current,
+  );
+  return {
+    beforeRef: local.rawInputRef,
+    currentRef,
+    changes: [...new Map(changes.map((change) => [JSON.stringify(change), change])).values()],
+    git: { before: original.repositories, current: current.repositories },
+    ...(state.phase === 'archive' && !state.archived
+      ? {
+          refreshInputTemplate: {
+            expectedStateVersion: state.state_version,
+            observationRef: currentRef,
+            sourceExecutions: Object.fromEntries(
+              local.checks.map((check) => [check.id, nativePortableCheckExecutionRef(check)]),
+            ),
+            reportSha256: (
+              await hashProtectedProjectFile(
+                paths.projectRoot,
+                path
+                  .relative(
+                    paths.projectRoot,
+                    path.join(paths.changesDir, state.name, 'verification.md'),
+                  )
+                  .replaceAll('\\', '/'),
+                { label: 'Native 已接受验收报告' },
+              )
+            ).digest,
+            checkIds: [] as string[],
+            summary: '<当前 Agent 说明仅补这些检查且保留原验收的依据>',
+          },
+        }
+      : {}),
+  };
+}
+
+export interface NativePortableCheckRefreshInput {
+  expectedStateVersion: number;
+  observationRef: string;
+  sourceExecutions: Record<string, string>;
+  reportSha256: string;
+  checkIds: string[];
+  summary: string;
+}
+
+export async function refreshNativePortableChecks(
+  paths: NativeProjectPaths,
+  name: string,
+  refresh: NativePortableCheckRefreshInput,
+) {
+  const state = await readNativePortableChange(paths, name);
+  const local = await readCurrentLocalExecution({ paths, state });
+  if (!local?.rawInputRef)
+    throw new Error(
+      '原检查缺少原始输入记录；保留已接受结果，先诊断具体缺项，不能从当前文件补造旧执行',
+    );
+  return executeNativePortableCheckPlan({
+    paths,
+    name,
+    plans: nativePortableCheckPlansFromLocal(local),
+    archiveRefresh: refresh,
+  });
+}
+
+export async function assertNativePortableRawCandidate(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+  local: NativeLocalExecutionState,
+  current?: NativeRawInputSnapshot,
+) {
+  if (!local.rawInputRef) return;
+  const original = await portableRawSnapshot(paths, state, local.rawInputRef);
+  const observed =
+    current ??
+    (await nativeRawInputSnapshot({
+      projectRoot: local.workspace.worktreeRoot,
+      managedArtifactRoot: paths.artifactRoot,
+      previous: original,
+    }));
+  if (!original.complete || !observed.complete)
+    throw new Error(
+      `Native 原始候选输入不完整：${[...original.diagnostics, ...observed.diagnostics].join('；')}`,
+    );
+  const comparable = await nativePortableArchiveInputView(paths, state, observed, original);
+  if (
+    (await nativeRawCandidateInputHash(original, paths, state)) !==
+    (await nativeRawCandidateInputHash(comparable, paths, state))
+  )
+    throw new Error(
+      `Native 原候选内容已变化；保留工作，由当前 Agent 使用 comet edit-review observe native ${state.name} --session <当前会话> --json 判断实际影响`,
+    );
+}
+
+/** 仅将原事务已经发布且字节仍精确匹配的 Spec 映回原输入，其他路径保持实际观察。 */
+async function nativePortableArchiveInputView(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+  current: NativeRawInputSnapshot,
+  baseline: NativeRawInputSnapshot,
+): Promise<NativeRawInputSnapshot> {
+  if (state.phase !== 'archive') return current;
+  const transaction = await readNativePortableTransaction(paths, {
+    change: state.name,
+    kind: 'archive',
+  });
+  if (!transaction || transaction.kind !== 'archive') return current;
+  const entries = new Map(current.files.map((file) => [file.path, file]));
+  const originals = new Map(baseline.files.map((file) => [file.path, file]));
+  for (const change of transaction.journal.spec_changes.slice(
+    0,
+    transaction.journal.next_spec_index,
+  )) {
+    const ref = path
+      .relative(paths.projectRoot, path.join(paths.specsDir, change.capability, 'spec.md'))
+      .replaceAll('\\', '/');
+    const actual = entries.get(ref);
+    if (
+      change.operation === 'remove'
+        ? Boolean(actual)
+        : !actual ||
+          actual.hash !==
+            createHash('sha256')
+              .update(change.content ?? '')
+              .digest('hex')
+    )
+      throw new Error(`Native 已发布 Spec 与原归档事务不匹配：${ref}`);
+    const original = originals.get(ref);
+    if (original) entries.set(ref, original);
+    else entries.delete(ref);
+  }
+  return {
+    ...current,
+    files: [...entries.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
+  };
+}
+
+async function portableRawCheckApplicable(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+  check: NativeLocalCheckState,
+  current: NativeRawInputSnapshot,
+) {
+  if (!check.rawInput || !current.complete) return false;
+  const [before, after] = await Promise.all([
+    portableRawSnapshot(paths, state, check.rawInput.beforeRef),
+    portableRawSnapshot(paths, state, check.rawInput.afterRef),
+  ]);
+  if (
+    !before.complete ||
+    !after.complete ||
+    before.contextHash !== current.contextHash ||
+    after.contextHash !== current.contextHash ||
+    after.projectRoot !== current.projectRoot
+  )
+    return false;
+  const changes = nativeRawInputChanges(
+    after,
+    await nativePortableArchiveInputView(paths, state, current, after),
+  );
+  return (
+    !changes.length ||
+    isCheckInputRetained(
+      nativeEditReviewScope(paths, state),
+      nativePortableCheckExecutionRef(check),
+      changes,
+      [],
+      check.id,
+    )
+  );
+}
+
+export async function assertNativePortableRawCheckInputs(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+  local: NativeLocalExecutionState,
+) {
+  if (!local.rawInputRef) {
+    if (state.builder_handoff?.raw_input_ref)
+      throw new Error(
+        'Native 原始检查记录缺失；保留原批准和文件，恢复原执行记录或补齐缺失检查，不能复用摘要中的成功',
+      );
+    return;
+  }
+  const missing = (state.verification?.checks ?? []).filter(
+    (check) => !local.checks.some((actual) => actual.id === check.id),
+  );
+  if (missing.length)
+    throw new Error(
+      `Native 原始检查记录缺失：${missing.map((check) => check.id).join(', ')}；保留原批准并只补必要证据`,
+    );
+  const current = await nativeRawInputSnapshot({
+    projectRoot: local.workspace.worktreeRoot,
+    managedArtifactRoot: paths.artifactRoot,
+    previous: await portableRawSnapshot(paths, state, local.rawInputRef),
+  });
+  await assertNativePortableRawCandidate(paths, state, local, current);
+  for (const check of local.checks) {
+    if (
+      check.status !== 'passed' ||
+      !(await portableRawCheckApplicable(paths, state, check, current)) ||
+      !(await hasNativeRuntimeCheckEvidence(
+        { ...local, checks: [check] },
+        nativePreferredChangeRuntimeDir(paths, state.name),
+      ))
+    )
+      throw new Error(
+        `Native 检查 ${check.id} 的实际结果或输入不再适用；保留原阶段，由当前 Agent 选择受影响检查，失败或未执行不能复用旧成功`,
+      );
+  }
 }
 
 const NATIVE_DEPENDENCY_INPUT_DIRECTORIES = new Set([
@@ -552,6 +1449,7 @@ async function nativeGeneratedInputRoots(
   plans: readonly NativeCheckPlan[],
   stagedIndex: string,
   ignoredEntries: string,
+  observeDirectory?: (ref: string) => Promise<unknown>,
 ): Promise<{ cwdRefs: string[]; discovery: Map<string, string> }> {
   const roots = new Set(['.', ...plans.map(({ cwdRef }) => cwdRef)]);
   const discovery = new Map<string, string>();
@@ -584,6 +1482,7 @@ async function nativeGeneratedInputRoots(
     if (stat.isSymbolicLink()) throw new Error('Generated input discovery contains a link');
     if (!stat.isDirectory()) return;
     discovery.set(target, `${stat.dev}:${stat.ino}:${stat.mtimeMs}:${stat.ctimeMs}`);
+    await observeDirectory?.(relative);
     const directory = await fs.opendir(target);
     for await (const entry of directory) {
       if (entry.isDirectory() || entry.isSymbolicLink()) await visit(`${relative}/${entry.name}`);
@@ -644,6 +1543,7 @@ async function nativeIgnoredCheckInputSnapshot(
   runnerInputs: ReadonlySet<string> = new Set(),
   stagedIndex = '',
   repositories = new Set<string>(),
+  options: { enumerateOnly?: boolean; recurseGitlinks?: boolean } = {},
 ): Promise<NativeIgnoredInputSnapshot> {
   let ignoredPaths: string[];
   let realRoot: string;
@@ -780,7 +1680,9 @@ async function nativeIgnoredCheckInputSnapshot(
       if (!before.isFile()) {
         return incompleteNativeIgnoredInputSnapshot(`项目生成输入不是普通文件：${relative}`);
       }
-      const { digest, size } = await digestNativeInputFileContent(target);
+      const { digest, size } = options.enumerateOnly
+        ? { digest: '', size: before.size }
+        : await digestNativeInputFileContent(target);
       files.push({ path: relative, digest, size });
     } catch {
       return incompleteNativeIgnoredInputSnapshot(`项目生成输入无法稳定读取：${relative}`);
@@ -788,6 +1690,7 @@ async function nativeIgnoredCheckInputSnapshot(
   }
   // 父仓 ls-files 不进入 gitlink；每个子仓必须按自己的 ignore 规则收集生成输入。
   for (const [relative] of parseGitlinksInIndex(stagedIndex)) {
+    if (options.recurseGitlinks === false) continue;
     if (relative.split('/').some((part) => NATIVE_DEPENDENCY_INPUT_DIRECTORIES.has(part))) continue;
     try {
       const child = path.resolve(projectRoot, ...relative.split('/'));
@@ -819,6 +1722,7 @@ async function nativeIgnoredCheckInputSnapshot(
         childInputs,
         runGitCommand(child, ['ls-files', '--stage', '-z']),
         repositories,
+        options,
       );
       if (!snapshot.complete)
         return incompleteNativeIgnoredInputSnapshot(`子仓库 ${relative}：${snapshot.diagnostic}`);
@@ -838,7 +1742,7 @@ async function nativePhysicalCheckInputSnapshot(
   plans: readonly NativeCheckPlan[],
   managedArtifactRoot?: string,
   runnerInputs: ReadonlySet<string> = new Set(),
-  kind: 'check' | 'candidate' = 'check',
+  kind: 'check' | 'candidate' | 'paths' = 'check',
 ): Promise<NativeIgnoredInputSnapshot> {
   // 根配置和 lockfile 也可影响子目录内的检查。
   const cwdRefs = ['.'];
@@ -897,7 +1801,10 @@ async function nativePhysicalCheckInputSnapshot(
       // 候选绑定只保存内容摘要；不能根据文件名否决用户的项目输入。
       if (!entry.isFile()) return unreadable(relative, '不是普通文件或包含链接');
       try {
-        const { digest, size } = await digestNativeInputFileContent(target);
+        const { digest, size } =
+          kind === 'paths'
+            ? { digest: '', size: (await fs.lstat(target)).size }
+            : await digestNativeInputFileContent(target);
         files.set(relative, {
           path: relative,
           digest,
@@ -939,23 +1846,30 @@ function nativeLocalCheckEvidenceDigest(
     | 'startedAt'
     | 'completedAt'
     | 'log'
+    | 'rawInput'
   >,
   logContent: string,
 ): string {
-  return canonicalHash('comet.native.local-check-evidence.v1', {
-    id: check.id,
-    name: check.name,
-    status: check.status,
-    repeatable: check.repeatable,
-    timeoutMs: check.timeoutMs,
-    argv: check.argv,
-    cwd: path.resolve(check.cwd),
-    exitCode: check.exitCode,
-    startedAt: check.startedAt,
-    completedAt: check.completedAt,
-    log: check.log,
-    logDigest: digestNativeCheckInput(logContent),
-  });
+  return canonicalHash(
+    check.rawInput
+      ? 'comet.native.local-check-evidence.v2'
+      : 'comet.native.local-check-evidence.v1',
+    {
+      id: check.id,
+      name: check.name,
+      status: check.status,
+      repeatable: check.repeatable,
+      timeoutMs: check.timeoutMs,
+      argv: check.argv,
+      cwd: path.resolve(check.cwd),
+      exitCode: check.exitCode,
+      startedAt: check.startedAt,
+      completedAt: check.completedAt,
+      log: check.log,
+      logDigest: digestNativeCheckInput(logContent),
+      ...(check.rawInput ? { rawInput: check.rawInput } : {}),
+    },
+  );
 }
 
 async function nativeCheckWorkingTreeDigest(
@@ -1570,6 +2484,8 @@ async function nativeCandidateCommentGate(
   options: NativeCheckInputGateOptions,
   observation: Awaited<ReturnType<typeof readNativeCheckInputObservation>>,
 ): Promise<string | null> {
+  const { nativeSourceCommentFingerprint, supportsNativeSourceComments } =
+    await import('./native-source-comments.js');
   if (!observation) {
     try {
       // 非 Git 工作区也比较实际源码；不完整读取不能证明候选未变。
@@ -1746,7 +2662,7 @@ async function nativeCandidateCommentGate(
               (options.legacyShapeSemanticSnapshot && shapeArtifact.legacyFingerprint !== null
                 ? nativeSourceCommentFingerprint(entry.path, indexedSource) ===
                   shapeArtifact.legacyFingerprint
-                : editContentHash(indexedSource) === shapeArtifact.contentHash) &&
+                : digestNativeCheckInput(indexedSource) === shapeArtifact.contentHash) &&
               (process.platform === 'win32' || executable === (indexed.mode === '100755'))
             ) {
               unchangedPaths.add(entry.path);
@@ -1790,7 +2706,7 @@ async function nativeCandidateCommentGate(
           if (
             modeMatches &&
             (reviewed
-              ? editContentHash(indexedSource) === reviewed.beforeHash
+              ? digestNativeCheckInput(indexedSource) === reviewed.beforeHash
               : nativeSourceCommentFingerprint(entry.path, indexedSource) === fingerprint)
           ) {
             unchangedPaths.add(entry.path);
@@ -1916,66 +2832,6 @@ function requestCheckPlan(request: NativeVerifierCheckRequest): NativeCheckPlan 
   };
 }
 
-export function preservedLocalChecksForVersion(options: {
-  local: NativeLocalExecutionState | null;
-  state: NativePortableState;
-  projectRoot: string;
-}): NativeLocalExecutionState {
-  if (options.local === null || options.local.change !== options.state.name) {
-    return rebuildNativeLocalExecution({
-      portableState: options.state,
-      projectRoot: options.projectRoot,
-      branch: currentBranch(options.projectRoot),
-    });
-  }
-  const operationId = options.local.execution?.operationId ?? randomUUID();
-  return {
-    ...options.local,
-    basedOnStateVersion: options.state.state_version,
-    execution: {
-      operationId,
-      stage: 'checking',
-      actor: 'runtime',
-      executionId: null,
-      status: 'completed',
-      startedAt: options.local.execution?.startedAt ?? new Date().toISOString(),
-      requestCheckRounds: 0,
-    },
-    checks: options.local.checks.map((check) =>
-      check.status === 'running' || check.status === 'planned'
-        ? { ...check, operationId, status: 'interrupted' as const }
-        : { ...check, operationId },
-    ),
-  };
-}
-
-export async function readCurrentLocalExecution(options: {
-  paths: NativeProjectPaths;
-  state: NativePortableState;
-}): Promise<NativeLocalExecutionState | null> {
-  try {
-    const local = await readNativeLocalExecution(
-      nativeLocalExecutionFile(options.paths, options.state.name),
-    );
-    const action = activeNativeVerifierAction(options.state);
-    const boundToAction =
-      action &&
-      local?.execution?.operationId === action.id &&
-      local?.candidateId === options.state.builder_handoff?.candidate_id;
-    if (
-      local === null ||
-      local.change !== options.state.name ||
-      (local.basedOnStateVersion !== options.state.state_version && !boundToAction) ||
-      (action && !boundToAction)
-    ) {
-      return null;
-    }
-    return { ...local, basedOnStateVersion: options.state.state_version };
-  } catch {
-    return null;
-  }
-}
-
 export async function persistVerifierExecutionError(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
@@ -2048,6 +2904,20 @@ export async function rebindNativeCheckEvidence(options: {
   projectRoot?: string;
 }): Promise<NativeLocalExecutionState | null> {
   const { local, previous, next, plans, paths } = options;
+  if (
+    local?.rawInputRef &&
+    previous.shape_confirmation_hash === next.shape_confirmation_hash &&
+    path.resolve(local.workspace.projectRoot) ===
+      path.resolve(options.projectRoot ?? paths.projectRoot)
+  )
+    return {
+      ...preservedLocalChecksForVersion({
+        local,
+        state: next,
+        projectRoot: options.projectRoot ?? paths.projectRoot,
+      }),
+      candidateId: next.builder_handoff!.candidate_id,
+    };
   if (
     !local ||
     !local.checks.length ||
@@ -2125,12 +2995,218 @@ export async function rebindNativeCheckEvidence(options: {
   }
 }
 
+async function reserveNativeRawCheckPlanLocked(
+  options: Parameters<typeof reserveNativePortableCheckPlan>[0],
+  state: NativePortableState,
+  inputLocal: NativeLocalExecutionState,
+): Promise<Awaited<ReturnType<typeof reserveNativePortableCheckPlan>>> {
+  let local = inputLocal;
+  if (local.execution?.stage === 'checking' && local.execution.status === 'running') {
+    if ((await inspectNativePortableCheckExecution(local)) !== 'orphaned')
+      throw new Error('原检查仍运行或结果不明；继续原执行，不能重复副作用');
+    local = interruptNativePortableCheckExecution(local);
+  }
+  const current = await nativeRawInputSnapshot({
+    projectRoot: options.projectRoot,
+    managedArtifactRoot: options.paths.artifactRoot,
+    previous: await portableRawSnapshot(options.paths, state, local.rawInputRef!),
+  });
+  await assertNativePortableRawCandidate(options.paths, state, local, current);
+  const refresh = options.archiveRefresh;
+  const operationId = refresh
+    ? canonicalHash('comet.native.check-refresh.v1', { name: state.name, ...refresh })
+    : randomUUID();
+  if (refresh) {
+    if (
+      state.phase !== 'archive' ||
+      state.status !== 'active' ||
+      state.archived ||
+      state.children_contract_hash ||
+      state.verification_result !== 'pass' ||
+      refresh.expectedStateVersion !== state.state_version ||
+      !Array.isArray(refresh.checkIds) ||
+      !refresh.checkIds.length ||
+      new Set(refresh.checkIds).size !== refresh.checkIds.length ||
+      !refresh.summary?.trim() ||
+      !refresh.sourceExecutions ||
+      Object.keys(refresh).sort().join(',') !==
+        'checkIds,expectedStateVersion,observationRef,reportSha256,sourceExecutions,summary'
+    )
+      throw new Error('补充检查必须绑定当前已接受候选、原报告及明确检查 ID');
+    const transaction = await readNativePortableTransaction(options.paths, {
+      change: state.name,
+      kind: 'archive',
+    });
+    if (
+      transaction &&
+      (transaction.kind !== 'archive' ||
+        !['prepared', 'specs-applied'].includes(transaction.journal.status))
+    )
+      throw new Error('原归档事务已越过可补检查阶段；先核对原事务，不能重放归档副作用');
+    const report = await readNativeBoundedTextFile({
+      root: options.paths.changesDir,
+      ref: `${state.name}/verification.md`,
+      maxBytes: null,
+    });
+    if (
+      report.hash !== refresh.reportSha256 ||
+      report.text !== renderNativeVerificationReport(state)
+    )
+      throw new Error('原验收报告已变化，不能沿用原接受结果补检查');
+    const observed = await portableRawSnapshot(options.paths, state, refresh.observationRef);
+    if (
+      !observed.complete ||
+      observed.contentHash !== current.contentHash ||
+      observed.contextHash !== current.contextHash ||
+      hashRuntimeValue(observed.repositories as unknown as RuntimeValue) !==
+        hashRuntimeValue(current.repositories as unknown as RuntimeValue)
+    )
+      throw new Error('补充检查的输入观察已变化，由当前 Agent 只补判断新增变化');
+    await assertEditReviewsComplete(nativeEditReviewScope(options.paths, state));
+    const selected = refresh.checkIds.map((id) => local.checks.find((check) => check.id === id));
+    if (selected.some((check) => !check || !check.repeatable || !check.rawInput))
+      throw new Error('只能补原计划中可重复且有真实输入记录的检查');
+    if (
+      selected.every(
+        (check) =>
+          nativePortableCheckExecutionRef(check!) === `native-check:${operationId}` &&
+          ['passed', 'failed'].includes(check!.status),
+      )
+    )
+      return {
+        kind: 'reuse',
+        state,
+        checks: authoritativePortableChecks({
+          local,
+          projectRoot: options.projectRoot,
+          supplied: [],
+        }),
+      };
+    if (
+      selected.some(
+        (check) => nativePortableCheckExecutionRef(check!) !== refresh.sourceExecutions[check!.id],
+      )
+    )
+      throw new Error('原检查执行已更新；不重放旧请求，读取当前输入观察');
+  }
+  const execute: NativeCheckPlan[] = [];
+  const checks: NativeLocalCheckState[] = [];
+  const irreversiblePlans = nativePortableCheckPlansFromLocal(local).filter(
+    (plan) =>
+      !plan.repeatable &&
+      local.checks.some((check) => check.id === plan.id && check.executionCount > 0),
+  );
+  const retry = options.retryCheckIds ? new Set(options.retryCheckIds) : null;
+  if (
+    retry &&
+    (!retry.size ||
+      [...retry].some(
+        (id) => !local.checks.some((check) => check.id === id && check.status === 'interrupted'),
+      ))
+  )
+    throw new Error('重试 ID 必须对应当前中断的原检查');
+  for (const plan of options.plans) {
+    const key = nativeCheckPlanKey(plan);
+    const sameId = local.checks.find((check) => check.id === plan.id);
+    if (sameId && nativeLocalCheckPlanKey(sameId, options.projectRoot) !== key)
+      throw new Error(`Native 检查 ${plan.id} 与原命令定义冲突；保留原执行记录`);
+    const old =
+      sameId ??
+      local.checks.find((check) => nativeLocalCheckPlanKey(check, options.projectRoot) === key);
+    if (old && old.id !== plan.id)
+      throw new Error(`Native 检查 ${plan.id} 是原检查 ${old.id} 的别名；继续原检查，不能重复执行`);
+    if (
+      !old &&
+      irreversiblePlans.some(
+        (original) => nativeCheckInvocationKey(original) === nativeCheckInvocationKey(plan),
+      )
+    )
+      throw new Error(
+        `Native 检查 ${plan.id} 与已执行的不可重复命令相同；不能用新的 ID 或重试标记重放`,
+      );
+    const applicable =
+      old && (await portableRawCheckApplicable(options.paths, state, old, current));
+    const valid =
+      old &&
+      (await hasNativeRuntimeCheckEvidence(
+        { ...local, checks: [old] },
+        nativePreferredChangeRuntimeDir(options.paths, state.name),
+      ));
+    if (
+      old &&
+      !refresh?.checkIds.includes(old.id) &&
+      ((old.status === 'passed' && applicable && valid) ||
+        (old.status === 'failed' && applicable) ||
+        (old.status === 'interrupted' && retry && !retry.has(old.id)))
+    ) {
+      checks.push(old);
+      continue;
+    }
+    if (old && old.executionCount > 0 && !old.repeatable)
+      throw new Error(
+        `检查 ${old.id} 不可重复执行，当前输入也没有有效保留判断；保留原结果并确定后续验证方式`,
+      );
+    if (old?.status === 'interrupted' && old.executionCount >= 3)
+      throw new Error(`Native check retry limit (3) reached: ${old.id}`);
+    execute.push(plan);
+    checks.push(
+      old
+        ? resetNativeCheckForExecution(old, plan, operationId, options.projectRoot)
+        : localCheck(plan, operationId, options.projectRoot),
+    );
+  }
+  for (const previous of local.checks)
+    if (!checks.some((check) => check.id === previous.id)) checks.push(previous);
+  if (!execute.length)
+    return {
+      kind: 'reuse',
+      state,
+      checks: authoritativePortableChecks({
+        local: { ...local, checks },
+        projectRoot: options.projectRoot,
+        supplied: [],
+      }),
+    };
+  if (local.execution?.stage === 'verifying' && local.execution.status === 'running')
+    throw new Error(
+      '保留当前 Verifier；由其使用 request-checks 只请求受影响检查，不能另起检查轮次',
+    );
+  const ownerIdentity = await readProcessIdentity(process.pid);
+  const operation: NativeLocalExecutionState = {
+    ...local,
+    basedOnStateVersion: state.state_version,
+    candidateId: state.builder_handoff!.candidate_id,
+    workspace: {
+      ...local.workspace,
+      machineId: os.hostname(),
+      branch: currentBranch(options.projectRoot),
+    },
+    execution: {
+      operationId,
+      stage: 'checking',
+      actor: 'runtime',
+      executionId: null,
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      requestCheckRounds: 0,
+      ownerPid: process.pid,
+      ...(ownerIdentity ? { ownerIdentity } : {}),
+    },
+    checks: checks.map((check) => ({ ...check, operationId })),
+  };
+  await writeNativeLocalExecution(nativeLocalExecutionFile(options.paths, state.name), operation, {
+    containedRoot: options.paths.runtimeDir,
+  });
+  return { kind: 'execute', state, local: operation, plans: execute, inputDiagnostics: [] };
+}
+
 async function reserveNativePortableCheckPlan(options: {
   paths: NativeProjectPaths;
   name: string;
   plans: NativeCheckPlan[];
   projectRoot: string;
   retryCheckIds?: readonly string[];
+  archiveRefresh?: NativePortableCheckRefreshInput;
 }): Promise<
   | {
       kind: 'execute';
@@ -2147,9 +3223,16 @@ async function reserveNativePortableCheckPlan(options: {
     async () => {
       const state = await readNativePortableChange(options.paths, options.name);
       await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
-      if (state.phase !== 'verify' || state.loop.stage !== 'verify-ready') {
+      if (
+        (state.phase !== 'verify' || state.loop.stage !== 'verify-ready') &&
+        !(state.phase === 'archive' && options.archiveRefresh)
+      ) {
         throw new Error('Native checks require Verify ready state');
       }
+      const rawLocal = state.builder_handoff?.raw_input_ref
+        ? await readCurrentLocalExecution({ paths: options.paths, state })
+        : await readNativeLocalExecution(nativeLocalExecutionFile(options.paths, state.name));
+      if (rawLocal?.rawInputRef) return reserveNativeRawCheckPlanLocked(options, state, rawLocal);
       const shapeEvidence = await readNativeApprovedShapeSemanticSnapshot({
         paths: options.paths,
         state,
@@ -2561,8 +3644,10 @@ async function updateReservedNativeCheckPlan(options: {
       const state = await readNativePortableChange(options.paths, options.state.name);
       if (
         state.state_version !== options.state.state_version ||
-        state.phase !== 'verify' ||
-        state.loop.stage !== 'verify-ready'
+        state.phase !== options.state.phase ||
+        (state.phase === 'verify'
+          ? state.loop.stage !== 'verify-ready'
+          : state.phase !== 'archive' || state.archived || state.status !== 'active')
       ) {
         throw new Error('Native check plan state changed during execution');
       }
@@ -2591,6 +3676,7 @@ export async function executeNativePortableCheckPlan(options: {
   plans: NativeCheckPlan[];
   projectRoot?: string;
   retryCheckIds?: readonly string[];
+  archiveRefresh?: NativePortableCheckRefreshInput;
 }): Promise<{
   state: NativePortableState;
   checks: NativePortableCheckSummary[];
@@ -2619,6 +3705,31 @@ export async function executeNativePortableCheckPlan(options: {
   const runtimeDir = nativePreferredChangeRuntimeDir(options.paths, reservation.state.name);
   try {
     for (const plan of reservation.plans) {
+      const rawBefore = reservation.local.rawInputRef
+        ? await nativeRawInputSnapshot({
+            projectRoot,
+            managedArtifactRoot: options.paths.artifactRoot,
+            previous: await portableRawSnapshot(
+              options.paths,
+              reservation.state,
+              reservation.local.rawInputRef,
+            ),
+          })
+        : null;
+      if (rawBefore)
+        await assertNativePortableRawCandidate(
+          options.paths,
+          reservation.state,
+          reservation.local,
+          rawBefore,
+        );
+      const rawBeforeRef = rawBefore
+        ? await saveNativeRawInput(
+            options.paths.workspaceRuntimeRoot,
+            portableRawDirectory(options.paths, reservation.state.name),
+            rawBefore,
+          )
+        : null;
       const startedAt = new Date().toISOString();
       await updateReservedNativeCheckPlan({
         paths: options.paths,
@@ -2668,6 +3779,17 @@ export async function executeNativePortableCheckPlan(options: {
           });
         },
       });
+      const rawAfterRef = rawBefore
+        ? await saveNativeRawInput(
+            options.paths.workspaceRuntimeRoot,
+            portableRawDirectory(options.paths, reservation.state.name),
+            await nativeRawInputSnapshot({
+              projectRoot,
+              managedArtifactRoot: options.paths.artifactRoot,
+              previous: rawBefore,
+            }),
+          )
+        : null;
       const logContent = await fs.readFile(
         path.resolve(runtimeDir, ...result.logRef.split('/')),
         'utf8',
@@ -2689,6 +3811,15 @@ export async function executeNativePortableCheckPlan(options: {
               log: result.logRef,
               activeProcess: null,
               evidence: 'runtime' as const,
+              ...(rawBeforeRef && rawAfterRef
+                ? {
+                    rawInput: {
+                      beforeRef: rawBeforeRef,
+                      afterRef: rawAfterRef,
+                      executionRef: `native-check:${operationId}`,
+                    },
+                  }
+                : {}),
             };
             return {
               ...completed,
@@ -2904,10 +4035,24 @@ export async function reserveVerifierRequestedChecks(options: {
   const existingByKey = new Map<string, NativeLocalCheckState>();
   const existingByKeyAll = new Map<string, NativeLocalCheckState>();
   const existingKeyById = new Map<string, string>();
+  const rawCurrent = local.rawInputRef
+    ? await nativeRawInputSnapshot({
+        projectRoot: options.projectRoot,
+        managedArtifactRoot: options.paths.artifactRoot,
+        previous: await portableRawSnapshot(options.paths, options.state, local.rawInputRef),
+      })
+    : null;
+  if (rawCurrent)
+    await assertNativePortableRawCandidate(options.paths, options.state, local, rawCurrent);
   for (const check of local.checks) {
     const key = nativeLocalCheckPlanKey(check, options.projectRoot);
     existingByKeyAll.set(key, check);
-    if (check.status === 'passed') existingByKey.set(key, check);
+    if (
+      check.status === 'passed' &&
+      (!rawCurrent ||
+        (await portableRawCheckApplicable(options.paths, options.state, check, rawCurrent)))
+    )
+      existingByKey.set(key, check);
     existingKeyById.set(check.id, key);
   }
 
@@ -2917,6 +4062,18 @@ export async function reserveVerifierRequestedChecks(options: {
     const plan = requestCheckPlan(request);
     validateNativeCheckPlan(options.projectRoot, plan);
     const key = nativeCheckPlanKey(plan);
+    if (
+      !existingByKeyAll.has(key) &&
+      nativePortableCheckPlansFromLocal(local).some(
+        (original) =>
+          !original.repeatable &&
+          nativeCheckInvocationKey(original) === nativeCheckInvocationKey(plan) &&
+          local.checks.some((check) => check.id === original.id && check.executionCount > 0),
+      )
+    )
+      throw new Error(
+        `Native check ${plan.id} refers to an executed command that is not repeatable`,
+      );
     const previousRequestKey = requestedKeyById.get(plan.id);
     if (previousRequestKey !== undefined && previousRequestKey !== key) {
       throw new Error(`Native Verifier check ID ${plan.id} refers to conflicting commands`);
@@ -2927,9 +4084,14 @@ export async function reserveVerifierRequestedChecks(options: {
     }
     requestedKeyById.set(plan.id, key);
     const existing = existingByKeyAll.get(key);
-    if (existing && existing.status !== 'passed' && !existing.repeatable) {
+    if (
+      existing &&
+      !existingByKey.has(key) &&
+      existing.executionCount > 0 &&
+      !existing.repeatable
+    ) {
       throw new Error(
-        `Native check ${existing.id} did not pass and is not repeatable; user resolution is required`,
+        `Native check ${existing.id} has no applicable passing evidence and is not repeatable; user resolution is required`,
       );
     }
     if (existing && existing.status !== 'passed' && existing.executionCount >= 3) {
@@ -2961,7 +4123,7 @@ export async function reserveVerifierRequestedChecks(options: {
       ...local.checks.map((check) => {
         const key = nativeLocalCheckPlanKey(check, options.projectRoot);
         const plan = requestedByKey.get(key);
-        return plan && check.status !== 'passed'
+        return plan && !existingByKey.has(key)
           ? resetNativeCheckForExecution(
               check,
               plan,
@@ -3041,6 +4203,31 @@ export async function executeReservedVerifierRequestedChecks(options: {
   let operation: NativeLocalExecutionState;
   try {
     for (const plan of options.reservation.novelPlans) {
+      const rawBefore = options.reservation.local.rawInputRef
+        ? await nativeRawInputSnapshot({
+            projectRoot: options.projectRoot,
+            managedArtifactRoot: options.paths.artifactRoot,
+            previous: await portableRawSnapshot(
+              options.paths,
+              options.reservation.state,
+              options.reservation.local.rawInputRef,
+            ),
+          })
+        : null;
+      if (rawBefore)
+        await assertNativePortableRawCandidate(
+          options.paths,
+          options.reservation.state,
+          options.reservation.local,
+          rawBefore,
+        );
+      const rawBeforeRef = rawBefore
+        ? await saveNativeRawInput(
+            options.paths.workspaceRuntimeRoot,
+            portableRawDirectory(options.paths, options.reservation.state.name),
+            rawBefore,
+          )
+        : null;
       const startedAt = new Date().toISOString();
       operation = await updateReservedVerifierRequestedChecks({
         paths: options.paths,
@@ -3092,6 +4279,17 @@ export async function executeReservedVerifierRequestedChecks(options: {
           });
         },
       });
+      const rawAfterRef = rawBefore
+        ? await saveNativeRawInput(
+            options.paths.workspaceRuntimeRoot,
+            portableRawDirectory(options.paths, options.reservation.state.name),
+            await nativeRawInputSnapshot({
+              projectRoot: options.projectRoot,
+              managedArtifactRoot: options.paths.artifactRoot,
+              previous: rawBefore,
+            }),
+          )
+        : null;
       const logContent = await fs.readFile(
         await resolveContainedNativePath(
           runtimeDir,
@@ -3115,6 +4313,15 @@ export async function executeReservedVerifierRequestedChecks(options: {
               log: result.logRef,
               activeProcess: null,
               evidence: 'runtime' as const,
+              ...(rawBeforeRef && rawAfterRef
+                ? {
+                    rawInput: {
+                      beforeRef: rawBeforeRef,
+                      afterRef: rawAfterRef,
+                      executionRef: `native-check:${options.reservation.local.execution!.operationId}`,
+                    },
+                  }
+                : {}),
             };
             return {
               ...completed,

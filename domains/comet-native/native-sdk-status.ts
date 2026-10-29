@@ -97,14 +97,15 @@ export async function projectNativeSdkStatus(
       },
     ];
   });
-  const editReviews = state.builder_handoff
-    ? await inspectEditReviews(
-        nativeEditReviewScope(
+  const editReviews =
+    !state.archived &&
+    state.shape_confirmation_hash &&
+    ['build', 'verify', 'archive'].includes(state.phase)
+      ? await inspectNativeEditReviews(
           await nativeProjectPaths(options.projectRoot, artifactRootRef, { readOnly: true }),
           state,
-        ),
-      )
-    : [];
+        )
+      : [];
   return {
     schema: 'comet.native.sdk-status.v1' as const,
     diagnostics: await inspectNativeSdkRunDiagnostics(options.projectRoot, run, {
@@ -203,5 +204,4 @@ export async function projectNativeSdkStatus(
 }
 
 export type NativeSdkStatusProjection = Awaited<ReturnType<typeof inspectNativeSdkStatus>>;
-import { inspectEditReviews } from '../workflow-contract/edit-review.js';
-import { nativeEditReviewScope } from './native-edit-review.js';
+import { inspectNativeEditReviews } from './native-edit-review.js';

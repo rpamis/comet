@@ -21,7 +21,7 @@ interface ArchiveDocumentOutputs {
   evidence?: { design: DocumentReceipt; plan: DocumentReceipt };
 }
 
-/** 显式重开 Verify 不继承旧执行链，但已通过 Build 的文档验收仍然有效。 */
+/** 显式续行不继承旧执行结果；仍有效的 Design 与 Plan 使用原接受来源。 */
 export function classicArchiveDocumentOutputs(
   run: Readonly<WorkflowRun>,
   action: Readonly<RuntimeAction>,
@@ -40,9 +40,8 @@ export function classicArchiveDocumentOutputs(
     ?.slice()
     .reverse()
     .find((entry) => (run.actionContexts[entry.actionId]?.sequence ?? Infinity) < actionSequence);
-  // 内置修订命令只有这三种；Design/Plan 修订只允许在 Design/Build，
-  // 因而成功重开 Verify 后可接受的后续修订仍只能是再次重开 Verify。
-  if (command?.name !== 'reopen-verification') return { outputs, recovered: false };
+  if (!command || !['reopen-verification', 'continue-build'].includes(command.name))
+    return { outputs, recovered: false };
   const reopenedAt = run.actionContexts[command.actionId].sequence;
   // 先找最近一轮，再检查结果；失效或未验收的新轮次不能回退到更老的成功。
   const accepted = run.evidenceWaits
@@ -77,18 +76,27 @@ export function classicArchiveDocumentOutputs(
     })
   )
     return { outputs, recovered: false };
+  const inherited: ArchiveDocumentOutputs = accepted.results['full.build.plan']
+    ? {
+        recovered: false,
+        outputs: Object.fromEntries(
+          Object.entries(accepted.results).map(([step, value]) => [step, value.value]),
+        ),
+      }
+    : classicArchiveDocumentOutputs(run, checked);
+  const source = inherited.outputs;
   return {
     outputs: Object.fromEntries(
-      Object.entries(accepted.results)
-        .filter(([step]) => ['full.design.document', 'full.build.plan'].includes(step))
-        .map(([step, value]) => [step, value.value]),
+      Object.entries(source).filter(([step]) =>
+        ['full.design.document', 'full.build.plan'].includes(step),
+      ),
     ),
     recovered: true,
-    evidence: {
-      design: (accepted.results['full.design.evidence']?.value ??
-        (accepted.results['full.build.plan']?.value as { designEvidence?: unknown })
+    evidence: inherited.evidence ?? {
+      design: (source['full.design.evidence'] ??
+        (source['full.build.plan'] as { designEvidence?: unknown })
           ?.designEvidence) as DocumentReceipt,
-      plan: accepted.results['full.build.plan.evidence']?.value as unknown as DocumentReceipt,
+      plan: source['full.build.plan.evidence'] as DocumentReceipt,
     },
   };
 }

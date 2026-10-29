@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { promises as fs } from 'node:fs';
+import gitProcess from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
+import nativeFs, { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -252,6 +253,113 @@ describe('Classic check input snapshots', () => {
 
     expect(snapshot.entries.map((entry) => entry.p)).not.toContain('sdk-verification.md');
     expect(snapshot.entries.map((entry) => entry.p)).toContain('source.js');
+  });
+
+  it.each(['assume-unchanged', 'crlf', 'clean-filter', 'checkstat-minimal'])(
+    'binds physical input bytes even when Git considers the worktree clean (%s)',
+    async (kind) => {
+      git(root, 'config', 'core.autocrlf', 'false');
+      const ref = 'input.unknown',
+        target = path.join(root, ref);
+      let before = 'AAAA',
+        after = 'BBBB';
+      if (kind === 'crlf') {
+        before = 'a\r\nb\n';
+        after = 'a\nb\r\n';
+        await fs.writeFile(path.join(root, '.gitattributes'), `${ref} text\n`);
+      }
+      if (kind === 'clean-filter') {
+        after = 'aaaa';
+        const filter = path.join(root, 'lower.cjs');
+        await fs.writeFile(
+          filter,
+          "let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>process.stdout.write(s.toLowerCase()));",
+        );
+        git(root, 'config', 'filter.lower.clean', `node "${filter.replaceAll('\\', '/')}"`);
+        await fs.writeFile(path.join(root, '.gitattributes'), `${ref} filter=lower\n`);
+      }
+      if (kind === 'checkstat-minimal') {
+        git(root, 'config', 'core.checkStat', 'minimal');
+        git(root, 'config', 'core.trustctime', 'false');
+      }
+      const date = new Date('2020-01-01T00:00:00Z');
+      await fs.writeFile(target, before);
+      if (kind === 'checkstat-minimal') await fs.utimes(target, date, date);
+      git(root, 'add', '.');
+      git(root, 'commit', '-m', 'raw input baseline');
+      const baseline = await collectCheckSnapshot(root, change);
+      if (kind === 'assume-unchanged') git(root, 'update-index', '--assume-unchanged', ref);
+      await fs.writeFile(target, after);
+      if (kind === 'checkstat-minimal') await fs.utimes(target, date, date);
+      expect(
+        execFileSync('git', ['status', '--porcelain=v1', '--', ref], {
+          cwd: root,
+          encoding: 'utf8',
+        }),
+      ).toBe('');
+      const current = await collectCheckSnapshot(root, change);
+      expect(current.digest).not.toBe(baseline.digest);
+      expect(diffCheckManifests(baseline.entries, current.entries).changed).toContain(ref);
+    },
+  );
+
+  it('rejects a temporary parent junction while batch hashing without discarding excluded output writes', async () => {
+    const source = path.join(root, 'src'),
+      saved = `${root}-saved-src`,
+      outside = `${root}-outside-src`;
+    await fs.mkdir(source);
+    await fs.mkdir(outside);
+    await fs.writeFile(path.join(source, 'race.unknown'), 'AAAA');
+    await fs.writeFile(path.join(outside, 'race.unknown'), 'BBBB');
+    const original = gitProcess.spawnSync;
+    let injected = false;
+    vi.spyOn(gitProcess, 'spawnSync').mockImplementation(((
+      ...args: Parameters<typeof gitProcess.spawnSync>
+    ) => {
+      if (!injected && args[0] === 'git' && (args[1] as string[]).includes('hash-object')) {
+        injected = true;
+        // 在真实 Git 读取期间替换父目录，随后恢复原路径与叶子；不伪造 Git 输出。
+        nativeFs.renameSync(source, saved);
+        nativeFs.symlinkSync(outside, source, process.platform === 'win32' ? 'junction' : 'dir');
+        try {
+          return original(...args);
+        } finally {
+          nativeFs.unlinkSync(source);
+          nativeFs.renameSync(saved, source);
+        }
+      }
+      return original(...args);
+    }) as typeof gitProcess.spawnSync);
+    syncBuiltinESMExports();
+    try {
+      await expect(collectCheckSnapshot(root, change)).rejects.toThrow('changed during snapshot');
+      expect(injected).toBe(true);
+      expect(await fs.readFile(path.join(source, 'race.unknown'), 'utf8')).toBe('AAAA');
+      vi.restoreAllMocks();
+      syncBuiltinESMExports();
+      const stable = await collectCheckSnapshot(root, change);
+      expect(stable.entries.some((entry) => entry.p === 'src/race.unknown')).toBe(true);
+    } finally {
+      vi.restoreAllMocks();
+      syncBuiltinESMExports();
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('observes removed tracked parent directories and later restoration without treating them as broken input paths', async () => {
+    const directory = path.join(root, 'module');
+    await fs.mkdir(directory);
+    await fs.writeFile(path.join(directory, 'input.unknown'), 'original bytes');
+    git(root, 'add', 'module');
+    git(root, 'commit', '-m', 'nested input');
+    const before = await collectCheckSnapshot(root, change);
+    await fs.rm(directory, { recursive: true });
+    const removed = await collectCheckSnapshot(root, change);
+    expect(removed.digest).not.toBe(before.digest);
+    expect(removed.entries.find((entry) => entry.p === 'module/input.unknown')?.h).toBe('missing');
+    await fs.mkdir(directory);
+    await fs.writeFile(path.join(directory, 'input.unknown'), 'original bytes');
+    expect((await collectCheckSnapshot(root, change)).digest).toBe(before.digest);
   });
 
   it('collects per-file entries; repository metadata binds only under legacy semantics', async () => {

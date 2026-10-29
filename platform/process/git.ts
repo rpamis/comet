@@ -218,6 +218,7 @@ export function readGitStatusPorcelainAsync(
 export async function readGitStatusObservationAsync(
   cwd: string,
   pathspecs: readonly string[] = [],
+  options: { allowUnborn?: boolean; includeIgnored?: boolean } = {},
 ): Promise<{ head: string; branch: string; status: string }> {
   const raw = await executeGitCommandAsync(cwd, [
     'status',
@@ -226,10 +227,11 @@ export async function readGitStatusObservationAsync(
     '-z',
     '--untracked-files=all',
     '--ignore-submodules=none',
+    ...(options.includeIgnored ? ['--ignored=matching'] : []),
     '--',
     ...pathspecs,
   ]);
-  const observation = parseGitStatusObservation(raw);
+  const observation = parseGitStatusObservation(raw, options);
   // Git 的伪状态与同名合法分支有歧义；仅在这两种情况下按原完整 ref 规则复核。
   if (raw.split('\0').some((record) => /^# branch\.head \((?:detached|null)\)$/iu.test(record))) {
     const [head, ref] = (
@@ -242,7 +244,10 @@ export async function readGitStatusObservationAsync(
   return observation;
 }
 
-export function parseGitStatusObservation(raw: string): {
+export function parseGitStatusObservation(
+  raw: string,
+  options: { allowUnborn?: boolean } = {},
+): {
   head: string;
   branch: string;
   status: string;
@@ -256,6 +261,10 @@ export function parseGitStatusObservation(raw: string): {
     const record = records[index];
     if (record.startsWith('# branch.oid ')) {
       const value = record.slice(13);
+      if (options.allowUnborn && value === '(initial)' && head === undefined) {
+        head = 'unborn';
+        continue;
+      }
       if (head !== undefined || !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(value))
         throw new Error('Git status returned an invalid HEAD');
       head = value;

@@ -21,6 +21,151 @@ export interface ProtectedProjectPathInspection {
   kind: ProtectedProjectPathKind;
 }
 
+/** 单次文件观察共用目录身份；叶子仍新鲜读取，返回结果前必须 finish。 */
+export async function createProtectedProjectReadSession(
+  projectRoot: string,
+  label: string,
+  options: {
+    ignoredDirectoryEntries?: (
+      directoryRef: string,
+    ) => ((entry: import('node:fs').Dirent) => boolean) | undefined;
+  } = {},
+) {
+  const root = path.resolve(projectRoot);
+  const realRoot = await assertRealProjectRoot(root, label);
+  const directories = new Map<
+    string,
+    Promise<{
+      stat: import('node:fs').BigIntStats;
+      real: string;
+      namespace?: string;
+      ignoreEntry?: (entry: import('node:fs').Dirent) => boolean;
+    }>
+  >();
+  let finished = false;
+  const identity = (stat: import('node:fs').BigIntStats) =>
+    [stat.dev, stat.ino, stat.mode, stat.birthtimeNs, stat.mtimeNs, stat.ctimeNs].join(':');
+  const directoryIdentity = (stat: import('node:fs').BigIntStats) =>
+    [stat.dev, stat.ino, stat.mode, stat.birthtimeNs].join(':');
+  const namespace = async (
+    target: string,
+    ignoreEntry: (entry: import('node:fs').Dirent) => boolean,
+  ) =>
+    JSON.stringify(
+      (await fs.readdir(target, { withFileTypes: true }))
+        .filter((entry) => !ignoreEntry(entry))
+        .map((entry) => [entry.name, entry.isDirectory(), entry.isSymbolicLink()])
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'en')),
+    );
+  const directory = (target: string) => {
+    let pending = directories.get(target);
+    if (!pending) {
+      pending = (async () => {
+        const stat = await fs.lstat(target, { bigint: true });
+        if (!stat.isDirectory() || stat.isSymbolicLink())
+          throw new Error(
+            `${label} crosses a symbolic link, junction or invalid directory at ${path.relative(root, target) || '.'}`,
+          );
+        const real = await fs.realpath(target);
+        if (!isInside(realRoot, real))
+          throw new Error(`${label} resolves outside the project root`);
+        const ignoreEntry = options.ignoredDirectoryEntries?.(
+          path.relative(root, target).replaceAll('\\', '/') || '.',
+        );
+        return {
+          stat,
+          real,
+          ...(ignoreEntry ? { ignoreEntry, namespace: await namespace(target, ignoreEntry) } : {}),
+        };
+      })();
+      directories.set(target, pending);
+    }
+    return pending;
+  };
+  await directory(root);
+  const targetFor = async (relativePath: string) => {
+    if (finished) throw new Error(`${label} read session is already finished`);
+    const ref = normalizeWorkflowRelativePath(relativePath, label);
+    let parent = root;
+    for (const segment of ref.split('/').slice(0, -1)) {
+      parent = path.join(parent, segment);
+      await directory(parent);
+    }
+    return path.resolve(root, ...ref.split('/'));
+  };
+  return {
+    observePath: targetFor,
+    async observeDirectory(relativePath: string) {
+      const target = await targetFor(relativePath);
+      await directory(target);
+      return target;
+    },
+    async stat(relativePath: string) {
+      const target = await targetFor(relativePath);
+      const stat = await fs.lstat(target, { bigint: true });
+      if (!stat.isFile() || stat.isSymbolicLink())
+        throw new Error(`${label} must be a real file: ${relativePath}`);
+      return { target, stat };
+    },
+    async hash(relativePath: string): Promise<RaceSafeHashResult> {
+      const target = await targetFor(relativePath);
+      return hashFileRaceSafe(target, {
+        bigint: true,
+        label: `${label} ${relativePath}`,
+        verify: async (_checkpoint, context) => {
+          if (!isInside(realRoot, context.realPath))
+            throw new Error(`${label} resolves outside the project root`);
+          let cursor = root;
+          const parents = [root];
+          for (const segment of path
+            .relative(root, path.dirname(target))
+            .split(path.sep)
+            .filter(Boolean)) {
+            cursor = path.join(cursor, segment);
+            parents.push(cursor);
+          }
+          for (const parent of parents) {
+            const before = await directories.get(parent)!;
+            const current = await fs.lstat(parent, { bigint: true });
+            if (
+              !current.isDirectory() ||
+              current.isSymbolicLink() ||
+              directoryIdentity(current) !== directoryIdentity(before.stat)
+            )
+              throw new Error(
+                `${label} directory changed while reading: ${path.relative(root, parent) || '.'}`,
+              );
+          }
+        },
+      });
+    },
+    async finish() {
+      if (finished) throw new Error(`${label} read session is already finished`);
+      finished = true;
+      const changedDirectories: string[] = [];
+      for (const [target, pending] of directories) {
+        const before = await pending;
+        const current = await fs.lstat(target, { bigint: true });
+        if (
+          !current.isDirectory() ||
+          current.isSymbolicLink() ||
+          directoryIdentity(before.stat) !== directoryIdentity(current) ||
+          (identity(before.stat) !== identity(current) &&
+            (!before.ignoreEntry ||
+              (await namespace(target, before.ignoreEntry)) !== before.namespace)) ||
+          (await fs.realpath(target)) !== before.real
+        )
+          throw new Error(
+            `${label} directory changed while observing: ${path.relative(root, target) || '.'}`,
+          );
+        if (identity(before.stat) !== identity(current))
+          changedDirectories.push(path.relative(root, target).replaceAll('\\', '/') || '.');
+      }
+      return { changedDirectories };
+    },
+  };
+}
+
 export async function hashProtectedProjectFile(
   projectRoot: string,
   relativePath: string,

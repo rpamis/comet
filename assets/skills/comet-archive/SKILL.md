@@ -9,6 +9,8 @@ On first entering a phase, handing off to a new Agent, or restoring context, rea
 
 After entry returns layout, follow `comet-classic/reference/classic-layout.md` to bind each logical root to its directory. Do not reload the protocol if it is already in context. Use the adapter for OpenSpec CLI calls and the bound `<classic-*>` roots for paths; do not run an extra root show first.
 
+When an edit needs an actual-impact judgement or a continuation points to a content judgement, you must read and follow [edit continuation](../comet/reference/edit-review.md). The current Agent merges the handling of changes, keeps the original Run, valid approvals, and checks, and adds only evidence for what is affected.
+
 ## SDK Run path
 
 On first entering the current SDK phase, handing off to a new Agent, or restoring context, read [phase entry and recovery](../comet-classic/reference/sdk-methods.md#phase-entry-and-recovery) and the current phase's section in that reference. Reuse them when already available and still valid in this session. Continue with the phase below; recovery routes based on `nextAction.kind` apply only to older responses without a continuation mode.

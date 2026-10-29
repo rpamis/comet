@@ -39,6 +39,12 @@ import {
 import { classicCommandProjectRoot, withProjectContext } from './classic-command-context.js';
 import { classicHandoffEnvelope, classicLocale } from './classic-output-language.js';
 import { hasClassicManagedRunMarker } from './classic-state.js';
+import { classicFormalEditReviewScope } from './classic-edit-review.js';
+import {
+  approvedEditHash,
+  readApprovedEditOriginalForEvidence,
+  rememberApprovedEditOriginal,
+} from '../workflow-contract/edit-review.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -168,7 +174,34 @@ async function readHandoffSources(
     if (content !== null)
       sources.push({ file, reference, content, sha256: handoffSourceHash(file, content) });
   }
+  const state = (await readClassicState(changeDir, { migrate: false })).classic;
+  if (state?.handoffHash && state.handoffContext) {
+    const scope = await classicFormalEditReviewScope(projectRoot, path.basename(changeDir), state);
+    for (const source of sources) {
+      const reviewed = await approvedEditHash(scope, source.reference, hashText(source.content));
+      if (!reviewed || reviewed.semantic) continue;
+      const original = await readApprovedEditOriginalForEvidence(
+        scope,
+        source.reference,
+        state.handoffHash,
+      );
+      if (original.contentHash === reviewed.beforeHash)
+        source.sha256 = handoffSourceHash(source.file, original.text);
+    }
+  }
   return sources;
+}
+
+export async function readClassicHandoffSourceHashes(projectRoot: string, changeDir: string) {
+  return new Map(
+    (
+      await readHandoffSources(
+        projectRoot,
+        changeDir,
+        classicProjectRelative(projectRoot, changeDir),
+      )
+    ).map((source) => [source.reference, source.sha256]),
+  );
 }
 
 function contextHashFromSources(sources: readonly HandoffSource[]): string {
@@ -555,6 +588,29 @@ export async function writeClassicSdkDesignContext(options: {
       handoffHash,
       json,
       sources,
+    );
+  }
+  const state = (await readClassicState(changeDir, { migrate: false })).classic;
+  if (!state) throw new Error('Classic Design context requires its current change');
+  const scope = await classicFormalEditReviewScope(projectRoot, change, state, true);
+  for (const source of sources) {
+    const existing = await readApprovedEditOriginalForEvidence(
+      scope,
+      source.reference,
+      handoffHash,
+      { allowMissing: true },
+    );
+    if (existing) {
+      if (handoffSourceHash(source.file, existing.text) !== source.sha256)
+        throw new Error('Classic handoff 原文与当前来源摘要不匹配');
+      continue;
+    }
+    await rememberApprovedEditOriginal(
+      scope,
+      source.reference,
+      source.content,
+      hashText(source.content),
+      handoffHash,
     );
   }
   return { handoffContext: classicProjectRelative(projectRoot, json), handoffHash };
@@ -1079,6 +1135,20 @@ export const compatHandoffCommand: ClassicCommandHandler = withProjectContext(as
         handoffContext: contextJsonRef,
         handoffHash: contextHash,
       };
+      const formalScope = await classicFormalEditReviewScope(
+        layout.projectRoot,
+        change,
+        completedClassic,
+        true,
+      );
+      for (const source of sources)
+        await rememberApprovedEditOriginal(
+          formalScope,
+          source.reference,
+          source.content,
+          hashText(source.content),
+          contextHash,
+        );
       const transitionedRun =
         pendingRun.currentStep === 'full.design.handoff'
           ? await transitionClassicRuntimeRun(changeDir, completedClassic, pendingRun, {

@@ -57,7 +57,7 @@ Agent 先调查能够查明的事实，只询问会改变用户可见结果、�
 
 新建需求或重新确认 Shape 时，brief 只要求目标、范围、非目标和验收示例四个核心章节；有约束、关键决定、待解决问题或特殊验证要求时再补对应章节。Runtime 同时检查完整目标 Spec 或明确的无产品行为变更理由及正式路径。失败会给出文件和修复动作；补齐后重跑 continuation。后续阶段的旧需求保留进度，回到 Shape 时再检查。
 
-Verify 中编辑被拒绝并提示复核时，必须读取[编辑复核](reference/edit-review.md)，按当前候选的任务领取、提交和重试原编辑；阶段保留不代表该编辑已通过验收。
+Build、Verify 或待归档阶段编辑后需要判断影响，或 continuation 指向内容判断时，必须读取并执行[编辑后续行](reference/edit-review.md)。由当前 Agent 合并判断实际变化，只补受影响证据，沿用原 Run 和仍有效的批准。
 
 ## Build ↔ Verify Loop
 
@@ -69,7 +69,7 @@ Builder 提交候选实现后，由 Runtime 执行必要检查，再交给新的
 
 首次实现前，读取当前 brief、完整目标规格和全部验收项，在已确认的需求范围内修改项目代码和测试。修复时优先处理 Verifier 指出的未通过项、无法验证的原因和失败检查；提交前仍要核对其他已确认行为。`previous_unresolved_ids` 只提示本轮修复重点，下一次正式验收仍覆盖全部验收项。
 
-Build、Verify 和 Archive 会复查正式文件绑定。新确认的 Shape 按 Markdown 内容绑定，空行和软换行保留确认；正文、结构、代码、链接或验收变化仍须重新确认。Hook 编辑后在下一次实现写入或推进前检查实际内容；旧 Shape 沿用原绑定。文档或报告失效时保留工作并给出修复动作，Hook 未触发也会检查。普通文档默认不作废候选，可用 `native.document_writes: revert` 恢复严格行为；路径范围见[正式产物](reference/artifacts.md#正式产物)。
+Build、Verify 和 Archive 会复查正式文件与已批准原文的绑定。出现变化时由当前 Agent 判断语义和影响；契约未变则保留批准，目标、验收标准或授权发生实质变化时才请求相关决定。Hook 编辑后在下一次实现写入或推进前核对实际内容，Hook 未触发也会核对。旧 Shape 沿用原绑定；文档或报告失效时保留工作，只处理具体缺项。普通文档默认不作废候选，可用 `native.document_writes: revert` 保留严格行为；路径范围见[正式产物](reference/artifacts.md#正式产物)。
 
 用户 Hook 的共享输出目录可通过 `.comet/config.yaml` 的 `hook.allow_paths` 放行；该配置对 Native 和 Classic 共用，工作流产物目录不在白名单范围。详见[用户 Hook 写入](reference/commands.md#用户-hook-写入)。
 

@@ -74,6 +74,9 @@ import {
   readCurrentLocalExecution,
   rebindNativeCheckEvidence,
   reserveVerifierRequestedChecks,
+  captureNativePortableCandidateInputs,
+  assertNativePortableRawCandidate,
+  assertNativePortableRawCheckInputs,
   type NativePortableRequestChecksOutcome,
 } from './native-portable-checks.js';
 
@@ -200,6 +203,12 @@ export async function submitNativePortableBuilderCandidate(options: {
         }
       }
       const next = submitNativeBuilderCandidate({ state, input: options.input });
+      const rawCandidate = await captureNativePortableCandidateInputs(
+        options.paths,
+        next,
+        options.projectRoot ?? options.paths.projectRoot,
+      );
+      next.builder_handoff!.raw_input_ref = rawCandidate.rawInputRef;
       const reusable =
         options.verificationChecks === undefined
           ? null
@@ -214,12 +223,15 @@ export async function submitNativePortableBuilderCandidate(options: {
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),
-        reusable ??
-          rebuildNativeLocalExecution({
-            portableState: written,
-            projectRoot: options.paths.projectRoot,
-            branch: currentBranch(options.paths.projectRoot),
-          }),
+        {
+          ...(reusable ??
+            rebuildNativeLocalExecution({
+              portableState: written,
+              projectRoot: options.paths.projectRoot,
+              branch: currentBranch(options.paths.projectRoot),
+            })),
+          ...rawCandidate,
+        },
         { containedRoot: options.paths.runtimeDir },
       );
       return written;
@@ -262,6 +274,7 @@ export async function dispatchNativePortableVerifier(options: {
         projectRoot,
         supplied: options.checks,
       });
+      await assertNativePortableRawCheckInputs(options.paths, state, localBeforeDispatch);
       const next = reserveNativeVerifierAttempt(state);
       const operationId = randomUUID();
       const registeredAt = new Date().toISOString();
@@ -453,6 +466,10 @@ export async function submitNativePortableVerifierResult(options: {
       let finalResult: ReturnType<typeof applyNativeVerifierEnvelope>;
       try {
         if (local !== null) {
+          if (parsedResponse.kind === 'request-checks')
+            await assertNativePortableRawCandidate(options.paths, state, local);
+          else if (parsedResponse.result.verdict === 'pass')
+            await assertNativePortableRawCheckInputs(options.paths, state, local);
           runtimeChecks = authoritativePortableChecks({
             local,
             projectRoot,
@@ -694,15 +711,23 @@ export async function confirmNativePortableVerifierUnavailable(options: {
         action: 'confirm-verifier-unavailable',
       });
       await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
+      const local = await readCurrentLocalExecution({ paths: options.paths, state });
+      if (local?.rawInputRef) await assertNativePortableRawCheckInputs(options.paths, state, local);
       const next = confirmNativeVerifierUnavailable({ state, summary: options.summary });
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),
-        rebuildNativeLocalExecution({
-          portableState: written,
-          projectRoot: options.paths.projectRoot,
-          branch: currentBranch(options.paths.projectRoot),
-        }),
+        local?.rawInputRef
+          ? preservedLocalChecksForVersion({
+              local,
+              state: written,
+              projectRoot: options.paths.projectRoot,
+            })
+          : rebuildNativeLocalExecution({
+              portableState: written,
+              projectRoot: options.paths.projectRoot,
+              branch: currentBranch(options.paths.projectRoot),
+            }),
         { containedRoot: options.paths.runtimeDir },
       );
       await writeNativeVerificationReport({

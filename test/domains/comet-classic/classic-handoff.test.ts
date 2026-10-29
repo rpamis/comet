@@ -8,6 +8,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { parse, stringify } from 'yaml';
 import { readRunState, writeRunState } from '../../../domains/engine/state.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
+import { runClassicEditReviewCommand } from '../../../domains/comet-classic/classic-edit-review-command.js';
+import { computeContextHash } from '../../../domains/comet-classic/classic-handoff.js';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const scriptByCommand: Record<string, string> = {
@@ -64,6 +66,228 @@ async function seedDesignChange(dir: string, name = 'demo'): Promise<string> {
 }
 
 describe('Classic handoff command', () => {
+  it('captures Compat preset canonical originals only at the actual Open transition', async () => {
+    const dir = await makeProject();
+    const previous = process.cwd();
+    process.chdir(dir);
+    const cli = async (...args: string[]) => {
+      const result = await runClassicCli(args);
+      expect(result.exitCode, result.stderr).toBe(0);
+      return result;
+    };
+    try {
+      await cli('state', 'init', 'demo', 'hotfix', '--runtime', 'compat');
+      const changeDir = path.join(dir, 'openspec/changes/demo');
+      await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\nPreserve behavior.\n');
+      await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] Preserve behavior\n');
+      await cli('state', 'set', 'demo', 'isolation', 'current');
+      await cli('state', 'set', 'demo', 'build_mode', 'direct');
+      await cli('guard', 'demo', 'open', '--apply');
+      const accepted = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+      await fs.appendFile(
+        path.join(changeDir, 'proposal.md'),
+        '\nThe existing behavior is unchanged.\n',
+      );
+      const prepared = (await runClassicEditReviewCommand({
+        projectRoot: dir,
+        name: 'demo',
+        operation: 'prepare-applied',
+        sessionId: 'same-agent',
+      })) as {
+        recordTemplate: Record<string, unknown>;
+        proposal: { edits: Array<{ path: string }> };
+      };
+      expect(prepared.proposal.edits[0].path).toBe('openspec/changes/demo/proposal.md');
+      const file = path.join(dir, '.comet', 'preset-edit.json');
+      await fs.writeFile(
+        file,
+        JSON.stringify({
+          ...prepared.recordTemplate,
+          decision: 'non-behavioral',
+          summary: 'The additional explanation preserves the actual accepted Open scope.',
+        }),
+      );
+      await runClassicEditReviewCommand({
+        projectRoot: dir,
+        name: 'demo',
+        operation: 'record',
+        file,
+      });
+      expect(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')).toBe(accepted);
+      await cli('state', 'set', 'demo', 'isolation', 'current');
+      await cli(
+        'check',
+        'run',
+        'demo',
+        'build',
+        '--local',
+        '--',
+        process.execPath,
+        '-e',
+        'process.exit(0)',
+      );
+      await cli('guard', 'demo', 'build', '--apply');
+      expect(parse(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')).phase).toBe(
+        'verify',
+      );
+    } finally {
+      process.chdir(previous);
+    }
+  });
+  it('continues Compat Verify after the current Agent judges the Plan captured by the real Build transition', async () => {
+    const dir = await makeProject();
+    const changeDir = await seedDesignChange(dir);
+    const previous = process.cwd();
+    process.chdir(dir);
+    const cli = async (...args: string[]) => {
+      const result = await runClassicCli(args);
+      expect(result.exitCode, result.stderr).toBe(0);
+      return result;
+    };
+    try {
+      await fs.writeFile(
+        path.join(changeDir, 'tasks.md'),
+        '- [x] implement handoff <!-- comet-task:impl -->\n',
+      );
+      await cli('handoff', 'demo', 'design', '--write');
+      await fs.writeFile(
+        path.join(dir, 'technical.md'),
+        '---\ncomet_change: demo\nrole: technical-design\ncanonical_spec: openspec\n---\n# Design\nPreserve the current behavior.\n',
+      );
+      await cli('state', 'set', 'demo', 'design_doc', 'technical.md');
+      await cli('guard', 'demo', 'design', '--apply');
+      for (const [field, value] of Object.entries({
+        build_mode: 'executing-plans',
+        tdd_mode: 'direct',
+        review_mode: 'off',
+        isolation: 'current',
+        plan: 'plan.unknown',
+      }))
+        await cli('state', 'set', 'demo', field, value);
+      const original =
+        '<!-- comet-task-authority: openspec/changes/demo/tasks.md -->\n# Plan\n<!-- comet-task-ref:impl -->\nPreserve the current behavior.\n';
+      await fs.writeFile(path.join(dir, 'plan.unknown'), original);
+      await cli(
+        'check',
+        'run',
+        'demo',
+        'build',
+        '--local',
+        '--',
+        process.execPath,
+        '-e',
+        'process.exit(0)',
+      );
+      await cli('guard', 'demo', 'build', '--apply');
+      const accepted = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+      const after = original + '\nThe existing task remains the same.\n';
+      await fs.writeFile(path.join(dir, 'plan.unknown'), after);
+      const prepared = (await runClassicEditReviewCommand({
+        projectRoot: dir,
+        name: 'demo',
+        operation: 'prepare-applied',
+        sessionId: 'same-agent',
+      })) as {
+        recordTemplate: Record<string, unknown>;
+        proposal: { edits: Array<{ path: string }> };
+      };
+      expect(prepared.proposal.edits[0].path).toBe('plan.unknown');
+      expect(prepared.recordTemplate).toBeTruthy();
+      const file = path.join(dir, '.comet', 'plan-judgment.json');
+      await fs.writeFile(
+        file,
+        JSON.stringify({
+          ...prepared.recordTemplate,
+          decision: 'non-behavioral',
+          summary: 'The additional explanation preserves the real accepted Build plan.',
+        }),
+      );
+      await runClassicEditReviewCommand({
+        projectRoot: dir,
+        name: 'demo',
+        operation: 'record',
+        file,
+      });
+      expect(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')).toBe(accepted);
+      await fs.writeFile(
+        path.join(dir, 'report.md'),
+        '# Verify\nThe original task still passes.\n',
+      );
+      await cli('state', 'set', 'demo', 'verification_report', 'report.md');
+      await cli(
+        'check',
+        'run',
+        'demo',
+        'verify',
+        '--local',
+        '--',
+        process.execPath,
+        '-e',
+        'process.exit(0)',
+      );
+      await cli('guard', 'demo', 'verify', '--apply');
+      expect(parse(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')).phase).toBe(
+        'archive',
+      );
+      expect(await fs.readFile(path.join(dir, 'plan.unknown'), 'utf8')).toBe(after);
+    } finally {
+      process.chdir(previous);
+    }
+  });
+  it('retains the Compat handoff after the current Agent judges an applied formal edit', async () => {
+    const dir = await makeProject();
+    const changeDir = await seedDesignChange(dir);
+    const previous = process.cwd();
+    process.chdir(dir);
+    try {
+      const result = await runClassicCli(['handoff', 'demo', 'design', '--write']);
+      expect(result.exitCode, result.stderr).toBe(0);
+      const original = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+      const state = parse(original) as { handoff_hash: string };
+      await fs.appendFile(path.join(changeDir, 'design.md'), '\nSupplemental explanation.\n');
+      expect(await computeContextHash(dir, changeDir, 'openspec/changes/demo')).not.toBe(
+        state.handoff_hash,
+      );
+      const observed = (await runClassicEditReviewCommand({
+        projectRoot: dir,
+        name: 'demo',
+        operation: 'prepare-applied',
+        sessionId: 'same-agent',
+      })) as { proposal: { proposalHash: string } };
+      const claimed = (await runClassicEditReviewCommand({
+        projectRoot: dir,
+        name: 'demo',
+        operation: 'judge',
+        proposalHash: observed.proposal.proposalHash,
+        sessionId: 'same-agent',
+      })) as { recordTemplate: Record<string, unknown> };
+      const file = path.join(dir, '.comet', 'formal-judgment.json');
+      await fs.writeFile(
+        file,
+        JSON.stringify({
+          ...claimed.recordTemplate,
+          decision: 'non-behavioral',
+          summary: 'Only supplemental explanation; approved design remains applicable.',
+        }),
+      );
+      await runClassicEditReviewCommand({
+        projectRoot: dir,
+        name: 'demo',
+        operation: 'record',
+        file,
+      });
+      expect(await computeContextHash(dir, changeDir, 'openspec/changes/demo')).toBe(
+        state.handoff_hash,
+      );
+      expect(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')).toBe(original);
+      await fs.appendFile(path.join(changeDir, 'design.md'), 'Another edit.\n');
+      expect(await computeContextHash(dir, changeDir, 'openspec/changes/demo')).not.toBe(
+        state.handoff_hash,
+      );
+    } finally {
+      process.chdir(previous);
+    }
+  });
   it('rejects a nested handoff junction without writing outside the project', async () => {
     const dir = await makeProject();
     const previous = process.cwd();

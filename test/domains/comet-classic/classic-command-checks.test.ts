@@ -1,4 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as checkSnapshots from '../../../domains/comet-classic/classic-check-snapshot.js';
+import * as checkFiles from '../../../domains/comet-classic/classic-protected-path.js';
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'fs';
 import os from 'os';
@@ -29,6 +31,15 @@ import {
   legacyCheckInputFingerprint,
 } from '../../../domains/comet-classic/classic-check-snapshot.js';
 import { readCheckPolicy } from '../../../domains/comet-classic/classic-check-policy.js';
+import {
+  classicEditReviewScope,
+  observeClassicCompatCheckInputs,
+  classicCompatCheckExecutionRef,
+} from '../../../domains/comet-classic/classic-edit-review.js';
+import {
+  prepareObservedEditReview,
+  recordEditReview,
+} from '../../../domains/workflow-contract/edit-review.js';
 
 function runState(runId = 'run-current'): RunState {
   return {
@@ -85,7 +96,116 @@ describe('Classic command check evidence', () => {
   }
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fs.rm(projectRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  });
+
+  it.each([0, 7])(
+    'returns the original actual result for a repeated check request (exit=%s)',
+    async (exitCode) => {
+      const counter = `${projectRoot}-execution-count`;
+      try {
+        const input = {
+          scope: 'verify' as const,
+          argv: [
+            process.execPath,
+            '-e',
+            `require('node:fs').appendFileSync(${JSON.stringify(counter)}, 'x'); process.exit(${exitCode})`,
+          ],
+          reusable: true,
+          executionRequestId: 'a'.repeat(64),
+        };
+        const original = await executeCommandCheck(projectRoot, changeDir, run, input);
+        const repeated = await executeCommandCheck(projectRoot, changeDir, run, input);
+        expect(original.exitCode).toBe(exitCode);
+        expect(repeated).toEqual({ ...original, reused: true });
+        expect(await fs.readFile(counter, 'utf8')).toBe('x');
+        expect(
+          (await readTrajectory(changeDir, run.trajectoryRef)).filter(
+            (event) => event.type === 'command_check_started',
+          ),
+        ).toHaveLength(1);
+      } finally {
+        await fs.rm(counter, { force: true });
+      }
+    },
+  );
+
+  it('retries only a proven prelaunch failure in the same check Action without replaying a process', async () => {
+    const counter = `${projectRoot}-execution-count`;
+    try {
+      const input = {
+        scope: 'verify' as const,
+        argv: [
+          process.execPath,
+          '-e',
+          `require('node:fs').appendFileSync(${JSON.stringify(counter)},'x')`,
+        ],
+        reusable: true,
+        executionRequestId: 'b'.repeat(64),
+      };
+      vi.spyOn(checkSnapshots, 'collectCheckSnapshot').mockRejectedValueOnce(
+        new Error('input capture interrupted before launch'),
+      );
+      await expect(executeCommandCheck(projectRoot, changeDir, run, input)).rejects.toThrow(
+        'before launch',
+      );
+      expect(await latestCommandCheck(projectRoot, changeDir, run, 'verify')).toBeNull();
+      expect(await fs.stat(counter).catch(() => null)).toBeNull();
+      const resumed = await executeCommandCheck(projectRoot, changeDir, run, input);
+      expect(resumed.action).toMatchObject({
+        id: input.executionRequestId,
+        attempt: 2,
+        status: 'succeeded',
+      });
+      expect(resumed.action?.reconciliations).toEqual([
+        expect.objectContaining({ attempt: 1, resolution: 'not-executed' }),
+      ]);
+      expect(await fs.readFile(counter, 'utf8')).toBe('x');
+      expect(await executeCommandCheck(projectRoot, changeDir, run, input)).toEqual({
+        ...resumed,
+        reused: true,
+      });
+      expect(await fs.readFile(counter, 'utf8')).toBe('x');
+    } finally {
+      await fs.rm(counter, { force: true });
+    }
+  });
+
+  it('refuses both old and new request IDs when the process ran but its completion receipt is unknown', async () => {
+    const counter = `${projectRoot}-execution-count`;
+    try {
+      const input = {
+        scope: 'verify' as const,
+        argv: [
+          process.execPath,
+          '-e',
+          `require('node:fs').appendFileSync(${JSON.stringify(counter)},'x')`,
+        ],
+        reusable: true,
+        executionRequestId: 'c'.repeat(64),
+      };
+      vi.spyOn(checkFiles, 'writeClassicProjectText').mockRejectedValueOnce(
+        new Error('completion receipt unavailable'),
+      );
+      await expect(executeCommandCheck(projectRoot, changeDir, run, input)).rejects.toThrow(
+        'receipt unavailable',
+      );
+      expect(await fs.readFile(counter, 'utf8')).toBe('x');
+      expect(await latestCommandCheck(projectRoot, changeDir, run, 'verify')).toBeNull();
+      await expect(executeCommandCheck(projectRoot, changeDir, run, input)).rejects.toThrow(
+        '结果未明',
+      );
+      await expect(
+        executeCommandCheck(projectRoot, changeDir, run, {
+          ...input,
+          executionRequestId: 'd'.repeat(64),
+        }),
+      ).rejects.toThrow('结果未明');
+      expect(await fs.readFile(counter, 'utf8')).toBe('x');
+    } finally {
+      await fs.rm(counter, { force: true });
+    }
   });
 
   it('appends command evidence without executing the saved command', async () => {
@@ -502,6 +622,25 @@ describe('Classic command check evidence', () => {
     await fs.writeFile(path.join(projectRoot, 'README.md'), 'v2 - edited');
     await fs.writeFile(path.join(projectRoot, 'docs', 'guides', 'usage.md'), 'v2');
     await fs.writeFile(path.join(projectRoot, 'docs', 'guides', 'new-page.md'), 'new');
+    expect((await evaluateCommandCheck(projectRoot, changeDir, run, 'build')).record).toBeNull();
+    const state = (await readClassicState(changeDir, { migrate: false })).classic!;
+    const observed = await observeClassicCompatCheckInputs(projectRoot, changeDir, state, recorded);
+    const scope = {
+      ...(await classicEditReviewScope(projectRoot, 'demo', state, true)),
+      judgment: 'agent' as const,
+    };
+    const proposal = await prepareObservedEditReview(scope, observed.changes);
+    await recordEditReview(
+      scope,
+      {
+        proposalHash: proposal.proposalHash,
+        decision: 'non-behavioral',
+        summary:
+          'The current Agent checked all changed documentation; this original command remains applicable.',
+        retainedCheckActionIds: [classicCompatCheckExecutionRef(recorded)],
+      },
+      { kind: 'runtime-agent', executionRef: 'current-agent' },
+    );
     const evaluation = await evaluateCommandCheck(projectRoot, changeDir, run, 'build');
     expect(evaluation.record).toMatchObject({ sequence: recorded.sequence });
     expect(evaluation.documentChangesIgnored).toEqual(

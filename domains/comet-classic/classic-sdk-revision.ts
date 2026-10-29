@@ -7,6 +7,7 @@ import {
   preserveRuntimeExecutionOrigins,
   RuntimeProtocolError,
   type WorkflowRun,
+  type RuntimeValue,
 } from '../engine/runtime.js';
 import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
 import {
@@ -23,6 +24,8 @@ import {
 } from './classic-sdk-delivery-repair.js';
 import { classicDeliveryActionContext } from './classic-sdk-delivery-repair-model.js';
 import { withClassicDeliveryRepair } from './classic-sdk-delivery-repair-application.js';
+import { classicEditReviewScope, classicFormalEditReviewScope } from './classic-edit-review.js';
+import { assertEditReviewsComplete } from '../workflow-contract/edit-review.js';
 
 /** 只更新当前工作区的分支绑定；原 Action、审批和执行收据继续保留。 */
 export async function rebindClassicSdkWork(
@@ -71,13 +74,23 @@ export async function reviseClassicSdkWork(options: {
     | 'repair-archive'
     | 'repair-delivery'
     | 'continue-build'
-    | 'continue-work';
+    | 'continue-work'
+    | 'refresh-checks';
   expectedRevision: number;
+  refreshInput?: RuntimeValue;
 }): Promise<WorkflowRun> {
   const { projectRoot, change, name, expectedRevision } = options;
   const { run, state } = await inspectClassicSdkRun(projectRoot, change);
   const commandId = hashRuntimeValue({ runId: run.runId, name, expectedRevision });
-  if (run.commands?.some((command) => command.id === commandId)) return run;
+  const previousCommand = run.commands?.find((command) => command.id === commandId);
+  if (previousCommand) {
+    if (
+      name === 'refresh-checks' &&
+      previousCommand.inputHash !== hashRuntimeValue(options.refreshInput ?? null)
+    )
+      throw new RuntimeProtocolError('COMMAND_CONFLICT', '同一补充检查请求不能提交不同内容');
+    return run;
+  }
   if (run.revision !== expectedRevision)
     throw new RuntimeProtocolError(
       'REVISION_CONFLICT',
@@ -101,6 +114,14 @@ export async function reviseClassicSdkWork(options: {
       throw new Error(
         'Classic verification requires its active change directory; reconcile the Archive operation',
       );
+  }
+  if (name === 'continue-build') {
+    await assertEditReviewsComplete(await classicEditReviewScope(projectRoot, change, state), {
+      allowImplementationRevision: true,
+    });
+    await assertEditReviewsComplete(
+      await classicFormalEditReviewScope(projectRoot, change, state, false, undefined, run),
+    );
   }
   const base = classicSdkRevisionApplication(
     run.workflow.id.slice('comet-classic-'.length) as 'full' | 'tweak' | 'hotfix',
@@ -151,20 +172,23 @@ export async function reviseClassicSdkWork(options: {
     expectedRevision,
     commandId,
     name,
-    input: {
-      expectedRevision,
-      fromPhase: state.phase,
-      ...(deliveryRepair
-        ? {
-            deliveryRepair:
-              deliveryRepair as unknown as import('../engine/runtime.js').RuntimeValue,
-          }
-        : {}),
-      ...(name === 'continue-work'
-        ? { interruptedActionId: classicInterruptedSkill(run)?.id ?? '' }
-        : {}),
-      ...(deliveryCheckpointHash ? { deliveryCheckpointHash } : {}),
-    },
+    input:
+      name === 'refresh-checks'
+        ? (options.refreshInput ?? null)
+        : {
+            expectedRevision,
+            fromPhase: state.phase,
+            ...(deliveryRepair
+              ? {
+                  deliveryRepair:
+                    deliveryRepair as unknown as import('../engine/runtime.js').RuntimeValue,
+                }
+              : {}),
+            ...(name === 'continue-work'
+              ? { interruptedActionId: classicInterruptedSkill(run)?.id ?? '' }
+              : {}),
+            ...(deliveryCheckpointHash ? { deliveryCheckpointHash } : {}),
+          },
     context: { requestId: commandId, projectRoot },
   });
   if (name === 'continue-work') {
@@ -204,6 +228,8 @@ export async function reviseClassicSdkWork(options: {
       archiveConfirmation: null,
       branchStatus: 'pending',
       buildPause: name === 'revise-plan' && state.phase === 'build' ? state.buildPause : null,
+      checkEpoch:
+        (state.checkEpoch ?? 0) + (name === 'continue-build' && state.phase !== 'build' ? 1 : 0),
     };
   }
   if (name === 'reopen-verification') {

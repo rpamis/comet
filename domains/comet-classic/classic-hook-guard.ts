@@ -18,7 +18,6 @@ import {
   proposedCometHookFileContent,
   parseCometHookRequest,
 } from '../../platform/process/hook-adapter.js';
-import { classifyEditImpact } from '../workflow-contract/edit-impact.js';
 import { isAgentInstructionPath } from '../workflow-contract/neutral-document-path.js';
 import { prepareEditReview, isReviewedEditProposal } from '../workflow-contract/edit-review.js';
 import { classicEditReviewScope } from './classic-edit-review.js';
@@ -42,7 +41,10 @@ import {
   inspectClassicAutonomousBuildProblems,
   type ClassicPlanReadiness,
 } from './classic-plan-readiness.js';
-import { isClassicNeutralDocumentWrite } from './classic-neutral-documents.js';
+import {
+  isClassicNeutralDocumentWrite,
+  classicDocumentEvidenceMode,
+} from './classic-neutral-documents.js';
 
 // Share the SDK read with current-selection branch checks within this Hook request only.
 const inspectHookSdkRun = memoizedHookRead(
@@ -146,6 +148,7 @@ async function projectRelative(target: string, projectRoot: string): Promise<str
 }
 
 interface GoverningChange {
+  runtimeFormat?: 'sdk';
   changeDir: string | null;
   phase: ClassicPhase;
   classic: ClassicState | null;
@@ -209,6 +212,7 @@ async function loadSdkGoverningChange(
 ): Promise<GoverningChange> {
   const { run, state } = await inspectHookSdkRun(projectRoot, changeName);
   return {
+    runtimeFormat: 'sdk',
     changeDir,
     phase: state.phase,
     classic: state,
@@ -1171,6 +1175,15 @@ async function inspectClassicHookTarget(
       `[COMET-HOOK] blocked: active Classic state is invalid; run comet classic validate ${changeName}, repair only the reported fields, then run comet state next ${changeName} --json before retrying ${relativePath}`,
     );
   }
+  if (
+    ['verify', 'archive'].includes(phase) &&
+    (governing.runtimeFormat === 'sdk' ||
+      (await classicDocumentEvidenceMode(projectRoot)) !== 'strict')
+  ) {
+    return allowed(
+      `${relativePath}（保留当前 Run 和用户编辑；由当前 Agent 在推进前使用 comet edit-review observe classic ${changeName} --session <当前会话> --json 判断合并变化、正式决定和检查适用性；未覆盖变化不能验收或归档）`,
+    );
+  }
   if (phase === 'build' && governing.classic?.workflow === 'full' && !governing.classic.designDoc) {
     return blockedMissingDesignDoc(
       relativePath,
@@ -1224,6 +1237,7 @@ async function inspectClassicHookTarget(
         });
         const after = proposedCometHookFileContent(proposals[0], before);
         if (after !== null) {
+          const { classifyEditImpact } = await import('../workflow-contract/edit-impact.js');
           const impact = classifyEditImpact(relativePath, before, after);
           if (
             impact.kind === 'non-behavioral' ||

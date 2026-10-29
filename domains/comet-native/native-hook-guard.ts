@@ -42,7 +42,6 @@ import {
   readNativeApprovedShapeSemanticSnapshot,
 } from './native-portable-requirements.js';
 import type { NativePortableState } from './native-portable-types.js';
-import { classifyEditImpact } from '../workflow-contract/edit-impact.js';
 import { prepareEditReview, isReviewedEditProposal } from '../workflow-contract/edit-review.js';
 import { nativeEditReviewScope, nativeEditReviewPreparationScope } from './native-edit-review.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
@@ -388,7 +387,12 @@ async function inspectPortableWriteTargets(options: {
         (target) => target === 'brief.md' || /^specs\/[^/]+\/spec\.md$/u.test(target),
       )
     ) {
-      if (state.phase !== 'shape' && state.shape_confirmation_hash) {
+      if (
+        !sdkOwned &&
+        documentsRevert &&
+        state.phase !== 'shape' &&
+        state.shape_confirmation_hash
+      ) {
         const review = await formalCommentWriteReview(paths, state, request, formalTargets);
         if (review) return review;
       }
@@ -480,6 +484,15 @@ async function inspectPortableWriteTargets(options: {
       return {
         allowed: true,
         reason: 'Native change is in Build',
+        workflow: 'native',
+        phase: state.phase,
+        change: state.name,
+      };
+    }
+    if (['verify', 'archive'].includes(state.phase) && !documentsRevert) {
+      return {
+        allowed: true,
+        reason: `保留当前 Run 和用户编辑。由当前 Agent 在下次推进时运行 comet edit-review observe native ${state.name} --session <当前会话> --json，判断合并后的实际变化和检查适用性；未覆盖的变化仍不能验收或归档。`,
         workflow: 'native',
         phase: state.phase,
         change: state.name,
@@ -637,6 +650,7 @@ async function implementationWriteImpact(
   targets: readonly string[],
   request: NativeHookRequest,
 ): Promise<'non-behavioral' | 'implementation-changed' | 'review-required'> {
+  const { classifyEditImpact } = await import('../workflow-contract/edit-impact.js');
   const projectRoot = paths.projectRoot;
   if (
     (await nativeDocumentWritesRevert(projectRoot)) &&

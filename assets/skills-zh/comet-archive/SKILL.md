@@ -9,6 +9,8 @@ description: '归档并交付 Classic change。在用户调用 /comet-archive，
 
 收到入口返回的 layout 后，按 `comet-classic/reference/classic-layout.md` 确定各逻辑根对应的目录。当前上下文已有这份协议时，无需重复加载。本文件中的 OpenSpec CLI 调用均通过适配器执行，文件路径均基于已绑定的 `<classic-*>` 根目录，无需先额外运行 root show。
 
+编辑后需要判断实际影响，或 continuation 指向内容判断时，必须读取并执行[编辑后续行](../comet/reference/edit-review.md)。由当前 Agent 合并处理变化，保留原 Run、有效批准和检查，只补受影响证据。
+
 ## SDK Run 路径
 
 首次进入当前 SDK 阶段、换 Agent 或恢复上下文时，读取[阶段入口与恢复](../comet-classic/reference/sdk-methods.md#阶段入口与恢复)及该参考的当前阶段章节；本会话已有且仍有效时直接复用。下文按当前阶段执行；`nextAction.kind` 的恢复路由只适用于没有 continuation mode 的旧响应。

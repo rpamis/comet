@@ -1,5 +1,9 @@
 import { isNativeSdkChangeCancellationComplete } from './native-sdk-cancellation.js';
 import { assertNativeEditReviewsComplete } from './native-edit-review.js';
+import {
+  assertNativePortableRawCheckInputs,
+  readCurrentLocalExecution,
+} from './native-portable-checks.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -703,6 +707,12 @@ export async function inspectNativePortableArchive(options: {
   try {
     assertArchiveReady(state);
     await assertNativeEditReviewsComplete(options.paths, state);
+    if (!options.state) {
+      const local = await readCurrentLocalExecution({ paths: options.paths, state });
+      if (state.builder_handoff?.raw_input_ref && !local)
+        throw new Error('Native 原始执行记录缺失；保留已接受结果并恢复原证据');
+      if (local?.rawInputRef) await assertNativePortableRawCheckInputs(options.paths, state, local);
+    }
   } catch (error) {
     blockers.push((error as Error).message);
   }
@@ -1252,6 +1262,15 @@ export async function archiveNativePortableChange(options: {
       }
       let supervisor = await readNativeSupervisorState(options.paths, options.name);
       if (
+        !state.archived &&
+        state.builder_handoff?.raw_input_ref &&
+        transaction &&
+        transaction.next_spec_index > 0
+      ) {
+        // 已发布步骤属于原事务；先核对，不能因外部改写删除原事务或重放这些步骤。
+        await assertAppliedSpecsUnchanged(options.paths, transaction);
+      }
+      if (
         activeExists &&
         !state.archived &&
         transaction !== null &&
@@ -1368,6 +1387,11 @@ export async function archiveNativePortableChange(options: {
         if (!state.archived) {
           assertArchiveReady(state);
           await assertNativeEditReviewsComplete(options.paths, state);
+          if (state.builder_handoff?.raw_input_ref) {
+            const local = await readCurrentLocalExecution({ paths: options.paths, state });
+            if (!local) throw new Error('Native 原始执行记录缺失；不能直接归档旧摘要');
+            await assertNativePortableRawCheckInputs(options.paths, state, local);
+          }
         } else if (state.status !== 'done' || state.loop.stage !== 'done') {
           throw new Error('Native active archived state is inconsistent');
         }
@@ -1422,6 +1446,11 @@ export async function archiveNativePortableChange(options: {
         supervisorDelivered = true;
       }
       if (transaction.status === 'prepared') {
+        if (!state.archived && state.builder_handoff?.raw_input_ref) {
+          const local = await readCurrentLocalExecution({ paths: options.paths, state });
+          if (!local) throw new Error('Native 原始执行记录缺失；保留原归档事务并恢复证据');
+          await assertNativePortableRawCheckInputs(options.paths, state, local);
+        }
         for (
           let index = transaction.next_spec_index;
           index < transaction.spec_changes.length;
@@ -1443,6 +1472,11 @@ export async function archiveNativePortableChange(options: {
       await assertAppliedSpecsUnchanged(options.paths, transaction);
 
       if (transaction.status === 'specs-applied') {
+        if (!state.archived && state.builder_handoff?.raw_input_ref) {
+          const local = await readCurrentLocalExecution({ paths: options.paths, state });
+          if (!local) throw new Error('Native 原始执行记录缺失；保留已应用步骤并恢复证据');
+          await assertNativePortableRawCheckInputs(options.paths, state, local);
+        }
         // Supervisor delivery is the parent-level commit boundary. Do it before
         // finalizing the portable parent as archived so a target-drift blocker
         // cannot expose a false archived state while delivery is still pending.

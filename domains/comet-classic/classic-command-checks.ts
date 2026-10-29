@@ -4,6 +4,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { appendTrajectory } from './classic-run-store.js';
 import type { RuntimeAction } from '../engine/runtime-action.js';
+import {
+  markRuntimeActionUnknown,
+  retryRuntimeAction,
+  claimRuntimeAction,
+} from '../engine/runtime-action.js';
 import type { RunState, TrajectoryEvent } from '../engine/types.js';
 import { terminateProcessTree } from '../../platform/process/terminate-process-tree.js';
 import { spawnCommand } from '../../platform/process/spawn-command.js';
@@ -19,6 +24,7 @@ import {
   writeClassicProjectText,
 } from './classic-protected-path.js';
 import { readClassicState, withClassicStateLock } from './classic-store.js';
+import type { ClassicState } from './classic-state.js';
 import {
   completeClassicCheckAction,
   completedClassicCheckAction,
@@ -27,10 +33,19 @@ import {
 } from './classic-check-action.js';
 import { readCheckIndex } from './classic-check-index.js';
 import { readCheckPolicy } from './classic-check-policy.js';
+import { hashRuntimeValue } from '../engine/runtime-json.js';
 import {
-  classicDocumentEvidenceMode,
-  splitNeutralDocumentChanges,
-} from './classic-neutral-documents.js';
+  classicCheckInputsRetained,
+  classicCompatCheckExecutionRef,
+  classicEditReviewScope,
+  classicFormalEditReviewScope,
+  observeClassicCompatCheckInputs,
+} from './classic-edit-review.js';
+import {
+  areObservedEditsNonBehavioral,
+  assertEditReviewsComplete,
+} from '../workflow-contract/edit-review.js';
+import { classicDocumentEvidenceMode } from './classic-neutral-documents.js';
 import {
   checkManifestHash,
   diffCheckManifests,
@@ -523,6 +538,232 @@ async function checkEvent(
   });
 }
 
+export async function rememberClassicAcceptedVerifyCheck(
+  root: string,
+  changeDir: string,
+  run: RunState,
+  state: ClassicState,
+  check: RecordedCommandCheck,
+) {
+  if (!state.verificationReport || !check.action || check.exitCode !== 0)
+    throw new Error('接受 Verify 需要真实检查和报告');
+  const report = await readClassicProjectFile(root, state.verificationReport, {
+    label: 'Classic 已接受报告',
+  });
+  const snapshot = await collectCheckSnapshot(
+    root,
+    changeDir,
+    { argv: check.argv!, cwd: check.cwd },
+    { verificationReport: state.verificationReport },
+  );
+  const candidateManifestHash = checkManifestHash(snapshot.manifest);
+  const candidateManifestRef = `${path.relative(root, changeDir).replaceAll('\\', '/')}/.comet/checks/accepted-${candidateManifestHash}.manifest`;
+  await writeClassicProjectText(root, candidateManifestRef, snapshot.manifest, {
+    label: 'Classic 接受时的候选输入',
+  });
+  await checkEvent(changeDir, run, 'checkpoint', {
+    kind: 'classic-accepted-verify-check',
+    scope: 'verify',
+    sequence: check.sequence,
+    actionId: check.action.id,
+    manifestHash: check.manifestHash,
+    candidateManifestRef,
+    candidateManifestHash,
+    reportRef: state.verificationReport,
+    reportSha256: createHash('sha256').update(report).digest('hex'),
+    checkEpoch: state.checkEpoch ?? 0,
+    verifiedAt: state.verifiedAt,
+  });
+}
+
+export async function readClassicAcceptedVerifyCheck(
+  root: string,
+  changeDir: string,
+  run: RunState,
+  state: ClassicState,
+) {
+  const event = [...(await readCheckIndex(changeDir, run.trajectoryRef)).events]
+    .reverse()
+    .find(
+      (entry) =>
+        entry.runId === run.runId &&
+        entry.type === 'checkpoint' &&
+        entry.data?.kind === 'classic-accepted-verify-check',
+    );
+  const data = event?.data;
+  if (
+    !data ||
+    data.reportRef !== state.verificationReport ||
+    data.verifiedAt !== state.verifiedAt ||
+    typeof data.actionId !== 'string' ||
+    typeof data.reportSha256 !== 'string' ||
+    typeof data.sequence !== 'number' ||
+    typeof data.checkEpoch !== 'number' ||
+    data.checkEpoch > (state.checkEpoch ?? 0)
+  )
+    throw new Error('原 Verify 缺少对应报告的接受证据；保留原批准和工作，只诊断缺失记录');
+  const report = await readClassicProjectFile(root, data.reportRef as string, {
+    label: 'Classic 原验收报告',
+  });
+  if (createHash('sha256').update(report).digest('hex') !== data.reportSha256)
+    throw new Error('原验收报告与已接受内容不匹配，不能沿用原接受结果');
+  return {
+    ...data,
+    sequence: data.sequence,
+    actionId: data.actionId,
+    reportSha256: data.reportSha256,
+    checkEpoch: data.checkEpoch,
+    manifestHash: typeof data.manifestHash === 'string' ? data.manifestHash : null,
+    candidateManifestRef:
+      typeof data.candidateManifestRef === 'string' ? data.candidateManifestRef : null,
+    candidateManifestHash:
+      typeof data.candidateManifestHash === 'string' ? data.candidateManifestHash : null,
+    bindingHash: hashRuntimeValue(data as import('../engine/runtime.js').RuntimeValue),
+  };
+}
+
+export async function assertClassicAcceptedVerifyInputs(
+  root: string,
+  changeDir: string,
+  run: RunState,
+  state: ClassicState,
+) {
+  if (state.archived) return;
+  // 旧 Compat 没有保存报告接受检查点，保持其原契约；新接受边界始终写入此证据。
+  if (
+    !(await readCheckIndex(changeDir, run.trajectoryRef)).events.some(
+      (event) =>
+        event.runId === run.runId &&
+        event.type === 'checkpoint' &&
+        event.data?.kind === 'classic-accepted-verify-check',
+    )
+  )
+    return;
+  await readClassicAcceptedVerifyCheck(root, changeDir, run, state);
+  await assertClassicAcceptedCandidateInputs(root, changeDir, run, state);
+  const result = await evaluateCommandCheck(root, changeDir, run, 'verify');
+  if (!result.record)
+    throw new Error(
+      `原验收检查不再适用：${result.reason ?? '结果缺失'}；由当前 Agent 只补受影响检查，保留报告和批准`,
+    );
+}
+
+export async function readClassicAcceptedCommandCheck(
+  root: string,
+  changeDir: string,
+  run: RunState,
+  state: ClassicState,
+) {
+  const accepted = await readClassicAcceptedVerifyCheck(root, changeDir, run, state);
+  const events = (await readCheckIndex(changeDir, run.trajectoryRef)).events;
+  const event = events.find(
+    (entry) => entry.runId === run.runId && entry.sequence === accepted.sequence,
+  );
+  const original = event ? validRecord(root, event) : null;
+  if (
+    !original ||
+    original.action?.id !== accepted.actionId ||
+    original.manifestHash !== accepted.manifestHash ||
+    original.provenance !== 'runtime' ||
+    original.exitCode !== 0 ||
+    original.inputBefore !== original.inputAfter ||
+    !hasMatchingCheckStart(root, events, events.indexOf(event!), original)
+  )
+    throw new Error('原接受结果的检查收据缺失或不匹配，不能用补检查替代原验收');
+  if (!accepted.candidateManifestRef || !accepted.candidateManifestHash)
+    throw new Error('接受时的候选输入记录缺失，不能从当前文件补造原验收');
+  return { original, accepted };
+}
+
+export async function observeClassicAcceptedCandidateInputs(
+  root: string,
+  changeDir: string,
+  run: RunState,
+  state: ClassicState,
+) {
+  const { original, accepted } = await readClassicAcceptedCommandCheck(root, changeDir, run, state);
+  return {
+    original,
+    observation: await observeClassicCompatCheckInputs(root, changeDir, state, original, {
+      manifestRef: accepted.candidateManifestRef!,
+      manifestHash: accepted.candidateManifestHash!,
+    }),
+  };
+}
+
+export async function classicCheckNotExecuted(
+  changeDir: string,
+  run: RunState,
+  scope: CommandCheckScope,
+) {
+  const events = (await readCheckIndex(changeDir, run.trajectoryRef)).events;
+  const relevant = events.filter(
+    (event) => event.runId === run.runId && event.data?.scope === scope,
+  );
+  const proof = relevant.at(-1);
+  const started = relevant.at(-2);
+  return proof?.type === 'checkpoint' &&
+    proof.data.kind === 'classic-check-not-executed' &&
+    started?.type === 'command_check_started' &&
+    proof.data.actionId === (started.data.action as RuntimeAction | undefined)?.id &&
+    proof.data.attempt === (started.data.action as RuntimeAction | undefined)?.attempt &&
+    proof.data.inputHash === (started.data.action as RuntimeAction | undefined)?.inputHash
+    ? proof
+    : null;
+}
+
+export async function assertClassicAcceptedCandidateInputs(
+  root: string,
+  changeDir: string,
+  run: RunState,
+  state: ClassicState,
+) {
+  const { original, observation } = await observeClassicAcceptedCandidateInputs(
+    root,
+    changeDir,
+    run,
+    state,
+  );
+  const scopes = [
+    await classicEditReviewScope(root, path.basename(changeDir), state),
+    await classicFormalEditReviewScope(root, path.basename(changeDir), state),
+  ];
+  for (const scope of scopes) await assertEditReviewsComplete(scope);
+  if (!(await areObservedEditsNonBehavioral(scopes, observation.changes)))
+    throw new Error(
+      '当前内容与原已接受候选不一致；由当前 Agent 只判断新增变化，不能用新的检查成功替代原验收',
+    );
+  const latest = await latestCommandCheck(root, changeDir, run, 'verify');
+  if (
+    latest?.argv &&
+    (JSON.stringify(latest.argv) !== JSON.stringify(original.argv) ||
+      latest.cwd !== original.cwd ||
+      latest.timeoutMs !== original.timeoutMs)
+  )
+    throw new Error('补充检查变更了原已接受命令；保留原批准并核对验证方式');
+}
+
+/** 仅供未启动尝试恢复输入观察；不会将旧结果重新标为可用于推进。 */
+export async function classicCheckBeforeUnexecutedAttempt(
+  root: string,
+  changeDir: string,
+  run: RunState,
+  scope: CommandCheckScope,
+) {
+  const proof = await classicCheckNotExecuted(changeDir, run, scope);
+  if (!proof || typeof proof.data.sourceCheckSequence !== 'number') return null;
+  const events = (await readCheckIndex(changeDir, run.trajectoryRef)).events;
+  const index = events.findIndex(
+    (event) => event.runId === run.runId && event.sequence === proof.data.sourceCheckSequence,
+  );
+  const record = index < 0 ? null : validRecord(root, events[index]);
+  return record?.scope === scope &&
+    record.provenance === 'runtime' &&
+    hasMatchingCheckStart(root, events, index, record)
+    ? record
+    : null;
+}
+
 export async function executeCommandCheck(
   root: string,
   changeDir: string,
@@ -534,6 +775,9 @@ export async function executeCommandCheck(
     timeoutMs?: number;
     reusable?: boolean;
     tier?: 'full' | 'incremental';
+    executionRequestId?: string;
+    expectedManifestHash?: string;
+    validateBeforeStart?: () => Promise<void>;
   },
 ): Promise<RecordedCommandCheck> {
   validateScope(input.scope);
@@ -547,7 +791,14 @@ export async function executeCommandCheck(
   // Read the previous record before writing the started event: once it exists,
   // the started event hides every earlier record for this scope.
   const previous = await latestCommandCheck(root, changeDir, run, input.scope);
-  if (input.reusable) {
+  const inputSource =
+    previous ??
+    (input.executionRequestId
+      ? await classicCheckBeforeUnexecutedAttempt(root, changeDir, run, input.scope)
+      : null);
+  if (input.executionRequestId && !/^[a-f0-9]{64}$/u.test(input.executionRequestId))
+    throw new Error('Invalid check execution request ID');
+  if (input.reusable && !input.executionRequestId) {
     if (
       previous &&
       previous.reusable &&
@@ -641,56 +892,158 @@ export async function executeCommandCheck(
     }
   }
   // A failed launch, snapshot, or log write must not expose an older success.
-  const { started, checkEpoch, action } = await withClassicStateLock(changeDir, async () => {
-    const projection = await readClassicState(changeDir, { migrate: false });
-    if (
-      (projection.run || projection.classic) &&
-      (projection.run?.runId !== run.runId ||
-        projection.run?.iteration !== run.iteration ||
-        !projection.classic)
-    )
-      throw new Error('Classic check Run changed before launch; reload the current state');
-    const checkEpoch = projection.classic?.checkEpoch ?? 0;
-    const action = startClassicCheckAction({
-      run,
-      id: randomUUID(),
-      scope: input.scope,
-      argv: [...input.argv],
-      cwd,
-      timeoutMs,
-      tier,
-      checkEpoch,
-    });
-    const started = await checkEvent(changeDir, run, 'command_check_started', {
-      scope: input.scope,
-      argv: [...input.argv],
-      cwd,
-      timeoutMs,
-      reusable: input.reusable === true,
-      tier,
-      checkEpoch,
-      action,
-    });
-    return { started, checkEpoch, action };
-  });
+  const reservation = await withClassicStateLock(
+    changeDir,
+    async (): Promise<
+      | { record: RecordedCommandCheck }
+      | { started: TrajectoryEvent; checkEpoch: number; action: RuntimeAction }
+    > => {
+      const projection = await readClassicState(changeDir, { migrate: false });
+      if (
+        (projection.run || projection.classic) &&
+        (projection.run?.runId !== run.runId ||
+          projection.run?.iteration !== run.iteration ||
+          !projection.classic)
+      )
+        throw new Error('Classic check Run changed before launch; reload the current state');
+      let retryAction: RuntimeAction | undefined;
+      if (input.executionRequestId) {
+        const events = (await readCheckIndex(changeDir, run.trajectoryRef)).events;
+        const notExecuted = await classicCheckNotExecuted(changeDir, run, input.scope);
+        const latestStarted = await latestInterruptedCommandCheck(
+          root,
+          changeDir,
+          run,
+          input.scope,
+        );
+        if (!previous && latestStarted?.action && !notExecuted)
+          throw new Error(
+            `原检查 ${latestStarted.action.id}（尝试 ${latestStarted.action.attempt}）已开始且结果未明；先核对该命令及原进程，不能用新请求重复启动`,
+          );
+        const prior = [...events]
+          .reverse()
+          .find(
+            (event) =>
+              event.runId === run.runId &&
+              (event.data?.action as { id?: string } | undefined)?.id === input.executionRequestId,
+          );
+        if (prior && notExecuted?.data.actionId === input.executionRequestId) {
+          const started = validStartedAttempt(root, prior);
+          if (!started?.action) throw new Error('原未执行检查的身份不匹配');
+          if (
+            JSON.stringify(started.argv) !== JSON.stringify(input.argv) ||
+            started.cwd !== cwd ||
+            started.timeoutMs !== timeoutMs ||
+            started.tier !== tier
+          )
+            throw new Error('补充检查请求与原命令不匹配');
+          const pending = retryRuntimeAction(
+            markRuntimeActionUnknown(started.action, String(notExecuted.data.reason)),
+            { resolution: 'not-executed', evidence: notExecuted.data },
+          );
+          retryAction = claimRuntimeAction(pending, {
+            executorId: 'comet-classic-check',
+            token: pending.id,
+            attempt: pending.attempt,
+            inputHash: pending.inputHash,
+          });
+        } else if (prior) {
+          const record = validRecord(root, prior);
+          if (!record || !hasMatchingCheckStart(root, events, events.indexOf(prior), record))
+            throw new Error('原补充检查已开始且结果未明；核对原执行，不能重复启动');
+          if (
+            !record.logRef ||
+            !record.logHash ||
+            createHash('sha256')
+              .update(
+                await readClassicProjectFile(root, record.logRef, {
+                  label: 'Classic 补充检查原日志',
+                }),
+              )
+              .digest('hex') !== record.logHash ||
+            !(await recordManifestEntries(root, record))
+          )
+            throw new Error('原补充检查证据缺失或损坏；保留原执行并诊断');
+          if (
+            JSON.stringify(record.argv) !== JSON.stringify(input.argv) ||
+            record.cwd !== cwd ||
+            record.timeoutMs !== timeoutMs
+          )
+            throw new Error('补充检查请求与原命令不匹配');
+          return { record: { ...record, tier: record.tier ?? 'full' } };
+        }
+      }
+      if (projection.classic?.phase === 'archive' && !input.executionRequestId)
+        throw new Error(
+          '已接受结果后补检查须使用 comet edit-review refresh-checks，先绑定当前 Agent 判断和原报告',
+        );
+      await input.validateBeforeStart?.();
+      const checkEpoch = projection.classic?.checkEpoch ?? 0;
+      const action =
+        retryAction ??
+        startClassicCheckAction({
+          run,
+          id: input.executionRequestId ?? randomUUID(),
+          scope: input.scope,
+          argv: [...input.argv],
+          cwd,
+          timeoutMs,
+          tier,
+          checkEpoch,
+        });
+      const started = await checkEvent(changeDir, run, 'command_check_started', {
+        scope: input.scope,
+        argv: [...input.argv],
+        cwd,
+        timeoutMs,
+        reusable: input.reusable === true,
+        tier,
+        checkEpoch,
+        action,
+      });
+      return { started, checkEpoch, action };
+    },
+  );
+  if ('record' in reservation) return { ...reservation.record, reused: true };
+  const { started, checkEpoch, action } = reservation;
   const identity = { argv: input.argv, cwd };
   // The previous execution's manifest lets unchanged files skip rereading, so a
   // rerun only reads what actually changed since the last recorded check.
-  const previousManifest = previous?.manifestRef
-    ? await recordManifestEntries(root, previous).catch(() => null)
-    : null;
-  const before = await collectCheckSnapshot(
-    root,
-    changeDir,
-    identity,
-    previousManifest ? { baseline: previousManifest } : {},
-  );
+  let before: Awaited<ReturnType<typeof collectCheckSnapshot>>;
+  let environment: string;
+  try {
+    const previousManifest = inputSource?.manifestRef
+      ? await recordManifestEntries(root, inputSource).catch(() => null)
+      : null;
+    before = await collectCheckSnapshot(
+      root,
+      changeDir,
+      identity,
+      previousManifest ? { baseline: previousManifest } : {},
+    );
+    if (
+      input.expectedManifestHash &&
+      checkManifestHash(before.manifest) !== input.expectedManifestHash
+    )
+      throw new Error('补充检查预留后输入发生变化；保留原执行记录，只判断新增变化后继续');
+    environment = await checkEnvironmentFingerprint(
+      input.argv,
+      path.resolve(root, cwd),
+      await readCheckPolicy(root, identity),
+    );
+  } catch (error) {
+    await checkEvent(changeDir, run, 'checkpoint', {
+      kind: 'classic-check-not-executed',
+      scope: input.scope,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      sourceCheckSequence: inputSource?.sequence ?? null,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
   const inputBefore = before.digest;
-  const environment = await checkEnvironmentFingerprint(
-    input.argv,
-    path.resolve(root, cwd),
-    await readCheckPolicy(root, identity),
-  );
   const logPath = path.join(changeDir, '.comet', 'checks', `${randomUUID()}.log`);
   // The platform adapter preserves argv and rejects unsafe Windows batch arguments.
   const result = await new Promise<{ exitCode: number; output: string }>((resolve) => {
@@ -857,8 +1210,19 @@ export async function evaluateCommandCheck(
     !record.reusable &&
     (record.checkEpoch ?? 0) !==
       ((await readClassicState(changeDir, { migrate: false })).classic?.checkEpoch ?? 0)
-  )
-    return fail('check evidence crossed a phase boundary');
+  ) {
+    const state = (await readClassicState(changeDir, { migrate: false })).classic;
+    const accepted =
+      state?.phase === 'archive' && scope === 'verify'
+        ? await readClassicAcceptedVerifyCheck(root, changeDir, run, state).catch(() => null)
+        : null;
+    if (
+      !accepted ||
+      accepted.sequence !== record.sequence ||
+      accepted.actionId !== record.action?.id
+    )
+      return fail('check evidence crossed a phase boundary');
+  }
   if (!record)
     return {
       record: null,
@@ -910,15 +1274,24 @@ export async function evaluateCommandCheck(
       // A declared files list keeps its exact binding; the neutral-document
       // default relaxes only the undeclared whole-tree scope, so editing a
       // README or a docs page alone no longer discards valid evidence.
-      const material =
-        policy.files || (await classicDocumentEvidenceMode(root)) === 'strict'
-          ? changedPaths
-          : (await splitNeutralDocumentChanges(root, changedPaths)).material;
-      if (material.length) {
+      const state = (await readClassicState(changeDir, { migrate: false })).classic;
+      const retained =
+        !policy.files &&
+        (await classicDocumentEvidenceMode(root)) !== 'strict' &&
+        state &&
+        (await classicCheckInputsRetained(
+          root,
+          path.basename(changeDir),
+          state,
+          classicCompatCheckExecutionRef(record),
+          record as unknown as Record<string, unknown>,
+          current.manifest,
+        ));
+      if (!retained) {
         return {
           record: null,
           reason: 'check inputs changed since execution',
-          changedPaths: material,
+          changedPaths,
           relevance,
         };
       }
@@ -943,27 +1316,11 @@ export async function evaluateCommandCheck(
   if (typeof record.logRef !== 'string' || typeof record.logHash !== 'string')
     return fail('the evidence log record is incomplete');
   try {
-    // An unchanged size+mtime proves the log was not rewritten since the
-    // check wrote it, so rereading (up to 8 MB per scope) is skipped. Records
-    // without the stat, or a changed stat, keep the full content-hash check.
-    const logTarget = await inspectClassicProjectTarget(root, record.logRef, {
-      label: 'Classic check log',
-      expected: 'file',
+    const log = await readClassicProjectFile(root, record.logRef, {
+      label: 'Classic check evidence log',
     });
-    const logStat = await fs.lstat(logTarget.target, { bigint: true }).catch(() => null);
-    const statMatches =
-      typeof record.logSize === 'number' &&
-      typeof record.logMtimeNs === 'string' &&
-      logStat !== null &&
-      Number(logStat.size) === record.logSize &&
-      logStat.mtimeNs.toString() === record.logMtimeNs;
-    if (!statMatches) {
-      const log = await readClassicProjectFile(root, record.logRef, {
-        label: 'Classic check evidence log',
-      });
-      if (createHash('sha256').update(log).digest('hex') !== record.logHash)
-        return fail('the evidence log is damaged');
-    }
+    if (createHash('sha256').update(log).digest('hex') !== record.logHash)
+      return fail('the evidence log is damaged');
   } catch {
     return fail('the evidence log is missing');
   }

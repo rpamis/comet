@@ -42,7 +42,7 @@ import {
 import { parseNativePortableState } from './native-portable-state.js';
 import { readNativePortableTransaction } from './native-portable-transactions.js';
 import { readNativeApprovedShapeSemanticSnapshot } from './native-portable-requirements.js';
-import { nativeEditReviewScope } from './native-edit-review-scope.js';
+import { nativeEditReviewScope, nativeFormalEditReviewScope } from './native-edit-review-scope.js';
 import { nativeShapeReviewAnchorMatches } from './native-shape-review-evidence.js';
 import {
   nativeShapeArtifactContractHash,
@@ -119,7 +119,11 @@ async function archiveCandidateBinding(
   );
   const materials: Array<{ ref: string; digest: string; mode: number }> = [];
   const shape = (await readNativeApprovedShapeSemanticSnapshot({ paths, state }))?.snapshot;
-  const scope = state.builder_handoff ? nativeEditReviewScope(paths, state) : null;
+  const scope = state.shape_confirmation_hash
+    ? nativeFormalEditReviewScope(paths, state)
+    : state.builder_handoff
+      ? nativeEditReviewScope(paths, state)
+      : null;
   let reviews: Awaited<ReturnType<typeof inspectEditReviews>> | undefined;
   async function visit(directory: string) {
     const stat = await fs.lstat(directory);
@@ -144,18 +148,27 @@ async function archiveCandidateBinding(
             maxBytes: null,
           });
           const reviewedRef = ref(path.join(paths.changesDir, state.name, approved.source));
-          const reviewed =
+          let reviewedScope = scope;
+          let reviewed =
             current.hash === digest
               ? await approvedEditFingerprint(scope, reviewedRef, current.text, reviews)
               : null;
+          if (!reviewed && current.hash === digest && state.builder_handoff) {
+            const legacyScope = nativeEditReviewScope(paths, state);
+            if (legacyScope.candidateKey !== scope.candidateKey) {
+              reviewed = await approvedEditFingerprint(legacyScope, reviewedRef, current.text);
+              reviewedScope = legacyScope;
+            }
+          }
           const observed = nativeShapeArtifactSnapshot(approved.source, current.text);
           if (
             reviewed &&
-            (await nativeShapeReviewAnchorMatches(scope, approved, reviewed.beforeHash)) &&
-            nativeShapeArtifactContractHash({
-              ...observed,
-              commentsHash: approved.commentsHash,
-            }) === nativeShapeArtifactContractHash(approved)
+            (await nativeShapeReviewAnchorMatches(reviewedScope, approved, reviewed.beforeHash)) &&
+            (!reviewed.semantic ||
+              nativeShapeArtifactContractHash({
+                ...observed,
+                commentsHash: approved.commentsHash,
+              }) === nativeShapeArtifactContractHash(approved))
           )
             digest = approved.contentHash;
         }

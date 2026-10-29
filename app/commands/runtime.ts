@@ -933,7 +933,14 @@ export async function runtimeDispatchCommand(
       evidenceValidators = defined.evidenceValidators;
       validators = defined.validators;
       commandValidators = defined.commandValidators;
-      executors = defined.executors;
+      executors = defined.executors.some((executor) => executor.id === 'comet-classic-check')
+        ? defined.executors
+        : [
+            ...defined.executors,
+            (
+              await import('../../domains/comet-classic/classic-sdk-check.js')
+            ).createClassicSdkCheckExecutor(projectRoot),
+          ];
     }
     if (application === 'native' && request.operation !== 'start') {
       selectedBuiltInRun = await persistentStore.read(text(request.runId, 'runId'));

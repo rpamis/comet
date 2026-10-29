@@ -385,6 +385,7 @@ function parseBuilderHandoff(value: unknown): NativeBuilderHandoff {
       'known_limits_truncated',
       'review',
       'submitted_at',
+      'raw_input_ref',
     ]),
     label,
   );
@@ -437,6 +438,9 @@ function parseBuilderHandoff(value: unknown): NativeBuilderHandoff {
         }
       : null,
     submitted_at: timestamp(root.submitted_at, `${label}.submitted_at`),
+    ...(root.raw_input_ref !== undefined
+      ? { raw_input_ref: stringValue(root.raw_input_ref, `${label}.raw_input_ref`) }
+      : {}),
   };
 }
 

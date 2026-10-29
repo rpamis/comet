@@ -18,6 +18,12 @@ const application = defineNativeWorkflowApplication();
 const currentHash = hashRuntimeValue(defineWorkflow(application.workflow));
 const legacy = definitions.nativeSdkLegacyDefinitions(application.workflow);
 const reference = (hash: string) => ({ workflow: { id: 'comet-native', version: '1', hash } });
+it('allows missing Builder raw receipts only for the exact known legacy definitions', () => {
+  expect(new Set(legacy.map((workflow) => hashRuntimeValue(defineWorkflow(workflow))))).toEqual(
+    new Set(definitions.NATIVE_SDK_LEGACY_BUILDER_INPUT_HASHES),
+  );
+  expect(definitions.NATIVE_SDK_LEGACY_BUILDER_INPUT_HASHES).not.toContain(currentHash);
+});
 afterEach(() => vi.restoreAllMocks());
 
 it('recognizes the persisted builtin definition before integration repair recovery', () => {

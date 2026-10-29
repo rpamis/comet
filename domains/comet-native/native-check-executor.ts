@@ -123,6 +123,11 @@ export function nativeCheckPlanKey(plan: NativeCheckPlan): string {
   ]);
 }
 
+/** 命令和工作目录定义同一次副作用；改 ID、超时或重试标记不能重复单次操作。 */
+export function nativeCheckInvocationKey(plan: NativeCheckPlan): string {
+  return JSON.stringify([plan.executable, plan.argv, plan.cwdRef.replaceAll('\\', '/')]);
+}
+
 function executableCandidates(executable: string, cwd: string): string[] {
   if (path.isAbsolute(executable) || /[\\/]/u.test(executable)) {
     return [path.resolve(cwd, executable)];

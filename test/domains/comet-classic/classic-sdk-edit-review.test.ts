@@ -78,27 +78,19 @@ it('reviews a generic edit after a normal SDK Build and continues Verify without
     tool_input: { file_path: path.join(root, 'worker.py'), content: after },
   };
   const request = parseCometHookRequest(JSON.stringify(input));
-  expect((await inspectClassicHookGuard(root, 'demo', request)).allowed).toBe(false);
-  expect((await cli('state', 'next', 'demo')).agent.continuation.commandArgs).toContain('claim');
-  const requestFile = path.join(base, 'edit.json');
-  await fs.writeFile(requestFile, JSON.stringify(input));
-  await expect(
-    runClassicEditReviewCommand({
-      projectRoot: root,
-      name: 'demo',
-      operation: 'claim',
-      file: requestFile,
-      sessionId: 'builder-session',
-    }),
-  ).rejects.toThrow('独立');
+  expect((await inspectClassicHookGuard(root, 'demo', request)).allowed).toBe(true);
+  await fs.writeFile(path.join(root, 'worker.py'), after);
   const claimed = await runClassicEditReviewCommand({
     projectRoot: root,
     name: 'demo',
-    operation: 'claim',
-    file: requestFile,
-    sessionId: 'independent-reviewer',
+    operation: 'observe',
+    sessionId: 'builder-session',
   });
-  const template = claimed as { recordTemplate: Record<string, unknown> };
+  const template = claimed as {
+    recordTemplate: Record<string, unknown>;
+    observation: { changes: Array<{ path: string }> };
+  };
+  expect(template.observation.changes.some((entry) => entry.path === 'worker.py')).toBe(true);
   const recordFile = path.join(base, 'review.json');
   await fs.writeFile(
     recordFile,
@@ -114,11 +106,8 @@ it('reviews a generic edit after a normal SDK Build and continues Verify without
     operation: 'record',
     file: recordFile,
   });
-  expect((await cli('state', 'next', 'demo')).agent.continuation.requiredInputs).toContain(
-    '重试已经复核通过的原始编辑调用',
-  );
   expect((await inspectClassicHookGuard(root, 'demo', request)).allowed).toBe(true);
-  await fs.writeFile(path.join(root, 'worker.py'), after);
+  expect(await fs.readFile(path.join(root, 'worker.py'), 'utf8')).toBe(after);
   const current = (await inspectClassicSdkRun(root, 'demo')).run;
   expect(current.actions).toEqual(run.actions);
   const report = 'docs/superpowers/reports/verify.md';

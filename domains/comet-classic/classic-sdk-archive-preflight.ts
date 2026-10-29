@@ -1,10 +1,21 @@
-import { assertClassicEditReviewsComplete } from './classic-edit-review.js';
+import {
+  assertClassicEditReviewsComplete,
+  classicCheckInputsRetained,
+  assertClassicSdkAcceptedCandidateInputs,
+} from './classic-edit-review.js';
 import {
   assertClassicBuildReady,
   assertClassicPresetRequirementsCurrent,
 } from './classic-sdk-application.js';
 import { classicArchiveDocumentOutputs } from './classic-sdk-archive-documents.js';
-import { classicSdkCheckLogHash } from './classic-sdk-check-record.js';
+import {
+  classicSdkCheckLogHash,
+  assertClassicSdkCheckReceipt,
+} from './classic-sdk-check-record.js';
+import {
+  classicSdkCheckRefreshInput,
+  assertClassicSdkCheckCommandBinding,
+} from './classic-sdk-check.js';
 import { randomUUID } from 'node:crypto';
 import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
 import { execFileSync } from 'node:child_process';
@@ -173,14 +184,19 @@ export async function assertVerifyEvidenceCurrent(
       (wait) =>
         wait.stepId === `${state.workflow}.verify.check.evidence` && wait.status === 'resolved',
     )?.receipt;
-  const checkAction = run.actions
+  let checkAction = run.actions
     .slice()
     .reverse()
     .find(
       (action) =>
-        action.stepId === `${state.workflow}.verify.check` && action.status === 'succeeded',
+        action.stepId === `${state.workflow}.verify.check` &&
+        action.status === 'succeeded' &&
+        (action.outcome?.output as { receiptRef?: string; contentHash?: string } | undefined)
+          ?.receiptRef === checkReceipt?.ref &&
+        (action.outcome?.output as { contentHash?: string } | undefined)?.contentHash ===
+          checkReceipt?.contentHash,
     );
-  const output = checkAction?.outcome?.output as Record<string, unknown> | undefined;
+  let output = checkAction?.outcome?.output as Record<string, unknown> | undefined;
   if (
     !reportReceipt ||
     reportReceipt.ref !== state.verificationReport ||
@@ -217,6 +233,51 @@ export async function assertVerifyEvidenceCurrent(
     checkReceipt.contentHash,
     'Classic Archive Verify check log',
   );
+  const latest = run.actions
+    .slice(run.actions.indexOf(checkAction) + 1)
+    .reverse()
+    .find((action) => action.stepId === `${state.workflow}.verify.check`);
+  if (latest) {
+    const refresh = classicSdkCheckRefreshInput(run, latest);
+    const approval = run.waits.find((wait) => wait.id === refresh?.approvalWaitId);
+    const supplemental = latest.outcome?.output as Record<string, unknown> | undefined;
+    if (
+      !refresh ||
+      !approval ||
+      approval.stepId !== `${state.workflow}.archive.confirm` ||
+      approval.status !== 'resolved' ||
+      !['local', 'push', 'pr'].includes(approval.decision?.choice ?? '') ||
+      approval.proposalHash !== refresh.proposalHash ||
+      refresh.reportSha256 !== reportReceipt.contentHash ||
+      latest.status !== 'succeeded' ||
+      latest.claim?.executorId !== 'comet-classic-check' ||
+      !supplemental ||
+      supplemental.scope !== 'verify' ||
+      supplemental.exitCode !== 0 ||
+      supplemental.checkEpoch !== state.checkEpoch ||
+      supplemental.inputBefore !== supplemental.inputAfter ||
+      typeof supplemental.receiptRef !== 'string' ||
+      typeof supplemental.contentHash !== 'string'
+    )
+      throw new Error(
+        'Classic 批准后的最新补充检查未通过；保留原批准，修复受影响检查后继续，不能复用旧成功',
+      );
+    await assertClassicSdkCheckReceipt(projectRoot, run, latest, {
+      status: latest.outcome!.status,
+      output: latest.outcome!.output,
+    });
+    await assertClassicSdkCheckCommandBinding(run, latest, projectRoot, supplemental);
+    await classicSdkCheckLogHash(
+      projectRoot,
+      run,
+      latest,
+      supplemental.receiptRef,
+      supplemental.contentHash,
+      'Classic supplemental Verify check log',
+    );
+    checkAction = latest;
+    output = supplemental;
+  }
   const change = await inspectProtectedProjectPath(projectRoot, changeDirRef, {
     label: 'Classic Archive change',
     expected: 'directory',
@@ -224,7 +285,7 @@ export async function assertVerifyEvidenceCurrent(
   const cwd =
     output.cwd === '.'
       ? { exists: true, target: projectRoot, relative: '.' }
-      : await inspectProtectedProjectPath(projectRoot, output.cwd, {
+      : await inspectProtectedProjectPath(projectRoot, String(output.cwd), {
           label: 'Classic Archive check cwd',
           expected: 'directory',
         });
@@ -237,7 +298,19 @@ export async function assertVerifyEvidenceCurrent(
   const snapshot = await collectCheckSnapshot(projectRoot, change.target, identity, {
     verificationReport: state.verificationReport,
   });
-  if (snapshot.digest !== output.inputAfter) {
+  await assertClassicSdkAcceptedCandidateInputs(projectRoot, run, snapshot);
+  if (
+    snapshot.digest !== output.inputAfter &&
+    !(await classicCheckInputsRetained(
+      projectRoot,
+      run.runId,
+      state,
+      checkAction.id,
+      output,
+      snapshot.manifest,
+      run,
+    ))
+  ) {
     throw new Error('Classic Archive check inputs changed');
   }
 }

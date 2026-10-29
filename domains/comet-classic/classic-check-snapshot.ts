@@ -5,11 +5,14 @@ import {
 } from '../../platform/process/runtime-metrics.js';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { promises as fs } from 'node:fs';
+import { promises as fs, lstatSync, type BigIntStats } from 'node:fs';
 import path from 'node:path';
 import { readClassicState } from './classic-store.js';
 import { readClassicProjectBytes, inspectClassicProjectTarget } from './classic-protected-path.js';
-import { hashProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
+import {
+  hashProtectedProjectFile,
+  createProtectedProjectReadSession,
+} from '../workflow-contract/protected-project-path.js';
 import { resolveWindowsCommand } from '../../platform/process/spawn-command.js';
 import {
   CHECK_POLICY_PATH,
@@ -42,10 +45,45 @@ function git(root: string, args: string[], input?: string): string | null {
   return result.status === 0 ? result.stdout : null;
 }
 
-/** Hash dirty or untracked paths in bounded batches, preserving Git's input order. */
-export function hashGitPaths(root: string, paths: readonly string[]): Map<string, string> {
+/** 不应用 Git filter，按实际字节批量散列输入并保留路径顺序。 */
+function inputStatKey(stat: BigIntStats) {
+  return [
+    stat.dev,
+    stat.ino,
+    stat.size,
+    stat.mode,
+    stat.birthtimeNs,
+    stat.mtimeNs,
+    stat.ctimeNs,
+  ].join(':');
+}
+
+export function hashGitPaths(
+  root: string,
+  paths: readonly string[],
+  observedStats = new Map<string, string>(),
+): Map<string, string> {
   const hashes = new Map<string, string>();
   const hashBatch = (batch: readonly string[]): void => {
+    batch = batch.filter((ref) => {
+      const target = path.resolve(root, ref);
+      let stat: BigIntStats;
+      try {
+        stat = lstatSync(target, { bigint: true });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+        throw error;
+      }
+      if (stat.isSymbolicLink()) throw new Error(`Check input is a symbolic link: ${ref}`);
+      if (!stat.isFile()) return false;
+      const key = inputStatKey(stat),
+        previous = observedStats.get(target);
+      if (previous && previous !== key)
+        throw new Error(`Classic check input changed during snapshot: ${ref}`);
+      observedStats.set(target, key);
+      return true;
+    });
+    if (!batch.length) return;
     const output = git(
       root,
       ['hash-object', '--no-filters', '--stdin-paths'],
@@ -95,6 +133,12 @@ export function hashGitPaths(root: string, paths: readonly string[]): Map<string
     batchBytes += bytes;
   }
   if (batch.length) hashBatch(batch);
+  for (const [target, before] of observedStats) {
+    if (inputStatKey(lstatSync(target, { bigint: true })) !== before)
+      throw new Error(
+        `Classic check input changed during snapshot: ${path.relative(root, target)}`,
+      );
+  }
   return hashes;
 }
 
@@ -336,7 +380,65 @@ export async function collectCheckSnapshot(
     return results;
   }
 
+  const rawStats = new Map<string, string>();
+  const rawHashes = new Map<string, string>();
+  const observedInputPrefixes = policy.files
+    ? [
+        ...policy.files.map((ref) => {
+          if (!hasGlobCharacters(ref)) return ref;
+          const segments = ref.split('/');
+          return segments.slice(0, segments.findIndex(hasGlobCharacters)).join('/') || '.';
+        }),
+        '.comet/config.yaml',
+        CHECK_POLICY_PATH,
+        'node_modules/.package-lock.json',
+        'node_modules/.modules.yaml',
+        'node_modules/.pnpm/lock.yaml',
+      ]
+    : ['.'];
+  const readSession = legacy
+    ? null
+    : await createProtectedProjectReadSession(root, 'Classic check input', {
+        ignoredDirectoryEntries: (directory) => (entry) => {
+          const relative = path.posix.join(directory === '.' ? '' : directory, entry.name);
+          return (
+            entry.name === '.git' ||
+            omitted(path.resolve(root, relative), entry.isDirectory()) ||
+            !observedInputPrefixes.some(
+              (prefix) =>
+                prefix === '.' ||
+                prefix === relative ||
+                prefix.startsWith(`${relative}/`) ||
+                relative.startsWith(`${prefix}/`),
+            )
+          );
+        },
+      });
   const visitedInputs = new Set<string>();
+  const inputParents = new Map<string, boolean>();
+  async function observeInput(absolute: string) {
+    if (!readSession) return;
+    let observed = absolute;
+    for (;;) {
+      const parent = path.dirname(observed);
+      let exists = inputParents.get(parent);
+      if (exists === undefined) {
+        try {
+          lstatSync(parent);
+          exists = true;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+          exists = false;
+        }
+        inputParents.set(parent, exists);
+      }
+      if (exists) break;
+      if (observed === root)
+        throw new Error('Classic project root disappeared during input observation');
+      observed = parent;
+    }
+    await readSession.observePath(path.relative(root, observed).replaceAll('\\', '/'));
+  }
   type FileSnapshot = {
     absolute: string;
     binding: Array<string | Buffer>;
@@ -370,8 +472,10 @@ export async function collectCheckSnapshot(
         label: 'Classic check input',
         expected: 'any',
       });
+      await observeInput(absolute);
       return { absolute, binding, entry: { p: relative, h: 'missing', s: null, m: null } };
     }
+    await observeInput(absolute);
     if (stat.isSymbolicLink())
       throw new Error(
         `Check input is a symbolic link: ${relative}. Symbolic links cannot be check inputs; either remove the link, or bind this command's inputs in .comet/check-policy.json (version 2) with a files list that excludes it`,
@@ -383,6 +487,13 @@ export async function collectCheckSnapshot(
         expected: 'directory',
       });
       return { absolute, binding, directory: absolute };
+    }
+    if (!legacy) {
+      const key = inputStatKey(stat),
+        previous = rawStats.get(absolute);
+      if (previous && previous !== key)
+        throw new Error(`Classic check input changed during snapshot: ${relative}`);
+      rawStats.set(absolute, key);
     }
     const normalizeTasks =
       policy.taskCheckboxes === 'ignore' && absolute === path.join(changeDir, 'tasks.md');
@@ -531,13 +642,15 @@ export async function collectCheckSnapshot(
             return [entry.slice(separator + 1), metadata[1] ?? ''] as const;
           }),
       );
-      const status = git(directory, [
-        'status',
-        '--porcelain=v1',
-        '-z',
-        '--untracked-files=all',
-        '--ignore-submodules=none',
-      ]);
+      const status = legacy
+        ? git(directory, [
+            'status',
+            '--porcelain=v1',
+            '-z',
+            '--untracked-files=all',
+            '--ignore-submodules=none',
+          ])
+        : null;
       const dirty = new Set<string>();
       const deleted = new Set<string>();
       if (status !== null) {
@@ -559,15 +672,23 @@ export async function collectCheckSnapshot(
         }
       }
       // status 失败时不能将 index 中的旧内容当作当前工作区内容。
-      if (status === null) names.forEach((name) => dirty.add(name));
+      if (legacy && status === null) names.forEach((name) => dirty.add(name));
       const hashNames = names.filter(
         (name) =>
-          (!indexHashes.has(name) || dirty.has(name)) && !deleted.has(name) && !gitlinks.has(name),
+          (!legacy || !indexHashes.has(name) || dirty.has(name)) &&
+          !deleted.has(name) &&
+          !gitlinks.has(name),
       );
-      const batchedHashes = hashGitPaths(directory, hashNames);
+      if (readSession)
+        for (const ref of hashNames) await observeInput(path.resolve(directory, ref));
+      const batchedHashes = hashGitPaths(directory, hashNames, legacy ? undefined : rawStats);
+      if (!legacy)
+        for (const [ref, digest] of batchedHashes)
+          rawHashes.set(path.resolve(directory, ref), digest);
       const inputs = names.map((name) => {
         const indexHash = indexHashes.get(name);
-        const contentHash = indexHash && !dirty.has(name) ? indexHash : batchedHashes.get(name);
+        const contentHash =
+          legacy && indexHash && !dirty.has(name) ? indexHash : batchedHashes.get(name);
         return {
           absolute: path.resolve(directory, name),
           contentHash: contentHash ? `git:${contentHash}` : undefined,
@@ -641,6 +762,41 @@ export async function collectCheckSnapshot(
     'node_modules/.pnpm/lock.yaml',
   ]) {
     await file(path.join(root, name));
+  }
+  for (const [target, before] of rawStats) {
+    if (inputStatKey(lstatSync(target, { bigint: true })) !== before)
+      throw new Error(
+        `Classic check input changed during snapshot: ${path.relative(root, target)}`,
+      );
+  }
+  const observation = await readSession?.finish();
+  if (observation?.changedDirectories.length) {
+    const affected = [...rawHashes.keys()].filter((target) =>
+      observation.changedDirectories.some(
+        (directory) =>
+          directory === '.' || target.startsWith(path.resolve(root, directory) + path.sep),
+      ),
+    );
+    if (affected.length) {
+      const stable = await createProtectedProjectReadSession(
+        root,
+        'Classic changed directory input',
+      );
+      for (const target of affected)
+        await stable.observePath(path.relative(root, target).replaceAll('\\', '/'));
+      const checked = hashGitPaths(
+        root,
+        affected.map((target) => path.relative(root, target).replaceAll('\\', '/')),
+      );
+      for (const target of affected)
+        if (
+          checked.get(path.relative(root, target).replaceAll('\\', '/')) !== rawHashes.get(target)
+        )
+          throw new Error(
+            `Classic check input changed during snapshot: ${path.relative(root, target)}`,
+          );
+      await stable.finish();
+    }
   }
   return { digest: hash.digest('hex'), entries, manifest: serializeCheckManifest(entries) };
 }

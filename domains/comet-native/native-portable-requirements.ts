@@ -1,11 +1,14 @@
-import { nativeShapeReviewAnchorMatches } from './native-shape-review-evidence.js';
+import {
+  nativeShapeReviewAnchorMatches,
+  readApprovedShapeOriginal,
+} from './native-shape-review-evidence.js';
 import {
   nativeShapeArtifactSnapshot,
   nativeShapeArtifactContractHash,
   type NativeShapeSemanticSnapshot,
 } from './native-shape-semantics.js';
-import { approvedEditFingerprint } from '../workflow-contract/edit-review.js';
-import { nativeEditReviewScope } from './native-edit-review-scope.js';
+import { approvedEditFingerprint, inspectEditReviews } from '../workflow-contract/edit-review.js';
+import { nativeEditReviewScope, nativeFormalEditReviewScope } from './native-edit-review-scope.js';
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -44,6 +47,10 @@ import {
   writeNativeLocalExecution,
 } from './native-local-execution.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
+import {
+  readCurrentLocalExecution,
+  preservedLocalChecksForVersion,
+} from './native-local-execution-binding.js';
 import {
   buildNativePortableAcceptance,
   sameNativePortableAcceptance,
@@ -797,6 +804,7 @@ export async function readNativePortableAcceptance(options: {
   const semanticSnapshot: NativeShapeSemanticSnapshot | undefined = semantic
     ? { schema: 'comet.native.shape-semantics.v1', artifacts: [] }
     : undefined;
+  const reviewedOriginals = new Map<string, string>();
   const contentHash = async (source: string, text: string): Promise<string> => {
     if (!semanticSnapshot)
       return canonicalHash(
@@ -810,32 +818,33 @@ export async function readNativePortableAcceptance(options: {
     const artifact = nativeShapeArtifactSnapshot(source, text);
     semanticSnapshot.artifacts.push(artifact);
     const approved = approvedSemanticSnapshot?.artifacts.find((entry) => entry.source === source);
-    if (
-      approved &&
-      approved.contractHash === artifact.contractHash &&
-      approved.commentsHash !== artifact.commentsHash &&
-      options.state.builder_handoff
-    ) {
+    if (approved && (options.state.builder_handoff || options.state.phase === 'build')) {
       const relative = path
         .relative(options.paths.projectRoot, path.join(changeDir, source))
         .replaceAll('\\', '/');
-      const review = await approvedEditFingerprint(
-        nativeEditReviewScope(options.paths, options.state),
-        relative,
-        text,
-      );
+      let reviewScope = nativeFormalEditReviewScope(options.paths, options.state);
+      let review = await approvedEditFingerprint(reviewScope, relative, text);
+      if (!review) {
+        reviewScope = nativeEditReviewScope(options.paths, options.state);
+        review = await approvedEditFingerprint(reviewScope, relative, text);
+      }
       if (
         review &&
-        (await nativeShapeReviewAnchorMatches(
-          nativeEditReviewScope(options.paths, options.state),
-          approved,
-          review.beforeHash,
-        ))
-      )
-        return nativeShapeArtifactContractHash({
-          ...artifact,
-          commentsHash: approved.commentsHash,
-        });
+        (await nativeShapeReviewAnchorMatches(reviewScope, approved, review.beforeHash))
+      ) {
+        if (!review.semantic) {
+          reviewedOriginals.set(
+            source,
+            (await readApprovedShapeOriginal(options.paths, options.state, approved)).text,
+          );
+          return nativeShapeArtifactContractHash(approved);
+        }
+        if (approved.contractHash === artifact.contractHash)
+          return nativeShapeArtifactContractHash({
+            ...artifact,
+            commentsHash: approved.commentsHash,
+          });
+      }
     }
     return nativeShapeArtifactContractHash(artifact);
   };
@@ -884,10 +893,15 @@ export async function readNativePortableAcceptance(options: {
         normalizedShapeArtifactText(delta.text),
       );
     }
-    specs.push({ capability: spec.capability, source: source.ref, markdown: acceptanceMarkdown });
+    const sourceHash = await contentHash(source.ref, source.text);
+    specs.push({
+      capability: spec.capability,
+      source: source.ref,
+      markdown: reviewedOriginals.get(source.ref) ?? acceptanceMarkdown,
+    });
     specArtifacts.push({
       ...spec,
-      contentHash: await contentHash(source.ref, source.text),
+      contentHash: sourceHash,
       ...(deltaContentHash === null ? {} : { deltaContentHash }),
     });
   }
@@ -938,7 +952,7 @@ export async function readNativePortableAcceptance(options: {
   });
   return {
     acceptance: buildNativePortableAcceptance({
-      briefMarkdown: brief.text,
+      briefMarkdown: reviewedOriginals.get(brief.ref) ?? brief.text,
       specs,
       legacyBriefBoundaries: options.legacyBriefBoundaries,
       resolveBriefReferences:
@@ -1101,6 +1115,55 @@ export async function prepareNativePortableShapeConfirmation(options: {
   );
 }
 
+async function nativeFormalAgentReviewRequired(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+  approved: NativeShapeSemanticSnapshot | undefined,
+  current: NativeShapeSemanticSnapshot | undefined,
+): Promise<boolean> {
+  if (
+    state.schema !== 'comet.native.v4' ||
+    !['build', 'verify', 'archive'].includes(state.phase) ||
+    !approved ||
+    !current ||
+    approved.artifacts.length !== current.artifacts.length ||
+    !approved.artifacts.every(
+      (entry, index) => entry.source === current.artifacts[index]?.source,
+    ) ||
+    !approved.artifacts.some(
+      (entry, index) => entry.contentHash !== current.artifacts[index].contentHash,
+    )
+  )
+    return false;
+  const reviews = (
+    await Promise.all([
+      inspectEditReviews(nativeEditReviewScope(paths, state)),
+      inspectEditReviews(nativeFormalEditReviewScope(paths, state)),
+    ])
+  ).flat();
+  return !reviews.some(
+    (review) =>
+      review.receipt &&
+      ['implementation-changed', 'requirements-changed'].includes(review.receipt.decision) &&
+      review.edits.some((edit) =>
+        current.artifacts.some(
+          (artifact) =>
+            path
+              .relative(paths.projectRoot, path.join(paths.changesDir, state.name, artifact.source))
+              .replaceAll('\\', '/') === edit.path && artifact.contentHash === edit.afterHash,
+        ),
+      ),
+  );
+}
+
+function nativeFormalAgentReviewInstruction(state: NativePortableState) {
+  return {
+    drifted: true,
+    reviewRequired: true,
+    reason: `Native 正式材料已变化；保留原 Run、Action 和用户文件。由当前 Agent 使用 comet edit-review prepare-applied native ${state.name} --session <当前会话> --json 对照已批准原文判断，实际需求变化才使用原流程修订。`,
+  };
+}
+
 export async function inspectNativePortableAcceptanceDrift(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
@@ -1175,6 +1238,15 @@ export async function inspectNativePortableAcceptanceDrift(options: {
       }
     }
     if (!legacyAcceptance || !sameNativePortableAcceptance(expected, legacyAcceptance)) {
+      if (
+        await nativeFormalAgentReviewRequired(
+          options.paths,
+          options.state,
+          shape.approvedSemanticSnapshot,
+          shape.semanticSnapshot,
+        )
+      )
+        return nativeFormalAgentReviewInstruction(options.state);
       return {
         drifted: true,
         reason:
@@ -1214,6 +1286,8 @@ export async function inspectNativePortableAcceptanceDrift(options: {
   ) {
     const approved = shape.approvedSemanticSnapshot;
     const current = shape.semanticSnapshot;
+    if (await nativeFormalAgentReviewRequired(options.paths, options.state, approved, current))
+      return nativeFormalAgentReviewInstruction(options.state);
     if (
       approved &&
       current &&
@@ -1672,6 +1746,7 @@ export async function setNativePortableWorkspaceFinish(options: {
       if (state.workspace.isolation === 'current') {
         throw new Error('Native current-workspace isolation does not accept a finish action');
       }
+      const local = await readCurrentLocalExecution({ paths: options.paths, state });
       const next: NativePortableState = {
         ...state,
         state_version: state.state_version + 1,
@@ -1680,11 +1755,17 @@ export async function setNativePortableWorkspaceFinish(options: {
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),
-        rebuildNativeLocalExecution({
-          portableState: written,
-          projectRoot: options.paths.projectRoot,
-          branch: currentBranch(options.paths.projectRoot),
-        }),
+        local?.rawInputRef
+          ? preservedLocalChecksForVersion({
+              local,
+              state: written,
+              projectRoot: options.paths.projectRoot,
+            })
+          : rebuildNativeLocalExecution({
+              portableState: written,
+              projectRoot: options.paths.projectRoot,
+              branch: currentBranch(options.paths.projectRoot),
+            }),
         { containedRoot: options.paths.runtimeDir },
       );
       if (written.verification !== null) {

@@ -1,4 +1,5 @@
 import { classicTaskRevision } from './classic-tasks.js';
+import { classicFormalEditReviewScope } from './classic-edit-review.js';
 import { randomUUID } from 'node:crypto';
 
 import type { WorkflowRun } from '../engine/runtime.js';
@@ -260,7 +261,16 @@ export async function submitClassicSdkBuildPlan(options: {
       : null;
   if (!changeDirRef) throw new Error('Classic SDK Run has no change directory');
   await assertClassicSdkDesignRequirementsCurrent(projectRoot, changeDirRef, inspected);
-  const receipt = await classicPlanEvidenceReceipt(projectRoot, planRef, changeDirRef);
+  const receipt = await classicPlanEvidenceReceipt(projectRoot, planRef, changeDirRef, {
+    scope: await classicFormalEditReviewScope(
+      projectRoot,
+      change,
+      state,
+      false,
+      undefined,
+      inspected,
+    ),
+  });
   const designEvidence = await classicAcceptedDesignEvidence(projectRoot, inspected);
 
   const taskRevision = classicTaskRevision(
@@ -363,7 +373,16 @@ export async function continueClassicSdkBuildPlan(options: {
       ? inspected.input.changeDir
       : null;
   if (!changeDirRef) throw new Error('Classic SDK Run has no change directory');
-  const receipt = await classicPlanEvidenceReceipt(projectRoot, state.plan, changeDirRef);
+  const receipt = await classicPlanEvidenceReceipt(projectRoot, state.plan, changeDirRef, {
+    scope: await classicFormalEditReviewScope(
+      projectRoot,
+      change,
+      state,
+      false,
+      undefined,
+      inspected,
+    ),
+  });
   const acceptedPlan = inspected.evidenceWaits
     ?.slice()
     .reverse()

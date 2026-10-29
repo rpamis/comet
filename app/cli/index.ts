@@ -76,12 +76,12 @@ program
 program
   .command('edit-review <operation> <workflow> <change>')
   .description(
-    'Prepare, claim, record, or show a Verify edit review; Native prepare-applied reviews existing edits',
+    'observe 合并观察实际变化，prepare 准备差异，prepare-applied 读取已应用的正式编辑，judge 由当前 Agent 判断；record 保存结果，refresh-checks 补充批准后的检查，show 查看，claim 保留旧独立复核入口',
   )
   .option('--project-root <path>', '当前工作区路径')
-  .option('--file <path>', 'prepare/claim 的完整 Hook 请求或 record 的复核结果 JSON')
-  .option('--confirmed', 'Compat 用户已明确确认这份具体复核结果')
-  .option('--session <reference>', '独立复核会话的稳定执行引用')
+  .option('--file <path>', '完整编辑请求、record 判断结果或 refresh-checks 检查输入 JSON')
+  .option('--confirmed', '旧 Compat 受保护编辑流程的具体复核结果已获用户确认')
+  .option('--session <reference>', '当前 Agent 或旧独立复核会话的稳定执行引用')
   .option('--proposal-hash <hash>', '有多个复核提案时选择具体提案')
   .option('--json', '输出 JSON')
   .action(async (operation, workflow, name, options) => {

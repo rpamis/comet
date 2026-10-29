@@ -43,6 +43,9 @@ import {
   assertNativeSdkCandidateUnchanged,
   nativeSdkCheckPlans,
   nativeSdkCheckValidator,
+  nativeSdkCheckRefreshCommandValidator,
+  nativeSdkCheckRefreshInput,
+  rememberNativeSdkBuilderInputs,
 } from './native-sdk-checks.js';
 import {
   nativeSdkDisassociateCommandValidator,
@@ -858,6 +861,7 @@ const builderValidator: RuntimeValidator = {
       }
       builderCandidateState(run, action, outcome);
       preflightNativeCheckPlans(context.projectRoot, nativeSdkCheckPlans(outcome.output));
+      await rememberNativeSdkBuilderInputs(run, action, outcome, context.projectRoot);
       return { accepted: true };
     } catch (error) {
       return { accepted: false, reason: error instanceof Error ? error.message : String(error) };
@@ -977,7 +981,16 @@ const verifierValidator: RuntimeValidator = {
         (outcome.output as { response?: { result?: { verdict?: unknown } } } | null)?.response
           ?.result?.verdict === 'pass';
       if (!requested && passing) {
-        await nativeSdkCurrentCheckSummaries({ run, projectRoot: context.projectRoot });
+        const observedInputs = await assertNativeSdkCandidateUnchanged({
+          run,
+          projectRoot: context.projectRoot,
+          requireEvidence: true,
+        });
+        await nativeSdkCurrentCheckSummaries({
+          run,
+          projectRoot: context.projectRoot,
+          observedInputs,
+        });
         await assertNativeEditReviewsComplete(paths, state);
       }
       verifierResultState(run, action, outcome);
@@ -1008,6 +1021,13 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
       version: '1',
       entry: 'shape.prepare',
       commands: {
+        'refresh-checks': {
+          stepId: 'verify.checks',
+          validator: {
+            id: nativeSdkCheckRefreshCommandValidator.id,
+            version: nativeSdkCheckRefreshCommandValidator.version,
+          },
+        },
         'revise-implementation': {
           stepId: 'repair.implementation',
           validator: {
@@ -1393,6 +1413,8 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         { from: 'verify.stop', to: 'verify.verifier', on: 'retry' },
         { from: 'verify.stop', to: 'build.builder', on: 'repair' },
         { from: 'verify.stop', to: 'supervisor.parent.builder', on: 'repair' },
+        { from: 'verify.checks', to: 'archive.prepare' },
+        { from: 'verify.checks', to: 'archive.prepare', on: 'failed' },
         { from: 'verify.requested-checks', to: 'verify.verifier' },
         { from: 'verify.requested-checks', to: 'verify.verifier', on: 'failed' },
         { from: 'verify.requested-checks', to: 'verify.checks-stop', on: 'failed' },
@@ -2219,6 +2241,9 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
               event.outcome.status === 'failed' &&
               (event.outcome.output as { interruption?: unknown }).interruption))
         ) {
+          const checkAction = run.actions.find((action) => action.id === event.outcome.actionId);
+          if (checkAction && nativeSdkCheckRefreshInput(run, checkAction))
+            return { state: state as unknown as RuntimeValue, next: ['archive.prepare'] };
           if (event.outcome.status === 'failed') {
             const output = event.outcome.output as {
               checks: Array<{ id: string; status: string }>;
@@ -2688,6 +2713,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
     stateValidators: [nativeStateValidator],
     validateRecovery: validateNativeSdkSupervisorRecovery,
     commandValidators: [
+      nativeSdkCheckRefreshCommandValidator,
       nativeSdkImplementationRevisionCommandValidator,
       nativeSdkReviseCommandValidator,
       nativeSdkRemoveCommandValidator,

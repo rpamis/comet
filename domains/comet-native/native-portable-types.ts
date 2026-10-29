@@ -97,6 +97,8 @@ export interface NativeBuilderHandoff {
     reviewer_execution_ref: string;
   } | null;
   submitted_at: string;
+  /** Compat 由 Runtime 在真实交接时建立的原始输入引用。 */
+  raw_input_ref?: string;
 }
 
 export interface NativePortableBlockerState {
@@ -205,6 +207,8 @@ export interface NativeLocalExecutionState {
   inputFingerprintGate?: string | null;
   /** Fingerprint gate for candidate-owned inputs, excluding generated check inputs. */
   candidateInputFingerprintGate?: string | null;
+  /** 原始 Builder 交接输入；旧 overlay 没有此字段。 */
+  rawInputRef?: string;
   workspace: {
     projectRoot: string;
     worktreeRoot: string;
@@ -255,6 +259,8 @@ export interface NativeLocalCheckState {
   evidence?: 'runtime';
   /** Digest tying the Runtime result fields to the captured log content. */
   evidenceDigest?: string;
+  /** 本条真实执行各自的前后输入，保留其他检查的原来源。 */
+  rawInput?: { beforeRef: string; afterRef: string; executionRef: string };
 }
 
 export function emptyNativePortableHistoryOverflow(): NativePortableHistoryOverflow {

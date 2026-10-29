@@ -2,6 +2,16 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.5.2] - 2026-10-29
+
+### Changed
+
+- **Workflow continuation after edits**: Ordinary edits during Build, Verify, or before Archive no longer block on a separate review session. Hooks keep the edit and the current Run, and the current Agent judges the actual impact at the next advance through `comet edit-review observe`, keeping valid approvals, checks, and Actions and rerunning only the affected checks. Detection stays language-neutral and never depends on file extensions, parsers, or compilers.
+- **Formal document edits**: Changed briefs, Specs, Design Docs, and plans are judged against the approved original text obtained through `comet edit-review prepare-applied`. An unchanged contract keeps the original approval, phase, and acceptance items; only a material change to the goal, acceptance criteria, approach, or authorization requests the affected decisions.
+- **Accepted results before Archive**: After acceptance but before delivery, ordinary documentation changes keep the report and the accepted results. `comet edit-review refresh-checks` reruns only the affected checks and then continues the original archive; a changed delivery goal or authorization still requires the corresponding decision.
+- **Native Git staging decoupling**: Staging, unstaging, and empty commits no longer rebuild the implementation candidate unconditionally. Only checks that explicitly depend on Git identities recheck them; unchanged bytes continue the original action.
+- **Edit-continuation performance**: Share protected-file reads within a request, batch input hashing, and widen Git status observation instead of rescanning unchanged inputs, shortening the edit-to-continue path for Native and Classic.
+
 ## What's Changed [0.5.1] - 2026-10-23
 
 ### Changed

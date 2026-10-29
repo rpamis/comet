@@ -21,7 +21,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
-it('reviews a generic edit in an independent session without claiming the formal Native Verifier', async () => {
+it('judges a generic edit in the current session without claiming the formal Native Verifier', async () => {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'native-sdk-edit-review-'));
   roots.push(base);
   const root = path.join(base, 'project'),
@@ -109,34 +109,24 @@ it('reviews a generic edit in an independent session without claiming the formal
     tool_name: 'Write',
     tool_input: { file_path: path.join(root, 'worker.py'), content: after },
   };
-  expect(
-    (await inspectNativeHookGuard(root, parseCometHookRequest(JSON.stringify(request)), 'demo'))
-      .allowed,
-  ).toBe(false);
-  expect((await cli('status', 'demo')).data.continuation.action).toBe('review-edit');
-  const file = path.join(base, 'edit.json');
-  await fs.writeFile(file, JSON.stringify(request));
-  await expect(
-    runNativeEditReviewCommand({
-      projectRoot: root,
-      name: 'demo',
-      operation: 'claim',
-      file,
-      sessionId: 'builder',
-    }),
-  ).rejects.toThrow('独立');
-  const claimed = (await runNativeEditReviewCommand({
+  const decision = await inspectNativeHookGuard(
+    root,
+    parseCometHookRequest(JSON.stringify(request)),
+    'demo',
+  );
+  expect(decision).toMatchObject({ allowed: true, phase: 'verify' });
+  await fs.writeFile(path.join(root, 'worker.py'), after);
+  const observed = (await runNativeEditReviewCommand({
     projectRoot: root,
     name: 'demo',
-    operation: 'claim',
-    file,
-    sessionId: 'reviewer',
+    operation: 'observe',
+    sessionId: 'builder',
   })) as { recordTemplate: Record<string, unknown> };
-  const result = path.join(base, 'review.json');
+  const file = path.join(base, 'edit.json');
   await fs.writeFile(
-    result,
+    file,
     JSON.stringify({
-      ...claimed.recordTemplate,
+      ...observed.recordTemplate,
       decision: 'non-behavioral',
       summary: 'Only the explanation changes; the value and acceptance remain the same.',
     }),
@@ -145,13 +135,8 @@ it('reviews a generic edit in an independent session without claiming the formal
     projectRoot: root,
     name: 'demo',
     operation: 'record',
-    file: result,
+    file,
   });
-  expect(
-    (await inspectNativeHookGuard(root, parseCometHookRequest(JSON.stringify(request)), 'demo'))
-      .allowed,
-  ).toBe(true);
-  await fs.writeFile(path.join(root, 'worker.py'), after);
   expect((await inspect()).run.actions).toEqual(before.run.actions);
   expect((await cli('status', 'demo')).data.continuation.action).not.toBe('review-edit');
   const current = (await inspect()).state as NativePortableState;
@@ -167,53 +152,11 @@ it('reviews a generic edit in an independent session without claiming the formal
     attempt: formal.attempt,
     inputHash: formal.inputHash,
     executorId: 'native-host',
-    sessionId: 'finished-verifier',
+    sessionId: 'formal-verifier',
     claimToken: formalToken,
     context: { requestId: formalToken, projectRoot: root },
   });
-  await runtime.recordOutcome({
-    runId: 'demo',
-    outcome: {
-      actionId: formal.id,
-      attempt: formal.attempt,
-      inputHash: formal.inputHash,
-      claimToken: formalToken,
-      outcomeId: randomUUID(),
-      status: 'failed',
-      output: { summary: 'The Verifier session ended before completing acceptance.' },
-    },
-    context: { requestId: randomUUID(), projectRoot: root },
-  });
-  const finished = await inspect();
-  expect(finished.run.actions.find((entry) => entry.id === formal.id)?.status).toBe('failed');
-  await fs.writeFile(
-    file,
-    JSON.stringify({
-      ...request,
-      tool_input: { ...request.tool_input, content: '# Another explanation.\n' + after },
-    }),
+  expect((await inspect()).run.actions.find((entry) => entry.id === formal.id)?.status).toBe(
+    'running',
   );
-  const replacement = (await runNativeEditReviewCommand({
-    projectRoot: root,
-    name: 'demo',
-    operation: 'claim',
-    file,
-    sessionId: 'replacement-reviewer',
-  })) as { recordTemplate: Record<string, unknown> };
-  await fs.writeFile(
-    result,
-    JSON.stringify({
-      ...replacement.recordTemplate,
-      decision: 'discard',
-      summary: 'The proposed additional explanation is not needed.',
-    }),
-  );
-  await runNativeEditReviewCommand({
-    projectRoot: root,
-    name: 'demo',
-    operation: 'record',
-    file: result,
-  });
-  expect((await inspect()).run.actions).toEqual(finished.run.actions);
-  expect(await fs.readFile(path.join(root, 'worker.py'), 'utf8')).toBe(after);
 });

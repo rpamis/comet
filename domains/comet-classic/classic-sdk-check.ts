@@ -1,4 +1,10 @@
 import { resolveClassicCheckTimeout } from './classic-project-config.js';
+import {
+  classicCheckInputsRetained,
+  observeClassicCheckInputs,
+  assertClassicEditReviewsComplete,
+  assertClassicSdkAcceptedCandidateInputs,
+} from './classic-edit-review.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
 import { promises as fs } from 'node:fs';
@@ -13,7 +19,10 @@ import {
   type WorkflowRun,
   type WorkflowRuntime,
 } from '../engine/runtime.js';
-import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
+import {
+  inspectProtectedProjectPath,
+  hashProtectedProjectFile,
+} from '../workflow-contract/protected-project-path.js';
 import { terminateProcessTreeConfirmed } from '../../platform/process/terminate-process-tree.js';
 import { spawnOwnedCommand } from '../../platform/process/owned-command.js';
 import { inspectProcessTreeLiveness } from '../../platform/process/process-identity.js';
@@ -49,6 +58,29 @@ interface ClassicSdkCheckInput {
   cwd?: string;
   timeoutMs?: number;
   reusable?: boolean;
+}
+
+export function classicSdkCheckRefreshInput(
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+) {
+  const activation = (action.input as { activation?: RuntimeValue }).activation;
+  return activation &&
+    run.commands?.some(
+      (command) =>
+        command.name === 'refresh-checks' &&
+        command.actionId === action.id &&
+        command.inputHash === hashRuntimeValue(activation),
+    )
+    ? (activation as unknown as {
+        sourceActionId: string;
+        approvalWaitId: string;
+        proposalHash: string;
+        reportSha256: string;
+        observationHash: string;
+        summary: string;
+      })
+    : null;
 }
 
 function within(root: string, target: string): boolean {
@@ -195,8 +227,43 @@ async function checkedInput(
       ? run.input.changeDir
       : null;
   const repairing = state && isClassicDeliveryRepairCheck(run, action);
+  const refreshing = state && state.phase === 'archive' && classicSdkCheckRefreshInput(run, action);
+  if (refreshing) {
+    await assertClassicSdkAcceptedCandidateInputs(root, run);
+    const original = run.actions.find((entry) => entry.id === refreshing.sourceActionId);
+    if (
+      !original?.outcome ||
+      original.ref !== 'classic-check' ||
+      original.claim?.executorId !== 'comet-classic-check'
+    )
+      throw new Error('补充检查缺少原执行记录');
+    await assertClassicSdkCheckReceipt(root, run, original, {
+      status: original.outcome.status,
+      output: original.outcome.output,
+    });
+    const observed = await observeClassicCheckInputs(root, run);
+    if (
+      observed.sourceActionId !== refreshing.sourceActionId ||
+      observed.currentManifestHash !== refreshing.observationHash
+    )
+      throw new Error('补充检查前输入再次变化；保留原阶段，由当前 Agent 只判断新增变化');
+    await assertClassicEditReviewsComplete(root, path.posix.basename(changeDirRef!), state!);
+    if (
+      !state?.verificationReport ||
+      (
+        await hashProtectedProjectFile(root, state.verificationReport, {
+          label: 'Classic approved verification report',
+        })
+      ).digest !== refreshing.reportSha256
+    )
+      throw new Error('补充检查前原验收报告已变化');
+  }
   const scope =
-    state?.phase === 'build' ? 'build' : state?.phase === 'verify' || repairing ? 'verify' : null;
+    state?.phase === 'build'
+      ? 'build'
+      : state?.phase === 'verify' || repairing || refreshing
+        ? 'verify'
+        : null;
   const profile = state?.workflow;
   if (repairing) {
     const original = run.actions.find(
@@ -243,7 +310,32 @@ export function classicSdkCheckCommand(
   if (isClassicDeliveryRepairCheck(run, action)) {
     return { runId: run.runId, projectRoot, ...classicDeliveryRepairForAction(action).command };
   }
-  const scope = (run.state as unknown as ClassicState).phase;
+  const refresh = classicSdkCheckRefreshInput(run, action);
+  if (refresh) {
+    const original = run.actions.find((entry) => entry.id === refresh.sourceActionId);
+    const command = original?.outcome?.output as
+      { argv?: string[]; cwd?: string; timeoutMs?: number; reusable?: boolean } | undefined;
+    if (
+      !command ||
+      !Array.isArray(command.argv) ||
+      !command.argv.length ||
+      command.argv.some((arg) => typeof arg !== 'string' || arg.includes('\0')) ||
+      typeof command.cwd !== 'string' ||
+      typeof command.timeoutMs !== 'number'
+    )
+      throw new Error('补充检查只能使用原执行的固定命令');
+    return {
+      runId: run.runId,
+      projectRoot,
+      argv: command.argv,
+      cwd: command.cwd,
+      timeoutMs: command.timeoutMs,
+      reusable: command.reusable === true,
+    };
+  }
+  const scope = classicSdkCheckRefreshInput(run, action)
+    ? 'verify'
+    : (run.state as unknown as ClassicState).phase;
   if (scope !== 'build' && scope !== 'verify') throw new Error('Classic check scope is invalid');
   const label = `Classic input.checkCommands.${scope} must declare literal argv`;
   const runInput = object(run.input, label);
@@ -311,30 +403,56 @@ export async function runClassicSdkCommandCheck(
     await readCheckPolicy(root, identity),
   );
   // 只有明确声明为本地可复用的检查才跳过执行；新的失败或中断会遮蔽旧成功记录。
-  const previous = input.reusable
-    ? run.actions
-        .slice(
-          0,
-          run.actions.findIndex((entry) => entry.id === action.id),
-        )
-        .reverse()
-        .find((entry) => {
-          const output = entry.outcome?.output as Record<string, unknown> | undefined;
-          return (
-            entry.ref === 'classic-check' &&
-            (output === undefined ||
-              (hashRuntimeValue(output.argv ?? null) === hashRuntimeValue(identity.argv) &&
-                output.cwd === identity.cwd))
-          );
-        })
-    : undefined;
+  const previous =
+    input.reusable && !classicSdkCheckRefreshInput(run, action)
+      ? run.actions
+          .slice(
+            0,
+            run.actions.findIndex((entry) => entry.id === action.id),
+          )
+          .reverse()
+          .find((entry) => {
+            const output = entry.outcome?.output as Record<string, unknown> | undefined;
+            return (
+              entry.ref === 'classic-check' &&
+              (output === undefined ||
+                (hashRuntimeValue(output.argv ?? null) === hashRuntimeValue(identity.argv) &&
+                  output.cwd === identity.cwd))
+            );
+          })
+      : undefined;
   const prior = previous?.outcome?.output as Record<string, unknown> | undefined;
+  let inputsMatch = prior?.inputBefore === before.digest && prior.inputAfter === before.digest;
+  let retainedInput = false;
+  if (
+    !inputsMatch &&
+    previous?.status === 'succeeded' &&
+    prior?.reusable === true &&
+    prior.exitCode === 0 &&
+    prior.inputBefore === prior.inputAfter &&
+    prior.environment === environment &&
+    prior.timeoutMs === timeoutMs
+  ) {
+    await assertClassicSdkCheckReceipt(root, run, previous, {
+      status: previous.outcome!.status,
+      output: previous.outcome!.output,
+    });
+    retainedInput = await classicCheckInputsRetained(
+      root,
+      run.runId,
+      state,
+      previous.id,
+      prior,
+      before.manifest,
+      run,
+    );
+    inputsMatch = retainedInput;
+  }
   if (
     previous?.status === 'succeeded' &&
     prior?.reusable === true &&
     prior.exitCode === 0 &&
-    prior.inputBefore === before.digest &&
-    prior.inputAfter === before.digest &&
+    inputsMatch &&
     prior.environment === environment &&
     prior.timeoutMs === timeoutMs &&
     typeof prior.receiptRef === 'string' &&
@@ -352,10 +470,29 @@ export async function runClassicSdkCommandCheck(
       prior.contentHash,
       'Classic reusable check log',
     );
+    let retainedManifest: { manifestRef: string; manifestHash: string } | undefined;
+    if (retainedInput) {
+      const target = path.join(checksDir, `${randomUUID()}.manifest`);
+      await writeClassicProjectText(root, target, before.manifest, {
+        label: 'Classic retained check input manifest',
+      });
+      retainedManifest = {
+        manifestRef: path.relative(root, target).replaceAll('\\', '/'),
+        manifestHash: checkManifestHash(before.manifest),
+      };
+    }
     const reused: Pick<RuntimeOutcome, 'status' | 'output'> = {
       status: 'succeeded',
       output: {
         ...(prior as Record<string, RuntimeValue>),
+        ...(retainedManifest
+          ? {
+              ...retainedManifest,
+              inputBefore: before.digest,
+              inputAfter: before.digest,
+              retainedInput: true,
+            }
+          : {}),
         scope,
         ...(scope === 'verify'
           ? {
@@ -381,7 +518,7 @@ export async function runClassicSdkCommandCheck(
         claim: action.claim,
         command: { ...identity, timeoutMs },
         receiptRef: prior.receiptRef,
-        manifestRef: prior.manifestRef,
+        manifestRef: retainedManifest?.manifestRef ?? prior.manifestRef,
         status: 'completed',
         result: reused,
       }),
@@ -563,7 +700,8 @@ export async function executeClassicSdkCommandCheck(
     .reverse()
     .find(
       (candidate) =>
-        candidate.stepId === `${state.workflow}.${state.phase}.check` &&
+        candidate.stepId ===
+          `${state.workflow}.${classicSdkCheckRefreshInput(run, candidate) ? 'verify' : state.phase}.check` &&
         candidate.status === 'pending',
     );
   if (!action) throw new Error('Current Classic SDK Run has no pending check Action');

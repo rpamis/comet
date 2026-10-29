@@ -18,6 +18,7 @@ import {
   classicArchiveRepairAction,
   classicInterruptedBuilder,
   classicInterruptedSkill,
+  canReopenClassicVerification,
 } from './classic-sdk-revision-application.js';
 import { inspectClassicSdkRevisionReadiness } from './classic-sdk-revision-readiness.js';
 import { evaluateBranchBinding, liveGitBranch, isGitWorkTree } from './classic-branch-binding.js';
@@ -687,20 +688,60 @@ export async function classicSdkEntryData(
   observation: { openApprovalHash?: string } = {},
 ) {
   const { run, projectRoot } = inspected;
-  const editReviews = await inspectEditReviews(
-    await classicEditReviewScope(projectRoot, change, run.state as unknown as ClassicState),
-  );
   const state = run.state as unknown as ClassicState;
+  const scope = await classicEditReviewScope(projectRoot, change, state);
+  const formalScope = await classicFormalEditReviewScope(
+    projectRoot,
+    change,
+    state,
+    false,
+    scope,
+    run,
+  );
+  const [ordinaryReviews, formalReviews] = state.archived
+    ? [[], []]
+    : await Promise.all([inspectEditReviews(scope), inspectEditReviews(formalScope)]);
+  const editReviews = [...ordinaryReviews, ...formalReviews];
   const normalContinuation = classicSdkContinuation(run, projectRoot, change, observation);
   const nextAction = classicSdkNextAction(run);
-  const edit =
-    state.phase === 'verify'
-      ? await editReviewContinuation(
-          await classicEditReviewScope(projectRoot, change, state),
-          editReviews,
-          true,
-        )
+  let edit =
+    !state.archived && ['design', 'build', 'verify', 'archive'].includes(state.phase)
+      ? ((await editReviewContinuation(formalScope, formalReviews, true)) ??
+        (await editReviewContinuation(scope, ordinaryReviews, true)))
       : null;
+  if (
+    edit?.mode === 'reconcile' &&
+    canReopenClassicVerification(run) &&
+    !(await editReviewContinuation(formalScope, formalReviews, true))
+  ) {
+    const remaining = ordinaryReviews.filter(
+      (review) =>
+        !(
+          review.applied &&
+          review.receipt?.authority.kind === 'runtime-agent' &&
+          review.receipt.decision === 'implementation-changed'
+        ),
+    );
+    if (
+      remaining.length !== ordinaryReviews.length &&
+      !(await editReviewContinuation(scope, remaining, true))
+    )
+      edit = {
+        mode: 'execute',
+        commandArgs: [
+          'comet',
+          'state',
+          'continue-build',
+          change,
+          '--expected-revision',
+          String(run.revision),
+          '--json',
+        ],
+        requiredInputs: [],
+        instruction:
+          '在同一 Run 更新实现并重新验收当前候选；保留已有需求批准、配置和未受影响的检查。需求或授权范围变化时先取得对应决定。',
+      };
+  }
   const base = {
     change,
     runtimeFormat: 'sdk' as const,
@@ -724,6 +765,30 @@ export async function classicSdkEntryData(
   try {
     const { directory } = await resolveClassicChangeDirectory(change, projectRoot);
     const revisionIssues = await inspectClassicSdkRevisionReadiness(projectRoot, run);
+    if (!edit && !state.archived && Object.keys(formalScope.approvedSources ?? {}).length) {
+      for (const issue of revisionIssues) {
+        const operation = issue.commandArgs[2];
+        if (
+          !['revise-design', 'revise-plan', 'propose-escalation'].includes(operation) &&
+          !(state.workflow !== 'full' && operation === 'continue-build')
+        )
+          continue;
+        issue.commandArgs = [
+          'comet',
+          'edit-review',
+          'prepare-applied',
+          'classic',
+          change,
+          '--project-root',
+          projectRoot,
+          '--session',
+          '<current-agent-session>',
+          '--json',
+        ];
+        issue.remediation =
+          '先读取已批准原文，由当前 Agent 判断实际变化和影响；契约未变时保留原批准，需要新决定时再使用原流程修订。';
+      }
+    }
     const branch = ['completed', 'cancelled'].includes(run.status)
       ? null
       : evaluateBranchBinding({
@@ -746,6 +811,7 @@ export async function classicSdkEntryData(
           : ['comet', 'state', 'rebind', change, '--json'],
       });
     const unresolved = run.actions.some((action) => ['running', 'unknown'].includes(action.status));
+    const prepareFormalReview = revisionIssues[0]?.commandArgs[1] === 'edit-review';
     const recovery = await classicRecoveryContext(projectRoot, directory, state, details, null, {
       editReview: false,
     });
@@ -763,11 +829,11 @@ export async function classicSdkEntryData(
         ? {
             issues: revisionIssues,
             recoveryActions: revisionIssues.map((issue) => ({ commandArgs: issue.commandArgs })),
-            ...(!unresolved
+            ...(!unresolved && (!edit || edit.mode === 'reconcile')
               ? {
                   continuation: {
                     ...base.continuation,
-                    mode: 'reconcile' as const,
+                    mode: prepareFormalReview ? ('execute' as const) : ('reconcile' as const),
                     commandArgs:
                       revisionIssues[0].commandArgs[0] === 'comet'
                         ? [...revisionIssues[0].commandArgs, '--json'].filter(
@@ -775,7 +841,7 @@ export async function classicSdkEntryData(
                               arg !== '--json' || index === args.indexOf('--json'),
                           )
                         : revisionIssues[0].commandArgs,
-                    requiredInputs: [],
+                    requiredInputs: prepareFormalReview ? ['current-agent-session'] : [],
                     instruction: `${revisionIssues[0].message}；${revisionIssues[0].remediation}`,
                     completion: undefined,
                   },
@@ -891,4 +957,4 @@ export function classicSdkBlockedContinuation(
   };
 }
 import { inspectEditReviews, editReviewContinuation } from '../workflow-contract/edit-review.js';
-import { classicEditReviewScope } from './classic-edit-review.js';
+import { classicEditReviewScope, classicFormalEditReviewScope } from './classic-edit-review.js';

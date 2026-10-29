@@ -6,9 +6,22 @@ import { randomUUID } from 'node:crypto';
 import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
 import { settleNativeSdkCompletion } from './native-sdk-completion-cleanup.js';
 
-import { hashRuntimeValue, type RuntimeValue, type WorkflowRun } from '../engine/runtime.js';
+import {
+  hashRuntimeValue,
+  createMemoryRuntimeStore,
+  createRuntime,
+  defineWorkflow,
+  preserveRuntimeExecutionOrigins,
+  type RuntimeValue,
+  type WorkflowRun,
+} from '../engine/runtime.js';
+import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import { createNativeSdkStateStore } from './native-sdk-state-store.js';
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
-import { collectNativeSdkShapeProposal } from './native-sdk-application.js';
+import {
+  collectNativeSdkShapeProposal,
+  defineNativeWorkflowApplication,
+} from './native-sdk-application.js';
 import {
   recoverNativeSdkChecks,
   nativeSdkCurrentCheckSummaries,
@@ -35,6 +48,64 @@ import { nativeSdkNextAction } from './native-sdk-continuation.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { captureApprovedShapeOriginals } from './native-shape-review-evidence.js';
 import type { NativeSupervisorCoordinationMode } from './native-portable-types.js';
+
+/** 在同一次 CAS 中接入补充检查命令；不重建阶段、候选或原批准。 */
+export async function refreshNativeSdkCheckWork(
+  projectRoot: string,
+  name: string,
+  expectedRevision: number,
+  input: RuntimeValue,
+) {
+  const owner = await readSdkChangeOwner(projectRoot, 'native', name);
+  if (owner?.application !== 'native')
+    throw new Error('固定应用保留其原定义；当前补充检查入口仅用于内置 Native Run');
+  const { run } = await inspectNativeSdkRun(projectRoot, name);
+  const commandId = hashRuntimeValue({
+    runId: run.runId,
+    name: 'refresh-checks',
+    expectedRevision,
+  });
+  const previous = run.commands?.find((command) => command.id === commandId);
+  if (previous) {
+    if (previous.inputHash !== hashRuntimeValue(input))
+      throw new Error('同一补充检查请求不能提交不同内容');
+    return run;
+  }
+  if (run.revision !== expectedRevision) throw new Error('Run 已变化，请重新读取当前输入观察');
+  const application = defineNativeWorkflowApplication();
+  const definition = defineWorkflow(application.workflow);
+  const next =
+    run.workflow.hash === hashRuntimeValue(definition)
+      ? structuredClone(run)
+      : preserveRuntimeExecutionOrigins(run);
+  next.workflow.hash = hashRuntimeValue(definition);
+  next.definitionHashes[JSON.stringify([definition.id, definition.version])] = next.workflow.hash;
+  const staging = createMemoryRuntimeStore<WorkflowRun>();
+  await staging.restoreCheckpoint!(run.runId, null, next);
+  const runtime = createRuntime({
+    ...application,
+    store: staging,
+    workflows: [application.workflow],
+    transitionHandlers: [application.transitionHandler],
+  });
+  const refreshed = await runtime.dispatchCommand({
+    runId: run.runId,
+    expectedRevision,
+    commandId,
+    name: 'refresh-checks',
+    input,
+    context: { requestId: commandId, projectRoot },
+  });
+  if (
+    !(await createNativeSdkStateStore(projectRoot).compareAndSwap(
+      run.runId,
+      expectedRevision,
+      refreshed,
+    ))
+  )
+    throw new Error('Run 并发变化，未提交补充检查；重新读取当前输入观察');
+  return refreshed;
+}
 
 async function sdkNextResult(
   projectRoot: string,

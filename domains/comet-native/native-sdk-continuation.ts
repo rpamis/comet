@@ -37,12 +37,12 @@ import {
 } from './native-sdk-archive.js';
 import { collectNativeSdkShapeProposal } from './native-sdk-application.js';
 import { nativeProjectPaths } from './native-paths.js';
+import { type EditReviewObservation } from '../workflow-contract/edit-review.js';
 import {
-  editReviewContinuation,
-  inspectEditReviews,
-  type EditReviewObservation,
-} from '../workflow-contract/edit-review.js';
-import { nativeEditReviewScope } from './native-edit-review.js';
+  inspectNativeEditReviews,
+  nativeEditReviewContinuation,
+  nativeEditReviewScope,
+} from './native-edit-review.js';
 import { inspectNativePortableAcceptanceDrift } from './native-portable-requirements.js';
 import {
   nativeSdkRequirementsRevisionAllowed,
@@ -568,7 +568,32 @@ function sdkDecision(
 export async function projectNativeSdkContinuation(
   options: Parameters<typeof projectNativeSdkContinuationValue>[0],
 ) {
-  const projection = await projectNativeSdkContinuationValue(options);
+  const originalProjection = await projectNativeSdkContinuationValue(options);
+  let projection = originalProjection;
+  if (projection.continuation.action === 'review-edit') {
+    if (options.state.phase !== 'archive' || projection.continuation.mode !== 'reconcile')
+      return projection;
+    const paths = await nativeProjectPaths(
+      options.projectRoot,
+      (options.run.input as { artifactRootRef: string }).artifactRootRef,
+      { readOnly: true },
+    );
+    const reviews = options.editReviews ?? (await inspectNativeEditReviews(paths, options.state));
+    const candidateKey = nativeEditReviewScope(paths, options.state).candidateKey;
+    const filtered = reviews.filter(
+      (review) =>
+        !(
+          review.binding.candidateKey === candidateKey &&
+          review.applied &&
+          review.receipt?.authority.kind === 'runtime-agent' &&
+          review.receipt.decision === 'implementation-changed'
+        ),
+    );
+    if (filtered.length === reviews.length) return projection;
+    const base = await projectNativeSdkContinuationValue({ ...options, editReviews: filtered });
+    if (base.continuation.action !== 'archive') return originalProjection;
+    projection = base;
+  }
   const pendingArchive =
     options.state.phase === 'archive' &&
     projection.continuation.action === 'archive' &&
@@ -591,9 +616,8 @@ export async function projectNativeSdkContinuation(
     );
     const shape = await inspectNativePortableAcceptanceDrift({ paths, state: options.state });
     if (shape.drifted && shape.reviewRequired) {
-      const scope = nativeEditReviewScope(paths, options.state);
-      const reviews = options.editReviews ?? (await inspectEditReviews(scope));
-      const edit = await editReviewContinuation(scope, reviews, true);
+      const reviews = options.editReviews ?? (await inspectNativeEditReviews(paths, options.state));
+      const edit = await nativeEditReviewContinuation(paths, options.state, reviews);
       const requiresRevision =
         edit?.mode === 'reconcile' &&
         reviews.some(
@@ -795,6 +819,7 @@ export async function projectNativeSdkContinuation(
       };
     }
   }
+  if (originalProjection.continuation.action === 'review-edit') return originalProjection;
   const stopped = [...options.run.actions]
     .reverse()
     .find((action) => ['failed', 'unknown', 'running'].includes(action.status));
@@ -1677,15 +1702,87 @@ async function projectNativeSdkContinuationValue(options: {
       ),
     };
   }
-  if (state.phase === 'verify' && state.builder_handoff) {
+  if (
+    !state.archived &&
+    state.shape_confirmation_hash &&
+    ['build', 'verify', 'archive'].includes(state.phase)
+  ) {
     const input = run.input as { artifactRootRef: string };
     const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, { readOnly: true });
-    const scope = nativeEditReviewScope(paths, state);
-    const edit = await editReviewContinuation(
-      scope,
-      options.editReviews ?? (await inspectEditReviews(scope)),
-      true,
-    );
+    const reviews = options.editReviews ?? (await inspectNativeEditReviews(paths, state));
+    let edit = await nativeEditReviewContinuation(paths, state, reviews);
+    if (edit?.mode === 'reconcile' && state.builder_handoff) {
+      const candidateKey = nativeEditReviewScope(paths, state).candidateKey;
+      const filtered = reviews.filter(
+        (review) =>
+          !(
+            review.binding.candidateKey === candidateKey &&
+            review.applied &&
+            review.receipt?.authority.kind === 'runtime-agent' &&
+            review.receipt.decision === 'implementation-changed'
+          ),
+      );
+      if (
+        filtered.length !== reviews.length &&
+        !(await nativeEditReviewContinuation(paths, state, filtered))
+      ) {
+        const outstanding = run.actions.filter((action) =>
+          ['pending', 'running', 'unknown'].includes(action.status),
+        );
+        const builder =
+          outstanding.length === 1 &&
+          outstanding[0].stepId === 'build.builder' &&
+          ['pending', 'running'].includes(outstanding[0].status)
+            ? outstanding[0]
+            : undefined;
+        const repair = (
+          builder?.input as
+            | {
+                activation?: {
+                  repairContext?: {
+                    schema?: string;
+                    previousCandidateId?: string;
+                    shapeConfirmationHash?: string;
+                  };
+                };
+              }
+            | undefined
+        )?.activation?.repairContext;
+        if (
+          state.phase === 'build' &&
+          repair?.schema === 'comet.native.repair-context.v1' &&
+          repair.previousCandidateId === state.builder_handoff.candidate_id &&
+          repair.shapeConfirmationHash === state.shape_confirmation_hash
+        )
+          edit = null;
+        const alternative =
+          state.phase === 'verify'
+            ? continuation.commandAlternatives?.find(
+                (option) => option.name === 'revise-implementation',
+              )
+            : undefined;
+        if (alternative) {
+          continuation = {
+            ...continuation,
+            disposition: 'continue',
+            mode: 'execute',
+            action: 'repair',
+            requiresUserDecision: false,
+            commandArgs: alternative.commandArgs,
+            requiredInputs: ['summary'],
+            inputOptions: alternative.inputOptions,
+            commandAlternatives: [{ ...alternative, requiredInputs: ['summary'] }],
+            userCommunication: communication(
+              localized(
+                'Revise the implementation in this Run, retain unaffected checks and verify the successor candidate. Reconfirm requirements only when existing approval does not cover them.',
+                '在原 Run 修订实现、保留未受影响的检查并验收后继候选；需求或授权超出原批准时先取得对应决定。',
+              ),
+            ),
+          };
+          edit = null;
+        }
+      }
+    }
     if (edit)
       continuation = {
         ...continuation,

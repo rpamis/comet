@@ -188,9 +188,18 @@ export async function collectClassicSdkDeliveryInputs(
     ...stagedDeletes.map((p) => ({ p, h: 'missing', s: null, m: null })),
   ]);
   const baseline = await initialWorkspaceFiles(root, run);
+  const changedPath = (ref: string) => {
+    for (let current = ref; current;) {
+      if (changed.has(current)) return true;
+      const separator = current.lastIndexOf('/');
+      if (separator < 0) return false;
+      current = current.slice(0, separator);
+    }
+    return false;
+  };
   return Object.fromEntries(
     Object.entries(await collectClassicSdkImplementationInputs(root, manifest))
-      .filter(([ref]) => [...changed].some((name) => ref === name || ref.startsWith(`${name}/`)))
+      .filter(([ref]) => changedPath(ref))
       .filter(([ref, hash]) => !Object.hasOwn(baseline, ref) || baseline[ref] !== hash),
   );
 }
@@ -200,7 +209,7 @@ async function committedHash(
   ref: string,
   expected: string,
   size: number | undefined,
-  trees: Map<string, string[]>,
+  trees: Map<string, Map<string, string>>,
   allowed: Set<string>,
   revision = 'HEAD',
 ) {
@@ -212,10 +221,15 @@ async function committedHash(
     const key = `${repository}\0${commit}`;
     let rows = trees.get(key);
     if (!rows) {
-      rows = git(repository, ['ls-tree', '-r', '-z', commit]).split('\0').filter(Boolean);
+      rows = new Map(
+        git(repository, ['ls-tree', '-r', '-z', commit])
+          .split('\0')
+          .filter(Boolean)
+          .map((entry) => [entry.slice(entry.indexOf('\t') + 1), entry]),
+      );
       trees.set(key, rows);
     }
-    const row = rows.find((entry) => entry.slice(entry.indexOf('\t') + 1) === relative);
+    const row = rows.get(relative);
     if (row) {
       const [mode, type, objectId] = row.slice(0, row.indexOf('\t')).split(' ');
       if (type !== 'blob' || mode === '120000')
@@ -223,11 +237,19 @@ async function committedHash(
       if (expected === `git:${objectId}`) return expected;
       break;
     }
-    const parent = rows.find(
-      (entry) =>
-        entry.startsWith('160000 commit ') &&
-        relative.startsWith(`${entry.slice(entry.indexOf('\t') + 1)}/`),
-    );
+    let parent: string | undefined;
+    for (
+      let separator = relative.lastIndexOf('/');
+      separator >= 0;
+      separator = relative.lastIndexOf('/', separator - 1)
+    ) {
+      const entry = rows.get(relative.slice(0, separator));
+      if (entry?.startsWith('160000 commit ')) {
+        parent = entry;
+        break;
+      }
+      if (separator === 0) break;
+    }
     if (!parent) return 'missing';
     const prefix = parent.slice(parent.indexOf('\t') + 1);
     allowed.add(path.relative(root, path.join(repository, prefix)).replaceAll('\\', '/'));
@@ -423,7 +445,7 @@ export async function assertClassicSdkDeliveryFileInputs(
   )
     throw new Error('Classic verified input identity is invalid');
   const allowed = new Set(entries.map(([ref]) => ref));
-  const trees = new Map<string, string[]>();
+  const trees = new Map<string, Map<string, string>>();
   const hashes = hashGitPaths(
     root,
     entries.filter(([, hash]) => hash.startsWith('git:')).map(([ref]) => ref),
@@ -468,7 +490,7 @@ export async function assertClassicSdkArchiveCommitInputs(
   sources: Record<string, string> = {},
   stateFiles: readonly string[] = [],
 ) {
-  const trees = new Map<string, string[]>();
+  const trees = new Map<string, Map<string, string>>();
   const allowed = new Set<string>();
   for (const [commit, paths] of commits)
     for (const ref of paths) {

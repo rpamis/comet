@@ -8,7 +8,22 @@ import {
   type RuntimeExecutor,
   type RuntimeValidator,
 } from '../engine/runtime.js';
-import { defineClassicWorkflowApplication } from './classic-sdk-application.js';
+import {
+  defineClassicWorkflowApplication,
+  assertClassicPresetRequirementsCurrent,
+  assertClassicBuildReady,
+} from './classic-sdk-application.js';
+import { classicSdkCheckRefreshInput } from './classic-sdk-check.js';
+import {
+  observeClassicCheckInputs,
+  classicEditReviewScope,
+  classicFormalEditReviewScope,
+  assertClassicEditReviewsComplete,
+  assertClassicSdkAcceptedCandidateInputs,
+} from './classic-edit-review.js';
+import { areObservedEditsNonBehavioral } from '../workflow-contract/edit-review.js';
+import { hashProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
+import path from 'node:path';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
 import { assertClassicArchiveUnchanged } from './classic-sdk-archive-manifest.js';
 import { classicDeliveryRepairCheckpointHash } from './classic-sdk-delivery-repair.js';
@@ -287,6 +302,104 @@ const verificationRevisionValidator: RuntimeCommandValidator = {
   },
 };
 
+const checkRefreshValidator: RuntimeCommandValidator = {
+  id: 'comet-classic-check-refresh-command',
+  version: '1',
+  async validate({ run, name, input, context }) {
+    try {
+      const state = run.state as unknown as ClassicState;
+      const value = input as {
+        expectedRevision: number;
+        archiveActionId: string;
+        approvalWaitId: string;
+        proposalHash: string;
+        reportSha256: string;
+        sourceActionId: string;
+        observationHash: string;
+        summary: string;
+      };
+      const pending = run.actions.filter((action) => action.status === 'pending');
+      const approval = run.waits.find((wait) => wait.id === value?.approvalWaitId);
+      const report = run.evidenceWaits
+        ?.slice()
+        .reverse()
+        .find(
+          (wait) =>
+            wait.stepId === `${state.workflow}.verify.report.evidence` &&
+            wait.status === 'resolved',
+        )?.receipt;
+      if (
+        !context?.projectRoot ||
+        name !== 'refresh-checks' ||
+        !canReopenClassicVerification(run as WorkflowRun) ||
+        state.phase !== 'archive' ||
+        state.archiveConfirmation !== 'confirmed' ||
+        state.verifyResult !== 'pass' ||
+        !value ||
+        Object.keys(value).sort().join(',') !==
+          'approvalWaitId,archiveActionId,expectedRevision,observationHash,proposalHash,reportSha256,sourceActionId,summary' ||
+        value.expectedRevision !== run.revision ||
+        pending.length !== 1 ||
+        pending[0].id !== value.archiveActionId ||
+        !['archive.preflight', 'archive.execute'].some(
+          (step) => pending[0].stepId === `${state.workflow}.${step}`,
+        ) ||
+        !approval ||
+        approval.stepId !== `${state.workflow}.archive.confirm` ||
+        approval.status !== 'resolved' ||
+        !['local', 'push', 'pr'].includes(approval.decision?.choice ?? '') ||
+        approval.proposalHash !== value.proposalHash ||
+        !report ||
+        report.contentHash !== value.reportSha256 ||
+        !value.summary?.trim()
+      )
+        throw new Error('补充检查必须对应原验收、批准和未执行的归档步骤');
+      const root = context.projectRoot;
+      if (
+        (
+          await hashProtectedProjectFile(root, report.ref, {
+            label: 'Classic approved verification report',
+          })
+        ).digest !== report.contentHash
+      )
+        throw new Error('原验收报告已变化');
+      const observation = await observeClassicCheckInputs(root, run);
+      if (
+        observation.sourceActionId !== value.sourceActionId ||
+        observation.currentManifestHash !== value.observationHash
+      )
+        throw new Error('输入观察已失效，请由当前 Agent 核对新增变化');
+      const change = path.posix.basename((run.input as { changeDir: string }).changeDir);
+      await assertClassicPresetRequirementsCurrent(
+        root,
+        (run.input as { changeDir: string }).changeDir,
+        run,
+      );
+      await assertClassicBuildReady(
+        root,
+        (run.input as { changeDir: string }).changeDir,
+        state,
+        run,
+      );
+      await assertClassicEditReviewsComplete(root, change, state);
+      await assertClassicSdkAcceptedCandidateInputs(root, run);
+      if (
+        !(await areObservedEditsNonBehavioral(
+          [
+            await classicEditReviewScope(root, change, state),
+            await classicFormalEditReviewScope(root, change, state, false, undefined, run),
+          ],
+          observation.changes,
+        ))
+      )
+        throw new Error('尚有未经当前 Agent 判断的实现变化，不能仅补检查保留验收');
+      return { accepted: true };
+    } catch (error) {
+      return { accepted: false, reason: String(error) };
+    }
+  },
+};
+
 /** 仅给内置 Run 添加显式修订命令；原应用工厂和固定扩展包保持不变。 */
 export function classicSdkRevisionApplication(
   profile: ClassicProfile,
@@ -295,6 +408,7 @@ export function classicSdkRevisionApplication(
   buildContinuation = true,
   workContinuation = true,
   sourceRun?: Readonly<WorkflowRun>,
+  checkRefresh = true,
 ) {
   const base = defineClassicWorkflowApplication(profile);
   const continuationValidator: RuntimeCommandValidator = {
@@ -344,6 +458,19 @@ export function classicSdkRevisionApplication(
         ),
       },
       transitions: [
+        ...(checkRefresh
+          ? [
+              {
+                from: `${verification === 'full' ? 'full' : profile}.verify.check`,
+                to: `${verification === 'full' ? 'full' : profile}.archive.preflight`,
+              },
+              {
+                from: `${verification === 'full' ? 'full' : profile}.verify.check`,
+                to: `${verification === 'full' ? 'full' : profile}.archive.preflight`,
+                on: 'failed',
+              },
+            ]
+          : []),
         ...(base.workflow.transitions ?? []),
         ...(fullOpen?.transitions?.filter((edge) => edge.from.startsWith('full.open')) ?? []),
         { from: 'full.design.evidence', to: 'full.build.plan' },
@@ -354,6 +481,14 @@ export function classicSdkRevisionApplication(
           : []),
       ],
       commands: {
+        ...(checkRefresh
+          ? {
+              'refresh-checks': {
+                stepId: `${verification === 'full' ? 'full' : profile}.verify.check`,
+                validator: { id: checkRefreshValidator.id, version: checkRefreshValidator.version },
+              },
+            }
+          : {}),
         ...(workContinuation
           ? {
               'continue-work': {
@@ -409,6 +544,7 @@ export function classicSdkRevisionApplication(
       },
     },
     commandValidators: [
+      ...(checkRefresh ? [checkRefreshValidator] : []),
       ...(workContinuation ? [continuationValidator] : []),
       ...(buildContinuation ? [buildContinuationValidator] : []),
       ...(archiveRepair ? [archiveRepairValidator] : []),
@@ -441,6 +577,17 @@ export function classicSdkRevisionApplication(
     transitionHandler: {
       ...base.transitionHandler,
       apply(context: Parameters<typeof base.transitionHandler.apply>[0]) {
+        if (context.event.kind === 'action-outcome') {
+          const actionId = context.event.outcome.actionId;
+          const action = context.run.actions.find((entry) => entry.id === actionId);
+          if (action && classicSdkCheckRefreshInput(context.run, action))
+            return {
+              state: context.run.state!,
+              next: [
+                `${(context.run.state as unknown as ClassicState).workflow}.archive.preflight`,
+              ],
+            };
+        }
         if (
           context.event.kind === 'action-outcome' &&
           context.event.stepId === 'classic.resume-work' &&
@@ -483,6 +630,17 @@ export function classicSdkApplicationForRun(
   run: WorkflowRun | null,
   options: { upgradePresetRequirements?: boolean; upgradeBuildCheckRecovery?: boolean } = {},
 ) {
+  const base = { ...defineClassicWorkflowApplication(profile), commandValidators: [] };
+  // 正常 Run 精确匹配原定义后直接返回；旧定义仍按下方完整兼容路径识别。
+  if (!run || run.workflow.hash === hashRuntimeValue(defineWorkflow(base.workflow))) return base;
+  const withoutCheckRefresh = <T extends { workflow: DefineWorkflowOptions }>(application: T) => {
+    const workflow = structuredClone(application.workflow);
+    if (workflow.commands) delete workflow.commands['refresh-checks'];
+    workflow.transitions = workflow.transitions?.filter(
+      ({ from, to }) => !(from.endsWith('.verify.check') && to.endsWith('.archive.preflight')),
+    );
+    return { ...application, workflow };
+  };
   const effective = (run?.state as unknown as ClassicState | undefined)?.workflow ?? profile;
   const repair = withClassicDeliveryRepair(
     classicSdkRevisionApplication(
@@ -492,6 +650,9 @@ export function classicSdkApplicationForRun(
     effective,
   );
   if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(repair.workflow))) return repair;
+  const beforeRepairRefresh = withoutCheckRefresh(repair);
+  if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(beforeRepairRefresh.workflow)))
+    return beforeRepairRefresh;
   const compatible = <T extends { workflow: DefineWorkflowOptions }>(application: T) => {
     const previous = structuredClone(application.workflow);
     const step = previous.steps[`${profile}.build.execute`];
@@ -531,13 +692,34 @@ export function classicSdkApplicationForRun(
           );
           if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(application.workflow)))
             return application;
+          const beforeRefresh = withoutCheckRefresh(application);
+          if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(beforeRefresh.workflow)))
+            return beforeRefresh;
           const previousRecovery = withoutBuildCheckRecovery(application);
+          const oldRecoveryBeforeRefresh = withoutCheckRefresh(previousRecovery);
+          if (
+            run?.workflow.hash ===
+            hashRuntimeValue(defineWorkflow(oldRecoveryBeforeRefresh.workflow))
+          )
+            return options.upgradeBuildCheckRecovery ? application : oldRecoveryBeforeRefresh;
           if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previousRecovery.workflow)))
             return options.upgradeBuildCheckRecovery ? application : previousRecovery;
           const previous = compatible(application);
+          const oldBeforeRefresh = withoutCheckRefresh(previous);
+          if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(oldBeforeRefresh.workflow)))
+            return options.upgradePresetRequirements ? application : oldBeforeRefresh;
           if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previous.workflow)))
             return options.upgradePresetRequirements ? application : previous;
           const previousBoth = withoutBuildCheckRecovery(previous);
+          const oldBothBeforeRefresh = withoutCheckRefresh(previousBoth);
+          if (
+            run?.workflow.hash === hashRuntimeValue(defineWorkflow(oldBothBeforeRefresh.workflow))
+          )
+            return options.upgradePresetRequirements
+              ? application
+              : options.upgradeBuildCheckRecovery
+                ? oldBeforeRefresh
+                : oldBothBeforeRefresh;
           if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(previousBoth.workflow)))
             return options.upgradePresetRequirements
               ? application
@@ -548,7 +730,6 @@ export function classicSdkApplicationForRun(
       }
     }
   }
-  const base = { ...defineClassicWorkflowApplication(profile), commandValidators: [] };
   const previous = compatible(base);
   const oldRecovery = withoutBuildCheckRecovery(base);
   if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(oldRecovery.workflow)))
