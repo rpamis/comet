@@ -5584,6 +5584,224 @@
           ]
         }
       ]
+    },
+    {
+      "id": "classic-515-doctor-non-change-entries",
+      "sources": ["https://github.com/rpamis/comet/issues/515"],
+      "behavior": "Classic doctor 忽略 changes 下非法名称的普通文件和目录，保持健康项目退出码，与 status 一致。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在 052 基线 5c35298 的已构建 bin/comet.js 上，同一临时项目先健康，加入 .DS_Store 等非 change 条目后 docs 与 legacy 两例均从 0 变 1；两个合法名安全反例在基线通过。",
+      "expected": "docs 与 legacy 布局添加 .DS_Store、.gitkeep、Thumbs.db、编辑器临时文件与隐藏目录后 doctor 仍退出 0；status 无活跃需求且文件不变。",
+      "forbidden": "把非 change 文件当作损坏的 change，导致 doctor 失败或删改无关文件。",
+      "rootCause": "checkCometYamlValidity 只排除 archive，没有复用 status 的 openSpecChangeNameError 名称规则；受保护路径检查将普通噪声文件当成 change 目录拒绝。",
+      "tests": [
+        {
+          "file": "test/app/doctor-classic-discovery.test.ts",
+          "namePattern": "ignores non-change entries without changing a healthy doctor exit in",
+          "requiredNames": [
+            "Classic doctor change discovery ignores non-change entries without changing a healthy doctor exit in docs layout",
+            "Classic doctor change discovery ignores non-change entries without changing a healthy doctor exit in legacy layout"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-515-doctor-valid-name-safety",
+      "sources": ["https://github.com/rpamis/comet/issues/515"],
+      "behavior": "Classic doctor 继续校验合法 change 名下的状态、普通文件与目录链接，不因过滤噪声而掩盖真实损坏。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在 052 基线 5c35298 的已构建 bin/comet.js 上，同一临时项目先健康，加入 .DS_Store 等非 change 条目后 docs 与 legacy 两例均从 0 变 1；两个合法名安全反例在基线通过。",
+      "expected": "合法 change 正常通过；合法名的普通文件、目录链接与损坏状态仍使 doctor 退出 1，外部链接目标与普通文件不变。",
+      "forbidden": "跳过合法名的错误对象、读取链接外部状态或忽略损坏的 change。",
+      "rootCause": "checkCometYamlValidity 只排除 archive，没有复用 status 的 openSpecChangeNameError 名称规则；受保护路径检查将普通噪声文件当成 change 目录拒绝。",
+      "tests": [
+        {
+          "file": "test/app/doctor-classic-discovery.test.ts",
+          "namePattern": "still validates real change state and rejects valid-name files and links in",
+          "requiredNames": [
+            "Classic doctor change discovery still validates real change state and rejects valid-name files and links in docs layout",
+            "Classic doctor change discovery still validates real change state and rejects valid-name files and links in legacy layout"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-unapproved-shape-replace-target",
+      "behavior": "Shape 未确认时改换目标能力，重新准备并重新批准，不删除原正式能力",
+      "sources": ["https://github.com/rpamis/comet/issues/516"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 5c35298 的公开 Native CLI 创建 SDK change，prepare 后删除原 target，按 continuation 修订并重新 prepare；旧代码报 spec-document-missing。",
+      "expected": "通过 continuation 的 revise-requirements 生成仅含新目标的提案；新批准才进入 Build，正式 Spec 保持原字节",
+      "forbidden": "旧确认令牌生效、自动批准或把撤销目标转成 remove；批准后缺失目标被默许",
+      "rootCause": "Shape prepare 已重新发现目标，却仍用上次未确认声明检查缺失文件，导致撤销目标被误判为丢失正式契约。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-target-replacement.test.ts",
+          "namePattern": "replaces an unapproved target without removing the canonical capability",
+          "requiredNames": [
+            "Native Shape target replacement replaces an unapproved target without removing the canonical capability"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-unapproved-shape-withdraw-last-target",
+      "behavior": "撤销最后一个未确认目标时重新检查无产品行为变更理由",
+      "sources": ["https://github.com/rpamis/comet/issues/516"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 5c35298 的公开 Native CLI 创建 SDK change，prepare 后删除原 target，按 continuation 修订并重新 prepare；旧代码报 spec-document-missing。",
+      "expected": "缺少具体免责理由被拒绝，补齐理由后新提案无目标，仍等待确认",
+      "forbidden": "旧声明掩盖无目标理由校验或误删除正式 Spec",
+      "rootCause": "Shape prepare 已重新发现目标，却仍用上次未确认声明检查缺失文件，导致撤销目标被误判为丢失正式契约。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-target-replacement.test.ts",
+          "namePattern": "requires an explicit exemption after withdrawing the last unapproved target",
+          "requiredNames": [
+            "Native Shape target replacement requires an explicit exemption after withdrawing the last unapproved target"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-unapproved-shape-preserve-removal",
+      "behavior": "刷新未确认目标集合时保留明确声明的能力删除",
+      "sources": ["https://github.com/rpamis/comet/issues/516"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 5c35298 的公开 Native CLI 创建 SDK change，prepare 后删除原 target，按 continuation 修订并重新 prepare；旧代码报 spec-document-missing。",
+      "expected": "新集合保留显式 remove 和新建目标，正式 Spec 在 Archive 前不修改",
+      "forbidden": "静默丢弃 remove 或将撤销的 modify 转为 remove",
+      "rootCause": "Shape prepare 已重新发现目标，却仍用上次未确认声明检查缺失文件，导致撤销目标被误判为丢失正式契约。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-target-replacement.test.ts",
+          "namePattern": "preserves an explicit removal while refreshing the unapproved target set",
+          "requiredNames": [
+            "Native Shape target replacement preserves an explicit removal while refreshing the unapproved target set"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-orphan-cancelled-checkpoint-history",
+      "behavior": "已取消并停止的独立 Native Run 在原 linked worktree 删除后可具名迁移历史",
+      "sources": ["https://github.com/rpamis/comet/issues/513"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在临时 linked worktree 真实推进至 Build、凭原 claim 确认停止并取消，提交合并 portable checkpoint 后移除 worktree；5c35298 的 Runtime 和独立 doctor bundle 均返回 exit 65、缺少 SDK owner。",
+      "expected": "具名 --migrate-history 导入并封存同一 revision 和停止证据；重复迁移稳定且 portable 原字节不变",
+      "forbidden": "重做验收、Archive、改变业务正文或覆盖旧 Run",
+      "rootCause": "历史迁移入口只接受已有 owner，而普通 checkpoint 恢复要求原工作区绑定",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-history.test.ts",
+          "namePattern": "(?:migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through runtime|migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through bundle)$",
+          "requiredNames": [
+            "Native terminal history lifecycle migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through runtime",
+            "Native terminal history lifecycle migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through bundle"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-closed-cancellation-historical-binding",
+      "behavior": "已验证封存的取消历史不因原分支绑定阻塞全局 doctor",
+      "sources": ["https://github.com/rpamis/comet/issues/513"],
+      "coverageLevel": "public-cli",
+      "reproduction": "导入关闭历史后，全局 doctor 曾仍将历史 workspace branch mismatch 视为活动错误。",
+      "expected": "全局 doctor 健康，取消历史不出现在 active hook 集合；仍保留 Build 历史正文",
+      "forbidden": "放宽活跃 Run 的 workspace 绑定或将取消误写为验收/归档",
+      "rootCause": "诊断未区分已严格封存取消终态与仍需执行的 Run",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-history.test.ts",
+          "namePattern": "(?:migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through runtime|migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through bundle)$",
+          "requiredNames": [
+            "Native terminal history lifecycle migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through runtime",
+            "Native terminal history lifecycle migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through bundle"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-cancelled-history-import-guards",
+      "behavior": "历史导入拒绝不完整停止、损坏或不适格来源及任何无导入凭据的既有目的地",
+      "sources": ["https://github.com/rpamis/comet/issues/513"],
+      "coverageLevel": "runtime",
+      "reproduction": "以同一公开 Native CLI 导入活跃、缺 stop、坏 hash、未知定义、Archive 义务、child lineage、固定应用、未清选择、已有 Run/投影样本。",
+      "expected": "所有不适格导入失败且 owner、Run、portable 和既有投影保持不变；未具名迁移不隐式导入",
+      "forbidden": "将损坏或仍有执行/清理义务的 checkpoint 变成健康历史",
+      "rootCause": "跨分支终态导入必须独立证明来源、执行停止和目的地空缺，不能借普通恢复放宽绑定",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-history.test.ts",
+          "namePattern": "(?:rejects portable history import with active without overwriting local evidence|rejects portable history import with missing-stop without overwriting local evidence|rejects portable history import with corrupt-hash without overwriting local evidence|rejects portable history import with unknown-definition without overwriting local evidence|rejects portable history import with archive-obligation without overwriting local evidence|rejects portable history import with child-lineage without overwriting local evidence|rejects portable history import with fixed-application without overwriting local evidence|rejects portable history import with pending-cleanup without overwriting local evidence|rejects portable history import with existing-run without overwriting local evidence|rejects portable history import with existing-projection without overwriting local evidence)$",
+          "requiredNames": [
+            "Native terminal history lifecycle rejects portable history import with active without overwriting local evidence",
+            "Native terminal history lifecycle rejects portable history import with missing-stop without overwriting local evidence",
+            "Native terminal history lifecycle rejects portable history import with corrupt-hash without overwriting local evidence",
+            "Native terminal history lifecycle rejects portable history import with unknown-definition without overwriting local evidence",
+            "Native terminal history lifecycle rejects portable history import with archive-obligation without overwriting local evidence",
+            "Native terminal history lifecycle rejects portable history import with child-lineage without overwriting local evidence",
+            "Native terminal history lifecycle rejects portable history import with fixed-application without overwriting local evidence",
+            "Native terminal history lifecycle rejects portable history import with pending-cleanup without overwriting local evidence",
+            "Native terminal history lifecycle rejects portable history import with existing-run without overwriting local evidence",
+            "Native terminal history lifecycle rejects portable history import with existing-projection without overwriting local evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-cancelled-history-import-resume",
+      "behavior": "历史导入跨 Run、owner、投影和关闭分区中断后只能续行精确同一次导入",
+      "sources": ["https://github.com/rpamis/comet/issues/513"],
+      "coverageLevel": "runtime",
+      "reproduction": "分别在 journal、Run、owner、projection、closure 发布后注入失败，及双份 owner、来源变化、较新本地 Run 后重试。",
+      "expected": "有效绑定 journal 的原导入重试完成，不重复推进或改写 portable；源变化和较新记录拒绝且原记录不变",
+      "forbidden": "无 journal 覆盖旧历史，或在来源变化拒绝前移动 owner 分区",
+      "rootCause": "SDK 单个 Run CAS 不涵盖 owner 和投影多文件发布，需要窄 journal 绑定完整来源并按实际对象续行",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-history.test.ts",
+          "namePattern": "(?:keeps portable history import safe after interruption at journal|keeps portable history import safe after interruption at run|keeps portable history import safe after interruption at owner|keeps portable history import safe after interruption at projection|keeps portable history import safe after interruption at closure|keeps portable history import safe after interruption at duplicate-owner|keeps portable history import safe after interruption at changed-source|keeps portable history import safe after interruption at newer-local)$",
+          "requiredNames": [
+            "Native terminal history lifecycle keeps portable history import safe after interruption at journal",
+            "Native terminal history lifecycle keeps portable history import safe after interruption at run",
+            "Native terminal history lifecycle keeps portable history import safe after interruption at owner",
+            "Native terminal history lifecycle keeps portable history import safe after interruption at projection",
+            "Native terminal history lifecycle keeps portable history import safe after interruption at closure",
+            "Native terminal history lifecycle keeps portable history import safe after interruption at duplicate-owner",
+            "Native terminal history lifecycle keeps portable history import safe after interruption at changed-source",
+            "Native terminal history lifecycle keeps portable history import safe after interruption at newer-local"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-cancelled-history-preserve-worktree-authority",
+      "behavior": "原注册 worktree 仍保有同名权威记录时不能导入旧副本遮蔽它",
+      "sources": ["https://github.com/rpamis/comet/issues/513"],
+      "coverageLevel": "runtime",
+      "reproduction": "保留原 linked worktree 的取消 Run，分别保持原 revision 或写入较新 revision，再在主工作区迁移复制的旧 checkpoint。",
+      "expected": "拒绝目的地导入，原 Run 不变且目的地不产生 owner/Run；journal 发布后新出现的原工作区权威也须在写入目的地前被二次核对发现。",
+      "forbidden": "让旧 portable 副本取得同名本地历史权威",
+      "rootCause": "缺 owner 的历史导入不能跳过其他注册 worktree 的权威发现",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-history.test.ts",
+          "namePattern": "(?:does not shadow the original authority in a registered source worktree|does not shadow the newer authority in a registered source worktree)$",
+          "requiredNames": [
+            "Native terminal history lifecycle does not shadow the original authority in a registered source worktree",
+            "Native terminal history lifecycle does not shadow the newer authority in a registered source worktree"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-history.test.ts",
+          "namePattern": "rejects source authority appearing after the history import journal is published",
+          "requiredNames": [
+            "Native terminal history lifecycle rejects source authority appearing after the history import journal is published"
+          ]
+        }
+      ]
     }
   ]
 }

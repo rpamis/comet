@@ -22,6 +22,7 @@ export async function inspectNativeSdkQuiescence(options: {
   projectRoot: string;
   run: WorkflowRun;
   checkExecutionObservation?: readonly NativeSdkCheckExecutionInspection[];
+  ownerObservation?: Awaited<ReturnType<typeof readSdkChangeOwner>>;
 }) {
   const outstandingActions: Array<{
     runId: string;
@@ -47,9 +48,12 @@ export async function inspectNativeSdkQuiescence(options: {
   }> = [];
   const outstandingRuns: string[] = [];
   const visited = new Set<string>();
-  const owner = await readSdkChangeOwner(options.projectRoot, 'native', options.run.runId, {
-    readOnly: true,
-  });
+  const owner =
+    options.ownerObservation === undefined
+      ? await readSdkChangeOwner(options.projectRoot, 'native', options.run.runId, {
+          readOnly: true,
+        })
+      : options.ownerObservation;
   const store = createFileRuntimeStore<WorkflowRun>({
     rootDir: path.join(resolveWorkspaceRuntimeRootSync(options.projectRoot), 'sdk-runs/native'),
   });
@@ -176,13 +180,17 @@ export async function inspectNativeSdkCancellation(options: {
   projectRoot: string;
   run: WorkflowRun;
   checkExecutionObservation?: readonly NativeSdkCheckExecutionInspection[];
+  ownerObservation?: Awaited<ReturnType<typeof readSdkChangeOwner>>;
 }) {
   if (options.run.status !== 'cancelled') return null;
   const { quiescent, outstandingActions, outstandingRuns } =
     await inspectNativeSdkQuiescence(options);
-  const owner = await readSdkChangeOwner(options.projectRoot, 'native', options.run.runId, {
-    readOnly: true,
-  });
+  const owner =
+    options.ownerObservation === undefined
+      ? await readSdkChangeOwner(options.projectRoot, 'native', options.run.runId, {
+          readOnly: true,
+        })
+      : options.ownerObservation;
   const selected = quiescent ? await readCometCurrentSelection(options.projectRoot) : null;
   const cleanupRequired = Boolean(
     selected?.status === 'selected' &&

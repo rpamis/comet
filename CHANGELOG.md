@@ -12,6 +12,12 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Native Git staging decoupling**: Staging, unstaging, and empty commits no longer rebuild the implementation candidate unconditionally. Only checks that explicitly depend on Git identities recheck them; unchanged bytes continue the original action.
 - **Edit-continuation performance**: Share protected-file reads within a request, batch input hashing, and widen Git status observation instead of rescanning unchanged inputs, shortening the edit-to-continue path for Native and Classic.
 
+### Fixed
+
+- **Cancelled Native history**: Explicitly migrate a fully stopped built-in cancellation after its original worktree is removed, without changing the portable checkpoint, original revision, or execution evidence. Interrupted imports resume from their bound source; active runs, unresolved cleanup, custom applications, conflicting records, and surviving source-worktree ownership remain protected ([#513](https://github.com/rpamis/comet/issues/513)).
+- **Native Shape target changes**: Replace or withdraw an unapproved target capability through the existing requirement-revision continuation without deleting its canonical Spec. A new proposal still requires fresh approval, and approved targets retain missing-document protection ([#516](https://github.com/rpamis/comet/issues/516)).
+- **Classic Doctor discovery**: Ignore non-change entries such as `.DS_Store` in both Classic layouts, while continuing to report malformed real changes and unsafe paths ([#515](https://github.com/rpamis/comet/issues/515)).
+
 ## What's Changed [0.5.1] - 2026-10-23
 
 ### Changed

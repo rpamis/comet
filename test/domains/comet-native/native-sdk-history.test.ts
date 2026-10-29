@@ -1,3 +1,10 @@
+import * as gitWorktrees from '../../../platform/paths/git-worktree.js';
+import * as atomicFiles from '../../../domains/workflow-contract/contained-atomic-write.js';
+import { stringify } from 'yaml';
+import {
+  parseNativeStateDocument,
+  NATIVE_MANAGED_RUN_MARKER,
+} from '../../../domains/comet-native/native-state-document.js';
 import { runWithHookReadCache } from '../../../platform/process/hook-read-cache.js';
 import {
   listNativeSdkHistoryPartitions,
@@ -7,7 +14,7 @@ import * as workspaceRuntime from '../../../domains/workflow-contract/workspace-
 import * as ownerStorage from '../../../domains/workflow-contract/change-runtime-owner.js';
 import { createHash } from 'node:crypto';
 import { listActiveNativeHookChanges } from '../../../domains/comet-native/native-hook-guard.js';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -16,7 +23,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { createNativeSdkRuntime } from '../../../domains/comet-native/native-runtime-ownership.js';
 import * as history from '../../../domains/comet-native/native-sdk-history.js';
-import { createFileRuntimeStore, type WorkflowRun } from '../../../domains/engine/runtime.js';
+import {
+  createFileRuntimeStore,
+  createPortableRunCheckpoint,
+  readPortableRunCheckpoint,
+  type WorkflowRun,
+} from '../../../domains/engine/runtime.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import {
   listSdkChangeNames,
@@ -30,10 +42,32 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
-async function fixture() {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-sdk-history-'));
+async function fixture(linked = false) {
+  let root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-sdk-history-'));
   roots.push(root);
   execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
+  const integrationRoot = root;
+  if (linked) {
+    execFileSync(
+      'git',
+      [
+        '-c',
+        'user.name=Test',
+        '-c',
+        'user.email=test@example.com',
+        'commit',
+        '--allow-empty',
+        '-m',
+        'initial',
+      ],
+      { cwd: root, stdio: 'ignore' },
+    );
+    root = path.join(root, 'linked');
+    execFileSync('git', ['worktree', 'add', '-b', 'feature/history-change', root], {
+      cwd: integrationRoot,
+      stdio: 'ignore',
+    });
+  }
   const name = 'history-change';
   const cli = async (args: string[]) =>
     JSON.parse((await runNativeCli([...args, '--project-root', root, '--json'])).stdout!);
@@ -42,7 +76,7 @@ async function fixture() {
   const store = createFileRuntimeStore<WorkflowRun>({
     rootDir: path.join(resolveWorkspaceRuntimeRootSync(root), 'sdk-runs', 'native'),
   });
-  return { root, name, cli, runtime, store };
+  return { root, integrationRoot, name, cli, runtime, store };
 }
 
 describe('Native terminal history lifecycle', () => {
@@ -251,6 +285,409 @@ describe('Native terminal history lifecycle', () => {
     },
   );
 
+  it.each(['runtime', 'bundle'] as const)(
+    'migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through %s',
+    async (boundary) => {
+      const f = await fixture(true);
+      const changeDir = path.join(f.root, 'docs/comet/changes', f.name);
+      await fs.writeFile(
+        path.join(changeDir, 'brief.md'),
+        '# Outcome\nKeep partial work.\n# Scope\nCancel safely.\n## Directory structure\n### Modified\n- src/ — preserve partial implementation.\n# Non-goals\nPublishing.\n# Acceptance examples\n- Existing work remains.\n# Constraints and invariants\nPreserve receipts.\n# Decisions\nNone.\n# Open questions\nNone.\n# Verification expectations\nRun focused checks.\n',
+      );
+      await fs.mkdir(path.join(changeDir, 'specs/workflow'), { recursive: true });
+      await fs.writeFile(
+        path.join(changeDir, 'specs/workflow/spec.md'),
+        '# Workflow\nExisting work remains.\n',
+      );
+      expect((await f.cli(['next', f.name])).exitCode).toBe(0);
+      const shaped = (await f.runtime.inspect(f.name)).state as { state_version: number };
+      expect(
+        (
+          await f.cli([
+            'next',
+            f.name,
+            '--confirmed',
+            '--summary',
+            'Confirmed Shape',
+            '--expected-state-version',
+            String(shaped.state_version),
+            '--expected-action',
+            'confirm-shape',
+          ])
+        ).exitCode,
+      ).toBe(0);
+      const initial = await f.runtime.inspect(f.name);
+      expect(initial.state).toMatchObject({ phase: 'build' });
+      const action = initial.actions.at(-1)!;
+      const claimed = await f.runtime.claim({
+        runId: f.name,
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        executorId: 'original-host',
+        claimToken: 'original-claim',
+      });
+      await f.runtime.cancel({
+        runId: f.name,
+        reason: 'Stop original work',
+        stoppedActions: [
+          {
+            actionId: action.id,
+            attempt: action.attempt,
+            inputHash: action.inputHash,
+            claimToken: claimed.actions.at(-1)!.claim!.token,
+            evidence: 'Original execution and child tasks stopped.',
+          },
+        ],
+      });
+      const original = (await f.store.read(f.name))!;
+      execFileSync('git', ['add', '-A'], { cwd: f.root, stdio: 'ignore' });
+      execFileSync(
+        'git',
+        [
+          '-c',
+          'user.name=Test',
+          '-c',
+          'user.email=test@example.com',
+          'commit',
+          '-m',
+          'preserve cancelled checkpoint',
+        ],
+        { cwd: f.root, stdio: 'ignore' },
+      );
+      const target = f.integrationRoot;
+      execFileSync('git', ['merge', '--ff-only', 'feature/history-change'], {
+        cwd: target,
+        stdio: 'ignore',
+      });
+      expect(
+        await ownerStorage.readSdkChangeOwner(target, 'native', f.name, { readOnly: true }),
+      ).toBeNull();
+      execFileSync('git', ['worktree', 'remove', f.root], { cwd: target, stdio: 'ignore' });
+      const cli = async (args: string[]) =>
+        JSON.parse((await runNativeCli([...args, '--project-root', target, '--json'])).stdout!);
+      const targetStore = createFileRuntimeStore<WorkflowRun>({
+        rootDir: path.join(resolveWorkspaceRuntimeRootSync(target), 'sdk-runs/native'),
+      });
+      const portableFile = path.join(target, 'docs/comet/changes', f.name, 'comet-state.yaml');
+      const portable = await fs.readFile(portableFile, 'utf8');
+      expect((await cli(['doctor', f.name, '--repair', '--confirmed'])).exitCode).not.toBe(0);
+      expect(await targetStore.read(f.name)).toBeNull();
+      const migrated =
+        boundary === 'runtime'
+          ? await cli(['doctor', f.name, '--migrate-history'])
+          : JSON.parse(
+              spawnSync(
+                process.execPath,
+                [
+                  path.resolve('assets/skills/comet-native/scripts/comet-native-doctor.mjs'),
+                  f.name,
+                  '--migrate-history',
+                  '--project-root',
+                  target,
+                  '--json',
+                ],
+                { encoding: 'utf8' },
+              ).stdout,
+            );
+      expect(migrated.exitCode, JSON.stringify(migrated)).toBe(0);
+      expect(migrated.data.migrated).toEqual([f.name]);
+      expect(await targetStore.readDisposition(f.name)).toBe('closed');
+      const restored = (await targetStore.read(f.name))!;
+      expect(restored.revision).toBe(original.revision);
+      expect(restored.state).toEqual(original.state);
+      expect(restored.state).toMatchObject({ phase: 'build', archived: false });
+      expect(await f.store.read(f.name)).toEqual(original);
+      expect(restored.actions).toEqual(
+        readPortableRunCheckpoint(createPortableRunCheckpoint(original), f.name, {
+          preserveSourceRevision: true,
+        })!.actions,
+      );
+      expect(await fs.readFile(portableFile, 'utf8')).toBe(portable);
+      const repeated = await cli(['doctor', f.name, '--migrate-history']);
+      expect(repeated.exitCode, JSON.stringify(repeated)).toBe(0);
+      const globalDoctor = await cli(['doctor']);
+      expect(globalDoctor.exitCode, JSON.stringify(globalDoctor)).toBe(0);
+      expect(await listActiveNativeHookChanges(target)).toEqual([]);
+      expect(await fs.readFile(portableFile, 'utf8')).toBe(portable);
+    },
+  );
+
+  it.each(['original', 'newer'] as const)(
+    'does not shadow the %s authority in a registered source worktree',
+    async (version) => {
+      const f = await fixture(true);
+      await f.runtime.cancel({ runId: f.name, reason: 'Stop work' });
+      const target = f.integrationRoot;
+      await fs.cp(path.join(f.root, 'docs'), path.join(target, 'docs'), { recursive: true });
+      await fs.mkdir(path.join(target, '.comet'), { recursive: true });
+      await fs.copyFile(
+        path.join(f.root, '.comet/config.yaml'),
+        path.join(target, '.comet/config.yaml'),
+      );
+      const original = (await f.store.read(f.name))!;
+      if (version === 'newer') {
+        expect(await f.store.reopenRun(f.name, original.revision)).toBe(true);
+        expect(
+          await f.store.compareAndSwap(f.name, original.revision, {
+            ...original,
+            revision: original.revision + 1,
+          }),
+        ).toBe(true);
+      }
+      const retained = await f.store.read(f.name);
+      const result = JSON.parse(
+        (
+          await runNativeCli([
+            'doctor',
+            f.name,
+            '--migrate-history',
+            '--project-root',
+            target,
+            '--json',
+          ])
+        ).stdout!,
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect(result.data.findings[0].message).toContain('authoritative record');
+      expect(
+        await ownerStorage.readSdkChangeOwner(target, 'native', f.name, { readOnly: true }),
+      ).toBeNull();
+      expect(
+        await createFileRuntimeStore<WorkflowRun>({
+          rootDir: path.join(resolveWorkspaceRuntimeRootSync(target), 'sdk-runs/native'),
+        }).read(f.name),
+      ).toBeNull();
+      expect(await f.store.read(f.name)).toEqual(retained);
+    },
+  );
+
+  it.each([
+    'active',
+    'missing-stop',
+    'corrupt-hash',
+    'unknown-definition',
+    'archive-obligation',
+    'child-lineage',
+    'fixed-application',
+    'pending-cleanup',
+    'existing-run',
+    'existing-projection',
+  ] as const)(
+    'rejects portable history import with %s without overwriting local evidence',
+    async (failure) => {
+      const f = await fixture();
+      const initial = await f.runtime.inspect(f.name);
+      const action = initial.actions.at(-1)!;
+      await f.runtime.claim({
+        runId: f.name,
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        executorId: 'original-host',
+        claimToken: 'original-claim',
+      });
+      if (failure !== 'active')
+        await f.runtime.cancel({
+          runId: f.name,
+          reason: 'Cancel work',
+          ...(failure === 'missing-stop'
+            ? {}
+            : {
+                stoppedActions: [
+                  {
+                    actionId: action.id,
+                    attempt: action.attempt,
+                    inputHash: action.inputHash,
+                    claimToken: 'original-claim',
+                    evidence: 'Original execution and child tasks stopped.',
+                  },
+                ],
+              }),
+        });
+      const target = await fs.mkdtemp(path.join(os.tmpdir(), 'native-history-rejection-'));
+      roots.push(target);
+      execFileSync('git', ['init', '-b', 'dev'], { cwd: target, stdio: 'ignore' });
+      await fs.cp(path.join(f.root, 'docs'), path.join(target, 'docs'), { recursive: true });
+      await fs.mkdir(path.join(target, '.comet'));
+      await fs.copyFile(
+        path.join(f.root, '.comet/config.yaml'),
+        path.join(target, '.comet/config.yaml'),
+      );
+      const runtimeRoot = resolveWorkspaceRuntimeRootSync(target);
+      const store = createFileRuntimeStore<WorkflowRun>({
+        rootDir: path.join(runtimeRoot, 'sdk-runs/native'),
+      });
+      const portableFile = path.join(target, 'docs/comet/changes', f.name, 'comet-state.yaml');
+      const document = parseNativeStateDocument(
+        await fs.readFile(portableFile, 'utf8'),
+        'test checkpoint',
+      ) as Record<string, unknown>;
+      if (failure === 'corrupt-hash')
+        (document.run_checkpoint as { hash: string }).hash = 'f'.repeat(64);
+      if (failure === 'unknown-definition') {
+        const run = readPortableRunCheckpoint(document.run_checkpoint, f.name, {
+          preserveSourceRevision: true,
+        })!;
+        run.workflow.hash = 'f'.repeat(64);
+        run.definitionHashes[JSON.stringify([run.workflow.id, run.workflow.version])] =
+          run.workflow.hash;
+        document.run_checkpoint = createPortableRunCheckpoint(run);
+      }
+      if (failure === 'child-lineage') {
+        const run = readPortableRunCheckpoint(document.run_checkpoint, f.name, {
+          preserveSourceRevision: true,
+        })!;
+        run.lineage = ['parent-run'];
+        document.run_checkpoint = createPortableRunCheckpoint(run);
+      }
+      if (failure === 'archive-obligation') {
+        const run = readPortableRunCheckpoint(document.run_checkpoint, f.name, {
+          preserveSourceRevision: true,
+        })!;
+        run.actions[0].stepId = 'archive.finalize';
+        document.run_checkpoint = createPortableRunCheckpoint(run);
+      }
+      if (failure === 'fixed-application')
+        document.application_checkpoint = { id: 'custom-native' };
+      await fs.writeFile(portableFile, NATIVE_MANAGED_RUN_MARKER + stringify(document));
+      const source = await fs.readFile(portableFile, 'utf8');
+      if (failure === 'pending-cleanup')
+        await fs.writeFile(
+          path.join(target, '.comet/current-change.json'),
+          JSON.stringify({
+            schema: 'comet.selection.v2',
+            workflow: 'native',
+            change: f.name,
+            branch: null,
+          }),
+        );
+      if (failure === 'existing-run')
+        await store.restoreCheckpoint(f.name, null, (await f.store.read(f.name))!);
+      const existing = await store.read(f.name);
+      const markerFile = path.join(runtimeRoot, `state-projections/native/${f.name}.json`);
+      if (failure === 'existing-projection') {
+        await fs.mkdir(path.dirname(markerFile), { recursive: true });
+        await fs.writeFile(markerFile, 'existing evidence');
+      }
+      const cli = async (args: string[]) =>
+        JSON.parse((await runNativeCli([...args, '--project-root', target, '--json'])).stdout!);
+      expect((await cli(['doctor'])).exitCode).not.toBe(0);
+      await cli(['doctor', '--migrate-history']);
+      expect(
+        await ownerStorage.readSdkChangeOwner(target, 'native', f.name, { readOnly: true }),
+      ).toBeNull();
+      const result = await cli(['doctor', f.name, '--migrate-history']);
+      expect(result.exitCode, JSON.stringify(result)).not.toBe(0);
+      expect(result.data.findings).toHaveLength(1);
+      if (failure === 'archive-obligation')
+        expect(result.data.findings[0].message).toContain('Archive execution obligations');
+      expect(await store.read(f.name)).toEqual(existing);
+      expect(
+        await ownerStorage.readSdkChangeOwner(target, 'native', f.name, { readOnly: true }),
+      ).toBeNull();
+      expect(await fs.readFile(portableFile, 'utf8')).toBe(source);
+      if (failure === 'existing-projection')
+        expect(await fs.readFile(markerFile, 'utf8')).toBe('existing evidence');
+    },
+  );
+
+  it.each([
+    'journal',
+    'run',
+    'owner',
+    'projection',
+    'closure',
+    'duplicate-owner',
+    'changed-source',
+    'newer-local',
+  ] as const)('keeps portable history import safe after interruption at %s', async (stage) => {
+    const f = await fixture();
+    await f.runtime.cancel({ runId: f.name, reason: 'Stop this task' });
+    const target = await fs.mkdtemp(path.join(os.tmpdir(), 'native-history-interruption-'));
+    roots.push(target);
+    execFileSync('git', ['init', '-b', 'dev'], { cwd: target, stdio: 'ignore' });
+    await fs.cp(path.join(f.root, 'docs'), path.join(target, 'docs'), { recursive: true });
+    await fs.mkdir(path.join(target, '.comet'));
+    await fs.copyFile(
+      path.join(f.root, '.comet/config.yaml'),
+      path.join(target, '.comet/config.yaml'),
+    );
+    const cli = async () =>
+      JSON.parse(
+        (
+          await runNativeCli([
+            'doctor',
+            f.name,
+            '--migrate-history',
+            '--project-root',
+            target,
+            '--json',
+          ])
+        ).stdout!,
+      );
+    const sourceFile = path.join(target, 'docs/comet/changes', f.name, 'comet-state.yaml');
+    const source = await fs.readFile(sourceFile, 'utf8');
+    const runtimeRoot = resolveWorkspaceRuntimeRootSync(target);
+    const store = createFileRuntimeStore<WorkflowRun>({
+      rootDir: path.join(runtimeRoot, 'sdk-runs/native'),
+    });
+    if (
+      ['journal', 'projection', 'duplicate-owner', 'changed-source', 'newer-local'].includes(stage)
+    ) {
+      const write = atomicFiles.atomicWriteContainedText;
+      vi.spyOn(atomicFiles, 'atomicWriteContainedText').mockImplementation(async (...args) => {
+        await write(...args);
+        if (args[0].includes(stage === 'journal' ? '/history-imports/' : '/state-projections/'))
+          throw new Error('Injected publication interruption');
+      });
+    } else if (stage === 'run' || stage === 'owner') {
+      const register = ownerStorage.registerSdkChangeOwner;
+      vi.spyOn(ownerStorage, 'registerSdkChangeOwner').mockImplementation(async (...args) => {
+        if (stage === 'owner') await register(...args);
+        throw new Error('Injected owner interruption');
+      });
+    } else {
+      const close = ownerStorage.closeSdkChangeOwner;
+      vi.spyOn(ownerStorage, 'closeSdkChangeOwner').mockImplementation(async (...args) => {
+        await close(...args);
+        throw new Error('Injected closure interruption');
+      });
+    }
+    expect((await cli()).exitCode).not.toBe(0);
+    vi.restoreAllMocks();
+    const imported = await store.read(f.name);
+    if (stage === 'duplicate-owner' || stage === 'changed-source') {
+      const active = path.join(runtimeRoot, 'change-owners/native', `${f.name}.json`);
+      const historyFile = path.join(runtimeRoot, 'change-owner-history/native', `${f.name}.json`);
+      await fs.mkdir(path.dirname(historyFile), { recursive: true });
+      await fs.copyFile(active, historyFile);
+      if (stage === 'changed-source') {
+        const ownerSource = await fs.readFile(active, 'utf8');
+        await fs.appendFile(sourceFile, '\n');
+        expect((await cli()).exitCode).not.toBe(0);
+        expect(await fs.readFile(active, 'utf8')).toBe(ownerSource);
+        expect(await fs.readFile(historyFile, 'utf8')).toBe(ownerSource);
+        expect(await store.read(f.name)).toEqual(imported);
+        return;
+      }
+    }
+    if (stage === 'newer-local') {
+      const newer = { ...imported!, revision: imported!.revision + 1 };
+      expect(await store.compareAndSwap(f.name, imported!.revision, newer)).toBe(true);
+      expect((await cli()).exitCode).not.toBe(0);
+      expect(await store.read(f.name)).toEqual(newer);
+      return;
+    }
+    const resumed = await cli();
+    expect(resumed.exitCode, JSON.stringify(resumed)).toBe(0);
+    expect(await store.readDisposition(f.name)).toBe('closed');
+    if (imported) expect(await store.read(f.name)).toEqual(imported);
+    expect((await cli()).exitCode).toBe(0);
+    expect(await fs.readFile(sourceFile, 'utf8')).toBe(source);
+    expect(await history.hasNativeSdkPortableHistoryImport(target, f.name)).toBe(false);
+  });
+
   it('reports explicit migration progress on stderr without polluting JSON or ordinary doctor', async () => {
     const f = await fixture();
     const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
@@ -313,5 +750,65 @@ describe('Native terminal history lifecycle', () => {
     const f = await fixture();
     expect((await f.cli(['doctor', '--migrate-history', '--repair'])).exitCode).not.toBe(0);
     expect(await f.store.readDisposition(f.name)).toBe('active');
+  });
+  it('rejects source authority appearing after the history import journal is published', async () => {
+    const f = await fixture(true);
+    await f.runtime.cancel({ runId: f.name, reason: 'Stop work' });
+    const target = f.integrationRoot;
+    await fs.cp(path.join(f.root, 'docs'), path.join(target, 'docs'), { recursive: true });
+    await fs.mkdir(path.join(target, '.comet'), { recursive: true });
+    await fs.copyFile(
+      path.join(f.root, '.comet/config.yaml'),
+      path.join(target, '.comet/config.yaml'),
+    );
+    const original = await f.store.read(f.name);
+    const sourceFile = path.join(target, 'docs/comet/changes', f.name, 'comet-state.yaml');
+    const sourceBytes = await fs.readFile(sourceFile);
+    const targetStore = createFileRuntimeStore<WorkflowRun>({
+      rootDir: path.join(resolveWorkspaceRuntimeRootSync(target), 'sdk-runs/native'),
+    });
+    let journalPublished = false;
+    let absentObservations = 0;
+    let presentObservations = 0;
+    const listRoots = gitWorktrees.listGitWorktreeRoots;
+    vi.spyOn(gitWorktrees, 'listGitWorktreeRoots').mockImplementation((projectRoot) => {
+      const entries = listRoots(projectRoot);
+      if (path.resolve(projectRoot) !== path.resolve(target)) return entries;
+      if (journalPublished) {
+        presentObservations++;
+        return entries;
+      }
+      absentObservations++;
+      return entries.filter((root) => path.resolve(root) !== path.resolve(f.root));
+    });
+    const write = atomicFiles.atomicWriteContainedText;
+    vi.spyOn(atomicFiles, 'atomicWriteContainedText').mockImplementation(async (...args) => {
+      await write(...args);
+      if (args[0].includes('/history-imports/')) journalPublished = true;
+    });
+    const result = JSON.parse(
+      (
+        await runNativeCli([
+          'doctor',
+          f.name,
+          '--migrate-history',
+          '--project-root',
+          target,
+          '--json',
+        ])
+      ).stdout!,
+    );
+    expect(journalPublished).toBe(true);
+    expect(absentObservations).toBeGreaterThan(0);
+    expect(presentObservations).toBeGreaterThan(0);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.data.findings[0].message).toContain('authoritative record');
+    expect(
+      await ownerStorage.readSdkChangeOwner(target, 'native', f.name, { readOnly: true }),
+    ).toBeNull();
+    expect(await targetStore.read(f.name)).toBeNull();
+    expect(await history.hasNativeSdkPortableHistoryImport(target, f.name)).toBe(true);
+    expect(await f.store.read(f.name)).toEqual(original);
+    expect(await fs.readFile(sourceFile)).toEqual(sourceBytes);
   });
 });

@@ -1,4 +1,8 @@
-import { closeNativeSdkHistory } from './native-sdk-history.js';
+import {
+  closeNativeSdkHistory,
+  migrateNativeSdkPortableCancellationHistory,
+  hasNativeSdkPortableHistoryImport,
+} from './native-sdk-history.js';
 import { readWorkflowApplicationRun } from '../workflow-application/index.js';
 import type { RuntimeStoppedAction } from '../engine/runtime.js';
 import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
@@ -555,6 +559,12 @@ export async function nativeDoctorCommand(
     reportProgress();
     for (const change of names) {
       try {
+        if (name && (await hasNativeSdkPortableHistoryImport(projectRoot, change))) {
+          if (!(await migrateNativeSdkPortableCancellationHistory(projectRoot, change)))
+            throw new Error('Native history import remains incomplete; retry the named migration');
+          migrated.push(change);
+          continue;
+        }
         // 仅显式迁移可以收尾同身份 owner 双份；普通查看始终报告冲突。
         let migrationOwner;
         try {
@@ -569,6 +579,15 @@ export async function nativeDoctorCommand(
           (migrationOwner.format !== 'sdk' || migrationOwner.application !== 'native')
         ) {
           active.push(change);
+          continue;
+        }
+        if (name && !migrationOwner) {
+          if (await migrateNativeSdkPortableCancellationHistory(projectRoot, change))
+            migrated.push(change);
+          else
+            throw new Error(
+              'Native cancellation history could not be closed; preserve the imported records and retry explicit migration',
+            );
           continue;
         }
         const commandRoot = await resolveNativeSdkCommandRoot(projectRoot, change, {

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { createFileRuntimeStore, type WorkflowRun } from '../engine/runtime.js';
@@ -120,8 +121,14 @@ export async function inspectNativeSdkRunDiagnostics(
       });
     }
   }
+  const closedCancellation =
+    owner?.application === 'native' &&
+    disposition === 'closed' &&
+    (await inspectNativeSdkCancellation({ projectRoot, run, checkExecutionObservation: checks }))
+      ?.status === 'cancelled';
   const issues = [
-    ...(!parseNativePortableState(run.state).archived &&
+    ...(!closedCancellation &&
+    !parseNativePortableState(run.state).archived &&
     parseNativePortableState(run.state).workspace.change_branch &&
     inspectGitWorktree(projectRoot).currentBranch !==
       parseNativePortableState(run.state).workspace.change_branch

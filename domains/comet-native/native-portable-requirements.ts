@@ -1011,7 +1011,11 @@ export async function prepareNativePortableShapeConfirmation(options: {
       if (options.enforceDocumentConstraints === true) {
         await assertNativePortableDocuments({
           paths: options.paths,
-          state: shapeBoundary,
+          // 已撤回确认绑定的新 Shape 可重选目标；其他校验仍保护原声明。
+          state:
+            state.shape_confirmation_hash === undefined
+              ? { ...shapeBoundary, spec_changes: specChanges }
+              : shapeBoundary,
           specChanges,
         });
       }

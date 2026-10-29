@@ -258,7 +258,16 @@ export async function collectNativeSdkShapeProposal(options: {
   }
   const changeDir = path.join(options.paths.changesDir, state.name);
   const specChanges = await discoverNativePortableSpecChanges({ paths: options.paths, state });
-  await assertNativePortableDocuments({ paths: options.paths, state, specChanges });
+  // 新提案只约束本次声明；待确认提案和批准后的重新校验仍绑定原集合。
+  const preparing =
+    state.status === 'active' &&
+    state.loop.next_action === 'prepare-shape-confirmation' &&
+    state.shape_confirmation_hash === undefined;
+  await assertNativePortableDocuments({
+    paths: options.paths,
+    state: preparing ? { ...state, spec_changes: specChanges } : state,
+    specChanges,
+  });
   const { acceptance, formalHash, semanticSnapshot } = await readNativePortableAcceptance({
     paths: options.paths,
     state,

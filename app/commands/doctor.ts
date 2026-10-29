@@ -55,6 +55,7 @@ import {
   resolveClassicStateFile,
 } from '../../domains/comet-classic/classic-state-file.js';
 import { inspectClassicChangeReadOnly } from '../../domains/comet-classic/classic-diagnostics.js';
+import { openSpecChangeNameError } from '../../domains/comet-classic/classic-paths.js';
 import {
   inspectClassicLayout,
   resolveClassicLayout,
@@ -1115,7 +1116,7 @@ async function checkCometYamlValidity(projectPath: string): Promise<CheckResult[
   const results: CheckResult[] = [];
 
   for (const entry of entries) {
-    if (entry === 'archive') continue;
+    if (entry === 'archive' || openSpecChangeNameError(entry)) continue;
     const changeDir = path.join(changesDir, entry);
     let yamlPath = path.join(changeDir, CLASSIC_STATE_FILE);
     const runtimePath = path.join(changeDir, '.comet');
