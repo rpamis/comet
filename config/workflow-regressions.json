@@ -5822,6 +5822,29 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-516-shape-retarget-declared-spec",
+      "sources": ["https://github.com/rpamis/comet/issues/516"],
+      "behavior": "Shape 确认前删除已声明的目标 Spec 并改为另一个目标 Spec 后，可以重新准备确认，声明的 spec_changes 换成新的目标能力；确认后已声明的目标 Spec 缺失仍被拒绝。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在051源码的临时项目中，Native next 为 original-capability 准备 Shape 确认，然后删除 specs/original-capability 并新增 specs/replacement-capability；--confirmed 因文档变化回到 Shape，再次 next --summary 报 spec-document-missing: specs/original-capability/spec.md。SDK Run 下按 revise-requirements 修订同样报该错误并停在 prepare-shape-confirmation。",
+      "expected": "重新准备确认成功，状态停在 await-user，spec_changes 只包含 replacement-capability 的 create；Build 等确认后阶段丢失已声明目标 Spec 仍报 spec-document-missing。",
+      "forbidden": "Shape 确认前要求恢复不再需要的目标 Spec 或改用正式删除声明；仅凭豁免理由或无关能力的正式删除隐藏缺失的已声明 Spec；确认后静默放过已声明 Spec 的缺失。",
+      "rootCause": "文档检查把 Shape 中上一次准备时写入的 spec_changes 当作已确认的绑定集合，不区分确认前的提案与确认后的需求。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-document-constraints.test.ts",
+          "namePattern": "lets Shape replace a previously declared target Spec before confirmation|lets an SDK Shape revision replace a previously declared target Spec|keeps a confirmed target Spec bound after Shape|does not let an exemption hide a previously declared missing target Spec|does not let an unrelated Shape removal hide a declared target Spec",
+          "requiredNames": [
+            "Native document constraints lets Shape replace a previously declared target Spec before confirmation",
+            "Native document constraints lets an SDK Shape revision replace a previously declared target Spec",
+            "Native document constraints keeps a confirmed target Spec bound after Shape",
+            "Native document constraints does not let an exemption hide a previously declared missing target Spec",
+            "Native document constraints does not let an unrelated Shape removal hide a declared target Spec"
+          ]
+        }
+      ]
     }
   ]
 }
