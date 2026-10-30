@@ -30,36 +30,61 @@ jobs:
               return;
             }
 
-            const template = Buffer.from(templateResponse.data.content, 'base64')
-              .toString('utf8')
-              .replace(/<!--[\s\S]*?-->/g, '');
-            const sections = [...template.matchAll(/^##\s+.+$/gm)].map((match, index, headings) => {
-              const start = match.index ?? 0;
-              const end = headings[index + 1]?.index ?? template.length;
-              return { heading: match[0].trim(), content: template.slice(start, end) };
-            });
-            const templateHeadings = sections.map((section) => section.heading);
-            const missingHeadings = templateHeadings.filter((heading) => !body.includes(heading));
-            const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            // Treat PR text only as data. Never checkout or execute the PR head.
+            const visibleMarkdown = (value) => {
+              let fence;
+              return value.replace(/<!--[\s\S]*?(?:-->|$)/g, '').replace(/\r\n/g, '\n')
+                .split('\n').map((line) => {
+                  const marker = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+                  if (fence) {
+                    if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length && !marker[2].trim()) fence = undefined;
+                    return '';
+                  }
+                  if (marker) { fence = marker[1]; return ''; }
+                  return line;
+                }).join('\n');
+            };
+            const template = visibleMarkdown(Buffer.from(templateResponse.data.content, 'base64').toString('utf8'));
+            const parseSections = (text) => [...text.matchAll(/^##\s+.+$/gm)].map((match, index, headings) => ({
+              heading: match[0].trim(),
+              content: text.slice((match.index ?? 0) + match[0].length, headings[index + 1]?.index ?? text.length),
+            }));
+            const sections = parseSections(template);
+            const bodySections = parseSections(visibleMarkdown(body));
+            const errors = [];
+            for (const section of sections) {
+              const matches = bodySections.filter(({ heading }) => heading === section.heading);
+              if (matches.length !== 1) errors.push(`Expected exactly one template section: ${section.heading}`);
+            }
             const templateItems = sections.flatMap((section) =>
               [...section.content.matchAll(/^- \[[ xX]\] (.+)$/gm)].map((match) => ({
                 section: section.heading,
                 label: match[1].trim(),
               })),
             );
-            const missingItems = templateItems.filter(
-              ({ label }) =>
-                !new RegExp(`^- \\[[ xX]\\] ${escapeRegExp(label)}\\s*$`, 'im').test(body),
-            );
-            const checklistItems = templateItems.filter(({ section }) => /checklist/i.test(section));
-            const uncheckedChecklistItems = checklistItems.filter(({ label }) =>
-              !new RegExp(`^- \\[[xX]\\] ${escapeRegExp(label)}\\s*$`, 'im').test(body),
-            );
-            const errors = missingHeadings.map((heading) => `Missing template section: ${heading}`);
-            errors.push(
-              ...missingItems.map(({ label }) => `Missing template item: ${label}`),
-              ...uncheckedChecklistItems.map(({ label }) => `Checklist item is not checked: ${label}`),
-            );
+            const uncheckedChecklistItems = [];
+            for (const { section, label } of templateItems) {
+              const content = bodySections.find(({ heading }) => heading === section)?.content ?? '';
+              const matches = [...content.matchAll(/^- \[([ xX])\] (.+)$/gm)]
+                .filter((match) => match[2].trim() === label);
+              if (matches.length !== 1) errors.push(`Expected exactly one template item in ${section}: ${label}`);
+              if (/checklist/i.test(section) && (matches.length !== 1 || !/[xX]/.test(matches[0][1]))) {
+                uncheckedChecklistItems.push(label);
+              }
+            }
+            errors.push(...uncheckedChecklistItems.map((label) => `Checklist item is not checked: ${label}`));
+            const checklist = bodySections.find(({ heading }) => heading === '## ✅ Checklist')?.content ?? '';
+            const decisions = [...checklist.matchAll(/^Documentation decision: *(.*?) *$/gm)];
+            const evidence = [...checklist.matchAll(/^Documentation evidence: *(.*?) *$/gm)];
+            if (decisions.length !== 1 || !['updated', 'not-needed'].includes(decisions[0][1])) {
+              errors.push('Provide exactly one Documentation decision: updated or not-needed in Checklist.');
+            }
+            const detail = evidence[0]?.[1] ?? '';
+            if (evidence.length !== 1 || detail.length < 20 || /\b(?:TODO|TBD|N\/A|placeholder)\b|explain the affected documentation|<[^>]+>/i.test(detail)) {
+              errors.push('Provide exactly one concrete Documentation evidence: naming the updated docs and changes, or explaining why existing guidance needs no update.');
+            } else if (decisions[0]?.[1] === 'updated' && !/(?:README(?:-zh)?\.md|CONTRIBUTING\.md|docs\/[^\s`]+\.md)\b/.test(detail)) {
+              errors.push('Documentation evidence for updated must name the relevant README, CONTRIBUTING.md, or docs/ Markdown page.');
+            }
 
             const marker = '<!-- comet-pr-template-check -->';
             const comments = await github.rest.issues.listComments({

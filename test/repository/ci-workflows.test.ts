@@ -757,7 +757,7 @@ describe('CI workflows', () => {
     expect(workflow).toContain('github.rest.repos.getContent');
     expect(workflow).toContain("path: '.github/PULL_REQUEST_TEMPLATE.md'");
     expect(workflow).toContain('context.payload.pull_request?.base?.sha');
-    expect(workflow).toContain('template.matchAll(/^##\\s+.+$/gm)');
+    expect(workflow).toContain('parseSections(template)');
     expect(workflow).toContain('templateItems');
     expect(workflow).toContain('uncheckedChecklistItems');
     expect(workflow).toContain('github.rest.issues.createComment');

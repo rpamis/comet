@@ -52,8 +52,17 @@
 
 ## ✅ Checklist
 
+<!-- Documentation is conditional, not a requirement to edit README for every change. -->
+<!-- Set the decision to updated or not-needed, and replace the evidence placeholder. -->
+<!-- updated: name the relevant README, CONTRIBUTING.md, or docs/ pages and what changed. -->
+<!-- not-needed: explain why existing guidance remains accurate (for example, an internal CI change or a bug fix restoring documented behavior). CHANGELOG alone is not a reason; new usage, configuration, or compatibility requirements still need appropriate docs. -->
+<!-- Reviewers must verify the decision against the diff; this check validates the declaration, not its truth. -->
+
+Documentation decision: pending
+Documentation evidence: TODO explain the affected documentation or why no update is needed.
+
 - [ ] PR title follows Conventional Commits, for example `fix: handle project-scope init`
-- [ ] User-facing behavior is documented in `README.md`, `README-zh.md`, or `CONTRIBUTING.md`
+- [ ] Documentation impact was assessed; applicable docs were updated or a concrete no-update reason is provided
 - [ ] `CHANGELOG.md` is updated when behavior changes
 - [ ] Skill changes were made in Chinese first when applicable, then synced to English
 - [ ] New shipped Runtime assets are registered in `assets/manifest.json` and relevant tests

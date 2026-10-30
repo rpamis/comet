@@ -5802,6 +5802,26 @@
           ]
         }
       ]
+    },
+    {
+      "id": "pr-template-documentation-applicability",
+      "sources": ["report:2026-10-30-pr-template-readme-applicability"],
+      "behavior": "无需改动使用文档的 PR 可声明具体理由通过模板检查，不要求所有变更都更新 README；适用文档仍需注明更新证据。",
+      "coverageLevel": "unit",
+      "reproduction": "执行 PR Template workflow 的真实内联脚本，输入全部 Checklist 已完成且 documentation decision 为 not-needed 的正文；旧规则仍要求旧 README 必选项。",
+      "expected": "有具体无需更新理由或适用文档路径与说明时通过；其他必选项保持强制。",
+      "forbidden": "以空白、占位、重复、隐藏或跨节声明绕过文档评估，或放松其他 Checklist。",
+      "rootCause": "旧校验将 README 文档更新视为所有 PR 无条件完成项，无法表达合理不适用。",
+      "tests": [
+        {
+          "file": "test/repository/pr-template-validation.test.ts",
+          "namePattern": "accepts a documented no-update decision without requiring README edits|requires the documentation assessment and every other checklist item",
+          "requiredNames": [
+            "PR template validation accepts a documented no-update decision without requiring README edits",
+            "PR template validation requires the documentation assessment and every other checklist item"
+          ]
+        }
+      ]
     }
   ]
 }
