@@ -142,7 +142,7 @@
     "katex": "0.18.2",
     "source-map-js": "1.2.2",
     "esbuild": "0.28.2",
-    "postcss": "8.5.26",
+    "postcss": "8.5.31",
     "undici": "7.30.1"
   },
   "pnpm": {
@@ -152,7 +152,7 @@
       "katex": "0.18.2",
       "source-map-js": "1.2.2",
       "esbuild": "0.28.2",
-      "postcss": "8.5.26",
+      "postcss": "8.5.31",
       "undici": "7.30.1"
     },
     "patchedDependencies": {
@@ -165,27 +165,27 @@
   "devDependencies": {
     "@ant-design/cssinjs": "2.1.2",
     "@eslint/js": "^10.0.1",
-    "@microsoft/api-extractor": "7.59.3",
+    "@microsoft/api-extractor": "7.59.4",
     "@playwright/test": "^1.61.1",
     "@tailwindcss/vite": "^4.3.1",
     "@types/node": "^26.4.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.1.1",
-    "@vitest/coverage-v8": "^4.1.12",
+    "@vitest/coverage-v8": "^5.0.5",
     "esbuild": "0.28.2",
     "eslint": "^10.4.0",
     "husky": "^9.1.7",
     "jsdom": "^30.0.1",
     "lint-staged": "^17.0.7",
-    "postcss": "8.5.26",
+    "postcss": "8.5.31",
     "prettier": "^3.8.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "tailwindcss": "^4.3.1",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "typescript-eslint": "^8.59.3",
-    "vite": "8.2.4",
+    "vite": "8.3.5",
     "vitest": "^4.1.12"
   },
   "dependencies": {
