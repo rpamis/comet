@@ -52,6 +52,29 @@ describe('detect', () => {
     expect(await detectPlatforms(tmpDir)).toContain('prime-agent');
   });
 
+  it('detects MiniMax Code from its own Skill root without selecting Claude or Codex', async () => {
+    await fs.mkdir(path.join(tmpDir, '.minimax', 'skills'), { recursive: true });
+
+    expect(await detectPlatforms(tmpDir)).toEqual(new Set(['minimax-code']));
+  });
+
+  it('declares MiniMax Code project and global Skills without unverified Rules or Hooks', () => {
+    const minimax = PLATFORMS.find((platform) => platform.id === 'minimax-code');
+
+    expect(minimax).toMatchObject({
+      name: 'MiniMax Code',
+      skillsDir: '.minimax',
+      globalSkillsDir: '.minimax',
+      openspecToolId: 'claude',
+      openspecMirrorFrom: 'claude',
+    });
+    expect(getPlatformSkillsDir(minimax!, 'project')).toBe('.minimax');
+    expect(getPlatformSkillsDir(minimax!, 'global')).toBe('.minimax');
+    expect(minimax?.rulesDir).toBeUndefined();
+    expect(minimax?.supportsHooks).not.toBe(true);
+    expect(resolveOpenSpecMirrorPlatformIds(['minimax-code', 'claude'])).toEqual(['minimax-code']);
+  });
+
   describe('getBaseDir', () => {
     it('returns home directory for global scope', () => {
       expect(getBaseDir('global', tmpDir)).toBe(os.homedir());

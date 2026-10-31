@@ -32,6 +32,7 @@ const SKILLS_AGENT_MAP: Record<string, string | null> = {
   auggie: 'augment',
   kiro: 'kiro-cli',
   kimicode: 'kimi-code-cli',
+  'minimax-code': 'minimax-code',
   lingma: null,
   junie: 'junie',
   codebuddy: 'codebuddy',

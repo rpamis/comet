@@ -304,6 +304,14 @@ export const PLATFORMS: Platform[] = [
     openspecToolId: 'kimi',
   },
   {
+    id: 'minimax-code',
+    name: 'MiniMax Code',
+    skillsDir: '.minimax',
+    globalSkillsDir: '.minimax',
+    openspecToolId: 'claude',
+    openspecMirrorFrom: 'claude',
+  },
+  {
     id: 'lingma',
     name: 'Lingma',
     skillsDir: '.lingma',

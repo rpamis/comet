@@ -180,6 +180,54 @@ describe('comet init E2E', () => {
   });
 
   it.each(['native', 'classic'] as const)(
+    'installs MiniMax Code %s in both scopes without writing other platform configuration',
+    async (workflow) => {
+      mockExternalSuccess();
+      const { initCommand } = await import('../../app/commands/init.js');
+      for (const scope of ['project', 'global'] as const) {
+        const result = await captureJsonOutput(() =>
+          initCommand(tmpDir, {
+            yes: true,
+            json: true,
+            scope,
+            workflow,
+            platform: 'minimax-code',
+            language: 'zh',
+          }),
+        );
+        expect(result.status).toBe('complete');
+        expect(result.selectedPlatforms).toEqual(['minimax-code']);
+        const baseDir = scope === 'project' ? tmpDir : os.homedir();
+        await expect(
+          fs.access(path.join(baseDir, '.minimax', 'skills', 'comet', 'SKILL.md')),
+        ).resolves.toBeUndefined();
+        if (workflow === 'classic') {
+          await expect(
+            fs.access(path.join(baseDir, '.minimax', 'skills', 'openspec-propose', 'SKILL.md')),
+          ).resolves.toBeUndefined();
+          expect(mockedExecFileSync).toHaveBeenCalledWith(
+            process.platform === 'win32' ? 'npx.cmd' : 'npx',
+            expect.arrayContaining(['skills', '--agent', 'minimax-code']),
+            expect.anything(),
+          );
+        }
+        for (const unsupported of [
+          '.claude',
+          '.codex',
+          '.agents',
+          '.minimax/rules',
+          '.minimax/hooks.json',
+        ]) {
+          await expect(fs.access(path.join(baseDir, unsupported))).rejects.toMatchObject({
+            code: 'ENOENT',
+          });
+        }
+      }
+    },
+    INIT_E2E_TIMEOUT_MS,
+  );
+
+  it.each(['native', 'classic'] as const)(
     'installs Prime Agent %s in both scopes without unsupported host configuration',
     async (workflow) => {
       mockExternalSuccess();

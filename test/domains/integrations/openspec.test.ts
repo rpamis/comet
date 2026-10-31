@@ -62,6 +62,37 @@ describe('openspec', () => {
   });
 
   describe('OpenSpec CLI compatibility', () => {
+    it.each(['project', 'global'] as const)(
+      'installs MiniMax Code OpenSpec Skills in %s scope without creating a Claude root',
+      async (scope) => {
+        const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'comet-openspec-minimax-'));
+        const homeDir = path.join(projectDir, 'home');
+        fs.mkdirSync(homeDir);
+        const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(homeDir);
+        try {
+          const { installOpenSpec } = await import('../../../domains/integrations/openspec.js');
+
+          await expect(
+            installOpenSpec(projectDir, ['claude'], scope, {
+              shouldInstallCli: false,
+              mirrorPlatformIds: ['minimax-code'],
+              selectedPlatformIds: ['minimax-code'],
+            }),
+          ).resolves.toBe('installed');
+
+          const baseDir = scope === 'global' ? homeDir : projectDir;
+          expect(
+            fs.existsSync(path.join(baseDir, '.minimax', 'skills', 'openspec-propose', 'SKILL.md')),
+          ).toBe(true);
+          expect(fs.existsSync(path.join(baseDir, '.claude'))).toBe(false);
+          expect(fs.existsSync(path.join(baseDir, '.agents'))).toBe(false);
+        } finally {
+          homedirSpy.mockRestore();
+          fs.rmSync(projectDir, { recursive: true, force: true });
+        }
+      },
+    );
+
     it.each([
       ['1.5.0', true],
       ['OpenSpec 1.5.1', true],

@@ -53,6 +53,11 @@ describe('superpowers', () => {
   });
 
   describe('SKILLS_AGENT_MAP', () => {
+    it('maps MiniMax Code to the official skills CLI target', async () => {
+      const { SKILLS_AGENT_MAP } = await import('../../../domains/integrations/superpowers.js');
+      expect(SKILLS_AGENT_MAP['minimax-code']).toBe('minimax-code');
+    });
+
     it('maps claude to claude-code', async () => {
       const { SKILLS_AGENT_MAP } = await import('../../../domains/integrations/superpowers.js');
       expect(SKILLS_AGENT_MAP['claude']).toBe('claude-code');
@@ -294,6 +299,23 @@ describe('superpowers', () => {
         args: expectedSuperpowersArgs('--agent', 'claude-code', '--agent', 'cursor'),
       });
     });
+
+    it.each(['project', 'global'] as const)(
+      'installs MiniMax Code dependencies with its native skills CLI target in %s scope',
+      async (scope) => {
+        const { installSuperpowersForPlatforms } =
+          await import('../../../domains/integrations/superpowers.js');
+
+        await expect(
+          installSuperpowersForPlatforms('/tmp/test', scope, ['minimax-code']),
+        ).resolves.toBe('installed');
+        expect(mockedExecFileSync).toHaveBeenCalledWith(
+          process.platform === 'win32' ? 'npx.cmd' : 'npx',
+          expectedSuperpowersArgs(...(scope === 'global' ? ['-g'] : []), '--agent', 'minimax-code'),
+          expect.objectContaining({ cwd: '/tmp/test' }),
+        );
+      },
+    );
 
     it('excludes Lingma from the skills CLI command because skills@1.5.7 does not support it', async () => {
       const { buildSuperpowersInstallCommand } =

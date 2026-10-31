@@ -209,6 +209,68 @@ describe('Native VCS-independent content snapshots', () => {
     expect(manifest.capture).toEqual({ provider: 'physical-tree' });
   });
 
+  it.each([false, true])(
+    'keeps MiniMax Skill updates outside snapshots without excluding project content (Git: %s)',
+    async (git) => {
+      if (git) await execFileAsync('git', ['init'], { cwd: projectRoot });
+      const skillDir = path.join(projectRoot, '.minimax', 'skills', 'comet-native');
+      const sourceFile = path.join(projectRoot, 'src', 'app.ts');
+      const projectNote = path.join(projectRoot, '.minimax', 'project-notes.md');
+      await Promise.all([
+        fs.mkdir(skillDir, { recursive: true }),
+        fs.mkdir(path.dirname(sourceFile), { recursive: true }),
+      ]);
+      await Promise.all([
+        fs.writeFile(path.join(skillDir, 'SKILL.md'), '# Original Skill\n'),
+        fs.writeFile(sourceFile, 'export const app = true;\n'),
+        fs.writeFile(projectNote, '# Project notes\n'),
+      ]);
+      if (git) await execFileAsync('git', ['add', '.'], { cwd: projectRoot });
+
+      const baseline = await createNativeContentSnapshot(paths, {
+        policy: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+      });
+      expect(baseline.complete).toBe(true);
+      expect(baseline.capture?.provider).toBe(git ? 'git' : 'physical-tree');
+      expect(baseline.entries.map((entry) => entry.path)).toEqual([
+        '.minimax/project-notes.md',
+        'src/app.ts',
+      ]);
+
+      await Promise.all([
+        fs.writeFile(path.join(skillDir, 'SKILL.md'), '# Updated Skill\n'),
+        fs.writeFile(path.join(skillDir, 'runtime.mjs'), 'export {};\n'),
+      ]);
+      const afterSkillUpdate = await createNativeContentSnapshot(paths, {
+        policy: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+      });
+      expect(afterSkillUpdate.complete).toBe(true);
+      expect(afterSkillUpdate.entries).toEqual(baseline.entries);
+      const skillScope = buildNativeImplementationScopeBundle({
+        baseline,
+        current: afterSkillUpdate,
+        contractHash: '0'.repeat(64),
+        declaredArtifacts: [],
+        noCodeReason: null,
+      }).scope;
+      expect(skillScope.currentProjectionHash).toBe(skillScope.baselineProjectionHash);
+
+      await fs.writeFile(sourceFile, 'export const app = false;\n');
+      const afterSourceUpdate = await createNativeContentSnapshot(paths, {
+        policy: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+      });
+      expect(afterSourceUpdate.complete).toBe(true);
+      const sourceScope = buildNativeImplementationScopeBundle({
+        baseline,
+        current: afterSourceUpdate,
+        contractHash: '0'.repeat(64),
+        declaredArtifacts: [],
+        noCodeReason: null,
+      }).scope;
+      expect(sourceScope.currentProjectionHash).not.toBe(sourceScope.baselineProjectionHash);
+    },
+  );
+
   it('applies maxSelectionRecords to physical enumeration node limits', async () => {
     await fs.mkdir(path.join(projectRoot, 'src'), { recursive: true });
     await fs.writeFile(path.join(projectRoot, 'src', 'app.ts'), 'export const app = true;\n');
