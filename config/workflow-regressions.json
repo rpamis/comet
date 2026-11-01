@@ -5804,44 +5804,379 @@
       ]
     },
     {
-      "id": "pr-template-documentation-applicability",
-      "sources": ["report:2026-10-30-pr-template-readme-applicability"],
-      "behavior": "无需改动使用文档的 PR 可声明具体理由通过模板检查，不要求所有变更都更新 README；适用文档仍需注明更新证据。",
-      "coverageLevel": "unit",
-      "reproduction": "执行 PR Template workflow 的真实内联脚本，输入全部 Checklist 已完成且 documentation decision 为 not-needed 的正文；旧规则仍要求旧 README 必选项。",
-      "expected": "有具体无需更新理由或适用文档路径与说明时通过；其他必选项保持强制。",
-      "forbidden": "以空白、占位、重复、隐藏或跨节声明绕过文档评估，或放松其他 Checklist。",
-      "rootCause": "旧校验将 README 文档更新视为所有 PR 无条件完成项，无法表达合理不适用。",
+      "id": "native-sdk-explicit-git-dependent-refresh",
+      "behavior": "相同字节仅暂存时，Agent 可显式补 Git index 检查，新失败遮蔽旧成功且保留一次性检查及批准",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "coverageLevel": "runtime",
       "tests": [
         {
-          "file": "test/repository/pr-template-validation.test.ts",
-          "namePattern": "accepts a documented no-update decision without requiring README edits|requires the documentation assessment and every other checklist item",
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval$",
           "requiredNames": [
-            "PR template validation accepts a documented no-update decision without requiring README edits",
-            "PR template validation requires the documentation assessment and every other checklist item"
+            "refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval"
+          ]
+        }
+      ],
+      "reproduction": "临时 Git 项目原 HEAD/index 为 0、working tree 为 1；原 cached diff 通过，接受候选后只暂存相同文件，再由 Agent 选择补查 git diff --cached --quiet。",
+      "expected": "原始 changes 为空，Git index 变化可见；补查真实退出 1，B/once 的原日志和来源、Shape、报告和原接受决定保持不变，归档拒绝新失败。",
+      "forbidden": "将暂存误判为实现修改、继续采用旧 Git 检查成功归档，或重放一次性 B。",
+      "rootCause": "字节候选与 Git 元数据须分别观察；显式选择的 Git 检查必须产生新真实收据并优先于旧成功。"
+    },
+    {
+      "id": "native-sdk-refresh-failed-preflight-recovery",
+      "behavior": "接受后补检查失败的真实归档预检保存失败收据；修复后沿同 Run 重试、仅补原检查并完成一次归档",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval$",
+          "requiredNames": [
+            "refreshes an explicitly selected Git check after byte-identical staging and preserves one-time evidence and approval"
+          ]
+        }
+      ],
+      "reproduction": "0f0861fc 上运行同一 A9 案例：补查退出 1 后真实执行 archive.prepare，旧路径抛出 PROPOSAL_INPUT_MISSING: verify.verifier。",
+      "expected": "预检明确 failed 并保留原状态、报告、批准和检查失败；取消暂存后重试原只读 Action，显式补 Git 检查通过，B/once 不重跑，归档只执行一次。",
+      "forbidden": "丢失真实失败收据、产生缺 Verifier 提案的协议异常、伪造新批准、重建 Run 或重复归档/副作用。",
+      "rootCause": "refresh-checks 的后继上下文没有新的 verify.verifier 提案，不能将预检失败送入依赖该提案的 verify.stop；应保留原批准并使用既有只读预检恢复入口。"
+    },
+    {
+      "id": "classic-sdk-refresh-byte-identical-restoration",
+      "behavior": "补检查前真实新输入被拒绝；恢复相同字节后仅修改时间变化时沿原请求继续，保留原批准与真实失败结果",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "coverageLevel": "runtime",
+      "reproduction": "当前0.5.2安装包的Classic A3公开CLI场景在负控恢复确切字节后仍因mtime变化拒绝；同一SDK回归在修复前两项失败。",
+      "expected": "内容再次变化时原Action不领取、不执行；确切字节恢复后只补Verify检查，原报告与Wait保持，实际失败不能被旧成功覆盖。",
+      "forbidden": "用mtime漂移要求重复判断、接受未经判断的新字节、重跑无关检查或替换原批准。",
+      "rootCause": "refresh-checks直接比较含mtime的完整manifest摘要，将采样元数据误当成内容变化。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^Classic SDK Agent input judgment refreshes only the Verify check after Archive approval without replacing the report or decision \\(failure=(false|true)\\)$",
+          "requiredNames": [
+            "Classic SDK Agent input judgment refreshes only the Verify check after Archive approval without replacing the report or decision (failure=false)",
+            "Classic SDK Agent input judgment refreshes only the Verify check after Archive approval without replacing the report or decision (failure=true)"
           ]
         }
       ]
     },
     {
-      "id": "native-516-shape-retarget-declared-spec",
-      "sources": ["https://github.com/rpamis/comet/issues/516"],
-      "behavior": "Shape 确认前删除已声明的目标 Spec 并改为另一个目标 Spec 后，可以重新准备确认，声明的 spec_changes 换成新的目标能力；确认后已声明的目标 Spec 缺失仍被拒绝。",
-      "coverageLevel": "public-cli",
-      "reproduction": "在051源码的临时项目中，Native next 为 original-capability 准备 Shape 确认，然后删除 specs/original-capability 并新增 specs/replacement-capability；--confirmed 因文档变化回到 Shape，再次 next --summary 报 spec-document-missing: specs/original-capability/spec.md。SDK Run 下按 revise-requirements 修订同样报该错误并停在 prepare-shape-confirmation。",
-      "expected": "重新准备确认成功，状态停在 await-user，spec_changes 只包含 replacement-capability 的 create；Build 等确认后阶段丢失已声明目标 Spec 仍报 spec-document-missing。",
-      "forbidden": "Shape 确认前要求恢复不再需要的目标 Spec 或改用正式删除声明；仅凭豁免理由或无关能力的正式删除隐藏缺失的已声明 Spec；确认后静默放过已声明 Spec 的缺失。",
-      "rootCause": "文档检查把 Shape 中上一次准备时写入的 spec_changes 当作已确认的绑定集合，不区分确认前的提案与确认后的需求。",
+      "id": "edit-review-preserve-completed-successive-judgments",
+      "behavior": "连续两轮普通编辑保留已完成的行为未变判断并串联原候选；新未判断内容及其他候选不可复用",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "coverageLevel": "runtime",
+      "reproduction": "0.5.2安装包Native A3场景第一轮补检查完成后，第二轮observe把第一轮成功判断投影为discard，refresh-checks误报原候选变化；同一共享回归修复前Native和Classic均失败。",
+      "expected": "两轮non-behavioral收据均保留，最终内容关联最初输入，B检查保留判断覆盖整个变化链；第三次未判断编辑仍阻止推进。",
+      "forbidden": "丢弃已完成的等价判断、重开Run或批准、将旧判断覆盖未知新内容或跨候选使用。",
+      "rootCause": "supersedeStaleAppliedEditReviews未区分已完成的non-behavioral判断和待判断提案，新的保存切断已确认的变化链。",
       "tests": [
         {
-          "file": "test/domains/comet-native/native-document-constraints.test.ts",
-          "namePattern": "lets Shape replace a previously declared target Spec before confirmation|lets an SDK Shape revision replace a previously declared target Spec|keeps a confirmed target Spec bound after Shape|does not let an exemption hide a previously declared missing target Spec|does not let an unrelated Shape removal hide a declared target Spec",
+          "file": "test/domains/workflow-contract/edit-review.test.ts",
+          "namePattern": "^bound edit reviews preserves completed non-behavioral edges across successive observed edits \\((native|classic)\\)$",
           "requiredNames": [
-            "Native document constraints lets Shape replace a previously declared target Spec before confirmation",
-            "Native document constraints lets an SDK Shape revision replace a previously declared target Spec",
-            "Native document constraints keeps a confirmed target Spec bound after Shape",
-            "Native document constraints does not let an exemption hide a previously declared missing target Spec",
-            "Native document constraints does not let an unrelated Shape removal hide a declared target Spec"
+            "bound edit reviews preserves completed non-behavioral edges across successive observed edits (native)",
+            "bound edit reviews preserves completed non-behavioral edges across successive observed edits (classic)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-all-reused-checks-without-child",
+      "behavior": "全部检查均复用原成功收据且没有创建子进程时可完成；未登记的真实启动与终止不明确仍阻塞",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-owner-recovery.test.ts",
+          "namePattern": "^Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown$",
+          "requiredNames": [
+            "Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check$",
+          "requiredNames": [
+            "preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check"
+          ]
+        }
+      ],
+      "reproduction": "原Verifier后加一次性检查通过后选择重新独立验收，新检查全部复用、没有child；Windows旧判定把非空checks当成可能启动过进程并拒绝提交。",
+      "expected": "完整复用登记可确认quiescent，原执行收据及结果保留，一次性命令计数始终为1；新输入不可复用。",
+      "forbidden": "将terminationUnconfirmed或有真实执行但没有child登记的情况当成停止，或重复执行一次性命令。",
+      "rootCause": "无child完成分支只接受空checks，没有区分全部引用原收据与新进程执行。",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "coverageLevel": "runtime"
+    },
+    {
+      "id": "classic-full-refresh-archive-document-provenance",
+      "behavior": "Classic full接受后补检查仍使用原接受的Design和Plan完成一次归档及本地交付",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^Classic SDK Agent input judgment preserves full Archive documents after a supplemental check and completes local delivery$",
+          "requiredNames": [
+            "Classic SDK Agent input judgment preserves full Archive documents after a supplemental check and completes local delivery"
+          ]
+        }
+      ],
+      "reproduction": "实际npm0.5.2公开CLI full流程接受后refresh成功，再archive预检报Classic Archive documents are missing；源码相同case先失败。",
+      "expected": "沿refresh命令绑定的原检查和递减sequence找到原Design/Plan，继承原恢复分类；已复核的Design说明进入最终提交，后续未复核说明阻止推进，只归档一次且本地交付可完成。",
+      "forbidden": "丢失正式文档证据、借用后继/未接受的Design/Plan、把普通refresh误标为旧交付恢复、重复检查或归档。",
+      "rootCause": "归档文档解析遗漏refresh-checks的新Action上下文；补查回溯若统一设置recovered会将合法的已复核说明误按旧原文收据验证。",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "coverageLevel": "runtime"
+    },
+    {
+      "id": "native-archive-formal-requirements-judgment-route",
+      "behavior": "Archive正式材料经当前Agent判定需求变化后，公开continuation给出原Run修订Shape命令并保留用户修改",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^retains a user-edited requirements-and-code at Archive-ready and chooses the appropriate revision$",
+          "requiredNames": [
+            "retains a user-edited requirements-and-code at Archive-ready and chooses the appropriate revision"
+          ]
+        }
+      ],
+      "reproduction": "有原批准原文缓存，编辑Spec和实现并记录requirements-changed；status仍只返回show，无法沿返回命令修订。",
+      "expected": "同Run提供带stateVersion的revise-requirements，执行后回Shape但不自动批准，代码与正式材料保持。",
+      "forbidden": "循环show、不提供合法恢复命令、沿旧批准归档，或覆盖用户文件。",
+      "rootCause": "Archive续行只从review-edit中排除已判断的implementation-changed，没有让正式requirements-changed进入原Shape修订路径。",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "coverageLevel": "runtime"
+    },
+    {
+      "id": "edit-review-raw-git-successive-identity-chain",
+      "behavior": "连续编辑中的SHA256与Git blob内容标识保持同一已批准链；未批准中间边、新字节、执行权限及其他候选不能借用",
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/edit-review.test.ts",
+          "namePattern": "^bound edit reviews connects approved raw and Git identities across successive observed edits without covering new bytes$",
+          "requiredNames": [
+            "bound edit reviews connects approved raw and Git identities across successive observed edits without covering new bytes"
+          ]
+        }
+      ],
+      "reproduction": "Classic full第二次refresh真实失败。实际第一轮git:original到raw(bad)同时登记git:bad，第二轮git:bad到raw(repaired)；完整性检查忽略别名而拒绝已判断的新内容。",
+      "expected": "仅使用已批准且同path的内容标识连通，完整性、候选等价与检查保留采用一致的链；未知中间边及权限变化继续拒绝。",
+      "forbidden": "丢弃第一轮判断、误判候选漂移、借未批准或其他候选的边连接，或忽略执行权限差异。",
+      "rootCause": "reaches及候选根选择只比较单一beforeHash/afterHash，检查保留的旧BFS也未在多跳时传播Git别名。",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"]
+    },
+    {
+      "id": "native-rejected-check-proof-original-claim-correction",
+      "behavior": "合成缺证据结果被提前拒绝后，可沿原claim补交同一次真实完整执行结果，不重跑一次性检查并保留拒绝历史",
+      "coverageLevel": "runtime",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^requires fresh verification instead of trusting a legacy check without a candidate digest$",
+          "requiredNames": [
+            "requires fresh verification instead of trusting a legacy check without a candidate digest"
+          ]
+        }
+      ],
+      "reproduction": "现代Native执行器真实执行一次后，测试返回副本删去inputSnapshot/candidateInputFingerprintGate/rawInput。旧fixture误把这种混合缺证据格式当作已发布历史并试图直接走到Archive。",
+      "expected": "OUTCOME_REJECTED且原Action保留running和拒绝收据，无Verifier或Archive；原claim以新outcomeId补交捕获的完整真实结果后才可独立验收；计数1且旧拒绝结果不可覆盖。",
+      "forbidden": "让现代validator接受缺证据成功、重建Run、重试执行器重放副作用、覆盖或删除拒绝结果。",
+      "rootCause": "原测试fixture的阶段不再符合当前校验边界；真实npm0.5.0含候选gate，合法兼容另以实际发布包seed及当前公开CLI归档核对。",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"]
+    },
+    {
+      "id": "classic-failed-refresh-archive-document-recovery",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "coverageLevel": "runtime",
+      "behavior": "Classic full补检查失败后修正输入，在原Run再次补查并沿原批准文档完成一次归档，不重放Build",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^Classic SDK Agent input judgment recovers a failed supplemental full check without losing Archive documents or replaying Build$",
+          "requiredNames": [
+            "Classic SDK Agent input judgment recovers a failed supplemental full check without losing Archive documents or replaying Build"
+          ]
+        }
+      ],
+      "reproduction": "第一轮补查失败保留原批准；修正并再次判断后第二轮补查通过。归档文档解析只接受source succeeded且忽略当前补查Action自身的命令关联，因此取不到原Design/Plan。",
+      "expected": "保留第一次真实失败，第二次仅重跑Verify，沿有真实outcome的已完成补查及严格递减sequence取得原批准文档，Build执行一次、归档一次、交付完成。",
+      "forbidden": "将旧失败改成成功、重放Build或归档、信任未知或运行中来源、借用未接受的新文档。",
+      "rootCause": "递归回溯在来源为已完成失败补查时提前拒绝，并且查询之前的命令遗漏与该来源Action直接绑定的refresh-checks。"
+    },
+    {
+      "id": "agent-edit-review-check-evidence-versus-implementation",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "coverageLevel": "unit",
+      "behavior": "普通说明仅使相关检查证据过期时，当前Agent保留原候选和批准、只补相关检查；实际产品行为变化仍修订候选",
+      "reproduction": "实际0.5.2安装包A3 Native GLM记录产品首行与契约不变、仅检查a全文SHA证据失效，却选择implementation-changed，随后执行revise-implementation并创建Builder和额外Agent。原实验已保留，因具体禁止行为主动停止，未计为通过。",
+      "expected": "判断分别核对产品行为和检查证据；行为未变时non-behavioral并在同Run补检查，原报告和决定保留；检查无结果或未通过继续阻止归档。",
+      "forbidden": "仅因摘要、日志或检查输入过期就重开Builder或独立审查，或者把实际业务输出变化当成普通说明，或以原成功绕过补检查。",
+      "rootCause": "Skill列出了三种判断但未定义产品实现变化与检查证据过期的区别，模型把需要更新证据误当作实现变化。",
+      "tests": [
+        {
+          "file": "test/domains/skill/sdk-flow-handoffs.test.ts",
+          "namePattern": "^skills(-zh)? SDK flow handoffs distinguishes refreshed check evidence from product implementation changes$",
+          "requiredNames": [
+            "skills-zh SDK flow handoffs distinguishes refreshed check evidence from product implementation changes",
+            "skills SDK flow handoffs distinguishes refreshed check evidence from product implementation changes"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-01-052-continuation-acceptance.zh.md：真实模型误分类、旧实验失败与后续验证范围",
+            "Native A3 experiment 052_native_a3_a27d2db1845646f3911603a3888397d4 (v9) and Classic A3 experiment 052_classic_edit_20261101_123031 (v4) completed their original real-model and final Runtime checks: ordinary/formal explanatory edits retained the original Run and approvals rather than starting an implementation revision. Earlier failures remain preserved. This verifies the described non-behavioral classification only; it does not verify Native A4. Final v12 relevant Skill text matches v9, while v11 public CLI separately confirms current Runtime behavior."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agent-edit-review-no-unauthorized-revision",
+      "sources": ["report:2026-10-28-052-lightweight-edit-continuation"],
+      "coverageLevel": "unit",
+      "behavior": "正式材料实质变化但没有修订授权时，仅补齐当前判断并请求相关决定，保留原阶段和已有结果",
+      "reproduction": "实际A5 Classic GLM在只判断proposal后因遗漏Spec的checkpoint失败，错误执行Runtime建议的revise-design，从Archive回Design并清空当前验收和归档确认，虽然任务明确没有新增授权。模型最终承认该错误，原实验保留。",
+      "expected": "Runtime提供命令不构成新授权；多个正式来源可通过prepare-applied --file逐一补判断；缺授权时保持原Run、阶段、批准和检查，明确请求相关决定；已明确授权的修订仍可沿同Run继续。",
+      "forbidden": "用需求修订代替补齐判断，未获决定就改变阶段、创建后继或重置既有结果；或对已有明确授权机械新增确认。",
+      "rootCause": "Skill要求缺授权时请求决定，但未明确修订提示不授予授权以及判断多份已应用材料的补充入口，模型把技术恢复路径当作可以立即执行的动作。",
+      "tests": [
+        {
+          "file": "test/domains/skill/sdk-flow-handoffs.test.ts",
+          "namePattern": "^skills(-zh)? SDK flow handoffs (keeps an unapproved requirement revision from changing the original phase or results|routes actual edits through review before phase or revision commands)$",
+          "requiredNames": [
+            "skills-zh SDK flow handoffs keeps an unapproved requirement revision from changing the original phase or results",
+            "skills SDK flow handoffs keeps an unapproved requirement revision from changing the original phase or results",
+            "skills-zh SDK flow handoffs routes actual edits through review before phase or revision commands",
+            "skills SDK flow handoffs routes actual edits through review before phase or revision commands"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-01-052-continuation-acceptance.zh.md：A5真实模型越权修订及后续验证范围",
+            "GLM 5.3 Flash Native experiment 052_native_a5_cf67c1e8e3fd49e18b54af875f45e76a (v7) and Classic experiment 052_classic_a5_f92db040e20c49119a9e001d06a83531 (v9): both complete model/helper-tool/final Runtime oracles passed. Actual added JSON feature was judged, no new authorization simulated, original Run/phase/approvals/checks/files/HEAD/one-time effects unchanged; final responses requested the corresponding decision. Earlier failures remain preserved."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-successive-refresh-original-execution",
+      "sources": ["report:2026-11-01-052-native-reused-check-origin"],
+      "coverageLevel": "runtime",
+      "behavior": "连续补查时允许当前判断保留真实原检查来源，不强迫引用没有重执行的中转收据，且一次性动作不重放",
+      "reproduction": "052_native_edit_20261101_131003 使用 v6 实际安装包，第一轮补 A 并复用原 B/once；第二轮仍明确保留最初真实执行 Action，Runtime 要求中转 Action 而进入 unknown。对应最小临时项目回归在旧源码第二轮 EXECUTION_UNKNOWN，新源码通过。",
+      "expected": "最新有效复用收据沿严格较早的来源链核对原执行、计划、日志、候选和完整输入；当前判断覆盖原输入到现输入的全部差异时只补 A，B/once 保持一次，原报告和批准保留。",
+      "forbidden": "跨过最新失败、未知或中断找旧成功；借历史引用自动接受未判断字节；接受伪造 attempt、候选或日志；重放原一次性效果。",
+      "rootCause": "选择和校验复用检查时仅用最新中转 Action 查询保留判断，没有识别该已验证复用链指向的真实执行身份。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^Native SDK verification input binding retains the original execution through successive refresh receipts without replaying one-shot checks$",
+          "requiredNames": [
+            "Native SDK verification input binding retains the original execution through successive refresh receipts without replaying one-shot checks"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "public-package-and-real-model-eval",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-01-052-continuation-acceptance.zh.md：原执行来源的连续复用；已复现，公开包与真实模型待补",
+            "Native A3 real-model experiment 052_native_a3_a27d2db1845646f3911603a3888397d4 used v9 and completed two refresh rounds retaining the original actual B/once execution. The v11 installed public CLI independently completed the same two-round boundary with A/B/once=3/1/1, fresh-byte rejection, original source/log bindings and exactly one archive (v11/native-public.log); v12 reads that completed Run with byte-identical Runtime files. This is not a claim that v12 reran that real-model sample."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-refresh-selected-check-scope",
+      "sources": ["report:2026-11-01-052-native-unselected-check-replay"],
+      "coverageLevel": "runtime",
+      "behavior": "已接受结果后明确只补 A 时，未选 B 缺保留判断应在任何执行前阻塞，不得隐式重跑 B",
+      "reproduction": "052_native_a3_2b69582ee20d42989fcd294b92379bdf 用 v7 包，仅选择 A，正式 brief 判断漏保留项而普通文件判断正确保留 B/once。旧执行器仍执行未选 B，随后到 once 才失败为 unknown。",
+      "expected": "命令验证时核对所有未选检查，缺有效复用证据则原 Run、归档待办及计数均不变；原 Agent 补齐判断后同 Run 只执行所选 A。执行前复查新输入，执行中失效也禁止扩大范围。",
+      "forbidden": "未选检查自动落入执行分支；部分副作用后才发现既有缺项；跨过最新失败或用旧判断接受新字节。",
+      "rootCause": "refresh checkIds 仅决定强制执行项，未选项复用失败后仍进入一般可重复执行分支，没有预先验证完整复用计划。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^Native SDK verification input binding retains the original execution through successive refresh receipts without replaying one-shot checks$",
+          "requiredNames": [
+            "Native SDK verification input binding retains the original execution through successive refresh receipts without replaying one-shot checks"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "public-package",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-01-052-continuation-acceptance.zh.md：v7 实际未选检查重放；新包待验",
+            "v9 installed package b5265aa9d64bfee6d50bce6b080fe1900ca92545: same public dryrun fails on v8 at A/B/once=2/2/1; v9 rejects before execution with identical Run hash and 1/1/1, accepts the original Agent supplement, then completes 3/1/1 and one Archive. See docs/research/2026-11-01-052-continuation-acceptance.zh.md."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "edit-review-supplement-retained-checks",
+      "sources": ["report:2026-11-01-052-native-unselected-check-replay"],
+      "coverageLevel": "unit",
+      "behavior": "原 Agent 可以对同一字节和决定追加遗漏的检查保留依据，保留完整原收据，不重开 change",
+      "reproduction": "首次记录 non-behavioral 判断但遗漏 retainedChecks 后，再次 record 同一提案补 B；旧存储以已有不同记录拒绝，无法在原判断补齐检查依据。",
+      "expected": "只允许同一原 Agent、同字节和决定、保留集合单调增加；保存不可变历史收据并绑定完整历史链；同一补交幂等。",
+      "forbidden": "变更决定、换人、删除原保留项、覆盖新字节、丢弃或接受损坏的原判断历史。",
+      "rootCause": "原判断单文件仅允许完全相同的幂等回报，没有保留历史且只追加检查依据的路径。",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/edit-review.test.ts",
+          "namePattern": "^bound edit reviews supplements retained checks on the same judged bytes without changing the original decision or losing its receipt$",
+          "requiredNames": [
+            "bound edit reviews supplements retained checks on the same judged bytes without changing the original decision or losing its receipt"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "public-cli",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-01-052-continuation-acceptance.zh.md：同提案追加检查保留依据，公开入口待验",
+            "v9 installed package b5265aa9d64bfee6d50bce6b080fe1900ca92545: same public dryrun fails on v8 at A/B/once=2/2/1; v9 rejects before execution with identical Run hash and 1/1/1, accepts the original Agent supplement, then completes 3/1/1 and one Archive. See docs/research/2026-11-01-052-continuation-acceptance.zh.md."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agent-edit-review-formal-check-retention",
+      "sources": ["report:2026-11-01-052-native-unselected-check-replay"],
+      "coverageLevel": "unit",
+      "behavior": "当前 Agent 对每份正式和普通材料均明确绑定仍适用的检查，不把选择补 A 当作保留 B 的证明",
+      "reproduction": "真实 A3 Native 模型只在普通文件判断保留 B/once，正式 brief 只写内容非行为且未填保留项，造成完整输入缺判断。",
+      "expected": "每份材料的全部实际差异都有相应检查判断；漏项沿原提案和身份追加，未选检查缺证据时补判断而非扩大执行。",
+      "forbidden": "普通变化的保留项掩盖正式材料缺项，或用修订、新 Builder、额外 Agent、用户重复批准替代补齐依据。",
+      "rootCause": "正式材料段落只强调批准语义，没有明确其变化也进入完整检查输入及同一提案的补充判断路径。",
+      "tests": [
+        {
+          "file": "test/domains/skill/sdk-flow-handoffs.test.ts",
+          "namePattern": "^skills(-zh)? SDK flow handoffs retains checks for every formal edit and supplements only the original Agent judgment$",
+          "requiredNames": [
+            "skills-zh SDK flow handoffs retains checks for every formal edit and supplements only the original Agent judgment",
+            "skills SDK flow handoffs retains checks for every formal edit and supplements only the original Agent judgment"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-01-052-continuation-acceptance.zh.md：真实 A3 失败保留，修复后的模型待验",
+            "Native A3 v9 real-model experiment 052_native_a3_a27d2db1845646f3911603a3888397d4 completed the formal-brief and ordinary-edit judgments with applicable original B/once retention under the strict selected-check preflight and final two-round oracle. The v11 public CLI separately proves rejection when formal retention is omitted, same-proposal supplementation by the original Agent, and two successful rounds without replay. Final v12 relevant Skill text matches v9. The public CLI is deterministic evidence and is not substituted for the actual Native model judgment."
           ]
         }
       ]
@@ -5880,6 +6215,29 @@
           "evidence": [
             "The fixture and public CLI sequence from issue #517 were replayed against the rebuilt bin/comet.js with fixed-behavior success assertions: plain and BOM fixtures both exited 0, retained 24/27 source bytes, produced complete unchanged snapshots and non-null matching candidate digests. No independent Verifier outcome or Archive was submitted.",
             "After merging upstream 4901cac into the contribution branch, the rebuilt 0.5.2 public CLI again accepted plain and BOM fixtures with unchanged 24/27 disk bytes, successful Node checks and complete stable input snapshots with valid candidate digests. No Archive was attempted."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-516-shape-retarget-declared-spec",
+      "sources": ["https://github.com/rpamis/comet/issues/516"],
+      "behavior": "Shape 确认前删除已声明的目标 Spec 并改为另一个目标 Spec 后，可以重新准备确认，声明的 spec_changes 换成新的目标能力；确认后已声明的目标 Spec 缺失仍被拒绝。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在051源码的临时项目中，Native next 为 original-capability 准备 Shape 确认，然后删除 specs/original-capability 并新增 specs/replacement-capability；--confirmed 因文档变化回到 Shape，再次 next --summary 报 spec-document-missing: specs/original-capability/spec.md。SDK Run 下按 revise-requirements 修订同样报该错误并停在 prepare-shape-confirmation。",
+      "expected": "重新准备确认成功，状态停在 await-user，spec_changes 只包含 replacement-capability 的 create；Build 等确认后阶段丢失已声明目标 Spec 仍报 spec-document-missing。",
+      "forbidden": "Shape 确认前要求恢复不再需要的目标 Spec 或改用正式删除声明；仅凭豁免理由或无关能力的正式删除隐藏缺失的已声明 Spec；确认后静默放过已声明 Spec 的缺失。",
+      "rootCause": "文档检查把 Shape 中上一次准备时写入的 spec_changes 当作已确认的绑定集合，不区分确认前的提案与确认后的需求。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-document-constraints.test.ts",
+          "namePattern": "lets Shape replace a previously declared target Spec before confirmation|lets an SDK Shape revision replace a previously declared target Spec|keeps a confirmed target Spec bound after Shape|does not let an exemption hide a previously declared missing target Spec|does not let an unrelated Shape removal hide a declared target Spec",
+          "requiredNames": [
+            "Native document constraints lets Shape replace a previously declared target Spec before confirmation",
+            "Native document constraints lets an SDK Shape revision replace a previously declared target Spec",
+            "Native document constraints keeps a confirmed target Spec bound after Shape",
+            "Native document constraints does not let an exemption hide a previously declared missing target Spec",
+            "Native document constraints does not let an unrelated Shape removal hide a declared target Spec"
           ]
         }
       ]

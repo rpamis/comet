@@ -57,7 +57,7 @@ Complete when requirements sources are fully processed within the coverage bound
 
 New or reconfirmed briefs need outcome, scope, non-goals, and acceptance examples. Add constraints, decisions, open questions, or special verification requirements when applicable. Runtime also checks formal paths and a complete target Spec or concrete no-product-behavior-change reason. Repair reported artifacts and rerun continuation. Existing later-phase changes retain progress until Shape.
 
-When an edit during Build, Verify, or before Archive needs an impact judgement, or a continuation points to a content judgement, you must read and follow [edit continuation](reference/edit-review.md). The current Agent judges the actual changes together, adds only the affected evidence, and keeps the original Run and the still-valid approvals.
+On actual file changes during Build, Verify, or before Archive, or when continuation requests a content judgment, first read and follow [edit continuation](reference/edit-review.md), then handle phase actions or revision commands. The current Agent judges the actual changes together, adds only affected evidence, and keeps the original Run and still-valid approvals. Runtime revision commands do not grant user authorization. Without authorization, retain the original phase and accepted results and request only the related decision.
 
 ## Build ↔ Verify Loop
 

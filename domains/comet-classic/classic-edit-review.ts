@@ -411,6 +411,33 @@ export async function observeClassicCompatCheckInputs(
   };
 }
 
+/** 保留完整观察收据；重新读取的内容相同即可继续，mtime 只用于采样。 */
+export async function classicCheckObservationMatches(
+  projectRoot: string,
+  observation: { currentRef: string; currentManifestHash: string },
+  expectedHash: string,
+) {
+  if (observation.currentManifestHash === expectedHash) return true;
+  if (!/^[a-f0-9]{64}$/u.test(expectedHash)) return false;
+  const runtimeRoot = await resolveWorkspaceRuntimeRoot(projectRoot);
+  const original = await readClassicProjectFile(
+    projectRoot,
+    path.join(runtimeRoot, 'classic/input-observations', `${expectedHash}.manifest`),
+    { label: 'Classic 已绑定的输入观察', maxBytes: Number.MAX_SAFE_INTEGER },
+  );
+  const current = await readClassicProjectFile(projectRoot, observation.currentRef, {
+    label: 'Classic 当前输入观察',
+    maxBytes: Number.MAX_SAFE_INTEGER,
+  });
+  if (
+    checkManifestHash(original) !== expectedHash ||
+    checkManifestHash(current) !== observation.currentManifestHash
+  )
+    throw new Error('Classic 输入观察收据已变化');
+  const diff = diffCheckManifests(parseCheckManifest(original), parseCheckManifest(current));
+  return !diff.added.length && !diff.removed.length && !diff.changed.length;
+}
+
 /** 观察最近一次真实检查之后的文件变化；显式 Git 依赖另行展示。 */
 export async function observeClassicCheckInputs(
   projectRoot: string,

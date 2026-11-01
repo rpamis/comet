@@ -77,6 +77,39 @@ async function claimedRun() {
 }
 
 describe('Native check owner recovery', () => {
+  it('recognizes completed receipt reuse without a child but keeps an unregistered launch unknown', async () => {
+    const directory = await root();
+    const { run, action } = await claimedRun();
+    const registration = await createNativeSdkCheckExecution({
+      projectRoot: directory,
+      run,
+      action,
+      candidateId: 'candidate',
+      plansHash: 'plans',
+    });
+    registration.execution.checks = [
+      {
+        id: 'once',
+        status: 'passed',
+        reusedFrom: { actionId: 'original', attempt: 1, candidateId: 'candidate', checkId: 'once' },
+      },
+    ];
+    registration.execution.phase = 'completed';
+    await registration.save();
+    expect(
+      (await inspectNativeSdkCheckExecutions({ projectRoot: directory, run }))[0].quiescent,
+    ).toBe(false);
+    registration.execution.terminationUnconfirmed = false;
+    await registration.save();
+    expect(
+      (await inspectNativeSdkCheckExecutions({ projectRoot: directory, run }))[0].quiescent,
+    ).toBe(true);
+    registration.execution.checks = [{ id: 'once', status: 'passed' }];
+    await registration.save();
+    expect(
+      (await inspectNativeSdkCheckExecutions({ projectRoot: directory, run }))[0].quiescent,
+    ).toBe(false);
+  });
   it.each(['SIGTERM', 'SIGKILL'] as const)(
     'stops checks and their descendants when their actual owner receives %s',
     async (signal) => {

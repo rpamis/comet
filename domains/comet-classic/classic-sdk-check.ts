@@ -2,6 +2,7 @@ import { resolveClassicCheckTimeout } from './classic-project-config.js';
 import {
   classicCheckInputsRetained,
   observeClassicCheckInputs,
+  classicCheckObservationMatches,
   assertClassicEditReviewsComplete,
   assertClassicSdkAcceptedCandidateInputs,
 } from './classic-edit-review.js';
@@ -244,7 +245,7 @@ async function checkedInput(
     const observed = await observeClassicCheckInputs(root, run);
     if (
       observed.sourceActionId !== refreshing.sourceActionId ||
-      observed.currentManifestHash !== refreshing.observationHash
+      !(await classicCheckObservationMatches(root, observed, refreshing.observationHash))
     )
       throw new Error('补充检查前输入再次变化；保留原阶段，由当前 Agent 只判断新增变化');
     await assertClassicEditReviewsComplete(root, path.posix.basename(changeDirRef!), state!);

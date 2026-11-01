@@ -208,7 +208,7 @@ async function committedHash(
   root: string,
   ref: string,
   expected: string,
-  size: number | undefined,
+  size: number | (() => Promise<number>) | undefined,
   trees: Map<string, Map<string, string>>,
   allowed: Set<string>,
   revision = 'HEAD',
@@ -257,13 +257,15 @@ async function committedHash(
     repository = path.join(repository, prefix);
     relative = relative.slice(prefix.length + 1);
   }
+  // 提交的 Git 内容身份已匹配时不再读取文件大小；fallback 的两种内容读取共用一次观察。
+  const contentSize = typeof size === 'function' ? await size() : size;
   const hashContent = (filtered: boolean) =>
     new Promise<string>((resolve, reject) => {
       const gitHash = expected.startsWith('git:');
       const digest = createHash(gitHash && expected.length === 44 ? 'sha1' : 'sha256');
       if (gitHash)
         digest.update(
-          `blob ${size ?? Number(git(repository, ['cat-file', '-s', `${commit}:${relative}`]))}\0`,
+          `blob ${contentSize ?? Number(git(repository, ['cat-file', '-s', `${commit}:${relative}`]))}\0`,
         );
       const child = spawnCommand(
         'git',
@@ -285,7 +287,7 @@ async function committedHash(
         if (code !== 0) reject(new Error(`Classic committed input changed: ${ref}`));
         else
           resolve(
-            size === undefined || bytes === size
+            contentSize === undefined || bytes === contentSize
               ? (gitHash ? 'git:' : '') + digest.digest('hex')
               : 'different-size',
           );
@@ -471,7 +473,7 @@ export async function assertClassicSdkDeliveryFileInputs(
           : `Classic verified implementation changed: ${ref}`,
       );
 
-    const size = file.exists ? (await stat(file.target)).size : 0;
+    const size = file.exists ? async () => (await stat(file.target)).size : 0;
     if ((await committedHash(root, ref, expected, size, trees, allowed)) !== expected)
       throw new Error(
         ref === boundReportRef

@@ -583,10 +583,12 @@ export async function projectNativeSdkContinuation(
     const filtered = reviews.filter(
       (review) =>
         !(
-          review.binding.candidateKey === candidateKey &&
           review.applied &&
           review.receipt?.authority.kind === 'runtime-agent' &&
-          review.receipt.decision === 'implementation-changed'
+          ((review.binding.candidateKey === candidateKey &&
+            review.receipt.decision === 'implementation-changed') ||
+            (review.binding.candidateKey === `formal:${options.state.shape_confirmation_hash}` &&
+              review.receipt.decision === 'requirements-changed'))
         ),
     );
     if (filtered.length === reviews.length) return projection;

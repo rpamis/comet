@@ -167,6 +167,7 @@ export interface ReviewReceipt {
   authority: EditReviewAuthority;
   retainedCheckActionIds?: string[];
   retainedChecks?: Array<{ actionId: string; checkId: string }>;
+  previousReceiptHash?: string;
 }
 function validRetainedChecks(
   value: unknown,
@@ -343,11 +344,7 @@ async function indexedCheckJudgments(scope: EditReviewScope): Promise<EditReview
       throw new Error('检查判断不属于原提案');
     result.push({
       ...proposal,
-      receipt: parseReceipt(
-        (await readJson(root, `${entry.proposalHash}.discard.json`)) ??
-          (await readJson(root, `${entry.proposalHash}.review.json`)),
-        entry.proposalHash,
-      ),
+      receipt: await readReviewReceipt(root, entry.proposalHash),
     });
   }
   return result;
@@ -472,12 +469,67 @@ function parseReceipt(value: unknown, hash: string): ReviewReceipt | null {
     (receipt.authority?.kind === 'runtime-superseded' && receipt.decision !== 'discard') ||
     !receipt.authority.executionRef ||
     (receipt.retainedChecks !== undefined && !validRetainedChecks(receipt.retainedChecks)) ||
+    (receipt.previousReceiptHash !== undefined && !HASH.test(receipt.previousReceiptHash)) ||
     (receipt.retainedCheckActionIds !== undefined &&
       (!Array.isArray(receipt.retainedCheckActionIds) ||
         receipt.retainedCheckActionIds.some((id) => typeof id !== 'string' || !id.trim()) ||
         new Set(receipt.retainedCheckActionIds).size !== receipt.retainedCheckActionIds.length))
   )
     throw new Error('编辑复核结果无效');
+  return receipt;
+}
+
+function extendsRetainedChecks(previous: ReviewReceipt, next: ReviewReceipt) {
+  const previousActions = previous.retainedCheckActionIds ?? [];
+  const nextActions = next.retainedCheckActionIds ?? [];
+  const previousChecks = previous.retainedChecks ?? [];
+  const nextChecks = next.retainedChecks ?? [];
+  const contains = (checks: typeof previousChecks, actionId: string, checkId: string) =>
+    checks.some((check) => check.actionId === actionId && check.checkId === checkId);
+  return (
+    previous.decision !== 'discard' &&
+    previous.decision === next.decision &&
+    previous.authority.kind === 'runtime-agent' &&
+    next.authority.kind === 'runtime-agent' &&
+    objectHash(previous.authority) === objectHash(next.authority) &&
+    previousActions.every((id) => nextActions.includes(id)) &&
+    previousChecks.every(
+      (check) =>
+        nextActions.includes(check.actionId) || contains(nextChecks, check.actionId, check.checkId),
+    ) &&
+    (nextActions.some((id) => !previousActions.includes(id)) ||
+      nextChecks.some(
+        (check) =>
+          !previousActions.includes(check.actionId) &&
+          !contains(previousChecks, check.actionId, check.checkId),
+      ))
+  );
+}
+
+async function readReviewReceipt(
+  root: string,
+  proposalHash: string,
+): Promise<ReviewReceipt | null> {
+  const discarded = parseReceipt(
+    await readJson(root, `${proposalHash}.discard.json`),
+    proposalHash,
+  );
+  if (discarded) return discarded;
+  const receipt = parseReceipt(await readJson(root, `${proposalHash}.review.json`), proposalHash);
+  let current = receipt;
+  const visited = new Set<string>();
+  while (current?.previousReceiptHash) {
+    const hash = current.previousReceiptHash;
+    if (visited.has(hash)) throw new Error('保留检查的补充判断历史重复');
+    visited.add(hash);
+    const previous = parseReceipt(
+      await readJson(root, `${proposalHash}.${hash}.review-history.json`),
+      proposalHash,
+    );
+    if (!previous || objectHash(previous) !== hash || !extendsRetainedChecks(previous, current))
+      throw new Error('保留检查的补充判断没有绑定完整原收据，或改变了原决定、执行者与保留项');
+    current = previous;
+  }
   return receipt;
 }
 async function writeOnce(root: string, ref: string, value: unknown): Promise<void> {
@@ -1195,11 +1247,7 @@ export async function inspectEditReviews(scope: EditReviewScope): Promise<EditRe
       throw new Error('编辑复核不属于当前候选');
     reviews.push({
       ...proposal,
-      receipt: parseReceipt(
-        (await readJson(root, `${proposal.proposalHash}.discard.json`)) ??
-          (await readJson(root, `${proposal.proposalHash}.review.json`)),
-        proposal.proposalHash,
-      ),
+      receipt: await readReviewReceipt(root, proposal.proposalHash),
     });
   }
   return reviews;
@@ -1210,7 +1258,12 @@ export async function supersedeStaleAppliedEditReviews(scope: EditReviewScope): 
   const reviews = await inspectEditReviews(scope);
   const root = await directory(scope, true);
   for (const review of reviews) {
-    if (review.receipt?.decision === 'discard' || (!review.applied && review.receipt)) continue;
+    if (
+      review.receipt?.decision === 'non-behavioral' ||
+      review.receipt?.decision === 'discard' ||
+      (!review.applied && review.receipt)
+    )
+      continue;
     if (
       !review.applied &&
       !review.edits.every((edit) =>
@@ -1302,16 +1355,35 @@ export async function recordEditReview(
       : {}),
   };
   const root = await directory(scope, true);
-  await withRecoverableFileLock(path.join(root, '.lock'), () =>
-    writeOnce(
+  const savedReceipt = await withRecoverableFileLock(path.join(root, '.lock'), async () => {
+    const file = `${input.proposalHash}.${input.decision === 'discard' ? 'discard' : 'review'}.json`;
+    const existing = await readReviewReceipt(root, input.proposalHash);
+    if (input.decision === 'discard' || !existing) {
+      await writeOnce(root, file, receipt);
+      return receipt;
+    }
+    const payload = { ...existing };
+    delete payload.previousReceiptHash;
+    if (objectHash(payload) === objectHash(receipt)) return existing;
+    if (!extendsRetainedChecks(existing, receipt))
+      throw new Error(
+        '已有判断只允许原 Agent 对相同字节追加保留检查；不能改变决定、执行者或删除原保留项',
+      );
+    const previousReceiptHash = objectHash(existing);
+    await writeOnce(
       root,
-      `${input.proposalHash}.${input.decision === 'discard' ? 'discard' : 'review'}.json`,
-      receipt,
-    ),
-  );
+      `${input.proposalHash}.${previousReceiptHash}.review-history.json`,
+      existing,
+    );
+    const supplemented = { ...receipt, previousReceiptHash };
+    await atomicWriteContainedText(path.join(root, file), JSON.stringify(supplemented) + '\n', {
+      containedRoot: root,
+    });
+    return supplemented;
+  });
   if (receipt.retainedCheckActionIds?.length || receipt.retainedChecks?.length)
     await indexCheckJudgment(scope, receipt.proposalHash);
-  return receipt;
+  return savedReceipt;
 }
 
 /** 每个实际变化都必须由 Agent 明确保留同一原检查，且前后内容与观察匹配。 */
@@ -1390,26 +1462,14 @@ function reviewedInputChangesCovered(
             (edit.beforeMode === change.beforeMode && edit.afterMode === change.afterMode)),
       ),
     );
-    const byBefore = new Map<string, ReviewedEdit[]>();
-    for (const edge of edges)
-      for (const hash of [edge.beforeHash ?? 'missing', ...(edge.beforeGitHashes ?? [])]) {
-        if (hash) byBefore.set(hash, [...(byBefore.get(hash) ?? []), edge]);
-      }
-    const queue = [change.beforeHash],
-      visited = new Set<string>();
-    let covered = false;
-    for (let i = 0; i < queue.length && !covered; i++) {
-      const hash = queue[i];
-      if (visited.has(hash)) continue;
-      visited.add(hash);
-      for (const edge of byBefore.get(hash) ?? []) {
-        if ([edge.afterHash, ...(edge.afterGitHashes ?? [])].includes(change.afterHash)) {
-          covered = true;
-          break;
-        }
-        queue.push(edge.afterHash);
-      }
-    }
+    const covered =
+      change.beforeHash === change.afterHash
+        ? edges.some(
+            (edge) =>
+              editHashes(edge, 'before').includes(change.beforeHash) &&
+              editHashes(edge, 'after').includes(change.afterHash),
+          )
+        : reaches(edges, change.beforeHash, change.afterHash);
     if (!covered) return false;
   }
   return true;
@@ -1424,20 +1484,36 @@ function approvedEdges(
     .filter((review) => review.receipt?.decision === 'non-behavioral')
     .flatMap((review) => currentEdits(scope, review).filter((edit) => edit.path === file));
 }
+function editHashes(edit: ReviewedEdit, side: 'before' | 'after'): Array<string | null> {
+  return side === 'before'
+    ? [edit.beforeHash ?? 'missing', ...(edit.beforeGitHashes ?? [])]
+    : [edit.afterHash, ...(edit.afterGitHashes ?? [])];
+}
 function reaches(
   edges: readonly ReviewedEdit[],
   start: string | null,
   end: string | null,
 ): boolean {
-  const seen = new Set<string | null>([start]);
-  const queue = [start];
+  const initial = start ?? 'missing';
+  const target = end ?? 'missing';
+  const seen = new Set<string | null>([initial]);
+  const queue = [initial];
   for (const hash of queue) {
-    if (hash === end) return true;
-    for (const edit of edges)
-      if (edit.beforeHash === hash && !seen.has(edit.afterHash)) {
-        seen.add(edit.afterHash);
-        queue.push(edit.afterHash);
-      }
+    if (hash === target) return true;
+    for (const edit of edges) {
+      const before = editHashes(edit, 'before');
+      const after = editHashes(edit, 'after');
+      const next = before.includes(hash)
+        ? [...before, ...after]
+        : after.includes(hash)
+          ? after
+          : [];
+      for (const identity of next)
+        if (identity !== null && !seen.has(identity)) {
+          seen.add(identity);
+          queue.push(identity);
+        }
+    }
   }
   return false;
 }
@@ -1484,7 +1560,9 @@ export async function assertEditReviewsComplete(
       if ((current?.hash ?? null) === edit.beforeHash && edit.beforeHash !== edit.afterHash)
         throw new Error('复核通过的编辑尚未应用；应用该编辑或明确丢弃提案后再验收');
       if (!reaches(completionEdges(edit.path), edit.afterHash, current?.hash ?? null))
-        throw new Error('当前文件与已复核内容不匹配，需要新的复核');
+        throw new Error(
+          `当前文件与已复核内容不匹配，需要新的复核：${edit.path}（${review.proposalHash}）`,
+        );
     }
   }
 }
@@ -1520,8 +1598,9 @@ export async function approvedEditHash(
     return null;
   const first = edges.find(
     (edge) =>
-      !edges.some((other) => other.afterHash === edge.beforeHash) &&
-      reaches(edges, edge.beforeHash, currentHash),
+      !edges.some((other) =>
+        editHashes(other, 'after').some((hash) => editHashes(edge, 'before').includes(hash)),
+      ) && reaches(edges, edge.beforeHash, currentHash),
   );
   return first
     ? {

@@ -509,7 +509,16 @@ export async function inspectNativeSdkCheckExecutions(options: {
             : acknowledged ||
                 (!execution.terminationUnconfirmed &&
                   (['reserved', 'interrupted'].includes(execution.phase) ||
-                    (execution.phase === 'completed' && execution.checks.length === 0)))
+                    (execution.phase === 'completed' &&
+                      execution.checks.every(
+                        (check) =>
+                          check !== null &&
+                          typeof check === 'object' &&
+                          !Array.isArray(check) &&
+                          check.reusedFrom !== null &&
+                          typeof check.reusedFrom === 'object' &&
+                          !Array.isArray(check.reusedFrom),
+                      ))))
               ? 'dead'
               : 'unknown';
           const treeConfirmed =

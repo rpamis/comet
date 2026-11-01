@@ -355,6 +355,8 @@ describe('Classic archive command', () => {
         await fs.rm(counter, { force: true });
       }
     },
+    // 为 Windows 多轮真实命令预留等待时间；超时后仍须确认原执行已停止。
+    process.platform === 'win32' ? 300_000 : 120_000,
   );
   it('preserves a configuration update committed while preparing the pending action', async () => {
     const dir = await makeProject();

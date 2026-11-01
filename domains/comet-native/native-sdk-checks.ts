@@ -428,6 +428,14 @@ export const nativeSdkCheckRefreshCommandValidator: RuntimeCommandValidator = {
       const plans = allCandidateCheckPlans(run);
       if (requested.checkIds.some((id) => !plans.some((plan) => plan.id === id && plan.repeatable)))
         throw new Error('只能补跑原计划中可重复的检查，不能变更命令或重放单次副作用');
+      await assertNativeRefreshCheckReuse({
+        run,
+        action: pending.archive,
+        plans,
+        checkIds: requested.checkIds,
+        projectRoot: context.projectRoot,
+        snapshot: current,
+      });
       return { accepted: true };
     } catch (error) {
       return { accepted: false, reason: String(error) };
@@ -969,6 +977,69 @@ function checkOperationId(action: Readonly<RuntimeAction>): string {
   return hashRuntimeValue({ actionId: action.id, attempt: action.attempt });
 }
 
+/** 判断可指向中转收据或真实执行；每条来源的完整性仍由 validatedCheckResults 核对。 */
+async function hasNativeCheckInputJudgment(options: {
+  run: Readonly<WorkflowRun>;
+  action: Readonly<RuntimeAction>;
+  checkId: string;
+  paths: NativeProjectPaths;
+  state: NativePortableState;
+  snapshot: NativeRawInputSnapshot;
+}): Promise<boolean> {
+  let action = options.action;
+  let checkId = options.checkId;
+  for (;;) {
+    const output = action.outcome?.output as unknown as NativeSdkCheckOutcome | undefined;
+    const check = output?.checks?.find((entry) => entry.id === checkId);
+    if (
+      !output?.rawInput ||
+      !check ||
+      check.status !== 'passed' ||
+      !['succeeded', 'failed'].includes(action.status) ||
+      action.claim?.executorId !== nativeSdkCheckExecutor.id ||
+      output.interruption
+    )
+      return false;
+    const original = await readRawInput(
+      options.paths.workspaceRuntimeRoot,
+      options.run,
+      output.rawInput.afterRef,
+    );
+    if (
+      !original.complete ||
+      !options.snapshot.complete ||
+      original.projectRoot !== options.snapshot.projectRoot ||
+      original.contextHash !== options.snapshot.contextHash
+    )
+      return false;
+    if (
+      original.contentHash === options.snapshot.contentHash ||
+      (await isCheckInputRetained(
+        nativeEditReviewScope(options.paths, options.state),
+        action.id,
+        rawInputChanges(original, options.snapshot),
+        [],
+        checkId,
+      ))
+    )
+      return true;
+    const origin = check.reusedFrom;
+    if (!origin) return false;
+    const prior = options.run.actions.find((entry) => entry.id === origin.actionId);
+    const priorOutput = prior?.outcome?.output as unknown as NativeSdkCheckOutcome | undefined;
+    if (
+      !prior ||
+      prior.attempt !== origin.attempt ||
+      priorOutput?.candidateId !== origin.candidateId ||
+      options.run.actions.findIndex((entry) => entry.id === prior.id) >=
+        options.run.actions.findIndex((entry) => entry.id === action.id)
+    )
+      return false;
+    action = prior;
+    checkId = origin.checkId;
+  }
+}
+
 /** 任意命令均由完整原始输入和当前 Agent 的逐项判断决定适用性。 */
 async function reusableReviewedCheck(options: {
   run: Readonly<WorkflowRun>;
@@ -1034,13 +1105,14 @@ async function reusableReviewedCheck(options: {
       return null;
     if (
       original.contentHash !== snapshot.contentHash &&
-      !(await isCheckInputRetained(
-        nativeEditReviewScope(paths, state),
-        prior.id,
-        rawInputChanges(original, snapshot),
-        [],
-        check.id,
-      ))
+      !(await hasNativeCheckInputJudgment({
+        run: options.run,
+        action: prior,
+        checkId: check.id,
+        paths,
+        state,
+        snapshot,
+      }))
     )
       return null;
     try {
@@ -1076,6 +1148,44 @@ async function reusableReviewedCheck(options: {
   return null;
 }
 
+async function assertNativeRefreshCheckReuse(options: {
+  run: Readonly<WorkflowRun>;
+  action: Readonly<RuntimeAction>;
+  plans: readonly NativeCheckPlan[];
+  checkIds: readonly string[];
+  projectRoot: string;
+  snapshot: NativeRawInputSnapshot;
+}) {
+  for (const plan of options.plans) {
+    if (options.checkIds.includes(plan.id)) continue;
+    if (await reusableReviewedCheck({ ...options, plan })) continue;
+    const prior = options.run.actions
+      .slice(
+        0,
+        options.run.actions.findIndex((entry) => entry.id === options.action.id),
+      )
+      .reverse()
+      .find(
+        (entry) =>
+          (entry.outcome?.output as unknown as NativeSdkCheckOutcome | undefined)?.rawInput,
+      );
+    const raw = (prior?.outcome?.output as unknown as NativeSdkCheckOutcome | undefined)?.rawInput;
+    const original = raw
+      ? await readRawInput(
+          await resolveWorkspaceRuntimeRoot(options.projectRoot),
+          options.run,
+          raw.afterRef,
+        )
+      : null;
+    const changes = original
+      ? rawInputChanges(original, options.snapshot).map((change) => change.path)
+      : [];
+    throw new Error(
+      `未选检查 ${plan.id} 缺少覆盖当前输入的有效保留判断或原执行证据；变化来源：${changes.join('、') || '原收据或执行上下文'}。核对 observe 的普通与正式材料变化，补充保留判断后重试；不能自动扩大补查范围。`,
+    );
+  }
+}
+
 export const nativeSdkCheckExecutor: RuntimeExecutor = {
   id: 'comet-native-checks',
   capabilities: [],
@@ -1090,9 +1200,22 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
     ].includes(action.ref),
   async preflight(action, context, run) {
     if (!run || !context?.projectRoot) throw new Error('Native checks require a bound SDK Run');
-    const { state } = checkInput(run, action);
+    const { state, plans, artifactRootRef } = checkInput(run, action);
     if (!state.children_contract_hash && ['verify', 'archive'].includes(state.phase))
       await assertNativeSdkCandidateUnchanged({ run, projectRoot: context.projectRoot });
+    const refresh = nativeSdkCheckRefreshInput(run, action);
+    if (refresh && plans.some((plan) => !refresh.checkIds.includes(plan.id)))
+      await assertNativeRefreshCheckReuse({
+        run,
+        action,
+        plans,
+        checkIds: refresh.checkIds,
+        projectRoot: context.projectRoot,
+        snapshot: await nativeRawInputSnapshot({
+          projectRoot: context.projectRoot,
+          managedArtifactRoot: await resolveArtifactRoot(context.projectRoot, artifactRootRef),
+        }),
+      });
   },
   async execute(action, context, run) {
     if (!context?.projectRoot || !run) throw new Error('Native checks require a bound SDK Run');
@@ -1253,6 +1376,11 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
           await registration.save();
           continue;
         }
+        const refresh = nativeSdkCheckRefreshInput(run, action);
+        if (refresh && !refresh.checkIds.includes(plan.id))
+          throw new Error(
+            `未选检查 ${plan.id} 的保留证据在执行期间失效；保留实际结果并核对新增变化，禁止执行未选检查`,
+          );
         if (nonRepeatableExecutions.has(nativeCheckInvocationKey(plan)))
           throw new Error(
             `检查 ${plan.id} 不可重复执行，且当前输入没有有效的保留判断；需要确认后续验证方式`,
@@ -1490,15 +1618,22 @@ async function validatedCheckResults(options: {
         )
           throw new Error('Native 原始输入记录与检查收据不匹配');
         if (snapshot.after !== current.contentFingerprint) {
-          const changes = rawInputChanges(original, rawCurrent!);
-          const scope = nativeEditReviewScope(paths, state);
           retained = (
             await Promise.all(
               output.checks
                 .filter(
                   (check) => !options.requiredCheckIds || options.requiredCheckIds.has(check.id),
                 )
-                .map((check) => isCheckInputRetained(scope, action.id, changes, [], check.id)),
+                .map((check) =>
+                  hasNativeCheckInputJudgment({
+                    run,
+                    action,
+                    checkId: check.id,
+                    paths,
+                    state,
+                    snapshot: rawCurrent!,
+                  }),
+                ),
             )
           ).every(Boolean);
         }
@@ -1607,13 +1742,14 @@ async function validatedCheckResults(options: {
           originalInput.projectRoot !== rawProof.after.projectRoot ||
           originalInput.contextHash !== rawProof.after.contextHash ||
           (originalInput.contentHash !== rawProof.after.contentHash &&
-            !(await isCheckInputRetained(
-              nativeEditReviewScope(paths, state),
-              prior.id,
-              rawInputChanges(originalInput, rawProof.after),
-              [],
-              original.id,
-            )))
+            !(await hasNativeCheckInputJudgment({
+              run,
+              action: prior,
+              checkId: original.id,
+              paths,
+              state,
+              snapshot: rawProof.after,
+            })))
         )
           throw new Error('Native 保留检查未覆盖当前原始输入');
         const priorIndex = run.actions.findIndex((entry) => entry.id === prior.id);

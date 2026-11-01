@@ -36,10 +36,38 @@ export function classicArchiveDocumentOutputs(
   if (outputs['full.build.plan'] !== undefined) return { outputs, recovered: false };
   const actionSequence = run.actionContexts[action.id]?.sequence;
   if (actionSequence === undefined) return { outputs, recovered: false };
-  const command = run.commands
-    ?.slice()
-    .reverse()
-    .find((entry) => (run.actionContexts[entry.actionId]?.sequence ?? Infinity) < actionSequence);
+  const command =
+    run.commands?.find(
+      (entry) => entry.name === 'refresh-checks' && entry.actionId === action.id,
+    ) ??
+    run.commands
+      ?.slice()
+      .reverse()
+      .find((entry) => (run.actionContexts[entry.actionId]?.sequence ?? Infinity) < actionSequence);
+  if (command?.name === 'refresh-checks') {
+    const refresh = run.actions.find((entry) => entry.id === command.actionId);
+    const sourceActionId = (
+      refresh?.input as { activation?: { sourceActionId?: unknown } } | undefined
+    )?.activation?.sourceActionId;
+    const source = run.actions.find((entry) => entry.id === sourceActionId);
+    if (
+      refresh?.ref !== 'classic-check' ||
+      !source ||
+      source.ref !== 'classic-check' ||
+      !(
+        source.status === 'succeeded' ||
+        (source.status === 'failed' &&
+          run.commands?.some(
+            (entry) => entry.name === 'refresh-checks' && entry.actionId === source.id,
+          ))
+      ) ||
+      !source.outcome ||
+      (run.actionContexts[source.id]?.sequence ?? Infinity) >=
+        (run.actionContexts[refresh.id]?.sequence ?? -Infinity)
+    )
+      return { outputs, recovered: false };
+    return classicArchiveDocumentOutputs(run, source);
+  }
   if (!command || !['reopen-verification', 'continue-build'].includes(command.name))
     return { outputs, recovered: false };
   const reopenedAt = run.actionContexts[command.actionId].sequence;
@@ -84,6 +112,10 @@ export function classicArchiveDocumentOutputs(
         ),
       }
     : classicArchiveDocumentOutputs(run, checked);
+  return recoveredArchiveDocuments(inherited);
+}
+
+function recoveredArchiveDocuments(inherited: ArchiveDocumentOutputs): ArchiveDocumentOutputs {
   const source = inherited.outputs;
   return {
     outputs: Object.fromEntries(

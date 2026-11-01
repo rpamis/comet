@@ -9,6 +9,7 @@ paths:
 
 <!-- comet-development-rule:eval -->
 
+- 启动任何 Eval 前，遵守根 `AGENTS.md` 的“Eval 启动授权”：用户未明确要求启动时禁止执行，验收清单、失败排查和自行设置授权参数均不能代替用户请求。缺少的 Eval 如实报告为未执行，不自动补跑。
 - Python Eval 命令从 `eval/` 目录运行，使用锁定环境中的 `uv run pytest` 和 `uv run ruff`。
 - Docker、shell 和凭据准备属于 host harness；容器内验证不得依赖宿主私有路径或真实用户配置。
 - 静态 scaffold/validator 测试、Docker 场景和真实模型 Eval 分别报告，不能用收集成功或静态测试替代真实运行。

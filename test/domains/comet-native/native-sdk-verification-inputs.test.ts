@@ -36,7 +36,12 @@ import { inspectNativeSdkCheckExecutions } from '../../../domains/comet-native/n
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import type { NativeCheckPlan } from '../../../domains/comet-native/native-check-executor.js';
-import { nativeEditReviewScope } from '../../../domains/comet-native/native-edit-review-scope.js';
+import {
+  nativeEditReviewScope,
+  nativeFormalEditReviewScope,
+} from '../../../domains/comet-native/native-edit-review-scope.js';
+import { prepareNativeAppliedFormalReview } from '../../../domains/comet-native/native-edit-review.js';
+import { captureApprovedShapeOriginals } from '../../../domains/comet-native/native-shape-review-evidence.js';
 import {
   prepareEditReview,
   prepareObservedEditReview,
@@ -1347,6 +1352,214 @@ describe('Native SDK verification input binding', () => {
     },
   );
 
+  it('retains the original execution through successive refresh receipts without replaying one-shot checks', async () => {
+    const plans: NativeCheckPlan[] = ['a', 'b'].map((id) => ({
+      id,
+      name: `Successive check ${id}`,
+      executable: process.execPath,
+      argv: [
+        '-e',
+        id === 'a'
+          ? 'const fs=require("fs"); fs.readFileSync("handbook.unknown"); fs.appendFileSync(".git/successive-a","1");'
+          : 'require("fs").writeFileSync(".git/successive-b","once",{flag:"wx"});',
+      ],
+      cwdRef: '.',
+      timeoutMs: 5000,
+      repeatable: id === 'a',
+    }));
+    const prepared = await checkedCandidate({
+      files: { 'handbook.unknown': 'original explanation' },
+      verificationChecks: plans,
+    });
+    let run = await submitVerifierResult(prepared);
+    run = await prepared.runtime.execute({
+      runId: run.runId,
+      actionId: run.actions.at(-1)!.id,
+      executorId: 'comet-native-report',
+      context: { projectRoot: prepared.root, requestId: 'successive-report' },
+    });
+    const approval = run.waits.at(-1)!;
+    run = await prepared.runtime.resolveWait({
+      runId: run.runId,
+      waitId: approval.id,
+      proposalHash: approval.proposalHash,
+      decisionId: 'successive-approved',
+      choice: 'approved',
+    });
+    run = await prepared.runtime.execute({
+      runId: run.runId,
+      actionId: run.actions.at(-1)!.id,
+      executorId: 'comet-native-report-revalidate',
+      context: { projectRoot: prepared.root, requestId: 'successive-revalidate' },
+    });
+    const original = structuredClone(
+      run.actions.find((action) => action.stepId === 'verify.checks')!,
+    );
+    const originalReport = structuredClone(run.outputs['verify.report']);
+    const originalWaits = structuredClone(run.waits);
+    await captureApprovedShapeOriginals(
+      prepared.paths,
+      run.state as unknown as NativePortableState,
+    );
+    const formalFile = path.join(prepared.changeDir, 'brief.md');
+    const formalText =
+      (await fs.readFile(formalFile, 'utf8')) +
+      '\nExplanatory note: keep the original value behavior.\n';
+    await fs.writeFile(formalFile, formalText);
+    const formalScope = nativeFormalEditReviewScope(
+      prepared.paths,
+      run.state as unknown as NativePortableState,
+    );
+    const formal = await prepareNativeAppliedFormalReview(
+      prepared.paths,
+      run.state as unknown as NativePortableState,
+      {
+        intent: 'write',
+        toolName: 'Write',
+        targets: [formalFile],
+        writes: [{ path: formalFile, content: formalText }],
+      },
+      'agent',
+    );
+    const formalJudgment = {
+      proposalHash: formal.proposal.proposalHash,
+      decision: 'non-behavioral' as const,
+      summary:
+        'The note preserves the approved contract; initially no check retention was supplied.',
+    };
+    const authority = { kind: 'runtime-agent' as const, executionRef: 'successive-current-agent' };
+    const initialFormalReceipt = await recordEditReview(formalScope, formalJudgment, authority);
+    for (const round of [1, 2]) {
+      const text = `clarified explanation ${round}`;
+      await writeProjectFile(prepared.root, 'handbook.unknown', text);
+      const observed = await observeNativeSdkInputs(run, prepared.root);
+      const scope = {
+        ...nativeEditReviewScope(prepared.paths, run.state as unknown as NativePortableState),
+        judgment: 'agent' as const,
+      };
+      const proposal = await prepareObservedEditReview(
+        scope,
+        observed.changes.filter((change) => change.path === 'handbook.unknown'),
+      );
+      await recordEditReview(
+        scope,
+        {
+          proposalHash: proposal.proposalHash,
+          decision: 'non-behavioral',
+          summary:
+            'Only explanation bytes changed; preserve the actual original one-shot execution.',
+          retainedChecks: [{ actionId: original.id, checkId: 'b' }],
+        },
+        { kind: 'runtime-agent', executionRef: 'successive-current-agent' },
+      );
+      const { expectedRevision, ...input } = observed.refreshInputTemplate!;
+      if (round === 1) {
+        const before = structuredClone(run);
+        await expect(
+          prepared.runtime.dispatchCommand({
+            runId: run.runId,
+            expectedRevision,
+            commandId: 'successive-missing-formal-retention',
+            name: 'refresh-checks',
+            input: {
+              ...input,
+              checkIds: ['a'],
+              summary: 'Only A is selected; B must never execute.',
+            } as unknown as RuntimeValue,
+            context: {
+              projectRoot: prepared.root,
+              requestId: 'successive-reject-before-execution',
+            },
+          }),
+        ).rejects.toThrow(/未选检查.*b/u);
+        expect(await prepared.runtime.inspect(run.runId)).toEqual(before);
+        expect(await fs.readFile(path.join(prepared.root, '.git/successive-a'), 'utf8')).toBe('1');
+        expect(await fs.readFile(path.join(prepared.root, '.git/successive-b'), 'utf8')).toBe(
+          'once',
+        );
+        const completed = await recordEditReview(
+          formalScope,
+          {
+            ...formalJudgment,
+            summary:
+              'Additionally reviewed the unchanged B consumer; retain its actual original execution across this formal clarification.',
+            retainedChecks: [{ actionId: original.id, checkId: 'b' }],
+          },
+          authority,
+        );
+        expect(completed).toMatchObject({
+          decision: 'non-behavioral',
+          retainedChecks: [{ actionId: original.id, checkId: 'b' }],
+        });
+        expect(completed).not.toEqual(initialFormalReceipt);
+      }
+      run = await prepared.runtime.dispatchCommand({
+        runId: run.runId,
+        expectedRevision,
+        commandId: `successive-refresh-${round}`,
+        name: 'refresh-checks',
+        input: {
+          ...input,
+          checkIds: ['a'],
+          summary: 'Refresh A and retain original B.',
+        } as unknown as RuntimeValue,
+        context: { projectRoot: prepared.root, requestId: `successive-dispatch-${round}` },
+      });
+      run = await prepared.runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId: 'comet-native-checks',
+        context: { projectRoot: prepared.root, requestId: `successive-execute-${round}` },
+      });
+      await assertNativeSdkArchiveCheckInputs({ run, projectRoot: prepared.root });
+      expect(run.waits).toEqual(originalWaits);
+      expect(run.outputs['verify.report']).toEqual(originalReport);
+      expect(await fs.readFile(path.join(prepared.root, '.git/successive-a'), 'utf8')).toBe(
+        '1'.repeat(round + 1),
+      );
+      expect(await fs.readFile(path.join(prepared.root, '.git/successive-b'), 'utf8')).toBe('once');
+      await writeProjectFile(prepared.root, 'handbook.unknown', `${text} unjudged`);
+      await expect(
+        assertNativeSdkArchiveCheckInputs({ run, projectRoot: prepared.root }),
+      ).rejects.toThrow();
+      await writeProjectFile(prepared.root, 'handbook.unknown', text);
+    }
+    const checked = run.actions.filter((action) => action.stepId === 'verify.checks');
+    const relay = checked[1];
+    const final = checked[2];
+    for (const fault of ['failed', 'unknown', 'attempt', 'candidate', 'log'] as const) {
+      const corrupted = structuredClone(run);
+      const target = corrupted.actions.find((action) => action.id === relay.id)!;
+      const output = target.outcome!.output as unknown as {
+        candidateId: string;
+        checks: Array<{
+          id: string;
+          status: string;
+          reusedFrom?: { attempt: number };
+          logSha256: string;
+        }>;
+      };
+      const b = output.checks.find((check) => check.id === 'b')!;
+      if (fault === 'failed') b.status = 'failed';
+      else if (fault === 'unknown') target.status = 'unknown';
+      else if (fault === 'attempt') b.reusedFrom!.attempt += 1;
+      else if (fault === 'candidate') output.candidateId = 'foreign-candidate';
+      else b.logSha256 = '0'.repeat(64);
+      await expect(
+        assertNativeSdkArchiveCheckInputs({ run: corrupted, projectRoot: prepared.root }),
+      ).rejects.toThrow();
+    }
+    expect(
+      (
+        final.outcome!.output as unknown as { checks: Array<{ id: string; logRef: string }> }
+      ).checks.find((check) => check.id === 'b')!.logRef,
+    ).toBe(
+      (
+        original.outcome!.output as unknown as { checks: Array<{ id: string; logRef: string }> }
+      ).checks.find((check) => check.id === 'b')!.logRef,
+    );
+  });
+
   it.each([
     ['value.ts', 'export const value = 2;\n'],
     ['.next/types/routes.d.ts', 'export type Route = "/changed";\n'],
@@ -1981,6 +2194,64 @@ it('refreshes an explicitly selected Git check after byte-identical staging and 
   expect(rejected.state).not.toMatchObject({ archived: true });
   expect(rejected.actions.some((action) => action.stepId === 'archive.execute')).toBe(false);
   expect(rejected.waits).toEqual(originalWaits);
+  expect(rejected.state).toEqual(originalState);
   expect(rejected.outputs['verify.report']).toEqual(originalReport);
   expect(await fs.readFile(path.join(root, '.git/a9-once'), 'utf8')).toBe('once');
+
+  // 修复 index 后沿原只读预检重试，再显式补相同 Git 检查；不重开验收或重放 B。
+  execFileSync('git', ['restore', '--staged', '--', 'value.ts'], { cwd: root });
+  expect(await fs.readFile(path.join(root, 'value.ts'))).toEqual(originalBytes);
+  let resumed = await runtime.retry({
+    runId: rejected.runId,
+    actionId: archiveActionId,
+    attempt: rejected.actions.find((action) => action.id === archiveActionId)!.attempt,
+  });
+  const repaired = await observeNativeSdkInputs(resumed, root);
+  expect(repaired.changes).toEqual([]);
+  expect(repaired.refreshInputTemplate).toBeDefined();
+  const { expectedRevision: repairedRevision, ...repairInput } = repaired.refreshInputTemplate!;
+  resumed = await runtime.dispatchCommand({
+    runId: resumed.runId,
+    expectedRevision: repairedRevision,
+    commandId: 'a9-refresh-repaired-git-index',
+    name: 'refresh-checks',
+    input: {
+      ...repairInput,
+      checkIds: ['git-index'],
+      summary:
+        'The index is restored. Recheck the cached diff and retain the unrelated one-time receipt.',
+    } as unknown as RuntimeValue,
+    context: { requestId: 'a9-repaired-git-command', projectRoot: root },
+  });
+  resumed = await runtime.execute({
+    runId: resumed.runId,
+    actionId: resumed.actions.at(-1)!.id,
+    executorId: 'comet-native-checks',
+    context: { requestId: 'a9-repaired-git-execution', projectRoot: root },
+  });
+  expect(resumed.state).toEqual(originalState);
+  expect(resumed.waits).toEqual(originalWaits);
+  expect(resumed.outputs['verify.report']).toEqual(originalReport);
+  await assertNativeSdkArchiveCheckInputs({ run: resumed, projectRoot: root });
+  for (const executorId of [
+    'comet-native-archive-preflight',
+    'comet-native-archive-apply',
+    'comet-native-archive-finalize',
+  ]) {
+    resumed = await runtime.execute({
+      runId: resumed.runId,
+      actionId: resumed.actions.at(-1)!.id,
+      executorId,
+      context: { requestId: `a9-repaired-${executorId}`, projectRoot: root },
+    });
+  }
+  expect(resumed.status).toBe('completed');
+  expect(resumed.runId).toBe(prepared.run.runId);
+  expect(resumed.actions.filter((action) => action.stepId === 'archive.execute')).toHaveLength(1);
+  expect(resumed.waits).toEqual(originalWaits);
+  expect(resumed.actions.find((action) => action.id === supplementalActionId)).toEqual(
+    supplemental,
+  );
+  expect(await fs.readFile(path.join(root, '.git/a9-once'), 'utf8')).toBe('once');
+  expect(await fs.readFile(path.join(root, 'value.ts'))).toEqual(originalBytes);
 });

@@ -1432,108 +1432,311 @@ describe('Classic SDK Agent input judgment', () => {
       'build\nverify-only\nverify-only\nverify-only\n',
     );
   });
-  it.each([false, true])(
-    'refreshes only the Verify check after Archive approval without replacing the report or decision (failure=%s)',
-    async (failure) => {
-      const f = await fixture('tweak');
-      await f.put('handbook.md', 'original prose');
-      const argv = [
-        process.execPath,
-        '-e',
-        `const fs=require('node:fs'); fs.appendFileSync(${JSON.stringify(f.checkCount)}, 'verify-only\\n'); if(fs.readFileSync('handbook.md','utf8').includes('bad'))process.exit(1);`,
-      ];
-      const verified = await f.invoke(
-        'guard',
-        'example',
-        'verify',
-        '--report',
-        f.reportRef,
-        '--apply',
-        '--',
-        ...argv,
-      );
-      expect(verified.exitCode, verified.stdout).toBe(0);
-      const proposal = await f.cli(
-        'state',
-        'propose-archive',
-        'example',
-        '--summary',
-        'Deliver the accepted result.',
-      );
-      await f.cli(
-        'state',
-        'decide-archive',
-        'example',
-        '--proposal-hash',
-        proposal.wait.proposalHash,
-        '--choice',
-        'local',
-      );
-      const before = (await f.inspect()).run;
-      expect(before.state).toMatchObject({ phase: 'archive', archiveConfirmation: 'confirmed' });
-      await f.put('handbook.md', failure ? 'bad spelling' : 'clarified prose');
-      const observed = (await runClassicEditReviewCommand({
-        projectRoot: f.projectRoot,
-        name: 'example',
-        operation: 'observe',
-        sessionId: 'current-agent',
-      })) as {
-        recordTemplate: Record<string, unknown>;
-        observation: { refreshInputTemplate: Record<string, unknown> };
-      };
-      const file = path.join(path.dirname(f.projectRoot), 'supplemental-request.json');
-      await fs.writeFile(
-        file,
-        JSON.stringify({
-          ...observed.recordTemplate,
-          decision: 'non-behavioral',
-          summary:
-            'The prose edit preserves the accepted implementation; only the original Verify command needs refreshing.',
-        }),
-      );
-      await runClassicEditReviewCommand({
-        projectRoot: f.projectRoot,
-        name: 'example',
-        operation: 'record',
-        file,
-      });
-      await fs.writeFile(
-        file,
-        JSON.stringify({
-          ...observed.observation.refreshInputTemplate,
-          summary: 'Refresh the original prose check.',
-        }),
-      );
-      const refreshed = (await runClassicEditReviewCommand({
-        projectRoot: f.projectRoot,
-        name: 'example',
-        operation: 'refresh-checks',
-        file,
-      })) as { executeRequest: Record<string, unknown>; application: string };
-      await fs.writeFile(file, JSON.stringify(refreshed.executeRequest));
-      const executed = await runtimeDispatchCommand(
-        { request: file, projectRoot: f.projectRoot, application: refreshed.application },
-        { invocationCwd: f.projectRoot },
-      );
-      expect(executed.exitCode, JSON.stringify(executed.response)).toBe(0);
-      const current = (await f.inspect()).run;
-      expect(current.state).toEqual(before.state);
-      expect(current.waits).toEqual(before.waits);
-      expect(current.evidenceWaits).toEqual(before.evidenceWaits);
-      expect(current.actions.at(-1)).toMatchObject({
-        stepId: 'tweak.archive.preflight',
-        status: 'pending',
-      });
-      expect(await fs.readFile(f.checkCount, 'utf8')).toBe('build\nverify-only\nverify-only\n');
-      const { assertVerifyEvidenceCurrent } =
-        await import('../../../domains/comet-classic/classic-sdk-archive-preflight.js');
-      if (failure)
-        await expect(
-          assertVerifyEvidenceCurrent(current, f.projectRoot, current.state as never),
-        ).rejects.toThrow('最新补充检查未通过');
-      else await assertVerifyEvidenceCurrent(current, f.projectRoot, current.state as never);
+  for (const { profile, failure, name } of [
+    {
+      profile: 'tweak',
+      failure: false,
+      name: 'refreshes only the Verify check after Archive approval without replacing the report or decision (failure=false)',
     },
-  );
+    {
+      profile: 'tweak',
+      failure: true,
+      name: 'refreshes only the Verify check after Archive approval without replacing the report or decision (failure=true)',
+    },
+    {
+      profile: 'full',
+      failure: false,
+      name: 'preserves full Archive documents after a supplemental check and completes local delivery',
+    },
+    {
+      profile: 'full',
+      failure: true,
+      name: 'recovers a failed supplemental full check without losing Archive documents or replaying Build',
+    },
+  ] as const) {
+    it(
+      name,
+      async () => {
+        if (profile === 'full') {
+          const helperRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-refresh-openspec-'));
+          roots.push(helperRoot);
+          const openSpec = await createOpenSpecArchiveFixture(helperRoot);
+          vi.stubEnv('COMET_OPENSPEC', openSpec.command);
+        }
+        const f = await fixture(profile);
+        await f.put('handbook.md', 'original prose');
+        const argv = [
+          process.execPath,
+          '-e',
+          `const fs=require('node:fs'); fs.appendFileSync(${JSON.stringify(f.checkCount)}, 'verify-only\\n'); if(fs.readFileSync('handbook.md','utf8').includes('bad'))process.exit(1);`,
+        ];
+        const verified = await f.invoke(
+          'guard',
+          'example',
+          'verify',
+          '--report',
+          f.reportRef,
+          '--apply',
+          '--',
+          ...argv,
+        );
+        expect(verified.exitCode, verified.stdout).toBe(0);
+        const proposal = await f.cli(
+          'state',
+          'propose-archive',
+          'example',
+          '--summary',
+          'Deliver the accepted result.',
+        );
+        await f.cli(
+          'state',
+          'decide-archive',
+          'example',
+          '--proposal-hash',
+          proposal.wait.proposalHash,
+          '--choice',
+          'local',
+        );
+        const before = (await f.inspect()).run;
+        expect(before.state).toMatchObject({ phase: 'archive', archiveConfirmation: 'confirmed' });
+        let clarifiedDesign: { ref: string; text: string } | undefined;
+        if (profile === 'full') {
+          const ref = (before.state as unknown as ClassicState).designDoc!;
+          const text = `${await fs.readFile(path.join(f.projectRoot, ref), 'utf8')}\nEditorial clarification preserves the approved public API.\n`;
+          clarifiedDesign = { ref, text };
+          await f.put(ref, text);
+          const preparedFormal = (await runClassicEditReviewCommand({
+            projectRoot: f.projectRoot,
+            name: 'example',
+            operation: 'prepare-applied',
+            sessionId: 'current-agent',
+          })) as { proposal: { proposalHash: string }; recordTemplate?: Record<string, unknown> };
+          const formal = preparedFormal.recordTemplate
+            ? preparedFormal
+            : ((await runClassicEditReviewCommand({
+                projectRoot: f.projectRoot,
+                name: 'example',
+                operation: 'judge',
+                sessionId: 'current-agent',
+                proposalHash: preparedFormal.proposal.proposalHash,
+              })) as { recordTemplate: Record<string, unknown> });
+          const formalFile = path.join(path.dirname(f.projectRoot), 'formal-refresh-judgment.json');
+          await fs.writeFile(
+            formalFile,
+            JSON.stringify({
+              ...formal.recordTemplate,
+              decision: 'non-behavioral',
+              summary:
+                'The design explanation preserves the accepted API; existing check commands do not consume this wording.',
+              retainedCheckActionIds: before.actions
+                .filter((action) => action.ref === 'classic-check')
+                .map((action) => action.id),
+            }),
+          );
+          await runClassicEditReviewCommand({
+            projectRoot: f.projectRoot,
+            name: 'example',
+            operation: 'record',
+            file: formalFile,
+          });
+        }
+        await f.put('handbook.md', failure ? 'bad spelling' : 'clarified prose');
+        const observed = (await runClassicEditReviewCommand({
+          projectRoot: f.projectRoot,
+          name: 'example',
+          operation: 'observe',
+          sessionId: 'current-agent',
+        })) as {
+          recordTemplate: Record<string, unknown>;
+          observation: { refreshInputTemplate: Record<string, unknown> };
+        };
+        const file = path.join(path.dirname(f.projectRoot), 'supplemental-request.json');
+        await fs.writeFile(
+          file,
+          JSON.stringify({
+            ...observed.recordTemplate,
+            decision: 'non-behavioral',
+            summary:
+              'The prose edit preserves the accepted implementation; only the original Verify command needs refreshing.',
+          }),
+        );
+        await runClassicEditReviewCommand({
+          projectRoot: f.projectRoot,
+          name: 'example',
+          operation: 'record',
+          file,
+        });
+        await fs.writeFile(
+          file,
+          JSON.stringify({
+            ...observed.observation.refreshInputTemplate,
+            summary: 'Refresh the original prose check.',
+          }),
+        );
+        const refreshed = (await runClassicEditReviewCommand({
+          projectRoot: f.projectRoot,
+          name: 'example',
+          operation: 'refresh-checks',
+          file,
+        })) as { executeRequest: Record<string, unknown>; application: string };
+        await fs.writeFile(file, JSON.stringify(refreshed.executeRequest));
+        const judgedBytes = await fs.readFile(path.join(f.projectRoot, 'handbook.md'));
+        const pendingRefresh = (await f.inspect()).run;
+        await f.put('handbook.md', 'new unjudged behavior');
+        const rejected = await runtimeDispatchCommand(
+          { request: file, projectRoot: f.projectRoot, application: refreshed.application },
+          { invocationCwd: f.projectRoot },
+        );
+        expect(rejected.exitCode).not.toBe(0);
+        expect(rejected.response.status).toBe('failed');
+        expect((await f.inspect()).run).toEqual(pendingRefresh);
+        expect(await fs.readFile(f.checkCount, 'utf8')).toBe('build\nverify-only\n');
+        await fs.writeFile(path.join(f.projectRoot, 'handbook.md'), judgedBytes);
+        const changedTime = new Date(Date.now() + 60_000);
+        await fs.utimes(path.join(f.projectRoot, 'handbook.md'), changedTime, changedTime);
+        const executed = await runtimeDispatchCommand(
+          { request: file, projectRoot: f.projectRoot, application: refreshed.application },
+          { invocationCwd: f.projectRoot },
+        );
+        expect(executed.exitCode, JSON.stringify(executed.response)).toBe(0);
+        const current = (await f.inspect()).run;
+        expect(current.state).toEqual(before.state);
+        expect(current.waits).toEqual(before.waits);
+        expect(current.evidenceWaits).toEqual(before.evidenceWaits);
+        expect(current.actions.at(-1)).toMatchObject({
+          stepId: `${profile}.archive.preflight`,
+          status: 'pending',
+        });
+        expect(await fs.readFile(f.checkCount, 'utf8')).toBe('build\nverify-only\nverify-only\n');
+        const { assertVerifyEvidenceCurrent } =
+          await import('../../../domains/comet-classic/classic-sdk-archive-preflight.js');
+        if (failure)
+          await expect(
+            assertVerifyEvidenceCurrent(current, f.projectRoot, current.state as never),
+          ).rejects.toThrow('最新补充检查未通过');
+        else await assertVerifyEvidenceCurrent(current, f.projectRoot, current.state as never);
+        if (profile === 'full') {
+          if (failure) {
+            await f.put('handbook.md', 'repaired prose');
+            const repaired = (await runClassicEditReviewCommand({
+              projectRoot: f.projectRoot,
+              name: 'example',
+              operation: 'observe',
+              sessionId: 'current-agent',
+            })) as typeof observed;
+            await fs.writeFile(
+              file,
+              JSON.stringify({
+                ...repaired.recordTemplate,
+                decision: 'non-behavioral',
+                summary: 'The spelling is repaired; refresh only the document check.',
+              }),
+            );
+            await runClassicEditReviewCommand({
+              projectRoot: f.projectRoot,
+              name: 'example',
+              operation: 'record',
+              file,
+            });
+            await fs.writeFile(
+              file,
+              JSON.stringify({
+                ...repaired.observation.refreshInputTemplate,
+                summary: 'Recheck the corrected document in the original Run.',
+              }),
+            );
+            const repairCheck = (await runClassicEditReviewCommand({
+              projectRoot: f.projectRoot,
+              name: 'example',
+              operation: 'refresh-checks',
+              file,
+            })) as typeof refreshed;
+            await fs.writeFile(file, JSON.stringify(repairCheck.executeRequest));
+            const repairResult = await runtimeDispatchCommand(
+              { request: file, projectRoot: f.projectRoot, application: repairCheck.application },
+              { invocationCwd: f.projectRoot },
+            );
+            expect(repairResult.exitCode, JSON.stringify(repairResult.response)).toBe(0);
+            const afterRepair = (await f.inspect()).run;
+            expect(afterRepair.waits).toEqual(before.waits);
+            const failedAction = current.actions.find((action) => action.status === 'failed')!;
+            expect(afterRepair.actions.find((action) => action.id === failedAction.id)).toEqual(
+              failedAction,
+            );
+          }
+          const readyToArchive = (await f.inspect()).run;
+          await f.put(
+            clarifiedDesign!.ref,
+            clarifiedDesign!.text + '\nUnjudged change to the approved API.\n',
+          );
+          const refusedDesign = await f.invoke('guard', 'example', 'archive', '--apply');
+          expect(refusedDesign.exitCode).not.toBe(0);
+          expect((await f.inspect()).run).toEqual(readyToArchive);
+          expect(
+            readyToArchive.actions.some((action) => action.stepId === 'full.archive.execute'),
+          ).toBe(false);
+          await f.put(clarifiedDesign!.ref, clarifiedDesign!.text);
+          await f.cli('guard', 'example', 'archive', '--apply');
+          const git = (...args: string[]) =>
+            execFileSync('git', args, { cwd: f.projectRoot, encoding: 'utf8' }).trim();
+          git(
+            'add',
+            '--',
+            'openspec',
+            'docs/superpowers',
+            'handbook.md',
+            'build configuration.json',
+          );
+          git(
+            '-c',
+            'user.name=Test',
+            '-c',
+            'user.email=test@example.invalid',
+            'commit',
+            '-m',
+            'archive refreshed full candidate',
+          );
+          await f.cli(
+            'state',
+            'complete-delivery',
+            'example',
+            '--commit',
+            git('rev-parse', 'HEAD'),
+          );
+          const final = (await f.inspect()).run;
+          expect(final.runId).toBe(before.runId);
+          expect(final.status).toBe('completed');
+          expect(
+            final.actions.filter((action) => action.stepId === 'full.archive.execute'),
+          ).toHaveLength(1);
+          expect(final.waits).toEqual(before.waits);
+          const { annotatedMarkdown, archivedClassicDocumentRef } =
+            await import('../../../domains/comet-classic/classic-archive-annotation.js');
+          const archiveRef = (
+            final.outputs['full.archive.execute'].value as { archiveDirectory: string }
+          ).archiveDirectory;
+          const archivedDesign = archivedClassicDocumentRef(
+            clarifiedDesign!.ref,
+            'openspec/changes/example',
+            archiveRef,
+          )!;
+          expect(await fs.readFile(path.join(f.projectRoot, archivedDesign), 'utf8')).toBe(
+            annotatedMarkdown(
+              clarifiedDesign!.text,
+              path.posix.basename(archiveRef),
+              'status: final',
+            ),
+          );
+          expect(await fs.readFile(f.checkCount, 'utf8')).toBe(
+            failure
+              ? 'build\nverify-only\nverify-only\nverify-only\n'
+              : 'build\nverify-only\nverify-only\n',
+          );
+        }
+      },
+      fullLifecycleTimeout,
+    );
+  }
   it('observes a batch of unknown-file saves in the current Agent and reuses the selected real command', async () => {
     const f = await fixture('tweak', false);
     const argv = f.command('shared');

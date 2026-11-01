@@ -16,6 +16,7 @@ import {
 import { classicSdkCheckRefreshInput } from './classic-sdk-check.js';
 import {
   observeClassicCheckInputs,
+  classicCheckObservationMatches,
   classicEditReviewScope,
   classicFormalEditReviewScope,
   assertClassicEditReviewsComplete,
@@ -366,7 +367,7 @@ const checkRefreshValidator: RuntimeCommandValidator = {
       const observation = await observeClassicCheckInputs(root, run);
       if (
         observation.sourceActionId !== value.sourceActionId ||
-        observation.currentManifestHash !== value.observationHash
+        !(await classicCheckObservationMatches(root, observation, value.observationHash))
       )
         throw new Error('输入观察已失效，请由当前 Agent 核对新增变化');
       const change = path.posix.basename((run.input as { changeDir: string }).changeDir);

@@ -2,27 +2,23 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.5.3] - 2026-10-30
+## What's Changed [0.5.2] - 2026-10-29
 
 ### Added
 
 - **MiniMax Code support**: Install, detect, update, diagnose, and uninstall project- or user-scoped Comet Skills under `.minimax/skills`, including Classic dependency integration. Managed Skills stay outside Native source snapshots so Skill updates do not change project verification hashes. Project instructions use `AGENTS.md`; platform-specific Rules and Hooks are not installed ([#518](https://github.com/rpamis/comet/issues/518)).
 
-## What's Changed [0.5.2] - 2026-10-29
-
 ### Changed
 
 - **Workflow continuation after edits**: Ordinary edits during Build, Verify, or before Archive no longer block on a separate review session. Hooks keep the edit and the current Run, and the current Agent judges the actual impact at the next advance through `comet edit-review observe`, keeping valid approvals, checks, and Actions and rerunning only the affected checks. Detection stays language-neutral and never depends on file extensions, parsers, or compilers.
 - **Formal document edits**: Changed briefs, Specs, Design Docs, and plans are judged against the approved original text obtained through `comet edit-review prepare-applied`. An unchanged contract keeps the original approval, phase, and acceptance items; only a material change to the goal, acceptance criteria, approach, or authorization requests the affected decisions.
-- **Accepted results before Archive**: After acceptance but before delivery, ordinary documentation changes keep the report and the accepted results. `comet edit-review refresh-checks` reruns only the affected checks and then continues the original archive; a changed delivery goal or authorization still requires the corresponding decision.
+- **Accepted results before Archive**: After acceptance but before delivery, ordinary documentation changes keep the report and the accepted results. `comet edit-review refresh-checks` reruns only the affected checks and then continues the original archive. Repeated edits and byte-identical rewrites retain the original document and check evidence, including one-time operations; a changed delivery goal or authorization still requires the corresponding decision.
 - **Native Git staging decoupling**: Staging, unstaging, and empty commits no longer rebuild the implementation candidate unconditionally. Only checks that explicitly depend on Git identities recheck them; unchanged bytes continue the original action.
 - **Edit-continuation performance**: Share protected-file reads within a request, batch input hashing, and widen Git status observation instead of rescanning unchanged inputs, shortening the edit-to-continue path for Native and Classic.
 
 ### Fixed
 
 - **UTF-8 BOM check receipts**: Accept successful Native checks for unchanged JavaScript source with a UTF-8 BOM while preserving the original file bytes and candidate-drift safeguards.
-- **PR documentation assessment**: Allow a concrete explanation when a change needs no documentation update instead of requiring every PR to edit a README. Changes that need documentation must identify the updated pages; other checklist requirements remain mandatory.
-
 - **Cancelled Native history**: Explicitly migrate a fully stopped built-in cancellation after its original worktree is removed, without changing the portable checkpoint, original revision, or execution evidence. Interrupted imports resume from their bound source; active runs, unresolved cleanup, custom applications, conflicting records, and surviving source-worktree ownership remain protected ([#513](https://github.com/rpamis/comet/issues/513)).
 - **Native Shape target changes**: Before Shape confirmation, replace a previously declared target Spec or withdraw an unapproved target capability through the existing requirement-revision continuation without deleting its canonical Spec. Replacement proposals still require fresh approval; exemptions and unrelated removals cannot hide missing declared Specs, and confirmed target Specs remain required ([#516](https://github.com/rpamis/comet/issues/516)).
 - **Classic Doctor discovery**: Ignore non-change entries such as `.DS_Store` in both Classic layouts, while continuing to report malformed real changes and unsafe paths ([#515](https://github.com/rpamis/comet/issues/515)).
