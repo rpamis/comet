@@ -76,6 +76,7 @@ const DEFAULT_WORKFLOW_NATIVE_MANAGED_SKILL_EXCLUDES = [
   '.kiro/skills/**',
   '.lingma/skills/**',
   '.mimocode/skills/**',
+  '.minimax/skills/**',
   '.opencode/skills/**',
   '.omp/skills/**',
   '.pi/skills/**',

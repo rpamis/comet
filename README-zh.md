@@ -250,7 +250,7 @@ Comet Eval的自动化双Agent架构能够在线上与LangSmith/LangFuse环境�
 
 ## 支持平台
 
-`comet init` 支持 38 个 AI 编码平台：
+`comet init` 支持 39 个 AI 编码平台：
 
 <details>
 <summary>查看完整平台列表</summary>
@@ -276,6 +276,7 @@ Comet Eval的自动化双Agent架构能够在线上与LangSmith/LangFuse环境�
 | MimoCode           | `.mimocode/`  | CoStrict      | `.cospec/`   |
 | Grok               | `.grok/`      | Prime Agent   | `.prime/agent/` |
 | Oh My Pi           | `.omp/`       | DeepSeek Harness | `.dsh/` |
+| MiniMax Code       | `.minimax/`   |               |              |
 
 </details>
 
