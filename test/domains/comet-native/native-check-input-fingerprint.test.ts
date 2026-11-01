@@ -795,6 +795,41 @@ describe('Native check input gate', () => {
     }
   });
 
+  it.each([false, true])(
+    'preserves UTF-8 source bytes while capturing candidate inputs (BOM=%s)',
+    async (bom) => {
+      const source = path.join(root, 'utf8-source.mjs');
+      const prefix = bom ? '\ufeff' : '';
+      const bytes = Buffer.from(`${prefix}export const value = 1;\n`);
+      await fs.writeFile(source, bytes);
+      const input = { projectRoot: root, candidateId: null };
+      const candidate = await nativeCandidateInputGate(input);
+      const checked = await nativeCheckInputGate(input);
+      expect(candidate).toEqual(expect.stringMatching(/^[a-f0-9]{64}$/u));
+      expect(checked).toEqual(expect.stringMatching(/^[a-f0-9]{64}$/u));
+      expect(await nativeCandidateInputGate(input)).toBe(candidate);
+      expect(await fs.readFile(source)).toEqual(bytes);
+
+      await fs.writeFile(source, `${prefix}export const value = 2;\n`);
+      const changed = await nativeCandidateInputGate(input);
+      expect(changed).toEqual(expect.stringMatching(/^[a-f0-9]{64}$/u));
+      expect(changed).not.toBe(candidate);
+      const changedInput = await nativeCheckInputGate(input);
+      expect(changedInput).toEqual(expect.stringMatching(/^[a-f0-9]{64}$/u));
+      expect(changedInput).not.toBe(checked);
+
+      const toggledSource = `${bom ? '' : '\ufeff'}export const value = 2;\n`;
+      await fs.writeFile(source, toggledSource);
+      const toggledInput = await nativeCheckInputGate(input);
+      expect(toggledInput).toEqual(expect.stringMatching(/^[a-f0-9]{64}$/u));
+      expect(toggledInput).not.toBe(changedInput);
+      expect(await nativeCandidateInputGate(input)).toEqual(
+        expect.stringMatching(/^[a-f0-9]{64}$/u),
+      );
+      expect(await fs.readFile(source)).toEqual(Buffer.from(toggledSource));
+    },
+  );
+
   it('changes on tracked edits, staged content, branch switches, and untracked edits', async () => {
     const gate = { projectRoot: root, candidateId: null };
     const before = await nativeCheckInputGate(gate);

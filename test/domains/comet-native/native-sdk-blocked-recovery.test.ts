@@ -53,6 +53,7 @@ async function blockedFixture(
     repeatableChecks?: boolean;
     verificationChecks?: NativeCheckPlan[];
     syntaxFiles?: boolean;
+    bomSource?: boolean;
     bundleCommands?: boolean;
     misclaimedVerifier?: boolean;
     inProjectRequests?: boolean;
@@ -129,6 +130,11 @@ async function blockedFixture(
       await fs.mkdir(child);
       git(['init', '-q'], child);
       await fs.writeFile(path.join(child, 'index.js'), 'export const value = 1;\n');
+      if (name === 'server' && options.bomSource !== undefined)
+        await fs.writeFile(
+          path.join(child, 'utf8-source.mjs'),
+          `${options.bomSource ? '\ufeff' : ''}export const value = 1;\n`,
+        );
       await fs.writeFile(path.join(child, '.env.development'), 'VUE_APP_BASE_API=/api\n');
       git(['add', '.'], child);
       git(['commit', '-qm', 'synthetic environment'], child);
@@ -670,6 +676,57 @@ async function finishRepairedCandidate(
 }
 
 describe('blocked Verifier recovery command contract', () => {
+  it.each([false, true])(
+    'accepts successful checks for unchanged UTF-8 source without rewriting bytes (BOM=%s)',
+    async (bom) => {
+      const f = await blockedFixture({
+        bomSource: bom,
+        nonGitEnvironment: true,
+        bundleCommands: true,
+        directPass: true,
+        verificationChecks: [
+          {
+            id: 'utf8-module',
+            name: 'Import the UTF-8 module',
+            executable: process.execPath,
+            argv: [
+              '-e',
+              'import("./utf8-source.mjs").then(m => { if (m.value !== 1) process.exit(1); })',
+            ],
+            cwdRef: 'server',
+            timeoutMs: 5000,
+            repeatable: true,
+          },
+        ],
+      });
+      const checked = await f.dispatch({ operation: 'inspect', runId: f.name });
+      const output = checked.outputs['verify.checks'].value as {
+        checks: { id: string; status: string; exitCode: number }[];
+        candidateInputFingerprintGate: string;
+        inputSnapshot: {
+          before: string;
+          after: string;
+          candidateBefore: string;
+          complete: boolean;
+        };
+      };
+      expect(output.checks).toEqual([
+        expect.objectContaining({ id: 'utf8-module', status: 'passed', exitCode: 0 }),
+      ]);
+      expect(output.candidateInputFingerprintGate).toMatch(/^[a-f0-9]{64}$/u);
+      expect(output.inputSnapshot.candidateBefore).toBe(output.candidateInputFingerprintGate);
+      expect(output.inputSnapshot.complete).toBe(true);
+      expect(output.inputSnapshot.after).toBe(output.inputSnapshot.before);
+      expect(await fs.readFile(path.join(f.projectRoot, 'server/utf8-source.mjs'))).toEqual(
+        Buffer.from(`${bom ? '\ufeff' : ''}export const value = 1;\n`),
+      );
+      const status = await f.native(['status', f.name]);
+      expect(status.exitCode, status.stdout ?? status.stderr).toBe(0);
+      expect(JSON.parse(status.stdout!).data.phase).toBe('verify');
+      expect(parseNativePortableState(checked.state).verification_result).toBe('pass');
+    },
+  );
+
   it('archives tracked environment files in non-Git child repositories and rejects stale environment evidence', async () => {
     const f = await archiveReadyFixture({
       directPass: true,

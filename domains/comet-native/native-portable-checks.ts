@@ -2613,8 +2613,18 @@ async function nativeCandidateCommentGate(
                 root: options.projectRoot,
                 ref: entry.path,
               });
-        if (digestNativeCheckInput(Buffer.from(source.text).toString('base64')) !== entry.digest)
-          return null;
+        let sourceBytes = Buffer.from(source.text);
+        if ('hash' in source) {
+          // TextDecoder 会省略 BOM；原始哈希必须证明补回的是实际读取字节。
+          if (source.size === sourceBytes.length + 3)
+            sourceBytes = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), sourceBytes]);
+          if (
+            source.size !== sourceBytes.length ||
+            createHash('sha256').update(sourceBytes).digest('hex') !== source.hash
+          )
+            return null;
+        }
+        if (digestNativeCheckInput(sourceBytes.toString('base64')) !== entry.digest) return null;
         const reviewed = options.editReviewScope
           ? await approvedEditFingerprint(options.editReviewScope, entry.path, source.text, reviews)
           : null;

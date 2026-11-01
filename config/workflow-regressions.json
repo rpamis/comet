@@ -5845,6 +5845,44 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-517-utf8-bom-check-receipt",
+      "sources": ["https://github.com/rpamis/comet/issues/517"],
+      "behavior": "合法UTF-8 BOM源码在输入未变化且Node检查成功时可建立候选摘要并接受检查收据，读取不改写磁盘字节。",
+      "coverageLevel": "runtime",
+      "reproduction": "非Git协调根下的独立子仓含已提交BOM模块，Node导入exit 0，但旧代码以OUTCOME_REJECTED拒绝null候选摘要；同内容无BOM对照可通过。",
+      "expected": "有/无BOM均得到非空且匹配的候选摘要、完整稳定输入快照及通过的检查记录，源码字节保持原样，实际实现变更仍改变候选和检查摘要。",
+      "forbidden": "把合法BOM误报为候选漂移、写回去除BOM、绕过原始字节校验或对真实实现变化复用旧候选。",
+      "rootCause": "UTF-8 TextDecoder在内存中消耗BOM，候选检查将解码文本重编码后与原始字节摘要比较，三字节差异导致返回null。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "preserves UTF-8 source bytes while capturing candidate inputs",
+          "requiredNames": [
+            "Native check input gate preserves UTF-8 source bytes while capturing candidate inputs (BOM=false)",
+            "Native check input gate preserves UTF-8 source bytes while capturing candidate inputs (BOM=true)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "accepts successful checks for unchanged UTF-8 source without rewriting bytes",
+          "requiredNames": [
+            "blocked Verifier recovery command contract accepts successful checks for unchanged UTF-8 source without rewriting bytes (BOM=false)",
+            "blocked Verifier recovery command contract accepts successful checks for unchanged UTF-8 source without rewriting bytes (BOM=true)"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "built-checkout public CLI in a non-Git coordination root",
+          "status": "verified",
+          "evidence": [
+            "The fixture and public CLI sequence from issue #517 were replayed against the rebuilt bin/comet.js with fixed-behavior success assertions: plain and BOM fixtures both exited 0, retained 24/27 source bytes, produced complete unchanged snapshots and non-null matching candidate digests. No independent Verifier outcome or Archive was submitted.",
+            "After merging upstream 4901cac into the contribution branch, the rebuilt 0.5.2 public CLI again accepted plain and BOM fixtures with unchanged 24/27 disk bytes, successful Node checks and complete stable input snapshots with valid candidate digests. No Archive was attempted."
+          ]
+        }
+      ]
     }
   ]
 }

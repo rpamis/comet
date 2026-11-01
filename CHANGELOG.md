@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.5.3] - 2026-10-30
+
+### Added
+
+- **MiniMax Code support**: Install, detect, update, diagnose, and uninstall project- or user-scoped Comet Skills under `.minimax/skills`, including Classic dependency integration. Managed Skills stay outside Native source snapshots so Skill updates do not change project verification hashes. Project instructions use `AGENTS.md`; platform-specific Rules and Hooks are not installed ([#518](https://github.com/rpamis/comet/issues/518)).
+
 ## What's Changed [0.5.2] - 2026-10-29
 
 ### Changed
@@ -14,6 +20,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **UTF-8 BOM check receipts**: Accept successful Native checks for unchanged JavaScript source with a UTF-8 BOM while preserving the original file bytes and candidate-drift safeguards.
 - **PR documentation assessment**: Allow a concrete explanation when a change needs no documentation update instead of requiring every PR to edit a README. Changes that need documentation must identify the updated pages; other checklist requirements remain mandatory.
 
 - **Cancelled Native history**: Explicitly migrate a fully stopped built-in cancellation after its original worktree is removed, without changing the portable checkpoint, original revision, or execution evidence. Interrupted imports resume from their bound source; active runs, unresolved cleanup, custom applications, conflicting records, and surviving source-worktree ownership remain protected ([#513](https://github.com/rpamis/comet/issues/513)).
