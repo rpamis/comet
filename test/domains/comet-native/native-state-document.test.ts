@@ -4,6 +4,7 @@ import * as yaml from 'yaml';
 import {
   NATIVE_MANAGED_RUN_MARKER,
   parseNativeStateDocument,
+  hasNativeManagedRunMarker,
 } from '../../../domains/comet-native/native-state-document.js';
 
 vi.mock('yaml', async (importOriginal) => {
@@ -15,6 +16,25 @@ const prefix = `${NATIVE_MANAGED_RUN_MARKER}schema: comet.native.v4\nname: sampl
 const read = (source: string) => parseNativeStateDocument(source, 'Native state');
 
 describe('Native checkpoint YAML compatibility and parser budget', () => {
+  it.each(['\n', '\r\n'])(
+    'recognizes the exact managed Run header with %j line endings',
+    (ending) => {
+      expect(
+        hasNativeManagedRunMarker(
+          `# comet-execution: managed-run${ending}schema: example${ending}`,
+        ),
+      ).toBe(true);
+      for (const invalid of [
+        '# comet-execution: managed-run',
+        '# comet-execution: managed-run-extra\n',
+        ' # comet-execution: managed-run\n',
+        '\n# comet-execution: managed-run\n',
+        '# comet-execution: managed-run\rschema: example',
+      ]) {
+        expect(hasNativeManagedRunMarker(invalid)).toBe(false);
+      }
+    },
+  );
   it.each([2, 10, 100])(
     'keeps the entire %s-item checkpoint while passing only ordinary state to the YAML parser',
     (count) => {

@@ -6241,6 +6241,146 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-528-applied-archive-recovery",
+      "sources": ["https://github.com/rpamis/comet/issues/528"],
+      "behavior": "Specs 已应用且原 Action 为 unknown 后，生成输出变化仍可通过公开归档入口补记原结果并完成收尾，不重复写 Specs或阻塞后续 change。",
+      "coverageLevel": "runtime",
+      "reproduction": "8c8478cd 的实际 Native Runtime 在 specs-applied 后将原 Action 标记 unknown，修改 ignored 生成输出，再恢复时报候选漂移；同一输入的公开 CLI 回归固定原事务。",
+      "expected": "继续原 Action、attempt 和事务；Specs 字节及 mtime 不变，重复恢复不增加 revision，后续 change 可以创建；响应明确未重新验收当前生成输入。",
+      "forbidden": "重跑检查、重写 Specs、建立新 Run、伪造当前检查通过或永久占用 workspace。",
+      "rootCause": "恢复复用了写入前的完整实时输入绑定，没有区分已完成事务副作用与当前生成输出的验收。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^recovers an applied unknown Archive through the public CLI with generated-output changes$",
+          "requiredNames": [
+            "recovers an applied unknown Archive through the public CLI with generated-output changes"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-528-recovery-original-evidence-guards",
+      "sources": ["https://github.com/rpamis/comet/issues/528"],
+      "behavior": "归档中断恢复仍拒绝实现、搬迁材料或已冻结事务的未批准变化。",
+      "coverageLevel": "runtime",
+      "reproduction": "沿真实 Native Runtime 应用 Specs 并标记 unknown，分别修改实现、brief 或同时重写事务与目标 Spec。",
+      "expected": "恢复失败，原 Archive Action、状态和已记录的执行证据保留。",
+      "forbidden": "仅凭 Specs 与被重写事务相等就放行，或借生成输出恢复豁免隐藏源代码、正式材料与事务篡改。",
+      "rootCause": "历史收尾必须保留原候选和冻结 Spec 的独立绑定，不能通过跳过全部候选校验解决恢复阻塞。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^recovers an applied unknown Archive through the public CLI with (implementation|material|transaction) changes$",
+          "requiredNames": [
+            "recovers an applied unknown Archive through the public CLI with implementation changes",
+            "recovers an applied unknown Archive through the public CLI with material changes",
+            "recovers an applied unknown Archive through the public CLI with transaction changes"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-528-legacy-archive-recovery",
+      "sources": ["https://github.com/rpamis/comet/issues/528"],
+      "behavior": "新旧检查收据及缺少恢复摘要的既有归档预检，均只凭原检查和批准材料核对已应用事务，不把变化后的生成输入视为当前验收通过。",
+      "coverageLevel": "runtime",
+      "reproduction": "使用真实执行器取得当前或旧格式收据，旧格式预检不含 recoveryBinding；原 apply 停止后生成输出变化，8c8478cd 的同一恢复调用被实时候选绑定拒绝。",
+      "expected": "原实现和批准材料可证明时恢复、完成一次归档；当前检查仍报告过期，不运行新检查或重写 Specs。",
+      "forbidden": "从当前文件补造历史信任、接受缺失原检查或未经批准的材料。",
+      "rootCause": "旧记录的完整摘要包含生成输出；必须复用原检查的实现证明和批准材料，而非重建当前摘要后自证。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^recovers applied Archive effects after generated output churn without revalidating current checks \\(legacy=(false|true)\\)$",
+          "requiredNames": [
+            "recovers applied Archive effects after generated output churn without revalidating current checks (legacy=false)",
+            "recovers applied Archive effects after generated output churn without revalidating current checks (legacy=true)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-527-archived-worktree-routing",
+      "sources": ["https://github.com/rpamis/comet/issues/527"],
+      "behavior": "Classic 完成交付的归档合入另一 worktree 后，next 与 checkpoint 读取原权威 Run；select 明确拒绝已归档需求，amend 不影响归属解析。",
+      "coverageLevel": "public-cli",
+      "reproduction": "8c8478cd 的独立 state bundle 在临时 worktree 完成 Classic 交付并合入 integration；amend 与不 amend 两种 next 均退出70、checkpoint与正文不一致。",
+      "expected": "next 返回 done，checkpoint 成功，select 只返回已归档不能选择；原 Run 和归档字节保持，目标不导入重复 owner。",
+      "forbidden": "把归档副本当作新活动 Run、丢失交付历史、重跑 Archive或把已归档需求选为活动工作。",
+      "rootCause": "命令在跨 worktree 发现原已完成权威前，尝试从合并后的交付前 checkpoint 建立本地归属。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "^reads completed archived history across worktrees after amend=(false|true) without importing a duplicate Run$",
+          "requiredNames": [
+            "reads completed archived history across worktrees after amend=false without importing a duplicate Run",
+            "reads completed archived history across worktrees after amend=true without importing a duplicate Run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-527-archived-copy-integrity",
+      "sources": ["https://github.com/rpamis/comet/issues/527"],
+      "behavior": "跨 worktree 查询不能利用原完成记录隐藏本地归档副本的 checkpoint 损坏。",
+      "coverageLevel": "public-cli",
+      "reproduction": "跨 worktree 查询成功后，保留 managed-run 标记并篡改本地归档 checkpoint 的 hash，再运行同一独立 state bundle。",
+      "expected": "查询失败，原权威 Run 保持不变，目标不产生同名 owner。",
+      "forbidden": "跳过 checkpoint 验证或覆盖损坏副本后声称恢复成功。",
+      "rootCause": "跨工作区路由需要证明归档副本与原交付基线匹配，不能只按 change 名称寻找一个 completed Run。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "^reads completed archived history across worktrees after amend=(false|true) without importing a duplicate Run$",
+          "requiredNames": [
+            "reads completed archived history across worktrees after amend=false without importing a duplicate Run",
+            "reads completed archived history across worktrees after amend=true without importing a duplicate Run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-513-crlf-history-migration",
+      "sources": ["https://github.com/rpamis/comet/issues/513"],
+      "behavior": "原 worktree 删除后，CRLF 检出的已停止 Native 取消记录仍可具名迁移历史，原 portable 字节与 revision 不变。",
+      "coverageLevel": "public-cli",
+      "reproduction": "8c8478cd 上运行原 linked worktree 合并删除案例，Windows CRLF 检出后 Runtime 与 doctor bundle 均退出65、managed Run checkpoint 未被识别。",
+      "expected": "Runtime 与独立 doctor bundle 迁移成功、重复调用稳定，全局 doctor 健康，原停止证据和 portable CRLF 字节完整保留。",
+      "forbidden": "通过重写换行、删除 checkpoint、假验收或放宽活动 Run 绑定来消除错误。",
+      "rootCause": "多个 Native 入口将含 LF 的完整字符串作为标记，只接受 LF，Git 的 CRLF 检出被误判为非 SDK 文档。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-history.test.ts",
+          "namePattern": "(?:migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through runtime|migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through bundle)$",
+          "requiredNames": [
+            "Native terminal history lifecycle migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through runtime",
+            "Native terminal history lifecycle migrates a stopped portable cancellation after its linked worktree is removed without changing evidence through bundle"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-527-missing-original-history",
+      "sources": ["https://github.com/rpamis/comet/issues/527"],
+      "behavior": "原已完成 worktree 被删除后，归档副本明确报告缺少原完成 Run 历史，不导入交付前 checkpoint 或伪造 done。",
+      "coverageLevel": "public-cli",
+      "reproduction": "合入归档后删除原 linked worktree，再从主工作区查询；旧代码只报 checkpoint 与状态不匹配，未说明缺失的交付证据。",
+      "expected": "明确指出需要 original completed Run history，保留归档字节且不产生本地同名 owner。",
+      "forbidden": "把交付前基线当作完成回执、修改 checkpoint、重跑 Archive或隐式重建活动 Run。",
+      "rootCause": "分支绑定失败没有区分可定位的原权威与只剩交付前 portable 基线的冷查询。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "^reads completed archived history across worktrees after amend=(false|true) without importing a duplicate Run$",
+          "requiredNames": [
+            "reads completed archived history across worktrees after amend=false without importing a duplicate Run",
+            "reads completed archived history across worktrees after amend=true without importing a duplicate Run"
+          ]
+        }
+      ]
     }
   ]
 }

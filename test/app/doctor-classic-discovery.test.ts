@@ -8,8 +8,15 @@ import { PLATFORMS } from '../../platform/install/platforms.js';
 import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
 
 const repositoryRoot = path.resolve('.');
-const cli = path.join(repositoryRoot, 'bin', 'comet.js');
-const state = path.join(repositoryRoot, 'assets', 'skills', 'comet', 'scripts', 'comet-state.mjs');
+const cli = path.join(process.env.COMET_TEST_PACKAGE_ROOT ?? repositoryRoot, 'bin', 'comet.js');
+const state = path.join(
+  process.env.COMET_TEST_PACKAGE_ROOT ?? repositoryRoot,
+  'assets',
+  'skills',
+  'comet',
+  'scripts',
+  'comet-state.mjs',
+);
 
 interface DoctorPayload {
   healthy: boolean;

@@ -2213,6 +2213,71 @@ export async function assertNativeSdkCandidateUnchanged(options: {
   );
 }
 
+/** 旧归档没有单独恢复摘要时，只从原检查证明实现身份；不把生成输出变化当作新验收。 */
+export async function assertNativeSdkArchiveRecoveryCandidate(options: {
+  run: Readonly<WorkflowRun>;
+  projectRoot: string;
+  archiveOwnedPaths: readonly string[];
+  legacyArchiveOverlay?: NativeLegacyArchiveOverlay;
+}) {
+  const state = parseNativePortableState(options.run.state);
+  const action = [...options.run.actions]
+    .reverse()
+    .find(
+      (entry) =>
+        ['verify.checks', 'verify.requested-checks'].includes(entry.stepId) &&
+        entry.status === 'succeeded' &&
+        (entry.outcome?.output as { candidateId?: unknown })?.candidateId ===
+          state.builder_handoff?.candidate_id,
+    );
+  const output = action?.outcome?.output as NativeSdkCheckOutcome | undefined;
+  if (!output?.candidateInputFingerprintGate)
+    throw new NativeSdkCandidateDriftError(
+      '旧 Archive 缺少原候选检查摘要，不能从当前文件建立恢复信任',
+    );
+  const paths = await nativeProjectPaths(
+    options.projectRoot,
+    (options.run.input as { artifactRootRef: string }).artifactRootRef,
+    { readOnly: true },
+  );
+  let expected = output.candidateInputFingerprintGate;
+  if (output.rawInput) {
+    const original = await readRawInput(
+      paths.workspaceRuntimeRoot,
+      options.run,
+      output.rawInput.afterRef,
+    );
+    const baseline = await rawCandidateHash(
+      {
+        ...original,
+        files: original.files.filter(
+          (file) =>
+            !file.generated &&
+            !options.archiveOwnedPaths.some(
+              (ref) => file.path === ref || file.path.startsWith(`${ref}/`),
+            ),
+        ),
+      },
+      paths,
+      state,
+    );
+    if (baseline === null)
+      throw new NativeSdkCandidateDriftError('旧 Archive 原候选输入快照不完整');
+    expected = baseline;
+  }
+  const gateOptions = { ...options, excludeGeneratedInputs: true };
+  if ((await nativeSdkCandidateInputGate(gateOptions)) === expected) return;
+  if (
+    !output.rawInput &&
+    (await nativeSdkCandidateInputGate({ ...gateOptions, legacyExecutionBinding: true })) ===
+      expected
+  )
+    return;
+  throw new NativeSdkCandidateDriftError(
+    '旧 Archive 原候选实现已变化或无法完整复核；保留原事务及检查证据',
+  );
+}
+
 /** Archive 可排除另有内容绑定的事务写入；其他路径仍使用原候选检查计划。 */
 export async function nativeSdkCandidateInputGate(options: {
   run: Readonly<WorkflowRun>;
@@ -2221,6 +2286,7 @@ export async function nativeSdkCandidateInputGate(options: {
   legacyArchiveOverlay?: NativeLegacyArchiveOverlay;
   legacyExecutionBinding?: boolean;
   includeGeneratedInputs?: boolean;
+  excludeGeneratedInputs?: boolean;
   observedInputs?: NativeRawInputSnapshot;
 }): Promise<string | null> {
   const state = parseNativePortableState(options.run.state);
@@ -2269,7 +2335,13 @@ export async function nativeSdkCandidateInputGate(options: {
         legacyArchiveOverlay: options.legacyArchiveOverlay,
         previous,
       }));
-    const candidate = await rawCandidateHash(snapshot, paths, state);
+    const candidate = await rawCandidateHash(
+      options.excludeGeneratedInputs
+        ? { ...snapshot, files: snapshot.files.filter((file) => !file.generated) }
+        : snapshot,
+      paths,
+      state,
+    );
     return options.includeGeneratedInputs && candidate !== null
       ? hashRuntimeValue({
           candidate,

@@ -370,7 +370,8 @@ describe('Native terminal history lifecycle', () => {
         rootDir: path.join(resolveWorkspaceRuntimeRootSync(target), 'sdk-runs/native'),
       });
       const portableFile = path.join(target, 'docs/comet/changes', f.name, 'comet-state.yaml');
-      const portable = await fs.readFile(portableFile, 'utf8');
+      const portable = (await fs.readFile(portableFile, 'utf8')).replace(/\r?\n/gu, '\r\n');
+      await fs.writeFile(portableFile, portable);
       expect((await cli(['doctor', f.name, '--repair', '--confirmed'])).exitCode).not.toBe(0);
       expect(await targetStore.read(f.name)).toBeNull();
       const migrated =
@@ -380,7 +381,10 @@ describe('Native terminal history lifecycle', () => {
               spawnSync(
                 process.execPath,
                 [
-                  path.resolve('assets/skills/comet-native/scripts/comet-native-doctor.mjs'),
+                  path.resolve(
+                    process.env.COMET_TEST_PACKAGE_ROOT ?? '.',
+                    'assets/skills/comet-native/scripts/comet-native-doctor.mjs',
+                  ),
                   f.name,
                   '--migrate-history',
                   '--project-root',
@@ -638,7 +642,11 @@ describe('Native terminal history lifecycle', () => {
       const write = atomicFiles.atomicWriteContainedText;
       vi.spyOn(atomicFiles, 'atomicWriteContainedText').mockImplementation(async (...args) => {
         await write(...args);
-        if (args[0].includes(stage === 'journal' ? '/history-imports/' : '/state-projections/'))
+        if (
+          args[0]
+            .replaceAll('\\', '/')
+            .includes(stage === 'journal' ? '/history-imports/' : '/state-projections/')
+        )
           throw new Error('Injected publication interruption');
       });
     } else if (stage === 'run' || stage === 'owner') {
@@ -784,7 +792,7 @@ describe('Native terminal history lifecycle', () => {
     const write = atomicFiles.atomicWriteContainedText;
     vi.spyOn(atomicFiles, 'atomicWriteContainedText').mockImplementation(async (...args) => {
       await write(...args);
-      if (args[0].includes('/history-imports/')) journalPublished = true;
+      if (args[0].replaceAll('\\', '/').includes('/history-imports/')) journalPublished = true;
     });
     const result = JSON.parse(
       (

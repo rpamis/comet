@@ -2,7 +2,7 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.5.2] - 2026-10-29
+## What's Changed [0.5.4] - 2026-11-01
 
 ### Added
 
@@ -18,8 +18,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Interrupted Native Archive**: Recover an applied Spec transaction from its original implementation, approved materials, report, and frozen Spec evidence when generated outputs change after interruption. Continue the original Actions without rewriting Specs or treating historical checks as fresh verification; changed implementation, materials, reports, and transactions remain blocked ([#528](https://github.com/rpamis/comet/issues/528)).
+- **Classic archived worktree queries**: Resolve merged archive copies through the original completed Run without importing duplicate ownership, including after an amended delivery commit. Preserve checkpoint validation and the refusal to select an archived change as active work ([#527](https://github.com/rpamis/comet/issues/527)).
 - **UTF-8 BOM check receipts**: Accept successful Native checks for unchanged JavaScript source with a UTF-8 BOM while preserving the original file bytes and candidate-drift safeguards.
-- **Cancelled Native history**: Explicitly migrate a fully stopped built-in cancellation after its original worktree is removed, without changing the portable checkpoint, original revision, or execution evidence. Interrupted imports resume from their bound source; active runs, unresolved cleanup, custom applications, conflicting records, and surviving source-worktree ownership remain protected ([#513](https://github.com/rpamis/comet/issues/513)).
+- **Cancelled Native history**: Explicitly migrate a fully stopped built-in cancellation after its original worktree is removed, including Git checkouts using CRLF, without changing the portable checkpoint, original revision, or execution evidence. Interrupted imports resume from their bound source; active runs, unresolved cleanup, custom applications, conflicting records, and surviving source-worktree ownership remain protected ([#513](https://github.com/rpamis/comet/issues/513)).
 - **Native Shape target changes**: Before Shape confirmation, replace a previously declared target Spec or withdraw an unapproved target capability through the existing requirement-revision continuation without deleting its canonical Spec. Replacement proposals still require fresh approval; exemptions and unrelated removals cannot hide missing declared Specs, and confirmed target Specs remain required ([#516](https://github.com/rpamis/comet/issues/516)).
 - **Classic Doctor discovery**: Ignore non-change entries such as `.DS_Store` in both Classic layouts, while continuing to report malformed real changes and unsafe paths ([#515](https://github.com/rpamis/comet/issues/515)).
 

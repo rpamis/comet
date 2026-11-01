@@ -237,6 +237,15 @@ async function archiveNativeSdkChangeValue(options: {
     const result = success('archive', {
       change: options.name,
       recoveredAction: { id: action.id, stepId: action.stepId },
+      ...(action.stepId === 'archive.execute' &&
+      (run.outputs['archive.execute']?.value as { recoveryBinding?: string })?.recoveryBinding
+        ? {
+            historicalRecovery: true,
+            currentImplementationRevalidated: false,
+            recoveryMessage:
+              '已核对原候选实现、归档材料和已应用的 Specs，补记原 Action；没有重新运行检查，当前生成输入未重新验收。',
+          }
+        : {}),
       ...(action.stepId === 'archive.finalize'
         ? {
             historicalRecovery: !resumedFinalization,

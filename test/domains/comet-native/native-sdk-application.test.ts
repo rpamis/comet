@@ -13,7 +13,7 @@ import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { requireFileSymlink } from '../../helpers/file-symlink.js';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -72,6 +72,7 @@ import {
   nativeSdkArchivePreflightExecutor,
   nativeSdkArchivePreflightValidator,
   nativeSdkArchiveFinalizeExecutor,
+  nativeSdkArchiveApplyExecutor,
 } from '../../../domains/comet-native/native-sdk-archive.js';
 import { archiveNativeSdkChange } from '../../../domains/comet-native/native-sdk-archive-command.js';
 import * as nativeRequirements from '../../../domains/comet-native/native-portable-requirements.js';
@@ -464,7 +465,7 @@ async function awaitingArchiveApplication(
   storeKind: 'memory' | 'file' | 'sdk' = 'memory',
   beforePreflight?: (options: { root: string; run: WorkflowRun }) => void | Promise<void>,
   stopBeforePreflight = false,
-  beforeChecks?: (root: string) => Promise<void>,
+  prepareProject?: (root: string) => Promise<void>,
   application = nativeApplication(),
   beforeShape?: (root: string) => Promise<void>,
   verificationChecks: unknown[] = [],
@@ -474,8 +475,11 @@ async function awaitingArchiveApplication(
     storeKind,
     application,
     true,
-    beforeChecks,
-    beforeShape,
+    undefined,
+    async (root) => {
+      await beforeShape?.(root);
+      await prepareProject?.(root);
+    },
   );
   const { root, runtime } = prepared;
   let run = prepared.run;
@@ -8275,6 +8279,7 @@ function legacyArchiveApplication() {
               const result = await executor.execute(...args);
               const output = { ...(result.output as Record<string, never>) };
               delete output.candidateBinding;
+              delete output.recoveryBinding;
               return { ...result, output };
             },
           },
@@ -8292,6 +8297,7 @@ function legacyArchiveApplication() {
               );
               const output = { ...(expected.output as Record<string, never>) };
               delete output.candidateBinding;
+              delete output.recoveryBinding;
               return {
                 accepted:
                   expected.status === args.outcome.status &&
@@ -9374,3 +9380,176 @@ it('keeps real check stop proof through cancel and cold copy without replay', as
     else process.env.COMET_DATA_DIR = previous;
   }
 });
+
+it.each(['generated-output', 'implementation', 'material', 'transaction'] as const)(
+  'recovers an applied unknown Archive through the public CLI with %s changes',
+  async (change) => {
+    const f = await awaitingArchiveApplication('sdk', undefined, false, async (root) => {
+      await initializeArchiveGit(root);
+      await fs.writeFile(path.join(root, '.gitignore'), '.next/\n');
+      await fs.mkdir(path.join(root, '.next/server'), { recursive: true });
+      await fs.writeFile(path.join(root, '.next/server/output.js'), 'original generated output');
+    });
+    const action = f.run.actions.at(-1)!;
+    const context = { requestId: 'lost-apply', projectRoot: f.root };
+    const claimed = await f.runtime.claim({
+      runId: f.run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: nativeSdkArchiveApplyExecutor.id,
+      claimToken: 'original-apply-claim',
+      context,
+    });
+    if (process.env.COMET_TEST_PACKAGE_ROOT) {
+      const input = path.join(f.paths.runtimeDir, 'interrupted-archive-input.json');
+      await fs.writeFile(input, JSON.stringify({ run: claimed, context }));
+      const worker = spawn(
+        process.execPath,
+        [
+          '--input-type=module',
+          '-e',
+          `
+        import fs from 'node:fs';
+        const input=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));
+        const {nativeSdkArchiveApplyExecutor}=await import(process.argv[2]);
+        await nativeSdkArchiveApplyExecutor.execute(input.run.actions.at(-1),input.context,input.run);
+        process.stdout.write('SPECS_APPLIED\\n');
+        setInterval(()=>{},1000);
+      `,
+          input,
+          pathToFileURL(
+            path.join(
+              process.env.COMET_TEST_PACKAGE_ROOT,
+              'dist/domains/comet-native/native-sdk-archive.js',
+            ),
+          ).href,
+        ],
+        {
+          cwd: f.root,
+          env: { ...process.env, COMET_DAEMON: 'off' },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      );
+      await new Promise<void>((resolve, reject) => {
+        let output = '';
+        let errors = '';
+        let applied = false;
+        const timer = setTimeout(() => {
+          worker.kill('SIGKILL');
+          reject(new Error('Archive worker did not reach applied Specs'));
+        }, 30_000);
+        worker.stdout.on('data', (chunk) => {
+          output += chunk.toString();
+          if (output.includes('SPECS_APPLIED') && !applied) {
+            applied = true;
+            worker.kill('SIGKILL');
+          }
+        });
+        worker.stderr.on('data', (chunk) => {
+          errors += chunk.toString();
+        });
+        worker.once('error', (error) => {
+          clearTimeout(timer);
+          reject(error);
+        });
+        worker.once('close', () => {
+          clearTimeout(timer);
+          if (applied) resolve();
+          else reject(new Error(`Archive worker stopped before applying Specs: ${errors}`));
+        });
+      });
+    } else await nativeSdkArchiveApplyExecutor.execute(claimed.actions.at(-1)!, context, claimed);
+    const unknown = await f.runtime.markUnknown({
+      runId: f.run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      reason: 'Original Archive process stopped after writing Specs',
+    });
+    const lost = await reconcileNativeSdkExecutionStops(f.root, unknown, f.runtime);
+    const cli = async (args: string[]) => {
+      if (!process.env.COMET_TEST_PACKAGE_ROOT) return nativeDomain.runNativeCliDetailed(args);
+      const result = spawnSync(
+        process.execPath,
+        [path.join(process.env.COMET_TEST_PACKAGE_ROOT, 'bin/comet.js'), 'native', ...args],
+        { cwd: f.root, encoding: 'utf8', env: { ...process.env, COMET_DAEMON: 'off' } },
+      );
+      expect(result.error).toBeUndefined();
+      return { dispatch: JSON.parse(result.stdout) };
+    };
+    const transactionFile = path.join(
+      f.paths.transactionsDir,
+      `portable-archive-${f.run.runId}.json`,
+    );
+    const transaction = await fs.readFile(transactionFile, 'utf8');
+    const specFile = path.join(f.paths.specsDir, 'workflow/spec.md');
+    const spec = await fs.readFile(specFile);
+    const specStat = await fs.stat(specFile);
+    if (change === 'generated-output')
+      await fs.writeFile(path.join(f.root, '.next/server/output.js'), 'rebuilt output');
+    if (change === 'implementation')
+      await fs.appendFile(path.join(f.root, 'implementation.js'), '\nexport const unsafe = true;');
+    if (change === 'material')
+      await fs.appendFile(path.join(f.changeDir, 'brief.md'), '\nUnapproved scope.');
+    if (change === 'transaction') {
+      const value = JSON.parse(transaction);
+      value.spec_changes[0].content = '# Workflow\nUnconfirmed replacement.\n';
+      value.spec_changes[0].result_hash = createHash('sha256')
+        .update(value.spec_changes[0].content)
+        .digest('hex');
+      await fs.writeFile(transactionFile, JSON.stringify(value));
+      await fs.writeFile(specFile, value.spec_changes[0].content);
+    }
+    const recovered = await cli([
+      'archive',
+      f.run.runId,
+      '--recover',
+      '--project-root',
+      f.root,
+      '--json',
+    ]);
+    if (change !== 'generated-output') {
+      expect(recovered.dispatch.exitCode).not.toBe(0);
+      expect(await f.runtime.inspect(f.run.runId)).toEqual(lost);
+      return;
+    }
+    expect(recovered.dispatch.exitCode, JSON.stringify(recovered.dispatch)).toBe(0);
+    expect(recovered.dispatch.data).toMatchObject({
+      historicalRecovery: true,
+      currentImplementationRevalidated: false,
+    });
+    const completed = await cli(['archive', f.run.runId, '--project-root', f.root, '--json']);
+    expect(completed.dispatch.exitCode, JSON.stringify(completed.dispatch)).toBe(0);
+    const run = await f.runtime.inspect(f.run.runId);
+    expect(run.status).toBe('completed');
+    expect(run.actions.find((entry) => entry.id === action.id)).toMatchObject({
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      status: 'succeeded',
+    });
+    expect(run.actions.filter((entry) => entry.stepId === 'archive.execute')).toHaveLength(1);
+    expect(await fs.readFile(specFile)).toEqual(spec);
+    expect((await fs.stat(specFile)).mtimeMs).toBe(specStat.mtimeMs);
+    await expect(fs.access(transactionFile)).rejects.toMatchObject({ code: 'ENOENT' });
+    const again = await cli([
+      'archive',
+      f.run.runId,
+      '--recover',
+      '--project-root',
+      f.root,
+      '--json',
+    ]);
+    expect(again.dispatch.exitCode, JSON.stringify(again.dispatch)).toBe(0);
+    expect((await f.runtime.inspect(f.run.runId)).revision).toBe(run.revision);
+    const next = await cli([
+      'new',
+      'after-recovery',
+      '--isolation',
+      'current',
+      '--project-root',
+      f.root,
+      '--json',
+    ]);
+    expect(next.dispatch.exitCode, JSON.stringify(next.dispatch)).toBe(0);
+  },
+);

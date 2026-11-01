@@ -10,7 +10,7 @@ import {
 import { isDeepStrictEqual } from 'node:util';
 import { readProjectConfig } from './native-config.js';
 import { nativePortableStateFile } from './native-portable-storage.js';
-import { NATIVE_MANAGED_RUN_MARKER, parseNativeStateDocument } from './native-state-document.js';
+import { hasNativeManagedRunMarker, parseNativeStateDocument } from './native-state-document.js';
 import {
   readProtectedProjectFile,
   inspectProtectedProjectPath,
@@ -156,7 +156,7 @@ export async function migrateNativeSdkPortableCancellationHistory(
       )
     ).bytes;
     const source = sourceBytes.toString('utf8');
-    if (!source.startsWith(NATIVE_MANAGED_RUN_MARKER))
+    if (!hasNativeManagedRunMarker(source))
       throw new Error('Native history requires a managed Run checkpoint');
     const document = parseNativeStateDocument(
       source,

@@ -18,7 +18,10 @@ import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 import { createOpenSpecArchiveFixture } from '../../helpers/classic-openspec-fixture.js';
 import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
-import { parseClassicStateDocument } from '../../../domains/comet-classic/classic-state.js';
+import {
+  CLASSIC_MANAGED_RUN_MARKER,
+  parseClassicStateDocument,
+} from '../../../domains/comet-classic/classic-state.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -27,6 +30,12 @@ afterEach(async () => {
 });
 
 async function publicStateRuntime(root: string, command: 'state' | 'archive' = 'state') {
+  if (process.env.COMET_TEST_PACKAGE_ROOT)
+    return path.join(
+      process.env.COMET_TEST_PACKAGE_ROOT,
+      'assets/skills/comet/scripts',
+      `comet-${command}.mjs`,
+    );
   const runtime = path.join(root, `comet-${command}.mjs`);
   await build({
     entryPoints: [path.resolve(`domains/comet-classic/classic-${command}-entry.ts`)],
@@ -52,6 +61,7 @@ async function hotfix(
     interruptArchive?: boolean;
     forgedBaseline?: boolean;
     projectAlias?: boolean;
+    isolation?: 'current' | 'worktree';
   } = {},
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-delivery-scope-'));
@@ -69,7 +79,8 @@ async function hotfix(
         windowsVerbatimArguments: true,
       }).trim();
   }
-  const projectRoot = path.join(projectBase, 'project');
+  const integrationRoot = path.join(projectBase, 'project');
+  let projectRoot = integrationRoot;
   const home = path.join(root, 'home');
   await fs.mkdir(home);
   vi.stubEnv('HOME', home);
@@ -114,6 +125,11 @@ async function hotfix(
   git('init', '-b', 'main');
   git('add', '--all');
   git('commit', '-m', 'base');
+  if (options.isolation === 'worktree') {
+    const featureRoot = path.join(root, 'feature-worktree');
+    git('worktree', 'add', '-b', 'feature/example', featureRoot);
+    projectRoot = featureRoot;
+  }
   if (options.parked) {
     const native = await runNativeCli([
       'new',
@@ -185,7 +201,8 @@ async function hotfix(
       request,
     });
     expect(started.response.status, JSON.stringify(started.response)).toBe('succeeded');
-  } else await cli('state', 'init', 'example', 'hotfix', '--isolation', 'current');
+  } else
+    await cli('state', 'init', 'example', 'hotfix', '--isolation', options.isolation ?? 'current');
   const activeRef = 'openspec/changes/example';
   await put(`${activeRef}/proposal.md`, '# Proposal\nCorrect the ready constant.\n');
   await put(`${activeRef}/design.md`, '# Design\nKeep the existing public API.\n');
@@ -286,6 +303,7 @@ async function hotfix(
   return {
     root,
     projectRoot,
+    integrationRoot,
     remoteRoot,
     git,
     put,
@@ -1007,3 +1025,73 @@ it('revalidates a portable historical archive outcome without inventing new exec
   expect((await inspectClassicSdkRun(copiedRoot, 'example')).run).toEqual(restored.run);
   expect(await f.openSpec.invocations()).toHaveLength(1);
 });
+
+it.each([false, true])(
+  'reads completed archived history across worktrees after amend=%s without importing a duplicate Run',
+  async (amend) => {
+    const f = await hotfix({ isolation: 'worktree' });
+    f.commitImplementation();
+    const commit = f.commitArchive();
+    expect(
+      (await f.cli('state', 'complete-delivery', 'example', '--commit', commit)).nextAction.kind,
+    ).toBe('done');
+    if (amend) {
+      await f.put('note.md', 'post-delivery note\n');
+      f.git('add', '--', 'note.md');
+      f.git('commit', '--amend', '--no-edit');
+    }
+    const original = await f.inspect();
+    const integration = f.integrationRoot;
+    execFileSync('git', ['merge', '--ff-only', 'feature/example'], {
+      cwd: integration,
+      stdio: 'pipe',
+    });
+    const stateFile = path.join(integration, f.archiveRef, 'comet-state.yaml');
+    const state = await fs.readFile(stateFile);
+    const runtime = await publicStateRuntime(f.root);
+    for (const command of ['next', 'checkpoint', 'select']) {
+      const result = spawnSync(process.execPath, [runtime, command, 'example', '--json'], {
+        cwd: integration,
+        encoding: 'utf8',
+      });
+      expect(result.status, result.stdout || result.stderr).toBe(command === 'select' ? 1 : 0);
+      if (command === 'select') {
+        expect(result.stdout).toContain('change is archived');
+        expect(result.stdout).not.toContain('checkpoint');
+      }
+      if (command === 'next') expect(JSON.parse(result.stdout).data.nextAction.kind).toBe('done');
+    }
+    expect(await fs.readFile(stateFile)).toEqual(state);
+    expect((await f.inspect()).run).toEqual(original.run);
+    const localOwner = path.join(
+      resolveWorkspaceRuntimeRootSync(integration),
+      'change-owners/classic/example.json',
+    );
+    await expect(fs.access(localOwner)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await f.openSpec.invocations()).toHaveLength(1);
+    const invalid = parse(state.toString('utf8'));
+    invalid.run_checkpoint.hash = '0'.repeat(64);
+    await fs.writeFile(stateFile, CLASSIC_MANAGED_RUN_MARKER + stringify(invalid));
+    const rejected = spawnSync(process.execPath, [runtime, 'next', 'example', '--json'], {
+      cwd: integration,
+      encoding: 'utf8',
+    });
+    expect(rejected.status).not.toBe(0);
+    expect((await f.inspect()).run).toEqual(original.run);
+    await expect(fs.access(localOwner)).rejects.toMatchObject({ code: 'ENOENT' });
+    await fs.writeFile(stateFile, state);
+    expect(path.resolve(f.projectRoot).startsWith(path.resolve(f.root) + path.sep)).toBe(true);
+    execFileSync('git', ['worktree', 'remove', '--force', f.projectRoot], {
+      cwd: integration,
+      stdio: 'pipe',
+    });
+    const orphaned = spawnSync(process.execPath, [runtime, 'next', 'example', '--json'], {
+      cwd: integration,
+      encoding: 'utf8',
+    });
+    expect(orphaned.status).not.toBe(0);
+    expect(orphaned.stdout).toContain('original completed Run history');
+    expect(await fs.readFile(stateFile)).toEqual(state);
+    await expect(fs.access(localOwner)).rejects.toMatchObject({ code: 'ENOENT' });
+  },
+);

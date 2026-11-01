@@ -7,6 +7,7 @@ import {
   createMemoryRuntimeStore,
   createFileRuntimeStore,
   createRuntime,
+  hashRuntimeValue,
   type WorkflowRun,
   type RuntimeValue,
 } from '../../../domains/engine/runtime.js';
@@ -205,6 +206,7 @@ async function succeedLatestAction(
 async function checkedCandidate(
   options: {
     legacyReceipt?: boolean;
+    legacyArchivePreflight?: boolean;
     artifactRootRef?: string;
     receiptFault?: ReceiptFault;
     checkSource?: string;
@@ -284,7 +286,44 @@ Run focused Native checks.
     createdAt: '2026-10-23T00:00:00.000Z',
     nextAction: 'prepare-shape-confirmation',
   });
-  const application = defineNativeWorkflowApplication();
+  let application = defineNativeWorkflowApplication();
+  if (options.legacyArchivePreflight) {
+    const original = application.executors.find(
+      (entry) => entry.id === 'comet-native-archive-preflight',
+    )!;
+    const strip = (result: Awaited<ReturnType<typeof original.execute>>) => {
+      const output = { ...(result.output as Record<string, RuntimeValue>) };
+      delete output.recoveryBinding;
+      return { ...result, output };
+    };
+    application = {
+      ...application,
+      executors: application.executors.map((executor) =>
+        executor === original
+          ? {
+              ...executor,
+              execute: async (...args: Parameters<typeof original.execute>) =>
+                strip(await original.execute(...args)),
+            }
+          : executor,
+      ),
+      validators: application.validators.map((validator) =>
+        validator.id === 'comet-native-archive-preflight-outcome'
+          ? {
+              ...validator,
+              validate: async (args: Parameters<typeof validator.validate>[0]) => {
+                const expected = strip(await original.execute(args.action, args.context, args.run));
+                return {
+                  accepted:
+                    expected.status === args.outcome.status &&
+                    hashRuntimeValue(expected.output!) === hashRuntimeValue(args.outcome.output),
+                };
+              },
+            }
+          : validator,
+      ),
+    };
+  }
   const storeOptions = { rootDir: path.join(resolveWorkspaceRuntimeRootSync(root), 'sdk-runs') };
   const store = options.legacyReceipt
     ? createFileRuntimeStore<WorkflowRun>(storeOptions)
@@ -2255,3 +2294,107 @@ it('refreshes an explicitly selected Git check after byte-identical staging and 
   expect(await fs.readFile(path.join(root, '.git/a9-once'), 'utf8')).toBe('once');
   expect(await fs.readFile(path.join(root, 'value.ts'))).toEqual(originalBytes);
 });
+
+it.each([false, true])(
+  'recovers applied Archive effects after generated output churn without revalidating current checks (legacy=%s)',
+  async (legacy) => {
+    const { nativeSdkArchiveApplyExecutor, recoverNativeSdkArchiveOutcome } =
+      await import('../../../domains/comet-native/native-sdk-archive.js');
+    const prepared = await checkedCandidate({
+      legacyReceipt: legacy,
+      legacyArchivePreflight: legacy,
+    });
+    const { root, runtime, paths } = prepared;
+    let run = await submitVerifierResult(prepared);
+    run = await runtime.execute({
+      runId: run.runId,
+      actionId: run.actions.at(-1)!.id,
+      executorId: 'comet-native-report',
+      context: { requestId: 'recovery-report', projectRoot: root },
+    });
+    const approval = run.waits.at(-1)!;
+    run = await runtime.resolveWait({
+      runId: run.runId,
+      waitId: approval.id,
+      proposalHash: approval.proposalHash,
+      decisionId: 'recovery-approved',
+      choice: 'approved',
+    });
+    for (const executorId of ['comet-native-report-revalidate', 'comet-native-archive-preflight']) {
+      run = await runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId,
+        context: { requestId: executorId, projectRoot: root },
+      });
+    }
+    const action = run.actions.at(-1)!;
+    const context = { requestId: 'interrupted-archive', projectRoot: root };
+    run = await runtime.claim({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'comet-native-archive-apply',
+      claimToken: 'archive-original-claim',
+      context,
+    });
+    await nativeSdkArchiveApplyExecutor.execute(run.actions.at(-1)!, context, run);
+    const specFile = path.join(paths.specsDir, 'workflow/spec.md');
+    const spec = await fs.readFile(specFile);
+    const stat = await fs.stat(specFile);
+    await runtime.markUnknown({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      reason: 'Original executor stopped after applying Specs',
+    });
+    await writeProjectFile(root, '.next/server/app/page.js', 'rebuilt after interruption');
+    if (legacy) {
+      const unchanged = await runtime.inspect(run.runId);
+      const transactionFile = path.join(
+        paths.transactionsDir,
+        `portable-archive-${run.runId}.json`,
+      );
+      for (const file of [
+        path.join(root, 'value.ts'),
+        path.join(prepared.changeDir, 'brief.md'),
+        transactionFile,
+      ]) {
+        const original = await fs.readFile(file, 'utf8');
+        const changed =
+          file === transactionFile
+            ? JSON.stringify({
+                ...JSON.parse(original),
+                spec_changes: JSON.parse(original).spec_changes.map(
+                  (entry: Record<string, unknown>) => ({ ...entry, result_hash: '0'.repeat(64) }),
+                ),
+              })
+            : `${original}\nUnapproved change.\n`;
+        await fs.writeFile(file, changed);
+        await expect(
+          recoverNativeSdkArchiveOutcome({ runtime, runId: run.runId, projectRoot: root }),
+        ).rejects.toThrow();
+        expect(await runtime.inspect(run.runId)).toEqual(unchanged);
+        await fs.writeFile(file, original);
+      }
+    }
+    run = await recoverNativeSdkArchiveOutcome({ runtime, runId: run.runId, projectRoot: root });
+    expect(run.actions.find((entry) => entry.id === action.id)).toMatchObject({
+      status: 'succeeded',
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+    });
+    await expect(nativeSdkCurrentCheckSummaries({ run, projectRoot: root })).rejects.toThrow();
+    run = await runtime.execute({
+      runId: run.runId,
+      actionId: run.actions.at(-1)!.id,
+      executorId: 'comet-native-archive-finalize',
+      context: { requestId: 'recovery-finalize', projectRoot: root },
+    });
+    expect(run.status).toBe('completed');
+    expect(await fs.readFile(specFile)).toEqual(spec);
+    expect((await fs.stat(specFile)).mtimeMs).toBe(stat.mtimeMs);
+    expect(run.actions.filter((entry) => entry.stepId === 'archive.execute')).toHaveLength(1);
+  },
+);

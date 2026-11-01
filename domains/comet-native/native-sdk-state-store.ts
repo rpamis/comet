@@ -8,7 +8,11 @@ import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import path from 'node:path';
 import { stringify } from 'yaml';
-import { NATIVE_MANAGED_RUN_MARKER, parseNativeStateDocument } from './native-state-document.js';
+import {
+  NATIVE_MANAGED_RUN_MARKER,
+  hasNativeManagedRunMarker as hasNativeManagedRunMarkerText,
+  parseNativeStateDocument,
+} from './native-state-document.js';
 
 import {
   commitNativeSdkCancellation,
@@ -203,9 +207,9 @@ export async function hasNativeManagedRunMarker(file: string): Promise<boolean> 
   const { text } = await readNativeTextFilePrefix({
     root: path.dirname(file),
     ref: path.basename(file),
-    maxBytes: Buffer.byteLength(NATIVE_MANAGED_RUN_MARKER),
+    maxBytes: Buffer.byteLength(NATIVE_MANAGED_RUN_MARKER) + 1,
   });
-  return text === NATIVE_MANAGED_RUN_MARKER;
+  return hasNativeManagedRunMarkerText(text);
 }
 
 export async function hasNativePortableRunCheckpoint(
@@ -213,7 +217,7 @@ export async function hasNativePortableRunCheckpoint(
   runId: string,
 ): Promise<boolean> {
   const source = await fs.readFile(file, 'utf8');
-  if (!source.startsWith(NATIVE_MANAGED_RUN_MARKER)) return false;
+  if (!hasNativeManagedRunMarkerText(source)) return false;
   const data = parseNativeStateDocument(source, 'Native state file') as Record<string, unknown>;
   return readPortableRunCheckpoint(data[PORTABLE_RUN_CHECKPOINT_KEY], runId) !== null;
 }
@@ -351,7 +355,7 @@ export function createNativeSdkStateStore(
       file = archivedFile;
       source = await readPortableSource(file);
     }
-    if (!source.startsWith(NATIVE_MANAGED_RUN_MARKER)) return null;
+    if (!hasNativeManagedRunMarkerText(source)) return null;
     const data = parseNativeStateDocument(source, 'Native state file') as Record<string, unknown>;
     const saved = readPortableRunCheckpoint(data[PORTABLE_RUN_CHECKPOINT_KEY], runId, {
       preserveSourceRevision: true,
@@ -588,7 +592,7 @@ export function createNativeSdkStateStore(
       if (
         !current ||
         !sameState(current, state) ||
-        !currentSource?.startsWith(NATIVE_MANAGED_RUN_MARKER) ||
+        !hasNativeManagedRunMarkerText(currentSource ?? '') ||
         !checkpointMatches
       ) {
         if (options.readOnly)
