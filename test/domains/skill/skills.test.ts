@@ -4646,11 +4646,25 @@ describe('skills', () => {
   });
 
   describe('mergeProjectConfig', () => {
+    it.each([true, false])(
+      'preserves change_walkthrough %s across repeated installation updates',
+      async (enabled) => {
+        await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+        const file = path.join(tmpDir, '.comet/config.yaml');
+        await fs.writeFile(file, `change_walkthrough: ${enabled}\ncustom_key: keep\n`);
+        await mergeProjectConfig(tmpDir, 'zh-CN');
+        await mergeProjectConfig(tmpDir, 'en');
+        const source = await fs.readFile(file, 'utf8');
+        expect(parse(source)).toMatchObject({ change_walkthrough: enabled, custom_key: 'keep' });
+        expect(source).toContain('extra explanation tokens');
+      },
+    );
     it('creates config with defaults when no file exists', async () => {
       await mergeProjectConfig(tmpDir);
       const content = await fs.readFile(path.join(tmpDir, '.comet', 'config.yaml'), 'utf-8');
       expect(parse(content)).toMatchObject({
         ambient_resume: true,
+        change_walkthrough: true,
         classic: {
           artifact_layout: 'docs',
           language: 'en',

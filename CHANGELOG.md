@@ -2,10 +2,11 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.5.4] - 2026-11-01
+## What's Changed [0.5.2] - 2026-11-02
 
 ### Added
 
+- **Change walkthroughs**: Generate a standalone HTML explanation of Native and Classic changes at Build completion by default. Read before/after behavior by feature, expand files and key code, and see actual verification results updated on the same page during Verify. Optional flow and before/after diagrams connect the explanation to its code. Compact, responsive pages follow the system light or dark theme, and existing pages stay with archived materials. Set `change_walkthrough: false` in project config to skip extra explanation and rendering; init and update preserve this choice ([#519](https://github.com/rpamis/comet/issues/519)).
 - **MiniMax Code support**: Install, detect, update, diagnose, and uninstall project- or user-scoped Comet Skills under `.minimax/skills`, including Classic dependency integration. Managed Skills stay outside Native source snapshots so Skill updates do not change project verification hashes. Project instructions use `AGENTS.md`; platform-specific Rules and Hooks are not installed ([#518](https://github.com/rpamis/comet/issues/518)).
 
 ### Changed

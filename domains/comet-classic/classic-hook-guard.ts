@@ -1,5 +1,6 @@
 import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
 import { isClassicStateFileName } from './classic-state-file.js';
+import { isChangeWalkthroughPath } from '../workflow-contract/neutral-document-path.js';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { stripUtf8Bom } from '../../platform/fs/strip-bom.js';
@@ -1067,6 +1068,12 @@ async function inspectClassicHookTarget(
 
   if (isCometConfig(relativePath)) {
     return allowed(`${relativePath} (whitelist: comet config)`);
+  }
+  if (
+    isChangeWalkthroughPath(relativePath, path.relative(projectRoot, layout.changesDir)) &&
+    !relativePath.replaceAll('\\', '/').includes('/archive/')
+  ) {
+    return allowed(`${relativePath} (change walkthrough)`);
   }
   if (isSuperpowersWorkspace(relativePath)) {
     return allowed(`${relativePath} (whitelist: superpowers workspace)`);

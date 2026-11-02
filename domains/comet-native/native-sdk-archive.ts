@@ -135,7 +135,12 @@ async function archiveCandidateBinding(
     for (const entry of (await fs.readdir(directory)).sort()) {
       const file = path.join(directory, entry);
       const relative = path.relative(source, file).replaceAll('\\', '/');
-      if (['verification.md', 'comet-state.yaml', 'children.yaml'].includes(relative)) continue;
+      if (
+        ['verification.md', 'comet-state.yaml', 'children.yaml', 'walkthrough.html'].includes(
+          relative,
+        )
+      )
+        continue;
       const stat = await fs.lstat(file);
       if (stat.isDirectory()) await visit(file);
       else {
@@ -183,7 +188,9 @@ async function archiveCandidateBinding(
   if (legacyRecovery) {
     const expected = shape?.artifacts.filter(
       (artifact) =>
-        !['verification.md', 'comet-state.yaml', 'children.yaml'].includes(artifact.source),
+        !['verification.md', 'comet-state.yaml', 'children.yaml', 'walkthrough.html'].includes(
+          artifact.source,
+        ),
     );
     if (
       !expected ||

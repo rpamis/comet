@@ -739,11 +739,21 @@ describe('Native portable Archive', () => {
 
   it('applies full specs, finalizes YAML/report, moves the change, and removes local Runtime', async () => {
     const state = await archiveReady();
-    expect(await inspectNativePortableArchive({ paths, name: state.name })).toMatchObject({
+    const walkthrough = '<!doctype html><title>Change walkthrough</title><p>Verified change</p>';
+    await fs.writeFile(
+      path.join(nativePortableChangeDir(paths, state.name), 'walkthrough.html'),
+      walkthrough,
+    );
+    const walkthroughPreview = await inspectNativePortableArchive({ paths, name: state.name });
+    expect(walkthroughPreview.blockers).toEqual([]);
+    expect(walkthroughPreview).toMatchObject({
       ready: true,
       stateVersion: state.state_version,
     });
     const result = await archiveNativePortableChange({ paths, name: state.name });
+    expect(await fs.readFile(path.join(result.archiveDir, 'walkthrough.html'), 'utf8')).toBe(
+      walkthrough,
+    );
 
     expect(await fs.readFile(path.join(paths.specsDir, 'sample', 'spec.md'), 'utf8')).toContain(
       'updated behavior',

@@ -74,6 +74,17 @@ program
   });
 
 program
+  .command('walkthrough <workflow> <change>')
+  .description('生成独立的 HTML 变更说明，默认开启；change_walkthrough: false 时跳过')
+  .requiredOption('--file <path>', '当前 Agent 整理的临时 JSON 内容文件')
+  .option('--project-root <path>', '当前项目工作区')
+  .option('--verification-only', '保留已有讲解，仅替换验证结果')
+  .action(async (workflow, change, options) => {
+    const { walkthroughCommand } = await import('../commands/walkthrough.js');
+    await walkthroughCommand(workflow, change, options);
+  });
+
+program
   .command('edit-review <operation> <workflow> <change>')
   .description(
     'observe 合并观察实际变化，prepare 准备差异，prepare-applied 读取已应用的正式编辑，judge 由当前 Agent 判断；record 保存结果，refresh-checks 补充批准后的检查，show 查看，claim 保留旧独立复核入口',

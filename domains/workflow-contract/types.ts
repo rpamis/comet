@@ -101,6 +101,7 @@ export interface WorkflowProjectConfig {
   default_workflow: CometProjectWorkflow;
   workflows?: CometProjectWorkflow[];
   ambient_resume: boolean;
+  change_walkthrough?: boolean;
   hook?: WorkflowHookProjectConfig;
   memory?: WorkflowMemoryProjectConfig;
   knowledge?: WorkflowKnowledgeProjectConfig;
@@ -108,7 +109,10 @@ export interface WorkflowProjectConfig {
   classic?: WorkflowClassicProjectConfig;
 }
 
-export interface WorkflowGlobalConfig extends Omit<WorkflowProjectConfig, 'schema'> {
+export interface WorkflowGlobalConfig extends Omit<
+  WorkflowProjectConfig,
+  'schema' | 'change_walkthrough'
+> {
   schema: 'comet.global.v1';
 }
 
@@ -124,6 +128,7 @@ export interface ParsedWorkflowProjectConfigDocument {
   value: Record<string, unknown>;
   config: WorkflowProjectConfig | null;
   ambient_resume: boolean;
+  change_walkthrough: boolean;
   memory?: WorkflowMemoryProjectConfig;
   knowledge?: WorkflowKnowledgeProjectConfig;
   native?: WorkflowNativeProjectConfig;

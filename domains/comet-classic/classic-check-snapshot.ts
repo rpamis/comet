@@ -1,4 +1,5 @@
 import { isClassicStateFileName } from './classic-state-file.js';
+import { isChangeWalkthroughPath } from '../workflow-contract/neutral-document-path.js';
 import {
   measureCometGitCommand,
   reportCometRuntimeProgress,
@@ -292,6 +293,10 @@ export async function collectCheckSnapshot(
     compileCheckPolicyInputPattern(input)(CHECK_POLICY_PATH),
   );
   const omitted = (absolute: string, directory = false) =>
+    isChangeWalkthroughPath(
+      path.relative(root, absolute),
+      path.relative(root, path.dirname(changeDir)),
+    ) ||
     outputMatchers.some((matches) => {
       const relative = path.relative(root, absolute).replaceAll('\\', '/');
       return matches(relative) || (directory && matches(`${relative}/`));

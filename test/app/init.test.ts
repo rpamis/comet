@@ -96,14 +96,17 @@ describe('init command helpers', () => {
     }
   });
 
-  it('preserves existing user config values and fills missing managed fields', async () => {
+  it.each([
+    ['preserves existing user config values and fills missing managed fields', true],
+    ['preserves an explicitly disabled walkthrough while initializing config', false],
+  ] as const)('%s', async (_name, enabled) => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-init-merge-'));
 
     try {
       await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
       await fs.writeFile(
         path.join(tmpDir, '.comet', 'config.yaml'),
-        'context_compression: beta\ncustom_key: custom_value\n',
+        `context_compression: beta\ncustom_key: custom_value\nchange_walkthrough: ${enabled}\n`,
         'utf-8',
       );
 
@@ -115,6 +118,7 @@ describe('init command helpers', () => {
       expect(config).toContain('review_mode: standard');
       expect(config).toContain('auto_transition: true');
       expect(config).toContain('custom_key: custom_value');
+      expect(config).toContain(`change_walkthrough: ${enabled}`);
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }

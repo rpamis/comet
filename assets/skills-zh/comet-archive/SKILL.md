@@ -26,3 +26,5 @@ description: '归档并交付 Classic change。在用户调用 /comet-archive，
 ## Compat 路径
 
 以下旧 Runtime 步骤仅用于 `runtimeFormat: compat`。必须读取 [Compat 操作](reference/compat.md)，按其中当前阶段继续；SDK 不加载该参考。
+
+项目 `change_walkthrough` 默认开启，已有 `walkthrough.html` 随 change 材料归档，完成回复给出实际归档文件的打开链接；关闭时也保留已有页面。缺页不补生成、不阻塞归档，不为展示增加检查、阶段或确认。

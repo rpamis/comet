@@ -24,3 +24,7 @@ description: '验证 Classic change 并记录结果。在用户调用 /comet-ver
 ## Compat 路径
 
 以下旧 Runtime 步骤仅用于 `runtimeFormat: compat`。必须读取 [Compat 操作](reference/compat.md)，按其中当前阶段继续；SDK 不加载该参考。
+
+## 可选变更说明
+
+Build 收尾和 Verify 展示结果前，先核对项目 `.comet/config.yaml` 的 `change_walkthrough`（默认开启；仅显式 `false` 关闭）。开启时读取并执行[变更说明](../comet/reference/change-walkthrough.md)，用共享模板生成或更新同一 `walkthrough.html` 并给出打开链接；关闭时跳过额外讲解、详细指引和渲染，保留原有摘要。Archive 只随现有材料保存已有页面并提供实际归档链接，不补生成、不新增确认、不为页面更新重跑代码检查。

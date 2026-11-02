@@ -2366,6 +2366,11 @@ function managedConfigFields(language: string = 'en'): ManagedConfigFields {
   const commentLanguage = artifactLanguage.id === 'zh-CN' ? 'zh-CN' : 'en';
   const top: ManagedConfigField[] = [
     {
+      key: 'change_walkthrough',
+      def: 'true',
+      comment: projectConfigComment('change_walkthrough', commentLanguage),
+    },
+    {
       key: 'ambient_resume',
       def: 'true',
       comment: projectConfigComment('ambient_resume', commentLanguage),
@@ -2542,7 +2547,7 @@ async function mergeProjectConfig(
   const resolvedLanguage = language ?? existingClassicLanguage ?? existing.language ?? 'en';
   const fields = getManagedConfigFields(resolvedLanguage);
 
-  // Top-level managed field (ambient_resume).
+  // Preserve explicit shared top-level choices before adding defaults.
   for (const f of fields.top) {
     root[f.key] = coerceConfigScalar(existing[f.key] ?? f.def);
   }

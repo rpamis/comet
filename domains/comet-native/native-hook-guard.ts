@@ -297,6 +297,10 @@ async function inspectPortableWriteTargets(options: {
       continue;
     }
     const relative = path.relative(projectRoot, target).replaceAll('\\', '/');
+    if (target === path.join(changeDir, 'walkthrough.html')) {
+      documentTargets.push(relative);
+      continue;
+    }
     if (relative === '.comet/config.yaml') {
       controlTarget = true;
       continue;
@@ -1042,6 +1046,7 @@ export async function inspectNativeHookGuard(
         : nativeChangeDir(context.paths, state.name);
     if (isWithin(selectedChangeDir, target)) {
       const changeRelative = path.relative(selectedChangeDir, target).replaceAll('\\', '/');
+      if (changeRelative === 'walkthrough.html') continue;
       if (
         changeRelative === 'brief.md' ||
         changeRelative === 'children.yaml' ||
@@ -1115,6 +1120,10 @@ export async function inspectNativeHookGuard(
   const documentsRevert = await nativeDocumentWritesRevert(projectRoot);
   for (const targetPath of request.targets) {
     const target = path.resolve(projectRoot, targetPath);
+    if (target === path.join(nativeChangeDir(context.paths, state.name), 'walkthrough.html')) {
+      documentTarget = true;
+      continue;
+    }
     if (!isWithin(projectRoot, target)) {
       externalTarget = true;
       continue;

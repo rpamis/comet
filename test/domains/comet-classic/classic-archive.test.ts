@@ -684,7 +684,11 @@ describe('Classic archive command', () => {
 
   it('treats a completed archive retry as an idempotent no-op', async () => {
     const dir = await makeProject();
-    await seedArchiveChange(dir);
+    const changeDirectory = await seedArchiveChange(dir);
+    await fs.writeFile(
+      path.join(changeDirectory, 'walkthrough.html'),
+      '<html>Verified changes</html>',
+    );
     confirmArchiveChange(dir);
     const fake = await fakeOpenSpec(dir, 'success');
     expect(run(dir, ['archive', 'demo'], { COMET_OPENSPEC: fake.command }).status).toBe(0);
@@ -696,6 +700,9 @@ describe('Classic archive command', () => {
       `${new Date().toISOString().slice(0, 10)}-demo`,
     );
     const stateFile = path.join(archiveDir, '.comet.yaml');
+    expect(await fs.readFile(path.join(archiveDir, 'walkthrough.html'), 'utf8')).toBe(
+      '<html>Verified changes</html>',
+    );
     const before = await fs.readFile(stateFile, 'utf8');
     const logBefore = await fs.readFile(fake.log, 'utf8');
 

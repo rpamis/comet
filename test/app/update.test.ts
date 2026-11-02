@@ -3289,10 +3289,17 @@ describe('update command helpers', () => {
     expect(claude).not.toContain('<comet-ambient-resume>');
   });
 
-  it('updates Native project Skills and shared config comments without rewriting Classic state', async () => {
+  it.each([
+    [
+      'updates Native project Skills and shared config comments without rewriting Classic state',
+      true,
+    ],
+    ['preserves an explicitly disabled walkthrough during Native update', false],
+  ] as const)('%s', async (_name, enabled) => {
     const fakeHome = path.join(tmpDir, 'native-update-home');
     const nativeConfig = [
       'schema: comet.project.v1',
+      `change_walkthrough: ${enabled}`,
       'default_workflow: native',
       'native:',
       '  artifact_root: docs',
@@ -3376,6 +3383,7 @@ describe('update command helpers', () => {
       '# Enables automatic recovery through the read-only Ambient Resume probe',
     );
     expect(updatedConfig).toContain('ambient_resume: true');
+    expect(updatedConfig).toContain(`change_walkthrough: ${enabled}`);
     expect(updatedConfig).toContain('keep: true');
     expect(updatedConfig).toContain('artifact_root: docs');
     expect(updatedConfig).toContain('clarification_mode: batch');

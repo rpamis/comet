@@ -46,11 +46,14 @@ function toProjectConfig(config: WorkflowGlobalConfig): WorkflowProjectConfig {
   return {
     ...config,
     schema: 'comet.project.v1',
+    change_walkthrough: true,
     ...(native ? { native } : {}),
   };
 }
 
 function toGlobalConfig(config: WorkflowProjectConfig): WorkflowGlobalConfig {
+  const globalFields = { ...config };
+  delete globalFields.change_walkthrough;
   if (config.native?.pending_root_move) {
     throw new Error('Global Comet config cannot contain native.pending_root_move');
   }
@@ -58,7 +61,7 @@ function toGlobalConfig(config: WorkflowProjectConfig): WorkflowGlobalConfig {
     ? (({ pending_root_move: _pendingRootMove, ...value }) => value)(config.native)
     : undefined;
   return {
-    ...config,
+    ...globalFields,
     schema: 'comet.global.v1',
     ...(native ? { native } : {}),
   };
@@ -170,6 +173,7 @@ export async function writeWorkflowGlobalConfig(
     toProjectConfig(config),
   );
   merged.schema = 'comet.global.v1';
+  delete merged.change_walkthrough;
   const language: ProjectConfigLanguage =
     config.native?.language === 'zh-CN' || config.classic?.language === 'zh-CN' ? 'zh-CN' : 'en';
   const output = renderStructuredProjectConfig(merged, language);

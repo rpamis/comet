@@ -40,6 +40,20 @@ describe('Classic check input snapshots', () => {
     await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
+  it('excludes walkthrough creation and updates while binding application HTML', async () => {
+    const baseline = await fingerprint();
+    await fs.writeFile(path.join(change, 'walkthrough.html'), '<html>Build</html>');
+    expect(await fingerprint()).toBe(baseline);
+    await fs.writeFile(path.join(change, 'walkthrough.html'), '<html>Verify</html>');
+    expect(await fingerprint()).toBe(baseline);
+    const archived = path.join(root, 'openspec/changes/archive/2026-11-01-demo');
+    await fs.mkdir(archived, { recursive: true });
+    await fs.rename(path.join(change, 'walkthrough.html'), path.join(archived, 'walkthrough.html'));
+    expect(await fingerprint()).toBe(baseline);
+    await fs.writeFile(path.join(root, 'walkthrough.html'), '<html>Application source</html>');
+    expect(await fingerprint()).not.toBe(baseline);
+  });
+
   it('keeps staging and commits inert by default and still invalidates worktree changes', async () => {
     const baseline = await fingerprint();
     await fs.writeFile(path.join(root, 'source.js'), 'v2');

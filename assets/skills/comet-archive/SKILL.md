@@ -26,3 +26,5 @@ Reuse the latest valid response for the same change, workspace, and Run: `agent.
 ## Compat path
 
 The remaining original Runtime steps apply only to `runtimeFormat: compat`. Read [Compat operations](reference/compat.md) and continue its current phase. SDK does not load that reference.
+
+The project enables `change_walkthrough` by default. Archive an existing `walkthrough.html` with the change materials and link to its actual archived file in the completion response. Preserve existing pages when disabled too. A missing page does not trigger generation or block Archive; presentation adds no checks, phases or confirmation.

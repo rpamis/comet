@@ -54,7 +54,10 @@ import {
   readProtectedProjectFile,
   createProtectedProjectReadSession,
 } from '../workflow-contract/protected-project-path.js';
-import { isNeutralDocumentPath } from '../workflow-contract/neutral-document-path.js';
+import {
+  isNeutralDocumentPath,
+  isChangeWalkthroughPath,
+} from '../workflow-contract/neutral-document-path.js';
 import { readProjectConfig } from './native-config.js';
 import { nativeEditReviewScope } from './native-edit-review.js';
 import {
@@ -1361,6 +1364,9 @@ function nativeOwnedInputExclusions(projectRoot: string, managedArtifactRoot?: s
   const prefix = artifactRef === '' ? '' : `${artifactRef}/`;
   return [
     ...exclusions,
+    ...['changes', 'archive'].map(
+      (directory) => `:(exclude,glob)${prefix}comet/${directory}/*/walkthrough.html`,
+    ),
     ...['changes', 'archive'].flatMap((directory) =>
       [...NATIVE_RUNTIME_MANAGED_FILES].map(
         (file) => `:(exclude)${prefix}comet/${directory}/**/${file}`,
@@ -1375,6 +1381,17 @@ function isNativeOwnedInputPath(
   managedArtifactRoot?: string,
 ): boolean {
   const normalized = relative.replaceAll('\\', '/').replace(/^\.\//u, '');
+  if (
+    projectRoot &&
+    managedArtifactRoot &&
+    ['changes', 'archive'].some((directory) =>
+      isChangeWalkthroughPath(
+        normalized,
+        path.relative(projectRoot, path.join(managedArtifactRoot, 'comet', directory)),
+      ),
+    )
+  )
+    return true;
   if (
     NATIVE_WORKTREE_INPUT_DIRECTORIES.has(normalized.split('/')[0]) ||
     normalized === '.comet/current-change.json' ||
