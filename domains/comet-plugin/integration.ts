@@ -395,7 +395,10 @@ export class CometPluginBridge {
     return this.runtime.invoke('comet.personal-memory', 'status', {}, 'user');
   }
 
-  public async observeMemory(input: MemoryObservation): Promise<MemoryReviewResult> {
+  public async observeMemory(
+    input: MemoryObservation,
+    options: { readonly deferReflection?: boolean } = {},
+  ): Promise<MemoryReviewResult> {
     const scope = input.scope === 'project' ? 'project' : 'user';
     const result = (await this.runtime.invoke(
       'comet.personal-memory',
@@ -405,7 +408,9 @@ export class CometPluginBridge {
       { throwOnError: true },
     )) as MemoryReviewResult;
     if (result.deferred === true) {
-      await this.runtime.dispatch(memoryObservationEvent(input, this.projectId));
+      const event = memoryObservationEvent(input, this.projectId);
+      if (options.deferReflection) await this.runtime.enqueueEvents([event]);
+      else await this.runtime.dispatch(event);
     }
     return result;
   }

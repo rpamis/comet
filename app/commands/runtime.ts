@@ -7,6 +7,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { withCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
 import {
+  hashRuntimeValue,
   createFileRuntimeStore,
   createRuntime,
   RuntimeProtocolError,
@@ -26,6 +27,7 @@ import {
 import type { CometProjectWorkflow } from '../../domains/workflow-contract/types.js';
 import type { ApplicationIdentity } from '../../domains/workflow-application/index.js';
 import { projectCliAgentObservation } from '../../domains/workflow-contract/output-envelope.js';
+import { collectCometTaskContextResult } from './comet-task-context.js';
 
 export interface RuntimeCommandOptions {
   request?: string;
@@ -176,7 +178,41 @@ function validateOutcome(value: RuntimeValue): void {
 }
 
 function parseRequest(value: unknown): JsonObject & { operation: keyof typeof operationFields } {
-  const request = object(value, '请求');
+  let request = object(value, '请求');
+  if (request.operation === 'record-outcome' && request.receipt !== undefined) {
+    onlyFields(
+      request,
+      ['operation', 'protocolVersion', 'requestId', 'receipt', 'result'],
+      '收据回报',
+    );
+    let receipt: JsonObject;
+    try {
+      receipt = object(
+        JSON.parse(Buffer.from(text(request.receipt, 'receipt'), 'base64url').toString('utf8')),
+        'receipt',
+      );
+    } catch {
+      invalid('receipt 必须是 Runtime 返回的有效收据');
+    }
+    onlyFields(receipt!, ['runId', 'actionId', 'attempt', 'inputHash', 'claimToken'], 'receipt');
+    text(receipt!.runId, 'receipt.runId');
+    const result = object(request.result, 'result');
+    onlyFields(result, ['status', 'output', 'summary', 'artifacts', 'event'], 'result');
+    request = {
+      operation: 'record-outcome',
+      ...(request.protocolVersion === undefined
+        ? {}
+        : { protocolVersion: request.protocolVersion }),
+      ...(request.requestId === undefined ? {} : { requestId: request.requestId }),
+      runId: receipt!.runId,
+      outcome: {
+        ...receipt!,
+        ...result,
+        outcomeId: 'receipt-' + hashRuntimeValue({ receipt: receipt!, result }),
+      },
+    };
+    delete (request.outcome as JsonObject).runId;
+  }
   const operation = text(request.operation, 'operation');
   if (!Object.hasOwn(operationFields, operation)) invalid(`不支持的 Runtime 操作：${operation}`);
   const name = operation as keyof typeof operationFields;
@@ -372,6 +408,83 @@ function dispatch(
   }
 }
 
+/** 领取已经提交后补充上下文；不写入 Action input、批准材料或 SDK Run。 */
+async function claimedTaskContext(
+  run: WorkflowRun,
+  request: ReturnType<typeof parseRequest>,
+  descriptor: unknown,
+) {
+  if (request.operation !== 'claim' || !descriptor) return {};
+  const action = run.actions.find((entry) => entry.id === request.actionId);
+  if (action?.status !== 'running' || !action.claim?.sessionId) return {};
+  const contextRequest = descriptor as { phase: string; task?: string; commandArgs: string[] };
+  const args = contextRequest.commandArgs;
+  const projectRoot = args[2];
+  const flag = (name: string) => args[args.indexOf(name) + 1];
+  const workflow = flag('--workflow');
+  const change = flag('--change');
+  if (!projectRoot || !change || !['native', 'classic'].includes(workflow)) return {};
+  const task = contextRequest.task ?? run.runId.replaceAll('-', ' ');
+  const sessionId = action.claim.sessionId;
+  const base = [
+    'comet',
+    'task',
+    projectRoot,
+    '--task',
+    task,
+    '--phase',
+    contextRequest.phase,
+    '--session',
+    sessionId,
+    '--workflow',
+    workflow,
+    '--change',
+    change,
+  ];
+  let result: Awaited<ReturnType<typeof collectCometTaskContextResult>>;
+  try {
+    result = await collectCometTaskContextResult(
+      projectRoot,
+      {
+        task,
+        sessionId,
+        phase: contextRequest.phase,
+        contextMode: 'incremental',
+        charBudget: 6000,
+      },
+      { workflow: workflow as 'native' | 'classic', change },
+      { timeoutMs: 2000 },
+    );
+  } catch {
+    result = { status: 'unavailable', context: [] };
+  }
+  return {
+    context: result.context,
+    contextDelivery: {
+      status:
+        result.status === 'unavailable'
+          ? 'unavailable'
+          : result.context.length
+            ? 'delivered'
+            : 'empty',
+      sessionId,
+      phase: contextRequest.phase,
+      contextMode: 'incremental',
+      instruction:
+        (run.state as { language?: string }).language === 'zh-CN'
+          ? '读取 context[].text 后继续任务；空结果可能表示没有新增适用条目。失败时继续明确任务，不循环重试。上下文丢失时执行 contextActions.restore；新 Agent 使用自己的会话领取或恢复。交付不代表已采用，使用反馈必须有真实采用和验证证据。'
+          : 'Read context[].text and continue. Empty may mean no new applicable content. Continue the explicit task after failure without retry loops. Use contextActions.restore after context loss; a new Agent claims or restores with its own session ID. Delivery is not adoption; feedback requires actual adoption and verification evidence.',
+    },
+    contextActions: {
+      restore: { commandArgs: [...base, '--context-mode', 'snapshot', '--json'] },
+      expand: { commandArgs: [...base, '--expand-context', '<expansion-id>', '--json'] },
+      complete: {
+        commandArgs: [...base, '--complete', '--learning-file', '<learning-file.json>', '--json'],
+      },
+    },
+  };
+}
+
 async function nativeCliResponse(
   response: Extract<RuntimeCommandResponse, { status: 'succeeded' }>,
   request: ReturnType<typeof parseRequest>,
@@ -436,7 +549,7 @@ async function nativeCliResponse(
       request.operation === 'claim'
         ? (request.actionId as string)
         : (request.outcome as { actionId: string }).actionId;
-    const data = await projectNativeSdkDispatchResult({
+    const projection = await projectNativeSdkDispatchResult({
       run: response.data,
       state: parseNativePortableState(response.data.state),
       actionId,
@@ -444,6 +557,10 @@ async function nativeCliResponse(
       applicationId,
       skillExecutors: executors,
     });
+    const data = {
+      ...projection,
+      ...(await claimedTaskContext(response.data, request, projection.contextRequest)),
+    };
     return {
       ...response,
       data,
@@ -1096,9 +1213,18 @@ export async function runtimeDispatchCommand(
       try {
         const { classicSdkEntryData } =
           await import('../../domains/comet-classic/classic-sdk-output.js');
+        const projection = await classicSdkEntryData(data.runId, { run: data, projectRoot });
+        const current = projection.continuation.current.actions.find(
+          (action) => action.id === request.actionId,
+        );
         const view = {
           ...data,
-          ...(await classicSdkEntryData(data.runId, { run: data, projectRoot })),
+          ...projection,
+          ...(await claimedTaskContext(
+            data,
+            request,
+            current && 'contextRequest' in current ? current.contextRequest : undefined,
+          )),
         };
         return {
           exitCode: 0,

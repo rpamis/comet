@@ -534,6 +534,214 @@ async function awaitingArchiveApplication(
   return { ...prepared, run };
 }
 
+describe('Native protocol simplification', () => {
+  it('preserves an unknown Verifier execution without claiming or replaying it', async () => {
+    const { root, runtime, run } = await dispatchedVerifier([], 'sdk');
+    const action = run.actions.at(-1)!;
+    await runtime.claim({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'native-host',
+      sessionId: 'independent-verifier',
+      claimToken: 'original-claim',
+      context: { requestId: 'claim-verifier', projectRoot: root },
+    });
+    await runtime.markUnknown({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      reason: 'Platform result is unknown',
+    });
+    const before = await runtime.inspect(run.runId);
+    await runNativeCli(['next', run.runId, '--project-root', root, '--json']);
+    const after = await runtime.inspect(run.runId);
+    expect(after.actions.at(-1)).toEqual(before.actions.at(-1));
+    expect(after.actions).toHaveLength(before.actions.length);
+    expect(after.state).toEqual(before.state);
+    expect(after.outputs).toEqual(before.outputs);
+    expect(after.waits).toEqual(before.waits);
+    expect(after.ready).toEqual(before.ready);
+  });
+
+  it('stops public next at result confirmation without starting Archive', async () => {
+    const prepared = await dispatchedVerifier([], 'sdk');
+    const { root, runtime } = prepared;
+    const run = await succeedLatestAction(
+      runtime,
+      prepared.run,
+      {
+        candidateId: (prepared.run.state as NativePortableState).builder_handoff!.candidate_id,
+        verifierExecutionRef: 'verifier-session',
+        response: {
+          kind: 'final-result',
+          result: {
+            iteration: 1,
+            attempt: 1,
+            verdict: 'pass',
+            acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified.' }],
+            risks: [],
+            summary: 'Passed.',
+          },
+        },
+      },
+      root,
+      'independent-result',
+      'verifier-session',
+    );
+    await runNativeCli(['next', run.runId, '--project-root', root, '--json']);
+    const waiting = await runtime.inspect(run.runId);
+    expect(waiting.waits.at(-1)).toMatchObject({ stepId: 'verify.confirm', status: 'pending' });
+    expect(waiting.actions.some((action) => action.stepId.startsWith('archive.'))).toBe(false);
+    await runNativeCli(['next', run.runId, '--project-root', root, '--json']);
+    expect(await runtime.inspect(run.runId)).toEqual(waiting);
+  });
+
+  it('stops public next after failed checks without dispatching a Verifier', async () => {
+    const { root, runtime, run } = await dispatchedVerifier(
+      [
+        {
+          id: 'fail',
+          name: 'Failing check',
+          executable: process.execPath,
+          argv: ['-e', 'process.exit(1)'],
+          cwdRef: '.',
+          timeoutMs: 10000,
+          repeatable: true,
+        },
+      ],
+      'sdk',
+      nativeApplication(),
+      false,
+    );
+    await runNativeCli(['next', run.runId, '--project-root', root, '--json']);
+    const stopped = await runtime.inspect(run.runId);
+    expect(stopped.actions.find((action) => action.stepId === 'verify.checks')).toMatchObject({
+      status: 'failed',
+      attempt: 1,
+    });
+    expect(stopped.actions.some((action) => action.stepId === 'verify.verifier')).toBe(false);
+  });
+
+  it('collects formal approved originals in the Native observe response', async () => {
+    const { root, paths, changeDir, run } = await awaitingArchiveApplication('sdk');
+    await captureApprovedShapeOriginals(paths, run.state as NativePortableState);
+    const brief = path.join(changeDir, 'brief.md');
+    await fs.appendFile(brief, '\nAdditional explanation only.\n');
+    await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = true;');
+    const response = await runNativeEditReviewCommand({
+      operation: 'observe',
+      projectRoot: root,
+      name: 'sdk-shape',
+      sessionId: 'current-agent',
+    });
+    expect(response).toHaveProperty('formalReview');
+    expect(response).toHaveProperty('recordTemplate');
+    expect((response as { formalReview: { recordTemplate: unknown } }).formalReview).toHaveProperty(
+      'recordTemplate',
+    );
+    expect(
+      (response as { formalReview: { originalPaths: unknown[] } }).formalReview.originalPaths
+        .length,
+    ).toBeGreaterThan(0);
+  });
+
+  it.each([undefined, 'local-time-without-a-format'])(
+    'records a Runtime submission time without requiring Agent metadata (%s)',
+    async (submittedAt) => {
+      const { root, paths, runtime, run: proposed } = await preparedShape();
+      const wait = proposed.waits.at(-1)!;
+      let run = await runtime.resolveWait({
+        runId: proposed.runId,
+        waitId: wait.id,
+        proposalHash: wait.proposalHash,
+        decisionId: 'approve',
+        choice: 'approved',
+      });
+      run = await succeedLatestAction(
+        runtime,
+        run,
+        await collectProposal(paths, run.state as NativePortableState),
+        root,
+        'revalidate',
+      );
+      const before = Date.now();
+      run = await succeedLatestAction(
+        runtime,
+        run,
+        {
+          summary: 'Implemented the selected workflow.',
+          ...(submittedAt === undefined ? {} : { addressedAcceptanceIds: ['A1'] }),
+          acceptanceReview: fixtureAcceptanceReview(['A1']),
+          checks: [],
+          knownLimits: [],
+          ...(submittedAt === undefined ? {} : { submittedAt }),
+        },
+        root,
+        'builder-with-runtime-time',
+        'builder-session',
+      );
+      const handoff = (run.state as NativePortableState).builder_handoff!;
+      expect(handoff.addressed_acceptance_ids).toEqual(submittedAt === undefined ? [] : ['A1']);
+      expect(handoff.acceptance_review).toHaveLength(1);
+      expect(Date.parse(handoff.submitted_at)).toBeGreaterThanOrEqual(before);
+      expect(Date.parse(handoff.submitted_at)).toBeLessThanOrEqual(Date.now());
+      expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.checks', status: 'pending' });
+    },
+  );
+
+  it.each(['source', 'bundle'])(
+    'drains authorized internal Archive actions through public next without repeating them (%s)',
+    async (entry) => {
+      const { root, runtime, run } = await awaitingArchiveApplication('sdk', undefined, true);
+      const next = async () => {
+        if (entry === 'source')
+          return (await runNativeCli(['next', run.runId, '--project-root', root, '--json']))
+            .exitCode;
+        const result = spawnSync(
+          process.execPath,
+          [
+            path.resolve('assets/skills/comet-native/scripts/comet-native-next.mjs'),
+            run.runId,
+            '--project-root',
+            root,
+            '--json',
+          ],
+          { encoding: 'utf8', timeout: 120_000 },
+        );
+        expect(result.error).toBeUndefined();
+        expect(result.stderr).not.toContain('Error');
+        return result.status;
+      };
+      expect(await next()).toBe(0);
+      const completed = await runtime.inspect(run.runId);
+      expect(completed.status).toBe('completed');
+      expect(
+        completed.actions
+          .filter((action) => action.stepId.startsWith('archive.'))
+          .map((action) => [action.stepId, action.status]),
+      ).toEqual([
+        ['archive.prepare', 'succeeded'],
+        ['archive.execute', 'succeeded'],
+        ['archive.finalize', 'succeeded'],
+      ]);
+      expect(await next()).toBe(0);
+      expect(await runtime.inspect(run.runId)).toEqual(completed);
+    },
+  );
+
+  it('stops public next at an independent Verifier handoff', async () => {
+    const { root, runtime, run } = await dispatchedVerifier([], 'sdk', nativeApplication(), false);
+    const result = await runNativeCli(['next', run.runId, '--project-root', root, '--json']);
+    expect(result.exitCode).toBe(0);
+    const current = await runtime.inspect(run.runId);
+    expect(current.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
+    expect(current.actions.at(-1)?.claim).toBeUndefined();
+    expect(current.actions.some((action) => action.stepId.startsWith('archive.'))).toBe(false);
+  });
+});
+
 async function initializeArchiveGit(root: string) {
   execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
   execFileSync('git', ['config', 'user.email', 'fixture@example.test'], { cwd: root });
@@ -1499,6 +1707,9 @@ children:
       );
       expect(handoff?.contextRequest?.commandArgs).toContain(
         (action.input as { activation: { worktree: string } }).activation.worktree,
+      );
+      expect(handoff?.contextRequest?.task).toContain(
+        (action.input as { activation: { child: string } }).activation.child,
       );
       const context = { requestId: receipt, projectRoot: root };
       const claimed = await runtime.claim({

@@ -1,3 +1,4 @@
+import { withGitWorktreeReadScope } from '../../platform/paths/git-worktree.js';
 import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
 import { inspectNativeSdkRunDiagnostics } from './native-sdk-diagnostics.js';
 import {
@@ -48,7 +49,10 @@ export async function inspectNativeSdkStatus(options: {
 }
 
 /** Project one inspected or committed Run without synchronizing its state file again. */
-export async function projectNativeSdkStatus(
+export const projectNativeSdkStatus: typeof projectNativeSdkStatusOnce = (...args) =>
+  withGitWorktreeReadScope(() => projectNativeSdkStatusOnce(...args));
+
+async function projectNativeSdkStatusOnce(
   options: {
     projectRoot: string;
     name: string;

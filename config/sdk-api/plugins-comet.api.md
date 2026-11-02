@@ -33,7 +33,9 @@ export class CometPluginBridge {
     // (undocumented)
     observe(input: AgentExperienceEvent): Promise<unknown>;
     // (undocumented)
-    observeMemory(input: MemoryObservation): Promise<MemoryReviewResult>;
+    observeMemory(input: MemoryObservation, options?: {
+        readonly deferReflection?: boolean;
+    }): Promise<MemoryReviewResult>;
     // (undocumented)
     pauseProjectLearning(paused: boolean, projectKey?: string): Promise<unknown>;
     // (undocumented)

@@ -50,6 +50,26 @@ import { refreshNativeSdkCheckWork } from './native-sdk-next.js';
 import { hashRuntimeValue, type RuntimeValue } from '../engine/runtime.js';
 
 export async function runNativeEditReviewCommand(options: EditReviewCommandOptions) {
+  const result = await runNativeEditReviewCommandOnce(options);
+  if (
+    options.operation !== 'observe' ||
+    !('formalChanges' in result) ||
+    !result.formalChanges?.length
+  )
+    return result;
+  const formalReview = await runNativeEditReviewCommandOnce({
+    ...options,
+    operation: 'prepare-applied',
+  });
+  return {
+    ...result,
+    formalReview,
+    instruction:
+      '由当前 Agent 读取普通差异与 formalReview 的已批准原文，分别填写各自 recordTemplate；保留现有批准及仍适用的检查。',
+  };
+}
+
+async function runNativeEditReviewCommandOnce(options: EditReviewCommandOptions) {
   const config = await readProjectConfig(options.projectRoot);
   if (!config) throw new Error('当前项目缺少 Comet 配置');
   const paths = await nativeProjectPaths(options.projectRoot, config.native.artifact_root);

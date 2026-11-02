@@ -159,7 +159,6 @@ function nativeSdkOutcomeOutput(
         { name: '<check-name>', result: '<passed|failed|not-run>', note: '<actual-result>' },
       ],
       knownLimits: ['<actual-limit-or-remove-entry>'],
-      submittedAt: '<YYYY-MM-DDTHH:mm:ss.sssZ; use new Date().toISOString()>',
       verificationChecks: [check],
       ...(action.stepId === 'supervisor.parent.builder'
         ? { candidateCommit: '<current-integration-HEAD>' }
@@ -239,8 +238,8 @@ function nativeSdkOutcomeAlternatives(
   return {
     outcomeTemplateInstruction:
       state.language === 'zh-CN'
-        ? '完整保存 stdout JSON，stderr 另存；一次解析并提取 data.outcomeRequest、data.contextRequest 和 data.action。不要用 head 或 tail 截断 JSON，不要把后台任务提示当作 JSON。SDK inspect 的 data 是原始 Run，不含 Native 状态投影的 continuation 或 pendingActions。使用当前模板，不通过检索 Comet Runtime 源码猜字段；仅在返回缺项或实际错误缺少诊断时再调查。用实际结果替换全部占位值，删除不适用的列表项。succeeded 表示任务已完成，验收是否通过由 verdict 表达。已知无法独立验收时，执行自己的 contextRequest 后如实提交 blocked，不为得到结果而重跑检查或假装已独立审查。保留原领取身份，禁止直接提交未填写的模板。'
-        : 'Save complete stdout JSON and keep stderr separate. Parse it once to extract data.outcomeRequest, data.contextRequest and data.action. Do not truncate JSON with head or tail, or parse a background-task notice as JSON. SDK inspect returns the raw Run in data, without the Native status projection continuation or pendingActions. Use the current templates instead of searching Comet Runtime source to guess fields; investigate only missing fields or actual errors without a diagnosis. Replace every placeholder with observed results and remove unused entries. succeeded means the task finished, not that acceptance passed. When independent review is known to be unavailable, execute your contextRequest and report blocked honestly; do not rerun checks or pretend an independent review occurred. Keep the original claim identity. Never submit this template unchanged.',
+        ? '完整保存 stdout JSON，stderr 另存；一次解析并提取 data.outcomeRequest、data.contextRequest 和 data.action。不要用 head 或 tail 截断 JSON，不要把后台任务提示当作 JSON。SDK inspect 的 data 是原始 Run，不含 Native 状态投影的 continuation 或 pendingActions。使用当前模板，不通过检索 Comet Runtime 源码猜字段；仅在返回缺项或实际错误缺少诊断时再调查。用实际结果替换全部占位值，删除不适用的列表项。succeeded 表示任务已完成，验收是否通过由 verdict 表达。已知无法独立验收时，读取已交付上下文（没有 contextDelivery 时执行自己的 contextRequest）后如实提交 blocked，不为得到结果而重跑检查或假装已独立审查。保留原领取身份，禁止直接提交未填写的模板。'
+        : 'Save complete stdout JSON and keep stderr separate. Parse it once to extract data.outcomeRequest, data.contextRequest and data.action. Do not truncate JSON with head or tail, or parse a background-task notice as JSON. SDK inspect returns the raw Run in data, without the Native status projection continuation or pendingActions. Use the current templates instead of searching Comet Runtime source to guess fields; investigate only missing fields or actual errors without a diagnosis. Replace every placeholder with observed results and remove unused entries. succeeded means the task finished, not that acceptance passed. When independent review is known to be unavailable, read delivered context (execute contextRequest only without contextDelivery) and report blocked honestly; do not rerun checks or pretend an independent review occurred. Keep the original claim identity. Never submit this template unchanged.',
     failureOutcomeRequest: {
       ...request,
       outcome: {
@@ -352,6 +351,7 @@ export async function projectNativeSdkDispatchResult(options: {
               ? {
                   contextRequest: {
                     phase: contextRequest.phase,
+                    ...('task' in contextRequest ? { task: contextRequest.task } : {}),
                     contextMode: contextRequest.contextMode,
                     commandArgs: contextRequest.commandArgs,
                   },
@@ -382,7 +382,28 @@ export async function projectNativeSdkDispatchResult(options: {
     workflow: run.workflow,
     status: run.status,
     workspace: { projectRoot: options.projectRoot },
-    ...(outcomeRequest ? { outcomeRequest } : {}),
+    ...(outcomeRequest
+      ? {
+          outcomeRequest,
+          resultRequest: {
+            operation: 'record-outcome',
+            receipt: Buffer.from(
+              JSON.stringify({
+                runId: run.runId,
+                actionId: action.id,
+                attempt: action.attempt,
+                inputHash: action.inputHash,
+                claimToken: action.claim!.token,
+              }),
+            ).toString('base64url'),
+            result: {
+              status: outcomeRequest.outcome.status,
+              output:
+                '<actual-business-output; use outcomeRequest.outcome.output as template, optional iteration focus may be omitted>',
+            },
+          },
+        }
+      : {}),
     ...(contextRequest ? { contextRequest } : {}),
     ...nativeSdkOutcomeAlternatives(run, action, state),
     state,
@@ -936,15 +957,25 @@ async function projectNativeSdkContinuationValue(options: {
   const actionContextRequest = (action: RuntimeAction) => {
     const input = action.input as {
       worktree?: unknown;
-      activation?: { worktree?: unknown };
+      child?: string;
+      acceptance?: Array<{ text: string }>;
+      activation?: { worktree?: unknown; child?: string; acceptance?: Array<{ text: string }> };
     } | null;
-    const worktree = input?.activation?.worktree ?? input?.worktree;
+    const scope = input?.activation ?? input;
+    const worktree = scope?.worktree;
     return nativeTaskContextRequest({
       name: state.name,
       phase: action.ref?.includes('verifier') ? 'verify' : 'build',
       language: state.language,
       projectRoot: typeof worktree === 'string' ? worktree : projectRoot,
       sessionId: action.claim?.sessionId,
+      task: [
+        state.name,
+        ...(scope?.child ? [scope.child] : []),
+        ...(scope?.acceptance ?? (scope?.child ? [] : state.acceptance)).map(({ text }) => text),
+      ]
+        .join('\n')
+        .slice(0, 4000),
     });
   };
   const base: NativePortableContinuation = {
@@ -1086,7 +1117,12 @@ async function projectNativeSdkContinuationValue(options: {
               inputHash: action.inputHash,
               executorId: 'native-host',
               sessionId: '<session-id>',
-              claimToken: '<claim-token>',
+              claimToken: hashRuntimeValue({
+                runId: run.runId,
+                actionId: action.id,
+                attempt: action.attempt,
+                inputHash: action.inputHash,
+              }),
             },
           }
         : {}),
@@ -1659,8 +1695,8 @@ async function projectNativeSdkContinuationValue(options: {
             )
           : handoff
             ? localized(
-                'Use the pending Action claimRequest with a real stable session ID and unique claim token. After the claim succeeds, the receiving Agent reads its contextRequest before starting work. Use the returned Action input; Verifiers need a separate read-only session. Submit the original Action outcome, then follow the returned Run.',
-                '在待执行 Action 的 claimRequest 中填入真实稳定的会话标识和唯一领取令牌。领取成功后，接收 Agent 先执行自己的 contextRequest，再按返回的 Action 输入开展工作；Verifier 必须使用独立只读会话。提交原 Action 的结果后按返回的 Run 继续。',
+                'Use the pending Action claimRequest with a real stable session ID and unique claim token. After the claim succeeds, the receiving Agent reads context[].text; execute contextRequest only when the response has no contextDelivery. Use the returned Action input; Verifiers need a separate read-only session. Submit the original Action outcome, then follow the returned Run.',
+                '在待执行 Action 的 claimRequest 中填入真实稳定的会话标识和唯一领取令牌。领取成功后，接收 Agent 先读取 context[].text；响应没有 contextDelivery 时才执行自己的 contextRequest，再按返回的 Action 输入开展工作；Verifier 必须使用独立只读会话。提交原 Action 的结果后按返回的 Run 继续。',
               )
             : archive
               ? localized(

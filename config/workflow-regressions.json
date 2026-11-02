@@ -6381,6 +6381,234 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-builder-runtime-submission-time",
+      "behavior": "Builder 无需填写提交时间即可提交候选，格式错误的辅助时间不阻塞实现",
+      "sources": ["report:2026-11-02-native-protocol-simplification"],
+      "coverageLevel": "runtime",
+      "reproduction": "784694e3 的真实临时 Native SDK Run 在 Builder 回报省略 submittedAt 或填写 local-time-without-a-format 时均以 OUTCOME_REJECTED 拒绝；同一回归先红。",
+      "expected": "Runtime 为未提供有效时间的请求记录实际接收时间，保留有效旧请求兼容。",
+      "forbidden": "因辅助时间缺失或格式错误拒绝完整候选，或绕过候选与独立检查。",
+      "rootCause": "Builder 候选校验将可由 Runtime 记录的时间作为 Agent 必填协议字段。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "records a Runtime submission time without requiring Agent metadata \\(undefined\\)",
+          "requiredNames": [
+            "Native protocol simplification records a Runtime submission time without requiring Agent metadata (undefined)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "records a Runtime submission time without requiring Agent metadata \\(local-time-without-a-format\\)",
+          "requiredNames": [
+            "Native protocol simplification records a Runtime submission time without requiring Agent metadata (local-time-without-a-format)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-next-drain-internal-actions",
+      "behavior": "一次公开 next 连续完成已授权的内部动作，在用户确认、独立验收和执行失败处停止",
+      "sources": ["report:2026-11-02-native-protocol-simplification"],
+      "coverageLevel": "public-cli",
+      "reproduction": "784694e3 的临时 SDK 项目已批准验收且待 Archive，公开 CLI next 后 Run 仍为 running；同一完成断言在旧代码失败。",
+      "expected": "原 Run 完成全部归档 Action，每项只执行一次；遇到用户 Wait 或 Verifier handoff 返回，失败检查不派发 Verifier。",
+      "forbidden": "越过用户决定、自动领取独立 Verifier、重复归档，或在失败结果后继续执行。",
+      "rootCause": "next 执行一个 Runtime 工具 Action 后立即投影并返回，后继内部动作需模型再次调度。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "drains authorized internal Archive actions through public next without repeating them \\((source|bundle)\\)",
+          "requiredNames": [
+            "Native protocol simplification drains authorized internal Archive actions through public next without repeating them (source)",
+            "Native protocol simplification drains authorized internal Archive actions through public next without repeating them (bundle)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "stops public next at result confirmation without starting Archive",
+          "requiredNames": [
+            "Native protocol simplification stops public next at result confirmation without starting Archive"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "stops public next at an independent Verifier handoff",
+          "requiredNames": [
+            "Native protocol simplification stops public next at an independent Verifier handoff"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "stops public next after failed checks without dispatching a Verifier",
+          "requiredNames": [
+            "Native protocol simplification stops public next after failed checks without dispatching a Verifier"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "preserves an unknown Verifier execution without claiming or replaying it",
+          "requiredNames": [
+            "Native protocol simplification preserves an unknown Verifier execution without claiming or replaying it"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "runtime-receipt-result-input",
+      "behavior": "通过完整收据回报实际结果，重复回报幂等，拒绝陈旧或混合身份",
+      "sources": ["report:2026-11-02-native-protocol-simplification"],
+      "coverageLevel": "public-cli",
+      "reproduction": "旧解析器拒绝 receipt/result 输入，新增同一断言先失败。",
+      "expected": "保留原任务绑定并记录一次真实结果。",
+      "forbidden": "静默选择最新Action、混用不同Run或重复推进。",
+      "rootCause": "公开dispatch只接受手工组装outcome身份。",
+      "tests": [
+        {
+          "file": "test/app/runtime-command.test.ts",
+          "namePattern": "records receipt results idempotently and rejects stale or mixed identities",
+          "requiredNames": [
+            "Runtime JSON command records receipt results idempotently and rejects stale or mixed identities"
+          ]
+        },
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "submits a Native candidate through its returned receipt without manual identity fields",
+          "requiredNames": [
+            "Native dispatch CLI presentation submits a Native candidate through its returned receipt without manual identity fields"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-observe-formal-originals",
+      "behavior": "Native observe 一次返回正式原文与独立判断模板",
+      "sources": ["report:2026-11-02-native-protocol-simplification"],
+      "coverageLevel": "runtime",
+      "reproduction": "旧observe只返回formalChanges，新增formalReview断言先失败。",
+      "expected": "响应包含已批准原文及绑定当前内容的提案。",
+      "forbidden": "自动确认语义或伪造缺失原文。",
+      "rootCause": "观察与正式编辑准备分为两次Agent操作。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "collects formal approved originals in the Native observe response",
+          "requiredNames": [
+            "Native protocol simplification collects formal approved originals in the Native observe response"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-builder-optional-iteration-focus",
+      "behavior": "省略本轮重点不阻塞具有完整自检的Builder提交",
+      "sources": ["report:2026-11-02-native-protocol-simplification"],
+      "coverageLevel": "runtime",
+      "reproduction": "旧提交校验强制要求addressedAcceptanceIds数组；新测试省略该字段。",
+      "expected": "完整自检仍覆盖验收，省略的重点列表保存为空。",
+      "forbidden": "把重点列表等同全部自检，或允许不完整自检推进。",
+      "rootCause": "SDK把仅记录交接重点的列表当作必填。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "records a Runtime submission time without requiring Agent metadata \\(undefined\\)",
+          "requiredNames": [
+            "Native protocol simplification records a Runtime submission time without requiring Agent metadata (undefined)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sdk-claim-context-delivery",
+      "behavior": "领取后向实际接收会话交付上下文，并支持去重、恢复及失败降级",
+      "sources": ["report:2026-11-02-memory-agent-integration"],
+      "coverageLevel": "public-cli",
+      "reproduction": "原领取响应只有需要接收方再次执行的 contextRequest；新增交付测试先因缺少交付入口失败。构建后通过公开 CLI 验证真实个人记忆交付。",
+      "expected": "接收方直接读取上下文；重复领取不重复交付，新接收方和 snapshot 可恢复。",
+      "forbidden": "将检索失败误报为领取失败、改变原 Action 输入或将交付冒充实际采用。",
+      "rootCause": "领取适配未消费已有上下文请求。",
+      "tests": [
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "delivers real memory once per receiver and restores it explicitly through the public CLI",
+          "requiredNames": [
+            "Claim context delivery delivers real memory once per receiver and restores it explicitly through the public CLI"
+          ]
+        },
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "delivers context to the actual receiver without changing the claimed input or SDK response",
+          "requiredNames": [
+            "Claim context delivery delivers context to the actual receiver without changing the claimed input or SDK response"
+          ]
+        },
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "keeps a successful claim usable when context retrieval is unavailable",
+          "requiredNames": [
+            "Claim context delivery keeps a successful claim usable when context retrieval is unavailable"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-claim-context-delivery",
+      "behavior": "Classic 领取携带接收会话上下文，状态查询不触发检索",
+      "sources": ["report:2026-11-02-memory-agent-integration"],
+      "coverageLevel": "runtime",
+      "reproduction": "通过 Runtime 命令入口领取隔离 Classic Action，检查领取返回和后续 inspect。",
+      "expected": "领取使用实际 session 与阶段，状态查询不再检索。",
+      "forbidden": "状态读取引入检索副作用或使用其他执行者会话。",
+      "rootCause": "Classic 领取投影只返回请求描述。",
+      "tests": [
+        {
+          "file": "test/app/runtime-command.test.ts",
+          "namePattern": "delivers Classic claim context to its receiving session without retrieving on status queries",
+          "requiredNames": [
+            "Runtime JSON command delivers Classic claim context to its receiving session without retrieving on status queries"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "implicit-workflow-learning-queue",
+      "behavior": "隐式工作流检查点持久化后返回，不内联整理且重复入队幂等",
+      "sources": ["report:2026-11-02-memory-agent-integration"],
+      "coverageLevel": "runtime",
+      "reproduction": "同一输入对照 HEAD 的 worker 与当前构建 worker；旧入口会消费事件，当前保留一个 attempts=0 的 pending 事件。",
+      "expected": "短命进程退出前保存事件，重复调用只保留一个待处理事件。",
+      "forbidden": "未持久化即返回、重复事件、将排队冒充已生效。",
+      "rootCause": "旧 worker 在 capture 后无条件调用同步整理入口。",
+      "tests": [
+        {
+          "file": "test/app/comet-task-context-process.test.ts",
+          "namePattern": "implicit workflow checkpoints stay durable and pending without inline reflection",
+          "requiredNames": [
+            "implicit workflow checkpoints stay durable and pending without inline reflection"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "deferred-memory-observation-queue",
+      "behavior": "学习收尾的待处理隐式观察只排队，不在返回前重复评审",
+      "sources": ["report:2026-11-02-memory-agent-integration"],
+      "coverageLevel": "unit",
+      "reproduction": "注入不可用的记忆评审器，调用 observeMemory 的延后整理选项并重交同一观察。",
+      "expected": "首次调用只评审一次且队列可读，重交不增加 pending 数量。",
+      "forbidden": "同步重复评审或丢失待处理观察。",
+      "rootCause": "延后观察原先通过 dispatch 再次同步触发整理。",
+      "tests": [
+        {
+          "file": "test/domains/comet-plugin/plugin-integration.test.ts",
+          "namePattern": "queues deferred implicit observations once without running reflection before returning",
+          "requiredNames": [
+            "application plugin registration queues deferred implicit observations once without running reflection before returning"
+          ]
+        }
+      ]
     }
   ]
 }

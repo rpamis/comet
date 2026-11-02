@@ -231,14 +231,17 @@ export async function submitTaskLearning(options: {
   }
   for (const [index, observation] of (input.personal.observations ?? []).entries()) {
     await attempt('personal.observations', index, async () => {
-      const result = await bridge.observeMemory({
-        ...observation,
-        workflow: options.workflow,
-        changeId: options.change,
-        success: true,
-        projectIdentity: projectId,
-        ...(observation.scope === 'project' ? { projectKey: projectId } : {}),
-      });
+      const result = await bridge.observeMemory(
+        {
+          ...observation,
+          workflow: options.workflow,
+          changeId: options.change,
+          success: true,
+          projectIdentity: projectId,
+          ...(observation.scope === 'project' ? { projectKey: projectId } : {}),
+        },
+        { deferReflection: true },
+      );
       deferred ||= result.deferred === true;
       const observationResult =
         result.observation ?? result.results?.find((entry) => entry.observation)?.observation;
@@ -312,7 +315,11 @@ export async function submitTaskLearning(options: {
     });
   });
   const nextActions = [...projectLearning.nextActions];
-  if (personal?.submissionVerified !== true)
+  if (deferred)
+    nextActions.push(
+      '隐式观察已保存到学习队列；在当前任务之外使用 comet memory sync 继续整理，不反复提交本文件，也不把排队记为已生效。',
+    );
+  else if (personal?.submissionVerified !== true)
     nextActions.push(
       '个人学习检查尚未核验：读取 personalObservations 的结果和原因；有有效观察使用 submitted，确认没有合格观察时移除观察并声明 no-observation，未检查时保留 not-run。不要创建占位记忆。',
     );

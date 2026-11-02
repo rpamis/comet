@@ -1,3 +1,4 @@
+import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 import { inspectNativeSdkRunDiagnostics } from './native-sdk-diagnostics.js';
 import { reconcileNativeSdkExecutionStops } from './native-sdk-check-execution.js';
 import { recoverNativeSdkReportRevalidation } from './native-sdk-report.js';
@@ -652,59 +653,81 @@ export async function advanceNativeSdkChange(
   const diagnostics = await inspectNativeSdkRunDiagnostics(projectRoot, run);
   if (!diagnostics.healthy)
     return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
-  if (run.ready.length > 0) {
-    await (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime.next({ runId: run.runId });
-    ({ run, state, artifactRootRef, application } = await inspectNativeSdkRun(projectRoot, name));
-  }
-  const pending = nativeSdkNextAction(run, state);
-  if (!pending) {
+  if (run.ready.length === 0 && nativeSdkNextAction(run, state)?.type !== 'call_tool')
     return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
-  }
-  if (pending.stepId !== 'shape.prepare' && pending.stepId !== 'shape.revalidate') {
-    let completed = run;
-    if (pending.type === 'call_tool') {
-      const { runtime, executors } = await loadOwnedNativeSdkRuntime(projectRoot, name);
+  // 同一次请求共享应用加载；每个 Action 仍单独领取、校验并持久化。
+  const owned = await loadOwnedNativeSdkRuntime(projectRoot, name);
+  for (let steps = 0; steps < 32; steps++) {
+    if (['failed', 'cancelled', 'completed'].includes(run.status)) break;
+    if (
+      steps > 0 &&
+      !state.archived &&
+      state.workspace.change_branch &&
+      inspectGitWorktree(projectRoot).currentBranch !== state.workspace.change_branch
+    )
+      return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+    if (run.ready.length > 0) {
+      run = await owned.runtime.next({ runId: run.runId });
+      state = parseNativePortableState(run.state);
+    }
+    const pending = nativeSdkNextAction(run, state);
+    if (!pending) {
+      return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+    }
+    if (pending.type !== 'call_tool')
+      return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+    if (pending.stepId !== 'shape.prepare' && pending.stepId !== 'shape.revalidate') {
+      const { runtime, executors } = owned;
       const executor = executors.find((candidate) => candidate.supports(pending));
       if (!executor) throw new Error(`Native SDK Action ${pending.stepId} has no executor`);
-      completed = await runtime.execute({
+      let completed = await runtime.execute({
         runId: run.runId,
         actionId: pending.id,
         executorId: executor.id,
         context: { requestId: randomUUID(), projectRoot },
       });
       completed = await reconcileNativeSdkExecutionStops(projectRoot, completed, runtime);
+      if (
+        completed.revision === run.revision ||
+        completed.actions.find((action) => action.id === pending.id)?.status !== 'succeeded'
+      )
+        return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
+      run = completed;
+      state = parseNativePortableState(run.state);
+      continue;
     }
-    return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
-  }
-  const paths = await nativeProjectPaths(projectRoot, artifactRootRef);
-  const proposal = await collectNativeSdkShapeProposal({ paths, state });
-  const { runtime } = await loadOwnedNativeSdkRuntime(projectRoot, name);
-  const requestId = randomUUID();
-  const context = { requestId, projectRoot };
-  const claimed = await runtime.claim({
-    runId: run.runId,
-    expectedRevision: run.revision,
-    actionId: pending.id,
-    attempt: pending.attempt,
-    inputHash: pending.inputHash,
-    executorId: 'comet-native-cli',
-    claimToken: requestId,
-    context,
-  });
-  const claimedAction = claimed.actions.find((action) => action.id === pending.id);
-  if (!claimedAction?.claim) throw new Error(`Native SDK Action ${pending.id} was not claimed`);
-  const completed = await runtime.recordOutcome({
-    runId: run.runId,
-    outcome: {
+    const paths = await nativeProjectPaths(projectRoot, artifactRootRef);
+    const proposal = await collectNativeSdkShapeProposal({ paths, state });
+    const { runtime } = owned;
+    const requestId = randomUUID();
+    const context = { requestId, projectRoot };
+    const claimed = await runtime.claim({
+      runId: run.runId,
+      expectedRevision: run.revision,
       actionId: pending.id,
       attempt: pending.attempt,
       inputHash: pending.inputHash,
-      claimToken: claimedAction.claim.token,
-      outcomeId: requestId,
-      status: 'succeeded',
-      output: proposal as unknown as RuntimeValue,
-    },
-    context,
-  });
-  return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
+      executorId: 'comet-native-cli',
+      claimToken: requestId,
+      context,
+    });
+    const claimedAction = claimed.actions.find((action) => action.id === pending.id);
+    if (!claimedAction?.claim) throw new Error(`Native SDK Action ${pending.id} was not claimed`);
+    const completed = await runtime.recordOutcome({
+      runId: run.runId,
+      outcome: {
+        actionId: pending.id,
+        attempt: pending.attempt,
+        inputHash: pending.inputHash,
+        claimToken: claimedAction.claim.token,
+        outcomeId: requestId,
+        status: 'succeeded',
+        output: proposal as unknown as RuntimeValue,
+      },
+      context,
+    });
+    run = completed;
+    state = parseNativePortableState(run.state);
+  }
+  return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
 }

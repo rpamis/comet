@@ -503,20 +503,6 @@ function builderCandidateState(
   const output = outcome.output as Record<string, unknown> | null;
   const sessionId = action.claim?.sessionId;
   if (
-    output &&
-    (typeof output.submittedAt !== 'string' ||
-      Number.isNaN(Date.parse(output.submittedAt)) ||
-      new Date(output.submittedAt).toISOString() !== output.submittedAt)
-  ) {
-    const expected =
-      typeof output.submittedAt === 'string' && !Number.isNaN(Date.parse(output.submittedAt))
-        ? new Date(output.submittedAt).toISOString()
-        : 'YYYY-MM-DDTHH:mm:ss.sssZ';
-    throw new Error(
-      `Native Builder submittedAt must be a canonical UTC timestamp (${expected}); received ${JSON.stringify(output.submittedAt)}`,
-    );
-  }
-  if (
     state.phase !== 'build' ||
     !['build.builder', 'supervisor.parent.builder'].includes(action.stepId) ||
     action.type !== 'handoff' ||
@@ -524,14 +510,12 @@ function builderCandidateState(
     !output ||
     typeof output.summary !== 'string' ||
     !output.summary.trim() ||
-    !Array.isArray(output.addressedAcceptanceIds) ||
-    output.addressedAcceptanceIds.some((id) => typeof id !== 'string') ||
+    (output.addressedAcceptanceIds !== undefined &&
+      (!Array.isArray(output.addressedAcceptanceIds) ||
+        output.addressedAcceptanceIds.some((id) => typeof id !== 'string'))) ||
     !Array.isArray(output.checks) ||
     !Array.isArray(output.knownLimits) ||
-    output.knownLimits.some((limit) => typeof limit !== 'string') ||
-    typeof output.submittedAt !== 'string' ||
-    Number.isNaN(Date.parse(output.submittedAt)) ||
-    new Date(output.submittedAt).toISOString() !== output.submittedAt
+    output.knownLimits.some((limit) => typeof limit !== 'string')
   ) {
     throw new Error('Native Builder result needs a claimed host session and a complete candidate');
   }
@@ -573,7 +557,7 @@ function builderCandidateState(
     input: {
       identity,
       summary: output.summary,
-      addressedAcceptanceIds: output.addressedAcceptanceIds as string[],
+      addressedAcceptanceIds: (output.addressedAcceptanceIds ?? []) as string[],
       acceptanceReview:
         output.acceptanceReview === undefined
           ? undefined
@@ -588,7 +572,11 @@ function builderCandidateState(
           }
         : null,
       candidateId: hashRuntimeValue({ actionId: action.id, outcomeId: outcome.outcomeId }),
-      now: new Date(output.submittedAt),
+      // 兼容旧请求中的有效时间；新请求由 Runtime 记录，无需 Agent 填写。
+      now:
+        typeof output.submittedAt === 'string' && !Number.isNaN(Date.parse(output.submittedAt))
+          ? new Date(output.submittedAt)
+          : new Date(),
     },
   });
 }

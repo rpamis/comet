@@ -137,13 +137,26 @@ export async function collectCometTaskContext(
   request: CometPluginContextRequest,
   trace?: { workflow: 'native' | 'classic'; change: string },
 ): Promise<readonly CometPluginContextContribution[]> {
+  return (await collectCometTaskContextResult(projectRoot, request, trace)).context;
+}
+
+/** 返回可用性，避免把检索失败解释为已成功交付空上下文。 */
+export async function collectCometTaskContextResult(
+  projectRoot: string,
+  request: CometPluginContextRequest,
+  trace?: { workflow: 'native' | 'classic'; change: string },
+  options: { timeoutMs: number } = { timeoutMs: 10_000 },
+): Promise<{
+  status: 'available' | 'unavailable';
+  context: readonly CometPluginContextContribution[];
+}> {
   try {
     const output = await runExternalCommandAsync(
       process.execPath,
       [fileURLToPath(new URL('./comet-task-context-worker.js', import.meta.url))],
       {
         input: JSON.stringify({ projectRoot, request, ...(trace ? { trace } : {}) }),
-        timeoutMs: 10_000,
+        timeoutMs: options.timeoutMs,
         maxBufferBytes: 1024 * 1024,
         onStderr: (chunk) => {
           process.stderr.write(chunk);
@@ -152,13 +165,13 @@ export async function collectCometTaskContext(
     );
     const context: unknown = JSON.parse(output);
     if (!Array.isArray(context)) throw new Error('Invalid task context response');
-    return context;
+    return { status: 'available', context };
   } catch (error) {
     process.stderr.write(
       error instanceof ExternalCommandError && error.timedOut
-        ? 'Task context retrieval exceeded 10 seconds and was canceled. Continue project exploration without recalled context; do not retry this lookup for the same task.\n'
+        ? `Task context retrieval exceeded ${options.timeoutMs / 1000} seconds and was canceled. Continue project exploration without recalled context; do not retry this lookup for the same task.\n`
         : 'Task context retrieval is unavailable. Continue project exploration without recalled context; do not retry this lookup for the same task.\n',
     );
-    return [];
+    return { status: 'unavailable', context: [] };
   }
 }

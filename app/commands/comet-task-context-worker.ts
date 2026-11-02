@@ -32,7 +32,12 @@ try {
         for (const result of workflowResults)
           await recordCometWorkflowResult({ ...result, captureOnly: true });
         const results = [];
-        for (const result of workflowResults) results.push(await recordCometWorkflowResult(result));
+        for (const result of workflowResults)
+          results.push(
+            result.captureOnly || result.learningCheck === undefined
+              ? null
+              : await recordCometWorkflowResult(result),
+          );
         return results;
       }
       return projectLearning === undefined

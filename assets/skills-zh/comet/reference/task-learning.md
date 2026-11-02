@@ -32,4 +32,6 @@ comet task <project-root> --task "<用户原始请求>" --complete --workflow <n
 
 完成标准：`learningSubmission.status` 为 `applied`，个人检查已核验，`projectLearning.submissionVerified` 为 `true`，项目待评审与待处理数量均为 0。`accepted` 表示仍有待处理项，`partial` 表示部分写入失败；读取 `personalObservations`、`errors` 和 `learningSubmission.nextActions`，按实际原因处理，修正后可重交同一文件，已有回执不会重复创建。观察被忽略或跳过时说明原因；确认没有合格观察后，移除该观察并声明 `no-observation`，不创建占位记忆。`not-run`、延迟、来源变化或调用失败需明确说明，学习未完成不阻断已完成的开发任务。
 
+隐式工作流事件只写入现有学习队列，不在推进路径等待整理。待处理观察使用 `comet memory sync` 继续；排队不代表记忆已生效，也无需反复提交同一学习文件。显式记住、忘记和有证据的实际采用反馈仍立即处理。平台没有空闲事件适配时，需要显式运行 sync；安装插件不代表所有聊天都已自动接入。
+
 旧版本不支持 `--learning-file` 时，沿用单项命令和显式检查参数，不循环重试不支持的选项。

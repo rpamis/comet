@@ -37,6 +37,43 @@ interface WorkflowExperienceFixture {
 }
 
 describe('application plugin registration', () => {
+  test('queues deferred implicit observations once without running reflection before returning', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-deferred-observation-'));
+    let reviewCalls = 0;
+    try {
+      const bridge = await createProductionCometPluginBridge({
+        projectRoot: root,
+        projectId: 'deferred-project',
+        homeDirectory: root,
+        scheduleLearning: (task) => task(),
+        runMemoryReview: async () => {
+          reviewCalls += 1;
+          throw new Error('review unavailable');
+        },
+      });
+      const observation = {
+        scope: 'project' as const,
+        projectKey: 'deferred-project',
+        workflow: 'native',
+        changeId: 'deferred',
+        category: '协作偏好',
+        text: '以后优先展示结论，再列出实际验证。',
+        success: true,
+      };
+      expect(await bridge.observeMemory(observation, { deferReflection: true })).toMatchObject({
+        deferred: true,
+      });
+      expect(reviewCalls).toBe(1);
+      const journal = await bridge.pluginRuntime.learningStatus();
+      expect(journal.pending).toBeGreaterThan(0);
+      expect(await bridge.observeMemory(observation, { deferReflection: true })).toMatchObject({
+        deferred: true,
+      });
+      expect((await bridge.pluginRuntime.learningStatus()).pending).toBe(journal.pending);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
   const descriptor: PluginDescriptor = {
     id: 'example.notes',
     kind: 'third-party',

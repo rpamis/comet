@@ -8,7 +8,7 @@
 
 ### Shape 与 SDK 自有 Action
 
-完成正式 brief 和完整目标 Spec 后，运行 `comet native next <change> --json`，直到 `run.waits` 出现待处理的 `shape.confirm` 或 `supervisor.shape.confirm`。向用户展示完整 Shape；Supervisor 还要展示 Child 计划，并让用户选择多会话或单会话推进。得到明确确认后，按当前 `continuation.commandAlternatives` 的状态版本和动作执行对应命令；文档变化时重新提案。之后 `next` 每次执行一个 SDK 自有的 Action；查看返回的 `pendingActions` 处理全部待办，`pendingAction` 只表示其中第一项。对 `build.builder`、`verify.verifier`、`supervisor.child.builder`、`supervisor.child.verifier`、`supervisor.child.integration-repair` 和 `supervisor.parent.builder`，按下文协议领取并回报各自的 Action；多个 Child 可以并行工作，但集成 Action 与紧随其后的集成检查按 Run 顺序串行推进。每次提交后重新读取 Action、Wait 和状态。
+完成正式 brief 和完整目标 Spec 后，运行 `comet native next <change> --json`，直到 `run.waits` 出现待处理的 `shape.confirm` 或 `supervisor.shape.confirm`。向用户展示完整 Shape；Supervisor 还要展示 Child 计划，并让用户选择多会话或单会话推进。得到明确确认后，按当前 `continuation.commandAlternatives` 的状态版本和动作执行对应命令；文档变化时重新提案。之后一次 `next` 连续执行已获授权的 Runtime 内部 Action，遇到用户决定、Agent 任务、失败或未知结果时返回；查看返回的 `pendingActions` 处理全部待办，`pendingAction` 只表示其中第一项。对 `build.builder`、`verify.verifier`、`supervisor.child.builder`、`supervisor.child.verifier`、`supervisor.child.integration-repair` 和 `supervisor.parent.builder`，按下文协议领取并回报各自的 Action；多个 Child 可以并行工作，但集成 Action 与紧随其后的集成检查按 Run 顺序串行推进。每次提交后重新读取 Action、Wait 和状态。
 
 Supervisor Child 的 Runtime 检查失败或独立 Verifier 明确判定失败时，Run 会为同一 Child 生成新的 `supervisor.child.builder`，其激活输入指向失败 Action。读取该 Action 的真实失败结果，在原 Child worktree 修复并提交新的候选；随后重新执行检查与独立验收。`blocked` 或执行结果未知没有这项自动修复授权，先核对原任务和证据。
 
@@ -22,13 +22,16 @@ Supervisor 父级独立 Verifier 明确判定失败，或用户拒绝当前父�
 
 ### SDK Action 领取与回报
 
-Builder 开始本轮实现前、独立 Verifier 开始验收前，复制当前 Action 的 `claimRequest`，填写接收会话与稳定领取标识，先提交 `claim`。独立 Action 的领取按 `actionId`、`attempt` 和 `inputHash` 校验，不自行补入旧的全局 revision；其他任务推进不要求重派本任务。请求包含 `operation: "claim"`、`runId`、`actionId`、`attempt`、`inputHash`、`executorId: "native-host"`、`sessionId` 和本次唯一且恢复时保持不变的 `claimToken`。`sessionId` 使用平台会话或任务标识；若平台没有可读标识，使用本次工作稳定唯一的执行引用，并明确其只是关联标识，不能据此宣称执行者身份已认证。只有返回的同一 Action 为 `running`、领取标识匹配，才执行或继续本次工作。已由别的执行者领取时，先核对该工作，不能重新领取或另起同一任务。
+Builder 开始本轮实现前、独立 Verifier 开始验收前，复制当前 Action 的 `claimRequest`，填写接收会话并保留已提供的稳定领取标识，先提交 `claim`。独立 Action 的领取按 `actionId`、`attempt` 和 `inputHash` 校验，不自行补入旧的全局 revision；其他任务推进不要求重派本任务。请求包含 `operation: "claim"`、`runId`、`actionId`、`attempt`、`inputHash`、`executorId: "native-host"`、`sessionId` 和本次唯一且恢复时保持不变的 `claimToken`。`sessionId` 使用平台会话或任务标识；若平台没有可读标识，使用本次工作稳定唯一的执行引用，并明确其只是关联标识，不能据此宣称执行者身份已认证。只有返回的同一 Action 为 `running`、领取标识匹配，才执行或继续本次工作。已由别的执行者领取时，先核对该工作，不能重新领取或另起同一任务。
 
-执行者完成后，用同一 `runId` 提交 `record-outcome`：`outcome` 包含原 `actionId`、`attempt`、`inputHash`、`claimToken`，本次唯一的 `outcomeId`、真实的 `status` 和 `output`。不得把尚未完成、未运行或结果未知的工作写成 `succeeded`。SDK 校验结果并保存收据后才按新的 Run 继续。
+没有 `resultRequest` 的旧响应中，执行者完成后用同一 `runId` 提交 `record-outcome`：`outcome` 包含原 `actionId`、`attempt`、`inputHash`、`claimToken`，本次唯一的 `outcomeId`、真实的 `status` 和 `output`。不得把尚未完成、未运行或结果未知的工作写成 `succeeded`。SDK 校验结果并保存收据后才按新的 Run 继续。
+
+领取响应提供 `resultRequest` 时，整体保留其中的 `receipt`，只填写 `result.status` 与真实业务 `result.output`，通过同一 dispatch 命令提交；无需拆装 Action 身份或生成结果 ID。重复提交相同结果沿用原收据。旧 `outcomeRequest` 继续可用，不能混用两种输入。`claimRequest` 中已填好的领取令牌原样保留，只填写实际会话标识。提交时间由 Runtime 补记；`addressedAcceptanceIds` 可选，用于本轮处理重点，省略不代表修改了全部验收项。
 
 ### SDK Builder 交接
 
-`build.builder` 和 `supervisor.parent.builder` 的成功 `output` 包含非空 `summary`、已处理的 `addressedAcceptanceIds`、逐项自检 `acceptanceReview`、开发期 `checks`（每项 `name`、`result`、`note`）、`knownLimits`、ISO 时间 `submittedAt`，以及可选 `review` 和 `verificationChecks`。`acceptanceReview` 对每个确认的验收 ID 提供且只提供一项 `{id,status,evidence,note}`；只有 `status: implemented-with-evidence` 且 `evidence` 非空才可提交，未实现、已知失败或没有证据时继续 Build。`verificationChecks` 是 Runtime 后续实际执行的检查计划；Builder 自报 `checks` 和自检不是独立验收结论。提交后运行 `native next` 执行 `verify.checks`，检查失败时按返回状态修复，不提交虚构的通过结果。
+`build.builder` 和 `supervisor.parent.builder` 的成功 `output` 包含非空 `summary`、逐项自检 `acceptanceReview`、开发期 `checks`（每项 `name`、`result`、`note`）、`knownLimits`，以及可选 `review` 和 `verificationChecks`。`acceptanceReview` 对每个确认的验收 ID 提供且只提供一项 `{id,status,evidence,note}`；只有 `status: implemented-with-evidence` 且 `evidence` 非空才可提交，未实现、已知失败或没有证据时继续 Build。`verificationChecks` 是 Runtime 后续实际执行的检查计划；Builder 自报 `checks` 和自检不是独立验收结论。提交后运行 `native next` 执行 `verify.checks`，检查失败时按返回状态修复，不提交虚构的通过结果。
+
 ### SDK Verify 协议
 
 `verify.verifier` 必须由与 Builder 不同的只读平台会话领取。先通过平台启动独立 Verifier，传入当前候选 ID、验收项及引用、工作区和 Runtime 检查位置；让 Verifier 的第一个 Runtime 动作领取该 Action。平台仅接受派发、尚无 Verifier 领取回执时，状态是“已派发未确认启动”。等待工具超时继续跟踪同一任务。Verifier 读取全部当前验收项并独立核验后，成功 `output` 包含当前 `candidateId`、与领取时相同的 `verifierExecutionRef`，以及 `response`：完整结论用 `final-result`，需要补充 Runtime 检查用 `request-checks`。后者经 `native next` 执行检查后，由同一 Verifier 会话领取新 Action 并继续；检查收据未变时复用。
@@ -49,7 +52,9 @@ Builder 已部分执行且原 Action 已提交 `failed` 时，保留工作区和
 
 ## 记忆接入
 
-进入 change 工作区并取得当前 `phase` 后，优先执行当前任务包的 `contextRequest`（包括 Compat 的 `supervisorTask.contextRequest`）；没有任务专属请求时使用 `continuation.contextRequest`。SDK 的 Builder、Verifier 和子任务使用对应 `pendingActions[]` 或 `activeActions[]` 中的 `contextRequest`，由接收方在领取成功后执行。命令中的任务填用户原始请求，会话填接收 Agent 自己的稳定标识；原始请求缺失时先从当前 brief 恢复目标。
+领取响应含 `data.contextDelivery` 时，读取 `data.context[].text` 后直接工作，无需再执行 `contextRequest`；`empty` 表示没有新增交付，`unavailable` 时按明确任务继续。需要正文时使用 `data.contextActions.expand`，上下文丢失时使用 `data.contextActions.restore`，收尾时使用 `data.contextActions.complete` 并填写实际学习文件。新 Agent 使用自己的会话标识，不复用其他执行者的上下文回执。
+
+没有自动交付时，进入 change 工作区并取得当前 `phase` 后，优先执行当前任务包的 `contextRequest`（包括 Compat 的 `supervisorTask.contextRequest`）；没有任务专属请求时使用 `continuation.contextRequest`。SDK 的 Builder、Verifier 和子任务使用对应 `pendingActions[]` 或 `activeActions[]` 中的 `contextRequest`，由接收方在领取成功后执行。命令中的任务填用户原始请求，会话填接收 Agent 自己的稳定标识；原始请求缺失时先从当前 brief 恢复目标。
 
 首次进入阶段、交接给新 Agent、上下文压缩或新会话恢复后，各执行一次完整读取。旧响应没有 `contextRequest` 时使用：
 
@@ -135,15 +140,15 @@ Supervisor 子任务在任务包指定的 `projectRoot` 工作。回传结果时
 
 模板占位符和校验错误都会列出下列字段的全部合法值。每个字段的取值集合只对该字段有效，不能把一个字段的值套用到另一个字段。
 
-| 输入 | 字段 | 合法值 |
-|------|------|--------|
-| `builder-handoff` | `checks[].result` | `passed` / `failed` / `not-run`：Builder 实际运行或未运行的开发检查 |
-| `builder-handoff` | `acceptance_review[].status` | `implemented-with-evidence` / `implemented-no-evidence` / `not-implemented` / `known-fail` |
-| `builder-handoff` | `review.status` | `passed` |
-| `verifier-response`（`final-result`） | `result.verdict` | `pass` / `fail` / `blocked`：Verifier 总判定 |
-| `verifier-response`（`final-result`） | `result.acceptance[].result` | `passed` / `failed` / `blocked`：逐项验收结论 |
-| `supervisor-verifier-result` | `verdict` | `pass` / `fail` / `blocked` |
-| `supervisor-verifier-result` | `evidence.acceptance[].result` | `passed` / `failed` / `blocked` |
+| 输入                                  | 字段                           | 合法值                                                                                     |
+| ------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------ |
+| `builder-handoff`                     | `checks[].result`              | `passed` / `failed` / `not-run`：Builder 实际运行或未运行的开发检查                        |
+| `builder-handoff`                     | `acceptance_review[].status`   | `implemented-with-evidence` / `implemented-no-evidence` / `not-implemented` / `known-fail` |
+| `builder-handoff`                     | `review.status`                | `passed`                                                                                   |
+| `verifier-response`（`final-result`） | `result.verdict`               | `pass` / `fail` / `blocked`：Verifier 总判定                                               |
+| `verifier-response`（`final-result`） | `result.acceptance[].result`   | `passed` / `failed` / `blocked`：逐项验收结论                                              |
+| `supervisor-verifier-result`          | `verdict`                      | `pass` / `fail` / `blocked`                                                                |
+| `supervisor-verifier-result`          | `evidence.acceptance[].result` | `passed` / `failed` / `blocked`                                                            |
 
 逐项结论和 Builder 检查结果用完成时（`passed`、`failed`），总判定用原形（`pass`、`fail`）。`not-run` 只用于 Builder 的开发检查，`blocked` 只用于 Verifier 字段，`pending` 是 Runtime 内部状态值，不出现在任何输入中。
 

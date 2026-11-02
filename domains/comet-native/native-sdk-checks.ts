@@ -1201,8 +1201,10 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
   async preflight(action, context, run) {
     if (!run || !context?.projectRoot) throw new Error('Native checks require a bound SDK Run');
     const { state, plans, artifactRootRef } = checkInput(run, action);
-    if (!state.children_contract_hash && ['verify', 'archive'].includes(state.phase))
-      await assertNativeSdkCandidateUnchanged({ run, projectRoot: context.projectRoot });
+    const observedInputs =
+      !state.children_contract_hash && ['verify', 'archive'].includes(state.phase)
+        ? await assertNativeSdkCandidateUnchanged({ run, projectRoot: context.projectRoot })
+        : undefined;
     const refresh = nativeSdkCheckRefreshInput(run, action);
     if (refresh && plans.some((plan) => !refresh.checkIds.includes(plan.id)))
       await assertNativeRefreshCheckReuse({
@@ -1211,10 +1213,12 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
         plans,
         checkIds: refresh.checkIds,
         projectRoot: context.projectRoot,
-        snapshot: await nativeRawInputSnapshot({
-          projectRoot: context.projectRoot,
-          managedArtifactRoot: await resolveArtifactRoot(context.projectRoot, artifactRootRef),
-        }),
+        snapshot:
+          observedInputs ??
+          (await nativeRawInputSnapshot({
+            projectRoot: context.projectRoot,
+            managedArtifactRoot: await resolveArtifactRoot(context.projectRoot, artifactRootRef),
+          })),
       });
   },
   async execute(action, context, run) {
