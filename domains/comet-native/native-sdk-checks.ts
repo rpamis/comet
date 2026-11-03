@@ -32,6 +32,7 @@ import {
   isNativeCheckTerminationUnconfirmedError,
   nativeCheckPlanKey,
   nativeCheckInvocationKey,
+  normalizeNativeCheckOutputs,
   nativePortableArgvDisplay,
   preflightNativeCheckPlans,
   type NativeCheckPlan,
@@ -223,6 +224,7 @@ export async function rememberNativeSdkBuilderInputs(
   const snapshot = await nativeRawInputSnapshot({
     projectRoot,
     managedArtifactRoot: await resolveArtifactRoot(projectRoot, input.artifactRootRef),
+    outputs: nativeSdkCheckPlans(outcome.output).flatMap((plan) => plan.outputs ?? []),
   });
   const snapshotRef = await saveRawInput(root, run, snapshot);
   const ref = builderInputRef(run, action, outcome);
@@ -548,6 +550,32 @@ export function nativeSdkCheckPlans(builderOutput: unknown): NativeCheckPlan[] {
   const output = record(builderOutput, 'Native Builder result');
   const raw = output.verificationChecks ?? [];
   if (!Array.isArray(raw)) throw new Error('Native verificationChecks must be an array');
+  const issues: string[] = [];
+  raw.forEach((entry, index) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      issues.push(`verificationChecks[${index}] must be an object`);
+      return;
+    }
+    const row = entry as Record<string, unknown>;
+    for (const [key, valid] of Object.entries({
+      id: typeof row.id === 'string' && !!row.id,
+      name: typeof row.name === 'string' && !!row.name,
+      executable: typeof row.executable === 'string' && !!row.executable,
+      argv: Array.isArray(row.argv) && row.argv.every((arg) => typeof arg === 'string'),
+      cwdRef: typeof row.cwdRef === 'string' && !!row.cwdRef,
+      timeoutMs: Number.isSafeInteger(row.timeoutMs) && (row.timeoutMs as number) > 0,
+      repeatable: typeof row.repeatable === 'boolean',
+    }))
+      if (!valid) issues.push(`verificationChecks[${index}].${key} is missing or invalid`);
+    if (row.outputs !== undefined) {
+      try {
+        normalizeNativeCheckOutputs(row.outputs);
+      } catch (error) {
+        issues.push(`verificationChecks[${index}].outputs: ${(error as Error).message}`);
+      }
+    }
+  });
+  if (issues.length) throw new Error(`Native check plan fields are invalid:\n${issues.join('\n')}`);
   return raw.map((entry, index) => {
     const plan = record(entry, `Native verificationChecks[${index}]`);
     if (
@@ -570,6 +598,7 @@ export function nativeSdkCheckPlans(builderOutput: unknown): NativeCheckPlan[] {
       cwdRef: plan.cwdRef,
       timeoutMs: plan.timeoutMs,
       repeatable: plan.repeatable,
+      ...(plan.outputs === undefined ? {} : { outputs: normalizeNativeCheckOutputs(plan.outputs) }),
     };
   });
 }
@@ -1288,6 +1317,15 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
       projectRoot: checkRoot,
       plans,
       managedArtifactRoot,
+      outputs: nativeSdkCheckPlans(
+        [...run.actions]
+          .reverse()
+          .find(
+            (entry) =>
+              ['build.builder', 'supervisor.parent.builder'].includes(entry.stepId) &&
+              entry.status === 'succeeded',
+          )?.outcome?.output ?? { verificationChecks: plans },
+      ).flatMap((plan) => plan.outputs ?? []),
     };
     const previousInput = run.actions
       .slice(
@@ -2160,7 +2198,7 @@ export async function assertNativeSdkCandidateUnchanged(options: {
       observedInputs = current;
       if (!original.complete || !current.complete) {
         if (options.requireEvidence)
-          throw new NativeSdkCandidateDriftError(
+          throw new NativeSdkCheckInputSnapshotError(
             `Builder 候选输入无法完整复核：${[...original.diagnostics, ...current.diagnostics].join('；')}`,
           );
         return;

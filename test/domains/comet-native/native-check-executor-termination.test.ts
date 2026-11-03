@@ -108,6 +108,77 @@ it('reports a timeout only after confirmed tree termination', async () => {
   await expect(execute()).resolves.toMatchObject({ status: 'interrupted', timedOut: true });
 });
 
+it('stops immediately on a supervisor error instead of converting it into a command timeout', async () => {
+  vi.mocked(ownedCommand.spawnOwnedCommand).mockImplementation(() => ({
+    child: child as ReturnType<typeof ownedCommand.spawnOwnedCommand>['child'],
+    instanceId: 'original-instance',
+    ready: Promise.resolve(),
+    start: () => {
+      queueMicrotask(() => child.emit('error', new Error('IPC write failed')));
+    },
+  }));
+  await expect(execute()).resolves.toMatchObject({ status: 'interrupted', timedOut: false });
+});
+
+it('waits for supervisor readiness before releasing the registered command', async () => {
+  let ready!: () => void;
+  const readiness = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  let spawned!: () => void;
+  const observed = new Promise<void>((resolve) => {
+    spawned = resolve;
+  });
+  const start = vi.fn(() => queueMicrotask(() => child.emit('message', result)));
+  vi.mocked(ownedCommand.spawnOwnedCommand).mockImplementation(() => {
+    spawned();
+    return {
+      child: child as ReturnType<typeof ownedCommand.spawnOwnedCommand>['child'],
+      instanceId: 'original-instance',
+      ready: readiness,
+      start,
+    };
+  });
+  const operation = execute();
+  await observed;
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(start).not.toHaveBeenCalled();
+  ready();
+  await expect(operation).resolves.toMatchObject({ status: 'passed', timedOut: false });
+});
+
+it('cancels a pending identity registration immediately when its supervisor errors', async () => {
+  vi.mocked(processIdentity.readProcessIdentity).mockImplementation(() => new Promise(() => {}));
+  vi.mocked(ownedCommand.spawnOwnedCommand).mockImplementation(() => {
+    setImmediate(() => child.emit('error', new Error('IPC failed during registration')));
+    return {
+      child: child as ReturnType<typeof ownedCommand.spawnOwnedCommand>['child'],
+      instanceId: 'original-instance',
+      ready: Promise.resolve(),
+      start: vi.fn(),
+    };
+  });
+  await expect(execute()).rejects.toThrow('IPC failed during registration');
+});
+
+it('never releases a late-ready command after its registration deadline has cancelled it', async () => {
+  let ready!: () => void;
+  const readiness = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  const start = vi.fn();
+  vi.mocked(ownedCommand.spawnOwnedCommand).mockImplementation(() => ({
+    child: child as ReturnType<typeof ownedCommand.spawnOwnedCommand>['child'],
+    instanceId: 'original-instance',
+    ready: readiness,
+    start,
+  }));
+  await expect(execute()).rejects.toThrow('检查进程登记超过执行时限');
+  ready();
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(start).not.toHaveBeenCalled();
+});
+
 it('waits for the POSIX process group to exit after the supervisor closes', async () => {
   Object.defineProperty(process, 'platform', { ...platform, value: 'darwin' });
   result = null;
@@ -142,11 +213,36 @@ it.each(['completed', 'timeout'] as const)(
   },
 );
 
+it.each(['completed', 'timeout'] as const)(
+  'preserves command completion and timeout facts when %s cleanup is unconfirmed',
+  async (event) => {
+    result = event === 'completed' ? result : null;
+    confirmed = false;
+    const failure = await execute().catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(NativeCheckTerminationUnconfirmedError);
+    expect((failure as NativeCheckTerminationUnconfirmedError).diagnostics).toMatchObject({
+      timeoutMs: 50,
+      timedOut: event === 'timeout',
+      resultReceived: event === 'completed',
+      commandExitCode: event === 'completed' ? 0 : null,
+    });
+    expect((failure as Error).message).toContain('计划时限=50ms');
+  },
+);
+
 it('does not hang when failed Windows tree cleanup never emits close', async () => {
   confirmed = false;
   closes = false;
   await expect(execute()).rejects.toBeInstanceOf(NativeCheckTerminationUnconfirmedError);
 });
+
+it('settles an interrupted check when confirmed Windows cleanup never closes inherited pipes', async () => {
+  result = null;
+  closes = false;
+  const record = vi.fn().mockResolvedValue(undefined);
+  await expect(execute(record)).resolves.toMatchObject({ status: 'interrupted', timedOut: true });
+  expect(record).toHaveBeenCalledWith(expect.objectContaining({ pid: child.pid }), true);
+}, 3000);
 
 it('rejects a durable termination receipt failure instead of leaving the result pending', async () => {
   await expect(

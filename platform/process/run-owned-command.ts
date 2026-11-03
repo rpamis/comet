@@ -67,6 +67,7 @@ export async function runOwnedCommand(
   let failure: { error: unknown } | undefined;
   try {
     if (!owned.child.pid) throw new Error('执行监管进程未启动');
+    await owned.ready;
     const identity = await readProcessIdentity(owned.child.pid!);
     instance = {
       pid: owned.child.pid,

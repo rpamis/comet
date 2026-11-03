@@ -2,7 +2,10 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readWindowsProcessIdentity } from '../../../platform/process/windows-process-identity.js';
+import {
+  readWindowsProcessIdentity,
+  inspectWindowsProcessPresence,
+} from '../../../platform/process/windows-process-identity.js';
 import { runExternalCommandAsync } from '../../../platform/process/external-command.js';
 import * as externalCommand from '../../../platform/process/external-command.js';
 
@@ -13,6 +16,29 @@ describe('optional Windows process creation probe', () => {
     if (cacheRoot)
       await fs.rm(cacheRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
+
+  it.each([
+    ['0', 'absent'],
+    ['1', 'present'],
+    ['', 'unknown'],
+    ['permission denied', 'unknown'],
+  ])('uses only structured successful process enumeration %s as %s', async (output, expected) => {
+    vi.spyOn(externalCommand, 'runExternalCommandAsync').mockResolvedValue(output);
+    await expect(inspectWindowsProcessPresence(123456)).resolves.toBe(expected);
+  });
+  it('does not infer absence from an enumeration failure', async () => {
+    vi.spyOn(externalCommand, 'runExternalCommandAsync').mockRejectedValue(
+      new Error('probe timed out'),
+    );
+    await expect(inspectWindowsProcessPresence(123456)).resolves.toBe('unknown');
+  });
+  it.runIf(process.platform === 'win32')(
+    'enumerates the current Windows process and an absent PID',
+    async () => {
+      await expect(inspectWindowsProcessPresence(process.pid)).resolves.toBe('present');
+      await expect(inspectWindowsProcessPresence(2147483647)).resolves.toBe('absent');
+    },
+  );
 
   it.each(['compiler timeout', 'busy preparation lock'])(
     'retries after a cooldown when a transient %s clears',

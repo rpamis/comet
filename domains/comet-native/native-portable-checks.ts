@@ -416,6 +416,7 @@ export interface NativeRawInputSnapshot {
   complete: boolean;
   diagnostics: string[];
   contentHash: string;
+  outputs?: string[];
   contextHash: string;
   git: { head: string; branch: string; status: string; index: string } | null;
   hashCache?: Array<{ path: string; gitObjectId?: string; statKey: string }>;
@@ -435,6 +436,7 @@ export async function nativeRawInputSnapshot(options: {
   excludedPaths?: readonly string[];
   legacyArchiveOverlay?: NativeLegacyArchiveOverlay;
   previous?: NativeRawInputSnapshot;
+  outputs?: string[];
 }): Promise<NativeRawInputSnapshot> {
   const root = await fs.realpath(options.projectRoot);
   const managedArtifactRoot = options.managedArtifactRoot
@@ -448,7 +450,13 @@ export async function nativeRawInputSnapshot(options: {
       })
     : undefined;
   const runnerInputs = await nativeRunnerInputArtifactPaths(root);
+  const outputs = options.outputs ?? options.previous?.outputs ?? [];
+  const trackedPaths = new Set<string>();
+  const outputExcluded = (ref: string) =>
+    outputs.some((output) => ref === output || ref.startsWith(`${output}/`)) &&
+    ![...trackedPaths].some((tracked) => tracked === ref || tracked.startsWith(`${ref}/`));
   const excluded = (ref: string) =>
+    outputExcluded(ref) ||
     runnerInputs.has(ref) ||
     isNativeOwnedInputPath(ref, root, managedArtifactRoot) ||
     (options.excludedPaths ?? []).some((owned) => ref === owned || ref.startsWith(`${owned}/`));
@@ -515,6 +523,7 @@ export async function nativeRawInputSnapshot(options: {
         return match[2];
       });
     selection = [...new Set([...tracked, ...before.untracked.split('\0').filter(Boolean)])];
+    tracked.forEach((ref) => trackedPaths.add(ref));
   } catch (error) {
     // 只有确实没有仓库时才选物理树；仓库查询失败不能静默缩小输入范围。
     try {
@@ -570,10 +579,13 @@ export async function nativeRawInputSnapshot(options: {
     );
   const generated = new Set<string>();
   const rawSessionOptions: Parameters<typeof createProtectedProjectReadSession>[2] = {
-    ignoredDirectoryEntries: (ref) =>
-      /(?:^|\/)\.next(?:\/dev)?$/u.test(ref)
-        ? (entry) => isNativeNextVolatileInputPath(`${ref}/${entry.name}`)
-        : undefined,
+    ignoredDirectoryEntries: (ref) => (entry) => {
+      const target = ref === '.' || ref === '' ? entry.name : `${ref}/${entry.name}`;
+      return (
+        outputExcluded(target) ||
+        (/(?:^|\/)\.next(?:\/dev)?$/u.test(ref) && isNativeNextVolatileInputPath(target))
+      );
+    },
   };
   const readSession = await createProtectedProjectReadSession(
     root,
@@ -856,7 +868,9 @@ export async function nativeRawInputSnapshot(options: {
     contentHash: canonicalHash('comet.native.raw-content.v1', {
       projectRoot: root,
       files: files.map(({ path, hash, mode }) => ({ path, hash, mode })),
+      ...(outputs.length ? { outputs } : {}),
     }),
+    ...(outputs.length ? { outputs } : {}),
     contextHash: canonicalHash('comet.native.raw-context.v1', {
       machine: os.hostname(),
       execPath: process.execPath,

@@ -27,8 +27,24 @@ import { observeRuntimeOperation } from '../../platform/process/runtime-performa
 
 /** 不确定的停止不能当作普通失败清除登记或允许重试。 */
 export class NativeCheckTerminationUnconfirmedError extends Error {
-  constructor() {
-    super('检查进程树的停止尚未确认；保留原执行登记，不能验收或重试');
+  constructor(
+    readonly diagnostics?: {
+      timeoutMs: number;
+      timedOut: boolean;
+      commandStarted: boolean;
+      resultReceived: boolean;
+      commandExitCode: number | null;
+      supervisorError: string | null;
+    },
+    options?: ErrorOptions,
+  ) {
+    super(
+      '检查进程树的停止尚未确认；保留原执行登记，不能验收或重试' +
+        (diagnostics
+          ? `；计划时限=${diagnostics.timeoutMs}ms，命令超时=${diagnostics.timedOut ? '是' : '否'}，命令完成回报=${diagnostics.resultReceived ? `已收到（退出码 ${diagnostics.commandExitCode}）` : '未收到'}${diagnostics.supervisorError ? `，监管器错误=${diagnostics.supervisorError}` : ''}`
+          : ''),
+      options,
+    );
     this.name = 'NativeCheckTerminationUnconfirmedError';
   }
 }
@@ -54,6 +70,46 @@ export interface NativeCheckPlan {
   cwdRef: string;
   timeoutMs: number;
   repeatable: boolean;
+  /** 项目相对的测试产物路径；已跟踪文件仍参与输入核对。 */
+  outputs?: string[];
+}
+
+export function normalizeNativeCheckOutputs(value: unknown): string[] {
+  if (
+    !Array.isArray(value) ||
+    value.some(
+      (ref) =>
+        typeof ref !== 'string' ||
+        !ref ||
+        /[\0:*?"<>|[\]{}]/u.test(ref) ||
+        ref.startsWith('~') ||
+        ref.includes('\\') ||
+        path.posix.isAbsolute(ref) ||
+        path.posix.normalize(ref) !== ref ||
+        ref.split('/').some((part) => ['..', '.git', '.comet'].includes(part)) ||
+        !ref
+          .split('/')
+          .slice(0, -1)
+          .some((part) =>
+            [
+              'build',
+              'dist',
+              'gen',
+              'generated',
+              'out',
+              'target',
+              '.next',
+              '.nuxt',
+              '.output',
+              '.svelte-kit',
+            ].includes(part),
+          ),
+    )
+  )
+    throw new Error(
+      'Native check outputs must name normalized project-relative paths inside a generated output directory',
+    );
+  return [...new Set(value as string[])].sort();
 }
 
 export interface NativeExecutedCheck {
@@ -120,6 +176,7 @@ export function nativeCheckPlanKey(plan: NativeCheckPlan): string {
     plan.cwdRef.replaceAll('\\', '/'),
     plan.timeoutMs,
     plan.repeatable,
+    ...(plan.outputs?.length ? [plan.outputs] : []),
   ]);
 }
 
@@ -248,9 +305,10 @@ async function executeNativeCheckOperation(options: {
   return new Promise<NativeExecutedCheck & { logSha256: string }>((resolve, reject) => {
     let child;
     let start: () => void;
+    let ready: Promise<void>;
     let instanceId: string;
     try {
-      ({ child, start, instanceId } = spawnOwnedCommand(plan.executable, plan.argv, {
+      ({ child, start, ready, instanceId } = spawnOwnedCommand(plan.executable, plan.argv, {
         cwd,
         env: process.env,
         timeoutMs: plan.timeoutMs,
@@ -268,9 +326,12 @@ async function executeNativeCheckOperation(options: {
     let childIdentity: string | undefined;
     let instance: OwnedProcessInstance | undefined;
     let termination: Promise<boolean> | undefined;
+    let terminationCause: unknown;
+    let pipeCloseDeadline: NodeJS.Timeout | undefined;
     const stop = () => {
       termination ??= terminateProcessTreeConfirmed(child)
-        .catch(() => {
+        .catch((error: unknown) => {
+          terminationCause = error;
           try {
             child.kill('SIGKILL');
           } catch {
@@ -279,12 +340,25 @@ async function executeNativeCheckOperation(options: {
           return false;
         })
         .then((confirmed) => {
+          if (confirmed && !closed) {
+            // 系统已确认整树停止；继承的管道句柄不能无限延长检查的结束等待。
+            pipeCloseDeadline = setTimeout(() => {
+              if (closed) return;
+              supervisorInterrupted = true;
+              supervisorResult = null;
+              child.stdout.unpipe(stream);
+              child.stderr.unpipe(stream);
+              child.stdout.destroy();
+              child.stderr.destroy();
+              finishCheck(null, 'SIGKILL');
+            }, 1000);
+          }
           if (!confirmed) {
             // 兜底 kill 可能没有 close 事件；停止无法证明时不能永远等待继承的句柄。
             void registration.then(() => {
               clearTimeout(timer);
               stream.destroy();
-              reject(new NativeCheckTerminationUnconfirmedError());
+              reject(terminationError());
             });
           }
           return confirmed;
@@ -296,6 +370,18 @@ async function executeNativeCheckOperation(options: {
     let registration = Promise.resolve();
     let registrationSettled = false;
     let commandStarted = false;
+    const terminationError = () =>
+      new NativeCheckTerminationUnconfirmedError(
+        {
+          timeoutMs: plan.timeoutMs,
+          timedOut,
+          commandStarted,
+          resultReceived: supervisorResult !== null,
+          commandExitCode: supervisorResult?.exitCode ?? null,
+          supervisorError: spawnError ? redactNativeCredentialText(spawnError.message) : null,
+        },
+        { cause: terminationCause },
+      );
     const registrationController = new AbortController();
     let cancelRegistration: ((error: Error) => void) | undefined;
     const registrationDeadline = new Promise<never>((_resolve, rejectDeadline) => {
@@ -358,6 +444,11 @@ async function executeNativeCheckOperation(options: {
       const message = `\n[comet] failed to start check: ${redactNativeCredentialText(error.message)}\n`;
       stream.write(message);
       logHash.update(message);
+      if (!commandStarted && !registrationSettled) {
+        registrationController.abort();
+        cancelRegistration?.(error);
+      }
+      if (child.pid !== undefined) void stop();
     });
     const processStopped = async () => {
       const stopped = termination ? await termination : false;
@@ -371,8 +462,10 @@ async function executeNativeCheckOperation(options: {
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
     };
-    child.once('close', (exitCode, signal) => {
+    const finishCheck = (exitCode: number | null, signal: NodeJS.Signals | null) => {
+      if (closed) return;
       closed = true;
+      clearTimeout(pipeCloseDeadline);
       if (registrationSettled) clearTimeout(timer);
       const completed = (options.now ?? (() => new Date()))();
       void registration
@@ -386,7 +479,7 @@ async function executeNativeCheckOperation(options: {
           if (instance) await options.onTerminated?.(instance, confirmed);
           if (!confirmed) {
             stream.destroy();
-            reject(new NativeCheckTerminationUnconfirmedError());
+            reject(terminationError());
             return;
           }
           if (registrationError !== null) {
@@ -419,7 +512,8 @@ async function executeNativeCheckOperation(options: {
           stream.destroy();
           reject(error);
         });
-    });
+    };
+    child.once('close', finishCheck);
     stream.once('error', (error) => {
       registrationError ??= error;
       if (!registrationSettled) {
@@ -430,11 +524,7 @@ async function executeNativeCheckOperation(options: {
         // close 可能早于 taskkill 的结果；日志错误不能抢先清除尚未确认停止的登记。
         void registration
           .then(async () => {
-            reject(
-              (await processStopped())
-                ? registrationError
-                : new NativeCheckTerminationUnconfirmedError(),
-            );
+            reject((await processStopped()) ? registrationError : terminationError());
           })
           .catch(reject);
       } else void stop();
@@ -447,6 +537,8 @@ async function executeNativeCheckOperation(options: {
       const pid = child.pid;
       registration = Promise.race([
         Promise.resolve().then(async () => {
+          await ready;
+          registrationController.signal.throwIfAborted();
           childIdentity = (await readProcessIdentity(pid)) ?? undefined;
           registrationController.signal.throwIfAborted();
           instance = {

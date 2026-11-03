@@ -3,6 +3,8 @@ import { withCometRuntimeMetrics } from '../../../platform/process/runtime-metri
 import { readRuntimePerformanceRecords } from '../../../platform/process/runtime-performance.js';
 import { inspectNativeSdkCancellation } from '../../../domains/comet-native/native-sdk-cancellation.js';
 import * as nativeSdkChecks from '../../../domains/comet-native/native-sdk-checks.js';
+import * as processIdentity from '../../../platform/process/process-identity.js';
+import * as windowsIdentity from '../../../platform/process/windows-process-identity.js';
 import { nativeCandidateInputGate } from '../../../domains/comet-native/native-portable-checks.js';
 import { nativeEditReviewScope } from '../../../domains/comet-native/native-edit-review.js';
 import {
@@ -32,6 +34,7 @@ import {
   hasNativeSdkPortableStopEvidence,
   reconcileNativeSdkExecutionStops,
   createNativeSdkCheckExecution,
+  acknowledgeNativeSdkCheckStopped,
 } from '../../../domains/comet-native/native-sdk-check-execution.js';
 
 import * as nativeDomain from '../../../domains/comet-native/index.js';
@@ -535,6 +538,276 @@ async function awaitingArchiveApplication(
 }
 
 describe('Native protocol simplification', () => {
+  it('archives declared test outputs while continuing to bind generated application inputs', async () => {
+    const prepared = await awaitingArchiveApplication(
+      'sdk',
+      undefined,
+      true,
+      async (root) => {
+        await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n');
+        await fs.mkdir(path.join(root, 'dist/eval'), { recursive: true });
+        await fs.writeFile(path.join(root, 'dist/application.js'), 'original application');
+      },
+      nativeApplication(),
+      undefined,
+      [
+        {
+          id: 'test-output',
+          name: 'Test with trace output',
+          executable: process.execPath,
+          argv: ['-e', 'require("node:fs").writeFileSync("dist/eval/trace.json", "trace")'],
+          cwdRef: '.',
+          timeoutMs: 5000,
+          repeatable: true,
+          outputs: ['dist/eval'],
+        },
+      ],
+    );
+    const { root, runtime, run } = prepared;
+    await fs.writeFile(path.join(root, 'dist/eval/verifier.json'), 'independent trace');
+    const result = spawnSync(
+      process.execPath,
+      [
+        path.resolve('assets/skills/comet-native/scripts/comet-native-archive.mjs'),
+        run.runId,
+        '--project-root',
+        root,
+        '--json',
+      ],
+      { encoding: 'utf8', timeout: 30000 },
+    );
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect((await runtime.inspect(run.runId)).status).toBe('completed');
+    expect(await fs.readFile(path.join(root, 'dist/eval/verifier.json'), 'utf8')).toBe(
+      'independent trace',
+    );
+  });
+  it.each(['absent', 'present', 'unknown'] as const)(
+    'reconciles legacy EPERM only with explicit stop evidence and Windows enumeration %s',
+    async (presence) => {
+      const {
+        root,
+        runtime,
+        run: ready,
+      } = await dispatchedVerifier([], 'sdk', nativeApplication(), false);
+      const pending = ready.actions.at(-1)!;
+      const run = await runtime.claim({
+        runId: ready.runId,
+        actionId: pending.id,
+        attempt: pending.attempt,
+        inputHash: pending.inputHash,
+        executorId: 'comet-native-checks',
+        claimToken: 'legacy-eperm',
+        context: { requestId: 'legacy-eperm', projectRoot: root },
+      });
+      const action = run.actions.at(-1)!;
+      const registration = await createNativeSdkCheckExecution({
+        projectRoot: root,
+        run,
+        action,
+        candidateId: (run.state as NativePortableState).builder_handoff!.candidate_id,
+        plansHash: hashRuntimeValue([]),
+      });
+      registration.execution.owner = { pid: 2147483001 };
+      registration.execution.child = { pid: 2147483002 };
+      registration.execution.phase = 'interrupted';
+      registration.execution.terminationUnconfirmed = true;
+      await registration.save();
+      const descriptor = Object.getOwnPropertyDescriptor(process, 'platform')!;
+      const original = processIdentity.inspectProcessLiveness;
+      vi.spyOn(processIdentity, 'inspectProcessLiveness').mockImplementation((pid, identity) =>
+        pid === 2147483001 ? Promise.resolve('dead') : original(pid, identity),
+      );
+      vi.spyOn(processIdentity, 'inspectProcessTreeLiveness').mockResolvedValue('unknown');
+      vi.spyOn(windowsIdentity, 'inspectWindowsProcessPresence').mockResolvedValue(presence);
+      const stoppedAction = {
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        claimToken: action.claim!.token,
+        evidence:
+          'Original check and all descendants were observed stopped; legacy PID is absent in system enumeration.',
+      };
+      Object.defineProperty(process, 'platform', { ...descriptor, value: 'win32' });
+      try {
+        await expect(
+          acknowledgeNativeSdkCheckStopped({
+            projectRoot: root,
+            run,
+            action,
+            stoppedAction: { ...stoppedAction, claimToken: 'wrong' },
+          }),
+        ).rejects.toThrow(/领取/u);
+        if (presence === 'absent') {
+          const stoppedFile = path.join(
+            resolveWorkspaceRuntimeRootSync(root),
+            'stopped-actions.json',
+          );
+          await fs.writeFile(stoppedFile, JSON.stringify([stoppedAction]));
+          const result = await nativeDoctorCommand(
+            [run.runId, '--repair', '--confirmed', '--stopped-actions', stoppedFile],
+            root,
+          );
+          expect(result.exitCode, JSON.stringify(result)).toBe(0);
+          const repaired = await runtime.inspect(run.runId);
+          expect(repaired.actions.find((entry) => entry.id === action.id)?.status).toBe('failed');
+          expect((repaired.state as NativePortableState).builder_handoff).toEqual(
+            (run.state as NativePortableState).builder_handoff,
+          );
+        } else
+          await expect(
+            acknowledgeNativeSdkCheckStopped({ projectRoot: root, run, action, stoppedAction }),
+          ).rejects.toThrow(/尚未确认退出/u);
+      } finally {
+        Object.defineProperty(process, 'platform', descriptor);
+      }
+      const inspection = (await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0];
+      expect(inspection.quiescent).toBe(presence === 'absent');
+    },
+  );
+  it('records a failed read-only preflight without resampling its transient diagnostic', async () => {
+    const { root, runtime, run } = await awaitingArchiveApplication('sdk', undefined, true);
+    const action = run.actions.at(-1)!;
+    await runtime.claim({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: nativeSdkArchivePreflightExecutor.id,
+      claimToken: 'preflight-claim',
+      context: { requestId: 'preflight-claim', projectRoot: root },
+    });
+    const completed = await runtime.recordOutcome({
+      runId: run.runId,
+      context: { requestId: 'transient-preflight', projectRoot: root },
+      outcome: {
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        claimToken: 'preflight-claim',
+        outcomeId: 'transient-preflight',
+        status: 'failed',
+        output: {
+          ready: false,
+          reason: 'candidate-unavailable',
+          message: 'Input directory changed while sampling.',
+        },
+      },
+    });
+    expect(completed.actions.at(-1)?.status).toBe('failed');
+    expect(completed.state).toEqual(run.state);
+    expect(completed.waits).toEqual(run.waits);
+    const result = await runNativeCli(['archive', run.runId, '--project-root', root, '--json']);
+    expect(result.exitCode, result.stderr).toBe(0);
+    const archived = await runtime.inspect(run.runId);
+    expect(archived.status).toBe('completed');
+    expect(archived.actions.filter((a) => a.stepId === 'verify.verifier')).toHaveLength(1);
+  });
+
+  it('returns the original accepted decision after recovery without clearing acceptance or advancing Archive', async () => {
+    const { root, runtime, run } = await awaitingArchiveApplication('sdk', undefined, true);
+    const approved = run.waits.find(
+      (wait) => wait.stepId === 'verify.confirm' && wait.status === 'resolved',
+    )!;
+    const decision = {
+      expectedAction: 'accept-result' as const,
+      expectedStateVersion: (run.state as NativePortableState).state_version - 1,
+      proposalHash: approved.proposalHash,
+      summary: 'The user already accepted this result.',
+    };
+    const result = await advanceNativeSdkChange(root, run.runId, decision);
+    expect(result.exitCode).toBe(0);
+    expect(await runtime.inspect(run.runId)).toEqual(run);
+    const stale = await advanceNativeSdkChange(root, run.runId, {
+      ...decision,
+      proposalHash: 'another-candidate',
+    });
+    expect(stale.exitCode).toBe(73);
+    expect(await runtime.inspect(run.runId)).toEqual(run);
+  });
+
+  it('keeps acceptance when a preflight input snapshot is incomplete and archives after a stable retry', async () => {
+    const { root, runtime, run } = await awaitingArchiveApplication('sdk', undefined, true);
+    const inspect = vi
+      .spyOn(nativeSdkChecks, 'assertNativeSdkArchiveCheckInputs')
+      .mockRejectedValueOnce(
+        new nativeSdkChecks.NativeSdkCheckInputSnapshotError('Directory changed during sampling'),
+      );
+    const action = run.actions.at(-1)!;
+    const failed = await runtime.execute({
+      runId: run.runId,
+      actionId: action.id,
+      executorId: nativeSdkArchivePreflightExecutor.id,
+      context: { requestId: 'incomplete-snapshot', projectRoot: root },
+    });
+    expect(failed.actions.at(-1)?.outcome).toMatchObject({
+      status: 'failed',
+      output: { ready: false, reason: 'candidate-unavailable' },
+    });
+    expect(failed.state).toEqual(run.state);
+    expect(failed.waits).toEqual(run.waits);
+    inspect.mockRestore();
+    const result = await runNativeCli(['archive', run.runId, '--project-root', root, '--json']);
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect((await runtime.inspect(run.runId)).status).toBe('completed');
+  });
+
+  it('recovers a rejected running preflight through public archive without rebuilding accepted work', async () => {
+    const { root, runtime, run } = await awaitingArchiveApplication('sdk', undefined, true);
+    const action = run.actions.at(-1)!;
+    await runtime.claim({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: nativeSdkArchivePreflightExecutor.id,
+      claimToken: 'rejected-preflight',
+      context: { requestId: 'claim', projectRoot: root },
+    });
+    await expect(
+      runtime.recordOutcome({
+        runId: run.runId,
+        context: { requestId: 'obsolete-preflight', projectRoot: root },
+        outcome: {
+          actionId: action.id,
+          attempt: action.attempt,
+          inputHash: action.inputHash,
+          claimToken: 'rejected-preflight',
+          outcomeId: 'obsolete-preflight',
+          status: 'succeeded',
+          output: { ready: true },
+        },
+      }),
+    ).rejects.toThrow();
+    expect((await runtime.inspect(run.runId)).actions.at(-1)?.status).toBe('running');
+    await reconcileNativeSdkExecutionStops(root, await runtime.inspect(run.runId), runtime);
+    const status = JSON.parse(
+      (await runNativeCli(['status', run.runId, '--project-root', root, '--json'])).stdout!,
+    );
+    expect(status.data.continuation.commandArgs).toContain('--recover');
+    const recovered = spawnSync(
+      process.execPath,
+      [
+        path.resolve('assets/skills/comet-native/scripts/comet-native-archive.mjs'),
+        run.runId,
+        '--recover',
+        '--project-root',
+        root,
+        '--json',
+      ],
+      { encoding: 'utf8', timeout: 30000 },
+    );
+    expect(recovered.status, recovered.stderr || recovered.stdout).toBe(0);
+    const after = await runtime.inspect(run.runId);
+    expect(after.actions.find((a) => a.id === action.id)?.status).toBe('succeeded');
+    expect(after.state).toEqual(run.state);
+    expect(after.waits).toEqual(run.waits);
+    expect(
+      (await runNativeCli(['archive', run.runId, '--project-root', root, '--json'])).exitCode,
+    ).toBe(0);
+    expect((await runtime.inspect(run.runId)).status).toBe('completed');
+  });
+
   it('preserves an unknown Verifier execution without claiming or replaying it', async () => {
     const { root, runtime, run } = await dispatchedVerifier([], 'sdk');
     const action = run.actions.at(-1)!;

@@ -8,6 +8,7 @@ import {
   nativePortableArgvDisplay,
   preflightNativeCheckPlans,
   resolveNativeCheckCwd,
+  normalizeNativeCheckOutputs,
 } from '../../../domains/comet-native/native-check-executor.js';
 
 describe('Native check executor', () => {
@@ -156,6 +157,22 @@ describe('Native check executor', () => {
       '--safe',
       'visible-value',
     ]);
+  });
+
+  it('requires explicit generated output paths and rejects broad or unsafe exclusions', () => {
+    expect(normalizeNativeCheckOutputs(['dist/eval', 'dist/eval'])).toEqual(['dist/eval']);
+    for (const ref of [
+      'dist',
+      '.',
+      '../dist/eval',
+      '/dist/eval',
+      'C:/dist/eval',
+      'dist/eval/**',
+      'src/code.ts',
+      'dist/.comet/state',
+      'dist\\eval',
+    ])
+      expect(() => normalizeNativeCheckOutputs([ref]), ref).toThrow(/outputs/u);
   });
 
   it('rejects a missing check working directory during preflight', () => {

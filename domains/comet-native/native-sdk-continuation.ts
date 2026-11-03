@@ -1556,7 +1556,13 @@ async function projectNativeSdkContinuationValue(options: {
   } else if (
     state.phase === 'archive' &&
     active.length === 1 &&
-    active[0].status === 'unknown' &&
+    (active[0].status === 'unknown' ||
+      (active[0].status === 'running' &&
+        active[0].stepId === 'archive.prepare' &&
+        active[0].claim?.executorId === 'comet-native-archive-preflight' &&
+        active[0].rejectedOutcomes?.some(
+          (entry) => entry.outcome.attempt === active[0].attempt,
+        ))) &&
     NATIVE_SDK_ARCHIVE_STEPS.some(
       ([stepId, ref]) => active[0].stepId === stepId && active[0].ref === ref,
     )

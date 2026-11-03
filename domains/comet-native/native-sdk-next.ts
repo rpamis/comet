@@ -465,6 +465,31 @@ export async function advanceNativeSdkChange(
     decision?.expectedAction === 'retry-verifier' ||
     decision?.expectedAction === 'resolve-verifier-blocker'
   ) {
+    if (decision.expectedAction === 'accept-result' && state.phase === 'archive') {
+      const approved = run.waits.find(
+        (wait) =>
+          wait.stepId === 'verify.confirm' &&
+          wait.status === 'resolved' &&
+          wait.decision?.choice === 'approved' &&
+          wait.proposalHash === decision.proposalHash,
+      );
+      const report = (
+        approved?.proposal as
+          | {
+              outputs?: {
+                'verify.report'?: { candidateId?: string; reportSha256?: string };
+              };
+            }
+          | undefined
+      )?.outputs?.['verify.report'];
+      const current = run.outputs['verify.report']?.value as { reportSha256?: string } | undefined;
+      if (
+        report?.candidateId === state.builder_handoff?.candidate_id &&
+        report?.reportSha256 &&
+        report.reportSha256 === current?.reportSha256
+      )
+        return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+    }
     if (decision.expectedAction === 'revise-implementation') {
       const commandId = hashRuntimeValue({
         name: 'revise-implementation',

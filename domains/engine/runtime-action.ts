@@ -204,14 +204,20 @@ export function recordRuntimeOutcome(
   );
   if (rejection) {
     if (hashRuntimeValue(rejection.outcome) !== receiptHash) {
-      throw new RuntimeProtocolError('OUTCOME_CONFLICT', '同一结果标识不能提交不同内容');
+      throw new RuntimeProtocolError(
+        'OUTCOME_CONFLICT',
+        '同一结果标识不能提交不同内容；修正后请使用新的 outcomeId，并保留原 actionId、attempt、inputHash 和 claimToken',
+      );
     }
     throw new RuntimeProtocolError(rejection.code, rejection.reason);
   }
   const previous = action.receipts.find((receipt) => receipt.outcomeId === outcome.outcomeId);
   if (previous) {
     if (previous.hash !== receiptHash) {
-      throw new RuntimeProtocolError('OUTCOME_CONFLICT', '同一结果标识不能提交不同内容');
+      throw new RuntimeProtocolError(
+        'OUTCOME_CONFLICT',
+        '同一结果标识不能提交不同内容；修正后请使用新的 outcomeId，并保留原 actionId、attempt、inputHash 和 claimToken',
+      );
     }
     return { action: copyAction(action), duplicate: true };
   }

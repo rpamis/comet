@@ -382,11 +382,8 @@ async function inspectArchivePreflightOutput(
   try {
     await assertNativeSdkArchiveCheckInputs({ run, projectRoot });
   } catch (error) {
-    if (
-      !(error instanceof NativeSdkCheckInputDriftError) &&
-      !(error instanceof NativeSdkCheckInputSnapshotError)
-    )
-      throw error;
+    if (error instanceof NativeSdkCheckInputSnapshotError) throw error;
+    if (!(error instanceof NativeSdkCheckInputDriftError)) throw error;
     throw new NativeSdkCandidateDriftError(
       `Native 归档前检查输入已变化或无法完整复核；请恢复原输入或重新验收：${error.message}`,
     );
@@ -434,6 +431,8 @@ async function archivePreflightOutput(
   try {
     return await inspectArchivePreflightOutput(run, action, projectRoot);
   } catch (error) {
+    if (error instanceof NativeSdkCheckInputSnapshotError)
+      return { ready: false, reason: 'candidate-unavailable', message: error.message };
     if (!(error instanceof NativeSdkCandidateDriftError)) throw error;
     return { ready: false, reason: 'candidate-drift', message: error.message };
   }
@@ -465,6 +464,10 @@ export const nativeSdkArchivePreflightValidator: RuntimeValidator = {
     ) {
       return { accepted: false, reason: 'Native Archive preflight was not run by the Runtime' };
     }
+    // 失败不授予归档权限。保留本次失败事实，不能用另一次采样覆盖瞬时诊断。
+    const output = outcome.output as { ready?: unknown } | null;
+    if (outcome.status === 'failed' && output?.ready === false && outcome.event === undefined)
+      return { accepted: true };
     try {
       const expected = await archivePreflightOutput(run, action, context.projectRoot);
       if (

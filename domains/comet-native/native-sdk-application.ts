@@ -604,7 +604,9 @@ function verifierResultState(
     output.candidateId !== candidate.candidate_id ||
     output.verifierExecutionRef !== sessionId
   ) {
-    throw new Error('Native Verifier result is not bound to an independent current execution');
+    throw new Error(
+      `Native Verifier result is not bound to an independent current execution; candidateId must match the current candidate and verifierExecutionRef must equal the claimed sessionId ${sessionId ?? '(missing)'}; use the current outcomeRequest template`,
+    );
   }
   const checkOutput = run.outputs['verify.checks']?.value as
     { candidateId?: unknown; checks?: unknown } | undefined;
@@ -856,6 +858,52 @@ const builderValidator: RuntimeValidator = {
       if (drift.drifted) {
         return { accepted: false, reason: drift.reason ?? 'Native acceptance changed' };
       }
+      const output = outcome.output as Record<string, unknown> | null;
+      const errors: string[] = [];
+      if (output && typeof output === 'object') {
+        if (Array.isArray(output.acceptanceReview))
+          output.acceptanceReview.forEach((row, index) => {
+            const base = {
+              id: 'A1',
+              status: 'implemented-with-evidence',
+              evidence: ['Concrete evidence'],
+              note: 'Concrete review',
+            };
+            if (!row || typeof row !== 'object') {
+              errors.push(`acceptanceReview[${index}] must be an object`);
+              return;
+            }
+            for (const key of Object.keys(base)) {
+              try {
+                parseNativeBuilderAcceptanceReview([{ ...base, [key]: row[key] }]);
+              } catch (error) {
+                errors.push(`acceptanceReview[${index}].${key}: ${(error as Error).message}`);
+              }
+            }
+            if (!state.acceptance.some(({ id }) => id === row.id))
+              errors.push(
+                `acceptanceReview[${index}].id must use a current Runtime acceptance ID: ${state.acceptance.map(({ id }) => id).join(', ')}`,
+              );
+          });
+        if (Array.isArray(output.checks))
+          output.checks.forEach((row, index) => {
+            if (!row || typeof row.name !== 'string')
+              errors.push(`checks[${index}].name must be a string`);
+            if (!row || !['passed', 'failed', 'not-run'].includes(row.result))
+              errors.push(`checks[${index}].result must be passed, failed, or not-run`);
+            if (row?.note != null && typeof row.note !== 'string')
+              errors.push(`checks[${index}].note must be a string`);
+          });
+      }
+      try {
+        nativeSdkCheckPlans(outcome.output);
+      } catch (error) {
+        errors.push((error as Error).message);
+      }
+      if (errors.length)
+        throw new Error(
+          `Native Builder result has invalid fields:\n${errors.join('\n')}\nUse the current outcomeRequest template; correct all listed fields and submit a new outcomeId with the original claim.`,
+        );
       builderCandidateState(run, action, outcome);
       preflightNativeCheckPlans(context.projectRoot, nativeSdkCheckPlans(outcome.output));
       await rememberNativeSdkBuilderInputs(run, action, outcome, context.projectRoot);

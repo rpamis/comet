@@ -5,6 +5,7 @@ import {
 import path from 'node:path';
 import type { OwnedProcessInstance } from '../../platform/process/owned-command.js';
 import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
+import { inspectWindowsProcessPresence } from '../../platform/process/windows-process-identity.js';
 
 import {
   inspectProcessLiveness,
@@ -261,11 +262,21 @@ export async function acknowledgeNativeSdkCheckStopped(options: {
     throw new Error('Native 检查停止证据不匹配原领取身份');
   }
   const execution = await readExecution(projectRoot, run, action);
+  const childState = execution?.child
+    ? await inspectProcessTreeLiveness(execution.child.pid, execution.child.identity)
+    : 'dead';
+  // 旧记录没有创建身份，EPERM 不能证明仍是原执行。明确停止声明与新鲜系统枚举
+  // 一并绑定原执行快照；不杀裸 PID，也不把这一人工核对用于自动接管。
+  const legacyAbsent =
+    execution?.child &&
+    !execution.child.identity &&
+    process.platform === 'win32' &&
+    childState === 'unknown' &&
+    (await inspectWindowsProcessPresence(execution.child.pid)) === 'absent';
   if (
     !execution ||
     (await inspectProcessLiveness(execution.owner.pid, execution.owner.identity)) !== 'dead' ||
-    (execution.child &&
-      (await inspectProcessTreeLiveness(execution.child.pid, execution.child.identity)) !== 'dead')
+    (childState !== 'dead' && !legacyAbsent)
   ) {
     throw new Error('Native 检查原领取方或监管进程尚未确认退出；不能提交人工停止证据');
   }
@@ -504,23 +515,25 @@ export async function inspectNativeSdkCheckExecutions(options: {
             owner === 'dead' &&
             receipt?.source === 'stopped-action' &&
             matchesTerminationReceipt(receipt, execution);
-          const process = execution.child
-            ? await inspectProcessTreeLiveness(execution.child.pid, execution.child.identity)
-            : acknowledged ||
-                (!execution.terminationUnconfirmed &&
-                  (['reserved', 'interrupted'].includes(execution.phase) ||
-                    (execution.phase === 'completed' &&
-                      execution.checks.every(
-                        (check) =>
-                          check !== null &&
-                          typeof check === 'object' &&
-                          !Array.isArray(check) &&
-                          check.reusedFrom !== null &&
-                          typeof check.reusedFrom === 'object' &&
-                          !Array.isArray(check.reusedFrom),
-                      ))))
-              ? 'dead'
-              : 'unknown';
+          const process = acknowledged
+            ? 'dead'
+            : execution.child
+              ? await inspectProcessTreeLiveness(execution.child.pid, execution.child.identity)
+              : acknowledged ||
+                  (!execution.terminationUnconfirmed &&
+                    (['reserved', 'interrupted'].includes(execution.phase) ||
+                      (execution.phase === 'completed' &&
+                        execution.checks.every(
+                          (check) =>
+                            check !== null &&
+                            typeof check === 'object' &&
+                            !Array.isArray(check) &&
+                            check.reusedFrom !== null &&
+                            typeof check.reusedFrom === 'object' &&
+                            !Array.isArray(check.reusedFrom),
+                        ))))
+                ? 'dead'
+                : 'unknown';
           const treeConfirmed =
             !execution.child ||
             globalThis.process.platform !== 'win32' ||

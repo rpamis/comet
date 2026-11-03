@@ -327,6 +327,63 @@ async function verifierOutcomeFixture(
 }
 
 describe('Native dispatch CLI presentation', () => {
+  it('reports all malformed Builder fields together and accepts corrected content only with a new outcomeId', async () => {
+    const f = await builderFixture();
+    const claimed = await cli(f.root, f.requestFile);
+    const request = structuredClone(claimed.data.outcomeRequest);
+    request.outcome.outcomeId = 'invalid-fields';
+    request.outcome.output = {
+      summary: 'Implemented the fixture',
+      acceptanceReview: [
+        { id: 'B1', status: 'implemented-with-evidence', evidence: 'wrong', note: '' },
+      ],
+      checks: [{ name: 'Tests', result: 'blocked' }],
+      knownLimits: [],
+      verificationChecks: [{ id: 'partial' }],
+    };
+    const submit = async () => {
+      await fs.writeFile(f.requestFile, JSON.stringify(request));
+      return runtimeDispatchCommand({
+        application: 'native',
+        projectRoot: f.root,
+        request: f.requestFile,
+      });
+    };
+    const before = (await inspectNativeSdkRun(f.root, f.name)).run;
+    const rejected = await submit();
+    const message = rejected.response.error?.message ?? '';
+    for (const field of [
+      'acceptanceReview[0].evidence',
+      'acceptanceReview[0].note',
+      'acceptanceReview[0].id',
+      'A1',
+      'checks[0].result',
+      'verificationChecks[0].argv',
+      'verificationChecks[0].timeoutMs',
+      'verificationChecks[0].repeatable',
+      'outcomeId',
+    ])
+      expect(message).toContain(field);
+    expect((await inspectNativeSdkRun(f.root, f.name)).run.state).toEqual(before.state);
+    request.outcome.output = {
+      summary: 'Implemented the fixture',
+      acceptanceReview: fixtureAcceptanceReview(['A1']),
+      checks: [],
+      knownLimits: [],
+      verificationChecks: [],
+      submittedAt: '2026-11-03T00:00:00+00:00',
+    };
+    const conflict = await submit();
+    expect(conflict.response.error?.code).toBe('OUTCOME_CONFLICT');
+    expect(conflict.response.error?.message).toContain('新的 outcomeId');
+    request.outcome.outcomeId = 'corrected-fields';
+    const accepted = await submit();
+    expect(accepted.response.status, JSON.stringify(accepted.response)).toBe('succeeded');
+    const after = (await inspectNativeSdkRun(f.root, f.name)).run;
+    expect(after.actions.find(({ id }) => id === request.outcome.actionId)?.claim).toEqual(
+      before.actions.at(-1)?.claim,
+    );
+  });
   it('submits a Native candidate through its returned receipt without manual identity fields', async () => {
     const f = await builderFixture();
     const claimed = await cli(f.root, f.requestFile);

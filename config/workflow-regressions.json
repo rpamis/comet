@@ -2,6 +2,230 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "native-531-taskkill-exit-confirmation",
+      "sources": ["https://github.com/rpamis/comet/issues/531"],
+      "behavior": "Windows终止命令已成功退出而close延迟时，按真实退出结果确认整树停止，避免误报停止未确认。",
+      "coverageLevel": "unit",
+      "reproduction": "taskkill发出exit 0、原监管器退出但close未到；旧代码等到一秒兜底后误判失败。",
+      "expected": "已收到成功退出码时一次结算，不重试、不终止已退出的taskkill。",
+      "forbidden": "把非零或信号退出、仅组长死亡当作成功，或因迟到close覆盖退出事实。",
+      "rootCause": "将taskkill的进程退出与句柄关闭混为一体，超时后又因原目标已退出拒绝确认。",
+      "tests": [
+        {
+          "file": "test/platform/process/terminate-process-tree-windows.test.ts",
+          "namePattern": "accepts successful taskkill exit without waiting for its delayed close event|does not confirm taskkill exit (1|null) just because the target leader exited",
+          "requiredNames": [
+            "Windows termination result events accepts successful taskkill exit without waiting for its delayed close event",
+            "Windows termination result events does not confirm taskkill exit 1 just because the target leader exited",
+            "Windows termination result events does not confirm taskkill exit null just because the target leader exited"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-supervisor-startup-errors",
+      "sources": ["https://github.com/rpamis/comet/issues/531"],
+      "behavior": "监管器进程或IPC已报错时立即停止并取消未完成的登记，不等待完整检查时限或伪装为命令超时。",
+      "coverageLevel": "unit",
+      "reproduction": "注入监管器error且没有close，旧代码等到检查超时才结束；身份登记未返回时原IPC错误被超时覆盖。",
+      "expected": "保存实际监管器错误，停止确认后结束；登记未完成时取消后续命令放行。",
+      "forbidden": "吞掉IPC错误、误标命令超时、绕过整树停止证明或在登记取消后启动命令。",
+      "rootCause": "error监听只写日志，不触发停止，也不取消正在等待身份探测的登记。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-executor-termination.test.ts",
+          "namePattern": "stops immediately on a supervisor error instead of converting it into a command timeout|cancels a pending identity registration immediately when its supervisor errors",
+          "requiredNames": [
+            "stops immediately on a supervisor error instead of converting it into a command timeout",
+            "cancels a pending identity registration immediately when its supervisor errors"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-supervisor-ready-handshake",
+      "sources": ["https://github.com/rpamis/comet/issues/531"],
+      "behavior": "等待监管器ready握手后才放行受管检查，登记已取消时拒绝迟到的ready启动命令。",
+      "coverageLevel": "unit",
+      "reproduction": "延迟ready、快速返回身份登记，旧调用方在监管器尚未ready前已调用start。",
+      "expected": "就绪后按原登记启动一次，超过登记时限则停止并保留原事实，迟到ready不产生副作用。",
+      "forbidden": "跳过就绪握手、超时后补启动或重派原单次操作。",
+      "rootCause": "平台已提供ready Promise，但检查调用方没有等待它。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-executor-termination.test.ts",
+          "namePattern": "waits for supervisor readiness before releasing the registered command|never releases a late-ready command after its registration deadline has cancelled it",
+          "requiredNames": [
+            "waits for supervisor readiness before releasing the registered command",
+            "never releases a late-ready command after its registration deadline has cancelled it"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-check-failure-facts",
+      "sources": ["https://github.com/rpamis/comet/issues/531"],
+      "behavior": "停止未确认错误保留计划时限、是否超时及命令完成回报，区别命令已完成后的收尾失败。",
+      "coverageLevel": "unit",
+      "reproduction": "现场三条失败均只剩相同停止未确认文本；旧错误丢失已收到completed与真正超时的区别。",
+      "expected": "两类失败均保留原执行归属，并分别呈现真实完成回报和超时事实。",
+      "forbidden": "把收尾失败误称Python超时、丢失原错误或把停止未确认当作检查通过。",
+      "rootCause": "统一异常不带执行事实与底层终止错误原因，最终Action reason无法区分失败阶段。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-executor-termination.test.ts",
+          "namePattern": "preserves command completion and timeout facts when (completed|timeout) cleanup is unconfirmed",
+          "requiredNames": [
+            "preserves command completion and timeout facts when completed cleanup is unconfirmed",
+            "preserves command completion and timeout facts when timeout cleanup is unconfirmed"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-check-pipe-settlement",
+      "sources": ["https://github.com/rpamis/comet/issues/531"],
+      "behavior": "Windows 已确认检查整树停止但继承管道没有 close 事件时，有限收尾并保留中断结果。",
+      "coverageLevel": "unit",
+      "reproduction": "基线07bd301b注入已确认整树停止且管道不关闭的边界，同一检查在3秒测试期限内不返回。此案例不证明原报告中任意Python子进程挂起的原因。",
+      "expected": "确认停止后有限等待管道，未收齐日志的检查记为 interrupted，不丢失停止收据。",
+      "forbidden": "无限等待 close、将不完整日志记为通过、在停止未确认时释放执行归属。",
+      "rootCause": "执行器只在 close 回调中结算结果，整树停止确认没有独立的管道收尾期限。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-executor-termination.test.ts",
+          "namePattern": "settles an interrupted check when confirmed Windows cleanup never closes inherited pipes",
+          "requiredNames": [
+            "settles an interrupted check when confirmed Windows cleanup never closes inherited pipes"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-archive-preflight-recovery",
+      "sources": ["https://github.com/rpamis/comet/issues/531"],
+      "behavior": "只读归档预检失败不因二次采样被拒收，已拒收的 running 预检可通过公开 archive --recover 恢复原 Action。",
+      "coverageLevel": "public-cli",
+      "reproduction": "基线07bd301b对失败预检再次采样后拒收原诊断；成功预检被拒收后留在 running，archive --recover 返回73。",
+      "expected": "保存失败事实，恢复原 Action、原批准与验收，稳定输入下完成归档。",
+      "forbidden": "重建候选、重复验收、绕过成功结果的当前输入核对、回放有副作用的归档执行。",
+      "rootCause": "失败事实错误地要求与新一次采样相同，恢复发现又只包含 unknown 状态。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "records a failed read-only preflight without resampling its transient diagnostic|recovers a rejected running preflight through public archive without rebuilding accepted work",
+          "requiredNames": [
+            "Native protocol simplification records a failed read-only preflight without resampling its transient diagnostic",
+            "Native protocol simplification recovers a rejected running preflight through public archive without rebuilding accepted work"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-transient-snapshot-preserves-acceptance",
+      "sources": ["https://github.com/rpamis/comet/issues/531"],
+      "behavior": "归档采样不完整时保留已通过验收和用户接受决定，输入稳定后重试预检。",
+      "coverageLevel": "public-cli",
+      "reproduction": "预检抛出输入快照不完整错误，旧路径将其归类为候选漂移并清空验收。",
+      "expected": "预检失败且不推进、不写Specs；保留候选、验收、报告和批准，稳定后原流程可完成。",
+      "forbidden": "将无法读取当作已证明内容变化，或将不完整采样算作成功。",
+      "rootCause": "快照不完整与内容漂移共用归档失败原因，触发了清空验收的状态转换。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "keeps acceptance when a preflight input snapshot is incomplete and archives after a stable retry",
+          "requiredNames": [
+            "Native protocol simplification keeps acceptance when a preflight input snapshot is incomplete and archives after a stable retry"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-legacy-eperm-stop-recovery",
+      "sources": ["https://github.com/rpamis/comet/issues/531"],
+      "behavior": "旧Windows检查无进程创建身份且PID探测unknown时，原领取方已死、明确停止证明及新鲜系统枚举均匹配才允许对账。",
+      "coverageLevel": "public-cli",
+      "reproduction": "为原领取登记无identity的旧PID并模拟EPERM对应unknown；基线07bd301b即便有明确停止证明仍永久拒绝。",
+      "expected": "doctor --repair --confirmed --stopped-actions 保留原失败及候选，不重跑检查；PID存在、枚举失败或领取不匹配时继续拒绝。",
+      "forbidden": "按年龄自动接管、杀死复用PID、把原未知检查记为通过、用旧快照确认新执行停止。",
+      "rootCause": "人工停止证据仍强制裸PID探测为dead，且已绑定停止收据没有结束旧PID的unknown探测。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reconciles legacy EPERM only with explicit stop evidence and Windows enumeration",
+          "requiredNames": [
+            "Native protocol simplification reconciles legacy EPERM only with explicit stop evidence and Windows enumeration absent",
+            "Native protocol simplification reconciles legacy EPERM only with explicit stop evidence and Windows enumeration present",
+            "Native protocol simplification reconciles legacy EPERM only with explicit stop evidence and Windows enumeration unknown"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-builder-batch-validation",
+      "sources": ["https://github.com/rpamis/comet/issues/531"],
+      "behavior": "Builder一次交接同时返回验收自查、检查结果及执行计划的字段错误，修正后保留原领取并使用新outcomeId提交。",
+      "coverageLevel": "public-cli",
+      "reproduction": "基线07bd301b同时传错误evidence、空note、自定义B1、blocked检查结果及缺字段执行计划，只报告checks.result。",
+      "expected": "一次列出全部独立错误和当前验收ID；同ID改内容提示更换outcomeId，新ID修正请求可通过。",
+      "forbidden": "逐字段试错、泄露领取令牌、覆盖旧结果、无效请求推进原候选。",
+      "rootCause": "解析器在首个字段错误处退出，结果冲突诊断未说明不可变结果ID的修正方法。",
+      "tests": [
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "reports all malformed Builder fields together and accepts corrected content only with a new outcomeId",
+          "requiredNames": [
+            "Native dispatch CLI presentation reports all malformed Builder fields together and accepts corrected content only with a new outcomeId"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-accepted-decision-idempotency",
+      "sources": ["https://github.com/rpamis/comet/issues/531"],
+      "behavior": "归档前重复提交同一已接受候选的决定返回原继续入口，不要求重做验收。",
+      "coverageLevel": "runtime",
+      "reproduction": "基线07bd301b在已接受结果进入Archive后再次提交原proposalHash返回stale。",
+      "expected": "原接受决定、候选及报告匹配时只返回当前状态；其他proposalHash仍拒绝。",
+      "forbidden": "重复推进Archive、改写原决定、沿用其他候选的接受或清空验收。",
+      "rootCause": "决定入口只查询pending Wait，将已经成功接受的相同请求也当成失效决定。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "returns the original accepted decision after recovery without clearing acceptance or advancing Archive",
+          "requiredNames": [
+            "Native protocol simplification returns the original accepted decision after recovery without clearing acceptance or advancing Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-declared-check-outputs",
+      "sources": ["https://github.com/rpamis/comet/issues/531"],
+      "behavior": "Builder预先声明生成目录内的测试outputs，检查和Verifier产生这些未跟踪副产物后仍可验收归档。",
+      "coverageLevel": "public-cli",
+      "reproduction": "基线07bd301b的检查写dist/eval/trace.json后，Verifier提交被候选内容变化拒绝；无显式产物声明能力。",
+      "expected": "声明绑定原Builder和检查计划，保留日志副产物，已跟踪文件及未声明生成输入继续进入摘要。",
+      "forbidden": "默认忽略整个dist、忽略已跟踪输入、事后扩大输出声明或缩小失败采样范围。",
+      "rootCause": "输入快照将显式测试输出与应用生成输入一并绑定，检查计划没有输出声明。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "archives declared test outputs while continuing to bind generated application inputs",
+          "requiredNames": [
+            "Native protocol simplification archives declared test outputs while continuing to bind generated application inputs"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "excludes only declared untracked test outputs and binds tracked files and undeclared generated inputs",
+          "requiredNames": [
+            "Native check input fingerprint excludes only declared untracked test outputs and binds tracked files and undeclared generated inputs"
+          ]
+        }
+      ]
+    },
+    {
       "id": "native-verifier-builder-identity-claim-recovery",
       "sources": ["report:2026-10-27-native-verifier-identity-recovery"],
       "behavior": "Verifier 使用 Builder 身份领取时立即拒绝，保留原待领取任务和候选，让独立执行者直接领取。",

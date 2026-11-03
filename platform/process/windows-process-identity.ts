@@ -22,6 +22,37 @@ const sourceHash = createHash('sha256').update(SOURCE).digest('hex');
 const PREPARATION_RETRY_DELAY_MS = 10_000;
 const preparations = new Map<string, { promise: Promise<string | null>; retryAfter: number }>();
 
+/** 仅供显式停止核对补充枚举证据；枚举不到 PID 不证明其后代已停止。 */
+export async function inspectWindowsProcessPresence(
+  pid: number,
+): Promise<'present' | 'absent' | 'unknown'> {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return 'unknown';
+  try {
+    const output = await runExternalCommandAsync(
+      path.join(
+        process.env.SystemRoot ?? 'C:\\Windows',
+        'System32',
+        'WindowsPowerShell',
+        'v1.0',
+        'powershell.exe',
+      ),
+      [
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `$ErrorActionPreference='Stop'; @(Get-Process -ErrorAction Stop | Where-Object { $_.Id -eq ${pid} }).Count`,
+      ],
+      { timeoutMs: 5000, maxBufferBytes: 4096 },
+    );
+    if (output.trim() === '0') return 'absent';
+    if (output.trim() === '1') return 'present';
+  } catch {
+    /* 权限失败、超时或无法解析均不构成退出证据。 */
+  }
+  return 'unknown';
+}
+
 async function plainFile(target: string, maxBytes: number): Promise<Buffer> {
   const before = await fs.lstat(target, { bigint: true });
   if (!before.isFile() || before.isSymbolicLink() || before.size > BigInt(maxBytes))

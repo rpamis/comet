@@ -11,6 +11,7 @@ import {
   NATIVE_SDK_ARCHIVE_STEPS,
   nativeSdkRetryableArchivePreflight,
   nativeSdkRetryableArchiveFinalization,
+  nativeSdkArchivePreflightExecutor,
   inspectNativeSdkPendingArchiveDrift,
 } from './native-sdk-archive.js';
 import { recoverNativeSdkSupervisorCleanupOutcome } from './native-sdk-supervisor-cleanup.js';
@@ -184,6 +185,31 @@ async function archiveNativeSdkChangeValue(options: {
     );
   }
   if (options.recover) {
+    // 只读预检已有提交拒收记录，证明该次执行已返回；无需终止进程或回退实现。
+    const rejected = run.actions.filter(
+      (action) =>
+        action.stepId === 'archive.prepare' &&
+        action.status === 'running' &&
+        action.claim?.executorId === nativeSdkArchivePreflightExecutor.id &&
+        action.rejectedOutcomes?.some((entry) => entry.outcome.attempt === action.attempt),
+    );
+    if (
+      rejected.length === 1 &&
+      !run.actions.some(
+        (action) => action.id !== rejected[0].id && ['running', 'unknown'].includes(action.status),
+      )
+    ) {
+      const action = rejected[0];
+      const { runtime } = await loadOwnedNativeSdkRuntime(options.projectRoot, options.name);
+      run = await runtime.markUnknown({
+        runId: run.runId,
+        expectedRevision: run.revision,
+        actionId: action.id,
+        attempt: action.attempt,
+        reason: '只读归档预检已返回，但结果提交被拒；重新核对原 Action 的当前输入。',
+      });
+      inspection.run = run;
+    }
     const unknown = run.actions.filter((action) => action.status === 'unknown');
     const action = unknown.length === 1 ? unknown[0] : undefined;
     if (

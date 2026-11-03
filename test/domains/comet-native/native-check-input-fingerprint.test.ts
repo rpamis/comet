@@ -53,6 +53,26 @@ describe('Native check input fingerprint', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
+  it('excludes only declared untracked test outputs and binds tracked files and undeclared generated inputs', async () => {
+    await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n');
+    await fs.mkdir(path.join(root, 'dist/eval'), { recursive: true });
+    await fs.writeFile(path.join(root, 'dist/eval/tracked.json'), 'tracked');
+    await fs.writeFile(path.join(root, 'dist/app.js'), 'application');
+    git(root, 'add', '-f', 'dist/eval/tracked.json');
+    const before = await nativeRawInputSnapshot({ projectRoot: root, outputs: ['dist/eval'] });
+    await fs.writeFile(path.join(root, 'dist/eval/trace.json'), 'trace');
+    const after = await nativeRawInputSnapshot({ projectRoot: root, previous: before });
+    expect(after.complete, after.diagnostics.join(';')).toBe(true);
+    expect(after.contentHash).toBe(before.contentHash);
+    expect(after.files.map((file) => file.path)).toContain('dist/eval/tracked.json');
+    await fs.writeFile(path.join(root, 'dist/eval/tracked.json'), 'changed tracked');
+    const tracked = await nativeRawInputSnapshot({ projectRoot: root, previous: after });
+    expect(tracked.contentHash).not.toBe(after.contentHash);
+    await fs.writeFile(path.join(root, 'dist/app.js'), 'changed application');
+    const application = await nativeRawInputSnapshot({ projectRoot: root, previous: tracked });
+    expect(application.contentHash).not.toBe(tracked.contentHash);
+  });
+
   it('observes raw mixed-language and binary changes without a compiler and separates Git metadata', async () => {
     git(root, 'config', 'core.autocrlf', 'false');
     for (const ref of ['code.py', 'code.ts', 'code.unknown', 'README.md'])
