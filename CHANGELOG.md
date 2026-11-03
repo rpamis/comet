@@ -2,9 +2,11 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.5.2] - 2026-11-02
+## What's Changed [0.5.4] - 2026-11-02
 
 ### Added
+
+- **Native benchmark datasets**: Select pinned WorkBuddy Code and SkillsBench tasks through `comet eval` or Dashboard. Download only on an explicit request, inspect progress, retry failures, and reuse matching cached versions without bundling datasets in npm. Choose an isolated Claude Code native Goal baseline and compare paired original task scores under matching model and budget settings. Run complete Native workflows without a default total deadline, with manual stop and explicit budgets still available. Finish from verified Native root Run state instead of completion wording. Evaluate original task scores separately from workflow diagnostics, preserve upstream verifier paths and fractional rewards, and retain redacted scoring output. Validate WorkBuddy's complete scoring contract before model execution. Isolate evaluation tools from task-installed Node, require the Agent's matching native package, install only Comet runtime dependencies, and keep pinned WorkBuddy verifier libraries in a separate Python environment. Show installation progress, allow up to 30 minutes for cold dataset builds, and stop on preparation failures. Selection and static collection do not start containers or models.
 
 - **Change walkthroughs**: Generate a standalone HTML explanation of Native and Classic changes at Build completion by default. Read before/after behavior by feature, expand files and key code, and see actual verification results updated on the same page during Verify. Optional flow and before/after diagrams connect the explanation to its code. Compact, responsive pages follow the system light or dark theme, and existing pages stay with archived materials. Set `change_walkthrough: false` in project config to skip extra explanation and rendering; init and update preserve this choice ([#519](https://github.com/rpamis/comet/issues/519)).
 - **MiniMax Code support**: Install, detect, update, diagnose, and uninstall project- or user-scoped Comet Skills under `.minimax/skills`, including Classic dependency integration. Managed Skills stay outside Native source snapshots so Skill updates do not change project verification hashes. Project instructions use `AGENTS.md`; platform-specific Rules and Hooks are not installed ([#518](https://github.com/rpamis/comet/issues/518)).

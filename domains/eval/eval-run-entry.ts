@@ -23,6 +23,7 @@ import {
   recordEvalProcessTermination,
 } from './eval-run-cleanup.js';
 import type { EvalManagedRun } from './eval-run-types.js';
+import { requireDatasetCache } from './dataset-downloads.js';
 
 export async function runManagedEvalWorker(project: string, id: string): Promise<void> {
   loadUserEvalEnvironment(process.env, undefined, { create: false });
@@ -131,10 +132,12 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
     }
   };
   const timer = setInterval(() => void poll(), 1000);
-  const deadline = setTimeout(
-    () => controller.abort(),
-    (original.config.timeoutSeconds ?? 600) * 1000,
-  );
+  const runTimeoutMs =
+    original.config.dataset && original.config.timeoutSeconds === 0
+      ? null
+      : (original.config.timeoutSeconds ?? 600) * 1000;
+  const deadline =
+    runTimeoutMs === null ? undefined : setTimeout(() => controller.abort(), runTimeoutMs);
   const execute = async (
     command: string,
     args: readonly string[],
@@ -144,7 +147,7 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
     const owned = spawnOwnedCommand(command, args, {
       cwd: options.cwd ?? project,
       env: options.env ?? process.env,
-      timeoutMs: options.timeoutMs ?? (original.config.timeoutSeconds ?? 600) * 1000,
+      timeoutMs: options.timeoutMs ?? runTimeoutMs,
       confirmTermination: true,
     });
     executionStarted = true;
@@ -297,13 +300,25 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
       const args = [
         path.join(evalPackageRoot, 'bin/comet.js'),
         'eval',
-        ...(preview.retry?.manifestPath
-          ? ['--manifest', preview.retry.manifestPath]
-          : [config.target]),
+        ...(config.dataset
+          ? [
+              '--dataset',
+              config.dataset,
+              '--dataset-root',
+              await requireDatasetCache(project, config.dataset),
+              '--count',
+              String(config.count ?? 1),
+            ]
+          : preview.retry?.manifestPath
+            ? ['--manifest', preview.retry.manifestPath]
+            : [config.target]),
         '--project',
         project,
         '--html',
       ];
+      if (config.dataset && config.datasetTreatment === 'goal')
+        args.push('--dataset-treatment', 'goal');
+      if (config.dataset && config.acceptDatasetLicense) args.push('--accept-dataset-license');
       for (const [key, flag] of [
         ['agent', '--agent'],
         ['model', '--model'],

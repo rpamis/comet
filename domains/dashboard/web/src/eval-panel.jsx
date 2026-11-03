@@ -55,6 +55,7 @@ import {
   evalDisplayError,
 } from './eval-guidance.jsx';
 import { EvalPresetControls } from './eval-preset-controls.jsx';
+import { EvalDatasets } from './eval-datasets.jsx';
 import {
   EvalSection,
   EvalRunProgress,
@@ -92,6 +93,7 @@ const sourceLabels = localized({
   'generated-cache': '生成缓存',
   'pending-generation': '待自动生成',
   'fixed-reuse': '复用固定用例',
+  'builtin-dataset': '内置数据集',
   quick: '快速冒烟',
   explicit: '指定用例',
 });
@@ -1416,11 +1418,23 @@ function EvalCreate({
   const overrides = useRef(new Set(Object.keys(initialConfig ?? {})));
   const [userSettings, setUserSettings] = useState(null);
   const [overrideOpen, setOverrideOpen] = useState(false);
+  const [datasetMode, setDatasetMode] = useState(Boolean(initialConfig?.dataset));
+  const [datasetId, setDatasetId] = useState(initialConfig?.dataset);
+  const [datasetTask, setDatasetTask] = useState(
+    initialConfig?.dataset ? initialConfig.task : undefined,
+  );
+  const [datasetAccepted, setDatasetAccepted] = useState(
+    initialConfig?.acceptDatasetLicense ?? false,
+  );
+  const [datasetReady, setDatasetReady] = useState(false);
   const targetTypeSelection =
     Form.useWatch('targetType', form) ?? initialConfig?.targetType ?? 'auto';
   const targetPath = Form.useWatch('target', form);
-  const targetType =
-    targetTypeSelection === 'auto' ? inferTargetType(targetPath) : targetTypeSelection;
+  const targetType = datasetMode
+    ? 'skill'
+    : targetTypeSelection === 'auto'
+      ? inferTargetType(targetPath)
+      : targetTypeSelection;
   const judgeEnabled = Form.useWatch('judgeEnabled', form);
   Form.useWatch([], form);
   const summaryConfig = preview?.config ?? form.getFieldsValue(true);
@@ -1459,7 +1473,7 @@ function EvalCreate({
               'judgeBaseUrl',
             ].map((key) => [key, value.defaults[key]]),
           ),
-          timeoutSeconds: value.defaults[`${type}TimeoutSeconds`],
+          timeoutSeconds: datasetMode ? 0 : value.defaults[`${type}TimeoutSeconds`],
           maxTurns: value.defaults[`${type}MaxTurns`],
         };
         form.setFieldsValue(
@@ -1507,6 +1521,25 @@ function EvalCreate({
       delete config.judgeBaseUrl;
       config.suite = 'local';
     }
+    if (datasetMode) {
+      config.dataset = datasetId;
+      config.datasetTreatment = form.getFieldValue('datasetTreatment') ?? 'native';
+      config.task = datasetTask;
+      config.count = form.getFieldValue('count') ?? 1;
+      config.acceptDatasetLicense = datasetAccepted;
+      config.targetType = 'skill';
+      config.suite = 'local';
+      delete config.target;
+      delete config.quick;
+      delete config.profile;
+      delete config.previousExperimentId;
+      delete config.retrySourceRunId;
+    } else {
+      delete config.dataset;
+      delete config.datasetTreatment;
+      delete config.count;
+      delete config.acceptDatasetLicense;
+    }
     return config;
   };
   const inspect = async (advance = false) => {
@@ -1514,7 +1547,9 @@ function EvalCreate({
     setError(null);
     try {
       if (step !== 1) await form.validateFields();
-      if (!String(form.getFieldValue('target') ?? '').trim())
+      if (datasetMode && (!datasetId || !datasetTask || (step === 0 && !datasetReady)))
+        throw new Error(t('请先下载数据集并选择评测任务'));
+      if (!datasetMode && !String(form.getFieldValue('target') ?? '').trim())
         throw new Error(t('请选择本地目标路径'));
       const value = await requestJson(base, '/preview', { body: configuration() });
       if (!live.current) return;
@@ -1593,6 +1628,10 @@ function EvalCreate({
             judgeEnabled: config.judgeEnabled ?? Boolean(config.judgeModel),
           });
           setSeedConfig(config);
+          setDatasetMode(Boolean(config.dataset));
+          setDatasetId(config.dataset);
+          setDatasetTask(config.dataset ? config.task : undefined);
+          setDatasetAccepted(config.acceptDatasetLicense ?? false);
           overrides.current = new Set(Object.keys(config));
           setPreview(null);
           setError(null);
@@ -1633,7 +1672,7 @@ function EvalCreate({
         initialValues={{
           targetType: 'auto',
           suite: 'local',
-          timeoutSeconds: 1200,
+          timeoutSeconds: datasetMode ? 0 : 1200,
           maxTurns: 8,
           judgeEnabled: initialConfig
             ? (initialConfig.judgeEnabled ?? Boolean(initialConfig.judgeModel))
@@ -1664,50 +1703,113 @@ function EvalCreate({
       >
         {step === 0 && (
           <Card size="small" title={t('评估目标')}>
-            <Form.Item label={t('目标类型')} name="targetType">
-              <Select
-                options={[
-                  { value: 'auto', label: t('自动识别（推荐）') },
-                  { value: 'application', label: t('SDK 应用') },
-                  { value: 'skill', label: 'Skill / Eval manifest' },
-                ]}
-                onChange={(type) => {
-                  form.setFieldsValue({
-                    previousExperimentId: undefined,
-                    quick: false,
-                    task: undefined,
-                    ...Object.fromEntries(
-                      Object.entries(
-                        defaultsForTarget(
-                          type === 'auto' ? inferTargetType(form.getFieldValue('target')) : type,
-                        ),
-                      ).filter(([key]) => !overrides.current.has(key)),
-                    ),
-                  });
-                }}
-              />
-            </Form.Item>
-            <Form.Item
-              label={t('目标路径')}
-              name="target"
-              rules={[{ required: true, message: t('请选择本地目标路径') }]}
-              extra={
-                <Text type="secondary" className="dashboard-eval-secondary">
-                  {t('支持本机绝对路径；相对路径基于当前选中的项目')}
-                  {projectPath ? `：${projectPath}` : ''}。
-                </Text>
-              }
-            >
-              <Input
-                placeholder={
-                  targetTypeSelection === 'auto'
-                    ? t('Skill 目录、SKILL.md、comet/eval.yaml 或 application.json')
-                    : targetType === 'application'
-                      ? '.comet/applications/example/application.json'
-                      : t('Skill 目录、SKILL.md 或 comet/eval.yaml')
+            <Segmented
+              aria-label={t('评估来源')}
+              value={datasetMode ? 'dataset' : 'local'}
+              options={[
+                { value: 'local', label: t('本地目标') },
+                { value: 'dataset', label: t('内置数据集') },
+              ]}
+              onChange={(value) => {
+                setDatasetMode(value === 'dataset');
+                form.setFieldsValue({
+                  timeoutSeconds:
+                    value === 'dataset' ? 0 : defaultsForTarget(targetType).timeoutSeconds,
+                });
+                overrides.current.add('timeoutSeconds');
+                setPreview(null);
+                setError(null);
+                launchId.current = null;
+              }}
+            />
+            {datasetMode && (
+              <div style={{ marginTop: 16 }}>
+                <EvalDatasets
+                  base={base}
+                  value={datasetId}
+                  task={datasetTask}
+                  accepted={datasetAccepted}
+                  onReady={setDatasetReady}
+                  onChange={(id) => {
+                    setDatasetId(id);
+                    setDatasetTask(undefined);
+                    setDatasetAccepted(false);
+                    setDatasetReady(false);
+                    setPreview(null);
+                  }}
+                  onTaskChange={(value) => {
+                    setDatasetTask(value);
+                    setPreview(null);
+                  }}
+                  onAccept={setDatasetAccepted}
+                />
+                <Form.Item
+                  name="datasetTreatment"
+                  label={t('数据集执行方式')}
+                  initialValue="native"
+                >
+                  <Select
+                    options={[
+                      { value: 'native', label: 'Comet Native' },
+                      { value: 'goal', label: 'Claude Code Goal' },
+                    ]}
+                    onChange={(value) => {
+                      if (value === 'goal') form.setFieldValue('agent', 'claude-code');
+                      setPreview(null);
+                    }}
+                  />
+                </Form.Item>
+                <Form.Item name="count" label={t('每个任务运行次数')} initialValue={1}>
+                  <InputNumber min={1} max={100} />
+                </Form.Item>
+              </div>
+            )}
+            <div hidden={datasetMode}>
+              <Form.Item label={t('目标类型')} name="targetType">
+                <Select
+                  options={[
+                    { value: 'auto', label: t('自动识别（推荐）') },
+                    { value: 'application', label: t('SDK 应用') },
+                    { value: 'skill', label: 'Skill / Eval manifest' },
+                  ]}
+                  onChange={(type) => {
+                    form.setFieldsValue({
+                      previousExperimentId: undefined,
+                      quick: false,
+                      task: undefined,
+                      ...Object.fromEntries(
+                        Object.entries(
+                          defaultsForTarget(
+                            type === 'auto' ? inferTargetType(form.getFieldValue('target')) : type,
+                          ),
+                        ).filter(([key]) => !overrides.current.has(key)),
+                      ),
+                    });
+                  }}
+                />
+              </Form.Item>
+              <Form.Item
+                label={t('目标路径')}
+                name="target"
+                rules={[{ required: !datasetMode, message: t('请选择本地目标路径') }]}
+                extra={
+                  <Text type="secondary" className="dashboard-eval-secondary">
+                    {t('支持本机绝对路径；相对路径基于当前选中的项目')}
+                    {projectPath ? `：${projectPath}` : ''}。
+                  </Text>
                 }
-              />
-            </Form.Item>
+              >
+                <Input
+                  placeholder={
+                    targetTypeSelection === 'auto'
+                      ? t('Skill 目录、SKILL.md、comet/eval.yaml 或 application.json')
+                      : targetType === 'application'
+                        ? '.comet/applications/example/application.json'
+                        : t('Skill 目录、SKILL.md 或 comet/eval.yaml')
+                  }
+                />
+              </Form.Item>
+            </div>
             <Form.Item
               label={targetType === 'application' ? t('评估目标') : t('评估目的（记录备注）')}
               name="goal"
@@ -1812,7 +1914,7 @@ function EvalCreate({
             ) : (
               <Empty description={t('没有可执行用例，请检查目标配置')} />
             )}
-            {targetType === 'skill' && (
+            {targetType === 'skill' && !datasetMode && (
               <Card size="small" title={t('用例选择')}>
                 <Form.Item name="quick" valuePropName="checked">
                   <Checkbox>{t('使用快速冒烟用例')}</Checkbox>
@@ -1941,12 +2043,22 @@ function EvalCreate({
                 <div className="dashboard-eval-form-section">
                   <EvalSection
                     title={t('执行预算')}
-                    description={t('达到总时限或轮数上限时停止执行。')}
+                    description={
+                      datasetMode
+                        ? t('默认不限制总时长，可手动停止；轮数上限仍生效。')
+                        : t('达到总时限或轮数上限时停止执行。')
+                    }
                   />
                   <div className="dashboard-eval-form-grid">
-                    <Form.Item label={t('评估总时限（秒）')} name="timeoutSeconds">
+                    <Form.Item
+                      label={t('评估总时限（秒）')}
+                      name="timeoutSeconds"
+                      extra={
+                        datasetMode ? t('0 表示不限时；正数表示自行设置的总时限。') : undefined
+                      }
+                    >
                       <InputNumber
-                        min={30}
+                        min={datasetMode ? 0 : 30}
                         max={targetType === 'application' ? 3600 : 86400}
                         style={{ width: '100%' }}
                       />

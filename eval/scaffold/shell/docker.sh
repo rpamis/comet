@@ -202,6 +202,11 @@ check_docker() {
 get_dockerfile_hash() {
     local dir="$1"
     local dockerfile="$dir/Dockerfile"
+    local inputs_dir="$dir"
+    if [[ -f "$dir/.dataset-task.json" && -f "$dir/.dataset-build/Dockerfile" ]]; then
+        inputs_dir="$dir/.dataset-build"
+        dockerfile="$inputs_dir/Dockerfile"
+    fi
 
     if [[ ! -f "$dockerfile" ]]; then
         # Fall back to environment/Dockerfile (same layout as docker_build).
@@ -218,11 +223,14 @@ get_dockerfile_hash() {
     # added at runtime and would cause a different hash every run.
     local combined
     combined=$(cat "$dockerfile")
-    if [[ -f "$dir/requirements.txt" ]]; then
-        combined="$combined$(cat "$dir/requirements.txt")"
+    if [[ -f "$inputs_dir/requirements.txt" ]]; then
+        combined="$combined$(cat "$inputs_dir/requirements.txt")"
     fi
-    if [[ -f "$dir/current-comet-package.json" ]]; then
-        combined="$combined$(cat "$dir/current-comet-package.json")"
+    if [[ -f "$inputs_dir/current-comet-package.json" ]]; then
+        combined="$combined$(cat "$inputs_dir/current-comet-package.json")"
+    fi
+    if [[ -f "$dir/.dataset-task.json" ]]; then
+        combined="$combined$(cat "$dir/.dataset-task.json")"
     fi
 
     if command -v md5 &> /dev/null; then
@@ -421,6 +429,11 @@ docker_build() {
     validate_agent "$agent" || return 1
 
     local dockerfile="$dir/Dockerfile"
+    local build_context="$dir"
+    if [[ -f "$dir/.dataset-task.json" && -f "$dir/.dataset-build/Dockerfile" ]]; then
+        build_context="$dir/.dataset-build"
+        dockerfile="$build_context/Dockerfile"
+    fi
     if [[ ! -f "$dockerfile" ]]; then
         # Fall back to environment/Dockerfile (the eval layout: conftest's
         # copy_environment places it there, and validator test dirs reuse it).
@@ -443,7 +456,7 @@ docker_build() {
 
     # Build the task image first (pass Claude Code version as build arg).
     local windir windockerfile
-    windir=$(_winpath "$dir")
+    windir=$(_winpath "$build_context")
     windockerfile=$(_winpath "$dockerfile")
     if [[ "$agent" == "claude-code" && "${TRACE_TO_LANGFUSE:-}" != "true" ]]; then
         if docker build -t "$image_name" \
@@ -681,6 +694,20 @@ prepare_eval_runtime_data() {
         chmod 0700 /opt/comet-eval-data
     ' _ "$owner" </dev/null || return 1
     COMET_RUNTIME_MOUNT_ARGS=(-v "$volume://opt/comet-eval-data" -e "COMET_DATA_DIR=//opt/comet-eval-data")
+    if [[ -f "$dir/.dataset-task.json" ]]; then
+        local dataset_directory
+        local dataset_workdir
+        dataset_workdir=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).workdir)' "$dir/.dataset-task.json") || return 1
+        for dataset_directory in root app data; do
+            if [[ -d "$dir/.dataset-state/$dataset_directory" ]]; then
+                if [[ "$dataset_workdir" == "/$dataset_directory" ]]; then
+                    COMET_RUNTIME_MOUNT_ARGS+=(-v "$(_winpath "$dir")://$dataset_directory")
+                else
+                    COMET_RUNTIME_MOUNT_ARGS+=(-v "$(_winpath "$dir/.dataset-state/$dataset_directory")://$dataset_directory")
+                fi
+            fi
+        done
+    fi
 }
 
 cleanup_eval_runtime_data() {

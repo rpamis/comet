@@ -6609,6 +6609,460 @@
           ]
         }
       ]
+    },
+    {
+      "id": "eval-dataset-isolated-node-tools",
+      "behavior": "数据集镜像沿用原任务环境并隔离 Comet 的 Node/npm，避免覆盖原有 Node 文件",
+      "sources": ["report:2026-11-02-native-benchmark-bootstrap"],
+      "coverageLevel": "unit",
+      "reproduction": "修复前 WorkBuddy 的首次试跑在安装 node@22 时触发 /usr/local/bin/node EEXIST；同一镜像装配契约测试在修复前失败、修复后通过。",
+      "expected": "保留原 Dockerfile，使用独立目录中的 Node 22/npm 和 Agent。",
+      "forbidden": "对原任务的 /usr/local/bin/node 再次执行全局 node 包安装或覆盖原文件。",
+      "rootCause": "适配层无条件执行 npm install -g node@22，与原镜像解压安装的 Node 冲突。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "keeps dataset Node tools separate from the original task installation",
+          "requiredNames": ["keeps dataset Node tools separate from the original task installation"]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "dataset-docker-build",
+          "status": "pending",
+          "evidence": [
+            "本轮仅执行确定性装配契约测试；没有新的 Eval 启动授权，未重建 WorkBuddy 任务镜像。",
+            "后续授权重跑 Run comet-eval-b0df0718-a06f-4b02-8803-bd6293beb5ab 已通过独立 Node 装配及 Agent 安装；后续 Comet 依赖解析失败，完整镜像构建仍未通过。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-agent-install-diagnostics",
+      "behavior": "Agent 安装输出进度并核对可执行文件，失败时保留脱敏诊断并在样本准备前停止",
+      "sources": ["report:2026-11-02-native-benchmark-bootstrap"],
+      "coverageLevel": "unit",
+      "reproduction": "SkillsBench 首次试跑安装 Claude Code 超过 900 秒且没有请求或脚本进度；旧安装契约测试失败，新实现通过成功、安装失败及不可执行三条分支。",
+      "expected": "显示 HTTP 和安装脚本进度，限制请求等待，检查 Agent 可执行性，预构建失败时输出脱敏原因并停止。",
+      "forbidden": "静默等待、安装成功但 Agent 不可执行、丢失构建原因、失败后继续准备模型样本或输出凭据。",
+      "rootCause": "旧适配层继承系统 npm，未开启前台安装日志或执行安装后的可执行性检查，预构建失败仅返回空值。实际下载卡住的具体网络原因未取得证据。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "reports dataset installation progress and stops on install or binary failure",
+          "requiredNames": [
+            "reports dataset installation progress and stops on install or binary failure"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "dataset-agent-package-download",
+          "status": "verified",
+          "evidence": [
+            "仅验证命令契约和确定性失败传播，尚未在新的 SkillsBench 镜像构建中确认实际 Agent 下载成功。",
+            "2026-11-02 后续授权重跑：SkillsBench Run comet-eval-4f9f1b08-e417-495d-b460-97eabbcd1253 的 Agent 安装用时 63.9 秒，WorkBuddy Run comet-eval-b0df0718-a06f-4b02-8803-bd6293beb5ab 用时 83.9 秒；均输出 2.1.306 (Claude Code)。两个 Run 在后续 Comet 依赖错误处停止，没有开始模型调用。证据见 docs/research/2026-11-02-native-benchmark-glm53flash-smoke.zh.md 与对应构建日志。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-session-selection-isolation",
+      "behavior": "数据集计划只绑定所属 pytest 配置，不污染同进程中的独立 manifest 解析",
+      "sources": ["report:2026-11-02-native-benchmark-bootstrap"],
+      "coverageLevel": "unit",
+      "reproduction": "修复前带数据集环境变量调用已有两个 manifest 契约时失败；相同断言在新代码通过，并验证已绑定计划不随环境变量删除而丢失。",
+      "expected": "会话使用其绑定的数据集；独立 manifest 保留 authored tasks、推荐任务与 baseline treatments。",
+      "forbidden": "从环境变量覆盖其他配置的任务、改变既有断言、无效任务回退到其他数据集或自动生成任务。",
+      "rootCause": "generate_test_params 和动态 treatment helper 在每次调用时读取进程级 COMET_EVAL_DATASET_PLAN。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "binds dataset selection to its pytest session without overriding manifest contracts",
+          "requiredNames": [
+            "binds dataset selection to its pytest session without overriding manifest contracts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-build-timeout-owned-descendants",
+      "behavior": "构建超时后终止本次命令的子进程树并及时返回，不被继承的输出管道阻塞",
+      "sources": ["report:2026-11-02-native-benchmark-bootstrap"],
+      "coverageLevel": "unit",
+      "reproduction": "SkillsBench 超过 900 秒后 Bash 已终止，Docker 子进程继续持有输出管道；以 Bash 启动睡眠 Python 子进程复现同类管道持有，修复后及时抛出超时并确认子进程结束。",
+      "expected": "仅终止本次命令的后代，保留超时前输出并释放构建锁，正常命令保留退出码及输出。",
+      "forbidden": "无限等待输出管道、留下本次构建后代、终止无关进程或把超时记为成功。",
+      "rootCause": "subprocess.run 超时只终止 Bash，Windows Docker 后代仍持有 stdout/stderr，父调用再次等待管道关闭。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "terminates timed out build descendants and preserves normal command results",
+          "requiredNames": [
+            "terminates timed out build descendants and preserves normal command results"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "windows-msys-detached-docker-timeout-cleanup",
+          "status": "pending",
+          "evidence": [
+            "2026-11-02 WorkBuddy 尝试 01 的 Bash 在 900 秒超时后，taskkill 无法确认脱离进程树的 Docker 后代已清理，实际仍在构建。错误已明确报告，没有记作清理成功；人工接管监督构建完成后，只终止匹配该上下文的客户端 PID 56472、73108。自动清理缺口未修复。模型入口尝试 02 则经公开停止接口确认清理成功。见 docs/research/2026-11-02-workbuddy-model-boundary.zh.md。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-runtime-dependency-graph",
+      "behavior": "数据集镜像仅解析 Comet 运行时依赖，保留依赖覆盖规则，不引入仓库开发依赖及生命周期脚本",
+      "sources": ["report:2026-11-02-native-benchmark-runtime-dependencies"],
+      "coverageLevel": "unit",
+      "reproduction": "两次授权重跑均在安装完整 Comet 清单时出现 npm edgesOut 异常。隔离目录中使用同一 npm 10.9.9，旧生成清单的解析退出 1，精简后的清单实际安装 223 个包并退出 0；生成清单断言同样取得修改前失败、修改后通过。",
+      "expected": "生成独立运行时清单，保留原始 dependencies、optional/peer 声明、overrides、engines 与包身份，不修改仓库 package.json。",
+      "forbidden": "复制根 devDependencies 或脚本进入运行时安装、丢失安全 overrides、通过降低 npm 依赖检查或修改根依赖版本绕过失败。",
+      "rootCause": "完整仓库 package.json 包含 Vitest 等开发依赖，--omit=dev 仍解析该依赖图，在 npm 10.9.9 的 peer 解析中触发 edgesOut 异常。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "keeps dataset runtime installation independent of repository development dependencies",
+          "requiredNames": [
+            "keeps dataset runtime installation independent of repository development dependencies"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "host-npm-runtime-installation",
+          "status": "verified",
+          "evidence": [
+            "Node 22.20.0 / npm 10.9.9，普通隔离安装探针 before 退出 1、edgesOut=true、没有 lockfile；after 退出 0、实际安装 223 个包，lock 中没有根开发依赖及 Vitest。记录见 docs/research/2026-11-02-native-benchmark-glm53flash-smoke.zh.md。"
+          ]
+        },
+        {
+          "layer": "dataset-container-bootstrap",
+          "status": "verified",
+          "evidence": [
+            "修复发生在本轮两次授权运行结束后；未追加容器或模型 Eval，新的运行时清单尚未在真实任务镜像中验证。",
+            "2026-11-02 后续用户授权试下：SkillsBench Run comet-eval-31cedb0e-07e1-4f5b-a3ec-bb6964b759d9 的基础镜像 Build qipzx6806f2cmv1bbmoueyzd9 构建成功（4 分 31 秒），候选 CLI 覆盖层构建成功，执行容器到达 glm-5.3-flash API；原始评分脚本也成功返回 reward 0。主 Agent 被 429/1308 额度限制，样本 excluded/rate_limited，因此只证明容器准备和依赖安装，不证明模型或 Native 能力。见 docs/research/2026-11-02-native-benchmark-glm53flash-smoke.zh.md。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-workbuddy-verifier-dependency-pins",
+      "behavior": "WorkBuddy 评分依赖沿用上游固定的 Harbor 版本，并安装到评分专用 Python 环境",
+      "sources": ["report:2026-11-02-workbuddy-verifier-bootstrap"],
+      "coverageLevel": "unit",
+      "reproduction": "旧 Docker 装配只安装 WorkBuddy Git 修订，pip 不应用其 tool.uv.sources 中的 Harbor 固定来源。装配契约断言在旧代码失败，新代码显式指定两个 Git 修订并创建独立 venv 后通过。",
+      "expected": "WorkBuddy 固定为 625b2233093ae4f23e76be28c1f341d41cc70373，Harbor 固定为上游 v0.18.0 对应提交 527d50deb63a5d279e8c20593c18a2cbc7f61f9e；安装进入 /opt/comet-verifier。",
+      "forbidden": "从 PyPI 解析任意最新 Harbor，或把评分框架及其传递依赖安装到题目 Python。",
+      "rootCause": "旧安装命令没有将上游仅供 uv 使用的固定来源转成 pip 的显式约束，且使用题目全局解释器安装。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "pins WorkBuddy verifier libraries to upstream revisions in an isolated environment",
+          "requiredNames": [
+            "pins WorkBuddy verifier libraries to upstream revisions in an isolated environment"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "workbuddy-container-verifier-installation",
+          "status": "verified",
+          "evidence": [
+            "本轮没有新的容器 Eval 授权；仅完成确定性装配测试，实际任务镜像中的安装仍待验证。",
+            "Windows Python 3.12 普通对照中，旧命令选择 Harbor 0.25.0，新命令解析固定的 0.18.0 Git 提交；两条完整安装均因后续下载摘要不匹配退出，未记为安装通过。见 docs/research/2026-11-02-native-benchmark-bootstrap-followup.zh.md。",
+            "2026-11-02 用户明确授权直到到达模型：Build 7y86zpxkyvc5c258jp94hrxmd 在监督接管后成功，Docker 内 /opt/comet-verifier 安装 workbuddy-bench 0.1.0 与固定 Harbor 0.18.0 成功。尝试 02 复用该镜像并收到 glm-5.3-flash 响应。见 docs/research/2026-11-02-workbuddy-model-boundary.zh.md。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-workbuddy-private-score-interpreter",
+      "behavior": "WorkBuddy 评分入口使用专用 Python 并忽略题目的 Python 导入路径，业务测试仍使用题目环境",
+      "sources": ["report:2026-11-02-workbuddy-verifier-bootstrap"],
+      "coverageLevel": "unit",
+      "reproduction": "同一评分容器命令断言在旧实现得到 python3，新实现得到 /opt/comet-verifier/bin/python -I；保留原任务和评分参数、正常 reward 与清理断言。",
+      "expected": "评分控制器从固定 venv 导入，启用 -I；不替换容器 PATH 或原任务的 Python 安装。",
+      "forbidden": "退回全局 Python、从题目 PYTHONPATH 导入评分模块、覆盖业务执行器 PATH、丢失评分或清理步骤。",
+      "rootCause": "旧评分入口始终执行全局 python3，没有评分解释器与题目解释器的边界。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "runs WorkBuddy scoring through its private Python in isolated mode",
+          "requiredNames": ["runs WorkBuddy scoring through its private Python in isolated mode"]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "workbuddy-container-score-interpreter",
+          "status": "verified",
+          "evidence": [
+            "仅验证确定性命令组装，没有执行原始评分或新的容器 Eval。",
+            "Python 完整安装因下载摘要不匹配失败，专用环境的实际模块导入检查尚未执行；保留 pending。",
+            "2026-11-02 后续修复：完整固定数据集在 skillbench:2eff56a1-cc2.1.306 中以 /opt/comet-verifier/bin/python -I 执行真实评分，退出 0，返回原始 reward 0.0（未修改的基线任务，3 项测试均失败）。专用解释器及评分链路已实际执行，不能记作题目通过。见 docs/research/2026-11-02-native-benchmark-full-task-repair.zh.md。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-agent-required-native-package",
+      "behavior": "数据集镜像必须安装固定 Agent 版本声明的当前平台原生包，下载或二进制失败时停止",
+      "sources": ["report:2026-11-02-workbuddy-agent-native-package"],
+      "coverageLevel": "unit",
+      "reproduction": "WorkBuddy Run comet-eval-7c3fe101-bf1c-4a76-8692-ad7e38ec45a5 中 npm 包装器安装退出 0，但缺少 linux-x64 原生包，随后版本检查失败；改用顶层必装原生包后，尝试 01 的真实镜像安装和版本检查通过。",
+      "expected": "按包装器元数据固定原生包版本并作为必装项安装；保留旧版 JavaScript 包兼容、安装进度、失败退出码、版本检查及安装器字节绑定。",
+      "forbidden": "忽略原生包下载失败、修改完整性检查、静默使用其他平台或版本、允许模型篡改安装器后构建。",
+      "rootCause": "npm 可选依赖失败不使包装器安装失败，短请求时限使较大的原生包下载容易中断。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "requires the declared native Agent package and rejects unsupported or modified installers",
+          "requiredNames": [
+            "requires the declared native Agent package and rejects unsupported or modified installers"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "workbuddy-agent-native-installation",
+          "status": "verified",
+          "evidence": [
+            "尝试 01 Run comet-eval-6582a713-5ef1-4ec1-853a-b86ed2c9c156，Build 7y86zpxkyvc5c258jp94hrxmd 的 Agent 安装用时 230.4 秒，claude --version 返回 2.1.306 (Claude Code)。该 Run 随后在评分依赖下载阶段超过 900 秒，尚未到模型。详见 docs/research/2026-11-02-workbuddy-model-boundary.zh.md。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-cold-build-timeout",
+      "behavior": "内置数据集首次构建允许安装原题及评分依赖所需的有限额外时间，普通任务维持原时限",
+      "sources": ["report:2026-11-02-workbuddy-agent-native-package"],
+      "coverageLevel": "unit",
+      "reproduction": "尝试 01 在 900 秒时仍下载固定评分依赖，运行报超时；保留同一超时断言，新增数据集 1800 秒断言在修改前失败、修改后通过。",
+      "expected": "带数据集标记的构建最多 1800 秒，普通构建仍为 900 秒；超时仍失败并保留诊断和进程树清理要求。",
+      "forbidden": "无限等待、扩大普通任务的时限、忽略超时或在失败后开始模型样本。",
+      "rootCause": "普通任务的 900 秒构建上限不足以覆盖原题、固定 Agent、Comet 与评分环境的全部首次下载。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "allows bounded extra time for cold dataset builds and keeps ordinary build limits",
+          "requiredNames": [
+            "allows bounded extra time for cold dataset builds and keeps ordinary build limits"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-builtin-dataset-workflow-deadline",
+      "behavior": "内置数据集的完整 Native 流程默认不被任务或 Dashboard 总时限中断，仍支持显式限时和手动停止",
+      "sources": ["report:2026-11-02-native-benchmark-full-task-timeout"],
+      "coverageLevel": "runtime",
+      "reproduction": "上轮两个公开 CLI Run 在 960 秒被中断；新增默认不限时和受管进程断言在旧代码分别得到 1500 秒、600 秒和 interrupted，修复后无截止时间并正常完成。",
+      "expected": "两数据集 CLI 与 Dashboard 默认无总截止时间；Python 两个 Agent 循环和进程监管器保持该语义，显式正数预算生效，已登记进程仍可停止和清理。",
+      "forbidden": "继承 900/1500 秒或 Dashboard 通用预算、把 0 转成立即停止、失去进程归属或放宽普通评测预算校验。",
+      "rootCause": "原题 Agent 时限被用于包含 Shape、Build、Verify、Archive 的整个 Native 流程，Dashboard 和进程监管层也各自施加总截止时间。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "keeps dataset workflows free of default deadlines across both Agent loops",
+          "requiredNames": [
+            "keeps dataset workflows free of default deadlines across both Agent loops"
+          ]
+        },
+        {
+          "file": "test/domains/eval/eval-run-preview.test.ts",
+          "namePattern": "keeps explicit dataset budgets and rejects unlimited ordinary evaluations",
+          "requiredNames": [
+            "Eval preview keeps explicit dataset budgets and rejects unlimited ordinary evaluations"
+          ]
+        },
+        {
+          "file": "test/domains/eval/eval-run-worker.test.ts",
+          "namePattern": "runs a dataset without a deadline while preserving managed ownership and completion",
+          "requiredNames": [
+            "managed Eval worker process runs a dataset without a deadline while preserving managed ownership and completion"
+          ]
+        },
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "无限时命令仍需登记，并可确认停止其进程树",
+          "requiredNames": ["受管命令的整树终止证明 无限时命令仍需登记，并可确认停止其进程树"]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "builtin-datasets-real-model-full-workflow",
+          "status": "verified",
+          "evidence": [
+            "已取得明确重跑授权；定向测试完成后各启动原题一次，不使用先前 900 秒覆盖，真实结果待补充。",
+            "两个原题各一次，Run comet-eval-c7e5249b-105d-44cc-89be-7bd109dd79b3 与 comet-eval-61dc6b34-0eb7-4d6e-a715-cad49ee5cb51 分别约 57 与 55 分钟结束，Agent 均退出 0，Native 状态、循环、隔离及归属检查通过，未超时。完成判定在本轮中途修复，保存了执行器过渡记录，不作为从头固定执行器版本的正式比较；外层 pytest 保护在结束后经单元和真实 collection 验证移除。见 docs/research/2026-11-02-native-benchmark-full-task-repair.zh.md。"
+          ]
+        },
+        {
+          "layer": "dashboard-dataset-unlimited-default-browser",
+          "status": "verified",
+          "evidence": [
+            "浏览器用例断言预览请求携带 timeoutSeconds=0，待当前构建验证结果。",
+            "当前构建的桌面 1280 与窄屏 390 两项 Playwright 用例均通过，实际预览请求携带 timeoutSeconds=0，下载仍仅由点击触发。见 docs/research/2026-11-02-native-benchmark-full-task-repair.zh.md。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-native-chinese-shape-confirmation",
+      "behavior": "中文 Shape 待确认内容触发模拟用户真实回复，已完成确认的摘要不触发新交互",
+      "sources": ["report:2026-11-02-native-benchmark-full-task-timeout"],
+      "coverageLevel": "runtime",
+      "reproduction": "重放 WorkBuddy 上轮的中文请确认摘要时旧 decision-point.sh 返回 1；新增同样文本在修改后返回 0，完整循环驱动收到一次真实回复并在第二轮正常完成。",
+      "expected": "识别中文明确确认请求并传递回复；无需确认和已归档摘要保持完成。",
+      "forbidden": "遗漏待批准请求后用 continue 代替批准，或把完成摘要误当新的审批。",
+      "rootCause": "决策识别只包含英文请求语法与中文问号表达，没有覆盖中文祈使式请确认。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "recognizes the reported Chinese Shape confirmation without reviving completed requests",
+          "requiredNames": [
+            "recognizes the reported Chinese Shape confirmation without reviving completed requests"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "workbuddy-native-real-model-confirmation",
+          "status": "verified",
+          "evidence": [
+            "确定性驱动已验证真实模拟回复，原题真实模型重跑待补充。",
+            "本轮 WorkBuddy 首个 result 含请确认，真实循环记录 decision point detected、simulator 会话和 692 字符回复，随后进入 Build 并最终归档。decision_points=1。见 docs/research/2026-11-02-native-benchmark-full-task-repair.zh.md。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-workbuddy-root-scoring-contract",
+      "behavior": "WorkBuddy 在启动模型前要求完整 dataset.toml 并绑定内容，评分前拒绝已改变的根评分配置",
+      "sources": ["report:2026-11-02-native-benchmark-full-task-timeout"],
+      "coverageLevel": "unit",
+      "reproduction": "旧临时目录缺少 dataset.toml，固定镜像的上游库实际抛 VerifierContractError；缺失配置的预览与 Python 装配测试在旧代码错误放行、修复后拒绝，篡改内容同样被拦截。",
+      "expected": "模型启动前检查根配置，整体计划绑定其 SHA-256，装配与评分核对一致内容。",
+      "forbidden": "缺少根配置仍消耗模型、手造评分规则、复用变化后的评分输入或修改原始数据规避失败。",
+      "rootCause": "预览仅检查 tasks 和 shared，未要求及绑定上游评分框架发现数据集所需的 dataset.toml。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-datasets.test.ts",
+          "namePattern": "requires the WorkBuddy dataset contract and binds its content before a model can start",
+          "requiredNames": [
+            "requires the WorkBuddy dataset contract and binds its content before a model can start"
+          ]
+        },
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "checks WorkBuddy root contracts before preparation and rejects scoring input drift",
+          "requiredNames": [
+            "checks WorkBuddy root contracts before preparation and rejects scoring input drift"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "workbuddy-fixed-container-scoring-contract",
+          "status": "verified",
+          "evidence": [
+            "公开下载固定 HF revision 3e8ad839685c589d83a1dd60fe2d15eabb75f27a 并核对原 SHA-256，通过；原未改任务在 skillbench:2eff56a1-cc2.1.306 的专用 Python -I 下评分退出 0，返回 reward 0.0、3 项原测试均失败，证明评分入口可运行。见 .comet/eval/launches/2026-11-02-native-benchmark-full-task-repair/scorer-preflight-root.log。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-scoring-error-diagnostics",
+      "behavior": "评分容器失败时保留脱敏后的 stderr 与 stdout，同时清理容器",
+      "sources": ["report:2026-11-02-native-benchmark-full-task-timeout"],
+      "coverageLevel": "unit",
+      "reproduction": "旧实现只记录 CalledProcessError 的退出码，新增断言无法找到 VerifierContractError；修复后异常类型和输出保留，凭据被移除，清理仍执行。",
+      "expected": "失败检查显示实际评分诊断并保留错误归因，清理照常执行。",
+      "forbidden": "只报退出码、将失败转换成 reward 0、泄漏凭据或遗漏清理。",
+      "rootCause": "异常处理只使用 str(exc)，没有保存 subprocess 捕获的输出字段。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "retains redacted scoring errors while cleaning up the failed container",
+          "requiredNames": [
+            "retains redacted scoring errors while cleaning up the failed container"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-pytest-outer-deadline",
+      "behavior": "内置数据集不再被外层 pytest 四小时保护中断，其他测试保留原保护",
+      "sources": ["report:2026-11-02-native-benchmark-full-task-timeout"],
+      "coverageLevel": "unit",
+      "reproduction": "新增定向断言在移除外层标记前取得 14400 而非 0，修复后数据集任务的有效 timeout 标记为 0，普通任务及无关测试标记不变。",
+      "expected": "只对已绑定内置数据集的真实任务条目移除外层总时限，显式 Agent 预算及手动停止继续有效。",
+      "forbidden": "扩大普通评估保护范围、移除无关测试时限或宣称已实际运行四小时以上。",
+      "rootCause": "任务测试函数另有 14400 秒标记，独立于 Agent 和受管进程的预算。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "removes the outer pytest deadline only for builtin dataset tasks",
+          "requiredNames": ["removes the outer pytest deadline only for builtin dataset tasks"]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-native-terminal-completion",
+      "behavior": "内置数据集根据当前项目的 Native SDK 根 Run 完整终态结束，不因中文文案遗漏而重复继续",
+      "sources": ["report:2026-11-02-native-benchmark-full-task-timeout"],
+      "coverageLevel": "runtime",
+      "reproduction": "本轮 WorkBuddy SDK 已完成且中文响应说明归档，旧循环仍记录 no decision point and not complete 并继续；旧完成脚本在中文真实完成断言返回 1，修复后探针返回 0，未完成 SDK 即使有英文完成声明也不能结束。",
+      "expected": "所有 Native 根 Run、归档检查点、归属、actions 和 waits 均完成后结束，活动变更或子 Run 不能冒充完整交付。",
+      "forbidden": "依赖模型完成措辞提前通过、忽略活动变更、探针不可用时回退文案或对已完成工作流反复催促。",
+      "rootCause": "数据集没有预先固定模型选择的 change 名称，走了只识别部分英文的通用文案判定。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "ends completed datasets through owned Native roots instead of completion wording",
+          "requiredNames": [
+            "ends completed datasets through owned Native roots instead of completion wording"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "same-run-completion-repair",
+          "status": "verified",
+          "evidence": [
+            "两个真实模型 Run 的 SDK 均 completed；已保存修改前后脚本摘要及执行中修复记录。SkillsBench 实际探针空文案返回 0，两个 Run 最终 Agent 退出 0、completion_signals=1、Native 状态和循环检查通过。本轮包含中途执行器变更，不能作为从头固定执行器版本的正式比较。见 docs/research/2026-11-02-native-benchmark-full-task-repair.zh.md。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-skillsbench-verifier-directory",
+      "behavior": "SkillsBench 评分保持上游 /verifier 绝对目录，避免未执行测试就写出零分",
+      "sources": ["report:2026-11-02-native-benchmark-full-task-timeout"],
+      "coverageLevel": "unit",
+      "reproduction": "dialogue-parser 原脚本执行 /verifier/test_outputs.py，旧适配器只复制 /tests；定向断言在旧代码失败。修复为原绝对路径后，对同一已保存业务产物评分得到 5/6、reward 0.833。",
+      "expected": "评分脚本与其绝对引用位于 /verifier，保留上游脚本和部分得分，不改变业务候选。",
+      "forbidden": "把路径或环境错误当成模型零分、更改隐藏测试、修改候选答案或覆盖原失败记录。",
+      "rootCause": "将 SkillsBench 的 verifier 目录错误套用了 Harbor 的 /tests 挂载约定。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "preserves SkillsBench verifier paths and fractional task scores",
+          "requiredNames": ["preserves SkillsBench verifier paths and fractional task scores"]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "same-candidate-skillsbench-scoring-container",
+          "status": "verified",
+          "evidence": [
+            "无额外模型调用，保存四个业务文件的 SHA-256 后复制并挂载 /workspace 与 /app，以固定基础镜像执行修复后的评分脚本。退出 0、5/6 测试通过、reward 0.833；原始产物和评分副本业务文件哈希均未变化。旧报告原样保留，结果见 .comet/eval/launches/2026-11-02-native-benchmark-full-task-repair/skillsbench-rescore/result.json。"
+          ]
+        }
+      ]
     }
   ]
 }

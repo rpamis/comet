@@ -15,6 +15,7 @@ import {
 } from './eval-archives.js';
 import type {
   EvalCaseResult,
+  EvalRunConfig,
   EvalManagedRun,
   EvalRunComparison,
   EvalRunDetail,
@@ -902,7 +903,7 @@ export async function readEvalRun(
     } else if (!exhausted) forgetEvalEvidenceReader(root);
   }
   const app = object(application?.application);
-  const config = managed?.config ?? {
+  const config: Partial<EvalRunConfig> = managed?.config ?? {
     target: text(source.path) ?? undefined,
     agent: cases[0]?.agent ?? undefined,
     model: cases[0]?.model ?? undefined,
@@ -1024,8 +1025,44 @@ export async function readEvalRun(
       `Eval 执行异常（退出码 ${failedHarnessExit ?? metadata?.pytest_exitstatus ?? '未知'}），已有用例结果已保留。`,
     );
   }
+  const datasetPlan = object(metadata?.dataset_plan);
+  const datasetTasks = Array.isArray(datasetPlan.tasks) ? datasetPlan.tasks.map(object) : [];
+  const datasetScope =
+    datasetPlan.schema === 'comet.eval.dataset.v1' &&
+    ['COMET_NATIVE_SDK_CURRENT', 'CLAUDE_CODE_GOAL'].includes(String(datasetPlan.treatment)) &&
+    /^sha256:[a-f0-9]{64}$/u.test(String(datasetPlan.contentHash)) &&
+    /^sha256:[a-f0-9]{64}$/u.test(String(datasetPlan.scorerHash)) &&
+    cases.length > 0 &&
+    cases.every(
+      (item) =>
+        item.caseHash &&
+        item.validatorHash &&
+        item.treatment.replace(/-r\d+$/u, '') === datasetPlan.treatment &&
+        datasetTasks.some(
+          (task) =>
+            task.id === item.task && /^sha256:[a-f0-9]{64}$/u.test(String(task.contentHash)),
+        ) &&
+        typeof item.scores['dataset-score'] === 'number' &&
+        item.scores['dataset-score']! >= 0 &&
+        item.scores['dataset-score']! <= 1,
+    )
+      ? `dataset:${evalValueHash([
+          datasetPlan.contentHash,
+          datasetPlan.scorerHash,
+          datasetPlan.dataset,
+          datasetPlan.sharedHash,
+          datasetPlan.datasetConfigHash,
+          datasetTasks
+            .map((task) => [task.id, task.contentHash])
+            .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+          cases
+            .map((item) => [item.task, item.repetition])
+            .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+        ])}`
+      : null;
   let baselineScope =
-    cases.length && cases.every((item) => item.caseHash && item.validatorHash)
+    datasetScope ??
+    (cases.length && cases.every((item) => item.caseHash && item.validatorHash)
       ? evalValueHash([
           targetId,
           cases
@@ -1038,7 +1075,7 @@ export async function readEvalRun(
             ])
             .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
         ])
-      : null;
+      : null);
   const baselineDisabledReason = managed?.config.retrySourceRunId
     ? '此记录仅包含失败用例重跑，不能作为完整评估基线'
     : executionStatus !== 'completed'
@@ -1105,6 +1142,9 @@ export async function readEvalRun(
     target: {
       id: targetId,
       name:
+        (config.dataset
+          ? `${config.dataset} · ${config.datasetTreatment === 'goal' ? 'Claude Code Goal' : 'Comet Native'}`
+          : null) ??
         text(app.id) ??
         text(source.name) ??
         (config.target && path.basename(config.target) === 'SKILL.md'
@@ -1430,11 +1470,22 @@ export async function compareEvalRuns(
     readEvalRun(project, baselineId, { includeCaseContent: false }),
   ]);
   const reasons: string[] = [];
+  const datasetComparison = Boolean(
+    candidate.baselineScope?.startsWith('dataset:') &&
+    baseline.baselineScope?.startsWith('dataset:'),
+  );
   if (candidateId === baselineId) reasons.push('不能与自身比较');
   if (!candidate.baselineScope || candidate.baselineScope !== baseline.baselineScope)
     reasons.push('目标、固定用例或评分规则不一致');
   if (!baseline.baselineEligible || candidate.conclusion === 'incomplete')
     reasons.push('对比需要完整且有效的结果');
+  if (
+    datasetComparison &&
+    ['agent', 'model', 'baseUrl', 'timeoutSeconds', 'maxTurns'].some(
+      (field) => (candidate.config as Json)[field] !== (baseline.config as Json)[field],
+    )
+  )
+    reasons.push('数据集对照需要相同 Agent、模型、端点和执行预算');
   const configurationChanges = [
     'agent',
     'model',
@@ -1449,6 +1500,9 @@ export async function compareEvalRuns(
     'task',
     'timeoutSeconds',
     'maxTurns',
+    'dataset',
+    'datasetTreatment',
+    'count',
   ]
     .filter((field) => (baseline.config as Json)[field] !== (candidate.config as Json)[field])
     .map((field) => ({
@@ -1472,24 +1526,42 @@ export async function compareEvalRuns(
     const other = baseline.cases.find(
       (other) =>
         other.task === item.task &&
-        other.treatment === item.treatment &&
+        (datasetComparison || other.treatment === item.treatment) &&
         other.repetition === item.repetition,
     );
+    const baselineScore = other?.scores['dataset-score'] ?? null;
+    const candidateScore = item.scores['dataset-score'] ?? null;
     return {
       task: item.task,
       repetition: item.repetition,
-      baseline: other?.passed ?? null,
-      candidate: item.passed,
+      baseline: datasetComparison
+        ? baselineScore === null
+          ? null
+          : baselineScore === 1
+        : (other?.passed ?? null),
+      candidate: datasetComparison
+        ? candidateScore === null
+          ? null
+          : candidateScore === 1
+        : item.passed,
+      ...(datasetComparison ? { baselineScore, candidateScore } : {}),
       change: !other
         ? 'unmatched'
-        : other.passed === item.passed
-          ? 'unchanged'
-          : item.passed
-            ? 'improved'
-            : 'regressed',
+        : datasetComparison && baselineScore !== null && candidateScore !== null
+          ? candidateScore === baselineScore
+            ? 'unchanged'
+            : candidateScore > baselineScore
+              ? 'improved'
+              : 'regressed'
+          : other.passed === item.passed
+            ? 'unchanged'
+            : item.passed
+              ? 'improved'
+              : 'regressed',
     };
   });
   return {
+    ...(datasetComparison ? { metric: 'dataset-score' as const } : {}),
     comparable: reasons.length === 0,
     reasons,
     baseline,

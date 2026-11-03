@@ -109,6 +109,28 @@ function expectUvRun(args: string[], cwd = evalCwd): string {
 }
 
 describe('eval command', () => {
+  it('downloads through a standalone standard-library script without installing the Eval environment', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const { evalCommand } = await import('../../app/commands/eval.js');
+      await evalCommand(undefined, {
+        dataset: 'skillsbench',
+        fetchDataset: true,
+        datasetRoot: path.join(project, 'dataset'),
+      });
+      expect(execFileSync.mock.calls[0][1].slice(0, 5)).toEqual([
+        'run',
+        '--no-project',
+        '--python',
+        '>=3.12',
+        'python',
+      ]);
+      expect(execFileSync.mock.calls[0][1][5]).toContain('dataset_fetch.py');
+      expect(loadUserEvalEnvironment).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
+  });
   beforeEach(() => {
     execFileSync.mockReset();
     execFileSync.mockReturnValue(Buffer.from(''));

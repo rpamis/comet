@@ -80,6 +80,24 @@ afterEach(async () => {
 });
 
 describe('受管命令的整树终止证明', () => {
+  it('无限时命令仍需登记，并可确认停止其进程树', async () => {
+    const owned = spawnOwnedCommand(
+      process.execPath,
+      ['-e', 'console.log("ready");setInterval(()=>{},1000)'],
+      {
+        cwd: directory,
+        timeoutMs: null,
+      },
+    );
+    processes.push(owned.child);
+    await owned.ready;
+    const output = once(owned.child.stdout, 'data');
+    owned.start();
+    expect(String((await output)[0])).toContain('ready');
+    expect(await alive(owned.child.pid!)).toBe(true);
+    expect(await terminateProcessTreeConfirmed(owned.child)).toBe(true);
+    await untilDead(owned.child.pid!);
+  });
   // 各平台都执行延迟收尾；Windows 还须保留 taskkill 核对所需的监管器身份。
   it('Windows 等待调用方核对整树终止时保留原监管器身份', async () => {
     const terminate = termination.terminateProcessTreeConfirmed;

@@ -19,6 +19,29 @@ async function runEvalCli(...args: string[]): Promise<unknown[]> {
 }
 
 describe('eval CLI options', () => {
+  it('passes dataset selection to the public facade', async () => {
+    const [, options] = await runEvalCli(
+      '--dataset',
+      'skillsbench',
+      '--dataset-root',
+      './data',
+      '--task',
+      'example',
+      '--count',
+      '2',
+      '--dataset-treatment',
+      'goal',
+      '--collect',
+    );
+    expect(options).toMatchObject({
+      dataset: 'skillsbench',
+      datasetRoot: './data',
+      task: 'example',
+      count: '2',
+      datasetTreatment: 'goal',
+      collect: true,
+    });
+  });
   afterEach(() => {
     process.argv = originalArgv;
     process.exitCode = originalExitCode;

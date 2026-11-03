@@ -149,6 +149,20 @@ def expand_treatment_patterns(patterns: list[str], all_treatments: dict) -> list
 
 def generate_test_params(task_filter: str | None, treatment_filter: str | None, config=None):
     """Generate (task_name, treatment_name) pairs based on filters."""
+    plan_file = getattr(config, "_comet_dataset_plan_file", None)
+    if plan_file:
+        from scaffold.python.builtin_datasets import load_dataset_tasks
+
+        selected = tuple(
+            ResolvedTask(task.name, "source", task) for task in load_dataset_tasks(plan_file)
+        )
+        if task_filter:
+            selected = tuple(item for item in selected if item.name == task_filter)
+        if not selected:
+            raise ValueError("选中数据集任务为空")
+        config._comet_frozen_task_set = ResolvedTaskSet("explicit", selected, None)
+        config._comet_resolved_tasks = {item.name: item.task for item in selected}
+        return [(item.name, item.task.config.default_treatments[0]) for item in selected]
     params = []
     if config is not None and conftest._release_suite(config):
         from scaffold.python.release_gate import release_cases
@@ -550,6 +564,7 @@ def test_task_treatment(task_name, treatment_name):
     judge = conftest._resolve_eval_judge(fixtures.request_config)
     role_models = {
         "subject": selected_model,
+        "goal_evaluator": selected_model if interaction.goal else None,
         "simulator": (
             selected_model
             if interaction.mode == "auto_user"
@@ -683,6 +698,8 @@ def test_task_treatment(task_name, treatment_name):
     events["telemetry_status"] = outputs["telemetry_status"]
     events["skill_sources"] = outputs["skill_sources"]
     events["eval_manifest"] = outputs["eval_manifest"]
+    if getattr(fixtures.request_config, "_comet_dataset_plan_file", None):
+        events["eval_manifest"] = fixtures.request_config._comet_dataset_plan_file
     events["interaction"] = outputs["interaction"]
     events["case_manifest"] = case_manifest
     events["eval_generation"] = outputs["eval_generation"]
@@ -735,6 +752,8 @@ def test_task_treatment(task_name, treatment_name):
     # capture policy before sending them remotely.
     events["task"] = task.name
     events["validation_evidence"] = outputs.get("validation_evidence", {})
+    if "dataset_result" in outputs:
+        events["dataset_result"] = outputs["dataset_result"]
     if "application_coverage" in outputs:
         events["application_coverage"] = outputs["application_coverage"]
         events["application_executed_steps"] = outputs["application_executed_steps"]

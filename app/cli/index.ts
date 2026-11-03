@@ -654,6 +654,16 @@ program
   .option('--html', 'Enable HTML report output')
   .option('--quick', 'Use the default quick smoke task where applicable')
   .option('--collect', 'Collect targets without executing Claude or Docker workloads')
+  .option('--list-datasets', '列出内置数据集及固定来源')
+  .option('--fetch-dataset', '下载固定版本数据集到 dataset-root，不执行评测')
+  .option('--dataset <id>', '使用内置数据集评测 Native 或 Goal')
+  .option(
+    '--dataset-treatment <mode>',
+    '数据集执行方式：native（默认）或 goal（Claude Code 原生 Goal）',
+  )
+  .option('--dataset-root <dir>', '已获取的数据集根目录，包含 tasks/')
+  .option('--count <number>', '每个数据集任务的运行次数，默认为 1')
+  .option('--accept-dataset-license', '声明已阅读并接受选中数据集的许可')
   .action(async (target, options) => {
     const { evalCommand: evalFacadeCommand } = await import('../commands/eval.js');
     process.exitCode = await evalFacadeCommand(target, options);

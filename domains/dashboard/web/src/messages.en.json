@@ -2537,5 +2537,10 @@
   "选择此浏览器使用的显示语言。": "Choose the display language for this browser.",
   "字体预览": "Type preview",
   "当前应用的步骤、执行状态与产物。": "Steps, run status, and artifacts for the current application.",
-  "工作流概览": "Workflow overview"
+  "工作流概览": "Workflow overview",
+  "数据集执行方式": "Dataset execution mode",
+  "按原题成绩比较；Native 流程检查单独展示。": "Compare original task scores; Native workflow checks are shown separately.",
+  "基线原题成绩": "Baseline task score",
+  "本次原题成绩": "Candidate task score",
+  "数据集对照需要相同 Agent、模型、端点和执行预算": "Dataset comparisons require the same agent, model, endpoint, and execution budget"
 }

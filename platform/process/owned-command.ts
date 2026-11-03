@@ -48,7 +48,7 @@ process.on('SIGINT', () => stop('cancelled'));
 process.on('message', (message) => {
   if (started || stopping || message.type !== 'start') return;
   started = true;
-  const timer = setTimeout(() => stop('timeout'), message.timeoutMs);
+  const timer = message.timeoutMs === null ? undefined : setTimeout(() => stop('timeout'), message.timeoutMs);
   try {
     child = spawn(message.command, message.args, { cwd: message.cwd, env: message.env, shell: false, windowsHide: true, detached: false, stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.pipe(process.stdout);
@@ -85,7 +85,7 @@ export function spawnOwnedCommand(
   options: {
     cwd: string;
     env?: NodeJS.ProcessEnv;
-    timeoutMs: number;
+    timeoutMs: number | null;
     confirmTermination?: boolean;
   },
 ): {
@@ -94,9 +94,12 @@ export function spawnOwnedCommand(
   instanceId: string;
   ready: Promise<void>;
 } {
-  if (!Number.isSafeInteger(options.timeoutMs) || options.timeoutMs < 1)
+  if (
+    options.timeoutMs !== null &&
+    (!Number.isSafeInteger(options.timeoutMs) || options.timeoutMs < 1)
+  )
     throw new Error('受管命令时限必须是正整数');
-  const deadlineAt = Date.now() + options.timeoutMs;
+  const deadlineAt = options.timeoutMs === null ? null : Date.now() + options.timeoutMs;
   const invocation = commandInvocation(command, args, options);
   const child = spawn(
     process.execPath,
@@ -149,7 +152,7 @@ export function spawnOwnedCommand(
         type: 'start',
         ...invocation,
         cwd: options.cwd,
-        timeoutMs: Math.max(1, deadlineAt - Date.now()),
+        timeoutMs: deadlineAt === null ? null : Math.max(1, deadlineAt - Date.now()),
       });
     },
   };

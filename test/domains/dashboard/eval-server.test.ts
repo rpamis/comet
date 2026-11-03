@@ -111,6 +111,20 @@ describe('Dashboard Eval routes', () => {
     const artifact = await request('/runs/cli-history/artifact?ref=summary.md');
     expect(artifact.body.content).toBe('# Report');
   });
+  it('lists built-in dataset choices without downloading or starting Eval', async () => {
+    const result = await request('/datasets');
+    expect(result.status).toBe(200);
+    expect(result.body.items.map((item: { id: string }) => item.id)).toEqual([
+      'workbuddy-code',
+      'skillsbench',
+    ]);
+    expect(
+      result.body.items.every((item: { status: string }) => item.status === 'not-downloaded'),
+    ).toBe(true);
+    await expect(fs.stat(path.join(project, '.comet/eval/cache/datasets'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
   it('serves bounded case pages and validates case identities and filters', async () => {
     const detail = await request('/runs/cli-history');
     expect(detail.body.caseContentOmitted).toBe(true);

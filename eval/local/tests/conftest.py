@@ -531,6 +531,8 @@ def _ensure_langfuse_trajectory_support(test_dir: Path, agent: str) -> None:
 
 def _ensure_auto_generated_manifest(config, task_filter: str | None = None) -> None:
     """Freeze generated descriptors once while retaining the original manifest authority."""
+    if getattr(config, "_comet_dataset_plan_file", None):
+        return
     if getattr(config, "_comet_frozen_task_set", None) is not None:
         return
     if config.getoption("--task") or task_filter or config.getoption("--quick"):
@@ -660,10 +662,13 @@ def _capture_execution_identity(test_dir: Path, *, model: str | None, interactio
         raw = json.loads(result.stdout)
     except (TypeError, json.JSONDecodeError) as error:
         raise RuntimeError("Eval execution identity output is not valid JSON") from error
+    model_config = _model_execution_config()
+    if getattr(interaction, "goal", False):
+        model_config["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = model
     report_identity = build_execution_identity(
         raw,
         model=model,
-        model_config=_model_execution_config(),
+        model_config=model_config,
         interaction=interaction,
     )
     return SimpleNamespace(
@@ -1033,6 +1038,7 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     """Register experiment plugin (decision deferred to sessionstart)."""
+    config._comet_dataset_plan_file = os.environ.get("COMET_EVAL_DATASET_PLAN")
     config.addinivalue_line(
         "markers",
         "eval_case(repetition): controller-owned task/treatment/repetition identity",
@@ -1063,6 +1069,15 @@ def pytest_configure(config):
     global _plugin
     _plugin = ExperimentPlugin(config)
     config.pluginmanager.register(_plugin, "experiment_plugin")
+
+
+def pytest_collection_modifyitems(config, items):
+    # 内置数据集由显式 Agent 预算或用户停止控制，不再叠加通用任务测试的总时限。
+    if not getattr(config, "_comet_dataset_plan_file", None):
+        return
+    for item in items:
+        if item.nodeid.startswith("local/tests/tasks/test_tasks.py::test_task_treatment["):
+            item.add_marker(pytest.mark.timeout(0), append=False)
 
 
 # =============================================================================
@@ -1102,6 +1117,10 @@ class ExperimentPlugin:
             experiment_id=experiment_id,
             report_outputs=report_outputs,
         )
+        if getattr(self.config, "_comet_dataset_plan_file", None):
+            self.logger.metadata["dataset_plan"] = json.loads(
+                Path(self.config._comet_dataset_plan_file).read_text(encoding="utf-8")
+            )
         if _release_suite(self.config):
             from scaffold.python.release_gate import candidate_identity, suite_contract
 
@@ -1340,6 +1359,17 @@ def _get_experiment_name(session) -> str:
 
 
 def _get_dynamic_treatment_config(config):
+    if getattr(config, "_comet_dataset_plan_file", None):
+        plan = json.loads(Path(config._comet_dataset_plan_file).read_text(encoding="utf-8"))
+        if plan.get("treatment") == "CLAUDE_CODE_GOAL":
+            from scaffold.python.treatments import TreatmentConfig
+
+            return TreatmentConfig(
+                name="CLAUDE_CODE_GOAL",
+                description="Claude Code 原生 Goal；不安装 Comet",
+                skills=[],
+            )
+        return None
     _ensure_auto_generated_manifest(config)
 
     def generation_hints(manifest):
@@ -1476,6 +1506,7 @@ def _resolve_interaction_config(task, profile_name: str, config):
 
     return task_interaction.__class__(
         mode=mode,
+        goal=task_interaction.goal,
         max_turns=max_turns,
         simulator_prompt=simulator_prompt,
         decision_patterns=decision_patterns,
@@ -1487,9 +1518,12 @@ def _resolve_interaction_config(task, profile_name: str, config):
     )
 
 
-def _resolve_agent_timeout(config, *, task_timeout: int, floor: int) -> int:
+def _resolve_agent_timeout(config, *, task_timeout: int, floor: int) -> int | None:
     override = config.getoption("--agent-timeout")
     if override is None:
+        # Native 需要完成多个阶段，原题 Agent 时限不能充当整个工作流的截止时间。
+        if getattr(config, "_comet_dataset_plan_file", None):
+            return None
         return max(floor, task_timeout)
     if override <= 0:
         raise pytest.UsageError("--agent-timeout must be a positive number of seconds")
@@ -1803,8 +1837,9 @@ def prebuild_docker_image(request):
             selected_agent if selected_agent != "claude-code" else None,
             environment=getattr(request.config, "_comet_execution_env", None),
         )
-        if image:
-            print(f"\nPre-built Docker image: {image}")
+        if not image:
+            raise RuntimeError(f"任务镜像预构建失败：{env_dir}")
+        print(f"\nPre-built Docker image: {image}")
 
     yield
 
@@ -2020,6 +2055,9 @@ def setup_test_context(test_dir):
             shutil.copyfile(reference, target)
         _ensure_langfuse_trajectory_support(test_dir, agent)
         _ensure_agent_pre_tool_hook(test_dir, agent, _comet_hook_command(test_dir, agent))
+        from scaffold.python.builtin_datasets import prepare_dataset_workspace
+
+        prepare_dataset_workspace(test_dir, agent)
 
         return test_dir
 
@@ -2040,7 +2078,7 @@ def run_claude(test_dir, experiment_logger, request):
 
     def _run(
         prompt: str,
-        timeout: int = 600,
+        timeout: int | None = 600,
         model: str = None,
         interaction=None,
         image_id: str | None = None,
@@ -2053,6 +2091,12 @@ def run_claude(test_dir, experiment_logger, request):
             execution.sources,
         )
         run_environment = build_agent_environment(run_execution)
+        if interaction is not None and interaction.goal:
+            if selected_agent != "claude-code":
+                raise ValueError("Goal 对照组仅支持 Claude Code")
+            if not mdl:
+                raise ValueError("Goal 对照组需要显式模型，确保评估模型与主模型一致")
+            run_environment["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = mdl
         if os.environ.get("TRACE_TO_LANGSMITH", "").lower() == "true" and not os.environ.get(
             "CC_LANGSMITH_LOG_FILE"
         ):
@@ -2081,6 +2125,8 @@ def run_claude(test_dir, experiment_logger, request):
             ]
             if mdl:
                 loop_args += ["--model", mdl]
+            if interaction.goal:
+                loop_args += ["--goal"]
             if image_id:
                 loop_args += ["--image-id", image_id]
             if interaction.continue_prompt:
@@ -2113,7 +2159,7 @@ def run_claude(test_dir, experiment_logger, request):
                     result = run_claude_loop_in_docker(
                         test_dir,
                         loop_args[2:],
-                        timeout=timeout + 60,
+                        timeout=None if timeout is None else timeout + 60,
                         environment=run_environment,
                     )
                 else:
@@ -2125,7 +2171,7 @@ def run_claude(test_dir, experiment_logger, request):
                             selected_agent,
                             *loop_args[3:],
                         ],
-                        timeout=timeout + 60,
+                        timeout=None if timeout is None else timeout + 60,
                         environment=run_environment,
                     )
             finally:
@@ -2464,13 +2510,27 @@ def _build_docker_image_with_lock(
         command = ["docker.sh", "build", str(environment_dir)]
         if agent:
             command.extend(["--agent", agent])
-        run_options = {"timeout": 900, "check": False}
+        # 内置数据集还需安装原题和独立评分环境，首次下载允许最多 30 分钟。
+        build_timeout = 1800 if (environment_dir / ".dataset-task.json").is_file() else 900
+        run_options = {"timeout": build_timeout, "check": False, "terminate_process_tree": True}
         if environment is not None:
             run_options["env"] = environment
-        result = run_shell(*command, **run_options)
+        try:
+            result = run_shell(*command, **run_options)
+        except subprocess.TimeoutExpired as exc:
+            detail = exc.stderr or exc.output or ""
+            if isinstance(detail, bytes):
+                detail = detail.decode("utf-8", errors="replace")
+            raise RuntimeError(
+                f"任务镜像构建超过 {build_timeout} 秒："
+                + redact_sensitive(detail, environment)[-6000:]
+            ) from exc
         if result.returncode == 0:
             return result.stdout.strip()
-        return None
+        raise RuntimeError(
+            "任务镜像构建失败："
+            + redact_sensitive(result.stderr or result.stdout, environment)[-6000:]
+        )
 
 
 @contextmanager

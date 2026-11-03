@@ -11,6 +11,78 @@ vi.mock('../../../platform/process/external-command.js', () => ({
   runExternalCommandAsync: vi.fn(async () => 'available'),
 }));
 describe('Eval preview', () => {
+  it('validates the Goal baseline before preparation and preserves unlimited dataset budgets', () => {
+    const goal = normalizeEvalRunConfig(project, {
+      dataset: 'skillsbench',
+      datasetTreatment: 'goal',
+    });
+    expect(goal.datasetTreatment).toBe('goal');
+    expect(goal.agent).toBe('claude-code');
+    expect(() =>
+      normalizeEvalRunConfig(project, {
+        dataset: 'skillsbench',
+        datasetTreatment: 'goal',
+        agent: 'codex',
+      }),
+    ).toThrow(/Claude Code/);
+    expect(() =>
+      normalizeEvalRunConfig(project, { dataset: 'skillsbench', datasetTreatment: 'invalid' }),
+    ).toThrow(/执行方式/);
+    expect(() =>
+      normalizeEvalRunConfig(project, { dataset: 'skillsbench', datasetTreatment: ['goal'] }),
+    ).toThrow(/执行方式/);
+    expect(() =>
+      normalizeEvalRunConfig(project, { target: 'skill', datasetTreatment: 'goal' }),
+    ).toThrow(/数据集/);
+    expect(
+      normalizeEvalRunConfig(project, { dataset: 'skillsbench', timeoutSeconds: 0 }).timeoutSeconds,
+    ).toBe(0);
+    expect(
+      normalizeEvalRunConfig(project, { dataset: 'workbuddy-code', timeoutSeconds: 7200 })
+        .timeoutSeconds,
+    ).toBe(7200);
+    expect(() => normalizeEvalRunConfig(project, { target: 'skill', timeoutSeconds: 0 })).toThrow(
+      '时限',
+    );
+    expect(() =>
+      normalizeEvalRunConfig(project, { dataset: 'skillsbench', timeoutSeconds: 1 }),
+    ).toThrow('时限');
+  });
+  it('previews cached dataset tasks with Native and binds changes to confirmation', async () => {
+    const root = path.join(project, '.comet/eval/cache/datasets/skillsbench-1.1');
+    const task = path.join(root, 'tasks/example');
+    await fs.mkdir(path.join(task, 'environment'), { recursive: true });
+    await fs.mkdir(path.join(task, 'verifier'));
+    await fs.writeFile(
+      path.join(root, 'dataset-source.json'),
+      JSON.stringify({
+        dataset: 'skillsbench',
+        revision: 'b63b7b2850226b6aa4fb5929a8c1ac7bc4d9a6af',
+        archiveSha256: '525bf1559a1eb3511ca2daaf2a307e2dd882efd646c130a730de0f9f37da34d7',
+      }),
+    );
+    await fs.writeFile(
+      path.join(task, 'task.md'),
+      '---\nagent:\n  timeout_sec: 900\n---\nDo the task.',
+    );
+    await fs.writeFile(path.join(task, 'environment/Dockerfile'), 'FROM python:3.12\nWORKDIR /app');
+    await fs.writeFile(path.join(task, 'verifier/test.sh'), 'echo 0.75');
+    const config = { dataset: 'skillsbench', task: 'example', count: 2, model: 'test-model' };
+    const preview = await previewEvalRun(project, config);
+    expect(preview.taskSource).toBe('builtin-dataset');
+    expect(preview.taskCount).toEqual({ min: 2, max: 2 });
+    expect(preview.config.target).toContain('comet-native');
+    expect(preview.config.timeoutSeconds).toBe(0);
+    expect(preview.noModelsStarted).toBe(true);
+    const goal = await previewEvalRun(project, { ...config, datasetTreatment: 'goal' });
+    expect(goal.target.name).toContain('Goal');
+    expect(goal.confirmationHash).not.toBe(preview.confirmationHash);
+    expect(goal.target.contentHash).not.toBe(preview.target.contentHash);
+    await fs.appendFile(path.join(task, 'verifier/test.sh'), '\nchanged');
+    expect((await previewEvalRun(project, config)).confirmationHash).not.toBe(
+      preview.confirmationHash,
+    );
+  });
   let project: string;
   beforeEach(async () => {
     project = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-preview-'));

@@ -16,6 +16,10 @@ import {
   listEvalPresets,
   saveEvalPreset,
   deleteEvalPreset,
+  listDatasetDownloads,
+  startDatasetDownload,
+  requireDatasetCache,
+  inspectBuiltinDataset,
 } from '../eval/index.js';
 import { collectDashboardEvalRunPage } from './eval-collector.js';
 import { markDashboardSummaryIndexDirty } from './summary-index.js';
@@ -32,6 +36,32 @@ export async function handleDashboardEvalRequest(
       ? (input as Record<string, unknown>)
       : {};
   const read = method === 'GET' || method === 'HEAD';
+  if (read && subpath === '/datasets')
+    return { status: 200, body: { items: await listDatasetDownloads(project) } };
+  const datasetTasks = /^\/datasets\/([a-z0-9-]+)\/tasks$/u.exec(subpath);
+  if (read && datasetTasks) {
+    const id = datasetTasks[1];
+    const plan = await inspectBuiltinDataset({
+      dataset: id,
+      datasetRoot: await requireDatasetCache(project, id),
+    });
+    return {
+      status: 200,
+      body: {
+        items: plan.tasks.map((task) => ({
+          id: task.id,
+          supported: task.supported,
+          reason: task.reason,
+        })),
+      },
+    };
+  }
+  const download = /^\/datasets\/([a-z0-9-]+)\/download$/u.exec(subpath);
+  if (method === 'POST' && download)
+    return {
+      status: 202,
+      body: await startDatasetDownload(project, download[1], body.licenseAccepted === true),
+    };
   if (!read) markDashboardSummaryIndexDirty(project, 'eval-v1');
   if (read && subpath === '/presets')
     return { status: 200, body: { items: await listEvalPresets(project) } };

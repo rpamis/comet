@@ -18,13 +18,14 @@ Q_LABELLED_QUESTION_PATTERN='^([[:space:]#>]|💬)*Q[0-9]*[[:space:]]*(\||｜|:)
 NUMERIC_REPLY_PATTERN='(^|[.!。！][[:space:]]*)(please[[:space:]]+)?reply[[:space:]]+[0-9]+([[:space:]]*(or|,|/|–|—|-)[[:space:]]*(or[[:space:]]+)?[0-9]+)+([[:space:]]|[.!。！]|$)'
 CHOICE_REPLY_PATTERN='(^|[.!。！][[:space:]]*)(please[[:space:]]+)?reply[[:space:]]+(with[[:space:]]+)?your[[:space:]]+choice([[:space:]]|[.!。！]|$)'
 REQUEST_PATTERN='(^|[.!。！][[:space:]]*)(please[[:space:]]+)?(confirm|choose|approve|select|provide|enter)[[:space:]]|(^|[.!。！][[:space:]]*)(would you|could you|can you|shall we|do you want|which (option|approach|name))|(please[[:space:]]+)?(reply|respond)[^.!?。！？]*(confirm|approve)|(^|[.!。！][[:space:]]*)(please[[:space:]]+)?reply[[:space:]]+one[[:space:]]+of[[:space:]]+|(^|[.!。！][[:space:]]*)(please[[:space:]]+)?reply[[:space:]]+[^[:alnum:]]*Q[0-9]+:'
+CHINESE_REQUEST_PATTERN='(^|[。！？；][[:space:]]*)[[:space:]#>•-]*(请|烦请|麻烦)(先)?(确认|批准|选择|决定|提供)'
 
 # Evaluate question and request syntax one line at a time. A completed summary can
 # contain an interrogative-looking decision label on one line and punctuation
 # examples such as `?!` on a later line; treating the whole response as one regex
 # span incorrectly turns that summary into another simulated user round.
 while IFS= read -r line; do
-    if [[ "$line" =~ $INTERROGATIVE_PATTERN || "$line" =~ $LABELLED_QUESTION_PATTERN || "$line" =~ $Q_LABELLED_QUESTION_PATTERN || "$line" =~ $REQUEST_PATTERN || "$line" =~ $NUMERIC_REPLY_PATTERN || "$line" =~ $CHOICE_REPLY_PATTERN ]]; then
+    if [[ "$line" =~ $INTERROGATIVE_PATTERN || "$line" =~ $LABELLED_QUESTION_PATTERN || "$line" =~ $Q_LABELLED_QUESTION_PATTERN || "$line" =~ $REQUEST_PATTERN || "$line" =~ $CHINESE_REQUEST_PATTERN || "$line" =~ $NUMERIC_REPLY_PATTERN || "$line" =~ $CHOICE_REPLY_PATTERN ]]; then
         exit 0
     fi
 done <<< "$TEXT"

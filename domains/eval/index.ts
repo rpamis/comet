@@ -2,6 +2,13 @@ import {
   readRepositoryLayout,
   resolveRepositoryPath,
 } from '../../platform/paths/repository-layout.js';
+export { listBuiltinDatasets, inspectBuiltinDataset } from './builtin-datasets.js';
+export type { DatasetPlan } from './builtin-datasets.js';
+export {
+  listDatasetDownloads,
+  startDatasetDownload,
+  requireDatasetCache,
+} from './dataset-downloads.js';
 
 export {
   previewEvalRun,

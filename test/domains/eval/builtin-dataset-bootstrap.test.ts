@@ -1,0 +1,120 @@
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+import { expect, it } from 'vitest';
+
+function scaffold(file: string, selection: string, passed: number): void {
+  const output = execFileSync(
+    'uv',
+    [
+      'run',
+      '--locked',
+      '--no-sync',
+      '--no-python-downloads',
+      'python',
+      '-m',
+      'pytest',
+      `local/tests/scaffold/${file}`,
+      '-q',
+      '-k',
+      selection,
+    ],
+    {
+      cwd: path.resolve('eval'),
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: { ...process.env, PYTHON_DOTENV_DISABLED: '1', PYTHONUTF8: '1' },
+    },
+  );
+  expect(output).toContain(`${passed} passed`);
+  expect(output).not.toContain('skipped');
+}
+
+it('keeps dataset Node tools separate from the original task installation', () => {
+  scaffold('test_builtin_datasets.py', 'dataset_node_tools_do_not_overwrite_original_node', 1);
+}, 35_000);
+
+it('keeps dataset runtime installation independent of repository development dependencies', () => {
+  scaffold(
+    'test_builtin_datasets.py',
+    'dataset_runtime_manifest_excludes_repository_development_graph',
+    1,
+  );
+}, 35_000);
+
+it('pins WorkBuddy verifier libraries to upstream revisions in an isolated environment', () => {
+  scaffold('test_builtin_datasets.py', 'workbuddy_verifier_installs_upstream_pins', 1);
+}, 35_000);
+
+it('runs WorkBuddy scoring through its private Python in isolated mode', () => {
+  scaffold('test_builtin_datasets.py', 'workbuddy_score_uses_private_isolated_python', 1);
+}, 35_000);
+
+it('reports dataset installation progress and stops on install or binary failure', () => {
+  scaffold(
+    'test_builtin_datasets.py',
+    'dataset_agent_install_exposes_progress or dataset_prebuild_failure',
+    2,
+  );
+}, 35_000);
+
+it('requires the declared native Agent package and rejects unsupported or modified installers', () => {
+  scaffold(
+    'test_builtin_datasets.py',
+    'dataset_agent_install_exposes_progress or agent_installer_handles_legacy or dataset_rejects_modified_agent',
+    3,
+  );
+}, 35_000);
+
+it('allows bounded extra time for cold dataset builds and keeps ordinary build limits', () => {
+  scaffold('test_builtin_datasets.py', 'dataset_cold_build_has_bounded_extra_time', 1);
+}, 35_000);
+
+it('binds dataset selection to its pytest session without overriding manifest contracts', () => {
+  scaffold(
+    'test_builtin_datasets.py',
+    'dataset_plan_does_not_override or dataset_selection_uses_bound_plan',
+    2,
+  );
+}, 35_000);
+
+it('terminates timed out build descendants and preserves normal command results', () => {
+  scaffold(
+    'test_utils.py',
+    'build_timeout_terminates_descendants or build_timeout_reports_unconfirmed',
+    2,
+  );
+}, 35_000);
+
+it('keeps dataset workflows free of default deadlines across both Agent loops', () => {
+  scaffold(
+    'test_builtin_datasets.py',
+    'workflow_has_no_default_wall_clock or unlimited_deadline_reaches',
+    2,
+  );
+}, 35_000);
+
+it('recognizes the reported Chinese Shape confirmation without reviving completed requests', () => {
+  scaffold('test_builtin_datasets.py', 'shape_confirmation_replays', 1);
+  scaffold('test_utils.py', 'real_reply_to_chinese_shape', 1);
+}, 35_000);
+
+it('checks WorkBuddy root contracts before preparation and rejects scoring input drift', () => {
+  scaffold('test_builtin_datasets.py', 'missing_dataset_contract or dataset_contract_drift', 2);
+}, 35_000);
+
+it('retains redacted scoring errors while cleaning up the failed container', () => {
+  scaffold('test_builtin_datasets.py', 'score_preserves_redacted', 1);
+}, 35_000);
+
+it('removes the outer pytest deadline only for builtin dataset tasks', () => {
+  scaffold('test_builtin_datasets.py', 'dataset_pytest_guard', 1);
+}, 35_000);
+
+it('ends completed datasets through owned Native roots instead of completion wording', () => {
+  scaffold('test_builtin_datasets.py', 'dataset_terminal_probe_requires', 1);
+  scaffold('test_utils.py', 'dataset_completion_uses_sdk', 1);
+}, 35_000);
+
+it('preserves SkillsBench verifier paths and fractional task scores', () => {
+  scaffold('test_builtin_datasets.py', 'skillsbench_scoring_preserves', 1);
+}, 35_000);

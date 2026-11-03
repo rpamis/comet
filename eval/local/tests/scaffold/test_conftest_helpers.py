@@ -1392,7 +1392,7 @@ def test_prebuild_docker_image_allows_a_cold_image_build_to_run_for_fifteen_minu
     assert calls == [
         (
             ("docker.sh", "build", str(environment)),
-            {"timeout": 900, "check": False},
+            {"timeout": 900, "check": False, "terminate_process_tree": True},
         )
     ]
 

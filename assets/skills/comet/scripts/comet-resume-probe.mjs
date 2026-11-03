@@ -260,7 +260,7 @@ process.on('SIGINT', () => stop('cancelled'));
 process.on('message', (message) => {
   if (started || stopping || message.type !== 'start') return;
   started = true;
-  const timer = setTimeout(() => stop('timeout'), message.timeoutMs);
+  const timer = message.timeoutMs === null ? undefined : setTimeout(() => stop('timeout'), message.timeoutMs);
   try {
     child = spawn(message.command, message.args, { cwd: message.cwd, env: message.env, shell: false, windowsHide: true, detached: false, stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.pipe(process.stdout);

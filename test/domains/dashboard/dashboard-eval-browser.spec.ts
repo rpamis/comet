@@ -292,6 +292,147 @@ test.describe('Dashboard Eval', () => {
     await page.goto('/');
     await page.getByRole('menuitem', { name: '评估 Eval' }).click();
   });
+  for (const width of [1280, 390])
+    test(`datasets download only on explicit click, retry and reuse cache (${width})`, async ({
+      page,
+    }) => {
+      let posts = 0;
+      const rows = [
+        {
+          id: 'workbuddy-code',
+          name: 'WorkBuddy Bench · Code',
+          version: '1.0',
+          status: 'not-downloaded',
+          source: 'https://huggingface.co/datasets/tencent/workbuddy-bench',
+          license: 'Tencent',
+          licenseUrl: 'https://github.com/Tencent/workbuddy-bench/blob/main/LICENSE',
+          sizeHint: '约 200 MB',
+        },
+        {
+          id: 'skillsbench',
+          name: 'SkillsBench',
+          version: '1.1',
+          status: 'not-downloaded',
+          source: 'https://github.com/benchflow-ai/skillsbench',
+          license: 'Apache-2.0',
+          licenseUrl: 'https://github.com/benchflow-ai/skillsbench/blob/main/LICENSE',
+          sizeHint: '完整仓库归档',
+        },
+      ];
+      await page.route('**/eval/datasets', (route) => route.fulfill({ json: { items: rows } }));
+      await page.route('**/eval/datasets/*/download', (route) => {
+        expect(route.request().method()).toBe('POST');
+        posts++;
+        rows[0] = {
+          ...rows[0],
+          status: posts === 1 ? 'failed' : 'cached',
+          ...(posts === 1 ? { error: '测试下载失败' } : { error: undefined }),
+        } as (typeof rows)[0];
+        return route.fulfill({
+          status: 202,
+          json: {
+            ...rows[0],
+            status: 'downloading',
+            progress: { phase: 'downloading', bytes: 50, total: 100 },
+          },
+        });
+      });
+      await page.route('**/eval/datasets/*/tasks', (route) =>
+        route.fulfill({
+          json: {
+            items: [
+              { id: 'example', supported: true },
+              { id: 'unsupported', supported: false, reason: '不兼容' },
+            ],
+          },
+        }),
+      );
+      await page.getByRole('button', { name: /新建评估/ }).click();
+      await page.getByText('内置数据集', { exact: true }).click();
+      await page.getByRole('combobox', { name: '内置数据集', exact: true }).click();
+      await page.getByText('SkillsBench', { exact: true }).click();
+      await expect(page.getByRole('button', { name: '下载数据集', exact: true })).toBeEnabled();
+      expect(posts).toBe(0);
+      await page.getByRole('combobox', { name: '内置数据集', exact: true }).click();
+      await page
+        .locator('.ant-select-item-option-content')
+        .getByText('WorkBuddy Bench · Code', { exact: true })
+        .click();
+      await expect(page.getByRole('button', { name: '下载数据集', exact: true })).toBeDisabled();
+      expect(posts).toBe(0);
+      await page.getByRole('checkbox', { name: '已阅读并接受 WorkBuddy 数据集许可' }).check();
+      await page.getByRole('button', { name: '下载数据集', exact: true }).click();
+      await expect(page.getByRole('button', { name: '重试下载', exact: true })).toBeVisible();
+      expect(posts).toBe(1);
+      await page.getByRole('button', { name: '重试下载', exact: true }).click();
+      await expect(page.getByText('已缓存，评测将复用该版本。', { exact: true })).toBeVisible();
+      await page.getByRole('combobox', { name: '数据集任务', exact: true }).click();
+      await page
+        .locator('.ant-select-item-option-content')
+        .getByText('example', { exact: true })
+        .click();
+      await page.keyboard.press('Escape');
+      expect(posts).toBe(2);
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.locator('.dashboard-eval-datasets')).toBeVisible();
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
+        .toBe(true);
+      await page.screenshot({
+        path: test.info().outputPath(`dataset-${width}.png`),
+        fullPage: true,
+      });
+      rows[1] = { ...rows[1], status: 'cached' };
+      await page.route('**/eval/preview', (route) => {
+        const config = route.request().postDataJSON();
+        expect(config.dataset).toBe('skillsbench');
+        expect(config.datasetTreatment).toBe('goal');
+        expect(config.agent).toBe('claude-code');
+        expect(config.timeoutSeconds).toBe(0);
+        expect(config.task).toBe('example');
+        return route.fulfill({
+          json: {
+            config: { ...config, target: '/package/assets/skills/comet-native' },
+            target: {
+              name: 'SkillsBench · Comet Native',
+              path: '/package/assets/skills/comet-native',
+              id: 'native',
+              type: 'skill',
+              version: '1.1',
+              contentHash: 'content',
+            },
+            taskSource: 'builtin-dataset',
+            tasks: [{ name: 'example', instruction: 'Example task' }],
+            taskCount: { min: 1, max: 1 },
+            blockedReasons: [],
+            environment: [],
+            limitations: [],
+            confirmationHash: 'fixture',
+            noModelsStarted: true,
+          },
+        });
+      });
+      await page.getByRole('button', { name: '刷新下载状态', exact: true }).click();
+      await page.getByRole('combobox', { name: '内置数据集', exact: true }).click();
+      await page
+        .locator('.ant-select-item-option-content')
+        .getByText('SkillsBench', { exact: true })
+        .click();
+      await page.getByRole('combobox', { name: '数据集任务', exact: true }).click();
+      await page
+        .locator('.ant-select-item-option-content')
+        .getByText('example', { exact: true })
+        .click();
+      await page.keyboard.press('Escape');
+      await page.getByRole('combobox', { name: '数据集执行方式', exact: true }).click();
+      await page
+        .locator('.ant-select-item-option-content')
+        .getByText('Claude Code Goal', { exact: true })
+        .click();
+      await page.getByRole('button', { name: '下一步', exact: true }).click();
+      await expect(page.getByText('Example task', { exact: true })).toBeVisible();
+      expect(posts).toBe(2);
+    });
   test('pages case summaries and finds the failed 2001st report before fetching its body', async ({
     page,
   }) => {
@@ -1453,6 +1594,66 @@ test.describe('Dashboard Eval', () => {
       expect(writes).toBe(0);
     });
   }
+  test('shows original task scores when comparing Goal and Native', async ({ page }) => {
+    const candidate = { ...run, baselineScope: 'dataset:fixed' };
+    const baseline = { ...candidate, id: 'eval-goal', isBaseline: true };
+    await page.route('**/eval/runs?*', (route) =>
+      route.fulfill({ json: { items: [candidate, baseline] } }),
+    );
+    await page.route('**/eval/runs/eval-one', (route) => route.fulfill({ json: candidate }));
+    await page.route(/\/eval\/runs\/eval-one\/compare\?/, (route) =>
+      route.fulfill({
+        json: {
+          comparable: true,
+          reasons: [],
+          metric: 'dataset-score',
+          baseline,
+          candidate,
+          improved: 1,
+          regressed: 0,
+          unchanged: 0,
+          configurationChanges: [],
+          cases: [
+            {
+              task: 'dialogue-parser',
+              repetition: 1,
+              baseline: false,
+              candidate: false,
+              baselineScore: 0.5,
+              candidateScore: 0.833,
+              change: 'improved',
+            },
+          ],
+        },
+      }),
+    );
+    await page.reload();
+    await page.getByRole('button', { name: 'writer', exact: true }).first().click();
+    await page.getByRole('button', { name: '与基线对比', exact: true }).click();
+    await page.getByLabel('临时参照').click();
+    await page.getByText('writer · 0.5.0 · eval-goal', { exact: true }).click();
+    await expect(
+      page.getByText('按原题成绩比较；Native 流程检查单独展示。', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('columnheader', { name: '基线原题成绩', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole('cell', { name: '0.833', exact: true })).toBeVisible();
+    await page.screenshot({
+      path: test.info().outputPath('goal-comparison-desktop.png'),
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
+      )
+      .toBe(true);
+    await page.screenshot({
+      path: test.info().outputPath('goal-comparison-mobile.png'),
+      fullPage: true,
+    });
+  });
   test('switches temporary comparison references without replacing the default baseline', async ({
     page,
   }) => {

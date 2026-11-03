@@ -8,6 +8,9 @@ import {
 import { resolveEvalContext } from './standalone-context.js';
 import { hashEvalSkill } from './eval-run-preview.js';
 import type { EvalRunConfig } from './eval-run-types.js';
+import { requireDatasetCache } from './dataset-downloads.js';
+import { inspectBuiltinDataset } from './builtin-datasets.js';
+import { evalValueHash } from './eval-run-store.js';
 
 export async function inspectEvalContentFreshness(
   project: string,
@@ -15,6 +18,24 @@ export async function inspectEvalContentFreshness(
   contentHash: string,
 ): Promise<{ stale: boolean | null; diagnostic?: string }> {
   try {
+    if (config.dataset) {
+      const dataset = await inspectBuiltinDataset({
+        dataset: config.dataset,
+        datasetRoot: await requireDatasetCache(project, config.dataset),
+        task: config.task,
+        count: config.count,
+        datasetTreatment: config.datasetTreatment,
+      });
+      return {
+        stale:
+          evalValueHash({
+            ...(config.datasetTreatment === 'goal'
+              ? { treatment: 'CLAUDE_CODE_GOAL' }
+              : { native: await hashEvalSkill(config.target) }),
+            dataset: dataset.contentHash,
+          }) !== contentHash,
+      };
+    }
     if (config.targetType === 'application') {
       const root = path.dirname(config.target);
       if (applicationFilesHash(await readApplicationFiles(root)) !== contentHash)
