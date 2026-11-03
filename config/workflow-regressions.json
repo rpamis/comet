@@ -4959,6 +4959,42 @@
           ]
         }
       ]
+    },
+    {
+      "id": "classic-archive-delivery-tracked-migration-fence",
+      "sources": ["report:2026-11-02-classic-archive-delivery-migration-fence"],
+      "behavior": "When the archive moves a Git-tracked migration fence out of a transient directory (.comet-state.lock or .comet-state-transaction.json), delivery approves both the deletion of the active path and the write of the archived path; a commit that only deletes the active path without committing the archived copy must be rejected.",
+      "coverageLevel": "public-cli",
+      "reproduction": "On the base commit, make the archive commit record both the deletion of the active path and the addition of the archived path. complete-delivery rejects the archive commit, reporting openspec/changes/<change>/.comet-state.lock/.comet-runtime-migration.json as an unapproved path; the .comet-state-transaction.json fence fails identically.",
+      "expected": "complete-delivery accepts the archive commit and the Run reaches done when the archived copy matches the recorded digest, and rejects the commit when the copy is missing or its content differs.",
+      "forbidden": "Judging a moved migration fence as an unapproved path, skipping approval for the deletion of the active path, approving the deletion without requiring the archived copy to land in the commit, or accepting an archived copy whose content differs from the recorded digest.",
+      "rootCause": "tree() excludes both transient directories, so the migration fence is captured only by migrationFiles() into optionalFiles and is remapped to the archive path; delivery approves the deletion side only for paths listed in sources, so the active path had no registration at all.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "delivers a tracked migration fence in .* that the archive moves with the change",
+          "requiredNames": [
+            "delivers a tracked migration fence in .comet-state.lock that the archive moves with the change",
+            "delivers a tracked migration fence in .comet-state-transaction.json that the archive moves with the change"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "rejects an archive commit that drops a tracked migration fence in .* instead of moving it",
+          "requiredNames": [
+            "rejects an archive commit that drops a tracked migration fence in .comet-state.lock instead of moving it",
+            "rejects an archive commit that drops a tracked migration fence in .comet-state-transaction.json instead of moving it"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "rejects an archive commit whose migrated fence in .* no longer matches the recorded digest",
+          "requiredNames": [
+            "rejects an archive commit whose migrated fence in .comet-state.lock no longer matches the recorded digest",
+            "rejects an archive commit whose migrated fence in .comet-state-transaction.json no longer matches the recorded digest"
+          ]
+        }
+      ]
     }
   ]
 }
