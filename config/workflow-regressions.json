@@ -4886,6 +4886,79 @@
           ]
         }
       ]
+    },
+    {
+      "id": "recoverable-file-lock-release-after-coordinator-failure",
+      "sources": ["report:2026-11-02-recoverable-file-lock-release"],
+      "behavior": "When the coordinator fails during release, the process still removes the lock it holds instead of leaking it to its own later acquisitions.",
+      "coverageLevel": "unit",
+      "reproduction": "On the base commit, make the coordinator directory unusable at release time. Release throws and the lock stays on disk owned by the current live pid; because a live pid is always reported as active, a later acquisition in the same process waits until its own deadline.",
+      "expected": "A failed coordinator release removes the lock that still belongs to this process and emits a warning, so the same process can acquire it again; a lock that is already gone is left unreported.",
+      "forbidden": "Leaving a lock held by this process in place so later acquisitions time out, or claiming a removal that did not happen.",
+      "rootCause": "The release path runs removeBound only inside withCoordinator and rethrows nothing; when the coordinator throws, the lock survives with the current live pid, and ownerStatus always reports that pid as active, so the leaked lock can never be judged stale.",
+      "tests": [
+        {
+          "file": "test/platform/recoverable-file-lock.test.ts",
+          "namePattern": "removes its own lock when the coordinator cannot run at release time",
+          "requiredNames": [
+            "recoverable file lock release removes its own lock when the coordinator cannot run at release time"
+          ]
+        },
+        {
+          "file": "test/platform/recoverable-file-lock.test.ts",
+          "namePattern": "lets the same process acquire the lock again after a failed coordinated release",
+          "requiredNames": [
+            "recoverable file lock release lets the same process acquire the lock again after a failed coordinated release"
+          ]
+        },
+        {
+          "file": "test/platform/recoverable-file-lock.test.ts",
+          "namePattern": "says nothing when the lock is already gone before release",
+          "requiredNames": [
+            "recoverable file lock release says nothing when the lock is already gone before release"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "recoverable-file-lock-release-outcome-reported",
+      "sources": ["report:2026-11-02-recoverable-file-lock-release"],
+      "behavior": "A lock that must not be removed is kept and reported with its outcome: metadata rewritten while held, an owner that republished the lock, or a release that could not run at all.",
+      "coverageLevel": "unit",
+      "reproduction": "On the base commit, rewrite the lock content while it is held: release skips removeBound silently and the lock is kept with no warning. Republish the lock as another owner, or make the parent directory uninspectable: the only output is a generic release warning that does not name the state or the reason.",
+      "expected": "Each outcome is named in the output: a rewritten lock reports that it changed while held, a foreign lock reports that another holder owns it, and a release that cannot run reports its own failure reason. The lock is kept in every one of those cases, and a metadata change is never reported as a removal failure or the reverse.",
+      "forbidden": "Skipping release silently when the lock was rewritten, removing a lock this process does not own, or reporting a failed inspection or removal as a metadata change.",
+      "rootCause": "The release path skipped removeBound silently when the token did not match, and the catch block collapsed every failure into one generic warning, so a permission or ACL error was indistinguishable from a rewritten lock.",
+      "tests": [
+        {
+          "file": "test/platform/recoverable-file-lock.test.ts",
+          "namePattern": "keeps a lock whose metadata changed while held and reports it",
+          "requiredNames": [
+            "recoverable file lock release keeps a lock whose metadata changed while held and reports it"
+          ]
+        },
+        {
+          "file": "test/platform/recoverable-file-lock.test.ts",
+          "namePattern": "never removes a lock another owner republished while held",
+          "requiredNames": [
+            "recoverable file lock release never removes a lock another owner republished while held"
+          ]
+        },
+        {
+          "file": "test/platform/recoverable-file-lock.test.ts",
+          "namePattern": "never removes a lock another owner republished while the coordinator is unusable",
+          "requiredNames": [
+            "recoverable file lock release never removes a lock another owner republished while the coordinator is unusable"
+          ]
+        },
+        {
+          "file": "test/platform/recoverable-file-lock.test.ts",
+          "namePattern": "keeps a lock it cannot inspect at release time and reports why",
+          "requiredNames": [
+            "recoverable file lock release keeps a lock it cannot inspect at release time and reports why"
+          ]
+        }
+      ]
     }
   ]
 }

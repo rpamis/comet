@@ -2,18 +2,17 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.5.3] - 2026-10-30
+## What's Changed [0.5.2] - 2026-10-29
 
 ### Added
 
 - **MiniMax Code support**: Install, detect, update, diagnose, and uninstall project- or user-scoped Comet Skills under `.minimax/skills`, including Classic dependency integration. Managed Skills stay outside Native source snapshots so Skill updates do not change project verification hashes. Project instructions use `AGENTS.md`; platform-specific Rules and Hooks are not installed ([#518](https://github.com/rpamis/comet/issues/518)).
 
-## What's Changed [0.5.2] - 2026-10-29
-
 ### Fixed
 
 - **UTF-8 BOM check receipts**: Accept successful Native checks for unchanged JavaScript source with a UTF-8 BOM while preserving the original file bytes and candidate-drift safeguards.
 - **Native Shape target Spec changes**: Before Shape is confirmed, replace a previously declared target Spec with a different capability's target Spec or a formal remove entry and prepare confirmation again, instead of being forced to restore the unwanted file or delete the formal Spec. An exemption alone still cannot hide a missing declared Spec, and confirmed target Specs remain required after Shape ([#516](https://github.com/rpamis/comet/issues/516)).
+- **File lock release**: Commands that write project state no longer hang with `Timed out waiting for file lock` after an earlier write failed to release its lock. A lock that cannot be released the normal way is now released directly, a lock that changed while held is kept and reported instead of being skipped silently, and a release that fails outright reports its own reason rather than describing the lock as changed ([#529](https://github.com/rpamis/comet/issues/529)).
 
 ## What's Changed [0.5.1] - 2026-10-23
 
