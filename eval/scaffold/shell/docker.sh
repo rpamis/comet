@@ -620,20 +620,26 @@ build_langfuse_plugin_args() {
 # Nested read-only binds override the writable /workspace parent mount when present.
 build_trusted_oracle_mount_args() {
     local dir="$1"
+    local aliases=(//workspace)
+    local alias
+    if [[ -f "$dir/.dataset-task.json" ]]; then
+        alias=$(node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); const w=m.workdir || "/workspace"; if(!["/workspace","/root","/app","/data"].includes(w))throw Error("Unsupported dataset workspace alias");process.stdout.write(w)' "$dir/.dataset-task.json") || return 1
+        [[ "$alias" == /workspace ]] || aliases+=("/$alias")
+    fi
     TRUSTED_ORACLE_MOUNT_ARGS=()
     if [[ -d "$dir/_eval_current_comet" ]]; then
         local current_comet_host
         current_comet_host=$(_winpath "$dir/_eval_current_comet")
-        TRUSTED_ORACLE_MOUNT_ARGS+=(
-            "-v" "$current_comet_host://workspace/_eval_current_comet:ro"
-        )
+        for alias in "${aliases[@]}"; do
+            TRUSTED_ORACLE_MOUNT_ARGS+=("-v" "$current_comet_host:$alias/_eval_current_comet:ro")
+        done
     fi
     if [[ -d "$dir/_eval_trusted_oracles" ]]; then
         local native_oracles_host
         native_oracles_host=$(_winpath "$dir/_eval_trusted_oracles")
-        TRUSTED_ORACLE_MOUNT_ARGS+=(
-            "-v" "$native_oracles_host://workspace/_eval_trusted_oracles:ro"
-        )
+        for alias in "${aliases[@]}"; do
+            TRUSTED_ORACLE_MOUNT_ARGS+=("-v" "$native_oracles_host:$alias/_eval_trusted_oracles:ro")
+        done
     fi
 }
 
@@ -678,10 +684,61 @@ EOF
     ' </dev/null
 }
 
+# 数据集文件映射与 Comet 安装无关；Goal 也必须把同一候选交给评分器。
+prepare_dataset_runtime_args() {
+    local dir="$1" directory source_path
+    [[ -f "$dir/.dataset-task.json" ]] || return 0
+    if [[ -n "${COMET_EVAL_TASK_CONTRACT_FILE:-}" ]]; then
+        [[ -f "$COMET_EVAL_TASK_CONTRACT_FILE" ]] || { echo 'ERROR: Missing fixed public task contract' >&2; return 1; }
+        COMET_RUNTIME_MOUNT_ARGS+=(-v "$(_winpath "$COMET_EVAL_TASK_CONTRACT_FILE")://opt/comet-task-contract/task.md:ro")
+    fi
+    local metadata_lines
+    metadata_lines=$(node - "$dir/.dataset-task.json" <<'JS'
+const fs = require('node:fs');
+const metadata = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const execution = metadata.execution || {};
+if (execution.networkMode && execution.networkMode !== 'public') throw Error('Unsupported dataset network mode');
+for (const [key, flag, suffix] of [['cpus', '--cpus', ''], ['memoryMb', '--memory', 'm']]) {
+  const value = execution[key];
+  if (value !== undefined) {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) throw Error('Invalid dataset resource limit');
+    console.log(flag); console.log(String(value) + suffix);
+  }
+}
+const allowed = ['/root','/app','/data','/outputs','/opt/syzkaller','/home/agent'];
+const directories = execution.candidateDirectories || ['/root','/app','/data'];
+if (!Array.isArray(directories) || directories.some(p => !allowed.includes(p))) throw Error('Unsupported dataset candidate directory');
+const path = require('node:path');
+const root = fs.realpathSync(path.dirname(process.argv[2]));
+for (const directory of [...new Set(directories)]) {
+  const source = directory === metadata.workdir ? root : path.join(root, '.dataset-state', directory.slice(1));
+  const resolved = fs.realpathSync(source);
+  if (path.relative(root, resolved).split(path.sep).includes('..') || path.isAbsolute(path.relative(root,resolved))) throw Error('Dataset candidate mount escapes its workspace');
+  console.log('mount:' + directory);
+}
+JS
+    ) || return 1
+    while IFS= read -r directory; do
+        if [[ "$directory" == mount:* ]]; then
+            directory="${directory#mount:}"
+            [[ -d "$dir/.dataset-state/${directory#/}" ]] || { echo "ERROR: Missing dataset candidate directory: $directory" >&2; return 1; }
+            if [[ "$directory" == "$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).workdir)' "$dir/.dataset-task.json")" ]]; then
+                source_path="$dir"
+            else
+                source_path="$dir/.dataset-state/${directory#/}"
+            fi
+            COMET_RUNTIME_MOUNT_ARGS+=(-v "$(_winpath "$source_path"):/$directory")
+        elif [[ -n "$directory" ]]; then
+            COMET_RUNTIME_MOUNT_ARGS+=("$directory")
+        fi
+    done <<< "$metadata_lines"
+}
+
 # 当前 Runtime 位于 /workspace 之外；每个用例的执行和校验容器共享同一卷。
 prepare_eval_runtime_data() {
     local dir="$1" image="$2" volume owner
     COMET_RUNTIME_MOUNT_ARGS=()
+    prepare_dataset_runtime_args "$dir" || return 1
     [[ -d "$dir/_eval_current_comet" || -f "$dir/.include-current-comet-cli" ]] || return 0
     prepare_eval_git_excludes "$dir" "$image" || return 1
     volume=$(eval_runtime_volume "$dir") || return 1
@@ -693,21 +750,7 @@ prepare_eval_runtime_data() {
         chown "${1:-0}" /opt/comet-eval-data
         chmod 0700 /opt/comet-eval-data
     ' _ "$owner" </dev/null || return 1
-    COMET_RUNTIME_MOUNT_ARGS=(-v "$volume://opt/comet-eval-data" -e "COMET_DATA_DIR=//opt/comet-eval-data")
-    if [[ -f "$dir/.dataset-task.json" ]]; then
-        local dataset_directory
-        local dataset_workdir
-        dataset_workdir=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).workdir)' "$dir/.dataset-task.json") || return 1
-        for dataset_directory in root app data; do
-            if [[ -d "$dir/.dataset-state/$dataset_directory" ]]; then
-                if [[ "$dataset_workdir" == "/$dataset_directory" ]]; then
-                    COMET_RUNTIME_MOUNT_ARGS+=(-v "$(_winpath "$dir")://$dataset_directory")
-                else
-                    COMET_RUNTIME_MOUNT_ARGS+=(-v "$(_winpath "$dir/.dataset-state/$dataset_directory")://$dataset_directory")
-                fi
-            fi
-        done
-    fi
+    COMET_RUNTIME_MOUNT_ARGS+=(-v "$volume://opt/comet-eval-data" -e "COMET_DATA_DIR=//opt/comet-eval-data")
 }
 
 cleanup_eval_runtime_data() {

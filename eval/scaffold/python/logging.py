@@ -30,7 +30,9 @@ def _without_credentials(value: Any) -> Any:
         return {
             key: _without_credentials(item)
             for key, item in value.items()
-            if not re.search(r"(?:api[_-]?key|auth[_-]?token|password|secret|credential)", key, re.I)
+            if not re.search(
+                r"(?:api[_-]?key|auth[_-]?token|password|secret|credential)", key, re.I
+            )
         }
     if isinstance(value, list):
         return [_without_credentials(item) for item in value]
@@ -48,6 +50,7 @@ def _atomic_write_json(path: Path, value: dict[str, Any]) -> None:
         os.replace(temporary_path, path)
     finally:
         temporary_path.unlink(missing_ok=True)
+
 
 # Regex to strip ANSI escape codes
 ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
@@ -81,7 +84,7 @@ def _record_skill_path(events: dict[str, Any], value: object) -> None:
     if not isinstance(value, str):
         return
     match = re.search(
-        r'''\.(?:claude|agents|qoder|codebuddy)/skills/([^/\\\s;|&><"'`{}*?\[\]]+)''',
+        r"""\.(?:claude|agents|qoder|codebuddy)/skills/([^/\\\s;|&><"'`{}*?\[\]]+)""",
         value,
     )
     if match:
@@ -157,6 +160,12 @@ def extract_events(parsed: dict[str, Any], *, agent: str | None = None) -> dict[
         "total_tokens": None,
         "total_cost_usd": None,
         "model_usage": {},
+        "token_scope": "subject-invocations",
+        "workflow_total_tokens": None,
+        "duration_scope": "subject-active",
+        "cost_basis": "cli-reported-estimate",
+        "telemetry_warnings": [],
+        "model_usage_status": "cli-reported",
         "role_sessions": {"subject": [], "simulator": [], "judge": []},
         "peak_context_input_tokens": None,
         "p95_context_input_tokens": None,
@@ -177,13 +186,15 @@ def extract_events(parsed: dict[str, Any], *, agent: str | None = None) -> dict[
     }
     observed_metrics: set[str] = set()
     context_by_message: dict[str, tuple[int, str | None]] = {}
+    cumulative_by_session: dict[str, dict[str, Any]] = {}
+    seen_results: set[tuple[str, str]] = set()
 
     def add_metric(key: str, value: Any) -> None:
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             additive_metrics[key] += value
             observed_metrics.add(key)
 
-    def merge_model_usage(value: Any) -> None:
+    def merge_model_usage(value: Any, session: str | None) -> None:
         if not isinstance(value, dict):
             return
         additive = {
@@ -203,7 +214,20 @@ def extract_events(parsed: dict[str, Any], *, agent: str | None = None) -> dict[
                 if isinstance(item, bool) or not isinstance(item, (int, float)):
                     continue
                 if key in additive:
-                    target[key] = target.get(key, 0) + item
+                    delta = item
+                    if session is not None:
+                        previous = cumulative_by_session.setdefault(session, {}).setdefault(
+                            model, {}
+                        )
+                        old = previous.get(key, 0)
+                        if item < old:
+                            warning = f"cumulative_counter_decreased:{session}:{model}:{key}"
+                            if warning not in events["telemetry_warnings"]:
+                                events["telemetry_warnings"].append(warning)
+                            events["model_usage_status"] = "lower-bound"
+                        delta = max(0, item - old)
+                        previous[key] = max(old, item)
+                    target[key] = target.get(key, 0) + delta
                 elif key in capacities:
                     target[key] = max(target.get(key, 0), item)
 
@@ -232,24 +256,59 @@ def extract_events(parsed: dict[str, Any], *, agent: str | None = None) -> dict[
             events["role_sessions"]["subject"].append(session_id)
 
         if msg.get("type") == "result":
+            result_id = msg.get("uuid") or msg.get("result_id")
+            if isinstance(result_id, str):
+                identity = (session_id or "", result_id)
+                if identity in seen_results:
+                    continue
+                seen_results.add(identity)
             events["subject_invocations"] += 1
             duration_ms = msg.get("duration_ms")
             if isinstance(duration_ms, (int, float)) and not isinstance(duration_ms, bool):
                 duration_ms_total += duration_ms
                 duration_observed = True
 
-            # A loop concatenates one result per subject invocation. Agent
-            # result telemetry is invocation-local, so task totals must add all
-            # initial, answer, and cold-resume invocations instead of retaining
-            # only the final result event.
+            # usage 是单次调用；Claude 的 modelUsage 与 cost 则按 session 累计。
             add_metric("num_turns", msg.get("num_turns"))
             usage = msg.get("usage") or {}
             add_metric("input_tokens", usage.get("input_tokens"))
             add_metric("output_tokens", usage.get("output_tokens"))
             add_metric("cache_read_input_tokens", usage.get("cache_read_input_tokens"))
             add_metric("cache_creation_input_tokens", usage.get("cache_creation_input_tokens"))
-            add_metric("total_cost_usd", msg.get("total_cost_usd"))
-            merge_model_usage(msg.get("modelUsage"))
+            cumulative_session = session_id if agent in {None, "claude-code"} else None
+            if (
+                cumulative_session is None
+                and msg.get("modelUsage")
+                and agent in {None, "claude-code"}
+            ):
+                events["telemetry_warnings"].append("model_usage_without_session_identity")
+                events["model_usage_status"] = "unattributed"
+            cost = msg.get("total_cost_usd")
+            if (
+                agent == "claude-code"
+                and cumulative_session is None
+                and isinstance(cost, (int, float))
+                and not isinstance(cost, bool)
+            ):
+                if "cumulative_cost_without_session_identity" not in events["telemetry_warnings"]:
+                    events["telemetry_warnings"].append("cumulative_cost_without_session_identity")
+            if (
+                cumulative_session is not None
+                and isinstance(cost, (int, float))
+                and not isinstance(cost, bool)
+            ):
+                state = cumulative_by_session.setdefault(cumulative_session, {})
+                old = state.get("_cost", 0)
+                if cost < old:
+                    events["telemetry_warnings"].append(
+                        f"cumulative_cost_decreased:{cumulative_session}"
+                    )
+                    events["model_usage_status"] = "lower-bound"
+                add_metric("total_cost_usd", max(0, cost - old))
+                state["_cost"] = max(old, cost)
+            else:
+                add_metric("total_cost_usd", cost)
+            merge_model_usage(msg.get("modelUsage"), cumulative_session)
 
         if msg.get("type") == "turn.completed":
             events["subject_invocations"] += 1
@@ -331,6 +390,14 @@ def extract_events(parsed: dict[str, Any], *, agent: str | None = None) -> dict[
     for key, value in additive_metrics.items():
         if key in observed_metrics:
             events[key] = value
+    if any(
+        warning.startswith("cumulative_cost_decreased:") for warning in events["telemetry_warnings"]
+    ):
+        events["total_cost_usd_lower_bound"] = events["total_cost_usd"]
+        events["total_cost_usd"] = None
+    if "cumulative_cost_without_session_identity" in events["telemetry_warnings"]:
+        events.pop("total_cost_usd_lower_bound", None)
+        events["total_cost_usd"] = None
     token_keys = (
         "input_tokens",
         "output_tokens",
@@ -360,8 +427,10 @@ def extract_events(parsed: dict[str, Any], *, agent: str | None = None) -> dict[
     events["commands_run"] = [
         call["input"]["command"]
         for call in events["tool_calls"]
-        if call["tool"] == "Bash" and isinstance(call["input"], dict)
-        and isinstance(call["input"].get("command"), str) and call["input"]["command"]
+        if call["tool"] == "Bash"
+        and isinstance(call["input"], dict)
+        and isinstance(call["input"].get("command"), str)
+        and call["input"]["command"]
     ]
     return redact_sensitive(events)
 
@@ -489,22 +558,40 @@ def default_columns() -> list[ReportColumn]:
             aggregate=lambda runs: _avg([r.turns for r in runs if r.turns], "{:.0f}"),
         ),
         ReportColumn(
-            name="Duration",
+            name="Subject Duration",
             extract=lambda r: f"{r.duration:.0f}s" if r.duration else "N/A",
             aggregate=lambda runs: _avg([r.duration for r in runs if r.duration], "{:.0f}s"),
         ),
+        *[
+            ReportColumn(
+                name=label,
+                extract=lambda r, key=key: (
+                    f"{r.events_summary[key]:.1f}s"
+                    if r.events_summary.get(key) is not None
+                    else "N/A"
+                ),
+                aggregate=lambda runs, key=key: _avg(
+                    [r.events_summary[key] for r in runs if r.events_summary.get(key) is not None],
+                    "{:.1f}s",
+                ),
+            )
+            for key, label in [
+                ("agent_wall_duration_seconds", "Agent Wall"),
+                ("case_wall_duration_seconds", "Case Wall"),
+            ]
+        ],
         ReportColumn(
             name="Tools",
             extract=lambda r: str(r.tool_calls) if r.tool_calls else "N/A",
             aggregate=lambda runs: _avg([r.tool_calls for r in runs if r.tool_calls], "{:.0f}"),
         ),
         ReportColumn(
-            name="Tokens",
+            name="Subject Tokens",
             extract=lambda r: _format_tokens(r.total_tokens),
             aggregate=lambda runs: _format_tokens(_sum([r.total_tokens for r in runs])),
         ),
         ReportColumn(
-            name="Cost",
+            name="CLI Cost Estimate",
             extract=lambda r: _format_cost(r.total_cost_usd),
             aggregate=lambda runs: _format_cost(_sum([r.total_cost_usd for r in runs])),
         ),
@@ -766,17 +853,84 @@ class ExperimentLogger:
 
         lines.append("## Summary\n")
         lines.append(f"- **Total Runs:** {total_runs}")
+        if any(r.events_summary.get("token_scope") for runs in self.results.values() for r in runs):
+            lines.append(
+                "- Token counts cover subject invocations, including cache reads; child and simulator usage are not silently added. Workflow totals remain unknown without complete role accounting."
+            )
+            lines.append(
+                "- Subject duration sums CLI invocation durations. Agent wall time includes simulator waits; case wall time also includes validation, excluding shared image preparation. Costs are CLI estimates, not provider invoices."
+            )
+            for runs in self.results.values():
+                for result in runs:
+                    if result.events_summary.get("telemetry_warnings"):
+                        lines.append(
+                            f"- Telemetry coverage ({result.name}): "
+                            + ", ".join(result.events_summary["telemetry_warnings"])
+                        )
         lines.append(
             f"- **Checks Passed:** {total_checks_passed}/{total_checks} ({check_pct:.1f}%)"
         )
         lines.append("")
+
+        def dataset_label(value):
+            return (
+                json.dumps(value, ensure_ascii=False, sort_keys=True)
+                if isinstance(value, (dict, list))
+                else str(value or "unknown")
+            )
+
+        dataset_groups = {}
+        for runs in self.results.values():
+            for result in runs:
+                dataset = result.events_summary.get("dataset_result")
+                if not isinstance(dataset, dict):
+                    continue
+                metadata = (dataset.get("execution") or {}).get("metadata") or {}
+                key = (
+                    dataset_label((dataset.get("dataset") or {}).get("id")),
+                    dataset_label(result.events_summary.get("treatment") or result.name),
+                    dataset_label(metadata.get("category")),
+                    dataset_label(metadata.get("task_type") or metadata.get("task-type")),
+                    dataset_label(metadata.get("modality")),
+                )
+                dataset_groups.setdefault(key, []).append(dataset)
+        if dataset_groups:
+            lines.append("## Dataset Strata\n")
+            lines.append(
+                "Counts describe executed samples, not static support or the full dataset. Unconfirmed verifier results remain separate; original rewards are retained.\n"
+            )
+            lines.append(
+                "| Dataset | Treatment | Category | Task Type | Modality | Runs | Tasks | Verifier Complete | Unconfirmed | Mean Confirmed Reward |"
+            )
+            lines.append("|---|---|---|---|---|---|---|---|---|---|")
+            for key, samples in sorted(dataset_groups.items()):
+                confirmed = [
+                    item
+                    for item in samples
+                    if item.get("verifier_status") in {"completed", "assertion_failed"}
+                ]
+                rewards = [
+                    item["reward"]
+                    for item in confirmed
+                    if isinstance(item.get("reward"), (int, float))
+                    and not isinstance(item["reward"], bool)
+                ]
+                mean = f"{sum(rewards) / len(rewards):.4f}" if rewards else "N/A"
+                cells = [value.replace("|", "\\|").replace("\n", " ") for value in key]
+                tasks = len({item["task"] for item in samples if item.get("task")})
+                lines.append(
+                    "| "
+                    + " | ".join(cells)
+                    + f" | {len(samples)} | {tasks} | {len(confirmed)} | {len(samples) - len(confirmed)} | {mean} |"
+                )
+            lines.append("")
 
         # Aggregate by base treatment name (strip -N-M suffix from pytest --count)
         base_treatments = self._aggregate_by_base_treatment()
         if base_treatments and len(base_treatments) < len(self.results):
             lines.append("## Aggregated by Treatment\n")
             lines.append(
-                "| Treatment | Reps Passed | Checks | Avg Turns | Avg Duration | Tokens | Cost | Skills | Scripts |"
+                "| Treatment | Reps Passed | Checks | Avg Turns | Avg Subject Duration | Subject Tokens | CLI Cost Estimate | Skills | Scripts |"
             )
             lines.append(
                 "|-----------|-------------|--------|-----------|--------------|--------|------|--------|---------|"
@@ -829,15 +983,26 @@ class ExperimentLogger:
                 if r.turns:
                     metrics.append(f"Turns: {r.turns}")
                 if r.duration:
-                    metrics.append(f"Duration: {r.duration:.0f}s")
+                    metrics.append(f"Subject duration: {r.duration:.0f}s")
                 if r.tool_calls:
                     metrics.append(f"Tool calls: {r.tool_calls}")
                 if r.total_tokens is not None:
-                    metrics.append(f"Tokens: {_format_tokens(r.total_tokens)}")
+                    metrics.append(f"Subject tokens: {_format_tokens(r.total_tokens)}")
                 if r.total_cost_usd is not None:
-                    metrics.append(f"Cost: {_format_cost(r.total_cost_usd)}")
+                    metrics.append(f"CLI cost estimate: {_format_cost(r.total_cost_usd)}")
                 if metrics:
                     lines.append(f"- Metrics: {', '.join(metrics)}")
+                dataset = r.events_summary.get("dataset_result")
+                if isinstance(dataset, dict):
+                    lines.append(
+                        f"- Original dataset reward: {dataset.get('reward')}; verifier: {dataset.get('verifier_status', 'unknown')}; Native verify mode: {dataset.get('verifyMode', 'N/A')}"
+                    )
+                    execution = dataset.get("execution") or {}
+                    if execution:
+                        lines.append(
+                            "- Dataset execution: "
+                            + json.dumps(execution, ensure_ascii=False, sort_keys=True)
+                        )
 
                 # Show skills and scripts
                 if r.skills_invoked:
@@ -933,18 +1098,29 @@ def save_report(base_dir: Path, treatment_name: str, rep: int, report: dict[str,
     payload = redact_sensitive(copy.deepcopy(report))
     if isinstance(payload.get("events_summary"), dict):
         from scaffold.python.evidence_contract import case_identity
+
         payload["case_identity"] = case_identity(payload, base_dir.name)
         if treatment_name != payload["name"] or rep != payload["rep"]:
             raise ValueError("报告文件身份与逐例证据不一致")
     from scaffold.python.evidence_contract import report_publication_lock
+
     with report_publication_lock(base_dir / ".report-publication.lock"):
         _atomic_write_json(save_path, payload)
         content = save_path.read_bytes()
         manifest_path = base_dir / "report-generation.json"
-        manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {
-            "schema": "comet.eval.report-generation.v1", "experiment": base_dir.name, "reports": []
-        }
-        if manifest.get("schema") != "comet.eval.report-generation.v1" or manifest.get("experiment") != base_dir.name:
+        manifest = (
+            json.loads(manifest_path.read_text())
+            if manifest_path.exists()
+            else {
+                "schema": "comet.eval.report-generation.v1",
+                "experiment": base_dir.name,
+                "reports": [],
+            }
+        )
+        if (
+            manifest.get("schema") != "comet.eval.report-generation.v1"
+            or manifest.get("experiment") != base_dir.name
+        ):
             raise ValueError("报告发布索引身份无效")
         summary = json.loads(content)
         events = summary.get("events_summary")
@@ -954,8 +1130,12 @@ def save_report(base_dir: Path, treatment_name: str, rep: int, report: dict[str,
                 events["prompt"] = prompt[:2048]
                 events["prompt_truncated"] = len(prompt) > 2048
             events.pop("final_response", None)
-        entry = {"file": save_path.name, "sha256": hashlib.sha256(content).hexdigest(),
-                 "bytes": len(content), "summary": summary}
+        entry = {
+            "file": save_path.name,
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "bytes": len(content),
+            "summary": summary,
+        }
         manifest["reports"] = sorted(
             [item for item in manifest["reports"] if item["file"] != save_path.name] + [entry],
             key=lambda item: item["file"],

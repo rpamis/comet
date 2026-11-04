@@ -22,6 +22,30 @@ import {
 } from '../../../domains/comet-native/native-verification-report-v2.js';
 
 describe('Native verification report projection', () => {
+  it('distinguishes reused checks and retains their original Action and log source in bugfree reports', () => {
+    const sources = [
+      {
+        actionId: 'new-check-action',
+        candidateId: 'new-candidate',
+        checkId: 'test',
+        logRef: 'checks/original.log',
+        reusedFrom: {
+          actionId: 'original-action',
+          attempt: 1,
+          candidateId: 'original-candidate',
+          checkId: 'test',
+        },
+      },
+    ];
+    const report = renderNativeVerificationReport(passedState(), undefined, 'bugfree', [], sources);
+    expect(report).toContain('Reused; not executed again');
+    expect(report).toContain('original-action');
+    expect(report).toContain('original-candidate');
+    expect(report).toContain('checks/original.log');
+    expect(
+      renderNativeVerificationReport(passedState(), undefined, 'standard', [], sources),
+    ).not.toContain('Check execution sources');
+  });
   const roots: string[] = [];
 
   afterEach(async () => {

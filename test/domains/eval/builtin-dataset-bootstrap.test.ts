@@ -118,3 +118,48 @@ it('ends completed datasets through owned Native roots instead of completion wor
 it('preserves SkillsBench verifier paths and fractional task scores', () => {
   scaffold('test_builtin_datasets.py', 'skillsbench_scoring_preserves', 1);
 }, 35_000);
+
+it('binds the original dataset task independently of simulated approval', () => {
+  scaffold('test_builtin_datasets.py', 'public_instruction_cannot_be_replaced', 1);
+}, 35_000);
+
+it('preserves declared candidate directories for Native and Goal and rejects protected paths', () => {
+  scaffold(
+    'test_builtin_datasets.py',
+    'candidate_mapping_preserves_declared or runtime_mapping_is_independent or candidate_mapping_rejects or trusted_sources_are_readonly',
+    4,
+  );
+}, 35_000);
+
+it('deduplicates cumulative session usage without double counting resumed results', () => {
+  scaffold('test_logging.py', 'dataset_session_cumulative or dataset_cumulative_usage', 2);
+}, 35_000);
+
+it('binds finite new dataset budgets while preserving legacy explicit transport', () => {
+  scaffold('test_builtin_datasets.py', 'new_plan_has_bound_budget or new_budget_does_not_add', 2);
+}, 35_000);
+
+it('preserves original rewards while separating verifier environment and assertion failures', () => {
+  scaffold(
+    'test_builtin_datasets.py',
+    'verifier_resources_and_status or observer_distinguishes_pytest or scoring_applies_fixed_verifier or failed_verifier_keeps_reward or pytest_only_loads_root_owned or workbuddy_judge_status or workbuddy_partial_score',
+    16,
+  );
+}, 35_000);
+
+it('keeps missing telemetry unknown and simulator usage separate from subject usage', () => {
+  scaffold(
+    'test_builtin_datasets.py',
+    'missing_efficiency_telemetry or simulator_usage_is_recorded or measurements_survive_report',
+    3,
+  );
+  scaffold('test_logging.py', 'dataset_summary_separates_strata', 1);
+}, 35_000);
+
+it('enforces candidate storage monitoring without deleting the candidate', () => {
+  scaffold('test_builtin_datasets.py', 'storage_limit_keeps_candidate', 1);
+}, 35_000);
+
+it('fixes Native verification mode before model execution and checks actual Run inputs', () => {
+  scaffold('test_builtin_datasets.py', 'seeds_verification_mode or actual_run_mode_mismatch', 2);
+}, 35_000);

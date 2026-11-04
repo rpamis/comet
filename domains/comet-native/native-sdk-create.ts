@@ -1,3 +1,4 @@
+import { prepareNativeVerificationBaseline } from './native-verifier-context.js';
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
@@ -52,6 +53,8 @@ async function startNativeSdkRun(options: {
   paths: NativeProjectPaths;
   name: string;
   initialState: ReturnType<typeof createNativePortableState>;
+  verifyMode?: 'standard' | 'bugfree';
+  verificationBaseline?: { directory: string; ref: string; contentHash: string };
   recoverySourceHash?: string;
   recoverySource?: string;
 }): Promise<WorkflowRun> {
@@ -95,6 +98,10 @@ async function startNativeSdkRun(options: {
     workflow: { id: application.workflow.id, version: application.workflow.version },
     input: {
       name: options.name,
+      verifyMode: options.verifyMode ?? 'standard',
+      ...(options.verificationBaseline
+        ? { verificationBaseline: options.verificationBaseline }
+        : {}),
       artifactRootRef: options.paths.artifactRootRef,
       ...(options.recoverySourceHash ? { recoverySourceHash: options.recoverySourceHash } : {}),
       ...(options.recoverySource ? { recoverySource: options.recoverySource } : {}),
@@ -240,9 +247,21 @@ export async function createNativeSdkChange(options: {
     ) {
       await writeProjectConfig(options.paths.projectRoot, options.initialProjectConfig);
     }
+    const verifyMode =
+      (await readProjectConfig(options.paths.projectRoot))?.native.verify_mode ?? 'standard';
+    const verificationBaseline =
+      verifyMode === 'bugfree'
+        ? await prepareNativeVerificationBaseline(
+            options.paths.projectRoot,
+            options.paths.artifactRootRef,
+            options.name,
+          )
+        : undefined;
     const run = await startNativeSdkRun({
       paths: options.paths,
+      verificationBaseline,
       name: options.name,
+      verifyMode,
       initialState: createNativePortableState({
         name: options.name,
         language: options.language,

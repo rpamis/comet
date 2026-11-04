@@ -2,6 +2,143 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "local-native-check-refresh-fixture-order",
+      "sources": ["report:2026-11-04-local-test-failures"],
+      "behavior": "检查刷新回归先准备原始输入，再以当前原始字节编辑协议审查格式或结构变化。",
+      "coverageLevel": "runtime",
+      "reproduction": "相邻测试中的 settings.json 和 value.ts 在 Builder 冻结后才创建，首次检查拒绝候选；修正顺序后，旧语义指纹复核仍不能证明当前原始输入。",
+      "expected": "已复核的非行为变化保持候选身份并刷新字节绑定的检查；后续未复核的 enabled=false 或返回值变化继续被拒绝。",
+      "forbidden": "删除连续编辑场景、使用旧语义指纹接受新字节、取消检查输入漂移断言或允许未复核的行为修改。",
+      "rootCause": "测试沿用旧候选冻结时点及语义指纹复核设置，尚未接入当前 Agent 的原始输入判断。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "refreshes byte-bound SDK checks in Verify after a non-behavioral edit|refreshes the same SDK candidate after its independent Verifier approves a structural edit",
+          "requiredNames": [
+            "Native SDK Workflow Application refreshes byte-bound SDK checks in Verify after a non-behavioral edit",
+            "Native SDK Workflow Application refreshes the same SDK candidate after its independent Verifier approves a structural edit"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "local-native-one-shot-reverify-proof",
+      "sources": ["report:2026-11-04-local-test-failures"],
+      "behavior": "单次检查重验回归区分缺少复用证明和完整成功收据，保留原拒绝断言并验证合法复用没有重复副作用。",
+      "coverageLevel": "runtime",
+      "reproduction": "原测试先在交接后初始化 Git 和实现文件而触发漂移；顺序修正后，原先一概拒绝重验的期望与完整收据可复用规则不符。",
+      "expected": "显式构造缺少 rawInput 的兼容快照时保留原 pass 和待确认 Wait 并拒绝重验；完整证明下启动第二次独立验收，实际计数文件仍只有一次写入。",
+      "forbidden": "将缺少证明的单次检查重新执行、伪造通过、删除原拒绝断言、跨候选复用或自动进入 Archive。",
+      "rootCause": "测试准备时点与单次检查的证据复用前提均已过时；兼容快照仅作为隔离测试输入，不代表真实旧包已执行。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check|reuses a proven Verifier-added one-shot receipt during explicit reverify without replaying its effect",
+          "requiredNames": [
+            "preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check",
+            "reuses a proven Verifier-added one-shot receipt during explicit reverify without replaying its effect"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "local-native-reverify-fixture-order",
+      "sources": ["report:2026-11-04-local-test-failures"],
+      "behavior": "同候选重验测试先准备输入，再按实际编辑复核协议处理 JSON 格式变化，保留独立重验覆盖。",
+      "coverageLevel": "runtime",
+      "reproduction": "052 的 144880f5 测试在 Builder 交接后才创建 settings.json，首次检查即因候选漂移失败，未到达原重验断言。",
+      "expected": "首次检查绑定已存在的输入；格式修改经当前 Agent 记录非行为判断后，在相同候选和迭代上启动第二次独立验收。",
+      "forbidden": "跳过候选绑定、删除格式变化场景、把 Builder 的判断冒充正式验收，或返回 Build 掩盖同候选重验缺口。",
+      "rootCause": "测试准备顺序落后于候选冻结和编辑复核契约；本次修正测试设置，不改变产品判定规则。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reverifies the same candidate after a passed result without returning to Build",
+          "requiredNames": [
+            "Native SDK Workflow Application reverifies the same candidate after a passed result without returning to Build"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "local-native-missing-report-fixture-order",
+      "sources": ["report:2026-11-04-local-test-failures"],
+      "behavior": "缺失报告回归在候选冻结前准备用户保留文件，使报告生成与不覆盖原文件的断言实际执行。",
+      "coverageLevel": "runtime",
+      "reproduction": "原测试在交接后添加 user-moved-report.md，Runtime 在执行报告断言之前因候选漂移拒绝检查。",
+      "expected": "独立验收通过后生成缺失的 verification.md，保留用户文件原字节，并且不伪造 preservedReportRef。",
+      "forbidden": "删除用户保留文件、覆盖原内容、伪造备份来源或放宽候选完整性检查。",
+      "rootCause": "测试将本应预先存在的普通输入放进了 beforeChecks 回调；本次改为 beforeShape。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "generates a missing report without overwriting a user-moved file or inventing a backup",
+          "requiredNames": [
+            "generates a missing report without overwriting a user-moved file or inventing a backup"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "local-native-supervisor-auto-preparation",
+      "sources": ["report:2026-11-04-local-test-failures"],
+      "behavior": "扩展 Native Supervisor 测试读取公开 CLI 已完成的准备动作，不再次寻找或执行已完成的 pending Action。",
+      "coverageLevel": "runtime",
+      "reproduction": "原 transfer 和 reverse Child 测试在 next 自动准备父级及两个 Child 后，读取不存在的 pending supervisor.prepare 并访问 id 失败。",
+      "expected": "断言父级和两个 Child 准备均成功且只出现一次，再完整执行迁移、反向验收、集成修复及未知执行保护场景。",
+      "forbidden": "重放已完成准备、手工改写正常状态、跳过迁移或父级验收，以及丢弃未知 Child。",
+      "rootCause": "共享夹具已经通过公开 next 自动推进，调用方仍假设准备步骤尚未执行。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-application.test.ts",
+          "namePattern": "transfers a custom Supervisor through public CLI with fixed identity and an interrupted Child|binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate|does not discard an unknown Child when another review requires Shape revision",
+          "requiredNames": [
+            "transfers a custom Supervisor through public CLI with fixed identity and an interrupted Child",
+            "binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate",
+            "does not discard an unknown Child when another review requires Shape revision"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "local-native-strict-hook-fixture",
+      "sources": ["report:2026-11-04-local-test-failures"],
+      "behavior": "磁盘 Skill 的严格写入拒绝与冷恢复回归明确选择 revert 策略，继续保留禁止写入和原验收批准覆盖。",
+      "coverageLevel": "runtime",
+      "reproduction": "原案例用默认 preserve 配置，却断言 Verify 中普通实现写入必须被 Hook 拒绝，在 allowed true 处提前失败。",
+      "expected": "严格策略下 Verify 写入仍拒绝，后续独立验收、固定应用身份、冷恢复和用户接受后归档均可完成。",
+      "forbidden": "仅将原断言改成 allowed true、删除冷恢复或用户确认步骤，或把直接 Guard 调用称为真实平台 Hook 证明。",
+      "rootCause": "测试沿用默认策略变更前的假设，没有为原严格保护场景显式配置 document_writes。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-application.test.ts",
+          "namePattern": "runs a real disk Skill, repairs a failed candidate, restores cold and retains original Verify/approval",
+          "requiredNames": [
+            "runs a real disk Skill, repairs a failed candidate, restores cold and retains original Verify/approval"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "architecture-local-git-exclusions",
+      "sources": ["report:2026-11-04-local-test-failures"],
+      "behavior": "架构检查识别 Git 本地排除的附件目录，同时继续检查已跟踪和未忽略的顶层文件。",
+      "coverageLevel": "runtime",
+      "reproduction": "目录已由 .git/info/exclude 排除，但旧检查仅读取 .gitignore，仍报 .codex-remote-attachments 不在白名单；最小临时 Git 仓库同样失败。",
+      "expected": "通过 Git 的实际忽略判定跳过本地附件，强制加入索引的排除文件和未忽略文件仍触发顶层目录约束。",
+      "forbidden": "删除本地附件、将其加入产品目录白名单、忽略已跟踪内容或因 Git 不可用而跳过整个架构检查。",
+      "rootCause": "忽略规则读取器只解析仓库 .gitignore，遗漏 Git 本地和全局排除规则。",
+      "tests": [
+        {
+          "file": "test/scripts/architecture-lint.test.ts",
+          "namePattern": "ignores local Git exclusions while rejecting tracked and unignored top-level files",
+          "requiredNames": [
+            "architecture lint ignores local Git exclusions while rejecting tracked and unignored top-level files"
+          ]
+        }
+      ]
+    },
+    {
       "id": "native-531-taskkill-exit-confirmation",
       "sources": ["https://github.com/rpamis/comet/issues/531"],
       "behavior": "Windows终止命令已成功退出而close延迟时，按真实退出结果确认整树停止，避免误报停止未确认。",
@@ -7284,6 +7421,260 @@
           "status": "verified",
           "evidence": [
             "无额外模型调用，保存四个业务文件的 SHA-256 后复制并挂载 /workspace 与 /app，以固定基础镜像执行修复后的评分脚本。退出 0、5/6 测试通过、reward 0.833；原始产物和评分副本业务文件哈希均未变化。旧报告原样保留，结果见 .comet/eval/launches/2026-11-02-native-benchmark-full-task-repair/skillsbench-rescore/result.json。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-original-task-binding",
+      "behavior": "固定原题不因模拟确认改写，主体与独立验收均获得原题约束",
+      "sources": ["report:2026-11-04-benchmark-eval-audit"],
+      "coverageLevel": "unit",
+      "reproduction": "当前 052 分支修复前的静态材料、临时探针和红测见 docs/research/2026-11-04-benchmark-eval-audit.zh.md 与 docs/research/2026-11-04-benchmark-eval-repair.zh.md；未重跑模型或原题容器。",
+      "expected": "原题正文及身份保持一致，原题只读路径对两组可见，模型提示明确不得由流程批准更改题意",
+      "forbidden": "改题后仍按原实验身份执行，或给主体及模拟用户隐藏测试答案",
+      "rootCause": "通用模拟确认缺少固定题目边界，Verifier 只可能收到重新解释后的 Spec",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "binds the original dataset task independently of simulated approval",
+          "requiredNames": ["binds the original dataset task independently of simulated approval"]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "benchmark-simulator-and-verifier-model-compliance",
+          "status": "pending",
+          "evidence": [
+            "用户本轮授权修复，未授权启动新 Eval；确定性检查与此边界分开记录，未完成相应外部验收。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-candidate-transfer",
+      "behavior": "Native 与 Goal 共享完整且受限的候选目录",
+      "sources": ["report:2026-11-04-benchmark-eval-audit"],
+      "coverageLevel": "unit",
+      "reproduction": "当前 052 分支修复前的静态材料、临时探针和红测见 docs/research/2026-11-04-benchmark-eval-audit.zh.md 与 docs/research/2026-11-04-benchmark-eval-repair.zh.md；未重跑模型或原题容器。",
+      "expected": "持久保存公开任务要求的 outputs 和 syzkaller 等目录，两组数据映射相同，拒绝受保护或越界目录",
+      "forbidden": "Goal 跳过数据卷，评分容器丢失主体产物，或挂载原题答案到主体",
+      "rootCause": "数据卷准备错误依赖 Comet 标记，并固定只保留 root/app/data",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "preserves declared candidate directories for Native and Goal and rejects protected paths",
+          "requiredNames": [
+            "preserves declared candidate directories for Native and Goal and rejects protected paths"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "benchmark-real-container-candidate-transfer",
+          "status": "pending",
+          "evidence": [
+            "用户本轮授权修复，未授权启动新 Eval；确定性检查与此边界分开记录，未完成相应外部验收。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-session-cumulative-usage",
+      "behavior": "按会话处理累计遥测，续行不重复计算 token 和费用",
+      "sources": ["report:2026-11-04-benchmark-eval-audit"],
+      "coverageLevel": "unit",
+      "reproduction": "当前 052 分支修复前的静态材料、临时探针和红测见 docs/research/2026-11-04-benchmark-eval-audit.zh.md 与 docs/research/2026-11-04-benchmark-eval-repair.zh.md；未重跑模型或原题容器。",
+      "expected": "同会话累计10到20只算20，独立会话相加，同result重传去重，计数回退标记覆盖缺口",
+      "forbidden": "累计快照逐次相加，或把主体 token 当成整个 workflow 用量",
+      "rootCause": "result.usage 的增量与 modelUsage/费用的累计语义被混为一谈",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "deduplicates cumulative session usage without double counting resumed results",
+          "requiredNames": [
+            "deduplicates cumulative session usage without double counting resumed results"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-tests-only-compatibility",
+      "behavior": "WorkBuddy 修改范围约束按 treatment 判断支持性",
+      "sources": ["report:2026-11-04-benchmark-eval-audit"],
+      "coverageLevel": "unit",
+      "reproduction": "当前 052 分支修复前的静态材料、临时探针和红测见 docs/research/2026-11-04-benchmark-eval-audit.zh.md 与 docs/research/2026-11-04-benchmark-eval-repair.zh.md；未重跑模型或原题容器。",
+      "expected": "Native 对四道 testing 及 repo_understanding 题在模型前说明不支持，Goal 不受 Native 文档限制误伤",
+      "forbidden": "静默忽略 Native 文档、修改原 grader 或把不支持任务计作模型失败",
+      "rootCause": "只排除 repo_understanding，未覆盖 testing 的全 Git 状态检查",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-datasets.test.ts",
+          "namePattern": "checks WorkBuddy tests-only restrictions per treatment without changing the grader",
+          "requiredNames": [
+            "checks WorkBuddy tests-only restrictions per treatment without changing the grader"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-new-plan-budgets",
+      "behavior": "新计划绑定有限的每题 workflow 与构建预算，保留历史计划语义",
+      "sources": ["report:2026-11-04-benchmark-eval-audit"],
+      "coverageLevel": "unit",
+      "reproduction": "当前 052 分支修复前的静态材料、临时探针和红测见 docs/research/2026-11-04-benchmark-eval-audit.zh.md 与 docs/research/2026-11-04-benchmark-eval-repair.zh.md；未重跑模型或原题容器。",
+      "expected": "每题使用绑定预算，外层不再错误叠加通用900/1500秒限时，显式预算仍可覆盖且报告实际值",
+      "forbidden": "新计划默认无限恢复，或悄悄改写历史已确认计划的预算",
+      "rootCause": "dataset路径直接返回None，未区分普通任务限时与多阶段workflow预算",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "binds finite new dataset budgets while preserving legacy explicit transport",
+          "requiredNames": [
+            "binds finite new dataset budgets while preserving legacy explicit transport"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-execution-policy",
+      "behavior": "记录和传递数据集资源及评分条件，不支持条件提前阻止",
+      "sources": ["report:2026-11-04-benchmark-eval-audit"],
+      "coverageLevel": "unit",
+      "reproduction": "当前 052 分支修复前的静态材料、临时探针和红测见 docs/research/2026-11-04-benchmark-eval-audit.zh.md 与 docs/research/2026-11-04-benchmark-eval-repair.zh.md；未重跑模型或原题容器。",
+      "expected": "计划固定 CPU/内存/网络与构建、评分配置；不能隔离的网络及未知执行条件明确不支持",
+      "forbidden": "忽略原题资源、无声放宽断网要求、只放开目录白名单",
+      "rootCause": "计划只解析工作目录与两个时限，其他运行语义没有进入执行身份",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-datasets.test.ts",
+          "namePattern": "binds finite per-task budgets, resources and candidate directories before execution",
+          "requiredNames": [
+            "binds finite per-task budgets, resources and candidate directories before execution"
+          ]
+        },
+        {
+          "file": "test/domains/eval/builtin-datasets.test.ts",
+          "namePattern": "rejects unsupported dataset execution conditions rather than silently dropping them",
+          "requiredNames": [
+            "rejects unsupported dataset execution conditions rather than silently dropping them"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "benchmark-real-container-resource-policy",
+          "status": "pending",
+          "evidence": [
+            "用户本轮授权修复，未授权启动新 Eval；确定性检查与此边界分开记录，未完成相应外部验收。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-verifier-phase-evidence",
+      "behavior": "保留原始reward并区分原测试执行阶段，不猜测收集失败的根因",
+      "sources": ["report:2026-11-04-benchmark-eval-audit"],
+      "coverageLevel": "unit",
+      "reproduction": "当前 052 分支修复前的静态材料、临时探针和红测见 docs/research/2026-11-04-benchmark-eval-audit.zh.md 与 docs/research/2026-11-04-benchmark-eval-repair.zh.md；未重跑模型或原题容器。",
+      "expected": "原始reward不变，记录准备/收集/初始化/断言及未知阶段，异常分数保留在结果中供归因",
+      "forbidden": "依赖失败伪装业务断言失败，或因为低分和执行错误将历史样本删除",
+      "rootCause": "test.sh可掩盖pytest非零退出，旧适配仅观察脚本退出与reward",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "preserves original rewards while separating verifier environment and assertion failures",
+          "requiredNames": [
+            "preserves original rewards while separating verifier environment and assertion failures"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "benchmark-original-verifier-container-observation",
+          "status": "pending",
+          "evidence": [
+            "用户本轮授权修复，未授权启动新 Eval；确定性检查与此边界分开记录，未完成相应外部验收。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-telemetry-scope",
+      "behavior": "缺失遥测为未知，主体与模拟用户用量及各类时间明确区分，按题目元数据分层展示原始评分",
+      "sources": ["report:2026-11-04-benchmark-eval-audit"],
+      "coverageLevel": "unit",
+      "reproduction": "当前 052 分支修复前的静态材料、临时探针和红测见 docs/research/2026-11-04-benchmark-eval-audit.zh.md 与 docs/research/2026-11-04-benchmark-eval-repair.zh.md；未重跑模型或原题容器。",
+      "expected": "空遥测不满分，模拟用户账目独立保存，主体活动时间不冒充端到端耗时；分层统计保留真实失败，单列未确认评分，不将静态支持数当执行数",
+      "forbidden": "把缺失记成零、把命令正则称为完整安全结论、把不同角色累计量重复相加",
+      "rootCause": "附加rubric用零填充缺失值，duration与token缺少范围说明",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "keeps missing telemetry unknown and simulator usage separate from subject usage",
+          "requiredNames": [
+            "keeps missing telemetry unknown and simulator usage separate from subject usage"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-candidate-storage-limit",
+      "behavior": "按声明的候选存储预算监测并保留超限现场",
+      "sources": ["report:2026-11-04-benchmark-eval-audit"],
+      "coverageLevel": "unit",
+      "reproduction": "当前 052 分支修复前的静态材料、临时探针和红测见 docs/research/2026-11-04-benchmark-eval-audit.zh.md 与 docs/research/2026-11-04-benchmark-eval-repair.zh.md；未重跑模型或原题容器。",
+      "expected": "记录监测范围与2秒间隔，超限停止本次执行但保留候选，读取失败明确报告",
+      "forbidden": "无预算继续增长、删除候选换取通过、宣称具备镜像文件系统内核quota",
+      "rootCause": "存储字段未进入执行计划，宿主绑定目录也不受容器层storage-opt约束",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "enforces candidate storage monitoring without deleting the candidate",
+          "requiredNames": ["enforces candidate storage monitoring without deleting the candidate"]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "benchmark-real-container-storage-stop",
+          "status": "pending",
+          "evidence": [
+            "用户本轮授权修复，未授权启动新 Eval；确定性检查与此边界分开记录，未完成相应外部验收。"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-fixed-native-mode",
+      "behavior": "模型前固定 Native 模式并核对真实 Run 输入，托管执行保留该选择",
+      "sources": ["report:2026-11-04-benchmark-eval-audit"],
+      "coverageLevel": "unit",
+      "reproduction": "当前 052 分支修复前的静态材料、临时探针和红测见 docs/research/2026-11-04-benchmark-eval-audit.zh.md 与 docs/research/2026-11-04-benchmark-eval-repair.zh.md；未重跑模型或原题容器。",
+      "expected": "公开入口支持standard/bugfree，创建前初始化配置，真实Run模式不符时保留业务得分并阻止有效对照",
+      "forbidden": "运行中补改配置充当创建时模式，或Goal接受bugfree、恢复时丢失模式",
+      "rootCause": "缺少正式Eval模式维度，上一轮需要临时插件且有启动时序偏差",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "fixes Native verification mode before model execution and checks actual Run inputs",
+          "requiredNames": [
+            "fixes Native verification mode before model execution and checks actual Run inputs"
+          ]
+        },
+        {
+          "file": "test/domains/eval/eval-run-store.test.ts",
+          "namePattern": "compares Native modes only with matching actual product and execution identities",
+          "requiredNames": [
+            "Eval run history and baselines compares Native modes only with matching actual product and execution identities"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "benchmark-real-model-fixed-mode-and-paired-comparison",
+          "status": "pending",
+          "evidence": [
+            "用户本轮授权修复，未授权启动新 Eval；确定性检查与此边界分开记录，未完成相应外部验收。"
           ]
         }
       ]

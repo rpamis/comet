@@ -16,6 +16,7 @@ Usage:
 
 import sys
 import uuid
+import time
 
 import pytest
 import conftest
@@ -490,6 +491,7 @@ def pytest_generate_tests(metafunc):
 @pytest.mark.timeout(PYTEST_TIMEOUT)
 def test_task_treatment(task_name, treatment_name):
     """Run a task with a treatment and validate results."""
+    case_started = time.monotonic()
     fixtures = get_fixtures()
     from scaffold.python.progress import publish_eval_progress
 
@@ -579,6 +581,17 @@ def test_task_treatment(task_name, treatment_name):
         "simulator": selected_agent if interaction.mode == "auto_user" else None,
         "judge": judge.agent if judge is not None else None,
     }
+    dataset_contract = {}
+    if getattr(task, "dataset_plan", None) and task.dataset_entry.get("instructionHash"):
+        prompt = task.execution_prompt(prompt)
+        dataset_contract["task_contract_file"] = str(
+            task.path
+            / (
+                "task.md"
+                if task.dataset_plan["dataset"]["id"] == "skillsbench"
+                else "instruction.md"
+            )
+        )
     captured_execution = conftest._capture_execution_identity(
         fixtures.test_dir,
         model=selected_model,
@@ -612,6 +625,7 @@ def test_task_treatment(task_name, treatment_name):
         )
         prompt = application_execution_prompt(prompt, skill_package_path, installed_file)
 
+    agent_started = time.monotonic()
     result = fixtures.run_claude(
         prompt,
         timeout=conftest._resolve_agent_timeout(
@@ -622,11 +636,15 @@ def test_task_treatment(task_name, treatment_name):
         model=selected_model,
         interaction=interaction,
         image_id=captured_execution.runtime_image_id,
+        **dataset_contract,
     )
 
     events = extract_events(parse_output(result.stdout), agent=selected_agent)
+    events["agent_wall_duration_seconds"] = time.monotonic() - agent_started
     events["telemetry_status"] = "N/A" if not selected_adapter.supports_telemetry else "available"
-    loop_interaction = conftest._extract_loop_interaction(result.stderr)
+    loop_interaction = conftest._extract_loop_interaction(result.stderr, agent=selected_agent)
+    if "simulator_usage" in loop_interaction:
+        events["simulator_usage"] = loop_interaction["simulator_usage"]
     for role, session_ids in loop_interaction.get("role_sessions", {}).items():
         target = events["role_sessions"].setdefault(role, [])
         for session_id in session_ids:
@@ -691,6 +709,29 @@ def test_task_treatment(task_name, treatment_name):
         "role_sessions": events["role_sessions"],
     }
     events["current_comet_build"] = current_comet_build
+    if getattr(task, "dataset_plan", None) and current_comet_build:
+        import hashlib
+        import json
+
+        comparison = {
+            "product": {
+                key: current_comet_build.get(key)
+                for key in ("sourceHash", "snapshotHash", "packageHash", "assetsHash")
+            },
+            "execution": {
+                key: captured_execution.report_identity.get(key)
+                for key in (
+                    "image_id_hash",
+                    "claude_tool_version_hash",
+                    "agent_cli_version_hash",
+                    "model_selection_hash",
+                    "interaction_hash",
+                )
+            },
+        }
+        events["dataset_comparison_identity"] = (
+            "sha256:" + hashlib.sha256(json.dumps(comparison, sort_keys=True).encode()).hexdigest()
+        )
     events["profile"] = outputs["profile"]
     events["agent"] = selected_agent
     events["role_models"] = role_models
@@ -754,6 +795,11 @@ def test_task_treatment(task_name, treatment_name):
     events["validation_evidence"] = outputs.get("validation_evidence", {})
     if "dataset_result" in outputs:
         events["dataset_result"] = outputs["dataset_result"]
+        events["dataset_execution"] = getattr(task, "dataset_entry", {}).get("execution")
+        events["effective_agent_timeout_seconds"] = conftest._resolve_agent_timeout(
+            fixtures.request_config, task_timeout=task.config.timeout_sec, floor=CLAUDE_TIMEOUT
+        )
+    events["case_wall_duration_seconds"] = time.monotonic() - case_started
     if "application_coverage" in outputs:
         events["application_coverage"] = outputs["application_coverage"]
         events["application_executed_steps"] = outputs["application_executed_steps"]

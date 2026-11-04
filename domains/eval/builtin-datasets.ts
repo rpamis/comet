@@ -31,6 +31,7 @@ export const listBuiltinDatasets = () => DATASETS.map((item) => ({ ...item }));
 export interface DatasetOptions {
   dataset: string;
   datasetTreatment?: 'native' | 'goal';
+  verifyMode?: 'standard' | 'bugfree';
   agent?: string;
   datasetRoot?: string;
   task?: string;
@@ -44,12 +45,158 @@ export interface DatasetTask {
   workdir: string;
   timeout: number;
   verifierTimeout: number;
+  instructionHash: string;
+  execution: DatasetExecution;
   contentHash: string;
   supported: boolean;
   reason?: string;
 }
+export interface DatasetExecution {
+  timeoutSeconds: number;
+  buildTimeoutSeconds: number;
+  candidateDirectories: string[];
+  networkMode: string;
+  cpus?: number;
+  memoryMb?: number;
+  storageMb?: number;
+  storageEnforcement: 'candidate-monitor' | 'not-requested';
+  limitations: string[];
+  controllerFilePolicy: 'exclude-harness-created-paths';
+  verifier: {
+    env: Record<string, string>;
+    pytestPlugins: string[];
+    cleanupConftests: boolean;
+    importPath?: string;
+  };
+  metadata: Record<string, unknown>;
+}
+type DatasetMetadata = {
+  metadata?: Record<string, unknown>;
+  environment?: Record<string, unknown> & { workdir?: string; gpus?: number; os?: string };
+  agent?: { timeout_sec?: number };
+  verifier?: Record<string, unknown> & { timeout_sec?: number };
+};
+function executionPolicy(
+  metadata: DatasetMetadata,
+  instruction: string,
+  dockerfile: string,
+  timeout: number,
+  datasetId: string,
+) {
+  const environment = metadata.environment ?? {};
+  const verifier = metadata.verifier ?? {};
+  const reasons: string[] = [];
+  const number = (value: unknown, name: string, maximum: number) => {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value > maximum)
+      throw new Error(`数据集 ${name} 必须为 0–${maximum} 范围内的正数`);
+    return value;
+  };
+  const cpus = number(environment.cpus, 'cpus', 256);
+  const memoryMb = number(environment.memory_mb, 'memory_mb', 1048576);
+  const storageMb = number(environment.storage_mb, 'storage_mb', 10485760);
+  const originalBuild = number(environment.build_timeout_sec, 'build_timeout_sec', 86400) ?? 600;
+  const networkMode = String(environment.network_mode ?? 'public');
+  if (networkMode !== 'public')
+    reasons.push(`尚不支持任务网络模式 ${networkMode}：任务与 Agent API 共用容器网络`);
+  const environmentKeys = new Set([
+    'workdir',
+    'gpus',
+    'os',
+    'cpus',
+    'memory_mb',
+    'storage_mb',
+    'network_mode',
+    'build_timeout_sec',
+    'bugswarm_image_tag',
+    'mcp_servers',
+  ]);
+  for (const key of Object.keys(environment))
+    if (!environmentKeys.has(key)) reasons.push(`尚不支持环境字段 ${key}`);
+  for (const key of Object.keys(verifier))
+    if (
+      ![
+        'timeout_sec',
+        'type',
+        'service',
+        'env',
+        'hardening',
+        'pytest_plugins',
+        'import_path',
+      ].includes(key)
+    )
+      reasons.push(`尚不支持评分字段 ${key}`);
+  if (
+    environment.mcp_servers !== undefined &&
+    (!Array.isArray(environment.mcp_servers) || environment.mcp_servers.length)
+  )
+    reasons.push('尚不支持此题要求的 MCP 服务');
+  const importPath = verifier.import_path;
+  if (
+    importPath !== undefined &&
+    (datasetId !== 'workbuddy-code' || importPath !== 'workbuddy_bench.judge:CompositeVerifier')
+  )
+    reasons.push(`尚不支持评分入口 ${String(importPath)}`);
+  if (verifier.service && verifier.service !== 'main')
+    reasons.push(`尚不支持评分服务 ${verifier.service}`);
+  const hardening = (verifier.hardening ?? {}) as Record<string, unknown>;
+  for (const key of Object.keys(hardening))
+    if (key !== 'cleanup_conftests') reasons.push(`尚不支持评分隔离字段 ${key}`);
+  if (hardening.cleanup_conftests !== undefined && typeof hardening.cleanup_conftests !== 'boolean')
+    throw new Error('cleanup_conftests 必须为布尔值');
+  const env: Record<string, string> = {};
+  if (verifier.env && (typeof verifier.env !== 'object' || Array.isArray(verifier.env)))
+    throw new Error('verifier.env 必须为对象');
+  for (const [key, value] of Object.entries(verifier.env ?? {})) {
+    if (
+      !/^[A-Za-z_][A-Za-z0-9_]*$/u.test(key) ||
+      /secret|password|token|api_?key|credential/iu.test(key)
+    )
+      throw new Error(`评分环境字段不能持久保存凭据：${key}`);
+    if (!['string', 'number', 'boolean'].includes(typeof value))
+      throw new Error(`评分环境变量无效：${key}`);
+    env[key] = String(value);
+  }
+  const plugins = verifier.pytest_plugins ?? [];
+  if (
+    !Array.isArray(plugins) ||
+    plugins.some((item) => typeof item !== 'string' || !/^[A-Za-z_][A-Za-z0-9_.]*$/u.test(item))
+  )
+    throw new Error('pytest_plugins 必须为 Python 模块名列表');
+  const candidateDirectories = ['/root', '/app', '/data', '/home/agent'];
+  for (const directory of ['/outputs', '/opt/syzkaller'])
+    if ((instruction + '\n' + dockerfile).includes(directory)) candidateDirectories.push(directory);
+  const execution: DatasetExecution = {
+    // 包含 Shape/Build/Verify 的实验使用原 Agent 预算的四倍，最多一天；原预算仍单独保留。
+    timeoutSeconds: Math.min(86400, timeout * 4),
+    buildTimeoutSeconds: Math.min(86400, originalBuild + 1200),
+    candidateDirectories,
+    networkMode,
+    ...(cpus === undefined ? {} : { cpus }),
+    ...(memoryMb === undefined ? {} : { memoryMb }),
+    ...(storageMb === undefined ? {} : { storageMb }),
+    storageEnforcement: storageMb === undefined ? 'not-requested' : 'candidate-monitor',
+    controllerFilePolicy: 'exclude-harness-created-paths',
+    limitations:
+      storageMb === undefined
+        ? []
+        : [
+            'Storage is monitored across candidate files every two seconds; this is not a kernel quota for the image filesystem.',
+          ],
+    verifier: {
+      env,
+      pytestPlugins: plugins,
+      cleanupConftests: hardening.cleanup_conftests === true,
+      ...(typeof importPath === 'string' ? { importPath } : {}),
+    },
+    metadata: metadata.metadata ?? {},
+  };
+  return { execution, reasons };
+}
 export interface DatasetPlan {
   scorerHash: string;
+  observerHash: string;
+  adapterHash: string;
   datasetConfigHash: string;
   sharedHash: string;
   provenance: Record<string, unknown>;
@@ -57,9 +204,11 @@ export interface DatasetPlan {
   dataset: (typeof DATASETS)[number];
   root: string;
   treatment: 'COMET_NATIVE_SDK_CURRENT' | 'CLAUDE_CODE_GOAL';
+  verifyMode: 'standard' | 'bugfree';
   count: number;
   tasks: DatasetTask[];
   contentHash: string;
+  comparisonHash: string;
 }
 const digest = (value: string | Uint8Array) =>
   `sha256:${createHash('sha256').update(value).digest('hex')}`;
@@ -104,6 +253,11 @@ async function treeHash(root: string): Promise<string> {
   return `sha256:${hash.digest('hex')}`;
 }
 export async function inspectBuiltinDataset(options: DatasetOptions): Promise<DatasetPlan> {
+  const verifyMode = options.verifyMode ?? 'standard';
+  if (!['standard', 'bugfree'].includes(verifyMode))
+    throw new Error('verify-mode 须为 standard 或 bugfree');
+  if (options.datasetTreatment === 'goal' && verifyMode !== 'standard')
+    throw new Error('Goal 不使用 Native 验证模式');
   if (
     options.datasetTreatment !== undefined &&
     !['native', 'goal'].includes(options.datasetTreatment)
@@ -147,12 +301,7 @@ export async function inspectBuiltinDataset(options: DatasetOptions): Promise<Da
     const source = path.join(tasksRoot, id);
     if ((await fs.lstat(source)).isSymbolicLink()) throw new Error('任务目录不能是链接');
     const contentHash = await treeHash(source);
-    let instruction: string,
-      metadata: {
-        environment?: { workdir?: string; gpus?: number; os?: string };
-        agent?: { timeout_sec?: number };
-        verifier?: { timeout_sec?: number };
-      };
+    let instruction: string, metadata: DatasetMetadata;
     if (dataset.id === 'skillsbench') {
       const text = await fs.readFile(path.join(source, 'task.md'), 'utf8');
       const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/u.exec(text);
@@ -174,7 +323,8 @@ export async function inspectBuiltinDataset(options: DatasetOptions): Promise<Da
       throw new Error(`任务时限无效：${id}`);
     if (!Number.isSafeInteger(verifierTimeout) || verifierTimeout < 1 || verifierTimeout > 86400)
       throw new Error(`评分时限无效：${id}`);
-    let reason: string | undefined;
+    const policy = executionPolicy(metadata, instruction, dockerfile, timeout, dataset.id);
+    let reason: string | undefined = policy.reasons.length ? policy.reasons.join('；') : undefined;
     if (
       metadata.environment?.gpus ||
       (metadata.environment?.os && metadata.environment.os !== 'linux')
@@ -184,7 +334,16 @@ export async function inspectBuiltinDataset(options: DatasetOptions): Promise<Da
       reason = `尚不支持工作目录 ${workdir}`;
     if (dataset.id === 'workbuddy-code') {
       const verifier = toml(await fs.readFile(path.join(source, 'tests/verifier.toml'), 'utf8'));
-      if (JSON.stringify(verifier).includes('repo_understanding'))
+      if (
+        options.datasetTreatment !== 'goal' &&
+        (JSON.stringify(verifier).includes('repo_understanding') ||
+          [
+            'testing-hard-router_matching',
+            'testing-medium-format_errors',
+            'testing-medium-option_resolution',
+            'testing-medium-request_builder',
+          ].includes(id))
+      )
         reason = '原评分禁止 Native 元数据修改；尚不支持此任务类型';
     }
     if (/^FROM\s+\S*alpine/gmu.test(dockerfile)) reason = '首期运行层需要 Debian/Ubuntu 兼容镜像';
@@ -195,6 +354,8 @@ export async function inspectBuiltinDataset(options: DatasetOptions): Promise<Da
       workdir,
       timeout,
       verifierTimeout,
+      instructionHash: digest(instruction),
+      execution: policy.execution,
       contentHash,
       supported: !reason,
       ...(reason ? { reason } : {}),
@@ -216,20 +377,63 @@ export async function inspectBuiltinDataset(options: DatasetOptions): Promise<Da
   const scorerHash = digest(
     await fs.readFile(path.join(packageRoot, 'eval/scaffold/python/dataset_score.py')),
   );
+  const observerHash = digest(
+    await fs.readFile(path.join(packageRoot, 'eval/scaffold/python/dataset_pytest_observer.py')),
+  );
+  const adapterFiles: string[] = JSON.parse(
+    await fs.readFile(path.join(packageRoot, 'eval/scaffold/dataset-adapter-files.json'), 'utf8'),
+  );
+  const adapter = createHash('sha256');
+  for (const file of [...adapterFiles].sort()) {
+    if (!file.startsWith('eval/') || file.includes('..') || path.isAbsolute(file))
+      throw new Error('数据集适配器输入路径无效');
+    adapter
+      .update(file)
+      .update('\0')
+      .update(await fs.readFile(path.join(packageRoot, file)))
+      .update('\0');
+  }
+  const adapterHash = `sha256:${adapter.digest('hex')}`;
+  const comparisonHash = digest(
+    JSON.stringify({
+      dataset,
+      tasks,
+      count,
+      sharedHash,
+      datasetConfigHash,
+      scorerHash,
+      observerHash,
+      adapterHash,
+    }),
+  );
   return {
     scorerHash,
+    observerHash,
+    adapterHash,
+    comparisonHash,
     schema: 'comet.eval.dataset.v1',
     dataset,
     root,
     treatment:
       options.datasetTreatment === 'goal' ? 'CLAUDE_CODE_GOAL' : 'COMET_NATIVE_SDK_CURRENT',
+    verifyMode,
     count,
     tasks,
     sharedHash,
     datasetConfigHash,
     provenance,
     contentHash: digest(
-      JSON.stringify({ dataset, tasks, count, sharedHash, datasetConfigHash, scorerHash }),
+      JSON.stringify({
+        dataset,
+        tasks,
+        count,
+        sharedHash,
+        datasetConfigHash,
+        scorerHash,
+        observerHash,
+        adapterHash,
+        verifyMode,
+      }),
     ),
   };
 }

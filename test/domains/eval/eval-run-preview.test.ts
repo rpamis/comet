@@ -11,6 +11,21 @@ vi.mock('../../../platform/process/external-command.js', () => ({
   runExternalCommandAsync: vi.fn(async () => 'available'),
 }));
 describe('Eval preview', () => {
+  it('retains the selected Native mode and rejects Goal or non-dataset mode overrides', () => {
+    expect(
+      normalizeEvalRunConfig(project, { dataset: 'skillsbench', verifyMode: 'bugfree' }).verifyMode,
+    ).toBe('bugfree');
+    expect(() =>
+      normalizeEvalRunConfig(project, {
+        dataset: 'skillsbench',
+        datasetTreatment: 'goal',
+        verifyMode: 'bugfree',
+      }),
+    ).toThrow('Goal');
+    expect(() =>
+      normalizeEvalRunConfig(project, { target: 'skill', verifyMode: 'bugfree' }),
+    ).toThrow('数据集');
+  });
   it('validates the Goal baseline before preparation and preserves unlimited dataset budgets', () => {
     const goal = normalizeEvalRunConfig(project, {
       dataset: 'skillsbench',

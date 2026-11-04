@@ -68,6 +68,7 @@ export function applicationEvalSettings(config: EvalRunConfig): ApplicationEvalS
 const FIELDS = new Set([
   'dataset',
   'datasetTreatment',
+  'verifyMode',
   'count',
   'acceptDatasetLicense',
   'target',
@@ -101,6 +102,14 @@ export function normalizeEvalRunConfig(project: string, value: unknown): EvalRun
     if (!FIELDS.has(key)) throw new EvalRunError(`不支持的 Eval 配置字段：${key}`);
   if (input.dataset !== undefined) {
     if (
+      input.verifyMode !== undefined &&
+      (typeof input.verifyMode !== 'string' || !['standard', 'bugfree'].includes(input.verifyMode))
+    )
+      throw new EvalRunError('verifyMode 须为 standard 或 bugfree');
+    if (input.datasetTreatment === 'goal' && input.verifyMode === 'bugfree')
+      throw new EvalRunError('Goal 不使用 Native 验证模式');
+    input.verifyMode ??= 'standard';
+    if (
       input.datasetTreatment !== undefined &&
       (typeof input.datasetTreatment !== 'string' ||
         !['native', 'goal'].includes(input.datasetTreatment))
@@ -132,7 +141,8 @@ export function normalizeEvalRunConfig(project: string, value: unknown): EvalRun
   } else if (
     input.count !== undefined ||
     input.acceptDatasetLicense !== undefined ||
-    input.datasetTreatment !== undefined
+    input.datasetTreatment !== undefined ||
+    input.verifyMode !== undefined
   )
     throw new EvalRunError('数据集选项需要选择数据集');
   if (typeof input.target !== 'string' || !input.target.trim())
@@ -380,6 +390,7 @@ export async function previewEvalRun(project: string, value: unknown): Promise<E
       task: config.task,
       count: config.count,
       datasetTreatment: config.datasetTreatment,
+      verifyMode: config.verifyMode,
       agent: config.agent,
     });
     target = {
@@ -407,6 +418,8 @@ export async function previewEvalRun(project: string, value: unknown): Promise<E
         ? '使用 Claude Code 原生 /goal，不安装 Comet；Goal 评估模型与主模型相同。'
         : '选择和下载不会启动评测；正式执行使用 Comet Native 与模拟用户。',
       '成绩对应本次任务与配置，不能直接视为官方榜单复现。',
+      '新计划每题流程预算为原 Agent 时限的四倍（最多一天），构建预算另加 1200 秒；0 仅取消外层总截止时间，不取消每题预算。存储采用候选文件监测，不等同内核磁盘配额。',
+      ...new Set(plan.tasks.flatMap((task) => task.execution.limitations)),
     ];
     blockedReasons = plan.tasks
       .filter((task) => !task.supported)

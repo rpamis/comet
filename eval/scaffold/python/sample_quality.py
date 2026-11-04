@@ -308,6 +308,41 @@ def infer_sample_quality(
         )
 
     has_result = _has_result_event(stdout) or events.get("duration_seconds") is not None
+    dataset = events.get("dataset_result") or {}
+    if events.get("telemetry_warnings"):
+        return SampleQuality(
+            "flagged",
+            "partial_observability",
+            "Telemetry counters have unresolved coverage; task results are retained",
+            True,
+            "medium",
+            list(events["telemetry_warnings"]),
+        )
+    if any(check.startswith("dataset_verify_mode:") for check in checks_failed):
+        return SampleQuality(
+            "flagged",
+            "dataset_verify_mode_mismatch",
+            "Run mode differs from the fixed experiment; original task score retained",
+            True,
+            "high",
+            [check for check in checks_failed if check.startswith("dataset_verify_mode:")],
+        )
+    if dataset.get("verifier_status") in {
+        "environment_error",
+        "collection_error",
+        "test_error",
+        "script_error",
+        "timeout",
+        "not_executed",
+    } or any(check.startswith("dataset_verifier_unconfirmed:") for check in checks_failed):
+        return SampleQuality(
+            "flagged",
+            "dataset_verifier_incomplete",
+            "Original reward retained; verifier stage did not establish a complete task result and the cause needs attribution",
+            True,
+            "medium",
+            [str(dataset.get("verifier_status", "unknown"))],
+        )
     text = _text_parts(stderr, stdout, checks_failed)
 
     hard = _hard_noise(text, returncode, has_result)

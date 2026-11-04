@@ -1,3 +1,4 @@
+import type { NativeVerifyMode } from './native-verification-policy.js';
 import { promises as fs } from 'node:fs';
 
 import { atomicWriteText } from './native-atomic-file.js';
@@ -110,9 +111,36 @@ function verificationStatusLabel(state: NativePortableState): string {
   return labels[assurance as keyof typeof labels] ?? assurance;
 }
 
+export interface NativePreviousCheckFailure {
+  actionId: string;
+  candidateId: string;
+  checkId: string;
+  name: string;
+  status: string;
+  exitCode: number | null;
+  logRef: string;
+  currentCheck: 'executed' | 'reused' | 'not-run';
+}
+
+export interface NativeCheckSource {
+  actionId: string;
+  candidateId: string;
+  checkId: string;
+  logRef: string;
+  reusedFrom?: {
+    actionId: string;
+    attempt: number;
+    candidateId: string;
+    checkId: string;
+  };
+}
+
 export function renderNativeVerificationReport(
   state: NativePortableState,
   supervisor?: NativeSupervisorState,
+  verifyMode: NativeVerifyMode = 'standard',
+  previousCheckFailures: readonly NativePreviousCheckFailure[] = [],
+  checkSources: readonly NativeCheckSource[] = [],
 ): string {
   if (state.verification === null) {
     throw new Error('Native verification report requires a stable Verifier result');
@@ -130,7 +158,7 @@ export function renderNativeVerificationReport(
     .join('\n');
   const checks =
     state.verification.checks.length === 0
-      ? `_${localized('No Runtime checks were recorded.', '没有记录 Runtime 检查。')}_`
+      ? `_${localized('No Runtime checks were recorded.', verifyMode === 'bugfree' ? '本轮未执行命令检查。' : '没有记录 Runtime 检查。')}_`
       : [
           `| ${localized('Check', '检查')} | ${localized('Command', '命令')} | ${localized('Working directory', '工作目录')} | ${localized('Status', '状态')} | ${localized('Exit', '退出码')} | ${localized('Duration', '耗时')} |`,
           '| --- | --- | --- | --- | ---: | ---: |',
@@ -138,6 +166,35 @@ export function renderNativeVerificationReport(
             const command = check.argv_display.map(display).join(' ');
             return `| ${tableCell(display(check.name))} | ${tableCell(command || '—')} | ${tableCell(check.cwd_ref)} | ${check.status} | ${check.exit_code ?? '—'} | ${check.duration_ms} ms |`;
           }),
+        ].join('\n');
+  const sources =
+    verifyMode === 'bugfree' && checkSources.length > 0
+      ? [
+          `### ${localized('Check execution sources', '检查执行来源')}`,
+          '',
+          ...checkSources.map(
+            (check) =>
+              `- ${tableCell(check.checkId)}: ${check.reusedFrom ? localized('Reused; not executed again.', '复用记录，本轮未重新执行。') : localized('Executed for this candidate.', '本轮实际执行。')} Action=${check.actionId}; ${localized('candidate', '候选')}=${check.candidateId}; ${localized('log', '日志')}=${check.logRef}${check.reusedFrom ? `; ${localized('original source', '原执行来源')}=${check.reusedFrom.actionId}, attempt=${check.reusedFrom.attempt}, candidate=${check.reusedFrom.candidateId}, check=${check.reusedFrom.checkId}` : ''}`,
+          ),
+          '',
+        ].join('\n')
+      : '';
+  const previousFailures =
+    previousCheckFailures.length === 0
+      ? ''
+      : [
+          `### ${localized('Previous candidate check failures', '前轮候选检查失败')}`,
+          '',
+          localized(
+            'These executions failed on previous candidates. Their original results are retained; current semantic acceptance does not turn them into passed checks.',
+            '这些检查在前轮候选中失败。原结果保留；当前语义验收通过不会把它们改写为检查通过。',
+          ),
+          '',
+          ...previousCheckFailures.map(
+            (check) =>
+              `- ${tableCell(check.name)} (${check.checkId}): ${check.status}; exit=${check.exitCode ?? '—'}; ${localized('candidate', '候选')}=${check.candidateId}; Action=${check.actionId}; ${localized('log', '日志')}=${check.logRef}; ${check.currentCheck === 'executed' ? localized('A matching command was run for the current candidate; see its actual result above.', '当前候选执行了相同命令，实际结果见上表。') : check.currentCheck === 'reused' ? localized('The current candidate reused a matching check receipt; it was not run again.', '当前候选复用了相同命令的检查凭据，本轮未重新执行。') : localized('Not rerun for the current candidate.', '本轮未重跑。')}`,
+          ),
+          '',
         ].join('\n');
   const builderEvidence = state.builder_handoff
     ? [
@@ -210,7 +267,7 @@ generated_from_state_version: ${state.state_version}
 
 ## ${heading('currentResult')}
 
-- ${localized('Result', '结果')}: **${verdictLabel(state)}**
+${verifyMode === 'bugfree' ? `- ${localized('Verification mode', '验证模式')}: bugfree\n- ${localized('Method', '方法')}: ${localized('Independent semantic review with checks as needed.', '独立语义审查，按需执行检查。')}\n` : ''}- ${localized('Result', '结果')}: **${verdictLabel(state)}**
 - ${localized('Verification status', '验证情况')}: **${verificationStatusLabel(state)}**
 - ${localized('Goal cycle', '目标周期')}: ${state.loop.goal_cycle}
 - ${localized('Iteration', '迭代')}: ${state.verification.iteration}
@@ -228,7 +285,7 @@ ${acceptance}
 
 ${checks}
 
-${builderEvidence}
+${sources}${previousFailures}${builderEvidence}
 
 ## ${heading('blockers')}
 
@@ -283,11 +340,20 @@ export async function writeNativeVerificationReport(options: {
   file: string;
   state: NativePortableState;
   supervisor?: NativeSupervisorState;
+  verifyMode?: NativeVerifyMode;
+  previousCheckFailures?: readonly NativePreviousCheckFailure[];
+  checkSources?: readonly NativeCheckSource[];
   beforeCommit?: () => void | Promise<void>;
 }): Promise<void> {
   await atomicWriteText(
     options.file,
-    renderNativeVerificationReport(options.state, options.supervisor),
+    renderNativeVerificationReport(
+      options.state,
+      options.supervisor,
+      options.verifyMode,
+      options.previousCheckFailures,
+      options.checkSources,
+    ),
     { beforeCommit: options.beforeCommit },
   );
 }

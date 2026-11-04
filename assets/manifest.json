@@ -1,5 +1,5 @@
 {
-  "version": "0.5.4",
+  "version": "0.5.2",
   "skills": [
     "comet/SKILL.md",
     "comet/reference/edit-review.md",
@@ -44,6 +44,7 @@
     "comet-native/SKILL.md",
     "comet-native/agents/openai.yaml",
     "comet-native/reference/artifacts.md",
+    "comet-native/reference/bugfree.md",
     "comet-native/reference/edit-review.md",
     "comet-native/reference/clarification.md",
     "comet-native/reference/commands.md",

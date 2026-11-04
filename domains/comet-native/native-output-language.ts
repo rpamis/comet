@@ -434,6 +434,8 @@ export function deriveNativeOutputEnvelope(data: unknown): CliOutputEnvelope | u
         )}`,
       };
     }
+    if (record.verifyMode === 'bugfree')
+      envelope.summary += phrase(locale, '; verification mode: bugfree', '；验证模式：bugfree');
     return envelope;
   }
   if (typeof record.artifactRoot === 'string' && typeof record.nativeRoot === 'string') {

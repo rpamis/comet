@@ -157,6 +157,80 @@ describe('Eval run history and baselines', () => {
     await fs.writeFile(path.join(root, 'summary.md'), '# Eval report');
     return root;
   }
+  it('compares Native modes only with matching actual product and execution identities', async () => {
+    for (const mode of ['standard', 'bugfree'] as const) {
+      const root = await report(mode, [false]);
+      const metadataFile = path.join(root, 'metadata.json');
+      const metadata = JSON.parse(await fs.readFile(metadataFile, 'utf8'));
+      metadata.dataset_plan = {
+        schema: 'comet.eval.dataset.v1',
+        dataset: { id: 'skillsbench', version: '1.1' },
+        contentHash: 'sha256:' + (mode === 'standard' ? 'a' : 'd').repeat(64),
+        comparisonHash: 'sha256:' + 'c'.repeat(64),
+        scorerHash: 'sha256:' + 'b'.repeat(64),
+        tasks: [{ id: 'task-0', contentHash: 'sha256:' + 'f'.repeat(64) }],
+        treatment: 'COMET_NATIVE_SDK_CURRENT',
+        verifyMode: mode,
+      };
+      await fs.writeFile(metadataFile, JSON.stringify(metadata));
+      const rawFile = path.join(root, 'reports/case-0_report.json');
+      const raw = JSON.parse(await fs.readFile(rawFile, 'utf8'));
+      raw.events_summary.treatment = 'COMET_NATIVE_SDK_CURRENT';
+      raw.name = 'task-0-COMET_NATIVE_SDK_CURRENT';
+      raw.events_summary.dataset_comparison_identity = 'sha256:' + 'e'.repeat(64);
+      raw.checks_passed = ['[RUBRIC] dataset-score: 0.25'];
+      await fs.writeFile(rawFile, JSON.stringify(raw));
+      await fs.writeFile(
+        path.join(root, 'expected-case-matrix.json'),
+        JSON.stringify(
+          expectedMatrix([{ rep: 1, task: 'task-0', treatment: 'COMET_NATIVE_SDK_CURRENT' }]),
+        ),
+      );
+      await fs.writeFile(
+        path.join(root, 'dashboard-run.json'),
+        JSON.stringify({
+          schema: 'comet.eval.managed-run.v1',
+          id: mode,
+          status: 'completed',
+          targetId: 'native',
+          contentHash: 'same-skill',
+          config: {
+            dataset: 'skillsbench',
+            datasetTreatment: 'native',
+            verifyMode: mode,
+            target: 'skills/comet-native',
+            targetType: 'skill',
+            agent: 'codex',
+            model: 'model-a',
+            timeoutSeconds: 0,
+          },
+        }),
+      );
+    }
+    const paired = await compareEvalRuns(project, 'bugfree', 'standard');
+    const inspected = await Promise.all(
+      ['bugfree', 'standard'].map((id) => readEvalRun(project, id)),
+    );
+    expect(
+      paired.comparable,
+      JSON.stringify({
+        reasons: paired.reasons,
+        inspected: inspected.map((run) => ({
+          diagnostics: run.diagnostics,
+          baselineDisabledReason: run.baselineDisabledReason,
+          completeness: run.completeness,
+          conclusion: run.conclusion,
+        })),
+      }),
+    ).toBe(true);
+    const rawFile = path.join(project, '.comet/eval/runs/bugfree/reports/case-0_report.json');
+    const raw = JSON.parse(await fs.readFile(rawFile, 'utf8'));
+    raw.events_summary.dataset_comparison_identity = 'sha256:' + 'f'.repeat(64);
+    await fs.writeFile(rawFile, JSON.stringify(raw));
+    const result = await compareEvalRuns(project, 'bugfree', 'standard');
+    expect(result.comparable).toBe(false);
+    expect(result.reasons.some((reason) => reason.includes('实际镜像'))).toBe(true);
+  });
   it('repairs only legacy repetitions proven by controller name, file identity and validated matrix', async () => {
     const root = await report('legacy-reps', [true, true]);
     const matrix = expectedMatrix([

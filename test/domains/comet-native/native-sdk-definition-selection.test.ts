@@ -20,7 +20,10 @@ const legacy = definitions.nativeSdkLegacyDefinitions(application.workflow);
 const reference = (hash: string) => ({ workflow: { id: 'comet-native', version: '1', hash } });
 it('allows missing Builder raw receipts only for the exact known legacy definitions', () => {
   expect(new Set(legacy.map((workflow) => hashRuntimeValue(defineWorkflow(workflow))))).toEqual(
-    new Set(definitions.NATIVE_SDK_LEGACY_BUILDER_INPUT_HASHES),
+    new Set([
+      ...definitions.NATIVE_SDK_LEGACY_BUILDER_INPUT_HASHES,
+      definitions.NATIVE_SDK_PRE_BUGFREE_HASH,
+    ]),
   );
   expect(definitions.NATIVE_SDK_LEGACY_BUILDER_INPUT_HASHES).not.toContain(currentHash);
 });

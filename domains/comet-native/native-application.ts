@@ -22,7 +22,9 @@ import {
   nativeSdkBeforeBlockedVerifierRecovery,
   nativeSdkMatchesRun,
   nativeSdkLegacyTransitionHandler,
+  nativeSdkBeforeBugfree,
 } from './native-sdk-definition.js';
+import { assertNativeVerifyModeSupported } from './native-verification-policy.js';
 import { createNativeSdkStateStore } from './native-sdk-state-store.js';
 import { createNativePortableState, parseNativePortableState } from './native-portable-state.js';
 import { returnNativeCandidateToBuild } from './native-loop-runtime.js';
@@ -37,6 +39,7 @@ import {
 } from '../workflow-contract/change-runtime-owner.js';
 
 export { createNativePortableState as createNativeApplicationState };
+export { prepareNativeVerificationBaseline } from './native-verifier-context.js';
 export {
   prepareNativeCandidateReviewExample,
   prepareNativeCandidateReviewProject,
@@ -505,12 +508,21 @@ export function createNativeWorkflowApplication(
   };
   // 固定包身份已由 loader 验证；仅回退本次新增的恢复定义，其他差异仍拒绝。
   const previous = [
+    nativeSdkBeforeBugfree(workflow),
     nativeSdkBeforeBlockedVerifierRecovery(workflow),
     nativeSdkBeforeVerifierRecovery(workflow),
+    nativeSdkBeforeBlockedVerifierRecovery(nativeSdkBeforeBugfree(workflow)),
+    nativeSdkBeforeVerifierRecovery(nativeSdkBeforeBugfree(workflow)),
   ].find((candidate) => nativeSdkMatchesRun(candidate, context.existingRun));
   if (previous) {
     workflow = previous;
     transitionHandler = nativeSdkLegacyTransitionHandler(workflow, transitionHandler);
+  }
+  if (context.existingRun) {
+    assertNativeVerifyModeSupported(
+      context.existingRun,
+      workflow.steps['verify.verifier'].validator!.version,
+    );
   }
   const implementation: WorkflowApplicationImplementation = {
     workflows: [workflow],

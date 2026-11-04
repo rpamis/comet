@@ -9,6 +9,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import uuid
 from types import SimpleNamespace
 
 
@@ -42,6 +43,30 @@ class LocalEnvironment:
 
     async def download_dir(self, source_dir, target_dir):
         shutil.copytree(source_dir, target_dir, dirs_exist_ok=True)
+
+
+def workbuddy_verifier_status(details):
+    """使用原评分器的结构化记录区分业务失败和执行中断。"""
+    judges = details.get("judges")
+    if not isinstance(judges, list) or not judges:
+        return "unknown"
+    statuses = []
+    for judge in judges:
+        if not isinstance(judge, dict):
+            return "unknown"
+        metadata = judge.get("metadata") or {}
+        phase = metadata.get("test_status") if isinstance(metadata, dict) else None
+        if phase == "timeout":
+            return "timeout"
+        if phase == "build_error" or judge.get("ok") is False or judge.get("errors"):
+            return "test_error"
+        if phase not in {None, "pass", "all_pass", "partial_pass", "no_pass"}:
+            return "unknown"
+        status = judge.get("status")
+        if judge.get("ok") is not True or status not in {"pass", "fail"}:
+            return "unknown"
+        statuses.append(status)
+    return "assertion_failed" if "fail" in statuses else "completed"
 
 
 async def workbuddy(task):
@@ -94,7 +119,13 @@ async def workbuddy(task):
     rewards = score.reward_payload()
     if "reward" not in rewards:
         raise ValueError(f"缺少 reward 原始评分：{rewards}")
-    return {"reward": rewards["reward"], "raw": rewards, "details": score.score_payload()}
+    details = score.score_payload()
+    return {
+        "reward": rewards["reward"],
+        "raw": rewards,
+        "details": details,
+        "verifier_status": workbuddy_verifier_status(details),
+    }
 
 
 def main():
@@ -105,15 +136,107 @@ def main():
     if dataset == "workbuddy-code":
         result = asyncio.run(workbuddy(task))
     else:
+        import re
+
         target = Path("/verifier")
         shutil.copytree(task / "verifier", target, dirs_exist_ok=True)
+        execution_file = Path("/opt/comet-dataset-execution.json")
+        execution = (
+            json.loads(execution_file.read_text(encoding="utf-8"))
+            if execution_file.is_file()
+            else {}
+        )
+        verifier = execution.get("verifier", {})
+        # 仅清理隔离评分副本；不删除主体候选，也不改原始 verifier。
+        cleanup_roots = (
+            [
+                Path("/workspace"),
+                Path("/root"),
+                Path("/app"),
+                Path("/data"),
+                Path("/outputs"),
+                Path("/opt/syzkaller"),
+                Path("/home/agent"),
+            ]
+            if execution
+            else []
+        )
+        for root in cleanup_roots:
+            if root.is_dir():
+                patterns = ["sitecustomize.py", "usercustomize.py", "*.pth"]
+                if verifier.get("cleanupConftests"):
+                    patterns.append("conftest.py")
+                for file in (file for pattern in patterns for file in root.rglob(pattern)):
+                    if not file.is_symlink():
+                        file.unlink()
+        environment = dict(os.environ)
+        for key, value in verifier.get("env", {}).items():
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) or re.search(
+                r"secret|password|token|api_?key|credential", key, re.I
+            ):
+                raise ValueError("评分环境不能包含凭据或无效名称")
+            environment[key] = str(value)
         reward = Path("/logs/verifier/reward.txt")
         reward.parent.mkdir(parents=True, exist_ok=True)
         reward.unlink(missing_ok=True)
-        status = subprocess.run(["bash", str(target / "test.sh")], cwd="/workspace", timeout=3600)
-        if status.returncode != 0:
+        observer = reward.parent / ("comet-pytest-" + uuid.uuid4().hex + ".jsonl")
+        environment["COMET_DATASET_OBSERVER"] = str(observer)
+        environment["COMET_DATASET_REQUIRED_PLUGINS"] = json.dumps(
+            verifier.get("pytestPlugins", [])
+        )
+        environment["PYTHONPATH"] = "/opt/comet-observer"
+        environment["PYTHONNOUSERSITE"] = "1"
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
+        environment["UV_CACHE_DIR"] = "/opt/comet-verifier-cache/uv"
+        environment["PIP_CACHE_DIR"] = "/opt/comet-verifier-cache/pip"
+        environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+        environment["COMET_DATASET_PLUGIN_POLICY"] = "root-owned"
+        environment["PYTEST_ADDOPTS"] = (
+            "-c /dev/null --confcutdir=/verifier --rootdir=/workspace -p no:cacheprovider"
+        )
+        environment["PYTEST_PLUGINS"] = "dataset_pytest_observer"
+        try:
+            status = subprocess.run(
+                ["bash", str(target / "test.sh")],
+                cwd="/workspace",
+                timeout=execution.get("verifierTimeoutSeconds", 3600),
+                env=environment,
+            )
+        except subprocess.TimeoutExpired:
+            result = {
+                "reward": json.loads(reward.read_text()) if reward.is_file() else None,
+                "verifier_status": "timeout",
+            }
+            print("COMET_DATASET_REWARD=" + json.dumps(result, allow_nan=False))
+            raise
+        if status.returncode != 0 and not reward.is_file():
             raise ValueError(f"评分脚本失败：{status.returncode}")
-        result = {"reward": json.loads(reward.read_text()), "raw": reward.read_text()}
+        observations = (
+            [json.loads(line) for line in observer.read_text(encoding="utf-8").splitlines()]
+            if observer.is_file()
+            else []
+        )
+        statuses = [item["status"] for item in observations]
+        verifier_status = next(
+            (
+                state
+                for state in (
+                    "environment_error",
+                    "collection_error",
+                    "test_error",
+                    "not_executed",
+                    "assertion_failed",
+                )
+                if state in statuses
+            ),
+            "completed" if statuses else "script_error" if status.returncode != 0 else "unknown",
+        )
+        result = {
+            "reward": json.loads(reward.read_text()),
+            "raw": reward.read_text(),
+            "verifier_status": verifier_status,
+            "test_runs": observations,
+        }
     print("COMET_DATASET_REWARD=" + json.dumps(result, allow_nan=False))
 
 

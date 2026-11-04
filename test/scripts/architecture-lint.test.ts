@@ -180,6 +180,40 @@ describe('architecture lint', () => {
     expect(result.status).toBe(0);
   });
 
+  it('ignores local Git exclusions while rejecting tracked and unignored top-level files', async () => {
+    const root = await makeMinimalRepository();
+    await writeFile(root, '.gitignore', '');
+    const layoutFile = path.join(root, 'config/repository-layout.json');
+    const layout = JSON.parse(await fs.readFile(layoutFile, 'utf8'));
+    layout.allowedTopLevelEntries.push('.git');
+    await fs.writeFile(layoutFile, JSON.stringify(layout));
+    const initialized = spawnSync('git', ['init'], { cwd: root, encoding: 'utf8' });
+    expect(initialized.status, initialized.stderr).toBe(0);
+    await writeFile(root, '.git/info/exclude', '/.codex-remote-attachments/\n/local-notes.txt\n');
+    await writeFile(root, '.codex-remote-attachments/session/request.md', 'Local attachment.\n');
+    const check = () =>
+      spawnSync(process.execPath, [path.resolve('scripts/lint/architecture.mjs')], {
+        cwd: root,
+        encoding: 'utf8',
+      });
+    const ignored = check();
+    expect(ignored.stderr).toBe('');
+    expect(ignored.status).toBe(0);
+
+    await writeFile(root, 'local-notes.txt', 'Tracked content must still be checked.\n');
+    const added = spawnSync('git', ['add', '-f', 'local-notes.txt'], {
+      cwd: root,
+      encoding: 'utf8',
+    });
+    expect(added.status, added.stderr).toBe(0);
+    expect(check().stderr).toContain(
+      'local-notes.txt is not an allowed top-level repository entry',
+    );
+
+    await writeFile(root, 'unexpected.txt', 'Unignored content must still be checked.\n');
+    expect(check().stderr).toContain('unexpected.txt is not an allowed top-level repository entry');
+  });
+
   it('ignores LangSmith experiment logs without excluding LangSmith source', async () => {
     const root = await makeMinimalRepository();
     await writeFile(root, '.gitignore', 'logs\n');

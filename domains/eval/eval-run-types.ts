@@ -14,6 +14,7 @@ export type EvalConclusion = 'passed' | 'failed' | 'incomplete';
 export interface EvalRunConfig {
   dataset?: string;
   datasetTreatment?: 'native' | 'goal';
+  verifyMode?: 'standard' | 'bugfree';
   count?: number;
   acceptDatasetLicense?: boolean;
   target: string;
@@ -79,6 +80,7 @@ export interface EvalCaseResult {
   agent: string | null;
   caseHash: string | null;
   validatorHash: string | null;
+  datasetComparisonIdentity?: string | null;
   artifacts: Array<{ id: string; label: string }>;
 }
 export interface EvalRunDetail {

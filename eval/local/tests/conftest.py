@@ -35,6 +35,7 @@ from scaffold.python import (
     TreatmentResult,
     build_eval_artifact_references,
     classify_failures,
+    extract_events,
     get_profile,
     load_report_output_config,
     save_events,
@@ -94,7 +95,7 @@ def _extract_loop_turns(stderr: str | None) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def _extract_loop_interaction(stderr: str | None) -> dict[str, Any]:
+def _extract_loop_interaction(stderr: str | None, *, agent: str | None = None) -> dict[str, Any]:
     source = stderr or ""
     role_sessions = {"subject": [], "simulator": [], "judge": []}
     for role, session_id in re.findall(
@@ -114,7 +115,20 @@ def _extract_loop_interaction(stderr: str | None) -> dict[str, Any]:
             decision_replies.append(json.loads(raw))
         except json.JSONDecodeError:
             decision_replies.append({"invalid": True})
+    role_usage = []
+    for raw in re.findall(r"^\[loop\] role-usage simulator (.+)$", source, re.MULTILINE):
+        try:
+            value = json.loads(raw)
+            if isinstance(value, dict):
+                role_usage.append(value)
+        except ValueError:
+            pass
     return {
+        **(
+            {"simulator_usage": extract_events({"messages": role_usage}, agent=agent)}
+            if role_usage
+            else {}
+        ),
         **({"sdk_recovery_boundaries": boundaries} if boundaries else {}),
         **({"sdk_decision_replies": decision_replies} if decision_replies else {}),
         "actual_turns": _extract_loop_turns(source),
@@ -1521,8 +1535,15 @@ def _resolve_interaction_config(task, profile_name: str, config):
 def _resolve_agent_timeout(config, *, task_timeout: int, floor: int) -> int | None:
     override = config.getoption("--agent-timeout")
     if override is None:
-        # Native 需要完成多个阶段，原题 Agent 时限不能充当整个工作流的截止时间。
-        if getattr(config, "_comet_dataset_plan_file", None):
+        if plan_file := getattr(config, "_comet_dataset_plan_file", None):
+            # 新计划的 TaskConfig 已采用绑定的 workflow 预算。旧计划保持原语义，
+            # 不把普通任务的 900/1500 秒限制追溯套到已确认的历史运行。
+            if Path(plan_file).is_file():
+                plan = json.loads(Path(plan_file).read_text(encoding="utf-8"))
+                if plan.get("tasks") and all(
+                    entry.get("execution", {}).get("timeoutSeconds") for entry in plan["tasks"]
+                ):
+                    return task_timeout
             return None
         return max(floor, task_timeout)
     if override <= 0:
@@ -2082,6 +2103,7 @@ def run_claude(test_dir, experiment_logger, request):
         model: str = None,
         interaction=None,
         image_id: str | None = None,
+        task_contract_file: str | None = None,
     ):
         mdl = model or default_model
         run_execution = ResolvedExecution(
@@ -2091,6 +2113,10 @@ def run_claude(test_dir, experiment_logger, request):
             execution.sources,
         )
         run_environment = build_agent_environment(run_execution)
+        if task_contract_file is not None:
+            from scaffold.python.utils import _to_bash_path
+
+            run_environment["COMET_EVAL_TASK_CONTRACT_FILE"] = _to_bash_path(task_contract_file)
         if interaction is not None and interaction.goal:
             if selected_agent != "claude-code":
                 raise ValueError("Goal 对照组仅支持 Claude Code")
@@ -2159,7 +2185,11 @@ def run_claude(test_dir, experiment_logger, request):
                     result = run_claude_loop_in_docker(
                         test_dir,
                         loop_args[2:],
-                        timeout=None if timeout is None else timeout + 60,
+                        timeout=None
+                        if timeout is None
+                        else timeout
+                        if task_contract_file is not None
+                        else timeout + 60,
                         environment=run_environment,
                     )
                 else:
@@ -2171,7 +2201,11 @@ def run_claude(test_dir, experiment_logger, request):
                             selected_agent,
                             *loop_args[3:],
                         ],
-                        timeout=None if timeout is None else timeout + 60,
+                        timeout=None
+                        if timeout is None
+                        else timeout
+                        if task_contract_file is not None
+                        else timeout + 60,
                         environment=run_environment,
                     )
             finally:
@@ -2268,6 +2302,7 @@ def record_result(test_dir, experiment_logger, request):
                 checks_passed=passed,
                 checks_failed=failed,
                 events_summary={
+                    **_dataset_measurements(events),
                     "num_turns": events.get("num_turns"),
                     "duration_seconds": events.get("duration_seconds"),
                     "tool_calls": len(events.get("tool_calls", [])),
@@ -2314,6 +2349,27 @@ def record_result(test_dir, experiment_logger, request):
     return _record
 
 
+def _dataset_measurements(events):
+    keys = (
+        "token_scope",
+        "workflow_total_tokens",
+        "duration_scope",
+        "cost_basis",
+        "telemetry_warnings",
+        "model_usage_status",
+        "total_cost_usd_lower_bound",
+        "agent_wall_duration_seconds",
+        "case_wall_duration_seconds",
+        "simulator_usage",
+        "dataset_result",
+        "dataset_execution",
+        "effective_agent_timeout_seconds",
+        "dataset_comparison_identity",
+        "current_comet_build",
+    )
+    return {key: events[key] for key in keys if key in events}
+
+
 def _build_report_payload(
     *,
     treatment_name: str,
@@ -2348,6 +2404,7 @@ def _build_report_payload(
         "checks_failed": failed,
         "sample_quality": sample_quality,
         "events_summary": {
+            **_dataset_measurements(events),
             "duration_seconds": events.get("duration_seconds"),
             "num_turns": events.get("num_turns"),
             "tool_calls": len(events.get("tool_calls", [])),
@@ -2511,7 +2568,12 @@ def _build_docker_image_with_lock(
         if agent:
             command.extend(["--agent", agent])
         # 内置数据集还需安装原题和独立评分环境，首次下载允许最多 30 分钟。
-        build_timeout = 1800 if (environment_dir / ".dataset-task.json").is_file() else 900
+        build_timeout = 900
+        if (environment_dir / ".dataset-task.json").is_file():
+            metadata = json.loads(
+                (environment_dir / ".dataset-task.json").read_text(encoding="utf-8")
+            )
+            build_timeout = metadata.get("execution", {}).get("buildTimeoutSeconds", 1800)
         run_options = {"timeout": build_timeout, "check": False, "terminate_process_tree": True}
         if environment is not None:
             run_options["env"] = environment

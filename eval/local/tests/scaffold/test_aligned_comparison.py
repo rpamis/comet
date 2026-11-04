@@ -764,11 +764,11 @@ def test_aligned_report_compares_cumulative_success_efficiency(tmp_path: Path):
     assert "## Paired task efficiency from raw stdout" in report
     assert "### Strict-success intersection (1 paired runs)" in report
     assert "| Agent turns | 1/1 | 4.00 | 8.00 | 50.0% less |" in report
-    assert "| Total tokens incl. cache | 1/1 | 120 | 240 | 50.0% less |" in report
+    assert "| Subject tokens incl. cache | 1/1 | 120 | 240 | 50.0% less |" in report
     html = render_markdown_html(report, title="Comet Aligned Experiment Comparison Report")
     assert "Model starts/resumes" in html
     assert "模型启动/恢复次数" in html
-    assert "Total tokens incl. cache" in html
+    assert "Subject tokens incl. cache" in html
     zh = html.split('<section class="localized" data-locale="zh"', 1)[1].split(
         '<section class="localized" data-locale="en"',
         1,

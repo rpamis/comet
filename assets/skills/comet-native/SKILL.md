@@ -13,7 +13,7 @@ Identify runtime format before acting; Runtime stores requirements and acceptanc
 - Treat `.comet/config.yaml`, the current change's `comet-state.yaml`, Runtime progress, and formal artifacts on disk as authoritative; chat memory is supplementary. Among formal workflow files, the Agent edits only the brief, complete target Specs, association `delta.yaml`, and `children.yaml`. Runtime owns state, check results, reports, locks, and transactions.
 - Advance through the public `comet native` CLI on PATH; do not ask the user to run commands manually. If the command is unavailable, report an incomplete installation and stop. Consult `comet native <command> --help` for arguments.
 - Create changes with the CLI; use returned paths and follow denial commands or targets before retrying. Custom and non-Comet writes stay neutral.
-- The Builder submits code as the candidate implementation. Each iteration requires a new read-only Verifier to assess every acceptance item independently. Assessing every item does not mean rerunning every command: reuse Runtime check records that still match the current candidate and add only missing or invalidated checks. Failed, blocked, unexecuted, and timed-out work cannot count as passed.
+- The Builder submits code as the candidate implementation. In standard mode, each iteration requires a new read-only Verifier to assess every acceptance item independently. Assessing every item does not mean rerunning every command: reuse Runtime check records that still match the current candidate and add only missing or invalidated checks. Failed, blocked, unexecuted, and timed-out work cannot count as passed.
 - Run confirmation commands only after the user explicitly confirms the complete Shape, accepts the final result, or selects the relevant delivery option. Reuse confirmed scope and user choices saved by Runtime. Authorization for Archive, merge, push, PR creation, and workspace cleanup is not interchangeable.
 - This Skill and Runtime provide the Native workflow without an external Skill dependency. The Agent chooses implementation methods that preserve confirmed requirements and constraints.
 
@@ -61,7 +61,7 @@ On actual file changes during Build, Verify, or before Archive, or when continua
 
 ## Build ↔ Verify Loop
 
-After the Builder submits a candidate, Runtime runs required checks and a new read-only Verifier assesses it. On failure, return to Build, repair, and resubmit. Once every item passes, wait for the user to accept the result.
+In standard mode, after the Builder submits a candidate, Runtime runs required checks and a new read-only Verifier assesses it. For bugfree, follow [bugfree verification](reference/bugfree.md). On failure, return to Build, repair, and resubmit. Once every item passes, wait for the user to accept the result.
 
 `iteration` counts implementation submissions; `attempt` counts Verifier launches for the same candidate. Runtime updates all counters. When consecutive failures or lack of progress reach configured limits, follow the latest instructions to wait for a user decision or address the blocker.
 
@@ -88,6 +88,8 @@ Before submitting a candidate, check files, sections, and formats at the origina
 Complete when the implementation and relevant checks are ready for verification, Runtime accepts the Builder handoff, and the phase is Verify.
 
 ## Verify
+
+When the SDK returns `verifyMode: bugfree`, first read and follow [bugfree verification](reference/bugfree.md). In standard mode, follow the SDK protocol below; Compat continues using its existing protocol.
 
 For SDK, follow [SDK Verify protocol](reference/commands.md#sdk-verify-protocol) and the current continuation: finish Runtime checks first, then launch a new read-only Verifier with the candidate ID, all acceptance items and references, workspace, check records, and claimRequest. The Verifier claims with its own session and reports using the current outcomeRequest. Do not submit legacy Runner startup receipts or results.
 

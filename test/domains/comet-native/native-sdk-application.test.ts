@@ -407,6 +407,23 @@ async function dispatchedVerifier(
   return { ...prepared, run };
 }
 
+async function recordNonBehavioralEdit(root: string, name: string, summary: string) {
+  const observed = (await runNativeEditReviewCommand({
+    projectRoot: root,
+    name,
+    operation: 'observe',
+    sessionId: 'builder-session-1',
+  })) as { recordTemplate: Record<string, unknown> };
+  const reviewRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'native-reviewed-edit-'));
+  roots.push(reviewRoot);
+  const file = path.join(reviewRoot, 'review.json');
+  await fs.writeFile(
+    file,
+    JSON.stringify({ ...observed.recordTemplate, decision: 'non-behavioral', summary }),
+  );
+  await runNativeEditReviewCommand({ projectRoot: root, name, operation: 'record', file });
+}
+
 async function stalledVerifier(storeKind: 'memory' | 'sdk' = 'memory') {
   const prepared = await dispatchedVerifier([], storeKind);
   const { root, runtime } = prepared;
@@ -6777,9 +6794,17 @@ children:
       timeoutMs: 5000,
       repeatable: true,
     };
-    const prepared = await dispatchedVerifier([check], 'memory', undefined, false);
+    const prepared = await dispatchedVerifier(
+      [check],
+      'sdk',
+      undefined,
+      false,
+      undefined,
+      async (root) => {
+        await fs.writeFile(path.join(root, 'settings.json'), '{"enabled":true}');
+      },
+    );
     const { root, runtime } = prepared;
-    await fs.writeFile(path.join(root, 'settings.json'), '{"enabled":true}');
     const ready = await runtime.execute({
       runId: prepared.run.runId,
       actionId: prepared.run.actions.at(-1)!.id,
@@ -6791,6 +6816,11 @@ children:
     await fs.writeFile(path.join(root, 'settings.json'), '{\n "enabled": true\n}');
     await expect(nativeSdkCurrentCheckSummaries({ run: ready, projectRoot: root })).rejects.toThrow(
       '检查输入已变化',
+    );
+    await recordNonBehavioralEdit(
+      root,
+      ready.runId,
+      'Only JSON whitespace changed; enabled remains true.',
     );
     const requested = await succeedLatestAction(
       runtime,
@@ -6822,6 +6852,11 @@ children:
     await expect(
       nativeSdkCurrentCheckSummaries({ run: refreshed, projectRoot: root }),
     ).rejects.toThrow('检查输入已变化');
+    await recordNonBehavioralEdit(
+      root,
+      refreshed.runId,
+      'A second JSON format change preserves enabled=true.',
+    );
     const requestedAgain = await succeedLatestAction(
       runtime,
       refreshed,
@@ -6872,12 +6907,20 @@ children:
       timeoutMs: 5000,
       repeatable: true,
     };
-    const prepared = await dispatchedVerifier([check], 'memory', undefined, false);
-    const { root, paths, runtime } = prepared;
     const before = 'export function value() { return 1; }';
     const after = 'export function value() { const result = 1; return result; }';
+    const prepared = await dispatchedVerifier(
+      [check],
+      'memory',
+      undefined,
+      false,
+      undefined,
+      async (root) => {
+        await fs.writeFile(path.join(root, 'value.ts'), before);
+      },
+    );
+    const { root, paths, runtime } = prepared;
     const target = path.join(root, 'value.ts');
-    await fs.writeFile(target, before);
     const ready = await runtime.execute({
       runId: prepared.run.runId,
       actionId: prepared.run.actions.at(-1)!.id,
@@ -6893,7 +6936,7 @@ children:
       claimedEditReviewAuthority,
       assertEditReviewsComplete,
     } = await import('../../../domains/workflow-contract/edit-review.js');
-    const scope = nativeEditReviewScope(paths, state);
+    const scope = { ...nativeEditReviewScope(paths, state), judgment: 'agent' as const };
     const proposal = await prepareEditReview(scope, {
       intent: 'write',
       toolName: 'Write',
@@ -7477,12 +7520,15 @@ children:
           repeatable: true,
         },
       ],
-      'memory',
+      'sdk',
       undefined,
       false,
+      undefined,
+      async (root) => {
+        await fs.writeFile(path.join(root, 'settings.json'), '{"enabled":true}');
+      },
     );
     const { root, runtime } = prepared;
-    await fs.writeFile(path.join(root, 'settings.json'), '{"enabled":true}');
     const ready = await runtime.execute({
       runId: prepared.run.runId,
       actionId: prepared.run.actions.at(-1)!.id,
@@ -7520,6 +7566,11 @@ children:
       context: { requestId: 'before-edit-report', projectRoot: root },
     });
     await fs.writeFile(path.join(root, 'settings.json'), '{\n  "enabled": true\n}');
+    await recordNonBehavioralEdit(
+      root,
+      run.runId,
+      'Only JSON whitespace changed; enabled remains true.',
+    );
     const wait = run.waits.at(-1)!;
     run = await runtime.resolveWait({
       runId: run.runId,
@@ -7623,13 +7674,17 @@ children:
   });
 });
 
-it('preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check', async () => {
+async function passedOneShotReverify(legacy = false) {
+  const application = nativeApplication();
+  const counterRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'native-reverify-one-shot-'));
+  roots.push(counterRoot);
+  const counter = path.join(counterRoot, 'executions.txt');
   const {
     root,
     runtime,
     store,
     run: ready,
-  } = await dispatchedVerifier([], 'sdk', undefined, true, initializeArchiveGit);
+  } = await dispatchedVerifier([], 'sdk', application, true, undefined, initializeArchiveGit);
   const candidateId = (ready.state as NativePortableState).builder_handoff!.candidate_id;
   let run = await succeedLatestAction(
     runtime,
@@ -7646,7 +7701,7 @@ it('preserves the original pass and Wait when reverify includes a Verifier-added
             id: 'oneshot',
             name: 'oneshot',
             executable: process.execPath,
-            argv: ['-e', 'process.stdout.write("ok")'],
+            argv: ['-e', 'require("fs").appendFileSync(process.argv[1],"once\\n")', counter],
             cwdRef: '.',
             timeoutMs: 5000,
             repeatable: false,
@@ -7692,6 +7747,26 @@ it('preserves the original pass and Wait when reverify includes a Verifier-added
     executorId: 'comet-native-report',
     context: { requestId: 'report', projectRoot: root },
   });
+  if (legacy) {
+    // 构造缺少原始输入证明的兼容快照；不伪造批准或正常阶段推进。
+    const snapshot = structuredClone(run);
+    for (const action of snapshot.actions) {
+      if (action.stepId !== 'verify.requested-checks' || !action.outcome) continue;
+      delete (action.outcome.output as Record<string, unknown>).rawInput;
+      const receipt = action.receipts.find(
+        ({ outcomeId }) => outcomeId === action.outcome!.outcomeId,
+      )!;
+      receipt.hash = hashRuntimeValue(action.outcome);
+    }
+    snapshot.revision += 1;
+    expect(await store.compareAndSwap(run.runId, run.revision, snapshot)).toBe(true);
+    run = await runtime.inspect(run.runId);
+  }
+  return { root, runtime, store, run, counter };
+}
+
+it('preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check', async () => {
+  const { root, store, run, counter } = await passedOneShotReverify(true);
   const wait = run.waits.at(-1)!;
   const rejected = await advanceNativeSdkChange(root, run.runId, {
     expectedAction: 'retry-verifier',
@@ -7708,6 +7783,38 @@ it('preserves the original pass and Wait when reverify includes a Verifier-added
   expect(final).toEqual(run);
   expect(final!.waits.at(-1)).toMatchObject({ id: wait.id, status: 'pending' });
   expect((final!.state as NativePortableState).verification_result).toBe('pass');
+  expect(await fs.readFile(counter, 'utf8')).toBe('once\n');
+});
+
+it('reuses a proven Verifier-added one-shot receipt during explicit reverify without replaying its effect', async () => {
+  const { root, runtime, run, counter } = await passedOneShotReverify();
+  const wait = run.waits.at(-1)!;
+  const result = await advanceNativeSdkChange(root, run.runId, {
+    expectedAction: 'retry-verifier',
+    expectedStateVersion: (run.state as NativePortableState).state_version,
+    proposalHash: wait.proposalHash,
+    summary: 'User explicitly requests another independent review.',
+  });
+  expect(result.exitCode, JSON.stringify(result)).toBe(0);
+  const current = await runtime.inspect(run.runId);
+  expect(current.state).toMatchObject({
+    phase: 'verify',
+    archived: false,
+    verification_result: 'pending',
+    builder_handoff: {
+      candidate_id: (run.state as NativePortableState).builder_handoff!.candidate_id,
+    },
+    loop: { iteration: 1, attempt: 2 },
+  });
+  expect(current.waits.find(({ id }) => id === wait.id)).toMatchObject({
+    status: 'resolved',
+    decision: { choice: 'reverify' },
+  });
+  expect(current.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
+  for (const original of run.actions.filter(({ stepId }) => stepId === 'verify.requested-checks'))
+    expect(current.actions.find(({ id }) => id === original.id)?.outcome).toEqual(original.outcome);
+  expect(await fs.readFile(counter, 'utf8')).toBe('once\n');
+  expect(current.actions.some(({ stepId }) => stepId.startsWith('archive.'))).toBe(false);
 });
 
 it('blocks tracked implementation drift at Archive preflight and offers the original Verify repair path', async () => {
@@ -8163,6 +8270,7 @@ it('generates a missing report without overwriting a user-moved file or inventin
     'sdk',
     nativeApplication(),
     true,
+    undefined,
     async (projectRoot) => {
       await fs.writeFile(
         path.join(projectRoot, 'docs/comet/changes/sdk-shape/user-moved-report.md'),

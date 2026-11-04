@@ -1,3 +1,4 @@
+import { prepareNativeVerificationBaseline } from '../../domains/comet-native/native-verifier-context.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -21,6 +22,8 @@ export async function prepareNativeApplication(
   supervisor = false,
   kind: 'custom' | 'native' = 'custom',
   runtimePackageRoot = process.env.COMET_NATIVE_TEST_PACKAGE_ROOT ?? path.resolve('.'),
+  verifyMode: 'standard' | 'bugfree' = 'standard',
+  seed?: { files: Record<string, string>; requirements: string },
 ) {
   const packaged = runtimePackageRoot !== path.resolve('.');
   // 外部 Skill 读取 dist；在创建应用前完成共享构建，避免长流程中途重建产物。
@@ -48,7 +51,9 @@ export async function prepareNativeApplication(
     'junction',
   );
   const file = await prepareNativeCandidateReviewExample(path.join(root, 'package'));
-  await writeProjectConfig(projectRoot, defaultProjectConfig('docs', 'en'));
+  const config = defaultProjectConfig('docs', 'en');
+  config.native.verify_mode = verifyMode;
+  await writeProjectConfig(projectRoot, config);
   const name = 'native-example';
   const change = path.join(projectRoot, 'docs/comet/changes', name);
   await fs.mkdir(path.join(change, 'specs', 'example'), { recursive: true });
@@ -68,6 +73,26 @@ export async function prepareNativeApplication(
       'schema: comet.native.children.v2\nacceptance_index:\n  A1:\n    source: brief.md\n    text: The candidate meets its requirement.\nchildren:\n  - name: left\n    depends_on: []\n    covers: [A1]\n  - name: right\n    depends_on: []\n    covers: [A1]\n',
     );
   await fs.writeFile(path.join(projectRoot, 'candidate.txt'), 'unreviewed\n');
+  if (seed) {
+    if (supervisor) {
+      await fs.writeFile(
+        path.join(change, 'children.yaml'),
+        `schema: comet.native.children.v2\nacceptance_index:\n  A1:\n    source: brief.md\n    text: ${JSON.stringify(seed.requirements)}\nchildren:\n  - name: left\n    depends_on: []\n    covers: [A1]\n  - name: right\n    depends_on: []\n    covers: [A1]\n`,
+      );
+    }
+    for (const [ref, text] of Object.entries(seed.files)) {
+      await fs.mkdir(path.dirname(path.join(projectRoot, ref)), { recursive: true });
+      await fs.writeFile(path.join(projectRoot, ref), text);
+    }
+    await fs.writeFile(
+      path.join(change, 'brief.md'),
+      `# Outcome\n${seed.requirements}\n# Scope\nImplement the two task creators and review the integrated result.\n## Directory structure\n### Modified\n- candidate.txt — fixture build marker.\n- candidate.cjs — parent API.\n- left.cjs — left Child.\n- right.cjs — right Child.\n- store.cjs — shared persistent identifiers.\n# Non-goals\nNo publication.\n# Acceptance examples\n- ${seed.requirements}\n`,
+    );
+    await fs.writeFile(
+      path.join(change, 'specs/example/spec.md'),
+      `# Integrated task creators\n${seed.requirements}\nThe left and right Children are verified in isolation. Final parent verification must check both against the same persistent store.\n`,
+    );
+  }
   await fs.writeFile(
     path.join(projectRoot, '.gitignore'),
     '.comet/runtime/\n.comet/current-change.json\n.worktrees/\n**/comet-state.yaml\n**/verification.md\nnode_modules/\n',
@@ -79,6 +104,7 @@ export async function prepareNativeApplication(
       { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
     ).trim();
   git(projectRoot, ['init', '-b', 'main']);
+  if (seed) git(projectRoot, ['config', '--local', 'core.autocrlf', 'false']);
   git(projectRoot, ['add', '.']);
   git(projectRoot, ['commit', '-m', 'base']);
   let counter = 0;
@@ -119,7 +145,20 @@ export async function prepareNativeApplication(
       operation: 'start',
       runId: name,
       workflow: { id: 'comet-native', version: '1' },
-      input: { name, artifactRootRef: 'docs' },
+      input: {
+        name,
+        artifactRootRef: 'docs',
+        verifyMode,
+        ...(verifyMode === 'bugfree'
+          ? {
+              verificationBaseline: await prepareNativeVerificationBaseline(
+                projectRoot,
+                'docs',
+                name,
+              ),
+            }
+          : {}),
+      },
       initialState: createNativePortableState({
         name,
         language: 'en',

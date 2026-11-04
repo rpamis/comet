@@ -247,6 +247,16 @@ ${subject_text:0:3000}
     # retaining only bounded role/session evidence in the driver log.
     local sim_raw sim_session sim_reply
     sim_raw=$(run_agent_turn "$sim_prompt" "" "simulator" 2>/dev/null) || return $?
+    # 只记录计量字段；提示与回答正文不进入主体遥测。
+    printf '%s' "$sim_raw" | python3 -c '
+import json,sys
+for line in sys.stdin:
+    try: message=json.loads(line)
+    except ValueError: continue
+    if message.get("type") in {"result", "turn.completed"}:
+        safe={key:message[key] for key in ("type","session_id","uuid","duration_ms","usage","modelUsage","total_cost_usd") if key in message}
+        print("[loop] role-usage simulator "+json.dumps(safe),file=sys.stderr)
+'
     sim_session=$(printf '%s' "$sim_raw" | extract_session_id) || true
     if [[ -n "$sim_session" ]]; then
         echo "[loop] role-session simulator $sim_session" >&2

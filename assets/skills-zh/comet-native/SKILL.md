@@ -13,7 +13,7 @@ Native 在项目中保存需求和验收结论。先确认 change 的运行格�
 - 以磁盘上的 `.comet/config.yaml`、当前 change 的 `comet-state.yaml`、Runtime 返回的进度，以及正式文件为准，聊天记忆只作辅助。工作流保存的正式文件中，Agent 只编辑 brief、完整目标 Spec、关联时的 `delta.yaml` 和 `children.yaml`；状态、检查结果、报告、锁和事务由 Runtime 管理。
 - 通过 PATH 中公开的 `comet native` 命令推进，用户不手工执行命令。命令不可用时报告安装不完整并停止；参数以 `comet native <command> --help` 为准。
 - 新建 change 走 CLI 并使用响应路径；拒绝后按信息中的命令或目标修正并重试；自定义 Hook、非 Comet 工作和普通同名文件保持中立。
-- Builder 提交本轮待验收的代码和相关文件，称为“候选实现”。每轮都由新的只读 Verifier 独立判断全部验收项。判断全部验收项不等于重跑全部命令：仍与当前候选实现匹配的 Runtime 检查记录可以复用，只补充缺失或失效的检查。失败、阻塞、未执行和超时不能算通过。
+- Builder 提交本轮待验收的代码和相关文件，称为“候选实现”。standard 模式每轮都由新的只读 Verifier 独立判断全部验收项。判断全部验收项不等于重跑全部命令：仍与当前候选实现匹配的 Runtime 检查记录可以复用，只补充缺失或失效的检查。失败、阻塞、未执行和超时不能算通过。
 - 只有用户明确确认完整 Shape、接受最终结果或选择相应交付方式后，才执行对应的确认命令。沿用已确认的需求范围和 Runtime 保存的用户选择。归档、merge、push、PR 和工作区清理各自需要的授权不能互相代替。
 - Native 主流程由本 Skill 和 Runtime 完成，不依赖外部 Skill；不改变已确认的需求和约束时，实现方法由 Agent 自行选择。
 
@@ -61,7 +61,7 @@ Build、Verify 或待归档阶段出现实际文件变化，或 continuation 指
 
 ## Build ↔ Verify Loop
 
-Builder 提交候选实现后，由 Runtime 执行必要检查，再交给新的只读 Verifier 验收。未通过则回 Build 修复并重新提交；全部通过后，等待用户接受验收结果。
+standard 模式下，Builder 提交候选实现后，由 Runtime 执行必要检查，再交给新的只读 Verifier 验收。bugfree 按 [bugfree 验收](reference/bugfree.md)执行。未通过则回 Build 修复并重新提交；全部通过后，等待用户接受验收结果。
 
 `iteration` 表示提交实现的轮次，`attempt` 表示对同一份候选实现启动 Verifier 的次数。所有计数都由 Runtime 更新。连续验收失败或没有进展的次数达到配置上限时，按最新指令等待用户决定或处理阻塞。
 
@@ -88,6 +88,8 @@ Build、Verify 和 Archive 会复查正式文件与已批准原文的绑定。�
 完成标准：实现和相关检查可供验收，Runtime 接受 Builder 交接并进入 Verify。
 
 ## Verify
+
+SDK 返回的 `verifyMode` 为 `bugfree` 时，先读取并执行 [bugfree 验收](reference/bugfree.md)。standard 按下文 SDK 协议执行；Compat 仍按原协议执行。
 
 SDK 按 [SDK Verify 协议](reference/commands.md#sdk-verify-协议) 与当前 continuation 先完成 Runtime 检查，再启动新的只读 Verifier。传入候选 ID、全部验收项及引用、工作区、检查记录和 claimRequest；由 Verifier 用自己的会话领取 Action，并用当前 outcomeRequest 回报。SDK 不提交旧 Runner 的启动回执或结果。
 

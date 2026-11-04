@@ -75,6 +75,7 @@ export interface WorkflowKnowledgeProjectConfig {
 }
 
 export interface WorkflowNativeProjectConfig {
+  verify_mode?: 'standard' | 'bugfree';
   artifact_root: string;
   language: ProjectConfigLanguage;
   clarification_mode: WorkflowNativeClarificationMode;

@@ -1,3 +1,5 @@
+import { nativeVerifierContext } from './native-verifier-context.js';
+import { nativeVerifyMode } from './native-verification-policy.js';
 import {
   nativeSdkVerifyDecisions,
   nativeSdkVerifyWaitDecisions,
@@ -159,7 +161,7 @@ function nativeSdkOutcomeOutput(
         { name: '<check-name>', result: '<passed|failed|not-run>', note: '<actual-result>' },
       ],
       knownLimits: ['<actual-limit-or-remove-entry>'],
-      verificationChecks: [check],
+      verificationChecks: nativeVerifyMode(run) === 'bugfree' ? [] : [check],
       ...(action.stepId === 'supervisor.parent.builder'
         ? { candidateCommit: '<current-integration-HEAD>' }
         : {}),
@@ -174,7 +176,9 @@ function nativeSdkOutcomeOutput(
           iteration: state.loop.iteration,
           attempt: state.loop.attempt,
           verdict: '<pass|fail|blocked>',
-          acceptance,
+          ...(nativeVerifyMode(run) === 'bugfree'
+            ? { passedAcceptanceIds: acceptance.map(({ id }) => id), acceptance: [] }
+            : { acceptance }),
           risks: ['<observed-risk-or-remove-entry>'],
           summary: '<independent-verification-summary>',
         },
@@ -407,7 +411,10 @@ export async function projectNativeSdkDispatchResult(options: {
     ...(contextRequest ? { contextRequest } : {}),
     ...nativeSdkOutcomeAlternatives(run, action, state),
     state,
-    action,
+    action:
+      action.stepId === 'verify.verifier' && nativeVerifyMode(run) === 'bugfree'
+        ? { ...action, input: await nativeVerifierContext(run, action, options.projectRoot) }
+        : action,
     ...projection,
     ...(hasClaimedContext ? { continuation: continuationWithoutContext } : {}),
     ...(activeActions ? { activeActions } : {}),
@@ -1063,6 +1070,14 @@ async function projectNativeSdkContinuationValue(options: {
       ),
     };
   }
+  const verifier = run.actions.find(
+    (entry) =>
+      entry.stepId === 'verify.verifier' &&
+      ['pending', 'running', 'unknown'].includes(entry.status),
+  );
+  const verificationContext = verifier
+    ? await nativeVerifierContext(run, verifier, projectRoot)
+    : undefined;
   const pending = nativeSdkPendingActions(run);
   const nextAction = nativeSdkNextAction(run, state);
   const pendingActions = pending.map((action) => {
@@ -1078,7 +1093,15 @@ async function projectNativeSdkContinuationValue(options: {
       attempt: action.attempt,
       inputHash: action.inputHash,
       ...(action.type === 'handoff' || action.type === 'invoke_skill'
-        ? { input: action.input }
+        ? {
+            input:
+              verificationContext && action.stepId === 'verify.verifier'
+                ? verificationContext
+                : action.input,
+          }
+        : {}),
+      ...(verificationContext && action.stepId === 'verify.verifier'
+        ? { verificationContext }
         : {}),
       mechanism: 'runtime-dispatch',
       commandArgs:
@@ -1388,7 +1411,11 @@ async function projectNativeSdkContinuationValue(options: {
           projectRoot,
           (run.input as { artifactRootRef: string }).artifactRootRef,
         );
-        const current = await collectNativeSdkShapeProposal({ paths, state });
+        const current = await collectNativeSdkShapeProposal({
+          paths,
+          state,
+          verifyMode: nativeVerifyMode(run),
+        });
         const approved = (shapeWait.proposal as { outputs?: Record<string, RuntimeValue> })
           .outputs?.['shape.prepare'];
         currentProposal =
@@ -1920,7 +1947,10 @@ async function projectNativeSdkContinuationValue(options: {
             status: action.status,
             attempt: action.attempt,
             inputHash: action.inputHash,
-            input: action.input,
+            input:
+              verificationContext && action.stepId === 'verify.verifier'
+                ? verificationContext
+                : action.input,
             type: action.type,
             ref: action.ref,
             claim: action.claim,

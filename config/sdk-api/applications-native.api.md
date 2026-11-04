@@ -72,6 +72,13 @@ export function prepareNativeCandidateReviewProject(options: {
     };
 }>;
 
+// @public (undocumented)
+export function prepareNativeVerificationBaseline(projectRoot: string, artifactRootRef: string, name: string): Promise<{
+    directory: string;
+    ref: string;
+    contentHash: string;
+}>;
+
 // (No @packageDocumentation comment for this package)
 
 ```

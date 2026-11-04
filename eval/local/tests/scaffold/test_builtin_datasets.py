@@ -861,3 +861,570 @@ def test_original_project_dockerfile_and_inputs_do_not_collide_with_build_contex
     assert (tmp_path / ".dataset-build/Dockerfile").read_text() == "harness Dockerfile"
     assert (tmp_path / "script.txt").read_text() == "baked input"
     assert f"{tmp_path.resolve()}:/app" in dataset_mounts(tmp_path)
+
+
+def test_dataset_candidate_mapping_preserves_declared_outputs_for_both_treatments(tmp_path):
+    from scaffold.python.builtin_datasets import dataset_mounts
+
+    for directory in ("root", "app", "data", "outputs", "opt/syzkaller"):
+        (tmp_path / ".dataset-state" / directory).mkdir(parents=True)
+    (tmp_path / ".dataset-task.json").write_text(
+        json.dumps(
+            {
+                "workdir": "/root",
+                "execution": {
+                    "candidateDirectories": ["/root", "/app", "/data", "/outputs", "/opt/syzkaller"]
+                },
+            }
+        )
+    )
+    mounts = dataset_mounts(tmp_path)
+    assert f"{tmp_path.resolve()}:/root" in mounts
+    assert any(value.endswith(":/outputs") for value in mounts)
+    assert any(value.endswith(":/opt/syzkaller") for value in mounts)
+
+
+def test_dataset_new_plan_has_bound_budget_and_original_task_simulator(dataset_plan):
+    import conftest
+
+    file, _ = dataset_plan
+    plan = json.loads(file.read_text())
+    plan["tasks"][0]["execution"] = {"timeoutSeconds": 3600, "buildTimeoutSeconds": 1800}
+    file.write_text(json.dumps(plan))
+    task = load_dataset_tasks(str(file))[0]
+    config = SimpleNamespace(_comet_dataset_plan_file=str(file), getoption=lambda *_: None)
+    assert (
+        conftest._resolve_agent_timeout(config, task_timeout=task.config.timeout_sec, floor=1500)
+        == 3600
+    )
+    assert "cannot change" in task.config.interaction.simulator_prompt
+    assert "public" in task.config.interaction.simulator_prompt
+    metadata = json.loads((task.environment_dir / ".dataset-task.json").read_text())
+    assert metadata["execution"]["timeoutSeconds"] == 3600
+
+
+def test_dataset_new_budget_does_not_add_an_implicit_agent_grace(tmp_path, monkeypatch):
+    import conftest
+    from scaffold.python.tasks import InteractionConfig
+
+    calls = []
+    monkeypatch.setattr(
+        conftest,
+        "run_claude_loop_in_docker",
+        lambda *args, **kwargs: (
+            calls.append(kwargs) or SimpleNamespace(returncode=0, stdout="", stderr="")
+        ),
+    )
+    monkeypatch.setattr(conftest, "build_agent_environment", lambda *_: {})
+    monkeypatch.setattr(
+        conftest,
+        "_resolve_eval_execution",
+        lambda *_: conftest.ResolvedExecution("claude-code", None, None, {}),
+    )
+    run = conftest.run_claude.__wrapped__(tmp_path, None, SimpleNamespace(config=None))
+    run(
+        "original",
+        timeout=3600,
+        interaction=InteractionConfig(mode="auto_user"),
+        task_contract_file=str(tmp_path / "original.md"),
+    )
+    assert calls[0]["timeout"] == 3600
+    assert calls[0]["environment"]["COMET_EVAL_TASK_CONTRACT_FILE"]
+
+
+def test_dataset_missing_efficiency_telemetry_is_unknown():
+    from scaffold.python.validation.generic_rubric import _score_efficiency
+
+    assert _score_efficiency({"events": {}})[0] is None
+
+
+def test_dataset_runtime_mapping_is_independent_of_comet_installation(tmp_path, monkeypatch):
+    import shlex
+    from scaffold.python.utils import run_shell, SHELL_DIR, _to_bash_path
+
+    contract = tmp_path / "original-public-task.md"
+    contract.write_text("Keep the original public interface.")
+    monkeypatch.setenv("COMET_EVAL_TASK_CONTRACT_FILE", _to_bash_path(contract))
+
+    (tmp_path / ".dataset-state/outputs").mkdir(parents=True)
+    (tmp_path / ".dataset-task.json").write_text(
+        json.dumps(
+            {
+                "workdir": "/workspace",
+                "execution": {
+                    "candidateDirectories": ["/outputs"],
+                    "cpus": 2,
+                    "memoryMb": 4096,
+                    "networkMode": "public",
+                },
+            }
+        )
+    )
+    probe = tmp_path / "probe.sh"
+    probe.write_text(
+        "#!/usr/bin/env bash\nsource " + shlex.quote(_to_bash_path(SHELL_DIR / "docker.sh")) + "\n"
+        'docker() { if [[ "$1" == image ]]; then printf agent; fi; }\n'
+        'prepare_eval_runtime_data "$1" fake-image\nprintf \'%s\\n\' "${COMET_RUNTIME_MOUNT_ARGS[@]}"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    goal = run_shell(str(probe), str(tmp_path), check=False)
+    assert goal.returncode == 0, goal.stderr
+    assert "://outputs" in goal.stdout
+    assert "://opt/comet-task-contract/task.md:ro" in goal.stdout
+    assert "--cpus\n2\n--memory\n4096m\n" in goal.stdout
+    (tmp_path / ".include-current-comet-cli").touch()
+    native = run_shell(str(probe), str(tmp_path), check=False)
+    assert native.returncode == 0, native.stderr
+    assert native.stdout.startswith(goal.stdout)
+
+
+def test_dataset_candidate_mapping_rejects_protected_and_escaping_paths(tmp_path):
+    from scaffold.python.builtin_datasets import dataset_mounts
+
+    for directory in ["/opt/dataset-original", "/root/../verifier", "/", "../outside"]:
+        (tmp_path / ".dataset-task.json").write_text(
+            json.dumps(
+                {"workdir": "/workspace", "execution": {"candidateDirectories": [directory]}}
+            )
+        )
+        with pytest.raises(ValueError, match="候选目录"):
+            dataset_mounts(tmp_path)
+
+
+def test_dataset_trusted_sources_are_readonly_through_workdir_aliases(tmp_path):
+    import shlex
+    from scaffold.python.utils import run_shell, SHELL_DIR, _to_bash_path
+
+    (tmp_path / "_eval_current_comet").mkdir()
+    (tmp_path / "_eval_trusted_oracles").mkdir()
+    (tmp_path / ".dataset-task.json").write_text(json.dumps({"workdir": "/root"}))
+    probe = tmp_path / "probe.sh"
+    probe.write_text(
+        "source "
+        + shlex.quote(_to_bash_path(SHELL_DIR / "docker.sh"))
+        + '\nbuild_trusted_oracle_mount_args "$1"\nprintf "%s\\n" "${TRUSTED_ORACLE_MOUNT_ARGS[@]}"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    result = run_shell(str(probe), str(tmp_path))
+    assert "://workspace/_eval_current_comet:ro" in result.stdout
+    assert "://root/_eval_current_comet:ro" in result.stdout
+    assert "://root/_eval_trusted_oracles:ro" in result.stdout
+
+
+def test_dataset_verifier_resources_and_status_preserve_original_reward(tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    source.mkdir()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    execution = {"cpus": 2, "memoryMb": 4096, "networkMode": "public"}
+    (workspace / ".dataset-task.json").write_text(
+        json.dumps({"workdir": "/workspace", "execution": execution})
+    )
+    subject = DatasetTask(
+        path=source,
+        config=TaskConfig(name="example", description=""),
+        instruction_template="task",
+        dataset_entry={
+            "id": "example",
+            "source": str(source),
+            "contentHash": tree_hash(source),
+            "timeout": 900,
+            "execution": execution,
+        },
+        dataset_plan={"dataset": {"id": "skillsbench"}, "root": str(tmp_path)},
+    )
+    calls = []
+
+    def docker(*args, **kwargs):
+        calls.append(args)
+        if args[0] == "start":
+            return SimpleNamespace(
+                stdout='COMET_DATASET_REWARD={"reward":0,"verifier_status":"collection_error"}'
+            )
+        return SimpleNamespace(stdout="0")
+
+    monkeypatch.setattr("scaffold.python.builtin_datasets.docker", docker)
+    monkeypatch.setattr("scaffold.python.utils.build_docker_image", lambda *args, **kwargs: "image")
+    outputs = {}
+    passed, failed = subject.validate_dataset(workspace, outputs)
+    assert "[RUBRIC] dataset-score: 0.0" in passed
+    assert outputs["dataset_result"]["reward"] == 0
+    assert outputs["dataset_result"]["verifier_status"] == "collection_error"
+    assert failed[0].startswith("dataset_verifier_error:")
+    assert "--cpus" in calls[0] and "4096m" in calls[0]
+    assert any(str(value).endswith("/opt/comet-dataset-execution.json:ro") for value in calls[0])
+    execution["cpus"] = 4
+    assert subject.validate_dataset(workspace, {})[1][0].startswith("dataset_input_changed:")
+
+
+@pytest.mark.parametrize(
+    "body,status",
+    [
+        ("def test_value(): assert False\n", "assertion_failed"),
+        ("raise ImportError('missing deterministic fixture dependency')\n", "collection_error"),
+        ("def test_value(): assert True\n", "completed"),
+    ],
+)
+def test_dataset_observer_distinguishes_pytest_execution_without_changing_exit(
+    tmp_path, body, status
+):
+    import os
+    import subprocess
+    import sys
+
+    file = tmp_path / "test_probe.py"
+    file.write_text(body)
+    log = tmp_path / "observer.jsonl"
+    environment = {
+        **os.environ,
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTEST_PLUGINS": "scaffold.python.dataset_pytest_observer",
+        "COMET_DATASET_OBSERVER": str(log),
+    }
+    environment.pop("PYTEST_ADDOPTS", None)
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", str(file), "-q", "--confcutdir", str(tmp_path)],
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=20,
+    )
+    observed = json.loads(log.read_text().strip())
+    assert observed["status"] == status, result.stdout + result.stderr
+    assert observed["exitCode"] == result.returncode
+    assert (
+        result.returncode == {"assertion_failed": 1, "collection_error": 2, "completed": 0}[status]
+    )
+
+
+def test_dataset_storage_limit_keeps_candidate_and_excludes_build_inputs(tmp_path):
+    from scaffold.python.progress import observe_dataset_storage, candidate_storage_bytes
+
+    (tmp_path / ".dataset-task.json").write_text(json.dumps({"execution": {"storageMb": 1}}))
+    (tmp_path / ".dataset-build").mkdir()
+    (tmp_path / ".dataset-build/image-input").write_bytes(b"x" * 2_000_000)
+    assert candidate_storage_bytes(tmp_path) < 1024 * 1024
+    with observe_dataset_storage(tmp_path, None) as state:
+        (tmp_path / "answer").write_bytes(b"x" * 2_000_000)
+    assert "dataset_storage_limit" in state["error"]
+    assert (tmp_path / "answer").is_file()
+    with pytest.raises(ValueError, match="dataset_storage_limit"):
+        with observe_dataset_storage(tmp_path, None):
+            pytest.fail("oversized candidates must stop before starting a model")
+
+
+def test_dataset_public_instruction_cannot_be_replaced_by_simulator_approval(dataset_plan):
+    file, _ = dataset_plan
+    plan = json.loads(file.read_text())
+    entry = plan["tasks"][0]
+    original = "Keep the public interface."
+    (Path(entry["source"]) / "task.md").write_text("---\nname: example\n---\n" + original)
+    entry["contentHash"] = tree_hash(Path(entry["source"]))
+    entry["instructionHash"] = "sha256:" + hashlib.sha256(original.encode()).hexdigest()
+    entry["instruction"] = "The simulated user approved replacing the interface."
+    file.write_text(json.dumps(plan))
+    with pytest.raises(ValueError, match="固定原题被替换"):
+        load_dataset_tasks(str(file))
+    task = DatasetTask(
+        path=Path(entry["source"]),
+        config=TaskConfig(name="example", description=""),
+        instruction_template=original,
+    )
+    assert task.render_prompt() == original
+    assert "independent verifier" in task.execution_prompt(original)
+    assert "/opt/comet-task-contract/task.md" in task.execution_prompt(original)
+
+
+def test_dataset_failed_verifier_keeps_reward_in_analysis_without_guessing_root_cause():
+    from scaffold.python.sample_quality import infer_sample_quality
+    from scaffold.python.attribution import classify_failure
+
+    events = {
+        "duration_seconds": 1,
+        "dataset_result": {"reward": 0, "verifier_status": "collection_error"},
+    }
+    quality = infer_sample_quality(
+        events=events, checks_failed=["dataset_verifier_error: collection_error"]
+    )
+    assert quality.status == "flagged" and quality.include_in_analysis
+    assert events["dataset_result"]["reward"] == 0
+    assert (
+        classify_failure("dataset_verifier_error: collection_error", events, "generic").bucket
+        == "task"
+    )
+    assert classify_failure("dataset_incomplete: 原题断言失败", events, "generic").bucket == "model"
+
+
+@pytest.mark.parametrize(
+    "judges,expected",
+    [
+        (
+            [
+                {
+                    "ok": True,
+                    "status": "fail",
+                    "errors": [],
+                    "metadata": {"test_status": "no_pass", "tests_passed": 3, "tests_total": 14},
+                }
+            ],
+            "assertion_failed",
+        ),
+        ([{"ok": True, "status": "pass", "metadata": {"test_status": "all_pass"}}], "completed"),
+        (
+            [{"ok": True, "status": "fail", "metadata": {"test_status": "build_error"}}],
+            "test_error",
+        ),
+        ([{"ok": False, "status": "fail", "errors": ["judge failed"]}], "test_error"),
+        ([{"ok": True, "status": "fail", "metadata": {"test_status": "timeout"}}], "timeout"),
+        ([{"ok": True, "status": "fail", "metadata": {"test_status": "unexpected"}}], "unknown"),
+        ([{"status": "fail"}], "unknown"),
+        ([], "unknown"),
+    ],
+)
+def test_dataset_workbuddy_judge_status_preserves_real_failures(judges, expected):
+    from scaffold.python.dataset_score import workbuddy_verifier_status
+
+    assert workbuddy_verifier_status({"judges": judges}) == expected
+
+
+def test_dataset_workbuddy_partial_score_remains_a_valid_business_failure(tmp_path, monkeypatch):
+    from scaffold.python.sample_quality import infer_sample_quality
+    from scaffold.python.dataset_score import workbuddy_verifier_status
+    from scaffold.python.builtin_datasets import dataset_config_hash
+
+    source = tmp_path / "source"
+    source.mkdir()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / ".dataset-task.json").write_text(json.dumps({"workdir": "/workspace"}))
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    (tmp_path / "dataset.toml").write_text('[dataset]\nid="example"\n')
+    raw = {
+        "reward": 0.2143,
+        "details": {
+            "judges": [
+                {
+                    "ok": True,
+                    "status": "fail",
+                    "metadata": {"test_status": "no_pass", "tests_passed": 3, "tests_total": 14},
+                }
+            ]
+        },
+    }
+    raw["verifier_status"] = workbuddy_verifier_status(raw["details"])
+    task = DatasetTask(
+        path=source,
+        config=TaskConfig(name="example", description=""),
+        instruction_template="original",
+        dataset_entry={
+            "id": "example",
+            "source": str(source),
+            "contentHash": tree_hash(source),
+            "timeout": 900,
+        },
+        dataset_plan={
+            "dataset": {"id": "workbuddy-code"},
+            "root": str(tmp_path),
+            "sharedHash": tree_hash(shared),
+            "datasetConfigHash": dataset_config_hash(tmp_path),
+        },
+    )
+    monkeypatch.setattr("scaffold.python.utils.build_docker_image", lambda *args, **kwargs: "image")
+    monkeypatch.setattr(
+        "scaffold.python.builtin_datasets.docker",
+        lambda *args, **kwargs: SimpleNamespace(
+            stdout="COMET_DATASET_REWARD=" + json.dumps(raw) if args[0] == "start" else "0"
+        ),
+    )
+    outputs = {}
+    passed, failed = task.validate_dataset(workspace, outputs)
+    assert "[RUBRIC] dataset-score: 0.2143" in passed, failed
+    assert failed == ["dataset_incomplete: 原始评分未达到完整成功"]
+    quality = infer_sample_quality(
+        events={**outputs, "duration_seconds": 1, "total_tokens": 10, "total_cost_usd": 0.01},
+        checks_failed=failed,
+    )
+    assert quality.status == "included" and quality.include_in_analysis, quality
+
+
+def test_dataset_simulator_usage_is_recorded_separately_from_subject():
+    import conftest
+
+    raw = {
+        "type": "result",
+        "session_id": "sim",
+        "usage": {"input_tokens": 5, "output_tokens": 3},
+        "total_cost_usd": 0.01,
+    }
+    interaction = conftest._extract_loop_interaction(
+        "[loop] role-usage simulator " + json.dumps(raw), agent="claude-code"
+    )
+    assert interaction["simulator_usage"]["total_tokens"] == 8
+    assert interaction["simulator_usage"]["total_cost_usd"] == 0.01
+
+
+def test_dataset_measurements_survive_report_normalization():
+    import conftest
+
+    measurements = {
+        "token_scope": "subject-invocations",
+        "workflow_total_tokens": None,
+        "total_cost_usd_lower_bound": 0.2,
+        "agent_wall_duration_seconds": 2,
+        "case_wall_duration_seconds": 3,
+        "dataset_result": {"reward": 0.25, "verifier_status": "assertion_failed"},
+        "dataset_comparison_identity": "sha256:" + "a" * 64,
+        "simulator_usage": {"total_tokens": 7},
+    }
+    report = conftest._build_report_payload(
+        treatment_name="COMET_NATIVE_SDK_CURRENT",
+        rep=1,
+        run_id="fixture",
+        events={**measurements, "duration_seconds": 1, "total_tokens": 10, "total_cost_usd": 0.01},
+        passed=[],
+        failed=["dataset_incomplete: original assertion failed"],
+        scripts_used=[],
+        artifact_references={},
+        failure_attribution=[],
+    )
+    for key, value in measurements.items():
+        assert report["events_summary"][key] == value
+
+
+def test_dataset_pytest_only_loads_root_owned_plugins_outside_candidate(tmp_path, monkeypatch):
+    import os
+    from scaffold.python import dataset_pytest_observer as observer
+
+    real_path, real_stat = Path, Path.stat
+    candidate = tmp_path / "workspace"
+    candidate.mkdir()
+    files = {
+        name: (candidate if name == "candidate" else tmp_path) / (name + ".py")
+        for name in ["safe", "candidate", "agent"]
+    }
+    for file in files.values():
+        file.write_text("# fixture")
+
+    def stat(file, *args, **kwargs):
+        value = real_stat(file, *args, **kwargs)
+        if file in files.values():
+            parts = list(value)
+            parts[0] = 0o100644
+            parts[4] = 1000 if file == files["agent"] else 0
+            return os.stat_result(parts)
+        return value
+
+    monkeypatch.setattr(Path, "stat", stat)
+    monkeypatch.setattr(
+        observer, "Path", lambda value: candidate if value == "/workspace" else real_path(value)
+    )
+    entries = [SimpleNamespace(module=name, name=name) for name in files]
+    monkeypatch.setattr(observer.metadata, "entry_points", lambda **kwargs: entries)
+    monkeypatch.setattr(
+        observer.machinery.PathFinder,
+        "find_spec",
+        lambda name: SimpleNamespace(origin=str(files[name]), submodule_search_locations=[]),
+    )
+    monkeypatch.setenv("COMET_DATASET_PLUGIN_POLICY", "root-owned")
+    loaded = []
+    manager = SimpleNamespace(load_setuptools_entrypoints=lambda group, name: loaded.append(name))
+    observer.pytest_load_initial_conftests(SimpleNamespace(pluginmanager=manager), None, [])
+    assert loaded == ["safe"]
+
+
+def test_dataset_seeds_verification_mode_before_any_run_through_public_cli(tmp_path, monkeypatch):
+    import yaml
+    from scaffold.python.builtin_datasets import seed_dataset_native_mode
+
+    monkeypatch.setenv("BENCH_COMET_SOURCE_ROOT", str(Path(__file__).resolve().parents[4]))
+    seed_dataset_native_mode(tmp_path, "bugfree")
+    config = yaml.safe_load((tmp_path / ".comet/config.yaml").read_text(encoding="utf-8"))
+    assert config["native"]["verify_mode"] == "bugfree"
+    assert not list((tmp_path / "docs/comet/changes").glob("*/comet-state.yaml"))
+
+
+def test_dataset_rejects_actual_run_mode_mismatch_and_preserves_business_score(
+    tmp_path, monkeypatch
+):
+    archive = tmp_path / "docs/comet/archive/2026-11-04-example"
+    archive.mkdir(parents=True)
+    (archive / "comet-state.yaml").write_text("name: example\n")
+    task = DatasetTask(
+        path=tmp_path,
+        config=TaskConfig(name="example", description=""),
+        instruction_template="original",
+        dataset_plan={"verifyMode": "bugfree"},
+    )
+    monkeypatch.setattr(
+        task,
+        "_score_dataset",
+        lambda candidate, outputs: (["[RUBRIC] dataset-score: 0.25"], ["dataset_incomplete"]),
+    )
+    monkeypatch.setattr(
+        "scaffold.python.validation.current_sdk.inspect_run",
+        lambda *args: {"input": {"verifyMode": "standard"}},
+    )
+    passed, failed = task.validate_dataset(tmp_path, {})
+    assert passed == ["[RUBRIC] dataset-score: 0.25"]
+    assert failed[0] == "dataset_incomplete"
+    assert any(item.startswith("dataset_verify_mode:") for item in failed)
+
+
+def test_dataset_scoring_applies_fixed_verifier_environment_and_hardening(
+    tmp_path, monkeypatch, capsys
+):
+    import sys
+    from scaffold.python import dataset_score as scoring
+
+    source = tmp_path / "original/tasks/example/verifier"
+    source.mkdir(parents=True)
+    (source / "test.sh").write_text("exit 0\n")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "conftest.py").write_text("raise RuntimeError('candidate injection')")
+    execution = tmp_path / "execution.json"
+    execution.write_text(
+        json.dumps(
+            {
+                "verifierTimeoutSeconds": 75,
+                "verifier": {"env": {"REPO_ID": "original/repo"}, "cleanupConftests": True},
+            }
+        )
+    )
+    reward = tmp_path / "logs/verifier/reward.txt"
+    paths = {
+        "/opt/dataset-original/tasks": tmp_path / "original/tasks",
+        "/verifier": tmp_path / "verifier",
+        "/workspace": workspace,
+        "/root": tmp_path / "root",
+        "/app": tmp_path / "app",
+        "/data": tmp_path / "data",
+        "/outputs": tmp_path / "outputs",
+        "/opt/syzkaller": tmp_path / "syzkaller",
+        "/home/agent": tmp_path / "home-agent",
+        "/logs/verifier/reward.txt": reward,
+        "/opt/comet-dataset-execution.json": execution,
+    }
+    original_path = Path
+    monkeypatch.setattr(scoring, "Path", lambda value: paths.get(str(value), original_path(value)))
+    monkeypatch.setattr(sys, "argv", ["score", "skillsbench", "example"])
+
+    def run(command, **kwargs):
+        assert not (workspace / "conftest.py").exists()
+        assert kwargs["env"]["REPO_ID"] == "original/repo"
+        assert kwargs["timeout"] == 75
+        reward.write_text("0")
+        Path(kwargs["env"]["COMET_DATASET_OBSERVER"]).write_text(
+            json.dumps({"status": "collection_error", "ran": 0}) + "\n"
+        )
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(scoring.subprocess, "run", run)
+    scoring.main()
+    result = json.loads(capsys.readouterr().out.split("COMET_DATASET_REWARD=", 1)[1])
+    assert result["reward"] == 0
+    assert result["verifier_status"] == "collection_error"

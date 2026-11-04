@@ -84,6 +84,7 @@ describe('Native project configuration', () => {
       default_workflow: 'native',
       workflows: ['native'],
       ambient_resume: true,
+      change_walkthrough: true,
       memory: {
         learning: true,
         retrieval: true,
@@ -92,6 +93,7 @@ describe('Native project configuration', () => {
         provider: 'local',
       },
       native: {
+        verify_mode: 'standard',
         artifact_root: 'docs',
         language: 'en',
         clarification_mode: 'batch',

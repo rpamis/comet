@@ -24,7 +24,10 @@ it('requires the WorkBuddy dataset contract and binds its content before a model
   await fs.mkdir(path.join(task, 'environment'), { recursive: true });
   await fs.mkdir(path.join(task, 'tests'));
   await fs.mkdir(path.join(root, 'shared'));
-  await fs.writeFile(path.join(task, 'task.toml'), '[agent]\ntimeout_sec=1800\n');
+  await fs.writeFile(
+    path.join(task, 'task.toml'),
+    '[agent]\ntimeout_sec=1800\n[environment]\nmcp_servers=[]\n[verifier]\nimport_path="workbuddy_bench.judge:CompositeVerifier"\n',
+  );
   await fs.writeFile(path.join(task, 'instruction.md'), 'Fix the bug.');
   await fs.writeFile(
     path.join(task, 'environment/Dockerfile'),
@@ -35,6 +38,7 @@ it('requires the WorkBuddy dataset contract and binds its content before a model
   await expect(inspectBuiltinDataset(options)).rejects.toThrow('dataset.toml');
   await fs.writeFile(path.join(root, 'dataset.toml'), '[dataset]\nid="example"\nversion="1.0"\n');
   const first = await inspectBuiltinDataset(options);
+  expect(first.tasks[0].supported).toBe(true);
   expect(first.datasetConfigHash).toMatch(/^sha256:/u);
   await fs.appendFile(path.join(root, 'dataset.toml'), '\n# changed scoring contract\n');
   const changed = await inspectBuiltinDataset(options);
@@ -118,4 +122,103 @@ it('preserves SkillsBench instructions, fractional rewards and isolated verifier
   await expect(
     inspectBuiltinDataset({ dataset: 'skillsbench', datasetRoot: root, task: '../escape' }),
   ).rejects.toThrow();
+});
+
+async function datasetFixture(metadata: string, instruction = 'Write /outputs/result.json.') {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-dataset-policy-'));
+  roots.push(root);
+  const task = path.join(root, 'tasks/example');
+  await fs.mkdir(path.join(task, 'environment'), { recursive: true });
+  await fs.mkdir(path.join(task, 'verifier'));
+  await fs.writeFile(path.join(task, 'task.md'), `---\n${metadata}\n---\n${instruction}`);
+  await fs.writeFile(
+    path.join(task, 'environment/Dockerfile'),
+    'FROM python:3.12\nWORKDIR /root\n',
+  );
+  await fs.writeFile(path.join(task, 'verifier/test.sh'), 'exit 0\n');
+  return root;
+}
+
+it('binds finite per-task budgets, resources and candidate directories before execution', async () => {
+  const root = await datasetFixture(
+    'agent:\n  timeout_sec: 900\nenvironment:\n  cpus: 8\n  memory_mb: 4096\n  storage_mb: 10240\n  network_mode: public\n  build_timeout_sec: 600\nverifier:\n  env:\n    REPO_ID: example/repo\n  hardening:\n    cleanup_conftests: true',
+  );
+  const plan = await inspectBuiltinDataset({ dataset: 'skillsbench', datasetRoot: root });
+  expect(plan.tasks[0].execution).toMatchObject({
+    timeoutSeconds: 3600,
+    buildTimeoutSeconds: 1800,
+    cpus: 8,
+    memoryMb: 4096,
+    storageMb: 10240,
+    networkMode: 'public',
+    verifier: { env: { REPO_ID: 'example/repo' }, cleanupConftests: true },
+  });
+  expect(plan.tasks[0].execution.candidateDirectories).toContain('/outputs');
+  expect(plan.tasks[0].instructionHash).toMatch(/^sha256:/);
+});
+
+it('rejects unsupported dataset execution conditions rather than silently dropping them', async () => {
+  const root = await datasetFixture('environment:\n  network_mode: no-network');
+  const plan = await inspectBuiltinDataset({ dataset: 'skillsbench', datasetRoot: root });
+  expect(plan.tasks[0].supported).toBe(false);
+  expect(plan.tasks[0].reason).toMatch(/网络/);
+});
+
+it('binds Native verification mode in the collected plan without exposing it to Goal', async () => {
+  const root = await datasetFixture('agent:\n  timeout_sec: 900');
+  const options = { dataset: 'skillsbench', datasetRoot: root };
+  const standard = await inspectBuiltinDataset(options);
+  const bugfree = await inspectBuiltinDataset({ ...options, verifyMode: 'bugfree' });
+  expect(standard.verifyMode).toBe('standard');
+  expect(bugfree.verifyMode).toBe('bugfree');
+  expect(bugfree.contentHash).not.toBe(standard.contentHash);
+  expect(bugfree.comparisonHash).toBe(standard.comparisonHash);
+  expect(bugfree.tasks).toEqual(standard.tasks);
+  await expect(
+    inspectBuiltinDataset({ ...options, datasetTreatment: 'goal', verifyMode: 'bugfree' }),
+  ).rejects.toThrow('Goal');
+});
+
+it('checks WorkBuddy tests-only restrictions per treatment without changing the grader', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-workbuddy-scope-'));
+  roots.push(root);
+  const task = path.join(root, 'tasks/testing-hard-router_matching');
+  await fs.mkdir(path.join(task, 'environment'), { recursive: true });
+  await fs.mkdir(path.join(task, 'tests'));
+  await fs.mkdir(path.join(root, 'shared'));
+  await fs.writeFile(path.join(root, 'dataset.toml'), '[dataset]\nid="example"\n');
+  await fs.writeFile(
+    path.join(task, 'task.toml'),
+    '[agent]\ntimeout_sec=1800\n[environment]\nmcp_servers=[]\n[verifier]\nimport_path="workbuddy_bench.judge:CompositeVerifier"\n',
+  );
+  await fs.writeFile(path.join(task, 'instruction.md'), 'Only change tests/.');
+  await fs.writeFile(
+    path.join(task, 'environment/Dockerfile'),
+    'FROM python:3.12\nWORKDIR /workspace\n',
+  );
+  await fs.writeFile(path.join(task, 'tests/verifier.toml'), 'checks=[]\n');
+  const options = { dataset: 'workbuddy-code', datasetRoot: root };
+  expect((await inspectBuiltinDataset(options)).tasks[0]).toMatchObject({ supported: false });
+  expect(
+    (await inspectBuiltinDataset({ ...options, datasetTreatment: 'goal' })).tasks[0].supported,
+  ).toBe(true);
+  for (const id of [
+    'testing-medium-format_errors',
+    'testing-medium-option_resolution',
+    'testing-medium-request_builder',
+    'repo_understanding-hard-example',
+  ]) {
+    const directory = path.join(root, 'tasks', id);
+    await fs.cp(task, directory, { recursive: true });
+    if (id.startsWith('repo_understanding'))
+      await fs.writeFile(
+        path.join(directory, 'tests/verifier.toml'),
+        'type="repo_understanding"\n',
+      );
+    expect((await inspectBuiltinDataset({ ...options, task: id })).tasks[0].supported).toBe(false);
+    expect(
+      (await inspectBuiltinDataset({ ...options, task: id, datasetTreatment: 'goal' })).tasks[0]
+        .supported,
+    ).toBe(true);
+  }
 });

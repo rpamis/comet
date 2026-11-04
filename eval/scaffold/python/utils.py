@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 from scaffold.python.agents import validate_agent_id
 from scaffold.python.execution import ResolvedExecution, build_agent_environment
 from scaffold.python.paths import EVAL_ROOT, get_suite_root
-from scaffold.python.progress import observe_eval_container
+from scaffold.python.progress import observe_eval_container, observe_dataset_storage
 
 TEST_CONTEXT_FILE = os.environ.get("BENCH_TEST_CONTEXT", "_test_context.json")
 TEST_RESULTS_FILE = os.environ.get("BENCH_TEST_RESULTS", "_test_results.json")
@@ -157,6 +157,7 @@ WSL_ENV_KEYS = (
     "COMET_APPLICATION_EVAL_CONTEXT",
     "COMET_EVAL_EXPERIMENT_ID",
     "COMET_EVAL_PROJECT_ID",
+    "COMET_EVAL_TASK_CONTRACT_FILE",
     "COMET_EVAL_CUSTOM_EXECUTABLE",
     "COMET_EVAL_CUSTOM_CREDENTIALS",
     "COMET_EVAL_CUSTOM_MODEL",
@@ -295,6 +296,9 @@ def run_shell(
                 )
         with (
             observe_eval_container(container_name),
+            observe_dataset_storage(
+                Path(args[1]) if script == "docker.sh" and len(args) > 1 else None, container_name
+            ) as storage,
             tempfile.TemporaryFile() as stdout_file,
             tempfile.TemporaryFile() as stderr_file,
         ):
@@ -318,11 +322,14 @@ def run_shell(
                 ) from error
             stdout_file.seek(0)
             stderr_file.seek(0)
+            if "check" in storage:
+                storage["check"]()
             completed = subprocess.CompletedProcess(
                 cmd,
-                result.returncode,
+                122 if storage["error"] else result.returncode,
                 stdout_file.read().decode("utf-8", errors="replace"),
-                stderr_file.read().decode("utf-8", errors="replace"),
+                stderr_file.read().decode("utf-8", errors="replace")
+                + ("\n" + storage["error"] if storage["error"] else ""),
             )
             if check:
                 completed.check_returncode()

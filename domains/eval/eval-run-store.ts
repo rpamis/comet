@@ -268,6 +268,11 @@ function normalizeCase(id: string, raw: Json, root: string, includeContent = tru
         ])
       : text(manifest.case_hash),
     validatorHash: text(manifest.validator_hash),
+    datasetComparisonIdentity: /^sha256:[a-f0-9]{64}$/u.test(
+      String(events.dataset_comparison_identity),
+    )
+      ? String(events.dataset_comparison_identity)
+      : null,
     artifacts,
   };
   item.task = excerpt(item.task, 1024);
@@ -1026,12 +1031,28 @@ export async function readEvalRun(
     );
   }
   const datasetPlan = object(metadata?.dataset_plan);
+  if (typeof object(datasetPlan.dataset).id === 'string') {
+    config.dataset ??= String(object(datasetPlan.dataset).id);
+    config.datasetTreatment ??= datasetPlan.treatment === 'CLAUDE_CODE_GOAL' ? 'goal' : 'native';
+    if (datasetPlan.verifyMode === 'standard' || datasetPlan.verifyMode === 'bugfree')
+      config.verifyMode ??= datasetPlan.verifyMode;
+  }
   const datasetTasks = Array.isArray(datasetPlan.tasks) ? datasetPlan.tasks.map(object) : [];
+  if (datasetPlan.adapterHash)
+    diagnostics.push(
+      '统计范围：Token 为主体调用（含缓存），模拟用户单独记录，角色用量不全时 workflow 总量未知；主体活动耗时不等于端到端时间，费用为 CLI 估算。',
+    );
   const datasetScope =
     datasetPlan.schema === 'comet.eval.dataset.v1' &&
     ['COMET_NATIVE_SDK_CURRENT', 'CLAUDE_CODE_GOAL'].includes(String(datasetPlan.treatment)) &&
     /^sha256:[a-f0-9]{64}$/u.test(String(datasetPlan.contentHash)) &&
     /^sha256:[a-f0-9]{64}$/u.test(String(datasetPlan.scorerHash)) &&
+    (datasetPlan.comparisonHash === undefined ||
+      /^sha256:[a-f0-9]{64}$/u.test(String(datasetPlan.comparisonHash))) &&
+    (datasetPlan.adapterHash === undefined ||
+      /^sha256:[a-f0-9]{64}$/u.test(String(datasetPlan.adapterHash))) &&
+    (datasetPlan.verifyMode === undefined ||
+      ['standard', 'bugfree'].includes(String(datasetPlan.verifyMode))) &&
     cases.length > 0 &&
     cases.every(
       (item) =>
@@ -1047,7 +1068,7 @@ export async function readEvalRun(
         item.scores['dataset-score']! <= 1,
     )
       ? `dataset:${evalValueHash([
-          datasetPlan.contentHash,
+          datasetPlan.comparisonHash ?? datasetPlan.contentHash,
           datasetPlan.scorerHash,
           datasetPlan.dataset,
           datasetPlan.sharedHash,
@@ -1477,7 +1498,11 @@ export async function compareEvalRuns(
   if (candidateId === baselineId) reasons.push('不能与自身比较');
   if (!candidate.baselineScope || candidate.baselineScope !== baseline.baselineScope)
     reasons.push('目标、固定用例或评分规则不一致');
-  if (!baseline.baselineEligible || candidate.conclusion === 'incomplete')
+  if (
+    !baseline.baselineEligible ||
+    candidate.conclusion === 'incomplete' ||
+    (datasetComparison && !candidate.baselineEligible)
+  )
     reasons.push('对比需要完整且有效的结果');
   if (
     datasetComparison &&
@@ -1502,6 +1527,7 @@ export async function compareEvalRuns(
     'maxTurns',
     'dataset',
     'datasetTreatment',
+    'verifyMode',
     'count',
   ]
     .filter((field) => (baseline.config as Json)[field] !== (candidate.config as Json)[field])
@@ -1510,6 +1536,25 @@ export async function compareEvalRuns(
       baseline: (baseline.config as Json)[field] ?? null,
       candidate: (candidate.config as Json)[field] ?? null,
     }));
+  if (
+    datasetComparison &&
+    candidate.config.datasetTreatment !== 'goal' &&
+    baseline.config.datasetTreatment !== 'goal' &&
+    candidate.config.verifyMode !== baseline.config.verifyMode
+  ) {
+    for (const item of candidate.cases) {
+      const other = baseline.cases.find(
+        (value) => value.task === item.task && value.repetition === item.repetition,
+      );
+      if (
+        !item.datasetComparisonIdentity ||
+        item.datasetComparisonIdentity !== other?.datasetComparisonIdentity
+      ) {
+        reasons.push('验证模式对照需要相同产品快照、实际镜像、Agent CLI、模型和交互身份');
+        break;
+      }
+    }
+  }
   if (candidate.target.contentHash !== baseline.target.contentHash)
     configurationChanges.push({
       field: 'contentHash',
