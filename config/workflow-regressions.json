@@ -7823,6 +7823,104 @@
       ],
       "sources": ["report:2026-11-04-native-bugfree-protocol-stall"],
       "reproduction": "c3d0e82f 的已停止 Eval 暴露问题；相同确定性案例先红后绿，详见 docs/research/2026-11-04-native-bugfree-protocol-stall.zh.md。"
+    },
+    {
+      "id": "native-original-request-review",
+      "behavior": "保存原始 task 并要求独立验收在同一结果中核对，阻止缺项、冲突或疑问的 pass，保留旧 Run 兼容",
+      "coverageLevel": "public-cli",
+      "expected": "standard 与 bugfree 保存原始文本，交接提供来源；缺少或不一致的核对不通过，aligned 的真实领取正常通过",
+      "forbidden": "只凭新 Spec 省略原始请求、让冲突声明通过、伪造旧 Run 原文、增加审查 Agent 或重跑全部检查",
+      "rootCause": "--task 仅用于检索，原始请求未进入 Run；结果只有生成的验收项结论",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "binds the original task and rejects a passing review that omits or contradicts it in standard",
+          "requiredNames": [
+            "binds the original task and rejects a passing review that omits or contradicts it in standard"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "binds the original task and rejects a passing review that omits or contradicts it in bugfree",
+          "requiredNames": [
+            "binds the original task and rejects a passing review that omits or contradicts it in bugfree"
+          ]
+        },
+        {
+          "file": "test/app/native-bugfree-cli.test.ts",
+          "namePattern": "submits the typed receipt template through the public CLI without rebuilding identity fields",
+          "requiredNames": [
+            "submits the typed receipt template through the public CLI without rebuilding identity fields"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "native-real-model-original-request-alignment",
+          "status": "pending",
+          "evidence": [
+            "本次仅获修复授权；真实模型、评分容器或配对运行未启动。既有 3/14 和失败记录保留，不能用确定性测试证明语义或耗时改善。"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-04-native-original-request-verification"],
+      "reproduction": "基线 5759f156 的失败样本及确定性红绿测试见 docs/research/2026-11-04-native-original-request-verification.zh.md；没有启动新的 Eval。"
+    },
+    {
+      "id": "eval-native-container-mode-inspection",
+      "behavior": "在已有评分容器原题执行前查询真实 Native Run 模式，保留业务得分并区分查询不可用与已证明不匹配",
+      "coverageLevel": "unit",
+      "expected": "本机不加载容器绝对模块路径，使用只读 Runtime 卷和公开 SDK 查询；查询先于原评分器修改副本，缺证据如实阻塞对照",
+      "forbidden": "portable checkpoint 冒充真实 Run、把 URI 错误当成模式不同、丢弃原题低分、挂载任意其他用例的卷",
+      "rootCause": "本机校验沿用 /opt/comet-current 默认路径，并将所有异常归为 mismatch",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "inspects Native mode inside the container and separates unavailable proof from mismatch",
+          "requiredNames": [
+            "inspects Native mode inside the container and separates unavailable proof from mismatch"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "benchmark-real-container-readonly-native-mode-inspection",
+          "status": "pending",
+          "evidence": [
+            "本次仅获修复授权；真实模型、评分容器或配对运行未启动。既有 3/14 和失败记录保留，不能用确定性测试证明语义或耗时改善。"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-04-native-original-request-verification"],
+      "reproduction": "基线 5759f156 的失败样本及确定性红绿测试见 docs/research/2026-11-04-native-original-request-verification.zh.md；没有启动新的 Eval。"
+    },
+    {
+      "id": "eval-dataset-image-build-inputs",
+      "behavior": "镜像键只绑定实际构建输入，不受模式或后创建的控制器文件影响，安装脚本变化必须失效缓存",
+      "coverageLevel": "unit",
+      "expected": "相同实际构建内容在 standard/bugfree 下键一致，任一实际输入改变后键变化，实际镜像身份检查仍严格",
+      "forbidden": "忽略真实镜像差异、只靠同一任务名比较、将模式元数据当镜像内容、漏掉安装器等实际输入",
+      "rootCause": "缓存键混入整个可变 dataset-task 元数据，但没有覆盖完整构建目录",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "keeps dataset image identity stable across modes while binding every build input",
+          "requiredNames": [
+            "keeps dataset image identity stable across modes while binding every build input"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "benchmark-real-image-and-paired-mode-identity",
+          "status": "pending",
+          "evidence": [
+            "本次仅获修复授权；真实模型、评分容器或配对运行未启动。既有 3/14 和失败记录保留，不能用确定性测试证明语义或耗时改善。"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-04-native-original-request-verification"],
+      "reproduction": "基线 5759f156 的失败样本及确定性红绿测试见 docs/research/2026-11-04-native-original-request-verification.zh.md；没有启动新的 Eval。"
     }
   ]
 }

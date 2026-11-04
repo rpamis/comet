@@ -22,7 +22,7 @@ Native 在项目中保存需求和验收结论。先确认 change 的运行格�
 首次开始任务或更换宿主时，必须读取并执行[宿主能力核对](../comet/reference/host-check.md)，在确认 Shape 或开始新的实现前核对独立验收和 Runtime 回报能力。
 
 1. 已知名称时运行 `comet native select <change-name> --json`，否则运行 `comet native status --json`。active change 已存在时，进入 `workspace.projectRoot`；工作区有歧义时才让用户选择。若 Run 记录丢失，读取[故障恢复](reference/recovery.md#故障恢复)：有检查点则沿用阶段；否则先诊断并等待恢复决定。
-2. 没有对应 active change 时，按[工作区选择参考](reference/workspace.md#创建-change)确定隔离方式，运行 `native new` 创建，再进入 `preparation.projectRoot`。准备失败时，保留已创建的分支和目录，按返回的原因处理。
+2. 没有对应 active change 时，按[工作区选择参考](reference/workspace.md#创建-change)确定隔离方式，运行 `native new`，用 `--task` 传入用户原始请求，不先改写成方案摘要，再进入 `preparation.projectRoot`。准备失败时，保留已创建的分支和目录，按返回的原因处理。
 3. 进入工作区并取得 `phase` 后，按[记忆接入](reference/commands.md#记忆接入)获取适用上下文。进入新阶段、交接给新 Agent 或恢复上下文时，由接收方执行 `contextRequest`，重新取得当前适用偏好和项目约束；同一阶段连续执行无需重复获取。任务结束时按该节分别处理项目记忆和个人记忆，再调用 `comet task --complete`。
 
 记忆学习只提交可复用的用户信息；任务摘要、进展、命令输出和测试结果不写入个人记忆。任务结束前按记忆接入章节完成学习检查，并记录 `submitted`、`no-observation` 或 `not-run`。
@@ -53,6 +53,8 @@ Agent 先调查能够查明的事实，只询问会改变用户可见结果、�
 
 把用户明确指定的文件位置、必需章节和产物格式写入 brief 的约束，按原要求准备这些内容；不能因模板默认位置而改放其他文件。交接和恢复时以这些已确认约束核对产物，不能只保留业务示例。
 
+写完 Shape 后，回到原始请求和公开项目资料核对目标、验收项与非目标。把实现必需的行为列为非目标前，先说明它会怎样改变用户要求；有多种解释时，写清依据和影响，不把自行选择的解释当作用户已确认的要求。固定评估任务中的模拟批准不能修改原题。
+
 完成标准：需求来源已在用户指定的覆盖边界内完整处理并按用途分类，所有影响结果的决定和假设已处理，没有 `[blocking]`，用户明确确认目标、范围、关键决定、全部验收项和非目标，并且 Runtime 已进入 Build。
 
 新建需求或重新确认 Shape 时，brief 只要求目标、范围、非目标和验收示例四个核心章节；有约束、关键决定、待解决问题或特殊验证要求时再补对应章节。Runtime 同时检查完整目标 Spec 或明确的无产品行为变更理由及正式路径。失败会给出文件和修复动作；补齐后重跑 continuation。后续阶段的旧需求保留进度，回到 Shape 时再检查。
@@ -62,6 +64,8 @@ Build、Verify 或待归档阶段出现实际文件变化，或 continuation 指
 ## Build ↔ Verify Loop
 
 standard 模式下，Builder 提交候选实现后，由 Runtime 执行必要检查，再交给新的只读 Verifier 验收。bugfree 按 [bugfree 验收](reference/bugfree.md)执行。未通过则回 Build 修复并重新提交；全部通过后，等待用户接受验收结果。
+
+Verifier 先读原始请求，再对照 Spec 和实现，核对有无遗漏、未经授权的范围缩减或接口行为变化。SDK Run 使用同一份验收结果中的 `requestReview` 说明结论；有冲突或仍影响交付的疑问时，保留 fail 或 blocked。旧 Run 和 Compat 没有保存原始请求时，从交接材料和用户记录补查，不把新生成的 Spec 当成唯一需求来源；Compat 沿用原结果结构。语义核对沿用当前 Verifier，不增加 Agent 或固定测试轮次。
 
 `iteration` 表示提交实现的轮次，`attempt` 表示对同一份候选实现启动 Verifier 的次数。所有计数都由 Runtime 更新。连续验收失败或没有进展的次数达到配置上限时，按最新指令等待用户决定或处理阻塞。
 

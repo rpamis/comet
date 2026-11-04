@@ -206,6 +206,42 @@ get_dockerfile_hash() {
     if [[ -f "$dir/.dataset-task.json" && -f "$dir/.dataset-build/Dockerfile" ]]; then
         inputs_dir="$dir/.dataset-build"
         dockerfile="$inputs_dir/Dockerfile"
+        # 模式与后创建的控制器文件不是镜像输入；逐文件绑定实际构建目录。
+        node --input-type=module - "$(_winpath "$inputs_dir")" <<'JS'
+import { createHash } from 'node:crypto';
+import { createReadStream, promises as fs } from 'node:fs';
+import path from 'node:path';
+const root = path.resolve(process.argv[2]);
+const files = [];
+const walk = async (directory) => {
+    files.push({ file: directory, stat: await fs.lstat(directory) });
+    for (const name of (await fs.readdir(directory)).sort()) {
+        const file = path.join(directory, name), stat = await fs.lstat(file);
+        if (stat.isSymbolicLink()) throw new Error('Dataset build inputs cannot contain symlinks');
+        if (stat.isDirectory()) await walk(file);
+        else if (stat.isFile()) files.push({ file, stat });
+        else throw new Error('Dataset build input is not a regular file');
+    }
+};
+await walk(root);
+const hash = createHash('sha256');
+for (const { file, stat } of files) {
+    hash.update(JSON.stringify([path.relative(root, file).split(path.sep).join('/'), stat.mode]));
+    hash.update('\0');
+    if (!stat.isDirectory()) for await (const chunk of createReadStream(file)) hash.update(chunk);
+    hash.update('\0');
+    const after = await fs.lstat(file);
+    if (after.size !== stat.size || after.mtimeMs !== stat.mtimeMs || after.ctimeMs !== stat.ctimeMs || after.ino !== stat.ino)
+        throw new Error('Dataset build input changed while hashing');
+}
+const before = files.map(({ file }) => file);
+files.length = 0;
+await walk(root);
+if (JSON.stringify(before) !== JSON.stringify(files.map(({ file }) => file)))
+    throw new Error('Dataset build input set changed while hashing');
+console.log(hash.digest('hex').slice(0, 32));
+JS
+        return $?
     fi
 
     if [[ ! -f "$dockerfile" ]]; then
@@ -1233,6 +1269,12 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     shift || true
 
     case "$cmd" in
+    build-hash)
+        get_dockerfile_hash "${1:?Missing build directory}"
+        ;;
+    runtime-data-volume)
+        eval_runtime_volume "$(realpath "${1:?Missing Eval workspace}")"
+        ;;
     cleanup-runtime-data)
         dir="${1:?Missing Eval workspace}"
         cleanup_eval_runtime_data "$(realpath "$dir")"

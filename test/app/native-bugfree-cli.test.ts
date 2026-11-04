@@ -15,7 +15,8 @@ afterEach(async () => {
 it('submits the typed receipt template through the public CLI without rebuilding identity fields', async () => {
   await ensureCliBuilt(path.resolve('.'));
   const binary = path.resolve('bin/comet.js');
-  const fixture = await bugfreeFixture((root) => roots.push(root), binary);
+  const originalTask = 'Produce the expected value without changing the public interface.';
+  const fixture = await bugfreeFixture((root) => roots.push(root), binary, originalTask);
   const pending = await fixture.invoke('next', 'bugfree-test');
   const requestFile = path.join(path.dirname(fixture.root), 'opaque-result.json');
   const dispatch = async (request: unknown) => {
@@ -44,6 +45,7 @@ it('submits the typed receipt template through the public CLI without rebuilding
     sessionId: 'public-builder',
   });
   const request = claimed.data.resultRequest;
+  expect(claimed.data.originalRequest).toEqual({ source: 'run.input.task', text: originalTask });
   expect(request.result.output).toMatchObject({
     verificationChecks: [],
     acceptanceReview: [{ id: 'A1' }],
@@ -81,6 +83,9 @@ it('submits the typed receipt template through the public CLI without rebuilding
     ...review.data.pendingAction.claimRequest,
     sessionId: 'public-reviewer',
   });
+  expect(reviewer.data.resultRequest.result.output.response.result.requestReview).toMatchObject({
+    result: '<aligned|conflict|blocked>',
+  });
   await dispatch(reviewer.data.refreshChecksResultRequest);
   await fixture.invoke('next', 'bugfree-test');
   const refreshed = await fixture.inspect();
@@ -88,6 +93,26 @@ it('submits the typed receipt template through the public CLI without rebuilding
   expect(
     refreshed.actions.filter((action) => action.stepId === 'verify.requested-checks'),
   ).toHaveLength(1);
+  const continuation = await fixture.invoke('next', 'bugfree-test');
+  const resumed = await dispatch({
+    ...continuation.data.pendingAction.claimRequest,
+    sessionId: 'public-reviewer',
+  });
+  const finalRequest = resumed.data.resultRequest;
+  finalRequest.result.output.response.result = {
+    ...finalRequest.result.output.response.result,
+    verdict: 'pass',
+    passedAcceptanceIds: ['A1'],
+    acceptance: [],
+    risks: [],
+    summary: 'The original request, Spec and current value agree.',
+    requestReview: {
+      result: 'aligned',
+      reason: 'The expected value is implemented and the public interface remains unchanged.',
+    },
+  };
+  await dispatch(finalRequest);
+  expect((await fixture.inspect()).state).toMatchObject({ verification_result: 'pass' });
 }, 90000);
 
 it('runs public CLI claims, requested checks, compact results, cold recovery and acceptance', async () => {

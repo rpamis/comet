@@ -10,6 +10,7 @@ export const NATIVE_BUILDER_CHECK_RESULTS = ['passed', 'failed', 'not-run'] as c
 export const NATIVE_VERIFIER_VERDICTS = ['pass', 'fail', 'blocked'] as const;
 
 export const NATIVE_VERIFIER_ACCEPTANCE_RESULTS = ['passed', 'failed', 'blocked'] as const;
+export const NATIVE_REQUEST_REVIEW_RESULTS = ['aligned', 'conflict', 'blocked'] as const;
 
 export const NATIVE_ACCEPTANCE_REVIEW_STATUSES = [
   'implemented-with-evidence',

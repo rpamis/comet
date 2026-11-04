@@ -22,7 +22,7 @@ Identify runtime format before acting; Runtime stores requirements and acceptanc
 On a new task or host change, read and perform the [host capability check](../comet/reference/host-check.md) before confirming Shape or starting new implementation, including independent verification and Runtime reporting.
 
 1. If known, run `comet native select <change-name> --json`; otherwise run `comet native status --json`. When an active change exists, enter its `workspace.projectRoot`. Runtime locates the workspace; ask the user only if several workspaces match equally. If local Run history is missing, read [fault recovery](reference/recovery.md#fault-recovery): resume the saved phase when a checkpoint exists; otherwise diagnose and wait for a recovery decision.
-2. If there is no matching active change, select isolation and create it using [workspace selection](reference/workspace.md#create-a-change). Run `native new`, then enter `preparation.projectRoot`. If preparation fails, preserve any branches and directories already created and address the reported cause.
+2. If there is no matching active change, select isolation using [workspace selection](reference/workspace.md#create-a-change). Run `native new` with the user's original request in `--task`, without first rewriting it as a solution summary, then enter `preparation.projectRoot`. If preparation fails, preserve any branches and directories already created and address the reported cause.
 3. After entering the workspace and obtaining `phase`, retrieve applicable context using [memory integration](reference/commands.md#memory-integration). On a phase change, handoff to a new Agent, or context recovery, the receiver executes `contextRequest` to obtain current preferences and project constraints. Uninterrupted work in the same phase needs no repeated retrieval. Handle Project Memory and Personal Memory separately at task completion, then call `comet task --complete` as specified there.
 
 Never save task summaries, progress, command output, or test results as Personal Memory; complete the learning check.
@@ -53,6 +53,8 @@ Investigate facts that can be established without the user. Ask only about decis
 
 Record the user's explicitly requested file locations, required sections, and artifact formats in the brief constraints, and prepare those contents as requested. Do not move them to another file because of a default location in a template. During handoff and recovery, check artifacts against these confirmed constraints rather than retaining only the business examples.
 
+After drafting Shape, compare its outcome, acceptance criteria and non-goals with the original request and public project materials. Before excluding behavior needed by the implementation, explain how that changes the requested outcome. When several interpretations remain possible, state the evidence and impact; an Agent's chosen interpretation is not a user-confirmed requirement. Simulated approval in a fixed benchmark cannot change the original task.
+
 Complete when requirements sources are fully processed within the coverage boundary and classified by purpose, all outcome-affecting decisions and assumptions are resolved, no `[blocking]` remains, the user explicitly confirms the outcome, scope, key decisions, all acceptance items, and non-goals, and Runtime has entered Build.
 
 New or reconfirmed briefs need outcome, scope, non-goals, and acceptance examples. Add constraints, decisions, open questions, or special verification requirements when applicable. Runtime also checks formal paths and a complete target Spec or concrete no-product-behavior-change reason. Repair reported artifacts and rerun continuation. Existing later-phase changes retain progress until Shape.
@@ -62,6 +64,8 @@ On actual file changes during Build, Verify, or before Archive, or when continua
 ## Build ↔ Verify Loop
 
 In standard mode, after the Builder submits a candidate, Runtime runs required checks and a new read-only Verifier assesses it. For bugfree, follow [bugfree verification](reference/bugfree.md). On failure, return to Build, repair, and resubmit. Once every item passes, wait for the user to accept the result.
+
+The Verifier reads the original request before comparing the Spec and implementation, checking for omissions, unauthorized scope reductions and interface behavior changes. SDK Runs record the conclusion in `requestReview` in the same verification result; retain fail or blocked for conflicts or unresolved questions affecting delivery. For older Runs and Compat without a saved original request, consult handoff materials and user records rather than treating the generated Spec as the only requirements source; Compat keeps its existing result format. Use the current Verifier for this semantic review; add no Agent or fixed test rounds.
 
 `iteration` counts implementation submissions; `attempt` counts Verifier launches for the same candidate. Runtime updates all counters. When consecutive failures or lack of progress reach configured limits, follow the latest instructions to wait for a user decision or address the blocker.
 

@@ -761,6 +761,16 @@ function verifierResultState(
     checks,
     maxVerifyFailures: maxVerifyFailures as number,
   });
+  if (
+    typeof (run.input as { task?: unknown }).task === 'string' &&
+    applied.response.kind === 'final-result' &&
+    applied.response.result.verdict === 'pass' &&
+    applied.response.result.requestReview?.result !== 'aligned'
+  ) {
+    throw new Error(
+      'Native pass requires requestReview aligned with the original task and authorized changes; report fail or blocked for conflicts or unresolved requirements',
+    );
+  }
   if (applied.response.kind === 'request-checks') {
     const earlierRequests = [
       ...nativeSdkCheckPlans(

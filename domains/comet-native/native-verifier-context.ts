@@ -282,6 +282,18 @@ export async function nativeVerifierContext(
       'AGENTS.md',
     ],
     acceptance: state.acceptance.map(({ id, source, text }) => ({ id, source, text })),
+    ...(typeof (run.input as { task?: unknown }).task === 'string'
+      ? {
+          originalRequest: {
+            source: 'run.input.task',
+            text: (run.input as { task: string }).task,
+            instruction:
+              state.language === 'zh-CN'
+                ? '先读原始请求，再对照 Spec 与实现。核对遗漏、非目标及接口变化；范围变化须有用户授权。在同一结果的 requestReview 中说明依据，冲突或疑问未解决时如实 fail 或 blocked。'
+                : 'Read the original request before the Spec and implementation. Check omissions, non-goals and interface changes against user authorization. Explain the comparison in requestReview in the same result; report fail or blocked for unresolved conflicts or requirements.',
+          },
+        }
+      : {}),
     changeRefs,
     checkInput,
     session,

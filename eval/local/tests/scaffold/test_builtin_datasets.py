@@ -1439,6 +1439,211 @@ def test_dataset_seeds_verification_mode_before_any_run_through_public_cli(tmp_p
     assert not list((tmp_path / "docs/comet/changes").glob("*/comet-state.yaml"))
 
 
+def test_dataset_image_hash_uses_build_inputs_not_mode_or_late_controller_paths(tmp_path):
+    from scaffold.python.utils import run_shell
+
+    context = tmp_path / ".dataset-build"
+    context.mkdir()
+    (context / "Dockerfile").write_text("FROM fixture\nCOPY installer.py /installer.py\n")
+    installer = context / "installer.py"
+    installer.write_text("original installer")
+    metadata = tmp_path / ".dataset-task.json"
+    metadata.write_text(json.dumps({"verifyMode": "standard", "controllerPaths": []}))
+
+    def fingerprint():
+        return run_shell(
+            "docker.sh", "build-hash", str(tmp_path), timeout=10, check=True
+        ).stdout.strip()
+
+    original = fingerprint()
+    metadata.write_text(
+        json.dumps({"verifyMode": "bugfree", "controllerPaths": ["_eval_target_skills"]})
+    )
+    assert fingerprint() == original
+    (context / "empty-input").mkdir()
+    directory_hash = fingerprint()
+    assert directory_hash != original
+    installer.write_text("changed installer")
+    assert fingerprint() != directory_hash
+
+
+def test_dataset_mode_inspector_mounts_owned_runtime_readonly_and_isolates_controller(
+    tmp_path, monkeypatch
+):
+    from scaffold.python.builtin_datasets import dataset_config_hash
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (tmp_path / "dataset.toml").write_text('[dataset]\nid="example"\n')
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / ".dataset-task.json").write_text(json.dumps({"workdir": "/workspace"}))
+    task = DatasetTask(
+        path=source,
+        config=TaskConfig(name="example", description=""),
+        instruction_template="task",
+        dataset_entry={
+            "id": "example",
+            "source": str(source),
+            "contentHash": tree_hash(source),
+            "timeout": 900,
+        },
+        dataset_plan={
+            "dataset": {"id": "skillsbench"},
+            "root": str(tmp_path),
+            "verifyMode": "bugfree",
+            "datasetConfigHash": dataset_config_hash(tmp_path),
+        },
+    )
+    calls = []
+
+    def fake_docker(*args, **kwargs):
+        calls.append(args)
+        if args[0] == "start":
+            return SimpleNamespace(stdout='COMET_DATASET_REWARD={"reward":1,"raw":{"reward":1}}')
+        return SimpleNamespace(stdout="0" if args[0] == "inspect" else "")
+
+    monkeypatch.setattr("scaffold.python.builtin_datasets.docker", fake_docker)
+    monkeypatch.setattr("scaffold.python.utils.build_docker_image", lambda *args, **kwargs: "image")
+    task._score_dataset(workspace, {})
+    created = next(args for args in calls if args[0] == "create")
+    assert created[-5:] == ("python3", "-I", "/opt/dataset_score.py", "skillsbench", "example")
+    volume = next(args[2] for args in calls if args[:2] == ("volume", "inspect"))
+    assert volume + ":/opt/comet-eval-data:ro" in created
+    assert "COMET_DATA_DIR=/opt/comet-eval-data" in created
+    assert any(str(arg).endswith(":/opt/comet-sdk-inspection.py:ro") for arg in created)
+
+
+def test_dataset_mode_uses_container_inspection_and_keeps_unavailable_distinct(
+    tmp_path, monkeypatch
+):
+    archive = tmp_path / "docs/comet/archive/example"
+    archive.mkdir(parents=True)
+    (archive / "comet-state.yaml").write_text("# comet-execution: managed-run\nname: example\n")
+    task = DatasetTask(
+        path=tmp_path,
+        config=TaskConfig(name="example", description=""),
+        instruction_template="original",
+        dataset_plan={"verifyMode": "bugfree"},
+    )
+
+    def forbidden_host_inspection(*args, **kwargs):
+        raise AssertionError("Host inspection cannot read container Runtime paths")
+
+    monkeypatch.setattr(
+        "scaffold.python.validation.current_sdk.inspect_run", forbidden_host_inspection
+    )
+    from scaffold.python.validation.current_sdk import sdk_inspection_evidence
+
+    evidence = {
+        "status": "matched",
+        "expectedMode": "bugfree",
+        "runs": {
+            "example": sdk_inspection_evidence(
+                "native", "native", {"input": {"verifyMode": "bugfree"}}
+            )
+        },
+    }
+
+    def score(candidate, outputs):
+        outputs["dataset_result"] = {"native_verification": evidence}
+        return ["[RUBRIC] dataset-score: 0.25"], ["dataset_incomplete"]
+
+    monkeypatch.setattr(task, "_score_dataset", score)
+    assert task.validate_dataset(tmp_path, {}) == (
+        ["[RUBRIC] dataset-score: 0.25"],
+        ["dataset_incomplete"],
+    )
+    evidence.update(status="unavailable", reason="inspection failed")
+    passed, failed = task.validate_dataset(tmp_path, {})
+    assert passed == ["[RUBRIC] dataset-score: 0.25"]
+    assert any(item.startswith("dataset_verify_mode_unavailable:") for item in failed)
+    assert not any(item.startswith("dataset_verify_mode:") for item in failed)
+
+
+def test_dataset_container_mode_proof_precedes_grading_and_distinguishes_mismatch(
+    tmp_path, monkeypatch, capsys
+):
+    from scaffold.python import dataset_score as scoring
+    from scaffold.python.validation.current_sdk import sdk_inspection_evidence
+    import sys
+
+    workspace = tmp_path / "workspace"
+    archive = workspace / "docs/comet/archive/2026-11-04-example"
+    archive.mkdir(parents=True)
+    task = tmp_path / "tasks/example"
+    task.mkdir(parents=True)
+    execution = tmp_path / "execution.json"
+    execution.write_text(json.dumps({"expectedNativeMode": "bugfree"}))
+    original_path = Path
+    monkeypatch.setattr(
+        scoring,
+        "Path",
+        lambda p: {
+            "/workspace": workspace,
+            "/opt/dataset-original/tasks": task.parent,
+            "/opt/comet-dataset-execution.json": execution,
+        }.get(str(p), original_path(p)),
+    )
+    run = {
+        "runId": "example",
+        "workflow": {"id": "comet-native"},
+        "status": "completed",
+        "lineage": [],
+        "input": {"verifyMode": "bugfree"},
+        "actions": [],
+    }
+    order = []
+
+    def inspect(*args):
+        order.append("inspect")
+        assert args[0] == workspace
+        assert args[1:4] == ("native", "example", "native")
+        return run
+
+    module = SimpleNamespace(inspect_run=inspect, sdk_inspection_evidence=sdk_inspection_evidence)
+    spec = SimpleNamespace(loader=SimpleNamespace(exec_module=lambda module: None))
+    monkeypatch.setattr(scoring.importlib.util, "spec_from_file_location", lambda name, file: spec)
+    monkeypatch.setattr(scoring.importlib.util, "module_from_spec", lambda spec: module)
+
+    async def grade(task):
+        order.append("grade")
+        assert order == ["inspect", "grade"]
+        return {"reward": 0.25, "verifier_status": "assertion_failed"}
+
+    monkeypatch.setattr(scoring, "workbuddy", grade)
+    monkeypatch.setattr(sys, "argv", ["score", "workbuddy-code", "example"])
+    scoring.main()
+    result = json.loads(capsys.readouterr().out.split("COMET_DATASET_REWARD=", 1)[1])
+    assert result["reward"] == 0.25
+    assert result["native_verification"]["status"] == "matched"
+    assert result["native_verification"]["runs"]["example"]["run"] == run
+    run["input"]["verifyMode"] = "standard"
+    assert (
+        scoring.inspect_native_verification({"expectedNativeMode": "bugfree"})["status"]
+        == "mismatch"
+    )
+    assert (
+        scoring.inspect_native_verification(
+            {"expectedNativeMode": "bugfree", "nativeInspectionError": "missing Runtime volume"}
+        )["status"]
+        == "unavailable"
+    )
+    assert scoring.inspect_native_verification({}) is None
+
+
+def test_dataset_mode_inspection_failure_is_harness_not_proven_mode_mismatch():
+    from scaffold.python.sample_quality import infer_sample_quality
+    from scaffold.python.attribution import classify_failures
+
+    failure = "dataset_verify_mode_unavailable: missing Runtime volume"
+    quality = infer_sample_quality(checks_failed=[failure])
+    assert quality.reason_code == "dataset_verify_mode_unavailable"
+    assert quality.include_in_analysis is True
+    failure_rows = classify_failures([failure], {}, "generic")
+    assert failure_rows[0]["bucket"] == "harness"
+
+
 def test_dataset_rejects_actual_run_mode_mismatch_and_preserves_business_score(
     tmp_path, monkeypatch
 ):
@@ -1451,11 +1656,18 @@ def test_dataset_rejects_actual_run_mode_mismatch_and_preserves_business_score(
         instruction_template="original",
         dataset_plan={"verifyMode": "bugfree"},
     )
-    monkeypatch.setattr(
-        task,
-        "_score_dataset",
-        lambda candidate, outputs: (["[RUBRIC] dataset-score: 0.25"], ["dataset_incomplete"]),
-    )
+
+    def score(candidate, outputs):
+        outputs["dataset_result"] = {
+            "native_verification": {
+                "status": "mismatch",
+                "expectedMode": "bugfree",
+                "runs": {"example": {"run": {"input": {"verifyMode": "standard"}}}},
+            }
+        }
+        return ["[RUBRIC] dataset-score: 0.25"], ["dataset_incomplete"]
+
+    monkeypatch.setattr(task, "_score_dataset", score)
     monkeypatch.setattr(
         "scaffold.python.validation.current_sdk.inspect_run",
         lambda *args: {"input": {"verifyMode": "standard"}},

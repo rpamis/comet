@@ -94,6 +94,47 @@ function final(run: WorkflowRun, sessionId: string, verdict = 'pass'): RuntimeVa
   };
 }
 
+it.each(['standard', 'bugfree'] as const)(
+  'binds the original task and rejects a passing review that omits or contradicts it in %s',
+  async (mode) => {
+    const task = 'Recover the original operation after a disconnect; keep the public interface.';
+    const fixture = await bugfreeFixture((root) => roots.push(root), undefined, task, mode);
+    const run = await fixture.candidate('expected\n');
+    expect(run.input).toMatchObject({ task });
+    const context = await nativeVerifierContext(run, run.actions.at(-1)!, fixture.root);
+    if (mode === 'bugfree')
+      expect(context).toMatchObject({ originalRequest: { source: 'run.input.task', text: task } });
+    const review = (current: typeof run) => {
+      const output = final(current, 'reviewer');
+      if (mode === 'standard') {
+        const result = output.response.result as Record<string, unknown>;
+        delete result.passedAcceptanceIds;
+        result.acceptance = [{ id: 'A1', result: 'passed', reason: 'Read the implementation.' }];
+      }
+      return output;
+    };
+    await expect(fixture.submit(review(run), 'reviewer')).rejects.toThrow(/requestReview/);
+    const contradicted = review(await fixture.inspect());
+    (contradicted.response.result as Record<string, unknown>).requestReview = {
+      result: 'conflict',
+      reason: 'The Spec excludes recovery required by the original task.',
+    };
+    await expect(fixture.submit(contradicted, 'reviewer')).rejects.toThrow(/requestReview/);
+    (contradicted.response.result as Record<string, unknown>).requestReview = {
+      result: 'blocked',
+      reason: 'The original requirement remains unclear.',
+    };
+    await expect(fixture.submit(contradicted, 'reviewer')).rejects.toThrow(/requestReview/);
+    const aligned = review(await fixture.inspect());
+    (aligned.response.result as Record<string, unknown>).requestReview = {
+      result: 'aligned',
+      reason: 'Compared the original task, authorized scope and actual implementation.',
+    };
+    await fixture.submit(aligned, 'reviewer');
+    expect((await fixture.inspect()).state).toMatchObject({ verification_result: 'pass' });
+  },
+);
+
 it('reports actual receipt reuse after a successor candidate without claiming another execution', async () => {
   const fixture = await bugfreeFixture((root) => roots.push(root));
   const checks = [

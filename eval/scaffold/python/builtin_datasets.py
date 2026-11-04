@@ -202,10 +202,14 @@ class DatasetTask(Task):
 
     def validate_dataset(self, test_dir, outputs):
         # 原始评分可能注入测试或 stage 文件；在候选副本中判分，保留 Native 候选不变。
-        with tempfile.TemporaryDirectory(prefix="comet-dataset-score-") as temporary:
-            candidate = Path(temporary) / "candidate"
-            shutil.copytree(test_dir, candidate, symlinks=True)
-            passed, failed = self._score_dataset(candidate, outputs)
+        outputs["_dataset_source_workspace"] = str(Path(test_dir).resolve())
+        try:
+            with tempfile.TemporaryDirectory(prefix="comet-dataset-score-") as temporary:
+                candidate = Path(temporary) / "candidate"
+                shutil.copytree(test_dir, candidate, symlinks=True)
+                passed, failed = self._score_dataset(candidate, outputs)
+        finally:
+            outputs.pop("_dataset_source_workspace", None)
         if (
             not any(
                 item.startswith(("dataset_input_changed:", "dataset_environment_changed:"))
@@ -215,26 +219,27 @@ class DatasetTask(Task):
             != "CLAUDE_CODE_GOAL"
             and (self.dataset_plan or {}).get("verifyMode")
         ):
-            from scaffold.python.validation.current_sdk import inspect_run, sdk_inspection_evidence
-            import yaml
-
-            states = list((Path(test_dir) / "docs/comet/archive").glob("*/comet-state.yaml"))
-            try:
-                if not states:
-                    raise ValueError("没有可核对创建时验证模式的 Native Run")
-                for file in states:
-                    state = yaml.safe_load(file.read_text(encoding="utf-8"))
-                    run = inspect_run(Path(test_dir), "native", state["name"], "native", file)
+            proof = outputs.get("dataset_result", {}).get("native_verification") or {}
+            if proof.get("status") == "mismatch":
+                failed.append("dataset_verify_mode: Run 创建时的验证模式与固定计划不匹配")
+            elif (
+                proof.get("status") != "matched"
+                or proof.get("expectedMode") != self.dataset_plan["verifyMode"]
+                or not proof.get("runs")
+            ):
+                failed.append(
+                    "dataset_verify_mode_unavailable: "
+                    + str(proof.get("reason", "缺少容器内真实 Runtime 查询结果"))
+                )
+            else:
+                for name, evidence in proof["runs"].items():
                     if (
-                        run.get("input", {}).get("verifyMode", "standard")
+                        evidence.get("run", {}).get("input", {}).get("verifyMode", "standard")
                         != self.dataset_plan["verifyMode"]
                     ):
-                        raise ValueError("Run 创建时的验证模式与固定计划不匹配")
-                    outputs.setdefault("validation_evidence", {})["native:" + state["name"]] = (
-                        sdk_inspection_evidence("native", "native", run)
-                    )
-            except (ValueError, OSError, KeyError, TypeError) as exc:
-                failed.append(f"dataset_verify_mode: {exc}")
+                        failed.append("dataset_verify_mode: Run 创建时的验证模式与固定计划不匹配")
+                        break
+                    outputs.setdefault("validation_evidence", {})["native:" + name] = evidence
         return passed, failed
 
     def _score_dataset(self, test_dir, outputs):
@@ -304,8 +309,41 @@ class DatasetTask(Task):
         python = (
             ["/opt/comet-verifier/bin/python", "-I"]
             if plan["dataset"]["id"] == "workbuddy-code"
-            else ["python3"]
+            else ["python3", "-I"]
         )
+        inspection_args = []
+        inspection_error = None
+        if plan.get("verifyMode") and plan.get("treatment") != "CLAUDE_CODE_GOAL":
+            from scaffold.python.utils import run_shell
+
+            try:
+                volume = run_shell(
+                    "docker.sh",
+                    "runtime-data-volume",
+                    outputs.get("_dataset_source_workspace", test_dir),
+                    timeout=10,
+                    check=True,
+                ).stdout.strip()
+                import re
+
+                if not re.fullmatch(r"comet-eval-data-[0-9a-f]{24}", volume):
+                    raise ValueError("Runtime 卷身份无效")
+                docker("volume", "inspect", volume)
+                inspection_args = [
+                    "-v",
+                    f"{volume}:/opt/comet-eval-data:ro",
+                    "-e",
+                    "COMET_DATA_DIR=/opt/comet-eval-data",
+                    "-v",
+                    f"{script.with_name('validation') / 'current_sdk.py'}:/opt/comet-sdk-inspection.py:ro",
+                ]
+            except (ValueError, OSError, subprocess.SubprocessError) as exc:
+                inspection_error = redact_sensitive(str(exc))[-2000:]
+            scoring = json.loads(scoring_input.read_text(encoding="utf-8"))
+            scoring.update(
+                expectedNativeMode=plan["verifyMode"], nativeInspectionError=inspection_error
+            )
+            scoring_input.write_text(json.dumps(scoring), encoding="utf-8")
         args = [
             "create",
             "--name",
@@ -324,6 +362,7 @@ class DatasetTask(Task):
             "-v",
             f"{scoring_input.resolve()}:/opt/comet-dataset-execution.json:ro",
             *mounts,
+            *inspection_args,
             image,
             *python,
             "/opt/dataset_score.py",

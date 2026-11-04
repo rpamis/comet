@@ -179,3 +179,15 @@ it('keeps late controller files out of dataset inputs and refuses original path 
     2,
   );
 }, 35_000);
+
+it('keeps dataset image identity stable across modes while binding every build input', () => {
+  scaffold('test_builtin_datasets.py', 'image_hash_uses_build_inputs', 1);
+}, 35_000);
+
+it('inspects Native mode inside the container and separates unavailable proof from mismatch', () => {
+  scaffold(
+    'test_builtin_datasets.py',
+    'mode_uses_container_inspection or container_mode_proof_precedes or mode_inspection_failure_is_harness or inspector_mounts_owned_runtime',
+    4,
+  );
+}, 35_000);

@@ -11,7 +11,12 @@ import {
 import { fixtureAcceptanceReview } from './native-builder-acceptance-review.js';
 import type { RuntimeValue } from '../../domains/engine/runtime.js';
 
-export async function bugfreeFixture(onRoot?: (root: string) => void, cliPath?: string) {
+export async function bugfreeFixture(
+  onRoot?: (root: string) => void,
+  cliPath?: string,
+  task?: string,
+  mode: 'standard' | 'bugfree' = 'bugfree',
+) {
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-bugfree-'));
   onRoot?.(temporary);
   const root = path.join(temporary, 'project');
@@ -61,7 +66,7 @@ export async function bugfreeFixture(onRoot?: (root: string) => void, cliPath?: 
     'initial',
   );
   const config = defaultProjectConfig('docs', 'zh-CN');
-  config.native.verify_mode = 'bugfree';
+  config.native.verify_mode = mode;
   await writeProjectConfig(root, config);
   const invoke = async (...args: string[]) => {
     if (cliPath) {
@@ -75,7 +80,7 @@ export async function bugfreeFixture(onRoot?: (root: string) => void, cliPath?: 
     if (result.exitCode !== 0) throw new Error(JSON.stringify(result));
     return result;
   };
-  await invoke('new', 'bugfree-test', '--isolation', 'current');
+  await invoke('new', 'bugfree-test', '--isolation', 'current', ...(task ? ['--task', task] : []));
   const change = path.join(root, 'docs/comet/changes/bugfree-test');
   await fs.writeFile(
     path.join(change, 'brief.md'),

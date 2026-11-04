@@ -3,6 +3,7 @@ import {
   NATIVE_VERIFIER_ACCEPTANCE_RESULTS,
   NATIVE_VERIFIER_RESPONSE_KINDS,
   NATIVE_VERIFIER_VERDICTS,
+  NATIVE_REQUEST_REVIEW_RESULTS,
   nativeEnumText,
 } from './native-input-enum.js';
 import {
@@ -25,6 +26,7 @@ export interface NativeVerifierFinalResult {
   acceptance: NativeVerifierAcceptanceResult[];
   risks: string[];
   summary: string;
+  requestReview?: { result: (typeof NATIVE_REQUEST_REVIEW_RESULTS)[number]; reason: string };
 }
 
 export interface NativeVerifierCheckRequest {
@@ -116,7 +118,15 @@ function parseFinalResult(value: unknown, inputPath: string): NativeVerifierFina
   const input = plainRecord(value, 'Native Verifier final result');
   exactKeys(
     input,
-    ['iteration', 'attempt', 'verdict', 'acceptance', 'risks', 'summary'],
+    [
+      'iteration',
+      'attempt',
+      'verdict',
+      'acceptance',
+      'risks',
+      'summary',
+      ...(Object.hasOwn(input, 'requestReview') ? ['requestReview'] : []),
+    ],
     'Native Verifier final result',
     inputPath,
   );
@@ -128,7 +138,21 @@ function parseFinalResult(value: unknown, inputPath: string): NativeVerifierFina
   if (!Array.isArray(input.risks) || !input.risks.every((risk) => typeof risk === 'string')) {
     throw new Error('Native Verifier risks must be text entries');
   }
+  let requestReview: NativeVerifierFinalResult['requestReview'];
+  if (input.requestReview !== undefined) {
+    const review = plainRecord(input.requestReview, 'Native requestReview');
+    exactKeys(review, ['result', 'reason'], 'Native requestReview', `${inputPath}/requestReview`);
+    requestReview = {
+      result: nativeEnumText(
+        review.result,
+        NATIVE_REQUEST_REVIEW_RESULTS,
+        'Native requestReview result',
+      ),
+      reason: text(review.reason, 'Native requestReview reason'),
+    };
+  }
   return {
+    ...(requestReview ? { requestReview } : {}),
     iteration: integer(input.iteration, 'Native Verifier iteration'),
     attempt: integer(input.attempt, 'Native Verifier attempt'),
     verdict,
@@ -230,7 +254,16 @@ export function normalizeNativeBugfreeResponse(
   exactKeys(response, ['kind', 'result'], 'Native bugfree response');
   exactKeys(
     result,
-    ['iteration', 'attempt', 'verdict', 'passedAcceptanceIds', 'acceptance', 'risks', 'summary'],
+    [
+      'iteration',
+      'attempt',
+      'verdict',
+      'passedAcceptanceIds',
+      'acceptance',
+      'risks',
+      'summary',
+      ...(Object.hasOwn(result, 'requestReview') ? ['requestReview'] : []),
+    ],
     'Native bugfree final result',
   );
   if (

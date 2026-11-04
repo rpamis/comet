@@ -1,5 +1,6 @@
 import { nativeVerifierContext } from './native-verifier-context.js';
 import { nativeVerifyMode } from './native-verification-policy.js';
+import { NATIVE_REQUEST_REVIEW_RESULTS, nativeEnumPlaceholder } from './native-input-enum.js';
 import {
   nativeSdkVerifyDecisions,
   nativeSdkVerifyWaitDecisions,
@@ -186,6 +187,15 @@ function nativeSdkOutcomeOutput(
             : { acceptance }),
           risks: ['<observed-risk-or-remove-entry>'],
           summary: '<independent-verification-summary>',
+          ...(typeof (run.input as { task?: unknown }).task === 'string'
+            ? {
+                requestReview: {
+                  result: nativeEnumPlaceholder(NATIVE_REQUEST_REVIEW_RESULTS),
+                  reason:
+                    '<compare the original request, Spec and implementation; cite authorization for changed scope>',
+                },
+              }
+            : {}),
         },
       },
     };
@@ -468,6 +478,15 @@ export async function projectNativeSdkDispatchResult(options: {
     workflow: run.workflow,
     status: run.status,
     workspace: { projectRoot: options.projectRoot },
+    ...(typeof (run.input as { task?: unknown }).task === 'string'
+      ? {
+          originalRequest: { source: 'run.input.task', text: (run.input as { task: string }).task },
+          requestReviewInstruction:
+            state.language === 'zh-CN'
+              ? '先核对原始请求与 Spec、实现是否一致，再判断验收项。非目标不能自行排除用户要求；范围变化须有对应用户授权。Verifier 在同一结果中填写 requestReview，有冲突或疑问时如实 fail 或 blocked。'
+              : 'Compare the original request with the Spec and implementation before assessing acceptance. Non-goals cannot remove requirements without the corresponding user authorization. The Verifier fills requestReview in the same result and reports fail or blocked for conflicts or unresolved requirements.',
+        }
+      : {}),
     ...(outcomeRequest
       ? {
           outcomeRequest,
@@ -1159,6 +1178,14 @@ async function projectNativeSdkContinuationValue(options: {
       attempt: action.attempt,
       inputHash: action.inputHash,
       mechanism: 'runtime-dispatch',
+      ...(typeof (run.input as { task?: unknown }).task === 'string' && !verificationContext
+        ? {
+            originalRequest: {
+              source: 'run.input.task',
+              text: (run.input as { task: string }).task,
+            },
+          }
+        : {}),
       commandArgs:
         action.type === 'handoff' || action.type === 'invoke_skill'
           ? dispatchCommandArgs

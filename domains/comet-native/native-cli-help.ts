@@ -92,7 +92,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     options: [
       '--runtime compat|sdk        Runtime format for this new change; defaults to sdk.',
       '--language en|zh-CN          Artifact language; defaults to project configuration.',
-      '--task <text>                Search Project Knowledge for an existing capability and save a revocable association draft.',
+      '--task <text>                Preserve the original request in the SDK Run for independent alignment review; also search Project Knowledge for a capability association.',
       '--capability <id>            Directly validate and associate an existing capability without retrieval.',
       '--isolation <kind>           current, branch, or worktree; defaults to current.',
       '--change-branch <branch>     Change branch; defaults to comet/<change-name>.',

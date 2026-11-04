@@ -318,6 +318,19 @@ def infer_sample_quality(
             "medium",
             list(events["telemetry_warnings"]),
         )
+    if any(check.startswith("dataset_verify_mode_unavailable:") for check in checks_failed):
+        return SampleQuality(
+            "flagged",
+            "dataset_verify_mode_unavailable",
+            "Runtime mode could not be verified; original task score retained",
+            True,
+            "high",
+            [
+                check
+                for check in checks_failed
+                if check.startswith("dataset_verify_mode_unavailable:")
+            ],
+        )
     if any(check.startswith("dataset_verify_mode:") for check in checks_failed):
         return SampleQuality(
             "flagged",

@@ -53,6 +53,7 @@ async function startNativeSdkRun(options: {
   paths: NativeProjectPaths;
   name: string;
   initialState: ReturnType<typeof createNativePortableState>;
+  task?: string;
   verifyMode?: 'standard' | 'bugfree';
   verificationBaseline?: { directory: string; ref: string; contentHash: string };
   recoverySourceHash?: string;
@@ -98,6 +99,7 @@ async function startNativeSdkRun(options: {
     workflow: { id: application.workflow.id, version: application.workflow.version },
     input: {
       name: options.name,
+      ...(options.task === undefined ? {} : { task: options.task }),
       verifyMode: options.verifyMode ?? 'standard',
       ...(options.verificationBaseline
         ? { verificationBaseline: options.verificationBaseline }
@@ -212,6 +214,7 @@ export async function createNativeSdkChange(options: {
   paths: NativeProjectPaths;
   name: string;
   language: 'en' | 'zh-CN';
+  task?: string;
   workspaceBinding: NativeWorkspaceBinding;
   initialProjectConfig?: CometProjectConfig;
 }): Promise<WorkflowRun> {
@@ -262,6 +265,7 @@ export async function createNativeSdkChange(options: {
       verificationBaseline,
       name: options.name,
       verifyMode,
+      task: options.task,
       initialState: createNativePortableState({
         name: options.name,
         language: options.language,
