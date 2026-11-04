@@ -390,6 +390,18 @@ describe('Native dispatch CLI presentation', () => {
     const request = claimed.data.resultRequest;
     expect(request).toMatchObject({ operation: 'record-outcome', receipt: expect.any(String) });
     expect(request).not.toHaveProperty('outcome');
+    expect(request.result.output).toMatchObject({
+      summary: expect.any(String),
+      acceptanceReview: expect.any(Array),
+    });
+    expect(claimed.data.checkRequestTemplate).toMatchObject({
+      id: expect.any(String),
+      executable: expect.any(String),
+      argv: expect.any(Array),
+      cwdRef: '.',
+      timeoutMs: expect.any(String),
+      repeatable: expect.any(String),
+    });
     request.result = {
       status: 'succeeded',
       output: {

@@ -1727,6 +1727,9 @@ def _snapshot_dynamic_skill_package(test_dir: Path, skill_hints: dict[str, Any])
         return None
 
     snapshot_root = test_dir / "_eval_target_skills"
+    from scaffold.python.builtin_datasets import register_dataset_controller_path
+
+    register_dataset_controller_path(test_dir, "_eval_target_skills")
     snapshot_root.mkdir(parents=True, exist_ok=True)
     package_dest = snapshot_root / package_dir.name
     shutil.copytree(
@@ -2141,6 +2144,9 @@ def run_claude(test_dir, experiment_logger, request):
             )
         else:
             task_prompt_file = test_dir / ".eval-task-prompt.txt"
+            from scaffold.python.builtin_datasets import register_dataset_controller_path
+
+            register_dataset_controller_path(test_dir, ".eval-task-prompt.txt")
             task_prompt_file.write_text(prompt, encoding="utf-8")
             loop_args = [
                 "run-claude-loop",

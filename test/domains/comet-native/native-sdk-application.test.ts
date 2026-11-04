@@ -1083,6 +1083,8 @@ describe('Native SDK Workflow Application', () => {
         mustDifferFromSessionId: 'builder-session-1',
       },
     });
+    const handoff = JSON.stringify(pending.pendingActions[0]);
+    expect(handoff.indexOf('"independent":true')).toBeLessThan(handoff.indexOf('"input":'));
     const claim = pending.pendingAction!.claimRequest!;
     const { operation: _operation, ...request } = claim;
     const context = { requestId: 'template-verifier', projectRoot: root };

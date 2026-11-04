@@ -6,7 +6,8 @@ import {
 } from './native-sdk-verify-decision.js';
 import path from 'node:path';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
-import { nativeSdkCompletedCheckInputDrift } from './native-sdk-checks.js';
+import { nativeSdkCompletedCheckInputDrift, nativeSdkCheckPlans } from './native-sdk-checks.js';
+import { parseNativeVerifierResponse } from './native-verifier-protocol.js';
 import { nativeRecoveryForContinuation } from './native-recovery.js';
 import { nativeTaskContextRequest } from './native-task-context.js';
 import {
@@ -127,13 +128,8 @@ function sdkDispatchCommand(applicationId: string, projectRoot: string): string[
 }
 
 /** 模板只绑定原领取身份；状态和结果必须来自本次真实执行。 */
-function nativeSdkOutcomeOutput(
-  run: WorkflowRun,
-  state: NativePortableState,
-  action: RuntimeAction,
-): RuntimeValue {
-  const activation = (action.input as { activation?: Record<string, RuntimeValue> })?.activation;
-  const check = {
+function nativeSdkCheckRequestTemplate() {
+  return {
     id: '<check-id>',
     name: '<check-name>',
     executable: '<executable>',
@@ -142,6 +138,15 @@ function nativeSdkOutcomeOutput(
     timeoutMs: '<positive-integer>',
     repeatable: '<true|false>',
   };
+}
+
+function nativeSdkOutcomeOutput(
+  run: WorkflowRun,
+  state: NativePortableState,
+  action: RuntimeAction,
+): RuntimeValue {
+  const activation = (action.input as { activation?: Record<string, RuntimeValue> })?.activation;
+  const check = nativeSdkCheckRequestTemplate();
   const acceptance = (
     Array.isArray(activation?.acceptance)
       ? (activation.acceptance as { id: string }[])
@@ -239,11 +244,47 @@ function nativeSdkOutcomeAlternatives(
 ) {
   const request = nativeSdkOutcomeRequest(run, action, state);
   if (!request || action.type !== 'handoff') return {};
+  const checks =
+    action.stepId === 'verify.verifier'
+      ? [
+          ...new Map(
+            [
+              ...nativeSdkCheckPlans(
+                run.outputs['supervisor.parent.builder']?.value ??
+                  run.outputs['build.builder']?.value ??
+                  {},
+              ),
+              ...run.actions.flatMap((prior) => {
+                const output = prior.outcome?.output as
+                  { candidateId?: string; response?: { kind?: string } } | undefined;
+                if (
+                  prior.stepId !== 'verify.verifier' ||
+                  prior.status !== 'succeeded' ||
+                  output?.candidateId !== state.builder_handoff?.candidate_id ||
+                  output?.response?.kind !== 'request-checks'
+                )
+                  return [];
+                const response = parseNativeVerifierResponse(output.response);
+                return response.kind === 'request-checks' ? response.checks : [];
+              }),
+            ].map((check) => [check.id, check]),
+          ).values(),
+        ].map(({ id, name, executable, argv, cwdRef, timeoutMs, repeatable }) => ({
+          id,
+          name,
+          executable,
+          argv,
+          cwdRef,
+          timeoutMs,
+          repeatable,
+        }))
+      : [];
   return {
+    checkRequestTemplate: nativeSdkCheckRequestTemplate(),
     outcomeTemplateInstruction:
       state.language === 'zh-CN'
-        ? '完整保存 stdout JSON，stderr 另存；一次解析并提取 data.outcomeRequest、data.contextRequest 和 data.action。不要用 head 或 tail 截断 JSON，不要把后台任务提示当作 JSON。SDK inspect 的 data 是原始 Run，不含 Native 状态投影的 continuation 或 pendingActions。使用当前模板，不通过检索 Comet Runtime 源码猜字段；仅在返回缺项或实际错误缺少诊断时再调查。用实际结果替换全部占位值，删除不适用的列表项。succeeded 表示任务已完成，验收是否通过由 verdict 表达。已知无法独立验收时，读取已交付上下文（没有 contextDelivery 时执行自己的 contextRequest）后如实提交 blocked，不为得到结果而重跑检查或假装已独立审查。保留原领取身份，禁止直接提交未填写的模板。'
-        : 'Save complete stdout JSON and keep stderr separate. Parse it once to extract data.outcomeRequest, data.contextRequest and data.action. Do not truncate JSON with head or tail, or parse a background-task notice as JSON. SDK inspect returns the raw Run in data, without the Native status projection continuation or pendingActions. Use the current templates instead of searching Comet Runtime source to guess fields; investigate only missing fields or actual errors without a diagnosis. Replace every placeholder with observed results and remove unused entries. succeeded means the task finished, not that acceptance passed. When independent review is known to be unavailable, read delivered context (execute contextRequest only without contextDelivery) and report blocked honestly; do not rerun checks or pretend an independent review occurred. Keep the original claim identity. Never submit this template unchanged.',
+        ? '优先使用 data.resultRequest，保留 receipt，只填写 result 中的实际业务结果；Runtime 负责绑定身份。data.outcomeRequest 保留完整协议供兼容调用。需要添加检查时按 checkRequestTemplate 填写；verificationChecks 为空不代表省略了检查字段要求。需要刷新原有可重复检查且提供了 refreshChecksResultRequest 时使用该模板；先确认需要刷新，不自动执行，不重放一次性操作。完整保存 stdout JSON，stderr 另存；一次解析并提取 data.contextRequest 和 data.action，不用 head 或 tail 截断 JSON，不把后台任务提示当作 JSON。SDK inspect 的 data 是原始 Run，不含 Native 状态投影的 continuation 或 pendingActions。使用当前模板，不通过检索 Runtime 源码猜字段；仅在返回缺项或实际错误缺少诊断时再调查。替换全部占位值，删除不适用的列表项。succeeded 表示工作完成，验收结论由 verdict 表达。无法独立验收时，先读取已交付上下文（没有 contextDelivery 时执行自己的 contextRequest），再如实提交 blocked，不代领或假装完成独立审查。'
+        : 'Prefer data.resultRequest: preserve receipt and fill only the actual business result. Runtime binds execution identity. data.outcomeRequest remains available for compatible full-protocol clients. Use checkRequestTemplate when adding checks; an empty verificationChecks list does not remove field requirements. Use refreshChecksResultRequest, when provided, only after deciding existing repeatable checks need refreshing. Do not execute it automatically or replay one-time operations. Save complete stdout JSON and keep stderr separate. Parse data.contextRequest and data.action once; do not truncate JSON with head or tail or parse background-task notices as JSON. SDK inspect returns the raw Run, without Native continuation or pendingActions. Use the returned templates instead of guessing fields from Runtime source; investigate only missing fields or actual errors without a diagnosis. Replace every placeholder and remove unused entries. succeeded means the work finished; verdict expresses acceptance. When independent review is unavailable, read delivered context (execute your own contextRequest only without contextDelivery), then report blocked honestly. Do not claim on behalf of a reviewer or pretend it ran.',
     failureOutcomeRequest: {
       ...request,
       outcome: {
@@ -254,6 +295,21 @@ function nativeSdkOutcomeAlternatives(
     },
     ...(action.stepId === 'verify.verifier'
       ? {
+          ...(checks.length > 0 && checks.every((check) => check.repeatable)
+            ? {
+                refreshChecksResultRequest: nativeSdkResultRequest(run, action, state, {
+                  candidateId: state.builder_handoff?.candidate_id ?? null,
+                  verifierExecutionRef: action.claim?.sessionId ?? null,
+                  refreshChecks: true,
+                  response: {
+                    kind: 'request-checks',
+                    iteration: state.loop.iteration,
+                    attempt: state.loop.attempt,
+                    checks,
+                  },
+                }),
+              }
+            : {}),
           requestChecksOutcomeRequest: {
             ...request,
             outcome: {
@@ -282,6 +338,32 @@ function nativeSdkOutcomeAlternatives(
           },
         }
       : {}),
+  };
+}
+
+function nativeSdkResultRequest(
+  run: WorkflowRun,
+  action: RuntimeAction,
+  state: NativePortableState,
+  output?: RuntimeValue,
+) {
+  const request = nativeSdkOutcomeRequest(run, action, state);
+  if (!request) return null;
+  return {
+    operation: 'record-outcome' as const,
+    receipt: Buffer.from(
+      JSON.stringify({
+        runId: run.runId,
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        claimToken: action.claim!.token,
+      }),
+    ).toString('base64url'),
+    result: {
+      status: request.outcome.status,
+      output: output === undefined ? request.outcome.output : output,
+    },
   };
 }
 
@@ -389,23 +471,7 @@ export async function projectNativeSdkDispatchResult(options: {
     ...(outcomeRequest
       ? {
           outcomeRequest,
-          resultRequest: {
-            operation: 'record-outcome',
-            receipt: Buffer.from(
-              JSON.stringify({
-                runId: run.runId,
-                actionId: action.id,
-                attempt: action.attempt,
-                inputHash: action.inputHash,
-                claimToken: action.claim!.token,
-              }),
-            ).toString('base64url'),
-            result: {
-              status: outcomeRequest.outcome.status,
-              output:
-                '<actual-business-output; use outcomeRequest.outcome.output as template, optional iteration focus may be omitted>',
-            },
-          },
+          resultRequest: nativeSdkResultRequest(run, action, state),
         }
       : {}),
     ...(contextRequest ? { contextRequest } : {}),
@@ -1092,17 +1158,6 @@ async function projectNativeSdkContinuationValue(options: {
       ref: action.ref,
       attempt: action.attempt,
       inputHash: action.inputHash,
-      ...(action.type === 'handoff' || action.type === 'invoke_skill'
-        ? {
-            input:
-              verificationContext && action.stepId === 'verify.verifier'
-                ? verificationContext
-                : action.input,
-          }
-        : {}),
-      ...(verificationContext && action.stepId === 'verify.verifier'
-        ? { verificationContext }
-        : {}),
       mechanism: 'runtime-dispatch',
       commandArgs:
         action.type === 'handoff' || action.type === 'invoke_skill'
@@ -1161,6 +1216,17 @@ async function projectNativeSdkContinuationValue(options: {
                 }
               : null,
           }
+        : {}),
+      ...(action.type === 'handoff' || action.type === 'invoke_skill'
+        ? {
+            input:
+              verificationContext && action.stepId === 'verify.verifier'
+                ? verificationContext
+                : action.input,
+          }
+        : {}),
+      ...(verificationContext && action.stepId === 'verify.verifier'
+        ? { verificationContext }
         : {}),
     };
   });

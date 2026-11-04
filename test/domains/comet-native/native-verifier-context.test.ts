@@ -3,12 +3,21 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { bugfreeFixture } from '../../helpers/native-bugfree.js';
 import { nativeVerifierContext } from '../../../domains/comet-native/native-verifier-context.js';
+import { projectNativeSdkDispatchResult } from '../../../domains/comet-native/native-sdk-continuation.js';
+import { loadOwnedNativeSdkRuntime } from '../../../domains/comet-native/native-runtime-ownership.js';
+import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import { nativeEditReviewScope } from '../../../domains/comet-native/native-edit-review.js';
+import {
+  prepareObservedEditReview,
+  recordEditReview,
+} from '../../../domains/workflow-contract/edit-review.js';
 import { nativeVerifyMode } from '../../../domains/comet-native/native-verification-policy.js';
 import {
   writeProjectConfig,
   defaultProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import type { WorkflowRun, RuntimeValue } from '../../../domains/engine/runtime.js';
+import type { NativePortableState } from '../../../domains/comet-native/native-portable-types.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -131,6 +140,155 @@ it('rejects changed candidate bytes instead of accepting a compact pass', async 
   expect((await fixture.inspect()).waits.some((wait) => wait.stepId === 'verify.confirm')).toBe(
     false,
   );
+});
+
+it('shows live check input changes and returns a bound refresh request without manual protocol fields', async () => {
+  const fixture = await bugfreeFixture((root) => roots.push(root));
+  const cache = path.join(fixture.root, 'check-cache.bin');
+  await fs.writeFile(cache, 'generated');
+  const check = {
+    id: 'read-cache',
+    name: 'Read and restore generated cache',
+    executable: process.execPath,
+    argv: ['-e', "require('node:fs').writeFileSync('check-cache.bin','generated')"],
+    cwdRef: '.',
+    timeoutMs: 10000,
+    repeatable: true,
+  };
+  const run = await fixture.candidate('expected\n', 'builder', [check]);
+  const action = run.actions.at(-1)!;
+  expect(action.stepId).toBe('verify.verifier');
+  await fs.unlink(cache);
+  const context = await nativeVerifierContext(run, action, fixture.root);
+  expect(context?.checkInput).toMatchObject({
+    status: 'changed',
+    candidateStatus: 'changed',
+    recovery: {
+      commandArgs: [
+        'comet',
+        'edit-review',
+        'observe',
+        'native',
+        'bugfree-test',
+        '--session',
+        '<current-agent-session>',
+        '--json',
+      ],
+    },
+    changes: [expect.objectContaining({ path: 'check-cache.bin', afterHash: 'missing' })],
+  });
+  expect((context?.changeRefs as { fullChanges: Array<{ path: string }> }).fullChanges).not.toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        path: 'check-cache.bin',
+        afterHash: expect.not.stringMatching(/^missing$/u),
+      }),
+    ]),
+  );
+  const owned = await loadOwnedNativeSdkRuntime(fixture.root, 'bugfree-test');
+  const claimed = await owned.runtime.claim({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: 'native-host',
+    sessionId: 'reviewer',
+    claimToken: 'refresh-reader',
+    context: { projectRoot: fixture.root, requestId: 'refresh-reader' },
+  });
+  const projection = await projectNativeSdkDispatchResult({
+    run: claimed,
+    state: claimed.state as unknown as NativePortableState,
+    actionId: action.id,
+    projectRoot: fixture.root,
+  });
+  expect(projection.resultRequest?.result.output).toMatchObject({
+    candidateId: expect.any(String),
+    verifierExecutionRef: 'reviewer',
+  });
+  expect(projection.refreshChecksResultRequest).toMatchObject({
+    operation: 'record-outcome',
+    receipt: projection.resultRequest!.receipt,
+    result: {
+      status: 'succeeded',
+      output: {
+        refreshChecks: true,
+        candidateId: expect.any(String),
+        verifierExecutionRef: 'reviewer',
+        response: { kind: 'request-checks', checks: [check] },
+      },
+    },
+  });
+  await expect(fixture.submit(final(claimed, 'reviewer'), 'reviewer')).rejects.toThrow();
+  const paths = await nativeProjectPaths(fixture.root, 'docs');
+  const scope = {
+    ...nativeEditReviewScope(paths, claimed.state as unknown as NativePortableState),
+    judgment: 'agent' as const,
+  };
+  const proposal = await prepareObservedEditReview(scope, context!.checkInput.changes);
+  const original = run.actions.find((entry) => entry.stepId === 'verify.checks')!;
+  await recordEditReview(
+    scope,
+    {
+      proposalHash: proposal.proposalHash,
+      decision: 'non-behavioral',
+      summary:
+        'Only generated cache was removed; implementation and the original check remain applicable.',
+      retainedChecks: [{ actionId: original.id, checkId: check.id }],
+    },
+    { kind: 'runtime-agent', executionRef: 'reviewer' },
+  );
+  const retained = await fixture.inspect();
+  expect(
+    (await nativeVerifierContext(retained, retained.actions.at(-1)!, fixture.root))?.checkInput,
+  ).toMatchObject({
+    status: 'changed',
+    candidateStatus: 'unchanged',
+    evidenceStatus: 'retained',
+  });
+  await fixture.submit(final(retained, 'reviewer'), 'reviewer');
+  expect(
+    (await fixture.inspect()).actions.filter((entry) =>
+      ['verify.checks', 'verify.requested-checks'].includes(entry.stepId),
+    ),
+  ).toHaveLength(1);
+});
+
+it('does not offer a refresh template that would replay a one-time check', async () => {
+  const fixture = await bugfreeFixture((root) => roots.push(root));
+  const run = await fixture.candidate('expected\n', 'builder', [
+    {
+      id: 'once',
+      name: 'One-time check',
+      executable: process.execPath,
+      argv: ['-e', "process.stdout.write('once')"],
+      cwdRef: '.',
+      timeoutMs: 10000,
+      repeatable: false,
+    },
+  ]);
+  const action = run.actions.at(-1)!;
+  const owned = await loadOwnedNativeSdkRuntime(fixture.root, 'bugfree-test');
+  const claimed = await owned.runtime.claim({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: 'native-host',
+    sessionId: 'reviewer',
+    claimToken: 'once-review',
+    context: { projectRoot: fixture.root, requestId: 'once-review' },
+  });
+  const projection = await projectNativeSdkDispatchResult({
+    run: claimed,
+    state: claimed.state as unknown as NativePortableState,
+    actionId: action.id,
+    projectRoot: fixture.root,
+  });
+  expect(projection.refreshChecksResultRequest).toBeUndefined();
+  expect(
+    (await fixture.inspect()).actions.filter((entry) => entry.stepId === 'verify.checks'),
+  ).toHaveLength(1);
 });
 
 it('rejects a corrupted creation baseline instead of rebuilding it from the candidate', async () => {

@@ -10,6 +10,13 @@ import { parseNativePortableState } from './native-portable-state.js';
 import { nativeSdkCheckRuntimeRef } from './native-sdk-check-execution.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { nativeVerifyMode } from './native-verification-policy.js';
+import {
+  assertNativeSdkCandidateUnchanged,
+  nativeSdkCurrentCheckSummaries,
+  NativeSdkCandidateDriftError,
+  NativeSdkCheckInputDriftError,
+  NativeSdkCheckInputSnapshotError,
+} from './native-sdk-checks.js';
 
 export async function prepareNativeVerificationBaseline(
   projectRoot: string,
@@ -139,6 +146,25 @@ export async function nativeVerifierContext(
     complete: false,
     reason: 'Current input or creation baseline is unavailable',
   };
+  let checkInput: {
+    status: 'unavailable' | 'current' | 'changed' | 'incomplete';
+    checkedActionId?: string;
+    checkedRef?: string;
+    checkedHash?: string;
+    currentHash?: string;
+    changes: ReturnType<typeof nativeRawInputChanges>;
+    diagnostics: string[];
+    candidateStatus: 'unchanged' | 'changed' | 'unknown';
+    evidenceStatus: 'current' | 'retained' | 'stale' | 'unavailable';
+    reason?: string;
+    recovery?: { cwd: string; commandArgs: string[] };
+  } = {
+    status: 'unavailable',
+    changes: [],
+    diagnostics: [],
+    candidateStatus: 'unknown',
+    evidenceStatus: 'unavailable',
+  };
   if (input.verificationBaseline && currentOutput?.rawInput) {
     const baseline = await readNativeVerificationBaseline(run, projectRoot);
     const now = await readNativeRawInput(
@@ -153,6 +179,62 @@ export async function nativeVerifierContext(
       baseline.contentHash !== input.verificationBaseline.contentHash
     )
       throw new Error('Native verification input is incomplete');
+    const paths = await nativeProjectPaths(implementationRoot, input.artifactRootRef, {
+      readOnly: true,
+    });
+    const live = await nativeRawInputSnapshot({
+      projectRoot: implementationRoot,
+      managedArtifactRoot: paths.artifactRoot,
+      previous: now,
+    });
+    checkInput = {
+      status: !live.complete
+        ? 'incomplete'
+        : now.contentHash === live.contentHash
+          ? 'current'
+          : 'changed',
+      checkedActionId: current!.id,
+      checkedRef: currentOutput.rawInput.afterRef,
+      checkedHash: now.contentHash,
+      currentHash: live.contentHash,
+      changes: live.complete ? nativeRawInputChanges(now, live) : [],
+      diagnostics: live.diagnostics,
+      candidateStatus: 'unknown',
+      evidenceStatus: 'unavailable',
+    };
+    try {
+      await assertNativeSdkCandidateUnchanged({
+        run,
+        projectRoot,
+        requireEvidence: true,
+        observedInputs: live,
+      });
+      checkInput.candidateStatus = 'unchanged';
+      await nativeSdkCurrentCheckSummaries({ run, projectRoot, observedInputs: live });
+      checkInput.evidenceStatus = checkInput.status === 'changed' ? 'retained' : 'current';
+    } catch (error) {
+      checkInput.reason = error instanceof Error ? error.message : String(error);
+      if (error instanceof NativeSdkCandidateDriftError) {
+        checkInput.candidateStatus = 'changed';
+        checkInput.recovery = {
+          cwd: projectRoot,
+          commandArgs: [
+            'comet',
+            'edit-review',
+            'observe',
+            'native',
+            state.name,
+            '--session',
+            '<current-agent-session>',
+            '--json',
+          ],
+        };
+      } else if (error instanceof NativeSdkCheckInputSnapshotError) {
+        checkInput.status = 'incomplete';
+      } else if (error instanceof NativeSdkCheckInputDriftError) {
+        checkInput.evidenceStatus = 'stale';
+      }
+    }
     const previous = [...plans]
       .reverse()
       .find(
@@ -168,15 +250,16 @@ export async function nativeVerifierContext(
       ? await readNativeRawInput(root, `${nativeSdkCheckRuntimeRef(run)}/inputs`, previousRef)
       : null;
     changeRefs = {
-      complete: true,
+      complete: live.complete,
       baselineRef: input.verificationBaseline.ref,
       candidateRef: currentOutput.rawInput.afterRef,
+      currentInputHash: live.contentHash,
       baselineCommit: baseline.git?.head ?? null,
-      fullChanges: nativeRawInputChanges(baseline, now),
+      fullChanges: live.complete ? nativeRawInputChanges(baseline, live) : [],
       ...(earlier
         ? {
             previousCandidateRef: previousRef,
-            incrementalChanges: nativeRawInputChanges(earlier, now),
+            incrementalChanges: live.complete ? nativeRawInputChanges(earlier, live) : [],
           }
         : {}),
     };
@@ -200,6 +283,7 @@ export async function nativeVerifierContext(
     ],
     acceptance: state.acceptance.map(({ id, source, text }) => ({ id, source, text })),
     changeRefs,
+    checkInput,
     session,
     checkEvidence: plans
       .filter(
@@ -219,7 +303,7 @@ export async function nativeVerifierContext(
     ...(prior ? { previousReview: { actionId: prior.id, result: prior.outcome?.output } } : {}),
     instruction:
       state.language === 'zh-CN'
-        ? '独立只读审查全部验收项，充分运用语义理解；阅读足以判断时直接回报。仅为实际疑问补读或请求必要检查；遵守明确要求的检查，不新增审查 Agent。续审根据实际变化确认全部结论。输入不完整时补齐或如实 blocked，失败和未知不得记为通过。'
-        : 'Independently review every criterion using semantic understanding. Read or request checks only to resolve concrete uncertainty, while honoring required checks. Do not spawn reviewers. On continuation, assess actual changes and reconfirm every criterion. Incomplete inputs, failures and unknown executions cannot count as passed.',
+        ? '独立只读审查全部验收项，充分运用语义理解；阅读足以判断时直接给出结果。checkInput 列出检查后的实际变化，不能把旧快照当成当前文件。candidateStatus 为 changed 时先按 recovery 观察并判断实际影响，不能仅刷新检查接受代码改动。evidenceStatus 为 retained 表示 Runtime 已核对保留证明，无需重跑；候选仍适用而检查过期时，才使用领取响应中的 refreshChecksResultRequest，保留 receipt。不要手工重算绑定哈希或改写收据。仅为实际疑问补读或请求必要检查；遵守明确要求的检查，不新增审查 Agent。续审根据实际变化确认全部结论。输入不完整时补齐或如实 blocked，失败和未知不得记为通过。'
+        : 'Independently review every criterion using semantic understanding. checkInput lists actual changes since checks; the checked snapshot is not the current filesystem. If candidateStatus is changed, follow recovery to assess the edits; refreshing checks cannot accept changed code. evidenceStatus retained means Runtime validated retention evidence, so no rerun is needed. Use refreshChecksResultRequest only when the candidate remains applicable and checks are stale; preserve receipt. Do not reconstruct binding hashes or edit receipts. Read or request checks only to resolve concrete uncertainty, while honoring required checks. Do not spawn reviewers. On continuation, assess actual changes and reconfirm every criterion. Incomplete inputs, failures and unknown executions cannot count as passed.',
   };
 }

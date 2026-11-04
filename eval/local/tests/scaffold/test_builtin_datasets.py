@@ -1336,6 +1336,98 @@ def test_dataset_pytest_only_loads_root_owned_plugins_outside_candidate(tmp_path
     assert loaded == ["safe"]
 
 
+def test_dataset_native_mode_seed_survives_execution_workspace_relocation(tmp_path, monkeypatch):
+    import os
+    import shutil
+    import subprocess
+    from scaffold.python.builtin_datasets import seed_dataset_native_mode
+
+    package = Path(__file__).resolve().parents[4]
+    monkeypatch.setenv("BENCH_COMET_SOURCE_ROOT", str(package))
+    prepared = tmp_path / "prepared"
+    prepared.mkdir()
+    seed_dataset_native_mode(prepared, "bugfree")
+    assert sorted(
+        file.relative_to(prepared).as_posix() for file in prepared.rglob("*") if file.is_file()
+    ) == [".comet/config.yaml"]
+    execution = tmp_path / "execution"
+    shutil.copytree(prepared, execution)
+    inspected = subprocess.run(
+        [
+            "node",
+            str(package / "bin/comet.js"),
+            "native",
+            "status",
+            "--project-root",
+            str(execution),
+            "--json",
+        ],
+        env={**os.environ, "COMET_DATA_DIR": str(tmp_path / "execution-data")},
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+    )
+    assert inspected.returncode == 0, inspected.stdout + inspected.stderr
+    assert json.loads(inspected.stdout)["exitCode"] == 0
+
+
+def test_dataset_late_controller_skill_snapshot_keeps_business_files_visible(tmp_path):
+    import conftest
+    import subprocess
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    subprocess.run(["git", "init", str(workspace)], check=True, capture_output=True)
+    (workspace / ".dataset-task.json").write_text(
+        json.dumps(
+            {
+                "execution": {"controllerFilePolicy": "exclude-harness-created-paths"},
+                "controllerPaths": [".dataset-task.json"],
+            }
+        )
+    )
+    (workspace / "source.txt").write_text("business")
+    (workspace / "_eval_target_skills_business.txt").write_text("business")
+    (workspace / "docs/comet/changes/example").mkdir(parents=True)
+    (workspace / "docs/comet/changes/example/brief.md").write_text("approved requirements")
+    package = tmp_path / "skill"
+    package.mkdir()
+    (package / "SKILL.md").write_text("fixture controller package")
+    conftest._snapshot_dynamic_skill_package(workspace, {"path": str(package)})
+    visible = subprocess.check_output(
+        ["git", "-C", str(workspace), "ls-files", "--others", "--exclude-standard"], text=True
+    ).splitlines()
+    assert not any(path.startswith("_eval_target_skills/") for path in visible)
+    assert "source.txt" in visible
+    assert "_eval_target_skills_business.txt" in visible
+    assert "docs/comet/changes/example/brief.md" in visible
+
+
+def test_dataset_controller_snapshot_rejects_an_original_business_path_collision(tmp_path):
+    import conftest
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / ".dataset-task.json").write_text(
+        json.dumps(
+            {
+                "execution": {"controllerFilePolicy": "exclude-harness-created-paths"},
+                "controllerPaths": [],
+            }
+        )
+    )
+    original = workspace / "_eval_target_skills/answer.txt"
+    original.parent.mkdir()
+    original.write_text("original business data")
+    package = tmp_path / "skill"
+    package.mkdir()
+    (package / "SKILL.md").write_text("fixture controller package")
+    with pytest.raises(ValueError, match="冲突"):
+        conftest._snapshot_dynamic_skill_package(workspace, {"path": str(package)})
+    assert original.read_text() == "original business data"
+
+
 def test_dataset_seeds_verification_mode_before_any_run_through_public_cli(tmp_path, monkeypatch):
     import yaml
     from scaffold.python.builtin_datasets import seed_dataset_native_mode

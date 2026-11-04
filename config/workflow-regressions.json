@@ -7678,6 +7678,151 @@
           ]
         }
       ]
+    },
+    {
+      "id": "eval-native-portable-mode-seed",
+      "behavior": "固定 Native 模式时仅复制可移植配置，不将 Windows Runtime 迁移标记带入 Linux 执行目录",
+      "coverageLevel": "public-cli",
+      "expected": "公开 CLI 在隔离目录生成配置，执行目录只接收配置；目录迁移后 status 成功且没有伪造 change",
+      "forbidden": "复制本机 fence 或数据路径，放宽损坏 fence 校验，或运行中更改 Run 模式",
+      "rootCause": "原初始化在真实候选目录执行，留下引用本机绝对路径的 Runtime fence",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "seeds portable dataset configuration without copying platform Runtime fences",
+          "requiredNames": [
+            "seeds portable dataset configuration without copying platform Runtime fences"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "benchmark-real-container-portable-seed",
+          "status": "pending",
+          "evidence": [
+            "用户明确停止本轮 Eval；保留原始记录，不启动新一轮。确定性测试不能证明真实模型耗时或执行器完整链路改善。"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-04-native-bugfree-protocol-stall"],
+      "reproduction": "c3d0e82f 的已停止 Eval 暴露问题；相同确定性案例先红后绿，详见 docs/research/2026-11-04-native-bugfree-protocol-stall.zh.md。"
+    },
+    {
+      "id": "eval-native-late-controller-inputs",
+      "behavior": "后创建的控制器文件按精确路径排除，原题同名数据拒绝覆盖且业务输入保持可见",
+      "coverageLevel": "unit",
+      "expected": "控制器快照和提示文件不混入候选；普通业务文件、相似前缀及 Native 文档仍受检查；同名原题数据保留并报错",
+      "forbidden": "使用宽泛忽略规则隐藏业务文件、覆盖原题同名目录或改变历史执行策略",
+      "rootCause": "controllerPaths 在准备阶段一次性生成，遗漏后续创建的 Skill 快照与循环提示文件",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "keeps late controller files out of dataset inputs and refuses original path collisions",
+          "requiredNames": [
+            "keeps late controller files out of dataset inputs and refuses original path collisions"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "benchmark-real-container-late-controller-inputs",
+          "status": "pending",
+          "evidence": [
+            "用户明确停止本轮 Eval；保留原始记录，不启动新一轮。确定性测试不能证明真实模型耗时或执行器完整链路改善。"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-04-native-bugfree-protocol-stall"],
+      "reproduction": "c3d0e82f 的已停止 Eval 暴露问题；相同确定性案例先红后绿，详见 docs/research/2026-11-04-native-bugfree-protocol-stall.zh.md。"
+    },
+    {
+      "id": "native-verifier-live-input-retention",
+      "behavior": "独立审查展示当前输入变化，要求实际影响判断后保留有效证据，不重放一次性检查",
+      "coverageLevel": "runtime",
+      "expected": "显示检查后删除的实际文件；未经判断的变动拒绝通过；当前 Agent 绑定非行为变化及保留证明后无需重跑；一次性检查无整组刷新模板",
+      "forbidden": "把旧快照当当前输入、按扩展名忽略缓存、未复核修改直接通过或自动重放一次性操作",
+      "rootCause": "任务包差异只比较基线与最后检查快照，未显示检查之后的实际变化和已有证据适用状态",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "shows live check input changes and returns a bound refresh request without manual protocol fields",
+          "requiredNames": [
+            "shows live check input changes and returns a bound refresh request without manual protocol fields"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "does not offer a refresh template that would replay a one-time check",
+          "requiredNames": ["does not offer a refresh template that would replay a one-time check"]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "native-real-model-input-recovery-efficiency",
+          "status": "pending",
+          "evidence": [
+            "用户明确停止本轮 Eval；保留原始记录，不启动新一轮。确定性测试不能证明真实模型耗时或执行器完整链路改善。"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-04-native-bugfree-protocol-stall"],
+      "reproduction": "c3d0e82f 的已停止 Eval 暴露问题；相同确定性案例先红后绿，详见 docs/research/2026-11-04-native-bugfree-protocol-stall.zh.md。"
+    },
+    {
+      "id": "native-handoff-typed-result-template",
+      "behavior": "领取响应提供可直接填写业务字段的收据模板及可选检查结构，公开 CLI 接受并保持重复提交幂等",
+      "coverageLevel": "public-cli",
+      "expected": "Builder 的默认检查为空但完整可选结构可见；保留 receipt 并填写实际业务结果即可完成原 Action，重复提交不重复推进",
+      "forbidden": "要求模型手工拼写身份哈希、凭空添加默认检查、取消收据绑定或重复产生 Action",
+      "rootCause": "resultRequest.output 是字符串提示，实际业务模板藏在另一套完整协议中；空检查列表没有展示可选字段结构",
+      "tests": [
+        {
+          "file": "test/app/native-bugfree-cli.test.ts",
+          "namePattern": "submits the typed receipt template through the public CLI without rebuilding identity fields",
+          "requiredNames": [
+            "submits the typed receipt template through the public CLI without rebuilding identity fields"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "native-real-model-typed-result-efficiency",
+          "status": "pending",
+          "evidence": [
+            "用户明确停止本轮 Eval；保留原始记录，不启动新一轮。确定性测试不能证明真实模型耗时或执行器完整链路改善。"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-04-native-bugfree-protocol-stall"],
+      "reproduction": "c3d0e82f 的已停止 Eval 暴露问题；相同确定性案例先红后绿，详见 docs/research/2026-11-04-native-bugfree-protocol-stall.zh.md。"
+    },
+    {
+      "id": "native-verifier-delegation-header",
+      "behavior": "待派发 Verifier 的独立会话要求及领取请求先于大量任务正文展示",
+      "coverageLevel": "runtime",
+      "expected": "独立只读和会话约束位于 input 之前，保留独立 Verifier 正常领取并完成原有完整验收路径",
+      "forbidden": "Builder 代领、删除独立角色约束、伪称正文顺序即可证明真实独立执行",
+      "rootCause": "独立会话要求位于大量嵌套上下文之后，实际运行先反复准备协议后才派发子任务",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "binds a separate Verifier handoff and accepts its filled outcome template",
+          "requiredNames": [
+            "Native SDK Workflow Application binds a separate Verifier handoff and accepts its filled outcome template"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "native-real-model-independent-delegation",
+          "status": "pending",
+          "evidence": [
+            "用户明确停止本轮 Eval；保留原始记录，不启动新一轮。确定性测试不能证明真实模型耗时或执行器完整链路改善。"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-04-native-bugfree-protocol-stall"],
+      "reproduction": "c3d0e82f 的已停止 Eval 暴露问题；相同确定性案例先红后绿，详见 docs/research/2026-11-04-native-bugfree-protocol-stall.zh.md。"
     }
   ]
 }

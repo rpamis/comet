@@ -593,6 +593,35 @@ USER agent
     return tasks
 
 
+def register_dataset_controller_path(test_dir: Path, name: str):
+    """登记控制器即将创建的固定路径；原题同名文件必须保留并报错。"""
+    if name not in {"_eval_target_skills", ".eval-task-prompt.txt", ".eval-runtime-volume"}:
+        raise ValueError("未登记的数据集控制器路径")
+    metadata_file = test_dir / ".dataset-task.json"
+    if not metadata_file.is_file():
+        return
+    metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
+    if metadata.get("execution", {}).get("controllerFilePolicy") != "exclude-harness-created-paths":
+        return
+    owned = metadata.get("controllerPaths", [])
+    target = test_dir / name
+    if target.is_symlink() or (target.exists() and name not in owned):
+        raise ValueError(f"原始任务文件与 Eval 控制器路径冲突：{name}")
+    git = test_dir / ".git"
+    excludes = git / "info/exclude"
+    if git.is_symlink() or (git / "info").is_symlink() or excludes.is_symlink():
+        raise ValueError("数据集 Git 排除文件不能通过符号链接写入")
+    excludes.parent.mkdir(parents=True, exist_ok=True)
+    existing = excludes.read_text(encoding="utf-8") if excludes.exists() else ""
+    rule = "/" + name
+    if rule not in existing.splitlines():
+        with excludes.open("a", encoding="utf-8") as stream:
+            stream.write("\n" + rule + "\n")
+    if name not in owned:
+        metadata["controllerPaths"] = [*owned, name]
+        metadata_file.write_text(json.dumps(metadata), encoding="utf-8")
+
+
 def prepare_dataset_workspace(test_dir: Path, agent: str):
     if not (test_dir / ".dataset-task.json").is_file():
         return
@@ -655,11 +684,12 @@ def prepare_dataset_workspace(test_dir: Path, agent: str):
     finally:
         docker("rm", "-f", name)
     if "verifyMode" in metadata:
+        register_dataset_controller_path(test_dir, ".eval-runtime-volume")
         seed_dataset_native_mode(test_dir, metadata["verifyMode"])
 
 
 def seed_dataset_native_mode(test_dir: Path, mode: str):
-    """在模型启动前通过公开 CLI 初始化项目，再固定新 Run 的验证模式。"""
+    """通过公开 CLI 生成配置；执行目录只接收配置，不接收本机 Runtime 标记。"""
     import yaml
 
     if mode not in {"standard", "bugfree"}:
@@ -667,7 +697,15 @@ def seed_dataset_native_mode(test_dir: Path, mode: str):
     package = Path(
         os.environ.get("BENCH_COMET_SOURCE_ROOT", str(Path(__file__).resolve().parents[3]))
     )
-    with tempfile.TemporaryDirectory(prefix="comet-eval-init-") as data:
+    config_file = test_dir / ".comet/config.yaml"
+    if config_file.is_symlink() or config_file.parent.is_symlink():
+        raise ValueError("数据集 Native 配置不能通过符号链接写入")
+    with tempfile.TemporaryDirectory(prefix="comet-eval-init-") as temporary:
+        staging = Path(temporary) / "project"
+        staging.mkdir()
+        if config_file.exists():
+            (staging / ".comet").mkdir()
+            shutil.copy2(config_file, staging / ".comet/config.yaml")
         result = subprocess.run(
             [
                 "node",
@@ -679,11 +717,11 @@ def seed_dataset_native_mode(test_dir: Path, mode: str):
                 "--language",
                 "en",
                 "--project-root",
-                str(test_dir),
+                str(staging),
                 "--json",
             ],
             cwd=package,
-            env={**os.environ, "COMET_DATA_DIR": data},
+            env={**os.environ, "COMET_DATA_DIR": str(Path(temporary) / "data")},
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -694,7 +732,7 @@ def seed_dataset_native_mode(test_dir: Path, mode: str):
                 "数据集 Native 初始化失败："
                 + redact_sensitive(result.stdout + result.stderr)[-3000:]
             )
-    config_file = test_dir / ".comet/config.yaml"
-    config = yaml.safe_load(config_file.read_text(encoding="utf-8"))
+        config = yaml.safe_load((staging / ".comet/config.yaml").read_text(encoding="utf-8"))
     config["native"]["verify_mode"] = mode
+    config_file.parent.mkdir(parents=True, exist_ok=True)
     config_file.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")

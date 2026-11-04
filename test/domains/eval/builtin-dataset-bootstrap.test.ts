@@ -163,3 +163,19 @@ it('enforces candidate storage monitoring without deleting the candidate', () =>
 it('fixes Native verification mode before model execution and checks actual Run inputs', () => {
   scaffold('test_builtin_datasets.py', 'seeds_verification_mode or actual_run_mode_mismatch', 2);
 }, 35_000);
+
+it('seeds portable dataset configuration without copying platform Runtime fences', () => {
+  scaffold(
+    'test_builtin_datasets.py',
+    'native_mode_seed_survives_execution_workspace_relocation',
+    1,
+  );
+}, 35_000);
+
+it('keeps late controller files out of dataset inputs and refuses original path collisions', () => {
+  scaffold(
+    'test_builtin_datasets.py',
+    'late_controller_skill_snapshot or controller_snapshot_rejects',
+    2,
+  );
+}, 35_000);
