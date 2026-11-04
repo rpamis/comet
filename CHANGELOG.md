@@ -6,6 +6,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **File lock release**: Release an unchanged lock still owned by the current operation when coordinated cleanup fails, so later writes can acquire it again after coordination recovers. Preserve replaced or uninspectable locks and report the specific release outcome ([#529](https://github.com/rpamis/comet/issues/529)).
+- **Classic migration-fence delivery**: Accept complete archive moves of tracked migration fences, including archives created before this fix, while rejecting missing or altered archived copies ([#530](https://github.com/rpamis/comet/issues/530)).
 - **Dashboard plugin loading**: Reuse plugin hosts across page reloads, share repeated Git observations during initialization, and allow slower local sections to complete without premature timeouts. Configuration and plugin changes refresh the host; `COMET_DEBUG=1` reports redacted section failures while preserving available data ([#538](https://github.com/rpamis/comet/issues/538)).
 - **Windows process probes**: Allow slower probe compilation, remove unpublished executables after failed preparation, and back off repeated failures without weakening process identity validation ([#538](https://github.com/rpamis/comet/issues/538)).
 

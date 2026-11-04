@@ -142,6 +142,8 @@ describe.skipIf(process.platform !== 'linux')('independent Eval stop watchdog', 
       .poll(async () => (await readManagedEvalRun(project, 'run'))?.status, { timeout: 12_000 })
       .toBe('interrupted');
     expect(await inspectProcessTreeLiveness(owner.pid, owner.identity)).toBe('dead');
+    // 终态可见时仍可能在释放文件锁；删除夹具前确认停止操作已收尾。
+    await requestStopEvalRun(project, 'run');
   });
 
   it('keeps stopping and retries when container cleanup fails after process stop', async () => {
