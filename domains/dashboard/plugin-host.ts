@@ -6,6 +6,8 @@ import type {
 import { PluginRuntimeError } from '../comet-plugin/sdk.js';
 import { withOperationBudget } from '../../platform/process/operation-budget.js';
 
+const DASHBOARD_PLUGIN_OPERATION_TIMEOUT_MS = 10_000;
+
 export interface DashboardPluginPageRegistration {
   readonly pluginId: string;
   readonly label: string;
@@ -91,7 +93,7 @@ export class DashboardPluginHost {
     let data: unknown = null;
     try {
       if (page.load !== undefined) {
-        data = await withOperationBudget({ timeoutMs: 2000 }, () =>
+        data = await withOperationBudget({ timeoutMs: DASHBOARD_PLUGIN_OPERATION_TIMEOUT_MS }, () =>
           page.load!({
             projectId: this.projectId,
             invoke: (capability, input) => this.invoke(pluginId, capability, input),
@@ -115,8 +117,10 @@ export class DashboardPluginHost {
       throw new DashboardPluginHostError('插件已停用，请先重新启用', 409, pluginId);
     }
     try {
-      const result = await withOperationBudget({ timeoutMs: 10000 }, () =>
-        this.runtime.invoke(pluginId, capability, input, this.scope(), { throwOnError: true }),
+      const result = await withOperationBudget(
+        { timeoutMs: DASHBOARD_PLUGIN_OPERATION_TIMEOUT_MS },
+        () =>
+          this.runtime.invoke(pluginId, capability, input, this.scope(), { throwOnError: true }),
       );
       return result;
     } catch (error) {

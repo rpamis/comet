@@ -19,7 +19,7 @@ class CometProcessIdentity {
  }
 }`;
 const sourceHash = createHash('sha256').update(SOURCE).digest('hex');
-const PREPARATION_RETRY_DELAY_MS = 10_000;
+const PREPARATION_RETRY_DELAY_MS = 60_000;
 const preparations = new Map<string, { promise: Promise<string | null>; retryAfter: number }>();
 
 /** 仅供显式停止核对补充枚举证据；枚举不到 PID 不证明其后代已停止。 */
@@ -80,6 +80,10 @@ async function cachedProbe(root: string): Promise<string | null> {
 
 async function prepareProbe(root: string, systemRoot: string): Promise<string | null> {
   let lock: Awaited<ReturnType<typeof fs.open>> | undefined;
+  let sourceCreated = false;
+  let compilationStarted = false;
+  let manifestCreated = false;
+  let published = false;
   const id = randomUUID();
   const source = path.join(root, `probe-${id}.cs`);
   const executable = path.join(root, `probe-${id}.exe`);
@@ -90,7 +94,6 @@ async function prepareProbe(root: string, systemRoot: string): Promise<string | 
     lock = await fs.open(path.join(root, 'prepare.lock'), 'wx', 0o600);
     const existing = await cachedProbe(root);
     if (existing) return existing;
-    await fs.writeFile(source, SOURCE, { flag: 'wx', mode: 0o600 });
     let compiler: string | undefined;
     for (const framework of ['Framework64', 'Framework']) {
       const candidate = path.join(systemRoot, 'Microsoft.NET', framework, 'v4.0.30319', 'csc.exe');
@@ -103,25 +106,31 @@ async function prepareProbe(root: string, systemRoot: string): Promise<string | 
       }
     }
     if (!compiler) return null;
+    sourceCreated = true;
+    await fs.writeFile(source, SOURCE, { flag: 'wx', mode: 0o600 });
+    compilationStarted = true;
     await runExternalCommandAsync(
       compiler,
       ['/nologo', '/target:exe', '/platform:anycpu', `/out:${executable}`, source],
-      { timeoutMs: 1500, maxBufferBytes: 4096 },
+      { timeoutMs: 10_000, maxBufferBytes: 4096 },
     );
     const hash = createHash('sha256')
       .update(await plainFile(executable, 65536))
       .digest('hex');
+    manifestCreated = true;
     await fs.writeFile(manifest, JSON.stringify({ file: path.basename(executable), hash }), {
       flag: 'wx',
       mode: 0o600,
     });
     await fs.rename(manifest, path.join(root, 'probe.json'));
+    published = true;
     return executable;
   } catch {
     return null;
   } finally {
-    await fs.unlink(source).catch(() => undefined);
-    await fs.unlink(manifest).catch(() => undefined);
+    if (sourceCreated) await fs.unlink(source).catch(() => undefined);
+    if (manifestCreated && !published) await fs.unlink(manifest).catch(() => undefined);
+    if (compilationStarted && !published) await fs.unlink(executable).catch(() => undefined);
     if (lock) {
       await lock.close().catch(() => undefined);
       await fs.unlink(path.join(root, 'prepare.lock')).catch(() => undefined);

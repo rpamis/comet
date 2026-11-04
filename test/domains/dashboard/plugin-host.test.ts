@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  throwIfOperationAborted,
+  withOperationBudget,
+} from '../../../platform/process/operation-budget.js';
+import {
   MemoryPluginStateStore,
   PluginRuntime,
   type PluginDescriptor,
@@ -34,6 +38,30 @@ const page: DashboardPluginPageRegistration = {
 };
 
 describe('DashboardPluginHost', () => {
+  it('loads a section taking more than two seconds within the page budget', async () => {
+    const runtime = new PluginRuntime({
+      cometVersion: '0.5.2',
+      store: new MemoryPluginStateStore(),
+      descriptors: [
+        {
+          ...descriptor('test.plugin'),
+          create: () => ({
+            invoke: async () => {
+              await new Promise((resolve) => setTimeout(resolve, 2200));
+              throwIfOperationAborted();
+              return { ok: true };
+            },
+          }),
+        },
+      ],
+    });
+    await runtime.install('test.plugin');
+    const host = new DashboardPluginHost({ runtime, projectId: 'project-1', pages: [page] });
+    await expect(host.get('test.plugin')).resolves.toMatchObject({ data: { value: { ok: true } } });
+    await expect(
+      withOperationBudget({ timeoutMs: 30 }, () => host.get('test.plugin')),
+    ).rejects.toThrow('Operation time budget exceeded');
+  });
   it('keeps a concurrent section failure from replacing another successful result', async () => {
     let entered!: () => void, release!: () => void;
     const ready = new Promise<void>((resolve) => {

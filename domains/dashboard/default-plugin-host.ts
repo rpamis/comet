@@ -10,7 +10,11 @@ import {
 } from '../project-knowledge/index.js';
 import { DashboardPluginHost, type DashboardPluginHostFactory } from './plugin-host.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
-import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
+import {
+  resolveStableProjectId,
+  withProjectIdentityScope,
+} from '../../platform/paths/project-identity.js';
+import { withProjectWorktreeRootScope } from '../../platform/paths/project-worktree-root.js';
 import {
   defaultProjectKnowledgeStorageRoot,
   resolveProjectKnowledgeStorageLocation,
@@ -68,39 +72,44 @@ export function createDefaultDashboardPluginHostFactory(
     options.knowledgeCacheRoot === undefined ? undefined : path.resolve(options.knowledgeCacheRoot);
   const cometVersion = options.cometVersion ?? getCurrentVersion();
 
-  return async (_dashboardProjectId, projectPath) => {
-    // Keep persisted plugin state scoped to the repository, independently of Dashboard routes.
-    const projectId = resolveStableProjectId(projectPath);
-    if (stateRoot === undefined && knowledgeCacheRoot === undefined) {
-      importLegacyProjectKnowledgeState(
-        projectPath,
-        homeDirectory,
-        defaultProjectKnowledgeStorageRoot(configuredHomeDirectory),
-      );
-    }
-    const bridge = await createDefaultCometPluginBridge({
-      projectRoot: projectPath,
-      projectId,
-      memoryRoot,
-      ...(configuredHomeDirectory === undefined ? {} : { homeDirectory: configuredHomeDirectory }),
-      ...(stateRoot === undefined ? {} : { stateRoot }),
-      ...(knowledgeCacheRoot === undefined ? {} : { knowledgeCacheRoot }),
-      cometVersion,
-    });
-    const projectKnowledgePage = createProjectKnowledgeDashboardContribution(
-      bridge.currentLanguage,
+  return (_dashboardProjectId, projectPath) =>
+    withProjectWorktreeRootScope(() =>
+      withProjectIdentityScope(async () => {
+        // Keep persisted plugin state scoped to the repository, independently of Dashboard routes.
+        const projectId = resolveStableProjectId(projectPath);
+        if (stateRoot === undefined && knowledgeCacheRoot === undefined) {
+          importLegacyProjectKnowledgeState(
+            projectPath,
+            homeDirectory,
+            defaultProjectKnowledgeStorageRoot(configuredHomeDirectory),
+          );
+        }
+        const bridge = await createDefaultCometPluginBridge({
+          projectRoot: projectPath,
+          projectId,
+          memoryRoot,
+          ...(configuredHomeDirectory === undefined
+            ? {}
+            : { homeDirectory: configuredHomeDirectory }),
+          ...(stateRoot === undefined ? {} : { stateRoot }),
+          ...(knowledgeCacheRoot === undefined ? {} : { knowledgeCacheRoot }),
+          cometVersion,
+        });
+        const projectKnowledgePage = createProjectKnowledgeDashboardContribution(
+          bridge.currentLanguage,
+        );
+        return new DashboardPluginHost({
+          runtime: bridge.pluginRuntime,
+          projectId,
+          pages: [
+            {
+              pluginId: PROJECT_KNOWLEDGE_PLUGIN_ID,
+              label: projectKnowledgePage.label,
+              route: projectKnowledgePage.route,
+              ...(projectKnowledgePage.load ? { load: projectKnowledgePage.load } : {}),
+            },
+          ],
+        });
+      }),
     );
-    return new DashboardPluginHost({
-      runtime: bridge.pluginRuntime,
-      projectId,
-      pages: [
-        {
-          pluginId: PROJECT_KNOWLEDGE_PLUGIN_ID,
-          label: projectKnowledgePage.label,
-          route: projectKnowledgePage.route,
-          ...(projectKnowledgePage.load ? { load: projectKnowledgePage.load } : {}),
-        },
-      ],
-    });
-  };
 }

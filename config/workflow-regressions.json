@@ -2,6 +2,186 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "dashboard-plugin-host-slow-reloads",
+      "behavior": "Dashboard 插件页间隔超过一秒重载时复用 host，刷新页面数据和配置后正确失效。",
+      "coverageLevel": "runtime",
+      "reproduction": "0.5.1 发布包上连续 HTTP 请求将 host 构建次数从 1 增至 2；修复前当前分支相同断言失败。",
+      "expected": "并发只构建一次，5 秒后重载复用；配置和生命周期变更刷新，过期后失败可以重试。",
+      "forbidden": "每秒重建 bridge、缓存旧页面数据、修改配置后继续使用旧 host、永久缓存失败。",
+      "rootCause": "host 成功后仅缓存一秒，项目配置写入未使 host 失效。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/plugin-server.test.ts",
+          "namePattern": "reuses hosts across reloads while refreshing data and configuration",
+          "requiredNames": [
+            "Dashboard plugin HTTP API reuses hosts across reloads while refreshing data and configuration"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "真实 Windows Chrome 与 Dashboard HTTP",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-04-issue-538-dashboard-latency.zh.md#浏览器与公开-http"
+          ]
+        }
+      ],
+      "sources": ["https://github.com/rpamis/comet/issues/538"]
+    },
+    {
+      "id": "dashboard-plugin-host-git-observations",
+      "behavior": "单次 Dashboard host 初始化共享重复的项目身份和 worktree Git 探测，后续构建重新读取。",
+      "coverageLevel": "runtime",
+      "reproduction": "0.5.1 发布包的同一最小场景执行 6 次 Git 探测，超过断言的 2 次。",
+      "expected": "单个有 origin 的项目每次构建只执行两次必要探测，第二次构建重新执行而不复用永久身份。",
+      "forbidden": "在一个构建内重复启动相同 Git 查询，或跨构建永久缓存项目身份。",
+      "rootCause": "默认 host factory 没有包裹已有的请求内项目观察作用域。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/default-plugin-host.test.ts",
+          "namePattern": "shares Git identity and worktree observations only within each host construction",
+          "requiredNames": [
+            "default dashboard plugin host shares Git identity and worktree observations only within each host construction"
+          ]
+        }
+      ],
+      "sources": ["https://github.com/rpamis/comet/issues/538"]
+    },
+    {
+      "id": "dashboard-plugin-local-page-budget",
+      "behavior": "本地插件分区超过两秒但仍在操作预算内时正常完成，父级取消及远端失联保持有界。",
+      "coverageLevel": "runtime",
+      "reproduction": "0.5.1 发布包中真实等待 2.2 秒后检查预算，页面调用以预算超时拒绝。",
+      "expected": "本地 2.2 秒操作完成；更短的父预算仍生效；远端失联继续在原短预算内降级并关闭请求。",
+      "forbidden": "外层两秒上限使正常本地操作失败，取消无效，或远端 Provider 无限等待。",
+      "rootCause": "页面的 2 秒父预算覆盖了能力调用的 10 秒预算。",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/plugin-host.test.ts",
+          "namePattern": "loads a section taking more than two seconds within the page budget",
+          "requiredNames": [
+            "DashboardPluginHost loads a section taking more than two seconds within the page budget"
+          ]
+        },
+        {
+          "file": "test/domains/dashboard/default-plugin-host.test.ts",
+          "namePattern": "returns available sections and cancels an unavailable provider within the page budget",
+          "requiredNames": [
+            "default dashboard plugin host returns available sections and cancels an unavailable provider within the page budget"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "真实 Windows Chrome 插件页可用性",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-04-issue-538-dashboard-latency.zh.md#浏览器与公开-http"
+          ]
+        }
+      ],
+      "sources": ["https://github.com/rpamis/comet/issues/538"]
+    },
+    {
+      "id": "memory-dashboard-section-debug-diagnostics",
+      "behavior": "个人记忆 Dashboard 分区失败保留成功分区，并且只在调试模式记录脱敏错误。",
+      "coverageLevel": "runtime",
+      "reproduction": "0.5.1 发布包上 status 故障降级但 COMET_DEBUG=1 时没有任何可定位日志，日志断言失败。",
+      "expected": "partial 只包含失败分区，management 数据可用；调试日志包含插件和分区及脱敏原因，默认模式静默。",
+      "forbidden": "静默吞掉调试错误、清空其他分区或在日志中输出 Bearer 凭据。",
+      "rootCause": "分区 section 捕获异常后仅填充通用提示，丢弃错误原因。",
+      "tests": [
+        {
+          "file": "test/domains/comet-memory/dashboard-diagnostics.test.ts",
+          "namePattern": "keeps successful sections and logs redacted failures only with COMET_DEBUG=",
+          "requiredNames": [
+            "keeps successful sections and logs redacted failures only with COMET_DEBUG=1",
+            "keeps successful sections and logs redacted failures only with COMET_DEBUG=0"
+          ]
+        }
+      ],
+      "sources": ["https://github.com/rpamis/comet/issues/538"]
+    },
+    {
+      "id": "windows-process-probe-slow-compilation",
+      "behavior": "Windows 进程身份探针在编译超过 1.5 秒时仍可于有限预算内发布和复用。",
+      "coverageLevel": "runtime",
+      "reproduction": "0.5.1 发布包对超过 1.5 秒的编译夹具返回 null；修复后同一夹具等待 1.6 秒并成功复用缓存。",
+      "expected": "慢编译得到校验过的可执行文件，第二次读取不重新编译，并清理源码和持有的准备锁。",
+      "forbidden": "合理慢编译被提前取消、无界编译、复用未经完整性校验的文件。",
+      "rootCause": "编译固定超时只有 1500ms。",
+      "tests": [
+        {
+          "file": "test/platform/process/windows-process-identity.test.ts",
+          "namePattern": "allows slow successful compilation and reuses the verified probe",
+          "requiredNames": [
+            "optional Windows process creation probe allows slow successful compilation and reuses the verified probe"
+          ]
+        }
+      ],
+      "sources": ["https://github.com/rpamis/comet/issues/538"]
+    },
+    {
+      "id": "windows-process-probe-unpublished-executable-cleanup",
+      "behavior": "Windows 探针编译写出 exe 后失败，或 manifest 发布失败时，清理本次未发布产物。",
+      "coverageLevel": "runtime",
+      "reproduction": "0.5.1 发布包对编译失败和 manifest 发布失败的两个独立故障注入均残留 probe-UUID.exe。",
+      "expected": "两种失败均不残留本次 exe、源码、临时 manifest 或持有的准备锁，探测结果保持未知。",
+      "forbidden": "失败 exe 积累、将未发布文件视为有效缓存或删除他人文件。",
+      "rootCause": "finally 只删除源码和临时 manifest，没有清理未发布的 exe。",
+      "tests": [
+        {
+          "file": "test/platform/process/windows-process-identity.test.ts",
+          "namePattern": "removes unpublished probe executables after",
+          "requiredNames": [
+            "optional Windows process creation probe removes unpublished probe executables after compiler failure",
+            "optional Windows process creation probe removes unpublished probe executables after manifest failure"
+          ]
+        }
+      ],
+      "sources": ["https://github.com/rpamis/comet/issues/538"]
+    },
+    {
+      "id": "windows-process-probe-preparation-backoff",
+      "behavior": "Windows 探针准备失败后采用分钟级冷却并在冷却结束后允许恢复。",
+      "coverageLevel": "runtime",
+      "reproduction": "0.5.1 发布包在 10 秒就重新准备，新增的 10 秒和 59999ms 禁止重试断言失败。",
+      "expected": "10 秒与 59999ms 不重新编译，60000ms 能在编译器或锁恢复后完成；保留既有兼容探测。",
+      "forbidden": "每十秒重新编译、永久拒绝重试或将探针失败当作进程退出。",
+      "rootCause": "准备失败冷却固定为 10000ms。",
+      "tests": [
+        {
+          "file": "test/platform/process/windows-process-identity.test.ts",
+          "namePattern": "retries after a cooldown when a transient",
+          "requiredNames": [
+            "optional Windows process creation probe retries after a cooldown when a transient compiler timeout clears",
+            "optional Windows process creation probe retries after a cooldown when a transient busy preparation lock clears"
+          ]
+        }
+      ],
+      "sources": ["https://github.com/rpamis/comet/issues/538"]
+    },
+    {
+      "id": "windows-process-probe-owned-temporary-cleanup",
+      "behavior": "没有取得 Windows 探针准备锁时不尝试删除未创建的临时文件。",
+      "coverageLevel": "runtime",
+      "reproduction": "0.5.1 发布包遇到忙锁时仍调用两次 unlink；注入删除护栏时这些空操作也有显著成本。",
+      "expected": "忙锁保持未知，未创建自己的临时文件时不调用 unlink；成功路径只删除实际使用的临时产物。",
+      "forbidden": "在未取得锁的路径触发无意义删除，删除其他进程锁，或绕过 NODE_OPTIONS 安全护栏。",
+      "rootCause": "finally 无条件删除本次 UUID 对应源码和 manifest，即使准备阶段未创建它们。",
+      "tests": [
+        {
+          "file": "test/platform/process/windows-process-identity.test.ts",
+          "namePattern": "does not delete files when another process holds the preparation lock",
+          "requiredNames": [
+            "optional Windows process creation probe does not delete files when another process holds the preparation lock"
+          ]
+        }
+      ],
+      "sources": ["https://github.com/rpamis/comet/issues/538"]
+    },
+    {
       "id": "local-native-check-refresh-fixture-order",
       "sources": ["report:2026-11-04-local-test-failures"],
       "behavior": "检查刷新回归先准备原始输入，再以当前原始字节编辑协议审查格式或结构变化。",

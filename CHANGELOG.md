@@ -2,6 +2,13 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.5.3] - 2026-11-04
+
+### Fixed
+
+- **Dashboard plugin loading**: Reuse plugin hosts across page reloads, share repeated Git observations during initialization, and allow slower local sections to complete without premature timeouts. Configuration and plugin changes refresh the host; `COMET_DEBUG=1` reports redacted section failures while preserving available data ([#538](https://github.com/rpamis/comet/issues/538)).
+- **Windows process probes**: Allow slower probe compilation, remove unpublished executables after failed preparation, and back off repeated failures without weakening process identity validation ([#538](https://github.com/rpamis/comet/issues/538)).
+
 ## What's Changed [0.5.2] - 2026-11-03
 
 ### Added
