@@ -1338,6 +1338,7 @@ export function mergeWorkflowProjectConfigDocument(
         ? { document_writes: validated.native.document_writes }
         : {}),
     };
+    if (config.native?.document_writes === 'allow') delete native.document_writes;
     if (validated.native.finish?.pull_request) {
       const existingFinish = optionalRecord(existingNative.finish);
       native.finish = {

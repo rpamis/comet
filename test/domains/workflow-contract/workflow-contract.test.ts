@@ -538,6 +538,24 @@ describe('workflow contract normalization', () => {
     expect(defaults.config?.classic?.document_evidence).toBeUndefined();
   });
 
+  it.each([
+    ['explicit allow replaces revert', 'revert', 'allow', undefined],
+    ['omitted policy preserves revert', 'revert', undefined, 'revert'],
+    ['explicit revert replaces allow', 'allow', 'revert', 'revert'],
+  ] as const)('merges Native document writes when %s', (_label, existing, requested, expected) => {
+    const config = defaultWorkflowProjectConfig('docs', 'en');
+    const merged = mergeWorkflowProjectConfigDocument(
+      { native: { document_writes: existing, custom: 'preserved' }, extension: 42 },
+      {
+        ...config,
+        native: { ...config.native!, ...(requested ? { document_writes: requested } : {}) },
+      },
+    );
+    expect(merged.native).toMatchObject({ custom: 'preserved' });
+    expect((merged.native as { document_writes?: string }).document_writes).toBe(expected);
+    expect(merged.extension).toBe(42);
+  });
+
   it('keeps YAML parsing ownership out of project-config consumers', async () => {
     const consumers = [
       'app/commands/resume-probe.ts',

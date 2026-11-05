@@ -263,7 +263,11 @@ describe('Native portable Runtime vertical path', () => {
   ] as const)(
     'reruns byte-bound checks without returning to Build after non-behavioral edits (%s, dirty: %s)',
     async (ref, initial, prefix, dirty) => {
-      await writeProjectConfig(root, defaultProjectConfig('docs', 'en'));
+      const defaultConfig = defaultProjectConfig('docs', 'en');
+      await writeProjectConfig(root, {
+        ...defaultConfig,
+        native: { ...defaultConfig.native, document_writes: 'allow' },
+      });
       const git = (...args: string[]) =>
         execFileSync('git', ['-C', root, ...args], { stdio: 'ignore' });
       git('init', '--quiet');
@@ -360,7 +364,10 @@ describe('Native portable Runtime vertical path', () => {
           allowed: true,
           phase: 'verify',
         });
-        await writeProjectConfig(root, config);
+        await writeProjectConfig(root, {
+          ...config,
+          native: { ...config.native, document_writes: 'allow' },
+        });
       }
       await fs.writeFile(file, afterEdit);
       const observed = (await runNativeEditReviewCommand({
@@ -2392,7 +2399,10 @@ Ship the behavior.
           },
         }),
       }),
-    ).rejects.toThrow('required check');
+    ).rejects.toThrow('检查 failing-check 的实际结果或输入不再适用');
+    expect(
+      (await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name)))?.checks,
+    ).toMatchObject([{ id: 'failing-check', status: 'failed', exitCode: 7, executionCount: 1 }]);
     expect(await readNativePortableChange(paths, state.name)).toMatchObject({
       phase: 'verify',
       verification_result: 'pending',

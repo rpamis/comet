@@ -988,7 +988,7 @@ export async function nativeRawCandidateHash(
     // 正式契约由 Shape 的批准绑定单独核对，不作为实现改动再次处理。
     if (formalPaths.includes(file.path)) continue;
     const reviewed = await approvedEditHash(scope, file.path, file.hash, reviews, file.mode);
-    if (reviewed && !reviewed.semantic) {
+    if (reviewed) {
       if (reviewed.beforeHash !== null)
         files.push({ ...file, hash: reviewed.beforeHash, mode: reviewed.beforeMode ?? file.mode });
     } else files.push(file);
@@ -1004,7 +1004,7 @@ export async function nativeRawCandidateHash(
   for (const [ref, edit] of deleted) {
     if (present.has(ref) || formalPaths.includes(ref)) continue;
     const reviewed = await approvedEditHash(scope, ref, 'missing', reviews);
-    if (reviewed && !reviewed.semantic && reviewed.beforeHash !== null)
+    if (reviewed && reviewed.beforeHash !== null)
       files.push({
         path: ref,
         hash: reviewed.beforeHash,

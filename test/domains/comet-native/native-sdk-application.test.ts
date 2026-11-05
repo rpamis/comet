@@ -9543,53 +9543,88 @@ it('upgrades a legacy failed Archive drift into the original Verify repair Wait'
 });
 
 it('requires fresh verification instead of trusting a legacy check without a candidate digest', async () => {
-  const application = nativeApplication();
-  application.executors = application.executors.map((executor) =>
-    executor.id !== nativeSdkCheckExecutor.id
-      ? executor
-      : {
-          ...executor,
-          async execute(...args: Parameters<RuntimeExecutor['execute']>) {
-            const run = args[2];
-            const projectRoot = String(args[1].projectRoot);
-            const paths = await nativeProjectPaths(
-              projectRoot,
-              (run.input as { artifactRootRef: string }).artifactRootRef,
-            );
-            const snapshotOptions = {
-              projectRoot,
-              state: run.state as unknown as NativePortableState,
-              plans: nativeSdkChecks.nativeSdkCheckPlans(run.outputs['build.builder'].value),
-              managedArtifactRoot: paths.artifactRoot,
-            };
-            const before = await nativePortableChecks.nativeCheckInputSnapshot(snapshotOptions);
-            const result = await executor.execute(...args);
-            const after = await nativePortableChecks.nativeCheckInputSnapshot(snapshotOptions);
-            const output = { ...(result.output as Record<string, RuntimeValue>) };
-            // 旧收据没有 v2 输入快照；只删候选摘要会制造不合法的混合格式。
-            delete output.inputSnapshot;
-            delete output.candidateInputFingerprintGate;
-            delete output.rawInput;
-            output.inputBefore = before.fingerprint;
-            output.inputAfter = after.fingerprint;
-            return { ...result, output };
-          },
-        },
-  );
-  const { run } = await awaitingArchiveApplication(
+  const countDir = await fs.mkdtemp(path.join(os.tmpdir(), 'native-check-proof-'));
+  roots.push(countDir);
+  const counter = path.join(countDir, 'executions');
+  const f = await dispatchedVerifier(
+    [
+      {
+        id: 'one-shot',
+        name: 'One-shot proof',
+        executable: process.execPath,
+        argv: ['-e', "require('node:fs').appendFileSync(process.argv[1], 'once\\n')", counter],
+        cwdRef: '.',
+        timeoutMs: 10_000,
+        repeatable: false,
+      },
+    ],
     'memory',
-    undefined,
+    nativeApplication(),
     false,
+    undefined,
     initializeArchiveGit,
-    application,
   );
-  expect(run.state).toMatchObject({
+  const action = f.run.actions.at(-1)!;
+  const context = { projectRoot: f.root, requestId: 'original-check-proof' };
+  const claimed = await f.runtime.claim({
+    runId: f.run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: nativeSdkCheckExecutor.id,
+    claimToken: 'original-check-proof',
+    context,
+  });
+  const original = claimed.actions.at(-1)!;
+  const result = await nativeSdkCheckExecutor.execute(original, context, claimed);
+  const incomplete = { ...(result.output as Record<string, RuntimeValue>) };
+  delete incomplete.inputSnapshot;
+  delete incomplete.candidateInputFingerprintGate;
+  delete incomplete.rawInput;
+  const outcome = {
+    ...result,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    claimToken: original.claim!.token,
+    outcomeId: 'missing-check-proof',
+    output: incomplete,
+  };
+  await expect(f.runtime.recordOutcome({ runId: f.run.runId, outcome, context })).rejects.toThrow(
+    'OUTCOME_REJECTED',
+  );
+  const rejected = await f.runtime.inspect(f.run.runId);
+  expect(rejected.actions.at(-1)).toMatchObject({
+    id: action.id,
+    status: 'running',
+    claim: original.claim,
+    rejectedOutcomes: [
+      expect.objectContaining({
+        outcome: expect.objectContaining({ outcomeId: outcome.outcomeId }),
+      }),
+    ],
+  });
+  expect(rejected.state).toMatchObject({
     phase: 'verify',
-    status: 'await-user',
     archived: false,
     verification_result: 'pending',
   });
-  expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
+  expect(rejected.actions.some((a) => a.stepId === 'verify.verifier')).toBe(false);
+  const corrected = await f.runtime.recordOutcome({
+    runId: f.run.runId,
+    context,
+    outcome: { ...outcome, ...result, outcomeId: 'complete-original-check-proof' },
+  });
+  expect(corrected.actions.find((a) => a.id === action.id)).toMatchObject({
+    status: 'succeeded',
+    claim: original.claim,
+    rejectedOutcomes: rejected.actions.at(-1)!.rejectedOutcomes,
+  });
+  expect(corrected.actions.at(-1)).toMatchObject({ stepId: 'verify.verifier', status: 'pending' });
+  expect(corrected.actions.some((a) => a.stepId.startsWith('archive.'))).toBe(false);
+  await expect(f.runtime.recordOutcome({ runId: f.run.runId, outcome, context })).rejects.toThrow();
+  expect(await f.runtime.inspect(f.run.runId)).toEqual(corrected);
+  expect(await fs.readFile(counter, 'utf8')).toBe('once\n');
 });
 
 it.each(['legacy', 'current'])(
