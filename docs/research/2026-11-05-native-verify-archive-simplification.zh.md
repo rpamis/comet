@@ -275,3 +275,5 @@ PR 静态 CI 暴露的夹具问题已定向处理。补回材料访问拦截测�
 后续 Greptile 发现自定义 datasetRoot 与默认缓存任务列表混用，可能清除有效选择。新增 case eval-dataset-custom-root-task-selection，任务查询绑定实际目录，并按 dataset/root/treatment/base 核对响应。未加载、读取失败或过期列表均保留当前选择。HTTP 测试文件 11 项通过，浏览器 5 项通过，涵盖默认缓存缺失/存在、切换和迟到响应。未启动模型 Eval 或下载数据集。静态 Python 6 文件周边回归 341 项通过，2 项 POSIX 恢复明确未在本机执行完成，保留由 Linux CI 验证。
 
 Runtime smoke 的旧并行 worktree 案例原样保留名称和拒绝/隔离/恢复断言，显式选择 native.document_writes: revert。新增默认策略案例验证真实生成 Hook 放行、实际写入、当前 Agent observe/record、同 Run 修订候选及重建 Verify，并检查另一工作区完整隔离。三项通过，未改产品行为或冻结历史案例。共享 Rule 的 Native 段使用 native.document_writes 配置名，避免与 Classic 的 document_evidence 混淆。
+
+后续 Runtime smoke 检出显式空计划首次结算缺陷。reserveNativeRawCheckPlanLocked 对空执行列表直接复用，初次没有 execution 完成标记，导致明确提交空计划后仍无法派发 Verifier。现在仅在 plans/checks 均空且 local.execution 为 null 时沿原零命令结算路径记录完成；未调用、活跃/unknown 执行和既有收据仍按原规则处理。原3项停止保护与新增3项回归合计6项通过，包含真实生成 next bundle，登记 native-portable-explicit-empty-check-plan。Native/Entry重建、类型、生成物、格式、ESLint及登记检查通过。

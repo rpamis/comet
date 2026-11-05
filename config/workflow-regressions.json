@@ -9613,6 +9613,30 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-portable-explicit-empty-check-plan",
+      "sources": ["report:2026-11-05-pr539-empty-native-check-plan"],
+      "behavior": "Compat Native records an explicitly empty check plan before Verifier dispatch and preserves existing execution evidence on reuse.",
+      "coverageLevel": "public-cli",
+      "reproduction": "At 0e5b1903 the two existing portable termination cases failed before dispatch. A focused first-resolution test and the generated Native next bundle also failed because an explicit empty plan returned reused without recording completion.",
+      "expected": "Only a first empty plan with no execution and no check records takes the normal zero-command completion path. Subsequent calls reuse the original record, and the generated next command can dispatch verification.",
+      "forbidden": "Dispatch without explicit plan resolution, erase an active Verifier or unconfirmed check process, replace completed check receipts, or execute a command to resolve an empty plan.",
+      "rootCause": "The raw-input check reservation returned reuse whenever no commands required execution, including an empty plan that had never been resolved.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+          "namePattern": "^Native portable unconfirmed check termination (?:resolves an explicit empty check plan once before dispatching the Verifier|preserves completed check receipts when an empty plan is requested|dispatches an explicit empty check plan through the generated Native next bundle|preserves the registered process and blocks retries for (?:runtime|verifier|legacy-verifier) checks)$",
+          "requiredNames": [
+            "Native portable unconfirmed check termination resolves an explicit empty check plan once before dispatching the Verifier",
+            "Native portable unconfirmed check termination preserves completed check receipts when an empty plan is requested",
+            "Native portable unconfirmed check termination dispatches an explicit empty check plan through the generated Native next bundle",
+            "Native portable unconfirmed check termination preserves the registered process and blocks retries for runtime checks",
+            "Native portable unconfirmed check termination preserves the registered process and blocks retries for verifier checks",
+            "Native portable unconfirmed check termination preserves the registered process and blocks retries for legacy-verifier checks"
+          ]
+        }
+      ]
     }
   ]
 }

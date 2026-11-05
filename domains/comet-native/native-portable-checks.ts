@@ -3198,7 +3198,9 @@ async function reserveNativeRawCheckPlanLocked(
   }
   for (const previous of local.checks)
     if (!checks.some((check) => check.id === previous.id)) checks.push(previous);
-  if (!execute.length)
+  const unresolvedEmptyPlan =
+    options.plans.length === 0 && checks.length === 0 && local.execution === null;
+  if (!execute.length && !unresolvedEmptyPlan)
     return {
       kind: 'reuse',
       state,
