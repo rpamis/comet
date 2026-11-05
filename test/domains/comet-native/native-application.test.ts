@@ -17,6 +17,8 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import { nativeSdkCheckRuntimeRef } from '../../../domains/comet-native/native-sdk-check-execution.js';
+import { hashRuntimeValue } from '../../../domains/engine/runtime.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -27,6 +29,43 @@ async function fixture(supervisor = false) {
   roots.push(root);
   return prepareNativeApplication(root, supervisor);
 }
+
+it.each(['missing', 'invalid'] as const)(
+  'preserves the original CLI error when check execution diagnostics are %s',
+  async (phase) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-error-diagnostics-'));
+    roots.push(root);
+    const f = await prepareNativeApplication(root, false, 'native');
+    const run = await f.submitBuilder(f.pending(f.run, 'build.builder'), 'approved\n');
+    const check = f.pending(run, 'verify.checks');
+    expect(check).toBeTruthy();
+    await f.claim(check, 'check-owner');
+    if (phase === 'invalid') {
+      const directory = path.join(
+        resolveWorkspaceRuntimeRootSync(f.projectRoot),
+        nativeSdkCheckRuntimeRef(run),
+        'executions',
+      );
+      await fs.mkdir(directory, { recursive: true });
+      await fs.writeFile(path.join(directory, `${hashRuntimeValue(check.id)}.json`), '{');
+    }
+    const argv = ['status', f.name, '--unexpected-option'];
+    const original = await runNativeCli([...argv, '--project-root', f.projectRoot, '--json']);
+    expect(original.exitCode).not.toBe(0);
+    const error = await f.native(argv).then(
+      () => {
+        throw new Error('Expected a CLI failure');
+      },
+      (error: Error) => error,
+    );
+    expect(() => JSON.parse(error.message), error.message).not.toThrow();
+    const diagnostic = JSON.parse(error.message);
+    expect(diagnostic).toMatchObject(JSON.parse(original.stdout!));
+    expect(diagnostic.executions).toContainEqual(
+      expect.objectContaining({ actionId: check.id, phase }),
+    );
+  },
+);
 function preparedSupervisor(run: WorkflowRun) {
   expect(run.actions.filter(({ stepId }) => stepId === 'supervisor.prepare')).toMatchObject([
     { status: 'succeeded' },

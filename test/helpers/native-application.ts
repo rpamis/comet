@@ -121,13 +121,13 @@ export async function prepareNativeApplication(
               receipts,
             })),
           executions: executions.map(
-            ({ actionId, owner, process: processState, quiescent, execution }) => ({
+            ({ actionId, owner, process: processState, quiescent, phase, execution }) => ({
               actionId,
               owner,
               process: processState,
               quiescent,
-              phase: execution.phase,
-              terminationUnconfirmed: execution.terminationUnconfirmed,
+              phase,
+              terminationUnconfirmed: execution?.terminationUnconfirmed,
             }),
           ),
         }),

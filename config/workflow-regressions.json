@@ -10645,6 +10645,53 @@
           ]
         }
       ]
+    },
+    {
+      "id": "ci-native-application-error-diagnostics",
+      "sources": ["https://github.com/rpamis/comet/pull/539#discussion_r4481047091"],
+      "behavior": "Preserve the original failing CLI response when a Native application fixture observes missing or invalid local check execution records.",
+      "coverageLevel": "runtime",
+      "reproduction": "At bc333fe2, claim the real verification check without starting it, leave its local record missing or write invalid JSON, then invoke an invalid CLI option. Both cases throw a TypeError while formatting diagnostics instead of preserving the original response.",
+      "expected": "Return the original CLI error envelope plus the missing or invalid execution phase.",
+      "forbidden": "Mask the CLI failure with an exception while reading an absent execution object, or fabricate a successful check.",
+      "rootCause": "The fixture read execution.phase and execution.terminationUnconfirmed even though the inspection contract makes execution optional.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-application.test.ts",
+          "namePattern": "^preserves the original CLI error when check execution diagnostics are (missing|invalid)$",
+          "requiredNames": [
+            "preserves the original CLI error when check execution diagnostics are missing",
+            "preserves the original CLI error when check execution diagnostics are invalid"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "windows-node-shim-direct-launch",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/42054095011/job/127338463430"],
+      "behavior": "Recognize complete Node wrappers for direct Windows startup without an unnecessary PowerShell process, preserving interpreter selection and literal arguments.",
+      "coverageLevel": "unit",
+      "reproduction": "The original 10000ms Native shim check still timed out with one worker on bc333fe2. A deterministic launcher assertion confirms that the old code starts PowerShell for a literal Node shim; the same runtime check takes about 3.0s locally before the change and 0.4s after it.",
+      "expected": "Preserve the declared Node executable, entry and argv; npm/pnpm wrappers retain their original NODE_PATH contract. The original Native check completes within its unchanged 10000ms limit.",
+      "forbidden": "Increase the original check deadline, recognize a wrapper with extra commands or variable substitutions, expand shell arguments, or weaken process-tree stop validation.",
+      "rootCause": "The generic managed-command path always used PowerShell for .cmd files despite the existing literal npm/pnpm parser, adding an avoidable interpreter startup within the check budget.",
+      "tests": [
+        {
+          "file": "test/platform/process/spawn-command.test.ts",
+          "namePattern": "recognizes only complete literal Node wrappers and preserves the declared executable and argv",
+          "requiredNames": [
+            "spawnCommand on Windows recognizes only complete literal Node wrappers and preserves the declared executable and argv"
+          ]
+        },
+        {
+          "file": "test/platform/process/node-cli-command.test.ts",
+          "namePattern": "executes (npm|pnpm) Node shims with literal argv and no shell expansion",
+          "requiredNames": [
+            "literal Node CLI launchers executes npm Node shims with literal argv and no shell expansion",
+            "literal Node CLI launchers executes pnpm Node shims with literal argv and no shell expansion"
+          ]
+        }
+      ]
     }
   ]
 }
