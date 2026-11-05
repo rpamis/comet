@@ -5990,6 +5990,13 @@
           "requiredNames": [
             "bound edit reviews batches raw binary, added and deleted files and rejects edits after observation"
           ]
+        },
+        {
+          "file": "test/domains/comet-native/native-parallel-worktree.test.ts",
+          "namePattern": "^Native parallel linked-worktree Runtime preserves default linked-worktree edits through current-Agent judgment and candidate revision$",
+          "requiredNames": [
+            "Native parallel linked-worktree Runtime preserves default linked-worktree edits through current-Agent judgment and candidate revision"
+          ]
         }
       ],
       "additionalAcceptance": [

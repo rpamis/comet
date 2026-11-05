@@ -19,6 +19,7 @@ describe('Workflow Rule and Native task agreement', () => {
         'utf8',
       );
       expect(rule).toContain('requireIndependentReview');
+      expect(rule).toContain('native.document_writes');
       expect(rule).toContain('contextDelivery');
       expect(rule).toContain('--session');
       expect(rule).not.toMatch(

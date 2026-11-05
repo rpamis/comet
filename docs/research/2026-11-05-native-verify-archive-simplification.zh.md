@@ -262,7 +262,7 @@ Build 中临时命令的自报结果仍缺少 Runtime 输入收据。指引要�
 
 来源 report:2026-11-05-native-rule-hook-skill-alignment。当前共享 Rule 仍要求新的独立 Verifier、每次收尾提交学习检查，并统一提示 Native archive --confirmed；这些描述与新 Native Skill 不一致。中文先修改后同步英文，改为按实际任务选择审查、保留 requireIndependentReview、复用 contextDelivery、普通 Native 完成跳过空学习，并区分 SDK 与 Compat 的恢复参数。正常续行复用当前响应，仅在开始、恢复或切换工作区时读取归属。
 
-Rule 同时说明验收者只读与保留用户普通编辑的区别，按 document_evidence 策略处理。Hook 仍通过 inspectNativeSdkRun(readOnly) 读取本地权威 Run，现有回归证明 Portable 保留旧 Verify 检查点时实际以 Archive 阶段裁决且不取得投影写锁。两处编辑提示改为遵从当前任务会话要求，避免硬编码独立局部复核。
+Rule 同时说明验收者只读与保留用户普通编辑的区别，按 native.document_writes 策略处理。Hook 仍通过 inspectNativeSdkRun(readOnly) 读取本地权威 Run，现有回归证明 Portable 保留旧 Verify 检查点时实际以 Archive 阶段裁决且不取得投影写锁。两处编辑提示改为遵从当前任务会话要求，避免硬编码独立局部复核。
 
 新中英文 Rule 契约先失败再通过；Rule/Skill 与安装 Hook 投影 26 项通过，相关 Rule、Classic 恢复与权威阶段定向 14 项通过。Native/Entry 重建及生成物检查通过。真实平台会话 Hook 尚未执行。
 
@@ -273,3 +273,5 @@ PR #539 首轮 Greptile 提出 Goal 任务被 Native 限制误禁选、CLI 数�
 PR 静态 CI 暴露的夹具问题已定向处理。补回材料访问拦截测试缺少的参数化，更新 tooling 快照路径和已删除 baseline 入口；遥测夹具补真实模拟会话标识和主体效率字段，继续拒绝未知评分；一次性检查恢复样例通过当前公开 SDK 入口创建 v1 Run，保留原恢复与归档断言。Windows 本地 16 参数项中 14 项通过，2 项 POSIX 恢复已越过原失败点，后续受 python3 启动器与 /usr/bin/env 缺失限制。WSL Node 可运行 CLI，但隔离 Python 环境下载依赖超时，已停止，未启动模型或容器。6 文件 Ruff 通过，Linux 完整恢复由 CI 核对。
 
 后续 Greptile 发现自定义 datasetRoot 与默认缓存任务列表混用，可能清除有效选择。新增 case eval-dataset-custom-root-task-selection，任务查询绑定实际目录，并按 dataset/root/treatment/base 核对响应。未加载、读取失败或过期列表均保留当前选择。HTTP 测试文件 11 项通过，浏览器 5 项通过，涵盖默认缓存缺失/存在、切换和迟到响应。未启动模型 Eval 或下载数据集。静态 Python 6 文件周边回归 341 项通过，2 项 POSIX 恢复明确未在本机执行完成，保留由 Linux CI 验证。
+
+Runtime smoke 的旧并行 worktree 案例原样保留名称和拒绝/隔离/恢复断言，显式选择 native.document_writes: revert。新增默认策略案例验证真实生成 Hook 放行、实际写入、当前 Agent observe/record、同 Run 修订候选及重建 Verify，并检查另一工作区完整隔离。三项通过，未改产品行为或冻结历史案例。共享 Rule 的 Native 段使用 native.document_writes 配置名，避免与 Classic 的 document_evidence 混淆。
