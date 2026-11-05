@@ -951,7 +951,12 @@ describe('Native protocol simplification', () => {
     ).toBeGreaterThan(0);
   });
 
-  it.each([undefined, 'local-time-without-a-format'])(
+  it.each([
+    undefined,
+    'local-time-without-a-format',
+    '2026-11-05T10:30:00Z',
+    '2026-10-23T01:00:00.00Z',
+  ])(
     'records a Runtime submission time without requiring Agent metadata (%s)',
     async (submittedAt) => {
       const { root, paths, runtime, run: proposed } = await preparedShape();
@@ -989,8 +994,12 @@ describe('Native protocol simplification', () => {
       const handoff = (run.state as NativePortableState).builder_handoff!;
       expect(handoff.addressed_acceptance_ids).toEqual(submittedAt === undefined ? [] : ['A1']);
       expect(handoff.acceptance_review).toHaveLength(1);
-      expect(Date.parse(handoff.submitted_at)).toBeGreaterThanOrEqual(before);
-      expect(Date.parse(handoff.submitted_at)).toBeLessThanOrEqual(Date.now());
+      if (submittedAt !== undefined && Number.isFinite(Date.parse(submittedAt))) {
+        expect(Date.parse(handoff.submitted_at)).toBe(Date.parse(submittedAt));
+      } else {
+        expect(Date.parse(handoff.submitted_at)).toBeGreaterThanOrEqual(before);
+        expect(Date.parse(handoff.submitted_at)).toBeLessThanOrEqual(Date.now());
+      }
       expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.checks', status: 'pending' });
     },
   );

@@ -505,15 +505,6 @@ function builderCandidateState(
   const state = parseNativePortableState(run.state);
   const output = outcome.output as Record<string, unknown> | null;
   const sessionId = action.claim?.sessionId;
-  if (output?.submittedAt !== undefined) {
-    const submittedAt = output.submittedAt;
-    const timestamp = typeof submittedAt === 'string' ? Date.parse(submittedAt) : NaN;
-    if (!Number.isFinite(timestamp))
-      throw new Error('Native Builder submittedAt must be a valid ISO timestamp');
-    const canonical = new Date(timestamp).toISOString();
-    if (submittedAt !== canonical)
-      throw new Error(`Native Builder submittedAt must use ${canonical}`);
-  }
   if (
     run.workflow.version === '3' &&
     output?.requireIndependentReview !== undefined &&

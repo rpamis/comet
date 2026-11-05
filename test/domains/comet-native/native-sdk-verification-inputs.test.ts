@@ -653,11 +653,6 @@ async function approveCheckRepair(
 describe('Native SDK verification input binding', () => {
   it.each([
     [
-      'submittedAt',
-      { submittedAt: '2026-10-23T01:00:00.00Z' },
-      /submittedAt.*2026-10-23T01:00:00\.000Z/u,
-    ],
-    [
       'checks.result',
       { checks: [{ name: 'check', result: 'pass' }] },
       /checks\[0\]\.result.*passed.*failed.*not-run.*pass/u,

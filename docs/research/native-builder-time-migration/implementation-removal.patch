@@ -1,0 +1,69 @@
+diff --git a/domains/comet-native/native-sdk-application.ts b/domains/comet-native/native-sdk-application.ts
+index 8b5c5788..46382666 100644
+--- a/domains/comet-native/native-sdk-application.ts
++++ b/domains/comet-native/native-sdk-application.ts
+@@ -505,15 +505,6 @@ function builderCandidateState(
+   const state = parseNativePortableState(run.state);
+   const output = outcome.output as Record<string, unknown> | null;
+   const sessionId = action.claim?.sessionId;
+-  if (output?.submittedAt !== undefined) {
+-    const submittedAt = output.submittedAt;
+-    const timestamp = typeof submittedAt === 'string' ? Date.parse(submittedAt) : NaN;
+-    if (!Number.isFinite(timestamp))
+-      throw new Error('Native Builder submittedAt must be a valid ISO timestamp');
+-    const canonical = new Date(timestamp).toISOString();
+-    if (submittedAt !== canonical)
+-      throw new Error(`Native Builder submittedAt must use ${canonical}`);
+-  }
+   if (
+     run.workflow.version === '3' &&
+     output?.requireIndependentReview !== undefined &&
+diff --git a/test/domains/comet-native/native-sdk-application.test.ts b/test/domains/comet-native/native-sdk-application.test.ts
+index a62898d6..22f2f9a4 100644
+--- a/test/domains/comet-native/native-sdk-application.test.ts
++++ b/test/domains/comet-native/native-sdk-application.test.ts
+@@ -951,7 +951,12 @@ describe('Native protocol simplification', () => {
+     ).toBeGreaterThan(0);
+   });
+ 
+-  it.each([undefined, 'local-time-without-a-format'])(
++  it.each([
++    undefined,
++    'local-time-without-a-format',
++    '2026-11-05T10:30:00Z',
++    '2026-10-23T01:00:00.00Z',
++  ])(
+     'records a Runtime submission time without requiring Agent metadata (%s)',
+     async (submittedAt) => {
+       const { root, paths, runtime, run: proposed } = await preparedShape();
+@@ -989,8 +994,12 @@ describe('Native protocol simplification', () => {
+       const handoff = (run.state as NativePortableState).builder_handoff!;
+       expect(handoff.addressed_acceptance_ids).toEqual(submittedAt === undefined ? [] : ['A1']);
+       expect(handoff.acceptance_review).toHaveLength(1);
+-      expect(Date.parse(handoff.submitted_at)).toBeGreaterThanOrEqual(before);
+-      expect(Date.parse(handoff.submitted_at)).toBeLessThanOrEqual(Date.now());
++      if (submittedAt !== undefined && Number.isFinite(Date.parse(submittedAt))) {
++        expect(Date.parse(handoff.submitted_at)).toBe(Date.parse(submittedAt));
++      } else {
++        expect(Date.parse(handoff.submitted_at)).toBeGreaterThanOrEqual(before);
++        expect(Date.parse(handoff.submitted_at)).toBeLessThanOrEqual(Date.now());
++      }
+       expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.checks', status: 'pending' });
+     },
+   );
+diff --git a/test/domains/comet-native/native-sdk-verification-inputs.test.ts b/test/domains/comet-native/native-sdk-verification-inputs.test.ts
+index 5ac389b6..8eb223b4 100644
+--- a/test/domains/comet-native/native-sdk-verification-inputs.test.ts
++++ b/test/domains/comet-native/native-sdk-verification-inputs.test.ts
+@@ -652,11 +652,6 @@ async function approveCheckRepair(
+ 
+ describe('Native SDK verification input binding', () => {
+   it.each([
+-    [
+-      'submittedAt',
+-      { submittedAt: '2026-10-23T01:00:00.00Z' },
+-      /submittedAt.*2026-10-23T01:00:00\.000Z/u,
+-    ],
+     [
+       'checks.result',
+       { checks: [{ name: 'check', result: 'pass' }] },

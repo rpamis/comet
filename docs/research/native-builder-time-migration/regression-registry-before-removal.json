@@ -1,0 +1,25 @@
+{
+  "schema": "comet.release.bad-cases.v1",
+  "baseline": "0ffccd4e33a87e62f3b41fd9877d5d326b1b9b4d",
+  "cases": [
+    {
+      "id": "native-builder-submitted-at-diagnostic",
+      "behavior": "Builder 时间戳格式错误必须点名 submittedAt 并给出规范 UTC 毫秒格式。",
+      "sources": ["https://github.com/rpamis/comet/issues/506"],
+      "coverageLevel": "runtime",
+      "reproduction": "提交 2026-10-23T01:00:00.00Z，修复前误报领取会话或完整候选缺失。",
+      "expected": "拒绝非规范时间戳并输出 .000Z 的规范值和实际值。",
+      "forbidden": "放行无效字段或继续输出误导的会话领取错误。",
+      "rootCause": "日期校验与身份、候选结构共用一个笼统错误。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: submittedAt",
+          "requiredNames": [
+            "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: submittedAt"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -515,9 +515,23 @@ describe('fixed older custom Supervisor Runs', () => {
     expect(hashRuntimeValue(defineWorkflow(old))).toBe(f.run.workflow.hash);
     expect(old.steps).not.toHaveProperty('supervisor.child.verifier-retry');
     const diagnostic = await nativeDoctorCommand([f.name], f.projectRoot);
-    expect(diagnostic).toMatchObject({
+    expect(
+      diagnostic,
+      JSON.stringify((diagnostic.data as { findings?: unknown }).findings),
+    ).toMatchObject({
       exitCode: 65,
-      data: { findings: [{ code: 'sdk-definition-upgrade-required', ready: true }] },
+      data: {
+        findings: expect.arrayContaining([
+          expect.objectContaining({ code: 'sdk-definition-upgrade-required', ready: true }),
+          expect.objectContaining({
+            code: 'sdk-check-execution-recovery-required',
+            owner: 'dead',
+            quiescent: true,
+            recoveryRequired: true,
+            repairCommand: `comet native doctor ${f.name} --repair`,
+          }),
+        ]),
+      },
     });
     expect(
       await readWorkflowApplicationRun(f.projectRoot, 'native-candidate-review', f.name),

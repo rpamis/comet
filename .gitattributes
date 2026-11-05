@@ -22,3 +22,4 @@
 
 # Preserve historical evidence bytes and bound content hashes.
 docs/research/bugfree-retirement/** -text
+docs/research/native-builder-time-migration/** -text

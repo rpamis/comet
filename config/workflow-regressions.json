@@ -2962,7 +2962,61 @@
             "Native SDK verification input binding reports the exact invalid Builder field without misleading claim diagnostics: submittedAt"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户已授权由 Runtime 为缺失或不可解析的 Builder 提交时间兜底，同时保留合法旧请求的解析时间；PR539 Review 确认辅助时间格式不得阻断完整候选。撤下严格 submittedAt 格式拒绝行为，原登记和旧测试正文完整保留，改执行时间兜底、合法时间兼容及业务字段保留的四场景契约。",
+        "authorization": "https://github.com/rpamis/comet/pull/539#discussion_r4478758481",
+        "record": "docs/research/2026-11-05-native-builder-time-migration.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "^Native protocol simplification records a Runtime submission time without requiring Agent metadata \\(undefined\\)$",
+            "requiredNames": [
+              "Native protocol simplification records a Runtime submission time without requiring Agent metadata (undefined)"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "^Native protocol simplification records a Runtime submission time without requiring Agent metadata \\(local-time-without-a-format\\)$",
+            "requiredNames": [
+              "Native protocol simplification records a Runtime submission time without requiring Agent metadata (local-time-without-a-format)"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "^Native protocol simplification records a Runtime submission time without requiring Agent metadata \\(2026-11-05T10:30:00Z\\)$",
+            "requiredNames": [
+              "Native protocol simplification records a Runtime submission time without requiring Agent metadata (2026-11-05T10:30:00Z)"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "^Native protocol simplification records a Runtime submission time without requiring Agent metadata \\(2026-10-23T01:00:00\\.00Z\\)$",
+            "requiredNames": [
+              "Native protocol simplification records a Runtime submission time without requiring Agent metadata (2026-10-23T01:00:00.00Z)"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/native-builder-time-migration/regression-registry-before-removal.json",
+            "sha256": "8561be484cf212f4f85deaaaaa03623c1f7f2672ff01a4e0957504b94a81d307"
+          },
+          "patch": {
+            "file": "docs/research/native-builder-time-migration/implementation-removal.patch",
+            "sha256": "9645396b0acd0ed325c12dc18a3774f21c9b935ea986bfc738d5e45b96581302"
+          },
+          "mapping": {
+            "file": "docs/research/native-builder-time-migration/case-migrations.json",
+            "sha256": "551a044860519442a1579204cf06abe4ecbb5252a5eb3a7f4822815cc0be84fc"
+          },
+          "tests": {
+            "file": "docs/research/native-builder-time-migration/test-snapshots.json",
+            "sha256": "d3b4e011ed91fcf4784cae2a2ed2e9c8da39fafad66443458863a3bc748e77f6"
+          }
+        }
+      }
     },
     {
       "id": "native-builder-check-result-diagnostic",
@@ -7510,7 +7564,10 @@
     {
       "id": "native-builder-runtime-submission-time",
       "behavior": "Builder 无需填写提交时间即可提交候选，格式错误的辅助时间不阻塞实现",
-      "sources": ["report:2026-11-02-native-protocol-simplification"],
+      "sources": [
+        "report:2026-11-02-native-protocol-simplification",
+        "https://github.com/rpamis/comet/pull/539#discussion_r4478758481"
+      ],
       "coverageLevel": "runtime",
       "reproduction": "784694e3 的真实临时 Native SDK Run 在 Builder 回报省略 submittedAt 或填写 local-time-without-a-format 时均以 OUTCOME_REJECTED 拒绝；同一回归先红。",
       "expected": "Runtime 为未提供有效时间的请求记录实际接收时间，保留有效旧请求兼容。",
@@ -7529,6 +7586,20 @@
           "namePattern": "records a Runtime submission time without requiring Agent metadata \\(local-time-without-a-format\\)",
           "requiredNames": [
             "Native protocol simplification records a Runtime submission time without requiring Agent metadata (local-time-without-a-format)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native protocol simplification records a Runtime submission time without requiring Agent metadata \\(2026-11-05T10:30:00Z\\)$",
+          "requiredNames": [
+            "Native protocol simplification records a Runtime submission time without requiring Agent metadata (2026-11-05T10:30:00Z)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native protocol simplification records a Runtime submission time without requiring Agent metadata \\(2026-10-23T01:00:00\\.00Z\\)$",
+          "requiredNames": [
+            "Native protocol simplification records a Runtime submission time without requiring Agent metadata (2026-10-23T01:00:00.00Z)"
           ]
         }
       ]
