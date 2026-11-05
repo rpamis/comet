@@ -257,3 +257,15 @@ Build 中临时命令的自报结果仍缺少 Runtime 输入收据。指引要�
 - 未执行全量测试、真实平台会话 Hook 验收、完整 npm 安装包验收或模型 Eval。源码 CLI、构建与实际项目安装摘要是分别取得的证据。历史两项测试失败与 .ruff_cache 架构限制仍按前文记录。
 
 生成资产检查本轮初次 25 项通过、1 项失败，原断言要求主帮助页避免展示结果协议参数。已将主帮助改为业务说明，具体参数保留在 next --help；重建 Native/Entry 后该文件回归通过，check:generated 再次通过，两个平台安装副本随末次生成物重新更新成功。
+
+## Rule、Hook 与 Skill 同步核对
+
+来源 report:2026-11-05-native-rule-hook-skill-alignment。当前共享 Rule 仍要求新的独立 Verifier、每次收尾提交学习检查，并统一提示 Native archive --confirmed；这些描述与新 Native Skill 不一致。中文先修改后同步英文，改为按实际任务选择审查、保留 requireIndependentReview、复用 contextDelivery、普通 Native 完成跳过空学习，并区分 SDK 与 Compat 的恢复参数。正常续行复用当前响应，仅在开始、恢复或切换工作区时读取归属。
+
+Rule 同时说明验收者只读与保留用户普通编辑的区别，按 document_evidence 策略处理。Hook 仍通过 inspectNativeSdkRun(readOnly) 读取本地权威 Run，现有回归证明 Portable 保留旧 Verify 检查点时实际以 Archive 阶段裁决且不取得投影写锁。两处编辑提示改为遵从当前任务会话要求，避免硬编码独立局部复核。
+
+新中英文 Rule 契约先失败再通过；Rule/Skill 与安装 Hook 投影 26 项通过，相关 Rule、Classic 恢复与权威阶段定向 14 项通过。Native/Entry 重建及生成物检查通过。真实平台会话 Hook 尚未执行。
+
+PR #539 首轮 Greptile 提出 Goal 任务被 Native 限制误禁选、CLI 数据集结果被误标过期两项 P2。均取得当前分支失败证据后修复。任务 API 传递执行方式并在 UI 切换时刷新；CLI、预览和时效检查共用数据集摘要，持久化实际 datasetRoot，历史记录仅在原 metadata 可核对时恢复，缺失或损坏证据显示未知。相关 4 文件 30 项测试通过，追加历史损坏记录 2 项通过。真实浏览器串行 3 项通过，覆盖 Native/Goal 切换和 1280/390 页面；API 使用 mock，未执行模型 Eval。
+
+本项目 Codex/Claude 已通过正式 update 路径同步共享 Rule 与生成 Hook。两处 Rule、两处 Native Hook bundle 的 SHA256 与产品资产一致。完整 build、SDK API 和生成物一致性检查通过。真实平台会话 Hook 尚待验收。

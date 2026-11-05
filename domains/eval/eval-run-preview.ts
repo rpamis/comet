@@ -17,7 +17,11 @@ import type { EvalRunConfig } from './eval-run-types.js';
 import { EVAL_AGENT_ENVIRONMENT, resolveEvalExecution } from './eval-execution-config.js';
 import { evalDefaultBudget, evalDefaultSuite } from './eval-user-settings.js';
 import { readEvalRetrySelection, type EvalRetrySelection } from './eval-run-retry.js';
-import { inspectBuiltinDataset, listBuiltinDatasets } from './builtin-datasets.js';
+import {
+  inspectBuiltinDataset,
+  listBuiltinDatasets,
+  type DatasetPlan,
+} from './builtin-datasets.js';
 import { requireDatasetCache } from './dataset-downloads.js';
 
 export interface EvalRunPreview {
@@ -67,6 +71,7 @@ export function applicationEvalSettings(config: EvalRunConfig): ApplicationEvalS
 }
 const FIELDS = new Set([
   'dataset',
+  'datasetRoot',
   'datasetTreatment',
   'count',
   'acceptDatasetLicense',
@@ -100,6 +105,11 @@ export function normalizeEvalRunConfig(project: string, value: unknown): EvalRun
   for (const key of Object.keys(input))
     if (!FIELDS.has(key)) throw new EvalRunError(`不支持的 Eval 配置字段：${key}`);
   if (input.dataset !== undefined) {
+    if (input.datasetRoot !== undefined) {
+      if (typeof input.datasetRoot !== 'string' || !input.datasetRoot.trim())
+        throw new EvalRunError('数据集目录必须是非空路径');
+      input.datasetRoot = path.resolve(project, input.datasetRoot);
+    }
     if (
       input.datasetTreatment !== undefined &&
       (typeof input.datasetTreatment !== 'string' ||
@@ -130,6 +140,7 @@ export function normalizeEvalRunConfig(project: string, value: unknown): EvalRun
     input.suite = 'local';
     input.count ??= 1;
   } else if (
+    input.datasetRoot !== undefined ||
     input.count !== undefined ||
     input.acceptDatasetLicense !== undefined ||
     input.datasetTreatment !== undefined
@@ -262,6 +273,14 @@ export async function hashEvalSkill(root: string, manifest?: string): Promise<st
     files.push(['external-manifest', evalValueHash(await fs.readFile(manifest, 'utf8'))]);
   return evalValueHash(files);
 }
+export async function hashEvalDataset(plan: DatasetPlan, skillRoot: string): Promise<string> {
+  return evalValueHash({
+    ...(plan.treatment === 'CLAUDE_CODE_GOAL'
+      ? { treatment: 'CLAUDE_CODE_GOAL' }
+      : { native: await hashEvalSkill(skillRoot) }),
+    dataset: plan.contentHash,
+  });
+}
 async function probe(
   command: string,
   args: string[],
@@ -373,7 +392,7 @@ export async function previewEvalRun(project: string, value: unknown): Promise<E
   let limitations: string[];
   let blockedReasons: string[] = [];
   if (config.dataset) {
-    const root = await requireDatasetCache(project, config.dataset);
+    const root = config.datasetRoot ?? (await requireDatasetCache(project, config.dataset));
     const plan = await inspectBuiltinDataset({
       dataset: config.dataset,
       datasetRoot: root,
@@ -382,18 +401,14 @@ export async function previewEvalRun(project: string, value: unknown): Promise<E
       datasetTreatment: config.datasetTreatment,
       agent: config.agent,
     });
+    config.datasetRoot = plan.root;
     target = {
       id: resolvedContext!.skillRoot,
       name: `${plan.dataset.id} · ${config.datasetTreatment === 'goal' ? 'Claude Code Goal' : 'Comet Native'}`,
       type: 'skill',
       path: config.target,
       version: plan.dataset.version,
-      contentHash: evalValueHash({
-        ...(config.datasetTreatment === 'goal'
-          ? { treatment: 'CLAUDE_CODE_GOAL' }
-          : { native: await hashEvalSkill(resolvedContext!.skillRoot) }),
-        dataset: plan.contentHash,
-      }),
+      contentHash: await hashEvalDataset(plan, resolvedContext!.skillRoot),
     };
     taskSource = 'builtin-dataset';
     tasks = plan.tasks.map((task) => ({

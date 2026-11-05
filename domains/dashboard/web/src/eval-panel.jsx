@@ -1427,6 +1427,7 @@ function EvalCreate({
     initialConfig?.acceptDatasetLicense ?? false,
   );
   const [datasetReady, setDatasetReady] = useState(false);
+  const datasetTreatment = Form.useWatch('datasetTreatment', form) ?? 'native';
   const targetTypeSelection =
     Form.useWatch('targetType', form) ?? initialConfig?.targetType ?? 'auto';
   const targetPath = Form.useWatch('target', form);
@@ -1536,6 +1537,7 @@ function EvalCreate({
       delete config.retrySourceRunId;
     } else {
       delete config.dataset;
+      delete config.datasetRoot;
       delete config.datasetTreatment;
       delete config.count;
       delete config.acceptDatasetLicense;
@@ -1727,10 +1729,12 @@ function EvalCreate({
                 <EvalDatasets
                   base={base}
                   value={datasetId}
+                  datasetTreatment={datasetTreatment}
                   task={datasetTask}
                   accepted={datasetAccepted}
                   onReady={setDatasetReady}
                   onChange={(id) => {
+                    form.setFieldValue('datasetRoot', undefined);
                     setDatasetId(id);
                     setDatasetTask(undefined);
                     setDatasetAccepted(false);

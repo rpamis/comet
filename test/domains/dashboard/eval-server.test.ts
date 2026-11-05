@@ -125,6 +125,40 @@ describe('Dashboard Eval routes', () => {
       code: 'ENOENT',
     });
   });
+  it('lists task support for the selected dataset treatment without starting Eval', async () => {
+    const datasets = await request('/datasets');
+    const cached = datasets.body.items.find((item: { id: string }) => item.id === 'workbuddy-code');
+    const task = path.join(cached.root, 'tasks/testing-hard-router_matching');
+    await fs.mkdir(path.join(task, 'environment'), { recursive: true });
+    await fs.mkdir(path.join(task, 'tests'));
+    await fs.mkdir(path.join(cached.root, 'shared'));
+    await fs.writeFile(path.join(cached.root, 'dataset.toml'), '[dataset]\nid="fixture"\n');
+    await fs.writeFile(path.join(task, 'task.toml'), '[agent]\ntimeout_sec=900\n');
+    await fs.writeFile(path.join(task, 'instruction.md'), 'Test router matching.');
+    await fs.writeFile(
+      path.join(task, 'environment/Dockerfile'),
+      'FROM python:3.12\nWORKDIR /workspace\n',
+    );
+    await fs.writeFile(path.join(task, 'tests/verifier.toml'), 'checks=[]\n');
+    await fs.writeFile(
+      path.join(cached.root, 'dataset-source.json'),
+      JSON.stringify({
+        dataset: cached.id,
+        revision: cached.revision,
+        archiveSha256: cached.archiveSha256,
+      }),
+    );
+    const native = await request('/datasets/workbuddy-code/tasks?datasetTreatment=native');
+    expect(native.status).toBe(200);
+    expect(native.body.items).toEqual([
+      { id: 'testing-hard-router_matching', supported: false, reason: expect.any(String) },
+    ]);
+    const goal = await request('/datasets/workbuddy-code/tasks?datasetTreatment=goal');
+    expect(goal.status).toBe(200);
+    expect(goal.body.items).toEqual([{ id: 'testing-hard-router_matching', supported: true }]);
+    const invalid = await request('/datasets/workbuddy-code/tasks?datasetTreatment=unknown');
+    expect(invalid.status).toBe(400);
+  });
   it('serves bounded case pages and validates case identities and filters', async () => {
     const detail = await request('/runs/cli-history');
     expect(detail.body.caseContentOmitted).toBe(true);

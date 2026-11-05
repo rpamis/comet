@@ -10,6 +10,27 @@ const englishNativeSkill = path.resolve('assets/skills/comet-native/SKILL.md');
 const englishNativeCommands = path.resolve('assets/skills/comet-native/reference/commands.md');
 const englishNativeRecovery = path.resolve('assets/skills/comet-native/reference/recovery.md');
 
+describe('Workflow Rule and Native task agreement', () => {
+  it.each(['md', 'en.md'])(
+    'aligns review, delivered context and optional learning in %s',
+    async (suffix) => {
+      const rule = await fs.readFile(
+        path.resolve('assets/skills/comet/rules/comet-workflow-guard.' + suffix),
+        'utf8',
+      );
+      expect(rule).toContain('requireIndependentReview');
+      expect(rule).toContain('contextDelivery');
+      expect(rule).toContain('--session');
+      expect(rule).not.toMatch(
+        /新的 Verifier execution 独立验收|new Verifier execution independently|每次任务结束前必须记录学习检查|Record a learning check before every task completion/,
+      );
+      expect(rule).not.toMatch(
+        /再重试 `comet native archive <change> --confirmed`|then retry `comet native archive <change> --confirmed`/,
+      );
+    },
+  );
+});
+
 describe('Chinese Native SDK Skill route', () => {
   it.each(['skills', 'skills-zh'])(
     'prefers receipt result submission consistently through SDK verification in %s',

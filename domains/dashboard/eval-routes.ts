@@ -41,9 +41,13 @@ export async function handleDashboardEvalRequest(
   const datasetTasks = /^\/datasets\/([a-z0-9-]+)\/tasks$/u.exec(subpath);
   if (read && datasetTasks) {
     const id = datasetTasks[1];
+    const datasetTreatment = query.get('datasetTreatment') ?? 'native';
+    if (datasetTreatment !== 'native' && datasetTreatment !== 'goal')
+      throw new EvalRunError('数据集执行方式须为 native 或 goal');
     const plan = await inspectBuiltinDataset({
       dataset: id,
       datasetRoot: await requireDatasetCache(project, id),
+      datasetTreatment,
     });
     return {
       status: 200,

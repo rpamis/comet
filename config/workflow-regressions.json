@@ -9508,6 +9508,75 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-rule-skill-review-and-learning-alignment",
+      "sources": ["report:2026-11-05-native-rule-hook-skill-alignment"],
+      "behavior": "Installed workflow Rules agree with Native Skills about adaptive review, context delivery, optional learning and SDK recovery commands.",
+      "coverageLevel": "unit",
+      "reproduction": "Both language Rule contract cases failed before Rule synchronization because requireIndependentReview and contextDelivery were absent and unconditional independent review/learning guidance remained.",
+      "expected": "Keep review read-only, honor explicit independent requirements, reuse delivered context and avoid empty learning or Compat-only SDK recovery instructions.",
+      "forbidden": "Force a new reviewer or learning check on every ordinary Native completion, or instruct SDK recovery with Compat flags.",
+      "rootCause": "Native Skills changed while the shared installed workflow Rules still carried the earlier procedure.",
+      "tests": [
+        {
+          "file": "test/domains/skill/native-sdk-skill-routing.test.ts",
+          "namePattern": "^Workflow Rule and Native task agreement aligns review, delivered context and optional learning in (?:md|en\\.md)$",
+          "requiredNames": [
+            "Workflow Rule and Native task agreement aligns review, delivered context and optional learning in md",
+            "Workflow Rule and Native task agreement aligns review, delivered context and optional learning in en.md"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-treatment-task-selection",
+      "sources": ["https://github.com/rpamis/comet/pull/539#discussion_r4477154627"],
+      "behavior": "Dashboard task selection uses the selected Native or Goal treatment and refreshes when that treatment changes.",
+      "coverageLevel": "runtime",
+      "reproduction": "At 2ecfc9c1 the real Dashboard HTTP route returned testing-hard-router_matching as unsupported even with datasetTreatment=goal. The focused regression failed before the fix.",
+      "expected": "Goal permits compatible tests-only tasks, Native retains its metadata restriction, and switching treatment refreshes options and removes newly unsupported selections.",
+      "forbidden": "Reuse Native eligibility for Goal, allow an invalid treatment, or start Eval while changing the selection.",
+      "rootCause": "The task-list route omitted datasetTreatment and the React task loader did not observe treatment changes.",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/eval-server.test.ts",
+          "namePattern": "^Dashboard Eval routes lists task support for the selected dataset treatment without starting Eval$",
+          "requiredNames": [
+            "Dashboard Eval routes lists task support for the selected dataset treatment without starting Eval"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "Dashboard browser interaction",
+          "status": "verified",
+          "evidence": [
+            "2026-11-05 Playwright built the current Dashboard and passed refreshes task eligibility when switching Native and Goal without starting Eval, plus datasets download only on explicit click, retry and reuse cache at 1280 and 390 pixels. API responses were deterministic fixtures, and no Eval or download was started by treatment selection.",
+            "Command: npx playwright test --config test/domains/dashboard/playwright.config.ts --grep 'refreshes task eligibility|datasets download only on explicit click' --workers 1. Result: 3 passed. Screenshot: coverage/playwright-results/dashboard-eval-browser-Das-7b53c--Goal-without-starting-Eval/goal-task-selectable.png."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-cli-dataset-content-freshness",
+      "sources": ["https://github.com/rpamis/comet/pull/539#discussion_r4477154637"],
+      "behavior": "Dashboard freshness compares CLI dataset runs against the actual evaluated dataset and treatment.",
+      "coverageLevel": "public-cli",
+      "reproduction": "At 2ecfc9c1 deterministic CLI lifecycle tests returned stale=true for unchanged Native project-cache inputs and stale=null for unchanged Goal inputs in an explicit dataset root. Model and Docker execution were replaced by test adapters.",
+      "expected": "CLI and preview record the same combined digest and actual root, unchanged inputs remain current, changed dataset content becomes stale, and legacy CLI records use their original dataset plan without rewriting history.",
+      "forbidden": "Compare a Skill-only digest with a combined dataset digest, inspect another cache directory, or declare legacy results current when their dataset binding is missing.",
+      "rootCause": "CLI tracking saved only the Native Skill digest and omitted datasetRoot while freshness recomputed a combined digest from the default project cache.",
+      "tests": [
+        {
+          "file": "test/app/eval-run-lifecycle.test.ts",
+          "namePattern": "^CLI Eval lifecycle keeps CLI dataset results current at their actual root and detects input changes \\((?:native|goal)\\)$",
+          "requiredNames": [
+            "CLI Eval lifecycle keeps CLI dataset results current at their actual root and detects input changes (native)",
+            "CLI Eval lifecycle keeps CLI dataset results current at their actual root and detects input changes (goal)"
+          ]
+        }
+      ]
     }
   ]
 }

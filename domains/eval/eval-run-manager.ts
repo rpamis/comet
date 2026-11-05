@@ -21,7 +21,9 @@ import {
 } from './eval-run-cleanup.js';
 import type { OwnedProcessInstance } from '../../platform/process/owned-command.js';
 export { stopEvalContainers } from './eval-run-cleanup.js';
-import { hashEvalSkill, previewEvalRun } from './eval-run-preview.js';
+import { hashEvalDataset, hashEvalSkill, previewEvalRun } from './eval-run-preview.js';
+import { inspectBuiltinDataset, type DatasetPlan } from './builtin-datasets.js';
+import { requireDatasetCache } from './dataset-downloads.js';
 import type { ResolvedEvalContext } from './standalone-context.js';
 import { inspectEvalContentFreshness } from './eval-run-freshness.js';
 import {
@@ -588,7 +590,37 @@ export async function reconcileEvalRun(
     );
   }
   if (record?.config.target && record.contentHash) {
-    const freshness = await inspectEvalContentFreshness(project, record.config, record.contentHash);
+    let config = record.config;
+    let legacyDatasetContentHash: string | undefined;
+    if (record.origin === 'cli' && config.dataset && !config.datasetRoot) {
+      const metadata = await readEvalJson(await evalRunPath(project, id, 'metadata.json')).catch(
+        () => null,
+      );
+      const plan = metadata?.dataset_plan as Partial<DatasetPlan> | undefined;
+      if (
+        plan?.schema !== 'comet.eval.dataset.v1' ||
+        plan.dataset?.id !== config.dataset ||
+        typeof plan.root !== 'string' ||
+        !plan.root ||
+        !/^sha256:[a-f0-9]{64}$/u.test(plan.contentHash ?? '') ||
+        plan.treatment !==
+          (config.datasetTreatment === 'goal' ? 'CLAUDE_CODE_GOAL' : 'COMET_NATIVE_SDK_CURRENT')
+      ) {
+        detail.stale = null;
+        detail.diagnostics.push('历史 CLI 记录缺少数据集内容或目录绑定，当前内容状态无法确认。');
+        return detail;
+      }
+      // 旧 CLI 只存 Skill 摘要，数据集摘要从原执行计划恢复，读取不改写历史记录。
+      config = { ...config, datasetRoot: plan.root };
+      detail.config.datasetRoot = plan.root;
+      legacyDatasetContentHash = plan.contentHash;
+    }
+    const freshness = await inspectEvalContentFreshness(
+      project,
+      config,
+      record.contentHash,
+      legacyDatasetContentHash,
+    );
     detail.stale = freshness.stale;
     if (freshness.diagnostic) detail.diagnostics.push(freshness.diagnostic);
   }
@@ -627,12 +659,25 @@ export async function beginCliEvalTracking(
   context: ResolvedEvalContext,
   id: string,
   config: EvalManagedRun['config'],
+  datasetPlan?: DatasetPlan,
 ): Promise<void> {
-  const contentHash = await hashEvalSkill(context.skillRoot, context.manifestPath);
+  const dataset = config.dataset
+    ? (datasetPlan ??
+      (await inspectBuiltinDataset({
+        ...config,
+        dataset: config.dataset,
+        datasetRoot:
+          config.datasetRoot ??
+          (await requireDatasetCache(context.artifactOwnerRoot, config.dataset)),
+      })))
+    : undefined;
+  const contentHash = dataset
+    ? await hashEvalDataset(dataset, context.skillRoot)
+    : await hashEvalSkill(context.skillRoot, context.manifestPath);
   await registerCliEvalRun(context.artifactOwnerRoot, {
     id,
     status: 'running',
-    config,
+    config: dataset ? { ...config, datasetRoot: dataset.root } : config,
     targetId: context.skillRoot,
     contentHash,
     previewHash: contentHash,

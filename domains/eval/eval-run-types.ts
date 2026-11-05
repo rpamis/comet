@@ -13,6 +13,7 @@ export type EvalExecutionStatus =
 export type EvalConclusion = 'passed' | 'failed' | 'incomplete';
 export interface EvalRunConfig {
   dataset?: string;
+  datasetRoot?: string;
   datasetTreatment?: 'native' | 'goal';
   count?: number;
   acceptDatasetLicense?: boolean;

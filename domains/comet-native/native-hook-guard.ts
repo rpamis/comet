@@ -521,7 +521,7 @@ async function inspectPortableWriteTargets(options: {
         workflow: 'native',
         phase: state.phase,
         change: state.name,
-        reason: `本地无法确定编辑影响，保留 Verify。使用 comet edit-review show native ${state.name} 读取待复核提案和 continuation；按返回任务由独立会话 claim 并 record，Compat 由用户确认。复核前不得通过或归档。`,
+        reason: `本地无法确定编辑影响，保留 Verify。使用 comet edit-review show native ${state.name} 读取待复核提案和 continuation；按返回任务的实际会话要求 claim 并 record，Compat 由用户确认。复核前不得通过或归档。`,
       };
     if (state.phase === 'verify' || state.phase === 'archive') {
       if (sdkOwned) {
@@ -643,7 +643,7 @@ async function formalCommentWriteReview(
     change: state.name,
     reason:
       state.phase === 'verify' && state.builder_handoff
-        ? `正式材料中的注释可能包含执行指令，不能自动忽略。保留当前候选；使用 comet edit-review show native ${state.name} 完成独立局部复核，然后原样重试编辑。`
+        ? `正式材料中的注释可能包含执行指令，不能自动忽略。保留当前候选；使用 comet edit-review show native ${state.name} 完成当前编辑复核，然后原样重试编辑。`
         : '正式材料中的注释可能包含执行指令，不能自动忽略。当前阶段没有可复核的 Verify 候选；保留原文和当前 Action/claim，或通过当前 continuation 显式修订 Shape。',
   };
 }

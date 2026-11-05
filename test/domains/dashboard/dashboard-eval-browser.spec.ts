@@ -292,6 +292,91 @@ test.describe('Dashboard Eval', () => {
     await page.goto('/');
     await page.getByRole('menuitem', { name: '评估 Eval' }).click();
   });
+  test('refreshes task eligibility when switching Native and Goal without starting Eval', async ({
+    page,
+  }) => {
+    const treatments: string[] = [];
+    const mutations: string[] = [];
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && request.url().includes('/eval/'))
+        mutations.push(request.url());
+    });
+    await page.route('**/eval/datasets', (route) =>
+      route.fulfill({
+        json: {
+          items: [
+            {
+              id: 'workbuddy-code',
+              name: 'WorkBuddy Bench · Code',
+              version: '1.0',
+              status: 'cached',
+              source: 'https://huggingface.co/datasets/tencent/workbuddy-bench',
+              license: 'Tencent',
+              licenseUrl: 'https://github.com/Tencent/workbuddy-bench/blob/main/LICENSE',
+            },
+          ],
+        },
+      }),
+    );
+    await page.route(/\/eval\/datasets\/workbuddy-code\/tasks(?:\?.*)?$/u, (route) => {
+      const treatment = new URL(route.request().url()).searchParams.get('datasetTreatment');
+      treatments.push(treatment ?? 'missing');
+      return route.fulfill({
+        json: {
+          items: [
+            {
+              id: 'testing-hard-router_matching',
+              supported: treatment === 'goal',
+              ...(treatment === 'goal' ? {} : { reason: 'Native metadata is restricted' }),
+            },
+          ],
+        },
+      });
+    });
+    await page.getByRole('button', { name: /新建评估/ }).click();
+    await page.getByText('内置数据集', { exact: true }).click();
+    await page.getByRole('combobox', { name: '内置数据集', exact: true }).click();
+    await page
+      .locator('.ant-select-item-option-content')
+      .getByText('WorkBuddy Bench · Code', { exact: true })
+      .click();
+    const tasks = page.getByRole('combobox', { name: '数据集任务', exact: true });
+    const option = page
+      .locator('.ant-select-item-option')
+      .filter({ hasText: 'testing-hard-router_matching' });
+    await tasks.click();
+    await expect(option).toHaveClass(/ant-select-item-option-disabled/u);
+    await page.keyboard.press('Escape');
+    await page.getByRole('combobox', { name: '数据集执行方式', exact: true }).click();
+    await page
+      .locator('.ant-select-item-option-content')
+      .getByText('Claude Code Goal', { exact: true })
+      .click();
+    await expect.poll(() => treatments.at(-1)).toBe('goal');
+    await tasks.click();
+    await expect(option).not.toHaveClass(/ant-select-item-option-disabled/u);
+    await option.click();
+    await page.keyboard.press('Escape');
+    await page.screenshot({
+      path: test.info().outputPath('goal-task-selectable.png'),
+      fullPage: true,
+    });
+    await page.getByRole('combobox', { name: '数据集执行方式', exact: true }).click();
+    await page
+      .locator('.ant-select-item-option-content')
+      .getByText('Comet Native', { exact: true })
+      .click();
+    await expect.poll(() => treatments.at(-1)).toBe('native');
+    await expect(
+      page
+        .locator('.dashboard-eval-datasets .ant-select-selection-item')
+        .filter({ hasText: 'testing-hard-router_matching' }),
+    ).toHaveCount(0);
+    await tasks.click();
+    await expect(option).toHaveClass(/ant-select-item-option-disabled/u);
+    expect(treatments).toEqual(['native', 'goal', 'native']);
+    expect(mutations).toEqual([]);
+  });
   for (const width of [1280, 390])
     test(`datasets download only on explicit click, retry and reuse cache (${width})`, async ({
       page,
@@ -337,7 +422,7 @@ test.describe('Dashboard Eval', () => {
           },
         });
       });
-      await page.route('**/eval/datasets/*/tasks', (route) =>
+      await page.route('**/eval/datasets/*/tasks?*', (route) =>
         route.fulfill({
           json: {
             items: [

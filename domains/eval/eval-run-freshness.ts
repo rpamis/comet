@@ -6,34 +6,32 @@ import {
   inspectApplicationSkill,
 } from '../workflow-application/skill-adapter.js';
 import { resolveEvalContext } from './standalone-context.js';
-import { hashEvalSkill } from './eval-run-preview.js';
+import { hashEvalDataset, hashEvalSkill } from './eval-run-preview.js';
 import type { EvalRunConfig } from './eval-run-types.js';
 import { requireDatasetCache } from './dataset-downloads.js';
 import { inspectBuiltinDataset } from './builtin-datasets.js';
-import { evalValueHash } from './eval-run-store.js';
 
 export async function inspectEvalContentFreshness(
   project: string,
   config: EvalRunConfig,
   contentHash: string,
+  legacyDatasetContentHash?: string,
 ): Promise<{ stale: boolean | null; diagnostic?: string }> {
   try {
     if (config.dataset) {
       const dataset = await inspectBuiltinDataset({
         dataset: config.dataset,
-        datasetRoot: await requireDatasetCache(project, config.dataset),
+        datasetRoot: config.datasetRoot ?? (await requireDatasetCache(project, config.dataset)),
         task: config.task,
         count: config.count,
         datasetTreatment: config.datasetTreatment,
       });
       return {
-        stale:
-          evalValueHash({
-            ...(config.datasetTreatment === 'goal'
-              ? { treatment: 'CLAUDE_CODE_GOAL' }
-              : { native: await hashEvalSkill(config.target) }),
-            dataset: dataset.contentHash,
-          }) !== contentHash,
+        stale: legacyDatasetContentHash
+          ? dataset.contentHash !== legacyDatasetContentHash ||
+            (config.datasetTreatment !== 'goal' &&
+              (await hashEvalSkill(config.target)) !== contentHash)
+          : (await hashEvalDataset(dataset, config.target)) !== contentHash,
       };
     }
     if (config.targetType === 'application') {

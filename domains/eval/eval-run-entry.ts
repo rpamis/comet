@@ -305,7 +305,7 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
               '--dataset',
               config.dataset,
               '--dataset-root',
-              await requireDatasetCache(project, config.dataset),
+              config.datasetRoot ?? (await requireDatasetCache(project, config.dataset)),
               '--count',
               String(config.count ?? 1),
             ]

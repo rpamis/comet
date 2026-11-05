@@ -29,6 +29,7 @@ const statusLabels = {
 export function EvalDatasets({
   base,
   value,
+  datasetTreatment,
   task,
   accepted,
   onChange,
@@ -75,7 +76,12 @@ export function EvalDatasets({
       return () => controller.abort();
     }
     setLoadingTasks(true);
-    void request(base, `/datasets/${value}/tasks`, undefined, controller.signal)
+    void request(
+      base,
+      `/datasets/${value}/tasks?datasetTreatment=${encodeURIComponent(datasetTreatment)}`,
+      undefined,
+      controller.signal,
+    )
       .then((data) => {
         if (!controller.signal.aborted) setTasks(data.items);
       })
@@ -86,7 +92,16 @@ export function EvalDatasets({
         if (!controller.signal.aborted) setLoadingTasks(false);
       });
     return () => controller.abort();
-  }, [base, value, selected?.status, refresh]);
+  }, [base, value, datasetTreatment, selected?.status, refresh]);
+  useEffect(() => {
+    if (loadingTasks || !tasks.length || !task) return;
+    const supported = new Set(tasks.filter((item) => item.supported).map((item) => item.id));
+    const current = task
+      .split(',')
+      .filter((id) => supported.has(id))
+      .join(',');
+    if (current !== task) onTaskChange(current);
+  }, [tasks, loadingTasks, task, onTaskChange]);
   async function download() {
     setBusy(true);
     setError(null);
@@ -227,7 +242,6 @@ export function EvalDatasets({
                 }))}
                 onChange={(ids) => onTaskChange(ids.join(','))}
               />
-              <Text type="secondary">{t('使用 Comet Native 执行；不兼容的任务不可选。')}</Text>
             </>
           )}
         </>
