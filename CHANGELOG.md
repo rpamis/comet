@@ -12,6 +12,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **UTF-8 BOM check receipts**: Accept successful Native checks for unchanged JavaScript source with a UTF-8 BOM while preserving the original file bytes and candidate-drift safeguards.
 - **Native Shape target Spec changes**: Before Shape is confirmed, replace a previously declared target Spec with a different capability's target Spec or a formal remove entry and prepare confirmation again, instead of being forced to restore the unwanted file or delete the formal Spec. An exemption alone still cannot hide a missing declared Spec, and confirmed target Specs remain required after Shape ([#516](https://github.com/rpamis/comet/issues/516)).
+- **File lock release**: When the lock coordinator fails while releasing a project-state lock, the lock is now released directly if it is still the exact lock this write published, so the same process is no longer blocked by its own lock. A lock that another holder republished, or one that can no longer be inspected, is retained and reported, and a failed direct release reports its own reason instead of describing the lock as changed ([#529](https://github.com/rpamis/comet/issues/529)).
 
 ## What's Changed [0.5.1] - 2026-10-23
 

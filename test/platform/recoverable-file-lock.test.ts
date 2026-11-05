@@ -331,3 +331,150 @@ describe('recoverable file lock safety', () => {
     expect(await fs.readFile(ticket, 'utf8')).toContain('remote');
   });
 });
+
+describe('recoverable file lock release', () => {
+  const collectWarnings = () => {
+    const warnings: string[] = [];
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      warnings.push(String(chunk));
+      return true;
+    });
+    return warnings;
+  };
+
+  it('removes its own lock when the coordinator cannot run at release time', async () => {
+    const { lock } = await fixture();
+    const warnings = collectWarnings();
+
+    await withRecoverableFileLock(
+      lock,
+      async () => {
+        // A plain file where the coordinator expects its ticket directory makes
+        // every coordinated metadata update fail, including the release.
+        await fs.rm(`${lock}.contenders`, { recursive: true, force: true });
+        await fs.writeFile(`${lock}.contenders`, 'not a directory');
+      },
+      { timeoutMs: 2_000, retryMs: 5 },
+    );
+
+    await expect(fs.access(lock)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(warnings.join('')).toContain('removed the lock directly');
+  });
+
+  it('keeps a lock whose metadata changed while held and reports it', async () => {
+    const { lock } = await fixture();
+    const warnings = collectWarnings();
+
+    await withRecoverableFileLock(lock, async () => {
+      const raw = JSON.parse(await fs.readFile(lock, 'utf8'));
+      await fs.writeFile(lock, JSON.stringify({ ...raw, createdAt: raw.createdAt + 1 }));
+    });
+
+    expect(warnings.join('')).toContain('changed while held');
+    expect(JSON.parse(await fs.readFile(lock, 'utf8')).nonce).toEqual(expect.any(String));
+  });
+
+  it('lets the same process acquire the lock again after a failed coordinated release', async () => {
+    const { lock } = await fixture();
+    const warnings = collectWarnings();
+    const breakCoordinator = async () => {
+      await fs.rm(`${lock}.contenders`, { recursive: true, force: true });
+      await fs.writeFile(`${lock}.contenders`, 'not a directory');
+    };
+
+    await withRecoverableFileLock(lock, breakCoordinator, { timeoutMs: 2_000, retryMs: 5 });
+
+    // The leaked lock, not the broken coordinator, is what used to deadlock the
+    // retry: a live local owner is reported `active` forever and is never stale,
+    // so the second acquisition waited until its own deadline. Repairing the
+    // coordinator first keeps the two failures distinguishable.
+    await fs.rm(`${lock}.contenders`, { force: true });
+    await expect(
+      withRecoverableFileLock(lock, async () => 'reacquired', { timeoutMs: 2_000, retryMs: 5 }),
+    ).resolves.toBe('reacquired');
+    expect(warnings.join('')).toContain('removed the lock directly');
+  });
+
+  it('never removes a lock another owner republished while held', async () => {
+    const { lock } = await fixture();
+    const warnings = collectWarnings();
+
+    await withRecoverableFileLock(lock, async () => {
+      await fs.writeFile(lock, JSON.stringify(remoteOwner()));
+    });
+
+    // `release` must only remove the exact nonce it published. A foreign lock is
+    // left alone even on the direct-release fallback path, and says so.
+    expect(await fs.readFile(lock, 'utf8')).toContain('remote');
+    expect(warnings.join('')).toContain('owned by another holder');
+  });
+
+  it('never removes a lock another owner republished while the coordinator is unusable', async () => {
+    const { lock } = await fixture();
+    const warnings = collectWarnings();
+
+    await withRecoverableFileLock(
+      lock,
+      async () => {
+        // Both hazards at once: the coordinator cannot run, so the fallback decides,
+        // and another owner has republished the lock in the meantime. The fallback
+        // must still remove only the exact token it published.
+        await fs.rm(`${lock}.contenders`, { recursive: true, force: true });
+        await fs.writeFile(`${lock}.contenders`, 'not a directory');
+        await fs.writeFile(lock, JSON.stringify(remoteOwner()));
+      },
+      { timeoutMs: 2_000, retryMs: 5 },
+    );
+
+    expect(await fs.readFile(lock, 'utf8')).toContain('remote');
+    expect(warnings.join('')).toContain('the lock is still foreign');
+    expect(warnings.join('')).toContain('owned by another holder');
+  });
+
+  it('says nothing when the lock is already gone before release', async () => {
+    const { lock } = await fixture();
+    const warnings = collectWarnings();
+
+    await withRecoverableFileLock(lock, async () => {
+      // A stale-looking lock can be cleaned up by an operator while the holder is
+      // still running. There is then nothing to remove and nothing to report.
+      await fs.rm(lock, { force: true });
+    });
+
+    await expect(fs.access(lock)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(warnings.join('')).toBe('');
+  });
+
+  it('keeps a lock it cannot inspect at release time and reports why', async () => {
+    const { root } = await fixture();
+    const directory = path.join(root, 'nested');
+    await fs.mkdir(directory);
+    const lock = path.join(directory, 'projection.lock');
+    const warnings = collectWarnings();
+
+    await withRecoverableFileLock(lock, async () => {
+      // Replacing the parent with a symlink makes every later inspection of the lock
+      // throw instead of reporting a state, which is the only way into the
+      // fallback's own failure handler.
+      await fs.rename(directory, `${directory}.moved`);
+      // Ordinary Windows accounts cannot create directory symlinks without
+      // SeCreateSymbolicLinkPrivilege. A junction needs no privilege and still makes
+      // the parent a link, which is all this case depends on.
+      await fs.symlink(
+        `${directory}.moved`,
+        directory,
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+    });
+
+    // The lock cannot be inspected, so it is kept rather than guessed at. The failure
+    // is reported with its own reason: an inspection or rename error is not the same
+    // as a lock that changed while it was held.
+    await expect(fs.access(path.join(`${directory}.moved`, 'projection.lock'))).resolves.toBe(
+      undefined,
+    );
+    expect(warnings.join('')).toContain('the direct release failed');
+    expect(warnings.join('')).toContain('File lock parent must be a real directory');
+    expect(warnings.join('')).not.toContain('changed while held');
+  });
+});

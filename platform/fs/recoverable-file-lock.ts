@@ -329,7 +329,12 @@ async function withCoordinator<T>(
   }
 }
 
-/** Must run inside the coordinator. Changed metadata is retained for investigation. */
+/**
+ * Changed metadata is retained for investigation. The coordinator serializes metadata
+ * updates, but removal is bound to the exact snapshot re-read here rather than to that
+ * serialization, so the release fallback can call this without the coordinator and
+ * still only delete the token it inspected.
+ */
 async function removeBound(file: string, expected: LockSnapshot): Promise<boolean> {
   const parent = await captureParent(file);
   const current = await snapshot(file);
@@ -393,6 +398,14 @@ export async function repairRecoverableFileLock(
   });
 }
 
+/**
+ * Runs `operation` while holding an exclusive lock on `file`.
+ *
+ * Acquisition retries until `timeoutMs` elapses. An existing lock is taken over only
+ * when its owner is provably stopped; a live local owner, an unreadable owner and an
+ * unknown host are all left alone. Release removes only the exact lock this call
+ * published, and every outcome that keeps the lock is reported on stderr.
+ */
 export async function withRecoverableFileLock<T>(
   file: string,
   operation: () => Promise<T>,
@@ -431,20 +444,58 @@ export async function withRecoverableFileLock<T>(
   try {
     return await operation();
   } finally {
+    // The coordinator serializes metadata updates, but it must not decide whether our
+    // own lock survives. A release that throws used to leave the lock owned by this
+    // live process, and `ownerStatus` reports a live pid as `active` forever, so every
+    // later acquisition in the same process waited until its own deadline.
+    const release = async (): Promise<'absent' | 'foreign' | 'removed' | 'changed'> => {
+      const current = await snapshot(file);
+      if (!current) return 'absent';
+      if (current.owner?.nonce !== owner.nonce) return 'foreign';
+      // Changed metadata stays for investigation; only the exact published lock is
+      // removed.
+      if (current.token !== held?.token) return 'changed';
+      return (await removeBound(file, current)) ? 'removed' : 'changed';
+    };
+    let outcome: 'absent' | 'failed' | 'foreign' | 'removed' | 'changed' = 'absent';
     try {
       await withCoordinator(file, owner, performance.now() + timeoutMs, retryMs, async () => {
-        const current = await snapshot(file);
-        if (
-          held &&
-          current?.token === (held as LockSnapshot).token &&
-          current.owner?.nonce === owner.nonce
-        )
-          await removeBound(file, current);
+        outcome = await release();
       });
     } catch (error) {
+      // `removeBound` normally runs inside the coordinator. Releasing our own lock
+      // without it is still safer than leaking the lock: it re-reads the file and
+      // only removes the exact token it inspected. A failure here gets its own
+      // outcome: a rename blocked by permissions is not a lock that changed while
+      // held, and reporting it as one would hide why it survived.
+      outcome = await release().catch((directError: unknown) => {
+        process.stderr.write(
+          `[comet] warning: could not release file lock ${file} directly: ${
+            directError instanceof Error ? directError.message : directError
+          }; inspect the owner before repair\n`,
+        );
+        return 'failed' as const;
+      });
       process.stderr.write(
-        `[comet] warning: could not release file lock ${file}: ${error instanceof Error ? error.message : error}; inspect the owner before repair\n`,
+        `[comet] warning: file lock coordinator failed while releasing ${file}; ${
+          outcome === 'removed'
+            ? 'removed the lock directly'
+            : outcome === 'failed'
+              ? 'the direct release failed'
+              : `the lock is still ${outcome}`
+        }: ${error instanceof Error ? error.message : error}\n`,
       );
     }
+    if (outcome === 'changed')
+      process.stderr.write(
+        `[comet] warning: file lock ${file} changed while held; kept it for inspection\n`,
+      );
+    // A foreign lock is left in place too. Report it here as well, so a successful
+    // coordinated release does not describe the same state more quietly than the
+    // fallback path does.
+    if (outcome === 'foreign')
+      process.stderr.write(
+        `[comet] warning: file lock ${file} is owned by another holder; kept it for inspection\n`,
+      );
   }
 }
