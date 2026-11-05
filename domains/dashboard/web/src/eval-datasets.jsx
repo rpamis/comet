@@ -30,6 +30,7 @@ export function EvalDatasets({
   base,
   value,
   datasetTreatment,
+  datasetRoot,
   task,
   accepted,
   onChange,
@@ -40,10 +41,14 @@ export function EvalDatasets({
   const [items, setItems] = useState([]),
     [error, setError] = useState(null),
     [busy, setBusy] = useState(false),
-    [tasks, setTasks] = useState([]),
+    [taskListing, setTaskListing] = useState(null),
     [loadingTasks, setLoadingTasks] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const selected = items.find((item) => item.id === value);
+  const taskRequestKey = JSON.stringify([base, value, datasetRoot, datasetTreatment]);
+  const tasksReady = taskListing?.key === taskRequestKey;
+  const tasks = tasksReady ? taskListing.items : [];
+  const tasksAvailable = Boolean(value && (datasetRoot || selected?.status === 'cached'));
   useEffect(() => {
     const controller = new AbortController();
     let timer;
@@ -66,24 +71,24 @@ export function EvalDatasets({
     };
   }, [base, refresh]);
   useEffect(() => {
-    onReady(selected?.status === 'cached');
-  }, [value, selected?.status, onReady]);
+    onReady(tasksReady);
+  }, [tasksReady, onReady]);
   useEffect(() => {
     const controller = new AbortController();
-    setTasks([]);
-    if (selected?.status !== 'cached') {
+    setTaskListing(null);
+    if (!tasksAvailable) {
       setLoadingTasks(false);
       return () => controller.abort();
     }
     setLoadingTasks(true);
-    void request(
-      base,
-      `/datasets/${value}/tasks?datasetTreatment=${encodeURIComponent(datasetTreatment)}`,
-      undefined,
-      controller.signal,
-    )
+    const query = new URLSearchParams({ datasetTreatment });
+    if (datasetRoot) query.set('datasetRoot', datasetRoot);
+    void request(base, `/datasets/${value}/tasks?${query}`, undefined, controller.signal)
       .then((data) => {
-        if (!controller.signal.aborted) setTasks(data.items);
+        if (!controller.signal.aborted) {
+          setTaskListing({ key: taskRequestKey, items: data.items });
+          setError(null);
+        }
       })
       .catch((err) => {
         if (!controller.signal.aborted) setError(err.message);
@@ -92,16 +97,18 @@ export function EvalDatasets({
         if (!controller.signal.aborted) setLoadingTasks(false);
       });
     return () => controller.abort();
-  }, [base, value, datasetTreatment, selected?.status, refresh]);
+  }, [base, value, datasetRoot, datasetTreatment, taskRequestKey, tasksAvailable, refresh]);
   useEffect(() => {
-    if (loadingTasks || !tasks.length || !task) return;
-    const supported = new Set(tasks.filter((item) => item.supported).map((item) => item.id));
+    if (loadingTasks || !tasksReady || !task) return;
+    const supported = new Set(
+      taskListing.items.filter((item) => item.supported).map((item) => item.id),
+    );
     const current = task
       .split(',')
       .filter((id) => supported.has(id))
       .join(',');
     if (current !== task) onTaskChange(current);
-  }, [tasks, loadingTasks, task, onTaskChange]);
+  }, [taskListing, tasksReady, loadingTasks, task, onTaskChange]);
   async function download() {
     setBusy(true);
     setError(null);
@@ -162,18 +169,21 @@ export function EvalDatasets({
           <Space wrap>
             <Text strong>{selected.name}</Text>
             <Tag>v{selected.version}</Tag>
-            <Tag
-              color={
-                selected.status === 'cached'
-                  ? 'success'
-                  : selected.status === 'failed'
-                    ? 'error'
-                    : 'default'
-              }
-            >
-              {t(statusLabels[selected.status])}
-            </Tag>
+            {!datasetRoot && (
+              <Tag
+                color={
+                  selected.status === 'cached'
+                    ? 'success'
+                    : selected.status === 'failed'
+                      ? 'error'
+                      : 'default'
+                }
+              >
+                {t(statusLabels[selected.status])}
+              </Tag>
+            )}
           </Space>
+          {datasetRoot && <Text type="secondary">{datasetRoot}</Text>}
           <Text type="secondary">{selected.sizeHint}</Text>
           <a href={selected.source} target="_blank" rel="noreferrer">
             {t('查看数据来源')}
@@ -186,47 +196,48 @@ export function EvalDatasets({
               {t('已阅读并接受 WorkBuddy 数据集许可')}
             </Checkbox>
           )}
-          {selected.status === 'downloading' ? (
-            <>
-              <Space>
-                <Spin size="small" />
-                <Text>{t(phase)}</Text>
-              </Space>
-              {progress?.total > 0 && (
-                <Progress
-                  percent={Math.min(
-                    100,
-                    Math.floor((100 * (progress.bytes ?? 0)) / progress.total),
-                  )}
-                />
-              )}
-              <Text type="secondary">
-                {((progress?.bytes ?? 0) / 1024 / 1024).toFixed(1)} MB
-                {progress?.total > 0 ? ` / ${(progress.total / 1024 / 1024).toFixed(1)} MB` : ''}
-              </Text>
-            </>
-          ) : selected.status !== 'cached' ? (
-            <>
-              {selected.error && <Alert type="warning" message={selected.error} />}
-              <Button
-                icon={<DownloadOutlined aria-hidden="true" />}
-                loading={busy}
-                disabled={value === 'workbuddy-code' && !accepted}
-                onClick={() => void download()}
-              >
-                {t(
-                  selected.status === 'failed'
-                    ? '重试下载'
-                    : selected.status === 'version-mismatch'
-                      ? '重新下载'
-                      : '下载数据集',
+          {!datasetRoot &&
+            (selected.status === 'downloading' ? (
+              <>
+                <Space>
+                  <Spin size="small" />
+                  <Text>{t(phase)}</Text>
+                </Space>
+                {progress?.total > 0 && (
+                  <Progress
+                    percent={Math.min(
+                      100,
+                      Math.floor((100 * (progress.bytes ?? 0)) / progress.total),
+                    )}
+                  />
                 )}
-              </Button>
-            </>
-          ) : (
-            <Text type="success">{t('已缓存，评测将复用该版本。')}</Text>
-          )}
-          {selected.status === 'cached' && (
+                <Text type="secondary">
+                  {((progress?.bytes ?? 0) / 1024 / 1024).toFixed(1)} MB
+                  {progress?.total > 0 ? ` / ${(progress.total / 1024 / 1024).toFixed(1)} MB` : ''}
+                </Text>
+              </>
+            ) : selected.status !== 'cached' ? (
+              <>
+                {selected.error && <Alert type="warning" message={selected.error} />}
+                <Button
+                  icon={<DownloadOutlined aria-hidden="true" />}
+                  loading={busy}
+                  disabled={value === 'workbuddy-code' && !accepted}
+                  onClick={() => void download()}
+                >
+                  {t(
+                    selected.status === 'failed'
+                      ? '重试下载'
+                      : selected.status === 'version-mismatch'
+                        ? '重新下载'
+                        : '下载数据集',
+                  )}
+                </Button>
+              </>
+            ) : (
+              <Text type="success">{t('已缓存，评测将复用该版本。')}</Text>
+            ))}
+          {tasksAvailable && (
             <>
               <Text>{t('选择评测任务')}</Text>
               <Select

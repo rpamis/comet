@@ -271,3 +271,5 @@ PR #539 首轮 Greptile 提出 Goal 任务被 Native 限制误禁选、CLI 数�
 本项目 Codex/Claude 已通过正式 update 路径同步共享 Rule 与生成 Hook。两处 Rule、两处 Native Hook bundle 的 SHA256 与产品资产一致。完整 build、SDK API 和生成物一致性检查通过。真实平台会话 Hook 尚待验收。
 
 PR 静态 CI 暴露的夹具问题已定向处理。补回材料访问拦截测试缺少的参数化，更新 tooling 快照路径和已删除 baseline 入口；遥测夹具补真实模拟会话标识和主体效率字段，继续拒绝未知评分；一次性检查恢复样例通过当前公开 SDK 入口创建 v1 Run，保留原恢复与归档断言。Windows 本地 16 参数项中 14 项通过，2 项 POSIX 恢复已越过原失败点，后续受 python3 启动器与 /usr/bin/env 缺失限制。WSL Node 可运行 CLI，但隔离 Python 环境下载依赖超时，已停止，未启动模型或容器。6 文件 Ruff 通过，Linux 完整恢复由 CI 核对。
+
+后续 Greptile 发现自定义 datasetRoot 与默认缓存任务列表混用，可能清除有效选择。新增 case eval-dataset-custom-root-task-selection，任务查询绑定实际目录，并按 dataset/root/treatment/base 核对响应。未加载、读取失败或过期列表均保留当前选择。HTTP 测试文件 11 项通过，浏览器 5 项通过，涵盖默认缓存缺失/存在、切换和迟到响应。未启动模型 Eval 或下载数据集。静态 Python 6 文件周边回归 341 项通过，2 项 POSIX 恢复明确未在本机执行完成，保留由 Linux CI 验证。

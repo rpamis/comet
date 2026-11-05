@@ -159,6 +159,26 @@ describe('Dashboard Eval routes', () => {
     const invalid = await request('/datasets/workbuddy-code/tasks?datasetTreatment=unknown');
     expect(invalid.status).toBe(400);
   });
+  it('lists tasks from the selected dataset root without requiring the project cache', async () => {
+    const datasetRoot = path.join(project, 'imported dataset');
+    const task = path.join(datasetRoot, 'tasks/imported-only');
+    await fs.mkdir(path.join(task, 'environment'), { recursive: true });
+    await fs.writeFile(path.join(task, 'task.md'), '---\nname: imported-only\n---\nImported task.');
+    await fs.writeFile(
+      path.join(task, 'environment/Dockerfile'),
+      'FROM python:3.12\nWORKDIR /workspace\n',
+    );
+    for (const root of [datasetRoot, path.relative(project, datasetRoot)]) {
+      const query = new URLSearchParams({ datasetRoot: root, datasetTreatment: 'goal' });
+      const result = await request(`/datasets/skillsbench/tasks?${query}`);
+      expect(result.status).toBe(200);
+      expect(result.body.items).toEqual([{ id: 'imported-only', supported: true }]);
+    }
+    expect((await request('/datasets/skillsbench/tasks?datasetRoot=')).status).toBe(400);
+    await expect(fs.stat(path.join(project, '.comet/eval/cache/datasets'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
   it('serves bounded case pages and validates case identities and filters', async () => {
     const detail = await request('/runs/cli-history');
     expect(detail.body.caseContentOmitted).toBe(true);

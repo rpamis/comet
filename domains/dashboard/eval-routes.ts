@@ -20,6 +20,7 @@ import {
   startDatasetDownload,
   requireDatasetCache,
   inspectBuiltinDataset,
+  normalizeEvalRunConfig,
 } from '../eval/index.js';
 import { collectDashboardEvalRunPage } from './eval-collector.js';
 import { markDashboardSummaryIndexDirty } from './summary-index.js';
@@ -41,13 +42,15 @@ export async function handleDashboardEvalRequest(
   const datasetTasks = /^\/datasets\/([a-z0-9-]+)\/tasks$/u.exec(subpath);
   if (read && datasetTasks) {
     const id = datasetTasks[1];
-    const datasetTreatment = query.get('datasetTreatment') ?? 'native';
-    if (datasetTreatment !== 'native' && datasetTreatment !== 'goal')
-      throw new EvalRunError('数据集执行方式须为 native 或 goal');
+    const config = normalizeEvalRunConfig(project, {
+      dataset: id,
+      datasetTreatment: query.get('datasetTreatment') ?? 'native',
+      ...(query.has('datasetRoot') ? { datasetRoot: query.get('datasetRoot') } : {}),
+    });
     const plan = await inspectBuiltinDataset({
       dataset: id,
-      datasetRoot: await requireDatasetCache(project, id),
-      datasetTreatment,
+      datasetRoot: config.datasetRoot ?? (await requireDatasetCache(project, id)),
+      datasetTreatment: config.datasetTreatment,
     });
     return {
       status: 200,

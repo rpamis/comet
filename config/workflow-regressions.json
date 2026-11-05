@@ -9577,6 +9577,35 @@
           ]
         }
       ]
+    },
+    {
+      "id": "eval-dataset-custom-root-task-selection",
+      "sources": ["https://github.com/rpamis/comet/pull/539#discussion_r4477314627"],
+      "behavior": "Dashboard task selection follows a preset's actual dataset directory and preserves selections while its task list is unavailable.",
+      "coverageLevel": "runtime",
+      "reproduction": "At cfa60c76 the HTTP custom-root case failed because the default cache was absent. Both browser cases failed because a custom-root preset either had no task selector or queried the default cache.",
+      "expected": "Resolve explicit absolute and project-relative dataset roots with the same rules as preview, permit imported datasets without downloading the default cache, and filter selections only with the current dataset, directory and treatment response.",
+      "forbidden": "Clear imported tasks using another directory's list, discard selection on loading or read failure, accept a late response from another treatment, or start Eval while selecting tasks.",
+      "rootCause": "The task-list API always required the default cache and the UI did not pass the preset directory or bind loaded task choices to their request identity.",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/eval-server.test.ts",
+          "namePattern": "^Dashboard Eval routes lists tasks from the selected dataset root without requiring the project cache$",
+          "requiredNames": [
+            "Dashboard Eval routes lists tasks from the selected dataset root without requiring the project cache"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "Dashboard browser interaction",
+          "status": "verified",
+          "evidence": [
+            "2026-11-05 Playwright passed preserves custom-root preset tasks independently of the project cache for not-downloaded and cached states. Each case retained the imported task during a failed read and ignored a delayed response after switching treatment. No Eval was started.",
+            "The focused browser run passed 5 cases including the existing Native/Goal selection and 1280/390 download controls. Screenshots are custom-root-task-selected.png under coverage/playwright-results/dashboard-eval-browser-Das-c82f5-oject-cache-not-downloaded- and dashboard-eval-browser-Das-255c5-f-the-project-cache-cached-."
+          ]
+        }
+      ]
     }
   ]
 }

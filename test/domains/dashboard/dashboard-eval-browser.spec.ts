@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { readEvalDemoSettings } from '../../../domains/dashboard/web/src/eval-demo.js';
@@ -377,6 +377,110 @@ test.describe('Dashboard Eval', () => {
     expect(treatments).toEqual(['native', 'goal', 'native']);
     expect(mutations).toEqual([]);
   });
+  for (const cacheStatus of ['not-downloaded', 'cached'])
+    test(`preserves custom-root preset tasks independently of the project cache (${cacheStatus})`, async ({
+      page,
+    }) => {
+      const roots: Array<string | null> = [];
+      let responseMode: 'ok' | 'failure' | 'pending' = 'ok';
+      let pendingRoute: Route | undefined;
+      const mutations: string[] = [];
+      page.on('request', (request) => {
+        if (request.method() === 'POST' && request.url().includes('/eval/'))
+          mutations.push(request.url());
+      });
+      await page.route('**/eval/presets', (route) =>
+        route.fulfill({
+          json: {
+            items: [
+              {
+                id: 'preset-imported',
+                name: '导入数据集',
+                updatedAt: 'now',
+                config: {
+                  dataset: 'skillsbench',
+                  datasetRoot: '/imported/selected',
+                  datasetTreatment: 'native',
+                  task: 'imported-only',
+                  agent: 'claude-code',
+                },
+              },
+            ],
+          },
+        }),
+      );
+      await page.route('**/eval/datasets', (route) =>
+        route.fulfill({
+          json: {
+            items: [
+              {
+                id: 'skillsbench',
+                name: 'SkillsBench',
+                version: '1.0',
+                status: cacheStatus,
+                source: 'https://github.com/benchflow-ai/skillsbench',
+                license: 'MIT',
+                licenseUrl: 'https://github.com/benchflow-ai/skillsbench/blob/main/LICENSE',
+              },
+            ],
+          },
+        }),
+      );
+      await page.route(/\/eval\/datasets\/skillsbench\/tasks(?:\?.*)?$/u, (route) => {
+        const root = new URL(route.request().url()).searchParams.get('datasetRoot');
+        roots.push(root);
+        if (responseMode === 'failure')
+          return route.fulfill({ status: 500, json: { error: 'Cannot read imported tasks' } });
+        if (responseMode === 'pending') {
+          pendingRoute = route;
+          return;
+        }
+        return route.fulfill({
+          json: {
+            items: [
+              {
+                id: root === '/imported/selected' ? 'imported-only' : 'cache-only',
+                supported: true,
+              },
+            ],
+          },
+        });
+      });
+      await page.reload();
+      await page.getByLabel('常用配置', { exact: true }).click();
+      await page.getByText('导入数据集', { exact: true }).click();
+      await page.getByRole('button', { name: '使用所选配置' }).click();
+      const selection = page
+        .locator('.dashboard-eval-datasets .ant-select-selection-item')
+        .filter({ hasText: 'imported-only' });
+      await expect(page.getByRole('combobox', { name: '数据集任务', exact: true })).toBeVisible();
+      await expect.poll(() => roots.at(-1)).toBe('/imported/selected');
+      await expect(selection).toHaveCount(1);
+      await expect(page.getByRole('button', { name: '下载数据集', exact: true })).toHaveCount(0);
+      responseMode = 'failure';
+      await page.getByRole('button', { name: '刷新下载状态', exact: true }).click();
+      await expect(page.getByText('Cannot read imported tasks', { exact: true })).toBeVisible();
+      await expect(selection).toHaveCount(1);
+      responseMode = 'pending';
+      await page.getByRole('button', { name: '刷新下载状态', exact: true }).click();
+      await expect.poll(() => Boolean(pendingRoute)).toBe(true);
+      await expect(selection).toHaveCount(1);
+      responseMode = 'ok';
+      await page.getByRole('combobox', { name: '数据集执行方式', exact: true }).click();
+      await page
+        .locator('.ant-select-item-option-content')
+        .getByText('Claude Code Goal', { exact: true })
+        .click();
+      await expect(page.getByText('Cannot read imported tasks', { exact: true })).toHaveCount(0);
+      await pendingRoute!.fulfill({ json: { items: [] } });
+      await expect(selection).toHaveCount(1);
+      expect(roots.every((root) => root === '/imported/selected')).toBe(true);
+      expect(mutations).toEqual([]);
+      await page.screenshot({
+        path: test.info().outputPath('custom-root-task-selected.png'),
+        fullPage: true,
+      });
+    });
   for (const width of [1280, 390])
     test(`datasets download only on explicit click, retry and reuse cache (${width})`, async ({
       page,

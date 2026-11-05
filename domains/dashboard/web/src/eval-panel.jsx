@@ -1428,6 +1428,7 @@ function EvalCreate({
   );
   const [datasetReady, setDatasetReady] = useState(false);
   const datasetTreatment = Form.useWatch('datasetTreatment', form) ?? 'native';
+  const datasetRoot = Form.useWatch('datasetRoot', { form, preserve: true });
   const targetTypeSelection =
     Form.useWatch('targetType', form) ?? initialConfig?.targetType ?? 'auto';
   const targetPath = Form.useWatch('target', form);
@@ -1730,6 +1731,7 @@ function EvalCreate({
                   base={base}
                   value={datasetId}
                   datasetTreatment={datasetTreatment}
+                  datasetRoot={datasetRoot}
                   task={datasetTask}
                   accepted={datasetAccepted}
                   onReady={setDatasetReady}
