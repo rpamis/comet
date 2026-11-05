@@ -1012,7 +1012,8 @@ def test_dataset_runtime_mapping_is_independent_of_comet_installation(tmp_path, 
     probe.write_text(
         "#!/usr/bin/env bash\nsource " + shlex.quote(_to_bash_path(SHELL_DIR / "docker.sh")) + "\n"
         'docker() { if [[ "$1" == image ]]; then printf agent; fi; }\n'
-        'prepare_eval_runtime_data "$1" fake-image\nprintf \'%s\\n\' "${COMET_RUNTIME_MOUNT_ARGS[@]}"\n',
+        'prepare_eval_runtime_data "$1" fake-image\nprintf \'%s\\n\' "${COMET_RUNTIME_MOUNT_ARGS[@]}"\n'
+        'cleanup_eval_runtime_data "$1"\n',
         encoding="utf-8",
         newline="\n",
     )
@@ -1025,6 +1026,7 @@ def test_dataset_runtime_mapping_is_independent_of_comet_installation(tmp_path, 
     native = run_shell(str(probe), str(tmp_path), check=False)
     assert native.returncode == 0, native.stderr
     assert native.stdout.startswith(goal.stdout)
+    assert not (tmp_path / ".eval-runtime-volume").exists()
 
 
 def test_dataset_candidate_mapping_rejects_protected_and_escaping_paths(tmp_path):

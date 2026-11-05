@@ -1168,6 +1168,15 @@ children:
     await expect(
       executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
     ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'interrupted' }] });
+    const interrupted = await readNativeLocalExecution(file);
+    expect(interrupted).toMatchObject({
+      execution: { operationId: running!.execution!.operationId, status: 'interrupted' },
+      checks: [{ id: plan.id, status: 'interrupted', activeProcess: null, executionCount: 1 }],
+    });
+    await expect(
+      executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
+    ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'interrupted' }] });
+    expect(await readNativeLocalExecution(file)).toEqual(interrupted);
     await fs.writeFile(release, 'release\n');
     await expect(
       retryNativePortableCheckPlan({ paths, name: state.name, checkIds: [plan.id] }),

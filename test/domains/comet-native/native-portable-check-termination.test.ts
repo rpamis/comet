@@ -176,6 +176,72 @@ describe('Native portable unconfirmed check termination', () => {
     );
   });
 
+  it('persists a proven orphan interruption before allowing an explicit check retry', async () => {
+    const { paths } = await candidate();
+    const plan = {
+      id: 'orphaned',
+      name: 'Orphaned check',
+      executable: process.execPath,
+      argv: ['-e', 'process.exit(0)'],
+      cwdRef: '.',
+      timeoutMs: 10000,
+      repeatable: true,
+    };
+    const failure = new checkExecutor.NativeCheckTerminationUnconfirmedError();
+    const execute = vi
+      .spyOn(checkExecutor, 'executeNativeCheck')
+      .mockImplementationOnce(async ({ onSpawn }) => {
+        await onSpawn?.({ pid: 2147483000, signal: new AbortController().signal });
+        throw failure;
+      });
+    const ordinary = () => executeNativePortableCheckPlan({ paths, name: 'change', plans: [plan] });
+    await expect(ordinary()).rejects.toBe(failure);
+    const file = nativeLocalExecutionFile(paths, 'change');
+    const running = (await readNativeLocalExecution(file))!;
+    expect(running).toMatchObject({
+      execution: { stage: 'checking', status: 'running' },
+      checks: [{ id: plan.id, status: 'running', executionCount: 1 }],
+    });
+    const owner = vi.spyOn(processIdentity, 'inspectProcessLiveness').mockResolvedValue('dead');
+    const child = vi.spyOn(checkExecutor, 'inspectNativeCheckProcessTreeLiveness');
+    for (const liveness of ['alive', 'unknown'] as const) {
+      child.mockResolvedValue(liveness);
+      await expect(ordinary()).rejects.toThrow('原检查仍运行或结果不明');
+      expect(await readNativeLocalExecution(file)).toEqual(running);
+      expect(execute).toHaveBeenCalledTimes(1);
+    }
+    child.mockResolvedValue('dead');
+    await expect(ordinary()).resolves.toMatchObject({
+      disposition: 'reused',
+      checks: [{ id: plan.id, status: 'interrupted' }],
+    });
+    const interrupted = {
+      ...running,
+      execution: { ...running.execution!, status: 'interrupted' },
+      checks: running.checks.map((check) => ({
+        ...check,
+        status: 'interrupted',
+        activeProcess: null,
+      })),
+    };
+    expect(await readNativeLocalExecution(file)).toEqual(interrupted);
+    await expect(ordinary()).resolves.toMatchObject({
+      checks: [{ id: plan.id, status: 'interrupted' }],
+    });
+    expect(await readNativeLocalExecution(file)).toEqual(interrupted);
+    expect(execute).toHaveBeenCalledTimes(1);
+    owner.mockRestore();
+    child.mockRestore();
+    await expect(
+      retryNativePortableCheckPlan({ paths, name: 'change', checkIds: [plan.id] }),
+    ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'passed' }] });
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(await readNativeLocalExecution(file)).toMatchObject({
+      execution: { status: 'completed' },
+      checks: [{ id: plan.id, status: 'passed', executionCount: 2 }],
+    });
+  });
+
   it.each(['runtime', 'verifier', 'legacy-verifier'] as const)(
     'preserves the registered process and blocks retries for %s checks',
     async (source) => {

@@ -211,6 +211,14 @@ Run focused Native checks.
   };
 }
 
+async function allowAgentDocumentReview(root: string) {
+  const config = defaultProjectConfig('docs', 'en');
+  await writeProjectConfig(root, {
+    ...config,
+    native: { ...config.native, document_writes: 'allow' },
+  });
+}
+
 function nativeApplication(version: '1' | '2' | '3' = '1'): NativeApplication {
   const define = (nativeDomain as Record<string, unknown>).defineNativeWorkflowApplication;
   expect(define).toBeTypeOf('function');
@@ -929,7 +937,14 @@ describe('Native protocol simplification', () => {
   });
 
   it('collects formal approved originals in the Native observe response', async () => {
-    const { root, paths, changeDir, run } = await awaitingArchiveApplication('sdk');
+    const { root, paths, changeDir, run } = await awaitingArchiveApplication(
+      'sdk',
+      undefined,
+      false,
+      undefined,
+      nativeApplication(),
+      allowAgentDocumentReview,
+    );
     await captureApprovedShapeOriginals(paths, run.state as NativePortableState);
     const brief = path.join(changeDir, 'brief.md');
     await fs.appendFile(brief, '\nAdditional explanation only.\n');
@@ -7085,6 +7100,7 @@ children:
       false,
       undefined,
       async (root) => {
+        await allowAgentDocumentReview(root);
         await fs.writeFile(path.join(root, 'settings.json'), '{"enabled":true}');
       },
     );
@@ -7495,12 +7511,20 @@ children:
       legacyExecutionBinding: true,
     });
     const legacyRun = structuredClone(run);
-    (
-      legacyRun.actions.find((action) => action.id === check.id)!.outcome!.output as Record<
-        string,
-        unknown
-      >
-    ).candidateInputFingerprintGate = legacy;
+    const legacyOutput = legacyRun.actions.find((action) => action.id === check.id)!.outcome!
+      .output as Record<string, unknown>;
+    // 旧绑定使用执行环境摘要，没有现代 rawInput 与分离的 v2 输入快照。
+    const legacyInputs = await nativePortableChecks.nativeCheckInputSnapshot({
+      projectRoot: root,
+      state,
+      plans: [],
+      managedArtifactRoot: paths.artifactRoot,
+    });
+    legacyOutput.candidateInputFingerprintGate = legacy;
+    delete legacyOutput.rawInput;
+    delete legacyOutput.inputSnapshot;
+    legacyOutput.inputBefore = legacyInputs.fingerprint;
+    legacyOutput.inputAfter = legacyInputs.fingerprint;
     await expect(
       assertNativeSdkCandidateUnchanged({ run: legacyRun, projectRoot: root }),
     ).resolves.toMatchObject({ complete: true, projectRoot: await fs.realpath(root) });
@@ -7810,6 +7834,7 @@ children:
       false,
       undefined,
       async (root) => {
+        await allowAgentDocumentReview(root);
         await fs.writeFile(path.join(root, 'settings.json'), '{"enabled":true}');
       },
     );
@@ -8323,6 +8348,42 @@ it.each(['source', 'bundle'] as const)(
   },
 );
 
+it('keeps Archive next pending on a renamed branch and resumes the original Run after restoration', async () => {
+  const { root, runtime, run } = await awaitingArchiveApplication(
+    'sdk',
+    undefined,
+    true,
+    initializeArchiveGit,
+  );
+  const bound = await runNativeCli([
+    'select',
+    run.runId,
+    '--rebind',
+    '--project-root',
+    root,
+    '--json',
+  ]);
+  expect(bound.exitCode, bound.stdout).toBe(0);
+  const before = await runtime.inspect(run.runId);
+  expect((before.state as NativePortableState).workspace.change_branch).toBe('main');
+  execFileSync('git', ['branch', '-m', 'renamed'], { cwd: root });
+  const blocked = await runNativeCli(['next', run.runId, '--project-root', root, '--json']);
+  expect(blocked.exitCode, blocked.stdout).toBe(0);
+  expect(JSON.parse(blocked.stdout!).data.continuation.disposition).toBe('blocked');
+  const retained = await runtime.inspect(run.runId);
+  expectOriginalActionFacts(retained, before.actions);
+  expect(retained.state).toEqual(before.state);
+  expect(retained.waits).toEqual(before.waits);
+  expect(retained.outputs).toEqual(before.outputs);
+  await expect(fs.stat(path.join(root, 'docs/comet/specs/workflow/spec.md'))).rejects.toThrow();
+  execFileSync('git', ['branch', '-m', 'main'], { cwd: root });
+  const resumed = await runNativeCli(['next', run.runId, '--project-root', root, '--json']);
+  expect(resumed.exitCode, resumed.stdout).toBe(0);
+  const completed = await runtime.inspect(run.runId);
+  expect(completed.status).toBe('completed');
+  expect(completed.actions.filter((action) => action.stepId === 'archive.execute')).toHaveLength(1);
+});
+
 it.each([
   'implementation.js',
   'docs/comet/specs/workflow/hidden.js',
@@ -8510,6 +8571,8 @@ async function reviewAppliedCommentAtArchive(
     undefined,
     preparePending,
     initializeArchiveGit,
+    nativeApplication(),
+    decision === 'requirements-changed' ? allowAgentDocumentReview : undefined,
   );
   await reconcileNativeSdkExecutionStops(root, run, runtime);
   const before = await runtime.inspect(run.runId);
@@ -10825,7 +10888,14 @@ it('omits unused recovery and failure templates for a healthy v3 Verifier', asyn
 });
 
 async function verifiedV3Candidate(application = nativeApplication('3')) {
-  const prepared = await dispatchedVerifier([], 'sdk', application);
+  const prepared = await dispatchedVerifier(
+    [],
+    'sdk',
+    application,
+    true,
+    undefined,
+    allowAgentDocumentReview,
+  );
   const { root, runtime } = prepared;
   const state = prepared.run.state as NativePortableState;
   const run = await succeedLatestAction(

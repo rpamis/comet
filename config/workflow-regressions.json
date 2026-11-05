@@ -753,7 +753,7 @@
     },
     {
       "id": "local-native-check-refresh-fixture-order",
-      "sources": ["report:2026-11-04-local-test-failures"],
+      "sources": ["report:2026-11-04-local-test-failures", "report:2026-11-05-pr539-ci-failures"],
       "behavior": "检查刷新回归先准备原始输入，再以当前原始字节编辑协议审查格式或结构变化。",
       "coverageLevel": "runtime",
       "reproduction": "相邻测试中的 settings.json 和 value.ts 在 Builder 冻结后才创建，首次检查拒绝候选；修正顺序后，旧语义指纹复核仍不能证明当前原始输入。",
@@ -773,7 +773,7 @@
     },
     {
       "id": "local-native-one-shot-reverify-proof",
-      "sources": ["report:2026-11-04-local-test-failures"],
+      "sources": ["report:2026-11-04-local-test-failures", "report:2026-11-05-pr539-ci-failures"],
       "behavior": "单次检查重验回归区分缺少复用证明和完整成功收据，保留原拒绝断言并验证合法复用没有重复副作用。",
       "coverageLevel": "runtime",
       "reproduction": "原测试先在交接后初始化 Git 和实现文件而触发漂移；顺序修正后，原先一概拒绝重验的期望与完整收据可复用规则不符。",
@@ -793,7 +793,7 @@
     },
     {
       "id": "local-native-reverify-fixture-order",
-      "sources": ["report:2026-11-04-local-test-failures"],
+      "sources": ["report:2026-11-04-local-test-failures", "report:2026-11-05-pr539-ci-failures"],
       "behavior": "同候选重验测试先准备输入，再按实际编辑复核协议处理 JSON 格式变化，保留独立重验覆盖。",
       "coverageLevel": "runtime",
       "reproduction": "052 的 144880f5 测试在 Builder 交接后才创建 settings.json，首次检查即因候选漂移失败，未到达原重验断言。",
@@ -831,7 +831,7 @@
     },
     {
       "id": "local-native-supervisor-auto-preparation",
-      "sources": ["report:2026-11-04-local-test-failures"],
+      "sources": ["report:2026-11-04-local-test-failures", "report:2026-11-05-pr539-ci-failures"],
       "behavior": "扩展 Native Supervisor 测试读取公开 CLI 已完成的准备动作，不再次寻找或执行已完成的 pending Action。",
       "coverageLevel": "runtime",
       "reproduction": "原 transfer 和 reverse Child 测试在 next 自动准备父级及两个 Child 后，读取不存在的 pending supervisor.prepare 并访问 id 失败。",
@@ -3410,7 +3410,8 @@
       "behavior": "Native next 在重新核对候选与归档状态时限制重复 Git 查询，保持合法推进和归档可完成。",
       "sources": [
         "report:2026-10-25-native-git-performance",
-        "report:2026-10-26-051-release-closure"
+        "report:2026-10-26-051-release-closure",
+        "report:2026-11-05-pr539-ci-failures"
       ],
       "coverageLevel": "public-cli",
       "reproduction": "e8fdaebc 最小真实 Git SDK 项目从公开 CLI 推进到 Archive 前，next 调用 56 次 Git；原始可观察记录中 next 最慢 411 秒、成功 archive 调用 228 次 Git。 051 当前 Linux 原断言复验分别观察 next 42/41 次；未降低原40/46预算，重复 status/untracked 查询的实际调用栈保留。",
@@ -3433,7 +3434,8 @@
       "behavior": "Native archive 在重新核对候选与归档状态时限制重复 Git 查询，保持合法推进和归档可完成。",
       "sources": [
         "report:2026-10-25-native-git-performance",
-        "report:2026-10-26-051-release-closure"
+        "report:2026-10-26-051-release-closure",
+        "report:2026-11-05-pr539-ci-failures"
       ],
       "coverageLevel": "public-cli",
       "reproduction": "e8fdaebc 最小真实 Git SDK 项目从公开 CLI 推进到 Archive 前，archive 调用 66 次 Git；原始可观察记录中 next 最慢 411 秒、成功 archive 调用 228 次 Git。 051 当前 Linux 原断言复验分别观察 next 42/41 次；未降低原40/46预算，重复 status/untracked 查询的实际调用栈保留。",
@@ -7607,7 +7609,10 @@
     {
       "id": "native-next-drain-internal-actions",
       "behavior": "一次公开 next 连续完成已授权的内部动作，在用户确认、独立验收和执行失败处停止",
-      "sources": ["report:2026-11-02-native-protocol-simplification"],
+      "sources": [
+        "report:2026-11-02-native-protocol-simplification",
+        "report:2026-11-05-pr539-ci-failures"
+      ],
       "coverageLevel": "public-cli",
       "reproduction": "784694e3 的临时 SDK 项目已批准验收且待 Archive，公开 CLI next 后 Run 仍为 running；同一完成断言在旧代码失败。",
       "expected": "原 Run 完成全部归档 Action，每项只执行一次；遇到用户 Wait 或 Verifier handoff 返回，失败检查不派发 Verifier。",
@@ -7648,6 +7653,13 @@
           "namePattern": "preserves an unknown Verifier execution without claiming or replaying it",
           "requiredNames": [
             "Native protocol simplification preserves an unknown Verifier execution without claiming or replaying it"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^keeps Archive next pending on a renamed branch and resumes the original Run after restoration$",
+          "requiredNames": [
+            "keeps Archive next pending on a renamed branch and resumes the original Run after restoration"
           ]
         }
       ]
@@ -8302,6 +8314,11 @@
           "requiredNames": [
             "preserves declared candidate directories for Native and Goal and rejects protected paths"
           ]
+        },
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "^includes captured Python output when a scaffold subprocess fails$",
+          "requiredNames": ["includes captured Python output when a scaffold subprocess fails"]
         }
       ],
       "additionalAcceptance": [
@@ -10077,6 +10094,13 @@
             "rejects source-changing checks and recovers to Build only after the repair approval",
             "rejects checks whose initially incomplete generated inputs disappear during execution"
           ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^keeps completed check results but rejects unjudged source writes during the check$",
+          "requiredNames": [
+            "keeps completed check results but rejects unjudged source writes during the check"
+          ]
         }
       ]
     },
@@ -10265,6 +10289,142 @@
       ],
       "sources": ["report:2026-11-05-pr539-ci-native-explicit-document-write-policy-update"],
       "coverageLevel": "runtime"
+    },
+    {
+      "id": "classic-sdk-stale-workspace-read-identity",
+      "sources": [
+        "report:2026-11-05-pr539-ci-classic-sdk-git-identity",
+        "https://github.com/rpamis/comet/actions/runs/42006054083/job/127173621942",
+        "https://github.com/rpamis/comet/actions/runs/42006054083/job/127173621598"
+      ],
+      "behavior": "A retained Classic SDK store rejects reads after Git identity replacement, including replacement during an awaited read.",
+      "coverageLevel": "runtime",
+      "reproduction": "At ffadb8c1, the original replaced-git checkpoint case resolved the old store read instead of rejecting. The same case passes after retaining the original workspace binding. Mid-read tests replace Git through the real backing read and assert unchanged original Run, projection marker and state document.",
+      "expected": "Both read and readProjection validate their original workspace identity before and after asynchronous projection reads. A newly created store can recover the checkpoint into the new workspace identity.",
+      "forbidden": "Return an old Run through a wrapper newly bound to another Git identity, or rewrite the original store while rejecting the identity change.",
+      "rootCause": "The writable read fast path and readProjection constructed a new read-only wrapper, binding the new workspace identity and bypassing the original store identity check.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-state-recovery.test.ts",
+          "namePattern": "^(?:Classic trusted checkpoint recovery restores Build with its completed Open, evidence and pending Action intact \\(replaced-git\\)|Classic trusted checkpoint recovery rejects Git identity replacement during read without rewriting the original store|Classic trusted checkpoint recovery rejects Git identity replacement during readProjection without rewriting the original store)$",
+          "requiredNames": [
+            "Classic trusted checkpoint recovery restores Build with its completed Open, evidence and pending Action intact (replaced-git)",
+            "Classic trusted checkpoint recovery rejects Git identity replacement during read without rewriting the original store",
+            "Classic trusted checkpoint recovery rejects Git identity replacement during readProjection without rewriting the original store"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-runtime-home.test.ts",
+          "namePattern": "^(?:Classic workspace-local runtime storage rejects an SDK store retained across git init and recovers into the new workspace identity)$",
+          "requiredNames": [
+            "Classic workspace-local runtime storage rejects an SDK store retained across git init and recovers into the new workspace identity"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-replaced-workspace-claim-recovery",
+      "sources": [
+        "report:2026-11-05-pr539-ci-classic-sdk-claim-identity",
+        "https://github.com/rpamis/comet/actions/runs/42006054083/job/127173621942"
+      ],
+      "behavior": "Recover an in-flight Classic claim into a replacement Git workspace as unknown while refusing access through the original store.",
+      "coverageLevel": "runtime",
+      "reproduction": "At ffadb8c1, the original in-flight replaced-Git case failed because the retained store read resolved. After the binding fix, the unchanged recovery assertions and an added readProjection rejection pass.",
+      "expected": "The retained store rejects both read entry points. The new workspace recovers the same Run revision and Action as unknown, retaining the original claim identity and leaving the old store unchanged.",
+      "forbidden": "Treat an in-flight claim as completed or retryable after replacing Git identity, or mutate its original Run during recovery.",
+      "rootCause": "The read-only wrapper used the replacement workspace binding even though its backing store still belonged to the original execution identity.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-state-recovery.test.ts",
+          "namePattern": "^(?:Classic trusted checkpoint recovery keeps an in-flight claim unknown after replacing Git identity and never rewrites the old store)$",
+          "requiredNames": [
+            "Classic trusted checkpoint recovery keeps an in-flight claim unknown after replacing Git identity and never rewrites the old store"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-first-projection-read-budget",
+      "sources": [
+        "report:2026-11-05-pr539-ci-classic-sdk-first-projection-read",
+        "https://github.com/rpamis/comet/actions/runs/42006054083/job/127173622073"
+      ],
+      "behavior": "Read multiple Classic state fields with one state-document read even when the local projection marker needs initial repair.",
+      "coverageLevel": "runtime",
+      "reproduction": "The original multiple-fields test failed locally with two state-file opens instead of its unchanged budget of one. Checking the projection marker before reading the document restores the same test to one open and retains single-field output compatibility.",
+      "expected": "A missing marker goes directly to the existing locked repair path. A current projection remains read-only, and a multi-field query reads the state document once.",
+      "forbidden": "Read the state document once in a doomed fast path and again during repair, or write a current projection during an ordinary read.",
+      "rootCause": "The fast path read and validated the state document before discovering a missing marker, then repeated that read under the repair lock.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-read-performance.test.ts",
+          "namePattern": "^(?:Classic SDK read work budgets reads multiple fields in one projection while preserving single-field output)$",
+          "requiredNames": [
+            "Classic SDK read work budgets reads multiple fields in one projection while preserving single-field output"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-readonly.test.ts",
+          "namePattern": "^(?:Classic SDK read-only diagnostics reads a current writable projection without writes and repairs only stale projections)$",
+          "requiredNames": [
+            "Classic SDK read-only diagnostics reads a current writable projection without writes and repairs only stale projections"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-portable-orphan-interruption-persistence",
+      "sources": [
+        "report:2026-11-05-pr539-ci-native-portable-orphan-interruption",
+        "https://github.com/rpamis/comet/actions/runs/42006054083/job/127173621956"
+      ],
+      "behavior": "Persist a proven orphaned Portable check as interrupted before returning its resumable status to the caller.",
+      "coverageLevel": "runtime",
+      "reproduction": "The Linux CI orphan-process case failed at ffadb8c1 because the explicit retry still read a running check. A cross-platform test on the same code reproduces the missing disk transition with controlled liveness observations, then verifies real explicit retry execution after the fix. Windows covers conservative unknown-process rejection; the full POSIX process branch requires Linux execution.",
+      "expected": "After both the owner and check tree are proven stopped, persist interrupted status while retaining original operation identity, input evidence and execution count. Repeated ordinary execution reads that state without replay, and explicit retry executes the same repeatable command once.",
+      "forbidden": "Return interrupted only in memory, replay a command during ordinary continuation, clear an alive or unknown process registration, or change the original execution identity during recovery.",
+      "rootCause": "The raw-input reservation path converted the orphaned operation to interrupted in memory and returned its reuse summary without writing the recovered local execution record.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+          "namePattern": "^(?:Native portable unconfirmed check termination persists a proven orphan interruption before allowing an explicit check retry)$",
+          "requiredNames": [
+            "Native portable unconfirmed check termination persists a proven orphan interruption before allowing an explicit check retry"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path recovers an orphaned running check only when process exit can be proven)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path recovers an orphaned running check only when process exit can be proven"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-static-dataset-mapping-cleanup",
+      "sources": ["report:2026-11-05-pr539-ci-failures"],
+      "behavior": "静态数据集映射测试在同一 Docker 模拟范围内清理卷标记，无 daemon 也能正常结束，并保留失败子进程的诊断。",
+      "coverageLevel": "unit",
+      "reproduction": "ffadb8c1 的 macOS CI 和 WSL 最小静态测试均出现 4 项通过后 teardown 调用真实 Docker 失败；修正同一 fixture 后 WSL 与 Windows 4 项通过。",
+      "expected": "映射与安全断言保持，清理删除临时卷标记，不调用真实 Docker；Python 失败输出可用于定位。",
+      "forbidden": "跳过清理、留下卷标记给全局 fixture、依赖真实 Docker daemon 或隐藏子进程失败输出。",
+      "rootCause": "测试在 shell 中模拟了 Docker，却把卷标记交给模拟范围外的全局清理；execFileSync 的旧断言未保留有效 pytest 诊断。",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "preserves declared candidate directories for Native and Goal and rejects protected paths",
+          "requiredNames": [
+            "preserves declared candidate directories for Native and Goal and rejects protected paths"
+          ]
+        },
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "^includes captured Python output when a scaffold subprocess fails$",
+          "requiredNames": ["includes captured Python output when a scaffold subprocess fails"]
+        }
+      ]
     }
   ]
 }

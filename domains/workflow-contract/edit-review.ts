@@ -1253,12 +1253,17 @@ export async function inspectEditReviews(scope: EditReviewScope): Promise<EditRe
   return reviews;
 }
 
-/** 最新文件替换了已应用编辑时，只作废旧提案，不批准当前内容。 */
+/** 作废被当前文件替换的未批准提案；已批准记录保留，用于连续判断的原文绑定。 */
 export async function supersedeStaleAppliedEditReviews(scope: EditReviewScope): Promise<void> {
   const reviews = await inspectEditReviews(scope);
   const root = await directory(scope, true);
   for (const review of reviews) {
-    if (review.receipt?.decision === 'discard' || (!review.applied && review.receipt)) continue;
+    if (
+      review.receipt?.decision === 'non-behavioral' ||
+      review.receipt?.decision === 'discard' ||
+      (!review.applied && review.receipt)
+    )
+      continue;
     if (
       !review.applied &&
       !review.edits.every((edit) =>
@@ -1556,7 +1561,14 @@ export async function assertEditReviewsComplete(
         throw new Error(
           `复核通过的编辑尚未应用：${edit.path}（${review.proposalHash}）；应用该编辑或明确丢弃提案后再验收`,
         );
-      if (!reaches(completionEdges(edit.path), edit.afterHash, current?.hash ?? null))
+      if (
+        !reaches(completionEdges(edit.path), edit.afterHash, current?.hash ?? null) &&
+        !(
+          review.applied &&
+          review.receipt.decision === 'non-behavioral' &&
+          reaches(completionEdges(edit.path), edit.beforeHash, current?.hash ?? null)
+        )
+      )
         throw new Error(
           `当前文件与已复核内容不匹配，需要新的复核：${edit.path}（${review.proposalHash}）`,
         );

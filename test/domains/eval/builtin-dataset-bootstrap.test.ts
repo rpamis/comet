@@ -1,10 +1,10 @@
-import { execFileSync } from 'node:child_process';
+import childProcess from 'node:child_process';
 import path from 'node:path';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { ensureCliBuilt } from '../../helpers/ensure-cli-built.js';
 
 function scaffold(file: string, selection: string, passed: number): void {
-  const output = execFileSync(
+  const result = childProcess.spawnSync(
     'uv',
     [
       'run',
@@ -16,6 +16,7 @@ function scaffold(file: string, selection: string, passed: number): void {
       'pytest',
       `local/tests/scaffold/${file}`,
       '-q',
+      '--tb=short',
       '-k',
       selection,
     ],
@@ -26,9 +27,30 @@ function scaffold(file: string, selection: string, passed: number): void {
       env: { ...process.env, PYTHON_DOTENV_DISABLED: '1', PYTHONUTF8: '1' },
     },
   );
+  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+  expect(result.error, output).toBeUndefined();
+  expect(result.status, output).toBe(0);
   expect(output).toContain(`${passed} passed`);
   expect(output).not.toContain('skipped');
 }
+
+it('includes captured Python output when a scaffold subprocess fails', () => {
+  const execute = vi.spyOn(childProcess, 'spawnSync').mockReturnValue({
+    pid: 1,
+    output: [null, 'Python assertion output\n', 'Shell failure output\n'],
+    stdout: 'Python assertion output\n',
+    stderr: 'Shell failure output\n',
+    status: 1,
+    signal: null,
+  });
+  try {
+    expect(() => scaffold('test_builtin_datasets.py', 'fixture', 1)).toThrow(
+      /Python assertion output\nShell failure output/u,
+    );
+  } finally {
+    execute.mockRestore();
+  }
+});
 
 it('keeps authored task images separate when copied candidate bytes change', () => {
   scaffold(

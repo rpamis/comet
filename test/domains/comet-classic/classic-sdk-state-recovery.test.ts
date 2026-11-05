@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   createFileRuntimeStore,
   createRuntime,
+  portableClaimToken,
   readPortableRunCheckpoint,
   type WorkflowRun,
 } from '../../../domains/engine/runtime.js';
@@ -209,6 +210,7 @@ describe('Classic trusted checkpoint recovery', () => {
         await fs.rename(path.join(f.root, '.git'), backup);
         execFileSync('git', ['init', '-b', 'main'], { cwd: f.root, stdio: 'ignore' });
         await expect(f.store.read(f.name)).rejects.toThrow('workspace identity changed');
+        await expect(f.store.readProjection!(f.name)).rejects.toThrow('workspace identity changed');
         await expect(
           f.store.compareAndSwap(f.name, original!.revision, {
             ...original!,
@@ -241,16 +243,56 @@ describe('Classic trusted checkpoint recovery', () => {
     await fs.rename(path.join(f.root, '.git'), backup);
     execFileSync('git', ['init', '-b', 'main'], { cwd: f.root, stdio: 'ignore' });
     await expect(f.store.read(f.name)).rejects.toThrow('workspace identity changed');
+    await expect(f.store.readProjection!(f.name)).rejects.toThrow('workspace identity changed');
     const recovered = await createClassicSdkStateStore(f.root).read(f.name);
     expect(recovered!.revision).toBe(claimed.revision);
     expect(recovered!.actions[0]).toMatchObject({
       id: action.id,
       attempt: action.attempt,
+      inputHash: action.inputHash,
+      claim: {
+        ...claimed.actions[0].claim,
+        token: portableClaimToken(claimed.actions[0].claim!.token),
+      },
       status: 'unknown',
     });
     expect(recovered!.actions).toHaveLength(claimed.actions.length);
     expect(await f.raw.read(f.name)).toEqual(original);
   });
+
+  it.each(['read', 'readProjection'] as const)(
+    'rejects Git identity replacement during %s without rewriting the original store',
+    async (operation) => {
+      const f = await fixture();
+      const original = await f.raw.read(f.name);
+      const originalMarker = await fs.readFile(f.markerFile, 'utf8');
+      const originalDocument = await fs.readFile(f.stateFile, 'utf8');
+      const backup = `${f.root}-git-backup`;
+      roots.push(backup);
+      let replaced = false;
+      const readThenReplaceIdentity = async (runId: string) => {
+        const run = await f.raw.read(runId);
+        if (!replaced) {
+          replaced = true;
+          await fs.rename(path.join(f.root, '.git'), backup);
+          execFileSync('git', ['init', '-b', 'main'], { cwd: f.root, stdio: 'ignore' });
+        }
+        return run;
+      };
+      const store = createClassicSdkStateStore(f.root, {
+        store: {
+          ...f.raw,
+          read: readThenReplaceIdentity,
+          readProjection: readThenReplaceIdentity,
+        },
+      });
+      await expect(store[operation]!(f.name)).rejects.toThrow('workspace identity changed');
+      expect(replaced).toBe(true);
+      expect(await f.raw.read(f.name)).toEqual(original);
+      expect(await fs.readFile(f.markerFile, 'utf8')).toBe(originalMarker);
+      expect(await fs.readFile(f.stateFile, 'utf8')).toBe(originalDocument);
+    },
+  );
 
   it.each([false, true])(
     'preserves user configuration during a legacy recovery with partial import=%s',

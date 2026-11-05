@@ -126,6 +126,7 @@ export function nativeSdkCanRefreshChecks(run: Readonly<WorkflowRun>): boolean {
   // owns this candidate; an old Supervisor one-shot plan must not disable it.
   const builder = run.actions[start];
   const plans = nativeSdkCheckPlans(builder?.outcome?.output);
+  if (plans.some((plan) => !plan.repeatable)) return false;
   for (const action of run.actions.slice(start + 1)) {
     if (action.stepId !== 'verify.requested-checks') continue;
     const outputs = record(
@@ -138,7 +139,29 @@ export function nativeSdkCanRefreshChecks(run: Readonly<WorkflowRun>): boolean {
     );
     plans.push(...nativeSdkCheckPlans({ verificationChecks: response.checks }));
   }
-  return plans.every((plan) => plan.repeatable);
+  const candidateId = parseNativePortableState(run.state).builder_handoff?.candidate_id;
+  return plans.every(
+    (plan) =>
+      plan.repeatable ||
+      run.actions.slice(start + 1).some((action) => {
+        const output = action.outcome?.output as unknown as NativeSdkCheckOutcome | undefined;
+        if (!output || !candidateId) return false;
+        return (
+          action.stepId === 'verify.requested-checks' &&
+          ['succeeded', 'failed'].includes(action.status) &&
+          output?.candidateId === candidateId &&
+          Boolean(output.rawInput) &&
+          checkPlansForAction(run, action, candidateId!).some(
+            (original) =>
+              hashRuntimeValue(original as unknown as RuntimeValue) ===
+              hashRuntimeValue(plan as unknown as RuntimeValue),
+          ) &&
+          output.checks.some(
+            (check) => check.id === plan.id && check.status === 'passed' && check.exitCode === 0,
+          )
+        );
+      }),
+  );
 }
 
 interface NativeSdkCheckResult {
@@ -1683,7 +1706,10 @@ async function validatedCheckResults(options: {
         state.phase === 'verify' &&
         action.stepId !== 'build.checks' &&
         (snapshot.candidateBefore === null ||
-          snapshot.candidateBefore !== output.candidateInputFingerprintGate)
+          (snapshot.candidateBefore !== output.candidateInputFingerprintGate &&
+            (!output.rawInput ||
+              (await readProjectConfig(options.projectRoot))?.native.document_writes === 'revert' ||
+              !(await readNativeSdkBuilderInputs(run, options.projectRoot))?.complete)))
       ) {
         throw new NativeSdkCandidateDriftError(
           'Native 候选源码在检查执行期间发生变化或无法完整读取；需要新的 Builder 候选，不能验收本次检查',
@@ -2228,6 +2254,7 @@ export async function assertNativeSdkCandidateUnchanged(options: {
   const state = parseNativePortableState(options.run.state);
   if (!state.builder_handoff) return;
   let observedInputs = options.observedInputs;
+  let builderInputsMatch = false;
   if (!state.children_contract_hash) {
     const original = await readNativeSdkBuilderInputs(options.run, options.projectRoot);
     if (original) {
@@ -2259,6 +2286,7 @@ export async function assertNativeSdkCandidateUnchanged(options: {
         throw new NativeSdkCandidateDriftError(
           `Builder 交接后的候选实现内容已变化（检查输入已变化）；保留原 Action，由当前 Agent 使用 comet edit-review observe native ${state.name} --session <当前会话> --json 判断变化后继续`,
         );
+      builderInputsMatch = true;
     }
   }
   const current = options.run.actions
@@ -2291,6 +2319,10 @@ export async function assertNativeSdkCandidateUnchanged(options: {
       );
     return observedInputs;
   }
+  // 完整 Builder 原文已与当前判断绑定；检查收据继续绑定实际执行后的字节，
+  // 不能把执行后的摘要当作 Builder 原文，或阻止已明确判断的后续编辑。
+  if (builderInputsMatch && (current.outcome?.output as unknown as NativeSdkCheckOutcome).rawInput)
+    return observedInputs;
   const actual = await nativeSdkCandidateInputGate({ ...options, observedInputs });
   if (actual === recorded) return observedInputs;
   const legacy = await nativeSdkCandidateInputGate({

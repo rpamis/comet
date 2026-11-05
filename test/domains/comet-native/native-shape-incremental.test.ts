@@ -736,7 +736,7 @@ describe('Native Shape incremental contract', () => {
     const third = await prepare();
     const { assertNativeEditReviewsComplete } =
       await import('../../../domains/comet-native/native-edit-review.js');
-    await expect(assertNativeEditReviewsComplete(f.paths, before.state)).rejects.toThrow('待复核');
+    await expect(assertNativeEditReviewsComplete(f.paths, before.state)).rejects.toThrow(/复核/u);
     await review(third.proposal.proposalHash, 'third-reviewer');
     expect(await fs.readFile(f.briefFile, 'utf8')).toBe(final);
     expect(

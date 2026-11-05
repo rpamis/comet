@@ -94,6 +94,14 @@ describe('Native workflow friction regressions', () => {
     return confirmed;
   }
 
+  async function useAgentDocumentReview() {
+    const config = defaultProjectConfig('docs', 'en');
+    await writeProjectConfig(root, {
+      ...config,
+      native: { ...config.native, document_writes: 'allow' },
+    });
+  }
+
   async function input(value: unknown) {
     const file = `${root}-input.json`;
     await fs.writeFile(file, JSON.stringify(value));
@@ -166,6 +174,7 @@ None.
   it.each([false, true])(
     'checks actual formal content after the Hook write instead of invalidating a write intention (changed: %s)',
     async (changed) => {
+      await useAgentDocumentReview();
       const confirmed = await confirm();
       const request = { intent: 'write' as const, targets: [path.join(changeDir, 'brief.md')] };
       expect(await inspectNativeHookGuard(root, request, 'tiny')).toMatchObject({
@@ -239,6 +248,7 @@ None.
     ['settings.yaml', 'enabled: true\n', '# Explain the setting.\nenabled: true\n'],
     ['worker.py', 'value = 1\n', '# Explain the value.\nvalue = 1\n'],
   ])('keeps Verify for a concrete non-behavioral edit of %s', async (file, source, proposed) => {
+    await useAgentDocumentReview();
     await confirm();
     const target = path.join(root, file);
     await fs.writeFile(target, source);

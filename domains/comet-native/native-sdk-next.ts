@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { reportCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
 import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
 import { settleNativeSdkCompletion } from './native-sdk-completion-cleanup.js';
+import { archiveNativeSdkChange } from './native-sdk-archive-command.js';
 
 import {
   hashRuntimeValue,
@@ -180,6 +181,45 @@ export async function advanceNativeSdkChange(
       },
 ): Promise<DispatchResult> {
   let { run, state, artifactRootRef, application } = await inspectNativeSdkRun(projectRoot, name);
+  // 已授权的内置归档沿用同一推进入口，避免 next 再执行一套归档前置检查。
+  if (
+    !decision &&
+    !application &&
+    !state.children_contract_hash &&
+    state.phase === 'archive' &&
+    run.status === 'running' &&
+    run.actions.some(
+      (action) => action.status === 'pending' && action.stepId.startsWith('archive.'),
+    )
+  ) {
+    try {
+      return {
+        ...(await archiveNativeSdkChange({
+          projectRoot,
+          name,
+          dryRun: false,
+          recover: false,
+          confirmed: false,
+        })),
+        command: 'next',
+      };
+    } catch (error) {
+      if (
+        state.workspace.change_branch &&
+        inspectGitWorktree(projectRoot).currentBranch !== state.workspace.change_branch
+      ) {
+        const current = await inspectNativeSdkRun(projectRoot, name, { readOnly: true });
+        return sdkNextResult(
+          projectRoot,
+          name,
+          current.run,
+          current.artifactRootRef,
+          current.application,
+        );
+      }
+      throw error;
+    }
+  }
   const interrupted = run.actions.filter((action) =>
     ['running', 'unknown'].includes(action.status),
   );
@@ -710,11 +750,19 @@ export async function advanceNativeSdkChange(
     return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
   // 同一次请求共享应用加载；每个 Action 仍单独领取、校验并持久化。
   const owned = await loadOwnedNativeSdkRuntime(projectRoot, name);
-  const automaticSteps =
-    run.workflow.version === '3' && !application && !state.children_contract_hash ? 32 : 1;
+  const initialPhase = state.phase;
+  const automaticSteps = !application && !state.children_contract_hash ? 32 : 1;
   for (let steps = 0; steps < automaticSteps; steps++) {
     if (['failed', 'cancelled', 'completed'].includes(run.status)) break;
     if (steps > 0 && state.children_contract_hash)
+      return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+    // 旧协议保留验收到归档的交接；已进入 Archive 的续行仍一次完成内部动作。
+    if (
+      steps > 0 &&
+      run.workflow.version !== '3' &&
+      initialPhase === 'verify' &&
+      state.phase === 'archive'
+    )
       return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
     if (
       steps > 0 &&

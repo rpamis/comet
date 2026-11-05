@@ -3320,7 +3320,11 @@ async function reserveNativeRawCheckPlanLocked(
     if (!checks.some((check) => check.id === previous.id)) checks.push(previous);
   const unresolvedEmptyPlan =
     options.plans.length === 0 && checks.length === 0 && local.execution === null;
-  if (!execute.length && !unresolvedEmptyPlan)
+  if (!execute.length && !unresolvedEmptyPlan) {
+    if (local !== inputLocal)
+      await writeNativeLocalExecution(nativeLocalExecutionFile(options.paths, state.name), local, {
+        containedRoot: options.paths.runtimeDir,
+      });
     return {
       kind: 'reuse',
       state,
@@ -3330,6 +3334,7 @@ async function reserveNativeRawCheckPlanLocked(
         supplied: [],
       }),
     };
+  }
   if (local.execution?.stage === 'verifying' && local.execution.status === 'running')
     throw new Error(
       '保留当前 Verifier；由其使用 request-checks 只请求受影响检查，不能另起检查轮次',

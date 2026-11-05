@@ -846,11 +846,10 @@ async function archiveRecoveryBinding(run: Readonly<WorkflowRun>, projectRoot: s
   });
 }
 
-async function archiveFinalizeBinding(
+async function archiveFinalizeContext(
   run: Readonly<WorkflowRun>,
   action: Readonly<RuntimeAction>,
   projectRoot: string,
-  historicalRecovery = false,
 ) {
   const state = parseNativePortableState(run.state);
   const input = run.input as { name?: unknown; artifactRootRef?: unknown };
@@ -883,13 +882,23 @@ async function archiveFinalizeBinding(
     throw new Error('Native artifact root changed after Run creation');
   }
   const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, { readOnly: true });
+  return { state, paths, applied, priorReportSha256: preflight.reportSha256 };
+}
+
+async function archiveFinalizeBinding(
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+  projectRoot: string,
+  historicalRecovery = false,
+) {
+  const bound = await archiveFinalizeContext(run, action, projectRoot);
   if (
     !historicalRecovery ||
     ((run.outputs['archive.prepare']?.value as { candidateBinding?: unknown })?.candidateBinding &&
       !['unknown', 'cancelled'].includes(action.status))
   )
     await assertArchiveCandidate(run, projectRoot, archiveUsesRecoveryBinding(run, action));
-  return { state, paths, applied, priorReportSha256: preflight.reportSha256 };
+  return bound;
 }
 
 function derivedArchiveReport(
@@ -920,14 +929,10 @@ export const nativeSdkArchiveFinalizeExecutor: RuntimeExecutor = {
     if (!context?.projectRoot || !run) {
       throw new Error('Native Archive finalization requires a bound SDK Run');
     }
-    let bound: Awaited<ReturnType<typeof archiveFinalizeBinding>>;
-    try {
-      bound = await archiveFinalizeBinding(run, action, context.projectRoot);
-    } catch (error) {
-      if (!(error instanceof NativeSdkCandidateDriftError)) throw error;
-      return { status: 'failed', output: { reason: 'candidate-drift', message: error.message } };
-    }
+    const bound = await archiveFinalizeContext(run, action, context.projectRoot);
     const { state, paths, applied } = bound;
+    // 在持有归档锁、即将写入的位置核对一次；提交前的独立复核仍保留。
+    let candidateValidated = false;
     const receipt = await finalizeNativeSdkArchive({
       paths,
       state,
@@ -936,9 +941,20 @@ export const nativeSdkArchiveFinalizeExecutor: RuntimeExecutor = {
       archiveRef: applied.archiveRef as string,
       priorReportSha256: bound.priorReportSha256,
       derivedReport: derivedArchiveReport(run, bound),
-      validateCandidate: () =>
-        assertArchiveCandidate(run, context.projectRoot!, archiveUsesRecoveryBinding(run, action)),
+      validateCandidate: async () => {
+        await assertArchiveCandidate(
+          run,
+          context.projectRoot!,
+          archiveUsesRecoveryBinding(run, action),
+        );
+        candidateValidated = true;
+      },
+    }).catch((error: unknown) => {
+      if (!candidateValidated && error instanceof NativeSdkCandidateDriftError) return error;
+      throw error;
     });
+    if (receipt instanceof NativeSdkCandidateDriftError)
+      return { status: 'failed', output: { reason: 'candidate-drift', message: receipt.message } };
     if (
       receipt.transactionId !== applied.transactionId ||
       receipt.archiveRef !== applied.archiveRef

@@ -215,6 +215,7 @@ async function checkedCandidate(
     files?: Record<string, string>;
     prepareProject?: (root: string) => Promise<void>;
     builderOverrides?: Record<string, unknown>;
+    documentWrites?: 'allow' | 'revert';
   } = {},
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-sdk-verification-inputs-'));
@@ -246,7 +247,14 @@ async function checkedCandidate(
     { cwd: root },
   );
   const artifactRootRef = options.artifactRootRef ?? 'docs';
-  await writeProjectConfig(root, defaultProjectConfig(artifactRootRef, 'en'));
+  const config = defaultProjectConfig(artifactRootRef, 'en');
+  await writeProjectConfig(root, {
+    ...config,
+    native: {
+      ...config.native,
+      ...(options.documentWrites ? { document_writes: options.documentWrites } : {}),
+    },
+  });
   await options.prepareProject?.(root);
   const paths = await nativeProjectPaths(root, artifactRootRef);
   await ensureNativeDirectories(paths);
@@ -1109,6 +1117,7 @@ describe('Native SDK verification input binding', () => {
 
   it('rejects source-changing checks and recovers to Build only after the repair approval', async () => {
     const prepared = await checkedCandidate({
+      documentWrites: 'revert',
       executeChecks: false,
       checkSource:
         'const fs = require("node:fs"); require("node:assert/strict").equal(fs.readFileSync("value.ts", "utf8"), "export const value = 1;\\n"); fs.writeFileSync("value.ts", "export const value = 2;\\n"); process.stdout.write("checked original source");',
@@ -1176,7 +1185,7 @@ describe('Native SDK verification input binding', () => {
     const originalState = prepared.run.state;
     await expect(
       assertNativeSdkCandidateUnchanged({ run: prepared.run, projectRoot: prepared.root }),
-    ).rejects.toThrow('候选内容');
+    ).resolves.toMatchObject({ complete: true });
     const observation = await observeNativeSdkInputs(prepared.run, prepared.root);
     expect(observation.changedDuringCheck.map((change) => change.path)).toEqual(
       expect.arrayContaining(['.next/types/routes.d.ts', '.next/dev/types/routes.d.ts']),
