@@ -188,7 +188,7 @@ def test_051_matrix_prepares_each_selected_workflow_without_cross_workflow_oracl
     reference = get_tasks_dir().parents[2] / "assets/skills/comet/reference/host-check.md"
 
     def snapshot(_environment, workspace):
-        target = workspace / "_eval_current_comet/assets/skills/comet/reference/host-check.md"
+        target = workspace / conftest.CURRENT_COMET_SNAPSHOT_REF / "assets/skills/comet/reference/host-check.md"
         target.parent.mkdir(parents=True)
         target.write_bytes(reference.read_bytes())
 

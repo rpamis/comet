@@ -293,8 +293,32 @@ def pending(run, step):
 
 
 def build_recovery(driver):
-    driver.native("new", driver.name)
+    # One-shot recovery belongs to existing v1 Runs. Create that version through
+    # the current public SDK CLI so its compatibility assertions remain intact.
+    state_module = (ROOT / "dist/domains/comet-native/native-application.js").as_uri()
+    initial_state = json.loads(
+        driver.run([
+            "node", "--input-type=module", "-e",
+            "const {createNativeApplicationState}=await import(process.argv[1]);"
+            "const {defaultProjectConfig,writeProjectConfig}="
+            "await import(new URL('./native-config.js',process.argv[1]));"
+            "await writeProjectConfig(process.argv[3],defaultProjectConfig('docs','en'));"
+            "console.log(JSON.stringify(createNativeApplicationState({"
+            "name:process.argv[2],language:'en',nextAction:'prepare-shape-confirmation'})));",
+            state_module, driver.name, str(driver.root),
+        ]).stdout
+    )
+    started = driver.dispatch(
+        dict(
+            operation="start",
+            workflow={"id": "comet-native", "version": "1"},
+            input={"name": driver.name, "artifactRootRef": "docs"},
+            initialState=initial_state,
+        )
+    )["data"]
+    assert started["workflow"]["version"] == "1"
     change = driver.root / "docs/comet/changes" / driver.name
+    change.mkdir(parents=True)
     brief = """# Outcome
 Add sentence counting.
 # Scope

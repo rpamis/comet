@@ -11,6 +11,18 @@ from scaffold.python.builtin_datasets import DatasetTask
 from scaffold.python.tasks import TaskConfig
 
 
+@pytest.mark.parametrize(
+    "tool,arguments",
+    [
+        ("Bash", {"command": "cat /tmp/wb-dataset/tasks/example/tests/gold.patch"}),
+        ("Read", {"file_path": "/opt/dataset-original/tasks/example/verifier/verifier.py"}),
+        ("Read", {"file_path": "/workspace/tasks/example/solution/solve.sh"}),
+        ("WebFetch", {
+            "url": "https://huggingface.co/datasets/tencent/workbuddy-bench/resolve/main/data.zip"
+        }),
+        ("Bash", {"command": "git clone https://github.com/benchflow-ai/skillsbench"}),
+    ],
+)
 def test_reference_guard_blocks_answer_access_before_tool_execution(tool, arguments):
     script = Path(__file__).resolve().parents[3] / "scaffold/python/dataset_integrity.py"
     result = subprocess.run(

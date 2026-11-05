@@ -257,7 +257,7 @@ def test_unknown_container_cleanup_stops_generation_after_one_attempt_and_report
     skill = _write_skill(tmp_path)
     monkeypatch.delenv("COMET_APPLICATION_EVAL_CONTEXT", raising=False)
     calls = []
-    partial = json.dumps({"type": "result", "usage": {"input_tokens": 11, "output_tokens": 7}, "total_cost_usd": 0.02})
+    partial = json.dumps({"type": "result", "session_id": "generator-session", "usage": {"input_tokens": 11, "output_tokens": 7}, "total_cost_usd": 0.02})
     def run(*args, **kwargs):
         calls.append(True)
         raise AgentContainerCleanupError("Cleanup not confirmed", container_name="owned-test", stdout=partial, returncode=124)

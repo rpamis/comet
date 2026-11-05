@@ -269,3 +269,5 @@ Rule 同时说明验收者只读与保留用户普通编辑的区别，按 docum
 PR #539 首轮 Greptile 提出 Goal 任务被 Native 限制误禁选、CLI 数据集结果被误标过期两项 P2。均取得当前分支失败证据后修复。任务 API 传递执行方式并在 UI 切换时刷新；CLI、预览和时效检查共用数据集摘要，持久化实际 datasetRoot，历史记录仅在原 metadata 可核对时恢复，缺失或损坏证据显示未知。相关 4 文件 30 项测试通过，追加历史损坏记录 2 项通过。真实浏览器串行 3 项通过，覆盖 Native/Goal 切换和 1280/390 页面；API 使用 mock，未执行模型 Eval。
 
 本项目 Codex/Claude 已通过正式 update 路径同步共享 Rule 与生成 Hook。两处 Rule、两处 Native Hook bundle 的 SHA256 与产品资产一致。完整 build、SDK API 和生成物一致性检查通过。真实平台会话 Hook 尚待验收。
+
+PR 静态 CI 暴露的夹具问题已定向处理。补回材料访问拦截测试缺少的参数化，更新 tooling 快照路径和已删除 baseline 入口；遥测夹具补真实模拟会话标识和主体效率字段，继续拒绝未知评分；一次性检查恢复样例通过当前公开 SDK 入口创建 v1 Run，保留原恢复与归档断言。Windows 本地 16 参数项中 14 项通过，2 项 POSIX 恢复已越过原失败点，后续受 python3 启动器与 /usr/bin/env 缺失限制。WSL Node 可运行 CLI，但隔离 Python 环境下载依赖超时，已停止，未启动模型或容器。6 文件 Ruff 通过，Linux 完整恢复由 CI 核对。

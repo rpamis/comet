@@ -890,7 +890,12 @@ def test_each_generic_profile_can_emit_every_required_dimension(tmp_path):
             else:
                 path.mkdir(exist_ok=True)
         outputs = {
-            "events": {"skills_invoked": task.config.evaluation.required_skills},
+            "events": {
+                "skills_invoked": task.config.evaluation.required_skills,
+                "num_turns": 1,
+                "tool_calls": [],
+                "duration_seconds": 1,
+            },
             "completion": {"passed": ["task: passed"], "failed": []},
             "required_skills": task.config.evaluation.required_skills,
             "require_skill_invocation": True,

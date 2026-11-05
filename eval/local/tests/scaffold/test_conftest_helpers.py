@@ -249,21 +249,19 @@ def test_cli_snapshot_stays_out_of_native_inputs_while_app_dist_remains_bound(tm
     subprocess.run(['git', 'add', '.gitignore', 'README.md'], cwd=workspace, check=True)
     subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@eval.invalid',
                     'commit', '--quiet', '-m', 'initial'], cwd=workspace, check=True)
-    runtime = tmp_path / 'runtime'
-    sdk = conftest.REPOSITORY_ROOT / 'dist/domains/comet-native/native-application.js'
-    script = '''const {prepareNativeVerificationBaseline}=await import(process.argv[1]);
-const result=await prepareNativeVerificationBaseline(process.argv[2],'docs','tooling-input-test');
+    sdk = conftest.REPOSITORY_ROOT / 'dist/domains/comet-native/native-portable-checks.js'
+    script = '''const {nativeRawInputSnapshot}=await import(process.argv[1]);
+const result=await nativeRawInputSnapshot({projectRoot:process.argv[2]});
 console.log(JSON.stringify(result));'''
 
     def baseline():
         result = subprocess.run(['node', '--input-type=module', '-e', script, sdk.as_uri(), str(workspace)],
-            capture_output=True, text=True, encoding='utf-8', check=True,
-            env={**os.environ, 'COMET_DATA_DIR': str(runtime), 'HOME': str(tmp_path/'home'),
-                 'USERPROFILE': str(tmp_path/'home')})
-        handle = json.loads(result.stdout)
-        snapshots = list(runtime.glob('**/' + handle['ref']))
-        assert len(snapshots) == 1
-        return json.loads(snapshots[0].read_text(encoding='utf-8'))
+            capture_output=True, text=True, encoding='utf-8',
+            env={**{key: value for key, value in os.environ.items()
+                    if key in {'PATH', 'SYSTEMROOT', 'WINDIR'}},
+                 'HOME': str(tmp_path/'home'), 'USERPROFILE': str(tmp_path/'home')})
+        assert result.returncode == 0, result.stderr
+        return json.loads(result.stdout)
 
     before = baseline()
     assert before['complete'] is True
