@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from scaffold.python.tasks import Task, TaskConfig, EvaluationConfig, InteractionConfig
 from scaffold.python.execution import redact_sensitive
+from scaffold.python.paths import DATASET_NPM_CACHE_REF
 
 
 DATASET_SIMULATOR_PROMPT = """You simulate the user for a fixed benchmark task.
@@ -194,6 +195,9 @@ class DatasetTask(Task):
             "Resolve details from public code and documentation; the simulated user has no new product requirements. "
             "Read the read-only original task at /opt/comet-task-contract/task.md. "
             "Give every independent verifier this original task path and require it to check the original task as well as the approved Spec. "
+            "Do not retrieve benchmark datasets, reference solutions, gold patches, hidden tests, or grader sources from the network or other locations. "
+            "Use the supplied task and workspace, ordinary library documentation, and your own tests. This rule also applies to subagents and independent verifiers. "
+            "Attempts to access benchmark reference materials invalidate this sample; the original grader runs only after execution ends. "
             "A workflow pass does not override the original grader.\n\nOriginal task:\n" + prompt
         )
 
@@ -201,6 +205,9 @@ class DatasetTask(Task):
         return [self.validate_dataset]
 
     def validate_dataset(self, test_dir, outputs):
+        from scaffold.python.dataset_integrity import audit_reference_access
+
+        reference_access = audit_reference_access(Path(test_dir), outputs.get("events", {}))
         # 原始评分可能注入测试或 stage 文件；在候选副本中判分，保留 Native 候选不变。
         outputs["_dataset_source_workspace"] = str(Path(test_dir).resolve())
         try:
@@ -210,36 +217,11 @@ class DatasetTask(Task):
                 passed, failed = self._score_dataset(candidate, outputs)
         finally:
             outputs.pop("_dataset_source_workspace", None)
-        if (
-            not any(
-                item.startswith(("dataset_input_changed:", "dataset_environment_changed:"))
-                for item in failed
+        if reference_access:
+            outputs.setdefault("dataset_result", {})["reference_access"] = reference_access
+            failed.append(
+                "dataset_reference_access: 执行 Agent 尝试获取基准参考答案或评分材料；原题分数保留，样本不纳入对比"
             )
-            and (self.dataset_plan or {}).get("treatment", "COMET_NATIVE_SDK_CURRENT")
-            != "CLAUDE_CODE_GOAL"
-            and (self.dataset_plan or {}).get("verifyMode")
-        ):
-            proof = outputs.get("dataset_result", {}).get("native_verification") or {}
-            if proof.get("status") == "mismatch":
-                failed.append("dataset_verify_mode: Run 创建时的验证模式与固定计划不匹配")
-            elif (
-                proof.get("status") != "matched"
-                or proof.get("expectedMode") != self.dataset_plan["verifyMode"]
-                or not proof.get("runs")
-            ):
-                failed.append(
-                    "dataset_verify_mode_unavailable: "
-                    + str(proof.get("reason", "缺少容器内真实 Runtime 查询结果"))
-                )
-            else:
-                for name, evidence in proof["runs"].items():
-                    if (
-                        evidence.get("run", {}).get("input", {}).get("verifyMode", "standard")
-                        != self.dataset_plan["verifyMode"]
-                    ):
-                        failed.append("dataset_verify_mode: Run 创建时的验证模式与固定计划不匹配")
-                        break
-                    outputs.setdefault("validation_evidence", {})["native:" + name] = evidence
         return passed, failed
 
     def _score_dataset(self, test_dir, outputs):
@@ -311,39 +293,6 @@ class DatasetTask(Task):
             if plan["dataset"]["id"] == "workbuddy-code"
             else ["python3", "-I"]
         )
-        inspection_args = []
-        inspection_error = None
-        if plan.get("verifyMode") and plan.get("treatment") != "CLAUDE_CODE_GOAL":
-            from scaffold.python.utils import run_shell
-
-            try:
-                volume = run_shell(
-                    "docker.sh",
-                    "runtime-data-volume",
-                    outputs.get("_dataset_source_workspace", test_dir),
-                    timeout=10,
-                    check=True,
-                ).stdout.strip()
-                import re
-
-                if not re.fullmatch(r"comet-eval-data-[0-9a-f]{24}", volume):
-                    raise ValueError("Runtime 卷身份无效")
-                docker("volume", "inspect", volume)
-                inspection_args = [
-                    "-v",
-                    f"{volume}:/opt/comet-eval-data:ro",
-                    "-e",
-                    "COMET_DATA_DIR=/opt/comet-eval-data",
-                    "-v",
-                    f"{script.with_name('validation') / 'current_sdk.py'}:/opt/comet-sdk-inspection.py:ro",
-                ]
-            except (ValueError, OSError, subprocess.SubprocessError) as exc:
-                inspection_error = redact_sensitive(str(exc))[-2000:]
-            scoring = json.loads(scoring_input.read_text(encoding="utf-8"))
-            scoring.update(
-                expectedNativeMode=plan["verifyMode"], nativeInspectionError=inspection_error
-            )
-            scoring_input.write_text(json.dumps(scoring), encoding="utf-8")
         args = [
             "create",
             "--name",
@@ -362,7 +311,6 @@ class DatasetTask(Task):
             "-v",
             f"{scoring_input.resolve()}:/opt/comet-dataset-execution.json:ro",
             *mounts,
-            *inspection_args,
             image,
             *python,
             "/opt/dataset_score.py",
@@ -406,7 +354,6 @@ class DatasetTask(Task):
                 "contentHash": entry["contentHash"],
                 "execution": entry.get("execution"),
                 "verifier_status": raw.get("verifier_status", "unknown"),
-                "verifyMode": plan.get("verifyMode"),
             }
             reward, passed = reward_result(json.dumps(raw["reward"]))
             score = f"[RUBRIC] dataset-score: {reward}"
@@ -466,6 +413,24 @@ def dataset_mounts(test_dir: Path) -> list[str]:
         ):
             raise ValueError("候选挂载不能通过链接越过工作区")
         args += ["-v", f"{resolved}:{directory}"]
+    cache = test_dir / DATASET_NPM_CACHE_REF
+    if (
+        metadata["workdir"] != "/root"
+        and "/root" in candidate_directories(metadata)
+        and cache.exists()
+    ):
+        resolved = cache.resolve()
+        if (
+            not cache.is_dir()
+            or not resolved.is_relative_to(root)
+            or any(
+                p.is_symlink()
+                for p in [cache, *cache.parents]
+                if p != test_dir and p.is_relative_to(test_dir)
+            )
+        ):
+            raise ValueError("npm 缓存挂载不能通过链接越过工作区")
+        args += ["-v", f"{resolved}:/root/.npm/_cacache"]
     return args
 
 
@@ -475,10 +440,6 @@ def load_dataset_tasks(plan_file: str) -> list[DatasetTask]:
     if treatment not in {"COMET_NATIVE_SDK_CURRENT", "CLAUDE_CODE_GOAL"}:
         raise ValueError("未知数据集执行方式")
     goal = treatment == "CLAUDE_CODE_GOAL"
-    if plan.get("verifyMode", "standard") not in {"standard", "bugfree"} or (
-        goal and plan.get("verifyMode", "standard") != "standard"
-    ):
-        raise ValueError("数据集验证模式与执行方式不匹配")
     verify_dataset_config(plan)
     if (
         plan["dataset"]["id"] == "workbuddy-code"
@@ -584,11 +545,6 @@ USER agent
                     "treatment": treatment,
                     "execution": execution,
                     "instructionHash": entry.get("instructionHash"),
-                    **(
-                        {"verifyMode": plan["verifyMode"]}
-                        if not goal and "verifyMode" in plan
-                        else {}
-                    ),
                     "environmentFiles": [
                         file.name
                         for file in environment.iterdir()
@@ -687,6 +643,18 @@ def prepare_dataset_workspace(test_dir: Path, agent: str):
             target.mkdir(parents=True, exist_ok=True)
             if "/" + directory != metadata["workdir"]:
                 docker("cp", f"{name}:/{directory}/.", target)
+            if directory == "root" and metadata["workdir"] != "/root":
+                cache = target / ".npm/_cacache"
+                if cache.is_dir() and not any(
+                    p.is_symlink() for p in [cache, cache.parent, target]
+                ):
+                    destination = test_dir / DATASET_NPM_CACHE_REF
+                    if not cache.resolve().is_relative_to(
+                        test_dir.resolve()
+                    ) or not destination.resolve().is_relative_to(test_dir.resolve()):
+                        raise ValueError("npm 缓存路径越过工作区")
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(cache), destination)
         controller_paths = [
             item.name
             for item in test_dir.iterdir()
@@ -722,17 +690,15 @@ def prepare_dataset_workspace(test_dir: Path, agent: str):
         (test_dir / ".dataset-task.json").write_text(json.dumps(metadata), encoding="utf-8")
     finally:
         docker("rm", "-f", name)
-    if "verifyMode" in metadata:
+    if metadata.get("treatment") != "CLAUDE_CODE_GOAL":
         register_dataset_controller_path(test_dir, ".eval-runtime-volume")
-        seed_dataset_native_mode(test_dir, metadata["verifyMode"])
+        seed_dataset_native_config(test_dir)
 
 
-def seed_dataset_native_mode(test_dir: Path, mode: str):
+def seed_dataset_native_config(test_dir: Path):
     """通过公开 CLI 生成配置；执行目录只接收配置，不接收本机 Runtime 标记。"""
     import yaml
 
-    if mode not in {"standard", "bugfree"}:
-        raise ValueError("无效的 Native 验证模式")
     package = Path(
         os.environ.get("BENCH_COMET_SOURCE_ROOT", str(Path(__file__).resolve().parents[3]))
     )
@@ -772,6 +738,5 @@ def seed_dataset_native_mode(test_dir: Path, mode: str):
                 + redact_sensitive(result.stdout + result.stderr)[-3000:]
             )
         config = yaml.safe_load((staging / ".comet/config.yaml").read_text(encoding="utf-8"))
-    config["native"]["verify_mode"] = mode
     config_file.parent.mkdir(parents=True, exist_ok=True)
     config_file.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")

@@ -63,7 +63,7 @@ On actual file changes during Build, Verify, or before Archive, or when continua
 
 ## Build ↔ Verify Loop
 
-In standard mode, after the Builder submits a candidate, Runtime runs required checks and a new read-only Verifier assesses it. For bugfree, follow [bugfree verification](reference/bugfree.md). On failure, return to Build, repair, and resubmit. Once every item passes, wait for the user to accept the result.
+After the Builder submits a candidate, Runtime runs required checks and a new read-only Verifier assesses it. On failure, return to Build, repair, and resubmit. Once every item passes, wait for the user to accept the result.
 
 The Verifier reads the original request before comparing the Spec and implementation, checking for omissions, unauthorized scope reductions and interface behavior changes. SDK Runs record the conclusion in `requestReview` in the same verification result; retain fail or blocked for conflicts or unresolved questions affecting delivery. For older Runs and Compat without a saved original request, consult handoff materials and user records rather than treating the generated Spec as the only requirements source; Compat keeps its existing result format. Use the current Verifier for this semantic review; add no Agent or fixed test rounds.
 
@@ -93,9 +93,7 @@ Complete when the implementation and relevant checks are ready for verification,
 
 ## Verify
 
-When the SDK returns `verifyMode: bugfree`, first read and follow [bugfree verification](reference/bugfree.md). In standard mode, follow the SDK protocol below; Compat continues using its existing protocol.
-
-For SDK, follow [SDK Verify protocol](reference/commands.md#sdk-verify-protocol) and the current continuation: finish Runtime checks first, then launch a new read-only Verifier with the candidate ID, all acceptance items and references, workspace, check records, and claimRequest. The Verifier claims with its own session and reports using the current outcomeRequest. Do not submit legacy Runner startup receipts or results.
+For SDK, follow [SDK Verify protocol](reference/commands.md#sdk-verify-protocol) and the current continuation: finish Runtime checks first, then give the current Action and claimRequest to an independent read-only Verifier. It claims with its own session and submits using the claim response's resultRequest. For legacy responses without resultRequest, use outcomeRequest under [SDK Action protocol](reference/commands.md#sdk-action-claims-and-outcomes). Do not submit legacy Runner startup receipts or results.
 
 For Compat, immediately launch a new read-only Verifier under [Verify protocol](reference/commands.md#verify-protocol), passing the unchanged task package. Dispatch alone is registration: report running only after the platform accepts startup and the Verifier reports `verifier-started`. Handle startup failures immediately. Use inline acceptance text or page through every scopeId.
 

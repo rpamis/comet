@@ -2,6 +2,515 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "native-bugfree-submission-template-routing",
+      "sources": ["report:2026-11-04-bugfree-verify-overhead"],
+      "behavior": "Keep the Native Skill entry, bugfree reference and claimed Action aligned on receipt-based resultRequest, with legacy outcomeRequest only as fallback.",
+      "coverageLevel": "runtime",
+      "reproduction": "Round-six bugfree Run comet-eval-3882e054-be3c-476d-9979-3194bf5fc93d had a valid resultRequest, but the main Agent copied the Skill entry directive to use outcomeRequest exactly. The reviewer then searched outcome IDs, runtime checkpoints and log hashes. The new English Skill contract fails on that unconditional legacy directive; the new claimed-Action reference assertion also failed before repair.",
+      "expected": "Expose direct reviewInput/resultRequest references after claim, preserve existing full-form references and input support, and align SDK guidance so the claimant fills result and preserves its Runtime receipt.",
+      "forbidden": "Regenerating claim identity, claiming for another actor, dropping candidate or acceptance checks, removing legacy input support, or synchronizing English Skill text before Chinese confirmation.",
+      "rootCause": "The main Skill contradicted its modern SDK reference and Runtime instruction; the claimed Action index exposed the legacy outcome reference without direct modern submission/material references.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "^delivers current review material once on claim and refuses material from changed bytes through (runtime|public-cli)$",
+          "requiredNames": [
+            "delivers current review material once on claim and refuses material from changed bytes through runtime",
+            "delivers current review material once on claim and refuses material from changed bytes through public-cli"
+          ]
+        },
+        {
+          "file": "test/domains/skill/native-sdk-skill-routing.test.ts",
+          "namePattern": "prefers receipt result submission consistently through SDK verification in (skills|skills-zh)$",
+          "requiredNames": [
+            "prefers receipt result submission consistently through SDK verification in skills",
+            "prefers receipt result submission consistently through SDK verification in skills-zh"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "model-eval",
+          "status": "pending",
+          "evidence": [
+            "User explicitly confirmed the Chinese Skill; English entry and both references are synchronized. All nine Native SDK Skill contracts pass, including the previously failing English route.",
+            "Round-seven source sha256:737bbca926abc704bbaf8d5b27b4e7be6e10f94b270fcd95b2e3e093d70b83ec is under original-task evaluation; bugfree run comet-eval-42e6a1d1-0a17-4b43-be72-7ef04256d480 has started. Model compliance and complete review cost are not yet verified."
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户明确要求移除 bugfree 模式。模式专用行为改验收入口已移除且旧策略不可推进；仍适用于普通 Native 的原始请求、收据和正式编辑复核继续执行相应断言。原来源、行为和选择器不改写，旧测试正文见移除前实现补丁。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+            "requiredNames": [
+              "removes verification mode selection from public Eval CLI without launching a run"
+            ]
+          },
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+            "requiredNames": [
+              "removes the unreleased verifier definition and compact pass protocol"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-bugfree-coordinator-handoff",
+      "sources": ["report:2026-11-04-bugfree-verify-overhead"],
+      "behavior": "Deliver the existing bugfree verifier Action without a second task brief and wait on the same independent reviewer instead of empty coordinator turns.",
+      "coverageLevel": "runtime",
+      "reproduction": "Round-five original-task runs 9c5f74e3 and 71a200a2 both scored 10/14. Bugfree review was faster, but six coordinator messages versus four erased its child token savings: 869419 versus 867584 total review tokens including cache. The bugfree Agent was backgrounded and the coordinator queried Git ignores and ended a waiting turn.",
+      "expected": "Deliver existing Action/claim data or a saved response reference, let the independent session claim and review once, and use foreground waiting or the existing background task handle when no other necessary parallel work exists.",
+      "forbidden": "Claiming for the reviewer, weakening candidate or evidence checks, dropping acceptance items, treating a wait timeout as a failed review or spawning a duplicate reviewer.",
+      "rootCause": "The handoff instructions required independence but did not discourage a duplicate task brief or unnecessary background coordination with a large parent context.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "^delivers current review material once on claim and refuses material from changed bytes through (runtime|public-cli)$",
+          "requiredNames": [
+            "delivers current review material once on claim and refuses material from changed bytes through runtime",
+            "delivers current review material once on claim and refuses material from changed bytes through public-cli"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "^binds the original task and rejects a passing review that omits or contradicts it in (standard|bugfree)$",
+          "requiredNames": [
+            "binds the original task and rejects a passing review that omits or contradicts it in standard",
+            "binds the original task and rejects a passing review that omits or contradicts it in bugfree"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "model-eval",
+          "status": "pending",
+          "evidence": [
+            "Round-six original-task runs comet-eval-3a531cbc-4d55-40cb-9093-3905b9521b35 and comet-eval-3882e054-be3c-476d-9979-3194bf5fc93d both scored 10/14 with matching mode proof. Foreground waiting was observed; bugfree coordinator usage fell to 3 messages / 304619 tokens versus 6 / 414370, but the main Agent still rewrote the task and forced the legacy template. Complete review cost was 134.970 seconds / 1091381 tokens versus 102.917 / 779483, so the complete objective remains unmet."
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户明确要求移除 bugfree 模式。模式专用行为改验收入口已移除且旧策略不可推进；仍适用于普通 Native 的原始请求、收据和正式编辑复核继续执行相应断言。原来源、行为和选择器不改写，旧测试正文见移除前实现补丁。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+            "requiredNames": [
+              "removes verification mode selection from public Eval CLI without launching a run"
+            ]
+          },
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+            "requiredNames": [
+              "removes the unreleased verifier definition and compact pass protocol"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
+    },
+    {
+      "id": "eval-root-home-cache-input-discovery",
+      "sources": ["report:2026-11-05-eval-root-cache-discovery"],
+      "behavior": "Keep the image npm content cache outside Native project input discovery while preserving all other root-home business inputs.",
+      "coverageLevel": "runtime",
+      "reproduction": "The round-5 zero-model container archived successfully after its 240-second host wait expired; native next --accept-result spent minutes traversing .dataset-state/root/.npm/_cacache, observed in its live file descriptors. The final check snapshot had only 16 files.",
+      "expected": "Relocate only npm _cacache with byte-preserving execution and scoring mounts. Keep other /root business generated inputs bound and keep /root benchmark workdirs unchanged; legacy layouts remain readable.",
+      "forbidden": "Deleting cache bytes, excluding an entire root-home mirror, changing Native exclusions, hiding business generated inputs or grading different candidates.",
+      "rootCause": "The image root-home mirror was inside the project under an ordinary ignored directory, forcing generated-input discovery to traverse its package cache.",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "^keeps Eval CLI tooling outside Native inputs while binding application generated files$",
+          "requiredNames": [
+            "keeps Eval CLI tooling outside Native inputs while binding application generated files"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "container-runtime",
+          "status": "verified",
+          "evidence": [
+            "Round-five final-layout preflight at .comet/eval/launches/2026-11-05-bugfree-hard-confirmation-r5c/preflight-bugfree-20261105-050308.json verified unchanged assembly, readonly CLI, actual npm cache bind bytes, 16 check inputs and original scoring with matching mode proof. The zero-model fixture did not implement the benchmark.",
+            "The same frozen product completed both original-task workflows: comet-eval-9c5f74e3-4133-448a-99d2-82e0fa6cf1bd and comet-eval-71a200a2-0576-4aed-9b4a-28cac3da03a5. Each original reward was 10/14, mode proof matched, and no reference access or input/assembly mismatch was recorded. This verifies the harness boundary, not full task correctness."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-bound-environment-preservation",
+      "sources": ["report:2026-11-05-eval-dataset-assembly-inputs"],
+      "behavior": "Dataset setup preserves its fixed Dockerfile bytes while authored task setup still binds copied image inputs.",
+      "coverageLevel": "runtime",
+      "reproduction": "comet-eval-b21d5cdc-d6b0-414f-b8b6-4cba61248339 completed Native but failed scoring because shared setup appended an authored cache fingerprint to the dataset Dockerfile. assembly-mismatch.json proves this was the only changed assembly file; the setup regression failed on the same extra comment.",
+      "expected": "Keep dataset-bound assembly byte-identical and retain the independent dataset build-context hash; authored tasks continue to invalidate images when candidate inputs change.",
+      "forbidden": "Changing trusted dataset assembly after it is fixed, weakening the scorer comparison, attributing this failure to the model or treating it as a task score.",
+      "rootCause": "Authored image cache binding was applied to dataset environments that already maintain a separate immutable build context.",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "^preserves dataset-bound Dockerfiles when preparing image inputs$",
+          "requiredNames": ["preserves dataset-bound Dockerfiles when preparing image inputs"]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "container-runtime",
+          "status": "verified",
+          "evidence": [
+            "Round-five final-layout preflight at .comet/eval/launches/2026-11-05-bugfree-hard-confirmation-r5c/preflight-bugfree-20261105-050308.json verified unchanged assembly, readonly CLI, actual npm cache bind bytes, 16 check inputs and original scoring with matching mode proof. The zero-model fixture did not implement the benchmark.",
+            "The same frozen product completed both original-task workflows: comet-eval-9c5f74e3-4133-448a-99d2-82e0fa6cf1bd and comet-eval-71a200a2-0576-4aed-9b4a-28cac3da03a5. Each original reward was 10/14, mode proof matched, and no reference access or input/assembly mismatch was recorded. This verifies the harness boundary, not full task correctness."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-cli-tooling-candidate-inputs",
+      "sources": ["report:2026-11-04-bugfree-verify-overhead"],
+      "behavior": "Install the frozen Eval CLI as tooling under Eval state so Native generated-input discovery excludes it while preserving business generated-file checks and readonly CLI bindings.",
+      "coverageLevel": "runtime",
+      "reproduction": "The round-4 hard-task check snapshot had 727 files, including 705 from _eval_current_comet; two actual checks took 290 ms while the enclosing command took over a minute. The public Native SDK baseline regression included CLI dist files before repair.",
+      "expected": "Keep the CLI source and release identity bound, preserve readonly mounts for workdir aliases, retain all business dist inputs and candidate storage, and leave the project's node_modules namespace available to the original task.",
+      "forbidden": "Adding Native ignore exceptions for application inputs, hiding business dist changes, losing build identity or readonly mounts, or reserving the original task's root node_modules as a controller path.",
+      "rootCause": "The harness placed its CLI dist tree in the candidate root where Native correctly discovered it as ignored generated application input.",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "^keeps Eval CLI tooling outside Native inputs while binding application generated files$",
+          "requiredNames": [
+            "keeps Eval CLI tooling outside Native inputs while binding application generated files"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "container-runtime",
+          "status": "verified",
+          "evidence": [
+            "Round-five final-layout preflight at .comet/eval/launches/2026-11-05-bugfree-hard-confirmation-r5c/preflight-bugfree-20261105-050308.json verified unchanged assembly, readonly CLI, actual npm cache bind bytes, 16 check inputs and original scoring with matching mode proof. The zero-model fixture did not implement the benchmark.",
+            "The same frozen product completed both original-task workflows: comet-eval-9c5f74e3-4133-448a-99d2-82e0fa6cf1bd and comet-eval-71a200a2-0576-4aed-9b4a-28cac3da03a5. Each original reward was 10/14, mode proof matched, and no reference access or input/assembly mismatch was recorded. This verifies the harness boundary, not full task correctness."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-input-quality-exclusion",
+      "sources": ["report:2026-11-05-eval-dataset-assembly-inputs"],
+      "behavior": "Exclude proven dataset input or assembly mismatches, including legacy included flags, while retaining raw reports and valid low task rewards.",
+      "coverageLevel": "unit",
+      "reproduction": "The round-4 hard run failed dataset_environment_changed but was flagged harness_trigger_suspect with include_in_analysis=true. Six mismatch/legacy assertions failed before repair.",
+      "expected": "Use the exact trusted mismatch markers as exclusion evidence, override contradictory legacy inclusion and preserve the original report and reward; an ordinary 3/14 remains included.",
+      "forbidden": "Comparing unbound inputs, rewriting scores, treating a completed Native workflow as untriggered without evidence, or excluding an ordinary low score.",
+      "rootCause": "Input and assembly integrity failures fell through to a generic informational harness flag, and persisted quality metadata took priority over trusted mismatch checks.",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "^excludes changed dataset inputs while preserving valid low scores and raw results$",
+          "requiredNames": [
+            "excludes changed dataset inputs while preserving valid low scores and raw results"
+          ]
+        },
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "^excludes unverified or mismatched experiment modes including legacy flags$",
+          "requiredNames": [
+            "excludes unverified or mismatched experiment modes including legacy flags"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-authored-environment-image-identity",
+      "sources": ["report:2026-11-05-authored-eval-image-cache"],
+      "behavior": "Authored Eval task images change when copied environment input bytes change, while late controller files do not alter their identity.",
+      "coverageLevel": "unit",
+      "reproduction": "R4 fixed-pipeline-b-bugfree reused the image and pipeline bytes from candidate A: expected 4ce0e44519e27b7bb3c7df7db6eccedbd4fbc6a5fb4f109c9b592222ee9c6cf1 but artifact f911bb81da415e9361cc259800fbb52e6b47e148a04526d6875432dd250726f8. The setup/build-hash regression failed before repair.",
+      "expected": "Bind the copied authored environment into its Dockerfile cache identity without changing source fixtures; changing copied candidate bytes produces a distinct image key, and controller additions retain the key.",
+      "forbidden": "Reusing a different task candidate solely because its Dockerfile matches, changing source fixtures, or treating invalid model samples as behavior-quality evidence.",
+      "rootCause": "Authored task setup copied candidate inputs but the image cache only hashed Dockerfile and a few dependency manifests.",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "^keeps authored task images separate when copied candidate bytes change$",
+          "requiredNames": [
+            "keeps authored task images separate when copied candidate bytes change"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "container-runtime",
+          "status": "verified",
+          "evidence": [
+            "The next frozen calibration must prove each candidate's actual container bytes match its pre-model manifest and that both modes share an image only within the same candidate pair.",
+            "2026-11-05 R5 image-preflight.json: real setup_test_context/build_docker_image/container execution matched all frozen candidate hashes; modes shared image 0123d7aebb658fc9d1d7d3ea20dbe8fb7c60dc0924d92a1ac653d902740cb612 for A and efa96349649c0b8e787de3e572964696c129d8a15d6bb9fb13690168635fee56 for B. A passed six controller checks; B failed only watched-no-replay. No model calls. Evidence: .comet/eval/launches/2026-11-05-bugfree-fixed-review-r5/image-preflight.json."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-bugfree-review-input-delivery",
+      "sources": ["report:2026-11-04-bugfree-verify-overhead"],
+      "behavior": "bugfree 领取响应一次交付真实需求、适用目录规则、变更文本及检查摘要；字节变化不交付旧正文，同一原审查者才使用增量范围。",
+      "coverageLevel": "public-cli",
+      "reproduction": "R2 中两组同一正确候选均发生37次工具调用；bugfree 在分散读取和上下文核对中用299秒。原领取响应没有可直接阅读的需求与代码正文；新增材料断言在实施前失败。",
+      "expected": "正文只在领取响应出现一份，不写入 Run；需求、已有目录规则与真实变更字节匹配；观察后变更显示 incomplete，原验收仍拒绝；恢复原会话可用增量，新独立会话用全量。",
+      "forbidden": "用 Builder 自评替代代码、隐藏目录规则、将不匹配字节作为当前材料、默认填充验收结论、跨会话复用增量结论或放宽旧模式。",
+      "rootCause": "任务包只交付引用和协议摘要，审查者需要多次工具读取才能拼齐材料；原结果提交接口不能消除这部分读取。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "^delivers current review material once on claim and refuses material from changed bytes through (runtime|public-cli)$",
+          "requiredNames": [
+            "delivers current review material once on claim and refuses material from changed bytes through runtime",
+            "delivers current review material once on claim and refuses material from changed bytes through public-cli"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "^continues independent semantic review after a repair with new candidate identity$",
+          "requiredNames": [
+            "continues independent semantic review after a repair with new candidate identity"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-verification-cost",
+          "status": "pending",
+          "evidence": [
+            "docs/research/2026-11-05-bugfree-verify-cost.zh.md; current material delivery still requires real-model correctness and cost comparison."
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户明确要求移除 bugfree 模式。模式专用行为改验收入口已移除且旧策略不可推进；仍适用于普通 Native 的原始请求、收据和正式编辑复核继续执行相应断言。原来源、行为和选择器不改写，旧测试正文见移除前实现补丁。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+            "requiredNames": [
+              "removes verification mode selection from public Eval CLI without launching a run"
+            ]
+          },
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+            "requiredNames": [
+              "removes the unreleased verifier definition and compact pass protocol"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-bugfree-existing-instruction-refs",
+      "sources": ["report:2026-11-04-bugfree-verify-overhead"],
+      "behavior": "bugfree 不把不存在的 AGENTS.md 列为需求输入；存在的项目规则仍交付给审查者，新增规则保持候选新鲜度约束。",
+      "coverageLevel": "public-cli",
+      "reproduction": "R2 固定正确候选对照中，bugfree 因 requirementRefs 无条件包含 AGENTS.md，反复寻找不存在的规则文件。相同临时项目的缺省规则引用断言在修复前失败。",
+      "expected": "无文件时不声明该引用；文件存在时提供引用；在已检查候选后新增规则时显示真实差异与候选变化，不修改 Run。",
+      "forbidden": "要求审查不存在的规则、隐藏已有规则、忽略新增规则导致的候选变化或伪造规则内容。",
+      "rootCause": "任务包直接拼接 AGENTS.md 字符串，没有核对文件是否存在，审查者把缺失引用理解为资料不完整。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "^does not require absent project instructions and observes newly added rules through (runtime|public-cli)$",
+          "requiredNames": [
+            "does not require absent project instructions and observes newly added rules through runtime",
+            "does not require absent project instructions and observes newly added rules through public-cli"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-verification-cost",
+          "status": "pending",
+          "evidence": [
+            "R2 before repair: bugfree reused checks but spent 299.410 seconds versus standard 205.458 seconds on the same correct candidate; both accepted. docs/research/2026-11-05-bugfree-verify-cost.zh.md. Repair still needs model evidence."
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户明确要求移除 bugfree 模式。模式专用行为改验收入口已移除且旧策略不可推进；仍适用于普通 Native 的原始请求、收据和正式编辑复核继续执行相应断言。原来源、行为和选择器不改写，旧测试正文见移除前实现补丁。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+            "requiredNames": [
+              "removes verification mode selection from public Eval CLI without launching a run"
+            ]
+          },
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+            "requiredNames": [
+              "removes the unreleased verifier definition and compact pass protocol"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-bugfree-formal-edit-preflight",
+      "sources": ["report:2026-11-04-bugfree-verify-overhead"],
+      "behavior": "正式文档存在已复核未应用的提案时，准备命令显示原提案，bugfree 先处理编辑再派发；明确丢弃后同一 Run 可继续验收。",
+      "coverageLevel": "public-cli",
+      "reproduction": "3c40cd26 的 prepare-applied 在文件仍为批准原文时只读候选范围，返回空列表；最终验收读取正式材料范围并拒绝。新增测试在修复前以空列表失败。",
+      "expected": "准备与提交核对相同编辑范围，错误包含文件与提案；编辑未处理时不给新的派发模板，合法处理后仍可提交独立结果。",
+      "forbidden": "空列表掩盖正式材料阻塞、自动丢弃提案、未处理仍通过、修改已批准文件或将恢复写入交给只读审查者。",
+      "rootCause": "prepare-applied 无实际文档差异时只查询 candidate scope，最终验收同时查询 formal scope；续行仍附带 Verifier 领取模板。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "^surfaces an unapplied formal edit before dispatching a bugfree verifier through (runtime|public-cli)$",
+          "requiredNames": [
+            "surfaces an unapplied formal edit before dispatching a bugfree verifier through runtime",
+            "surfaces an unapplied formal edit before dispatching a bugfree verifier through public-cli"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-verification-cost",
+          "status": "pending",
+          "evidence": [
+            "docs/research/2026-11-05-bugfree-verify-cost.zh.md; deterministic recovery does not establish model behavior or performance savings."
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "用户明确要求移除 bugfree 模式。模式专用行为改验收入口已移除且旧策略不可推进；仍适用于普通 Native 的原始请求、收据和正式编辑复核继续执行相应断言。原来源、行为和选择器不改写，旧测试正文见移除前实现补丁。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-verifier-context.test.ts",
+            "namePattern": "^surfaces an unapplied formal edit before dispatching an independent verifier through runtime$",
+            "requiredNames": [
+              "surfaces an unapplied formal edit before dispatching an independent verifier through runtime"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-verifier-context.test.ts",
+            "namePattern": "^surfaces an unapplied formal edit before dispatching an independent verifier through public-cli$",
+            "requiredNames": [
+              "surfaces an unapplied formal edit before dispatching an independent verifier through public-cli"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
+    },
+    {
       "id": "dashboard-plugin-host-slow-reloads",
       "behavior": "Dashboard 插件页间隔超过一秒重载时复用 host，刷新页面数据和配置后正确失效。",
       "coverageLevel": "runtime",
@@ -7857,7 +8366,47 @@
             "用户本轮授权修复，未授权启动新 Eval；确定性检查与此边界分开记录，未完成相应外部验收。"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户明确要求移除 bugfree 模式。模式专用行为改验收入口已移除且旧策略不可推进；仍适用于普通 Native 的原始请求、收据和正式编辑复核继续执行相应断言。原来源、行为和选择器不改写，旧测试正文见移除前实现补丁。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+            "requiredNames": [
+              "removes verification mode selection from public Eval CLI without launching a run"
+            ]
+          },
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+            "requiredNames": [
+              "removes the unreleased verifier definition and compact pass protocol"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
     },
     {
       "id": "eval-native-portable-mode-seed",
@@ -7946,7 +8495,47 @@
         }
       ],
       "sources": ["report:2026-11-04-native-bugfree-protocol-stall"],
-      "reproduction": "c3d0e82f 的已停止 Eval 暴露问题；相同确定性案例先红后绿，详见 docs/research/2026-11-04-native-bugfree-protocol-stall.zh.md。"
+      "reproduction": "c3d0e82f 的已停止 Eval 暴露问题；相同确定性案例先红后绿，详见 docs/research/2026-11-04-native-bugfree-protocol-stall.zh.md。",
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户明确要求移除 bugfree 模式。模式专用行为改验收入口已移除且旧策略不可推进；仍适用于普通 Native 的原始请求、收据和正式编辑复核继续执行相应断言。原来源、行为和选择器不改写，旧测试正文见移除前实现补丁。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+            "requiredNames": [
+              "removes verification mode selection from public Eval CLI without launching a run"
+            ]
+          },
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+            "requiredNames": [
+              "removes the unreleased verifier definition and compact pass protocol"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
     },
     {
       "id": "native-handoff-typed-result-template",
@@ -7974,7 +8563,40 @@
         }
       ],
       "sources": ["report:2026-11-04-native-bugfree-protocol-stall"],
-      "reproduction": "c3d0e82f 的已停止 Eval 暴露问题；相同确定性案例先红后绿，详见 docs/research/2026-11-04-native-bugfree-protocol-stall.zh.md。"
+      "reproduction": "c3d0e82f 的已停止 Eval 暴露问题；相同确定性案例先红后绿，详见 docs/research/2026-11-04-native-bugfree-protocol-stall.zh.md。",
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户明确要求移除 bugfree 模式。模式专用行为改验收入口已移除且旧策略不可推进；仍适用于普通 Native 的原始请求、收据和正式编辑复核继续执行相应断言。原来源、行为和选择器不改写，旧测试正文见移除前实现补丁。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/app/native-verification-cli.test.ts",
+            "namePattern": "^submits the typed receipt template through the public CLI without rebuilding identity fields$",
+            "requiredNames": [
+              "submits the typed receipt template through the public CLI without rebuilding identity fields"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
     },
     {
       "id": "native-verifier-delegation-header",
@@ -8044,7 +8666,47 @@
         }
       ],
       "sources": ["report:2026-11-04-native-original-request-verification"],
-      "reproduction": "基线 5759f156 的失败样本及确定性红绿测试见 docs/research/2026-11-04-native-original-request-verification.zh.md；没有启动新的 Eval。"
+      "reproduction": "基线 5759f156 的失败样本及确定性红绿测试见 docs/research/2026-11-04-native-original-request-verification.zh.md；没有启动新的 Eval。",
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "用户明确要求移除 bugfree 模式。模式专用行为改验收入口已移除且旧策略不可推进；仍适用于普通 Native 的原始请求、收据和正式编辑复核继续执行相应断言。原来源、行为和选择器不改写，旧测试正文见移除前实现补丁。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-verifier-context.test.ts",
+            "namePattern": "^binds the original task and rejects a passing review that omits or contradicts it$",
+            "requiredNames": [
+              "binds the original task and rejects a passing review that omits or contradicts it"
+            ]
+          },
+          {
+            "file": "test/app/native-verification-cli.test.ts",
+            "namePattern": "^submits the typed receipt template through the public CLI without rebuilding identity fields$",
+            "requiredNames": [
+              "submits the typed receipt template through the public CLI without rebuilding identity fields"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
     },
     {
       "id": "eval-native-container-mode-inspection",
@@ -8072,7 +8734,47 @@
         }
       ],
       "sources": ["report:2026-11-04-native-original-request-verification"],
-      "reproduction": "基线 5759f156 的失败样本及确定性红绿测试见 docs/research/2026-11-04-native-original-request-verification.zh.md；没有启动新的 Eval。"
+      "reproduction": "基线 5759f156 的失败样本及确定性红绿测试见 docs/research/2026-11-04-native-original-request-verification.zh.md；没有启动新的 Eval。",
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "未上线的模式及其历史兼容全部撤下；原数据只在文档归档，不再运行模式证明。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+            "requiredNames": [
+              "removes verification mode selection from public Eval CLI without launching a run"
+            ]
+          },
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+            "requiredNames": [
+              "removes the unreleased verifier definition and compact pass protocol"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
     },
     {
       "id": "eval-dataset-image-build-inputs",
@@ -8217,6 +8919,181 @@
             "rejects an archive commit whose migrated fence in .comet-state.lock no longer matches the recorded digest",
             "rejects an archive commit whose migrated fence in .comet-state-transaction.json no longer matches the recorded digest"
           ]
+        }
+      ]
+    },
+    {
+      "id": "dataset-native-mode-original-checkout",
+      "sources": ["report:2026-11-04-deepseek-dataset-comparison-integrity"],
+      "behavior": "Mode inspection reads the original execution checkout read-only before grading a separate copy and cannot accept a proof forged by the scorer.",
+      "coverageLevel": "public-cli",
+      "reproduction": "0c75bfaa inspected a copied scoring checkout against original Runtime storage; checkout-generation identity differed and both samples reported SDK owner mismatch.",
+      "expected": "Read the original checkout and Runtime volume read-only, preserve owner and checkpoint validation, and retain the original low score.",
+      "forbidden": "Relaxing checkout identity, inspecting host-private paths, trusting grader-supplied mode evidence, or changing the original candidate.",
+      "rootCause": "The scoring container mounted the copied checkout under /workspace while the Runtime remained bound to the original directory generation.",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "^reads Native mode from the original checkout and preserves copied-workspace identity protection$",
+          "requiredNames": [
+            "reads Native mode from the original checkout and preserves copied-workspace identity protection"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "container-runtime",
+          "status": "verified",
+          "evidence": [
+            "Next authorized DeepSeek WorkBuddy paired run must exercise this boundary. No container Eval or model run was started during this repair task.",
+            "2026-11-04: comet eval completed bugfree run comet-eval-95efa3d6-9e47-407b-97da-af74d577a82c and standard run comet-eval-e633bf6a-b38e-43d6-9dcd-ed7414e3bbbe on frozen snapshot sha256:07c03931ed830bff0cd88cba55881b3d7b4370e98ee6a554fd733d5c197c72ee. Both original-checkout container inspections returned matched; both retained the original 10/14 reward, had no mode/owner failure and were included. Detailed evidence: docs/research/2026-11-04-dataset-comparison-integrity.zh.md and .comet/eval/launches/2026-11-04-native-deepseek-integrity/comparison.md."
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "未上线的模式及其历史兼容全部撤下；原数据只在文档归档，不再运行模式证明。",
+        "authorization": "report:2026-11-05-bugfree-retirement",
+        "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+            "requiredNames": [
+              "removes verification mode selection from public Eval CLI without launching a run"
+            ]
+          },
+          {
+            "file": "test/app/native-verification-policy-removal.test.ts",
+            "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+            "requiredNames": [
+              "removes the unreleased verifier definition and compact pass protocol"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/bugfree-retirement/regression-registry-before-removal.json",
+            "sha256": "cf33bdfcd50e42f0af102b31db54edc10559c0a2c340f3ab845833da16000680"
+          },
+          "patch": {
+            "file": "docs/research/bugfree-retirement/implementation-before-removal.patch",
+            "sha256": "674851450fac08bf987017fe9fa6a4b5df8a5f9879636b97918f7d30f428c44f"
+          },
+          "mapping": {
+            "file": "docs/research/bugfree-retirement/case-migrations.json",
+            "sha256": "b96fcd93e5c6cc251e4e594e378ce604899f9d11d1e4dae993e16f0f8131c463"
+          },
+          "tests": {
+            "file": "docs/research/bugfree-retirement/test-snapshots.json",
+            "sha256": "0dec6a1a5a6d519139f6df20862463f1fa6976f7e7e285ccb8ee9ab805f3a44a"
+          }
+        }
+      }
+    },
+    {
+      "id": "dataset-reference-tool-access",
+      "sources": ["report:2026-11-04-deepseek-dataset-comparison-integrity"],
+      "behavior": "Dataset Claude Code execution blocks the observed benchmark download and reference-artifact reads before the tool runs while permitting business tests, documentation and verifier delegation.",
+      "coverageLevel": "unit",
+      "reproduction": "The standard DeepSeek sample downloaded the public WorkBuddy archive and read gold.patch plus verifier.py; bugfree did not.",
+      "expected": "Install the same read-only Hook rule in both dataset modes and permit normal implementation and review tools.",
+      "forbidden": "Reading known benchmark reference artifacts, modifying global Agent configuration, putting credentials in settings, or blocking ordinary tests and documentation.",
+      "rootCause": "The execution prompt and Claude Code invocation had no benchmark-reference restriction or PreToolUse check.",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "^blocks benchmark answer access while allowing business tests and verifier handoffs$",
+          "requiredNames": [
+            "blocks benchmark answer access while allowing business tests and verifier handoffs"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-hook",
+          "status": "pending",
+          "evidence": [
+            "Next authorized DeepSeek WorkBuddy paired run must exercise this boundary. No container Eval or model run was started during this repair task.",
+            "2026-11-04: both authorized DeepSeek samples loaded the same live Claude Code PreToolUse configuration and had zero reference-access audit findings. No real forbidden tool attempt occurred, so actual Hook rejection remains unexercised and this acceptance stays pending; no extra sample was started."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dataset-reference-exclusion",
+      "sources": ["report:2026-11-04-deepseek-dataset-comparison-integrity"],
+      "behavior": "Benchmark reference access in main or independent child tool traces excludes the sample from analysis while retaining its original grader reward.",
+      "coverageLevel": "unit",
+      "reproduction": "The contaminated standard sample scored 14/14 and remained marked include_in_analysis=true.",
+      "expected": "Keep original reward and reference-access evidence, classify the protocol violation, and exclude it from paired metrics.",
+      "forbidden": "Treating reference-assisted 14/14 as an ordinary success, scanning only final prose, or excluding legitimate low scores without integrity evidence.",
+      "rootCause": "Sample quality had no reference-access rule and did not audit child-session tool traces.",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "^excludes benchmark reference access and audits independent child sessions without changing scores$",
+          "requiredNames": [
+            "excludes benchmark reference access and audits independent child sessions without changing scores"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dataset-mode-quality-exclusion",
+      "sources": ["report:2026-11-04-deepseek-dataset-comparison-integrity"],
+      "behavior": "Unavailable or mismatched Native mode proof excludes a sample from comparison including historical flagged metadata.",
+      "coverageLevel": "unit",
+      "reproduction": "Both mode-inspection failures were flagged with include_in_analysis=true.",
+      "expected": "Retain business score and distinguish unavailable proof from proven mismatch while excluding both from paired comparison.",
+      "forbidden": "Promoting an unbound mode into comparison, overriding the exclusion with a telemetry warning, or treating missing proof as proven mismatch.",
+      "rootCause": "Sample quality treated experiment-identity failures as informational flags and trusted persisted inclusion metadata.",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "^excludes unverified or mismatched experiment modes including legacy flags$",
+          "requiredNames": [
+            "excludes unverified or mismatched experiment modes including legacy flags"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-verification-policy-removal",
+      "sources": ["report:2026-11-05-bugfree-retirement"],
+      "behavior": "删除未上线模式、验收器版本和紧凑结果协议；普通 Native 原有流程保持可用。",
+      "coverageLevel": "public-cli",
+      "reproduction": "移除前公开 eval --help 提供 --verify-mode，默认配置带 verify_mode，专用 Skill 入口存在；移除后的同一断言要求入口不存在。",
+      "expected": "公开命令无模式参数，默认配置和两种语言 Skill 无模式入口，未上线定义不再加载，完整验收协议可用。",
+      "forbidden": "为未上线模式保留运行或历史解释兼容，恢复紧凑通过协议，删除原始评估记录或削弱普通验收。",
+      "rootCause": "实验功能未稳定达到正确性与整体成本目标，用户决定撤下产品入口。",
+      "tests": [
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+          "requiredNames": [
+            "removes verification mode selection from public Eval CLI without launching a run"
+          ]
+        },
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+          "requiredNames": ["removes the unreleased verifier definition and compact pass protocol"]
+        },
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^omits verification mode from ordinary Native config output$",
+          "requiredNames": ["omits verification mode from ordinary Native config output"]
+        },
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes retired mode instructions and assets in skills$",
+          "requiredNames": ["removes retired mode instructions and assets in skills"]
+        },
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes retired mode instructions and assets in skills-zh$",
+          "requiredNames": ["removes retired mode instructions and assets in skills-zh"]
         }
       ]
     }

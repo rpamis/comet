@@ -409,10 +409,19 @@ process.stdin.on("end", () => process.stdout.write(JSON.stringify(value.trim()))
 # DOCKER BUILD
 # =============================================================================
 
+# 新安装使用评估状态中的依赖目录；旧目录仅用于读取既有工作区。
+current_comet_snapshot_ref() {
+    if [[ -d "$1/.dataset-state/tools/node_modules/@rpamis/comet" ]]; then
+        printf '%s' '.dataset-state/tools/node_modules/@rpamis/comet'
+    else
+        printf '%s' '_eval_current_comet'
+    fi
+}
+
 # 固定候选 CLI 到镜像层，模型只使用非 root 身份读取，不在每次命令中复制。
 docker_current_comet_image() {
     local dir="$1" base_image="$2" force="${3:-}"
-    local snapshot="$dir/_eval_current_comet"
+    local snapshot="$dir/$(current_comet_snapshot_ref "$dir")"
     if [[ ! -f "$snapshot/bin/comet.js" || ! -d "$snapshot/dist" || \
           ! -f "$snapshot/assets/manifest.json" || ! -f "$snapshot/package.json" ]]; then
         printf '%s' "$base_image"
@@ -663,11 +672,13 @@ build_trusted_oracle_mount_args() {
         [[ "$alias" == /workspace ]] || aliases+=("/$alias")
     fi
     TRUSTED_ORACLE_MOUNT_ARGS=()
-    if [[ -d "$dir/_eval_current_comet" ]]; then
+    local snapshot_ref
+    snapshot_ref=$(current_comet_snapshot_ref "$dir")
+    if [[ -d "$dir/$snapshot_ref" ]]; then
         local current_comet_host
-        current_comet_host=$(_winpath "$dir/_eval_current_comet")
+        current_comet_host=$(_winpath "$dir/$snapshot_ref")
         for alias in "${aliases[@]}"; do
-            TRUSTED_ORACLE_MOUNT_ARGS+=("-v" "$current_comet_host:$alias/_eval_current_comet:ro")
+            TRUSTED_ORACLE_MOUNT_ARGS+=("-v" "$current_comet_host:$alias/$snapshot_ref:ro")
         done
     fi
     if [[ -d "$dir/_eval_trusted_oracles" ]]; then
@@ -708,6 +719,7 @@ prepare_eval_git_excludes() {
 /CLAUDE.md
 /AGENTS.md
 /_eval_current_comet/
+/.dataset-state/tools/node_modules/@rpamis/comet/
 /_eval_target_skills/
 /_eval_trusted_oracles/
 /.eval-*
@@ -752,18 +764,26 @@ for (const directory of [...new Set(directories)]) {
   if (path.relative(root, resolved).split(path.sep).includes('..') || path.isAbsolute(path.relative(root,resolved))) throw Error('Dataset candidate mount escapes its workspace');
   console.log('mount:' + directory);
 }
+const cache = path.join(root, '.dataset-state/.cache/npm/_cacache');
+if (metadata.workdir !== '/root' && directories.includes('/root') && fs.existsSync(cache)) {
+  const relative = path.relative(root, fs.realpathSync(cache));
+  if (relative.split(path.sep).includes('..') || path.isAbsolute(relative)) throw Error('Dataset npm cache mount escapes its workspace');
+  console.log('mount-npm-cache');
+}
 JS
     ) || return 1
     while IFS= read -r directory; do
         if [[ "$directory" == mount:* ]]; then
             directory="${directory#mount:}"
-            [[ -d "$dir/.dataset-state/${directory#/}" ]] || { echo "ERROR: Missing dataset candidate directory: $directory" >&2; return 1; }
             if [[ "$directory" == "$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).workdir)' "$dir/.dataset-task.json")" ]]; then
                 source_path="$dir"
             else
                 source_path="$dir/.dataset-state/${directory#/}"
             fi
+            [[ -d "$source_path" ]] || { echo "ERROR: Missing dataset candidate directory: $directory" >&2; return 1; }
             COMET_RUNTIME_MOUNT_ARGS+=(-v "$(_winpath "$source_path"):/$directory")
+        elif [[ "$directory" == mount-npm-cache ]]; then
+            COMET_RUNTIME_MOUNT_ARGS+=(-v "$(_winpath "$dir/.dataset-state/.cache/npm/_cacache")://root/.npm/_cacache")
         elif [[ -n "$directory" ]]; then
             COMET_RUNTIME_MOUNT_ARGS+=("$directory")
         fi
@@ -775,7 +795,7 @@ prepare_eval_runtime_data() {
     local dir="$1" image="$2" volume owner
     COMET_RUNTIME_MOUNT_ARGS=()
     prepare_dataset_runtime_args "$dir" || return 1
-    [[ -d "$dir/_eval_current_comet" || -f "$dir/.include-current-comet-cli" ]] || return 0
+    [[ -d "$dir/$(current_comet_snapshot_ref "$dir")" || -f "$dir/.include-current-comet-cli" ]] || return 0
     prepare_eval_git_excludes "$dir" "$image" || return 1
     volume=$(eval_runtime_volume "$dir") || return 1
     owner=$(docker image inspect --format '{{.Config.User}}' "$image") || return 1

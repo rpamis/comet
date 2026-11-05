@@ -25,7 +25,6 @@ export async function inspectEvalContentFreshness(
         task: config.task,
         count: config.count,
         datasetTreatment: config.datasetTreatment,
-        verifyMode: config.verifyMode,
       });
       return {
         stale:

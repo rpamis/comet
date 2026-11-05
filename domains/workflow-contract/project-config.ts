@@ -189,7 +189,6 @@ type ProjectConfigCommentKey =
   | 'native'
   | 'native.artifact_root'
   | 'native.language'
-  | 'native.verify_mode'
   | 'native.clarification_mode'
   | 'native.archive_confirmation'
   | 'native.max_verify_failures'
@@ -242,8 +241,6 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
     hook: '# Hook write policy shared by Native and Classic. Paths are project-relative.',
     'hook.allow_paths':
       '# Project-relative directories allowed during guarded phases. Use one path per list item; empty by default.',
-    'native.verify_mode':
-      '# Final Verify mode for new Native changes. Existing Runs keep their mode.\n# verify_mode: standard | bugfree',
     native: '# Native workflow settings. They do not change Classic state or behavior.',
     'native.artifact_root':
       '# Root directory where Native stores Comet specs and changes. Runtime data stays under .comet.',
@@ -316,8 +313,6 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
     'knowledge.remote.timeout_ms': '# 远端请求超时时间（毫秒，100-30000）。',
     hook: '# Native 和 Classic 共享的 Hook 写入策略；路径必须是项目相对路径。',
     'hook.allow_paths': '# 在受保护阶段允许写入的项目相对目录；每项填写一个目录，默认为空。',
-    'native.verify_mode':
-      '# 新建 Native change 的最终 Verify 模式；已创建的 change 保持原模式。\n# verify_mode: standard | bugfree',
     native: '# Native 工作流配置，不会改变 Classic 的状态或行为。',
     'native.artifact_root': '# Native 规格和 change 的存放根目录；运行时数据始终位于 .comet。',
     'native.language': '# Native 工作流文档使用的产物语言。\n# 可选值：en | zh-CN',
@@ -739,10 +734,6 @@ function normalizeWorkflowNativeProjectConfig(
   options: { allowMissingArtifactRoot?: boolean } = {},
 ): WorkflowNativeProjectConfig {
   const native = projectConfigRecord(value, 'native');
-  const verifyMode = native.verify_mode === undefined ? 'standard' : native.verify_mode;
-  if (verifyMode !== 'standard' && verifyMode !== 'bugfree') {
-    throw new Error('native.verify_mode must be standard or bugfree');
-  }
   const artifactRoot =
     native.artifact_root ?? (options.allowMissingArtifactRoot ? 'docs' : undefined);
   if (typeof artifactRoot !== 'string') {
@@ -768,7 +759,6 @@ function normalizeWorkflowNativeProjectConfig(
   const pending = normalizeWorkflowPendingRootMove(native.pending_root_move);
   const finish = normalizeWorkflowNativeFinish(native.finish);
   return {
-    verify_mode: verifyMode,
     artifact_root: normalizeWorkflowArtifactRoot(artifactRoot),
     language: projectConfigLanguage(native.language, 'en', 'native.language'),
     clarification_mode: clarificationMode,
@@ -1212,7 +1202,6 @@ export function workflowProjectConfigManagedValue(
     ...(config.native
       ? {
           native: {
-            verify_mode: config.native.verify_mode ?? 'standard',
             artifact_root: config.native.artifact_root,
             language: config.native.language,
             clarification_mode: config.native.clarification_mode,
@@ -1340,7 +1329,6 @@ export function mergeWorkflowProjectConfigDocument(
     const existingNative = optionalRecord(existing.native);
     const native: Record<string, unknown> = {
       ...existingNative,
-      verify_mode: validated.native.verify_mode ?? 'standard',
       artifact_root: validated.native.artifact_root,
       language: validated.native.language,
       clarification_mode: validated.native.clarification_mode,
@@ -1416,7 +1404,6 @@ export function defaultWorkflowProjectConfig(
     memory: { ...DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG },
     knowledge: { ...DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG },
     native: {
-      verify_mode: 'standard',
       artifact_root: normalizeWorkflowArtifactRoot(artifactRoot),
       language,
       clarification_mode: 'batch',
@@ -2458,10 +2445,6 @@ function managedWorkflowConfigFields(source) {
   let nativeArtifactRoot = null;
   if (root.native !== undefined) {
     const native = workflowConfigRecord(root.native, 'native');
-    const verifyMode = native.verify_mode === undefined ? 'standard' : native.verify_mode;
-    if (verifyMode !== 'standard' && verifyMode !== 'bugfree') {
-      throw new Error('native.verify_mode must be standard or bugfree');
-    }
     if (typeof native.artifact_root !== 'string') {
       throw new Error('native.artifact_root must be a string');
     }

@@ -1558,7 +1558,9 @@ export async function assertEditReviewsComplete(
         continue;
       }
       if ((current?.hash ?? null) === edit.beforeHash && edit.beforeHash !== edit.afterHash)
-        throw new Error('复核通过的编辑尚未应用；应用该编辑或明确丢弃提案后再验收');
+        throw new Error(
+          `复核通过的编辑尚未应用：${edit.path}（${review.proposalHash}）；应用该编辑或明确丢弃提案后再验收`,
+        );
       if (!reaches(completionEdges(edit.path), edit.afterHash, current?.hash ?? null))
         throw new Error(
           `当前文件与已复核内容不匹配，需要新的复核：${edit.path}（${review.proposalHash}）`,

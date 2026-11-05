@@ -24,9 +24,9 @@ Supervisor 父级独立 Verifier 明确判定失败，或用户拒绝当前父�
 
 Builder 开始本轮实现前、独立 Verifier 开始验收前，复制当前 Action 的 `claimRequest`，填写接收会话并保留已提供的稳定领取标识，先提交 `claim`。独立 Action 的领取按 `actionId`、`attempt` 和 `inputHash` 校验，不自行补入旧的全局 revision；其他任务推进不要求重派本任务。请求包含 `operation: "claim"`、`runId`、`actionId`、`attempt`、`inputHash`、`executorId: "native-host"`、`sessionId` 和本次唯一且恢复时保持不变的 `claimToken`。`sessionId` 使用平台会话或任务标识；若平台没有可读标识，使用本次工作稳定唯一的执行引用，并明确其只是关联标识，不能据此宣称执行者身份已认证。只有返回的同一 Action 为 `running`、领取标识匹配，才执行或继续本次工作。已由别的执行者领取时，先核对该工作，不能重新领取或另起同一任务。
 
-没有 `resultRequest` 的旧响应中，执行者完成后用同一 `runId` 提交 `record-outcome`：`outcome` 包含原 `actionId`、`attempt`、`inputHash`、`claimToken`，本次唯一的 `outcomeId`、真实的 `status` 和 `output`。不得把尚未完成、未运行或结果未知的工作写成 `succeeded`。SDK 校验结果并保存收据后才按新的 Run 继续。
-
 领取响应提供 `resultRequest` 时，整体保留其中的 `receipt`，只填写 `result.status` 与真实业务 `result.output`，通过同一 dispatch 命令提交；无需拆装 Action 身份或生成结果 ID。重复提交相同结果沿用原收据。旧 `outcomeRequest` 继续可用，不能混用两种输入。`claimRequest` 中已填好的领取令牌原样保留，只填写实际会话标识。提交时间由 Runtime 补记；`addressedAcceptanceIds` 可选，用于本轮处理重点，省略不代表修改了全部验收项。
+
+没有 `resultRequest` 的旧响应中，执行者完成后用同一 `runId` 提交 `record-outcome`：`outcome` 包含原 `actionId`、`attempt`、`inputHash`、`claimToken`，本次唯一的 `outcomeId`、真实的 `status` 和 `output`。不得把尚未完成、未运行或结果未知的工作写成 `succeeded`。SDK 校验结果并保存收据后才按新的 Run 继续。
 
 ### SDK Builder 交接
 

@@ -11,6 +11,7 @@ import {
 import {
   workflowRegressionEntries,
   assertWorkflowAcceptanceComplete,
+  assertWorkflowMigrationEvidence,
 } from '../../scripts/lint/workflow-regressions.mjs';
 import { assertCoreRegressionResult } from '../../scripts/lint/core-regressions.mjs';
 import { mergeHistoricalRegressions } from '../../scripts/lint/historical-regressions.mjs';
@@ -74,6 +75,70 @@ function input() {
 }
 
 describe('continuous badcase registration', () => {
+  it('requires an auditable replacement contract for explicitly removed features', () => {
+    const catalog = registry();
+    const entry = catalog.cases[0] as Record<string, any>;
+    entry.testMigration = {
+      evidence: JSON.parse(
+        readFileSync(path.resolve('config/workflow-regressions.json'), 'utf8'),
+      ).cases.find((item) => item.testMigration).testMigration.evidence,
+      kind: 'feature-removed',
+      reason: '用户明确要求撤下该入口，旧行为和断言保留在历史记录。',
+      authorization: 'report:feature-removal-request',
+      record: 'docs/research/retirement.md',
+      tests: [
+        {
+          file: 'test/app/removed.test.ts',
+          namePattern: '^rejects removed entry$',
+          requiredNames: ['rejects removed entry'],
+        },
+      ],
+    };
+    expect(workflowRegressionEntries(catalog)[0].files).toEqual(['test/app/removed.test.ts']);
+    expect(workflowRegressionEntries(catalog)[0].requiredNames).toEqual(['rejects removed entry']);
+    expect(() =>
+      assertBadcaseRegistration({ ...input(), registry: catalog, declaration: undefined }),
+    ).not.toThrow();
+    expect(() => assertBadcaseRegistration({ ...input(), registry: catalog })).toThrow(
+      '原问题修复',
+    );
+    for (const key of ['reason', 'authorization', 'record', 'tests']) {
+      const invalid = structuredClone(catalog);
+      delete (invalid.cases[0] as Record<string, any>).testMigration[key];
+      expect(() => workflowRegressionEntries(invalid)).toThrow('迁移');
+    }
+    const changed = structuredClone(catalog);
+    changed.cases[0].behavior = '偷偷替换历史行为';
+    expect(() =>
+      assertBadcaseRegistration({ ...input(), registry: changed, declaration: undefined }),
+    ).toThrow('缩减');
+  });
+  it('rejects missing documents, changed archives and forged migration mappings', () => {
+    const root = path.resolve('.');
+    const catalog = JSON.parse(
+      readFileSync(path.join(root, 'config/workflow-regressions.json'), 'utf8'),
+    );
+    expect(() => assertWorkflowMigrationEvidence(root, catalog)).not.toThrow();
+    const index = catalog.cases.findIndex((item) => item.testMigration);
+    for (const mutate of [
+      (item) => {
+        item.testMigration.record = 'docs/research/nonexistent-retirement-record.md';
+      },
+      (item) => {
+        item.testMigration.evidence.registry.sha256 = '0'.repeat(64);
+      },
+      (item) => {
+        item.behavior = '改写旧行为';
+      },
+      (item) => {
+        item.testMigration.tests[0].requiredNames = ['fake'];
+      },
+    ]) {
+      const changed = structuredClone(catalog);
+      mutate(changed.cases[index]);
+      expect(() => assertWorkflowMigrationEvidence(root, changed)).toThrow();
+    }
+  });
   it('requires exactly one structured PR declaration, not closing keywords', () => {
     expect(() => parseBadcaseDeclaration('Fixes #1')).toThrow('只包含一个');
     const block = `<!-- badcase-registration\n${JSON.stringify(declaration())}\n-->`;

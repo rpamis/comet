@@ -351,7 +351,7 @@ def inspect_run(
         runId=name,
     ):
         raise ValueError("SDK owner does not match this change and application")
-    with tempfile.TemporaryDirectory(prefix=".eval-inspect-", dir=workspace) as directory:
+    with tempfile.TemporaryDirectory(prefix="comet-eval-inspect-") as directory:
         request = Path(directory) / "request.json"
         request.write_text(json.dumps(dict(operation="inspect", runId=name)))
         response = json.loads(

@@ -11,13 +11,12 @@ import {
 import { fixtureAcceptanceReview } from './native-builder-acceptance-review.js';
 import type { RuntimeValue } from '../../domains/engine/runtime.js';
 
-export async function bugfreeFixture(
+export async function nativeVerificationFixture(
   onRoot?: (root: string) => void,
   cliPath?: string,
   task?: string,
-  mode: 'standard' | 'bugfree' = 'bugfree',
 ) {
-  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-bugfree-'));
+  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-verification-'));
   onRoot?.(temporary);
   const root = path.join(temporary, 'project');
   await fs.mkdir(root);
@@ -48,8 +47,8 @@ export async function bugfreeFixture(
     return result.data;
   };
   const load = async () => {
-    const owned = await loadOwnedNativeSdkRuntime(root, 'bugfree-test');
-    return { ...owned, run: await owned.runtime.inspect('bugfree-test') };
+    const owned = await loadOwnedNativeSdkRuntime(root, 'verification-test');
+    return { ...owned, run: await owned.runtime.inspect('verification-test') };
   };
   const git = (...args: string[]) =>
     execFileSync('git', ['-C', root, ...args], { windowsHide: true, stdio: 'pipe' });
@@ -66,7 +65,6 @@ export async function bugfreeFixture(
     'initial',
   );
   const config = defaultProjectConfig('docs', 'zh-CN');
-  config.native.verify_mode = mode;
   await writeProjectConfig(root, config);
   const invoke = async (...args: string[]) => {
     if (cliPath) {
@@ -80,8 +78,14 @@ export async function bugfreeFixture(
     if (result.exitCode !== 0) throw new Error(JSON.stringify(result));
     return result;
   };
-  await invoke('new', 'bugfree-test', '--isolation', 'current', ...(task ? ['--task', task] : []));
-  const change = path.join(root, 'docs/comet/changes/bugfree-test');
+  await invoke(
+    'new',
+    'verification-test',
+    '--isolation',
+    'current',
+    ...(task ? ['--task', task] : []),
+  );
+  const change = path.join(root, 'docs/comet/changes/verification-test');
   await fs.writeFile(
     path.join(change, 'brief.md'),
     '# Outcome\nDeliver the expected value.\n# Scope\nChange the value.\n## Directory structure\n### Modified\n- value.txt — expected value.\n# Non-goals\nNo unrelated changes.\n# Acceptance examples\n- The value is expected.\n',
@@ -91,12 +95,12 @@ export async function bugfreeFixture(
     path.join(change, 'specs/value/spec.md'),
     '# Value\nThe final value is expected.\n',
   );
-  await invoke('next', 'bugfree-test');
+  await invoke('next', 'verification-test');
   let owned = await load();
   const state = owned.run.state as { state_version: number };
   await invoke(
     'next',
-    'bugfree-test',
+    'verification-test',
     '--confirmed',
     '--summary',
     'Approve fixture shape',
@@ -107,7 +111,7 @@ export async function bugfreeFixture(
   );
   const submit = async (output: RuntimeValue, sessionId: string) => {
     if (cliPath) {
-      const run = await dispatch({ operation: 'inspect', runId: 'bugfree-test' });
+      const run = await dispatch({ operation: 'inspect', runId: 'verification-test' });
       const action = run.actions.at(-1)!;
       const claimToken =
         action.claim?.sessionId === sessionId ? action.claim.token : crypto.randomUUID();
@@ -183,8 +187,10 @@ export async function bugfreeFixture(
       },
       sessionId,
     );
-    await invoke('next', 'bugfree-test');
-    return cliPath ? dispatch({ operation: 'inspect', runId: 'bugfree-test' }) : (await load()).run;
+    await invoke('next', 'verification-test');
+    return cliPath
+      ? dispatch({ operation: 'inspect', runId: 'verification-test' })
+      : (await load()).run;
   };
   return {
     root,
@@ -193,6 +199,6 @@ export async function bugfreeFixture(
     submit,
     candidate,
     inspect: async () =>
-      cliPath ? dispatch({ operation: 'inspect', runId: 'bugfree-test' }) : (await load()).run,
+      cliPath ? dispatch({ operation: 'inspect', runId: 'verification-test' }) : (await load()).run,
   };
 }

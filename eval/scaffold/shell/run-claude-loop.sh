@@ -112,6 +112,11 @@ MODEL_FLAG=()
 prepare_agent_runtime_config "$AGENT" "$MODEL"
 CODEBUDDY_SETTINGS_FLAG=()
 [[ -n "${CODEBUDDY_SETTINGS_PATH:-}" ]] && CODEBUDDY_SETTINGS_FLAG=(--settings "$CODEBUDDY_SETTINGS_PATH")
+DATASET_SETTINGS_FLAG=()
+if [[ "$AGENT" == claude-code && -f .dataset-task.json ]]; then
+    DATASET_SETTINGS=$(python3 -I "$SCRIPT_DIR/../python/dataset_integrity.py" --settings) || exit 2
+    DATASET_SETTINGS_FLAG=(--settings "$DATASET_SETTINGS")
+fi
 
 capture_agent() {
     local role="$1"
@@ -143,10 +148,10 @@ run_agent_turn() {
             if [[ -n "$resume_id" ]]; then
                 COMET_EVAL_AGENT_ROLE="$role" capture_agent "$role" claude -p "$prompt" ${role_plugin_args[@]+"${role_plugin_args[@]}"} ${MODEL_FLAG[@]+"${MODEL_FLAG[@]}"} \
                     --resume "$resume_id" --output-format stream-json --verbose \
-                    --dangerously-skip-permissions
+                    --dangerously-skip-permissions ${DATASET_SETTINGS_FLAG[@]+"${DATASET_SETTINGS_FLAG[@]}"}
             else
                 COMET_EVAL_AGENT_ROLE="$role" capture_agent "$role" claude -p "$prompt" ${role_plugin_args[@]+"${role_plugin_args[@]}"} ${MODEL_FLAG[@]+"${MODEL_FLAG[@]}"} \
-                    --output-format stream-json --verbose --dangerously-skip-permissions
+                    --output-format stream-json --verbose --dangerously-skip-permissions ${DATASET_SETTINGS_FLAG[@]+"${DATASET_SETTINGS_FLAG[@]}"}
             fi
             ;;
         codex)

@@ -43,6 +43,7 @@ from scaffold.python import (
     save_report,
 )
 from scaffold.python.agents import get_agent_adapter, resolve_agent, validate_agent_capabilities
+from scaffold.python.paths import CURRENT_COMET_SNAPSHOT_REF
 from scaffold.python.auto_tasks import AutoTaskError, ensure_generated_manifest, find_project_root
 from scaffold.python.eval_context import (
     EvalContextError,
@@ -772,7 +773,9 @@ def _copy_current_comet_cli_snapshot(environment_dir: Path, test_dir: Path) -> N
 
     source_root = Path(os.environ.get("BENCH_COMET_SOURCE_ROOT", str(REPOSITORY_ROOT))).resolve()
 
-    target = test_dir / "_eval_current_comet"
+    target = test_dir / CURRENT_COMET_SNAPSHOT_REF
+    if not target.resolve().is_relative_to(test_dir.resolve()):
+        raise ValueError("CLI 快照目录超出当前评估工作区")
     if target.exists():
         shutil.rmtree(target)
     target.mkdir(parents=True)
@@ -1946,6 +1949,7 @@ def setup_test_context(test_dir):
             shutil.copytree(scripts_dir, scripts_dest, dirs_exist_ok=True)
 
     def _copy_environment(environment_dir: Path) -> None:
+        copied_inputs = []
         for item in environment_dir.iterdir():
             if item.name in {
                 CURRENT_COMET_CLI_MARKER,
@@ -1962,6 +1966,32 @@ def setup_test_context(test_dir):
             else:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(item, dest)
+            copied_inputs.extend([dest, *dest.rglob("*")] if dest.is_dir() else [dest])
+        dockerfile = test_dir / "Dockerfile"
+        if (environment_dir / "Dockerfile").is_file() and not (
+            test_dir / ".dataset-task.json"
+        ).is_file():
+            # 绑定已拷贝的镜像输入；后续安装的 Skill、控制器和结果不参与镜像身份。
+            digest = hashlib.sha256()
+            for copied in sorted(copied_inputs):
+                digest.update(
+                    json.dumps(
+                        [copied.relative_to(test_dir).as_posix(), copied.stat().st_mode],
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                )
+                digest.update(b"\0")
+                if copied.is_file():
+                    with copied.open("rb") as handle:
+                        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                            digest.update(chunk)
+                digest.update(b"\0")
+            with dockerfile.open("ab") as handle:
+                handle.write(
+                    b"\n# Eval environment inputs sha256:"
+                    + digest.hexdigest().encode("ascii")
+                    + b"\n"
+                )
         _copy_current_comet_cli_snapshot(environment_dir, test_dir)
 
     def _copy_workspace(workspace_dir: Path) -> None:
@@ -2069,7 +2099,11 @@ def setup_test_context(test_dir):
             and "../comet/reference/host-check.md" in native_entry.read_text(encoding="utf-8")
         ):
             # This is shared documentation, not an additional executable Skill.
-            reference = test_dir / "_eval_current_comet/assets/skills/comet/reference/host-check.md"
+            reference = (
+                test_dir
+                / CURRENT_COMET_SNAPSHOT_REF
+                / "assets/skills/comet/reference/host-check.md"
+            )
             if not reference.is_file():
                 raise FileNotFoundError(
                     f"Current Native capability reference is missing: {reference}"

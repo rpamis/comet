@@ -63,7 +63,7 @@ Build、Verify 或待归档阶段出现实际文件变化，或 continuation 指
 
 ## Build ↔ Verify Loop
 
-standard 模式下，Builder 提交候选实现后，由 Runtime 执行必要检查，再交给新的只读 Verifier 验收。bugfree 按 [bugfree 验收](reference/bugfree.md)执行。未通过则回 Build 修复并重新提交；全部通过后，等待用户接受验收结果。
+Builder 提交候选实现后，由 Runtime 执行必要检查，再交给新的只读 Verifier 验收。未通过则回 Build 修复并重新提交；全部通过后，等待用户接受验收结果。
 
 Verifier 先读原始请求，再对照 Spec 和实现，核对有无遗漏、未经授权的范围缩减或接口行为变化。SDK Run 使用同一份验收结果中的 `requestReview` 说明结论；有冲突或仍影响交付的疑问时，保留 fail 或 blocked。旧 Run 和 Compat 没有保存原始请求时，从交接材料和用户记录补查，不把新生成的 Spec 当成唯一需求来源；Compat 沿用原结果结构。语义核对沿用当前 Verifier，不增加 Agent 或固定测试轮次。
 
@@ -93,9 +93,7 @@ Build、Verify 和 Archive 会复查正式文件与已批准原文的绑定。�
 
 ## Verify
 
-SDK 返回的 `verifyMode` 为 `bugfree` 时，先读取并执行 [bugfree 验收](reference/bugfree.md)。standard 按下文 SDK 协议执行；Compat 仍按原协议执行。
-
-SDK 按 [SDK Verify 协议](reference/commands.md#sdk-verify-协议) 与当前 continuation 先完成 Runtime 检查，再启动新的只读 Verifier。传入候选 ID、全部验收项及引用、工作区、检查记录和 claimRequest；由 Verifier 用自己的会话领取 Action，并用当前 outcomeRequest 回报。SDK 不提交旧 Runner 的启动回执或结果。
+SDK 按 [SDK Verify 协议](reference/commands.md#sdk-verify-协议) 与当前 continuation 先完成 Runtime 检查，再将当前 Action 和 claimRequest 交给独立只读 Verifier。由它用自己的会话领取，使用领取响应的 resultRequest 提交结果；旧响应未提供 resultRequest 时，按 [SDK Action 协议](reference/commands.md#sdk-action-领取与回报) 使用 outcomeRequest。SDK 不提交旧 Runner 的启动回执或结果。
 
 Compat 按 [Verify 协议](reference/commands.md#verify-协议) 立即启动新的只读 Verifier，原样传递任务包。派发只代表登记：平台接受启动调用、且 Verifier 回报 `verifier-started` 后，才说明它已运行；启动失败立即按异常流程处理。任务包含验收正文时直接使用，否则按分页读取全部 scopeIds。
 

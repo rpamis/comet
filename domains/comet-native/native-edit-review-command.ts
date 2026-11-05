@@ -380,10 +380,10 @@ async function runNativeEditReviewCommandOnce(options: EditReviewCommandOptions)
       await supersedeStaleAppliedEditReviews(scope);
       const generated = await nativeAppliedFormalReviewRequest(paths, state, scope.judgment);
       if (generated === null) {
-        const reviews = await inspectEditReviews(scope);
+        const reviews = await inspectNativeEditReviews(paths, state);
         return {
           reviews,
-          continuation: await editReviewContinuation(scope, reviews, Boolean(sdk)),
+          continuation: await nativeEditReviewContinuation(paths, state, reviews, Boolean(sdk)),
         };
       }
       const ref = `native/applied-edit-requests/${createHash('sha256').update(generated).digest('hex')}.json`;

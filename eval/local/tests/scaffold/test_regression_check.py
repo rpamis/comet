@@ -684,7 +684,7 @@ def test_current_cli_snapshot_and_release_candidate_use_identical_source_hash(
     monkeypatch.setenv("BENCH_COMET_SOURCE_ROOT", str(source))
     monkeypatch.setattr(conftest, "_build_current_comet_dist", compile_source)
     conftest._copy_current_comet_cli_snapshot(environment, tmp_path / "workspace")
-    build = gate.read_json(tmp_path / "workspace/_eval_current_comet/build-identity.json")
+    build = gate.read_json(tmp_path / 'workspace' / conftest.CURRENT_COMET_SNAPSHOT_REF / 'build-identity.json')
     assert build["sourceHash"] == gate.current_source_identity(source)["sourceHash"]
 
 
@@ -742,7 +742,7 @@ def test_release_snapshot_uses_actual_distribution_without_recompiling(
         lambda *a: pytest.fail("must not rebuild substitute CLI"),
     )
     conftest._copy_current_comet_cli_snapshot(env, tmp_path / "workspace")
-    snapshot = tmp_path / "workspace/_eval_current_comet"
+    snapshot = tmp_path / 'workspace' / conftest.CURRENT_COMET_SNAPSHOT_REF
     build = gate.read_json(snapshot / "build-identity.json")
     assert build["compilerVersion"] == "release-dist"
     assert build["snapshotHash"] == gate.cli_snapshot_identity(source)["cliSnapshotHash"]

@@ -137,8 +137,6 @@ pnpm test           # 仅在满足“测试”章节的全量条件时
 - `domains/dashboard/`：通过 Eval 的公开入口展示和操作项目评估；评估规则由 `domains/eval/` 维护。通过 `workflow-creation` 和 `workflow-application` 的公开只读入口观测 Creator 与固定应用 Run；存储发现和快照校验复用 SDK，观测不加载应用执行模块或推进流程。
 - `domains/workflow-generation/`：按已确认方案装配 Native、Classic 和独立应用，生成同一组合结果的入口、固定依赖和安装恢复身份；复用领域工厂，不实现另一套状态机。
 - `domains/comet-native/native-application.ts`：公开 Native 扩展工厂，复用原领域状态机并绑定候选审查；Native 可依赖 `workflow-application` 的加载及宿主契约，默认主流程仍不依赖外部 Skill。
-- `domains/comet-native/native-verification-policy.ts`：登记的纯模型，解析 Run 创建时固定的验证模式并核对定义支持，不读取项目配置或执行文件操作。
-- `domains/comet-native/native-verifier-context.ts`：准备真实输入基线、最终验收任务包和独立审查续行关联；复用 Native 输入快照与受保护路径，不保存第二套推进状态。
 - `domains/comet-classic/classic-application.ts`：公开 Classic 组合工厂，替换执行 Skill 并在领域检查点追加有验收和恢复路径的步骤；沿用 Classic 状态机，SDK Run 保持推进权威。
 - Classic 归档后的交付恢复在 `classic-sdk-delivery-repair-model.ts` 中解析 Run、原批准及续行关联，该模块属于登记的纯模型，不执行文件或命令操作；`classic-sdk-delivery-repair.ts` 核对文件证据，`classic-sdk-delivery-repair-application.ts` 装配检查、批准及交付步骤。归档文档和 checkpoint 读取只依赖纯模型，避免反向依赖检查执行器或应用装配。
 - `eval/scaffold/shell/` 中仅允许 `config/repository-layout.json` 明确列出的隔离评审 sidecar 入口；它们属于 Eval 容器边界，不是产品 Runtime 入口。

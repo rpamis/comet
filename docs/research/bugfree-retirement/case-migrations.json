@@ -1,0 +1,241 @@
+{
+  "schema": "comet.research.case-migrations.v1",
+  "authorization": "report:2026-11-05-bugfree-retirement",
+  "cases": [
+    {
+      "id": "native-bugfree-submission-template-routing",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-05-bugfree-retirement",
+      "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+          "requiredNames": [
+            "removes verification mode selection from public Eval CLI without launching a run"
+          ]
+        },
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+          "requiredNames": [
+            "removes the unreleased verifier definition and compact pass protocol"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-bugfree-coordinator-handoff",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-05-bugfree-retirement",
+      "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+          "requiredNames": [
+            "removes verification mode selection from public Eval CLI without launching a run"
+          ]
+        },
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+          "requiredNames": [
+            "removes the unreleased verifier definition and compact pass protocol"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-bugfree-review-input-delivery",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-05-bugfree-retirement",
+      "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+          "requiredNames": [
+            "removes verification mode selection from public Eval CLI without launching a run"
+          ]
+        },
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+          "requiredNames": [
+            "removes the unreleased verifier definition and compact pass protocol"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-bugfree-existing-instruction-refs",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-05-bugfree-retirement",
+      "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+          "requiredNames": [
+            "removes verification mode selection from public Eval CLI without launching a run"
+          ]
+        },
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+          "requiredNames": [
+            "removes the unreleased verifier definition and compact pass protocol"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-bugfree-formal-edit-preflight",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-05-bugfree-retirement",
+      "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "^surfaces an unapplied formal edit before dispatching an independent verifier through runtime$",
+          "requiredNames": [
+            "surfaces an unapplied formal edit before dispatching an independent verifier through runtime"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "^surfaces an unapplied formal edit before dispatching an independent verifier through public-cli$",
+          "requiredNames": [
+            "surfaces an unapplied formal edit before dispatching an independent verifier through public-cli"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-dataset-fixed-native-mode",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-05-bugfree-retirement",
+      "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+          "requiredNames": [
+            "removes verification mode selection from public Eval CLI without launching a run"
+          ]
+        },
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+          "requiredNames": [
+            "removes the unreleased verifier definition and compact pass protocol"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-verifier-live-input-retention",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-05-bugfree-retirement",
+      "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+          "requiredNames": [
+            "removes verification mode selection from public Eval CLI without launching a run"
+          ]
+        },
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+          "requiredNames": [
+            "removes the unreleased verifier definition and compact pass protocol"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-handoff-typed-result-template",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-05-bugfree-retirement",
+      "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/app/native-verification-cli.test.ts",
+          "namePattern": "^submits the typed receipt template through the public CLI without rebuilding identity fields$",
+          "requiredNames": [
+            "submits the typed receipt template through the public CLI without rebuilding identity fields"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-original-request-review",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-05-bugfree-retirement",
+      "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-context.test.ts",
+          "namePattern": "^binds the original task and rejects a passing review that omits or contradicts it$",
+          "requiredNames": [
+            "binds the original task and rejects a passing review that omits or contradicts it"
+          ]
+        },
+        {
+          "file": "test/app/native-verification-cli.test.ts",
+          "namePattern": "^submits the typed receipt template through the public CLI without rebuilding identity fields$",
+          "requiredNames": [
+            "submits the typed receipt template through the public CLI without rebuilding identity fields"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-native-container-mode-inspection",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-05-bugfree-retirement",
+      "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+          "requiredNames": [
+            "removes verification mode selection from public Eval CLI without launching a run"
+          ]
+        },
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+          "requiredNames": [
+            "removes the unreleased verifier definition and compact pass protocol"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dataset-native-mode-original-checkout",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-05-bugfree-retirement",
+      "record": "docs/research/2026-11-05-bugfree-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes verification mode selection from public Eval CLI without launching a run$",
+          "requiredNames": [
+            "removes verification mode selection from public Eval CLI without launching a run"
+          ]
+        },
+        {
+          "file": "test/app/native-verification-policy-removal.test.ts",
+          "namePattern": "^removes the unreleased verifier definition and compact pass protocol$",
+          "requiredNames": [
+            "removes the unreleased verifier definition and compact pass protocol"
+          ]
+        }
+      ]
+    }
+  ]
+}

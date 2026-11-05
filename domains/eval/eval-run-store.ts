@@ -1034,8 +1034,6 @@ export async function readEvalRun(
   if (typeof object(datasetPlan.dataset).id === 'string') {
     config.dataset ??= String(object(datasetPlan.dataset).id);
     config.datasetTreatment ??= datasetPlan.treatment === 'CLAUDE_CODE_GOAL' ? 'goal' : 'native';
-    if (datasetPlan.verifyMode === 'standard' || datasetPlan.verifyMode === 'bugfree')
-      config.verifyMode ??= datasetPlan.verifyMode;
   }
   const datasetTasks = Array.isArray(datasetPlan.tasks) ? datasetPlan.tasks.map(object) : [];
   if (datasetPlan.adapterHash)
@@ -1051,8 +1049,6 @@ export async function readEvalRun(
       /^sha256:[a-f0-9]{64}$/u.test(String(datasetPlan.comparisonHash))) &&
     (datasetPlan.adapterHash === undefined ||
       /^sha256:[a-f0-9]{64}$/u.test(String(datasetPlan.adapterHash))) &&
-    (datasetPlan.verifyMode === undefined ||
-      ['standard', 'bugfree'].includes(String(datasetPlan.verifyMode))) &&
     cases.length > 0 &&
     cases.every(
       (item) =>
@@ -1527,7 +1523,6 @@ export async function compareEvalRuns(
     'maxTurns',
     'dataset',
     'datasetTreatment',
-    'verifyMode',
     'count',
   ]
     .filter((field) => (baseline.config as Json)[field] !== (candidate.config as Json)[field])
@@ -1536,25 +1531,6 @@ export async function compareEvalRuns(
       baseline: (baseline.config as Json)[field] ?? null,
       candidate: (candidate.config as Json)[field] ?? null,
     }));
-  if (
-    datasetComparison &&
-    candidate.config.datasetTreatment !== 'goal' &&
-    baseline.config.datasetTreatment !== 'goal' &&
-    candidate.config.verifyMode !== baseline.config.verifyMode
-  ) {
-    for (const item of candidate.cases) {
-      const other = baseline.cases.find(
-        (value) => value.task === item.task && value.repetition === item.repetition,
-      );
-      if (
-        !item.datasetComparisonIdentity ||
-        item.datasetComparisonIdentity !== other?.datasetComparisonIdentity
-      ) {
-        reasons.push('验证模式对照需要相同产品快照、实际镜像、Agent CLI、模型和交互身份');
-        break;
-      }
-    }
-  }
   if (candidate.target.contentHash !== baseline.target.contentHash)
     configurationChanges.push({
       field: 'contentHash',

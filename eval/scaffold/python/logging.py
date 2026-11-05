@@ -995,7 +995,7 @@ class ExperimentLogger:
                 dataset = r.events_summary.get("dataset_result")
                 if isinstance(dataset, dict):
                     lines.append(
-                        f"- Original dataset reward: {dataset.get('reward')}; verifier: {dataset.get('verifier_status', 'unknown')}; Native verify mode: {dataset.get('verifyMode', 'N/A')}"
+                        f"- Original dataset reward: {dataset.get('reward')}; verifier: {dataset.get('verifier_status', 'unknown')}"
                     )
                     execution = dataset.get("execution") or {}
                     if execution:

@@ -557,7 +557,11 @@ def test_task_treatment(task_name, treatment_name):
     # 在模型启动前读取控制器准备的真实 CLI 身份，不从模型生成的产物推断。
     from scaffold.python.release_gate import read_json
 
-    build_identity_file = fixtures.test_dir / "_eval_current_comet/build-identity.json"
+    from scaffold.python.paths import CURRENT_COMET_SNAPSHOT_REF
+
+    build_identity_file = fixtures.test_dir / CURRENT_COMET_SNAPSHOT_REF / 'build-identity.json'
+    if not build_identity_file.exists():
+        build_identity_file = fixtures.test_dir / '_eval_current_comet/build-identity.json'
     current_comet_build = read_json(build_identity_file) if build_identity_file.exists() else None
     selected_agent = conftest._resolve_eval_agent(fixtures.request_config).agent
     selected_adapter = get_agent_adapter(selected_agent)

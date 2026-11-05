@@ -24,9 +24,9 @@ If independent parent verification definitively fails, or the user rejects the p
 
 Before Builder starts an iteration or an independent Verifier starts, copy the current Action's `claimRequest`, fill the receiving session and preserve the supplied stable claim token, and submit `claim`. Independent claims validate `actionId`, `attempt`, and `inputHash`; do not add an old global revision. Progress by another task does not require redispatching this one. Include `operation: "claim"`, `runId`, `actionId`, `attempt`, `inputHash`, `executorId: "native-host"`, `sessionId`, and a unique `claimToken` stable across recovery. Use a platform session or task ID; if unavailable, use a stable execution reference and do not imply that it authenticates the executor. Work only after that Action is returned as `running` with the matching claim. If another executor holds it, investigate that work instead of claiming or starting it again.
 
-For legacy responses without `resultRequest`, submit `record-outcome` after completion with the same `runId`. The outcome contains the original `actionId`, `attempt`, `inputHash`, `claimToken`, a unique `outcomeId`, the real `status`, and `output`. Never report unfinished, unexecuted, or unknown work as `succeeded`. Continue only after SDK validates and stores the receipt.
-
 When the claim response provides `resultRequest`, preserve its complete `receipt` and fill only `result.status` and the actual business `result.output`. Submit through the same dispatch command; do not assemble Action identity fields or generate an outcome ID. Repeating identical results uses the original receipt. Legacy `outcomeRequest` remains supported; do not mix the two input forms. Preserve the prefilled claim token and supply the actual session ID. Runtime supplies the submission time. Optional `addressedAcceptanceIds` records this iteration’s focus; omission does not mean every acceptance item was changed.
+
+For legacy responses without `resultRequest`, submit `record-outcome` after completion with the same `runId`. The outcome contains the original `actionId`, `attempt`, `inputHash`, `claimToken`, a unique `outcomeId`, the real `status`, and `output`. Never report unfinished, unexecuted, or unknown work as `succeeded`. Continue only after SDK validates and stores the receipt.
 
 ### SDK Builder handoff
 

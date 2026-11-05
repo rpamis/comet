@@ -31,7 +31,6 @@ export const listBuiltinDatasets = () => DATASETS.map((item) => ({ ...item }));
 export interface DatasetOptions {
   dataset: string;
   datasetTreatment?: 'native' | 'goal';
-  verifyMode?: 'standard' | 'bugfree';
   agent?: string;
   datasetRoot?: string;
   task?: string;
@@ -204,7 +203,6 @@ export interface DatasetPlan {
   dataset: (typeof DATASETS)[number];
   root: string;
   treatment: 'COMET_NATIVE_SDK_CURRENT' | 'CLAUDE_CODE_GOAL';
-  verifyMode: 'standard' | 'bugfree';
   count: number;
   tasks: DatasetTask[];
   contentHash: string;
@@ -253,11 +251,6 @@ async function treeHash(root: string): Promise<string> {
   return `sha256:${hash.digest('hex')}`;
 }
 export async function inspectBuiltinDataset(options: DatasetOptions): Promise<DatasetPlan> {
-  const verifyMode = options.verifyMode ?? 'standard';
-  if (!['standard', 'bugfree'].includes(verifyMode))
-    throw new Error('verify-mode 须为 standard 或 bugfree');
-  if (options.datasetTreatment === 'goal' && verifyMode !== 'standard')
-    throw new Error('Goal 不使用 Native 验证模式');
   if (
     options.datasetTreatment !== undefined &&
     !['native', 'goal'].includes(options.datasetTreatment)
@@ -416,7 +409,6 @@ export async function inspectBuiltinDataset(options: DatasetOptions): Promise<Da
     root,
     treatment:
       options.datasetTreatment === 'goal' ? 'CLAUDE_CODE_GOAL' : 'COMET_NATIVE_SDK_CURRENT',
-    verifyMode,
     count,
     tasks,
     sharedHash,
@@ -432,7 +424,6 @@ export async function inspectBuiltinDataset(options: DatasetOptions): Promise<Da
         scorerHash,
         observerHash,
         adapterHash,
-        verifyMode,
       }),
     ),
   };

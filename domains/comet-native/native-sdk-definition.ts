@@ -49,7 +49,7 @@ export const NATIVE_SDK_LEGACY_BUILDER_INPUT_HASHES: readonly string[] = [
 
 /** 定义新增实现修订入口前的原 Run，保留其余全部步骤及转移。 */
 export function nativeSdkBeforeCheckRefresh(workflow: DefineWorkflowOptions) {
-  const previous = nativeSdkBeforeBugfree(workflow);
+  const previous = structuredClone(workflow);
   if (previous.commands) delete previous.commands['refresh-checks'];
   previous.transitions = previous.transitions?.filter(
     ({ from, to }) => !(from === 'verify.checks' && to === 'archive.prepare'),
@@ -142,23 +142,7 @@ export function nativeSdkBeforeVerifierRecovery(workflow: DefineWorkflowOptions)
   return previous;
 }
 
-export function nativeSdkBeforeBugfree(workflow: DefineWorkflowOptions) {
-  const previous = structuredClone(workflow);
-  const verifier = previous.steps['verify.verifier'];
-  if (verifier.validator) verifier.validator = { ...verifier.validator, version: '1' };
-  return previous;
-}
-
-export const NATIVE_SDK_PRE_BUGFREE_HASH =
-  '6b69940df45e10d64d8086e58369f03b1d0f5872dae0713373cd18c0c5a4b137';
-
-export function nativeSdkLegacyDefinitions(
-  workflow: DefineWorkflowOptions,
-): DefineWorkflowOptions[] {
-  const beforeBugfree = nativeSdkBeforeBugfree(workflow);
-  if (workflow.steps['verify.verifier'].validator?.version === '2') {
-    return [beforeBugfree, ...nativeSdkLegacyDefinitions(beforeBugfree)];
-  }
+export function nativeSdkLegacyDefinitions(workflow: DefineWorkflowOptions) {
   const beforeEditReview = nativeSdkBeforeEditReview(workflow);
   const beforeVerifierRecovery = nativeSdkBeforeVerifierRecovery(workflow);
   const beforeCheckRecovery = structuredClone(beforeVerifierRecovery);

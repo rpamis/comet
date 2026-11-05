@@ -63,6 +63,10 @@ def test_goal_uses_native_command_without_comet_completion_or_nudges(tmp_path, a
     args = json.loads((tmp_path / "goal-args.json").read_text())
     assert args[0] == "-p" and args[1].startswith("/goal ")
     assert "original.txt" in args[1] and len(args[1]) < 4000
+    settings = json.loads(args[args.index("--settings") + 1])
+    assert settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == (
+        "python3 -I /opt/python/dataset_integrity.py --hook"
+    )
     assert "nudging to continue" not in result.stderr
     assert "workflow completion detected" not in result.stderr
 

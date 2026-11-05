@@ -35,7 +35,6 @@ type EvalAgent = string;
 interface EvalCommandOptions {
   dataset?: string;
   datasetTreatment?: 'native' | 'goal';
-  verifyMode?: 'standard' | 'bugfree';
   datasetRoot?: string;
   listDatasets?: boolean;
   fetchDataset?: boolean;
@@ -527,7 +526,6 @@ async function executeEval(options: EvalCommandOptions, collectOnly: boolean): P
         ? {
             dataset: options.datasetPlan.dataset.id,
             datasetTreatment: options.datasetTreatment ?? 'native',
-            verifyMode: options.datasetPlan.verifyMode,
             count: options.datasetPlan.count,
             timeoutSeconds: 0,
             ...(options.acceptDatasetLicense ? { acceptDatasetLicense: true } : {}),
@@ -619,8 +617,6 @@ export async function evalCommand(
   target?: string,
   options: EvalCommandOptions = {},
 ): Promise<number> {
-  if (options.verifyMode !== undefined && !options.dataset)
-    throw new Error('--verify-mode 需要选择内置数据集');
   if (options.listDatasets) {
     console.log(JSON.stringify(listBuiltinDatasets(), null, 2));
     return 0;

@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { expect, it } from 'vitest';
+import { ensureCliBuilt } from '../../helpers/ensure-cli-built.js';
 
 function scaffold(file: string, selection: string, passed: number): void {
   const output = execFileSync(
@@ -28,6 +29,33 @@ function scaffold(file: string, selection: string, passed: number): void {
   expect(output).toContain(`${passed} passed`);
   expect(output).not.toContain('skipped');
 }
+
+it('keeps authored task images separate when copied candidate bytes change', () => {
+  scaffold(
+    'test_conftest_helpers.py',
+    'authored_environment_image_identity_binds_copied_inputs',
+    1,
+  );
+});
+
+it('preserves dataset-bound Dockerfiles when preparing image inputs', () => {
+  scaffold(
+    'test_conftest_helpers.py',
+    'dataset_environment_copy_preserves_bound_dockerfile_bytes',
+    1,
+  );
+});
+
+it('keeps Eval CLI tooling outside Native inputs while binding application generated files', async () => {
+  await ensureCliBuilt(path.resolve('.'));
+  scaffold('test_conftest_helpers.py', 'cli_snapshot_stays_out_of_native_inputs', 1);
+  scaffold('test_builtin_datasets.py', 'current_cli_dependency_snapshot', 2);
+  scaffold('test_builtin_datasets.py', 'dataset_root_home_cache', 2);
+}, 35_000);
+
+it('excludes changed dataset inputs while preserving valid low scores and raw results', () => {
+  scaffold('test_dataset_integrity.py', 'changed_dataset_inputs or low_dataset_reward', 5);
+});
 
 it('keeps dataset Node tools separate from the original task installation', () => {
   scaffold('test_builtin_datasets.py', 'dataset_node_tools_do_not_overwrite_original_node', 1);
@@ -160,10 +188,6 @@ it('enforces candidate storage monitoring without deleting the candidate', () =>
   scaffold('test_builtin_datasets.py', 'storage_limit_keeps_candidate', 1);
 }, 35_000);
 
-it('fixes Native verification mode before model execution and checks actual Run inputs', () => {
-  scaffold('test_builtin_datasets.py', 'seeds_verification_mode or actual_run_mode_mismatch', 2);
-}, 35_000);
-
 it('seeds portable dataset configuration without copying platform Runtime fences', () => {
   scaffold(
     'test_builtin_datasets.py',
@@ -184,10 +208,16 @@ it('keeps dataset image identity stable across modes while binding every build i
   scaffold('test_builtin_datasets.py', 'image_hash_uses_build_inputs', 1);
 }, 35_000);
 
-it('inspects Native mode inside the container and separates unavailable proof from mismatch', () => {
-  scaffold(
-    'test_builtin_datasets.py',
-    'mode_uses_container_inspection or container_mode_proof_precedes or mode_inspection_failure_is_harness or inspector_mounts_owned_runtime',
-    4,
-  );
+it('blocks benchmark answer access while allowing business tests and verifier handoffs', () => {
+  scaffold('test_dataset_integrity.py', 'reference_guard or reference_settings', 10);
+  scaffold('test_utils.py', 'goal_uses_native_command_without_comet_completion_or_nudges', 2);
+}, 35_000);
+
+it('excludes benchmark reference access and audits independent child sessions without changing scores', () => {
+  scaffold('test_dataset_integrity.py', 'reference_access_excludes or reference_audit', 2);
+}, 35_000);
+
+it('excludes unverified or mismatched experiment modes including legacy flags', () => {
+  scaffold('test_dataset_integrity.py', 'legacy_invalid', 5);
+  scaffold('test_builtin_datasets.py', 'mode_inspection_failure_is_harness', 1);
 }, 35_000);

@@ -1,4 +1,3 @@
-import { nativeVerifyMode } from './native-verification-policy.js';
 import { assertNativeEditReviewsComplete } from './native-edit-review.js';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
@@ -34,94 +33,9 @@ import {
 import {
   renderNativeVerificationReport,
   writeNativeVerificationReport,
-  type NativePreviousCheckFailure,
-  type NativeCheckSource,
 } from './native-verification-report-v2.js';
 
 class NativeSdkReportDriftError extends Error {}
-
-function currentCheckSources(run: Readonly<WorkflowRun>): NativeCheckSource[] {
-  if (nativeVerifyMode(run) !== 'bugfree') return [];
-  const candidateId = parseNativePortableState(run.state).builder_handoff?.candidate_id;
-  return run.actions
-    .filter(
-      (action) =>
-        ['verify.checks', 'verify.requested-checks'].includes(action.stepId) && action.outcome,
-    )
-    .flatMap((action) => {
-      const output = action.outcome!.output as {
-        candidateId: string;
-        checks?: Array<{
-          id: string;
-          logRef: string;
-          reusedFrom?: NativeCheckSource['reusedFrom'];
-        }>;
-      };
-      return output.candidateId === candidateId
-        ? (output.checks ?? []).map((check) => ({
-            actionId: action.id,
-            candidateId: output.candidateId,
-            checkId: check.id,
-            logRef: check.logRef,
-            ...(check.reusedFrom ? { reusedFrom: check.reusedFrom } : {}),
-          }))
-        : [];
-    });
-}
-
-function previousCheckFailures(run: Readonly<WorkflowRun>): NativePreviousCheckFailure[] {
-  if (nativeVerifyMode(run) !== 'bugfree') return [];
-  const candidateId = parseNativePortableState(run.state).builder_handoff?.candidate_id;
-  type Check = {
-    id: string;
-    name: string;
-    argvDisplay: string[];
-    cwdRef: string;
-    status: string;
-    exitCode: number | null;
-    logRef: string;
-    reusedFrom?: unknown;
-  };
-  const batches = run.actions
-    .filter(
-      (action) =>
-        ['verify.checks', 'verify.requested-checks'].includes(action.stepId) && action.outcome,
-    )
-    .map((action) => ({
-      actionId: action.id,
-      ...(action.outcome!.output as { candidateId: string; checks?: Check[] }),
-    }));
-  const current = batches
-    .filter((batch) => batch.candidateId === candidateId)
-    .flatMap((batch) => batch.checks ?? []);
-  return batches
-    .filter((batch) => batch.candidateId !== candidateId)
-    .flatMap((batch) =>
-      (batch.checks ?? [])
-        .filter((check) => check.status !== 'passed')
-        .map((check) => {
-          const matching = current.find(
-            (entry) =>
-              entry.cwdRef === check.cwdRef &&
-              hashRuntimeValue(entry.argvDisplay) === hashRuntimeValue(check.argvDisplay),
-          );
-          return {
-            actionId: batch.actionId,
-            candidateId: batch.candidateId,
-            checkId: check.id,
-            name: check.name,
-            status: check.status,
-            exitCode: check.exitCode,
-            logRef: check.logRef,
-            currentCheck: matching
-              ? matching.reusedFrom
-                ? ('reused' as const)
-                : ('executed' as const)
-              : ('not-run' as const),
-          };
-        }),
-    );
-}
 
 function reportInput(run: Readonly<WorkflowRun>, action: Readonly<RuntimeAction>) {
   const state = parseNativePortableState(run.state);
@@ -183,15 +97,7 @@ export const nativeSdkReportExecutor: RuntimeExecutor = {
     const original = await readCurrent();
     const previous = run.outputs['verify.report']?.value as { reportSha256?: unknown } | undefined;
     const generatedHash = createHash('sha256')
-      .update(
-        renderNativeVerificationReport(
-          state,
-          undefined,
-          nativeVerifyMode(run),
-          previousCheckFailures(run),
-          currentCheckSources(run),
-        ),
-      )
+      .update(renderNativeVerificationReport(state))
       .digest('hex');
     let preservedReportRef: string | undefined;
     if (original && original.hash !== previous?.reportSha256 && original.hash !== generatedHash) {
@@ -227,9 +133,6 @@ export const nativeSdkReportExecutor: RuntimeExecutor = {
     await writeNativeVerificationReport({
       file,
       state,
-      verifyMode: nativeVerifyMode(run),
-      previousCheckFailures: previousCheckFailures(run),
-      checkSources: currentCheckSources(run),
       beforeCommit: async () => {
         const current = await readCurrent();
         if ((current?.hash ?? null) !== (original?.hash ?? null))
@@ -263,10 +166,7 @@ export const nativeSdkReportValidator: RuntimeValidator = {
       action.claim?.executorId !== nativeSdkReportExecutor.id ||
       outcome.status !== 'succeeded'
     ) {
-      return {
-        accepted: false,
-        reason: 'Native report was not produced by the Runtime executor',
-      };
+      return { accepted: false, reason: 'Native report was not produced by the Runtime executor' };
     }
     try {
       const { state, ref, paths } = await reportTarget(run, action, context.projectRoot);
@@ -275,15 +175,7 @@ export const nativeSdkReportValidator: RuntimeValidator = {
         label: 'Native SDK verification report',
       });
       const expected = createHash('sha256')
-        .update(
-          renderNativeVerificationReport(
-            state,
-            undefined,
-            nativeVerifyMode(run),
-            previousCheckFailures(run),
-            currentCheckSources(run),
-          ),
-        )
+        .update(renderNativeVerificationReport(state))
         .digest('hex');
       if (
         !output ||
@@ -293,10 +185,7 @@ export const nativeSdkReportValidator: RuntimeValidator = {
         output.stateVersion !== state.state_version ||
         actual.digest !== expected
       ) {
-        return {
-          accepted: false,
-          reason: 'Native verification report changed after generation',
-        };
+        return { accepted: false, reason: 'Native verification report changed after generation' };
       }
       if (output.preservedReportRef !== undefined || output.preservedReportSha256 !== undefined) {
         const expectedRef = `native/preserved-verification/${hashRuntimeValue(run.runId)}/${String(output.preservedReportSha256)}.md`;
@@ -305,27 +194,18 @@ export const nativeSdkReportValidator: RuntimeValidator = {
           !/^[a-f0-9]{64}$/u.test(output.preservedReportSha256) ||
           output.preservedReportRef !== expectedRef
         )
-          return {
-            accepted: false,
-            reason: 'Native preserved report reference is invalid',
-          };
+          return { accepted: false, reason: 'Native preserved report reference is invalid' };
         const saved = await readNativeBoundedTextFile({
           root: paths.workspaceRuntimeRoot,
           ref: expectedRef,
           maxBytes: null,
         });
         if (saved.hash !== output.preservedReportSha256)
-          return {
-            accepted: false,
-            reason: 'Native preserved report content changed',
-          };
+          return { accepted: false, reason: 'Native preserved report content changed' };
       }
       return { accepted: true };
     } catch (error) {
-      return {
-        accepted: false,
-        reason: error instanceof Error ? error.message : String(error),
-      };
+      return { accepted: false, reason: error instanceof Error ? error.message : String(error) };
     }
   },
 };
@@ -380,17 +260,7 @@ async function revalidatedReport(
   const actual = await hashProtectedProjectFile(projectRoot, ref, {
     label: 'Native SDK verification report',
   });
-  const expected = createHash('sha256')
-    .update(
-      renderNativeVerificationReport(
-        state,
-        undefined,
-        nativeVerifyMode(run),
-        previousCheckFailures(run),
-        currentCheckSources(run),
-      ),
-    )
-    .digest('hex');
+  const expected = createHash('sha256').update(renderNativeVerificationReport(state)).digest('hex');
   if (actual.digest !== prior.reportSha256 || actual.digest !== expected) {
     throw new NativeSdkReportDriftError('Native verification report changed after user approval');
   }
@@ -461,48 +331,30 @@ export const nativeSdkReportRevalidationValidator: RuntimeValidator = {
       action.claim?.executorId !== nativeSdkReportRevalidationExecutor.id ||
       !['succeeded', 'failed'].includes(outcome.status)
     ) {
-      return {
-        accepted: false,
-        reason: 'Native report was not revalidated by the Runtime',
-      };
+      return { accepted: false, reason: 'Native report was not revalidated by the Runtime' };
     }
     try {
       const expected = await revalidatedReport(run, action, context.projectRoot);
       if (outcome.status !== 'succeeded') {
-        return {
-          accepted: false,
-          reason: 'Native report is current but outcome says it drifted',
-        };
+        return { accepted: false, reason: 'Native report is current but outcome says it drifted' };
       }
       return hashRuntimeValue(outcome.output) ===
         hashRuntimeValue(expected as unknown as RuntimeValue)
         ? { accepted: true }
-        : {
-            accepted: false,
-            reason: 'Native report revalidation changed before commit',
-          };
+        : { accepted: false, reason: 'Native report revalidation changed before commit' };
     } catch (error) {
       if (error instanceof NativeSdkReportDriftError && outcome.status === 'failed') {
         return hashRuntimeValue(outcome.output) === hashRuntimeValue({ reason: 'report-drift' })
           ? { accepted: true }
-          : {
-              accepted: false,
-              reason: 'Native report drift outcome is invalid',
-            };
+          : { accepted: false, reason: 'Native report drift outcome is invalid' };
       }
       if (error instanceof NativeSdkCheckInputDriftError && outcome.status === 'failed') {
         return hashRuntimeValue(outcome.output) ===
           hashRuntimeValue(await checkDriftOutcome(run, context.projectRoot, error))
           ? { accepted: true }
-          : {
-              accepted: false,
-              reason: 'Native check input drift outcome is invalid',
-            };
+          : { accepted: false, reason: 'Native check input drift outcome is invalid' };
       }
-      return {
-        accepted: false,
-        reason: error instanceof Error ? error.message : String(error),
-      };
+      return { accepted: false, reason: error instanceof Error ? error.message : String(error) };
     }
   },
 };
@@ -561,10 +413,7 @@ export async function recoverNativeSdkReportRevalidation(
       entry.claim?.executorId === nativeSdkReportRevalidationExecutor.id,
   );
   if (!action?.claim) return run;
-  const context = {
-    projectRoot,
-    requestId: 'native-report-revalidation-recovery',
-  };
+  const context = { projectRoot, requestId: 'native-report-revalidation-recovery' };
   let result;
   try {
     result = await nativeSdkReportRevalidationExecutor.execute(action, context, run);

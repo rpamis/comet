@@ -1,5 +1,3 @@
-import { nativeVerifierContext } from './native-verifier-context.js';
-import { nativeVerifyMode } from './native-verification-policy.js';
 import { NATIVE_REQUEST_REVIEW_RESULTS, nativeEnumPlaceholder } from './native-input-enum.js';
 import {
   nativeSdkVerifyDecisions,
@@ -167,7 +165,7 @@ function nativeSdkOutcomeOutput(
         { name: '<check-name>', result: '<passed|failed|not-run>', note: '<actual-result>' },
       ],
       knownLimits: ['<actual-limit-or-remove-entry>'],
-      verificationChecks: nativeVerifyMode(run) === 'bugfree' ? [] : [check],
+      verificationChecks: [check],
       ...(action.stepId === 'supervisor.parent.builder'
         ? { candidateCommit: '<current-integration-HEAD>' }
         : {}),
@@ -182,9 +180,7 @@ function nativeSdkOutcomeOutput(
           iteration: state.loop.iteration,
           attempt: state.loop.attempt,
           verdict: '<pass|fail|blocked>',
-          ...(nativeVerifyMode(run) === 'bugfree'
-            ? { passedAcceptanceIds: acceptance.map(({ id }) => id), acceptance: [] }
-            : { acceptance }),
+          acceptance,
           risks: ['<observed-risk-or-remove-entry>'],
           summary: '<independent-verification-summary>',
           ...(typeof (run.input as { task?: unknown }).task === 'string'
@@ -253,7 +249,7 @@ function nativeSdkOutcomeAlternatives(
   state: NativePortableState,
 ) {
   const request = nativeSdkOutcomeRequest(run, action, state);
-  if (!request || action.type !== 'handoff') return {};
+  if (!request || action.type !== 'handoff') return undefined;
   const checks =
     action.stepId === 'verify.verifier'
       ? [
@@ -426,6 +422,8 @@ export async function projectNativeSdkDispatchResult(options: {
   if (!action) throw new Error(`Native SDK Action ${options.actionId} is missing`);
   const applicationId = options.applicationId ?? 'native';
   const outcomeRequest = nativeSdkOutcomeRequest(run, action, state);
+  const resultRequest = outcomeRequest ? nativeSdkResultRequest(run, action, state) : undefined;
+  const alternatives = nativeSdkOutcomeAlternatives(run, action, state);
   const projection = await projectNativeSdkContinuation(options);
   // 领取响应已经包含完整 Action；原任务索引复用该正文，避免重复序列化输入。
   const activeActions =
@@ -490,16 +488,13 @@ export async function projectNativeSdkDispatchResult(options: {
     ...(outcomeRequest
       ? {
           outcomeRequest,
-          resultRequest: nativeSdkResultRequest(run, action, state),
+          resultRequest,
         }
       : {}),
     ...(contextRequest ? { contextRequest } : {}),
-    ...nativeSdkOutcomeAlternatives(run, action, state),
+    ...alternatives,
     state,
-    action:
-      action.stepId === 'verify.verifier' && nativeVerifyMode(run) === 'bugfree'
-        ? { ...action, input: await nativeVerifierContext(run, action, options.projectRoot) }
-        : action,
+    action,
     ...projection,
     ...(hasClaimedContext ? { continuation: continuationWithoutContext } : {}),
     ...(activeActions ? { activeActions } : {}),
@@ -1155,14 +1150,6 @@ async function projectNativeSdkContinuationValue(options: {
       ),
     };
   }
-  const verifier = run.actions.find(
-    (entry) =>
-      entry.stepId === 'verify.verifier' &&
-      ['pending', 'running', 'unknown'].includes(entry.status),
-  );
-  const verificationContext = verifier
-    ? await nativeVerifierContext(run, verifier, projectRoot)
-    : undefined;
   const pending = nativeSdkPendingActions(run);
   const nextAction = nativeSdkNextAction(run, state);
   const pendingActions = pending.map((action) => {
@@ -1178,7 +1165,7 @@ async function projectNativeSdkContinuationValue(options: {
       attempt: action.attempt,
       inputHash: action.inputHash,
       mechanism: 'runtime-dispatch',
-      ...(typeof (run.input as { task?: unknown }).task === 'string' && !verificationContext
+      ...(typeof (run.input as { task?: unknown }).task === 'string'
         ? {
             originalRequest: {
               source: 'run.input.task',
@@ -1208,8 +1195,8 @@ async function projectNativeSdkContinuationValue(options: {
                       projectRoot,
                     ),
                     instruction: localized(
-                      'Launch a separate read-only session in this project. Pass this Action input and claimRequest to it. That session must claim with its own stable session ID before verification and submit its own outcome; the Builder must not claim on its behalf.',
-                      '在此项目启动独立只读会话，将本 Action 输入和 claimRequest 交给它。由该会话在验收前使用自己的稳定会话标识领取，并回报自己的结果；Builder 不代领。',
+                      'Launch a separate read-only session in this project. Pass this Action input and claimRequest to it, without adding Builder conclusions or turning design choices into expected behavior. That session must claim with its own stable session ID before verification and submit its own outcome; the Builder must not claim on its behalf.',
+                      '在此项目启动独立只读会话，将本 Action 输入和 claimRequest 交给它，不附加 Builder 的自评或把设计取舍写成预期行为。由该会话在验收前使用自己的稳定会话标识领取，并提交自己的结果；Builder 不代领。',
                     ),
                   },
                 }
@@ -1245,15 +1232,7 @@ async function projectNativeSdkContinuationValue(options: {
           }
         : {}),
       ...(action.type === 'handoff' || action.type === 'invoke_skill'
-        ? {
-            input:
-              verificationContext && action.stepId === 'verify.verifier'
-                ? verificationContext
-                : action.input,
-          }
-        : {}),
-      ...(verificationContext && action.stepId === 'verify.verifier'
-        ? { verificationContext }
+        ? { input: action.input }
         : {}),
     };
   });
@@ -1504,11 +1483,7 @@ async function projectNativeSdkContinuationValue(options: {
           projectRoot,
           (run.input as { artifactRootRef: string }).artifactRootRef,
         );
-        const current = await collectNativeSdkShapeProposal({
-          paths,
-          state,
-          verifyMode: nativeVerifyMode(run),
-        });
+        const current = await collectNativeSdkShapeProposal({ paths, state });
         const approved = (shapeWait.proposal as { outputs?: Record<string, RuntimeValue> })
           .outputs?.['shape.prepare'];
         currentProposal =
@@ -1963,6 +1938,13 @@ async function projectNativeSdkContinuationValue(options: {
         userCommunication: communication(edit.instruction ?? '先处理当前编辑复核。'),
       };
   }
+  if (continuation.action === 'review-edit') {
+    for (const action of pendingActions) {
+      if (action.stepId !== 'verify.verifier') continue;
+      delete action.claimRequest;
+      delete action.sessionRequirements;
+    }
+  }
   if (
     state.phase === 'shape' ||
     (state.phase === 'build' &&
@@ -2040,10 +2022,7 @@ async function projectNativeSdkContinuationValue(options: {
             status: action.status,
             attempt: action.attempt,
             inputHash: action.inputHash,
-            input:
-              verificationContext && action.stepId === 'verify.verifier'
-                ? verificationContext
-                : action.input,
+            input: action.input,
             type: action.type,
             ref: action.ref,
             claim: action.claim,

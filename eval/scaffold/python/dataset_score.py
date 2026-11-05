@@ -10,8 +10,6 @@ import shutil
 import subprocess
 import sys
 import uuid
-import importlib.util
-import re
 from types import SimpleNamespace
 
 
@@ -130,60 +128,6 @@ async def workbuddy(task):
     }
 
 
-def inspect_native_verification(execution):
-    expected = execution.get("expectedNativeMode")
-    if expected is None:
-        return None
-    try:
-        if expected not in {"standard", "bugfree"} or execution.get("nativeInspectionError"):
-            raise ValueError(execution.get("nativeInspectionError") or "无效的验证模式")
-        spec = importlib.util.spec_from_file_location(
-            "comet_dataset_sdk_inspection", "/opt/comet-sdk-inspection.py"
-        )
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        workspace = Path("/workspace")
-        changes = workspace / "docs/comet/changes"
-        if changes.exists() and any(
-            item.is_dir() or item.is_symlink() for item in changes.iterdir()
-        ):
-            raise ValueError("仍有未完成的 Native change")
-        runs = {}
-        for directory in (workspace / "docs/comet/archive").iterdir():
-            if not directory.is_dir():
-                continue
-            match = re.fullmatch(
-                r"[0-9]{4}-[0-9]{2}-[0-9]{2}-([a-z0-9]+(?:-[a-z0-9]+)*)", directory.name
-            )
-            if not match or directory.is_symlink():
-                raise ValueError("归档目录身份无效")
-            name = match.group(1)
-            run = module.inspect_run(
-                workspace, "native", name, "native", directory / "comet-state.yaml"
-            )
-            if (
-                run.get("status") != "completed"
-                or run.get("workflow", {}).get("id") != "comet-native"
-                or run.get("lineage")
-            ):
-                raise ValueError("Native 根 Run 尚未完成")
-            runs[name] = module.sdk_inspection_evidence("native", "native", run)
-        if not runs:
-            raise ValueError("没有可核对创建时模式的 Native 根 Run")
-        return {
-            "status": "matched"
-            if all(
-                item["run"].get("input", {}).get("verifyMode", "standard") == expected
-                for item in runs.values()
-            )
-            else "mismatch",
-            "expectedMode": expected,
-            "runs": runs,
-        }
-    except Exception as exc:
-        return {"status": "unavailable", "expectedMode": expected, "reason": str(exc)}
-
-
 def main():
     dataset, name = sys.argv[1:]
     task = Path("/opt/dataset-original/tasks") / name
@@ -193,7 +137,6 @@ def main():
     execution = (
         json.loads(execution_file.read_text(encoding="utf-8")) if execution_file.is_file() else {}
     )
-    native_verification = inspect_native_verification(execution)
     if dataset == "workbuddy-code":
         result = asyncio.run(workbuddy(task))
     else:
@@ -268,8 +211,6 @@ def main():
                 "reward": json.loads(reward.read_text()) if reward.is_file() else None,
                 "verifier_status": "timeout",
             }
-            if native_verification is not None:
-                result["native_verification"] = native_verification
             print("COMET_DATASET_REWARD=" + json.dumps(result, allow_nan=False))
             raise
         if status.returncode != 0 and not reward.is_file():
@@ -300,8 +241,6 @@ def main():
             "verifier_status": verifier_status,
             "test_runs": observations,
         }
-    if native_verification is not None:
-        result["native_verification"] = native_verification
     print("COMET_DATASET_REWARD=" + json.dumps(result, allow_nan=False))
 
 

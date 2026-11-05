@@ -164,21 +164,6 @@ it('rejects unsupported dataset execution conditions rather than silently droppi
   expect(plan.tasks[0].reason).toMatch(/网络/);
 });
 
-it('binds Native verification mode in the collected plan without exposing it to Goal', async () => {
-  const root = await datasetFixture('agent:\n  timeout_sec: 900');
-  const options = { dataset: 'skillsbench', datasetRoot: root };
-  const standard = await inspectBuiltinDataset(options);
-  const bugfree = await inspectBuiltinDataset({ ...options, verifyMode: 'bugfree' });
-  expect(standard.verifyMode).toBe('standard');
-  expect(bugfree.verifyMode).toBe('bugfree');
-  expect(bugfree.contentHash).not.toBe(standard.contentHash);
-  expect(bugfree.comparisonHash).toBe(standard.comparisonHash);
-  expect(bugfree.tasks).toEqual(standard.tasks);
-  await expect(
-    inspectBuiltinDataset({ ...options, datasetTreatment: 'goal', verifyMode: 'bugfree' }),
-  ).rejects.toThrow('Goal');
-});
-
 it('checks WorkBuddy tests-only restrictions per treatment without changing the grader', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-workbuddy-scope-'));
   roots.push(root);

@@ -1,10 +1,12 @@
 [
   "eval/scaffold/dataset-adapter-files.json",
   "eval/scaffold/python/builtin_datasets.py",
+  "eval/scaffold/python/dataset_integrity.py",
   "eval/scaffold/python/dataset_score.py",
   "eval/scaffold/python/dataset_pytest_observer.py",
   "eval/scaffold/python/logging.py",
   "eval/scaffold/python/progress.py",
+  "eval/scaffold/python/paths.py",
   "eval/scaffold/python/utils.py",
   "eval/scaffold/python/attribution.py",
   "eval/scaffold/python/sample_quality.py",

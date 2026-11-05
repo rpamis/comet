@@ -19,16 +19,6 @@ async function runEvalCli(...args: string[]): Promise<unknown[]> {
 }
 
 describe('eval CLI options', () => {
-  it('passes a fixed Native verification mode to static dataset collection', async () => {
-    const [, options] = await runEvalCli(
-      '--dataset',
-      'skillsbench',
-      '--verify-mode',
-      'bugfree',
-      '--collect',
-    );
-    expect(options).toMatchObject({ dataset: 'skillsbench', verifyMode: 'bugfree', collect: true });
-  });
   it('passes dataset selection to the public facade', async () => {
     const [, options] = await runEvalCli(
       '--dataset',

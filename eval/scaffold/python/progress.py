@@ -11,7 +11,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from scaffold.python.paths import get_runs_dir
+from scaffold.python.paths import CURRENT_COMET_SNAPSHOT_REF, get_runs_dir
 from scaffold.python.execution import redact_sensitive
 
 
@@ -23,10 +23,12 @@ def candidate_storage_bytes(root: Path) -> int:
         raise error
 
     for directory, dirs, files in os.walk(root, followlinks=False, onerror=unreadable):
-        if Path(directory) == root:
-            dirs[:] = [
-                name for name in dirs if name not in {".dataset-build", "_eval_current_comet"}
-            ]
+        dirs[:] = [
+            name
+            for name in dirs
+            if (Path(directory) / name).relative_to(root).as_posix()
+            not in {".dataset-build", "_eval_current_comet", CURRENT_COMET_SNAPSHOT_REF}
+        ]
         for name in files:
             file = Path(directory) / name
             try:

@@ -11,6 +11,28 @@ const englishNativeCommands = path.resolve('assets/skills/comet-native/reference
 const englishNativeRecovery = path.resolve('assets/skills/comet-native/reference/recovery.md');
 
 describe('Chinese Native SDK Skill route', () => {
+  it.each(['skills', 'skills-zh'])(
+    'prefers receipt result submission consistently through SDK verification in %s',
+    async (root) => {
+      const skill = (
+        await fs.readFile(path.resolve('assets', root, 'comet-native/SKILL.md'), 'utf8')
+      ).replaceAll('\r\n', '\n');
+      const verify = skill.split('\n## Verify\n')[1].split('\n## Archive\n')[0];
+      const commands = await fs.readFile(
+        path.resolve('assets', root, 'comet-native/reference/commands.md'),
+        'utf8',
+      );
+      expect(verify).toContain('resultRequest');
+      expect(verify).toContain('outcomeRequest');
+      expect(verify).not.toMatch(/current outcomeRequest|当前 outcomeRequest/);
+      const preferred = commands
+        .split(/\r?\n\r?\n/)
+        .find((paragraph) => paragraph.includes('`resultRequest`'));
+      expect(preferred).toContain('`receipt`');
+      expect(preferred).toContain('`result.status`');
+    },
+  );
+
   it('preserves user-specified artifact locations through Shape, Build and independent Verify', async () => {
     const skill = (await fs.readFile(nativeSkill, 'utf8')).replaceAll('\r\n', '\n');
     const shape = skill.split('\n## Shape\n')[1].split('\n## Build ↔ Verify Loop\n')[0];

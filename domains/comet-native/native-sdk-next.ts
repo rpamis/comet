@@ -1,4 +1,3 @@
-import { nativeVerifyMode } from './native-verification-policy.js';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 import { inspectNativeSdkRunDiagnostics } from './native-sdk-diagnostics.js';
 import { reconcileNativeSdkExecutionStops } from './native-sdk-check-execution.js';
@@ -632,11 +631,7 @@ export async function advanceNativeSdkChange(
     }
     if (!decision.summary.trim()) throw new NativeUsageError('--summary must not be empty');
     const paths = await nativeProjectPaths(projectRoot, artifactRootRef);
-    const current = await collectNativeSdkShapeProposal({
-      paths,
-      state,
-      verifyMode: nativeVerifyMode(run),
-    });
+    const current = await collectNativeSdkShapeProposal({ paths, state });
     const approved = (wait.proposal as { outputs?: Record<string, RuntimeValue> }).outputs?.[
       'shape.prepare'
     ];
@@ -727,11 +722,7 @@ export async function advanceNativeSdkChange(
       continue;
     }
     const paths = await nativeProjectPaths(projectRoot, artifactRootRef);
-    const proposal = await collectNativeSdkShapeProposal({
-      paths,
-      state,
-      verifyMode: nativeVerifyMode(run),
-    });
+    const proposal = await collectNativeSdkShapeProposal({ paths, state });
     const { runtime } = owned;
     const requestId = randomUUID();
     const context = { requestId, projectRoot };

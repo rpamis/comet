@@ -669,7 +669,6 @@ def test_experiment_summary_includes_token_and_cost_columns(monkeypatch, tmp_pat
                 "dataset_result": {
                     "reward": 0.25,
                     "verifier_status": "assertion_failed",
-                    "verifyMode": "bugfree",
                 },
             },
         ),

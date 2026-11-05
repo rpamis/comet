@@ -1,4 +1,3 @@
-import { nativeVerifyMode } from './native-verification-policy.js';
 import { withGitWorktreeReadScope } from '../../platform/paths/git-worktree.js';
 import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
 import { inspectNativeSdkRunDiagnostics } from './native-sdk-diagnostics.js';
@@ -117,7 +116,6 @@ async function projectNativeSdkStatusOnce(
       checkExecutionObservation,
     }),
     runtimeFormat: 'sdk' as const,
-    verifyMode: nativeVerifyMode(run),
     ...(application
       ? { application: application.identity, skillWork: applicationSkillWork(application, run) }
       : {}),

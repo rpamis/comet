@@ -1,9 +1,3 @@
-import {
-  nativeVerifierSession,
-  readNativeVerificationBaseline,
-} from './native-verifier-context.js';
-import { nativeVerifyMode, assertNativeVerifyModeSupported } from './native-verification-policy.js';
-import { normalizeNativeBugfreeResponse } from './native-verifier-protocol.js';
 import { nativeSdkVerifyWaitDecisions } from './native-sdk-verify-decision.js';
 import { assertNativeEditReviewsComplete } from './native-edit-review.js';
 import path from 'node:path';
@@ -171,28 +165,20 @@ import { nativeSdkFailedChildVerifierActivation } from './native-sdk-supervisor-
 
 /** 已有 Run 只加载完全匹配的已知定义；升级由显式 doctor 修复完成。 */
 export function nativeSdkApplicationForRun(
-  run: (Pick<WorkflowRun, 'workflow'> & Partial<Pick<WorkflowRun, 'input'>>) | null,
+  run: Pick<WorkflowRun, 'workflow'> | null,
   application = defineNativeWorkflowApplication(),
 ) {
   // 当前定义精确匹配时无需构造历史变体；未知 hash 仍交给 Runtime 拒绝。
-  const checked = (selected: NativeWorkflowApplication) => {
-    if (run?.input !== undefined)
-      assertNativeVerifyModeSupported(
-        { input: run.input },
-        selected.workflow.steps['verify.verifier'].validator!.version,
-      );
-    return selected;
-  };
-  if (run && nativeSdkMatchesRun(application.workflow, run)) return checked(application);
+  if (run && nativeSdkMatchesRun(application.workflow, run)) return application;
   const workflow = nativeSdkLegacyDefinitions(application.workflow).find((candidate) =>
     nativeSdkMatchesRun(candidate, run),
   );
-  if (!workflow) return checked(application);
-  return checked({
+  if (!workflow) return application;
+  return {
     ...application,
     workflow,
     transitionHandler: nativeSdkLegacyTransitionHandler(workflow, application.transitionHandler),
-  });
+  };
 }
 
 interface NativeShapeProposal {
@@ -262,7 +248,6 @@ function nativeSdkShapeConstraintsVersion(state: NativePortableState): 1 | 2 | 3
 export async function collectNativeSdkShapeProposal(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
-  verifyMode?: 'standard' | 'bugfree';
 }): Promise<NativeShapeProposal> {
   const state = parseNativePortableState({
     ...options.state,
@@ -298,7 +283,6 @@ export async function collectNativeSdkShapeProposal(options: {
     throw new Error('Native Supervisor Shape requires children.yaml before confirmation');
   }
   return {
-    ...(options.verifyMode === 'bugfree' ? { verifyMode: 'bugfree' } : {}),
     specChanges,
     acceptance: acceptance.map(({ id, source, text }) => ({ id, source, text })),
     formalHash,
@@ -607,20 +591,6 @@ function verifierResultState(
   const sessionId = action.claim?.sessionId;
   const candidate = state.builder_handoff;
   if (
-    nativeVerifyMode(run) === 'bugfree' &&
-    run.actions.some(
-      (entry) =>
-        [
-          'build.builder',
-          'supervisor.parent.builder',
-          'supervisor.child.builder',
-          'supervisor.child.integration-repair',
-        ].includes(entry.stepId) && entry.claim?.sessionId === sessionId,
-    )
-  ) {
-    throw new Error('Native bugfree Verifier must not participate in implementation');
-  }
-  if (
     state.phase !== 'verify' ||
     state.status !== 'active' ||
     state.loop.next_action !== 'await-verifier-result' ||
@@ -750,13 +720,7 @@ function verifierResultState(
     envelope: channel.envelopeVerifierResponse({
       candidateId: candidate.candidate_id,
       identity,
-      payload:
-        nativeVerifyMode(run) === 'bugfree'
-          ? normalizeNativeBugfreeResponse(
-              output.response,
-              state.acceptance.map(({ id }) => id),
-            )
-          : output.response,
+      payload: output.response,
     }),
     checks,
     maxVerifyFailures: maxVerifyFailures as number,
@@ -852,11 +816,7 @@ const shapeValidator: RuntimeValidator = {
         return { accepted: false, reason: 'Native artifact root changed after Run creation' };
       }
       const paths = await nativeProjectPaths(context.projectRoot, input.artifactRootRef);
-      const current = await collectNativeSdkShapeProposal({
-        paths,
-        state,
-        verifyMode: nativeVerifyMode(run),
-      });
+      const current = await collectNativeSdkShapeProposal({ paths, state });
       if (
         hashRuntimeValue(current as unknown as RuntimeValue) !== hashRuntimeValue(outcome.output)
       ) {
@@ -1027,8 +987,7 @@ const supervisorParentBuilderValidator: RuntimeValidator = {
       if (drift.drifted) throw new Error(drift.reason ?? 'Native acceptance changed');
       builderCandidateState(run, action, outcome);
       const checks = nativeSdkCheckPlans(outcome.output);
-      if (checks.length === 0 && nativeVerifyMode(run) !== 'bugfree')
-        throw new Error('Native Supervisor parent candidate needs checks');
+      if (checks.length === 0) throw new Error('Native Supervisor parent candidate needs checks');
       preflightNativeCheckPlans(worktree, checks);
       return { accepted: true };
     } catch (error) {
@@ -1037,7 +996,7 @@ const supervisorParentBuilderValidator: RuntimeValidator = {
   },
 };
 
-const verifierOutcomeValidator: RuntimeValidator = {
+const verifierValidator: RuntimeValidator = {
   id: 'comet-native-verifier-outcome',
   version: '1',
   async validate({ run, action, outcome, context }) {
@@ -1049,22 +1008,6 @@ const verifierOutcomeValidator: RuntimeValidator = {
       if (outcome.status === 'failed') {
         verifierExecutionFailureState(run, action, outcome);
         return { accepted: true };
-      }
-      if (nativeVerifyMode(run) === 'bugfree') {
-        const sessionId = action.claim?.sessionId;
-        const oldSession = run.actions
-          .slice(
-            0,
-            run.actions.findIndex((entry) => entry.id === action.id),
-          )
-          .some(
-            (entry) => entry.stepId === 'verify.verifier' && entry.claim?.sessionId === sessionId,
-          );
-        if (oldSession) {
-          const policy = await nativeVerifierSession(run, action, context.projectRoot);
-          if (policy.strategy !== 'resume' || policy.sessionId !== sessionId)
-            throw new Error('Native bugfree requires a fresh independent Verifier context');
-        }
       }
       const config = await readProjectConfig(context.projectRoot);
       if (
@@ -1093,8 +1036,6 @@ const verifierOutcomeValidator: RuntimeValidator = {
         (outcome.output as { response?: { result?: { verdict?: unknown } } } | null)?.response
           ?.result?.verdict === 'pass';
       if (!requested && passing) {
-        if (nativeVerifyMode(run) === 'bugfree')
-          await readNativeVerificationBaseline(run, context.projectRoot);
         const observedInputs = await assertNativeSdkCandidateUnchanged({
           run,
           projectRoot: context.projectRoot,
@@ -1127,16 +1068,6 @@ const nativeStateValidator: RuntimeStateValidator = {
     }
   },
 };
-
-const verifierValidator: RuntimeValidator = {
-  ...verifierOutcomeValidator,
-  async validate(args) {
-    if (nativeVerifyMode(args.run) === 'bugfree')
-      return { accepted: false, reason: 'Native bugfree requires its pinned verifier definition' };
-    return verifierOutcomeValidator.validate(args);
-  },
-};
-const bugfreeVerifierValidator: RuntimeValidator = { ...verifierOutcomeValidator, version: '2' };
 
 export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
   return {
@@ -1381,7 +1312,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         'verify.verifier': {
           type: 'handoff',
           ref: 'native-verifier',
-          validator: { id: bugfreeVerifierValidator.id, version: bugfreeVerifierValidator.version },
+          validator: { id: verifierValidator.id, version: verifierValidator.version },
         },
         'verify.retry': {
           type: 'ask_user',
@@ -2818,7 +2749,6 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
       builderValidator,
       nativeSdkCheckValidator,
       verifierValidator,
-      bugfreeVerifierValidator,
       nativeSdkReportValidator,
       nativeSdkReportRevalidationValidator,
       nativeSdkArchivePreflightValidator,

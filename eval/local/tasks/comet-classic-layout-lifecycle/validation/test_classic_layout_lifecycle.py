@@ -106,7 +106,9 @@ def check_current_cli_init_smoke():
     expected_layout, _changes_root, alternate_root = selected
     expected_root = Path("docs/openspec") if expected_layout == "docs" else Path("openspec")
 
-    snapshot = WORKSPACE / "_eval_current_comet"
+    snapshot = WORKSPACE / '.dataset-state/tools/node_modules/@rpamis/comet'
+    if not snapshot.is_dir():
+        snapshot = WORKSPACE / '_eval_current_comet'
     required = (
         snapshot / "bin/comet.js",
         snapshot / "dist/app/cli/index.js",

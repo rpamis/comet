@@ -884,6 +884,54 @@ def test_dataset_candidate_mapping_preserves_declared_outputs_for_both_treatment
     assert any(value.endswith(":/opt/syzkaller") for value in mounts)
 
 
+def test_dataset_root_home_cache_uses_current_mapping_without_changing_project_root(tmp_path):
+    from scaffold.python.builtin_datasets import dataset_mounts
+    from scaffold.python.paths import DATASET_NPM_CACHE_REF
+
+    cache = tmp_path / DATASET_NPM_CACHE_REF
+    cache.mkdir(parents=True)
+    mirror = tmp_path / '.dataset-state/root'
+    mirror.mkdir()
+    (tmp_path / ".dataset-task.json").write_text(json.dumps({
+        "workdir": "/workspace", "execution": {"candidateDirectories": ["/root"]},
+    }))
+    assert dataset_mounts(tmp_path) == ["-v", f"{mirror.resolve()}:/root",
+                                      "-v", f"{cache.resolve()}:/root/.npm/_cacache"]
+    (tmp_path / ".dataset-task.json").write_text(json.dumps({
+        "workdir": "/root", "execution": {"candidateDirectories": ["/root"]},
+    }))
+    assert dataset_mounts(tmp_path) == ["-v", f"{tmp_path.resolve()}:/root"]
+
+
+def test_dataset_root_home_cache_relocation_preserves_cache_and_business_bytes(tmp_path, monkeypatch):
+    from scaffold.python.builtin_datasets import prepare_dataset_workspace, dataset_mounts
+    from scaffold.python.paths import DATASET_NPM_CACHE_REF
+
+    (tmp_path / 'Dockerfile').write_text('FROM fixture')
+    (tmp_path / '.dataset-task.json').write_text(json.dumps({
+        'workdir': '/workspace', 'environmentFiles': ['Dockerfile'],
+        'execution': {'candidateDirectories': ['/root']},
+    }))
+    monkeypatch.setattr('scaffold.python.utils.build_docker_image', lambda *a, **k: 'image')
+
+    def fake_docker(*args, **kwargs):
+        if args[0] == 'cp' and ':/root/.' in args[1]:
+            target = Path(args[2])
+            for ref, value in [('.npm/_cacache/content-v2/entry', b'cached dependency'),
+                               ('app/dist/generated.js', b'business output')]:
+                file = target / ref
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.write_bytes(value)
+        return SimpleNamespace(stdout='')
+
+    monkeypatch.setattr('scaffold.python.builtin_datasets.docker', fake_docker)
+    prepare_dataset_workspace(tmp_path, 'claude-code')
+    assert (tmp_path / DATASET_NPM_CACHE_REF / 'content-v2/entry').read_bytes() == b'cached dependency'
+    assert (tmp_path / '.dataset-state/root/app/dist/generated.js').read_bytes() == b'business output'
+    assert not (tmp_path / '.dataset-state/root/.npm/_cacache').exists()
+    assert f'{(tmp_path / DATASET_NPM_CACHE_REF).resolve()}:/root/.npm/_cacache' in dataset_mounts(tmp_path)
+
+
 def test_dataset_new_plan_has_bound_budget_and_original_task_simulator(dataset_plan):
     import conftest
 
@@ -993,10 +1041,20 @@ def test_dataset_candidate_mapping_rejects_protected_and_escaping_paths(tmp_path
 
 
 def test_dataset_trusted_sources_are_readonly_through_workdir_aliases(tmp_path):
+    _assert_trusted_source_mounts(tmp_path, '_eval_current_comet')
+
+
+def test_current_cli_dependency_snapshot_keeps_readonly_workdir_aliases(tmp_path):
+    from scaffold.python.paths import CURRENT_COMET_SNAPSHOT_REF
+
+    _assert_trusted_source_mounts(tmp_path, CURRENT_COMET_SNAPSHOT_REF)
+
+
+def _assert_trusted_source_mounts(tmp_path, snapshot_ref):
     import shlex
     from scaffold.python.utils import run_shell, SHELL_DIR, _to_bash_path
 
-    (tmp_path / "_eval_current_comet").mkdir()
+    (tmp_path / snapshot_ref).mkdir(parents=True)
     (tmp_path / "_eval_trusted_oracles").mkdir()
     (tmp_path / ".dataset-task.json").write_text(json.dumps({"workdir": "/root"}))
     probe = tmp_path / "probe.sh"
@@ -1008,8 +1066,8 @@ def test_dataset_trusted_sources_are_readonly_through_workdir_aliases(tmp_path):
         newline="\n",
     )
     result = run_shell(str(probe), str(tmp_path))
-    assert "://workspace/_eval_current_comet:ro" in result.stdout
-    assert "://root/_eval_current_comet:ro" in result.stdout
+    assert f'://workspace/{snapshot_ref}:ro' in result.stdout
+    assert f'://root/{snapshot_ref}:ro' in result.stdout
     assert "://root/_eval_trusted_oracles:ro" in result.stdout
 
 
@@ -1114,6 +1172,19 @@ def test_dataset_storage_limit_keeps_candidate_and_excludes_build_inputs(tmp_pat
     with pytest.raises(ValueError, match="dataset_storage_limit"):
         with observe_dataset_storage(tmp_path, None):
             pytest.fail("oversized candidates must stop before starting a model")
+
+
+def test_current_cli_dependency_snapshot_does_not_hide_candidate_storage(tmp_path):
+    from scaffold.python.paths import CURRENT_COMET_SNAPSHOT_REF
+    from scaffold.python.progress import candidate_storage_bytes
+
+    tooling = tmp_path / CURRENT_COMET_SNAPSHOT_REF / 'dist/cli.js'
+    tooling.parent.mkdir(parents=True)
+    tooling.write_bytes(b'x' * 2_000_000)
+    business = tmp_path / '.dataset-state/app/answer'
+    business.parent.mkdir(parents=True)
+    business.write_bytes(b'answer')
+    assert candidate_storage_bytes(tmp_path) == len(b'answer')
 
 
 def test_dataset_public_instruction_cannot_be_replaced_by_simulator_approval(dataset_plan):
@@ -1340,13 +1411,13 @@ def test_dataset_native_mode_seed_survives_execution_workspace_relocation(tmp_pa
     import os
     import shutil
     import subprocess
-    from scaffold.python.builtin_datasets import seed_dataset_native_mode
+    from scaffold.python.builtin_datasets import seed_dataset_native_config
 
     package = Path(__file__).resolve().parents[4]
     monkeypatch.setenv("BENCH_COMET_SOURCE_ROOT", str(package))
     prepared = tmp_path / "prepared"
     prepared.mkdir()
-    seed_dataset_native_mode(prepared, "bugfree")
+    seed_dataset_native_config(prepared)
     assert sorted(
         file.relative_to(prepared).as_posix() for file in prepared.rglob("*") if file.is_file()
     ) == [".comet/config.yaml"]
@@ -1428,14 +1499,14 @@ def test_dataset_controller_snapshot_rejects_an_original_business_path_collision
     assert original.read_text() == "original business data"
 
 
-def test_dataset_seeds_verification_mode_before_any_run_through_public_cli(tmp_path, monkeypatch):
+def test_dataset_seeds_native_config_before_any_run_through_public_cli(tmp_path, monkeypatch):
     import yaml
-    from scaffold.python.builtin_datasets import seed_dataset_native_mode
+    from scaffold.python.builtin_datasets import seed_dataset_native_config
 
     monkeypatch.setenv("BENCH_COMET_SOURCE_ROOT", str(Path(__file__).resolve().parents[4]))
-    seed_dataset_native_mode(tmp_path, "bugfree")
+    seed_dataset_native_config(tmp_path)
     config = yaml.safe_load((tmp_path / ".comet/config.yaml").read_text(encoding="utf-8"))
-    assert config["native"]["verify_mode"] == "bugfree"
+    assert "verify_mode" not in config["native"]
     assert not list((tmp_path / "docs/comet/changes").glob("*/comet-state.yaml"))
 
 
@@ -1465,270 +1536,3 @@ def test_dataset_image_hash_uses_build_inputs_not_mode_or_late_controller_paths(
     assert directory_hash != original
     installer.write_text("changed installer")
     assert fingerprint() != directory_hash
-
-
-def test_dataset_mode_inspector_mounts_owned_runtime_readonly_and_isolates_controller(
-    tmp_path, monkeypatch
-):
-    from scaffold.python.builtin_datasets import dataset_config_hash
-
-    source = tmp_path / "source"
-    source.mkdir()
-    (tmp_path / "dataset.toml").write_text('[dataset]\nid="example"\n')
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    (workspace / ".dataset-task.json").write_text(json.dumps({"workdir": "/workspace"}))
-    task = DatasetTask(
-        path=source,
-        config=TaskConfig(name="example", description=""),
-        instruction_template="task",
-        dataset_entry={
-            "id": "example",
-            "source": str(source),
-            "contentHash": tree_hash(source),
-            "timeout": 900,
-        },
-        dataset_plan={
-            "dataset": {"id": "skillsbench"},
-            "root": str(tmp_path),
-            "verifyMode": "bugfree",
-            "datasetConfigHash": dataset_config_hash(tmp_path),
-        },
-    )
-    calls = []
-
-    def fake_docker(*args, **kwargs):
-        calls.append(args)
-        if args[0] == "start":
-            return SimpleNamespace(stdout='COMET_DATASET_REWARD={"reward":1,"raw":{"reward":1}}')
-        return SimpleNamespace(stdout="0" if args[0] == "inspect" else "")
-
-    monkeypatch.setattr("scaffold.python.builtin_datasets.docker", fake_docker)
-    monkeypatch.setattr("scaffold.python.utils.build_docker_image", lambda *args, **kwargs: "image")
-    task._score_dataset(workspace, {})
-    created = next(args for args in calls if args[0] == "create")
-    assert created[-5:] == ("python3", "-I", "/opt/dataset_score.py", "skillsbench", "example")
-    volume = next(args[2] for args in calls if args[:2] == ("volume", "inspect"))
-    assert volume + ":/opt/comet-eval-data:ro" in created
-    assert "COMET_DATA_DIR=/opt/comet-eval-data" in created
-    assert any(str(arg).endswith(":/opt/comet-sdk-inspection.py:ro") for arg in created)
-
-
-def test_dataset_mode_uses_container_inspection_and_keeps_unavailable_distinct(
-    tmp_path, monkeypatch
-):
-    archive = tmp_path / "docs/comet/archive/example"
-    archive.mkdir(parents=True)
-    (archive / "comet-state.yaml").write_text("# comet-execution: managed-run\nname: example\n")
-    task = DatasetTask(
-        path=tmp_path,
-        config=TaskConfig(name="example", description=""),
-        instruction_template="original",
-        dataset_plan={"verifyMode": "bugfree"},
-    )
-
-    def forbidden_host_inspection(*args, **kwargs):
-        raise AssertionError("Host inspection cannot read container Runtime paths")
-
-    monkeypatch.setattr(
-        "scaffold.python.validation.current_sdk.inspect_run", forbidden_host_inspection
-    )
-    from scaffold.python.validation.current_sdk import sdk_inspection_evidence
-
-    evidence = {
-        "status": "matched",
-        "expectedMode": "bugfree",
-        "runs": {
-            "example": sdk_inspection_evidence(
-                "native", "native", {"input": {"verifyMode": "bugfree"}}
-            )
-        },
-    }
-
-    def score(candidate, outputs):
-        outputs["dataset_result"] = {"native_verification": evidence}
-        return ["[RUBRIC] dataset-score: 0.25"], ["dataset_incomplete"]
-
-    monkeypatch.setattr(task, "_score_dataset", score)
-    assert task.validate_dataset(tmp_path, {}) == (
-        ["[RUBRIC] dataset-score: 0.25"],
-        ["dataset_incomplete"],
-    )
-    evidence.update(status="unavailable", reason="inspection failed")
-    passed, failed = task.validate_dataset(tmp_path, {})
-    assert passed == ["[RUBRIC] dataset-score: 0.25"]
-    assert any(item.startswith("dataset_verify_mode_unavailable:") for item in failed)
-    assert not any(item.startswith("dataset_verify_mode:") for item in failed)
-
-
-def test_dataset_container_mode_proof_precedes_grading_and_distinguishes_mismatch(
-    tmp_path, monkeypatch, capsys
-):
-    from scaffold.python import dataset_score as scoring
-    from scaffold.python.validation.current_sdk import sdk_inspection_evidence
-    import sys
-
-    workspace = tmp_path / "workspace"
-    archive = workspace / "docs/comet/archive/2026-11-04-example"
-    archive.mkdir(parents=True)
-    task = tmp_path / "tasks/example"
-    task.mkdir(parents=True)
-    execution = tmp_path / "execution.json"
-    execution.write_text(json.dumps({"expectedNativeMode": "bugfree"}))
-    original_path = Path
-    monkeypatch.setattr(
-        scoring,
-        "Path",
-        lambda p: {
-            "/workspace": workspace,
-            "/opt/dataset-original/tasks": task.parent,
-            "/opt/comet-dataset-execution.json": execution,
-        }.get(str(p), original_path(p)),
-    )
-    run = {
-        "runId": "example",
-        "workflow": {"id": "comet-native"},
-        "status": "completed",
-        "lineage": [],
-        "input": {"verifyMode": "bugfree"},
-        "actions": [],
-    }
-    order = []
-
-    def inspect(*args):
-        order.append("inspect")
-        assert args[0] == workspace
-        assert args[1:4] == ("native", "example", "native")
-        return run
-
-    module = SimpleNamespace(inspect_run=inspect, sdk_inspection_evidence=sdk_inspection_evidence)
-    spec = SimpleNamespace(loader=SimpleNamespace(exec_module=lambda module: None))
-    monkeypatch.setattr(scoring.importlib.util, "spec_from_file_location", lambda name, file: spec)
-    monkeypatch.setattr(scoring.importlib.util, "module_from_spec", lambda spec: module)
-
-    async def grade(task):
-        order.append("grade")
-        assert order == ["inspect", "grade"]
-        return {"reward": 0.25, "verifier_status": "assertion_failed"}
-
-    monkeypatch.setattr(scoring, "workbuddy", grade)
-    monkeypatch.setattr(sys, "argv", ["score", "workbuddy-code", "example"])
-    scoring.main()
-    result = json.loads(capsys.readouterr().out.split("COMET_DATASET_REWARD=", 1)[1])
-    assert result["reward"] == 0.25
-    assert result["native_verification"]["status"] == "matched"
-    assert result["native_verification"]["runs"]["example"]["run"] == run
-    run["input"]["verifyMode"] = "standard"
-    assert (
-        scoring.inspect_native_verification({"expectedNativeMode": "bugfree"})["status"]
-        == "mismatch"
-    )
-    assert (
-        scoring.inspect_native_verification(
-            {"expectedNativeMode": "bugfree", "nativeInspectionError": "missing Runtime volume"}
-        )["status"]
-        == "unavailable"
-    )
-    assert scoring.inspect_native_verification({}) is None
-
-
-def test_dataset_mode_inspection_failure_is_harness_not_proven_mode_mismatch():
-    from scaffold.python.sample_quality import infer_sample_quality
-    from scaffold.python.attribution import classify_failures
-
-    failure = "dataset_verify_mode_unavailable: missing Runtime volume"
-    quality = infer_sample_quality(checks_failed=[failure])
-    assert quality.reason_code == "dataset_verify_mode_unavailable"
-    assert quality.include_in_analysis is True
-    failure_rows = classify_failures([failure], {}, "generic")
-    assert failure_rows[0]["bucket"] == "harness"
-
-
-def test_dataset_rejects_actual_run_mode_mismatch_and_preserves_business_score(
-    tmp_path, monkeypatch
-):
-    archive = tmp_path / "docs/comet/archive/2026-11-04-example"
-    archive.mkdir(parents=True)
-    (archive / "comet-state.yaml").write_text("name: example\n")
-    task = DatasetTask(
-        path=tmp_path,
-        config=TaskConfig(name="example", description=""),
-        instruction_template="original",
-        dataset_plan={"verifyMode": "bugfree"},
-    )
-
-    def score(candidate, outputs):
-        outputs["dataset_result"] = {
-            "native_verification": {
-                "status": "mismatch",
-                "expectedMode": "bugfree",
-                "runs": {"example": {"run": {"input": {"verifyMode": "standard"}}}},
-            }
-        }
-        return ["[RUBRIC] dataset-score: 0.25"], ["dataset_incomplete"]
-
-    monkeypatch.setattr(task, "_score_dataset", score)
-    monkeypatch.setattr(
-        "scaffold.python.validation.current_sdk.inspect_run",
-        lambda *args: {"input": {"verifyMode": "standard"}},
-    )
-    passed, failed = task.validate_dataset(tmp_path, {})
-    assert passed == ["[RUBRIC] dataset-score: 0.25"]
-    assert failed[0] == "dataset_incomplete"
-    assert any(item.startswith("dataset_verify_mode:") for item in failed)
-
-
-def test_dataset_scoring_applies_fixed_verifier_environment_and_hardening(
-    tmp_path, monkeypatch, capsys
-):
-    import sys
-    from scaffold.python import dataset_score as scoring
-
-    source = tmp_path / "original/tasks/example/verifier"
-    source.mkdir(parents=True)
-    (source / "test.sh").write_text("exit 0\n")
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    (workspace / "conftest.py").write_text("raise RuntimeError('candidate injection')")
-    execution = tmp_path / "execution.json"
-    execution.write_text(
-        json.dumps(
-            {
-                "verifierTimeoutSeconds": 75,
-                "verifier": {"env": {"REPO_ID": "original/repo"}, "cleanupConftests": True},
-            }
-        )
-    )
-    reward = tmp_path / "logs/verifier/reward.txt"
-    paths = {
-        "/opt/dataset-original/tasks": tmp_path / "original/tasks",
-        "/verifier": tmp_path / "verifier",
-        "/workspace": workspace,
-        "/root": tmp_path / "root",
-        "/app": tmp_path / "app",
-        "/data": tmp_path / "data",
-        "/outputs": tmp_path / "outputs",
-        "/opt/syzkaller": tmp_path / "syzkaller",
-        "/home/agent": tmp_path / "home-agent",
-        "/logs/verifier/reward.txt": reward,
-        "/opt/comet-dataset-execution.json": execution,
-    }
-    original_path = Path
-    monkeypatch.setattr(scoring, "Path", lambda value: paths.get(str(value), original_path(value)))
-    monkeypatch.setattr(sys, "argv", ["score", "skillsbench", "example"])
-
-    def run(command, **kwargs):
-        assert not (workspace / "conftest.py").exists()
-        assert kwargs["env"]["REPO_ID"] == "original/repo"
-        assert kwargs["timeout"] == 75
-        reward.write_text("0")
-        Path(kwargs["env"]["COMET_DATASET_OBSERVER"]).write_text(
-            json.dumps({"status": "collection_error", "ran": 0}) + "\n"
-        )
-        return SimpleNamespace(returncode=0)
-
-    monkeypatch.setattr(scoring.subprocess, "run", run)
-    scoring.main()
-    result = json.loads(capsys.readouterr().out.split("COMET_DATASET_REWARD=", 1)[1])
-    assert result["reward"] == 0
-    assert result["verifier_status"] == "collection_error"

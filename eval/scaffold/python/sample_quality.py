@@ -70,6 +70,12 @@ def _coerce_quality(value: dict[str, Any]) -> SampleQuality:
     if status not in {"included", "excluded", "flagged"}:
         status = "flagged"
     include = bool(value.get("include_in_analysis", status != "excluded"))
+    if value.get("reason_code") in {
+        "dataset_reference_access",
+        "dataset_input_changed",
+        "dataset_environment_changed",
+    }:
+        status, include = "excluded", False
     confidence = value.get("confidence", "medium")
     if confidence not in {"high", "medium", "low"}:
         confidence = "medium"
@@ -275,6 +281,20 @@ def infer_sample_quality(
     returncode: int | None = None,
 ) -> SampleQuality:
     report = report or {}
+    bound_failures = checks_failed if checks_failed is not None else report.get("checks_failed", [])
+    for code, reason in (
+        (
+            "dataset_input_changed",
+            "Task inputs differ from the fixed experiment; raw results retained",
+        ),
+        (
+            "dataset_environment_changed",
+            "Scoring assembly differs from its fixed inputs; raw results retained",
+        ),
+    ):
+        evidence = [check for check in bound_failures if check.startswith(code + ":")]
+        if evidence:
+            return SampleQuality("excluded", code, reason, False, "high", evidence)
     existing = report.get("sample_quality")
     if isinstance(existing, dict):
         return _coerce_quality(existing)
@@ -309,6 +329,16 @@ def infer_sample_quality(
 
     has_result = _has_result_event(stdout) or events.get("duration_seconds") is not None
     dataset = events.get("dataset_result") or {}
+    for prefix, code, reason in (
+        (
+            "dataset_reference_access:",
+            "dataset_reference_access",
+            "Benchmark reference access violates the experiment; original task score retained",
+        ),
+    ):
+        evidence = [check for check in checks_failed if check.startswith(prefix)]
+        if evidence:
+            return SampleQuality("excluded", code, reason, False, "high", evidence)
     if events.get("telemetry_warnings"):
         return SampleQuality(
             "flagged",
@@ -317,28 +347,6 @@ def infer_sample_quality(
             True,
             "medium",
             list(events["telemetry_warnings"]),
-        )
-    if any(check.startswith("dataset_verify_mode_unavailable:") for check in checks_failed):
-        return SampleQuality(
-            "flagged",
-            "dataset_verify_mode_unavailable",
-            "Runtime mode could not be verified; original task score retained",
-            True,
-            "high",
-            [
-                check
-                for check in checks_failed
-                if check.startswith("dataset_verify_mode_unavailable:")
-            ],
-        )
-    if any(check.startswith("dataset_verify_mode:") for check in checks_failed):
-        return SampleQuality(
-            "flagged",
-            "dataset_verify_mode_mismatch",
-            "Run mode differs from the fixed experiment; original task score retained",
-            True,
-            "high",
-            [check for check in checks_failed if check.startswith("dataset_verify_mode:")],
         )
     if dataset.get("verifier_status") in {
         "environment_error",

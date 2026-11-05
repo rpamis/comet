@@ -662,12 +662,6 @@ program
     '数据集执行方式：native（默认）或 goal（Claude Code 原生 Goal）',
   )
   .option('--dataset-root <dir>', '已获取的数据集根目录，包含 tasks/')
-  .addOption(
-    new Option('--verify-mode <mode>', '内置数据集 Native Run 创建时固定的验证模式').choices([
-      'standard',
-      'bugfree',
-    ]),
-  )
   .option('--count <number>', '每个数据集任务的运行次数，默认为 1')
   .option('--accept-dataset-license', '声明已阅读并接受选中数据集的许可')
   .action(async (target, options) => {

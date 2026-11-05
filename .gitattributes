@@ -19,3 +19,6 @@
 *.png binary
 *.jpg binary
 *.jpeg binary
+
+# Preserve historical evidence bytes and bound content hashes.
+docs/research/bugfree-retirement/** -text

@@ -34,7 +34,6 @@ describe('Native runtime release asset', () => {
     for (const relative of [
       'comet-native/SKILL.md',
       'comet-native/reference/artifacts.md',
-      'comet-native/reference/bugfree.md',
       'comet-native/reference/clarification.md',
       'comet-native/reference/commands.md',
       'comet-native/reference/recovery.md',

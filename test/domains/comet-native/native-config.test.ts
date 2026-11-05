@@ -93,7 +93,6 @@ describe('Native project configuration', () => {
         provider: 'local',
       },
       native: {
-        verify_mode: 'standard',
         artifact_root: 'docs',
         language: 'en',
         clarification_mode: 'batch',

@@ -318,7 +318,6 @@ export async function runManagedEvalWorker(project: string, id: string): Promise
       ];
       if (config.dataset && config.datasetTreatment === 'goal')
         args.push('--dataset-treatment', 'goal');
-      if (config.dataset && config.verifyMode) args.push('--verify-mode', config.verifyMode);
       if (config.dataset && config.acceptDatasetLicense) args.push('--accept-dataset-license');
       for (const [key, flag] of [
         ['agent', '--agent'],

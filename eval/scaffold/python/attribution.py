@@ -17,6 +17,10 @@ class FailureAttribution:
 
 
 def classify_failure(check: str, events: dict, profile: str | None) -> FailureAttribution:
+    if check.startswith("dataset_reference_access:"):
+        return FailureAttribution(
+            "model", check, "execution Agent attempted to retrieve benchmark reference materials"
+        )
     if check.startswith(("dataset_verifier_error:", "dataset_verifier_unconfirmed:")):
         return FailureAttribution(
             "task",
@@ -28,14 +32,6 @@ def classify_failure(check: str, events: dict, profile: str | None) -> FailureAt
     ):
         return FailureAttribution(
             "harness", check, "dataset preparation or bound evaluation input failed"
-        )
-    if check.startswith("dataset_verify_mode_unavailable:"):
-        return FailureAttribution(
-            "harness", check, "container Runtime mode inspection could not complete"
-        )
-    if check.startswith("dataset_verify_mode:"):
-        return FailureAttribution(
-            "workflow", check, "actual Run verification mode does not match the fixed experiment"
         )
     if check.startswith("dataset_incomplete:"):
         return FailureAttribution(

@@ -200,10 +200,7 @@ export function parseNativeVerifierResponse(
   const input = plainRecord(value, 'Native Verifier response');
   if (input.kind === 'final-result') {
     exactKeys(input, ['kind', 'result'], 'Native Verifier response', inputPath);
-    return {
-      kind: 'final-result',
-      result: parseFinalResult(input.result, `${inputPath}/result`),
-    };
+    return { kind: 'final-result', result: parseFinalResult(input.result, `${inputPath}/result`) };
   }
   if (input.kind === 'request-checks') {
     exactKeys(
@@ -236,83 +233,6 @@ export function normalizeNativeCheckRequestId(request: NativeVerifierCheckReques
     request.argv,
     request.cwdRef.replaceAll('\\', '/'),
   ]);
-}
-
-/** 仅用于 bugfree；显式通过集合必须与失败/阻塞集合完整覆盖当前验收。 */
-export function normalizeNativeBugfreeResponse(
-  value: unknown,
-  acceptanceIds: readonly string[],
-): NativeVerifierResponse {
-  const response = plainRecord(value, 'Native bugfree response');
-  if (response.kind !== 'final-result') return parseNativeVerifierResponse(value);
-  const result = plainRecord(response.result, 'Native bugfree final result');
-  if (result.passedAcceptanceIds === undefined) {
-    const full = parseNativeVerifierResponse(value);
-    if (full.kind === 'final-result') assertNativeBugfreeFinalResult(full.result, acceptanceIds);
-    return full;
-  }
-  exactKeys(response, ['kind', 'result'], 'Native bugfree response');
-  exactKeys(
-    result,
-    [
-      'iteration',
-      'attempt',
-      'verdict',
-      'passedAcceptanceIds',
-      'acceptance',
-      'risks',
-      'summary',
-      ...(Object.hasOwn(result, 'requestReview') ? ['requestReview'] : []),
-    ],
-    'Native bugfree final result',
-  );
-  if (
-    !Array.isArray(result.passedAcceptanceIds) ||
-    result.passedAcceptanceIds.some((id) => typeof id !== 'string' || !id)
-  ) {
-    throw new Error('Native passedAcceptanceIds must be an array of acceptance IDs');
-  }
-  const other = parseNativeVerifierAcceptance(result.acceptance);
-  if (other.some((item) => item.result === 'passed'))
-    throw new Error('Native bugfree cannot mix passed acceptance formats');
-  const ids = [...(result.passedAcceptanceIds as string[]), ...other.map((item) => item.id)];
-  if (
-    new Set(ids).size !== ids.length ||
-    ids.length !== acceptanceIds.length ||
-    ids.some((id) => !acceptanceIds.includes(id))
-  ) {
-    throw new Error('Native bugfree acceptance coverage is incomplete, duplicated or unknown');
-  }
-  const { passedAcceptanceIds, ...full } = result;
-  const normalized = parseNativeVerifierResponse({
-    kind: 'final-result',
-    result: {
-      ...full,
-      acceptance: [
-        ...(passedAcceptanceIds as string[]).map((id) => ({
-          id,
-          result: 'passed',
-          reason: `独立 Verifier 语义审查：${text(result.summary, 'Native bugfree summary')}`,
-        })),
-        ...other,
-      ],
-    },
-  });
-  if (normalized.kind === 'final-result')
-    assertNativeBugfreeFinalResult(normalized.result, acceptanceIds);
-  return normalized;
-}
-
-function assertNativeBugfreeFinalResult(
-  result: NativeVerifierFinalResult,
-  acceptanceIds: readonly string[],
-) {
-  if (result.verdict === 'blocked' && result.acceptance.some((item) => item.result === 'failed'))
-    throw new Error('Native bugfree failed acceptance requires a fail verdict');
-  validateAndScopeNativeVerifierFinalResult(result, {
-    acceptanceIds,
-    requiredChecksPassed: true,
-  });
 }
 
 export function validateNativeTrustedVerifierEnvelope(options: {
