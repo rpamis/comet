@@ -7845,6 +7845,128 @@ it('blocks tracked implementation drift at Archive preflight and offers the orig
   expect(repaired.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'pending' });
 });
 
+it.each(['archive.execute', 'archive.finalize', 'archive.finalize-before-move'] as const)(
+  'recovers a returned but rejected %s through the public Archive command',
+  async (scenario) => {
+    const stepId = scenario === 'archive.finalize-before-move' ? 'archive.finalize' : scenario;
+    const application = nativeApplication();
+    const validatorId =
+      stepId === 'archive.execute'
+        ? 'comet-native-archive-apply-outcome'
+        : 'comet-native-archive-finalize-outcome';
+    application.validators = application.validators.map((validator) =>
+      validator.id !== validatorId
+        ? validator
+        : {
+            ...validator,
+            validate: () => ({ accepted: false, reason: 'Simulated historical outcome rejection' }),
+          },
+    );
+    const f = await awaitingArchiveApplication(
+      'sdk',
+      undefined,
+      false,
+      initializeArchiveGit,
+      application,
+    );
+    let run = f.run;
+    if (stepId === 'archive.finalize') {
+      run = await f.runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId: 'comet-native-archive-apply',
+        context: { requestId: 'apply-before-rejection', projectRoot: f.root },
+      });
+    }
+    const action = run.actions.at(-1)!;
+    const implementation = path.join(f.root, 'implementation.js');
+    const implementationBefore = await fs.readFile(implementation, 'utf8');
+    if (scenario === 'archive.finalize-before-move')
+      await fs.writeFile(implementation, 'throw new Error("unverified before finalize");');
+    await expect(
+      f.runtime.execute({
+        runId: run.runId,
+        actionId: action.id,
+        executorId:
+          stepId === 'archive.execute'
+            ? 'comet-native-archive-apply'
+            : 'comet-native-archive-finalize',
+        context: { requestId: 'historical-rejection', projectRoot: f.root },
+      }),
+    ).rejects.toThrow('OUTCOME_REJECTED');
+    const rejected = await f.runtime.inspect(run.runId);
+    const original = rejected.actions.at(-1)!;
+    expect(original.status).toBe('running');
+    expect(original.rejectedOutcomes).toHaveLength(1);
+    if (scenario === 'archive.finalize-before-move') {
+      expect(original.rejectedOutcomes![0].outcome).toMatchObject({
+        status: 'failed',
+        output: { reason: 'candidate-drift' },
+      });
+      await fs.writeFile(implementation, implementationBefore);
+      expect(await fs.readdir(f.paths.transactionsDir)).toContain(
+        `portable-archive-${run.runId}.json`,
+      );
+    }
+    const specFile = path.join(f.paths.specsDir, 'workflow/spec.md');
+    const specStat = await fs.stat(specFile);
+    expect(
+      execFileSync(
+        'git',
+        ['ls-files', '--others', '--exclude-standard', '--', 'docs/comet/specs/workflow/spec.md'],
+        {
+          cwd: f.root,
+          encoding: 'utf8',
+        },
+      ).trim(),
+    ).toBe('docs/comet/specs/workflow/spec.md');
+    const args = ['archive', run.runId, '--project-root', f.root, '--json'];
+    if (stepId === 'archive.execute') {
+      const implementation = path.join(f.root, 'implementation.js');
+      const before = await fs.readFile(implementation, 'utf8');
+      await fs.writeFile(implementation, 'throw new Error("unverified");');
+      const blocked = await runNativeCli([...args, '--recover']);
+      expect(blocked.exitCode).toBe(73);
+      expect((await f.runtime.inspect(run.runId)).actions.at(-1)!.status).not.toBe('succeeded');
+      expect((await fs.stat(specFile)).mtimeMs).toBe(specStat.mtimeMs);
+      await fs.writeFile(implementation, before);
+    }
+    const recovered =
+      stepId === 'archive.execute'
+        ? await runNativeCli([...args, '--recover'])
+        : (() => {
+            const result = spawnSync(
+              process.execPath,
+              [
+                path.resolve('assets/skills/comet-native/scripts/comet-native-archive.mjs'),
+                run.runId,
+                '--project-root',
+                f.root,
+                '--recover',
+                '--json',
+              ],
+              { encoding: 'utf8', timeout: 30000 },
+            );
+            return { exitCode: result.status, stdout: result.stdout || result.stderr };
+          })();
+    expect(recovered.exitCode, recovered.stdout).toBe(0);
+    const finished = await runNativeCli(args);
+    expect(finished.exitCode, finished.stdout).toBe(0);
+    const current = (await loadOwnedNativeSdkRuntime(f.root, run.runId)).runtime;
+    const completed = await current.inspect(run.runId);
+    expect(completed.status).toBe('completed');
+    expect(completed.actions.find(({ id }) => id === action.id)).toMatchObject({
+      status: 'succeeded',
+      attempt: original.attempt,
+      claim: original.claim,
+      rejectedOutcomes: original.rejectedOutcomes,
+    });
+    expect(completed.actions.filter(({ stepId }) => stepId === 'archive.execute')).toHaveLength(1);
+    expect((await fs.stat(specFile)).mtimeMs).toBe(specStat.mtimeMs);
+    expect((await runNativeCli([...args, '--recover'])).exitCode).toBe(0);
+  },
+);
+
 it('archives a real Git candidate through canonical writes and directory relocation', async () => {
   const {
     root,

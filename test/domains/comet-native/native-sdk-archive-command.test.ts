@@ -13,6 +13,7 @@ const mocked = vi.hoisted(() => ({
   execute: vi.fn(),
   claim: vi.fn(),
   retry: vi.fn(),
+  markUnknown: vi.fn(),
   load: vi.fn(),
 }));
 vi.mock('../../../domains/comet-native/native-runtime-ownership.js', () => ({
@@ -68,6 +69,7 @@ function inspection() {
     revision: 7,
     status: 'active',
     workflow: { id: 'comet-native', version: '1', hash: 'fixture' },
+    input: { name: options.name, artifactRootRef: 'docs' },
     state,
     actions: [archiveAction()],
     waits: [],
@@ -79,12 +81,53 @@ function inspection() {
 beforeEach(() => {
   vi.clearAllMocks();
   mocked.load.mockResolvedValue({
-    runtime: { execute: mocked.execute, claim: mocked.claim, retry: mocked.retry },
+    runtime: {
+      execute: mocked.execute,
+      claim: mocked.claim,
+      retry: mocked.retry,
+      markUnknown: mocked.markUnknown,
+    },
     executors: [{ id: 'archive-executor', supports: () => true }],
   });
 });
 
 describe('Native Archive command stop boundaries', () => {
+  it.each(['absent', 'action', 'attempt', 'input', 'claim', 'executor', 'ref'] as const)(
+    'does not recover a running Archive writer with %s rejection evidence',
+    async (kind) => {
+      const current = inspection();
+      const action = archiveAction('archive.execute', 'native-archive');
+      if (kind === 'ref') action.ref = 'other-tool';
+      action.status = 'running';
+      action.claim = {
+        executorId: kind === 'executor' ? 'another-executor' : 'comet-native-archive-apply',
+        token: 'original-claim',
+      };
+      if (kind !== 'absent')
+        action.rejectedOutcomes = [
+          {
+            code: 'OUTCOME_REJECTED',
+            reason: 'Rejected result',
+            outcome: {
+              actionId: kind === 'action' ? 'other-action' : action.id,
+              attempt: kind === 'attempt' ? action.attempt + 1 : action.attempt,
+              inputHash: kind === 'input' ? 'other-input' : action.inputHash,
+              claimToken: kind === 'claim' ? 'other-claim' : action.claim.token,
+              outcomeId: 'rejected',
+              status: 'succeeded',
+              output: {},
+            },
+          },
+        ];
+      current.run.actions = [action];
+      mocked.inspect.mockResolvedValue(current);
+      const result = await archiveNativeSdkChange({ ...options, recover: true });
+      expect(result.exitCode).toBe(73);
+      expect(mocked.markUnknown).not.toHaveBeenCalled();
+      expect(mocked.execute).not.toHaveBeenCalled();
+    },
+  );
+
   it.each(['approval', 'evidence'] as const)(
     'does not advance accepted-result revalidation past a pending %s boundary',
     async (boundary) => {

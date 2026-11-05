@@ -2,6 +2,48 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "native-archive-rejected-apply-recovery",
+      "sources": ["https://github.com/rpamis/comet/issues/526"],
+      "behavior": "Recover a returned but rejected archive.execute through the public Archive command without replaying applied Specs or accepting candidate drift.",
+      "coverageLevel": "public-cli",
+      "reproduction": "In an isolated Git SDK project, execute the real Spec application and reject its returned outcome to preserve the reported running Action and specs-applied transaction. The 0.5.1 npm Runtime and pre-fix HEAD return exit 73 with no single recoverable Action for archive --recover.",
+      "expected": "Reconcile the original Action, attempt, input and claim against the original transaction, preserve rejection history, and finish Archive after matching candidate inputs are restored.",
+      "forbidden": "Recovering with missing or mismatched rejection evidence, accepting changed implementation inputs, creating a replacement apply Action, or rewriting an already applied Spec.",
+      "rootCause": "The recovery command only converted returned archive.prepare rejections to unknown, while apply and finalize rejections remained running and were excluded from recovery.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^recovers a returned but rejected archive\\.execute through the public Archive command$",
+          "requiredNames": [
+            "recovers a returned but rejected archive.execute through the public Archive command"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-rejected-finalize-recovery",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/526",
+        "https://github.com/rpamis/comet/issues/526#issuecomment-6646478011"
+      ],
+      "behavior": "Recover a returned but rejected archive.finalize with the original durable receipt through the generated Archive command bundle.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Reject the real finalize executor's returned outcome in an isolated SDK Git project. Before the fix and in the 0.5.1 npm Runtime, the running Action is invisible to archive --recover even though the executor has returned.",
+      "expected": "Validate the original Archive receipt and settle the same Action with its original claim and rejection history; repeated recovery returns the same completed Archive.",
+      "forbidden": "Treating a running writer without matching returned outcome evidence as stopped, replaying Spec application, discarding rejected outcomes, or replacing original execution identity.",
+      "rootCause": "Returned finalize rejections were not included in the narrow conversion to unknown used by the public recovery command.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^recovers a returned but rejected archive\\.finalize(-before-move)? through the public Archive command$",
+          "requiredNames": [
+            "recovers a returned but rejected archive.finalize through the public Archive command",
+            "recovers a returned but rejected archive.finalize-before-move through the public Archive command"
+          ]
+        }
+      ]
+    },
+    {
       "id": "native-bugfree-submission-template-routing",
       "sources": ["report:2026-11-04-bugfree-verify-overhead"],
       "behavior": "Keep the Native Skill entry, bugfree reference and claimed Action aligned on receipt-based resultRequest, with legacy outcomeRequest only as fallback.",

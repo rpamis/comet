@@ -12,6 +12,8 @@ import {
   nativeSdkRetryableArchivePreflight,
   nativeSdkRetryableArchiveFinalization,
   nativeSdkArchivePreflightExecutor,
+  nativeSdkArchiveApplyExecutor,
+  nativeSdkArchiveFinalizeExecutor,
   inspectNativeSdkPendingArchiveDrift,
 } from './native-sdk-archive.js';
 import { recoverNativeSdkSupervisorCleanupOutcome } from './native-sdk-supervisor-cleanup.js';
@@ -185,13 +187,28 @@ async function archiveNativeSdkChangeValue(options: {
     );
   }
   if (options.recover) {
-    // 只读预检已有提交拒收记录，证明该次执行已返回；无需终止进程或回退实现。
+    // 内置执行器已返回的拒收结果绑定原 claim；恢复仍须重新核对事务与文件。
+    const archiveExecutors: Record<string, string> = {
+      'archive.prepare': nativeSdkArchivePreflightExecutor.id,
+      'archive.execute': nativeSdkArchiveApplyExecutor.id,
+      'archive.finalize': nativeSdkArchiveFinalizeExecutor.id,
+    };
     const rejected = run.actions.filter(
       (action) =>
-        action.stepId === 'archive.prepare' &&
+        action.type === 'call_tool' &&
         action.status === 'running' &&
-        action.claim?.executorId === nativeSdkArchivePreflightExecutor.id &&
-        action.rejectedOutcomes?.some((entry) => entry.outcome.attempt === action.attempt),
+        NATIVE_SDK_ARCHIVE_STEPS.some(
+          ([stepId, ref]) => action.stepId === stepId && action.ref === ref,
+        ) &&
+        action.claim !== undefined &&
+        action.claim.executorId === archiveExecutors[action.stepId] &&
+        action.rejectedOutcomes?.some(
+          ({ outcome }) =>
+            outcome.actionId === action.id &&
+            outcome.attempt === action.attempt &&
+            outcome.inputHash === action.inputHash &&
+            outcome.claimToken === action.claim!.token,
+        ),
     );
     if (
       rejected.length === 1 &&
@@ -206,7 +223,7 @@ async function archiveNativeSdkChangeValue(options: {
         expectedRevision: run.revision,
         actionId: action.id,
         attempt: action.attempt,
-        reason: '只读归档预检已返回，但结果提交被拒；重新核对原 Action 的当前输入。',
+        reason: '原归档执行已返回，但结果提交被拒；重新核对原 Action、事务和文件。',
       });
       inspection.run = run;
     }

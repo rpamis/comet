@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.5.3] - 2026-11-05
+
+### Fixed
+
+- **Native Archive recovery**: Recover returned but rejected Spec application and finalization outcomes through `native archive --recover`, preserving the original Action and checking its transaction or durable receipt without repeating completed writes. Continue blocking active executions without matching rejection evidence and recovery with changed candidate inputs ([#526](https://github.com/rpamis/comet/issues/526)).
+
 ## What's Changed [0.5.2] - 2026-11-04
 
 ### Added
