@@ -96,7 +96,10 @@ export function resolveWindowsNodeShim(
 ): { command: string; args: string[]; env?: NodeJS.ProcessEnv } | null {
   const target = nodeShimTarget(readFileSync(resolved, 'utf8'));
   if (!target) return null;
-  const entry = path.resolve(path.dirname(resolved), target.target);
+  // dp0 已包含包装器目录及末尾分隔符；追加的分隔符不能变成盘根路径。
+  const relativeTarget = target.target.replace(/^[/\\]+/u, '');
+  if (path.win32.parse(relativeTarget).root) return null;
+  const entry = path.resolve(path.dirname(resolved), relativeTarget);
   if (!existsSync(entry)) throw new Error('Node CLI entry is missing: ' + entry);
   const localNode = path.join(path.dirname(resolved), 'node.exe');
   const env = { ...environment };

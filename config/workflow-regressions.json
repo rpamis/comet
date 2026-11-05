@@ -10692,6 +10692,27 @@
           ]
         }
       ]
+    },
+    {
+      "id": "windows-node-shim-dp0-target",
+      "sources": ["https://github.com/rpamis/comet/pull/539#discussion_r4482672088"],
+      "behavior": "Resolve Node wrapper dp0 separators inside the wrapper directory instead of the current drive root.",
+      "coverageLevel": "unit",
+      "reproduction": "At b6419979, the same wrapper test with a backslash, slash or doubled backslash throws Node CLI entry is missing: C:\\probe.cjs even though the script exists beside its wrapper.",
+      "expected": "All three separator spellings select the script beside the wrapper. A drive-qualified target appended after dp0 is not accepted as a literal wrapper.",
+      "forbidden": "Read or execute a same-named drive-root script, or reinterpret a malformed drive-qualified target as a valid absolute script.",
+      "rootCause": "The captured suffix retained its leading separator, which path.resolve interpreted as a drive-root path instead of the suffix appended to dp0.",
+      "tests": [
+        {
+          "file": "test/platform/process/spawn-command.test.ts",
+          "namePattern": "^(?:spawnCommand on Windows keeps the script inside its wrapper directory with a \"\\\\\\\\\" dp0 separator|spawnCommand on Windows keeps the script inside its wrapper directory with a \"/\" dp0 separator|spawnCommand on Windows keeps the script inside its wrapper directory with a \"\\\\\\\\\\\\\\\\\" dp0 separator)$",
+          "requiredNames": [
+            "spawnCommand on Windows keeps the script inside its wrapper directory with a \"\\\\\" dp0 separator",
+            "spawnCommand on Windows keeps the script inside its wrapper directory with a \"/\" dp0 separator",
+            "spawnCommand on Windows keeps the script inside its wrapper directory with a \"\\\\\\\\\" dp0 separator"
+          ]
+        }
+      ]
     }
   ]
 }

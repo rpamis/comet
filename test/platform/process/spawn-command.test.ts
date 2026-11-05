@@ -48,6 +48,20 @@ describe('spawnCommand on Windows', () => {
     expect(() => resolveWindowsNodeShim(shim, args, env)).toThrow('Node CLI entry is missing');
   });
 
+  it.each(['\\', '/', '\\\\'])(
+    'keeps the script inside its wrapper directory with a %j dp0 separator',
+    async (separator) => {
+      root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-node-shim-separator-'));
+      const shim = path.join(root, 'probe.cmd');
+      const entry = path.join(root, 'probe.cjs');
+      await fs.writeFile(entry, 'process.stdout.write("wrapper-local-script")');
+      await fs.writeFile(shim, `@"C:\\nodejs\\node.exe" "%~dp0${separator}probe.cjs" %*\r\n`);
+      expect(resolveWindowsNodeShim(shim, [], {})?.args).toEqual([entry]);
+      await fs.writeFile(shim, '@"C:\\nodejs\\node.exe" "%~dp0C:\\probe.cjs" %*\r\n');
+      expect(resolveWindowsNodeShim(shim, [], {})).toBeNull();
+    },
+  );
+
   it.runIf(process.platform === 'win32')(
     'launches a literal Node command shim directly without a PowerShell startup',
     async () => {
@@ -69,6 +83,17 @@ describe('spawnCommand on Windows', () => {
       });
       expect((await once(child, 'close'))[0]).toBe(0);
       expect(JSON.parse(output)).toEqual(args);
+      for (const separator of ['\\', '/']) {
+        await fs.writeFile(shim, `@"${process.execPath}" "%~dp0${separator}probe.cjs" %*\r\n`);
+        expect(commandInvocation(shim, args, { cwd: root }).args).toEqual([entry, ...args]);
+        const separated = spawnCommand(shim, args, { cwd: root });
+        let separatedOutput = '';
+        separated.stdout.on('data', (chunk) => {
+          separatedOutput += chunk;
+        });
+        expect((await once(separated, 'close'))[0]).toBe(0);
+        expect(JSON.parse(separatedOutput)).toEqual(args);
+      }
       expect(() => commandInvocation(shim, ['& whoami'], { cwd: root! })).toThrow('shell syntax');
       await fs.writeFile(shim, source + 'echo additional-command\r\n');
       expect(commandInvocation(shim, args, { cwd: root }).command).not.toBe(process.execPath);

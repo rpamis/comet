@@ -193,6 +193,8 @@ jobs:
         run: >-
           pnpm exec vitest run
           test/platform/process/process-identity.test.ts
+          test/platform/process/spawn-command.test.ts
+          test/platform/process/node-cli-command.test.ts
           test/platform/process/owned-command-termination.test.ts
           test/domains/comet-native/native-check-registration.test.ts
           test/domains/comet-native/native-check-executor.test.ts
