@@ -60,6 +60,150 @@ async function fixture(workflow: 'native' | 'classic' = 'native') {
   return { scope, request };
 }
 describe('bound edit reviews', () => {
+  it.each(['native', 'classic'] as const)(
+    'preserves completed non-behavioral edges across successive observed edits (%s)',
+    async (workflow) => {
+      const f = await fixture(workflow);
+      const scope = { ...f.scope, judgment: 'agent' as const };
+      const digest = (text: string) => createHash('sha256').update(text).digest('hex');
+      const versions = ['value = 1\n', '# First\nvalue = 1\n', '# Second\nvalue = 1\n'];
+      const authority = { kind: 'runtime-agent' as const, executionRef: 'current-agent' };
+      for (let round = 1; round < versions.length; round++) {
+        await fs.writeFile(path.join(scope.projectRoot, 'worker.py'), versions[round]);
+        await supersedeStaleAppliedEditReviews(scope);
+        const proposal = await prepareObservedEditReview(scope, [
+          {
+            path: 'worker.py',
+            beforeHash: digest(versions[round - 1]),
+            afterHash: digest(versions[round]),
+          },
+        ]);
+        await recordEditReview(
+          scope,
+          {
+            proposalHash: proposal.proposalHash,
+            decision: 'non-behavioral',
+            summary: 'The explanation preserves the value.',
+            retainedCheckActionIds: ['B'],
+          },
+          authority,
+        );
+      }
+      const changes = [
+        { path: 'worker.py', beforeHash: digest(versions[0]), afterHash: digest(versions[2]) },
+      ];
+      expect(
+        (await inspectEditReviews(scope)).filter(
+          (review) => review.receipt?.decision === 'non-behavioral',
+        ),
+      ).toHaveLength(2);
+      await expect(assertEditReviewsComplete(scope)).resolves.toBeUndefined();
+      expect(await areObservedEditsNonBehavioral([scope], changes)).toBe(true);
+      expect(await isCheckInputRetained(scope, 'B', changes)).toBe(true);
+      expect(await isCheckInputRetained({ ...scope, change: 'other' }, 'B', changes)).toBe(false);
+      await fs.writeFile(path.join(scope.projectRoot, 'worker.py'), 'value = 2\n');
+      const unreviewed = [{ ...changes[0], afterHash: digest('value = 2\n') }];
+      expect(await areObservedEditsNonBehavioral([scope], unreviewed)).toBe(false);
+      expect(await isCheckInputRetained(scope, 'B', unreviewed)).toBe(false);
+    },
+  );
+
+  it('connects approved raw and Git identities across successive observed edits without covering new bytes', async () => {
+    const f = await fixture();
+    const scope = { ...f.scope, judgment: 'agent' as const };
+    const raw = (text: string) => createHash('sha256').update(text).digest('hex');
+    const blob = (text: string) =>
+      `git:${createHash('sha1')
+        .update(`blob ${Buffer.byteLength(text)}\0`)
+        .update(text)
+        .digest('hex')}`;
+    const versions = ['value = 1\n', '# One\nvalue = 1\n', '# Two\nvalue = 1\n'];
+    for (let round = 1; round < versions.length; round++) {
+      await fs.writeFile(path.join(scope.projectRoot, 'worker.py'), versions[round]);
+      await supersedeStaleAppliedEditReviews(scope);
+      const proposal = await prepareObservedEditReview(scope, [
+        {
+          path: 'worker.py',
+          beforeHash: round === 1 ? blob(versions[0]) : raw(versions[1]),
+          afterHash: raw(versions[round]),
+        },
+      ]);
+      await recordEditReview(
+        scope,
+        {
+          proposalHash: proposal.proposalHash,
+          decision: 'non-behavioral',
+          summary: 'Only the explanation changes.',
+          retainedCheckActionIds: ['B'],
+        },
+        { kind: 'runtime-agent', executionRef: 'current-agent' },
+      );
+    }
+    const changes = [
+      { path: 'worker.py', beforeHash: blob(versions[0]), afterHash: raw(versions[2]) },
+    ];
+    expect(await isCheckInputRetained(scope, 'B', changes)).toBe(true);
+    expect(await areObservedEditsNonBehavioral([scope], changes)).toBe(true);
+    expect(
+      await isCheckInputRetained(scope, 'B', [{ ...changes[0], beforeHash: raw('unknown') }]),
+    ).toBe(false);
+    expect(
+      await isCheckInputRetained(scope, 'B', [{ ...changes[0], afterHash: raw('value = 2\n') }]),
+    ).toBe(false);
+    expect(
+      await isCheckInputRetained(scope, 'B', [
+        { ...changes[0], beforeMode: '100644', afterMode: '100755' },
+      ]),
+    ).toBe(false);
+    expect(await isCheckInputRetained({ ...scope, change: 'other' }, 'B', changes)).toBe(false);
+  });
+
+  it('supplements retained checks on the same judged bytes without changing the original decision or losing its receipt', async () => {
+    const f = await fixture();
+    const scope = { ...f.scope, judgment: 'agent' as const };
+    const after = '# Explanation\nvalue = 1\n';
+    await fs.writeFile(path.join(scope.projectRoot, 'worker.py'), after);
+    const changes = [
+      {
+        path: 'worker.py',
+        beforeHash: createHash('sha256').update('value = 1\n').digest('hex'),
+        afterHash: createHash('sha256').update(after).digest('hex'),
+      },
+    ];
+    const proposal = await prepareObservedEditReview(scope, changes);
+    const authority = { kind: 'runtime-agent' as const, executionRef: 'current-agent' };
+    const input = {
+      proposalHash: proposal.proposalHash,
+      decision: 'non-behavioral' as const,
+      summary: 'The explanation preserves the value.',
+      retainedCheckActionIds: ['A'],
+    };
+    const original = await recordEditReview(scope, input, authority);
+    const next = { ...input, retainedCheckActionIds: ['A', 'B'] };
+    const receipt = await recordEditReview(scope, next, authority);
+    expect(receipt.previousReceiptHash).toMatch(/^[a-f0-9]{64}$/);
+    const files = await fs.readdir(path.join(scope.runtimeRoot, 'edit-reviews'), {
+      recursive: true,
+    });
+    const history = files.find((file) => file.endsWith('.review-history.json'))!;
+    expect(
+      JSON.parse(await fs.readFile(path.join(scope.runtimeRoot, 'edit-reviews', history), 'utf8')),
+    ).toEqual(original);
+    expect(await isCheckInputRetained(scope, 'A', changes)).toBe(true);
+    expect(await isCheckInputRetained(scope, 'B', changes)).toBe(true);
+    expect(await recordEditReview(scope, next, authority)).toEqual(receipt);
+    await expect(
+      recordEditReview(scope, { ...next, decision: 'implementation-changed' }, authority),
+    ).rejects.toThrow('已有判断');
+    await expect(
+      recordEditReview(scope, next, { ...authority, executionRef: 'other-agent' }),
+    ).rejects.toThrow('已有判断');
+    await expect(recordEditReview(scope, input, authority)).rejects.toThrow('已有判断');
+    await fs.writeFile(path.join(scope.projectRoot, 'worker.py'), 'value = 2\n');
+    await expect(
+      recordEditReview(scope, { ...next, retainedCheckActionIds: ['A', 'B', 'C'] }, authority),
+    ).rejects.toThrow('不匹配');
+  });
   it('allows an applied current-Agent implementation decision only for revision and never treats it as equivalent accepted content', async () => {
     const f = await fixture();
     const scope = { ...f.scope, judgment: 'agent' as const };

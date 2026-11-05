@@ -10091,7 +10091,41 @@
             "holds an unclassified material write mixed with documents in Verify"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "Vitest reports the enclosing suite in each complete test name; preserve the original registration and assertions while selecting their existing complete identities.",
+        "authorization": "https://github.com/rpamis/comet/pull/539",
+        "record": "docs/research/2026-11-05-pr539-regression-selectors.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-hook-guard.test.ts",
+            "namePattern": "^(?:Native phase Hook guard preserves a Verify candidate for resource messages and holds unclassified mixed writes|Native phase Hook guard holds an unclassified material write mixed with documents in Verify)$",
+            "requiredNames": [
+              "Native phase Hook guard preserves a Verify candidate for resource messages and holds unclassified mixed writes",
+              "Native phase Hook guard holds an unclassified material write mixed with documents in Verify"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/pr539-regression-selector-migration/registry-before.json",
+            "sha256": "8d567fb4216a827739ef65ba2e681a92db176b7519a85084e60f9c97137812ce"
+          },
+          "tests": {
+            "file": "docs/research/pr539-regression-selector-migration/test-snapshots.json",
+            "sha256": "14bad7461fb2dfb7dd6137c4f3994686cce8dd3224112f66dddea87558b87f92"
+          },
+          "mapping": {
+            "file": "docs/research/pr539-regression-selector-migration/case-migrations.json",
+            "sha256": "994cdf369ed1fbc6772519ecd9800f601eb1fb3cfb0ac9e04aa165f4e14dc505"
+          },
+          "patch": {
+            "file": "docs/research/pr539-regression-selector-migration/selector-correction.patch",
+            "sha256": "3089040ad21529c87c64ef3961beb3955c1a017d689d84ec6a32d5d0ba04c760"
+          }
+        }
+      }
     },
     {
       "id": "native-ci539-executed-input-binding",
@@ -10118,7 +10152,48 @@
             "keeps completed check results but rejects unjudged source writes during the check"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "Vitest reports the enclosing suite in each complete test name; preserve the original registration and assertions while selecting their existing complete identities.",
+        "authorization": "https://github.com/rpamis/comet/pull/539",
+        "record": "docs/research/2026-11-05-pr539-regression-selectors.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+            "namePattern": "^(?:Native SDK verification input binding rejects source-changing checks and recovers to Build only after the repair approval|Native SDK verification input binding rejects checks whose initially incomplete generated inputs disappear during execution)$",
+            "requiredNames": [
+              "Native SDK verification input binding rejects source-changing checks and recovers to Build only after the repair approval",
+              "Native SDK verification input binding rejects checks whose initially incomplete generated inputs disappear during execution"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+            "namePattern": "^(?:Native SDK verification input binding keeps completed check results but rejects unjudged source writes during the check)$",
+            "requiredNames": [
+              "Native SDK verification input binding keeps completed check results but rejects unjudged source writes during the check"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/pr539-regression-selector-migration/registry-before.json",
+            "sha256": "8d567fb4216a827739ef65ba2e681a92db176b7519a85084e60f9c97137812ce"
+          },
+          "tests": {
+            "file": "docs/research/pr539-regression-selector-migration/test-snapshots.json",
+            "sha256": "14bad7461fb2dfb7dd6137c4f3994686cce8dd3224112f66dddea87558b87f92"
+          },
+          "mapping": {
+            "file": "docs/research/pr539-regression-selector-migration/case-migrations.json",
+            "sha256": "994cdf369ed1fbc6772519ecd9800f601eb1fb3cfb0ac9e04aa165f4e14dc505"
+          },
+          "patch": {
+            "file": "docs/research/pr539-regression-selector-migration/selector-correction.patch",
+            "sha256": "3089040ad21529c87c64ef3961beb3955c1a017d689d84ec6a32d5d0ba04c760"
+          }
+        }
+      }
     },
     {
       "id": "native-ci539-readonly-revision-recovery",
@@ -10157,7 +10232,40 @@
             "keeps later user edits and supersedes stale pending and completed applied reviews"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "Vitest reports the enclosing suite in each complete test name; preserve the original registration and assertions while selecting their existing complete identities.",
+        "authorization": "https://github.com/rpamis/comet/pull/539",
+        "record": "docs/research/2026-11-05-pr539-regression-selectors.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+            "namePattern": "^(?:Native Shape incremental contract keeps later user edits and supersedes stale pending and completed applied reviews)$",
+            "requiredNames": [
+              "Native Shape incremental contract keeps later user edits and supersedes stale pending and completed applied reviews"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/pr539-regression-selector-migration/registry-before.json",
+            "sha256": "8d567fb4216a827739ef65ba2e681a92db176b7519a85084e60f9c97137812ce"
+          },
+          "tests": {
+            "file": "docs/research/pr539-regression-selector-migration/test-snapshots.json",
+            "sha256": "14bad7461fb2dfb7dd6137c4f3994686cce8dd3224112f66dddea87558b87f92"
+          },
+          "mapping": {
+            "file": "docs/research/pr539-regression-selector-migration/case-migrations.json",
+            "sha256": "994cdf369ed1fbc6772519ecd9800f601eb1fb3cfb0ac9e04aa165f4e14dc505"
+          },
+          "patch": {
+            "file": "docs/research/pr539-regression-selector-migration/selector-correction.patch",
+            "sha256": "3089040ad21529c87c64ef3961beb3955c1a017d689d84ec6a32d5d0ba04c760"
+          }
+        }
+      }
     },
     {
       "id": "classic-ci539-interrupted-check-plan",
@@ -10177,7 +10285,41 @@
             "does not rerun an interrupted check with a corrupted SDK Action binding"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "Vitest reports the enclosing suite in each complete test name; preserve the original registration and assertions while selecting their existing complete identities.",
+        "authorization": "https://github.com/rpamis/comet/pull/539",
+        "record": "docs/research/2026-11-05-pr539-regression-selectors.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+            "namePattern": "^(?:Classic executed check evidence preserves and reruns an interrupted check instead of inferring another build|Classic executed check evidence does not rerun an interrupted check with a corrupted SDK Action binding)$",
+            "requiredNames": [
+              "Classic executed check evidence preserves and reruns an interrupted check instead of inferring another build",
+              "Classic executed check evidence does not rerun an interrupted check with a corrupted SDK Action binding"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/pr539-regression-selector-migration/registry-before.json",
+            "sha256": "8d567fb4216a827739ef65ba2e681a92db176b7519a85084e60f9c97137812ce"
+          },
+          "tests": {
+            "file": "docs/research/pr539-regression-selector-migration/test-snapshots.json",
+            "sha256": "14bad7461fb2dfb7dd6137c4f3994686cce8dd3224112f66dddea87558b87f92"
+          },
+          "mapping": {
+            "file": "docs/research/pr539-regression-selector-migration/case-migrations.json",
+            "sha256": "994cdf369ed1fbc6772519ecd9800f601eb1fb3cfb0ac9e04aa165f4e14dc505"
+          },
+          "patch": {
+            "file": "docs/research/pr539-regression-selector-migration/selector-correction.patch",
+            "sha256": "3089040ad21529c87c64ef3961beb3955c1a017d689d84ec6a32d5d0ba04c760"
+          }
+        }
+      }
     },
     {
       "id": "native-ci539-lost-overlay-verifier-result",
@@ -10194,7 +10336,40 @@
           "namePattern": "^(?:keeps the dispatched identity when the machine overlay is lost)$",
           "requiredNames": ["keeps the dispatched identity when the machine overlay is lost"]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "Vitest reports the enclosing suite in each complete test name; preserve the original registration and assertions while selecting their existing complete identities.",
+        "authorization": "https://github.com/rpamis/comet/pull/539",
+        "record": "docs/research/2026-11-05-pr539-regression-selectors.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-verifier-start.test.ts",
+            "namePattern": "^(?:Native Verifier startup receipts keeps the dispatched identity when the machine overlay is lost)$",
+            "requiredNames": [
+              "Native Verifier startup receipts keeps the dispatched identity when the machine overlay is lost"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/pr539-regression-selector-migration/registry-before.json",
+            "sha256": "8d567fb4216a827739ef65ba2e681a92db176b7519a85084e60f9c97137812ce"
+          },
+          "tests": {
+            "file": "docs/research/pr539-regression-selector-migration/test-snapshots.json",
+            "sha256": "14bad7461fb2dfb7dd6137c4f3994686cce8dd3224112f66dddea87558b87f92"
+          },
+          "mapping": {
+            "file": "docs/research/pr539-regression-selector-migration/case-migrations.json",
+            "sha256": "994cdf369ed1fbc6772519ecd9800f601eb1fb3cfb0ac9e04aa165f4e14dc505"
+          },
+          "patch": {
+            "file": "docs/research/pr539-regression-selector-migration/selector-correction.patch",
+            "sha256": "3089040ad21529c87c64ef3961beb3955c1a017d689d84ec6a32d5d0ba04c760"
+          }
+        }
+      }
     },
     {
       "id": "native-portable-explicit-interrupted-check-retry",

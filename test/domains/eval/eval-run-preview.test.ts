@@ -39,6 +39,8 @@ describe('Eval preview', () => {
     expect(() =>
       normalizeEvalRunConfig(project, { target: 'skill', datasetTreatment: 'goal' }),
     ).toThrow(/数据集/);
+  });
+  it('keeps explicit dataset budgets and rejects unlimited ordinary evaluations', () => {
     expect(
       normalizeEvalRunConfig(project, { dataset: 'skillsbench', timeoutSeconds: 0 }).timeoutSeconds,
     ).toBe(0);

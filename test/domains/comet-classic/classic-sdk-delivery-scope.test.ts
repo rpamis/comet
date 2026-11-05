@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, expect, it, onTestFailed, vi } from 'vitest';
 import { parse, stringify } from 'yaml';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { assertClassicSdkDeliveryInputs } from '../../../domains/comet-classic/classic-sdk-delivery-inputs.js';
@@ -414,7 +414,13 @@ it('requires an exact user decision for specification outputs after interrupted 
 });
 
 it('recovers Archive interrupted after moving without replay or accepting changed artifacts', async () => {
+  const started = performance.now();
+  const progress = ['preparing interrupted Archive'];
+  const mark = (step: string) =>
+    progress.push(`${Math.round(performance.now() - started)}ms: ${step}`);
+  onTestFailed(() => console.error('Archive recovery progress:', progress));
   const f = await hotfix({ interruptArchive: true });
+  mark('prepared; checking changed-artifact rejection');
   const proposal = `${f.archiveRef}/proposal.md`;
   const original = await fs.readFile(path.join(f.projectRoot, proposal), 'utf8');
   const before = (await f.inspect()).run;
@@ -422,16 +428,20 @@ it('recovers Archive interrupted after moving without replay or accepting change
   expect((await f.invoke('archive', 'example', '--recover')).exitCode).not.toBe(0);
   expect((await f.inspect()).run).toEqual(before);
   await f.put(proposal, original);
+  mark('rejected changed artifacts; building public recovery command');
   const runtime = await publicStateRuntime(f.root, 'archive');
+  mark('built public recovery command; recovering in child process');
   const restored = spawnSync(process.execPath, [runtime, 'example', '--recover', '--json'], {
     cwd: f.projectRoot,
     encoding: 'utf8',
   });
   expect(restored.status, restored.stdout || restored.stderr).toBe(0);
+  mark('recovered in child process; checking idempotency');
   const recovered = (await f.inspect()).run;
   await f.cli('archive', 'example', '--recover');
   expect((await f.inspect()).run).toEqual(recovered);
   expect(await f.openSpec.invocations()).toHaveLength(1);
+  mark('confirmed one OpenSpec invocation; committing and verifying delivery');
   f.commitImplementation();
   const commit = f.commitArchive();
   expect(

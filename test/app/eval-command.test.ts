@@ -109,6 +109,33 @@ function expectUvRun(args: string[], cwd = evalCwd): string {
 }
 
 describe('eval command', () => {
+  it.each([
+    { manifest: 'eval.yaml' },
+    { skillPath: 'skill' },
+    { quick: true },
+    { profile: 'native' },
+    { suite: 'remote' },
+  ])('rejects mixed dataset targets before preparing or launching: %j', async (options) => {
+    const { evalCommand } = await import('../../app/commands/eval.js');
+    await expect(evalCommand(undefined, { ...options, dataset: 'skillsbench' })).rejects.toThrow(
+      '不能混入',
+    );
+    expect(execFileSync).not.toHaveBeenCalled();
+    expect(prepareEvalManifest).not.toHaveBeenCalled();
+    expect(loadUserEvalEnvironment).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ dataset: 'skillsbench', fetchDataset: true, collect: true }, '--collect'],
+    [{ dataset: 'workbuddy-code', fetchDataset: true }, '--accept-dataset-license'],
+    [{ dataset: 'unknown', fetchDataset: true }, '未知内置数据集'],
+    [{ dataset: 'skillsbench', fetchDataset: true }, '--dataset-root'],
+  ])('rejects invalid dataset downloads before starting a process: %j', async (options, error) => {
+    const { evalCommand } = await import('../../app/commands/eval.js');
+    await expect(evalCommand(undefined, options)).rejects.toThrow(error);
+    expect(execFileSync).not.toHaveBeenCalled();
+    expect(loadUserEvalEnvironment).not.toHaveBeenCalled();
+  });
   it('downloads through a standalone standard-library script without installing the Eval environment', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {

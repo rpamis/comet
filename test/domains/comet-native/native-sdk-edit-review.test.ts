@@ -21,7 +21,16 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
-it('judges a generic edit in the current session without claiming the formal Native Verifier', async () => {
+it.each([
+  [
+    'reviews a generic edit in an independent session without claiming the formal Native Verifier',
+    'independent-reviewer',
+  ],
+  [
+    'judges a generic edit in the current session without claiming the formal Native Verifier',
+    'builder',
+  ],
+])('%s', async (_title, reviewSession) => {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'native-sdk-edit-review-'));
   roots.push(base);
   const root = path.join(base, 'project'),
@@ -120,7 +129,7 @@ it('judges a generic edit in the current session without claiming the formal Nat
     projectRoot: root,
     name: 'demo',
     operation: 'observe',
-    sessionId: 'builder',
+    sessionId: reviewSession,
   })) as { recordTemplate: Record<string, unknown> };
   const file = path.join(base, 'edit.json');
   await fs.writeFile(
