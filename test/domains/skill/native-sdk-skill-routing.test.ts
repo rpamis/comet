@@ -137,3 +137,24 @@ describe('Chinese Native SDK Skill route', () => {
     expect(commands).toContain('--continue-builder');
   });
 });
+
+it.each(['skills', 'skills-zh'])(
+  'keeps optional review and learning out of ordinary Native completion in %s',
+  async (root) => {
+    const skill = await fs.readFile(path.resolve('assets', root, 'comet-native/SKILL.md'), 'utf8');
+    const commands = await fs.readFile(
+      path.resolve('assets', root, 'comet-native/reference/commands.md'),
+      'utf8',
+    );
+    expect(skill).toContain('sessionRequirements.independent');
+    expect(commands).toContain('sessionRequirements.independent');
+    expect(skill).toContain(root === 'skills' ? 'only when the user requests' : '仅在用户要求');
+    expect(commands).toContain(root === 'skills' ? 'asynchronous maintenance' : '异步维护');
+    expect(commands).not.toContain(
+      root === 'skills'
+        ? 'Before every task ends, complete one learning check'
+        : '每次任务结束前必须完成一次学习检查',
+    );
+    expect(commands).toContain('not-run');
+  },
+);

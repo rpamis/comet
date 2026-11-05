@@ -1,5 +1,6 @@
 import { withGitWorktreeReadScope } from '../../platform/paths/git-worktree.js';
 import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
+import { nativeSdkArchivedReportWarning } from './native-sdk-report.js';
 import { inspectNativeSdkRunDiagnostics } from './native-sdk-diagnostics.js';
 import {
   inspectNativeSdkCheckExecutions,
@@ -67,7 +68,7 @@ async function projectNativeSdkStatusOnce(
     (await inspectNativeSdkCheckExecutions({
       projectRoot: options.projectRoot,
       run,
-      includeSettled: true,
+      includeSettled: run.workflow.version !== '3' || options.details === true,
     }));
   const cancellation = await inspectNativeSdkCancellation({
     projectRoot: options.projectRoot,
@@ -110,6 +111,7 @@ async function projectNativeSdkStatusOnce(
           state,
         )
       : [];
+  const reportWarning = await nativeSdkArchivedReportWarning(options.projectRoot, run);
   return {
     schema: 'comet.native.sdk-status.v1' as const,
     diagnostics: await inspectNativeSdkRunDiagnostics(options.projectRoot, run, {
@@ -122,6 +124,7 @@ async function projectNativeSdkStatusOnce(
     name: options.name,
     ...(editReviews.length ? { editReviews } : {}),
     ...(preservedReports.length ? { preservedReports } : {}),
+    ...(reportWarning ? { warning: reportWarning } : {}),
     language: state.language,
     phase: state.phase,
     status: cancellation?.status ?? state.status,

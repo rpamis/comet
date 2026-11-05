@@ -70,6 +70,7 @@ import {
   nativeSdkReportRevalidationExecutor,
   nativeSdkReportRevalidationValidator,
   nativeSdkReportValidator,
+  nativeSdkVerificationReportMetadata,
 } from './native-sdk-report.js';
 import {
   currentNativeSdkSupervisorPlan,
@@ -166,7 +167,9 @@ import { nativeSdkFailedChildVerifierActivation } from './native-sdk-supervisor-
 /** 已有 Run 只加载完全匹配的已知定义；升级由显式 doctor 修复完成。 */
 export function nativeSdkApplicationForRun(
   run: Pick<WorkflowRun, 'workflow'> | null,
-  application = defineNativeWorkflowApplication(),
+  application = defineNativeWorkflowApplication(
+    run?.workflow.version === '3' ? '3' : run?.workflow.version === '2' ? '2' : '1',
+  ),
 ) {
   // 当前定义精确匹配时无需构造历史变体；未知 hash 仍交给 Runtime 拒绝。
   if (run && nativeSdkMatchesRun(application.workflow, run)) return application;
@@ -503,6 +506,13 @@ function builderCandidateState(
   const output = outcome.output as Record<string, unknown> | null;
   const sessionId = action.claim?.sessionId;
   if (
+    run.workflow.version === '3' &&
+    output?.requireIndependentReview !== undefined &&
+    typeof output.requireIndependentReview !== 'boolean'
+  ) {
+    throw new Error('requireIndependentReview must be a boolean');
+  }
+  if (
     state.phase !== 'build' ||
     !['build.builder', 'supervisor.parent.builder'].includes(action.stepId) ||
     action.type !== 'handoff' ||
@@ -554,6 +564,7 @@ function builderCandidateState(
   });
   return submitNativeBuilderCandidate({
     state,
+    requireAcceptanceReview: run.workflow.version !== '3',
     input: {
       identity,
       summary: output.summary,
@@ -599,7 +610,8 @@ function verifierResultState(
     outcome.status !== 'succeeded' ||
     !candidate ||
     !sessionId ||
-    sessionId === candidate.builder_execution_ref ||
+    (nativeSdkRequiresIndependentReview(run, action) &&
+      sessionId === candidate.builder_execution_ref) ||
     !output ||
     output.candidateId !== candidate.candidate_id ||
     output.verifierExecutionRef !== sessionId
@@ -717,6 +729,7 @@ function verifierResultState(
   });
   const applied = applyNativeVerifierEnvelope({
     state,
+    requireIndependentSession: run.workflow.version === '1',
     envelope: channel.envelopeVerifierResponse({
       candidateId: candidate.candidate_id,
       identity,
@@ -869,6 +882,31 @@ const builderValidator: RuntimeValidator = {
         return { accepted: false, reason: drift.reason ?? 'Native acceptance changed' };
       }
       const output = outcome.output as Record<string, unknown> | null;
+      if (
+        run.workflow.version === '3' &&
+        output?.requireIndependentReview !== undefined &&
+        typeof output.requireIndependentReview !== 'boolean'
+      )
+        throw new Error('requireIndependentReview must be a boolean');
+      if (
+        run.workflow.version === '3' &&
+        (output?.response as { kind?: string })?.kind === 'request-checks'
+      ) {
+        if (
+          state.phase !== 'build' ||
+          state.status !== 'active' ||
+          state.children_contract_hash ||
+          !action.claim?.sessionId
+        )
+          throw new Error('Build checks require the current claimed Builder');
+        const plans = nativeSdkCheckPlans({
+          verificationChecks: (output!.response as { checks: unknown }).checks,
+        });
+        if (!plans.length || plans.some((plan) => !plan.repeatable))
+          throw new Error('Build checks require a nonempty repeatable plan');
+        preflightNativeCheckPlans(context.projectRoot, plans);
+        return { accepted: true };
+      }
       const errors: string[] = [];
       if (output && typeof output === 'object') {
         if (Array.isArray(output.acceptanceReview))
@@ -906,7 +944,11 @@ const builderValidator: RuntimeValidator = {
           });
       }
       try {
-        nativeSdkCheckPlans(outcome.output);
+        const plans = nativeSdkCheckPlans(outcome.output);
+        if (run.workflow.version !== '1' && plans.some((plan) => !plan.repeatable))
+          errors.push(
+            'Verify requires repeatable checks. Move one-time operations to authorized delivery.',
+          );
       } catch (error) {
         errors.push((error as Error).message);
       }
@@ -1030,6 +1072,17 @@ const verifierValidator: RuntimeValidator = {
       const requested =
         (outcome.output as { response?: { kind?: unknown } } | null)?.response?.kind ===
         'request-checks';
+      if (requested && run.workflow.version !== '1') {
+        const response = (outcome.output as { response: { checks: unknown } }).response;
+        if (
+          nativeSdkCheckPlans({ verificationChecks: response.checks }).some(
+            (plan) => !plan.repeatable,
+          )
+        )
+          throw new Error(
+            'Verify requires repeatable checks. Move one-time operations to authorized delivery.',
+          );
+      }
       if (requested)
         await assertNativeSdkCandidateUnchanged({ run, projectRoot: context.projectRoot });
       const passing =
@@ -1069,11 +1122,13 @@ const nativeStateValidator: RuntimeStateValidator = {
   },
 };
 
-export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
+export function defineNativeWorkflowApplication(
+  version: '1' | '2' | '3' = '1',
+): NativeWorkflowApplication {
   return {
     workflow: {
       id: 'comet-native',
-      version: '1',
+      version,
       entry: 'shape.prepare',
       commands: {
         'refresh-checks': {
@@ -1304,6 +1359,18 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             version: nativeSdkSupervisorCleanupValidator.version,
           },
         },
+        ...(version === '3'
+          ? {
+              'build.checks': {
+                type: 'call_tool' as const,
+                ref: 'native-build-checks',
+                validator: {
+                  id: nativeSdkCheckValidator.id,
+                  version: nativeSdkCheckValidator.version,
+                },
+              },
+            }
+          : {}),
         'verify.checks': {
           type: 'call_tool',
           ref: 'native-required-checks',
@@ -1334,14 +1401,21 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
           ref: 'native-verifier-requested-checks',
           validator: { id: nativeSdkCheckValidator.id, version: nativeSdkCheckValidator.version },
         },
-        'verify.report': {
-          type: 'call_tool',
-          ref: 'native-verification-report',
-          validator: { id: nativeSdkReportValidator.id, version: nativeSdkReportValidator.version },
-        },
+        ...(version === '3'
+          ? {}
+          : {
+              'verify.report': {
+                type: 'call_tool' as const,
+                ref: 'native-verification-report',
+                validator: {
+                  id: nativeSdkReportValidator.id,
+                  version: nativeSdkReportValidator.version,
+                },
+              },
+            }),
         'verify.confirm': {
           type: 'ask_user',
-          proposalFrom: 'verify.report',
+          proposalFrom: version === '3' ? 'verify.verifier' : 'verify.report',
           choices: ['approved', 'rejected', 'reverify'],
         },
         'verify.revalidate': {
@@ -1379,6 +1453,13 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         },
       },
       transitions: [
+        ...(version === '3'
+          ? [
+              { from: 'build.builder', to: 'build.checks' },
+              { from: 'build.checks', to: 'build.builder' },
+              { from: 'build.checks', to: 'build.builder', on: 'failed' },
+            ]
+          : []),
         { from: 'repair.implementation', to: 'archive.prepare' },
         { from: 'repair.implementation', to: 'archive.execute' },
         { from: 'repair.implementation', to: 'shape.prepare' },
@@ -1457,7 +1538,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         { from: 'verify.checks', to: 'verify.checks-stop', on: 'failed' },
         { from: 'verify.checks-stop', to: 'build.builder', on: 'repair' },
         { from: 'verify.checks-stop', to: 'supervisor.parent.builder', on: 'repair' },
-        { from: 'verify.verifier', to: 'verify.report' },
+        { from: 'verify.verifier', to: version === '3' ? 'verify.confirm' : 'verify.report' },
         { from: 'verify.verifier', to: 'build.builder' },
         { from: 'verify.verifier', to: 'supervisor.parent.builder' },
         { from: 'verify.verifier', to: 'verify.requested-checks' },
@@ -1473,15 +1554,22 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         { from: 'verify.requested-checks', to: 'verify.verifier' },
         { from: 'verify.requested-checks', to: 'verify.verifier', on: 'failed' },
         { from: 'verify.requested-checks', to: 'verify.checks-stop', on: 'failed' },
-        { from: 'verify.report', to: 'verify.confirm' },
+        ...(version === '3' ? [] : [{ from: 'verify.report', to: 'verify.confirm' }]),
         { from: 'verify.confirm', to: 'verify.revalidate', on: 'approved' },
+        ...(version === '3'
+          ? [{ from: 'verify.confirm', to: 'archive.prepare', on: 'approved' }]
+          : []),
         { from: 'verify.confirm', to: 'verify.checks', on: 'reverify' },
         { from: 'verify.confirm', to: 'build.builder', on: 'rejected' },
         { from: 'verify.confirm', to: 'supervisor.parent.builder', on: 'rejected' },
         { from: 'verify.revalidate', to: 'archive.prepare' },
         { from: 'verify.revalidate', to: 'supervisor.parent.deliver' },
         { from: 'supervisor.parent.deliver', to: 'archive.prepare' },
-        { from: 'verify.revalidate', to: 'verify.report', on: 'failed' },
+        {
+          from: 'verify.revalidate',
+          to: version === '3' ? 'verify.confirm' : 'verify.report',
+          on: 'failed',
+        },
         { from: 'verify.revalidate', to: 'verify.checks', on: 'failed' },
         { from: 'verify.revalidate', to: 'verify.stop', on: 'failed' },
         { from: 'archive.prepare', to: 'archive.execute' },
@@ -2193,7 +2281,22 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             next: [{ stepId: 'supervisor.child.integration-repair', input: activation }],
           };
         }
+        if (event.kind === 'action-outcome' && event.stepId === 'build.checks') {
+          return { state: state as unknown as RuntimeValue, next: ['build.builder'] };
+        }
         if (event.kind === 'action-outcome' && event.stepId === 'build.builder') {
+          const response = (
+            event.outcome.output as { response?: { kind?: string; checks?: RuntimeValue } }
+          )?.response;
+          if (
+            run.workflow.version === '3' &&
+            event.outcome.status === 'succeeded' &&
+            response?.kind === 'request-checks'
+          )
+            return {
+              state: state as unknown as RuntimeValue,
+              next: [{ stepId: 'build.checks', input: { checks: response.checks! } }],
+            };
           if (event.outcome.status === 'failed') {
             return {
               state: state as unknown as RuntimeValue,
@@ -2402,7 +2505,19 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             next: verified.requestChecks
               ? ['verify.requested-checks']
               : verified.state.verification_result === 'pass'
-                ? ['verify.report']
+                ? run.workflow.version === '3'
+                  ? [
+                      {
+                        stepId: 'verify.confirm',
+                        input: {
+                          report: nativeSdkVerificationReportMetadata(
+                            verified.state,
+                            (run.input as { artifactRootRef: string }).artifactRootRef,
+                          ),
+                        },
+                      },
+                    ]
+                  : ['verify.report']
                 : verified.state.phase === 'build'
                   ? state.children_contract_hash
                     ? [
@@ -2588,6 +2703,11 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             };
           }
           if (event.choice === 'approved') {
+            if (run.workflow.version === '3' && !state.children_contract_hash)
+              return {
+                state: confirmNativeSkillCoordinatedPass(state) as unknown as RuntimeValue,
+                next: ['archive.prepare'],
+              };
             return { state: state as unknown as RuntimeValue, next: ['verify.revalidate'] };
           }
           const returned = returnNativeCandidateToBuild({
@@ -2667,7 +2787,23 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             };
           }
           if (event.outcome.status !== 'succeeded') {
-            return { state: state as unknown as RuntimeValue, next: ['verify.report'] };
+            return {
+              state: state as unknown as RuntimeValue,
+              next:
+                run.workflow.version === '3'
+                  ? [
+                      {
+                        stepId: 'verify.confirm',
+                        input: {
+                          report: nativeSdkVerificationReportMetadata(
+                            state,
+                            (run.input as { artifactRootRef: string }).artifactRootRef,
+                          ),
+                        },
+                      },
+                    ]
+                  : ['verify.report'],
+            };
           }
           const confirmed = confirmNativeSkillCoordinatedPass(state);
           if (confirmed.children_contract_hash) {
@@ -2798,3 +2934,4 @@ import {
   nativeBuilderRepairContext,
   nativeUserEditedReportContext,
 } from './native-task-context.js';
+import { nativeSdkRequiresIndependentReview } from './native-sdk-review.js';

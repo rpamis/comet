@@ -3,6 +3,7 @@ import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.j
 import { nativeProjectPaths } from './native-paths.js';
 import { readNativePortableTransaction } from './native-portable-transactions.js';
 import { inspectNativeSdkArchiveFinalization } from './native-portable-archive.js';
+import { nativeVerificationResultHash } from './native-verification-report-v2.js';
 import { importNativeSdkArchiveOriginals } from './native-sdk-archive-originals.js';
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
 import {
@@ -136,6 +137,9 @@ async function archiveNativeSdkChangeValue(options: {
       runId: run.runId,
       archiveRef: applied.archiveRef,
       history: true,
+      allowMissingReport: run.workflow.version === '3',
+      verificationResultHash:
+        run.workflow.version !== '1' ? nativeVerificationResultHash(state) : undefined,
     });
     if (
       hashRuntimeValue(receipt as unknown as RuntimeValue) !==

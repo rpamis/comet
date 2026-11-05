@@ -164,7 +164,7 @@ async function childArchiveBinding(
     );
   });
   if (!verifier || !verifier.action.claim?.sessionId) {
-    throw new Error('Native Supervisor child archive lacks its passing independent Verifier');
+    throw new Error('Native Supervisor child archive lacks its passing Verifier');
   }
   const verifierEvidence = verifier.output.evidence as {
     summary: string;
@@ -515,7 +515,10 @@ function buildChildArchiveState(binding: NativeSupervisorChildArchiveBinding): N
       verifier_execution_ref: binding.verifierSessionId,
       iteration: 1,
       attempt: 1,
-      assurance: 'skill-coordinated',
+      assurance:
+        binding.builderSessionId === binding.verifierSessionId
+          ? 'self-reviewed'
+          : 'skill-coordinated',
       verdict: 'pass',
       checks: binding.childChecks.map((check) => ({
         id: check.id,

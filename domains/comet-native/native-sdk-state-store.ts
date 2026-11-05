@@ -106,6 +106,25 @@ export function isNativeSdkRunRecoveryRequiredError(
   );
 }
 
+class NativeProjectionRepairRequiredError extends Error {}
+
+/** 外部执行及用户交接前固定可恢复状态，内部只读步骤由本地 Run 连续推进。 */
+function nativeSdkCheckpointBoundary(run: WorkflowRun): boolean {
+  if (run.revision === 1 || ['completed', 'cancelled', 'failed'].includes(run.status)) return true;
+  if (
+    run.waits.some((wait) => wait.status === 'pending') ||
+    run.evidenceWaits?.some((wait) => wait.status === 'pending')
+  )
+    return true;
+  return run.actions.some(
+    (action) =>
+      ['pending', 'running', 'unknown'].includes(action.status) &&
+      !['shape.prepare', 'shape.revalidate', 'verify.revalidate', 'archive.prepare'].includes(
+        action.stepId,
+      ),
+  );
+}
+
 interface ProjectionMarker {
   schema: 'comet.native.sdk-state-projection.v1';
   runId: string;
@@ -339,10 +358,14 @@ export function createNativeSdkStateStore(
     runId: string,
     marker: ProjectionMarker | null,
     interrupted?: WorkflowRun,
+    readOnly = options.readOnly,
   ): Promise<WorkflowRun | null> {
     const config = await readProjectConfig(projectRoot);
     if (!config) return null;
-    const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root, options);
+    const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root, {
+      ...options,
+      readOnly,
+    });
     const activeFile = nativePortableStateFile(paths, runId);
     let file = activeFile;
     let source: string;
@@ -411,7 +434,7 @@ export function createNativeSdkStateStore(
         `Native SDK Run ${runId} differs from the interrupted checkpoint import; preserve the local records and restore matching Run history before continuing`,
       );
     }
-    if (options.readOnly) return restored;
+    if (readOnly) return restored;
     if ((revision > 1 || interrupted) && !store.restoreCheckpoint) {
       throw new Error(
         `Native RuntimeStore cannot restore checkpoint revision ${revision}; use a store with restoreCheckpoint support or restore the original Run history`,
@@ -430,9 +453,84 @@ export function createNativeSdkStateStore(
     return store.read(runId);
   }
 
-  async function syncStateFile(runId: string): Promise<WorkflowRun | null> {
+  async function syncBoundaryCheckpoint(run: WorkflowRun, publish: boolean): Promise<WorkflowRun> {
+    const state = parseNativePortableState(run.state);
+    const input = run.input as { name?: unknown; artifactRootRef?: unknown } | null;
+    if (
+      state.name !== run.runId ||
+      input?.name !== run.runId ||
+      typeof input.artifactRootRef !== 'string'
+    )
+      throw new Error(`Native SDK Run ${run.runId} does not match its portable state`);
+    const config = await readProjectConfig(projectRoot);
+    if (config && config.native.artifact_root !== input.artifactRootRef)
+      throw new Error('Native artifact root changed after Run creation');
+    if (!publish || !nativeSdkCheckpointBoundary(run)) return run;
+
+    await ensureProtectedProjectDirectory(workspaceRuntimeRoot, projectionDir, {
+      label: 'Native SDK checkpoint directory',
+    });
+    return withRecoverableFileLock(
+      path.join(workspaceRuntimeRoot, projectionDir, `${run.runId}.lock`),
+      async () => {
+        // 较晚提交可能先取得锁，始终从 SDK authority 重新读取，避免发布较旧 checkpoint。
+        const current = await store.read(run.runId);
+        if (!current) throw new Error(`Native SDK Run ${run.runId} disappeared before checkpoint`);
+        const currentState = parseNativePortableState(current.state);
+        const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef as string);
+        let file = nativePortableStateFile(paths, run.runId);
+        try {
+          await fs.access(path.dirname(file));
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+          if (!currentState.archived) return current;
+          const archivedFile = await findNativeSdkArchivedStateFile(paths, run.runId);
+          if (!archivedFile)
+            throw new Error(`Native SDK Archive ${run.runId} is ambiguous`, { cause: error });
+          file = archivedFile;
+        }
+        let source: string | null = null;
+        try {
+          source = await readPortableSource(file);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+        const archiveReceipt =
+          source && current.actions.some((action) => action.stepId === 'archive.finalize')
+            ? parseProjection(file, source).archive_receipt
+            : undefined;
+        const checkpoint = encodePortableRunCheckpoint(createPortableRunCheckpoint(current));
+        const expected = serializeNativeManagedRunProjection(
+          currentState,
+          checkpoint,
+          archiveReceipt,
+          options.identity,
+        );
+        if (source !== expected)
+          await atomicWriteText(file, expected, { containedRoot: paths.nativeRoot });
+        return current;
+      },
+      { timeoutMs: 5_000 },
+    );
+  }
+
+  async function syncStateFile(
+    runId: string,
+    publishCheckpoint = false,
+  ): Promise<WorkflowRun | null> {
     await assertWorkspaceRuntimeCurrent();
-    const inspect = async () => {
+    const inspect = async (readOnly = options.readOnly) => {
+      let run: WorkflowRun | null;
+      if (projectionRead) {
+        try {
+          run = (await readRuntimeProjection(store, runId)).record;
+        } catch (error) {
+          if ((error as { code?: string }).code !== 'RUN_NOT_FOUND') throw error;
+          run = null;
+        }
+      } else run = await store.read(runId);
+      if (run?.workflow.version === '3')
+        return syncBoundaryCheckpoint(run, publishCheckpoint && !options.readOnly);
       const markerFile = path.join(workspaceRuntimeRoot, projectionDir, `${runId}.json`);
       let marker: ProjectionMarker | null = null;
       let markerSource: string | null = null;
@@ -460,18 +558,9 @@ export function createNativeSdkStateStore(
       ) {
         throw new Error(`Native SDK state projection marker is invalid for ${runId}`);
       }
-      let run: WorkflowRun | null;
-      if (projectionRead) {
-        try {
-          run = (await readRuntimeProjection(store, runId)).record;
-        } catch (error) {
-          if ((error as { code?: string }).code !== 'RUN_NOT_FOUND') throw error;
-          run = null;
-        }
-      } else run = await store.read(runId);
       if (!run || (run.revision === 1 && marker && marker.revision > 1)) {
-        const recovered = await recoverFromPortableFile(runId, marker, run ?? undefined);
-        if (options.readOnly && recovered) {
+        const recovered = await recoverFromPortableFile(runId, marker, run ?? undefined, readOnly);
+        if (readOnly && recovered) {
           throw new NativeSdkRunRecoveryRequiredError(
             projectRoot,
             runId,
@@ -487,6 +576,7 @@ export function createNativeSdkStateStore(
         run = recovered;
       }
       if (!run) return null;
+      if (run.workflow.version === '3') return syncBoundaryCheckpoint(run, false);
       const state = parseNativePortableState(run.state);
       const input = run.input as { name?: unknown; artifactRootRef?: unknown } | null;
       if (
@@ -500,7 +590,10 @@ export function createNativeSdkStateStore(
       if (config && config.native.artifact_root !== input.artifactRootRef) {
         throw new Error('Native artifact root changed after Run creation');
       }
-      const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, options);
+      const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, {
+        ...options,
+        readOnly,
+      });
       let file = nativePortableStateFile(paths, runId);
       try {
         await fs.access(path.dirname(file));
@@ -509,8 +602,8 @@ export function createNativeSdkStateStore(
         if (!state.archived) {
           // A raw SDK start can commit before creating Native documents. The Run
           // is sufficient for read-only status when no projection was published.
-          if (options.readOnly && marker)
-            throw new Error(
+          if (readOnly && marker)
+            throw new NativeProjectionRepairRequiredError(
               `Native SDK state projection is missing for ${runId}; run comet native doctor ${runId} --repair`,
               {
                 cause: error,
@@ -595,8 +688,8 @@ export function createNativeSdkStateStore(
         !hasNativeManagedRunMarkerText(currentSource ?? '') ||
         !checkpointMatches
       ) {
-        if (options.readOnly)
-          throw new Error(
+        if (readOnly)
+          throw new NativeProjectionRepairRequiredError(
             `Native SDK state projection needs recovery for ${runId}; run comet native doctor ${runId} --repair`,
           );
         await writeNativeManagedRunProjection(
@@ -616,8 +709,8 @@ export function createNativeSdkStateStore(
       };
       const projectionSource = JSON.stringify(projection) + '\n';
       if (markerSource !== projectionSource) {
-        if (options.readOnly)
-          throw new Error(
+        if (readOnly)
+          throw new NativeProjectionRepairRequiredError(
             `Native SDK state projection marker needs recovery for ${runId}; run comet native doctor ${runId} --repair`,
           );
         await atomicWriteContainedText(markerFile, projectionSource, {
@@ -626,12 +719,22 @@ export function createNativeSdkStateStore(
       }
       return run;
     };
-    if (options.readOnly) return inspect();
+    if (options.readOnly) return inspect(true);
+    try {
+      return await inspect(true);
+    } catch (error) {
+      if (
+        !(error instanceof NativeProjectionRepairRequiredError) &&
+        !(error instanceof NativeSdkRunRecoveryRequiredError)
+      )
+        throw error;
+      // Recheck a required projection repair under the writer lock.
+    }
     await ensureProtectedProjectDirectory(workspaceRuntimeRoot, projectionDir, {
       label: 'Native SDK state projection directory',
     });
     const lockFile = path.join(workspaceRuntimeRoot, projectionDir, `${runId}.lock`);
-    return withRecoverableFileLock(lockFile, inspect, { timeoutMs: 5_000 });
+    return withRecoverableFileLock(lockFile, () => inspect(false), { timeoutMs: 5_000 });
   }
 
   return {
@@ -651,7 +754,11 @@ export function createNativeSdkStateStore(
           action.status === 'running' &&
           action.claim?.sessionId === state.builder_handoff?.builder_execution_ref,
       );
-      if (verifier?.claim?.sessionId && expectedRevision !== null) {
+      if (
+        next.workflow.version === '1' &&
+        verifier?.claim?.sessionId &&
+        expectedRevision !== null
+      ) {
         const previous = await store.read(runId);
         if (
           previous?.revision === expectedRevision &&
@@ -718,7 +825,7 @@ export function createNativeSdkStateStore(
           ? await commitNativeSdkCancellation({ projectRoot, store, runId, expectedRevision, next })
           : await store.compareAndSwap(runId, expectedRevision, next);
       if (committed) {
-        await syncStateFile(runId);
+        await syncStateFile(runId, true);
         if (next.status === 'cancelled') {
           await settleNativeSdkCancellation({ projectRoot, run: next });
         }

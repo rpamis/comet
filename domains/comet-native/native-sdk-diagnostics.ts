@@ -30,7 +30,11 @@ export async function inspectNativeSdkRunDiagnostics(
   const storageSettled = ['active', 'closed'].includes(disposition);
   const checks =
     options.checkExecutionObservation ??
-    (await inspectNativeSdkCheckExecutions({ projectRoot, run, includeSettled: true }));
+    (await inspectNativeSdkCheckExecutions({
+      projectRoot,
+      run,
+      includeSettled: run.workflow.version !== '3',
+    }));
   const missingStops = checks.filter((item) => {
     const action = run.actions.find((entry) => entry.id === item.actionId)!;
     return (

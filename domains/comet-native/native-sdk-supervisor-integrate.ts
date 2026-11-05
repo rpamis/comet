@@ -57,7 +57,7 @@ async function currentIntegration(
     verifierOutput?.verdict !== 'pass' ||
     verifierOutput.candidateCommit !== input.candidateCommit
   ) {
-    throw new Error('Native SDK Supervisor integration lacks an independent passing Verifier');
+    throw new Error('Native SDK Supervisor integration lacks a bound passing Verifier');
   }
   const checked = await nativeSdkSupervisorChildCheckSummaries({
     run,

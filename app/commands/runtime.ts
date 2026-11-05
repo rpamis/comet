@@ -45,7 +45,7 @@ export interface RuntimeCommandHost {
   environment?: Readonly<Record<string, string | undefined>>;
   /** 仅 CLI 使用紧凑展示；response.data 始终保留完整 SDK Run。 */
   output?: 'full' | 'compact';
-  /** CLI 可在内置 Native 独立验收回报后生成报告，仍保留用户接受步骤。 */
+  /** CLI 可在内置 Native 验收回报后生成报告，仍保留用户接受步骤。 */
   completeNativeReport?: boolean;
 }
 
@@ -1167,8 +1167,10 @@ export async function runtimeDispatchCommand(
       request.operation === 'record-outcome'
     ) {
       try {
-        const { nativeSdkAutomaticReportAction } =
+        const { nativeSdkAutomaticReportAction, refreshNativeSdkVerificationReport } =
           await import('../../domains/comet-native/native-sdk-report.js');
+        if (data.workflow.version === '3')
+          await refreshNativeSdkVerificationReport(projectRoot, data);
         const action = nativeSdkAutomaticReportAction(
           data,
           request.outcome as { actionId: string; outcomeId: string },
@@ -1188,7 +1190,7 @@ export async function runtimeDispatchCommand(
         // 回报已提交；报告生成失败不能让调用者重交原 Verifier 结果。
         warning = {
           code: 'NATIVE_REPORT_PENDING',
-          message: `独立验收结果已保存；报告尚未完成，请读取当前状态后继续。${error instanceof Error ? ` ${error.message}` : ''}`,
+          message: `验收结果已保存；报告尚未完成，请按当前 continuation 继续。${error instanceof Error ? ` ${error.message}` : ''}`,
         };
         try {
           data = await runtime.inspect(data.runId);

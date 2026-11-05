@@ -6,6 +6,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as yaml from 'yaml';
 import * as portableCheckpoints from '../../../domains/engine/portable-run-checkpoint.js';
+import * as fileLocks from '../../../platform/fs/recoverable-file-lock.js';
 
 import {
   defaultProjectConfig,
@@ -107,6 +108,25 @@ async function preparedChange(name = 'read-budget', existingRoot?: string) {
 }
 
 describe('Native SDK read work budgets', () => {
+  it('reads a current projection without a writer lock and locks only its repair', async () => {
+    const { root, name, markerFile } = await preparedChange();
+    const locks = vi.spyOn(fileLocks, 'withRecoverableFileLock');
+    const store = createNativeSdkStateStore(root);
+    const current = await store.read(name);
+    expect(current).not.toBeNull();
+    expect(locks).not.toHaveBeenCalled();
+
+    await fs.unlink(markerFile);
+    const repaired = await store.read(name);
+    expect(repaired).toEqual(current);
+    expect(locks).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(await fs.readFile(markerFile, 'utf8')).revision).toBe(current!.revision);
+
+    locks.mockClear();
+    expect(await store.read(name)).toEqual(current);
+    expect(locks).not.toHaveBeenCalled();
+  });
+
   it('encodes a checkpoint once per projection read and rejects later same-revision edits', async () => {
     const { root, name, stateFile } = await preparedChange();
     const encodes = vi.spyOn(portableCheckpoints, 'encodePortableRunCheckpoint');

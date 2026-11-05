@@ -1,3 +1,4 @@
+import { nativeSdkVerificationReportOutput } from './native-verification-report-v2.js';
 import type { NativeLegacyArchiveOverlay } from './native-archive-legacy-overlay.js';
 import { resolveWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
 import path from 'node:path';
@@ -366,7 +367,7 @@ export const nativeSdkCheckRefreshCommandValidator: RuntimeCommandValidator = {
     try {
       const pending = pendingCheckRefresh(run);
       const requested = input as unknown as NativeCheckRefreshInput;
-      const report = run.outputs['verify.report']?.value as
+      const report = nativeSdkVerificationReportOutput(run) as
         { reportRef?: string; reportSha256?: string } | undefined;
       if (
         name !== 'refresh-checks' ||
@@ -528,7 +529,7 @@ export async function observeNativeSdkInputs(run: Readonly<WorkflowRun>, project
             archiveActionId: pendingCheckRefresh(run)!.archive.id,
             approvalWaitId: pendingCheckRefresh(run)!.approval.id,
             proposalHash: pendingCheckRefresh(run)!.approval.proposalHash,
-            reportSha256: (run.outputs['verify.report']?.value as { reportSha256?: string })
+            reportSha256: (nativeSdkVerificationReportOutput(run) as { reportSha256?: string })
               .reportSha256,
             observationRef: await saveRawInput(root, run, current),
             checkIds: [] as string[],
@@ -608,6 +609,13 @@ function checkPlansForAction(
   action: Readonly<RuntimeAction>,
   candidateId: string,
 ): NativeCheckPlan[] {
+  if (action.stepId === 'build.checks') {
+    const activation = record(
+      record(action.input, 'Build checks input').activation,
+      'Build checks plan',
+    );
+    return nativeSdkCheckPlans({ verificationChecks: activation.checks });
+  }
   if (nativeSdkCheckRefreshInput(run, action)) {
     return allCandidateCheckPlans(
       run,
@@ -744,6 +752,36 @@ function allCandidateCheckPlans(run: Readonly<WorkflowRun>, before = run.actions
 function checkInput(run: Readonly<WorkflowRun>, action: Readonly<RuntimeAction>) {
   const state = parseNativePortableState(run.state);
   const input = record(run.input, 'Native SDK Run input');
+  if (action.stepId === 'build.checks') {
+    if (
+      run.workflow.version !== '3' ||
+      state.phase !== 'build' ||
+      state.status !== 'active' ||
+      state.children_contract_hash ||
+      input.name !== state.name ||
+      typeof input.artifactRootRef !== 'string' ||
+      action.ref !== 'native-build-checks'
+    )
+      throw new Error('Build checks require an active built-in Builder task');
+    const plans = checkPlansForAction(run, action, action.id);
+    if (!plans.length || plans.some((plan) => !plan.repeatable))
+      throw new Error('Build checks require a nonempty repeatable plan');
+    return {
+      state,
+      artifactRootRef: input.artifactRootRef,
+      plans,
+      executionRoot: null,
+      candidateId: action.id,
+      supervisorChild: null,
+      supervisorBranch: null,
+      supervisorIntegration: false,
+      candidateCommit: null,
+      mergeActionId: null,
+      repairActionId: null,
+      parentCandidateCommit: null,
+      parentBuilderActionId: null,
+    };
+  }
   if (action.stepId === 'supervisor.child.integration-checks') {
     const activation = record(
       record(action.input, 'Native Supervisor integration checks Action input').activation,
@@ -1080,7 +1118,8 @@ async function reusableReviewedCheck(options: {
   const before = options.run.actions.findIndex(({ id }) => id === options.action.id);
   const state = parseNativePortableState(options.run.state);
   for (const prior of options.run.actions.slice(0, before).reverse()) {
-    if (!['verify.checks', 'verify.requested-checks'].includes(prior.stepId)) continue;
+    if (!['build.checks', 'verify.checks', 'verify.requested-checks'].includes(prior.stepId))
+      continue;
     const output = prior.outcome?.output as unknown as NativeSdkCheckOutcome | undefined;
     if (!output?.checks) {
       const candidateId =
@@ -1222,6 +1261,7 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
     action.type === 'call_tool' &&
     action.ref !== undefined &&
     [
+      'native-build-checks',
       'native-required-checks',
       'native-verifier-requested-checks',
       'native-supervisor-child-checks',
@@ -1230,6 +1270,11 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
   async preflight(action, context, run) {
     if (!run || !context?.projectRoot) throw new Error('Native checks require a bound SDK Run');
     const { state, plans, artifactRootRef } = checkInput(run, action);
+    if (run.workflow.version !== '1' && plans.some((plan) => !plan.repeatable)) {
+      throw new Error(
+        'Verify requires repeatable checks. Run one-time operations through the authorized delivery workflow.',
+      );
+    }
     const observedInputs =
       !state.children_contract_hash && ['verify', 'archive'].includes(state.phase)
         ? await assertNativeSdkCandidateUnchanged({ run, projectRoot: context.projectRoot })
@@ -1343,7 +1388,7 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
           run,
           (previousInput.outcome!.output as unknown as NativeSdkCheckOutcome).rawInput!.afterRef,
         )
-      : !state.children_contract_hash
+      : !state.children_contract_hash && action.stepId !== 'build.checks'
         ? ((await readNativeSdkBuilderInputs(run, context.projectRoot)) ?? undefined)
         : undefined;
     const rawBefore = await nativeRawInputSnapshot({
@@ -1413,6 +1458,7 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
               projectRoot: context.projectRoot,
             });
         if (reused) {
+          reportCometRuntimeProgress(`复用检查 ${plan.name}`);
           checks.push(reused);
           registration.execution.checks = checks as unknown as RuntimeValue[];
           await registration.save();
@@ -1433,7 +1479,7 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
         registration.execution.phase = 'reserved';
         registration.execution.terminationUnconfirmed = true;
         await registration.save();
-        reportCometRuntimeProgress(`执行检查：${plan.name}`);
+        reportCometRuntimeProgress(`运行缺失检查 ${plan.name}`);
         const executed = await executeNativeCheck({
           projectRoot: checkRoot,
           runtimeDir,
@@ -1634,6 +1680,7 @@ async function validatedCheckResults(options: {
       if (
         state.builder_handoff &&
         state.phase === 'verify' &&
+        action.stepId !== 'build.checks' &&
         (snapshot.candidateBefore === null ||
           snapshot.candidateBefore !== output.candidateInputFingerprintGate)
       ) {
@@ -1739,7 +1786,7 @@ async function validatedCheckResults(options: {
         priorOutput?.interruption ||
         !priorOutput?.inputSnapshot?.complete ||
         priorOutput.candidateId !== origin.candidateId ||
-        priorOutput.inputSnapshot.candidateBefore === null ||
+        (prior.stepId !== 'build.checks' && priorOutput.inputSnapshot.candidateBefore === null) ||
         priorOutput.inputSnapshot.candidateBefore !== priorOutput.candidateInputFingerprintGate ||
         !original ||
         original.status !== 'passed' ||
@@ -1797,7 +1844,12 @@ async function validatedCheckResults(options: {
         const priorIndex = run.actions.findIndex((entry) => entry.id === prior.id);
         const currentIndex = run.actions.findIndex((entry) => entry.id === action.id);
         for (const intervening of run.actions.slice(priorIndex + 1, currentIndex)) {
-          if (!['verify.checks', 'verify.requested-checks'].includes(intervening.stepId)) continue;
+          if (
+            !['build.checks', 'verify.checks', 'verify.requested-checks'].includes(
+              intervening.stepId,
+            )
+          )
+            continue;
           const intermediate = intervening.outcome?.output as unknown as
             NativeSdkCheckOutcome | undefined;
           if (intermediate?.checks?.some((entry) => entry.id === original.id))
@@ -2042,6 +2094,7 @@ export async function nativeSdkCurrentCheckSummaries(options: {
 export async function assertNativeSdkArchiveCheckInputs(options: {
   run: Readonly<WorkflowRun>;
   projectRoot: string;
+  observedInputs?: NativeRawInputSnapshot;
 }): Promise<void> {
   const checks = await currentCheckSummaries(options, 'archive');
   if (checks.some((check) => check.status !== 'passed'))

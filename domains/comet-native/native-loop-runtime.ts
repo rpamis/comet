@@ -163,6 +163,7 @@ export function prepareNativePortableShapeConfirmation(options: {
 export function submitNativeBuilderCandidate(options: {
   state: NativePortableState;
   input: NativeBuilderCandidateInput;
+  requireAcceptanceReview?: boolean;
 }): NativePortableState {
   const state = parseNativePortableState(options.state);
   const { input } = options;
@@ -189,7 +190,8 @@ export function submitNativeBuilderCandidate(options: {
     input.acceptanceReview === undefined
       ? undefined
       : parseNativeBuilderAcceptanceReview(input.acceptanceReview);
-  assertNativeBuilderAcceptanceComplete(state.acceptance, acceptanceReview);
+  if (options.requireAcceptanceReview !== false || acceptanceReview !== undefined)
+    assertNativeBuilderAcceptanceComplete(state.acceptance, acceptanceReview);
   // A repaired candidate gets one independent Verifier pass over the complete
   // acceptance set. The previous unresolved IDs remain a hint in the durable
   // loop state, but must not narrow the formal scope or cause a second pass.
@@ -281,9 +283,11 @@ function verificationState(options: {
     iteration: options.state.loop.iteration,
     attempt: options.state.loop.attempt,
     assurance:
-      options.envelope.identityProvider === NATIVE_SKILL_COORDINATION
-        ? 'skill-coordinated'
-        : 'host-attested',
+      options.envelope.verifierExecutionRef === options.state.builder_handoff?.builder_execution_ref
+        ? 'self-reviewed'
+        : options.envelope.identityProvider === NATIVE_SKILL_COORDINATION
+          ? 'skill-coordinated'
+          : 'host-attested',
     verdict: options.response.result.verdict,
     checks: options.checks,
     summary: toNativePortableText(options.response.result.summary),
@@ -295,6 +299,7 @@ function verificationState(options: {
 
 export function applyNativeVerifierEnvelope(options: {
   state: NativePortableState;
+  requireIndependentSession?: boolean;
   envelope: NativeTrustedVerifierEnvelope<unknown> | unknown;
   checks: NativePortableCheckSummary[];
   maxVerifyFailures: number;
@@ -314,6 +319,7 @@ export function applyNativeVerifierEnvelope(options: {
       candidateId: state.builder_handoff.candidate_id,
       identityProvider: state.builder_handoff.identity_provider,
       builderExecutionRef: state.builder_handoff.builder_execution_ref,
+      requireIndependentSession: options.requireIndependentSession,
       iteration: state.loop.iteration,
       attempt: state.loop.attempt,
       acceptanceIds: scopeIds,
@@ -376,7 +382,9 @@ export function applyNativeVerifierEnvelope(options: {
               {
                 owner: 'user',
                 reason: toNativePortableText(
-                  'The generic Skill bridge cannot prove an independent Verifier execution; user confirmation is required before Archive.',
+                  options.requireIndependentSession === false
+                    ? 'Verification passed; user acceptance is required before Archive.'
+                    : 'The generic Skill bridge cannot prove an independent Verifier execution; user confirmation is required before Archive.',
                 ),
                 acceptance_ids: [],
                 resolution_action: 'await-user',

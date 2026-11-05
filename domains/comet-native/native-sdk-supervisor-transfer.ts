@@ -49,10 +49,7 @@ import {
   loadWorkflowApplication,
   type ApplicationIdentity,
 } from '../workflow-application/index.js';
-import {
-  defineNativeWorkflowApplication,
-  nativeSdkApplicationForRun,
-} from './native-sdk-application.js';
+import { nativeSdkApplicationForRun } from './native-sdk-application.js';
 import {
   nativeSdkBeforeVerifierRecovery,
   nativeSdkMatchesRun,
@@ -626,7 +623,7 @@ export async function importNativeSupervisorTransfer(options: {
     throw new Error('Native 转移需要原固定应用包');
   const modelStore = createMemoryRuntimeStore<WorkflowRun>();
   await modelStore.compareAndSwap(saved.runId, null, saved);
-  const base = nativeSdkApplicationForRun(saved, defineNativeWorkflowApplication());
+  const base = nativeSdkApplicationForRun(saved);
   let implementation = application?.implementation ?? {
     ...base,
     workflows: [base.workflow],

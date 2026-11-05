@@ -166,6 +166,7 @@
       "domains/comet-classic/classic-sdk-delivery-repair-model.ts",
       "domains/comet-native/native-change-model.ts",
       "domains/comet-native/native-check-receipt-model.ts",
+      "domains/comet-native/native-sdk-review.ts",
       "domains/comet-native/native-supervisor-model.ts"
     ],
     "workflowCoreModules": [

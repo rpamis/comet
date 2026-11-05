@@ -1,9 +1,14 @@
+import {
+  nativeSdkVerificationReportOutput,
+  refreshNativeSdkVerificationReport,
+} from './native-sdk-report.js';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 import { inspectNativeSdkRunDiagnostics } from './native-sdk-diagnostics.js';
 import { reconcileNativeSdkExecutionStops } from './native-sdk-check-execution.js';
 import { recoverNativeSdkReportRevalidation } from './native-sdk-report.js';
 import { validateNativeSdkFailedIntegrationRepair } from './native-sdk-supervisor-integration-repair.js';
 import { randomUUID } from 'node:crypto';
+import { reportCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
 import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
 import { settleNativeSdkCompletion } from './native-sdk-completion-cleanup.js';
 
@@ -25,6 +30,7 @@ import {
 } from './native-sdk-application.js';
 import {
   recoverNativeSdkChecks,
+  nativeSdkCheckExecutor,
   nativeSdkCurrentCheckSummaries,
   NativeSdkCheckInputDriftError,
 } from './native-sdk-checks.js';
@@ -73,7 +79,9 @@ export async function refreshNativeSdkCheckWork(
     return run;
   }
   if (run.revision !== expectedRevision) throw new Error('Run 已变化，请重新读取当前输入观察');
-  const application = defineNativeWorkflowApplication();
+  const application = defineNativeWorkflowApplication(
+    run.workflow.version === '3' ? '3' : run.workflow.version === '2' ? '2' : '1',
+  );
   const definition = defineWorkflow(application.workflow);
   const next =
     run.workflow.hash === hashRuntimeValue(definition)
@@ -116,7 +124,19 @@ async function sdkNextResult(
   application: Awaited<ReturnType<typeof inspectNativeSdkRun>>['application'],
 ): Promise<DispatchResult> {
   const state = parseNativePortableState(run.state);
+  let warning: { code: string; message: string } | undefined;
+  if (run.workflow.version === '3') {
+    try {
+      await refreshNativeSdkVerificationReport(projectRoot, run);
+    } catch (error) {
+      warning = {
+        code: 'NATIVE_REPORT_PENDING',
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
   return success('next', {
+    ...(warning ? { warning } : {}),
     change: name,
     ...(await projectNativeSdkStatus(
       { projectRoot, name },
@@ -160,22 +180,22 @@ export async function advanceNativeSdkChange(
       },
 ): Promise<DispatchResult> {
   let { run, state, artifactRootRef, application } = await inspectNativeSdkRun(projectRoot, name);
-  if (run.actions.some((action) => ['running', 'unknown'].includes(action.status))) {
-    run = await recoverNativeSdkChecks(
-      projectRoot,
-      run,
-      (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime,
-    );
-    run = await recoverNativeSdkReportRevalidation(
-      projectRoot,
-      run,
-      (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime,
-    );
-    run = await recoverNativeSdkImplementationRevision(
-      projectRoot,
-      run,
-      (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime,
-    );
+  const interrupted = run.actions.filter((action) =>
+    ['running', 'unknown'].includes(action.status),
+  );
+  const checkRecovery = interrupted.some((action) => nativeSdkCheckExecutor.supports(action));
+  const reportRecovery = interrupted.some(
+    (action) => action.status === 'unknown' && action.stepId === 'verify.revalidate',
+  );
+  const implementationRecovery = interrupted.some(
+    (action) => action.status === 'unknown' && action.stepId === 'repair.implementation',
+  );
+  if (checkRecovery || reportRecovery || implementationRecovery) {
+    const { runtime } = await loadOwnedNativeSdkRuntime(projectRoot, name);
+    if (checkRecovery) run = await recoverNativeSdkChecks(projectRoot, run, runtime);
+    if (reportRecovery) run = await recoverNativeSdkReportRevalidation(projectRoot, run, runtime);
+    if (implementationRecovery)
+      run = await recoverNativeSdkImplementationRevision(projectRoot, run, runtime);
     state = parseNativePortableState(run.state);
   }
   if (!decision)
@@ -473,16 +493,24 @@ export async function advanceNativeSdkChange(
           wait.decision?.choice === 'approved' &&
           wait.proposalHash === decision.proposalHash,
       );
-      const report = (
-        approved?.proposal as
-          | {
-              outputs?: {
-                'verify.report'?: { candidateId?: string; reportSha256?: string };
-              };
-            }
-          | undefined
-      )?.outputs?.['verify.report'];
-      const current = run.outputs['verify.report']?.value as { reportSha256?: string } | undefined;
+      const report =
+        run.workflow.version === '3'
+          ? (
+              approved?.proposal as {
+                activation?: { report?: { candidateId?: string; reportSha256?: string } };
+              }
+            )?.activation?.report
+          : (
+              approved?.proposal as
+                | {
+                    outputs?: {
+                      'verify.report'?: { candidateId?: string; reportSha256?: string };
+                    };
+                  }
+                | undefined
+            )?.outputs?.['verify.report'];
+      const current = nativeSdkVerificationReportOutput(run) as
+        { reportSha256?: string } | undefined;
       if (
         report?.candidateId === state.builder_handoff?.candidate_id &&
         report?.reportSha256 &&
@@ -705,6 +733,14 @@ export async function advanceNativeSdkChange(
       const { runtime, executors } = owned;
       const executor = executors.find((candidate) => candidate.supports(pending));
       if (!executor) throw new Error(`Native SDK Action ${pending.stepId} has no executor`);
+      if (pending.stepId.startsWith('archive.'))
+        reportCometRuntimeProgress(
+          pending.stepId === 'archive.prepare'
+            ? '核对归档材料'
+            : pending.stepId === 'archive.execute'
+              ? '更新正式规格'
+              : '完成归档',
+        );
       let completed = await runtime.execute({
         runId: run.runId,
         actionId: pending.id,

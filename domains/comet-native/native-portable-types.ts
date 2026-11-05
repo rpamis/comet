@@ -13,6 +13,7 @@ export type NativePortableVerificationResult = 'pending' | 'pass' | 'fail' | 'bl
 export type NativePortableLoopStopReason = 'budget' | 'stalled';
 export type NativePortableVerificationAssurance =
   | 'host-attested'
+  | 'self-reviewed'
   | 'skill-coordinated'
   | 'semantic-verification-unavailable'
   | 'user-confirmed-degraded';

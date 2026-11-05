@@ -55,6 +55,7 @@ export interface NativeVerifierBinding {
   candidateId: string;
   identityProvider: string;
   builderExecutionRef: string;
+  requireIndependentSession?: boolean;
   iteration: number;
   attempt: number;
   /** Acceptance IDs required in this Verifier response. */
@@ -249,7 +250,10 @@ export function validateNativeTrustedVerifierEnvelope(options: {
   if (envelope.identityProvider !== binding.identityProvider) {
     throw new Error('Native Verifier identity provider does not match the Builder provider');
   }
-  if (envelope.verifierExecutionRef === binding.builderExecutionRef) {
+  if (
+    binding.requireIndependentSession !== false &&
+    envelope.verifierExecutionRef === binding.builderExecutionRef
+  ) {
     throw new Error('Native Builder and Verifier must be different executions');
   }
   const response = parseNativeVerifierResponse(envelope.payload);

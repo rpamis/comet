@@ -42,6 +42,7 @@ import {
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { inspectNativeSdkArchiveFinalization } from './native-portable-archive.js';
+import { nativeVerificationResultHash } from './native-verification-report-v2.js';
 import { parseNativePortableState } from './native-portable-state.js';
 
 function portableHistoryImportRef(name: string): string {
@@ -409,6 +410,9 @@ async function closeNativeSdkHistoryLocked(options: NativeHistoryOptions): Promi
       runId: run.runId,
       archiveRef: applied.archiveRef,
       history: true,
+      allowMissingReport: run.workflow.version === '3',
+      verificationResultHash:
+        run.workflow.version !== '1' ? nativeVerificationResultHash(state) : undefined,
     });
     if (
       receipt.transactionId !== applied.transactionId ||

@@ -73,6 +73,7 @@ import {
 import { readProjectConfig } from './native-config.js';
 import { resolveNativeChangeRuntimeOwner } from './native-runtime-ownership.js';
 import { advanceNativeSdkChange } from './native-sdk-next.js';
+import { advanceNativeSdkTask } from './native-sdk-task-command.js';
 
 const EXPECTED_CONTINUATION_ACTIONS = new Set<NativePortableExpectedContinuationAction>([
   'prepare-shape-confirmation',
@@ -187,6 +188,21 @@ export async function nativeNextCommand(
   projectRoot: string,
 ): Promise<DispatchResult> {
   const name = requiredPositional(args, 'change name');
+  const resultFile = takeOption(args, '--result');
+  const sessionId = takeOption(args, '--session');
+  const actionId = takeOption(args, '--action');
+  const review = takeOption(args, '--review');
+  const acceptOnPass = takeOption(args, '--accept-on-pass');
+  const details = takeFlag(args, '--details');
+  const taskInput =
+    resultFile !== undefined ||
+    sessionId !== undefined ||
+    actionId !== undefined ||
+    review !== undefined ||
+    acceptOnPass !== undefined ||
+    details;
+  if (review !== undefined && review !== 'current-session' && review !== 'independent')
+    throw new NativeUsageError('--review 必须为 current-session 或 independent。');
   const summary = takeOption(args, '--summary');
   const proposalHash = takeOption(args, '--proposal-hash');
   const runnerInputFile = takeOption(args, '--runner-input');
@@ -267,6 +283,39 @@ export async function nativeNextCommand(
   const configured = await configuredPaths(projectRoot);
   const owner = await resolveNativeChangeRuntimeOwner(configured.paths, name);
   if (owner?.format === 'sdk') {
+    if (taskInput) {
+      if (
+        !sessionId ||
+        confirmed ||
+        acceptResult ||
+        reviseImplementation ||
+        reviseRequirements ||
+        retryVerifier ||
+        continueBuilder ||
+        resolveVerifierBlocker ||
+        summary !== undefined ||
+        proposalHash !== undefined ||
+        runnerInputFile !== undefined ||
+        validateOnly ||
+        maxParallelText !== undefined ||
+        finish !== undefined ||
+        coordinationMode !== undefined ||
+        expectedContinuation !== undefined
+      )
+        throw new NativeUsageError(
+          '任务领取与结果回报需要 --session，并与原用户决定、Compat 或修订参数分开调用。',
+        );
+      return advanceNativeSdkTask({
+        projectRoot,
+        name,
+        sessionId,
+        actionId,
+        resultFile,
+        review,
+        acceptOnPass,
+        details,
+      });
+    }
     if (
       runnerInputFile !== undefined ||
       validateOnly ||
@@ -394,6 +443,7 @@ export async function nativeNextCommand(
     }
     return advanceNativeSdkChange(projectRoot, name);
   }
+  if (taskInput) throw new NativeUsageError('当前任务参数只适用于新建内置 SDK Run。');
   if (proposalHash !== undefined) {
     throw new NativeUsageError('--proposal-hash is only valid for a Native SDK Verify decision');
   }

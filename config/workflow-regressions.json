@@ -2,6 +2,25 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "native-confirmed-stop-probe-reuse",
+      "sources": ["report:2026-11-05-native-verify-archive-overhead"],
+      "behavior": "Reuse confirmed termination evidence without probing processes again when the execution record is unchanged.",
+      "coverageLevel": "unit",
+      "reproduction": "A completed execution with a matching Runtime stop-record digest previously entered process liveness probes on every inspection. The new focused regression covers the inspection boundary with controlled process observations; public CLI timing has not been measured.",
+      "expected": "Matching complete execution evidence avoids process probes; changing the execution record invokes fresh probes.",
+      "forbidden": "Reusing termination evidence after its execution record changes.",
+      "rootCause": "Inspection probed settled executions before consulting their persisted stop evidence.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-check-termination.test.ts",
+          "namePattern": "^reuses a confirmed stop only while the complete execution record still matches$",
+          "requiredNames": [
+            "reuses a confirmed stop only while the complete execution record still matches"
+          ]
+        }
+      ]
+    },
+    {
       "id": "native-archive-rejected-apply-recovery",
       "sources": ["https://github.com/rpamis/comet/issues/526"],
       "behavior": "Recover a returned but rejected archive.execute through the public Archive command without replaying applied Specs or accepting candidate drift.",
@@ -9136,6 +9155,357 @@
           "file": "test/app/native-verification-policy-removal.test.ts",
           "namePattern": "^removes retired mode instructions and assets in skills-zh$",
           "requiredNames": ["removes retired mode instructions and assets in skills-zh"]
+        }
+      ]
+    },
+    {
+      "id": "native-current-session-acceptance",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "New built-in Runs permit actual current-session acceptance while requiring explicit user acceptance.",
+      "coverageLevel": "public-cli",
+      "reproduction": "New workflow definition is exercised through public next and real Runtime claims/results. Legacy independent-only state parsing remains tested separately.",
+      "expected": "Current session completes every acceptance item and waits for user acceptance.",
+      "forbidden": "Fabricating another session or advancing Archive before user acceptance.",
+      "rootCause": "Built-in Verify previously required an additional session regardless of task uncertainty.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native streamlined verification uses the current session for v2 acceptance through the public continuation)$",
+          "requiredNames": [
+            "Native streamlined verification uses the current session for v2 acceptance through the public continuation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-repeatable-verify-plans",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "New Runs reject one-time operations before executing Verify plans.",
+      "coverageLevel": "runtime",
+      "reproduction": "Submit an actual Builder plan with repeatable false to the new definition.",
+      "expected": "Reject the plan before check execution.",
+      "forbidden": "Executing a one-time command through Verify.",
+      "rootCause": "Verification and one-time delivery operations shared the same plan contract.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native streamlined verification rejects one-time check plans before v2 verification execution)$",
+          "requiredNames": [
+            "Native streamlined verification rejects one-time check plans before v2 verification execution"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-single-result-template",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "New Run claim output presents one receipt-based result template.",
+      "coverageLevel": "runtime",
+      "reproduction": "Claim the actual v2 Verifier and project its response.",
+      "expected": "Provide resultRequest and repeatable check schema with one shared Action reference.",
+      "forbidden": "Duplicating complete result and outcome templates in ordinary claim output.",
+      "rootCause": "Compatibility and receipt-based protocols were both expanded in normal responses.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:returns one receipt result template for a claimed v2 Verifier)$",
+          "requiredNames": ["returns one receipt result template for a claimed v2 Verifier"]
+        }
+      ]
+    },
+    {
+      "id": "native-projection-read-without-write-lock",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "Current Native projections can be read without acquiring the projection writer lock.",
+      "coverageLevel": "runtime",
+      "reproduction": "The same new test on af02af63 takes one writer lock for a current read; current implementation takes none and acquires one when repairing a missing marker.",
+      "expected": "Current reads take no writer lock and projection repair remains serialized.",
+      "forbidden": "Repairing without a lock or hiding unstable file reads.",
+      "rootCause": "Every mutable store read acquired a projection lock even for an already synchronized projection.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-read-performance.test.ts",
+          "namePattern": "^(?:Native SDK read work budgets reads a current projection without a writer lock and locks only its repair)$",
+          "requiredNames": [
+            "Native SDK read work budgets reads a current projection without a writer lock and locks only its repair"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-shared-input-observation",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "Archive preflight shares input observations within each validation boundary.",
+      "coverageLevel": "runtime",
+      "reproduction": "The identical snapshot-count assertion on af02af63 observes eight captures; the current implementation observes two across execution and outcome commit.",
+      "expected": "One capture per boundary and rejection when the candidate changes between boundaries.",
+      "forbidden": "Reusing observations across a candidate edit.",
+      "rootCause": "Preflight independently collected the candidate, check inputs and two archive bindings.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native SDK v2 Archive simplification collects one current input snapshot per preflight execution and commit boundary|Native SDK v2 Archive simplification rejects candidate edits between preflight execution and its committed outcome)$",
+          "requiredNames": [
+            "Native SDK v2 Archive simplification collects one current input snapshot per preflight execution and commit boundary",
+            "Native SDK v2 Archive simplification rejects candidate edits between preflight execution and its committed outcome"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-structured-verification",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "New Run acceptance and Archive bind structured verification results while preserving edited report views.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Run public Archive with edited or missing reports, then read status and recover after a later report edit.",
+      "expected": "Archive valid accepted evidence, preserve authored report edits, and retain stable recovery receipts.",
+      "forbidden": "Losing report edits or treating a report-only edit as a changed implementation verdict.",
+      "rootCause": "Generated Markdown bytes also served as authoritative acceptance state.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native SDK v2 Archive simplification accepts structured evidence after the reading report is edited before confirmation|Native SDK v2 Archive simplification archives the accepted structured result with a edited report view|Native SDK v2 Archive simplification archives the accepted structured result with a missing report view)$",
+          "requiredNames": [
+            "Native SDK v2 Archive simplification accepts structured evidence after the reading report is edited before confirmation",
+            "Native SDK v2 Archive simplification archives the accepted structured result with a edited report view",
+            "Native SDK v2 Archive simplification archives the accepted structured result with a missing report view"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-actual-spec-conflict",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "New Run Archive checks actual Spec conflicts without blocking on peer capability declarations.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Archive a verified change while a second active change declares the same capability; separately change canonical Spec after preflight.",
+      "expected": "Archive the unchanged baseline and reject the actual conflicting Spec without overwriting it.",
+      "forbidden": "Blocking solely on a peer declaration or overwriting conflicting canonical content.",
+      "rootCause": "Archive eagerly scanned peer declarations rather than checking only the target Spec baseline.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native SDK v2 Archive simplification archives a current Spec while another active SDK change declares the same capability|Native SDK v2 Archive simplification refuses an actual canonical Spec conflict after preflight without overwriting it)$",
+          "requiredNames": [
+            "Native SDK v2 Archive simplification archives a current Spec while another active SDK change declares the same capability",
+            "Native SDK v2 Archive simplification refuses an actual canonical Spec conflict after preflight without overwriting it"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-build-managed-check-reuse",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "Build can record real managed checks and Verify reuses only matching successful evidence.",
+      "coverageLevel": "runtime",
+      "reproduction": "Execute Build checks, submit a candidate, then verify unchanged inputs, edited inputs, and a later failed Build check.",
+      "expected": "Reuse unchanged successful evidence and rerun edited or superseded evidence.",
+      "forbidden": "Treat terminal summaries or superseded successes as current Runtime checks.",
+      "rootCause": "Build lacked a managed check step before candidate submission.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native v3 Build check reuse reuses a Build check only while inputs match \\(edited=false\\)|Native v3 Build check reuse reuses a Build check only while inputs match \\(edited=true\\)|Native v3 Build check reuse reuses a Build check only while inputs match \\(edited=failed-later\\))$",
+          "requiredNames": [
+            "Native v3 Build check reuse reuses a Build check only while inputs match (edited=false)",
+            "Native v3 Build check reuse reuses a Build check only while inputs match (edited=true)",
+            "Native v3 Build check reuse reuses a Build check only while inputs match (edited=failed-later)"
+          ]
+        },
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "^(?:Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder)$",
+          "requiredNames": [
+            "Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-v3-compact-builder-result",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "New public Runs omit redundant Builder review and unused recovery templates.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Create through native new and claim the Builder through runtime dispatch. Legacy factory fixtures retain the historical protocol assertions.",
+      "expected": "Return one receipt result without a duplicate acceptanceReview or unused failure/recovery requests.",
+      "forbidden": "Drop required Verify acceptance coverage or alter existing Run templates.",
+      "rootCause": "Healthy handoffs expanded alternative protocols and repeated the full acceptance review.",
+      "tests": [
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "^(?:Native dispatch CLI presentation uses one result protocol and omits duplicate Builder review for a new public v3 Run)$",
+          "requiredNames": [
+            "Native dispatch CLI presentation uses one result protocol and omits duplicate Builder review for a new public v3 Run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-v3-report-view-nonblocking",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "Verifier results wait directly for acceptance even when the reading report cannot be written.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Submit the real Verifier result using CLI dispatch, including a directory occupying verification.md, then remove it and call next.",
+      "expected": "Keep the saved verdict and acceptance wait, retry rendering without another report Action.",
+      "forbidden": "Rollback a successful verdict, auto-approve acceptance, or advance revision merely to render the report.",
+      "rootCause": "Report rendering was a separate workflow Action required before acceptance.",
+      "tests": [
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "^(?:Native dispatch CLI presentation waits for acceptance directly after a v3 Verifier result without a report Action|Native dispatch CLI presentation preserves v3 acceptance when the report view fails and retries it on next)$",
+          "requiredNames": [
+            "Native dispatch CLI presentation waits for acceptance directly after a v3 Verifier result without a report Action",
+            "Native dispatch CLI presentation preserves v3 acceptance when the report view fails and retries it on next"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-lightweight-settled-check-inspection",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "Lightweight inspection skips settled execution files but inspects missing stop evidence.",
+      "coverageLevel": "unit",
+      "reproduction": "Create actual execution registration and bound stopping evidence, inspect with includeSettled false, then remove the stop evidence.",
+      "expected": "Skip settled execution reads and inspect executions whose stop evidence is missing.",
+      "forbidden": "Hide unconfirmed executions from status diagnostics.",
+      "rootCause": "Status loaded every historical execution record.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-check-termination.test.ts",
+          "namePattern": "^(?:omits settled execution reads in lightweight inspection but diagnoses missing stop evidence)$",
+          "requiredNames": [
+            "omits settled execution reads in lightweight inspection but diagnoses missing stop evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-v3-boundary-checkpoints",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "Local SDK authority replaces continuously synchronized portable projections.",
+      "coverageLevel": "runtime",
+      "reproduction": "Advance through internal steps and external handoffs, inspect stale Portable state, then cold-recover a claimed external Action.",
+      "expected": "Read the authoritative local phase without projection repair; preserve full external claim identity on cold recovery.",
+      "forbidden": "Treat stale Portable state as local authority or replay an unresolved external claim.",
+      "rootCause": "Every SDK revision previously synchronized state and projection markers.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native SDK v3 checkpoint and report boundaries combines approved report validation with preflight and checkpoints only the next external boundary|Native SDK v3 checkpoint and report boundaries reads the SDK authority without portable repairs and guards its newer phase|Native SDK v3 checkpoint and report boundaries recovers an external claim as unknown from its boundary checkpoint)$",
+          "requiredNames": [
+            "Native SDK v3 checkpoint and report boundaries combines approved report validation with preflight and checkpoints only the next external boundary",
+            "Native SDK v3 checkpoint and report boundaries reads the SDK authority without portable repairs and guards its newer phase",
+            "Native SDK v3 checkpoint and report boundaries recovers an external claim as unknown from its boundary checkpoint"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-v3-archive-report-failure",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "Archive completes with structured accepted evidence when derived report rendering fails.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Make missing and edited report rendering fail during public Archive, then recover the completed receipt. Separately edit the approved implementation.",
+      "expected": "Preserve edited report bytes and stable receipts; reject changed candidates before Spec publication.",
+      "forbidden": "Lose authored report text, rerun accepted checks solely for report failure, or publish a changed candidate.",
+      "rootCause": "Generated reading views previously blocked completion and occupied separate revalidation Actions.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:completes v3 Archive with a missing report when view rendering fails and preserves its receipt|completes v3 Archive with a edited report when view rendering fails and preserves its receipt|rejects candidate drift before v3 Archive publication after merging the revalidation Action)$",
+          "requiredNames": [
+            "completes v3 Archive with a missing report when view rendering fails and preserves its receipt",
+            "completes v3 Archive with a edited report when view rendering fails and preserves its receipt",
+            "rejects candidate drift before v3 Archive publication after merging the revalidation Action"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-normal-stop-reconciliation",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "Normal advancement skips execution records that already have bound stop evidence.",
+      "coverageLevel": "unit",
+      "reproduction": "The same registered execution test opened a settled record before the change and opens none after the change.",
+      "expected": "Reconcile only executions missing stopping evidence; preserve the current Run when nothing needs recording.",
+      "forbidden": "Open every settled historical execution record on each internal advancement.",
+      "rootCause": "Reconciliation requested includeSettled even when the Run already contained stop evidence.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-check-termination.test.ts",
+          "namePattern": "^does not reopen settled execution records when reconciling existing stop proof$",
+          "requiredNames": [
+            "does not reopen settled execution records when reconciling existing stop proof"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-task-combined-continuation",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "Native task results combine internal advancement and actual session claims with concise output.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Execute the focused real Runtime/temporary-project cases recorded in native-task-regressions.json. The high-level CLI was first observed rejecting the new result option before implementation.",
+      "expected": "Two result calls complete explicitly authorized ordinary verification and Archive, while absent authorization waits and repeated results preserve identity.",
+      "forbidden": "Approve without delegation, accept wrong sessions or drifted candidates, duplicate progression, or omit acceptance text.",
+      "rootCause": "The workflow exposed separate submission, progression and claim operations, expanded normal protocol output and mandatory review policy.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native high-level task continuation submits Build and claims same-session Verify in one call, then completes authorized Archive in one result call|Native high-level task safeguards waits for acceptance without delegated approval and replays the same result without duplicate progression|Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session|Native high-level task safeguards rejects a wrong result session and candidate drift before accepting Verify|Native high-level task safeguards keeps complete acceptance content while reducing normal output below full SDK details)$",
+          "requiredNames": [
+            "Native high-level task continuation submits Build and claims same-session Verify in one call, then completes authorized Archive in one result call",
+            "Native high-level task safeguards waits for acceptance without delegated approval and replays the same result without duplicate progression",
+            "Native high-level task safeguards hands independent Verify to its actual receiver and rejects the Builder session",
+            "Native high-level task safeguards rejects a wrong result session and candidate drift before accepting Verify",
+            "Native high-level task safeguards keeps complete acceptance content while reducing normal output below full SDK details"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-task-recovery-boundaries",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "Normal task advancement routes recovery only where needed and preserves already committed results.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Execute the focused real Runtime/temporary-project cases recorded in native-task-safety.json. The high-level CLI was first observed rejecting the new result option before implementation.",
+      "expected": "Skip unrelated recovery modules, support non-Git transport outside inputs, preserve committed results on subsequent failure, and reject invalid verdicts.",
+      "forbidden": "Lose a saved result or count incomplete verification as passed.",
+      "rootCause": "The workflow exposed separate submission, progression and claim operations, expanded normal protocol output and mandatory review policy.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:skips unrelated recovery handlers while the ordinary Verifier is running|keeps non-Git result transport outside candidate inputs through the high-level task path|preserves a committed Builder result when its internal check cannot start|rejects incomplete or forged high-level results without completing the original Verify task|keeps the selected independent review when the next claim omits review options|completes Archive on the returned third call after the user accepts the current result)$",
+          "requiredNames": [
+            "skips unrelated recovery handlers while the ordinary Verifier is running",
+            "keeps non-Git result transport outside candidate inputs through the high-level task path",
+            "preserves a committed Builder result when its internal check cannot start",
+            "rejects incomplete or forged high-level results without completing the original Verify task",
+            "keeps the selected independent review when the next claim omits review options",
+            "completes Archive on the returned third call after the user accepts the current result"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-supervisor-adaptive-review",
+      "sources": ["report:2026-11-05-native-verify-archive-cost"],
+      "behavior": "New Supervisor reviews may use the same actual session unless independent review was explicitly required.",
+      "coverageLevel": "runtime",
+      "reproduction": "Execute the focused real Runtime/temporary-project cases recorded in native-supervisor-review.json. The high-level CLI was first observed rejecting the new result option before implementation.",
+      "expected": "Preserve old policy, enforce explicit independence and record actual assurance in archived Child evidence.",
+      "forbidden": "Label same-session review independent or accept a required-independent result from the Builder.",
+      "rootCause": "The workflow exposed separate submission, progression and claim operations, expanded normal protocol output and mandatory review policy.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:preserves Supervisor review policy and archived assurance \\('2', required=false, session='child-builder'\\)|preserves Supervisor review policy and archived assurance \\('3', required=false, session='child-builder'\\)|preserves Supervisor review policy and archived assurance \\('3', required=true, session='child-builder'\\)|preserves Supervisor review policy and archived assurance \\('3', required=true, session='actual-child-reviewer'\\))$",
+          "requiredNames": [
+            "preserves Supervisor review policy and archived assurance ('2', required=false, session='child-builder')",
+            "preserves Supervisor review policy and archived assurance ('3', required=false, session='child-builder')",
+            "preserves Supervisor review policy and archived assurance ('3', required=true, session='child-builder')",
+            "preserves Supervisor review policy and archived assurance ('3', required=true, session='actual-child-reviewer')"
+          ]
         }
       ]
     }

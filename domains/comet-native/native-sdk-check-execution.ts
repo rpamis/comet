@@ -32,6 +32,7 @@ import {
 } from '../engine/runtime.js';
 
 const CHECK_REFS = new Set([
+  'native-build-checks',
   'native-required-checks',
   'native-verifier-requested-checks',
   'native-supervisor-child-checks',
@@ -449,7 +450,7 @@ export async function reconcileNativeSdkExecutionStops(
   const inspections = await inspectNativeSdkCheckExecutions({
     projectRoot,
     run: initial,
-    includeSettled: true,
+    includeSettled: false,
   });
   const stoppedActions = inspections.flatMap((item) => {
     const action = initial.actions.find((entry) => entry.id === item.actionId)!;
@@ -490,7 +491,9 @@ export async function inspectNativeSdkCheckExecutions(options: {
       .filter(
         (action) =>
           isNativeSdkCheckAction(action) &&
-          (options.includeSettled || ['running', 'unknown', 'cancelled'].includes(action.status)) &&
+          (options.includeSettled ||
+            ['running', 'unknown'].includes(action.status) ||
+            !hasNativeSdkPortableStopEvidence(run, action)) &&
           action.claim,
       )
       .map(async (action) => {
@@ -508,6 +511,26 @@ export async function inspectNativeSdkCheckExecutions(options: {
               recoveryRequired: !hasNativeSdkPortableStopEvidence(run, action),
               reason: '检查缺少持久进程登记，无法确认它是否仍在执行',
             };
+          // 已持久化的停止事实绑定完整执行记录，记录变化后重新核对进程。
+          if (
+            hasNativeSdkPortableStopEvidence(run, action) &&
+            action.executionStop?.evidence ===
+              `Runtime 已确认原受管执行停止；执行记录摘要 ${hashRuntimeValue(execution as unknown as RuntimeValue)}`
+          ) {
+            return {
+              ...base,
+              owner: 'unknown' as const,
+              process: 'dead' as const,
+              processBoundary:
+                globalThis.process.platform === 'win32'
+                  ? ('supervisor-process' as const)
+                  : ('process-group' as const),
+              phase: execution.phase,
+              execution,
+              quiescent: true,
+              recoveryRequired: false,
+            };
+          }
           const owner = await inspectProcessLiveness(execution.owner.pid, execution.owner.identity);
           const receipt = await readTerminationReceipt(projectRoot, run, action);
           // 无 PID 不能证明从未启动；只有死亡 owner 的明确停止事实可关闭登记间隙。

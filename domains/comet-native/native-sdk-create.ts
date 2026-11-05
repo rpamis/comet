@@ -55,8 +55,9 @@ async function startNativeSdkRun(options: {
   task?: string;
   recoverySourceHash?: string;
   recoverySource?: string;
+  workflowVersion?: '1' | '2' | '3';
 }): Promise<WorkflowRun> {
-  const application = defineNativeWorkflowApplication();
+  const application = defineNativeWorkflowApplication(options.workflowVersion ?? '1');
   const persistentStore = createNativeSdkStateStore(options.paths.projectRoot);
   const store: RuntimeStore<WorkflowRun> = {
     async read(runId) {
@@ -247,6 +248,7 @@ export async function createNativeSdkChange(options: {
       paths: options.paths,
       name: options.name,
       task: options.task,
+      workflowVersion: '3',
       initialState: createNativePortableState({
         name: options.name,
         language: options.language,
