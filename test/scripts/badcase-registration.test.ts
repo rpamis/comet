@@ -371,11 +371,15 @@ describe('continuous badcase registration', () => {
       workflow.indexOf('  core-regressions:'),
       workflow.indexOf('  node-compatibility:'),
     );
-    expect(job).toContain('name: Badcase regressions (${{ matrix.os }})');
+    expect(job).toContain(
+      "name: Badcase regressions (${{ matrix.os }}${{ matrix.shards > 1 && format(', shard {0}/{1}', matrix.shard, matrix.shards) || '' }})",
+    );
     expect(job).toContain('fetch-depth: 0');
     expect(job).toContain('persist-credentials: false');
     expect(job).toContain('run: pnpm check:badcase-registration');
-    expect(job).toContain('run: pnpm test:core-regressions');
+    expect(job).toContain(
+      'run: pnpm test:core-regressions --shard=${{ matrix.shard }}/${{ matrix.shards }}',
+    );
     expect(job).not.toContain('github.event.pull_request.body');
     const placeholder = parseBadcaseDeclaration(
       readFileSync('.github/PULL_REQUEST_TEMPLATE.md', 'utf8'),

@@ -10760,6 +10760,13 @@
           "requiredNames": [
             "CI workflows runs all Windows badcase shards with separate evidence and the original deadline"
           ]
+        },
+        {
+          "file": "test/scripts/badcase-registration.test.ts",
+          "namePattern": "keeps the declaration guard in the ordinary PR job and refreshes edited PR bodies",
+          "requiredNames": [
+            "continuous badcase registration keeps the declaration guard in the ordinary PR job and refreshes edited PR bodies"
+          ]
         }
       ]
     }
