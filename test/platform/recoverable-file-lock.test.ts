@@ -457,6 +457,9 @@ describe('recoverable file lock release', () => {
       // throw instead of reporting a state, which is the only way into the
       // fallback's own failure handler.
       await fs.rename(directory, `${directory}.moved`);
+      // Ordinary Windows accounts cannot create directory symlinks without
+      // SeCreateSymbolicLinkPrivilege. A junction needs no privilege and still makes
+      // the parent a link, which is all this case depends on.
       await fs.symlink(
         `${directory}.moved`,
         directory,
