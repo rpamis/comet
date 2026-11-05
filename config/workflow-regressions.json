@@ -10713,6 +10713,28 @@
           ]
         }
       ]
+    },
+    {
+      "id": "windows-doctor-node24-command-probe",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/42060657402/job/127363032310"],
+      "behavior": "Keep public Classic doctor diagnostics free of Node 24 shell warnings while preserving version detection and invalid-change checks on Windows.",
+      "coverageLevel": "public-cli",
+      "reproduction": "At fdb23ccd, Windows Node 24.22.2 fails all four original doctor discovery tests because DEP0190 is written to stderr. The same built CLI and temporary projects reproduce four failures locally on Node 24.22.2; Node 22.20.0 does not reproduce the runtime warning.",
+      "expected": "The public doctor command emits no stderr, returns healthy JSON for both supported layouts, and still rejects valid-name files, links and corrupt change state without modifying unrelated files.",
+      "forbidden": "Suppress Node warnings globally, relax the empty-stderr assertion, lose OpenSpec version detection, or ignore invalid changes to produce a healthy result.",
+      "rootCause": "getOpenSpecVersion passed an argument array to execFileSync with shell:true on Windows. Node 24 emits DEP0190 in the calling process, outside the child's ignored stderr stream.",
+      "tests": [
+        {
+          "file": "test/app/doctor-classic-discovery.test.ts",
+          "namePattern": "ignores non-change entries without changing a healthy doctor exit in|still validates real change state and rejects valid-name files and links in",
+          "requiredNames": [
+            "Classic doctor change discovery ignores non-change entries without changing a healthy doctor exit in docs layout",
+            "Classic doctor change discovery ignores non-change entries without changing a healthy doctor exit in legacy layout",
+            "Classic doctor change discovery still validates real change state and rejects valid-name files and links in docs layout",
+            "Classic doctor change discovery still validates real change state and rejects valid-name files and links in legacy layout"
+          ]
+        }
+      ]
     }
   ]
 }

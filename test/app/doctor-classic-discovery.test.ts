@@ -88,7 +88,7 @@ describe('Classic doctor change discovery', () => {
   function doctor() {
     const result = run(cli, 'doctor', project, '--scope', 'project', '--json');
     expect(result.error).toBeUndefined();
-    expect(result.stderr).toBe('');
+    expect(result.stderr, result.stderr).toBe('');
     const payload = JSON.parse(result.stdout) as DoctorPayload;
     return { ...result, payload };
   }
