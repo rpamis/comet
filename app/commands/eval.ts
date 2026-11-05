@@ -519,28 +519,34 @@ async function executeEval(options: EvalCommandOptions, collectOnly: boolean): P
   const trackCli =
     process.env.COMET_EVAL_MANAGED !== '1' && !process.env.COMET_APPLICATION_EVAL_CONTEXT;
   if (trackCli) {
-    await beginCliEvalTracking(context, details.experimentId, {
-      target: options.manifest ? context.manifestPath! : context.skillRoot,
-      targetType: 'skill',
-      ...(options.datasetPlan
-        ? {
-            dataset: options.datasetPlan.dataset.id,
-            datasetTreatment: options.datasetTreatment ?? 'native',
-            count: options.datasetPlan.count,
-            timeoutSeconds: 0,
-            ...(options.acceptDatasetLicense ? { acceptDatasetLicense: true } : {}),
-          }
-        : {}),
-      agent: details.agent ?? undefined,
-      ...(details.model !== 'default' ? { model: details.model } : {}),
-      suite: details.suite,
-      ...(options.task ? { task: options.task } : {}),
-      ...(options.quick ? { quick: true } : {}),
-      ...(options.profile ? { profile: options.profile } : {}),
-      ...(details.judge
-        ? { judgeAgent: details.judge.agent, judgeModel: details.judge.model, judgeEnabled: true }
-        : { judgeEnabled: false }),
-    });
+    await beginCliEvalTracking(
+      context,
+      details.experimentId,
+      {
+        target: options.manifest ? context.manifestPath! : context.skillRoot,
+        targetType: 'skill',
+        ...(options.datasetPlan
+          ? {
+              dataset: options.datasetPlan.dataset.id,
+              datasetRoot: options.datasetPlan.root,
+              datasetTreatment: options.datasetTreatment ?? 'native',
+              count: options.datasetPlan.count,
+              timeoutSeconds: 0,
+              ...(options.acceptDatasetLicense ? { acceptDatasetLicense: true } : {}),
+            }
+          : {}),
+        agent: details.agent ?? undefined,
+        ...(details.model !== 'default' ? { model: details.model } : {}),
+        suite: details.suite,
+        ...(options.task ? { task: options.task } : {}),
+        ...(options.quick ? { quick: true } : {}),
+        ...(options.profile ? { profile: options.profile } : {}),
+        ...(details.judge
+          ? { judgeAgent: details.judge.agent, judgeModel: details.judge.model, judgeEnabled: true }
+          : { judgeEnabled: false }),
+      },
+      options.datasetPlan,
+    );
   }
   try {
     const runtimeContext = prepared
