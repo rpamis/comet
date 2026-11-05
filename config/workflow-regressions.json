@@ -10441,6 +10441,35 @@
           "requiredNames": ["includes captured Python output when a scaffold subprocess fails"]
         }
       ]
+    },
+    {
+      "id": "ci-native-process-regression-worker-isolation",
+      "sources": [
+        "https://github.com/rpamis/comet/actions/runs/42036004685/job/127274561826",
+        "report:2026-11-05-pr539-ci-failures"
+      ],
+      "behavior": "真实 Native 进程回归使用单一测试 worker，避免相互争用 Windows 进程探测资源，并保留原命令时限。",
+      "coverageLevel": "runtime",
+      "reproduction": "23a56237 的 Windows Runtime smoke 98 项通过、Windows shim 单项在原 10000ms 内超时。本机原并发命令 99 项通过；受限两 CPU 的相同 shim 探针中并行 8 项均耗尽原时限，串行 8 项均通过。未把受限探针等同于原 CI 机器的完整复现。",
+      "expected": "CI 串行执行原有真实进程测试；参数传递、退出状态和超时停止的原断言保持。",
+      "forbidden": "提高 shim 的 10000ms 时限、跳过原测试、忽略终止证明或把超时写成通过。",
+      "rootCause": "真实进程测试默认使用多个 worker，Windows PowerShell 启动和进程探测相互争用；并发与串行对照显示原时限下的环境敏感性，CI 改为单 worker 限制测试间干扰。",
+      "tests": [
+        {
+          "file": "test/repository/ci-workflows.test.ts",
+          "namePattern": "runs real Native process regressions without competing test workers",
+          "requiredNames": [
+            "CI workflows runs real Native process regressions without competing test workers"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-check-executor.test.ts",
+          "namePattern": "derives failed and interrupted states from exit and timeout",
+          "requiredNames": [
+            "Native check executor derives failed and interrupted states from exit and timeout"
+          ]
+        }
+      ]
     }
   ]
 }

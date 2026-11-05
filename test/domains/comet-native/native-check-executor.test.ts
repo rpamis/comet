@@ -111,10 +111,13 @@ describe('Native check executor', () => {
         },
       });
 
-      expect(result).toMatchObject({ status: 'passed', exitCode: 0, timedOut: false });
-      expect(await fs.readFile(path.join(runtimeDir, ...result.logRef.split('/')), 'utf8')).toBe(
-        JSON.stringify(['space separated', '中文']),
-      );
+      const output = await fs.readFile(path.join(runtimeDir, ...result.logRef.split('/')), 'utf8');
+      expect(result, JSON.stringify({ result, output })).toMatchObject({
+        status: 'passed',
+        exitCode: 0,
+        timedOut: false,
+      });
+      expect(output).toBe(JSON.stringify(['space separated', '中文']));
     },
   );
 

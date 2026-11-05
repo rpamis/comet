@@ -202,6 +202,7 @@ jobs:
           test/domains/comet-native/native-supervisor-check-process.test.ts
           test/domains/comet-native/native-supervisor-integration-execution.test.ts
           test/domains/comet-native/native-supervisor-legacy-diagnostics.test.ts
+          --maxWorkers=1
       - run: pnpm test:runtime-smoke
       - name: Verify Eval stop and cleanup recovery on the host platform
         run: >-

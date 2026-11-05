@@ -128,6 +128,21 @@ describe('CI workflows', () => {
     expect(commands).toContain('test/domains/workflow-contract/workspace-runtime.test.ts');
   });
 
+  it('runs real Native process regressions without competing test workers', async () => {
+    const workflow = parse(await readWorkflow('ci.yml'));
+    const step = workflow.jobs['runtime-smoke'].steps.find(
+      (step: { name?: string }) => step.name === 'Native check process and recovery regressions',
+    );
+    expect(step.run).toContain('--maxWorkers=1');
+    expect(step.run).toContain('test/domains/comet-native/native-check-executor.test.ts');
+    expect(step.run).toContain(
+      'test/domains/comet-native/native-check-executor-termination.test.ts',
+    );
+    expect(step.run).toContain('test/platform/process/process-identity.test.ts');
+    expect(step.if).toBeUndefined();
+    expect(step['continue-on-error']).toBeUndefined();
+  });
+
   it('builds and requires the real Runtime API cases in Eval static checks', async () => {
     const workflow = parse(await readWorkflow('ci.yml'));
     const job = workflow.jobs['eval-static'];
