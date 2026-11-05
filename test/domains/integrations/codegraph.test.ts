@@ -8,6 +8,20 @@ vi.mock('child_process', () => ({
   execFileSync: vi.fn(),
 }));
 
+// Mocked commands must not resolve the developer's installed pnpm or CodeGraph.
+vi.mock('../../../platform/process/spawn-command.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../platform/process/spawn-command.js')>()),
+  commandInvocation: (
+    command: string,
+    args: readonly string[],
+    options: { env?: NodeJS.ProcessEnv },
+  ) => ({
+    command,
+    args: [...args],
+    env: options.env ?? process.env,
+  }),
+}));
+
 const mockedExecFileSync = vi.mocked(execFileSync);
 
 describe('codegraph', () => {

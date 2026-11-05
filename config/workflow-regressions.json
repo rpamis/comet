@@ -10769,6 +10769,44 @@
           ]
         }
       ]
+    },
+    {
+      "id": "windows-doctor-pnpm-global-probe",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/42119623320/job/127570773681"],
+      "behavior": "Keep doctor stderr clean when optional CodeGraph is absent and its global pnpm directory must be inspected on Windows Node 24.",
+      "coverageLevel": "public-cli",
+      "reproduction": "On 39b1803a, an isolated PATH with a literal pnpm wrapper and no CodeGraph reproduces DEP0190 on Windows Node 24.22.2. The trace points to resolvePnpmGlobalCommand; fixing only the earlier OpenSpec probe does not cover this fallback.",
+      "expected": "Return healthy doctor JSON with a missing optional CodeGraph warning, invoke only pnpm bin -g, and leave stderr empty.",
+      "forbidden": "Suppress runtime warnings, remove the empty-stderr assertion, install an unrequested tool, or use the developer's real global pnpm configuration as the fixture.",
+      "rootCause": "The optional CLI fallback passed an argument array to execFileSync with shell:true for pnpm.cmd, causing Node 24 to warn in the doctor process.",
+      "tests": [
+        {
+          "file": "test/app/doctor-classic-discovery.test.ts",
+          "namePattern": "keeps doctor stderr clean when CodeGraph is resolved through pnpm \\(installed=false\\)",
+          "requiredNames": [
+            "Classic doctor change discovery keeps doctor stderr clean when CodeGraph is resolved through pnpm (installed=false)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "windows-doctor-codegraph-status-probe",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/42119623320/job/127570773681"],
+      "behavior": "Inspect an existing CodeGraph index through a global command wrapper without Node 24 shell warnings or unwanted initialization.",
+      "coverageLevel": "public-cli",
+      "reproduction": "After repairing the pnpm probe, the same isolated Windows Node 24.22.2 fixture passes with CodeGraph missing but still fails with it installed. The remaining DEP0190 trace points to inspectCodegraphIndex.",
+      "expected": "Return a passing CLI and current-index diagnostic, preserve literal status --json project arguments including spaces, and keep stderr empty.",
+      "forbidden": "Hide the warning, downgrade a valid index to unavailable, or execute install/init instead of the requested read-only status probe.",
+      "rootCause": "The read-only index status probe independently used execFileSync with shell:true and an argument array, producing a second Node 24 warning after the global pnpm lookup was corrected.",
+      "tests": [
+        {
+          "file": "test/app/doctor-classic-discovery.test.ts",
+          "namePattern": "keeps doctor stderr clean when CodeGraph is resolved through pnpm \\(installed=true\\)",
+          "requiredNames": [
+            "Classic doctor change discovery keeps doctor stderr clean when CodeGraph is resolved through pnpm (installed=true)"
+          ]
+        }
+      ]
     }
   ]
 }

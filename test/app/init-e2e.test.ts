@@ -16,6 +16,20 @@ vi.mock('child_process', () => ({
   execFileSync: vi.fn(),
 }));
 
+// External commands are mocked together with their platform resolution.
+vi.mock('../../platform/process/spawn-command.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../platform/process/spawn-command.js')>()),
+  commandInvocation: (
+    command: string,
+    args: readonly string[],
+    options: { env?: NodeJS.ProcessEnv },
+  ) => ({
+    command,
+    args: [...args],
+    env: options.env ?? process.env,
+  }),
+}));
+
 const mockedExecFileSync = vi.mocked(execFileSync);
 
 vi.mock('@inquirer/prompts', () => ({
