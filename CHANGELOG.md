@@ -25,6 +25,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Workflow evidence focus**: Keep focus on controls selected while an evidence drawer closes, and restore the original trigger when keyboard dismissal leaves focus inside the drawer.
+
 - **Native Archive recovery**: Recover returned but rejected Spec application and finalization outcomes through `native archive --recover`, preserving the original Action and checking its transaction or durable receipt without repeating completed writes. Continue blocking active executions without matching rejection evidence and recovery with changed candidate inputs ([#526](https://github.com/rpamis/comet/issues/526)).
 - **Authored Eval image reuse**: Bind copied task environment files to the image cache so tasks with the same Dockerfile and different candidate inputs run their own code. Later controller files do not invalidate the image.
 - **File lock release**: When the lock coordinator fails while releasing a project-state lock, the lock is now released directly if it is still the exact lock this write published, so the same process is no longer blocked by its own lock. A lock that another holder republished, or one that can no longer be inspected, is retained and reported, and a failed direct release reports its own reason instead of describing the lock as changed ([#529](https://github.com/rpamis/comet/issues/529)).

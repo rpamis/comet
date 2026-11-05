@@ -277,3 +277,5 @@ PR 静态 CI 暴露的夹具问题已定向处理。补回材料访问拦截测�
 Runtime smoke 的旧并行 worktree 案例原样保留名称和拒绝/隔离/恢复断言，显式选择 native.document_writes: revert。新增默认策略案例验证真实生成 Hook 放行、实际写入、当前 Agent observe/record、同 Run 修订候选及重建 Verify，并检查另一工作区完整隔离。三项通过，未改产品行为或冻结历史案例。共享 Rule 的 Native 段使用 native.document_writes 配置名，避免与 Classic 的 document_evidence 混淆。
 
 后续 Runtime smoke 检出显式空计划首次结算缺陷。reserveNativeRawCheckPlanLocked 对空执行列表直接复用，初次没有 execution 完成标记，导致明确提交空计划后仍无法派发 Verifier。现在仅在 plans/checks 均空且 local.execution 为 null 时沿原零命令结算路径记录完成；未调用、活跃/unknown 执行和既有收据仍按原规则处理。原3项停止保护与新增3项回归合计6项通过，包含真实生成 next bundle，登记 native-portable-explicit-empty-check-plan。Native/Entry重建、类型、生成物、格式、ESLint及登记检查通过。
+
+Dashboard CI 的 Any 历史选择失败已在本机复现。根因为证据 Drawer 动画结束后无条件恢复旧触发按钮焦点，使用户新打开的历史 Select 关闭。证据/观测 Drawer 使用当前 AntD 的公开焦点恢复接口，仅在焦点仍属于关闭中的抽屉或 body 时恢复；其他控件的新焦点保留。原完整 Any 浏览器用例加入键盘关闭和动画结束焦点断言后通过，React 组件4项和相关源码契约40项通过。保留原分页、证据来源与安装版本断言，登记 dashboard-observation-drawer-focus。

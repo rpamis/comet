@@ -1920,7 +1920,8 @@ test('Any retries and pages one application creation history without losing deli
   await expect(proofDrawer).toContainText('original-local-proof');
   await expect(proofDrawer).toContainText('"status": "stale"');
   await expect(page.locator('.any-run-identity')).toHaveText('创作记录 creator-041');
-  await proofDrawer.getByRole('button', { name: '关闭', exact: true }).click();
+  await proofDrawer.press('Escape');
+  await expect(historicalLocal).toBeFocused();
   await historicalModel.click();
   await expect(proofDrawer).toContainText('original-model-proof');
   await proofDrawer.getByRole('button', { name: '关闭', exact: true }).click();
@@ -1946,7 +1947,13 @@ test('Any retries and pages one application creation history without losing deli
   const moreVersions = page.getByRole('button', { name: /加载更多版本记录$/u });
   await expect(moreVersions).not.toHaveClass(/ant-btn-loading/u);
   await moreVersions.click();
-  await chooseHistory(page, reauthoredInstalled.runId);
+  const installedChoices = await historyChoices(page);
+  await expect(proofDrawer).not.toBeVisible();
+  await expect(roster.getByRole('combobox', { name: '创作记录', exact: true })).toBeFocused();
+  await installedChoices
+    .getByRole('option')
+    .filter({ hasText: `${reauthoredInstalled.runId} ·` })
+    .click();
   await expect(page.locator('.any-run-identity')).toHaveText(
     `版本来源 ${reauthoredInstalled.runId}`,
   );

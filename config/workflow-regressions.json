@@ -9637,6 +9637,38 @@
           ]
         }
       ]
+    },
+    {
+      "id": "dashboard-observation-drawer-focus",
+      "sources": ["report:2026-11-05-pr539-observation-drawer-focus"],
+      "behavior": "Closing an Any observation drawer preserves a newly focused control while keyboard dismissal restores the original trigger.",
+      "coverageLevel": "unit",
+      "reproduction": "PR 539 Dashboard CI and the local browser case failed when selecting installed-being-reauthored after closing historical evidence. Browser focus events showed the closing Drawer refocusing the evidence button and dismissing the newly opened history Select before its option could be clicked.",
+      "expected": "Restore the original trigger only while focus remains inside the closing drawer or on the document body. Preserve focus already moved to another control, keep the history popup usable, and retain source evidence and installed-version selection.",
+      "forbidden": "Steal focus from a newly focused control after the closing animation, lose keyboard return focus, or replace the original trigger when asynchronous evidence updates arrive.",
+      "rootCause": "The dependency's default focus restoration runs after the close animation without checking whether the user has already focused another control.",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/observation-drawer-focus.test.ts",
+          "namePattern": "^Application observation drawer focus (?:restores the trigger when closing leaves focus on the (?:drawer|body)|preserves the next control focused before the closing animation ends|retains the original trigger when evidence updates while the drawer is open)$",
+          "requiredNames": [
+            "Application observation drawer focus restores the trigger when closing leaves focus on the drawer",
+            "Application observation drawer focus restores the trigger when closing leaves focus on the body",
+            "Application observation drawer focus preserves the next control focused before the closing animation ends",
+            "Application observation drawer focus retains the original trigger when evidence updates while the drawer is open"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "Dashboard browser interaction",
+          "status": "verified",
+          "evidence": [
+            "2026-11-05 pnpm test:dashboard-e2e dashboard-any-browser.spec.ts --grep 'Any retries and pages one application creation history without losing delivered evidence sources' --workers=1 passed the original full case after the fix, following a local failure on the original code.",
+            "The same browser case then passed with added Escape-to-trigger and post-animation Select-focus assertions. Existing paging, original evidence identity, stale asynchronous response, and installed-version selection assertions were retained. Trace is coverage/playwright-results/dashboard-any-browser-Any--d1b73--delivered-evidence-sources/trace.zip. No Eval was started."
+          ]
+        }
+      ]
     }
   ]
 }
