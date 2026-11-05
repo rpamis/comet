@@ -170,7 +170,7 @@ it('binds finite new dataset budgets while preserving legacy explicit transport'
 it('preserves original rewards while separating verifier environment and assertion failures', () => {
   scaffold(
     'test_builtin_datasets.py',
-    'verifier_resources_and_status or observer_distinguishes_pytest or scoring_applies_fixed_verifier or failed_verifier_keeps_reward or pytest_only_loads_root_owned or workbuddy_judge_status or workbuddy_partial_score',
+    'verifier_resources_and_status or observer_distinguishes_pytest or scoring_uses_candidate_copy or failed_verifier_keeps_reward or pytest_only_loads_root_owned or workbuddy_judge_status or workbuddy_partial_score',
     16,
   );
 }, 35_000);
@@ -209,7 +209,7 @@ it('keeps dataset image identity stable across modes while binding every build i
 }, 35_000);
 
 it('blocks benchmark answer access while allowing business tests and verifier handoffs', () => {
-  scaffold('test_dataset_integrity.py', 'reference_guard or reference_settings', 10);
+  scaffold('test_dataset_integrity.py', 'reference_guard or reference_settings', 11);
   scaffold('test_utils.py', 'goal_uses_native_command_without_comet_completion_or_nudges', 2);
 }, 35_000);
 
@@ -218,6 +218,6 @@ it('excludes benchmark reference access and audits independent child sessions wi
 }, 35_000);
 
 it('excludes unverified or mismatched experiment modes including legacy flags', () => {
-  scaffold('test_dataset_integrity.py', 'legacy_invalid', 5);
-  scaffold('test_builtin_datasets.py', 'mode_inspection_failure_is_harness', 1);
+  scaffold('test_dataset_integrity.py', 'legacy_invalid or changed_dataset_inputs', 7);
+  scaffold('test_dataset_integrity.py', 'sdk_inspection_preserves_original_owner', 1);
 }, 35_000);

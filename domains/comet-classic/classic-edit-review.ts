@@ -35,6 +35,7 @@ import { readCheckIndex } from './classic-check-index.js';
 import { readCheckPolicy } from './classic-check-policy.js';
 import { rememberApprovedEditOriginal } from '../workflow-contract/edit-review.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import { readWorkflowApplicationRun } from '../workflow-application/index.js';
 import {
   classicSdkFormalSourceEvidence,
   classicSdkPresetSourceEvidence,
@@ -154,9 +155,12 @@ export async function classicFormalEditReviewScope(
     const owner = await readSdkChangeOwner(projectRoot, 'classic', change, { readOnly: true });
     if (owner) {
       run =
-        (await createFileRuntimeStore<WorkflowRun>({
-          rootDir: path.join(scope.runtimeRoot, 'sdk-runs', 'classic'),
-        }).read(owner.runId)) ?? undefined;
+        (['classic-full', 'classic-hotfix', 'classic-tweak'].includes(owner.application)
+          ? await createFileRuntimeStore<WorkflowRun>({
+              rootDir: path.join(scope.runtimeRoot, 'sdk-runs', 'classic'),
+            }).read(owner.runId)
+          : await readWorkflowApplicationRun(projectRoot, owner.application, owner.runId)) ??
+        undefined;
       if (!run || run.runId !== owner.runId)
         throw new Error('正式材料判断缺少当前 SDK Run，不能降级使用旧批准');
     }
@@ -457,15 +461,10 @@ export async function observeClassicCheckInputs(
   const output = action.outcome!.output as {
     manifestRef: string;
     manifestHash: string;
+    inputAfter: string;
     argv: string[];
     cwd: string;
   };
-  const source = await readClassicProjectFile(projectRoot, output.manifestRef, {
-    label: 'Classic 原输入清单',
-    maxBytes: Number.MAX_SAFE_INTEGER,
-  });
-  if (checkManifestHash(source) !== output.manifestHash)
-    throw new Error('Classic 原输入清单已变化');
   const state = run.state as unknown as ClassicState;
   const current =
     options.snapshot ??
@@ -475,6 +474,24 @@ export async function observeClassicCheckInputs(
       { argv: output.argv, cwd: output.cwd },
       { verificationReport: state.verificationReport },
     ));
+  let source: string;
+  try {
+    source = await readClassicProjectFile(projectRoot, output.manifestRef, {
+      label: 'Classic 原输入清单',
+      maxBytes: Number.MAX_SAFE_INTEGER,
+    });
+  } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException).code !== 'ENOENT' ||
+      current.digest !== output.inputAfter ||
+      checkManifestHash(current.manifest) !== output.manifestHash
+    )
+      throw error;
+    // 便携恢复缺少本机清单时，只能重建与原收据两个摘要均一致的输入。
+    source = current.manifest;
+  }
+  if (checkManifestHash(source) !== output.manifestHash)
+    throw new Error('Classic 原输入清单已变化');
   const before = parseCheckManifest(source),
     diff = diffCheckManifests(before, current.entries);
   const left = new Map(before.map((entry) => [entry.p, entry.h])),
@@ -604,9 +621,10 @@ export async function assertClassicSdkAcceptedCandidateInputs(
   const state = run.state as unknown as ClassicState;
   const observation = await observeClassicSdkAcceptedCandidateInputs(projectRoot, run, snapshot);
   const change = path.posix.basename((run.input as { changeDir: string }).changeDir);
+  const scope = await classicEditReviewScope(projectRoot, change, state);
   const scopes = [
-    await classicEditReviewScope(projectRoot, change, state),
-    await classicFormalEditReviewScope(projectRoot, change, state, false, undefined, run),
+    scope,
+    await classicFormalEditReviewScope(projectRoot, change, state, false, scope, run),
   ];
   for (const scope of scopes) await assertEditReviewsComplete(scope);
   if (!(await areObservedEditsNonBehavioral(scopes, observation.changes)))
@@ -718,10 +736,11 @@ export async function classicCheckInputsRetained(
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
   }
+  const scope = await classicEditReviewScope(projectRoot, change, state);
   return isCheckInputRetained(
-    await classicEditReviewScope(projectRoot, change, state),
+    scope,
     actionId,
     changes.filter((entry) => entry.beforeHash !== entry.afterHash),
-    [await classicFormalEditReviewScope(projectRoot, change, state, false, undefined, run)],
+    [await classicFormalEditReviewScope(projectRoot, change, state, false, scope, run)],
   );
 }

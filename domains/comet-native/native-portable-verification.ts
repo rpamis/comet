@@ -203,10 +203,11 @@ export async function submitNativePortableBuilderCandidate(options: {
         }
       }
       const next = submitNativeBuilderCandidate({ state, input: options.input });
+      const projectRoot = options.projectRoot ?? options.paths.projectRoot;
       const rawCandidate = await captureNativePortableCandidateInputs(
         options.paths,
         next,
-        options.projectRoot ?? options.paths.projectRoot,
+        projectRoot,
       );
       next.builder_handoff!.raw_input_ref = rawCandidate.rawInputRef;
       const reusable =
@@ -227,8 +228,8 @@ export async function submitNativePortableBuilderCandidate(options: {
           ...(reusable ??
             rebuildNativeLocalExecution({
               portableState: written,
-              projectRoot: options.paths.projectRoot,
-              branch: currentBranch(options.paths.projectRoot),
+              projectRoot,
+              branch: currentBranch(projectRoot),
             })),
           ...rawCandidate,
         },
@@ -274,7 +275,9 @@ export async function dispatchNativePortableVerifier(options: {
         projectRoot,
         supplied: options.checks,
       });
-      await assertNativePortableRawCheckInputs(options.paths, state, localBeforeDispatch);
+      await assertNativePortableRawCheckInputs(options.paths, state, localBeforeDispatch, {
+        requirePassed: false,
+      });
       const next = reserveNativeVerifierAttempt(state);
       const operationId = randomUUID();
       const registeredAt = new Date().toISOString();
@@ -613,7 +616,11 @@ export async function recordNativePortableVerifierFailure(options: {
     `record portable verifier failure ${options.name}`,
     async () => {
       const state = await readNativePortableChange(options.paths, options.name);
-      const local = await readCurrentLocalExecution({ paths: options.paths, state });
+      const local = await readCurrentLocalExecution({
+        paths: options.paths,
+        state,
+        allowMissing: true,
+      });
       assertCurrentVerifierAttempt({ state, local, expected: options.expected });
       if (
         options.requireSkillCoordination &&

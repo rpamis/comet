@@ -13,6 +13,10 @@ import { nativePreferredChangeRuntimeDir } from '../../../domains/comet-native/n
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { inspectNativeHookGuard } from '../../../domains/comet-native/native-hook-guard.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import {
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
 import { readNativePortableChange } from '../../../domains/comet-native/native-portable-storage.js';
 import {
   inspectNativePortableAcceptanceDrift,
@@ -52,7 +56,7 @@ async function fixture(
   mode: 'sdk' | 'compat' = 'sdk',
   specText = '# Worker\nThe worker returns one.\n',
   briefText = brief,
-  options: { projectAlias?: boolean } = {},
+  options: { projectAlias?: boolean; strict?: boolean } = {},
 ) {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'native-shape-incremental-'));
   roots.push(base);
@@ -79,6 +83,13 @@ async function fixture(
     { cwd: root, stdio: 'ignore' },
   );
   const name = 'demo';
+  if (options.strict) {
+    const config = defaultProjectConfig('docs', 'en');
+    await writeProjectConfig(root, {
+      ...config,
+      native: { ...config.native, document_writes: 'revert' },
+    });
+  }
   const cli = async (...args: string[]) =>
     JSON.parse((await runNativeCli([...args, '--project-root', root, '--json'])).stdout!);
   // Default SDK is intentionally exercised, not only the explicit --runtime sdk alias.
@@ -179,7 +190,7 @@ async function fixture(
 }
 
 async function legacyFixture() {
-  const f = await fixture();
+  const f = await fixture('sdk', undefined, undefined, { strict: true });
   const released = JSON.parse(
     await fs.readFile(
       new URL('../../fixtures/native-sdk-050-approved-shape.json', import.meta.url),
@@ -508,7 +519,7 @@ describe('Native Shape incremental contract', () => {
   });
 
   it('reviews an already applied formal comment using the approved original without restoring the file', async () => {
-    const f = await fixture();
+    const f = await fixture('sdk', undefined, undefined, { strict: true });
     await f.finishBuilder();
     const before = await f.inspect();
     const after = brief + '\n<!-- Explanation: the assertion maps to the worker result. -->\n';
@@ -657,7 +668,7 @@ describe('Native Shape incremental contract', () => {
   });
 
   it('keeps later user edits and supersedes stale pending and completed applied reviews', async () => {
-    const f = await fixture();
+    const f = await fixture('sdk', undefined, undefined, { strict: true });
     await f.finishBuilder();
     const before = await f.inspect();
     const prepare = async () =>
@@ -723,13 +734,14 @@ describe('Native Shape incremental contract', () => {
     })) as { continuation: { commandArgs: string[] } };
     expect(thirdResume.continuation.commandArgs).toContain('prepare-applied');
     const third = await prepare();
+    const { assertNativeEditReviewsComplete } =
+      await import('../../../domains/comet-native/native-edit-review.js');
+    await expect(assertNativeEditReviewsComplete(f.paths, before.state)).rejects.toThrow('待复核');
     await review(third.proposal.proposalHash, 'third-reviewer');
     expect(await fs.readFile(f.briefFile, 'utf8')).toBe(final);
     expect(
       await inspectNativePortableAcceptanceDrift({ paths: f.paths, state: before.state }),
     ).toEqual({ drifted: false, reason: null });
-    const { assertNativeEditReviewsComplete } =
-      await import('../../../domains/comet-native/native-edit-review.js');
     await expect(assertNativeEditReviewsComplete(f.paths, before.state)).resolves.toBeUndefined();
     expect((await f.inspect()).run).toEqual(before.run);
   });
@@ -846,7 +858,7 @@ describe('Native Shape incremental contract', () => {
   });
 
   it('keeps a Build comment edit and points to requirement revision when no Verify candidate exists', async () => {
-    const f = await fixture();
+    const f = await fixture('sdk', undefined, undefined, { strict: true });
     const before = await f.inspect();
     const edited = brief + '\n<!-- User explanation. -->\n';
     await fs.writeFile(f.briefFile, edited);
@@ -950,7 +962,7 @@ describe('Native Shape incremental contract', () => {
       expect(nativeShapeArtifactContractHash(formatted)).toBe(
         nativeShapeArtifactContractHash(approved),
       );
-      const f = await fixture('sdk', original);
+      const f = await fixture('sdk', original, undefined, { strict: true });
       await f.finishBuilder();
       await f.claim('verify.verifier');
       const before = await f.inspect();

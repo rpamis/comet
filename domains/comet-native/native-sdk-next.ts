@@ -188,7 +188,7 @@ export async function advanceNativeSdkChange(
     (action) => action.status === 'unknown' && action.stepId === 'verify.revalidate',
   );
   const implementationRecovery = interrupted.some(
-    (action) => action.status === 'unknown' && action.stepId === 'repair.implementation',
+    (action) => action.stepId === 'repair.implementation',
   );
   if (checkRecovery || reportRecovery || implementationRecovery) {
     const { runtime } = await loadOwnedNativeSdkRuntime(projectRoot, name);
@@ -710,8 +710,12 @@ export async function advanceNativeSdkChange(
     return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
   // 同一次请求共享应用加载；每个 Action 仍单独领取、校验并持久化。
   const owned = await loadOwnedNativeSdkRuntime(projectRoot, name);
-  for (let steps = 0; steps < 32; steps++) {
+  const automaticSteps =
+    run.workflow.version === '3' && !application && !state.children_contract_hash ? 32 : 1;
+  for (let steps = 0; steps < automaticSteps; steps++) {
     if (['failed', 'cancelled', 'completed'].includes(run.status)) break;
+    if (steps > 0 && state.children_contract_hash)
+      return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
     if (
       steps > 0 &&
       !state.archived &&

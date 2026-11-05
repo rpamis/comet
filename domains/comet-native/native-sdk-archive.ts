@@ -13,6 +13,7 @@ import { nativeVerificationResultHash } from './native-verification-report-v2.js
 import { canonicalHash } from './native-canonical-hash.js';
 import type { NativeRawInputSnapshot } from './native-portable-checks.js';
 import path from 'node:path';
+import { inspectNativePortableAcceptanceDrift } from './native-portable-requirements.js';
 import { promises as fs } from 'node:fs';
 import {
   assertNativeSdkCandidateUnchanged,
@@ -466,6 +467,17 @@ async function inspectArchivePreflightOutput(
     verificationReportStateVersion: bound.reportStateVersion,
     checkCapabilityOwners: run.workflow.version === '1',
     derivedReport: run.workflow.version !== '1',
+  }).catch(async (error) => {
+    const drift = await inspectNativePortableAcceptanceDrift({
+      paths: bound.paths,
+      state: bound.state,
+    });
+    if (drift.drifted) {
+      const reason = drift.reason ?? 'Native Archive formal requirements changed';
+      if (drift.reviewRequired) throw new NativeSdkCheckInputSnapshotError(reason);
+      throw new NativeSdkCandidateDriftError(reason);
+    }
+    throw error;
   });
   const archiveDirRef = path.relative(projectRoot, inspected.archiveDir).replaceAll('\\', '/');
   if (archiveDirRef.startsWith('../') || path.isAbsolute(archiveDirRef)) {

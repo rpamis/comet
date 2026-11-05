@@ -280,20 +280,11 @@ describe('Supervisor Child Verifier execution failure', () => {
     expect(status).toMatchObject({
       continuation: {
         disposition: 'blocked',
-        requiredInputs: ['original-check-execution-evidence'],
-        commandArgs: [
-          'comet',
-          'native',
-          'doctor',
-          f.name,
-          '--repair',
-          '--project-root',
-          f.projectRoot,
-          '--json',
-        ],
+        requiredInputs: ['original-execution-result'],
+        commandArgs: null,
       },
     });
-    // 只读诊断先暴露前序检查缺少停止收据，但不能改写原未知任务。
+    // 本机仍存活的领取方已证明检查停止，未知 Verifier 继续等待原任务结果。
     expect(await runtime.inspect(f.name)).toEqual(run);
     const originalCheck = run.actions.find(
       (action) => action.stepId === 'supervisor.child.checks',

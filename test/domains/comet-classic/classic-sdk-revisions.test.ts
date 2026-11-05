@@ -120,6 +120,7 @@ async function fixture(
       )!;
       const handoff = await writeClassicSdkDesignContext({
         projectRoot,
+        run,
         changeDir: path.join(projectRoot, change),
         change: 'example',
         contextCompression: 'off',

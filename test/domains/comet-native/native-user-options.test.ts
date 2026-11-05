@@ -381,6 +381,9 @@ describe('Native public user-option paths', () => {
             name: 'parent',
             hooks: {
               afterSpecApplied: async () => {
+                expect((await fs.stat(legacySupervisor.integration.worktree)).isDirectory()).toBe(
+                  true,
+                );
                 throw new Error('simulated-archive-interruption');
               },
             },
@@ -394,6 +397,9 @@ describe('Native public user-option paths', () => {
       expect(await fs.readFile(path.join(root, 'beta.txt'), 'utf8')).toBe('beta');
       expect(git(root, ['worktree', 'list', '--porcelain'])).not.toContain('/parent-alpha');
       expect(git(root, ['branch', '--list', 'comet/supervisor/*'])).toBe('');
+      await expect(fs.stat(legacySupervisor.integration.worktree)).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
       expect(git(root, ['ls-files', '.comet/config.yaml'])).toBe('');
     },
     300_000,

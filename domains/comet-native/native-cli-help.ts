@@ -24,7 +24,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     agentQuickStart: [
       'Run `comet native status --json` to discover active changes.',
       'Select an existing change with `select`, or create one with `new`.',
-      'After Shape approval, new ordinary SDK tasks use `next <change> --session <actual-session>`. Submit business results using the returned command. Runtime checks and the next task are returned together. Older and Supervisor tasks retain their returned protocol.',
+      'After Shape approval, new ordinary SDK tasks use `next <change> --session <actual-session>`. Submit business results using the returned command. Runtime checks and the next task are returned together. Older and Supervisor tasks retain their returned protocol through `comet runtime dispatch --application native`; read continuation.inputOptions when present.',
       'For compat Runtime changes, execute `agent.continuation.commandArgs` in `agent.workspace.cwd` and fill `agent.continuation.inputOptions` templates.',
     ],
     subcommands: [

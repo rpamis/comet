@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { runNativeCli } from '../../domains/comet-native/native-cli.js';
 import { loadOwnedNativeSdkRuntime } from '../../domains/comet-native/native-runtime-ownership.js';
+import { createNativePortableState } from '../../domains/comet-native/native-portable-state.js';
+import { runtimeDispatchCommand } from '../../app/commands/runtime.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -78,14 +80,31 @@ export async function nativeVerificationFixture(
     if (result.exitCode !== 0) throw new Error(JSON.stringify(result));
     return result;
   };
-  await invoke(
-    'new',
-    'verification-test',
-    '--isolation',
-    'current',
-    ...(task ? ['--task', task] : []),
-  );
   const change = path.join(root, 'docs/comet/changes/verification-test');
+  await fs.mkdir(change, { recursive: true });
+  // Exercise the legacy typed receipt and mandatory independent review contract.
+  const initial = {
+    operation: 'start',
+    runId: 'verification-test',
+    workflow: { id: 'comet-native', version: '1' },
+    input: { name: 'verification-test', artifactRootRef: 'docs', ...(task ? { task } : {}) },
+    initialState: createNativePortableState({
+      name: 'verification-test',
+      language: 'zh-CN',
+      nextAction: 'prepare-shape-confirmation',
+    }),
+  };
+  if (cliPath) await dispatch(initial);
+  else {
+    const request = path.join(temporary, 'start.json');
+    await fs.writeFile(request, JSON.stringify(initial));
+    const started = await runtimeDispatchCommand({
+      projectRoot: root,
+      application: 'native',
+      request,
+    });
+    if (started.exitCode !== 0) throw new Error(JSON.stringify(started));
+  }
   await fs.writeFile(
     path.join(change, 'brief.md'),
     '# Outcome\nDeliver the expected value.\n# Scope\nChange the value.\n## Directory structure\n### Modified\n- value.txt — expected value.\n# Non-goals\nNo unrelated changes.\n# Acceptance examples\n- The value is expected.\n',

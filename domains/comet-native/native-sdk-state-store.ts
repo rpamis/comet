@@ -112,6 +112,16 @@ class NativeProjectionRepairRequiredError extends Error {}
 function nativeSdkCheckpointBoundary(run: WorkflowRun): boolean {
   if (run.revision === 1 || ['completed', 'cancelled', 'failed'].includes(run.status)) return true;
   if (
+    (run.state as { phase?: string }).phase === 'shape' &&
+    run.waits.some(
+      (wait) =>
+        ['shape.confirm', 'supervisor.shape.confirm'].includes(wait.stepId) &&
+        wait.status === 'resolved' &&
+        wait.decision?.choice === 'rejected',
+    )
+  )
+    return true;
+  if (
     run.waits.some((wait) => wait.status === 'pending') ||
     run.evidenceWaits?.some((wait) => wait.status === 'pending')
   )

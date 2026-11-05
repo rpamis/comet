@@ -571,7 +571,33 @@ export function createClassicSdkStateStore(
 
   return {
     queryScope: store.queryScope,
-    read: (runId) => syncStateFile(runId, true),
+    async read(runId) {
+      if (!options.readOnly) {
+        try {
+          const run = await createClassicSdkStateStore(projectRoot, {
+            ...options,
+            store,
+            readOnly: true,
+          }).read(runId);
+          if (run && !isClassicSdkCancellationComplete(run)) {
+            const marker = JSON.parse(
+              (
+                await readProtectedProjectFile(
+                  initialRuntimeRoot,
+                  `${projectionDir}/${runId}.json`,
+                  Number.MAX_SAFE_INTEGER,
+                  { label: 'Classic SDK state projection marker' },
+                )
+              ).bytes.toString('utf8'),
+            ) as ProjectionMarker;
+            if (marker.revision === run.revision && equal(marker.state, run.state)) return run;
+          }
+        } catch {
+          // 需要修复或导入设置时，在写锁内重新读取并执行原校验。
+        }
+      }
+      return syncStateFile(runId, true);
+    },
     readProjection: (runId) =>
       createClassicSdkStateStore(projectRoot, { ...options, store, readOnly: true }, true).read(
         runId,

@@ -41,11 +41,13 @@ export function preservedLocalChecksForVersion(options: {
 export async function readCurrentLocalExecution(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
+  allowMissing?: boolean;
 }): Promise<NativeLocalExecutionState | null> {
   try {
     const local = await readNativeLocalExecution(
       nativeLocalExecutionFile(options.paths, options.state.name),
     );
+    if (local === null && options.allowMissing) return null;
     if (
       options.state.builder_handoff?.raw_input_ref &&
       (!local ||

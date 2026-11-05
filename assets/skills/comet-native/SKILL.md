@@ -7,6 +7,8 @@ description: 'Comet Native workflow. Use when the user explicitly invokes /comet
 
 Identify runtime format before acting; Runtime stores requirements and acceptance in the project.
 
+For older SDK Actions, claim with the returned `claimRequest` template, preserving the original Run and execution identity.
+
 ## Required rules
 
 - Continue confirmed implementation, document repairs, evidence reuse, and recovery. Pause for new decisions, authorization, or external information. Use current continuation commands, templates, and packages; correct inputs within the same task.
@@ -21,7 +23,7 @@ Identify runtime format before acting; Runtime stores requirements and acceptanc
 
 On a new task or Agent platform change, check public CLI availability and result reporting. When the current Action requires a separate session, read the [platform capability check](../comet/reference/host-check.md) and arrange that executor.
 
-1. Continue directly when the current response already supplies the workspace, task, and next step. Otherwise run `comet native select <change-name> --json` for a known name, or `comet native status --json` to discover it. Enter the active change's `workspace.projectRoot`; ask only when workspace ownership is ambiguous. If local Run history is missing, read [fault recovery](reference/recovery.md#fault-recovery).
+1. When an active change exists, continue directly if the current response supplies the workspace, task, and next step. Otherwise run `comet native select <change-name> --json` for a known name, or `comet native status --json` to discover it. Enter its `workspace.projectRoot`; ask only when workspace ownership is ambiguous. If local Run history is missing, read [fault recovery](reference/recovery.md#fault-recovery).
 2. If there is no matching active change, select isolation using [workspace selection](reference/workspace.md#create-a-change). Run `native new` with the user's original request in `--task`, without first rewriting it as a solution summary, then enter `preparation.projectRoot`. If preparation fails, preserve any branches and directories already created and address the reported cause.
 3. After entering the workspace and obtaining `phase`, retrieve applicable context using [memory integration](reference/commands.md#memory-integration). On a phase change, handoff to a new Agent, or context recovery, the receiver executes `contextRequest` to obtain current preferences and project constraints. Uninterrupted work in the same phase needs no repeated retrieval. Handle Project Memory and Personal Memory separately at task completion, then call `comet task --complete` as specified there.
 
@@ -48,7 +50,7 @@ Read the section for the current action. Follow links within it only when their 
 - Shape: read and follow [clarification](reference/clarification.md#clarification), using Sequential or Batch steps according to project configuration. For large requests, follow its Supervisor decomposition and confirmation link before final confirmation.
 - Before editing the brief, Specs, or `children.yaml`, or checking an acceptance report, read [formal artifacts](reference/artifacts.md#formal-artifacts). A file, attachment, link, or local path supplied as a requirements source requires [source-document full coverage](reference/artifacts.md#source-document-full-coverage). Material used only for debugging, evidence gathering, review, or implementation reference does not trigger this automatically.
 - Read the relevant part of [SDK Action protocol](reference/commands.md#sdk-action-claims-and-outcomes), [SDK Builder handoff](reference/commands.md#sdk-builder-handoff), or [SDK Verify protocol](reference/commands.md#sdk-verify-protocol) when needed fields are missing or the task uses an older SDK Run or fixed application.
-- Before filling a Compat Runner template or returning through `returnAction`, read [filling command inputs](reference/commands.md#filling-command-inputs), then the applicable [Builder handoff](reference/commands.md#builder-handoff) or [Verify protocol](reference/commands.md#verify-protocol).
+- Before first filling a Compat Runner template or returning through `returnAction`, read [filling command inputs](reference/commands.md#filling-command-inputs), then the applicable [Builder handoff](reference/commands.md#builder-handoff) or [Verify protocol](reference/commands.md#verify-protocol).
 - When state contains `childSummary`, read [Supervisor coordination](reference/commands.md#supervisor-coordination) before dispatching, receiving results, or integrating. Handle only children listed in `readyChildren` and Supervisor coordination actions.
 - If fields are unclear, input is rejected, a Verifier is unavailable, execution fails, or external information is missing, read [command inputs and exceptions](reference/commands.md#command-inputs-and-exceptions). For normal actions, use Runtime's returned commands and templates directly.
 - When waiting for external input, follow [external input and monitoring](reference/recovery.md#external-input-and-monitoring); continue independent work. For interruption, a device change, repeated lack of progress, concurrency conflicts, failed migration, or damaged state, read [fault recovery](reference/recovery.md#fault-recovery).

@@ -18,8 +18,6 @@ export {
   markNativePortableSpecRemoval,
   prepareNativePortableShapeConfirmation,
   recoverNativePortableShapeConfirmationDrift,
-  rebaseNativePortableDeltas,
-  rebaseNativePortableDeltasLocked,
   returnNativePortableChangeToShape,
   returnNativePortableStateToShapeLocked,
   setNativePortableWorkspaceFinish,
@@ -60,3 +58,8 @@ export {
   type NativeSupervisorParentAdvance,
 } from './native-portable-coordination.js';
 export { returnNativePortableStateToFinalVerificationLocked } from './native-portable-transitions.js';
+
+export {
+  rebaseNativePortableDeltas,
+  rebaseNativePortableDeltasLocked,
+} from './native-portable-delta-rebase.js';

@@ -658,6 +658,7 @@ export function createClassicApplication(
             !state.handoffContext ||
             !state.handoffHash ||
             !(await validateClassicSdkDesignContext({
+              run: input.run,
               projectRoot: context.projectRoot,
               changeDir: path.join(context.projectRoot, change.changeDir),
               change: change.change,

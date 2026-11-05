@@ -146,10 +146,11 @@ export async function decideClassicSdkEscalation(options: {
       { presetRequirements: true },
     );
     if (!expected) {
+      // 旧提案没有范围收据，决定 continue 前只核对该提案之前已接受的范围。
       await assertClassicPresetRequirementsCurrent(
         options.projectRoot,
         (run.input as { changeDir: string }).changeDir,
-        run,
+        { ...run, waits: run.waits.filter((candidate) => candidate.id !== wait.id) },
       );
     } else if (!isDeepStrictEqual(expected, current))
       throw new Error(

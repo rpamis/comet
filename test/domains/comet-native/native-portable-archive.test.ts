@@ -169,6 +169,7 @@ describe('Native portable Archive', () => {
     ],
     workspaceBinding?: Parameters<typeof createNativePortableChange>[0]['workspaceBinding'],
     plans?: Parameters<typeof executeNativePortableCheckPlan>[0]['plans'],
+    beforeVerify?: (state: Awaited<ReturnType<typeof confirmNativePortableShape>>) => Promise<void>,
   ) {
     await createNativePortableChange({ paths, name, language: 'en', workspaceBinding });
     if (workspaceBinding && workspaceBinding.isolation !== 'current')
@@ -182,7 +183,9 @@ describe('Native portable Archive', () => {
       await fs.mkdir(path.join(changeDir, 'specs', capability), { recursive: true });
       await fs.writeFile(path.join(changeDir, 'specs', capability, 'spec.md'), source);
     }
-    return verifyState(await confirmNativePortableShape({ paths, name }), plans);
+    const shaped = await confirmNativePortableShape({ paths, name });
+    await beforeVerify?.(shaped);
+    return verifyState(shaped, plans);
   }
 
   function git(args: string[]) {
@@ -205,6 +208,7 @@ describe('Native portable Archive', () => {
     rejectAll = false,
     isolation: 'current' | 'branch' | 'worktree' = 'current',
     objectFormat: 'sha1' | 'sha256' = 'sha1',
+    beforeVerify?: () => Promise<void>,
   ) {
     git(['init', `--object-format=${objectFormat}`, '-b', 'main']);
     git(['config', 'user.email', 'native-test@example.com']);
@@ -225,6 +229,7 @@ describe('Native portable Archive', () => {
       paths = await nativeProjectPaths(root, 'docs');
       await ensureNativeDirectories(paths);
     }
+    await beforeVerify?.();
     const state = await archiveReady(
       name,
       undefined,
@@ -462,24 +467,25 @@ describe('Native portable Archive', () => {
   });
 
   it('does not run a global reference-transaction hook during default message preview', async () => {
-    const state = await commitHookProject('preview-hooks', false, 'branch');
     const hooks = path.join(root, 'global-hooks');
     const marker = path.join(root, '.git/preview-hook-ran');
     const globalConfig = path.join(root, '.git/preview-global-config');
-    await fs.mkdir(hooks);
-    const hook = path.join(hooks, 'reference-transaction');
-    await fs.writeFile(
-      hook,
-      `#!/bin/sh\necho ran > '${marker.replaceAll('\\', '/').replaceAll("'", "'\\''")}'\nexit 1\n`,
-    );
-    await fs.chmod(hook, 0o755);
-    git(['config', '--file', globalConfig, 'core.hooksPath', hooks.replaceAll('\\', '/')]);
-    // Keep the global Hook fixture outside the project's finish scope.
-    git(['config', '--local', 'core.excludesFile', path.join(root, '.git/preview-excludes')]);
-    await fs.writeFile(path.join(root, '.git/preview-excludes'), 'global-hooks/\n');
+    const state = await commitHookProject('preview-hooks', false, 'branch', 'sha1', async () => {
+      await fs.mkdir(hooks);
+      const hook = path.join(hooks, 'reference-transaction');
+      await fs.writeFile(
+        hook,
+        `#!/bin/sh\necho ran > '${marker.replaceAll('\\', '/').replaceAll("'", "'\\''")}'\nexit 1\n`,
+      );
+      await fs.chmod(hook, 0o755);
+      git(['config', '--file', globalConfig, 'core.hooksPath', hooks.replaceAll('\\', '/')]);
+      // Keep the global Hook fixture outside the project's finish scope.
+      git(['config', '--local', 'core.excludesFile', path.join(root, '.git/preview-excludes')]);
+      await fs.writeFile(path.join(root, '.git/preview-excludes'), 'global-hooks/\n');
+      vi.stubEnv('GIT_CONFIG_GLOBAL', globalConfig);
+    });
     const head = git(['rev-parse', 'HEAD']);
     const index = git(['write-tree']);
-    vi.stubEnv('GIT_CONFIG_GLOBAL', globalConfig);
     try {
       const preview = await nativeArchiveCommand([state.name, '--dry-run'], root);
       expect((preview.data as { blockers: string[] }).blockers).toEqual([]);
@@ -1199,6 +1205,7 @@ describe('Native portable Archive', () => {
     git(['config', 'user.email', 'native@example.test']);
     git(['config', 'user.name', 'Native Test']);
     await refreshRuntimePathsAfterGitInit();
+    await fs.writeFile(path.join(root, 'target-update.txt'), 'target moved\n');
     const portable = await archiveReady('archive-target-refresh');
     await writeNativePortableState(
       path.join(nativePortableChangeDir(paths, portable.name), 'comet-state.yaml'),
@@ -1271,7 +1278,8 @@ children:
 
       await fs.writeFile(path.join(root, 'target-update.txt'), 'target moved\n');
       git(['add', 'target-update.txt']);
-      git(['commit', '-m', 'move target']);
+      // 保持验收候选字节，单独推进目标提交以覆盖 Supervisor 的目标刷新恢复。
+      git(['commit', '--allow-empty', '-m', 'move target']);
 
       await expect(archiveNativePortableChange({ paths, name: portable.name })).rejects.toThrow(
         /target changed|rerun/iu,
@@ -1387,11 +1395,7 @@ children:
     await fs.mkdir(externalCapability, { recursive: true });
     const externalSpec = path.join(externalCapability, 'spec.md');
     await fs.writeFile(externalSpec, '# Must remain\n');
-    await fs.symlink(
-      externalCapability,
-      path.join(paths.specsDir, 'sample'),
-      process.platform === 'win32' ? 'junction' : 'dir',
-    );
+    await fs.cp(externalCapability, path.join(paths.specsDir, 'sample'), { recursive: true });
 
     await createNativePortableChange({ paths, name: 'linked-remove', language: 'en' });
     const changeDir = nativePortableChangeDir(paths, 'linked-remove');
@@ -1403,6 +1407,12 @@ children:
     const removal = await verifyState(
       await confirmNativePortableShape({ paths, name: 'linked-remove' }),
     );
+    await fs.rm(path.join(paths.specsDir, 'sample'), { recursive: true });
+    await fs.symlink(
+      externalCapability,
+      path.join(paths.specsDir, 'sample'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
 
     await expect(archiveNativePortableChange({ paths, name: removal.name })).rejects.toThrow(
       'capability directory is unsafe',
@@ -1411,6 +1421,11 @@ children:
   });
 
   it('returns an archive-ready change to Shape when formal requirements drift', async () => {
+    const config = defaultProjectConfig('docs', 'en');
+    await writeProjectConfig(root, {
+      ...config,
+      native: { ...config.native, document_writes: 'revert' },
+    });
     const state = await archiveReady('archive-formal-drift');
     await fs.writeFile(
       path.join(nativePortableChangeDir(paths, state.name), 'brief.md'),
@@ -1431,6 +1446,11 @@ children:
   });
 
   it('clears a pre-Archive workspace finish journal when verification becomes stale', async () => {
+    const config = defaultProjectConfig('docs', 'en');
+    await writeProjectConfig(root, {
+      ...config,
+      native: { ...config.native, document_writes: 'revert' },
+    });
     execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
     execFileSync('git', ['config', 'user.email', 'native-test@example.com'], { cwd: root });
     execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: root });
@@ -1617,6 +1637,11 @@ children:
   });
 
   it('resumes from frozen Spec contents after a later active Spec edit', async () => {
+    const config = defaultProjectConfig('docs', 'en');
+    await writeProjectConfig(root, {
+      ...config,
+      native: { ...config.native, document_writes: 'revert' },
+    });
     const originalBeta = '# Beta\n\nRuntime MUST preserve the confirmed beta behavior.\n';
     const state = await archiveReady('frozen-specs', [
       ['alpha', '# Alpha\n\nRuntime MUST preserve the confirmed alpha behavior.\n'],
@@ -1649,6 +1674,11 @@ children:
   });
 
   it('preserves a concurrent canonical Spec edit when recovering an interrupted Archive', async () => {
+    const config = defaultProjectConfig('docs', 'en');
+    await writeProjectConfig(root, {
+      ...config,
+      native: { ...config.native, document_writes: 'revert' },
+    });
     const state = await archiveReady('canonical-edit-recovery');
     await expect(
       archiveNativePortableChange({
@@ -1668,6 +1698,11 @@ children:
   });
 
   it('does not resume an old full-Spec journal without canonical target bindings', async () => {
+    const config = defaultProjectConfig('docs', 'en');
+    await writeProjectConfig(root, {
+      ...config,
+      native: { ...config.native, document_writes: 'revert' },
+    });
     const state = await archiveReady('legacy-full-journal');
     await expect(
       archiveNativePortableChange({
@@ -1838,14 +1873,21 @@ children:
   });
 
   it('keeps Archive ready while requiring one explicit serial capability choice', async () => {
-    const first = await archiveReady('serial-first');
-    const secondDir = nativePortableChangeDir(paths, 'serial-second');
-    await fs.cp(nativePortableChangeDir(paths, first.name), secondDir, { recursive: true });
-    const secondState = { ...first, name: 'serial-second' };
-    delete secondState.verifier_action;
-    await writeNativePortableState(path.join(secondDir, 'comet-state.yaml'), secondState, {
-      containedRoot: paths.nativeRoot,
-    });
+    const first = await archiveReady(
+      'serial-first',
+      undefined,
+      undefined,
+      undefined,
+      async (state) => {
+        const secondDir = nativePortableChangeDir(paths, 'serial-second');
+        await fs.cp(nativePortableChangeDir(paths, state.name), secondDir, { recursive: true });
+        const secondState = { ...state, name: 'serial-second' };
+        delete secondState.verifier_action;
+        await writeNativePortableState(path.join(secondDir, 'comet-state.yaml'), secondState, {
+          containedRoot: paths.nativeRoot,
+        });
+      },
+    );
 
     await expect(inspectNativePortableArchive({ paths, name: first.name })).resolves.toMatchObject({
       ready: false,
@@ -1953,6 +1995,7 @@ children:
       stdio: 'ignore',
     });
 
+    await fs.writeFile(path.join(root, 'generated-output.txt'), 'created by a build\n');
     const state = await archiveReady('archive-preflight');
     await writeNativePortableState(
       path.join(nativePortableChangeDir(paths, state.name), 'comet-state.yaml'),
@@ -2011,6 +2054,7 @@ children:
       stdio: 'ignore',
     });
 
+    await fs.writeFile(path.join(root, 'generated-output.txt'), 'created by a build\n');
     const state = await archiveReady('current-archive');
     await fs.writeFile(path.join(root, 'generated-output.txt'), 'created by a build\n');
 

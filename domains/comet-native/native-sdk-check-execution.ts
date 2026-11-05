@@ -589,7 +589,7 @@ export async function inspectNativeSdkCheckExecutions(options: {
               !(
                 ['succeeded', 'failed', 'cancelled'].includes(action.status) &&
                 quiescent &&
-                hasNativeSdkPortableStopEvidence(run, action)
+                (owner === 'alive' || hasNativeSdkPortableStopEvidence(run, action))
               ) &&
               (owner !== 'alive' ||
                 execution.phase === 'completed' ||

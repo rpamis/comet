@@ -9669,6 +9669,414 @@
           ]
         }
       ]
+    },
+    {
+      "sources": ["report:2026-11-05-pr539-ci-classic-sdk-authoritative-handoff-sources"],
+      "coverageLevel": "runtime",
+      "id": "classic-sdk-authoritative-handoff-sources",
+      "behavior": "Classic SDK handoff uses its authoritative Run before YAML projection and resolves fixed applications through their actual owner.",
+      "rootCause": "The handoff writer and source judgment path assumed a portable YAML state and the built-in Run storage directory.",
+      "expected": "Raw SDK and fixed application handoff complete using the current Run while rejecting a mismatched change.",
+      "forbidden": "Read stale or corrupt YAML as Run authority, use another application store, or replace source material for a different change.",
+      "reproduction": "PR539 shard8 and shard1 failed before Build with missing current Run/source evidence. The original raw SDK representative failed locally, then the same source boundary passed after the repair.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "namePattern": "^(?:Classic workflow application through the public Runtime SDK keeps check inputs unchanged when adopting a raw SDK Run into its portable projection|Classic workflow application through the public Runtime SDK keeps Build authoritative until Runtime check evidence is accepted)$",
+          "requiredNames": [
+            "Classic workflow application through the public Runtime SDK keeps check inputs unchanged when adopting a raw SDK Run into its portable projection",
+            "Classic workflow application through the public Runtime SDK keeps Build authoritative until Runtime check evidence is accepted"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "namePattern": "^(?:runs actual full domain checks with source\\.js and archive recovery=false)$",
+          "requiredNames": [
+            "runs actual full domain checks with source.js and archive recovery=false"
+          ]
+        }
+      ]
+    },
+    {
+      "sources": ["report:2026-11-05-pr539-ci-classic-sdk-previous-preset-scope-decision"],
+      "coverageLevel": "runtime",
+      "id": "classic-sdk-previous-preset-scope-decision",
+      "behavior": "A known previous Classic preset can accept a current scope decision while stale proposal sources remain blocked.",
+      "rootCause": "The pending decision being resolved hid the last accepted scope from the legacy source comparison.",
+      "expected": "Hotfix and tweak continue the same Run after a bound decision and preserve completed Actions.",
+      "forbidden": "Accept changed proposal sources or require an already pending scope decision to have been resolved beforehand.",
+      "reproduction": "Both original previous-definition scope-decision cases failed locally on the current branch, then all16 preset-scope cases passed with additional changed-source rejection assertions.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+          "namePattern": "^(?:hotfix approved scope upgrades a known previous definition for a fresh scope decision without rewriting completed Actions|tweak approved scope upgrades a known previous definition for a fresh scope decision without rewriting completed Actions)$",
+          "requiredNames": [
+            "hotfix approved scope upgrades a known previous definition for a fresh scope decision without rewriting completed Actions",
+            "tweak approved scope upgrades a known previous definition for a fresh scope decision without rewriting completed Actions"
+          ]
+        }
+      ]
+    },
+    {
+      "sources": ["report:2026-11-05-pr539-ci-classic-sdk-recover-original-input-manifest"],
+      "coverageLevel": "runtime",
+      "id": "classic-sdk-recover-original-input-manifest",
+      "behavior": "Portable Classic recovery continues an identical accepted candidate after loss of its local original input manifest.",
+      "rootCause": "Archive always required the local manifest despite a durable command receipt binding both input digest and manifest hash.",
+      "expected": "Recover only when both original receipt hashes match the current complete snapshot, then permit the bound Archive decision.",
+      "forbidden": "Reconstruct from changed inputs, ignore a corrupted existing manifest, or accept stale evidence.",
+      "reproduction": "PR539 CI rejected portable recovery after the Runtime directory was removed. The repaired public command test also rejects subsequent source drift and a corrupt original manifest.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "namePattern": "^(?:Classic workflow application through the public Runtime SDK recovers an unchanged accepted candidate without its local input manifest while rejecting drift and corruption)$",
+          "requiredNames": [
+            "Classic workflow application through the public Runtime SDK recovers an unchanged accepted candidate without its local input manifest while rejecting drift and corruption"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^(?:Classic SDK original execution receipts continues already accepted Build and Verify evidence after losing the entire Runtime directory)$",
+          "requiredNames": [
+            "Classic SDK original execution receipts continues already accepted Build and Verify evidence after losing the entire Runtime directory"
+          ]
+        }
+      ]
+    },
+    {
+      "sources": ["report:2026-11-05-pr539-ci-classic-sdk-reuse-read-overhead"],
+      "coverageLevel": "runtime",
+      "id": "classic-sdk-reuse-read-overhead",
+      "behavior": "Classic Build-to-Verify check reuse avoids duplicate projection writer locks and redundant formal-source reads.",
+      "rootCause": "Healthy reads always acquired the projection lock, while formal source checks reread the same Run and review record for each artifact.",
+      "expected": "Reuse the original command once within the existing path-probe budgets, read a current writable projection without writes, and repair stale projections under the writer path.",
+      "forbidden": "Increase historical performance thresholds, bypass receipt validation, or leave a missing projection marker unrepaired.",
+      "reproduction": "Original reuse cases measured21979 full and17255 preset path probes against19000/17000 limits locally. All three original thresholds passed after the changes.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^(?:Classic SDK full Verify rounds reuses the same successful command across Build and Verify after validating its inputs and log|Classic SDK tweak Verify rounds reuses the same successful command across Build and Verify after validating its inputs and log|Classic SDK hotfix Verify rounds reuses the same successful command across Build and Verify after validating its inputs and log)$",
+          "requiredNames": [
+            "Classic SDK full Verify rounds reuses the same successful command across Build and Verify after validating its inputs and log",
+            "Classic SDK tweak Verify rounds reuses the same successful command across Build and Verify after validating its inputs and log",
+            "Classic SDK hotfix Verify rounds reuses the same successful command across Build and Verify after validating its inputs and log"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-readonly.test.ts",
+          "namePattern": "^(?:Classic SDK read-only diagnostics reads a current writable projection without writes and repairs only stale projections)$",
+          "requiredNames": [
+            "Classic SDK read-only diagnostics reads a current writable projection without writes and repairs only stale projections"
+          ]
+        }
+      ]
+    },
+    {
+      "sources": ["report:2026-11-05-pr539-ci-native-supported-version-cancellation-ownership"],
+      "coverageLevel": "runtime",
+      "id": "native-supported-version-cancellation-ownership",
+      "behavior": "Native v2 and v3 ownership can complete cancellation and release the workspace only after execution closure.",
+      "rootCause": "Cancellation and active-change inspection recognized only internal definition version1, rejecting current v3 Runs.",
+      "expected": "Cancel unstarted current work and release its workspace, while claimed or unknown work waits for the original host stop proof.",
+      "forbidden": "Reject a supported version as foreign ownership, release a live claimed execution, or weaken fixed application identity.",
+      "reproduction": "Two current Native cancellation representatives failed locally on version ownership. All ten cancellation cases subsequently passed across focused runs after version-aware loading and ownership repair.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+          "namePattern": "^(?:Native cancellation lifecycle ends unstarted work and releases the workspace without Archive|Native cancellation lifecycle keeps a cancelled claimed execution active until the original host proves it stopped|Native cancellation lifecycle retains a claimed Builder until its original host proves it stopped \\(unknown=false\\)|Native cancellation lifecycle retains a claimed Builder until its original host proves it stopped \\(unknown=true\\))$",
+          "requiredNames": [
+            "Native cancellation lifecycle ends unstarted work and releases the workspace without Archive",
+            "Native cancellation lifecycle keeps a cancelled claimed execution active until the original host proves it stopped",
+            "Native cancellation lifecycle retains a claimed Builder until its original host proves it stopped (unknown=false)",
+            "Native cancellation lifecycle retains a claimed Builder until its original host proves it stopped (unknown=true)"
+          ]
+        }
+      ]
+    },
+    {
+      "sources": ["report:2026-11-05-pr539-ci-native-portable-archive-written-cursor-recovery"],
+      "coverageLevel": "runtime",
+      "id": "native-portable-archive-written-cursor-recovery",
+      "behavior": "Native Portable Archive resumes a frozen canonical write that completed before its transaction cursor was saved.",
+      "rootCause": "Raw candidate normalization recognized only writes before the saved cursor and treated the exact frozen current-step result as foreign drift.",
+      "expected": "Recognize the exact frozen result of the pending step and finish the original archive safely.",
+      "forbidden": "Accept different canonical bytes or skip the frozen transaction binding.",
+      "reproduction": "The historical full-Spec write-window case failed locally with original candidate drift and passed after pending-step result normalization.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update)$",
+          "requiredNames": [
+            "Native portable delta integration replays a full Spec safely when the canonical write succeeded before the cursor update"
+          ]
+        }
+      ]
+    },
+    {
+      "sources": ["report:2026-11-05-pr539-ci-native-portable-delta-rebase-input-binding"],
+      "coverageLevel": "runtime",
+      "id": "native-portable-delta-rebase-input-binding",
+      "behavior": "Native delta rebase sends the same candidate through fresh Verify using only Runtime-proven merged Spec inputs.",
+      "rootCause": "Rebase updated portable Shape and Spec contents but retained the old candidate raw input reference, so a legitimate fresh check was rejected.",
+      "expected": "Bind the merged delta and canonical result after verifying original delta/source hashes and unchanged unrelated inputs, then rerun verification.",
+      "forbidden": "Adopt an unrelated source edit during rebase or reuse the old accepted verification result.",
+      "reproduction": "Both historical rebase-to-Verify cases failed locally on raw candidate drift and passed after narrow input rebinding. The independent-rebase case also rejects an added unreviewed source file before allowing recovery.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration returns a passed change to Verify when an independent rebase changes the result|Native portable delta integration requires fresh verification when the delta is already applied but another edit is present)$",
+          "requiredNames": [
+            "Native portable delta integration returns a passed change to Verify when an independent rebase changes the result",
+            "Native portable delta integration requires fresh verification when the delta is already applied but another edit is present"
+          ]
+        }
+      ]
+    },
+    {
+      "sources": ["report:2026-11-05-pr539-ci-classic-sdk-archive-reverification-guidance"],
+      "coverageLevel": "runtime",
+      "id": "classic-sdk-archive-reverification-guidance",
+      "behavior": "Classic Archive reports stale command inputs through the existing reopen-verification recovery path.",
+      "rootCause": "The newer accepted-candidate assertion ran before the command-input fingerprint check and hid the established stale-check recovery classification.",
+      "expected": "Preserve the accepted candidate and report the precise stale-input recovery command before accepting a new verification round.",
+      "forbidden": "Archive changed inputs, replace an accepted result with supplemental checks, or lose the executable reopen-verification guidance.",
+      "reproduction": "PR539 failed six source/generated lifecycle assertions expecting reopen-verification. Three source profiles passed unchanged after restoring the check-input diagnostic precedence.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^(?:Classic SDK full Verify rounds completes the source Runtime lifecycle across sessions, declared outputs and a reopened verification|Classic SDK tweak Verify rounds completes the source Runtime lifecycle across sessions, declared outputs and a reopened verification|Classic SDK hotfix Verify rounds completes the source Runtime lifecycle across sessions, declared outputs and a reopened verification)$",
+          "requiredNames": [
+            "Classic SDK full Verify rounds completes the source Runtime lifecycle across sessions, declared outputs and a reopened verification",
+            "Classic SDK tweak Verify rounds completes the source Runtime lifecycle across sessions, declared outputs and a reopened verification",
+            "Classic SDK hotfix Verify rounds completes the source Runtime lifecycle across sessions, declared outputs and a reopened verification"
+          ]
+        }
+      ]
+    },
+    {
+      "sources": ["report:2026-11-05-pr539-ci-native-portable-archive-explicit-revert-recovery"],
+      "coverageLevel": "runtime",
+      "id": "native-portable-archive-explicit-revert-recovery",
+      "behavior": "The explicit Native revert policy safely resumes frozen Archive material and returns external canonical drift to fresh verification.",
+      "rootCause": "Raw-candidate validation applied the default retained-edit policy to the historical revert recovery path, blocking frozen source restoration and the existing canonical drift transition.",
+      "expected": "Under explicit revert, restore only source bytes bound to the original frozen transaction and original input hash, preserve external canonical edits, and request fresh Verify for missing or changed canonical bindings.",
+      "forbidden": "Overwrite an external canonical edit, infer old approved content from current files, or silently apply revert behavior to the default allow policy.",
+      "reproduction": "The historical frozen-source, concurrent canonical edit, and old journal cases failed locally. The same assertions passed with explicit revert configuration and bound transaction recovery.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "^(?:Native portable Archive resumes from frozen Spec contents after a later active Spec edit|Native portable Archive preserves a concurrent canonical Spec edit when recovering an interrupted Archive|Native portable Archive does not resume an old full-Spec journal without canonical target bindings)$",
+          "requiredNames": [
+            "Native portable Archive resumes from frozen Spec contents after a later active Spec edit",
+            "Native portable Archive preserves a concurrent canonical Spec edit when recovering an interrupted Archive",
+            "Native portable Archive does not resume an old full-Spec journal without canonical target bindings"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration returns a specs-applied full Spec transaction to Verify after an external edit)$",
+          "requiredNames": [
+            "Native portable delta integration returns a specs-applied full Spec transaction to Verify after an external edit"
+          ]
+        }
+      ]
+    },
+    {
+      "sources": ["report:2026-11-05-pr539-ci-native-portable-delta-conflict-diagnostic"],
+      "coverageLevel": "runtime",
+      "id": "native-portable-delta-conflict-diagnostic",
+      "behavior": "Native Archive reports a conflicting delta section before generic candidate drift.",
+      "rootCause": "Archive collected delta conflict blockers but reached the generic raw-input assertion without reporting those blockers.",
+      "expected": "Preserve canonical content and report the conflicting requirement identifier before any Archive write.",
+      "forbidden": "Hide a known merge conflict behind unrelated recovery guidance or publish a conflicting Spec.",
+      "reproduction": "The original overlap case failed locally because the thrown error lost its requirement/conflict diagnostic, then passed with its unchanged assertions.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "^(?:Native portable delta integration rebases an independent canonical edit and blocks an overlapping edit)$",
+          "requiredNames": [
+            "Native portable delta integration rebases an independent canonical edit and blocks an overlapping edit"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-supervisor-recovery-execution-workspace",
+      "behavior": "Supervisor verification recovery retains the real integration execution workspace after rebinding its candidate.",
+      "rootCause": "Recovery recreated local execution with the primary workspace path, so its next checks compared the integration candidate with unrelated primary files.",
+      "expected": "Keep the integration workspace and actual branch throughout parent verification, recovery and final Archive.",
+      "forbidden": "Bind retained integration checks to primary-workspace inputs or accept changed integration source without fresh verification.",
+      "reproduction": "The PR539 parent auto-advance case failed locally on raw candidate drift. Keeping the original execution workspace made the unchanged workflow assertions pass. The Git fixture fixes autocrlf so resetting identical source bytes remains a valid recovery input.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-supervisor.test.ts",
+          "namePattern": "^(?:Native Supervisor v2 state advances a parent without a mandatory review and keeps verification in its integration workspace)$",
+          "requiredNames": [
+            "Native Supervisor v2 state advances a parent without a mandatory review and keeps verification in its integration workspace"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-05-pr539-ci-native-supervisor-recovery-execution-workspace"],
+      "coverageLevel": "runtime"
+    },
+    {
+      "id": "native-supervisor-archive-check-before-cleanup",
+      "behavior": "Supervisor Archive validates the original integration inputs before removing its integration worktree.",
+      "rootCause": "Early delivery finalization removed the worktree before Archive performed its last check-input validation, producing ENOENT after Specs had been applied.",
+      "expected": "Keep the integration directory through final input validation, complete the original delivery and cleanup once, and preserve the requested branch/worktree finish choice.",
+      "forbidden": "Delete the checked integration inputs before validating them, replay the delivery, or leave children unfinished after successful Archive.",
+      "reproduction": "PR539 branch and worktree delivery cases reproduced ENOENT locally. Both now assert integration still exists at the after-Specs boundary and is removed only after final Archive.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-user-options.test.ts",
+          "namePattern": "^(?:Native public user-option paths delivers Supervisor to its branch change and preserves keep|Native public user-option paths delivers Supervisor to its worktree change and preserves keep)$",
+          "requiredNames": [
+            "Native public user-option paths delivers Supervisor to its branch change and preserves keep",
+            "Native public user-option paths delivers Supervisor to its worktree change and preserves keep"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-05-pr539-ci-native-supervisor-archive-check-before-cleanup"],
+      "coverageLevel": "runtime"
+    },
+    {
+      "id": "native-one-shot-retry-capability",
+      "behavior": "Legacy blocked Native runs advertise whole-plan retry only when every current-candidate check is repeatable.",
+      "rootCause": "The capability probe treated a historical successful same-ID receipt as permission to refresh a non-repeatable current plan, although refresh executes the whole plan.",
+      "expected": "Offer accept or revision decisions after recovered one-shot checks and determine later retry capability solely from the current ordinary candidate plan.",
+      "forbidden": "Advertise a retry that can repeat a one-shot effect or infer current retry capability from a completed Supervisor candidate.",
+      "reproduction": "Three recovery cases failed by advertising a fourth retry decision. They passed after requiring a repeatable current plan, together with both current-candidate isolation cases.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "^(?:blocked Verifier recovery command contract offers only executable decisions after recovered one-shot checks pass \\(accept-result\\)|blocked Verifier recovery command contract offers only executable decisions after recovered one-shot checks pass \\(revise-implementation\\)|blocked Verifier recovery command contract offers only executable decisions after recovered one-shot checks pass \\(revise-requirements\\)|blocked Verifier recovery command contract uses only the current ordinary candidate retry capability after leaving Supervisor \\(repeatable=true\\)|blocked Verifier recovery command contract uses only the current ordinary candidate retry capability after leaving Supervisor \\(repeatable=false\\))$",
+          "requiredNames": [
+            "blocked Verifier recovery command contract offers only executable decisions after recovered one-shot checks pass (accept-result)",
+            "blocked Verifier recovery command contract offers only executable decisions after recovered one-shot checks pass (revise-implementation)",
+            "blocked Verifier recovery command contract offers only executable decisions after recovered one-shot checks pass (revise-requirements)",
+            "blocked Verifier recovery command contract uses only the current ordinary candidate retry capability after leaving Supervisor (repeatable=true)",
+            "blocked Verifier recovery command contract uses only the current ordinary candidate retry capability after leaving Supervisor (repeatable=false)"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-05-pr539-ci-native-one-shot-retry-capability"],
+      "coverageLevel": "runtime"
+    },
+    {
+      "id": "native-ci539-mixed-write-review",
+      "sources": ["report:2026-11-05-pr539-ci-failures"],
+      "behavior": "Keep every unclassified target in a mixed Verify write pending Agent judgment.",
+      "coverageLevel": "unit",
+      "reproduction": "The corresponding PR #539 CI test failed on commit 56744e50. Reproduce the independent behavior in its isolated project with the exact test selector below; local results and platform limitations are recorded in docs/research/2026-11-05-pr539-ci-repair.zh.md.",
+      "expected": "Keep the candidate and require a judgment for the unknown target.",
+      "forbidden": "Treating a mixed source write as neutral because another target is documentation.",
+      "rootCause": "A documentation target caused an early return before the remaining source targets were inspected.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-hook-guard.test.ts",
+          "namePattern": "^(?:preserves a Verify candidate for resource messages and holds unclassified mixed writes|holds an unclassified material write mixed with documents in Verify)$",
+          "requiredNames": [
+            "preserves a Verify candidate for resource messages and holds unclassified mixed writes",
+            "holds an unclassified material write mixed with documents in Verify"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-ci539-executed-input-binding",
+      "sources": ["report:2026-11-05-pr539-ci-failures"],
+      "behavior": "Bind actual post-command source inputs and reject incomplete generated inputs.",
+      "coverageLevel": "runtime",
+      "reproduction": "The corresponding PR #539 CI test failed on commit 56744e50. Reproduce the independent behavior in its isolated project with the exact test selector below; local results and platform limitations are recorded in docs/research/2026-11-05-pr539-ci-repair.zh.md.",
+      "expected": "Reject a source-changing command until explicit repair and reject incomplete snapshots.",
+      "forbidden": "Accepting changed source or reusing a stale complete observation.",
+      "rootCause": "The raw executor gate duplicated the pre-command observation instead of binding the post-command snapshot.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:rejects source-changing checks and recovers to Build only after the repair approval|rejects checks whose initially incomplete generated inputs disappear during execution)$",
+          "requiredNames": [
+            "rejects source-changing checks and recovers to Build only after the repair approval",
+            "rejects checks whose initially incomplete generated inputs disappear during execution"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-ci539-readonly-revision-recovery",
+      "sources": ["report:2026-11-05-pr539-ci-failures"],
+      "behavior": "Recover an interrupted read-only implementation revision with its original claim.",
+      "coverageLevel": "public-cli",
+      "reproduction": "The corresponding PR #539 CI test failed on commit 56744e50. Reproduce the independent behavior in its isolated project with the exact test selector below; local results and platform limitations are recorded in docs/research/2026-11-05-pr539-ci-repair.zh.md.",
+      "expected": "Finish the original revision, return to Build and preserve user content.",
+      "forbidden": "Replaying Archive, replacing the original claim or accepting the old candidate.",
+      "rootCause": "The public next recovery branch only selected unknown Actions and skipped returned or abandoned running read-only revisions.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:continues a read-only revision after its claiming process exits without reporting an outcome|reconciles a rejected read-only implementation revision using the original claim)$",
+          "requiredNames": [
+            "continues a read-only revision after its claiming process exits without reporting an outcome",
+            "reconciles a rejected read-only implementation revision using the original claim"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-ci539-applied-review-supersession",
+      "sources": ["report:2026-11-05-pr539-ci-failures"],
+      "behavior": "Replace stale completed applied-edit proposals while requiring a review of the current content.",
+      "coverageLevel": "runtime",
+      "reproduction": "The corresponding PR #539 CI test failed on commit 56744e50. Reproduce the independent behavior in its isolated project with the exact test selector below; local results and platform limitations are recorded in docs/research/2026-11-05-pr539-ci-repair.zh.md.",
+      "expected": "Preserve every user edit, block the pending latest review and finish after its real receipt.",
+      "forbidden": "Accepting the latest bytes solely because an older edit was reviewed.",
+      "rootCause": "Supersession skipped completed non-behavioral applied reviews, leaving an old branch of the approved edit graph blocking newer content.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "^(?:keeps later user edits and supersedes stale pending and completed applied reviews)$",
+          "requiredNames": [
+            "keeps later user edits and supersedes stale pending and completed applied reviews"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-ci539-interrupted-check-plan",
+      "sources": ["report:2026-11-05-pr539-ci-failures"],
+      "behavior": "Recover the original interrupted command plan without inferring a replacement build.",
+      "coverageLevel": "runtime",
+      "reproduction": "The corresponding PR #539 CI test failed on commit 56744e50. Reproduce the independent behavior in its isolated project with the exact test selector below; local results and platform limitations are recorded in docs/research/2026-11-05-pr539-ci-repair.zh.md.",
+      "expected": "Run the original validated plan and reject a corrupt SDK Action binding.",
+      "forbidden": "Inferring another build or executing a mismatched Action.",
+      "rootCause": "The not-executed checkpoint hid the original command plan from the interrupted-check lookup.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "namePattern": "^(?:preserves and reruns an interrupted check instead of inferring another build|does not rerun an interrupted check with a corrupted SDK Action binding)$",
+          "requiredNames": [
+            "preserves and reruns an interrupted check instead of inferring another build",
+            "does not rerun an interrupted check with a corrupted SDK Action binding"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-ci539-lost-overlay-verifier-result",
+      "sources": ["report:2026-11-05-pr539-ci-failures"],
+      "behavior": "Record the original Verifier failure when its machine overlay has been lost.",
+      "coverageLevel": "runtime",
+      "reproduction": "The corresponding PR #539 CI test failed on commit 56744e50. Reproduce the independent behavior in its isolated project with the exact test selector below; local results and platform limitations are recorded in docs/research/2026-11-05-pr539-ci-repair.zh.md.",
+      "expected": "Keep the original task identity and preserve missing local evidence.",
+      "forbidden": "Fabricating a passed check or replacing a lost local overlay with empty evidence.",
+      "rootCause": "Failure persistence required a local overlay even when the portable dispatch still identified the original task.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-start.test.ts",
+          "namePattern": "^(?:keeps the dispatched identity when the machine overlay is lost)$",
+          "requiredNames": ["keeps the dispatched identity when the machine overlay is lost"]
+        }
+      ]
     }
   ]
 }

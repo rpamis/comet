@@ -95,15 +95,22 @@ async function rawCandidateHash(
   state: NativePortableState,
 ) {
   const approved = await readNativeApprovedShapeSemanticSnapshot({ paths, state });
-  const formalPaths = (approved?.snapshot.artifacts ?? []).map((artifact) =>
+  const formalPaths = [
+    ...new Set([
+      'brief.md',
+      ...state.spec_changes.flatMap(({ source }) => (source === null ? [] : [source])),
+      ...(approved?.snapshot.artifacts ?? []).map(({ source }) => source),
+    ]),
+  ].map((source) =>
     path
-      .relative(
-        paths.projectRoot,
-        path.join(paths.nativeRoot, 'changes', state.name, artifact.source),
-      )
+      .relative(paths.projectRoot, path.join(paths.nativeRoot, 'changes', state.name, source))
       .replaceAll('\\', '/'),
   );
-  return nativeRawCandidateHash(snapshot, nativeEditReviewScope(paths, state), formalPaths);
+  return nativeRawCandidateHash(
+    { ...snapshot, files: snapshot.files.filter((file) => !file.generated) },
+    nativeEditReviewScope(paths, state),
+    formalPaths,
+  );
 }
 
 /** 只重放当前候选明确声明可重复执行的检查。 */
@@ -131,19 +138,7 @@ export function nativeSdkCanRefreshChecks(run: Readonly<WorkflowRun>): boolean {
     );
     plans.push(...nativeSdkCheckPlans({ verificationChecks: response.checks }));
   }
-  return plans.every(
-    (plan) =>
-      plan.repeatable ||
-      run.actions.some((action) => {
-        const output = action.outcome?.output as unknown as NativeSdkCheckOutcome | undefined;
-        return (
-          ['verify.checks', 'verify.requested-checks'].includes(action.stepId) &&
-          ['succeeded', 'failed'].includes(action.status) &&
-          output?.rawInput &&
-          output.checks?.some((check) => check.id === plan.id && check.status === 'passed')
-        );
-      }),
-  );
+  return plans.every((plan) => plan.repeatable);
 }
 
 interface NativeSdkCheckResult {
@@ -1538,7 +1533,8 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
             complete: inputBefore.complete && inputAfter.complete,
             diagnostics: [...new Set([...inputBefore.diagnostics, ...inputAfter.diagnostics])],
           },
-          candidateInputFingerprintGate: candidateBefore,
+          candidateInputFingerprintGate:
+            candidateBefore === null ? null : await rawCandidateHash(rawAfter, paths, state),
           candidateId,
           checks,
           completedAt: new Date().toISOString(),
@@ -1677,6 +1673,11 @@ async function validatedCheckResults(options: {
       ) {
         throw new Error('Native 检查输入收据结构无效；不能降级复用旧版证据');
       }
+      if (!snapshot.complete) {
+        throw new NativeSdkCheckInputDriftError(
+          `Native 原检查输入快照不完整：${snapshot.diagnostics.join('；')}。当前输入已可完整读取，由当前 Verifier 请求原检查并提交 refreshChecks: true，重新建立完整证据`,
+        );
+      }
       if (
         state.builder_handoff &&
         state.phase === 'verify' &&
@@ -1686,11 +1687,6 @@ async function validatedCheckResults(options: {
       ) {
         throw new NativeSdkCandidateDriftError(
           'Native 候选源码在检查执行期间发生变化或无法完整读取；需要新的 Builder 候选，不能验收本次检查',
-        );
-      }
-      if (!snapshot.complete) {
-        throw new NativeSdkCheckInputDriftError(
-          `Native 原检查输入快照不完整：${snapshot.diagnostics.join('；')}。当前输入已可完整读取，由当前 Verifier 请求原检查并提交 refreshChecks: true，重新建立完整证据`,
         );
       }
       // 执行环境用于判断能否复用检查，不属于 Verifier 提交时的候选内容。
@@ -2261,7 +2257,7 @@ export async function assertNativeSdkCandidateUnchanged(options: {
         (await rawCandidateHash(current, paths, state))
       )
         throw new NativeSdkCandidateDriftError(
-          `Builder 交接后的候选内容已变化；保留原 Action，由当前 Agent 使用 comet edit-review observe native ${state.name} --session <当前会话> --json 判断变化后继续`,
+          `Builder 交接后的候选实现内容已变化（检查输入已变化）；保留原 Action，由当前 Agent 使用 comet edit-review observe native ${state.name} --session <当前会话> --json 判断变化后继续`,
         );
     }
   }
@@ -2415,7 +2411,10 @@ export async function nativeSdkCandidateInputGate(options: {
   const executionRoot =
     (parent?.input as { activation?: { integrationWorktree?: string } } | undefined)?.activation
       ?.integrationWorktree ?? options.projectRoot;
-  if ((current.outcome?.output as unknown as NativeSdkCheckOutcome).rawInput) {
+  if (
+    (current.outcome?.output as unknown as NativeSdkCheckOutcome).rawInput &&
+    !options.legacyExecutionBinding
+  ) {
     const previous = await readRawInput(
       paths.workspaceRuntimeRoot,
       options.run,

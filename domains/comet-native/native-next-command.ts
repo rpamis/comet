@@ -274,6 +274,10 @@ export async function nativeNextCommand(
   // invocation from silently accepting one of those old fields.
   assertNoArguments(args);
 
+  if (taskInput && !sessionId) throw new NativeUsageError('任务领取与结果回报需要 --session。');
+  if (resultFile !== undefined && !actionId)
+    throw new NativeUsageError('--result 必须同时提供当前响应中的 --action。');
+
   if (
     (await readSdkChangeOwner(projectRoot, 'native', name)) &&
     (await readProjectConfig(projectRoot)) === null

@@ -54,6 +54,7 @@ import {
 } from '../../../platform/process/process-identity.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 import { withCometRuntimeMetrics } from '../../../platform/process/runtime-metrics.js';
+import { runNativeEditReviewCommand } from '../../../domains/comet-native/native-edit-review-command.js';
 
 function passedReview(reviewerExecutionRef: string) {
   return {
@@ -87,7 +88,10 @@ describe('Native portable Runtime vertical path', () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-portable-runtime-'));
     await fs.mkdir(path.join(root, '.git'));
     const config = defaultProjectConfig('docs', 'en');
-    await writeProjectConfig(root, config);
+    await writeProjectConfig(root, {
+      ...config,
+      native: { ...config.native, document_writes: 'revert' },
+    });
     paths = await nativeProjectPaths(root, 'docs');
     await ensureNativeDirectories(paths);
   });
@@ -259,6 +263,7 @@ describe('Native portable Runtime vertical path', () => {
   ] as const)(
     'reruns byte-bound checks without returning to Build after non-behavioral edits (%s, dirty: %s)',
     async (ref, initial, prefix, dirty) => {
+      await writeProjectConfig(root, defaultProjectConfig('docs', 'en'));
       const git = (...args: string[]) =>
         execFileSync('git', ['-C', root, ...args], { stdio: 'ignore' });
       git('init', '--quiet');
@@ -316,6 +321,12 @@ describe('Native portable Runtime vertical path', () => {
               ? JSON.stringify(JSON.parse(beforeEdit), null, 2)
               : prefix + beforeEdit;
       if (ref.endsWith('.py') || ref === 'refactor.ts' || ref === 'labels.json') {
+        // 保留旧显式 revert 策略的 Hook 拒绝/批准覆盖，随后用默认策略判断实际变化。
+        const config = defaultProjectConfig('docs', 'en');
+        await writeProjectConfig(root, {
+          ...config,
+          native: { ...config.native, document_writes: 'revert' },
+        });
         const { inspectNativeHookGuard } =
           await import('../../../domains/comet-native/native-hook-guard.js');
         const { nativeEditReviewScope } =
@@ -349,8 +360,35 @@ describe('Native portable Runtime vertical path', () => {
           allowed: true,
           phase: 'verify',
         });
+        await writeProjectConfig(root, config);
       }
       await fs.writeFile(file, afterEdit);
+      const observed = (await runNativeEditReviewCommand({
+        projectRoot: root,
+        name: state.name,
+        operation: 'observe',
+        sessionId: 'comment-reviewer',
+      })) as { recordTemplate: Record<string, unknown> };
+      const judgment = `${root}-comment-judgment.json`;
+      try {
+        await fs.writeFile(
+          judgment,
+          JSON.stringify({
+            ...observed.recordTemplate,
+            decision: 'non-behavioral',
+            summary:
+              'Reviewed the actual changed bytes and consumers. Acceptance behavior is unchanged; the byte-printing check must execute again.',
+          }),
+        );
+        await runNativeEditReviewCommand({
+          projectRoot: root,
+          name: state.name,
+          operation: 'record',
+          file: judgment,
+        });
+      } finally {
+        await fs.rm(judgment, { force: true });
+      }
       const checked = await executeNativePortableCheckPlan({ paths, name: state.name, plans });
       expect(checked.disposition).toBe('executed');
       expect((await readNativePortableChange(paths, state.name)).phase).toBe('verify');
@@ -968,11 +1006,17 @@ children:
       { id: passedPlan.id, status: 'passed' },
       { id: plan.id, status: 'interrupted' },
     ]);
+    const firstExecution = await readNativeLocalExecution(
+      nativeLocalExecutionFile(paths, state.name),
+    );
     const second = await executeNativePortableCheckPlan({ paths, name: state.name, plans });
     expect(second.checks).toMatchObject([
       { id: passedPlan.id, status: 'passed' },
       { id: plan.id, status: 'interrupted' },
     ]);
+    expect(await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name))).toEqual(
+      firstExecution,
+    );
     await expect(
       retryNativePortableCheckPlan({
         paths,
@@ -1108,7 +1152,9 @@ children:
     if (process.platform === 'win32' || ownerLiveness !== 'dead' || checkLiveness !== 'dead') {
       await expect(
         executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
-      ).rejects.toThrow('could not be proven to have exited');
+      ).rejects.toThrow('原检查仍运行或结果不明');
+      expect(await readNativeLocalExecution(file)).toEqual(running);
+      expect((await fs.readFile(marker, 'utf8')).trim().split(/\r?\n/)).toHaveLength(1);
       return;
     }
 
@@ -1158,10 +1204,20 @@ children:
     await expect(
       executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
     ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'interrupted' }] });
-
+    const interrupted = await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name));
+    const unchangedState = await readNativePortableChange(paths, state.name);
     await expect(
       executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
-    ).rejects.toThrow('returned to Build');
+    ).rejects.toThrow('不可重复执行');
+    expect(await readNativePortableChange(paths, state.name)).toEqual(unchangedState);
+    expect(await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name))).toEqual(
+      interrupted,
+    );
+    await returnNativePortableChangeToBuild({
+      paths,
+      name: state.name,
+      reason: 'The interrupted one-shot check requires a new implementation and verification plan.',
+    });
     await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
       phase: 'build',
       loop: { next_action: 'submit-builder-candidate' },
@@ -1743,6 +1799,14 @@ Ship the behavior.
           );
         return open(file, flags, mode);
       });
+      const original = await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name));
+      await expect(
+        executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
+      ).rejects.toThrow('原始候选输入不完整');
+      expect(await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name))).toEqual(
+        original,
+      );
+      vi.restoreAllMocks();
     }
 
     await expect(
@@ -1760,17 +1824,13 @@ Ship the behavior.
       disposition: 'executed',
       checks: [{ id: plan.id, status: 'failed', exit_code: 7 }],
     });
-    if (fixture === 'incomplete-sensitive-input') {
-      expect(executed.inputDiagnostics?.join(' ')).toMatch(/无法稳定读取|文件数上限/);
-    } else {
-      expect(executed.inputDiagnostics ?? []).toEqual([]);
-    }
+    expect(executed.inputDiagnostics ?? []).toEqual([]);
     const secondLocal = await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name));
     expect(firstLocal?.execution?.operationId).toBeTruthy();
     expect(secondLocal?.execution?.operationId).toBeTruthy();
     expect(secondLocal?.execution?.operationId).not.toBe(firstLocal?.execution?.operationId);
     expect(secondLocal?.checks).toMatchObject([
-      { id: plan.id, status: 'failed', exitCode: 7, executionCount: 1 },
+      { id: plan.id, status: 'failed', exitCode: 7, executionCount: 2 },
     ]);
   });
 

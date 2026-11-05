@@ -31,7 +31,10 @@ import {
   findNativeSdkArchivedStateFile,
   isNativeSdkRunRecoveryRequiredError,
 } from './native-sdk-state-store.js';
-import { inspectNativeSdkCheckExecutions } from './native-sdk-check-execution.js';
+import {
+  inspectNativeSdkCheckExecutions,
+  reconcileNativeSdkExecutionStops,
+} from './native-sdk-check-execution.js';
 import { recoverNativeSdkChecks, nativeSdkCompletedCheckInputDrift } from './native-sdk-checks.js';
 import { projectNativeSdkStatus } from './native-sdk-status.js';
 import { inspectNativeSdkLocks, repairNativeSdkLock } from './native-sdk-projection-lock.js';
@@ -931,6 +934,15 @@ export async function nativeDoctorCommand(
               stoppedActions,
             });
             executionRepaired = recovered.revision !== inspection.run.revision;
+            inspection = await inspectNativeSdkRun(commandRoot, name, { readOnly: true });
+          }
+          const reconciled = await reconcileNativeSdkExecutionStops(
+            commandRoot,
+            inspection.run,
+            async () => (await loadOwnedNativeSdkRuntime(commandRoot, name)).runtime,
+          );
+          if (reconciled.revision !== inspection.run.revision) {
+            executionRepaired = true;
             inspection = await inspectNativeSdkRun(commandRoot, name, { readOnly: true });
           }
         }

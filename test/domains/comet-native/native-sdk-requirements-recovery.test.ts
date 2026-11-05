@@ -281,7 +281,7 @@ describe('Native SDK requirements recovery', () => {
   it.each([false, true])(
     'renews an edited pending Shape without reusing approval (Supervisor=%s)',
     async (supervisor) => {
-      const f = await fixture(supervisor);
+      const f = await fixture(supervisor, supervisor);
       const original = (await f.inspect()).run;
       const wait = original.waits.find(({ status }) => status === 'pending')!;
       const oldConfirmation = f.nextDecision(original, 'confirm-shape');

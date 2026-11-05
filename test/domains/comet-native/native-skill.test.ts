@@ -10,6 +10,7 @@ const roots = {
 };
 
 const markdownFiles = [
+  '../comet/reference/change-walkthrough.md',
   '../comet/reference/host-check.md',
   '../comet/reference/task-learning.md',
   'SKILL.md',
@@ -26,7 +27,8 @@ async function read(language: keyof typeof roots, relative: string): Promise<str
 }
 
 function markdownLinks(source: string): string[] {
-  return [...source.matchAll(/\]\(([^)]+)\)/gu)].map((match) => match[1]);
+  const prose = source.replace(/^```[^\n]*\n[\s\S]*?^```\s*$/gmu, '').replace(/`[^`\n]+`/gu, '');
+  return [...prose.matchAll(/\]\(([^)]+)\)/gu)].map((match) => match[1]);
 }
 
 function section(source: string, anchor: string): string {
@@ -115,6 +117,7 @@ describe('Comet Native Skills', () => {
 
       const links = [...new Set(markdownLinks(source).map((link) => link.split('#')[0]))].sort();
       expect(links).toEqual([
+        '../comet/reference/change-walkthrough.md',
         '../comet/reference/host-check.md',
         'reference/artifacts.md',
         'reference/clarification.md',
@@ -1062,7 +1065,8 @@ describe('Comet Native Skills', () => {
         /openspec|superpowers|grill-me|grilling|brainstorming|requiredSkillCalls|test-driven-development|code-review/iu,
       );
       expect(content).not.toMatch(/comet\s+(state|guard|handoff)\b/iu);
-      expect(content).not.toMatch(/waiver|independent.review|attestation|external.role/iu);
+      expect(content).not.toMatch(/waiver|attestation|external.role/iu);
+      expect(content).not.toMatch(/(?:always|mandatory)\s+independent.review/iu);
       expect(content).not.toContain('host supports delegation');
       expect(content).not.toContain('Subagent unavailability');
     }

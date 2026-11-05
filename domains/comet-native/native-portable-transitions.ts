@@ -1,4 +1,5 @@
 import {
+  readNativeLocalExecution,
   rebuildNativeLocalExecution,
   writeNativeLocalExecution,
 } from './native-local-execution.js';
@@ -22,6 +23,15 @@ export async function returnNativePortableStateToFinalVerificationLocked(options
   if (state.verification === null || state.verification_result !== 'pass') {
     throw new Error('Native Supervisor recovery requires a persisted final verification pass');
   }
+  const local = await readNativeLocalExecution(nativeLocalExecutionFile(options.paths, state.name));
+  if (
+    state.builder_handoff?.raw_input_ref &&
+    (!local ||
+      local.change !== state.name ||
+      local.candidateId !== state.builder_handoff.candidate_id)
+  )
+    throw new Error('Native final verification recovery lacks its original candidate execution');
+  const executionRoot = local?.workspace.worktreeRoot ?? options.paths.projectRoot;
   const withHistory = appendNativePortableHistory(state, {
     goal_cycle: state.loop.goal_cycle,
     iteration: state.loop.iteration,
@@ -55,8 +65,9 @@ export async function returnNativePortableStateToFinalVerificationLocked(options
     nativeLocalExecutionFile(options.paths, state.name),
     rebuildNativeLocalExecution({
       portableState: written,
-      projectRoot: options.paths.projectRoot,
-      branch: currentBranch(options.paths.projectRoot),
+      projectRoot: local?.workspace.projectRoot ?? options.paths.projectRoot,
+      worktreeRoot: executionRoot,
+      branch: currentBranch(executionRoot),
     }),
     { containedRoot: options.paths.runtimeDir },
   );

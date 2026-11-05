@@ -7,6 +7,8 @@ description: 'Comet Native 工作流。当用户明确调用 /comet-native、要
 
 Native 在项目中保存需求和验收结论。先确认 change 的运行格式，再执行当前动作。
 
+旧 SDK Action 继续使用响应中的 `claimRequest` 模板领取，保留原 Run 和执行身份。
+
 ## 必须遵守的规则
 
 - 已确认范围内的实现、文档修复、证据复用和恢复连续推进；只在需要新决定、授权或外部信息时暂停。使用最新 continuation 的命令、模板和任务包，修正输入后沿用当前任务。

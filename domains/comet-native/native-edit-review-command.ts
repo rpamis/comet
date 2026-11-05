@@ -161,14 +161,15 @@ async function runNativeEditReviewCommandOnce(options: EditReviewCommandOptions)
     if ((state.phase !== 'verify' && state.phase !== 'build' && !archiveReady) || state.archived)
       throw new Error('内容判断需要当前 Build、Verify 或尚未执行归档的 change');
     const currentAgent =
-      ['judge', 'observe', 'prepare-applied'].includes(options.operation) ||
-      (sdk &&
-        (state.phase === 'build' ||
-          (options.sessionId &&
-            sdk.run.actions.some(
-              (action) =>
-                action.status === 'running' && action.claim?.sessionId === options.sessionId,
-            ))));
+      config.native.document_writes !== 'revert' &&
+      (['judge', 'observe', 'prepare-applied'].includes(options.operation) ||
+        (sdk &&
+          (state.phase === 'build' ||
+            (options.sessionId &&
+              sdk.run.actions.some(
+                (action) =>
+                  action.status === 'running' && action.claim?.sessionId === options.sessionId,
+              )))));
     let scope = {
       ...nativeEditReviewScope(paths, state),
       ...(currentAgent ? { judgment: 'agent' as const } : {}),

@@ -6,6 +6,7 @@
     "zh": "assets/skills-zh"
   },
   "sharedSkillReferences": [
+    "comet/reference/change-walkthrough.md",
     "comet/reference/edit-review.md",
     "comet/reference/host-check.md",
     "comet/reference/task-learning.md"
@@ -143,6 +144,7 @@
         "implementations": [
           "domains/comet-native/native-portable-storage.ts",
           "domains/comet-native/native-portable-requirements.ts",
+          "domains/comet-native/native-portable-delta-rebase.ts",
           "domains/comet-native/native-portable-checks.ts",
           "domains/comet-native/native-portable-verification.ts",
           "domains/comet-native/native-portable-coordination.ts",
@@ -565,6 +567,7 @@
           "domains/comet-native/native-portable-archive.ts",
           "domains/comet-native/native-portable-checks.ts",
           "domains/comet-native/native-portable-coordination.ts",
+          "domains/comet-native/native-portable-delta-rebase.ts",
           "domains/comet-native/native-portable-migration-runtime.ts",
           "domains/comet-native/native-portable-recovery.ts",
           "domains/comet-native/native-portable-requirements.ts",

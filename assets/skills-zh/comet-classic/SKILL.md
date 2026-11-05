@@ -47,15 +47,13 @@ comet state select <change-name> --json
 
 项目经验与个人偏好分开保存：任务结束前，把当前项目中已验证且未来可复用的经验用 `comet knowledge remember` 写入项目记忆；用户偏好和稳定协作习惯才进入个人记忆。命令和过滤条件见 [任务上下文与产物语言](reference/scripts.md#任务上下文与产物语言)。
 
-| Runtime 路由或阶段            | 入口与职责                                                                   |
-| ----------------------------- | ---------------------------------------------------------------------------- |
-| 新 full / open                | `/comet-open`：澄清范围、创建必需产物、请用户检查并确认                      |
-| design                        | `/comet-design`：完成技术取舍并确认正式设计                                  |
-| build + full                  | `/comet-build`：恢复配置/计划，完成任务与所需审查                            |
-| hotfix / build + hotfix       | `/comet-hotfix`：已有异常的局部修复                                          |
-| tweak / build + tweak         | `/comet-tweak`：单 change 轻量调整                                           |
-| verify                        | `/comet-verify`：执行验收、修复后复验、完成唯一一次最终集成审查              |
-| archive / verify_result: pass | `/comet-archive`：确认归档、只提交当前 change 的文件、完成用户选定的交付方式 |
+- 新 full / open：`/comet-open`：澄清范围、创建必需产物、请用户检查并确认
+- design：`/comet-design`：完成技术取舍并确认正式设计
+- build + full：`/comet-build`：恢复配置/计划，完成任务与所需审查
+- hotfix / build + hotfix：`/comet-hotfix`：已有异常的局部修复
+- tweak / build + tweak：`/comet-tweak`：单 change 轻量调整
+- verify：`/comet-verify`：执行验收、修复后复验、完成唯一一次最终集成审查
+- archive / verify_result: pass：`/comet-archive`：确认归档、只提交当前 change 的文件、完成用户选定的交付方式
 
 阶段工作由对应 Skill 执行；编写产物、调用 OpenSpec 或推进前先加载它。`decision`、`evidence` 和 `reconcile` 沿用当前 Run，不重做阶段工作。
 

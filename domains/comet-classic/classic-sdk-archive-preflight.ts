@@ -298,7 +298,6 @@ export async function assertVerifyEvidenceCurrent(
   const snapshot = await collectCheckSnapshot(projectRoot, change.target, identity, {
     verificationReport: state.verificationReport,
   });
-  await assertClassicSdkAcceptedCandidateInputs(projectRoot, run, snapshot);
   if (
     snapshot.digest !== output.inputAfter &&
     !(await classicCheckInputsRetained(
@@ -313,6 +312,7 @@ export async function assertVerifyEvidenceCurrent(
   ) {
     throw new Error('Classic Archive check inputs changed');
   }
+  await assertClassicSdkAcceptedCandidateInputs(projectRoot, run, snapshot);
 }
 
 export async function runClassicSdkArchivePreflight(

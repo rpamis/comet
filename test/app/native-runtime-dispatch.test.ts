@@ -186,7 +186,11 @@ async function builderFixture(version: '1' | '3' = '1') {
     expect(created.exitCode, created.stderr).toBe(0);
   } else {
     // 用真实旧版定义创建兼容样例，保留旧协议断言。
-    await writeProjectConfig(root, defaultProjectConfig('docs', 'en'));
+    const config = defaultProjectConfig('docs', 'en');
+    await writeProjectConfig(root, {
+      ...config,
+      native: { ...config.native, document_writes: 'revert' },
+    });
     await fs.mkdir(path.join(root, 'docs/comet/changes', name), { recursive: true });
     await registerSdkChangeOwner(root, {
       schema: COMET_CHANGE_OWNER_SCHEMA,

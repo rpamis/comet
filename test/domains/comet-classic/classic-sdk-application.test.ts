@@ -335,6 +335,7 @@ async function reachFullBuildConfigurationDecision(
   const handoff = projectRoot
     ? await writeClassicSdkDesignContext({
         projectRoot,
+        run,
         changeDir: path.join(projectRoot, 'docs/openspec/changes/example'),
         change: 'example',
         contextCompression: null,
@@ -841,6 +842,24 @@ describe('Classic workflow application through the public Runtime SDK', () => {
     });
     const check = run.actions.at(-1)!.outcome!.output as { argv: string[]; cwd: string };
     const change = path.join(projectRoot, 'docs/openspec/changes/example');
+    await expect(fs.access(path.join(change, '.comet.yaml'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    const handoffFile = path.join(
+      projectRoot,
+      (run.state as unknown as ClassicState).handoffContext!,
+    );
+    const handoff = await fs.readFile(handoffFile, 'utf8');
+    await expect(
+      writeClassicSdkDesignContext({
+        projectRoot,
+        changeDir: change,
+        change: 'example',
+        contextCompression: null,
+        run: { ...run, input: { change: 'other', changeDir: 'docs/openspec/changes/other' } },
+      }),
+    ).rejects.toThrow('Run does not match its current change');
+    expect(await fs.readFile(handoffFile, 'utf8')).toBe(handoff);
     const before = await checkSnapshots.collectCheckSnapshot(projectRoot, change, check);
     await registerSdkChangeOwner(projectRoot, {
       schema: 'comet.change-owner.v1',
@@ -899,6 +918,51 @@ describe('Classic workflow application through the public Runtime SDK', () => {
     ))!.target;
     await fs.unlink(local);
     expect(await validate()).toMatchObject({ accepted: false });
+  });
+
+  it('recovers an unchanged accepted candidate without its local input manifest while rejecting drift and corruption', async () => {
+    const { run, projectRoot } = await reachFullArchivePrepareAction('example', {
+      projectedStore: true,
+    });
+    await registerSdkChangeOwner(projectRoot, {
+      schema: 'comet.change-owner.v1',
+      workflow: 'classic',
+      change: 'example',
+      format: 'sdk',
+      application: 'classic-full',
+      runId: run.runId,
+    });
+    const check = run.actions.findLast((action) => action.stepId === 'full.verify.check')!;
+    const output = check.outcome!.output as { manifestRef: string };
+    const manifest = (await resolveClassicLocalTarget(
+      projectRoot,
+      path.resolve(projectRoot, output.manifestRef),
+    ))!.target;
+    await fs.unlink(manifest);
+    const options = { json: true, projectRoot, invocationCwd: projectRoot };
+    const proposed = await classicStateCommand(
+      ['propose-archive', 'example', '--summary', 'Archive unchanged verified inputs'],
+      options,
+    );
+    expect(proposed.exitCode, proposed.stderr).toBe(0);
+    const proposalHash = (proposed.data as { wait: { proposalHash: string } }).wait.proposalHash;
+    const approved = await classicStateCommand(
+      ['decide-archive', 'example', '--proposal-hash', proposalHash, '--choice', 'local'],
+      options,
+    );
+    expect(approved.exitCode, approved.stderr).toBe(0);
+    const source = path.join(projectRoot, 'source.js');
+    const original = await fs.readFile(source, 'utf8');
+    await fs.appendFile(source, '\nexport const changed = true;\n');
+    const changed = await classicGuardCommand(['example', 'archive', '--apply'], options);
+    expect(changed.exitCode).not.toBe(0);
+    expect(changed.stderr).toContain('check inputs changed');
+    await fs.writeFile(source, original);
+    await fs.writeFile(manifest, 'corrupted original manifest\n');
+    const corrupted = await classicGuardCommand(['example', 'archive', '--apply'], options);
+    expect(corrupted.exitCode).not.toBe(0);
+    expect(corrupted.stderr).toContain('原输入清单已变化');
+    expect((await inspectClassicSdkRun(projectRoot, 'example')).state.archived).toBe(false);
   });
 
   it('rejects an Archive completion claim while the change is still active', async () => {
@@ -2302,6 +2366,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
     });
     const handoff = await writeClassicSdkDesignContext({
       projectRoot: root,
+      run,
       changeDir,
       change: 'example',
       contextCompression: null,

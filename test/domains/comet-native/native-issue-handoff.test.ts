@@ -5,6 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import {
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
 
 describe('Native issue handoff regressions', () => {
   let root: string;
@@ -109,6 +113,11 @@ describe('Native issue handoff regressions', () => {
       { cwd: root, stdio: 'ignore' },
     );
     expect((await cli(['new', name, '--runtime', 'compat'])).exitCode).toBe(0);
+    const config = defaultProjectConfig('docs', 'en');
+    await writeProjectConfig(root, {
+      ...config,
+      native: { ...config.native, document_writes: 'revert' },
+    });
     await fs.writeFile(
       path.join(root, 'docs/comet/changes', name, 'brief.md'),
       '# Outcome\nShip fixture behaviors.\n# Scope\nFirst and second behaviors.\n## Directory structure\n### Created\nNone.\n### Modified\nNone.\n### Deleted\nNone.\n### Not created\nNone.\n# Non-goals\nNo unrelated work.\n# Acceptance examples\n- First behavior works.\n- Second behavior works.\n# Constraints and invariants\nKeep scope fixed.\n# Decisions\nUse fixture implementation.\n# Open questions\nNone.\n# Verification expectations\nRun applicable checks.\n',
@@ -190,6 +199,7 @@ describe('Native issue handoff regressions', () => {
     expect((await cli(['next', name], handoff())).exitCode).toBe(0);
     const check = plan(true);
     const dispatched = await cli(['next', name], { kind: 'dispatch-verifier', checks: [check] });
+    expect(dispatched.exitCode, JSON.stringify(dispatched)).toBe(0);
     const d = dispatched.data.verifierDispatch;
     const before = (await cli(['show', name])).data.state;
     const rejected = await cli(['next', name], response(d, final(d)));

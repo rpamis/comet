@@ -13,6 +13,7 @@ import { createNativeSdkStateStore } from '../../../domains/comet-native/native-
 import { nativePortableStateFile } from '../../../domains/comet-native/native-portable-storage.js';
 
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import { createLegacyNativeSdkChange } from '../../helpers/native-legacy-sdk-change.js';
 import {
   createNativeSdkRuntime,
   inspectNativeSdkRun,
@@ -31,8 +32,7 @@ it('rejects a valid but different portable body on compact current reads', async
   roots.push(projectRoot);
   execFileSync('git', ['init', '-b', 'main'], { cwd: projectRoot, stdio: 'ignore' });
   const name = 'compact-observation';
-  const created = await runNativeCli(['new', name, '--project-root', projectRoot, '--json']);
-  expect(created.exitCode, created.stderr).toBe(0);
+  await createLegacyNativeSdkChange(projectRoot, name);
   const authoritative = await createNativeSdkRuntime(projectRoot).inspect(name);
   const store = createNativeSdkStateStore(projectRoot, { readOnly: true });
   const paths = await nativePaths.nativeProjectPaths(
@@ -68,8 +68,7 @@ it('shares cancellation inspection only within one status projection and keeps i
   roots.push(projectRoot);
   execFileSync('git', ['init', '-b', 'main'], { cwd: projectRoot, stdio: 'ignore' });
   const name = 'cancel-observation';
-  const created = await runNativeCli(['new', name, '--project-root', projectRoot, '--json']);
-  expect(created.exitCode, created.stderr).toBe(0);
+  await createLegacyNativeSdkChange(projectRoot, name);
   await createNativeSdkRuntime(projectRoot).cancel({ runId: name, reason: 'Stop before work' });
   const inspected = await inspectNativeSdkRun(projectRoot, name, { readOnly: true });
   const probe = vi.spyOn(executions, 'inspectNativeSdkCheckExecutions');
@@ -113,7 +112,7 @@ it('shares cancellation inspection only within one status projection and keeps i
   const nativeRoot = path.join(projectRoot, 'docs', 'comet');
   const movedRoot = path.join(projectRoot, 'docs', 'moved-comet');
   await fs.rename(nativeRoot, movedRoot);
-  await fs.symlink(movedRoot, nativeRoot, 'dir');
+  await fs.symlink(movedRoot, nativeRoot, process.platform === 'win32' ? 'junction' : 'dir');
   await expect(inspectNativeSdkStatus({ projectRoot, name })).rejects.toThrow(/symbolic link/u);
 
   // Projection-only input; no synthetic candidate is persisted or dispatched.
@@ -124,6 +123,8 @@ it('shares cancellation inspection only within one status projection and keeps i
         ...inspected,
         state: {
           ...inspected.state,
+          phase: 'verify',
+          shape_confirmation_hash: 'projection-only-shape',
           builder_handoff: { candidate_id: 'projection-only-candidate' } as NonNullable<
             typeof inspected.state.builder_handoff
           >,

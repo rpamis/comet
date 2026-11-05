@@ -399,6 +399,7 @@ export async function latestInterruptedCommandCheck(
 ): Promise<RecordedCommandCheckAttempt | null> {
   validateScope(scope);
   const trajectory = (await readCheckIndex(changeDir, run.trajectoryRef)).events;
+  const notExecuted = await classicCheckNotExecuted(changeDir, run, scope);
   for (let index = trajectory.length - 1; index >= 0; index -= 1) {
     const event = trajectory[index];
     if (event.runId !== run.runId) continue;
@@ -406,6 +407,7 @@ export async function latestInterruptedCommandCheck(
       event.data?.scope === scope ||
       (Array.isArray(event.data?.scopes) && event.data.scopes.includes(scope));
     if (!touchesScope) continue;
+    if (event.sequence === notExecuted?.sequence) continue;
     if (event.type === 'command_check_started') return validStartedAttempt(projectRoot, event);
     const record = validRecord(projectRoot, event);
     if (record?.scope === scope && record.provenance === 'runtime' && record.argv?.length) {

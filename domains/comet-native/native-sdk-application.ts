@@ -505,6 +505,15 @@ function builderCandidateState(
   const state = parseNativePortableState(run.state);
   const output = outcome.output as Record<string, unknown> | null;
   const sessionId = action.claim?.sessionId;
+  if (output?.submittedAt !== undefined) {
+    const submittedAt = output.submittedAt;
+    const timestamp = typeof submittedAt === 'string' ? Date.parse(submittedAt) : NaN;
+    if (!Number.isFinite(timestamp))
+      throw new Error('Native Builder submittedAt must be a valid ISO timestamp');
+    const canonical = new Date(timestamp).toISOString();
+    if (submittedAt !== canonical)
+      throw new Error(`Native Builder submittedAt must use ${canonical}`);
+  }
   if (
     run.workflow.version === '3' &&
     output?.requireIndependentReview !== undefined &&
@@ -938,7 +947,9 @@ const builderValidator: RuntimeValidator = {
             if (!row || typeof row.name !== 'string')
               errors.push(`checks[${index}].name must be a string`);
             if (!row || !['passed', 'failed', 'not-run'].includes(row.result))
-              errors.push(`checks[${index}].result must be passed, failed, or not-run`);
+              errors.push(
+                `checks[${index}].result must be passed, failed, or not-run; received ${JSON.stringify(row?.result)}`,
+              );
             if (row?.note != null && typeof row.note !== 'string')
               errors.push(`checks[${index}].note must be a string`);
           });
@@ -2391,6 +2402,18 @@ export function defineNativeWorkflowApplication(
             state: state as unknown as RuntimeValue,
             next: [{ stepId: 'supervisor.parent.builder', input: activation }],
           };
+        }
+        if (
+          event.kind === 'action-outcome' &&
+          event.stepId === 'archive.prepare' &&
+          event.outcome.status === 'failed' &&
+          state.phase === 'archive'
+        ) {
+          const latestCheck = [...run.actions]
+            .reverse()
+            .find((action) => action.stepId === 'verify.checks');
+          if (latestCheck && nativeSdkCheckRefreshInput(run, latestCheck))
+            return { state: state as unknown as RuntimeValue, next: [] };
         }
         if (
           event.kind === 'action-outcome' &&

@@ -7,6 +7,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { inspectNativeHookGuard } from '../../../domains/comet-native/native-hook-guard.js';
 import { buildNativePortableAcceptance } from '../../../domains/comet-native/native-portable-acceptance.js';
+import {
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
 
 const brief = `# Outcome
 Correct the greeting.
@@ -42,6 +46,11 @@ describe('Native workflow friction regressions', () => {
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-flow-friction-'));
     execFileSync('git', ['init', '--quiet'], { cwd: root });
+    const config = defaultProjectConfig('docs', 'en');
+    await writeProjectConfig(root, {
+      ...config,
+      native: { ...config.native, document_writes: 'revert' },
+    });
     await command(['new', 'tiny', '--runtime', 'compat', '--language', 'en']);
     changeDir = path.join(root, 'docs', 'comet', 'changes', 'tiny');
   });

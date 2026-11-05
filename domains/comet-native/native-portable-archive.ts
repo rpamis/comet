@@ -459,8 +459,7 @@ async function applySpecChange(options: {
   }
   const current = await readOptionalCanonicalSpec(options.paths, options.change.capability);
   const resultHash = options.change.result_hash ?? nativeTotalSpecHash(options.change.content);
-  if (current.hash === resultHash) return;
-  if (current.hash !== options.change.expected_target_hash) {
+  if (current.hash !== resultHash && current.hash !== options.change.expected_target_hash) {
     throw new Error(
       `Native canonical Spec changed after Archive preflight: ${options.change.capability}`,
     );
@@ -472,6 +471,7 @@ async function applySpecChange(options: {
   await atomicWriteText(sourceTarget, options.change.source_content ?? options.change.content, {
     containedRoot: options.paths.nativeRoot,
   });
+  if (current.hash === resultHash) return;
   await fs.mkdir(capabilityDirectory, { recursive: true });
   await atomicWriteText(target, options.change.content, {
     containedRoot: options.paths.nativeRoot,
@@ -1336,7 +1336,8 @@ export async function archiveNativePortableChange(options: {
         !state.archived &&
         state.builder_handoff?.raw_input_ref &&
         transaction &&
-        transaction.next_spec_index > 0
+        transaction.next_spec_index > 0 &&
+        (await readProjectConfig(options.paths.projectRoot))?.native.document_writes !== 'revert'
       ) {
         // 已发布步骤属于原事务；先核对，不能因外部改写删除原事务或重放这些步骤。
         await assertAppliedSpecsUnchanged(options.paths, transaction);
@@ -1395,6 +1396,8 @@ export async function archiveNativePortableChange(options: {
             paths: options.paths,
             state,
           });
+          if (!deltaInspection.requiresReverification && deltaInspection.blockers.length)
+            throw new Error(deltaInspection.blockers.join('\n'));
           if (deltaInspection.requiresReverification) {
             const rebased = await rebaseNativePortableDeltasLocked({
               paths: options.paths,
@@ -1494,16 +1497,14 @@ export async function archiveNativePortableChange(options: {
       }
 
       await assertAppliedSpecsUnchanged(options.paths, transaction);
-      const archiveOwnedPaths = transaction.spec_changes
-        .slice(0, transaction.next_spec_index)
-        .map(({ capability }) =>
-          path
-            .relative(
-              options.paths.projectRoot,
-              path.join(options.paths.specsDir, capability, 'spec.md'),
-            )
-            .replaceAll('\\', '/'),
-        );
+      const archiveOwnedPaths = transaction.spec_changes.map(({ capability }) =>
+        path
+          .relative(
+            options.paths.projectRoot,
+            path.join(options.paths.specsDir, capability, 'spec.md'),
+          )
+          .replaceAll('\\', '/'),
+      );
       let supervisorDelivered = false;
       if (transaction.status === 'prepared' && supervisor && !state.archived) {
         // Do not publish the parent's canonical Specs before Supervisor has
@@ -1512,9 +1513,9 @@ export async function archiveNativePortableChange(options: {
           paths: options.paths,
           state: supervisor,
           archiveOwnedPaths,
+          deferCleanup: true,
         });
         supervisor = delivered.state;
-        supervisorDelivered = true;
       }
       if (transaction.status === 'prepared') {
         if (!state.archived && state.builder_handoff?.raw_input_ref) {

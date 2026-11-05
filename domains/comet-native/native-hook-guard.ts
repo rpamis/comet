@@ -391,12 +391,7 @@ async function inspectPortableWriteTargets(options: {
         (target) => target === 'brief.md' || /^specs\/[^/]+\/spec\.md$/u.test(target),
       )
     ) {
-      if (
-        !sdkOwned &&
-        documentsRevert &&
-        state.phase !== 'shape' &&
-        state.shape_confirmation_hash
-      ) {
+      if (documentsRevert && state.phase !== 'shape' && state.shape_confirmation_hash) {
         const review = await formalCommentWriteReview(paths, state, request, formalTargets);
         if (review) return review;
       }
@@ -656,13 +651,14 @@ async function implementationWriteImpact(
 ): Promise<'non-behavioral' | 'implementation-changed' | 'review-required'> {
   const { classifyEditImpact } = await import('../workflow-contract/edit-impact.js');
   const projectRoot = paths.projectRoot;
-  if (
-    (await nativeDocumentWritesRevert(projectRoot)) &&
-    targets.some((target) => isNativeNeutralDocumentWrite(paths, target))
-  )
-    return 'implementation-changed';
+  const documentsRevert = await nativeDocumentWritesRevert(projectRoot);
+  let implementationChanged = false;
   let needsReview = false;
   for (const relative of targets) {
+    if (documentsRevert && isNativeNeutralDocumentWrite(paths, relative)) {
+      implementationChanged = true;
+      continue;
+    }
     const proposals =
       request.writes?.filter(
         (proposal) =>
@@ -674,8 +670,10 @@ async function implementationWriteImpact(
       const after = proposedCometHookFileContent(proposals[0], source.text);
       if (after === null) return 'review-required';
       const impact = classifyEditImpact(relative, source.text, after);
-      if (impact.kind === 'implementation-changed' || impact.kind === 'requirements-changed')
-        return 'implementation-changed';
+      if (impact.kind === 'implementation-changed' || impact.kind === 'requirements-changed') {
+        implementationChanged = true;
+        continue;
+      }
       if (
         impact.kind === 'review-required' &&
         !(await isReviewedEditProposal(
@@ -699,7 +697,11 @@ async function implementationWriteImpact(
     });
     return 'review-required';
   }
-  return targets.length > 0 ? 'non-behavioral' : 'review-required';
+  return implementationChanged
+    ? 'implementation-changed'
+    : targets.length > 0
+      ? 'non-behavioral'
+      : 'review-required';
 }
 
 function isWithin(parent: string, target: string): boolean {

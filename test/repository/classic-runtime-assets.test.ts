@@ -99,6 +99,7 @@ describe('Classic runtime release assets', () => {
       path.resolve('config', 'repository-layout.json'),
     );
     expect(layout.sharedSkillReferences).toEqual([
+      'comet/reference/change-walkthrough.md',
       'comet/reference/edit-review.md',
       'comet/reference/host-check.md',
       'comet/reference/task-learning.md',

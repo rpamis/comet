@@ -1184,11 +1184,10 @@ async function inspectClassicHookTarget(
   }
   if (
     ['verify', 'archive'].includes(phase) &&
-    (governing.runtimeFormat === 'sdk' ||
-      (await classicDocumentEvidenceMode(projectRoot)) !== 'strict')
+    (await classicDocumentEvidenceMode(projectRoot)) !== 'strict'
   ) {
     return allowed(
-      `${relativePath}（保留当前 Run 和用户编辑；由当前 Agent 在推进前使用 comet edit-review observe classic ${changeName} --session <当前会话> --json 判断合并变化、正式决定和检查适用性；未覆盖变化不能验收或归档）`,
+      `${relativePath} (preserve the current Run and user edits; before advancing, the current Agent must run comet edit-review observe classic ${changeName} --session <current-session> --json and assess the accumulated changes, formal decisions, and check applicability; uncovered changes cannot be accepted or archived)`,
     );
   }
   if (phase === 'build' && governing.classic?.workflow === 'full' && !governing.classic.designDoc) {

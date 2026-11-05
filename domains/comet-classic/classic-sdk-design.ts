@@ -57,6 +57,7 @@ async function assertDesignProposalSourcesCurrent(options: {
     !state.handoffContext ||
     !state.handoffHash ||
     !(await validateClassicSdkDesignContext({
+      run,
       projectRoot,
       changeDir: path.join(projectRoot, input.changeDir),
       change,
@@ -131,6 +132,7 @@ export async function proposeClassicSdkDesign(options: {
   });
   const handoff = await writeClassicSdkDesignContext({
     projectRoot,
+    run,
     changeDir: path.join(projectRoot, input.changeDir),
     change,
     contextCompression: state.contextCompression,

@@ -106,6 +106,21 @@ describe('repository layout registry', () => {
     expect(layout.allowedTopLevelEntries).toContain('codecov.yml');
     expect(layout.allowedTopLevelEntries).not.toContain('src');
     expect(layout.allowedCodeFiles).toEqual([
+      'eval/local/fixtures/edit-continuation-052/a3/classic/common.mjs',
+      'eval/local/fixtures/edit-continuation-052/a3/classic/deterministic-driver.mjs',
+      'eval/local/fixtures/edit-continuation-052/a3/classic/driver.mjs',
+      'eval/local/fixtures/edit-continuation-052/a3/classic/validator.mjs',
+      'eval/local/fixtures/edit-continuation-052/a3/native/controller.mjs',
+      'eval/local/fixtures/edit-continuation-052/a3/native/driver.mjs',
+      'eval/local/fixtures/edit-continuation-052/a4/classic/common.mjs',
+      'eval/local/fixtures/edit-continuation-052/a4/classic/controller.mjs',
+      'eval/local/fixtures/edit-continuation-052/a4/classic/driver.mjs',
+      'eval/local/fixtures/edit-continuation-052/a4/classic/validator.mjs',
+      'eval/local/fixtures/edit-continuation-052/a4/native/driver.mjs',
+      'eval/local/fixtures/edit-continuation-052/a5/classic/common.mjs',
+      'eval/local/fixtures/edit-continuation-052/a5/classic/driver.mjs',
+      'eval/local/fixtures/edit-continuation-052/a5/classic/validator.mjs',
+      'eval/local/fixtures/edit-continuation-052/a5/native/driver.mjs',
       'eval/archives/grill-test-20261013/application/application.mjs',
       'eval/archives/grill-test-20261013/application/bindings.mjs',
       'eval/archives/grill-test-20261013/application/tools/session.mjs',

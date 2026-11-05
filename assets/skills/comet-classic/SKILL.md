@@ -47,15 +47,13 @@ Before completion, record the task-context learning check as `submitted`, `no-ob
 
 Save validated project experience with `comet knowledge remember`. Project experience and personal preferences are stored separately; Personal Memory holds user preferences and stable collaboration habits. Commands and filtering rules: [Task Context and Artifact Language](reference/scripts.md#task-context-and-artifact-language).
 
-| Runtime route or phase        | Entry and responsibility                                                                                        |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| new full / open               | `/comet-open`: clarify scope, create required artifacts, and obtain the user's review and confirmation          |
-| design                        | `/comet-design`: resolve technical tradeoffs and confirm the formal design                                      |
-| build + full                  | `/comet-build`: recover configuration/plan, complete tasks and required reviews                                 |
-| hotfix / build + hotfix       | `/comet-hotfix`: repair a localized existing defect                                                             |
-| tweak / build + tweak         | `/comet-tweak`: make a lightweight adjustment within one change                                                 |
-| verify                        | `/comet-verify`: run acceptance checks, reverify repairs, and perform the only final integrated review          |
-| archive / verify_result: pass | `/comet-archive`: confirm archiving, commit only this change's files, and complete the selected delivery method |
+- new full / open: `/comet-open`: clarify scope, create required artifacts, and obtain the user's review and confirmation
+- design: `/comet-design`: resolve technical tradeoffs and confirm the formal design
+- build + full: `/comet-build`: recover configuration/plan, complete tasks and required reviews
+- hotfix / build + hotfix: `/comet-hotfix`: repair a localized existing defect
+- tweak / build + tweak: `/comet-tweak`: make a lightweight adjustment within one change
+- verify: `/comet-verify`: run acceptance checks, reverify repairs, and perform the only final integrated review
+- archive / verify_result: pass: `/comet-archive`: confirm archiving, commit only this change's files, and complete the selected delivery method
 
 The corresponding Skill performs phase work; load it before authoring artifacts, calling OpenSpec, or advancing. Resolve `decision`, `evidence`, and `reconcile` on the current Run without repeating phase work.
 

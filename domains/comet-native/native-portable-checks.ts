@@ -578,6 +578,20 @@ export async function nativeRawInputSnapshot(options: {
       ':',
     );
   const generated = new Set<string>();
+  if (physical) {
+    for (const ref of selection)
+      if (
+        ref
+          .split('/')
+          .slice(0, -1)
+          .some((directory) =>
+            NATIVE_GENERATED_INPUT_DIRECTORIES.some(
+              (generatedDirectory) => generatedDirectory === directory,
+            ),
+          )
+      )
+        generated.add(ref);
+  }
   const rawSessionOptions: Parameters<typeof createProtectedProjectReadSession>[2] = {
     ignoredDirectoryEntries: (ref) => (entry) => {
       const target = ref === '.' || ref === '' ? entry.name : `${ref}/${entry.name}`;
@@ -969,6 +983,8 @@ export async function nativeRawCandidateHash(
   const reviews = await inspectEditReviews(scope);
   const files: NativeRawInputSnapshot['files'] = [];
   for (const file of snapshot.files) {
+    // 生成输入仍绑定完整检查收据，生成物变化不替换 Builder 的源码候选。
+    if (file.generated) continue;
     // 正式契约由 Shape 的批准绑定单独核对，不作为实现改动再次处理。
     if (formalPaths.includes(file.path)) continue;
     const reviewed = await approvedEditHash(scope, file.path, file.hash, reviews, file.mode);
@@ -1049,6 +1065,38 @@ export async function captureNativePortableCandidateInputs(
 
 export function nativePortableCheckExecutionRef(check: NativeLocalCheckState) {
   return check.rawInput?.executionRef ?? `native-check:${check.operationId}`;
+}
+
+/** 重新验收 Runtime 合并的 Spec 时，只更新该合并涉及的输入。 */
+export async function captureNativePortableRebasedCandidateInputs(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+  rebasedPaths: readonly string[],
+  sourceHashes: Readonly<Record<string, string>>,
+) {
+  const ref = state.builder_handoff?.raw_input_ref;
+  if (!ref) return undefined;
+  const original = await portableRawSnapshot(paths, state, ref);
+  const current = await nativeRawInputSnapshot({
+    projectRoot: paths.projectRoot,
+    managedArtifactRoot: paths.artifactRoot,
+    previous: original,
+  });
+  const allowed = new Set(rebasedPaths);
+  if (
+    !original.complete ||
+    !current.complete ||
+    Object.entries(sourceHashes).some(
+      ([file, hash]) => original.files.find((entry) => entry.path === file)?.hash !== hash,
+    ) ||
+    nativeRawInputChanges(original, current).some((change) => !allowed.has(change.path))
+  )
+    throw new Error('Native delta rebase cannot adopt changes outside its confirmed Spec merge');
+  return saveNativeRawInput(
+    paths.workspaceRuntimeRoot,
+    portableRawDirectory(paths, state.name),
+    current,
+  );
 }
 
 async function portableRawSnapshot(
@@ -1154,6 +1202,8 @@ export async function refreshNativePortableChecks(
   });
 }
 
+class NativePortableCandidateDriftError extends Error {}
+
 export async function assertNativePortableRawCandidate(
   paths: NativeProjectPaths,
   state: NativePortableState,
@@ -1177,10 +1227,11 @@ export async function assertNativePortableRawCandidate(
   if (
     (await nativeRawCandidateInputHash(original, paths, state)) !==
     (await nativeRawCandidateInputHash(comparable, paths, state))
-  )
-    throw new Error(
+  ) {
+    throw new NativePortableCandidateDriftError(
       `Native 原候选内容已变化；保留工作，由当前 Agent 使用 comet edit-review observe native ${state.name} --session <当前会话> --json 判断实际影响`,
     );
+  }
 }
 
 /** 仅将原事务已经发布且字节仍精确匹配的 Spec 映回原输入，其他路径保持实际观察。 */
@@ -1191,6 +1242,8 @@ async function nativePortableArchiveInputView(
   baseline: NativeRawInputSnapshot,
 ): Promise<NativeRawInputSnapshot> {
   if (state.phase !== 'archive') return current;
+  // Supervisor 的原检查工作区在最后核对完成前保留，发布只写入目标工作区。
+  if (path.resolve(current.projectRoot) !== path.resolve(paths.projectRoot)) return current;
   const transaction = await readNativePortableTransaction(paths, {
     change: state.name,
     kind: 'archive',
@@ -1198,24 +1251,37 @@ async function nativePortableArchiveInputView(
   if (!transaction || transaction.kind !== 'archive') return current;
   const entries = new Map(current.files.map((file) => [file.path, file]));
   const originals = new Map(baseline.files.map((file) => [file.path, file]));
-  for (const change of transaction.journal.spec_changes.slice(
-    0,
-    transaction.journal.next_spec_index,
-  )) {
+  const cursor = transaction.journal.next_spec_index;
+  if ((await readProjectConfig(paths.projectRoot))?.native.document_writes === 'revert') {
+    for (const change of transaction.journal.spec_changes.slice(cursor)) {
+      if (!change.source || change.content === null) continue;
+      const ref = path
+        .relative(paths.projectRoot, path.join(paths.changesDir, state.name, change.source))
+        .replaceAll('\\', '/');
+      const original = originals.get(ref);
+      const frozenHash = createHash('sha256')
+        .update(change.source_content ?? change.content)
+        .digest('hex');
+      // 旧回退策略只允许恢复与原输入相同的冻结材料，其他文件仍逐项核对。
+      if (original?.hash === frozenHash) entries.set(ref, original);
+    }
+  }
+  for (const [index, change] of transaction.journal.spec_changes.entries()) {
+    if (index > cursor) break;
     const ref = path
       .relative(paths.projectRoot, path.join(paths.specsDir, change.capability, 'spec.md'))
       .replaceAll('\\', '/');
     const actual = entries.get(ref);
-    if (
-      change.operation === 'remove'
-        ? Boolean(actual)
-        : !actual ||
-          actual.hash !==
-            createHash('sha256')
-              .update(change.content ?? '')
-              .digest('hex')
-    )
-      throw new Error(`Native 已发布 Spec 与原归档事务不匹配：${ref}`);
+    const matchesResult = !(change.operation === 'remove'
+      ? Boolean(actual)
+      : !actual ||
+        actual.hash !==
+          createHash('sha256')
+            .update(change.content ?? '')
+            .digest('hex'));
+    // 写入成功后可能尚未保存游标，只接受当前步骤与冻结结果完全相同的字节。
+    if (index === cursor && !matchesResult) break;
+    if (!matchesResult) throw new Error(`Native 已发布 Spec 与原归档事务不匹配：${ref}`);
     const original = originals.get(ref);
     if (original) entries.set(ref, original);
     else entries.delete(ref);
@@ -1265,6 +1331,7 @@ export async function assertNativePortableRawCheckInputs(
   paths: NativeProjectPaths,
   state: NativePortableState,
   local: NativeLocalExecutionState,
+  options: { requirePassed?: boolean } = {},
 ) {
   if (!local.rawInputRef) {
     if (state.builder_handoff?.raw_input_ref)
@@ -1288,11 +1355,14 @@ export async function assertNativePortableRawCheckInputs(
   await assertNativePortableRawCandidate(paths, state, local, current);
   for (const check of local.checks) {
     if (
-      check.status !== 'passed' ||
+      (options.requirePassed === false
+        ? !['passed', 'failed'].includes(check.status)
+        : check.status !== 'passed') ||
       !(await portableRawCheckApplicable(paths, state, check, current)) ||
       !(await hasNativeRuntimeCheckEvidence(
         { ...local, checks: [check] },
         nativePreferredChangeRuntimeDir(paths, state.name),
+        options.requirePassed === false,
       ))
     )
       throw new Error(
@@ -2878,7 +2948,11 @@ export async function persistVerifierExecutionError(options: {
   state: NativePortableState;
   summary: string;
 }): Promise<NativePortableState> {
-  const local = await readCurrentLocalExecution({ paths: options.paths, state: options.state });
+  const local = await readCurrentLocalExecution({
+    paths: options.paths,
+    state: options.state,
+    allowMissing: true,
+  });
   const next = recordNativeVerifierExecutionError({
     state: options.state,
     summary: options.summary,
@@ -2897,24 +2971,26 @@ export async function persistVerifierExecutionError(options: {
     previous: options.state,
     next,
   });
-  await writeNativeLocalExecution(
-    nativeLocalExecutionFile(options.paths, options.state.name),
-    preservedLocalChecksForVersion({
-      local,
-      state: written,
-      projectRoot: options.paths.projectRoot,
-    }),
-    { containedRoot: options.paths.runtimeDir },
-  );
+  if (local !== null)
+    await writeNativeLocalExecution(
+      nativeLocalExecutionFile(options.paths, options.state.name),
+      preservedLocalChecksForVersion({
+        local,
+        state: written,
+        projectRoot: options.paths.projectRoot,
+      }),
+      { containedRoot: options.paths.runtimeDir },
+    );
   return written;
 }
 
 async function hasNativeRuntimeCheckEvidence(
   local: NativeLocalExecutionState,
   runtimeDir: string,
+  includeFailed = false,
 ): Promise<boolean> {
   for (const check of local.checks) {
-    if (check.status !== 'passed') continue;
+    if (check.status !== 'passed' && !(includeFailed && check.status === 'failed')) continue;
     if (check.evidence !== 'runtime') return false;
     try {
       const logFile = await resolveContainedNativePath(
@@ -2949,16 +3025,32 @@ export async function rebindNativeCheckEvidence(options: {
     local?.rawInputRef &&
     previous.shape_confirmation_hash === next.shape_confirmation_hash &&
     path.resolve(local.workspace.projectRoot) ===
-      path.resolve(options.projectRoot ?? paths.projectRoot)
-  )
+      path.resolve(options.projectRoot ?? paths.projectRoot) &&
+    path.resolve(local.workspace.worktreeRoot) ===
+      path.resolve(options.projectRoot ?? paths.projectRoot) &&
+    local.workspace.machineId === os.hostname()
+  ) {
+    const retained = local.checks.filter((check) => {
+      const plan = plans.find((entry) => entry.id === check.id);
+      return (
+        !plan ||
+        !check.repeatable ||
+        !plan.repeatable ||
+        nativeLocalCheckPlanKey(check, options.projectRoot ?? paths.projectRoot) ===
+          nativeCheckPlanKey(plan)
+      );
+    });
     return {
       ...preservedLocalChecksForVersion({
         local,
         state: next,
         projectRoot: options.projectRoot ?? paths.projectRoot,
       }),
+      checks: retained,
+      ...(retained.length === local.checks.length ? {} : { execution: null }),
       candidateId: next.builder_handoff!.candidate_id,
     };
+  }
   if (
     !local ||
     !local.checks.length ||
@@ -3052,7 +3144,35 @@ async function reserveNativeRawCheckPlanLocked(
     managedArtifactRoot: options.paths.artifactRoot,
     previous: await portableRawSnapshot(options.paths, state, local.rawInputRef!),
   });
-  await assertNativePortableRawCandidate(options.paths, state, local, current);
+  try {
+    await assertNativePortableRawCandidate(options.paths, state, local, current);
+  } catch (error) {
+    if (
+      !(error instanceof NativePortableCandidateDriftError) ||
+      state.phase !== 'verify' ||
+      (await readProjectConfig(options.paths.projectRoot))?.native.document_writes !== 'revert'
+    )
+      throw error;
+    const next = returnNativeCandidateToBuild({
+      state,
+      reason:
+        'Native check input changed after the candidate was built; a new Builder candidate is required before checks can run again.',
+    });
+    const written = await writePortableMutation({ paths: options.paths, previous: state, next });
+    await writeNativeLocalExecution(
+      nativeLocalExecutionFile(options.paths, state.name),
+      rebuildNativeLocalExecution({
+        portableState: written,
+        projectRoot: options.projectRoot,
+        branch: currentBranch(options.projectRoot),
+      }),
+      { containedRoot: options.paths.runtimeDir },
+    );
+    throw new Error(
+      'Native check input changed after the candidate was built; the change returned to Build for a new candidate',
+      { cause: error },
+    );
+  }
   const refresh = options.archiveRefresh;
   const operationId = refresh
     ? canonicalHash('comet.native.check-refresh.v1', { name: state.name, ...refresh })
@@ -3178,7 +3298,7 @@ async function reserveNativeRawCheckPlanLocked(
       !refresh?.checkIds.includes(old.id) &&
       ((old.status === 'passed' && applicable && valid) ||
         (old.status === 'failed' && applicable) ||
-        (old.status === 'interrupted' && retry && !retry.has(old.id)))
+        (old.status === 'interrupted' && old.repeatable && (!retry || !retry.has(old.id))))
     ) {
       checks.push(old);
       continue;
@@ -3219,6 +3339,10 @@ async function reserveNativeRawCheckPlanLocked(
     ...local,
     basedOnStateVersion: state.state_version,
     candidateId: state.builder_handoff!.candidate_id,
+    inputFingerprint: hashRuntimeValue({
+      content: current.contentHash,
+      context: current.contextHash,
+    }),
     workspace: {
       ...local.workspace,
       machineId: os.hostname(),

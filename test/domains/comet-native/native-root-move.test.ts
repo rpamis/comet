@@ -171,6 +171,7 @@ describe('Native artifact root moves', () => {
       default_workflow: 'native',
       workflows: ['native'],
       ambient_resume: true,
+      change_walkthrough: true,
       memory: {
         learning: true,
         retrieval: true,

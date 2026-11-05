@@ -179,7 +179,11 @@ async function buildingFixture(source = brief, legacyShape = false) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-acceptance-boundaries-'));
   roots.push(root);
   await fs.mkdir(path.join(root, '.git'));
-  await writeProjectConfig(root, defaultProjectConfig('docs', 'en'));
+  const config = defaultProjectConfig('docs', 'en');
+  await writeProjectConfig(root, {
+    ...config,
+    native: { ...config.native, document_writes: 'revert' },
+  });
   const paths = await nativeProjectPaths(root, 'docs');
   await ensureNativeDirectories(paths);
   const name = 'acceptance-boundaries';

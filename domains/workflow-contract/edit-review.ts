@@ -1253,17 +1253,12 @@ export async function inspectEditReviews(scope: EditReviewScope): Promise<EditRe
   return reviews;
 }
 
-/** 最新文件替换了待审的已应用编辑时，只作废旧提案，不批准当前内容。 */
+/** 最新文件替换了已应用编辑时，只作废旧提案，不批准当前内容。 */
 export async function supersedeStaleAppliedEditReviews(scope: EditReviewScope): Promise<void> {
   const reviews = await inspectEditReviews(scope);
   const root = await directory(scope, true);
   for (const review of reviews) {
-    if (
-      review.receipt?.decision === 'non-behavioral' ||
-      review.receipt?.decision === 'discard' ||
-      (!review.applied && review.receipt)
-    )
-      continue;
+    if (review.receipt?.decision === 'discard' || (!review.applied && review.receipt)) continue;
     if (
       !review.applied &&
       !review.edits.every((edit) =>

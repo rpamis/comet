@@ -5,6 +5,7 @@ import {
 import {
   approvedEditFingerprint,
   approvedEditHash,
+  inspectEditReviews,
   rememberApprovedEditOriginal,
   readApprovedEditOriginalForEvidence,
   type EditReviewScope,
@@ -139,7 +140,7 @@ const openRevalidationValidator: RuntimeValidator = {
       return { accepted: false, reason: 'Classic Open result is not bound to approved artifacts' };
     }
     try {
-      const current = await classicOpenEvidenceReceipt(context.projectRoot, evidence.ref);
+      const current = await classicOpenEvidenceReceipt(context.projectRoot, evidence.ref, { run });
       return {
         accepted: current.contentHash === output?.contentHash,
         reason: 'Classic Open artifacts changed after the reported revalidation',
@@ -179,12 +180,15 @@ const designHandoffValidator: RuntimeValidator = {
     }
     try {
       if (output.sourceEvidence || output.requirementsEvidence) {
-        const source = await classicOpenEvidenceReceipt(context.projectRoot, input.changeDir);
+        const source = await classicOpenEvidenceReceipt(context.projectRoot, input.changeDir, {
+          run,
+        });
         const requirements = await classicOpenEvidenceReceipt(
           context.projectRoot,
           input.changeDir,
           {
             designRequirements: true,
+            run,
           },
         );
         if (
@@ -198,6 +202,7 @@ const designHandoffValidator: RuntimeValidator = {
         }
       }
       const accepted = await validateClassicSdkDesignContext({
+        run,
         projectRoot: context.projectRoot,
         changeDir: path.join(context.projectRoot, input.changeDir),
         change: input.change,
@@ -713,6 +718,7 @@ export async function classicOpenEvidenceReceipt(
     captureOriginals?: EditReviewScope;
     captureForEvidenceHash?: string;
     observation?: { scope: EditReviewScope; originalEvidenceHash: string };
+    run?: Readonly<WorkflowRun>;
   } = {},
 ): Promise<{ ref: string; contentHash: string }> {
   const inspected = await inspectProtectedProjectPath(projectRoot, changeDirRef, {
@@ -720,20 +726,32 @@ export async function classicOpenEvidenceReceipt(
     expected: 'directory',
   });
   if (!inspected.exists) throw new Error('Classic change directory does not exist');
+  if (options.run && (options.run.input as { changeDir?: string }).changeDir !== inspected.relative)
+    throw new Error('Classic source evidence Run does not match its current change');
   const requirements = await readClassicArtifactRequirements(projectRoot, inspected.target);
   if (requirements.problems.length) throw new Error(requirements.problems.join('\n'));
   const entries: Array<[string, string]> = [];
   const originals: Array<{ ref: string; source: string; hash: string }> = [];
   const state = options.observation
     ? null
-    : (await readClassicState(inspected.target, { migrate: false })).classic;
+    : options.run
+      ? (options.run.state as unknown as ClassicState)
+      : (await readClassicState(inspected.target, { migrate: false })).classic;
   const scope =
     !options.captureOriginals && state?.handoffHash
-      ? await classicFormalEditReviewScope(projectRoot, path.basename(inspected.target), state)
+      ? await classicFormalEditReviewScope(
+          projectRoot,
+          path.basename(inspected.target),
+          state,
+          false,
+          undefined,
+          options.run,
+        )
       : options.captureOriginals
         ? undefined
         : options.observation?.scope;
   const originalEvidenceHash = options.observation?.originalEvidenceHash ?? state?.handoffHash;
+  const reviews = scope ? await inspectEditReviews(scope) : [];
   for (const file of requirements.files) {
     const relative = path.relative(projectRoot, file).replaceAll('\\', '/');
     if (options.designRequirements && relative === `${inspected.relative}/design.md`) continue;
@@ -765,6 +783,7 @@ export async function classicOpenEvidenceReceipt(
             scope,
             relative,
             createHash('sha256').update(taskFile.bytes).digest('hex'),
+            reviews,
           )
         : null;
       if (judgment && !judgment.semantic && originalEvidenceHash) {
@@ -799,7 +818,7 @@ export async function classicOpenEvidenceReceipt(
           : createHash('sha256').update(hashed.bytes).digest('hex');
       if ('bytes' in hashed)
         originals.push({ ref: relative, source: hashed.bytes.toString('utf8'), hash: digest });
-      const judgment = scope ? await approvedEditHash(scope, relative, digest) : null;
+      const judgment = scope ? await approvedEditHash(scope, relative, digest, reviews) : null;
       if (judgment && !judgment.semantic && judgment.beforeHash) digest = judgment.beforeHash;
     }
     entries.push([relative, digest]);
@@ -968,12 +987,13 @@ export async function assertClassicSdkDesignRequirementsCurrent(
   )?.requirementsEvidence;
   const state = run.state as unknown as ClassicState;
   const current = expected
-    ? await classicOpenEvidenceReceipt(projectRoot, changeDirRef, { designRequirements: true })
+    ? await classicOpenEvidenceReceipt(projectRoot, changeDirRef, { designRequirements: true, run })
     : null;
   const handoffCurrent =
     state.handoffContext &&
     state.handoffHash &&
     (await validateClassicSdkDesignContext({
+      run,
       projectRoot,
       changeDir: path.join(projectRoot, changeDirRef),
       change: (run.input as { change: string }).change,
@@ -1144,7 +1164,7 @@ const openEvidenceValidator: RuntimeEvidenceValidator = {
         state?.language ?? null,
       );
       if (contentIssue) return { accepted: false, actualHash: '', reason: contentIssue };
-      const current = await classicOpenEvidenceReceipt(context.projectRoot, ref);
+      const current = await classicOpenEvidenceReceipt(context.projectRoot, ref, { run });
       if (state?.workflow !== 'full') {
         const expected = (
           run.outputs[`${state?.workflow}.open`]?.value as
@@ -1235,6 +1255,7 @@ const designEvidenceValidator: RuntimeEvidenceValidator = {
           changeDir,
           {
             designRequirements: true,
+            run,
           },
         );
         if (!isDeepStrictEqual(proposal.requirementsEvidence, currentRequirements)) {
@@ -1252,6 +1273,7 @@ const designEvidenceValidator: RuntimeEvidenceValidator = {
         !state.handoffContext ||
         !state.handoffHash ||
         !(await validateClassicSdkDesignContext({
+          run,
           projectRoot: context.projectRoot,
           changeDir: path.join(context.projectRoot, changeDir),
           change,

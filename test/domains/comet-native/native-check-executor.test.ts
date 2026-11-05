@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   executeNativeCheck,
@@ -22,6 +22,7 @@ describe('Native check executor', () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     // Windows 进程退出后可能短暂占用 cwd；有限重试，不掩盖持续占用。
     await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
@@ -86,15 +87,24 @@ describe('Native check executor', () => {
   it.runIf(process.platform === 'win32')(
     'resolves Windows command shims without a shell',
     async () => {
+      await fs.writeFile(
+        path.join(root, 'comet-check-shim.cmd'),
+        `@"${process.execPath}" "%~dp0shim.cjs" %*\r\n`,
+      );
+      await fs.writeFile(
+        path.join(root, 'shim.cjs'),
+        'process.stdout.write(JSON.stringify(process.argv.slice(2)))',
+      );
+      vi.stubEnv('PATH', `${root}${path.delimiter}${process.env.PATH ?? ''}`);
       const result = await executeNativeCheck({
         projectRoot: root,
         runtimeDir,
         operationId: 'verify-shim',
         plan: {
-          id: 'pnpm-version',
-          name: 'pnpm version',
-          executable: 'pnpm',
-          argv: ['--version'],
+          id: 'local-shim',
+          name: 'Local Windows command shim',
+          executable: 'comet-check-shim',
+          argv: ['space separated', '中文'],
           cwdRef: '.',
           timeoutMs: 10_000,
           repeatable: true,
@@ -102,6 +112,9 @@ describe('Native check executor', () => {
       });
 
       expect(result).toMatchObject({ status: 'passed', exitCode: 0, timedOut: false });
+      expect(await fs.readFile(path.join(runtimeDir, ...result.logRef.split('/')), 'utf8')).toBe(
+        JSON.stringify(['space separated', '中文']),
+      );
     },
   );
 

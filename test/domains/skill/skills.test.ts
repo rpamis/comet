@@ -4105,7 +4105,10 @@ describe('skills', () => {
       expect(zhGuard).toContain('点号开头的普通项目文件');
       expect(zhGuard).toContain('零个表示当前没有 Comet 需求');
       expect(zhGuard).toContain('多个候选时暂停并让用户选择');
-      expect(zhGuard).toContain('每轮只执行以下轻量所有权读取');
+      expect(zhGuard).toContain(
+        '开始任务、恢复上下文或切换仓库、分支、change 时执行以下轻量所有权读取',
+      );
+      expect(zhGuard).not.toContain('每轮只执行');
       expect(zhGuard).toContain(
         '这两次轻量读取不运行 `resume-probe`、不查询 `status`，也不枚举全部 change',
       );
@@ -4146,7 +4149,10 @@ describe('skills', () => {
       expect(enGuard).toContain('dot-prefixed project files');
       expect(enGuard).toContain('zero means there is no current Comet request');
       expect(enGuard).toContain('multiple candidates require an explicit user selection');
-      expect(enGuard).toContain('perform only these lightweight ownership reads');
+      expect(enGuard).toContain(
+        'Read ownership at task start, after context recovery, or when switching repositories, branches, or changes',
+      );
+      expect(enGuard).toContain('Reuse the current response during ordinary progression');
       expect(enGuard).toContain(
         'these two lightweight reads do not run `resume-probe`, query `status`, or enumerate every change',
       );

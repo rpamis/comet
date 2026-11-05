@@ -1042,9 +1042,8 @@ describe('Classic executed check evidence', () => {
         },
       }),
     );
-    // A symbolic link in the input scope makes the snapshot throw after the
-    // started event is written, leaving the interrupted-attempt tombstone
-    // behind. A junction works without Windows developer-mode privileges.
+    // An incomplete input snapshot retains the reserved plan without executing it.
+    // Guard must not replace that deliberate plan with an inferred build.
     await fs.mkdir(path.join(root, 'linked-dir'));
     await fs.symlink(
       path.join(root, 'linked-dir'),

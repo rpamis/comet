@@ -1,4 +1,4 @@
-import { defineNativeWorkflowApplication } from '../../../domains/comet-native/native-sdk-application.js';
+import { nativeSdkApplicationForRun } from '../../../domains/comet-native/native-sdk-application.js';
 import { createRuntime, createFileRuntimeStore } from '../../../domains/engine/runtime.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import {
@@ -167,7 +167,7 @@ describe('Native cancellation lifecycle', () => {
     ).rejects.toThrow(/Native lock is already held/);
     expect(await f.runtime.inspect(f.name)).toEqual(before);
     // 旧版本可能已经提交取消；保留该故障恢复覆盖，而不是绕过新的提交前保护。
-    const application = defineNativeWorkflowApplication();
+    const application = nativeSdkApplicationForRun(before);
     const legacy = createRuntime({
       store: createFileRuntimeStore({
         rootDir: path.join(resolveWorkspaceRuntimeRootSync(f.root), 'sdk-runs', 'native'),

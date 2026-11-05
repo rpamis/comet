@@ -23,6 +23,7 @@ import {
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
+import { createLegacyNativeSdkChange } from '../../helpers/native-legacy-sdk-change.js';
 import { requireFileSymlink } from '../../helpers/file-symlink.js';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -160,7 +161,11 @@ async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-sdk-'));
   roots.push(root);
   await fs.mkdir(path.join(root, '.git'));
-  await writeProjectConfig(root, defaultProjectConfig('docs', 'en'));
+  const config = defaultProjectConfig('docs', 'en');
+  await writeProjectConfig(root, {
+    ...config,
+    native: { ...config.native, document_writes: 'revert' },
+  });
   const paths = await nativeProjectPaths(root, 'docs');
   await ensureNativeDirectories(paths);
   const changeDir = path.join(paths.changesDir, 'sdk-shape');
@@ -5084,6 +5089,8 @@ children:
       inputHash: pending.inputHash,
       executorId: 'comet-native-checks',
       claimToken: 'complete-unsubmitted',
+
+      context: { projectRoot: root, requestId: 'native-check-claim-5081' },
     });
     const action = claimed.actions.at(-1)!;
     const result = await nativeSdkCheckExecutor.execute(
@@ -5159,6 +5166,8 @@ children:
       inputHash: pending.inputHash,
       executorId: 'comet-native-checks',
       claimToken: 'completed-drift-original',
+
+      context: { projectRoot: root, requestId: 'native-check-claim-5156' },
     });
     const action = run.actions.at(-1)!;
     const original = await nativeSdkCheckExecutor.execute(
@@ -5647,6 +5656,8 @@ children:
         inputHash: pending.inputHash,
         executorId: 'comet-native-checks',
         claimToken: 'reserved-original-claim',
+
+        context: { projectRoot: root, requestId: 'native-check-claim-5644' },
       });
       const action = run.actions.at(-1)!;
       const bundle = path.join(root, 'reserve-owner.cjs');
@@ -5779,6 +5790,8 @@ children:
       inputHash: pending.inputHash,
       executorId: 'comet-native-checks',
       claimToken: 'legacy-original-claim',
+
+      context: { projectRoot: root, requestId: 'native-check-claim-5776' },
     });
     const action = run.actions.at(-1)!;
     // 旧执行器的真实路径：领取后运行命令，退出前未持久登记进程或提交结果。
@@ -5835,6 +5848,8 @@ children:
       inputHash: pending.inputHash,
       executorId: 'comet-native-checks',
       claimToken: 'registration-race-claim',
+
+      context: { projectRoot: root, requestId: 'native-check-claim-5832' },
     });
     const action = run.actions.at(-1)!;
     let registration: Awaited<ReturnType<typeof createNativeSdkCheckExecution>> | undefined;
@@ -5900,6 +5915,8 @@ children:
         inputHash: pending.inputHash,
         executorId: 'comet-native-checks',
         claimToken: `old-${receipt}-claim`,
+
+        context: { projectRoot: root, requestId: 'native-check-claim-5897' },
       });
       const action = run.actions.at(-1)!;
       if (receipt === 'complete') {
@@ -7477,7 +7494,7 @@ children:
     ).candidateInputFingerprintGate = legacy;
     await expect(
       assertNativeSdkCandidateUnchanged({ run: legacyRun, projectRoot: root }),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({ complete: true, projectRoot: await fs.realpath(root) });
     vi.stubEnv('NODE_ENV', 'legacy-context-changed');
     await expect(
       assertNativeSdkCandidateUnchanged({ run: legacyRun, projectRoot: root }),
@@ -7526,6 +7543,7 @@ children:
         kind === 'legacy-definition' ? 'sdk' : 'memory',
         application,
         true,
+        undefined,
         async (root) => {
           await fs.mkdir(path.join(root, 'dist'), { recursive: true });
           await fs.writeFile(path.join(root, 'dist', 'check-input.txt'), 'checked input');
@@ -8545,21 +8563,6 @@ async function reviewAppliedCommentAtArchive(
     ).toHaveLength(0);
     return;
   }
-  if (preparePending) {
-    const continuation = JSON.parse(ready.stdout!).data.continuation;
-    expect(continuation.action).toBe('repair');
-    const args = (continuation.commandArgs as string[])
-      .slice(2)
-      .map((arg) => (arg === '<summary>' ? 'Review the user clarification.' : arg));
-    const resumed = await runNativeCli(args);
-    expect(resumed.exitCode, resumed.stdout).toBe(0);
-    expect((await runtime.inspect(run.runId)).state).toMatchObject({
-      phase: 'build',
-      archived: false,
-    });
-    expect(await fs.readFile(brief, 'utf8')).toBe(modified);
-    return;
-  }
   expect(JSON.parse(ready.stdout!).data.continuation.action).toBe('archive');
   expect((await runtime.inspect(run.runId)).state).toMatchObject({
     phase: 'archive',
@@ -9547,11 +9550,28 @@ it('requires fresh verification instead of trusting a legacy check without a can
       : {
           ...executor,
           async execute(...args: Parameters<RuntimeExecutor['execute']>) {
+            const run = args[2];
+            const projectRoot = String(args[1].projectRoot);
+            const paths = await nativeProjectPaths(
+              projectRoot,
+              (run.input as { artifactRootRef: string }).artifactRootRef,
+            );
+            const snapshotOptions = {
+              projectRoot,
+              state: run.state as unknown as NativePortableState,
+              plans: nativeSdkChecks.nativeSdkCheckPlans(run.outputs['build.builder'].value),
+              managedArtifactRoot: paths.artifactRoot,
+            };
+            const before = await nativePortableChecks.nativeCheckInputSnapshot(snapshotOptions);
             const result = await executor.execute(...args);
-            const output = { ...(result.output as Record<string, never>) };
+            const after = await nativePortableChecks.nativeCheckInputSnapshot(snapshotOptions);
+            const output = { ...(result.output as Record<string, RuntimeValue>) };
             // 旧收据没有 v2 输入快照；只删候选摘要会制造不合法的混合格式。
             delete output.inputSnapshot;
             delete output.candidateInputFingerprintGate;
+            delete output.rawInput;
+            output.inputBefore = before.fingerprint;
+            output.inputAfter = after.fingerprint;
             return { ...result, output };
           },
         },
@@ -10012,16 +10032,7 @@ it('recovers original archive history after a subsequent legitimate archive chan
     attempt: action.attempt,
     reason: 'Host exited after complete durable finalization.',
   });
-  const newResult = await nativeDomain.runNativeCliDetailed([
-    'new',
-    'second-work',
-    '--isolation',
-    'current',
-    '--project-root',
-    f.root,
-    '--json',
-  ]);
-  expect(newResult.dispatch.exitCode, JSON.stringify(newResult.dispatch)).toBe(0);
+  await createLegacyNativeSdkChange(f.root, 'second-work');
   const { runtime } = await loadOwnedNativeSdkRuntime(f.root, 'second-work');
   const change = path.join(f.paths.changesDir, 'second-work');
   const archiveRef = (a.outputs['archive.execute'].value as { archiveRef: string }).archiveRef;
