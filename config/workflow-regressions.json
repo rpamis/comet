@@ -10735,6 +10735,33 @@
           ]
         }
       ]
+    },
+    {
+      "id": "ci-windows-core-regression-sharding",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/42085850245/job/127451381046"],
+      "behavior": "Execute every registered Windows badcase group across four required CI shards without exceeding a single serial job's original deadline.",
+      "coverageLevel": "public-cli",
+      "reproduction": "At e8c82d24, the Windows badcase job reaches its 180-minute limit while still completing groups, with 180 raw reports uploaded and no assertion failure found in its log. The complete 221-group run has no passing summary. The original workflow fails the new four-shard contract and the original selector duplicates all groups across requested shards.",
+      "expected": "Four disjoint non-empty partitions cover the complete group list exactly once, preserve each group's assertions and failure exit status, retain distinct raw artifacts, and all remain required by CI. Platform-wide evidence cannot be produced by a partial shard.",
+      "forbidden": "Raise original deadlines, skip or drop a historical case, pass an empty partition, overwrite another shard's evidence, or call partial platform evidence complete.",
+      "rootCause": "The Windows job serially executes all 221 regression groups, including multiple long SDK groups, so valid ongoing tests can exhaust the job's fixed three-hour execution limit.",
+      "tests": [
+        {
+          "file": "test/scripts/core-regressions.test.ts",
+          "namePattern": "partitions every registered group exactly once|collects every failed group and executes later groups through the real CLI",
+          "requiredNames": [
+            "core regression entrypoint partitions every registered group exactly once without changing its assertions",
+            "core regression entrypoint collects every failed group and executes later groups through the real CLI"
+          ]
+        },
+        {
+          "file": "test/repository/ci-workflows.test.ts",
+          "namePattern": "runs all Windows badcase shards with separate evidence and the original deadline",
+          "requiredNames": [
+            "CI workflows runs all Windows badcase shards with separate evidence and the original deadline"
+          ]
+        }
+      ]
     }
   ]
 }

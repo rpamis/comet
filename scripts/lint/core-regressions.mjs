@@ -183,9 +183,8 @@ export const CORE_REGRESSIONS = mergeHistoricalRegressions(CURRENT_CORE_REGRESSI
   ...loadWorkflowRegressions(repositoryRoot),
 ]);
 
-export function selectCoreRegressions(selectors = []) {
-  if (!selectors.length) return [...CORE_REGRESSIONS];
-  const selected = new Set();
+export function selectCoreRegressions(selectors = [], shard) {
+  const selected = new Set(selectors.length ? [] : CORE_REGRESSIONS);
   for (const selector of selectors) {
     const matches = CORE_REGRESSIONS.filter(
       (entry) =>
@@ -196,7 +195,21 @@ export function selectCoreRegressions(selectors = []) {
     if (!matches.length) throw new Error(`Unknown core regression: ${selector}`);
     matches.forEach((entry) => selected.add(entry));
   }
-  return [...selected];
+  const entries = [...selected];
+  if (shard === undefined) return entries;
+  const match = /^([1-9]\d*)\/([1-9]\d*)$/u.exec(shard);
+  const index = Number(match?.[1]);
+  const count = Number(match?.[2]);
+  if (
+    !Number.isSafeInteger(index) ||
+    !Number.isSafeInteger(count) ||
+    index > count ||
+    count > entries.length
+  )
+    throw new Error(
+      'Invalid core regression shard: expected index/count with a non-empty assignment',
+    );
+  return entries.filter((_, position) => position % count === index - 1);
 }
 
 export function coreRegressionArgs(entry, reportFile) {
@@ -276,6 +289,7 @@ export function assertCoreRegressionResult(entry, report, context = {}) {
 async function main(argv) {
   const selectors = [];
   let list = false;
+  let shard;
   let recordPlatform;
   let recordAll;
   let verifyEvidence;
@@ -291,6 +305,8 @@ async function main(argv) {
   };
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === '--list') list = true;
+    else if (argv[index] === '--shard' && argv[index + 1]) shard = argv[++index];
+    else if (argv[index].startsWith('--shard=')) shard = argv[index].slice('--shard='.length);
     else if (argv[index] === '--case' && argv[index + 1]) selectors.push(argv[++index]);
     else if (argv[index] === '--record-platform' && argv[index + 1]) recordPlatform = argv[++index];
     else if (argv[index] === '--record-all' && argv[index + 1]) recordAll = argv[++index];
@@ -303,12 +319,12 @@ async function main(argv) {
       crossOptions[crossArguments[argv[index]]] = argv[++index];
     else throw new Error(`Unknown or incomplete argument: ${argv[index]}`);
   }
-  const entries = selectCoreRegressions(selectors);
+  const entries = selectCoreRegressions(selectors, shard);
   if (
     [recordPlatform, recordAll, verifyEvidence, crossPlatform, combinePlatforms].filter(Boolean)
       .length > 1 ||
     ([recordPlatform, recordAll, verifyEvidence, crossPlatform, combinePlatforms].some(Boolean) &&
-      (list || selectors.length))
+      (list || selectors.length || shard !== undefined))
   )
     throw new Error('Platform evidence must execute its complete assigned partition');
   if (Object.keys(crossOptions).length && !crossPlatform && !combinePlatforms)
@@ -419,7 +435,13 @@ async function main(argv) {
   writeFileSync(
     summaryFile,
     JSON.stringify(
-      { groups: entries.length, passed: entries.length - failures.length, tests: total, failures },
+      {
+        groups: entries.length,
+        passed: entries.length - failures.length,
+        tests: total,
+        failures,
+        ...(shard !== undefined ? { shard } : {}),
+      },
       null,
       2,
     ) + '\n',

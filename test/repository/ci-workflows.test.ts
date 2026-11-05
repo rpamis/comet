@@ -41,6 +41,33 @@ function classifyIssue(
 }
 
 describe('CI workflows', () => {
+  it('runs all Windows badcase shards with separate evidence and the original deadline', async () => {
+    const workflow = parse(await readWorkflow('ci.yml'));
+    const core = workflow.jobs['core-regressions'];
+    expect(core['timeout-minutes']).toBe(180);
+    expect(core.strategy['fail-fast']).toBe(false);
+    const matrix = core.strategy.matrix.include;
+    expect(matrix.filter((item: { os: string }) => item.os === 'windows-latest')).toEqual(
+      [1, 2, 3, 4].map((shard) => ({ os: 'windows-latest', shard, shards: 4 })),
+    );
+    for (const os of ['ubuntu-latest', 'macos-latest'])
+      expect(matrix.filter((item: { os: string }) => item.os === os)).toEqual([
+        { os, shard: 1, shards: 1 },
+      ]);
+    expect(
+      core.steps.some(
+        (step: { run?: string }) =>
+          step.run ===
+          'pnpm test:core-regressions --shard=${{ matrix.shard }}/${{ matrix.shards }}',
+      ),
+    ).toBe(true);
+    expect(
+      core.steps.find((step: { uses?: string }) =>
+        step.uses?.startsWith('actions/upload-artifact@'),
+      ).with.name,
+    ).toBe('core-regressions-${{ matrix.os }}-${{ matrix.shard }}');
+    expect(workflow.jobs['ci-required'].needs).toContain('core-regressions');
+  });
   it('prepares locked Python dependencies before Node regression jobs invoke the Eval harness', async () => {
     const workflow = parse(await readWorkflow('ci.yml'));
     for (const name of ['quality', 'core-regressions', 'node-compatibility']) {

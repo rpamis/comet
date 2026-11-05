@@ -128,6 +128,56 @@ describe('core regression entrypoint', () => {
       expect(
         (await fs.readFile(path.join(root, 'preflight.txt'), 'utf8')).trim().split('\n'),
       ).toHaveLength(4);
+      for (let index = 1; index <= 3; index++) {
+        for (const name of ['first', 'middle', 'last'])
+          await fs.unlink(path.join(root, `${name}.marker`));
+        const sharded = spawnSync(
+          process.execPath,
+          [
+            path.join(root, 'scripts/lint/core-regressions.mjs'),
+            '--case',
+            'fixture-first',
+            '--case',
+            'fixture-middle',
+            '--case',
+            'fixture-last',
+            ...(index === 1 ? ['--shard=1/3'] : ['--shard', `${index}/3`]),
+          ],
+          { cwd: root, encoding: 'utf8', timeout: 90_000 },
+        );
+        expect(sharded.status, sharded.stdout + sharded.stderr).toBe(index === 2 ? 0 : 1);
+        const partition = JSON.parse(
+          await fs.readFile(path.join(root, 'coverage/core-regressions/summary.json'), 'utf8'),
+        );
+        expect(partition).toMatchObject({
+          groups: 1,
+          passed: index === 2 ? 1 : 0,
+          shard: `${index}/3`,
+        });
+        for (const [position, name] of ['first', 'middle', 'last'].entries()) {
+          if (position === index - 1)
+            expect(await fs.readFile(path.join(root, `${name}.marker`), 'utf8')).toBe('executed');
+          else
+            await expect(fs.stat(path.join(root, `${name}.marker`))).rejects.toMatchObject({
+              code: 'ENOENT',
+            });
+        }
+        // 下一个分片的清理覆盖相同三个路径，不依赖上一片是否执行了它。
+        for (const name of ['first', 'middle', 'last'])
+          await fs.writeFile(path.join(root, `${name}.marker`), 'reset');
+      }
+      const partialEvidence = spawnSync(
+        process.execPath,
+        [
+          path.join(root, 'scripts/lint/core-regressions.mjs'),
+          '--record-platform',
+          'partial.json',
+          '--shard=1/3',
+        ],
+        { cwd: root, encoding: 'utf8' },
+      );
+      expect(partialEvidence.status).toBe(1);
+      expect(partialEvidence.stderr).toContain('complete assigned partition');
       await fs.writeFile(
         path.join(root, 'scripts/build/build-runtime-schemas.mjs'),
         'process.exit(2);',
@@ -166,6 +216,23 @@ describe('core regression entrypoint', () => {
     expect(new Set(combined.map((entry) => entry.id)).size).toBe(combined.length);
     expect(selectCoreRegressions([])).toHaveLength(CORE_REGRESSIONS.length);
     expect(() => selectCoreRegressions(['missing'])).toThrow('Unknown core regression');
+  });
+
+  it('partitions every registered group exactly once without changing its assertions', () => {
+    const complete = selectCoreRegressions([]);
+    const shards = Array.from({ length: 4 }, (_, index) =>
+      selectCoreRegressions([], `${index + 1}/4`),
+    );
+    const assigned = shards.flat();
+    expect(assigned).toHaveLength(complete.length);
+    expect(new Set(assigned.map((item) => item.id)).size).toBe(complete.length);
+    for (const [index, shard] of shards.entries()) {
+      expect(shard).toEqual(complete.filter((_, position) => position % 4 === index));
+      for (const item of shard) expect(complete.find((entry) => entry.id === item.id)).toBe(item);
+    }
+    expect(selectCoreRegressions([], '1/1')).toEqual(complete);
+    for (const invalid of ['0/4', '5/4', '1/0', '1/1.5', '1/999999999999999999999', '1/9999'])
+      expect(() => selectCoreRegressions([], invalid)).toThrow('Invalid core regression shard');
   });
 
   it('passes filenames and test patterns as separate arguments with bounded concurrency', () => {
