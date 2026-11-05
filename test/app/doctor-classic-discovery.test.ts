@@ -105,12 +105,13 @@ describe('Classic doctor change discovery', () => {
   it.each([false, true])(
     'keeps doctor stderr clean when CodeGraph is resolved through pnpm (installed=%s)',
     async (installed) => {
-      project = path.join(root, 'project with spaces');
+      project = path.join(root, 'project with spaces (copy)');
       await fs.mkdir(project);
       await initialize('docs');
       const commands = path.join(root, 'commands with spaces');
       const globalBin = path.join(root, 'global bin');
       const calls = path.join(root, 'calls.jsonl');
+      const context = path.join(root, 'codegraph-context.json');
       await fs.mkdir(commands);
       await fs.mkdir(globalBin);
       const shim = async (directory: string, name: string, output: string) => {
@@ -118,7 +119,7 @@ describe('Classic doctor change discovery', () => {
         const program =
           name === 'which'
             ? `if(!['openspec','pnpm'].includes(process.argv[2]))process.exit(1);process.stdout.write(require('node:path').join(${JSON.stringify(commands)},process.argv[2]));`
-            : `process.stdout.write(${JSON.stringify(output)});`;
+            : `${name === 'codegraph' ? `require('node:fs').writeFileSync(${JSON.stringify(context)},JSON.stringify({cwd:require('node:fs').realpathSync(process.cwd()),target:require('node:fs').realpathSync(require('node:path').resolve(process.argv[4]))}));` : ''}process.stdout.write(${JSON.stringify(output)});`;
         await fs.writeFile(
           script,
           `require('node:fs').appendFileSync(${JSON.stringify(calls)},JSON.stringify([${JSON.stringify(name)},...process.argv.slice(2)])+'\\n');${program}`,
@@ -163,7 +164,7 @@ describe('Classic doctor change discovery', () => {
         expect.objectContaining({ check: 'CodeGraph CLI', status: installed ? 'pass' : 'warn' }),
       );
       if (installed)
-        expect(result.payload.results).toContainEqual(
+        expect(result.payload.results, JSON.stringify(result.payload)).toContainEqual(
           expect.objectContaining({ check: 'CodeGraph project index', status: 'pass' }),
         );
       const invoked = (await fs.readFile(calls, 'utf8'))
@@ -171,12 +172,17 @@ describe('Classic doctor change discovery', () => {
         .split('\n')
         .map((line) => JSON.parse(line) as string[]);
       expect(invoked).toContainEqual(['pnpm', 'bin', '-g']);
-      if (installed) expect(invoked).toContainEqual(['codegraph', 'status', '--json', project]);
-      else expect(invoked.some(([name]) => name === 'codegraph')).toBe(false);
+      if (installed) {
+        expect(invoked).toContainEqual(['codegraph', 'status', '--json', '.']);
+        const physicalProject = await fs.realpath(project);
+        expect(JSON.parse(await fs.readFile(context, 'utf8'))).toEqual({
+          cwd: physicalProject,
+          target: physicalProject,
+        });
+      } else expect(invoked.some(([name]) => name === 'codegraph')).toBe(false);
       for (const call of invoked) {
         if (call[0] === 'pnpm') expect(call).toEqual(['pnpm', 'bin', '-g']);
-        if (call[0] === 'codegraph')
-          expect(call).toEqual(['codegraph', 'status', '--json', project]);
+        if (call[0] === 'codegraph') expect(call).toEqual(['codegraph', 'status', '--json', '.']);
       }
     },
   );

@@ -10795,9 +10795,28 @@
       "behavior": "Inspect an existing CodeGraph index through a global command wrapper without Node 24 shell warnings or unwanted initialization.",
       "coverageLevel": "public-cli",
       "reproduction": "After repairing the pnpm probe, the same isolated Windows Node 24.22.2 fixture passes with CodeGraph missing but still fails with it installed. The remaining DEP0190 trace points to inspectCodegraphIndex.",
-      "expected": "Return a passing CLI and current-index diagnostic, preserve literal status --json project arguments including spaces, and keep stderr empty.",
+      "expected": "Return a passing CLI and current-index diagnostic, preserve literal status --json arguments with the target resolved against the bound project cwd, and keep stderr empty.",
       "forbidden": "Hide the warning, downgrade a valid index to unavailable, or execute install/init instead of the requested read-only status probe.",
       "rootCause": "The read-only index status probe independently used execFileSync with shell:true and an argument array, producing a second Node 24 warning after the global pnpm lookup was corrected.",
+      "tests": [
+        {
+          "file": "test/app/doctor-classic-discovery.test.ts",
+          "namePattern": "keeps doctor stderr clean when CodeGraph is resolved through pnpm \\(installed=true\\)",
+          "requiredNames": [
+            "Classic doctor change discovery keeps doctor stderr clean when CodeGraph is resolved through pnpm (installed=true)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "windows-doctor-codegraph-parenthesis-path",
+      "sources": ["https://github.com/rpamis/comet/pull/539#discussion_r4487314702"],
+      "behavior": "Inspect a valid CodeGraph index in a Windows project directory containing spaces and parentheses without weakening batch argument protection.",
+      "coverageLevel": "public-cli",
+      "reproduction": "On c46056db, Windows Node 24.22.2 passes the isolated pnpm-only fixture but fails the installed-CodeGraph fixture when its project path contains (copy): the absolute project argument is rejected as Windows batch shell syntax.",
+      "expected": "Invoke read-only status --json . with both the actual process cwd and resolved target equal to the intended project, report the current index as passing, and keep stderr empty.",
+      "forbidden": "Relax the Windows batch argument guard, inspect a different project, report a valid index as unavailable, or invoke install/init.",
+      "rootCause": "The status probe unnecessarily passed an absolute project path through the Windows batch argument validator although its working directory was already bound to that project.",
       "tests": [
         {
           "file": "test/app/doctor-classic-discovery.test.ts",

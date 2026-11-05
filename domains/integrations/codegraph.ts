@@ -610,7 +610,7 @@ function inspectCodegraphIndex(projectPath: string): CodegraphIndexDiagnostic {
   }
 
   try {
-    const invocation = commandInvocation(codegraphCommand, ['status', '--json', projectPath], {
+    const invocation = commandInvocation(codegraphCommand, ['status', '--json', '.'], {
       cwd: projectPath,
     });
     const output = execFileSync(invocation.command, invocation.args, {
