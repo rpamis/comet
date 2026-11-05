@@ -74,19 +74,7 @@ async function fixture(kind: 'custom' | 'native' = 'custom') {
   const f = await prepareNativeApplication(root, true, kind);
   f.git(f.projectRoot, ['config', 'user.name', 'Comet Test']);
   f.git(f.projectRoot, ['config', 'user.email', 'comet-test@example.com']);
-  let run = await f.dispatch({
-    operation: 'execute',
-    runId: f.name,
-    actionId: f.pending(f.run, 'supervisor.prepare').id,
-    executorId: 'native-supervisor-prepare',
-  });
-  for (let count = 0; count < 2; count++)
-    run = await f.dispatch({
-      operation: 'execute',
-      runId: f.name,
-      actionId: f.pending(run, 'supervisor.child.prepare').id,
-      executorId: 'native-supervisor-child-prepare',
-    });
+  let run = f.run;
   const sibling = run.actions.filter((action) => action.stepId === 'supervisor.child.builder')[1];
   run = await f.submitBuilder(
     f.pending(run, 'supervisor.child.builder'),
@@ -391,8 +379,7 @@ async function oldCustomFixture(
   const script = `
     import { prepareNativeApplication } from ${JSON.stringify(pathToFileURL(path.resolve('test/helpers/native-application.ts')).href)};
     const f = await prepareNativeApplication(${JSON.stringify(root)}, true, 'custom', process.env.COMET_NATIVE_BASELINE_PACKAGE);
-    let run = await f.dispatch({operation:'execute',runId:f.name,actionId:f.pending(f.run,'supervisor.prepare').id,executorId:'native-supervisor-prepare'});
-    for(let i=0;i<2;i++) run=await f.dispatch({operation:'execute',runId:f.name,actionId:f.pending(run,'supervisor.child.prepare').id,executorId:'native-supervisor-child-prepare'});
+    let run = f.run;
     const sibling=run.actions.filter(a=>a.stepId==='supervisor.child.builder')[1];
     if (${JSON.stringify(mode)} === 'transfer-builder') {
       const builder=f.pending(run,'supervisor.child.builder');

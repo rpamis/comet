@@ -831,7 +831,11 @@
     },
     {
       "id": "local-native-supervisor-auto-preparation",
-      "sources": ["report:2026-11-04-local-test-failures", "report:2026-11-05-pr539-ci-failures"],
+      "sources": [
+        "report:2026-11-04-local-test-failures",
+        "report:2026-11-05-pr539-ci-failures",
+        "https://github.com/rpamis/comet/actions/runs/42025240642/job/127238366855?pr=539"
+      ],
       "behavior": "扩展 Native Supervisor 测试读取公开 CLI 已完成的准备动作，不再次寻找或执行已完成的 pending Action。",
       "coverageLevel": "runtime",
       "reproduction": "原 transfer 和 reverse Child 测试在 next 自动准备父级及两个 Child 后，读取不存在的 pending supervisor.prepare 并访问 id 失败。",
@@ -846,6 +850,15 @@
             "transfers a custom Supervisor through public CLI with fixed identity and an interrupted Child",
             "binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate",
             "does not discard an unknown Child when another review requires Shape revision"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "namePattern": "preserves a real custom application failure and receipts, advances its sibling, and retries only its review|uses the same recovery Wait for the built-in Native Supervisor|transfers an old fixed custom definition without changing its hash or losing dirty Child work",
+          "requiredNames": [
+            "Supervisor Child Verifier execution failure preserves a real custom application failure and receipts, advances its sibling, and retries only its review",
+            "Supervisor Child Verifier execution failure uses the same recovery Wait for the built-in Native Supervisor",
+            "fixed older custom Supervisor Runs transfers an old fixed custom definition without changing its hash or losing dirty Child work"
           ]
         }
       ]
@@ -5992,7 +6005,10 @@
     },
     {
       "id": "ci-v8-native-loader-source-collision",
-      "sources": ["https://github.com/rpamis/comet/pull/510/checks?check_run_id=122445256376"],
+      "sources": [
+        "https://github.com/rpamis/comet/pull/510/checks?check_run_id=122445256376",
+        "https://github.com/rpamis/comet/actions/runs/42025240642/job/127238366855?pr=539"
+      ],
       "behavior": "Supervisor 恢复测试加载真实应用时，不覆盖其他测试已经执行的源码覆盖率。",
       "coverageLevel": "runtime",
       "reproduction": "e76 在同一轮真实 Native 锁测试与 Supervisor 恢复测试中，将成功的 inspectNativeProjectLocks 调用记为零；Linux 原始 V8 数据显示同一源码 URL 分别对应 76915 与 20517 字符的编译结果。",

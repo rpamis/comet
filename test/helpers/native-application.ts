@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -105,7 +106,7 @@ export async function prepareNativeApplication(
     if (result.exitCode) {
       const observed = await dispatch({ operation: 'inspect', runId: name }).catch(() => null);
       const executions = observed
-        ? await inspectNativeSdkCheckExecutions(projectRoot, observed).catch(() => [])
+        ? await inspectNativeSdkCheckExecutions({ projectRoot, run: observed }).catch(() => [])
         : [];
       throw new Error(
         JSON.stringify({
@@ -169,11 +170,23 @@ export async function prepareNativeApplication(
   ]);
   run = await dispatch({ operation: 'inspect', runId: name });
   if (supervisor) {
-    // v1 advances one Runtime tool per request: parent preparation, then both Child preparations.
+    // Prepare the parent and each Child through the public next boundary.
     for (let preparation = 0; preparation < 3; preparation++) {
       await native(['next', name]);
     }
     run = await dispatch({ operation: 'inspect', runId: name });
+    assert.deepEqual(
+      run.actions
+        .filter(({ stepId }) => stepId === 'supervisor.prepare')
+        .map(({ status }) => status),
+      ['succeeded'],
+    );
+    assert.deepEqual(
+      run.actions
+        .filter(({ stepId }) => stepId === 'supervisor.child.prepare')
+        .map(({ status }) => status),
+      ['succeeded', 'succeeded'],
+    );
   }
   async function claim(action: RuntimeAction, sessionId = 'builder') {
     return dispatch({
