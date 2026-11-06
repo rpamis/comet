@@ -9098,6 +9098,30 @@
             "rejects an archive commit whose migrated fence in .comet-state.lock no longer matches the recorded digest",
             "rejects an archive commit whose migrated fence in .comet-state-transaction.json no longer matches the recorded digest"
           ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "delivers a tracked migration fence in .* that the archive moves with the change",
+          "requiredNames": [
+            "delivers a tracked migration fence in .comet-state.lock that the archive moves with the change",
+            "delivers a tracked migration fence in .comet-state-transaction.json that the archive moves with the change"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "rejects an archive commit that drops a tracked migration fence in .* instead of moving it",
+          "requiredNames": [
+            "rejects an archive commit that drops a tracked migration fence in .comet-state.lock instead of moving it",
+            "rejects an archive commit that drops a tracked migration fence in .comet-state-transaction.json instead of moving it"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "rejects an archive commit whose migrated fence in .* no longer matches the recorded digest",
+          "requiredNames": [
+            "rejects an archive commit whose migrated fence in .comet-state.lock no longer matches the recorded digest",
+            "rejects an archive commit whose migrated fence in .comet-state-transaction.json no longer matches the recorded digest"
+          ]
         }
       ]
     },
