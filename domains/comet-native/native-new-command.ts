@@ -170,6 +170,7 @@ export async function nativeNewCommand(
   const targetBranch = takeOption(args, '--target-branch');
   const worktreePath = takeOption(args, '--worktree-path');
   const task = takeOption(args, '--task');
+  if (task !== undefined && !task.trim()) throw new NativeUsageError('--task must not be empty');
   const capability = takeOption(args, '--capability');
   const runtimeFormat = takeOption(args, '--runtime') ?? 'sdk';
   if (runtimeFormat !== 'compat' && runtimeFormat !== 'sdk') {
@@ -214,6 +215,7 @@ export async function nativeNewCommand(
           paths,
           name,
           language,
+          ...(task === undefined ? {} : { task }),
           workspaceBinding: prepared.binding,
           ...(initialProjectConfig ? { initialProjectConfig } : {}),
         })

@@ -35,6 +35,7 @@ from scaffold.python import (
     TreatmentResult,
     build_eval_artifact_references,
     classify_failures,
+    extract_events,
     get_profile,
     load_report_output_config,
     save_events,
@@ -42,6 +43,7 @@ from scaffold.python import (
     save_report,
 )
 from scaffold.python.agents import get_agent_adapter, resolve_agent, validate_agent_capabilities
+from scaffold.python.paths import CURRENT_COMET_SNAPSHOT_REF
 from scaffold.python.auto_tasks import AutoTaskError, ensure_generated_manifest, find_project_root
 from scaffold.python.eval_context import (
     EvalContextError,
@@ -94,7 +96,7 @@ def _extract_loop_turns(stderr: str | None) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def _extract_loop_interaction(stderr: str | None) -> dict[str, Any]:
+def _extract_loop_interaction(stderr: str | None, *, agent: str | None = None) -> dict[str, Any]:
     source = stderr or ""
     role_sessions = {"subject": [], "simulator": [], "judge": []}
     for role, session_id in re.findall(
@@ -114,7 +116,20 @@ def _extract_loop_interaction(stderr: str | None) -> dict[str, Any]:
             decision_replies.append(json.loads(raw))
         except json.JSONDecodeError:
             decision_replies.append({"invalid": True})
+    role_usage = []
+    for raw in re.findall(r"^\[loop\] role-usage simulator (.+)$", source, re.MULTILINE):
+        try:
+            value = json.loads(raw)
+            if isinstance(value, dict):
+                role_usage.append(value)
+        except ValueError:
+            pass
     return {
+        **(
+            {"simulator_usage": extract_events({"messages": role_usage}, agent=agent)}
+            if role_usage
+            else {}
+        ),
         **({"sdk_recovery_boundaries": boundaries} if boundaries else {}),
         **({"sdk_decision_replies": decision_replies} if decision_replies else {}),
         "actual_turns": _extract_loop_turns(source),
@@ -531,6 +546,8 @@ def _ensure_langfuse_trajectory_support(test_dir: Path, agent: str) -> None:
 
 def _ensure_auto_generated_manifest(config, task_filter: str | None = None) -> None:
     """Freeze generated descriptors once while retaining the original manifest authority."""
+    if getattr(config, "_comet_dataset_plan_file", None):
+        return
     if getattr(config, "_comet_frozen_task_set", None) is not None:
         return
     if config.getoption("--task") or task_filter or config.getoption("--quick"):
@@ -660,10 +677,13 @@ def _capture_execution_identity(test_dir: Path, *, model: str | None, interactio
         raw = json.loads(result.stdout)
     except (TypeError, json.JSONDecodeError) as error:
         raise RuntimeError("Eval execution identity output is not valid JSON") from error
+    model_config = _model_execution_config()
+    if getattr(interaction, "goal", False):
+        model_config["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = model
     report_identity = build_execution_identity(
         raw,
         model=model,
-        model_config=_model_execution_config(),
+        model_config=model_config,
         interaction=interaction,
     )
     return SimpleNamespace(
@@ -753,7 +773,9 @@ def _copy_current_comet_cli_snapshot(environment_dir: Path, test_dir: Path) -> N
 
     source_root = Path(os.environ.get("BENCH_COMET_SOURCE_ROOT", str(REPOSITORY_ROOT))).resolve()
 
-    target = test_dir / "_eval_current_comet"
+    target = test_dir / CURRENT_COMET_SNAPSHOT_REF
+    if not target.resolve().is_relative_to(test_dir.resolve()):
+        raise ValueError("CLI 快照目录超出当前评估工作区")
     if target.exists():
         shutil.rmtree(target)
     target.mkdir(parents=True)
@@ -1033,6 +1055,7 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     """Register experiment plugin (decision deferred to sessionstart)."""
+    config._comet_dataset_plan_file = os.environ.get("COMET_EVAL_DATASET_PLAN")
     config.addinivalue_line(
         "markers",
         "eval_case(repetition): controller-owned task/treatment/repetition identity",
@@ -1063,6 +1086,15 @@ def pytest_configure(config):
     global _plugin
     _plugin = ExperimentPlugin(config)
     config.pluginmanager.register(_plugin, "experiment_plugin")
+
+
+def pytest_collection_modifyitems(config, items):
+    # 内置数据集由显式 Agent 预算或用户停止控制，不再叠加通用任务测试的总时限。
+    if not getattr(config, "_comet_dataset_plan_file", None):
+        return
+    for item in items:
+        if item.nodeid.startswith("local/tests/tasks/test_tasks.py::test_task_treatment["):
+            item.add_marker(pytest.mark.timeout(0), append=False)
 
 
 # =============================================================================
@@ -1102,6 +1134,10 @@ class ExperimentPlugin:
             experiment_id=experiment_id,
             report_outputs=report_outputs,
         )
+        if getattr(self.config, "_comet_dataset_plan_file", None):
+            self.logger.metadata["dataset_plan"] = json.loads(
+                Path(self.config._comet_dataset_plan_file).read_text(encoding="utf-8")
+            )
         if _release_suite(self.config):
             from scaffold.python.release_gate import candidate_identity, suite_contract
 
@@ -1340,6 +1376,17 @@ def _get_experiment_name(session) -> str:
 
 
 def _get_dynamic_treatment_config(config):
+    if getattr(config, "_comet_dataset_plan_file", None):
+        plan = json.loads(Path(config._comet_dataset_plan_file).read_text(encoding="utf-8"))
+        if plan.get("treatment") == "CLAUDE_CODE_GOAL":
+            from scaffold.python.treatments import TreatmentConfig
+
+            return TreatmentConfig(
+                name="CLAUDE_CODE_GOAL",
+                description="Claude Code 原生 Goal；不安装 Comet",
+                skills=[],
+            )
+        return None
     _ensure_auto_generated_manifest(config)
 
     def generation_hints(manifest):
@@ -1476,6 +1523,7 @@ def _resolve_interaction_config(task, profile_name: str, config):
 
     return task_interaction.__class__(
         mode=mode,
+        goal=task_interaction.goal,
         max_turns=max_turns,
         simulator_prompt=simulator_prompt,
         decision_patterns=decision_patterns,
@@ -1487,9 +1535,19 @@ def _resolve_interaction_config(task, profile_name: str, config):
     )
 
 
-def _resolve_agent_timeout(config, *, task_timeout: int, floor: int) -> int:
+def _resolve_agent_timeout(config, *, task_timeout: int, floor: int) -> int | None:
     override = config.getoption("--agent-timeout")
     if override is None:
+        if plan_file := getattr(config, "_comet_dataset_plan_file", None):
+            # 新计划的 TaskConfig 已采用绑定的 workflow 预算。旧计划保持原语义，
+            # 不把普通任务的 900/1500 秒限制追溯套到已确认的历史运行。
+            if Path(plan_file).is_file():
+                plan = json.loads(Path(plan_file).read_text(encoding="utf-8"))
+                if plan.get("tasks") and all(
+                    entry.get("execution", {}).get("timeoutSeconds") for entry in plan["tasks"]
+                ):
+                    return task_timeout
+            return None
         return max(floor, task_timeout)
     if override <= 0:
         raise pytest.UsageError("--agent-timeout must be a positive number of seconds")
@@ -1672,6 +1730,9 @@ def _snapshot_dynamic_skill_package(test_dir: Path, skill_hints: dict[str, Any])
         return None
 
     snapshot_root = test_dir / "_eval_target_skills"
+    from scaffold.python.builtin_datasets import register_dataset_controller_path
+
+    register_dataset_controller_path(test_dir, "_eval_target_skills")
     snapshot_root.mkdir(parents=True, exist_ok=True)
     package_dest = snapshot_root / package_dir.name
     shutil.copytree(
@@ -1803,8 +1864,9 @@ def prebuild_docker_image(request):
             selected_agent if selected_agent != "claude-code" else None,
             environment=getattr(request.config, "_comet_execution_env", None),
         )
-        if image:
-            print(f"\nPre-built Docker image: {image}")
+        if not image:
+            raise RuntimeError(f"任务镜像预构建失败：{env_dir}")
+        print(f"\nPre-built Docker image: {image}")
 
     yield
 
@@ -1887,6 +1949,7 @@ def setup_test_context(test_dir):
             shutil.copytree(scripts_dir, scripts_dest, dirs_exist_ok=True)
 
     def _copy_environment(environment_dir: Path) -> None:
+        copied_inputs = []
         for item in environment_dir.iterdir():
             if item.name in {
                 CURRENT_COMET_CLI_MARKER,
@@ -1903,6 +1966,32 @@ def setup_test_context(test_dir):
             else:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(item, dest)
+            copied_inputs.extend([dest, *dest.rglob("*")] if dest.is_dir() else [dest])
+        dockerfile = test_dir / "Dockerfile"
+        if (environment_dir / "Dockerfile").is_file() and not (
+            test_dir / ".dataset-task.json"
+        ).is_file():
+            # 绑定已拷贝的镜像输入；后续安装的 Skill、控制器和结果不参与镜像身份。
+            digest = hashlib.sha256()
+            for copied in sorted(copied_inputs):
+                digest.update(
+                    json.dumps(
+                        [copied.relative_to(test_dir).as_posix(), copied.stat().st_mode],
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                )
+                digest.update(b"\0")
+                if copied.is_file():
+                    with copied.open("rb") as handle:
+                        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                            digest.update(chunk)
+                digest.update(b"\0")
+            with dockerfile.open("ab") as handle:
+                handle.write(
+                    b"\n# Eval environment inputs sha256:"
+                    + digest.hexdigest().encode("ascii")
+                    + b"\n"
+                )
         _copy_current_comet_cli_snapshot(environment_dir, test_dir)
 
     def _copy_workspace(workspace_dir: Path) -> None:
@@ -2010,7 +2099,11 @@ def setup_test_context(test_dir):
             and "../comet/reference/host-check.md" in native_entry.read_text(encoding="utf-8")
         ):
             # This is shared documentation, not an additional executable Skill.
-            reference = test_dir / "_eval_current_comet/assets/skills/comet/reference/host-check.md"
+            reference = (
+                test_dir
+                / CURRENT_COMET_SNAPSHOT_REF
+                / "assets/skills/comet/reference/host-check.md"
+            )
             if not reference.is_file():
                 raise FileNotFoundError(
                     f"Current Native capability reference is missing: {reference}"
@@ -2020,6 +2113,9 @@ def setup_test_context(test_dir):
             shutil.copyfile(reference, target)
         _ensure_langfuse_trajectory_support(test_dir, agent)
         _ensure_agent_pre_tool_hook(test_dir, agent, _comet_hook_command(test_dir, agent))
+        from scaffold.python.builtin_datasets import prepare_dataset_workspace
+
+        prepare_dataset_workspace(test_dir, agent)
 
         return test_dir
 
@@ -2040,10 +2136,11 @@ def run_claude(test_dir, experiment_logger, request):
 
     def _run(
         prompt: str,
-        timeout: int = 600,
+        timeout: int | None = 600,
         model: str = None,
         interaction=None,
         image_id: str | None = None,
+        task_contract_file: str | None = None,
     ):
         mdl = model or default_model
         run_execution = ResolvedExecution(
@@ -2053,6 +2150,16 @@ def run_claude(test_dir, experiment_logger, request):
             execution.sources,
         )
         run_environment = build_agent_environment(run_execution)
+        if task_contract_file is not None:
+            from scaffold.python.utils import _to_bash_path
+
+            run_environment["COMET_EVAL_TASK_CONTRACT_FILE"] = _to_bash_path(task_contract_file)
+        if interaction is not None and interaction.goal:
+            if selected_agent != "claude-code":
+                raise ValueError("Goal 对照组仅支持 Claude Code")
+            if not mdl:
+                raise ValueError("Goal 对照组需要显式模型，确保评估模型与主模型一致")
+            run_environment["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = mdl
         if os.environ.get("TRACE_TO_LANGSMITH", "").lower() == "true" and not os.environ.get(
             "CC_LANGSMITH_LOG_FILE"
         ):
@@ -2071,6 +2178,9 @@ def run_claude(test_dir, experiment_logger, request):
             )
         else:
             task_prompt_file = test_dir / ".eval-task-prompt.txt"
+            from scaffold.python.builtin_datasets import register_dataset_controller_path
+
+            register_dataset_controller_path(test_dir, ".eval-task-prompt.txt")
             task_prompt_file.write_text(prompt, encoding="utf-8")
             loop_args = [
                 "run-claude-loop",
@@ -2081,6 +2191,8 @@ def run_claude(test_dir, experiment_logger, request):
             ]
             if mdl:
                 loop_args += ["--model", mdl]
+            if interaction.goal:
+                loop_args += ["--goal"]
             if image_id:
                 loop_args += ["--image-id", image_id]
             if interaction.continue_prompt:
@@ -2113,7 +2225,11 @@ def run_claude(test_dir, experiment_logger, request):
                     result = run_claude_loop_in_docker(
                         test_dir,
                         loop_args[2:],
-                        timeout=timeout + 60,
+                        timeout=None
+                        if timeout is None
+                        else timeout
+                        if task_contract_file is not None
+                        else timeout + 60,
                         environment=run_environment,
                     )
                 else:
@@ -2125,7 +2241,11 @@ def run_claude(test_dir, experiment_logger, request):
                             selected_agent,
                             *loop_args[3:],
                         ],
-                        timeout=timeout + 60,
+                        timeout=None
+                        if timeout is None
+                        else timeout
+                        if task_contract_file is not None
+                        else timeout + 60,
                         environment=run_environment,
                     )
             finally:
@@ -2222,6 +2342,7 @@ def record_result(test_dir, experiment_logger, request):
                 checks_passed=passed,
                 checks_failed=failed,
                 events_summary={
+                    **_dataset_measurements(events),
                     "num_turns": events.get("num_turns"),
                     "duration_seconds": events.get("duration_seconds"),
                     "tool_calls": len(events.get("tool_calls", [])),
@@ -2268,6 +2389,27 @@ def record_result(test_dir, experiment_logger, request):
     return _record
 
 
+def _dataset_measurements(events):
+    keys = (
+        "token_scope",
+        "workflow_total_tokens",
+        "duration_scope",
+        "cost_basis",
+        "telemetry_warnings",
+        "model_usage_status",
+        "total_cost_usd_lower_bound",
+        "agent_wall_duration_seconds",
+        "case_wall_duration_seconds",
+        "simulator_usage",
+        "dataset_result",
+        "dataset_execution",
+        "effective_agent_timeout_seconds",
+        "dataset_comparison_identity",
+        "current_comet_build",
+    )
+    return {key: events[key] for key in keys if key in events}
+
+
 def _build_report_payload(
     *,
     treatment_name: str,
@@ -2302,6 +2444,7 @@ def _build_report_payload(
         "checks_failed": failed,
         "sample_quality": sample_quality,
         "events_summary": {
+            **_dataset_measurements(events),
             "duration_seconds": events.get("duration_seconds"),
             "num_turns": events.get("num_turns"),
             "tool_calls": len(events.get("tool_calls", [])),
@@ -2464,13 +2607,32 @@ def _build_docker_image_with_lock(
         command = ["docker.sh", "build", str(environment_dir)]
         if agent:
             command.extend(["--agent", agent])
-        run_options = {"timeout": 900, "check": False}
+        # 内置数据集还需安装原题和独立评分环境，首次下载允许最多 30 分钟。
+        build_timeout = 900
+        if (environment_dir / ".dataset-task.json").is_file():
+            metadata = json.loads(
+                (environment_dir / ".dataset-task.json").read_text(encoding="utf-8")
+            )
+            build_timeout = metadata.get("execution", {}).get("buildTimeoutSeconds", 1800)
+        run_options = {"timeout": build_timeout, "check": False, "terminate_process_tree": True}
         if environment is not None:
             run_options["env"] = environment
-        result = run_shell(*command, **run_options)
+        try:
+            result = run_shell(*command, **run_options)
+        except subprocess.TimeoutExpired as exc:
+            detail = exc.stderr or exc.output or ""
+            if isinstance(detail, bytes):
+                detail = detail.decode("utf-8", errors="replace")
+            raise RuntimeError(
+                f"任务镜像构建超过 {build_timeout} 秒："
+                + redact_sensitive(detail, environment)[-6000:]
+            ) from exc
         if result.returncode == 0:
             return result.stdout.strip()
-        return None
+        raise RuntimeError(
+            "任务镜像构建失败："
+            + redact_sensitive(result.stderr or result.stdout, environment)[-6000:]
+        )
 
 
 @contextmanager

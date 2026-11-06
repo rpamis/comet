@@ -1,5 +1,9 @@
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
+import {
+  readProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
 import { promises as fs } from 'node:fs';
 import { execFileSync, spawn } from 'node:child_process';
 import os from 'node:os';
@@ -214,7 +218,7 @@ describe('Native parallel linked-worktree Runtime', () => {
     );
   });
 
-  it('keeps concurrent linked worktrees usable after a manual business-source edit', async () => {
+  async function exerciseParallelEdits(documentWrites: 'allow' | 'revert') {
     const repository = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-parallel-'));
     repositories.push(repository);
     execFileSync('git', ['init'], { cwd: repository, stdio: 'ignore' });
@@ -233,6 +237,13 @@ describe('Native parallel linked-worktree Runtime', () => {
       repository,
     );
     assertCompleted(initialized, 'initialize Native fixture');
+    if (documentWrites === 'revert') {
+      const config = (await readProjectConfig(repository))!;
+      await writeProjectConfig(repository, {
+        ...config,
+        native: { ...config.native, document_writes: 'revert' },
+      });
+    }
     await fs.mkdir(path.join(repository, 'src'), { recursive: true });
     await fs.writeFile(path.join(repository, BUSINESS_SOURCE), 'export const value = "base";\n');
     execFileSync('git', ['add', '.comet/config.yaml', BUSINESS_SOURCE], {
@@ -327,8 +338,14 @@ describe('Native parallel linked-worktree Runtime', () => {
       COMMAND_TIMEOUT_MS,
       { ...process.env, FILE_PATH: BUSINESS_SOURCE },
     );
-    expect(guard.exitCode, guard.stderr).toBe(2);
-    expect(guard.data).toMatchObject({ allowed: false, phase: 'verify' });
+    if (documentWrites === 'revert') {
+      expect(guard.exitCode, guard.stderr).toBe(2);
+      expect(guard.data).toMatchObject({ allowed: false, phase: 'verify' });
+    } else {
+      expect(guard.exitCode, guard.stderr).toBe(0);
+      expect(guard.data).toMatchObject({ allowed: true, phase: 'verify' });
+      expect(guard.stdout).toContain('comet edit-review observe native');
+    }
     const { runNativeEditReviewCommand } =
       await import('../../../domains/comet-native/native-edit-review-command.js');
     const reviewFile = path.join(
@@ -342,16 +359,25 @@ describe('Native parallel linked-worktree Runtime', () => {
         tool_input: { file_path: BUSINESS_SOURCE, content: userSource },
       }),
     );
+    if (documentWrites === 'allow')
+      await fs.writeFile(path.join(editedWorktree.root, BUSINESS_SOURCE), userSource);
     const proposal = await runNativeEditReviewCommand({
       projectRoot: editedWorktree.root,
       name: editedWorktree.name,
-      operation: 'prepare',
-      file: reviewFile,
+      ...(documentWrites === 'revert'
+        ? { operation: 'prepare' as const, file: reviewFile }
+        : { operation: 'observe' as const, sessionId: 'parallel-edit-agent' }),
     });
-    await fs.writeFile(path.join(editedWorktree.root, BUSINESS_SOURCE), userSource);
+    if (documentWrites === 'revert')
+      await fs.writeFile(path.join(editedWorktree.root, BUSINESS_SOURCE), userSource);
+    else {
+      expect(proposal.proposal).toMatchObject({ applied: true, judgment: 'agent' });
+      expect(proposal.recordTemplate).toBeDefined();
+    }
     await fs.writeFile(
       reviewFile,
       JSON.stringify({
+        ...(documentWrites === 'allow' ? proposal.recordTemplate : {}),
         proposalHash: proposal.proposal!.proposalHash,
         decision: 'implementation-changed',
         summary: 'The exported business value changes; rebuild the candidate.',
@@ -362,7 +388,7 @@ describe('Native parallel linked-worktree Runtime', () => {
       name: editedWorktree.name,
       operation: 'record',
       file: reviewFile,
-      confirmed: true,
+      confirmed: documentWrites === 'revert',
     });
 
     assertCompleted(
@@ -427,6 +453,14 @@ describe('Native parallel linked-worktree Runtime', () => {
     await expect(
       fs.access(path.join(repository, 'docs', 'comet', 'changes', 'parallel-beta')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
+  }
+
+  it('keeps concurrent linked worktrees usable after a manual business-source edit', async () => {
+    await exerciseParallelEdits('revert');
+  }, 120_000);
+
+  it('preserves default linked-worktree edits through current-Agent judgment and candidate revision', async () => {
+    await exerciseParallelEdits('allow');
   }, 120_000);
 
   it('rejects the retired checkpoint bundle on a linked-worktree-capable host', async () => {

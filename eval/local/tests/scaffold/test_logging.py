@@ -471,6 +471,76 @@ def test_extract_events_accumulates_duration_across_results():
     assert events["total_cost_usd"] == pytest.approx(0.3)
 
 
+def test_dataset_session_cumulative_usage_is_not_added_on_resume():
+    messages = []
+    for session, amount, identity in [("s1", 10, "r1"), ("s1", 20, "r2"), ("s2", 5, "r3")]:
+        messages.append(
+            {
+                "type": "result",
+                "session_id": session,
+                "uuid": identity,
+                "usage": {"input_tokens": 10, "output_tokens": 1},
+                "modelUsage": {"model": {"inputTokens": amount, "outputTokens": 1}},
+                "total_cost_usd": amount / 100,
+            }
+        )
+    messages.append(dict(messages[1]))  # 重传同一个 result，不是新的调用。
+    events = extract_events({"messages": messages}, agent="claude-code")
+    assert events["model_usage"]["model"]["inputTokens"] == 25
+    assert events["total_cost_usd"] == pytest.approx(0.25)
+    assert events["input_tokens"] == 30
+    assert events["subject_invocations"] == 3
+    assert events["token_scope"] == "subject-invocations"
+    assert events["workflow_total_tokens"] is None
+    assert events["duration_scope"] == "subject-active"
+
+
+def test_dataset_cumulative_usage_keeps_models_and_flags_counter_resets():
+    events = extract_events(
+        {
+            "messages": [
+                {"type": "result", "session_id": "s", "modelUsage": {"a": {"inputTokens": 20}}},
+                {
+                    "type": "result",
+                    "session_id": "s",
+                    "modelUsage": {"a": {"inputTokens": 5}, "b": {"inputTokens": 7}},
+                },
+            ]
+        },
+        agent="claude-code",
+    )
+    assert events["model_usage"]["a"]["inputTokens"] == 20
+    assert events["model_usage"]["b"]["inputTokens"] == 7
+    assert events["telemetry_warnings"]
+    costs = extract_events(
+        {
+            "messages": [
+                {"type": "result", "session_id": "s", "total_cost_usd": 0.2},
+                {"type": "result", "session_id": "s", "total_cost_usd": 0.1},
+            ]
+        },
+        agent="claude-code",
+    )
+    assert costs["total_cost_usd"] is None
+    assert costs["total_cost_usd_lower_bound"] == 0.2
+    from scaffold.python.sample_quality import infer_sample_quality
+
+    quality = infer_sample_quality(events=costs)
+    assert quality.status == "flagged" and quality.include_in_analysis
+    missing_identity = extract_events(
+        {
+            "messages": [
+                {"type": "result", "total_cost_usd": 0.2},
+                {"type": "result", "total_cost_usd": 0.3},
+            ]
+        },
+        agent="claude-code",
+    )
+    assert missing_identity["total_cost_usd"] is None
+    assert "total_cost_usd_lower_bound" not in missing_identity
+    assert "cumulative_cost_without_session_identity" in missing_identity["telemetry_warnings"]
+
+
 def test_extract_events_reports_deduplicated_context_pressure():
     assistant = {
         "type": "assistant",
@@ -593,6 +663,13 @@ def test_experiment_summary_includes_token_and_cost_columns(monkeypatch, tmp_pat
                 "tool_calls": 3,
                 "total_tokens": 475,
                 "total_cost_usd": 0.123456,
+                "token_scope": "subject-invocations",
+                "workflow_total_tokens": None,
+                "agent_wall_duration_seconds": 14,
+                "dataset_result": {
+                    "reward": 0.25,
+                    "verifier_status": "assertion_failed",
+                },
             },
         ),
     )
@@ -605,6 +682,51 @@ def test_experiment_summary_includes_token_and_cost_columns(monkeypatch, tmp_pat
     assert "| COMET_FULL_040_BETA | 1/1 (100%) |" in summary
     assert "475" in summary
     assert "$0.1235" in summary
+    assert "Original dataset reward: 0.25" in summary
+    assert "subject invocations" in summary
+    assert "Agent Wall" in summary
+
+
+def test_dataset_summary_separates_strata_and_unconfirmed_rewards(monkeypatch, tmp_path):
+    monkeypatch.setenv("BENCH_LOGS_DIR", str(tmp_path))
+    logger = ExperimentLogger(experiment_name="dataset-strata")
+    for index, (category, modality, status, reward) in enumerate(
+        [
+            ("coding", "text", "assertion_failed", 0.25),
+            ("coding", "text", "completed", 1),
+            ("coding", "text", "collection_error", 0),
+            ("media", "video", "unknown", 0.8),
+        ]
+    ):
+        logger.add_result(
+            str(index),
+            TreatmentResult(
+                name=str(index),
+                passed=False,
+                checks_passed=[],
+                checks_failed=[],
+                events_summary={
+                    "treatment": "COMET_NATIVE_SDK_CURRENT",
+                    "dataset_result": {
+                        "dataset": {"id": "skillsbench"},
+                        "task": "task-" + str(index),
+                        "reward": reward,
+                        "verifier_status": status,
+                        "execution": {"metadata": {"category": category, "modality": modality}},
+                    },
+                },
+            ),
+        )
+    summary = logger.generate_summary()
+    assert (
+        "| skillsbench | COMET_NATIVE_SDK_CURRENT | coding | unknown | text | 3 | 3 | 2 | 1 | 0.6250 |"
+        in summary
+    )
+    assert (
+        "| skillsbench | COMET_NATIVE_SDK_CURRENT | media | unknown | video | 1 | 1 | 0 | 1 | N/A |"
+        in summary
+    )
+    assert "Original dataset reward: 0.8" in summary
 
 
 def test_experiment_finalize_honors_html_report_output_config(monkeypatch, tmp_path: Path):

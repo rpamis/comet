@@ -35,6 +35,7 @@ import { prepareClassicWorkspace } from '../../domains/comet-classic/classic-wor
 import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
 import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
 import { classicOpenEvidenceReceipt } from '../../domains/comet-classic/classic-sdk-application.js';
+import * as taskContext from '../../app/commands/comet-task-context.js';
 
 const repositoryRoot = path.resolve('.');
 
@@ -117,6 +118,74 @@ describe('Runtime JSON command', () => {
     };
   }
 
+  it('delivers Classic claim context to its receiving session without retrieving on status queries', async () => {
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.comet/config.yaml'),
+      'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: legacy\n',
+    );
+    const changeDir = 'openspec/changes/classic-context';
+    await fs.mkdir(path.join(projectRoot, changeDir), { recursive: true });
+    const started = await dispatch(classicStartRequest(changeDir), {
+      application: 'classic-full',
+      workflow: [],
+      rootDir: undefined,
+    });
+    if (started.response.status !== 'succeeded') throw new Error(JSON.stringify(started.response));
+    const action = started.response.data.actions[0];
+    const request = path.join(invocationCwd, 'classic-claim.json');
+    await fs.writeFile(
+      request,
+      JSON.stringify({
+        operation: 'claim',
+        runId: 'classic-context',
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        executorId: 'classic-host',
+        sessionId: 'classic-receiver',
+        claimToken: 'classic-context-claim',
+      }),
+    );
+    const collect = vi
+      .spyOn(taskContext, 'collectCometTaskContextResult')
+      .mockResolvedValue({ status: 'available', context: [] });
+    try {
+      const result = await runtimeDispatchCommand(
+        { application: 'classic-full', projectRoot, request },
+        { output: 'compact' },
+      );
+      expect(result.response.status).toBe('succeeded');
+      expect(result.cliResponse).toMatchObject({
+        data: {
+          context: [],
+          contextDelivery: { status: 'empty', sessionId: 'classic-receiver', phase: 'open' },
+        },
+      });
+      expect(collect).toHaveBeenCalledWith(
+        projectRoot,
+        expect.objectContaining({
+          sessionId: 'classic-receiver',
+          phase: 'open',
+          contextMode: 'incremental',
+        }),
+        { workflow: 'classic', change: 'classic-context' },
+        { timeoutMs: 2000 },
+      );
+      await fs.writeFile(
+        request,
+        JSON.stringify({ operation: 'inspect', runId: 'classic-context' }),
+      );
+      await runtimeDispatchCommand(
+        { application: 'classic-full', projectRoot, request },
+        { output: 'compact' },
+      );
+      expect(collect).toHaveBeenCalledTimes(1);
+    } finally {
+      collect.mockRestore();
+    }
+  });
+
   async function expectClassicRejectedWithoutWrites(request: unknown, reason: RegExp) {
     const requestFile = path.join(invocationCwd, `request-${++requestNumber}.json`);
     await fs.writeFile(requestFile, JSON.stringify(request));
@@ -183,6 +252,60 @@ describe('Runtime JSON command', () => {
     expect(initialized.exitCode, initialized.stderr).toBe(0);
     return linkedRoot;
   }
+
+  it('records receipt results idempotently and rejects stale or mixed identities', async () => {
+    const start = await dispatch({
+      operation: 'start',
+      runId: 'receipt-run',
+      workflow: { id: 'editorial', version: '1' },
+      input: null,
+    });
+    if (start.response.status !== 'succeeded') throw Error('start');
+    const action = start.response.data.actions[0];
+    const claim = await dispatch({
+      operation: 'claim',
+      runId: 'receipt-run',
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'agent',
+      sessionId: 'agent-session',
+      claimToken: 'receipt-claim',
+    });
+    expect(claim.exitCode).toBe(0);
+    const receipt = Buffer.from(
+      JSON.stringify({
+        runId: 'receipt-run',
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        claimToken: 'receipt-claim',
+      }),
+    ).toString('base64url');
+    const request = {
+      operation: 'record-outcome',
+      receipt,
+      result: { status: 'succeeded', output: { article: 'Done' } },
+    };
+    const first = await dispatch(request);
+    expect(first.exitCode).toBe(0);
+    const repeat = await dispatch(request);
+    expect(repeat.response).toEqual(expect.objectContaining({ status: 'succeeded' }));
+    if (first.response.status !== 'succeeded' || repeat.response.status !== 'succeeded')
+      throw Error('outcome');
+    expect(repeat.response.data).toEqual(first.response.data);
+    const bad = Buffer.from(
+      JSON.stringify({
+        runId: 'receipt-run',
+        actionId: action.id,
+        attempt: action.attempt + 1,
+        inputHash: action.inputHash,
+        claimToken: 'receipt-claim',
+      }),
+    ).toString('base64url');
+    expect((await dispatch({ ...request, receipt: bad })).exitCode).not.toBe(0);
+    expect((await dispatch({ ...request, runId: 'another-run' })).exitCode).not.toBe(0);
+  });
 
   it('dispatches an application-declared command through the public JSON interface', async () => {
     await fs.writeFile(

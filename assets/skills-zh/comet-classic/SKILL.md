@@ -29,6 +29,8 @@ comet state select <change-name> --json
 
 跨设备同步应携带实际状态文件、change 文档、引用工件、代码和项目配置；检查点不包含独立子 worktree 和未提交代码。复制到新设备的 SDK change 若在实际状态文件中有 `run_checkpoint`，具名 `state select` 或 `state next` 会恢复原阶段、Action 和确认；继续外部工作前先确认原设备的执行进程已停止。结果未明的 Action 先核对，不重发。只有旧状态文件缺少检查点、常规入口明确报告 Run 记录丢失时，才核对正式文档，说明显式恢复会回到 Open、旧确认和检查需要重做，取得用户同意后运行 `comet state restore <change-name> --confirmed`。
 
+发现普通或正式材料的实际文件变化，或续行提示编辑判断时，先读取并执行[编辑后继续原流程](../comet/reference/edit-review.md)，再处理阶段动作或修订命令。修订命令不构成用户授权；缺少新增范围的授权时，保留原阶段、已接受结果和待办，只请求相关决定。
+
 响应已有 `agent.continuation.mode` 时，先按 `comet-classic/reference/auto-transition.md` 的统一规则处理，以 `mode` 决定执行、等待、提问、核对或结束；下文的 `nextAction.kind` 路由仅用于没有 `mode` 的旧响应。
 
 以 `data.runtimeFormat` 区分 `sdk` 与 `compat`，并按返回的 phase、configuration 和 `data.nextAction.kind` 继续。SDK 的 `action` 才能加载返回的 Skill；`decision`、`evidence`、`reconcile` 先进入对应阶段的恢复步骤，核对同一 Run 的待决定项、待提交证据或已领取 Action，不能把它们当作未执行的 Skill 重跑。旧 change 保持原有阶段路由。新 full change 交 `/comet-open`，由它准备工作区、创建 OpenSpec 产物并初始化 SDK Run；已确认的 hotfix/tweak 分别交 `/comet-hotfix`、`/comet-tweak`，按各自预设完成初始化。不直接调用 `/opsx:new`。已有 change 的 Runtime 归属与文件冲突或格式异常时，按 context-recovery.md 的“入口错误与恢复”停止并核对，不根据现有产物猜测阶段或新建第二份状态。
@@ -45,15 +47,13 @@ comet state select <change-name> --json
 
 项目经验与个人偏好分开保存：任务结束前，把当前项目中已验证且未来可复用的经验用 `comet knowledge remember` 写入项目记忆；用户偏好和稳定协作习惯才进入个人记忆。命令和过滤条件见 [任务上下文与产物语言](reference/scripts.md#任务上下文与产物语言)。
 
-| Runtime 路由或阶段            | 入口与职责                                                                   |
-| ----------------------------- | ---------------------------------------------------------------------------- |
-| 新 full / open                | `/comet-open`：澄清范围、创建必需产物、请用户检查并确认                      |
-| design                        | `/comet-design`：完成技术取舍并确认正式设计                                  |
-| build + full                  | `/comet-build`：恢复配置/计划，完成任务与所需审查                            |
-| hotfix / build + hotfix       | `/comet-hotfix`：已有异常的局部修复                                          |
-| tweak / build + tweak         | `/comet-tweak`：单 change 轻量调整                                           |
-| verify                        | `/comet-verify`：执行验收、修复后复验、完成唯一一次最终集成审查              |
-| archive / verify_result: pass | `/comet-archive`：确认归档、只提交当前 change 的文件、完成用户选定的交付方式 |
+- 新 full / open：`/comet-open`：澄清范围、创建必需产物、请用户检查并确认
+- design：`/comet-design`：完成技术取舍并确认正式设计
+- build + full：`/comet-build`：恢复配置/计划，完成任务与所需审查
+- hotfix / build + hotfix：`/comet-hotfix`：已有异常的局部修复
+- tweak / build + tweak：`/comet-tweak`：单 change 轻量调整
+- verify：`/comet-verify`：执行验收、修复后复验、完成唯一一次最终集成审查
+- archive / verify_result: pass：`/comet-archive`：确认归档、只提交当前 change 的文件、完成用户选定的交付方式
 
 阶段工作由对应 Skill 执行；编写产物、调用 OpenSpec 或推进前先加载它。`decision`、`evidence` 和 `reconcile` 沿用当前 Run，不重做阶段工作。
 

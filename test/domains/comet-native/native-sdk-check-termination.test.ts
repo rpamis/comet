@@ -8,9 +8,12 @@ import {
   type WorkflowRun,
   createRuntime,
   createMemoryRuntimeStore,
+  hashRuntimeValue,
+  type RuntimeValue,
 } from '../../../domains/engine/runtime.js';
 import {
   createNativeSdkCheckExecution,
+  reconcileNativeSdkExecutionStops,
   acknowledgeNativeSdkCheckStopped,
   terminateNativeSdkCheckExecutions,
   inspectNativeSdkCheckExecutions,
@@ -61,6 +64,29 @@ async function registration(phase: 'running' | 'interrupted' | 'completed', mode
   await registered.save();
   return { run, action, registered };
 }
+
+it('reuses a confirmed stop only while the complete execution record still matches', async () => {
+  const { run, action, registered } = await registration('completed');
+  action.status = 'succeeded';
+  action.executionStop = {
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    claimToken: action.claim!.token,
+    evidence: `Runtime 已确认原受管执行停止；执行记录摘要 ${hashRuntimeValue(registered.execution as unknown as RuntimeValue)}`,
+  } as NonNullable<RuntimeAction['executionStop']>;
+  vi.mocked(processIdentity.inspectProcessLiveness).mockClear();
+  vi.mocked(processIdentity.inspectProcessTreeLiveness).mockClear();
+  expect(
+    (await inspectNativeSdkCheckExecutions({ projectRoot: root, run, includeSettled: true }))[0],
+  ).toMatchObject({ quiescent: true, recoveryRequired: false });
+  expect(processIdentity.inspectProcessLiveness).not.toHaveBeenCalled();
+  expect(processIdentity.inspectProcessTreeLiveness).not.toHaveBeenCalled();
+  registered.execution.checkId = 'changed-execution';
+  await registered.save();
+  await inspectNativeSdkCheckExecutions({ projectRoot: root, run, includeSettled: true });
+  expect(processIdentity.inspectProcessLiveness).toHaveBeenCalled();
+});
 
 it.each(['running', 'interrupted', 'completed'] as const)(
   'keeps a Windows %s check blocked when both owner and supervisor exited without tree evidence',
@@ -550,3 +576,43 @@ it.each(['reserved', 'interrupted'] as const)(
     });
   },
 );
+
+it('omits settled execution reads in lightweight inspection but diagnoses missing stop evidence', async () => {
+  const { run, action } = await registration('completed');
+  action.status = 'succeeded';
+  action.executionStop = {
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    claimToken: action.claim!.token,
+    evidence: 'Confirmed stopped by original executor',
+  } as NonNullable<RuntimeAction['executionStop']>;
+  const opens = vi.spyOn(fs, 'open');
+  expect(
+    await inspectNativeSdkCheckExecutions({ projectRoot: root, run, includeSettled: false }),
+  ).toEqual([]);
+  expect(opens).not.toHaveBeenCalled();
+  delete action.executionStop;
+  expect(
+    await inspectNativeSdkCheckExecutions({ projectRoot: root, run, includeSettled: false }),
+  ).toHaveLength(1);
+  expect(opens).toHaveBeenCalled();
+});
+
+it('does not reopen settled execution records when reconciling existing stop proof', async () => {
+  const { run, action } = await registration('completed');
+  action.status = 'succeeded';
+  action.executionStop = {
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    claimToken: action.claim!.token,
+    evidence: 'Confirmed stopped by original executor',
+  } as NonNullable<RuntimeAction['executionStop']>;
+  const opens = vi.spyOn(fs, 'open');
+  const result = await reconcileNativeSdkExecutionStops(root, run, async () => {
+    throw new Error('No missing stop proof');
+  });
+  expect(result).toBe(run);
+  expect(opens).not.toHaveBeenCalled();
+});

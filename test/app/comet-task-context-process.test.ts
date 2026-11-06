@@ -8,6 +8,8 @@ import { build } from 'esbuild';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { SqliteAgentContextApplicationStore } from '../../domains/agent-learning/index.js';
 import { readRuntimeTraceSpans } from '../../platform/process/runtime-trace.js';
+import { JsonFilePluginStorageStore } from '../../platform/fs/plugin-store.js';
+import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 
 const execFileAsync = promisify(execFile);
 let root: string;
@@ -512,6 +514,51 @@ test('cancels checkpoint learning after one budget and preserves all queued even
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 }, 20_000);
+
+test('implicit workflow checkpoints stay durable and pending without inline reflection', async () => {
+  const { home, project } = await fixture('queued-checkpoint');
+  const payload = {
+    workflowResults: [
+      {
+        projectRoot: project,
+        workflow: 'native',
+        changeId: 'queued',
+        command: 'next',
+        success: true,
+      },
+    ],
+  };
+  const capture = () =>
+    new Promise<string>((resolve, reject) => {
+      const child = spawn(process.execPath, [path.join(root, 'comet-task-context-worker.js')], {
+        env: fixtureEnvironment(home),
+        windowsHide: true,
+        timeout: 10_000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      let output = '';
+      let diagnostic = '';
+      child.stdout.on('data', (chunk) => {
+        output += chunk;
+      });
+      child.stderr.on('data', (chunk) => {
+        diagnostic += chunk;
+      });
+      child.on('error', reject);
+      child.on('close', (code) => (code === 0 ? resolve(output) : reject(new Error(diagnostic))));
+      child.stdin.end(JSON.stringify(payload));
+    });
+  expect(JSON.parse(await capture())).toEqual([null]);
+  expect(JSON.parse(await capture())).toEqual([null]);
+  const storage = new JsonFilePluginStorageStore(path.join(home, '.comet/plugins/storage'));
+  const journal = (await (
+    await storage.open('comet.agent-learning', 'project', resolveStableProjectId(project))
+  ).read()) as { events: unknown[]; reflections: Record<string, unknown> };
+  expect(journal.events).toHaveLength(1);
+  expect(Object.values(journal.reflections)).toEqual([
+    { status: 'pending', attempts: 0, updatedAt: expect.any(String) },
+  ]);
+});
 
 test('workflow learning resolves a canonical Git root once across both durable capture and full recording', async () => {
   const { home, project } = await fixture('learning-git-root');

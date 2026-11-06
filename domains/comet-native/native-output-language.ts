@@ -19,7 +19,6 @@ export const NATIVE_HUMAN_TEXT_DENYLIST: readonly RegExp[] = [
   /\breceipts?\b/iu,
   /\bbaselines?\b/iu,
   /\bpolicy[_ ]?hash(es)?\b/iu,
-  /\bverify_mode\b/iu,
   /\brunner[_ ]actions?\b/iu,
   /\bcandidate[_ ]?ids?\b/iu,
   /\bcommand[_ ]?args?\b/iu,

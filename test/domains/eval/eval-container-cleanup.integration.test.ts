@@ -76,7 +76,17 @@ describe.skipIf(!enabled)(
     }
 
     async function expectRunningWorkload(): Promise<void> {
-      await expect.poll(() => workloadContainers(), { timeout: 15_000 }).toHaveLength(1);
+      await expect
+        .poll(() => workloadContainers(), { timeout: 15_000 })
+        .toHaveLength(1)
+        .catch(async (error) => {
+          const log = await fs
+            .readFile(await evalRunPath(project, runId, 'execution.log'), 'utf8')
+            .catch(() => 'No execution log');
+          throw new Error(`Docker workload did not start. Worker log:\n${log.slice(-16_000)}`, {
+            cause: error,
+          });
+        });
       const [id] = await workloadContainers();
       expect(
         await docker([
@@ -275,7 +285,8 @@ process.exitCode = result.status ?? 1;
       await expectRunningWorkload();
       await requestStopEvalRun(project, runId);
       await worker;
-      expect((await readEvalRun(project, runId)).executionStatus).toBe('stopped');
+      const stopped = await readEvalRun(project, runId);
+      expect(stopped.executionStatus, JSON.stringify(stopped)).toBe('stopped');
       await expectScopedCleanup();
     }, 60_000);
 

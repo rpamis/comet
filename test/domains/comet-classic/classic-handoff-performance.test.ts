@@ -37,9 +37,19 @@ describe('Classic handoff material reuse', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
+  async function initializeDesignContext() {
+    const initialized = await runClassicCli(
+      ['state', 'init', 'demo', 'full', '--runtime', 'compat'],
+      undefined,
+      { projectRoot: root, invocationCwd: root },
+    );
+    expect(initialized.exitCode, initialized.stderr).toBe(0);
+  }
+
   it.each(['off', 'beta'] as const)(
     'reads each source once per %s preparation and once per commit validation',
     async (contextCompression) => {
+      await initializeDesignContext();
       const open = vi.spyOn(fs, 'open');
       const options = { projectRoot: root, changeDir, change: 'demo', contextCompression };
       const prepared = await writeClassicSdkDesignContext(options);
@@ -73,6 +83,7 @@ describe('Classic handoff material reuse', () => {
   it.each(['edit', 'add', 'remove'] as const)(
     'rechecks source %s after preparing a handoff',
     async (change) => {
+      await initializeDesignContext();
       const options = {
         projectRoot: root,
         changeDir,
@@ -92,6 +103,7 @@ describe('Classic handoff material reuse', () => {
   );
 
   it('rejects a replaced source symlink at validation', async (context) => {
+    await initializeDesignContext();
     const options = {
       projectRoot: root,
       changeDir,

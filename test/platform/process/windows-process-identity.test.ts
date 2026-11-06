@@ -2,7 +2,10 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readWindowsProcessIdentity } from '../../../platform/process/windows-process-identity.js';
+import {
+  readWindowsProcessIdentity,
+  inspectWindowsProcessPresence,
+} from '../../../platform/process/windows-process-identity.js';
 import { runExternalCommandAsync } from '../../../platform/process/external-command.js';
 import * as externalCommand from '../../../platform/process/external-command.js';
 
@@ -13,6 +16,112 @@ describe('optional Windows process creation probe', () => {
     if (cacheRoot)
       await fs.rm(cacheRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
+
+  it.each(['compiler failure', 'manifest failure'])(
+    'removes unpublished probe executables after %s',
+    async (failure) => {
+      cacheRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-identity-cleanup-'));
+      const systemRoot = path.join(cacheRoot, 'system');
+      const compiler = path.join(
+        systemRoot,
+        'Microsoft.NET',
+        'Framework64',
+        'v4.0.30319',
+        'csc.exe',
+      );
+      await fs.mkdir(path.dirname(compiler), { recursive: true });
+      await fs.writeFile(compiler, 'compiler fixture');
+      vi.spyOn(externalCommand, 'runExternalCommandAsync').mockImplementation(
+        async (command, args) => {
+          if (command !== compiler) throw new Error('legacy unavailable');
+          await fs.writeFile(args.find((arg) => arg.startsWith('/out:'))!.slice(5), 'probe output');
+          if (failure === 'compiler failure')
+            throw new Error('compiler timed out after writing output');
+          return '';
+        },
+      );
+      if (failure === 'manifest failure')
+        vi.spyOn(fs, 'rename').mockRejectedValue(new Error('publish failed'));
+      const probeRoot = path.join(cacheRoot, 'cache');
+      await expect(
+        readWindowsProcessIdentity(process.pid, { cacheRoot: probeRoot, systemRoot }),
+      ).resolves.toBeNull();
+      const [hash] = await fs.readdir(probeRoot);
+      expect(await fs.readdir(path.join(probeRoot, hash))).toEqual([]);
+    },
+  );
+
+  it('allows slow successful compilation and reuses the verified probe', async () => {
+    cacheRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-identity-slow-'));
+    const systemRoot = path.join(cacheRoot, 'system');
+    const compiler = path.join(systemRoot, 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe');
+    await fs.mkdir(path.dirname(compiler), { recursive: true });
+    await fs.writeFile(compiler, 'compiler fixture');
+    let compiles = 0;
+    vi.spyOn(externalCommand, 'runExternalCommandAsync').mockImplementation(
+      async (command, args, options) => {
+        if (command === compiler) {
+          compiles++;
+          if (options!.timeoutMs! < 2000) throw new Error('slow compiler exceeded budget');
+          await new Promise((resolve) => setTimeout(resolve, 1600));
+          await fs.writeFile(
+            args.find((arg) => arg.startsWith('/out:'))!.slice(5),
+            'verified probe',
+          );
+          return '';
+        }
+        if (path.basename(command).startsWith('probe-')) return '123456789';
+        throw new Error('legacy unavailable');
+      },
+    );
+    const options = { cacheRoot: path.join(cacheRoot, 'cache'), systemRoot };
+    await expect(readWindowsProcessIdentity(process.pid, options)).resolves.toBe(
+      'win32-ps:123456789',
+    );
+    await expect(readWindowsProcessIdentity(process.pid, options)).resolves.toBe(
+      'win32-ps:123456789',
+    );
+    expect(compiles).toBe(1);
+    const [hash] = await fs.readdir(options.cacheRoot);
+    const files = await fs.readdir(path.join(options.cacheRoot, hash));
+    expect(files).toContain('probe.json');
+    expect(files.filter((file) => file.endsWith('.exe'))).toHaveLength(1);
+    expect(files.some((file) => file.endsWith('.cs') || file === 'prepare.lock')).toBe(false);
+  });
+
+  it('does not delete files when another process holds the preparation lock', async () => {
+    cacheRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-identity-contended-'));
+    vi.spyOn(fs, 'open').mockRejectedValue(Object.assign(new Error('busy'), { code: 'EEXIST' }));
+    const unlink = vi.spyOn(fs, 'unlink');
+    vi.spyOn(externalCommand, 'runExternalCommandAsync').mockRejectedValue(
+      new Error('legacy unavailable'),
+    );
+    await expect(readWindowsProcessIdentity(process.pid, { cacheRoot })).resolves.toBeNull();
+    expect(unlink).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['0', 'absent'],
+    ['1', 'present'],
+    ['', 'unknown'],
+    ['permission denied', 'unknown'],
+  ])('uses only structured successful process enumeration %s as %s', async (output, expected) => {
+    vi.spyOn(externalCommand, 'runExternalCommandAsync').mockResolvedValue(output);
+    await expect(inspectWindowsProcessPresence(123456)).resolves.toBe(expected);
+  });
+  it('does not infer absence from an enumeration failure', async () => {
+    vi.spyOn(externalCommand, 'runExternalCommandAsync').mockRejectedValue(
+      new Error('probe timed out'),
+    );
+    await expect(inspectWindowsProcessPresence(123456)).resolves.toBe('unknown');
+  });
+  it.runIf(process.platform === 'win32')(
+    'enumerates the current Windows process and an absent PID',
+    async () => {
+      await expect(inspectWindowsProcessPresence(process.pid)).resolves.toBe('present');
+      await expect(inspectWindowsProcessPresence(2147483647)).resolves.toBe('absent');
+    },
+  );
 
   it.each(['compiler timeout', 'busy preparation lock'])(
     'retries after a cooldown when a transient %s clears',
@@ -60,6 +169,16 @@ describe('optional Windows process creation probe', () => {
         initialCompiles,
       );
       now = 10_000;
+      await expect(readWindowsProcessIdentity(process.pid, options)).resolves.toBeNull();
+      expect(execute.mock.calls.filter(([command]) => command === compiler)).toHaveLength(
+        initialCompiles,
+      );
+      now = 59_999;
+      await expect(readWindowsProcessIdentity(process.pid, options)).resolves.toBeNull();
+      expect(execute.mock.calls.filter(([command]) => command === compiler)).toHaveLength(
+        initialCompiles,
+      );
+      now = 60_000;
       await expect(readWindowsProcessIdentity(process.pid, options)).resolves.toBe(
         'win32-ps:123456789',
       );

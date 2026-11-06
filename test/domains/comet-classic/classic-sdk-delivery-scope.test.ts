@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, expect, it, onTestFailed, vi } from 'vitest';
 import { parse, stringify } from 'yaml';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { assertClassicSdkDeliveryInputs } from '../../../domains/comet-classic/classic-sdk-delivery-inputs.js';
@@ -18,7 +18,10 @@ import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 import { createOpenSpecArchiveFixture } from '../../helpers/classic-openspec-fixture.js';
 import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
-import { parseClassicStateDocument } from '../../../domains/comet-classic/classic-state.js';
+import {
+  CLASSIC_MANAGED_RUN_MARKER,
+  parseClassicStateDocument,
+} from '../../../domains/comet-classic/classic-state.js';
 
 const roots: string[] = [];
 // Both transient directories that `migrationFiles` can record a fence from. They are
@@ -30,6 +33,12 @@ afterEach(async () => {
 });
 
 async function publicStateRuntime(root: string, command: 'state' | 'archive' = 'state') {
+  if (process.env.COMET_TEST_PACKAGE_ROOT)
+    return path.join(
+      process.env.COMET_TEST_PACKAGE_ROOT,
+      'assets/skills/comet/scripts',
+      `comet-${command}.mjs`,
+    );
   const runtime = path.join(root, `comet-${command}.mjs`);
   await build({
     entryPoints: [path.resolve(`domains/comet-classic/classic-${command}-entry.ts`)],
@@ -55,6 +64,7 @@ async function hotfix(
     interruptArchive?: boolean;
     forgedBaseline?: boolean;
     projectAlias?: boolean;
+    isolation?: 'current' | 'worktree';
     migrationFence?: (typeof FENCES)[number];
   } = {},
 ) {
@@ -73,7 +83,8 @@ async function hotfix(
         windowsVerbatimArguments: true,
       }).trim();
   }
-  const projectRoot = path.join(projectBase, 'project');
+  const integrationRoot = path.join(projectBase, 'project');
+  let projectRoot = integrationRoot;
   const home = path.join(root, 'home');
   await fs.mkdir(home);
   vi.stubEnv('HOME', home);
@@ -118,6 +129,11 @@ async function hotfix(
   git('init', '-b', 'main');
   git('add', '--all');
   git('commit', '-m', 'base');
+  if (options.isolation === 'worktree') {
+    const featureRoot = path.join(root, 'feature-worktree');
+    git('worktree', 'add', '-b', 'feature/example', featureRoot);
+    projectRoot = featureRoot;
+  }
   if (options.parked) {
     const native = await runNativeCli([
       'new',
@@ -189,7 +205,8 @@ async function hotfix(
       request,
     });
     expect(started.response.status, JSON.stringify(started.response)).toBe('succeeded');
-  } else await cli('state', 'init', 'example', 'hotfix', '--isolation', 'current');
+  } else
+    await cli('state', 'init', 'example', 'hotfix', '--isolation', options.isolation ?? 'current');
   const activeRef = 'openspec/changes/example';
   await put(`${activeRef}/proposal.md`, '# Proposal\nCorrect the ready constant.\n');
   await put(`${activeRef}/design.md`, '# Design\nKeep the existing public API.\n');
@@ -308,6 +325,7 @@ async function hotfix(
   return {
     root,
     projectRoot,
+    integrationRoot,
     remoteRoot,
     git,
     put,
@@ -396,7 +414,13 @@ it('requires an exact user decision for specification outputs after interrupted 
 });
 
 it('recovers Archive interrupted after moving without replay or accepting changed artifacts', async () => {
+  const started = performance.now();
+  const progress = ['preparing interrupted Archive'];
+  const mark = (step: string) =>
+    progress.push(`${Math.round(performance.now() - started)}ms: ${step}`);
+  onTestFailed(() => console.error('Archive recovery progress:', progress));
   const f = await hotfix({ interruptArchive: true });
+  mark('prepared; checking changed-artifact rejection');
   const proposal = `${f.archiveRef}/proposal.md`;
   const original = await fs.readFile(path.join(f.projectRoot, proposal), 'utf8');
   const before = (await f.inspect()).run;
@@ -404,16 +428,20 @@ it('recovers Archive interrupted after moving without replay or accepting change
   expect((await f.invoke('archive', 'example', '--recover')).exitCode).not.toBe(0);
   expect((await f.inspect()).run).toEqual(before);
   await f.put(proposal, original);
+  mark('rejected changed artifacts; building public recovery command');
   const runtime = await publicStateRuntime(f.root, 'archive');
+  mark('built public recovery command; recovering in child process');
   const restored = spawnSync(process.execPath, [runtime, 'example', '--recover', '--json'], {
     cwd: f.projectRoot,
     encoding: 'utf8',
   });
   expect(restored.status, restored.stdout || restored.stderr).toBe(0);
+  mark('recovered in child process; checking idempotency');
   const recovered = (await f.inspect()).run;
   await f.cli('archive', 'example', '--recover');
   expect((await f.inspect()).run).toEqual(recovered);
   expect(await f.openSpec.invocations()).toHaveLength(1);
+  mark('confirmed one OpenSpec invocation; committing and verifying delivery');
   f.commitImplementation();
   const commit = f.commitArchive();
   expect(
@@ -1030,6 +1058,76 @@ it('revalidates a portable historical archive outcome without inventing new exec
   expect(await f.openSpec.invocations()).toHaveLength(1);
 });
 
+it.each([false, true])(
+  'reads completed archived history across worktrees after amend=%s without importing a duplicate Run',
+  async (amend) => {
+    const f = await hotfix({ isolation: 'worktree' });
+    f.commitImplementation();
+    const commit = f.commitArchive();
+    expect(
+      (await f.cli('state', 'complete-delivery', 'example', '--commit', commit)).nextAction.kind,
+    ).toBe('done');
+    if (amend) {
+      await f.put('note.md', 'post-delivery note\n');
+      f.git('add', '--', 'note.md');
+      f.git('commit', '--amend', '--no-edit');
+    }
+    const original = await f.inspect();
+    const integration = f.integrationRoot;
+    execFileSync('git', ['merge', '--ff-only', 'feature/example'], {
+      cwd: integration,
+      stdio: 'pipe',
+    });
+    const stateFile = path.join(integration, f.archiveRef, 'comet-state.yaml');
+    const state = await fs.readFile(stateFile);
+    const runtime = await publicStateRuntime(f.root);
+    for (const command of ['next', 'checkpoint', 'select']) {
+      const result = spawnSync(process.execPath, [runtime, command, 'example', '--json'], {
+        cwd: integration,
+        encoding: 'utf8',
+      });
+      expect(result.status, result.stdout || result.stderr).toBe(command === 'select' ? 1 : 0);
+      if (command === 'select') {
+        expect(result.stdout).toContain('change is archived');
+        expect(result.stdout).not.toContain('checkpoint');
+      }
+      if (command === 'next') expect(JSON.parse(result.stdout).data.nextAction.kind).toBe('done');
+    }
+    expect(await fs.readFile(stateFile)).toEqual(state);
+    expect((await f.inspect()).run).toEqual(original.run);
+    const localOwner = path.join(
+      resolveWorkspaceRuntimeRootSync(integration),
+      'change-owners/classic/example.json',
+    );
+    await expect(fs.access(localOwner)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await f.openSpec.invocations()).toHaveLength(1);
+    const invalid = parse(state.toString('utf8'));
+    invalid.run_checkpoint.hash = '0'.repeat(64);
+    await fs.writeFile(stateFile, CLASSIC_MANAGED_RUN_MARKER + stringify(invalid));
+    const rejected = spawnSync(process.execPath, [runtime, 'next', 'example', '--json'], {
+      cwd: integration,
+      encoding: 'utf8',
+    });
+    expect(rejected.status).not.toBe(0);
+    expect((await f.inspect()).run).toEqual(original.run);
+    await expect(fs.access(localOwner)).rejects.toMatchObject({ code: 'ENOENT' });
+    await fs.writeFile(stateFile, state);
+    expect(path.resolve(f.projectRoot).startsWith(path.resolve(f.root) + path.sep)).toBe(true);
+    execFileSync('git', ['worktree', 'remove', '--force', f.projectRoot], {
+      cwd: integration,
+      stdio: 'pipe',
+    });
+    const orphaned = spawnSync(process.execPath, [runtime, 'next', 'example', '--json'], {
+      cwd: integration,
+      encoding: 'utf8',
+    });
+    expect(orphaned.status).not.toBe(0);
+    expect(orphaned.stdout).toContain('original completed Run history');
+    expect(await fs.readFile(stateFile)).toEqual(state);
+    await expect(fs.access(localOwner)).rejects.toMatchObject({ code: 'ENOENT' });
+  },
+);
+
 it.each(FENCES)(
   'delivers a tracked migration fence in %s that the archive moves with the change',
   async (fence) => {
@@ -1081,7 +1179,13 @@ it.each(FENCES)(
       force: true,
     });
     const commit = f.commitArchive();
-    const rejected = await f.invoke('state', 'complete-delivery', 'example', '--commit', commit);
+    const runtime = await publicStateRuntime(f.root);
+    const result = spawnSync(
+      process.execPath,
+      [runtime, 'complete-delivery', 'example', '--commit', commit, '--json'],
+      { cwd: f.projectRoot, encoding: 'utf8' },
+    );
+    const rejected = { exitCode: result.status, response: JSON.parse(result.stdout || '{}') };
     expect(rejected.exitCode).not.toBe(0);
     expect(rejected.response.stderr).toContain(archivedFence);
   },
@@ -1105,7 +1209,13 @@ it.each(FENCES)(
     await fs.writeFile(archivedFence, `${await fs.readFile(archivedFence, 'utf8')} `);
     f.git('add', '-f', '--', `${f.archiveRef}/${fence}/.comet-runtime-migration.json`);
     const commit = f.commitArchive();
-    const rejected = await f.invoke('state', 'complete-delivery', 'example', '--commit', commit);
+    const runtime = await publicStateRuntime(f.root);
+    const result = spawnSync(
+      process.execPath,
+      [runtime, 'complete-delivery', 'example', '--commit', commit, '--json'],
+      { cwd: f.projectRoot, encoding: 'utf8' },
+    );
+    const rejected = { exitCode: result.status, response: JSON.parse(result.stdout || '{}') };
     expect(rejected.exitCode).not.toBe(0);
     // Assert the reason, not just the rejection: the base commit also rejects this
     // case, but as an unapproved path. Only the content check makes it fail here for

@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 import { useDashboardMotion } from './dashboard-motion.jsx';
-import { Button, Collapse, Tag, Descriptions, Empty, Alert } from 'antd';
+import { Button, Collapse, Tag, Descriptions, Empty, Alert, Drawer, Skeleton } from 'antd';
 import {
   FileTextOutlined,
   CheckCircleFilled,
@@ -448,39 +448,67 @@ export function ApplicationEvidenceView({ detail, onEvidence, onSource, onEval }
     </div>
   );
 }
-export function ApplicationObservationDrawer({ data }) {
-  if (!data) return null;
+export function ApplicationObservationDrawer({ data, onClose }) {
+  const open = Boolean(data);
+  const panel = useRef(null);
+  const trigger = useRef(null);
+  useLayoutEffect(() => {
+    if (open) trigger.current = document.activeElement;
+  }, [open]);
+  const afterOpenChange = (visible) => {
+    if (visible) return;
+    const active = document.activeElement;
+    // 关闭动画期间用户可能已经聚焦其他控件，保留这次选择。
+    if (active === document.body || panel.current?.closest('.ant-drawer')?.contains(active))
+      trigger.current?.focus({ preventScroll: true });
+    trigger.current = null;
+  };
   return (
-    <div className="any-observation-drawer">
-      <Tag>{t('保存的观测记录')}</Tag>
-      <h2>{data.title}</h2>
-      <p>{data.message ? systemText(data.message) : null}</p>
-      <Descriptions
-        column={1}
-        size="small"
-        items={[
-          { key: 'run', label: t('查看记录'), children: data.runId },
-          {
-            key: 'version',
-            label: t('应用版本'),
-            children: data.version ? `v${data.version}` : t('尚未生成'),
-          },
-          {
-            key: 'source',
-            label: t('证据来源'),
-            children: data.evidence?.sourceRunId ?? data.recordId ?? t('无记录'),
-          },
-        ]}
-      />
-      {data.evidence?.status === 'stale' && (
-        <Alert
-          type="warning"
-          showIcon
-          title={t('失效表示不适用于当前候选，原报告的结果仍保留。')}
-        />
-      )}
-      <pre>{JSON.stringify(data.evidence ?? data.record, null, 2)}</pre>
-    </div>
+    <Drawer
+      title={data?.title}
+      rootClassName="any-detail-drawer"
+      open={open}
+      onClose={onClose}
+      size={530}
+      panelRef={panel}
+      focusable={{ focusTriggerAfterClose: false }}
+      afterOpenChange={afterOpenChange}
+    >
+      {data?.loading ? (
+        <Skeleton active paragraph={{ rows: 5 }} />
+      ) : data ? (
+        <div className="any-observation-drawer">
+          <Tag>{t('保存的观测记录')}</Tag>
+          <h2>{data.title}</h2>
+          <p>{data.message ? systemText(data.message) : null}</p>
+          <Descriptions
+            column={1}
+            size="small"
+            items={[
+              { key: 'run', label: t('查看记录'), children: data.runId },
+              {
+                key: 'version',
+                label: t('应用版本'),
+                children: data.version ? `v${data.version}` : t('尚未生成'),
+              },
+              {
+                key: 'source',
+                label: t('证据来源'),
+                children: data.evidence?.sourceRunId ?? data.recordId ?? t('无记录'),
+              },
+            ]}
+          />
+          {data.evidence?.status === 'stale' && (
+            <Alert
+              type="warning"
+              showIcon
+              title={t('失效表示不适用于当前候选，原报告的结果仍保留。')}
+            />
+          )}
+          <pre>{JSON.stringify(data.evidence ?? data.record, null, 2)}</pre>
+        </div>
+      ) : null}
+    </Drawer>
   );
 }
 

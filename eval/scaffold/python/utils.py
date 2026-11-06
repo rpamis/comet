@@ -6,6 +6,7 @@ import ntpath
 import os
 import random
 import re
+import signal
 import shutil
 import subprocess
 import tempfile
@@ -18,7 +19,7 @@ from dotenv import load_dotenv
 from scaffold.python.agents import validate_agent_id
 from scaffold.python.execution import ResolvedExecution, build_agent_environment
 from scaffold.python.paths import EVAL_ROOT, get_suite_root
-from scaffold.python.progress import observe_eval_container
+from scaffold.python.progress import observe_eval_container, observe_dataset_storage
 
 TEST_CONTEXT_FILE = os.environ.get("BENCH_TEST_CONTEXT", "_test_context.json")
 TEST_RESULTS_FILE = os.environ.get("BENCH_TEST_RESULTS", "_test_results.json")
@@ -156,6 +157,7 @@ WSL_ENV_KEYS = (
     "COMET_APPLICATION_EVAL_CONTEXT",
     "COMET_EVAL_EXPERIMENT_ID",
     "COMET_EVAL_PROJECT_ID",
+    "COMET_EVAL_TASK_CONTRACT_FILE",
     "COMET_EVAL_CUSTOM_EXECUTABLE",
     "COMET_EVAL_CUSTOM_CREDENTIALS",
     "COMET_EVAL_CUSTOM_MODEL",
@@ -213,8 +215,69 @@ def _bash_env(source_env: dict[str, str] | None = None) -> dict[str, str]:
     return env
 
 
-def run_shell(script, *args, timeout=None, check=True, env=None, capture_to_file=False):
+def run_shell(
+    script,
+    *args,
+    timeout=None,
+    check=True,
+    env=None,
+    capture_to_file=False,
+    terminate_process_tree=False,
+):
     cmd = [BASH_EXEC, _to_bash_path(SHELL_DIR / script)] + [_to_bash_path(a) for a in args]
+    if terminate_process_tree:
+        # 构建超时必须同时停止 Docker 客户端，否则它会持有 Bash 的输出管道。
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=_bash_env(env),
+            start_new_session=os.name != "nt",
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+        )
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired as error:
+            cleanup_confirmed = True
+            if os.name == "nt":
+                system_root = os.environ.get("SystemRoot", r"C:\Windows")
+                cleanup = subprocess.run(
+                    [
+                        ntpath.join(system_root, "System32", "taskkill.exe"),
+                        "/PID",
+                        str(process.pid),
+                        "/T",
+                        "/F",
+                    ],
+                    capture_output=True,
+                    timeout=10,
+                    check=False,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                )
+                cleanup_confirmed = cleanup.returncode == 0
+            else:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            try:
+                stdout, stderr = process.communicate(timeout=5)
+            except subprocess.TimeoutExpired as cleanup_error:
+                raise RuntimeError(
+                    "构建超时后仍无法确认子进程退出，请检查残留构建进程"
+                ) from cleanup_error
+            if not cleanup_confirmed:
+                raise RuntimeError(
+                    "构建超时后无法确认进程树清理成功，请检查残留构建进程"
+                ) from error
+            raise subprocess.TimeoutExpired(cmd, timeout, output=stdout, stderr=stderr) from error
+        result = subprocess.CompletedProcess(cmd, process.returncode, stdout, stderr)
+        if check:
+            result.check_returncode()
+        return result
     if capture_to_file:
         # On Windows, a Docker child can inherit Bash's stdout pipe. Python's
         # subprocess.run waits for that pipe to close even after killing Bash,
@@ -233,6 +296,9 @@ def run_shell(script, *args, timeout=None, check=True, env=None, capture_to_file
                 )
         with (
             observe_eval_container(container_name),
+            observe_dataset_storage(
+                Path(args[1]) if script == "docker.sh" and len(args) > 1 else None, container_name
+            ) as storage,
             tempfile.TemporaryFile() as stdout_file,
             tempfile.TemporaryFile() as stderr_file,
         ):
@@ -256,11 +322,14 @@ def run_shell(script, *args, timeout=None, check=True, env=None, capture_to_file
                 ) from error
             stdout_file.seek(0)
             stderr_file.seek(0)
+            if "check" in storage:
+                storage["check"]()
             completed = subprocess.CompletedProcess(
                 cmd,
-                result.returncode,
+                122 if storage["error"] else result.returncode,
                 stdout_file.read().decode("utf-8", errors="replace"),
-                stderr_file.read().decode("utf-8", errors="replace"),
+                stderr_file.read().decode("utf-8", errors="replace")
+                + ("\n" + storage["error"] if storage["error"] else ""),
             )
             if check:
                 completed.check_returncode()
@@ -394,14 +463,14 @@ def run_agent_in_docker(
         cmd.extend(["--agent", agent_id])
         if model:
             cmd.extend(["--model", model])
-        cmd.extend(["--timeout", str(timeout)])
+        cmd.extend(["--timeout", "0" if timeout is None else str(timeout)])
         if image_id:
             cmd.extend(["--image-id", image_id])
         cmd.extend(["--container-name", container_name])
         result = run_shell(
             "docker.sh",
             *cmd,
-            timeout=timeout + 30,
+            timeout=None if timeout is None else timeout + 30,
             check=False,
             env=child_env,
             capture_to_file=True,

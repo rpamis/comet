@@ -52,6 +52,14 @@ function passedReview(reviewerExecutionRef: string) {
 describe('Native phase Hook guard', () => {
   let projectRoot: string;
 
+  async function useRevertPolicy(artifactRoot = 'docs'): Promise<void> {
+    const config = defaultProjectConfig(artifactRoot, 'en');
+    await writeProjectConfig(projectRoot, {
+      ...config,
+      native: { ...config.native, document_writes: 'revert' },
+    });
+  }
+
   const writeRequest = (...targets: string[]): NativeHookRequest => ({
     intent: targets.length > 0 ? 'write' : 'unknown',
     targets,
@@ -134,6 +142,7 @@ describe('Native phase Hook guard', () => {
   });
 
   it('discards the selected Hook snapshot before returning a candidate to Build', async () => {
+    await useRevertPolicy();
     await writeProjectConfig(projectRoot, defaultProjectConfig());
     const { paths, state } = await portableBuild('hook-invalidates', 'docs');
     await fs.writeFile(path.join(projectRoot, 'AGENTS.md'), 'Run checks.\n');
@@ -257,6 +266,7 @@ describe('Native phase Hook guard', () => {
   });
 
   it('guards an SDK-owned Shape from its Run while retaining the portable state file', async () => {
+    await useRevertPolicy();
     const created = await runNativeCli([
       'new',
       'sdk-guard',
@@ -571,7 +581,7 @@ describe('Native phase Hook guard', () => {
   });
 
   it('keeps a portable Verify candidate pending when an implementation write has no content', async () => {
-    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    await useRevertPolicy('.');
     const { paths, state } = await portableBuild('portable-verify-write');
     const runner = createNativeRunnerChannel();
     await submitNativePortableBuilderCandidate({
@@ -622,7 +632,7 @@ describe('Native phase Hook guard', () => {
   });
 
   it('keeps concurrent unclassified writes pending without revising the Verify candidate', async () => {
-    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    await useRevertPolicy('.');
     const { paths, state } = await portableBuild('portable-concurrent-write');
     const runner = createNativeRunnerChannel();
     await submitNativePortableBuilderCandidate({
@@ -660,7 +670,7 @@ describe('Native phase Hook guard', () => {
   });
 
   it('preserves a Verify candidate for resource messages and holds unclassified mixed writes', async () => {
-    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    await useRevertPolicy('.');
     const { paths, state } = await portableBuild('portable-resource-targets');
     const runner = createNativeRunnerChannel();
     await submitNativePortableBuilderCandidate({
@@ -723,7 +733,11 @@ describe('Native phase Hook guard', () => {
   });
 
   it('holds an unclassified material write mixed with documents in Verify', async () => {
-    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const config = defaultProjectConfig('.');
+    await writeProjectConfig(projectRoot, {
+      ...config,
+      native: { ...config.native, document_writes: 'revert' },
+    });
     const { paths, state } = await portableBuild('portable-mixed-write');
     const runner = createNativeRunnerChannel();
     await submitNativePortableBuilderCandidate({
@@ -742,9 +756,11 @@ describe('Native phase Hook guard', () => {
       },
     });
 
-    await expect(
-      inspectNativeHookGuard(projectRoot, writeRequest('README.md', 'src/index.ts')),
-    ).resolves.toMatchObject({
+    const decision = await inspectNativeHookGuard(
+      projectRoot,
+      writeRequest('README.md', 'src/index.ts'),
+    );
+    expect(decision, JSON.stringify(decision)).toMatchObject({
       allowed: false,
       phase: 'verify',
       reason: expect.stringContaining('edit-review show native'),

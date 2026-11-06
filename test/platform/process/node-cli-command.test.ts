@@ -7,6 +7,10 @@ import {
   assertNodeCliCommandAvailable,
   resolveNodeCliCommand,
 } from '../../../platform/process/node-cli-command.js';
+import {
+  commandInvocation,
+  resolveWindowsNodeShim,
+} from '../../../platform/process/spawn-command.js';
 
 describe('literal Node CLI launchers', () => {
   const roots: string[] = [];
@@ -81,6 +85,12 @@ describe('literal Node CLI launchers', () => {
         env: { ...process.env, COMET_LITERAL_PROBE: 'MUST_NOT_EXPAND' },
       });
       expect(JSON.parse(output)).toEqual(args);
+      expect(resolveWindowsNodeShim(shim, [], {}, 'selected-node')?.command).toBe('selected-node');
+      if (process.platform === 'win32') {
+        const invocation = commandInvocation(shim, ['with space', '中文'], { cwd: root });
+        expect(invocation.command).not.toMatch(/powershell/iu);
+        expect(invocation.args).toEqual([path.join(root, 'cli.cjs'), 'with space', '中文']);
+      }
     },
   );
   it('rejects custom shim bodies before execution', async () => {

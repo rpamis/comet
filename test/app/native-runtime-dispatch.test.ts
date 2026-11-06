@@ -6,11 +6,27 @@ import { runtimeDispatchCommand } from '../../app/commands/runtime.js';
 import { runRuntimeCli } from '../../app/cli/runtime-command.js';
 import { runNativeCli } from '../../domains/comet-native/native-cli.js';
 import { advanceNativeSdkChange } from '../../domains/comet-native/native-sdk-next.js';
-import { inspectNativeSdkRun } from '../../domains/comet-native/native-runtime-ownership.js';
+import {
+  createNativeSdkRuntime,
+  inspectNativeSdkRun,
+} from '../../domains/comet-native/native-runtime-ownership.js';
+import { createNativePortableState } from '../../domains/comet-native/native-portable-state.js';
+import {
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../domains/comet-native/native-config.js';
+import {
+  COMET_CHANGE_OWNER_SCHEMA,
+  registerSdkChangeOwner,
+} from '../../domains/workflow-contract/change-runtime-owner.js';
 import { nativeProjectPaths } from '../../domains/comet-native/native-paths.js';
 import { fixtureAcceptanceReview } from '../helpers/native-builder-acceptance-review.js';
 import { nativeSdkReportExecutor } from '../../domains/comet-native/native-sdk-report.js';
 import type { RuntimeAction } from '../../domains/engine/runtime.js';
+import * as taskContext from '../../app/commands/comet-task-context.js';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -18,21 +34,183 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
-async function builderFixture() {
+describe('Claim context delivery', () => {
+  it('delivers real memory once per receiver and restores it explicitly through the public CLI', async () => {
+    const { root, requestFile } = await builderFixture();
+    await ensureCliBuilt(path.resolve('.'));
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-claim-home-'));
+    roots.push(home);
+    await fs.mkdir(path.join(home, '.comet/memory'), { recursive: true });
+    await fs.writeFile(
+      path.join(home, '.comet/memory/profile.md'),
+      '# 个人画像\n\n## 沟通偏好\n\n- 使用中文回复\n',
+    );
+    const invoke = async (args: string[]) =>
+      JSON.parse(
+        (
+          await promisify(execFile)(
+            process.execPath,
+            [path.resolve('dist/app/cli/index.js'), ...args],
+            {
+              env: {
+                ...process.env,
+                HOME: home,
+                USERPROFILE: home,
+                XDG_CACHE_HOME: path.join(home, '.cache'),
+                LOCALAPPDATA: path.join(home, 'local'),
+              },
+              windowsHide: true,
+              timeout: 30_000,
+            },
+          )
+        ).stdout,
+      );
+    const args = [
+      'runtime',
+      'dispatch',
+      '--application',
+      'native',
+      '--project-root',
+      root,
+      '--request',
+      requestFile,
+    ];
+    const first = await invoke(args);
+    expect(first.data.contextDelivery.status).toBe('delivered');
+    expect(first.data.context[0].text).toContain('使用中文回复');
+    expect((await invoke(args)).data.context).toEqual([]);
+    const restored = await invoke(first.data.contextActions.restore.commandArgs.slice(1));
+    expect(restored.context[0].text).toContain('使用中文回复');
+    const receiverArgs = [...first.data.contextActions.restore.commandArgs.slice(1)];
+    receiverArgs[receiverArgs.indexOf('--session') + 1] = 'new-receiver';
+    const independent = await invoke(receiverArgs);
+    expect(independent.context[0].applications[0].applicationId).not.toBe(
+      first.data.context[0].applications[0].applicationId,
+    );
+    expect(
+      first.data.context[0].applications.every(
+        (application: { outcome?: string }) => application.outcome === undefined,
+      ),
+    ).toBe(true);
+  }, 90_000);
+
+  it('delivers context to the actual receiver without changing the claimed input or SDK response', async () => {
+    const { root, requestFile, name } = await builderFixture();
+    const collect = vi.spyOn(taskContext, 'collectCometTaskContextResult').mockResolvedValue({
+      status: 'available',
+      context: [
+        {
+          pluginId: 'comet.context-director',
+          text: 'Use focused checks.',
+          episodeId: 'ctx',
+          manifest: [],
+          applications: [],
+        },
+      ],
+    });
+    const result = await cli(root, requestFile);
+    expect(result.data.context[0].text).toBe('Use focused checks.');
+    expect(result.data.contextDelivery).toMatchObject({
+      status: 'delivered',
+      sessionId: 'builder-session',
+      phase: 'build',
+    });
+    expect(collect).toHaveBeenCalledWith(
+      root,
+      expect.objectContaining({
+        task: expect.stringContaining('The workflow resumes.'),
+        sessionId: 'builder-session',
+        phase: 'build',
+        contextMode: 'incremental',
+        charBudget: 6000,
+      }),
+      { workflow: 'native', change: name },
+      { timeoutMs: 2000 },
+    );
+    expect(result.data.contextActions.restore.commandArgs).toEqual(
+      expect.arrayContaining([root, 'builder-session', 'snapshot']),
+    );
+    expect(result.data.contextActions.expand.commandArgs).toEqual(
+      expect.arrayContaining(['--expand-context', '<expansion-id>']),
+    );
+    expect(result.data.contextActions.complete.commandArgs).toEqual(
+      expect.arrayContaining(['--complete', '--learning-file', '<learning-file.json>']),
+    );
+    const committed = (await inspectNativeSdkRun(root, name)).run;
+    expect(result.data.action).toEqual(
+      committed.actions.find((action) => action.id === result.data.action.id),
+    );
+    await cli(root, requestFile, true);
+    await runtimeDispatchCommand({
+      application: 'native',
+      projectRoot: root,
+      request: requestFile,
+    });
+    expect(collect).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a successful claim usable when context retrieval is unavailable', async () => {
+    const { root, requestFile, name } = await builderFixture();
+    vi.spyOn(taskContext, 'collectCometTaskContextResult').mockResolvedValue({
+      status: 'unavailable',
+      context: [],
+    });
+    const result = await cli(root, requestFile);
+    expect(result.status).toBe('succeeded');
+    expect(result.data.contextDelivery.status).toBe('unavailable');
+    expect(result.data.context).toEqual([]);
+    expect(result.data.resultRequest.receipt).toEqual(expect.any(String));
+    expect(
+      (await inspectNativeSdkRun(root, name)).run.actions.find(
+        (action) => action.id === result.data.action.id,
+      )?.status,
+    ).toBe('running');
+  });
+});
+
+async function builderFixture(version: '1' | '3' = '1') {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-dispatch-'));
   roots.push(root);
   await fs.mkdir(path.join(root, '.git'));
   const name = 'compact-handoff';
-  const created = await runNativeCli([
-    'new',
-    name,
-    '--runtime',
-    'sdk',
-    '--project-root',
-    root,
-    '--json',
-  ]);
-  expect(created.exitCode, created.stderr).toBe(0);
+  if (version === '3') {
+    const created = await runNativeCli([
+      'new',
+      name,
+      '--runtime',
+      'sdk',
+      '--project-root',
+      root,
+      '--json',
+    ]);
+    expect(created.exitCode, created.stderr).toBe(0);
+  } else {
+    // 用真实旧版定义创建兼容样例，保留旧协议断言。
+    const config = defaultProjectConfig('docs', 'en');
+    await writeProjectConfig(root, {
+      ...config,
+      native: { ...config.native, document_writes: 'revert' },
+    });
+    await fs.mkdir(path.join(root, 'docs/comet/changes', name), { recursive: true });
+    await registerSdkChangeOwner(root, {
+      schema: COMET_CHANGE_OWNER_SCHEMA,
+      workflow: 'native',
+      change: name,
+      format: 'sdk',
+      application: 'native',
+      runId: name,
+    });
+    await createNativeSdkRuntime(root).start({
+      runId: name,
+      workflow: { id: 'comet-native', version: '1' },
+      input: { name, artifactRootRef: 'docs' },
+      initialState: createNativePortableState({
+        name,
+        language: 'en',
+        nextAction: 'prepare-shape-confirmation',
+      }),
+    });
+  }
   const inspection = await inspectNativeSdkRun(root, name);
   const paths = await nativeProjectPaths(root, inspection.artifactRootRef);
   const changeDir = path.join(paths.changesDir, name);
@@ -101,8 +279,9 @@ async function verifierOutcomeFixture(
     requestFile: string;
     action: RuntimeAction;
   }) => Promise<void>,
+  version: '1' | '3' = '1',
 ) {
-  const fixture = await builderFixture();
+  const fixture = await builderFixture(version);
   const { root, name } = fixture;
   await cli(root, fixture.requestFile);
   const requestRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-verifier-request-'));
@@ -189,6 +368,180 @@ async function verifierOutcomeFixture(
 }
 
 describe('Native dispatch CLI presentation', () => {
+  it('executes managed Build checks through public receipt dispatch and resumes the Builder', async () => {
+    const { root, name, requestFile } = await builderFixture('3');
+    const claimed = await cli(root, requestFile);
+    const request = claimed.data.resultRequest;
+    request.result.output = {
+      response: {
+        kind: 'request-checks',
+        checks: [
+          {
+            id: 'unit',
+            name: 'Unit',
+            executable: process.execPath,
+            argv: ['-e', 'console.log("checked")'],
+            cwdRef: '.',
+            timeoutMs: 10000,
+            repeatable: true,
+          },
+        ],
+      },
+    };
+    await fs.writeFile(requestFile, JSON.stringify(request));
+    expect((await cli(root, requestFile)).status).toBe('succeeded');
+    const result = await runNativeCli(['next', name, '--project-root', root, '--json']);
+    expect(result.exitCode, result.stdout || result.stderr).toBe(0);
+    const run = (await inspectNativeSdkRun(root, name)).run;
+    expect(run.actions.find((action) => action.stepId === 'build.checks')?.status).toBe(
+      'succeeded',
+    );
+    const builder = run.actions.at(-1)!;
+    expect(builder).toMatchObject({ stepId: 'build.builder', status: 'pending' });
+    expect(
+      (builder.input as { outputs: Record<string, { checks: { status: string }[] }> }).outputs[
+        'build.checks'
+      ].checks[0].status,
+    ).toBe('passed');
+    expect(run.state).toMatchObject({ phase: 'build', verification_result: 'pending' });
+  });
+
+  it('uses one result protocol and omits duplicate Builder review for a new public v3 Run', async () => {
+    const { root, requestFile } = await builderFixture('3');
+    const result = await cli(root, requestFile);
+    expect(result.data.resultRequest.receipt).toEqual(expect.any(String));
+    expect(result.data.resultRequest.result.output.acceptanceReview).toBeUndefined();
+    expect(result.data.outcomeRequest).toBeUndefined();
+    expect(result.data.failureOutcomeRequest).toBeUndefined();
+    expect(result.data.markUnknownRequest).toBeUndefined();
+  });
+
+  it('waits for acceptance directly after a v3 Verifier result without a report Action', async () => {
+    const { root, name, requestFile } = await verifierOutcomeFixture(undefined, '3');
+    const result = await cli(root, requestFile);
+    expect(result.status).toBe('succeeded');
+    const first = (await inspectNativeSdkRun(root, name)).run;
+    expect(first.actions.some((action) => action.stepId === 'verify.report')).toBe(false);
+    expect(first.waits.find((wait) => wait.stepId === 'verify.confirm')?.status).toBe('pending');
+    expect(first.actions.some((action) => action.stepId.startsWith('archive.'))).toBe(false);
+    expect(
+      await fs.readFile(path.join(root, 'docs/comet/changes', name, 'verification.md'), 'utf8'),
+    ).toContain('Fixture acceptance passed.');
+    await cli(root, requestFile);
+    expect((await inspectNativeSdkRun(root, name)).run.revision).toBe(first.revision);
+  });
+
+  it('preserves v3 acceptance when the report view fails and retries it on next', async () => {
+    const { root, name, requestFile, action } = await verifierOutcomeFixture(undefined, '3');
+    const reportFile = path.join(root, 'docs/comet/changes', name, 'verification.md');
+    await fs.mkdir(reportFile);
+    const result = await cli(root, requestFile);
+    expect(result.status).toBe('succeeded');
+    expect(result.warning.code).toBe('NATIVE_REPORT_PENDING');
+    const run = (await inspectNativeSdkRun(root, name)).run;
+    expect(run.actions.find((entry) => entry.id === action.id)?.status).toBe('succeeded');
+    expect(run.waits.find((wait) => wait.stepId === 'verify.confirm')?.status).toBe('pending');
+    await fs.rmdir(reportFile);
+    await advanceNativeSdkChange(root, name);
+    expect(await fs.readFile(reportFile, 'utf8')).toContain('Fixture acceptance passed.');
+    expect((await inspectNativeSdkRun(root, name)).run.revision).toBe(run.revision);
+  });
+
+  it('reports all malformed Builder fields together and accepts corrected content only with a new outcomeId', async () => {
+    const f = await builderFixture();
+    const claimed = await cli(f.root, f.requestFile);
+    const request = structuredClone(claimed.data.outcomeRequest);
+    request.outcome.outcomeId = 'invalid-fields';
+    request.outcome.output = {
+      summary: 'Implemented the fixture',
+      acceptanceReview: [
+        { id: 'B1', status: 'implemented-with-evidence', evidence: 'wrong', note: '' },
+      ],
+      checks: [{ name: 'Tests', result: 'blocked' }],
+      knownLimits: [],
+      verificationChecks: [{ id: 'partial' }],
+    };
+    const submit = async () => {
+      await fs.writeFile(f.requestFile, JSON.stringify(request));
+      return runtimeDispatchCommand({
+        application: 'native',
+        projectRoot: f.root,
+        request: f.requestFile,
+      });
+    };
+    const before = (await inspectNativeSdkRun(f.root, f.name)).run;
+    const rejected = await submit();
+    const message = rejected.response.error?.message ?? '';
+    for (const field of [
+      'acceptanceReview[0].evidence',
+      'acceptanceReview[0].note',
+      'acceptanceReview[0].id',
+      'A1',
+      'checks[0].result',
+      'verificationChecks[0].argv',
+      'verificationChecks[0].timeoutMs',
+      'verificationChecks[0].repeatable',
+      'outcomeId',
+    ])
+      expect(message).toContain(field);
+    expect((await inspectNativeSdkRun(f.root, f.name)).run.state).toEqual(before.state);
+    request.outcome.output = {
+      summary: 'Implemented the fixture',
+      acceptanceReview: fixtureAcceptanceReview(['A1']),
+      checks: [],
+      knownLimits: [],
+      verificationChecks: [],
+      submittedAt: '2026-11-03T00:00:00+00:00',
+    };
+    const conflict = await submit();
+    expect(conflict.response.error?.code).toBe('OUTCOME_CONFLICT');
+    expect(conflict.response.error?.message).toContain('新的 outcomeId');
+    request.outcome.outcomeId = 'corrected-fields';
+    const accepted = await submit();
+    expect(accepted.response.status, JSON.stringify(accepted.response)).toBe('succeeded');
+    const after = (await inspectNativeSdkRun(f.root, f.name)).run;
+    expect(after.actions.find(({ id }) => id === request.outcome.actionId)?.claim).toEqual(
+      before.actions.at(-1)?.claim,
+    );
+  });
+  it('submits a Native candidate through its returned receipt without manual identity fields', async () => {
+    const f = await builderFixture();
+    const claimed = await cli(f.root, f.requestFile);
+    const request = claimed.data.resultRequest;
+    expect(request).toMatchObject({ operation: 'record-outcome', receipt: expect.any(String) });
+    expect(request).not.toHaveProperty('outcome');
+    expect(request.result.output).toMatchObject({
+      summary: expect.any(String),
+      acceptanceReview: expect.any(Array),
+    });
+    expect(claimed.data.checkRequestTemplate).toMatchObject({
+      id: expect.any(String),
+      executable: expect.any(String),
+      argv: expect.any(Array),
+      cwdRef: '.',
+      timeoutMs: expect.any(String),
+      repeatable: expect.any(String),
+    });
+    request.result = {
+      status: 'succeeded',
+      output: {
+        summary: 'Implemented fixture.',
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
+        checks: [],
+        knownLimits: [],
+      },
+    };
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'native-receipt-'));
+    roots.push(dir);
+    const file = path.join(dir, 'submit.json');
+    await fs.writeFile(file, JSON.stringify(request));
+    await cli(f.root, file);
+    const before = (await inspectNativeSdkRun(f.root, f.name)).run;
+    expect(before.actions.at(-1)).toMatchObject({ stepId: 'verify.checks', status: 'pending' });
+    await cli(f.root, file);
+    expect((await inspectNativeSdkRun(f.root, f.name)).run).toEqual(before);
+  });
+
   it('rejects a Builder identity before claiming a Verifier and accepts an independent retry', async () => {
     const fixture = await verifierOutcomeFixture(async ({ root, name, requestFile, action }) => {
       const before = (await inspectNativeSdkRun(root, name)).run;

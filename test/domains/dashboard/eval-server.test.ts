@@ -111,6 +111,74 @@ describe('Dashboard Eval routes', () => {
     const artifact = await request('/runs/cli-history/artifact?ref=summary.md');
     expect(artifact.body.content).toBe('# Report');
   });
+  it('lists built-in dataset choices without downloading or starting Eval', async () => {
+    const result = await request('/datasets');
+    expect(result.status).toBe(200);
+    expect(result.body.items.map((item: { id: string }) => item.id)).toEqual([
+      'workbuddy-code',
+      'skillsbench',
+    ]);
+    expect(
+      result.body.items.every((item: { status: string }) => item.status === 'not-downloaded'),
+    ).toBe(true);
+    await expect(fs.stat(path.join(project, '.comet/eval/cache/datasets'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+  it('lists task support for the selected dataset treatment without starting Eval', async () => {
+    const datasets = await request('/datasets');
+    const cached = datasets.body.items.find((item: { id: string }) => item.id === 'workbuddy-code');
+    const task = path.join(cached.root, 'tasks/testing-hard-router_matching');
+    await fs.mkdir(path.join(task, 'environment'), { recursive: true });
+    await fs.mkdir(path.join(task, 'tests'));
+    await fs.mkdir(path.join(cached.root, 'shared'));
+    await fs.writeFile(path.join(cached.root, 'dataset.toml'), '[dataset]\nid="fixture"\n');
+    await fs.writeFile(path.join(task, 'task.toml'), '[agent]\ntimeout_sec=900\n');
+    await fs.writeFile(path.join(task, 'instruction.md'), 'Test router matching.');
+    await fs.writeFile(
+      path.join(task, 'environment/Dockerfile'),
+      'FROM python:3.12\nWORKDIR /workspace\n',
+    );
+    await fs.writeFile(path.join(task, 'tests/verifier.toml'), 'checks=[]\n');
+    await fs.writeFile(
+      path.join(cached.root, 'dataset-source.json'),
+      JSON.stringify({
+        dataset: cached.id,
+        revision: cached.revision,
+        archiveSha256: cached.archiveSha256,
+      }),
+    );
+    const native = await request('/datasets/workbuddy-code/tasks?datasetTreatment=native');
+    expect(native.status).toBe(200);
+    expect(native.body.items).toEqual([
+      { id: 'testing-hard-router_matching', supported: false, reason: expect.any(String) },
+    ]);
+    const goal = await request('/datasets/workbuddy-code/tasks?datasetTreatment=goal');
+    expect(goal.status).toBe(200);
+    expect(goal.body.items).toEqual([{ id: 'testing-hard-router_matching', supported: true }]);
+    const invalid = await request('/datasets/workbuddy-code/tasks?datasetTreatment=unknown');
+    expect(invalid.status).toBe(400);
+  });
+  it('lists tasks from the selected dataset root without requiring the project cache', async () => {
+    const datasetRoot = path.join(project, 'imported dataset');
+    const task = path.join(datasetRoot, 'tasks/imported-only');
+    await fs.mkdir(path.join(task, 'environment'), { recursive: true });
+    await fs.writeFile(path.join(task, 'task.md'), '---\nname: imported-only\n---\nImported task.');
+    await fs.writeFile(
+      path.join(task, 'environment/Dockerfile'),
+      'FROM python:3.12\nWORKDIR /workspace\n',
+    );
+    for (const root of [datasetRoot, path.relative(project, datasetRoot)]) {
+      const query = new URLSearchParams({ datasetRoot: root, datasetTreatment: 'goal' });
+      const result = await request(`/datasets/skillsbench/tasks?${query}`);
+      expect(result.status).toBe(200);
+      expect(result.body.items).toEqual([{ id: 'imported-only', supported: true }]);
+    }
+    expect((await request('/datasets/skillsbench/tasks?datasetRoot=')).status).toBe(400);
+    await expect(fs.stat(path.join(project, '.comet/eval/cache/datasets'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
   it('serves bounded case pages and validates case identities and filters', async () => {
     const detail = await request('/runs/cli-history');
     expect(detail.body.caseContentOmitted).toBe(true);

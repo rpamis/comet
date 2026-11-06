@@ -8,6 +8,10 @@ from scaffold.python.eval_context import context_from_environment, resolve_manag
 
 EVAL_ROOT = Path(__file__).resolve().parents[2]
 SUITE_NAMES = {"local", "langsmith", "langfuse"}
+CURRENT_COMET_SNAPSHOT_REF = ".dataset-state/tools/node_modules/@rpamis/comet"
+
+
+DATASET_NPM_CACHE_REF = ".dataset-state/.cache/npm/_cacache"
 
 
 def get_suite_root() -> Path:

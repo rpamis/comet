@@ -3,6 +3,7 @@ import {
   NATIVE_VERIFIER_ACCEPTANCE_RESULTS,
   NATIVE_VERIFIER_RESPONSE_KINDS,
   NATIVE_VERIFIER_VERDICTS,
+  NATIVE_REQUEST_REVIEW_RESULTS,
   nativeEnumText,
 } from './native-input-enum.js';
 import {
@@ -25,6 +26,7 @@ export interface NativeVerifierFinalResult {
   acceptance: NativeVerifierAcceptanceResult[];
   risks: string[];
   summary: string;
+  requestReview?: { result: (typeof NATIVE_REQUEST_REVIEW_RESULTS)[number]; reason: string };
 }
 
 export interface NativeVerifierCheckRequest {
@@ -53,6 +55,7 @@ export interface NativeVerifierBinding {
   candidateId: string;
   identityProvider: string;
   builderExecutionRef: string;
+  requireIndependentSession?: boolean;
   iteration: number;
   attempt: number;
   /** Acceptance IDs required in this Verifier response. */
@@ -116,7 +119,15 @@ function parseFinalResult(value: unknown, inputPath: string): NativeVerifierFina
   const input = plainRecord(value, 'Native Verifier final result');
   exactKeys(
     input,
-    ['iteration', 'attempt', 'verdict', 'acceptance', 'risks', 'summary'],
+    [
+      'iteration',
+      'attempt',
+      'verdict',
+      'acceptance',
+      'risks',
+      'summary',
+      ...(Object.hasOwn(input, 'requestReview') ? ['requestReview'] : []),
+    ],
     'Native Verifier final result',
     inputPath,
   );
@@ -128,7 +139,21 @@ function parseFinalResult(value: unknown, inputPath: string): NativeVerifierFina
   if (!Array.isArray(input.risks) || !input.risks.every((risk) => typeof risk === 'string')) {
     throw new Error('Native Verifier risks must be text entries');
   }
+  let requestReview: NativeVerifierFinalResult['requestReview'];
+  if (input.requestReview !== undefined) {
+    const review = plainRecord(input.requestReview, 'Native requestReview');
+    exactKeys(review, ['result', 'reason'], 'Native requestReview', `${inputPath}/requestReview`);
+    requestReview = {
+      result: nativeEnumText(
+        review.result,
+        NATIVE_REQUEST_REVIEW_RESULTS,
+        'Native requestReview result',
+      ),
+      reason: text(review.reason, 'Native requestReview reason'),
+    };
+  }
   return {
+    ...(requestReview ? { requestReview } : {}),
     iteration: integer(input.iteration, 'Native Verifier iteration'),
     attempt: integer(input.attempt, 'Native Verifier attempt'),
     verdict,
@@ -225,7 +250,10 @@ export function validateNativeTrustedVerifierEnvelope(options: {
   if (envelope.identityProvider !== binding.identityProvider) {
     throw new Error('Native Verifier identity provider does not match the Builder provider');
   }
-  if (envelope.verifierExecutionRef === binding.builderExecutionRef) {
+  if (
+    binding.requireIndependentSession !== false &&
+    envelope.verifierExecutionRef === binding.builderExecutionRef
+  ) {
     throw new Error('Native Builder and Verifier must be different executions');
   }
   const response = parseNativeVerifierResponse(envelope.payload);

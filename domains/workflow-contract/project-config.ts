@@ -169,6 +169,7 @@ type ProjectConfigCommentKey =
   | 'default_workflow'
   | 'workflows'
   | 'ambient_resume'
+  | 'change_walkthrough'
   | 'memory'
   | 'memory.learning'
   | 'memory.retrieval'
@@ -214,6 +215,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
     schema: '# Configuration schema used by Comet. Do not edit this value.',
     default_workflow: '# Default workflow entered by /comet. Must also appear in workflows.',
     workflows: '# Workflows enabled in this project: native, classic, or both.',
+    change_walkthrough:
+      '# Generate a standalone HTML change walkthrough for Native and Classic. Enabling it uses extra explanation tokens.\n# change_walkthrough: true | false (default: true)',
     ambient_resume:
       '# Enables automatic recovery through the read-only Ambient Resume probe for both Native and Classic. Set false to disable it.\n# ambient_resume: true | false',
     memory: '# Project policy for automatic personal-memory learning and retrieval.',
@@ -287,6 +290,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
     schema: '# Comet 使用的配置格式版本，请勿修改此值。',
     default_workflow: '# `/comet` 默认进入的工作流；该值也必须出现在 workflows 中。',
     workflows: '# 此项目启用的工作流，可填写 native、classic 或同时启用两者。',
+    change_walkthrough:
+      '# 是否生成可直接打开的 HTML 变更说明，同时作用于 Native 和 Classic；开启会增加讲解内容的 token 消耗。\n# change_walkthrough: true | false（默认 true）',
     ambient_resume:
       '# 是否启用只读的环境感知恢复探针，同时作用于 Native 和 Classic；设为 false 可关闭自动工作流恢复。\n# ambient_resume: true | false',
     memory: '# 当前项目的个人记忆自动学习与注入策略。',
@@ -986,6 +991,12 @@ function normalizeWorkflowKnowledgeProjectConfig(value: unknown): WorkflowKnowle
   return { provider, ...(local ? { local } : {}), remote };
 }
 
+export function normalizeChangeWalkthrough(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (typeof value !== 'boolean') throw new Error('change_walkthrough must be true or false');
+  return value;
+}
+
 function normalizeAmbientResume(value: unknown): boolean {
   const resolved = value ?? true;
   if (typeof resolved !== 'boolean') {
@@ -1038,6 +1049,7 @@ function normalizeWorkflowProjectConfig(
     default_workflow: root.default_workflow,
     workflows,
     ambient_resume: ambientResume,
+    change_walkthrough: normalizeChangeWalkthrough(root.change_walkthrough),
     ...(hook ? { hook } : {}),
     memory,
     knowledge,
@@ -1077,13 +1089,14 @@ export function parseWorkflowProjectConfigDocument(
   }
   const parsed = document.toJS() as unknown;
   if (parsed === null || parsed === undefined) {
-    return { value: {}, config: null, ambient_resume: true };
+    return { value: {}, config: null, ambient_resume: true, change_walkthrough: true };
   }
   if (typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error('Invalid .comet/config.yaml: root must be a mapping');
   }
   const value = parsed as Record<string, unknown>;
   const ambientResume = normalizeAmbientResume(value.ambient_resume);
+  const changeWalkthrough = normalizeChangeWalkthrough(value.change_walkthrough);
   const hook =
     value.hook === undefined ? undefined : normalizeWorkflowHookProjectConfig(value.hook);
   const memory = normalizeWorkflowMemoryProjectConfig(value.memory);
@@ -1112,6 +1125,7 @@ export function parseWorkflowProjectConfigDocument(
     value,
     config,
     ambient_resume: ambientResume,
+    change_walkthrough: changeWalkthrough,
     memory,
     knowledge,
     ...(hook ? { hook } : {}),
@@ -1149,6 +1163,7 @@ export function workflowProjectConfigManagedValue(
     default_workflow: config.default_workflow,
     workflows: config.workflows ?? [config.default_workflow],
     ambient_resume: config.ambient_resume,
+    change_walkthrough: config.change_walkthrough ?? true,
     memory: config.memory ?? { ...DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG },
     knowledge: {
       provider: knowledge.provider,
@@ -1244,7 +1259,11 @@ export function mergeWorkflowProjectConfigDocument(
   existing: Record<string, unknown>,
   config: WorkflowProjectConfig,
 ): Record<string, unknown> {
-  const managed = workflowProjectConfigManagedValue(config);
+  const managed = workflowProjectConfigManagedValue({
+    ...config,
+    change_walkthrough:
+      config.change_walkthrough ?? normalizeChangeWalkthrough(existing.change_walkthrough),
+  });
   const validated = parseWorkflowProjectConfigDocument(stringify(managed)).config;
   if (!validated) throw new Error('Unsupported Comet project schema');
   const output: Record<string, unknown> = {
@@ -1253,6 +1272,7 @@ export function mergeWorkflowProjectConfigDocument(
     default_workflow: validated.default_workflow,
     workflows: validated.workflows,
     ambient_resume: validated.ambient_resume,
+    change_walkthrough: validated.change_walkthrough ?? true,
   };
   if (validated.hook) {
     output.hook = {
@@ -1318,6 +1338,7 @@ export function mergeWorkflowProjectConfigDocument(
         ? { document_writes: validated.native.document_writes }
         : {}),
     };
+    if (config.native?.document_writes === 'allow') delete native.document_writes;
     if (validated.native.finish?.pull_request) {
       const existingFinish = optionalRecord(existingNative.finish);
       native.finish = {
@@ -1380,6 +1401,7 @@ export function defaultWorkflowProjectConfig(
     schema: 'comet.project.v1',
     default_workflow: 'native',
     ambient_resume: true,
+    change_walkthrough: true,
     memory: { ...DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG },
     knowledge: { ...DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG },
     native: {
@@ -2414,6 +2436,9 @@ function managedWorkflowConfigFields(source) {
   }
   if (root.ambient_resume !== undefined && typeof root.ambient_resume !== 'boolean') {
     throw new Error('ambient_resume must be true or false');
+  }
+  if (root.change_walkthrough !== undefined && typeof root.change_walkthrough !== 'boolean') {
+    throw new Error('change_walkthrough must be true or false');
   }
   const memory = normalizeWorkflowMemoryProjectConfig(root.memory);
   const knowledge = normalizeWorkflowKnowledgeProjectConfig(root.knowledge);

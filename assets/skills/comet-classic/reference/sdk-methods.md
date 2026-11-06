@@ -12,7 +12,7 @@ New SDK changes use `comet-state.yaml`; historical `.comet.yaml` files stay in p
 
 When the response includes `agent.continuation.mode`, follow [automatic handoff](auto-transition.md); mode takes precedence over the old `nextAction.kind`. Distinguish manual handoff, waiting for the original executor, and outcome reconciliation. Submit `completion` only after completing the actual work. Use each phase's kind-based routing only for older responses without mode. Reconcile the original Action when its outcome is unknown; do not dispatch external work again.
 
-For denied Verify edits or a pending review proposal, read [edit review](../../comet/reference/edit-review.md). Load only the references needed for the current phase and an actual exception.
+When an edit needs an actual-impact judgement or a continuation points to a content judgement, read [edit continuation](../../comet/reference/edit-review.md). Load only the references needed for the current phase and an actual exception.
 
 ## Entry and artifacts
 

@@ -17,6 +17,28 @@ class FailureAttribution:
 
 
 def classify_failure(check: str, events: dict, profile: str | None) -> FailureAttribution:
+    if check.startswith("dataset_reference_access:"):
+        return FailureAttribution(
+            "model", check, "execution Agent attempted to retrieve benchmark reference materials"
+        )
+    if check.startswith(("dataset_verifier_error:", "dataset_verifier_unconfirmed:")):
+        return FailureAttribution(
+            "task",
+            check,
+            "original verifier execution needs attribution; candidate and environment causes remain possible; original reward retained",
+        )
+    if check.startswith(
+        ("dataset_environment:", "dataset_input_changed:", "dataset_environment_changed:")
+    ):
+        return FailureAttribution(
+            "harness", check, "dataset preparation or bound evaluation input failed"
+        )
+    if check.startswith("dataset_incomplete:"):
+        return FailureAttribution(
+            "model",
+            check,
+            "original dataset grader did not award full success; workflow completion does not override it",
+        )
     skills_invoked = events.get("skills_invoked") or []
     if re.search(r"Required skill not invoked|skill.*not invoked", check, re.I):
         if not skills_invoked:

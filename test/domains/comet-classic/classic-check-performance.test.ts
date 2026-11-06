@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
+import * as syncFs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,6 +10,11 @@ import {
 } from '../../../domains/comet-classic/classic-check-snapshot.js';
 import { withCometRuntimeMetrics } from '../../../platform/process/runtime-metrics.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
+
+vi.mock('node:fs', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:fs')>();
+  return { ...original, lstatSync: vi.fn(original.lstatSync) };
+});
 
 describe('Classic snapshot work budgets', () => {
   let root: string;
@@ -146,6 +152,13 @@ describe('Classic snapshot work budgets', () => {
       if (String(args[0]) === file && typeof stat.size === 'bigint') {
         return Object.assign(stat, { mtimeNs: stable.mtimeNs, ctimeNs: stable.ctimeNs });
       }
+      return stat;
+    });
+    const { lstatSync } = await vi.importActual<typeof syncFs>('node:fs');
+    vi.spyOn(syncFs, 'lstatSync').mockImplementation((...args: Parameters<typeof lstatSync>) => {
+      const stat = lstatSync(...args);
+      if (String(args[0]) === file && typeof stat.size === 'bigint')
+        return Object.assign(stat, { mtimeNs: stable.mtimeNs, ctimeNs: stable.ctimeNs });
       return stat;
     });
     const before = await collectCheckSnapshot(root, change, identity, options);

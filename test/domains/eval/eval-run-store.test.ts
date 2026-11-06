@@ -40,6 +40,66 @@ describe('Eval run history and baselines', () => {
       forgetEvalEvidenceReader(path.join(runs, id));
     await fs.rm(project, { recursive: true, force: true });
   });
+  it('pairs Goal and Native by original dataset scoring identity and reports task scores', async () => {
+    for (const [id, treatment, score] of [
+      ['goal', 'CLAUDE_CODE_GOAL', 0.5],
+      ['native', 'COMET_NATIVE_SDK_CURRENT', 0.833],
+    ] as const) {
+      const root = await report(id, [false]);
+      const metaFile = path.join(root, 'metadata.json');
+      const meta = JSON.parse(await fs.readFile(metaFile, 'utf8'));
+      await fs.writeFile(
+        metaFile,
+        JSON.stringify({
+          ...meta,
+          dataset_plan: {
+            schema: 'comet.eval.dataset.v1',
+            dataset: { id: 'skillsbench', version: '1.1' },
+            contentHash: 'sha256:' + 'a'.repeat(64),
+            scorerHash: 'sha256:' + 'b'.repeat(64),
+            tasks: [{ id: 'task-0', contentHash: 'sha256:' + 'c'.repeat(64) }],
+            count: 1,
+            treatment,
+          },
+        }),
+      );
+      const file = path.join(root, 'reports/case-0_report.json');
+      const raw = JSON.parse(await fs.readFile(file, 'utf8'));
+      raw.name = `task-0-${treatment}`;
+      raw.checks_passed = [`[RUBRIC] dataset-score: ${score}`];
+      raw.events_summary.treatment = treatment;
+      raw.events_summary.case_manifest.task_hash = id;
+      await fs.writeFile(file, JSON.stringify(raw));
+      await fs.writeFile(
+        path.join(root, 'expected-case-matrix.json'),
+        JSON.stringify(expectedMatrix([{ rep: 1, task: 'task-0', treatment }])),
+      );
+    }
+    const result = await compareEvalRuns(project, 'native', 'goal');
+    expect(result.comparable).toBe(true);
+    expect(result.metric).toBe('dataset-score');
+    expect(result.cases[0]).toMatchObject({
+      baseline: false,
+      candidate: false,
+      baselineScore: 0.5,
+      candidateScore: 0.833,
+      change: 'improved',
+    });
+    const metaFile = path.join(project, '.comet/eval/runs/goal/metadata.json');
+    const meta = JSON.parse(await fs.readFile(metaFile, 'utf8'));
+    meta.dataset_plan.scorerHash = 'sha256:' + 'd'.repeat(64);
+    await fs.writeFile(metaFile, JSON.stringify(meta));
+    expect((await compareEvalRuns(project, 'native', 'goal')).comparable).toBe(false);
+    meta.dataset_plan.scorerHash = 'sha256:' + 'b'.repeat(64);
+    await fs.writeFile(metaFile, JSON.stringify(meta));
+    const goalReport = path.join(project, '.comet/eval/runs/goal/reports/case-0_report.json');
+    const raw = JSON.parse(await fs.readFile(goalReport, 'utf8'));
+    raw.events_summary.role_models.subject = 'different-model';
+    await fs.writeFile(goalReport, JSON.stringify(raw));
+    expect((await compareEvalRuns(project, 'native', 'goal')).reasons).toContain(
+      '数据集对照需要相同 Agent、模型、端点和执行预算',
+    );
+  });
   async function report(id: string, outcomes: boolean[], quality = 'included', model = 'model-a') {
     const root = path.join(project, '.comet/eval/runs', id);
     await fs.mkdir(path.join(root, 'reports'), { recursive: true });

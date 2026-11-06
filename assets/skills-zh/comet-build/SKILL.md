@@ -9,6 +9,8 @@ description: '制定计划、实施并验收 Classic 任务。在用户调用 /c
 
 收到入口返回的 layout 后，按 `comet-classic/reference/classic-layout.md` 确定各逻辑根对应的目录。当前上下文已有这份协议时，无需重复加载。本文件中的 OpenSpec CLI 调用均通过适配器执行，文件路径均基于已绑定的 `<classic-*>` 根目录，无需先额外运行 root show。
 
+编辑后需要判断实际影响，或 continuation 指向内容判断时，必须读取并执行[编辑后续行](../comet/reference/edit-review.md)。由当前 Agent 合并处理变化，保留原 Run、有效批准和检查，只补受影响证据。
+
 ## SDK Run 路径
 
 首次进入当前 SDK 阶段、换 Agent 或恢复上下文时，读取[阶段入口与恢复](../comet-classic/reference/sdk-methods.md#阶段入口与恢复)及该参考的当前阶段章节；本会话已有且仍有效时直接复用。下文按当前阶段执行；`nextAction.kind` 的恢复路由只适用于没有 continuation mode 的旧响应。
@@ -28,3 +30,7 @@ description: '制定计划、实施并验收 Classic 任务。在用户调用 /c
 ## Compat 路径
 
 以下旧 Runtime 步骤仅用于 `runtimeFormat: compat`。必须读取 [Compat 操作](reference/compat.md)，按其中当前阶段继续；SDK 不加载该参考。
+
+## 可选变更说明
+
+Build 收尾和 Verify 展示结果前，先核对项目 `.comet/config.yaml` 的 `change_walkthrough`（默认开启；仅显式 `false` 关闭）。开启时读取并执行[变更说明](../comet/reference/change-walkthrough.md)，用共享模板生成或更新同一 `walkthrough.html` 并给出打开链接；关闭时跳过额外讲解、详细指引和渲染，保留原有摘要。Archive 只随现有材料保存已有页面并提供实际归档链接，不补生成、不新增确认、不为页面更新重跑代码检查。

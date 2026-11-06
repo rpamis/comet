@@ -17,6 +17,12 @@ import type { EvalRunConfig } from './eval-run-types.js';
 import { EVAL_AGENT_ENVIRONMENT, resolveEvalExecution } from './eval-execution-config.js';
 import { evalDefaultBudget, evalDefaultSuite } from './eval-user-settings.js';
 import { readEvalRetrySelection, type EvalRetrySelection } from './eval-run-retry.js';
+import {
+  inspectBuiltinDataset,
+  listBuiltinDatasets,
+  type DatasetPlan,
+} from './builtin-datasets.js';
+import { requireDatasetCache } from './dataset-downloads.js';
 
 export interface EvalRunPreview {
   config: EvalRunConfig;
@@ -64,6 +70,11 @@ export function applicationEvalSettings(config: EvalRunConfig): ApplicationEvalS
   };
 }
 const FIELDS = new Set([
+  'dataset',
+  'datasetRoot',
+  'datasetTreatment',
+  'count',
+  'acceptDatasetLicense',
   'target',
   'targetType',
   'agent',
@@ -93,6 +104,48 @@ export function normalizeEvalRunConfig(project: string, value: unknown): EvalRun
   const input = { ...value } as Record<string, unknown>;
   for (const key of Object.keys(input))
     if (!FIELDS.has(key)) throw new EvalRunError(`不支持的 Eval 配置字段：${key}`);
+  if (input.dataset !== undefined) {
+    if (input.datasetRoot !== undefined) {
+      if (typeof input.datasetRoot !== 'string' || !input.datasetRoot.trim())
+        throw new EvalRunError('数据集目录必须是非空路径');
+      input.datasetRoot = path.resolve(project, input.datasetRoot);
+    }
+    if (
+      input.datasetTreatment !== undefined &&
+      (typeof input.datasetTreatment !== 'string' ||
+        !['native', 'goal'].includes(input.datasetTreatment))
+    )
+      throw new EvalRunError('数据集执行方式须为 native 或 goal');
+    if (
+      input.datasetTreatment === 'goal' &&
+      input.agent !== undefined &&
+      input.agent !== 'claude-code'
+    )
+      throw new EvalRunError('Goal 对照组仅支持 Claude Code');
+    input.datasetTreatment ??= 'native';
+    if (input.datasetTreatment === 'goal') input.agent = 'claude-code';
+    if (!listBuiltinDatasets().some((item) => item.id === input.dataset))
+      throw new EvalRunError('未知内置数据集');
+    if (input.quick || input.profile || input.retrySourceRunId)
+      throw new EvalRunError('内置数据集不使用 quick、profile 或自动失败重试');
+    if (input.acceptDatasetLicense !== undefined && typeof input.acceptDatasetLicense !== 'boolean')
+      throw new EvalRunError('数据集许可选项无效');
+    if (
+      input.count !== undefined &&
+      (!Number.isSafeInteger(input.count) || Number(input.count) < 1 || Number(input.count) > 100)
+    )
+      throw new EvalRunError('运行次数须为 1–100');
+    input.target = path.join(evalPackageRoot, 'assets/skills/comet-native');
+    input.targetType = 'skill';
+    input.suite = 'local';
+    input.count ??= 1;
+  } else if (
+    input.datasetRoot !== undefined ||
+    input.count !== undefined ||
+    input.acceptDatasetLicense !== undefined ||
+    input.datasetTreatment !== undefined
+  )
+    throw new EvalRunError('数据集选项需要选择数据集');
   if (typeof input.target !== 'string' || !input.target.trim())
     throw new EvalRunError('请选择 Eval 目标路径');
   const target = path.resolve(project, input.target.trim());
@@ -160,17 +213,19 @@ export function normalizeEvalRunConfig(project: string, value: unknown): EvalRun
   const environment = { ...process.env };
   loadUserEvalEnvironment(environment, os.homedir(), { create: false });
   const defaultBudget = evalDefaultBudget(targetType, environment);
-  const timeoutSeconds = input.timeoutSeconds ?? defaultBudget.timeoutSeconds;
+  const timeoutSeconds = input.timeoutSeconds ?? (input.dataset ? 0 : defaultBudget.timeoutSeconds);
   const maxTurns = input.maxTurns ?? defaultBudget.maxTurns;
   if (
     !Number.isSafeInteger(timeoutSeconds) ||
-    Number(timeoutSeconds) < 30 ||
+    (Number(timeoutSeconds) < 30 && !(input.dataset && timeoutSeconds === 0)) ||
     Number(timeoutSeconds) > 86400 ||
     !Number.isSafeInteger(maxTurns) ||
     Number(maxTurns) < 1 ||
     Number(maxTurns) > 200
   )
-    throw new EvalRunError('时限须为 30–86400 秒，执行轮数须为 1–200');
+    throw new EvalRunError(
+      '时限须为 30–86400 秒（内置数据集可用 0 表示不限时），执行轮数须为 1–200',
+    );
   if ((input.judgeEnabled === true || input.judgeAgent || input.judgeBaseUrl) && !input.judgeModel)
     throw new EvalRunError('启用独立 Judge 时须指定模型');
   if (input.judgeEnabled === false) {
@@ -217,6 +272,14 @@ export async function hashEvalSkill(root: string, manifest?: string): Promise<st
   if (manifest && !isPathWithin(canonical, await fs.realpath(manifest)))
     files.push(['external-manifest', evalValueHash(await fs.readFile(manifest, 'utf8'))]);
   return evalValueHash(files);
+}
+export async function hashEvalDataset(plan: DatasetPlan, skillRoot: string): Promise<string> {
+  return evalValueHash({
+    ...(plan.treatment === 'CLAUDE_CODE_GOAL'
+      ? { treatment: 'CLAUDE_CODE_GOAL' }
+      : { native: await hashEvalSkill(skillRoot) }),
+    dataset: plan.contentHash,
+  });
 }
 async function probe(
   command: string,
@@ -328,7 +391,46 @@ export async function previewEvalRun(project: string, value: unknown): Promise<E
   let taskCount: EvalRunPreview['taskCount'];
   let limitations: string[];
   let blockedReasons: string[] = [];
-  if (config.targetType === 'application') {
+  if (config.dataset) {
+    const root = config.datasetRoot ?? (await requireDatasetCache(project, config.dataset));
+    const plan = await inspectBuiltinDataset({
+      dataset: config.dataset,
+      datasetRoot: root,
+      task: config.task,
+      count: config.count,
+      datasetTreatment: config.datasetTreatment,
+      agent: config.agent,
+    });
+    config.datasetRoot = plan.root;
+    target = {
+      id: resolvedContext!.skillRoot,
+      name: `${plan.dataset.id} · ${config.datasetTreatment === 'goal' ? 'Claude Code Goal' : 'Comet Native'}`,
+      type: 'skill',
+      path: config.target,
+      version: plan.dataset.version,
+      contentHash: await hashEvalDataset(plan, resolvedContext!.skillRoot),
+    };
+    taskSource = 'builtin-dataset';
+    tasks = plan.tasks.map((task) => ({
+      name: task.id,
+      instruction: task.instruction,
+      expected: { supported: task.supported, reason: task.reason ?? null },
+    }));
+    taskCount = { min: tasks.length * plan.count, max: tasks.length * plan.count };
+    limitations = [
+      config.datasetTreatment === 'goal'
+        ? '使用 Claude Code 原生 /goal，不安装 Comet；Goal 评估模型与主模型相同。'
+        : '选择和下载不会启动评测；正式执行使用 Comet Native 与模拟用户。',
+      '成绩对应本次任务与配置，不能直接视为官方榜单复现。',
+      '新计划每题流程预算为原 Agent 时限的四倍（最多一天），构建预算另加 1200 秒；0 仅取消外层总截止时间，不取消每题预算。存储采用候选文件监测，不等同内核磁盘配额。',
+      ...new Set(plan.tasks.flatMap((task) => task.execution.limitations)),
+    ];
+    blockedReasons = plan.tasks
+      .filter((task) => !task.supported)
+      .map((task) => `${task.id}: ${task.reason}`);
+    if (config.dataset === 'workbuddy-code' && !config.acceptDatasetLicense)
+      blockedReasons.push('请阅读并接受 WorkBuddy 数据集许可');
+  } else if (config.targetType === 'application') {
     application = await previewWorkflowApplicationEval({
       file: config.target,
       projectRoot: project,

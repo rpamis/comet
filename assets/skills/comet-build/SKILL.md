@@ -9,6 +9,8 @@ On first entering a phase, handing off to a new Agent, or restoring context, rea
 
 After entry returns layout, follow `comet-classic/reference/classic-layout.md` to bind each logical root to its directory. Do not reload the protocol if it is already in context. Use the adapter for all OpenSpec CLI calls and the bound `<classic-*>` roots for paths; do not run an extra root show first.
 
+When an edit needs an actual-impact judgement or a continuation points to a content judgement, you must read and follow [edit continuation](../comet/reference/edit-review.md). The current Agent merges the handling of changes, keeps the original Run, valid approvals, and checks, and adds only evidence for what is affected.
+
 ## SDK Run path
 
 On first entering the current SDK phase, handing off to a new Agent, or restoring context, read [phase entry and recovery](../comet-classic/reference/sdk-methods.md#phase-entry-and-recovery) and the current phase's section in that reference. Reuse them when already available and still valid in this session. Continue with the phase below; recovery routes based on `nextAction.kind` apply only to older responses without a continuation mode.
@@ -28,3 +30,7 @@ For deterministic local checks, add --local before -- as described in SDK execut
 ## Compat path
 
 The remaining original Runtime steps apply only to `runtimeFormat: compat`. Read [Compat operations](reference/compat.md) and continue its current phase. SDK does not load that reference.
+
+## Optional change walkthrough
+
+At Build completion and before presenting Verify results, check the project `.comet/config.yaml` field `change_walkthrough` (enabled by default; only explicit `false` disables it). When enabled, read and execute [Change walkthrough](../comet/reference/change-walkthrough.md), use the shared template to generate or update the same `walkthrough.html`, and provide an opening link. When disabled, skip extra explanation, detailed instructions and rendering; retain the existing summary. Archive preserves existing pages with the materials and links to their actual archived location; it does not generate missing pages, add confirmation or rerun code checks for page updates.

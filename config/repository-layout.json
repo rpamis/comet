@@ -6,6 +6,7 @@
     "zh": "assets/skills-zh"
   },
   "sharedSkillReferences": [
+    "comet/reference/change-walkthrough.md",
     "comet/reference/edit-review.md",
     "comet/reference/host-check.md",
     "comet/reference/task-learning.md"
@@ -143,6 +144,7 @@
         "implementations": [
           "domains/comet-native/native-portable-storage.ts",
           "domains/comet-native/native-portable-requirements.ts",
+          "domains/comet-native/native-portable-delta-rebase.ts",
           "domains/comet-native/native-portable-checks.ts",
           "domains/comet-native/native-portable-verification.ts",
           "domains/comet-native/native-portable-coordination.ts",
@@ -166,6 +168,7 @@
       "domains/comet-classic/classic-sdk-delivery-repair-model.ts",
       "domains/comet-native/native-change-model.ts",
       "domains/comet-native/native-check-receipt-model.ts",
+      "domains/comet-native/native-sdk-review.ts",
       "domains/comet-native/native-supervisor-model.ts"
     ],
     "workflowCoreModules": [
@@ -564,6 +567,7 @@
           "domains/comet-native/native-portable-archive.ts",
           "domains/comet-native/native-portable-checks.ts",
           "domains/comet-native/native-portable-coordination.ts",
+          "domains/comet-native/native-portable-delta-rebase.ts",
           "domains/comet-native/native-portable-migration-runtime.ts",
           "domains/comet-native/native-portable-recovery.ts",
           "domains/comet-native/native-portable-requirements.ts",
@@ -618,6 +622,21 @@
   "platformModules": ["fs", "http", "install", "paths", "process", "version"],
   "scriptModules": ["benchmark", "build", "install", "lib", "lint", "release"],
   "allowedCodeFiles": [
+    "eval/local/fixtures/edit-continuation-052/a3/classic/common.mjs",
+    "eval/local/fixtures/edit-continuation-052/a3/classic/deterministic-driver.mjs",
+    "eval/local/fixtures/edit-continuation-052/a3/classic/driver.mjs",
+    "eval/local/fixtures/edit-continuation-052/a3/classic/validator.mjs",
+    "eval/local/fixtures/edit-continuation-052/a3/native/controller.mjs",
+    "eval/local/fixtures/edit-continuation-052/a3/native/driver.mjs",
+    "eval/local/fixtures/edit-continuation-052/a4/classic/common.mjs",
+    "eval/local/fixtures/edit-continuation-052/a4/classic/controller.mjs",
+    "eval/local/fixtures/edit-continuation-052/a4/classic/driver.mjs",
+    "eval/local/fixtures/edit-continuation-052/a4/classic/validator.mjs",
+    "eval/local/fixtures/edit-continuation-052/a4/native/driver.mjs",
+    "eval/local/fixtures/edit-continuation-052/a5/classic/common.mjs",
+    "eval/local/fixtures/edit-continuation-052/a5/classic/driver.mjs",
+    "eval/local/fixtures/edit-continuation-052/a5/classic/validator.mjs",
+    "eval/local/fixtures/edit-continuation-052/a5/native/driver.mjs",
     "eval/archives/grill-test-20261013/application/application.mjs",
     "eval/archives/grill-test-20261013/application/bindings.mjs",
     "eval/archives/grill-test-20261013/application/tools/session.mjs",

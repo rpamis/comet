@@ -111,6 +111,7 @@ function parseCheck(value: unknown, index: number): NativeLocalCheckState {
       'activeProcess',
       'evidence',
       'evidenceDigest',
+      'rawInput',
     ]),
     label,
   );
@@ -191,6 +192,23 @@ function parseCheck(value: unknown, index: number): NativeLocalCheckState {
     ...(Object.hasOwn(root, 'evidenceDigest')
       ? { evidenceDigest: stringValue(root.evidenceDigest, `${label}.evidenceDigest`) }
       : {}),
+    ...(root.rawInput !== undefined
+      ? {
+          rawInput: (() => {
+            const input = record(root.rawInput, `${label}.rawInput`);
+            rejectUnknown(
+              input,
+              new Set(['beforeRef', 'afterRef', 'executionRef']),
+              `${label}.rawInput`,
+            );
+            return {
+              beforeRef: stringValue(input.beforeRef, `${label}.rawInput.beforeRef`),
+              afterRef: stringValue(input.afterRef, `${label}.rawInput.afterRef`),
+              executionRef: stringValue(input.executionRef, `${label}.rawInput.executionRef`),
+            };
+          })(),
+        }
+      : {}),
   };
 }
 
@@ -207,6 +225,7 @@ export function parseNativeLocalExecution(value: unknown): NativeLocalExecutionS
       'inputFingerprint',
       'inputFingerprintGate',
       'candidateInputFingerprintGate',
+      'rawInputRef',
       'workspace',
       'execution',
       'checks',
@@ -332,6 +351,9 @@ export function parseNativeLocalExecution(value: unknown): NativeLocalExecutionS
           ),
         }
       : {}),
+    ...(root.rawInputRef !== undefined
+      ? { rawInputRef: stringValue(root.rawInputRef, 'Native local rawInputRef') }
+      : {}),
     workspace: {
       projectRoot: absolutePath(workspaceRoot.projectRoot, 'Native local workspace.projectRoot'),
       worktreeRoot: absolutePath(workspaceRoot.worktreeRoot, 'Native local workspace.worktreeRoot'),
@@ -359,6 +381,9 @@ export function rebuildNativeLocalExecution(options: {
     inputFingerprint: null,
     inputFingerprintGate: null,
     candidateInputFingerprintGate: null,
+    ...(options.portableState.builder_handoff?.raw_input_ref
+      ? { rawInputRef: options.portableState.builder_handoff.raw_input_ref }
+      : {}),
     workspace: {
       projectRoot: path.resolve(options.projectRoot),
       worktreeRoot: path.resolve(options.worktreeRoot ?? options.projectRoot),

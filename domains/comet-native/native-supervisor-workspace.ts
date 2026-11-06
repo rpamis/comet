@@ -790,6 +790,7 @@ export async function finalizeNativeSupervisorDeliveryLocked(options: {
   paths: NativeProjectPaths;
   state: NativeSupervisorState;
   archiveOwnedPaths?: readonly string[];
+  deferCleanup?: boolean;
 }): Promise<{ state: NativeSupervisorState; targetRoot: string; targetCommit: string }> {
   const persisted = await readNativeSupervisorState(options.paths, options.state.parent);
   const state = persisted ?? options.state;
@@ -847,6 +848,7 @@ export async function finalizeNativeSupervisorDeliveryLocked(options: {
       state,
       targetCommit: targetHeadBeforeDelivery,
     });
+    if (options.deferCleanup) return { state, targetRoot, targetCommit: targetHeadBeforeDelivery };
     await executeNativeSupervisorCleanup({ paths: options.paths, plan, targetRoot });
     if (state.children.every(({ status }) => status === 'archived')) {
       await clearNativeSupervisorCleanupJournal(options.paths, state.parent);
@@ -904,6 +906,7 @@ export async function finalizeNativeSupervisorDeliveryLocked(options: {
   if (targetCommit !== integrationHead) {
     throw new Error('Native Supervisor target did not receive the verified integration head');
   }
+  if (options.deferCleanup) return { state, targetRoot, targetCommit };
   const next = cloneState(state);
   for (const child of next.children) child.status = 'archived';
   await executeNativeSupervisorCleanup({

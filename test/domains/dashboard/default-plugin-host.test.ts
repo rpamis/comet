@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import * as git from '../../../platform/process/git.js';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -13,6 +14,28 @@ import {
 import { SqliteAgentContextApplicationStore } from '../../../domains/agent-learning/index.js';
 
 describe('default dashboard plugin host', () => {
+  it('shares Git identity and worktree observations only within each host construction', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-dashboard-git-scope-'));
+    const project = path.join(root, 'project');
+    await fs.mkdir(project);
+    const run = vi.spyOn(git, 'runGitCommand').mockImplementation((_root, args) => {
+      if (args[0] === 'remote') return 'https://example.com/team/project.git';
+      if (args.includes('--show-toplevel')) return project;
+      throw new Error(`unexpected Git probe: ${args.join(' ')}`);
+    });
+    try {
+      const factory = createDefaultDashboardPluginHostFactory({ homeDirectory: root });
+      await factory('route', project);
+      const first = run.mock.calls.length;
+      expect(first).toBeGreaterThan(0);
+      expect(first).toBeLessThanOrEqual(2);
+      await factory('route', project);
+      expect(run.mock.calls.length).toBe(first * 2);
+    } finally {
+      run.mockRestore();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
   it('returns available sections and cancels an unavailable provider within the page budget', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-dashboard-remote-budget-'));
     const project = path.join(root, 'project');

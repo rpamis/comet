@@ -120,6 +120,11 @@ describe('Git process helpers', () => {
         `# branch.oid ${id}\0# branch.head feature/test\0# future ignored\0? literal\\path\0`,
       ),
     ).toEqual({ head: id, branch: 'feature/test', status: '?? literal\\path\0' });
+    expect(
+      parseGitStatusObservation('# branch.oid (initial)\0# branch.head main\0', {
+        allowUnborn: true,
+      }),
+    ).toEqual({ head: 'unborn', branch: 'main', status: '' });
     expect(() => parseGitStatusObservation('# branch.oid (initial)\0# branch.head main\0')).toThrow(
       'HEAD',
     );

@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 function normalizePattern(pattern) {
@@ -20,6 +21,21 @@ export function readGitignoredTopLevelEntries(root, gitignorePath = '.gitignore'
       : withoutLeadingSlash;
     if (!normalized || normalized.includes('/')) continue;
     ignored.add(normalized);
+  }
+
+  // Git resolves local exclusions, global excludes and linked-worktree metadata;
+  // its default index check keeps tracked entries subject to architecture checks.
+  const entries = readdirSync(root);
+  if (entries.length) {
+    const result = spawnSync('git', ['check-ignore', '--stdin', '-z'], {
+      cwd: root,
+      input: `${entries.join('\0')}\0`,
+      encoding: 'utf8',
+      timeout: 5000,
+      windowsHide: true,
+    });
+    if (result.status === 0)
+      for (const entry of result.stdout.split('\0')) if (entry) ignored.add(entry);
   }
 
   return ignored;

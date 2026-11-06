@@ -90,6 +90,7 @@ export function nativeTaskContextRequest(options: {
   projectRoot?: string;
   sessionId?: string;
   name?: string;
+  task?: string;
 }) {
   return taskContextRequest({
     ...options,

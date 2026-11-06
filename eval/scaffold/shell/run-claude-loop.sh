@@ -38,6 +38,7 @@ fi
 
 MAX_TURNS=12
 AGENT="claude-code"
+GOAL_MODE=0
 MODEL=""
 SIMULATOR_PROMPT=""
 DECISION_REPLY=""
@@ -50,6 +51,7 @@ PLUGIN_ARGS=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --agent) AGENT="$2"; shift 2 ;;
+        --goal) GOAL_MODE=1; shift ;;
         --max-turns) MAX_TURNS="$2"; shift 2 ;;
         --model) MODEL="$2"; shift 2 ;;
         --plugin-dir)
@@ -93,6 +95,10 @@ case "$AGENT" in
         fi
         ;;
 esac
+if [[ "$GOAL_MODE" == 1 && "$AGENT" != "claude-code" ]]; then
+    echo "[loop] Goal 对照组仅支持 Claude Code" >&2
+    exit 2
+fi
 if [[ -z "$MODEL" ]]; then
     case "$AGENT" in
         claude-code) MODEL="${ANTHROPIC_MODEL:-}" ;;
@@ -106,6 +112,11 @@ MODEL_FLAG=()
 prepare_agent_runtime_config "$AGENT" "$MODEL"
 CODEBUDDY_SETTINGS_FLAG=()
 [[ -n "${CODEBUDDY_SETTINGS_PATH:-}" ]] && CODEBUDDY_SETTINGS_FLAG=(--settings "$CODEBUDDY_SETTINGS_PATH")
+DATASET_SETTINGS_FLAG=()
+if [[ "$AGENT" == claude-code && -f .dataset-task.json ]]; then
+    DATASET_SETTINGS=$(python3 -I "$SCRIPT_DIR/../python/dataset_integrity.py" --settings) || exit 2
+    DATASET_SETTINGS_FLAG=(--settings "$DATASET_SETTINGS")
+fi
 
 capture_agent() {
     local role="$1"
@@ -137,10 +148,10 @@ run_agent_turn() {
             if [[ -n "$resume_id" ]]; then
                 COMET_EVAL_AGENT_ROLE="$role" capture_agent "$role" claude -p "$prompt" ${role_plugin_args[@]+"${role_plugin_args[@]}"} ${MODEL_FLAG[@]+"${MODEL_FLAG[@]}"} \
                     --resume "$resume_id" --output-format stream-json --verbose \
-                    --dangerously-skip-permissions
+                    --dangerously-skip-permissions ${DATASET_SETTINGS_FLAG[@]+"${DATASET_SETTINGS_FLAG[@]}"}
             else
                 COMET_EVAL_AGENT_ROLE="$role" capture_agent "$role" claude -p "$prompt" ${role_plugin_args[@]+"${role_plugin_args[@]}"} ${MODEL_FLAG[@]+"${MODEL_FLAG[@]}"} \
-                    --output-format stream-json --verbose --dangerously-skip-permissions
+                    --output-format stream-json --verbose --dangerously-skip-permissions ${DATASET_SETTINGS_FLAG[@]+"${DATASET_SETTINGS_FLAG[@]}"}
             fi
             ;;
         codex)
@@ -241,6 +252,16 @@ ${subject_text:0:3000}
     # retaining only bounded role/session evidence in the driver log.
     local sim_raw sim_session sim_reply
     sim_raw=$(run_agent_turn "$sim_prompt" "" "simulator" 2>/dev/null) || return $?
+    # 只记录计量字段；提示与回答正文不进入主体遥测。
+    printf '%s' "$sim_raw" | python3 -c '
+import json,sys
+for line in sys.stdin:
+    try: message=json.loads(line)
+    except ValueError: continue
+    if message.get("type") in {"result", "turn.completed"}:
+        safe={key:message[key] for key in ("type","session_id","uuid","duration_ms","usage","modelUsage","total_cost_usd") if key in message}
+        print("[loop] role-usage simulator "+json.dumps(safe),file=sys.stderr)
+'
     sim_session=$(printf '%s' "$sim_raw" | extract_session_id) || true
     if [[ -n "$sim_session" ]]; then
         echo "[loop] role-session simulator $sim_session" >&2
@@ -288,6 +309,14 @@ while [[ $TURN -lt $MAX_TURNS ]]; do
         # The first turn uses the task prompt. A requested cold-resume boundary
         # starts another session with only the continuation prompt.
         SUBJECT_PROMPT="${FRESH_PROMPT:-$PROMPT}"
+        if [[ "$GOAL_MODE" == 1 ]]; then
+            if [[ "$PROMPT_ARG" != @* ]]; then
+                echo "[loop] Goal 需要原题文件" >&2
+                exit 2
+            fi
+            # 原题保存在文件中，避免超过 /goal 条件的 4000 字符上限。
+            SUBJECT_PROMPT="/goal Complete the original task in ${PROMPT_ARG#@}. Satisfy all its requirements and constraints, verify the actual result using available checks, and report the evidence. Ask the user only when necessary."
+        fi
         FRESH_PROMPT=""
         RAW=$(run_agent_turn "$SUBJECT_PROMPT" "" "subject" | forward_subject_stream)
         SUBJECT_STATUS=$?
@@ -308,6 +337,26 @@ while [[ $TURN -lt $MAX_TURNS ]]; do
             printf '%s\n' "$RAW" >&2
         fi
         exit "$SUBJECT_STATUS"
+    fi
+
+    if [[ "$GOAL_MODE" == 1 && "$TURN" == 1 ]]; then
+        # 不支持原生 Goal 时明确失败，禁止把普通提示词执行冒充 Goal。
+        if ! printf '%s\n' "$RAW" | python3 -c '
+import json, sys
+available = False
+for line in sys.stdin:
+    try:
+        event = json.loads(line)
+    except ValueError:
+        continue
+    if event.get("type") == "system" and event.get("subtype") == "init":
+        available = "goal" in event.get("slash_commands", [])
+sys.exit(0 if available else 1)
+'; then
+            echo "[loop] 原生 Goal 不可用；本次执行不能作为 Goal 对照" >&2
+            exit 2
+        fi
+        echo "[loop] native Goal command available and invoked" >&2
     fi
 
     # Extract session id and the final assistant text from this turn.
@@ -355,7 +404,11 @@ except: print('')
 
     # 指定 Run 时读取真实交付状态；探针不可用时终止，避免反复催促已完成的流程。
     COMPLETION_STATUS=0
-    COMET_EVAL_COMPLETION_RUNS="$COMPLETION_RUNS" bash "$SCRIPT_DIR/completion-point.sh" "$RESULT_TEXT" || COMPLETION_STATUS=$?
+    if [[ "$GOAL_MODE" != 1 ]]; then
+        COMET_EVAL_COMPLETION_RUNS="$COMPLETION_RUNS" bash "$SCRIPT_DIR/completion-point.sh" "$RESULT_TEXT" || COMPLETION_STATUS=$?
+    else
+        COMPLETION_STATUS=1
+    fi
     if [[ $COMPLETION_STATUS -eq 0 ]]; then
         echo "[loop] workflow completion detected; ending" >&2
         break
@@ -414,6 +467,11 @@ PY
         fi
         echo "[loop] simulated reply (${#USER_REPLY} chars)" >&2
         continue
+    fi
+
+    if [[ "$GOAL_MODE" == 1 ]]; then
+        echo "[loop] native Goal invocation ended; task correctness is checked externally" >&2
+        break
     fi
 
     # If the result has no question and isn't complete, the subject likely finished

@@ -24,6 +24,53 @@ from scaffold.python.tasks import load_task
 AGENT_FIXTURE_TIMEOUT = 30 if os.name == "nt" else 10
 
 
+@pytest.mark.parametrize("available", [True, False])
+def test_goal_uses_native_command_without_comet_completion_or_nudges(tmp_path, available):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake = fake_bin / "claude"
+    fake.write_text(
+        "#!/usr/bin/env bash\npython3 - \"$@\" <<'PY'\n"
+        "import json,sys\nfrom pathlib import Path\n"
+        "Path('goal-args.json').write_text(json.dumps(sys.argv[1:]))\n"
+        f"print(json.dumps({{'type':'system','subtype':'init','slash_commands':{['goal'] if available else []!r},'session_id':'goal-fixture'}}))\n"
+        "print(json.dumps({'type':'result','result':'Task finished.','session_id':'goal-fixture'}))\nPY\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    fake.chmod(0o755)
+    prompt = tmp_path / "original.txt"
+    prompt.write_text("Original task. " * 1000)
+    # Native 的探针会拒绝此状态；Goal 不应调用它。
+    (tmp_path / ".dataset-task.json").write_text("{}")
+    result = subprocess.run(
+        [
+            utils.BASH_EXEC,
+            utils._to_bash_path(utils.SHELL_DIR / "run-claude-loop.sh"),
+            "@" + utils._to_bash_path(prompt),
+            "--goal",
+            "--max-turns",
+            "2",
+        ],
+        cwd=tmp_path,
+        env={**_isolated_fake_agent_env(fake_bin, "claude"), "MSYS2_ARG_CONV_EXCL": "/goal "},
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=AGENT_FIXTURE_TIMEOUT,
+    )
+    assert result.returncode == (0 if available else 2), result.stderr
+    args = json.loads((tmp_path / "goal-args.json").read_text())
+    assert args[0] == "-p" and args[1].startswith("/goal ")
+    assert "original.txt" in args[1] and len(args[1]) < 4000
+    settings = json.loads(args[args.index("--settings") + 1])
+    assert settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == (
+        "python3 -I /opt/python/dataset_integrity.py --hook"
+    )
+    assert "nudging to continue" not in result.stderr
+    assert "workflow completion detected" not in result.stderr
+
+
 def _isolated_fake_agent_env(fake_bin: Path, agent: str) -> dict[str, str]:
     """Use only fixtures and Bash system tools, with no host Agent/auth fallback."""
     env = {
@@ -222,6 +269,80 @@ def test_run_shell_file_capture_keeps_stdout_and_stderr(monkeypatch, tmp_path: P
     assert result.returncode == 7
     assert result.stdout == "output\n"
     assert result.stderr == "warning\n"
+
+
+def test_build_timeout_terminates_descendants_without_waiting_for_their_pipes(
+    tmp_path, monkeypatch
+):
+    import time
+
+    shell = tmp_path / "shell"
+    shell.mkdir()
+    child = tmp_path / "child.py"
+    pid_file = tmp_path / "child.pid"
+    child.write_text(
+        f"import os, time\nfrom pathlib import Path\nPath({str(pid_file)!r}).write_text(str(os.getpid()))\n"
+        "print('child started', flush=True)\ntime.sleep(20)\n",
+        encoding="utf-8",
+    )
+    (shell / "build.sh").write_text(
+        f'"{utils._to_bash_path(sys.executable)}" "{utils._to_bash_path(child)}" &\nwait\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(utils, "SHELL_DIR", shell)
+    started = time.monotonic()
+    unrelated = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(20)"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        with pytest.raises(subprocess.TimeoutExpired) as error:
+            utils.run_shell("build.sh", timeout=1, terminate_process_tree=True)
+        assert unrelated.poll() is None
+    finally:
+        unrelated.terminate()
+        unrelated.wait(timeout=5)
+    assert time.monotonic() - started < 6
+    assert "child started" in error.value.output
+    if os.name == "nt":
+        import ctypes
+
+        handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, int(pid_file.read_text()))
+        if handle:
+            try:
+                status = ctypes.c_ulong()
+                assert ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(status))
+                assert status.value != 259  # STILL_ACTIVE
+            finally:
+                ctypes.windll.kernel32.CloseHandle(handle)
+    (shell / "build.sh").write_text("printf 'success'\nexit 7\n", encoding="utf-8")
+    result = utils.run_shell("build.sh", timeout=5, check=False, terminate_process_tree=True)
+    assert result.returncode == 7 and result.stdout == "success"
+
+
+def test_build_timeout_reports_unconfirmed_process_tree_cleanup(monkeypatch):
+    from types import SimpleNamespace
+
+    class Process:
+        pid = 1234
+        calls = 0
+
+        def communicate(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise subprocess.TimeoutExpired("build", 1)
+            return "build output", ""
+
+    monkeypatch.setattr(utils.os, "name", "nt")
+    monkeypatch.setattr(utils.subprocess, "CREATE_NEW_PROCESS_GROUP", 512, raising=False)
+    monkeypatch.setattr(utils.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    monkeypatch.setattr(utils.subprocess, "Popen", lambda *_args, **_kwargs: Process())
+    monkeypatch.setattr(
+        utils.subprocess, "run", lambda *_args, **_kwargs: SimpleNamespace(returncode=1)
+    )
+    with pytest.raises(RuntimeError, match="无法确认"):
+        utils.run_shell("build.sh", timeout=1, terminate_process_tree=True)
 
 
 def test_to_bash_path_uses_msys_drive_prefix_for_git_bash(monkeypatch):
@@ -1900,6 +2021,14 @@ def test_claude_loop_sends_a_real_reply_to_plain_numeric_approval(tmp_path: Path
     )
 
 
+def test_claude_loop_sends_a_real_reply_to_chinese_shape_confirmation(tmp_path: Path):
+    _assert_claude_loop_sends_actual_approval(
+        tmp_path,
+        "**Shape 已就绪**，等你确认后才会进入 Build。\n"
+        "**请确认以上目标、范围、验收项与非目标是否准确**（回复“确认”即进入 Build）。",
+    )
+
+
 def test_claude_loop_sends_a_real_reply_to_labelled_delivery_approval(tmp_path: Path):
     _assert_claude_loop_sends_actual_approval(
         tmp_path,
@@ -1998,6 +2127,35 @@ def test_completion_point_rejects_child_completion_with_parent_pending():
         check=False,
     )
     assert result.returncode == 1
+
+
+def test_dataset_completion_uses_sdk_terminal_state_instead_of_chinese_prose(tmp_path):
+    shell = tmp_path / "mounts/shell"
+    shell.mkdir(parents=True)
+    shutil.copyfile(utils.SHELL_DIR / "completion-point.sh", shell / "completion-point.sh")
+    helpers = tmp_path / "mounts/python/validation"
+    helpers.mkdir(parents=True)
+    (tmp_path / ".dataset-task.json").write_text("{}")
+    env = dict(os.environ, PYTHONUTF8="1")
+    env.pop("COMET_EVAL_COMPLETION_RUNS", None)
+    env.pop("COMET_EVAL_APPLICATION_ID", None)
+    for completed, expected in ((False, 1), (True, 0)):
+        (helpers / "current_sdk.py").write_text(
+            f"def dataset_native_runs_completed(workspace):\n    return {completed!r}\n"
+        )
+        result = subprocess.run(
+            [
+                utils.BASH_EXEC,
+                utils._to_bash_path(shell / "completion-point.sh"),
+                "已完成并归档，验证通过。" if completed else "The workflow is complete.",
+            ],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == expected, result.stderr
 
 
 def test_completion_point_accepts_explicit_parent_completion_after_children():
@@ -2632,7 +2790,9 @@ cleanup_agent_turn "$TURN_NAME"
 
 
 @pytest.mark.parametrize("exit_code", [0, 7])
-def test_agent_runtime_capture_preserves_exit_and_frames_diagnostics(tmp_path: Path, exit_code: int):
+def test_agent_runtime_capture_preserves_exit_and_frames_diagnostics(
+    tmp_path: Path, exit_code: int
+):
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     env = _isolated_fake_agent_env(fake_bin, "claude")
@@ -2672,7 +2832,9 @@ def test_agent_runtime_capture_rejects_failed_diagnostic_framing(tmp_path: Path)
     helpers.mkdir()
     config = shell / "agent-runtime-config.sh"
     shutil.copyfile(utils.SHELL_DIR / config.name, config)
-    shutil.copyfile(utils.SHELL_DIR.parent / "python/stream_capture.py", helpers / "stream_capture.py")
+    shutil.copyfile(
+        utils.SHELL_DIR.parent / "python/stream_capture.py", helpers / "stream_capture.py"
+    )
     (helpers / "stderr_prefix.py").write_text("raise SystemExit(9)\n", encoding="utf-8")
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -2681,7 +2843,7 @@ def test_agent_runtime_capture_rejects_failed_diagnostic_framing(tmp_path: Path)
             utils.BASH_EXEC,
             "-c",
             'SCRIPT_DIR=$(dirname "$1"); source "$1"; '
-            'capture_agent_runtime claude-code subject python3 -c '
+            "capture_agent_runtime claude-code subject python3 -c "
             "\"import json; print(json.dumps({'type':'result','result':'fixture output'}))\"",
             "_",
             utils._to_bash_path(config),

@@ -5,7 +5,11 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { spawnCommand } from '../../../platform/process/spawn-command.js';
+import {
+  commandInvocation,
+  resolveWindowsNodeShim,
+  spawnCommand,
+} from '../../../platform/process/spawn-command.js';
 
 describe('spawnCommand on Windows', () => {
   let root: string | undefined;
@@ -14,6 +18,87 @@ describe('spawnCommand on Windows', () => {
     if (root) await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     root = undefined;
   });
+
+  it('recognizes only complete literal Node wrappers and preserves the declared executable and argv', async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-literal-node-shim-'));
+    const shim = path.join(root, 'probe.cmd');
+    const entry = path.join(root, 'probe.cjs');
+    const node = 'C:\\Program Files\\nodejs\\node.exe';
+    const source = `@"${node}" "%~dp0probe.cjs" %*\r\n`;
+    await fs.writeFile(entry, 'process.exit(0)');
+    await fs.writeFile(shim, source);
+    const args = ['with space', '中文'];
+    const env = { NODE_PATH: 'original-value' };
+    expect(resolveWindowsNodeShim(shim, args, env)).toEqual({
+      command: node,
+      args: [entry, ...args],
+    });
+    expect(args).toEqual(['with space', '中文']);
+    expect(env).toEqual({ NODE_PATH: 'original-value' });
+    for (const altered of [
+      source + 'echo extra\r\n',
+      source.replace('node.exe', 'other.exe'),
+      source.replace('probe.cjs', '%INJECTED%.cjs'),
+    ]) {
+      await fs.writeFile(shim, altered);
+      expect(resolveWindowsNodeShim(shim, args, env)).toBeNull();
+    }
+    await fs.writeFile(shim, source);
+    await fs.unlink(entry);
+    expect(() => resolveWindowsNodeShim(shim, args, env)).toThrow('Node CLI entry is missing');
+  });
+
+  it.each(['\\', '/', '\\\\'])(
+    'keeps the script inside its wrapper directory with a %j dp0 separator',
+    async (separator) => {
+      root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-node-shim-separator-'));
+      const shim = path.join(root, 'probe.cmd');
+      const entry = path.join(root, 'probe.cjs');
+      await fs.writeFile(entry, 'process.stdout.write("wrapper-local-script")');
+      await fs.writeFile(shim, `@"C:\\nodejs\\node.exe" "%~dp0${separator}probe.cjs" %*\r\n`);
+      expect(resolveWindowsNodeShim(shim, [], {})?.args).toEqual([entry]);
+      await fs.writeFile(shim, '@"C:\\nodejs\\node.exe" "%~dp0C:\\probe.cjs" %*\r\n');
+      expect(resolveWindowsNodeShim(shim, [], {})).toBeNull();
+    },
+  );
+
+  it.runIf(process.platform === 'win32')(
+    'launches a literal Node command shim directly without a PowerShell startup',
+    async () => {
+      root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-node-shim-'));
+      const shim = path.join(root, 'probe.cmd');
+      const entry = path.join(root, 'probe.cjs');
+      const source = `@"${process.execPath}" "%~dp0probe.cjs" %*\r\n`;
+      await fs.writeFile(shim, source);
+      await fs.writeFile(entry, 'process.stdout.write(JSON.stringify(process.argv.slice(2)))');
+      const args = ['space separated', '中文'];
+      const invocation = commandInvocation(shim, args, { cwd: root });
+      expect(invocation.command).toBe(process.execPath);
+      expect(invocation.args).toEqual([entry, ...args]);
+      expect(invocation.env).not.toHaveProperty('COMET_COMMAND_PAYLOAD');
+      const child = spawnCommand(shim, args, { cwd: root });
+      let output = '';
+      child.stdout.on('data', (chunk) => {
+        output += chunk;
+      });
+      expect((await once(child, 'close'))[0]).toBe(0);
+      expect(JSON.parse(output)).toEqual(args);
+      for (const separator of ['\\', '/']) {
+        await fs.writeFile(shim, `@"${process.execPath}" "%~dp0${separator}probe.cjs" %*\r\n`);
+        expect(commandInvocation(shim, args, { cwd: root }).args).toEqual([entry, ...args]);
+        const separated = spawnCommand(shim, args, { cwd: root });
+        let separatedOutput = '';
+        separated.stdout.on('data', (chunk) => {
+          separatedOutput += chunk;
+        });
+        expect((await once(separated, 'close'))[0]).toBe(0);
+        expect(JSON.parse(separatedOutput)).toEqual(args);
+      }
+      expect(() => commandInvocation(shim, ['& whoami'], { cwd: root! })).toThrow('shell syntax');
+      await fs.writeFile(shim, source + 'echo additional-command\r\n');
+      expect(commandInvocation(shim, args, { cwd: root }).command).not.toBe(process.execPath);
+    },
+  );
 
   it.runIf(process.platform === 'win32')(
     'resolves PATH and PATHEXT case-insensitively for command shims',

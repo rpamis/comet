@@ -168,6 +168,32 @@ def requested_classic_decisions(workspace: Path, requests: list[dict]) -> list[d
     return decisions
 
 
+def dataset_native_runs_completed(workspace: Path) -> bool:
+    """内置数据集按当前项目的 Native 根 Run 终态结束，不依赖完成文案。"""
+    marker = workspace / ".dataset-task.json"
+    if not marker.is_file() or marker.is_symlink():
+        return False
+    changes = workspace / "docs/comet/changes"
+    if changes.exists() and any(p.is_dir() or p.is_symlink() for p in changes.iterdir()):
+        return False
+    archive = workspace / "docs/comet/archive"
+    if not archive.is_dir() or archive.is_symlink():
+        return False
+    requests = []
+    for directory in archive.iterdir():
+        if not directory.is_dir():
+            continue
+        if directory.is_symlink() or not (directory / "comet-state.yaml").is_file():
+            return False
+        match = re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}-([a-z0-9]+(?:-[a-z0-9]+)*)", directory.name
+        )
+        if not match:
+            return False
+        requests.append({"workflow": "native", "name": match.group(1)})
+    return requested_runs_completed(workspace, requests)
+
+
 def requested_runs_completed(workspace: Path, requests: list[dict]) -> bool:
     """按固定任务声明查询终态，不依赖模型用哪句话表示完成。"""
     if not isinstance(requests, list) or not requests:
@@ -325,7 +351,7 @@ def inspect_run(
         runId=name,
     ):
         raise ValueError("SDK owner does not match this change and application")
-    with tempfile.TemporaryDirectory(prefix=".eval-inspect-", dir=workspace) as directory:
+    with tempfile.TemporaryDirectory(prefix="comet-eval-inspect-") as directory:
         request = Path(directory) / "request.json"
         request.write_text(json.dumps(dict(operation="inspect", runId=name)))
         response = json.loads(

@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_NATIVE_SNAPSHOT_CONFIG } from '../../../domains/comet-native/native-config.js';
+import { nativeRawInputSnapshot } from '../../../domains/comet-native/native-portable-checks.js';
 import {
   createNativeChange,
   nativeChangeDir,
@@ -69,6 +70,36 @@ describe('Native VCS-independent content snapshots', () => {
       fs.rm(outsideRoot, { recursive: true, force: true }),
     ]);
   });
+
+  it.each([false, true])(
+    'keeps walkthrough generation and Verify updates outside source snapshots (Git: %s)',
+    async (git) => {
+      if (git) await execFileAsync('git', ['init'], { cwd: projectRoot });
+      await fs.writeFile(path.join(projectRoot, 'app.ts'), 'export const value = 1;');
+      const baseline = await createNativeContentSnapshot(paths);
+      const raw = await nativeRawInputSnapshot({
+        projectRoot,
+        managedArtifactRoot: paths.artifactRoot,
+      });
+      const directory = path.join(paths.changesDir, 'demo');
+      await fs.mkdir(directory, { recursive: true });
+      await fs.writeFile(path.join(directory, 'walkthrough.html'), '<html>Build</html>');
+      const built = await createNativeContentSnapshot(paths);
+      await fs.writeFile(path.join(directory, 'walkthrough.html'), '<html>Verify</html>');
+      const verified = await createNativeContentSnapshot(paths);
+      expect(baseline.complete).toBe(true);
+      expect(built.entries).toEqual(baseline.entries);
+      expect(verified.entries).toEqual(baseline.entries);
+      const updatedRaw = await nativeRawInputSnapshot({
+        projectRoot,
+        managedArtifactRoot: paths.artifactRoot,
+      });
+      expect(updatedRaw.contentHash).toBe(raw.contentHash);
+      expect(updatedRaw.contextHash).toBe(raw.contextHash);
+      await fs.writeFile(path.join(projectRoot, 'walkthrough.html'), '<html>Application</html>');
+      expect((await createNativeContentSnapshot(paths)).entries).not.toEqual(baseline.entries);
+    },
+  );
 
   it.each([false, true])(
     'reads independent files concurrently while preserving selection order and limits (Git: %s)',

@@ -1318,6 +1318,7 @@ export async function initCommand(
               schema: 'comet.project.v1',
               default_workflow: workflowDecision.workflow,
               ambient_resume: existingDocument?.ambient_resume ?? true,
+              change_walkthrough: existingDocument?.change_walkthrough ?? true,
               ...(existingDocument?.classic ? { classic: { ...existingDocument.classic } } : {}),
             };
         if (includesWorkflow(workflowSelection, 'native') && !config.native) {

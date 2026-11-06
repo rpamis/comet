@@ -67,10 +67,92 @@ describe('Dashboard plugin HTTP API', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await close?.();
     close = null;
     await fs.rm(projectPath, { recursive: true, force: true });
     await fs.rm(webRoot, { recursive: true, force: true });
+  });
+
+  it('reuses hosts across reloads while refreshing data and configuration', async () => {
+    await writeProjectConfig(projectPath, defaultProjectConfig('docs'));
+    const runtime = new PluginRuntime({
+      cometVersion: '0.5.2',
+      store: new MemoryPluginStateStore(),
+      descriptors: [
+        {
+          id: 'test.cache',
+          kind: 'first-party',
+          version: '1.0.0',
+          scopes: ['project'],
+          compatible: () => true,
+          create: () => ({}),
+        },
+      ],
+    });
+    await runtime.reconcileFirstParty();
+    let builds = 0;
+    let reads = 0;
+    let fail = false;
+    const factory = async (projectId: string) => {
+      builds++;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      if (fail) throw new Error('temporary host failure');
+      return new DashboardPluginHost({
+        runtime,
+        projectId,
+        pages: [
+          {
+            pluginId: 'test.cache',
+            label: 'Cache',
+            route: '/plugins/cache',
+            load: async () => ({ read: ++reads }),
+          },
+        ],
+      });
+    };
+    const server = await startDashboardServer({
+      projectPath,
+      webRoot,
+      port: 0,
+      pluginHost: factory,
+    });
+    close = server.close;
+    const { currentProjectId } = JSON.parse(
+      (await request(server.port, '/api/dashboard/projects')).body,
+    );
+    const base = `/api/dashboard/projects/${currentProjectId}`;
+    const endpoint = `${base}/plugins/test.cache`;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    const initial = await Promise.all([
+      request(server.port, endpoint),
+      request(server.port, endpoint),
+    ]);
+    expect(initial.map((response) => response.status)).toEqual([200, 200]);
+    expect(builds).toBe(1);
+    clock.mockReturnValue(1_005_000);
+    expect(JSON.parse((await request(server.port, endpoint)).body).data).toEqual({ read: 3 });
+    expect(builds).toBe(1);
+    const config = JSON.parse((await request(server.port, `${base}/config`)).body);
+    const updated = await request(server.port, `${base}/config`, 'POST', {
+      expectedRevision: config.revision,
+      config: { ...config, ambientResume: false },
+    });
+    expect(updated.status).toBe(200);
+    expect((await request(server.port, endpoint)).status).toBe(200);
+    expect(builds).toBe(2);
+    await request(server.port, `${endpoint}/lifecycle`, 'POST', { action: 'disable' });
+    expect(JSON.parse((await request(server.port, endpoint)).body).data).toBeNull();
+    expect(builds).toBe(3);
+    await request(server.port, `${endpoint}/lifecycle`, 'POST', { action: 'enable' });
+    expect(JSON.parse((await request(server.port, endpoint)).body).data).toEqual({ read: 5 });
+    expect(builds).toBe(4);
+    clock.mockReturnValue(1_070_000);
+    fail = true;
+    expect((await request(server.port, endpoint)).status).toBe(500);
+    fail = false;
+    expect((await request(server.port, endpoint)).status).toBe(200);
+    expect(builds).toBe(6);
   });
 
   it('rejects untrusted browser writes before changing plugin state', async () => {

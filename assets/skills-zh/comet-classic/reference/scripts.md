@@ -137,7 +137,9 @@ comet archive <change-name>
 
 所有 OpenSpec 和 Superpowers 产物都必须使用 Comet 配置的产物语言，配置值为规范化语言 ID：`en` 或 `zh-CN`。已有 change 优先使用本次有效入口返回的 `configuration.language`；仅入口未提供该字段时，才通过 `comet state get <name> language` 读取实际状态文件中的 `language`。新旧两种状态文件均不存在时，依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `classic.language`；两处都没有配置时，才使用当前用户请求的语言。调用外部 OpenSpec/Superpowers Skill 时，必须把最终确定的语言明确写入提示词或 ARGUMENTS。
 
-首次进入阶段、交接给新 Agent 或上下文恢复后，按当前 `agent.continuation.contextRequest` 获取一次任务上下文；SDK 已领取 Action 时，优先使用 `data.continuation.current.actions[]` 中对应 Action 的 `contextRequest`。本协议适用于 full、hotfix、tweak 的 SDK 与 Compat 路径，直接调用阶段 Skill 也要执行。普通状态查询、等待原任务和同一阶段内的连续执行不重复获取。
+领取响应含 `data.contextDelivery` 时，读取 `data.context[].text` 后直接工作，不重复执行 `contextRequest`。需要正文、恢复或提交学习时分别使用 `data.contextActions.expand`、`restore`、`complete`；新 Agent 使用自己的会话标识。空结果或获取失败不阻断任务。
+
+没有自动交付时，首次进入阶段、交接给新 Agent 或上下文恢复后，按当前 `agent.continuation.contextRequest` 获取一次任务上下文；SDK 已领取 Action 时，优先使用 `data.continuation.current.actions[]` 中对应 Action 的 `contextRequest`。本协议适用于 full、hotfix、tweak 的 SDK 与 Compat 路径，直接调用阶段 Skill 也要执行。普通状态查询、等待原任务和同一阶段内的连续执行不重复获取。
 
 没有请求描述时，绑定实际工作区并读取当前 `phase`，运行 `comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --session "<接收方稳定会话标识>" --context-mode snapshot --json`。原始请求缺失时从当前 proposal、specs 和任务范围恢复目标。阶段切换沿用当前 Agent 的会话标识；换 Agent 时使用接收方自己的标识，不能复用派发者或已领取 Action 的其他执行者标识。同一 Agent 恢复时沿用原标识并获取 snapshot，避免已交付记录阻止内容重新进入上下文。
 

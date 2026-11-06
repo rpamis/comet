@@ -1,0 +1,120 @@
+{
+  "schema": "comet.release.bad-cases.v1",
+  "cases": [
+    {
+      "id": "native-ci539-mixed-write-review",
+      "sources": [
+        "report:2026-11-05-pr539-ci-failures"
+      ],
+      "behavior": "Keep every unclassified target in a mixed Verify write pending Agent judgment.",
+      "coverageLevel": "unit",
+      "reproduction": "The corresponding PR #539 CI test failed on commit 56744e50. Reproduce the independent behavior in its isolated project with the exact test selector below; local results and platform limitations are recorded in docs/research/2026-11-05-pr539-ci-repair.zh.md.",
+      "expected": "Keep the candidate and require a judgment for the unknown target.",
+      "forbidden": "Treating a mixed source write as neutral because another target is documentation.",
+      "rootCause": "A documentation target caused an early return before the remaining source targets were inspected.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-hook-guard.test.ts",
+          "namePattern": "^(?:preserves a Verify candidate for resource messages and holds unclassified mixed writes|holds an unclassified material write mixed with documents in Verify)$",
+          "requiredNames": [
+            "preserves a Verify candidate for resource messages and holds unclassified mixed writes",
+            "holds an unclassified material write mixed with documents in Verify"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-ci539-executed-input-binding",
+      "sources": [
+        "report:2026-11-05-pr539-ci-failures"
+      ],
+      "behavior": "Bind actual post-command source inputs and reject incomplete generated inputs.",
+      "coverageLevel": "runtime",
+      "reproduction": "The corresponding PR #539 CI test failed on commit 56744e50. Reproduce the independent behavior in its isolated project with the exact test selector below; local results and platform limitations are recorded in docs/research/2026-11-05-pr539-ci-repair.zh.md.",
+      "expected": "Reject a source-changing command until explicit repair and reject incomplete snapshots.",
+      "forbidden": "Accepting changed source or reusing a stale complete observation.",
+      "rootCause": "The raw executor gate duplicated the pre-command observation instead of binding the post-command snapshot.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^(?:rejects source-changing checks and recovers to Build only after the repair approval|rejects checks whose initially incomplete generated inputs disappear during execution)$",
+          "requiredNames": [
+            "rejects source-changing checks and recovers to Build only after the repair approval",
+            "rejects checks whose initially incomplete generated inputs disappear during execution"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+          "namePattern": "^keeps completed check results but rejects unjudged source writes during the check$",
+          "requiredNames": [
+            "keeps completed check results but rejects unjudged source writes during the check"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-ci539-applied-review-supersession",
+      "sources": [
+        "report:2026-11-05-pr539-ci-failures"
+      ],
+      "behavior": "Replace stale completed applied-edit proposals while requiring a review of the current content.",
+      "coverageLevel": "runtime",
+      "reproduction": "The corresponding PR #539 CI test failed on commit 56744e50. Reproduce the independent behavior in its isolated project with the exact test selector below; local results and platform limitations are recorded in docs/research/2026-11-05-pr539-ci-repair.zh.md.",
+      "expected": "Preserve every user edit, block the pending latest review and finish after its real receipt.",
+      "forbidden": "Accepting the latest bytes solely because an older edit was reviewed.",
+      "rootCause": "Supersession skipped completed non-behavioral applied reviews, leaving an old branch of the approved edit graph blocking newer content.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+          "namePattern": "^(?:keeps later user edits and supersedes stale pending and completed applied reviews)$",
+          "requiredNames": [
+            "keeps later user edits and supersedes stale pending and completed applied reviews"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-ci539-interrupted-check-plan",
+      "sources": [
+        "report:2026-11-05-pr539-ci-failures"
+      ],
+      "behavior": "Recover the original interrupted command plan without inferring a replacement build.",
+      "coverageLevel": "runtime",
+      "reproduction": "The corresponding PR #539 CI test failed on commit 56744e50. Reproduce the independent behavior in its isolated project with the exact test selector below; local results and platform limitations are recorded in docs/research/2026-11-05-pr539-ci-repair.zh.md.",
+      "expected": "Run the original validated plan and reject a corrupt SDK Action binding.",
+      "forbidden": "Inferring another build or executing a mismatched Action.",
+      "rootCause": "The not-executed checkpoint hid the original command plan from the interrupted-check lookup.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "namePattern": "^(?:preserves and reruns an interrupted check instead of inferring another build|does not rerun an interrupted check with a corrupted SDK Action binding)$",
+          "requiredNames": [
+            "preserves and reruns an interrupted check instead of inferring another build",
+            "does not rerun an interrupted check with a corrupted SDK Action binding"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-ci539-lost-overlay-verifier-result",
+      "sources": [
+        "report:2026-11-05-pr539-ci-failures"
+      ],
+      "behavior": "Record the original Verifier failure when its machine overlay has been lost.",
+      "coverageLevel": "runtime",
+      "reproduction": "The corresponding PR #539 CI test failed on commit 56744e50. Reproduce the independent behavior in its isolated project with the exact test selector below; local results and platform limitations are recorded in docs/research/2026-11-05-pr539-ci-repair.zh.md.",
+      "expected": "Keep the original task identity and preserve missing local evidence.",
+      "forbidden": "Fabricating a passed check or replacing a lost local overlay with empty evidence.",
+      "rootCause": "Failure persistence required a local overlay even when the portable dispatch still identified the original task.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-start.test.ts",
+          "namePattern": "^(?:keeps the dispatched identity when the machine overlay is lost)$",
+          "requiredNames": [
+            "keeps the dispatched identity when the machine overlay is lost"
+          ]
+        }
+      ]
+    }
+  ]
+}

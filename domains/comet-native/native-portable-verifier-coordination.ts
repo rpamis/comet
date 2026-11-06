@@ -31,6 +31,11 @@ import {
   type NativePortableExpectedContinuation,
 } from './native-portable-requirements.js';
 import { returnNativePortableStateToFinalVerificationLocked } from './native-portable-transitions.js';
+import {
+  readCurrentLocalExecution,
+  preservedLocalChecksForVersion,
+  assertNativePortableRawCheckInputs,
+} from './native-portable-checks.js';
 
 export async function confirmNativePortableSkillCoordinatedPass(options: {
   paths: NativeProjectPaths;
@@ -50,6 +55,8 @@ export async function confirmNativePortableSkillCoordinatedPass(options: {
       });
       await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
       await assertNativeEditReviewsComplete(options.paths, state);
+      const local = await readCurrentLocalExecution({ paths: options.paths, state });
+      if (local?.rawInputRef) await assertNativePortableRawCheckInputs(options.paths, state, local);
       if (
         options.finish !== undefined &&
         !['keep', 'merge', 'push', 'pull-request'].includes(options.finish)
@@ -81,11 +88,17 @@ export async function confirmNativePortableSkillCoordinatedPass(options: {
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),
-        rebuildNativeLocalExecution({
-          portableState: written,
-          projectRoot: options.paths.projectRoot,
-          branch: currentBranch(options.paths.projectRoot),
-        }),
+        local?.rawInputRef
+          ? preservedLocalChecksForVersion({
+              local,
+              state: written,
+              projectRoot: options.paths.projectRoot,
+            })
+          : rebuildNativeLocalExecution({
+              portableState: written,
+              projectRoot: options.paths.projectRoot,
+              branch: currentBranch(options.paths.projectRoot),
+            }),
         { containedRoot: options.paths.runtimeDir },
       );
       await writeNativeVerificationReport({

@@ -1,5 +1,10 @@
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
+import { createLegacyNativeSdkChange } from '../../helpers/native-legacy-sdk-change.js';
+import {
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -779,10 +784,8 @@ Run focused Native checks.
   ] as const)(
     'routes Shape confirmation and Runtime checks while retaining portable state (%s)',
     async (archiveMode) => {
-      const created = json(
-        await runNativeCli(['new', 'sdk-confirm', '--runtime', 'sdk', '--json', ...projectArgs()]),
-      );
-      expect(created.exitCode).toBe(0);
+      const { run: created } = await createLegacyNativeSdkChange(projectRoot, 'sdk-confirm');
+      expect(created.workflow.version).toBe('1');
       const paths = await nativeProjectPaths(projectRoot, 'docs');
       const changeDir = path.join(paths.changesDir, 'sdk-confirm');
       await fs.writeFile(
@@ -1584,6 +1587,20 @@ Run focused Native checks.
   });
 
   it('returns all ready Supervisor Child Actions after the public SDK Shape confirmation', async () => {
+    execFileSync(
+      'git',
+      [
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.invalid',
+        'commit',
+        '--allow-empty',
+        '-m',
+        'fixture',
+      ],
+      { cwd: projectRoot, stdio: 'ignore' },
+    );
     const created = json(
       await runNativeCli(['new', 'sdk-supervisor', '--runtime', 'sdk', '--json', ...projectArgs()]),
     );
@@ -1839,7 +1856,10 @@ children:
         verifierExecutionRef: local?.execution?.executionId,
       };
     }
-    const file = path.join(projectRoot, `.native-runner-input-${runnerInputSequence}.json`);
+    const file = path.join(
+      resolveWorkspaceRuntimeRootSync(projectRoot),
+      `.native-runner-input-${runnerInputSequence}.json`,
+    );
     await fs.writeFile(file, JSON.stringify(payload));
     try {
       return json(
@@ -1855,6 +1875,11 @@ children:
     acceptance: string[] = ['First behavior works.'],
     language: 'en' | 'zh-CN' = 'en',
   ) {
+    const config = defaultProjectConfig('docs', language);
+    await writeProjectConfig(projectRoot, {
+      ...config,
+      native: { ...config.native, document_writes: 'revert' },
+    });
     await runNativeCli([
       'new',
       name,
@@ -2029,7 +2054,7 @@ Run applicable focused checks.
     expect(next.stdout).toContain('every task acceptance ID must appear exactly once');
     for (const output of [root.stdout!, next.stdout!, archive.stdout!, status.stdout!]) {
       expect(output).not.toMatch(
-        /checkpoint|preflight|sha256|--result|--report|--acceptance-cursor|comet native (?:receipt|evidence)\b/iu,
+        /checkpoint|preflight|sha256|--result\s+pass\b|--report|--acceptance-cursor|comet native (?:receipt|evidence)\b/iu,
       );
     }
     expect([root.stdout!, next.stdout!].join('\n')).not.toMatch(
@@ -2680,7 +2705,10 @@ Run applicable focused checks.
 
   it('runs one full verification for a repaired candidate without a duplicate final pass', async () => {
     const name = 'scoped-repair-verification';
-    const counter = path.join(projectRoot, 'repair-check-count.txt');
+    const counter = path.join(
+      resolveWorkspaceRuntimeRootSync(projectRoot),
+      'repair-check-count.txt',
+    );
     const checkPlan = {
       kind: 'dispatch-verifier',
       checks: [
@@ -2701,7 +2729,8 @@ Run applicable focused checks.
     };
     await prepareBuild(name, ['First behavior works.', 'Second behavior works.']);
     await runnerStep(name, builderHandoff(['A1', 'A2']));
-    await runnerStep(name, checkPlan);
+    const checked = await runnerStep(name, checkPlan);
+    expect(checked.exitCode, JSON.stringify(checked)).toBe(0);
     const failed = await runnerStep(name, {
       kind: 'verifier-response',
       response: {
@@ -3917,7 +3946,7 @@ Run applicable focused checks.
     const name = 'skill-concurrent-dispatch';
     await prepareBuild(name);
     await runnerStep(name, builderHandoff(['A1']));
-    const counter = path.join(projectRoot, 'dispatch-count.txt');
+    const counter = path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'dispatch-count.txt');
     const plan = {
       kind: 'dispatch-verifier',
       checks: [
@@ -3938,11 +3967,12 @@ Run applicable focused checks.
     };
 
     const concurrent = await Promise.all([runnerStep(name, plan), runnerStep(name, plan)]);
-    expect(concurrent.map(({ exitCode }) => exitCode).sort((left, right) => left - right)).toEqual([
-      0, 65,
-    ]);
+    expect(
+      concurrent.map(({ exitCode }) => exitCode).sort((left, right) => left - right),
+      JSON.stringify(concurrent),
+    ).toEqual([0, 65]);
     expect(concurrent.find(({ exitCode }) => exitCode === 65)?.error?.message).toMatch(
-      /already in progress|Verify ready state/iu,
+      /already in progress|Verify ready state|原检查仍运行或结果不明/iu,
     );
     expect(await fs.readFile(counter, 'utf8')).toBe('1');
 

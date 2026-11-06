@@ -97,6 +97,19 @@ function watchWrites() {
 }
 
 describe('Classic SDK read-only diagnostics', () => {
+  it('reads a current writable projection without writes and repairs only stale projections', async () => {
+    const { root, backing, markerFile } = await fixture();
+    const store = createClassicSdkStateStore(root, { store: backing });
+    const expected = await backing.read('demo');
+    expect(await store.read('demo')).toEqual(expected);
+    const writes = watchWrites();
+    expect(await store.read('demo')).toEqual(expected);
+    for (const write of writes) expect(write).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+    await fs.rm(markerFile);
+    expect(await store.read('demo')).toEqual(expected);
+    expect(JSON.parse(await fs.readFile(markerFile, 'utf8')).revision).toBe(expected!.revision);
+  });
   it('reads the existing Run once without locks, directories, projection writes or CAS', async () => {
     const { root, backing, store, stateFile } = await fixture();
     const expected = await backing.read('demo');

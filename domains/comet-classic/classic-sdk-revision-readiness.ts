@@ -1,4 +1,5 @@
 import { canReopenClassicVerification } from './classic-sdk-revision-application.js';
+import { classicFormalEditReviewScope } from './classic-edit-review.js';
 import type { WorkflowRun } from '../engine/runtime.js';
 import {
   assertClassicSdkDesignRequirementsCurrent,
@@ -123,7 +124,16 @@ export async function inspectClassicSdkRevisionReadiness(projectRoot: string, ru
         ?.receipt;
     if (expected) {
       try {
-        const current = await classicPlanEvidenceReceipt(projectRoot, state.plan, input.changeDir);
+        const current = await classicPlanEvidenceReceipt(projectRoot, state.plan, input.changeDir, {
+          scope: await classicFormalEditReviewScope(
+            projectRoot,
+            change,
+            state,
+            false,
+            undefined,
+            run,
+          ),
+        });
         if (expected.ref !== current.ref || expected.contentHash !== current.contentHash)
           record('plan', 'Classic Build plan or task requirements changed after accepted evidence');
       } catch (error) {

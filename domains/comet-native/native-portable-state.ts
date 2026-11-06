@@ -385,6 +385,7 @@ function parseBuilderHandoff(value: unknown): NativeBuilderHandoff {
       'known_limits_truncated',
       'review',
       'submitted_at',
+      'raw_input_ref',
     ]),
     label,
   );
@@ -437,6 +438,9 @@ function parseBuilderHandoff(value: unknown): NativeBuilderHandoff {
         }
       : null,
     submitted_at: timestamp(root.submitted_at, `${label}.submitted_at`),
+    ...(root.raw_input_ref !== undefined
+      ? { raw_input_ref: stringValue(root.raw_input_ref, `${label}.raw_input_ref`) }
+      : {}),
   };
 }
 
@@ -545,6 +549,7 @@ function parseVerification(value: unknown): NativePortableVerificationState {
             root.assurance,
             [
               'host-attested',
+              'self-reviewed',
               'skill-coordinated',
               'semantic-verification-unavailable',
               'user-confirmed-degraded',
@@ -703,8 +708,17 @@ function assertReferences(state: NativePortableState): void {
       'semantic-verification-unavailable',
       'user-confirmed-degraded',
     ].includes(state.verification.assurance);
-    if (skillAssurance !== (state.verification.identity_provider === 'skill-coordinated')) {
+    if (
+      state.verification.assurance !== 'self-reviewed' &&
+      skillAssurance !== (state.verification.identity_provider === 'skill-coordinated')
+    ) {
       throw new Error('Native verification assurance does not match its identity provider');
+    }
+    if (
+      state.verification.assurance === 'self-reviewed' &&
+      state.verification.verifier_execution_ref !== state.builder_handoff.builder_execution_ref
+    ) {
+      throw new Error('Native self-reviewed verification must use the Builder session');
     }
     if (
       state.verification.assurance === 'semantic-verification-unavailable' &&
@@ -718,7 +732,10 @@ function assertReferences(state: NativePortableState): void {
     ) {
       throw new Error('Native user-confirmed degraded verification must be passing');
     }
-    if (state.verification.verifier_execution_ref === state.builder_handoff.builder_execution_ref) {
+    if (
+      state.verification.assurance !== 'self-reviewed' &&
+      state.verification.verifier_execution_ref === state.builder_handoff.builder_execution_ref
+    ) {
       throw new Error('Native Builder and Verifier execution refs must differ');
     }
     const currentResult =

@@ -21,6 +21,7 @@ import { createDiskApplication } from '../../helpers/workflow-application.js';
 
 import * as protectedOwnerFiles from '../../../domains/workflow-contract/protected-project-path.js';
 import { registerSdkChangeOwner } from '../../../domains/workflow-contract/change-runtime-owner.js';
+import { createLegacyNativeSdkChange } from '../../helpers/native-legacy-sdk-change.js';
 
 async function snapshot(root: string): Promise<Record<string, string>> {
   const files: Record<string, string> = {};
@@ -380,8 +381,7 @@ describe('SDK ownership in shared project status', () => {
   });
 
   it('uses the same SDK validation as named Native status and preserves other changes', async () => {
-    const created = await runNativeCli(['new', 'native-demo', '--project-root', root, '--json']);
-    expect(created.exitCode, created.stderr).toBe(0);
+    await createLegacyNativeSdkChange(root, 'native-demo');
     const before = await inspectCometProjectStatus(root);
     expect(before.workflows.native.changes[0]).toMatchObject({
       schema: 'comet.native.sdk-status.v1',

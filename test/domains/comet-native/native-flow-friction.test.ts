@@ -7,6 +7,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { inspectNativeHookGuard } from '../../../domains/comet-native/native-hook-guard.js';
 import { buildNativePortableAcceptance } from '../../../domains/comet-native/native-portable-acceptance.js';
+import {
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
 
 const brief = `# Outcome
 Correct the greeting.
@@ -42,6 +46,11 @@ describe('Native workflow friction regressions', () => {
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-flow-friction-'));
     execFileSync('git', ['init', '--quiet'], { cwd: root });
+    const config = defaultProjectConfig('docs', 'en');
+    await writeProjectConfig(root, {
+      ...config,
+      native: { ...config.native, document_writes: 'revert' },
+    });
     await command(['new', 'tiny', '--runtime', 'compat', '--language', 'en']);
     changeDir = path.join(root, 'docs', 'comet', 'changes', 'tiny');
   });
@@ -83,6 +92,14 @@ describe('Native workflow friction regressions', () => {
     ]);
     expect(confirmed.agent?.phase).toBe('build');
     return confirmed;
+  }
+
+  async function useAgentDocumentReview() {
+    const config = defaultProjectConfig('docs', 'en');
+    await writeProjectConfig(root, {
+      ...config,
+      native: { ...config.native, document_writes: 'allow' },
+    });
   }
 
   async function input(value: unknown) {
@@ -157,6 +174,7 @@ None.
   it.each([false, true])(
     'checks actual formal content after the Hook write instead of invalidating a write intention (changed: %s)',
     async (changed) => {
+      await useAgentDocumentReview();
       const confirmed = await confirm();
       const request = { intent: 'write' as const, targets: [path.join(changeDir, 'brief.md')] };
       expect(await inspectNativeHookGuard(root, request, 'tiny')).toMatchObject({
@@ -169,6 +187,42 @@ None.
           ? brief.replace('Preserve the command usage.', 'Change the command usage.')
           : brief.replace('# Scope\n', '\n# Scope\n\n'),
       );
+      const { runNativeEditReviewCommand } =
+        await import('../../../domains/comet-native/native-edit-review-command.js');
+      const prepared = (await runNativeEditReviewCommand({
+        projectRoot: root,
+        name: 'tiny',
+        operation: 'prepare-applied',
+        sessionId: 'current-agent',
+      })) as { proposal: { proposalHash: string } };
+      const claimed = (await runNativeEditReviewCommand({
+        projectRoot: root,
+        name: 'tiny',
+        operation: 'judge',
+        proposalHash: prepared.proposal.proposalHash,
+        sessionId: 'current-agent',
+      })) as { recordTemplate: Record<string, unknown> };
+      const file = `${root}-formal-judgment.json`;
+      try {
+        await fs.writeFile(
+          file,
+          JSON.stringify({
+            ...claimed.recordTemplate,
+            decision: changed ? 'requirements-changed' : 'non-behavioral',
+            summary: changed
+              ? 'The usage constraint changed and requires a new decision.'
+              : 'Only heading spacing changed; the original contract remains applicable.',
+          }),
+        );
+        await runNativeEditReviewCommand({
+          projectRoot: root,
+          name: 'tiny',
+          operation: 'record',
+          file,
+        });
+      } finally {
+        await fs.rm(file, { force: true });
+      }
       const implementation = await inspectNativeHookGuard(
         root,
         { intent: 'write', targets: [path.join(root, 'main.js')] },
@@ -194,6 +248,7 @@ None.
     ['settings.yaml', 'enabled: true\n', '# Explain the setting.\nenabled: true\n'],
     ['worker.py', 'value = 1\n', '# Explain the value.\nvalue = 1\n'],
   ])('keeps Verify for a concrete non-behavioral edit of %s', async (file, source, proposed) => {
+    await useAgentDocumentReview();
     await confirm();
     const target = path.join(root, file);
     await fs.writeFile(target, source);
@@ -230,59 +285,50 @@ None.
       ),
       'tiny',
     );
-    if (file === 'worker.py') {
-      expect(decision).toMatchObject({ allowed: false, phase: 'verify' });
-      expect(decision.reason).toContain('保留 Verify');
-      const { runNativeEditReviewCommand } =
-        await import('../../../domains/comet-native/native-edit-review-command.js');
-      const shown = await runNativeEditReviewCommand({
+    expect(decision).toMatchObject({ allowed: true, phase: 'verify' });
+    await fs.writeFile(target, proposed);
+    const { runNativeEditReviewCommand } =
+      await import('../../../domains/comet-native/native-edit-review-command.js');
+    const { nativeProjectPaths } = await import('../../../domains/comet-native/native-paths.js');
+    const { readNativePortableChange, nativeLocalExecutionFile } =
+      await import('../../../domains/comet-native/native-portable-storage.js');
+    const { readNativeLocalExecution } =
+      await import('../../../domains/comet-native/native-local-execution.js');
+    const { assertNativePortableRawCandidate } =
+      await import('../../../domains/comet-native/native-portable-checks.js');
+    const paths = await nativeProjectPaths(root, 'docs');
+    const state = await readNativePortableChange(paths, 'tiny');
+    const local = (await readNativeLocalExecution(nativeLocalExecutionFile(paths, 'tiny')))!;
+    await expect(assertNativePortableRawCandidate(paths, state, local)).rejects.toThrow(
+      '当前 Agent',
+    );
+    const observed = (await runNativeEditReviewCommand({
+      projectRoot: root,
+      name: 'tiny',
+      operation: 'observe',
+      sessionId: 'current-agent',
+    })) as { recordTemplate: Record<string, unknown> };
+    const resultFile = `${root}-judgment.json`;
+    try {
+      await fs.writeFile(
+        resultFile,
+        JSON.stringify({
+          ...observed.recordTemplate,
+          decision: 'non-behavioral',
+          summary:
+            'The current Agent checked this exact edit against the greeting requirement; behavior is unchanged.',
+        }),
+      );
+      await runNativeEditReviewCommand({
         projectRoot: root,
         name: 'tiny',
-        operation: 'show',
+        operation: 'record',
+        file: resultFile,
       });
-      const reviews = (shown as { reviews: { proposalHash: string }[] }).reviews;
-      expect(reviews).toHaveLength(1);
-      const resultFile = `${root}-review.json`;
-      try {
-        await fs.writeFile(
-          resultFile,
-          JSON.stringify({
-            proposalHash: reviews[0].proposalHash,
-            decision: 'non-behavioral',
-            summary: 'Only a Python comment changed.',
-          }),
-        );
-        await expect(
-          runNativeEditReviewCommand({
-            projectRoot: root,
-            name: 'tiny',
-            operation: 'record',
-            file: resultFile,
-          }),
-        ).rejects.toThrow('--confirmed');
-        await runNativeEditReviewCommand({
-          projectRoot: root,
-          name: 'tiny',
-          operation: 'record',
-          file: resultFile,
-          confirmed: true,
-        });
-      } finally {
-        await fs.rm(resultFile, { force: true });
-      }
-      expect(
-        await inspectNativeHookGuard(
-          root,
-          parseNativeHookRequest(
-            JSON.stringify({
-              tool_name: 'Write',
-              tool_input: { file_path: target, content: proposed },
-            }),
-          ),
-          'tiny',
-        ),
-      ).toMatchObject({ allowed: true, phase: 'verify' });
-    } else expect(decision).toMatchObject({ allowed: true, phase: 'verify' });
+    } finally {
+      await fs.rm(resultFile, { force: true });
+    }
+    await expect(assertNativePortableRawCandidate(paths, state, local)).resolves.toBeUndefined();
     expect(() =>
       execFileSync(
         process.execPath,

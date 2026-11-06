@@ -949,14 +949,19 @@ const settingLabels = localized({
   task: '指定用例',
   timeoutSeconds: '超时（秒）',
   maxTurns: '最大执行轮数',
+  datasetTreatment: '数据集执行方式',
   contentHash: '内容快照',
   version: '内容版本',
 });
 export function EvalComparison({ value }) {
   useDashboardLanguage();
   if (!value) return <Empty description={t('选择有效基线后查看对比')} />;
+  const datasetComparison = value.metric === 'dataset-score';
   return (
     <div className="dashboard-eval-stack">
+      {datasetComparison && (
+        <Alert type="info" showIcon message={t('按原题成绩比较；Native 流程检查单独展示。')} />
+      )}
       {!value.comparable && (
         <Alert
           type="warning"
@@ -968,11 +973,11 @@ export function EvalComparison({ value }) {
       <div className="dashboard-eval-comparison-summary">
         <Metric
           label={t('基线通过')}
-          value={`${value.baseline.passed} / ${value.baseline.expectedTotal ?? value.baseline.total}`}
+          value={`${datasetComparison ? value.cases.filter((item) => item.baseline === true).length : value.baseline.passed} / ${value.baseline.expectedTotal ?? value.baseline.total}`}
         />
         <Metric
           label={t('本次通过')}
-          value={`${value.candidate.passed} / ${value.candidate.expectedTotal ?? value.candidate.total}`}
+          value={`${datasetComparison ? value.cases.filter((item) => item.candidate === true).length : value.candidate.passed} / ${value.candidate.expectedTotal ?? value.candidate.total}`}
         />
         <Metric
           label={t('用例变化')}
@@ -987,8 +992,23 @@ export function EvalComparison({ value }) {
             rowKey={(item) => `${item.task}-${item.repetition}`}
             pagination={false}
             dataSource={value.cases}
+            scroll={datasetComparison ? { x: 'max-content' } : undefined}
             columns={[
               { title: t('用例'), dataIndex: 'task' },
+              ...(datasetComparison
+                ? [
+                    {
+                      title: t('基线原题成绩'),
+                      dataIndex: 'baselineScore',
+                      render: (score) => score ?? '—',
+                    },
+                    {
+                      title: t('本次原题成绩'),
+                      dataIndex: 'candidateScore',
+                      render: (score) => score ?? '—',
+                    },
+                  ]
+                : []),
               {
                 title: t('基线'),
                 dataIndex: 'baseline',

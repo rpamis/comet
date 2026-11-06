@@ -9,6 +9,7 @@ import {
   WORKFLOW_REGISTRY,
   validSource,
   workflowRegressionEntries,
+  assertWorkflowMigrationEvidence,
 } from './workflow-regressions.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -95,6 +96,8 @@ export function assertBadcaseRegistration({
     seen.add(key);
     for (const id of fix.caseIds) {
       const item = cases.get(id);
+      if (item?.testMigration?.kind === 'feature-removed')
+        throw new Error(`已撤下功能不能声明为原问题修复：${id}`);
       if (item?.additionalAcceptance?.some((acceptance) => acceptance.status !== 'verified'))
         throw new Error(`修复的附加验收仍待完成：${id}`);
       if (
@@ -129,6 +132,10 @@ export function readBaseRegistry(repositoryRoot, base, file, optional = false) {
 }
 
 export function main(argv = process.argv.slice(2), env = process.env) {
+  assertWorkflowMigrationEvidence(
+    root,
+    JSON.parse(readFileSync(path.join(root, WORKFLOW_REGISTRY), 'utf8')),
+  );
   let base = env.BADCASE_BASE_SHA;
   let declaration;
   for (let index = 0; index < argv.length; index += 1) {

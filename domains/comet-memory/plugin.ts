@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { redactCommandOutput } from '../../platform/process/redact-command-output.js';
+import { withOperationBudget } from '../../platform/process/operation-budget.js';
 
 import type { PluginContext, PluginDescriptor, PluginModule } from '../comet-plugin/index.js';
 import type {
@@ -307,7 +309,13 @@ async function createModule(
         const section = async <T>(name: string, pending: Promise<T>, fallback: T): Promise<T> => {
           try {
             return await pending;
-          } catch {
+          } catch (error) {
+            if (process.env.COMET_DEBUG === '1' || process.env.COMET_DEBUG === 'true') {
+              const reason = error instanceof Error ? error.message : 'Unknown section failure';
+              console.error(
+                `[${PERSONAL_MEMORY_PLUGIN_ID}] Dashboard section ${name}: ${redactCommandOutput(reason).slice(0, 1024)}`,
+              );
+            }
             sectionErrors.push({
               section: name,
               message:
@@ -318,30 +326,51 @@ async function createModule(
             return fallback;
           }
         };
-        const [status, providerConfig, retrieval, management, applications] = await Promise.all([
-          section('status', invoke('status'), {
-            availability: 'unavailable',
-            learningEnabled: undefined,
-            retrievalEnabled: undefined,
-            pausedProjects: [],
-            pausedLearningProjects: [],
-            pausedRetrievalProjects: [],
-            files: [],
-            remote: null,
-            sync: null,
-          }),
-          section('providerConfig', Promise.resolve(options.getProviderConfig?.()), undefined),
-          section('retrieval', retrieveWithoutNotice({ view: 'combined', projectKey: projectId }), {
-            records: [],
-            text: '',
-            truncated: false,
-            disabled: false,
-          }),
-          section('management', invoke('manage', { projectKey: projectId }), {
-            records: [],
-            conflicts: [],
-            truncated: false,
-          }),
+        const providerConfig = await section(
+          'providerConfig',
+          Promise.resolve(options.getProviderConfig?.()),
+          undefined,
+        );
+        // 远端失联沿用短网络等待；本地分区使用页面预算，避免慢磁盘被当作网络超时。
+        const read = <T>(operation: () => Promise<T>): Promise<T> =>
+          providerConfig?.provider === 'remote'
+            ? withOperationBudget({ timeoutMs: 2000 }, operation)
+            : operation();
+        const [status, retrieval, management, applications] = await Promise.all([
+          section(
+            'status',
+            read(() => invoke('status')),
+            {
+              availability: 'unavailable',
+              learningEnabled: undefined,
+              retrievalEnabled: undefined,
+              pausedProjects: [],
+              pausedLearningProjects: [],
+              pausedRetrievalProjects: [],
+              files: [],
+              remote: null,
+              sync: null,
+            },
+          ),
+          section(
+            'retrieval',
+            read(() => retrieveWithoutNotice({ view: 'combined', projectKey: projectId })),
+            {
+              records: [],
+              text: '',
+              truncated: false,
+              disabled: false,
+            },
+          ),
+          section(
+            'management',
+            read(() => invoke('manage', { projectKey: projectId })),
+            {
+              records: [],
+              conflicts: [],
+              truncated: false,
+            },
+          ),
           section(
             'applications',
             readApplications({ contextProjectId: projectId, limit: 100 }).then(

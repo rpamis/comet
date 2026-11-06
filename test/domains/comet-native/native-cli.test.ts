@@ -980,7 +980,10 @@ describe('Comet Native CLI dispatcher', () => {
     expect(nextHelp.stdout).toContain(
       'Builder/dispatch identity fields are rejected; verifier responses must echo the current candidateId and verifierExecutionRef',
     );
-    expect(nextHelp.stdout).not.toMatch(/^\s+--(?:result|report|artifact)\b/mu);
+    expect(nextHelp.stdout).toContain('--result');
+    expect(nextHelp.stdout).toContain('--action');
+    expect(nextHelp.stdout).toContain('--session');
+    expect(nextHelp.stdout).not.toMatch(/^\s+--(?:report|artifact)\b/mu);
     const archiveHelp = await runNativeCli(['archive', '--help', ...projectArgs()]);
     expect(archiveHelp.stdout).toContain('--recover');
     expect(archiveHelp.stdout).toContain('original execution process has stopped');

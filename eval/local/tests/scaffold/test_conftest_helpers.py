@@ -15,6 +15,49 @@ from scaffold.python.tasks import load_task
 from scaffold.python.treatments import build_treatment_skills, load_treatments
 
 
+def test_dataset_environment_copy_preserves_bound_dockerfile_bytes(
+    tmp_path, setup_test_context, monkeypatch
+):
+    from scaffold.python import builtin_datasets, utils
+
+    monkeypatch.setattr(utils, 'build_docker_image', lambda *args, **kwargs: 'fixture:bound')
+    monkeypatch.setattr(builtin_datasets, 'docker', lambda *args: '')
+    environment = tmp_path / 'bound-environment'
+    environment.mkdir()
+    dockerfile = b'FROM fixture\nCOPY candidate /candidate\n'
+    (environment / 'Dockerfile').write_bytes(dockerfile)
+    (environment / '.dataset-task.json').write_text(
+        json.dumps({'controllerPaths': [], 'environmentFiles': ['Dockerfile'], 'workdir': '/workspace'})
+    )
+    workspace = setup_test_context(environment_dir=environment)
+    assert (workspace / '.dataset-build/Dockerfile').read_bytes() == dockerfile
+    assert (environment / 'Dockerfile').read_bytes() == dockerfile
+
+
+def test_authored_environment_image_identity_binds_copied_inputs(tmp_path, setup_test_context):
+    from scaffold.python.utils import run_shell
+
+    environment = tmp_path / "authored-environment"
+    candidate = environment / "candidate"
+    candidate.mkdir(parents=True)
+    dockerfile = b"FROM fixture\nCOPY candidate /candidate\n"
+    (environment / "Dockerfile").write_bytes(dockerfile)
+    source = candidate / "pipeline.py"
+    source.write_bytes(b"watched = True\n")
+
+    def image():
+        workspace = setup_test_context(environment_dir=environment)
+        return run_shell("docker.sh", "build-hash", str(workspace), check=True).stdout.strip()
+
+    original = image()
+    (tmp_path / "late-controller.json").write_text("not a build input")
+    assert image() == original
+    assert (environment / "Dockerfile").read_bytes() == dockerfile
+    source.write_bytes(b"watched = False\n")
+    assert image() != original
+    assert (tmp_path / "candidate/pipeline.py").read_bytes() == source.read_bytes()
+
+
 @pytest.mark.parametrize("workflow", ["classic", "native"])
 def test_current_classic_git_excludes_are_controller_owned_and_native_is_unchanged(
     tmp_path, monkeypatch, setup_test_context, workflow
@@ -53,7 +96,7 @@ def test_current_native_shared_host_check_is_available_without_loading_other_ski
 
     def copy_snapshot(_environment, workspace):
         if reference_present:
-            target = workspace / "_eval_current_comet/assets/skills/comet/reference/host-check.md"
+            target = workspace / conftest.CURRENT_COMET_SNAPSHOT_REF / 'assets/skills/comet/reference/host-check.md'
             target.parent.mkdir(parents=True)
             target.write_bytes(reference.read_bytes())
 
@@ -150,7 +193,7 @@ def test_current_cli_snapshot_uses_explicit_source_root(tmp_path, monkeypatch):
     monkeypatch.setattr(conftest, "_build_current_comet_dist", compile_source)
     workspace = tmp_path / "workspace"
     conftest._copy_current_comet_cli_snapshot(environment, workspace)
-    snapshot = workspace / "_eval_current_comet"
+    snapshot = workspace / conftest.CURRENT_COMET_SNAPSHOT_REF
     assert (snapshot / "bin/comet.js").read_text() == '// baseline entry'
     identity = json.loads((snapshot / "build-identity.json").read_text())
     assert identity["compilerVersion"] == "test-compiler"
@@ -171,8 +214,66 @@ def test_published_cli_snapshot_does_not_require_typescript_or_repository_source
     monkeypatch.setattr(conftest, "_build_current_comet_dist", lambda *_: pytest.fail("Published consumers must not compile repository sources"))
     workspace = tmp_path / "workspace"
     conftest._copy_current_comet_cli_snapshot(environment, workspace)
-    assert (workspace / "_eval_current_comet/dist/app/cli/index.js").read_text() == '// published cli'
-    assert json.loads((workspace / "_eval_current_comet/build-identity.json").read_text())["compilerVersion"] == "published-dist"
+    snapshot = workspace / conftest.CURRENT_COMET_SNAPSHOT_REF
+    assert (snapshot / 'dist/app/cli/index.js').read_text() == '// published cli'
+    assert json.loads((snapshot / 'build-identity.json').read_text())["compilerVersion"] == "published-dist"
+
+
+def test_cli_snapshot_stays_out_of_native_inputs_while_app_dist_remains_bound(tmp_path, monkeypatch):
+    source = tmp_path / 'published-cli'
+    for ref in ['package.json', 'bin/comet.js', 'assets/manifest.json',
+                'dist/app/cli/index.js', 'dist/domains/dashboard/native-adapter.js']:
+        target = source / ref
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text('{}' if ref.endswith('.json') else 'export {};', encoding='utf-8')
+    environment = tmp_path / 'environment'
+    environment.mkdir()
+    (environment / conftest.CURRENT_COMET_CLI_MARKER).touch()
+    monkeypatch.setenv('BENCH_COMET_SOURCE_ROOT', str(source))
+    workspace = tmp_path / 'workspace'
+    conftest._copy_current_comet_cli_snapshot(environment, workspace)
+    assert not (workspace / 'node_modules').exists()
+    (workspace / '.gitignore').write_text('_eval_current_comet/\n.dataset-state/\ndist/\n')
+    (workspace / 'README.md').write_text('Business project')
+    app = workspace / 'dist/app.js'
+    app.parent.mkdir()
+    app.write_text('export const value = 1;')
+    from scaffold.python.paths import DATASET_NPM_CACHE_REF
+    cache = workspace / DATASET_NPM_CACHE_REF / 'dist/cached.js'
+    cache.parent.mkdir(parents=True)
+    cache.write_text('tool dependency cache')
+    root_app = workspace / '.dataset-state/root/app/dist/generated.js'
+    root_app.parent.mkdir(parents=True)
+    root_app.write_text('business output outside the npm cache')
+    subprocess.run(['git', 'init', '--quiet', str(workspace)], check=True)
+    subprocess.run(['git', 'add', '.gitignore', 'README.md'], cwd=workspace, check=True)
+    subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@eval.invalid',
+                    'commit', '--quiet', '-m', 'initial'], cwd=workspace, check=True)
+    sdk = conftest.REPOSITORY_ROOT / 'dist/domains/comet-native/native-portable-checks.js'
+    script = '''const {nativeRawInputSnapshot}=await import(process.argv[1]);
+const result=await nativeRawInputSnapshot({projectRoot:process.argv[2]});
+console.log(JSON.stringify(result));'''
+
+    def baseline():
+        result = subprocess.run(['node', '--input-type=module', '-e', script, sdk.as_uri(), str(workspace)],
+            capture_output=True, text=True, encoding='utf-8',
+            env={**{key: value for key, value in os.environ.items()
+                    if key in {'PATH', 'SYSTEMROOT', 'WINDIR'}},
+                 'HOME': str(tmp_path/'home'), 'USERPROFILE': str(tmp_path/'home')})
+        assert result.returncode == 0, result.stderr
+        return json.loads(result.stdout)
+
+    before = baseline()
+    assert before['complete'] is True
+    assert 'dist/app.js' in {f['path'] for f in before['files']}
+    tooling = next(workspace.glob('**/build-identity.json')).parent.relative_to(workspace).as_posix()
+    assert not any(f['path'] == tooling or f['path'].startswith(tooling + '/') for f in before['files'])
+    assert not any('/.npm/' in f['path'] for f in before['files'])
+    assert not any('/.cache/npm/' in f['path'] for f in before['files'])
+    assert '.dataset-state/root/app/dist/generated.js' in {f['path'] for f in before['files']}
+    app.write_text('export const value = 2;')
+    after = baseline()
+    assert before['contentHash'] != after['contentHash']
 
 
 @pytest.mark.skipif(msvcrt is None, reason="Windows locking API only")
@@ -1392,7 +1493,7 @@ def test_prebuild_docker_image_allows_a_cold_image_build_to_run_for_fifteen_minu
     assert calls == [
         (
             ("docker.sh", "build", str(environment)),
-            {"timeout": 900, "check": False},
+            {"timeout": 900, "check": False, "terminate_process_tree": True},
         )
     ]
 

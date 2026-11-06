@@ -9,7 +9,7 @@ export async function runOwnedCommand(
     cwd: string;
     env: NodeJS.ProcessEnv;
     streamOutput?: boolean;
-    timeoutMs?: number;
+    timeoutMs?: number | null;
     onRegistered?: (instance: OwnedProcessInstance) => Promise<void>;
     onTerminated?: (instance: OwnedProcessInstance, confirmed: boolean) => Promise<void>;
   },
@@ -17,7 +17,7 @@ export async function runOwnedCommand(
   const owned = spawnOwnedCommand(command, args, {
     cwd: options.cwd,
     env: options.env,
-    timeoutMs: options.timeoutMs ?? 2_147_483_000,
+    timeoutMs: options.timeoutMs === undefined ? 2_147_483_000 : options.timeoutMs,
     confirmTermination: true,
   });
   const closed = new Promise<void>((resolve) => owned.child.once('close', () => resolve()));
@@ -67,6 +67,7 @@ export async function runOwnedCommand(
   let failure: { error: unknown } | undefined;
   try {
     if (!owned.child.pid) throw new Error('执行监管进程未启动');
+    await owned.ready;
     const identity = await readProcessIdentity(owned.child.pid!);
     instance = {
       pid: owned.child.pid,

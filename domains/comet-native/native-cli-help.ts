@@ -24,7 +24,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     agentQuickStart: [
       'Run `comet native status --json` to discover active changes.',
       'Select an existing change with `select`, or create one with `new`.',
-      'For SDK-owned changes, use the current Run Action or Wait; `next` executes Runtime-owned actions, and host handoffs use `comet runtime dispatch --application native`.',
+      'After Shape approval, new ordinary SDK tasks use `next <change> --session <actual-session>`. Submit business results using the returned command. Runtime checks and the next task are returned together. Older and Supervisor tasks retain their returned protocol through `comet runtime dispatch --application native`; read continuation.inputOptions when present.',
       'For compat Runtime changes, execute `agent.continuation.commandArgs` in `agent.workspace.cwd` and fill `agent.continuation.inputOptions` templates.',
     ],
     subcommands: [
@@ -92,7 +92,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     options: [
       '--runtime compat|sdk        Runtime format for this new change; defaults to sdk.',
       '--language en|zh-CN          Artifact language; defaults to project configuration.',
-      '--task <text>                Search Project Knowledge for an existing capability and save a revocable association draft.',
+      '--task <text>                Preserve the original request in the SDK Run for independent alignment review; also search Project Knowledge for a capability association.',
       '--capability <id>            Directly validate and associate an existing capability without retrieval.',
       '--isolation <kind>           current, branch, or worktree; defaults to current.',
       '--change-branch <branch>     Change branch; defaults to comet/<change-name>.',
@@ -191,10 +191,16 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   next: {
     usage:
-      'comet native next <change-name> --summary <text> [--coordination-mode multi-session|single-session] [--max-parallel <n>] [--expected-state-version <n>] [--expected-action <action>]\n       comet native next <change-name> --summary <text> [--confirmed|--accept-result|--revise-implementation|--revise-requirements|--retry-verifier|--resolve-verifier-blocker] [--expected-state-version <n>] [--expected-action <action>]\n       comet native next <sdk-change> --confirmed --coordination-mode multi-session|single-session --summary <text> --expected-state-version <n> --expected-action confirm-shape\n       comet native next <sdk-change> --accept-result|--revise-implementation|--retry-verifier|--continue-builder|--resolve-verifier-blocker --summary <text> --proposal-hash <hash> --expected-state-version <n> --expected-action <action>\n       comet native next <change-name> --runner-input <json-file> [--validate-only]',
+      'comet native next <change-name> --session <actual-session> [--action <id>] [--result <json-file>] [--review current-session|independent] [--accept-on-pass <authorization-summary>] [--details]\n       comet native next <change-name> --summary <text> [--coordination-mode multi-session|single-session] [--max-parallel <n>] [--expected-state-version <n>] [--expected-action <action>]\n       comet native next <change-name> --summary <text> [--confirmed|--accept-result|--revise-implementation|--revise-requirements|--retry-verifier|--resolve-verifier-blocker] [--expected-state-version <n>] [--expected-action <action>]\n       comet native next <sdk-change> --confirmed --coordination-mode multi-session|single-session --summary <text> --expected-state-version <n> --expected-action confirm-shape\n       comet native next <sdk-change> --accept-result|--revise-implementation|--retry-verifier|--continue-builder|--resolve-verifier-blocker --summary <text> --proposal-hash <hash> --expected-state-version <n> --expected-action <action>\n       comet native next <change-name> --runner-input <json-file> [--validate-only]',
     purpose:
       'Advance SDK-owned Runtime actions and bound user decisions, or recover a compat Runtime Agent boundary and use its skill-coordinated Builder/Verifier JSON bridge.',
     options: [
+      '--session <actual-session>  Claim a new ordinary SDK task using its real receiving session.',
+      '--action <id>               Preserve the current task ID when claiming or reporting.',
+      '--result <json-file>        Submit actual status/output business fields, run authorized internal steps, and return the next task. Requires --action and --session.',
+      '--review current-session|independent  Continue ordinary Verify in this session or leave it for a separate actual receiver. Honor explicit user requests for independent review.',
+      '--accept-on-pass <authorization-summary>  With this Verify result only, record prior explicit user delegation to accept and archive if all criteria pass. Without this option, wait for user acceptance.',
+      '--details                   With --session, include the full SDK projection alongside the current task.',
       '--summary <text>    Required transition or recovery summary.',
       '--confirmed         Confirm the persisted Shape boundary with both expected guards, or confirm an explicitly degraded verifier-unavailable fallback before Archive.',
       '--coordination-mode multi-session|single-session  Choose how a multi-child Supervisor proceeds. Supply it with --confirmed at the persisted Shape boundary to confirm the full plan and mode together, or select it during preparation and confirm the plan afterward.',

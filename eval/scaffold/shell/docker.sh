@@ -202,6 +202,47 @@ check_docker() {
 get_dockerfile_hash() {
     local dir="$1"
     local dockerfile="$dir/Dockerfile"
+    local inputs_dir="$dir"
+    if [[ -f "$dir/.dataset-task.json" && -f "$dir/.dataset-build/Dockerfile" ]]; then
+        inputs_dir="$dir/.dataset-build"
+        dockerfile="$inputs_dir/Dockerfile"
+        # 模式与后创建的控制器文件不是镜像输入；逐文件绑定实际构建目录。
+        node --input-type=module - "$(_winpath "$inputs_dir")" <<'JS'
+import { createHash } from 'node:crypto';
+import { createReadStream, promises as fs } from 'node:fs';
+import path from 'node:path';
+const root = path.resolve(process.argv[2]);
+const files = [];
+const walk = async (directory) => {
+    files.push({ file: directory, stat: await fs.lstat(directory) });
+    for (const name of (await fs.readdir(directory)).sort()) {
+        const file = path.join(directory, name), stat = await fs.lstat(file);
+        if (stat.isSymbolicLink()) throw new Error('Dataset build inputs cannot contain symlinks');
+        if (stat.isDirectory()) await walk(file);
+        else if (stat.isFile()) files.push({ file, stat });
+        else throw new Error('Dataset build input is not a regular file');
+    }
+};
+await walk(root);
+const hash = createHash('sha256');
+for (const { file, stat } of files) {
+    hash.update(JSON.stringify([path.relative(root, file).split(path.sep).join('/'), stat.mode]));
+    hash.update('\0');
+    if (!stat.isDirectory()) for await (const chunk of createReadStream(file)) hash.update(chunk);
+    hash.update('\0');
+    const after = await fs.lstat(file);
+    if (after.size !== stat.size || after.mtimeMs !== stat.mtimeMs || after.ctimeMs !== stat.ctimeMs || after.ino !== stat.ino)
+        throw new Error('Dataset build input changed while hashing');
+}
+const before = files.map(({ file }) => file);
+files.length = 0;
+await walk(root);
+if (JSON.stringify(before) !== JSON.stringify(files.map(({ file }) => file)))
+    throw new Error('Dataset build input set changed while hashing');
+console.log(hash.digest('hex').slice(0, 32));
+JS
+        return $?
+    fi
 
     if [[ ! -f "$dockerfile" ]]; then
         # Fall back to environment/Dockerfile (same layout as docker_build).
@@ -218,11 +259,14 @@ get_dockerfile_hash() {
     # added at runtime and would cause a different hash every run.
     local combined
     combined=$(cat "$dockerfile")
-    if [[ -f "$dir/requirements.txt" ]]; then
-        combined="$combined$(cat "$dir/requirements.txt")"
+    if [[ -f "$inputs_dir/requirements.txt" ]]; then
+        combined="$combined$(cat "$inputs_dir/requirements.txt")"
     fi
-    if [[ -f "$dir/current-comet-package.json" ]]; then
-        combined="$combined$(cat "$dir/current-comet-package.json")"
+    if [[ -f "$inputs_dir/current-comet-package.json" ]]; then
+        combined="$combined$(cat "$inputs_dir/current-comet-package.json")"
+    fi
+    if [[ -f "$dir/.dataset-task.json" ]]; then
+        combined="$combined$(cat "$dir/.dataset-task.json")"
     fi
 
     if command -v md5 &> /dev/null; then
@@ -365,10 +409,19 @@ process.stdin.on("end", () => process.stdout.write(JSON.stringify(value.trim()))
 # DOCKER BUILD
 # =============================================================================
 
+# 新安装使用评估状态中的依赖目录；旧目录仅用于读取既有工作区。
+current_comet_snapshot_ref() {
+    if [[ -d "$1/.dataset-state/tools/node_modules/@rpamis/comet" ]]; then
+        printf '%s' '.dataset-state/tools/node_modules/@rpamis/comet'
+    else
+        printf '%s' '_eval_current_comet'
+    fi
+}
+
 # 固定候选 CLI 到镜像层，模型只使用非 root 身份读取，不在每次命令中复制。
 docker_current_comet_image() {
     local dir="$1" base_image="$2" force="${3:-}"
-    local snapshot="$dir/_eval_current_comet"
+    local snapshot="$dir/$(current_comet_snapshot_ref "$dir")"
     if [[ ! -f "$snapshot/bin/comet.js" || ! -d "$snapshot/dist" || \
           ! -f "$snapshot/assets/manifest.json" || ! -f "$snapshot/package.json" ]]; then
         printf '%s' "$base_image"
@@ -421,6 +474,11 @@ docker_build() {
     validate_agent "$agent" || return 1
 
     local dockerfile="$dir/Dockerfile"
+    local build_context="$dir"
+    if [[ -f "$dir/.dataset-task.json" && -f "$dir/.dataset-build/Dockerfile" ]]; then
+        build_context="$dir/.dataset-build"
+        dockerfile="$build_context/Dockerfile"
+    fi
     if [[ ! -f "$dockerfile" ]]; then
         # Fall back to environment/Dockerfile (the eval layout: conftest's
         # copy_environment places it there, and validator test dirs reuse it).
@@ -443,7 +501,7 @@ docker_build() {
 
     # Build the task image first (pass Claude Code version as build arg).
     local windir windockerfile
-    windir=$(_winpath "$dir")
+    windir=$(_winpath "$build_context")
     windockerfile=$(_winpath "$dockerfile")
     if [[ "$agent" == "claude-code" && "${TRACE_TO_LANGFUSE:-}" != "true" ]]; then
         if docker build -t "$image_name" \
@@ -607,20 +665,28 @@ build_langfuse_plugin_args() {
 # Nested read-only binds override the writable /workspace parent mount when present.
 build_trusted_oracle_mount_args() {
     local dir="$1"
+    local aliases=(//workspace)
+    local alias
+    if [[ -f "$dir/.dataset-task.json" ]]; then
+        alias=$(node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); const w=m.workdir || "/workspace"; if(!["/workspace","/root","/app","/data"].includes(w))throw Error("Unsupported dataset workspace alias");process.stdout.write(w)' "$dir/.dataset-task.json") || return 1
+        [[ "$alias" == /workspace ]] || aliases+=("/$alias")
+    fi
     TRUSTED_ORACLE_MOUNT_ARGS=()
-    if [[ -d "$dir/_eval_current_comet" ]]; then
+    local snapshot_ref
+    snapshot_ref=$(current_comet_snapshot_ref "$dir")
+    if [[ -d "$dir/$snapshot_ref" ]]; then
         local current_comet_host
-        current_comet_host=$(_winpath "$dir/_eval_current_comet")
-        TRUSTED_ORACLE_MOUNT_ARGS+=(
-            "-v" "$current_comet_host://workspace/_eval_current_comet:ro"
-        )
+        current_comet_host=$(_winpath "$dir/$snapshot_ref")
+        for alias in "${aliases[@]}"; do
+            TRUSTED_ORACLE_MOUNT_ARGS+=("-v" "$current_comet_host:$alias/$snapshot_ref:ro")
+        done
     fi
     if [[ -d "$dir/_eval_trusted_oracles" ]]; then
         local native_oracles_host
         native_oracles_host=$(_winpath "$dir/_eval_trusted_oracles")
-        TRUSTED_ORACLE_MOUNT_ARGS+=(
-            "-v" "$native_oracles_host://workspace/_eval_trusted_oracles:ro"
-        )
+        for alias in "${aliases[@]}"; do
+            TRUSTED_ORACLE_MOUNT_ARGS+=("-v" "$native_oracles_host:$alias/_eval_trusted_oracles:ro")
+        done
     fi
 }
 
@@ -653,6 +719,7 @@ prepare_eval_git_excludes() {
 /CLAUDE.md
 /AGENTS.md
 /_eval_current_comet/
+/.dataset-state/tools/node_modules/@rpamis/comet/
 /_eval_target_skills/
 /_eval_trusted_oracles/
 /.eval-*
@@ -665,11 +732,70 @@ EOF
     ' </dev/null
 }
 
+# 数据集文件映射与 Comet 安装无关；Goal 也必须把同一候选交给评分器。
+prepare_dataset_runtime_args() {
+    local dir="$1" directory source_path
+    [[ -f "$dir/.dataset-task.json" ]] || return 0
+    if [[ -n "${COMET_EVAL_TASK_CONTRACT_FILE:-}" ]]; then
+        [[ -f "$COMET_EVAL_TASK_CONTRACT_FILE" ]] || { echo 'ERROR: Missing fixed public task contract' >&2; return 1; }
+        COMET_RUNTIME_MOUNT_ARGS+=(-v "$(_winpath "$COMET_EVAL_TASK_CONTRACT_FILE")://opt/comet-task-contract/task.md:ro")
+    fi
+    local metadata_lines
+    metadata_lines=$(node - "$dir/.dataset-task.json" <<'JS'
+const fs = require('node:fs');
+const metadata = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const execution = metadata.execution || {};
+if (execution.networkMode && execution.networkMode !== 'public') throw Error('Unsupported dataset network mode');
+for (const [key, flag, suffix] of [['cpus', '--cpus', ''], ['memoryMb', '--memory', 'm']]) {
+  const value = execution[key];
+  if (value !== undefined) {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) throw Error('Invalid dataset resource limit');
+    console.log(flag); console.log(String(value) + suffix);
+  }
+}
+const allowed = ['/root','/app','/data','/outputs','/opt/syzkaller','/home/agent'];
+const directories = execution.candidateDirectories || ['/root','/app','/data'];
+if (!Array.isArray(directories) || directories.some(p => !allowed.includes(p))) throw Error('Unsupported dataset candidate directory');
+const path = require('node:path');
+const root = fs.realpathSync(path.dirname(process.argv[2]));
+for (const directory of [...new Set(directories)]) {
+  const source = directory === metadata.workdir ? root : path.join(root, '.dataset-state', directory.slice(1));
+  const resolved = fs.realpathSync(source);
+  if (path.relative(root, resolved).split(path.sep).includes('..') || path.isAbsolute(path.relative(root,resolved))) throw Error('Dataset candidate mount escapes its workspace');
+  console.log('mount:' + directory);
+}
+const cache = path.join(root, '.dataset-state/.cache/npm/_cacache');
+if (metadata.workdir !== '/root' && directories.includes('/root') && fs.existsSync(cache)) {
+  const relative = path.relative(root, fs.realpathSync(cache));
+  if (relative.split(path.sep).includes('..') || path.isAbsolute(relative)) throw Error('Dataset npm cache mount escapes its workspace');
+  console.log('mount-npm-cache');
+}
+JS
+    ) || return 1
+    while IFS= read -r directory; do
+        if [[ "$directory" == mount:* ]]; then
+            directory="${directory#mount:}"
+            if [[ "$directory" == "$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).workdir)' "$dir/.dataset-task.json")" ]]; then
+                source_path="$dir"
+            else
+                source_path="$dir/.dataset-state/${directory#/}"
+            fi
+            [[ -d "$source_path" ]] || { echo "ERROR: Missing dataset candidate directory: $directory" >&2; return 1; }
+            COMET_RUNTIME_MOUNT_ARGS+=(-v "$(_winpath "$source_path"):/$directory")
+        elif [[ "$directory" == mount-npm-cache ]]; then
+            COMET_RUNTIME_MOUNT_ARGS+=(-v "$(_winpath "$dir/.dataset-state/.cache/npm/_cacache")://root/.npm/_cacache")
+        elif [[ -n "$directory" ]]; then
+            COMET_RUNTIME_MOUNT_ARGS+=("$directory")
+        fi
+    done <<< "$metadata_lines"
+}
+
 # 当前 Runtime 位于 /workspace 之外；每个用例的执行和校验容器共享同一卷。
 prepare_eval_runtime_data() {
     local dir="$1" image="$2" volume owner
     COMET_RUNTIME_MOUNT_ARGS=()
-    [[ -d "$dir/_eval_current_comet" || -f "$dir/.include-current-comet-cli" ]] || return 0
+    prepare_dataset_runtime_args "$dir" || return 1
+    [[ -d "$dir/$(current_comet_snapshot_ref "$dir")" || -f "$dir/.include-current-comet-cli" ]] || return 0
     prepare_eval_git_excludes "$dir" "$image" || return 1
     volume=$(eval_runtime_volume "$dir") || return 1
     owner=$(docker image inspect --format '{{.Config.User}}' "$image") || return 1
@@ -680,7 +806,7 @@ prepare_eval_runtime_data() {
         chown "${1:-0}" /opt/comet-eval-data
         chmod 0700 /opt/comet-eval-data
     ' _ "$owner" </dev/null || return 1
-    COMET_RUNTIME_MOUNT_ARGS=(-v "$volume://opt/comet-eval-data" -e "COMET_DATA_DIR=//opt/comet-eval-data")
+    COMET_RUNTIME_MOUNT_ARGS+=(-v "$volume://opt/comet-eval-data" -e "COMET_DATA_DIR=//opt/comet-eval-data")
 }
 
 cleanup_eval_runtime_data() {
@@ -1163,6 +1289,12 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     shift || true
 
     case "$cmd" in
+    build-hash)
+        get_dockerfile_hash "${1:?Missing build directory}"
+        ;;
+    runtime-data-volume)
+        eval_runtime_volume "$(realpath "${1:?Missing Eval workspace}")"
+        ;;
     cleanup-runtime-data)
         dir="${1:?Missing Eval workspace}"
         cleanup_eval_runtime_data "$(realpath "$dir")"

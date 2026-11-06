@@ -24,7 +24,7 @@ export const classicHandoffCommand: ClassicCommandHandler = withProjectContext(
       ? await resolveClassicChangeRuntimeOwner(layout.projectRoot, change)
       : null;
     if (owner?.format !== 'sdk') return compatHandoffCommand(args, options);
-    const { state } = await inspectClassicSdkRun(layout.projectRoot, change);
+    const { run, state } = await inspectClassicSdkRun(layout.projectRoot, change);
     if (!['design', 'build'].includes(state.phase))
       return { exitCode: 1, stderr: 'ERROR: design handoff requires phase: design or build\n' };
     if (!state.handoffContext || !state.handoffHash)
@@ -36,6 +36,7 @@ export const classicHandoffCommand: ClassicCommandHandler = withProjectContext(
       };
     if (
       !(await validateClassicSdkDesignContext({
+        run,
         projectRoot: layout.projectRoot,
         changeDir: active.directory,
         change,

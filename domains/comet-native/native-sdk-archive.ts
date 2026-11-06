@@ -5,10 +5,19 @@ import {
 import { inspectNativeSdkQuiescence } from './native-sdk-cancellation.js';
 import type { NativeSdkCheckExecutionInspection } from './native-sdk-check-execution.js';
 import { readNativeSdkArchiveOriginals } from './native-sdk-archive-originals.js';
+import {
+  nativeSdkVerificationReportOutput,
+  writeNativeSdkVerificationReport,
+} from './native-sdk-report.js';
+import { nativeVerificationResultHash } from './native-verification-report-v2.js';
+import { canonicalHash } from './native-canonical-hash.js';
+import type { NativeRawInputSnapshot } from './native-portable-checks.js';
 import path from 'node:path';
+import { inspectNativePortableAcceptanceDrift } from './native-portable-requirements.js';
 import { promises as fs } from 'node:fs';
 import {
   assertNativeSdkCandidateUnchanged,
+  assertNativeSdkArchiveRecoveryCandidate,
   nativeSdkCandidateInputGate,
   NativeSdkCandidateDriftError,
   assertNativeSdkArchiveCheckInputs,
@@ -42,7 +51,7 @@ import {
 import { parseNativePortableState } from './native-portable-state.js';
 import { readNativePortableTransaction } from './native-portable-transactions.js';
 import { readNativeApprovedShapeSemanticSnapshot } from './native-portable-requirements.js';
-import { nativeEditReviewScope } from './native-edit-review-scope.js';
+import { nativeEditReviewScope, nativeFormalEditReviewScope } from './native-edit-review-scope.js';
 import { nativeShapeReviewAnchorMatches } from './native-shape-review-evidence.js';
 import {
   nativeShapeArtifactContractHash,
@@ -93,12 +102,7 @@ export function nativeSdkRetryableArchiveFinalization(run: Readonly<WorkflowRun>
     : undefined;
 }
 
-/** Spec 内容由归档事务核对；搬迁材料另行逐文件绑定，不能借目录排除隐藏实现漂移。 */
-async function archiveCandidateBinding(
-  run: Readonly<WorkflowRun>,
-  projectRoot: string,
-  includeGeneratedInputs = true,
-) {
+async function readArchiveMaterials(run: Readonly<WorkflowRun>, projectRoot: string) {
   const state = parseNativePortableState(run.state);
   const input = run.input as { artifactRootRef: string };
   const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, { readOnly: true });
@@ -119,7 +123,11 @@ async function archiveCandidateBinding(
   );
   const materials: Array<{ ref: string; digest: string; mode: number }> = [];
   const shape = (await readNativeApprovedShapeSemanticSnapshot({ paths, state }))?.snapshot;
-  const scope = state.builder_handoff ? nativeEditReviewScope(paths, state) : null;
+  const scope = state.shape_confirmation_hash
+    ? nativeFormalEditReviewScope(paths, state)
+    : state.builder_handoff
+      ? nativeEditReviewScope(paths, state)
+      : null;
   let reviews: Awaited<ReturnType<typeof inspectEditReviews>> | undefined;
   async function visit(directory: string) {
     const stat = await fs.lstat(directory);
@@ -128,7 +136,12 @@ async function archiveCandidateBinding(
     for (const entry of (await fs.readdir(directory)).sort()) {
       const file = path.join(directory, entry);
       const relative = path.relative(source, file).replaceAll('\\', '/');
-      if (['verification.md', 'comet-state.yaml', 'children.yaml'].includes(relative)) continue;
+      if (
+        ['verification.md', 'comet-state.yaml', 'children.yaml', 'walkthrough.html'].includes(
+          relative,
+        )
+      )
+        continue;
       const stat = await fs.lstat(file);
       if (stat.isDirectory()) await visit(file);
       else {
@@ -144,18 +157,27 @@ async function archiveCandidateBinding(
             maxBytes: null,
           });
           const reviewedRef = ref(path.join(paths.changesDir, state.name, approved.source));
-          const reviewed =
+          let reviewedScope = scope;
+          let reviewed =
             current.hash === digest
               ? await approvedEditFingerprint(scope, reviewedRef, current.text, reviews)
               : null;
+          if (!reviewed && current.hash === digest && state.builder_handoff) {
+            const legacyScope = nativeEditReviewScope(paths, state);
+            if (legacyScope.candidateKey !== scope.candidateKey) {
+              reviewed = await approvedEditFingerprint(legacyScope, reviewedRef, current.text);
+              reviewedScope = legacyScope;
+            }
+          }
           const observed = nativeShapeArtifactSnapshot(approved.source, current.text);
           if (
             reviewed &&
-            (await nativeShapeReviewAnchorMatches(scope, approved, reviewed.beforeHash)) &&
-            nativeShapeArtifactContractHash({
-              ...observed,
-              commentsHash: approved.commentsHash,
-            }) === nativeShapeArtifactContractHash(approved)
+            (await nativeShapeReviewAnchorMatches(reviewedScope, approved, reviewed.beforeHash)) &&
+            (!reviewed.semantic ||
+              nativeShapeArtifactContractHash({
+                ...observed,
+                commentsHash: approved.commentsHash,
+              }) === nativeShapeArtifactContractHash(approved))
           )
             digest = approved.contentHash;
         }
@@ -164,11 +186,78 @@ async function archiveCandidateBinding(
     }
   }
   await visit(source);
+  return { state, paths, archiveOwnedPaths, materials, shape };
+}
+
+/** Spec 内容由归档事务核对；搬迁材料另行逐文件绑定，不能借目录排除隐藏实现漂移。 */
+async function archiveCandidateBinding(
+  run: Readonly<WorkflowRun>,
+  projectRoot: string,
+  options: {
+    includeGeneratedInputs?: boolean;
+    recovery?: boolean;
+    legacyRecovery?: boolean;
+    observation?: {
+      materials: Awaited<ReturnType<typeof readArchiveMaterials>>;
+      inputs?: NativeRawInputSnapshot;
+    };
+  } = {},
+) {
+  const {
+    includeGeneratedInputs = true,
+    recovery = false,
+    legacyRecovery = false,
+    observation,
+  } = options;
+  const { state, paths, archiveOwnedPaths, materials, shape } =
+    observation?.materials ?? (await readArchiveMaterials(run, projectRoot));
+  if (legacyRecovery) {
+    const expected = shape?.artifacts.filter(
+      (artifact) =>
+        !['verification.md', 'comet-state.yaml', 'children.yaml', 'walkthrough.html'].includes(
+          artifact.source,
+        ),
+    );
+    if (
+      !expected ||
+      expected.length !== materials.length ||
+      materials.some(
+        (material) =>
+          expected.find((artifact) => artifact.source === material.ref)?.contentHash !==
+            material.digest || (material.mode & 0o111) !== 0,
+      )
+    )
+      throw new NativeSdkCandidateDriftError(
+        '旧 Archive 搬迁材料缺少匹配的原批准内容；保留原文件和事务，不能使用当前摘要替代历史证据',
+      );
+    const saved = await readNativePortableTransaction(paths, {
+      kind: 'archive',
+      change: state.name,
+    });
+    if (saved?.kind !== 'archive') throw new Error('旧 Archive 恢复缺少原事务');
+    const legacyArchiveOverlay = await withNativeLegacyArchiveMaterials({
+      paths,
+      transaction: saved.journal,
+      overlay: createNativeLegacyArchiveOverlay({
+        paths,
+        transaction: saved.journal,
+        originals: await readNativeSdkArchiveOriginals(paths, run.runId, saved.journal),
+      }),
+    });
+    await assertNativeSdkArchiveRecoveryCandidate({
+      run,
+      projectRoot,
+      archiveOwnedPaths: [],
+      legacyArchiveOverlay,
+    });
+  }
   const candidateGate = await nativeSdkCandidateInputGate({
     run,
     projectRoot,
     archiveOwnedPaths,
     includeGeneratedInputs,
+    excludeGeneratedInputs: recovery,
+    observedInputs: observation?.inputs,
   });
   if (candidateGate === null)
     throw new NativeSdkCandidateDriftError(
@@ -178,9 +267,36 @@ async function archiveCandidateBinding(
   return includeGeneratedInputs ? `v2:${binding}` : binding;
 }
 
-async function assertArchiveCandidate(run: Readonly<WorkflowRun>, projectRoot: string) {
+async function assertArchiveCandidate(
+  run: Readonly<WorkflowRun>,
+  projectRoot: string,
+  recovery = false,
+) {
   const preflight = run.outputs['archive.prepare']?.value as
-    { candidateBinding?: string } | undefined;
+    { candidateBinding?: string; recoveryBinding?: string } | undefined;
+  const applied = run.outputs['archive.execute']?.value as { recoveryBinding?: string } | undefined;
+  const recoveryBinding = preflight?.recoveryBinding ?? applied?.recoveryBinding;
+  if (recovery && preflight?.candidateBinding && !recoveryBinding) {
+    await archiveCandidateBinding(run, projectRoot, {
+      includeGeneratedInputs: false,
+      recovery: true,
+      legacyRecovery: true,
+    });
+    return;
+  }
+  if (recovery && recoveryBinding) {
+    if (
+      !/^[a-f0-9]{64}$/u.test(recoveryBinding) ||
+      (await archiveCandidateBinding(run, projectRoot, {
+        includeGeneratedInputs: false,
+        recovery: true,
+      })) !== recoveryBinding
+    )
+      throw new NativeSdkCandidateDriftError(
+        'Native Archive 原候选实现或搬迁材料已变化；保留原事务并恢复这些材料后继续',
+      );
+    return;
+  }
   if (!preflight?.candidateBinding) {
     // 旧 Run 尚无归档摘要时只接受原检查仍能证明的候选，绝不从当前文件静默重建信任。
     try {
@@ -223,11 +339,9 @@ async function assertArchiveCandidate(run: Readonly<WorkflowRun>, projectRoot: s
     return;
   }
   if (
-    (await archiveCandidateBinding(
-      run,
-      projectRoot,
-      preflight.candidateBinding.startsWith('v2:'),
-    )) !== preflight.candidateBinding
+    (await archiveCandidateBinding(run, projectRoot, {
+      includeGeneratedInputs: preflight.candidateBinding.startsWith('v2:'),
+    })) !== preflight.candidateBinding
   )
     throw new NativeSdkCandidateDriftError(
       'Native Archive 候选实现或搬迁材料已变化；请恢复已确认候选后重试，或在写入 Specs 前重新验收',
@@ -269,7 +383,7 @@ async function archivePreflightBinding(
   const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, { readOnly: true });
   const reportFile = path.join(paths.changesDir, state.name, 'verification.md');
   const reportRef = path.relative(projectRoot, reportFile).replaceAll('\\', '/');
-  const prior = run.outputs['verify.report']?.value as Record<string, unknown> | undefined;
+  const prior = nativeSdkVerificationReportOutput(run);
   if (
     !prior ||
     prior.candidateId !== state.builder_handoff.candidate_id ||
@@ -280,6 +394,11 @@ async function archivePreflightBinding(
   ) {
     throw new Error('Native Archive preflight lacks the confirmed verification report');
   }
+  if (
+    run.workflow.version !== '1' &&
+    prior.verificationResultHash !== nativeVerificationResultHash(state)
+  )
+    throw new Error('Native Archive preflight lacks the confirmed verification result');
   return {
     state,
     paths,
@@ -296,23 +415,47 @@ async function inspectArchivePreflightOutput(
   projectRoot: string,
 ) {
   const bound = await archivePreflightBinding(run, action, projectRoot);
-  await assertNativeSdkCandidateUnchanged({ run, projectRoot, requireEvidence: true });
+  const observedInputs = await assertNativeSdkCandidateUnchanged({
+    run,
+    projectRoot,
+    requireEvidence: true,
+  });
   try {
-    await assertNativeSdkArchiveCheckInputs({ run, projectRoot });
+    await assertNativeSdkArchiveCheckInputs({ run, projectRoot, observedInputs });
   } catch (error) {
-    if (
-      !(error instanceof NativeSdkCheckInputDriftError) &&
-      !(error instanceof NativeSdkCheckInputSnapshotError)
-    )
-      throw error;
+    if (error instanceof NativeSdkCheckInputSnapshotError) throw error;
+    if (!(error instanceof NativeSdkCheckInputDriftError)) throw error;
     throw new NativeSdkCandidateDriftError(
       `Native 归档前检查输入已变化或无法完整复核；请恢复原输入或重新验收：${error.message}`,
     );
   }
-  const candidateBinding = await archiveCandidateBinding(run, projectRoot);
-  const report = await hashProtectedProjectFile(projectRoot, bound.reportRef, {
-    label: 'Native SDK verification report',
-  });
+  const materials = await readArchiveMaterials(run, projectRoot);
+  let inputs: NativeRawInputSnapshot | undefined;
+  if (observedInputs) {
+    const files = observedInputs.files.filter(
+      (file) =>
+        !materials.archiveOwnedPaths.some(
+          (ref) => file.path === ref || file.path.startsWith(`${ref}/`),
+        ),
+    );
+    inputs = {
+      ...observedInputs,
+      files,
+      contentHash: canonicalHash('comet.native.raw-content.v1', {
+        projectRoot: observedInputs.projectRoot,
+        files: files.map(({ path, hash, mode }) => ({ path, hash, mode })),
+        ...(observedInputs.outputs?.length ? { outputs: observedInputs.outputs } : {}),
+      }),
+    };
+  }
+  const observation = { materials, inputs };
+  const candidateBinding = await archiveCandidateBinding(run, projectRoot, { observation });
+  const report =
+    run.workflow.version !== '1'
+      ? { digest: bound.priorReportSha256 }
+      : await hashProtectedProjectFile(projectRoot, bound.reportRef, {
+          label: 'Native SDK verification report',
+        });
   if (report.digest !== bound.priorReportSha256) {
     throw new Error('Native verification report changed after Archive confirmation');
   }
@@ -322,6 +465,19 @@ async function inspectArchivePreflightOutput(
     state: bound.state,
     requireCurrentAcceptance: true,
     verificationReportStateVersion: bound.reportStateVersion,
+    checkCapabilityOwners: run.workflow.version === '1',
+    derivedReport: run.workflow.version !== '1',
+  }).catch(async (error) => {
+    const drift = await inspectNativePortableAcceptanceDrift({
+      paths: bound.paths,
+      state: bound.state,
+    });
+    if (drift.drifted) {
+      const reason = drift.reason ?? 'Native Archive formal requirements changed';
+      if (drift.reviewRequired) throw new NativeSdkCheckInputSnapshotError(reason);
+      throw new NativeSdkCandidateDriftError(reason);
+    }
+    throw error;
   });
   const archiveDirRef = path.relative(projectRoot, inspected.archiveDir).replaceAll('\\', '/');
   if (archiveDirRef.startsWith('../') || path.isAbsolute(archiveDirRef)) {
@@ -329,11 +485,19 @@ async function inspectArchivePreflightOutput(
   }
   return {
     candidateBinding,
+    recoveryBinding: await archiveCandidateBinding(run, projectRoot, {
+      includeGeneratedInputs: false,
+      recovery: true,
+      observation,
+    }),
     candidateId: bound.state.builder_handoff!.candidate_id,
     stateVersion: bound.state.state_version,
     reportRef: bound.reportRef,
     reportSha256: report.digest,
     reportStateVersion: bound.reportStateVersion,
+    ...(run.workflow.version !== '1'
+      ? { verificationResultHash: nativeVerificationResultHash(bound.state) }
+      : {}),
     archiveDirRef,
     ready: inspected.ready,
     blockers: inspected.blockers,
@@ -351,6 +515,8 @@ async function archivePreflightOutput(
   try {
     return await inspectArchivePreflightOutput(run, action, projectRoot);
   } catch (error) {
+    if (error instanceof NativeSdkCheckInputSnapshotError)
+      return { ready: false, reason: 'candidate-unavailable', message: error.message };
     if (!(error instanceof NativeSdkCandidateDriftError)) throw error;
     return { ready: false, reason: 'candidate-drift', message: error.message };
   }
@@ -382,6 +548,10 @@ export const nativeSdkArchivePreflightValidator: RuntimeValidator = {
     ) {
       return { accepted: false, reason: 'Native Archive preflight was not run by the Runtime' };
     }
+    // 失败不授予归档权限。保留本次失败事实，不能用另一次采样覆盖瞬时诊断。
+    const output = outcome.output as { ready?: unknown } | null;
+    if (outcome.status === 'failed' && output?.ready === false && outcome.event === undefined)
+      return { accepted: true };
     try {
       const expected = await archivePreflightOutput(run, action, context.projectRoot);
       if (
@@ -403,6 +573,7 @@ async function archiveApplyBinding(
   run: Readonly<WorkflowRun>,
   action: Readonly<RuntimeAction>,
   projectRoot: string,
+  recoverApplied = false,
 ) {
   const state = parseNativePortableState(run.state);
   const input = run.input as { name?: unknown; artifactRootRef?: unknown };
@@ -444,13 +615,56 @@ async function archiveApplyBinding(
   ) {
     throw new Error('Native SDK Archive preflight lacks the confirmed report binding');
   }
-  const report = await hashProtectedProjectFile(projectRoot, reportRef, {
-    label: 'Native SDK verification report',
-  });
-  if (report.digest !== preflight.reportSha256)
-    throw new Error('Native verification report changed after Archive preflight');
-  await assertArchiveCandidate(run, projectRoot);
-  return { state, paths, verificationReportStateVersion: reportStateVersion as number };
+  if (
+    run.workflow.version !== '1' &&
+    preflight.verificationResultHash !== nativeVerificationResultHash(state)
+  )
+    throw new Error('Native SDK Archive preflight belongs to another verification result');
+  if (run.workflow.version === '1') {
+    const report = await hashProtectedProjectFile(projectRoot, reportRef, {
+      label: 'Native SDK verification report',
+    });
+    if (report.digest !== preflight.reportSha256)
+      throw new Error('Native verification report changed after Archive preflight');
+  }
+  if (recoverApplied) {
+    await inspectNativeSdkArchiveSpecs({ paths, state });
+    const transaction = await readNativePortableTransaction(paths, {
+      kind: 'archive',
+      change: state.name,
+    });
+    const preview = preflight.specPreview as
+      | Array<{
+          capability: string;
+          operation: string;
+          current_hash: string | null;
+          target_hash: string | null;
+        }>
+      | undefined;
+    if (
+      transaction?.kind !== 'archive' ||
+      !preview ||
+      transaction.journal.spec_changes.length !== preview.length ||
+      transaction.journal.spec_changes.some((change, index) => {
+        const expected = preview[index];
+        return (
+          change.capability !== expected.capability ||
+          change.operation !== expected.operation ||
+          change.expected_target_hash !== expected.current_hash ||
+          (change.operation === 'remove' ? null : change.result_hash) !== expected.target_hash
+        );
+      })
+    )
+      throw new Error('Native SDK Archive 已应用事务与原预检冻结的 Specs 不匹配');
+  }
+  await assertArchiveCandidate(run, projectRoot, recoverApplied);
+  return {
+    state,
+    paths,
+    verificationReportStateVersion: reportStateVersion as number,
+    checkCapabilityOwners: run.workflow.version === '1',
+    derivedReport: run.workflow.version !== '1',
+  };
 }
 
 async function archiveUnappliedDrift(
@@ -501,7 +715,7 @@ export async function inspectNativeSdkPendingArchiveDrift(options: {
     label: 'Native SDK verification report',
     expected: 'file',
   });
-  if (!report.exists)
+  if (!report.exists && run.workflow.version === '1')
     return {
       ready: false,
       reason: 'report-missing',
@@ -552,11 +766,15 @@ export const nativeSdkArchiveApplyExecutor: RuntimeExecutor = {
       if (!output) throw error;
       return { status: 'failed', output };
     }
-    const { state, paths } = bound;
-    await applyNativeSdkArchiveSpecs(bound);
+    const transaction = await applyNativeSdkArchiveSpecs(bound);
     return {
       status: 'succeeded',
-      output: (await inspectNativeSdkArchiveSpecs({ paths, state })) as unknown as RuntimeValue,
+      output: {
+        transactionId: transaction.id,
+        archiveRef: transaction.archive_ref,
+        stateVersion: transaction.start_state_version,
+        specCount: transaction.spec_changes.length,
+      },
     };
   },
 };
@@ -573,10 +791,27 @@ export const nativeSdkArchiveApplyValidator: RuntimeValidator = {
       return { accepted: false, reason: 'Native Archive Specs were not applied by the Runtime' };
     }
     try {
-      const { state, paths } = await archiveApplyBinding(run, action, context.projectRoot);
+      const recoveryBinding =
+        action.status === 'unknown' &&
+        typeof (outcome.output as { recoveryBinding?: unknown })?.recoveryBinding === 'string'
+          ? await archiveRecoveryBinding(run, context.projectRoot)
+          : undefined;
+      const recovering =
+        action.status === 'unknown' &&
+        typeof recoveryBinding === 'string' &&
+        (outcome.output as { recoveryBinding?: unknown })?.recoveryBinding === recoveryBinding;
+      const { state, paths } = await archiveApplyBinding(
+        run,
+        action,
+        context.projectRoot,
+        recovering,
+      );
       if (outcome.status !== 'succeeded')
         return { accepted: false, reason: 'Unexpected Native Archive apply event' };
-      const expected = await inspectNativeSdkArchiveSpecs({ paths, state });
+      const expected = {
+        ...(await inspectNativeSdkArchiveSpecs({ paths, state })),
+        ...(recovering ? { recoveryBinding } : {}),
+      };
       return hashRuntimeValue(outcome.output) ===
         hashRuntimeValue(expected as unknown as RuntimeValue)
         ? { accepted: true }
@@ -594,11 +829,27 @@ export const nativeSdkArchiveApplyValidator: RuntimeValidator = {
   },
 };
 
-async function archiveFinalizeBinding(
+function archiveUsesRecoveryBinding(run: Readonly<WorkflowRun>, action: Readonly<RuntimeAction>) {
+  const applied = run.outputs['archive.execute']?.value as { recoveryBinding?: string } | undefined;
+  return action.status === 'unknown' || typeof applied?.recoveryBinding === 'string';
+}
+
+async function archiveRecoveryBinding(run: Readonly<WorkflowRun>, projectRoot: string) {
+  const preflight = run.outputs['archive.prepare']?.value as
+    { candidateBinding?: string; recoveryBinding?: string } | undefined;
+  if (preflight?.recoveryBinding) return preflight.recoveryBinding;
+  if (!preflight?.candidateBinding) return undefined;
+  return archiveCandidateBinding(run, projectRoot, {
+    includeGeneratedInputs: false,
+    recovery: true,
+    legacyRecovery: true,
+  });
+}
+
+async function archiveFinalizeContext(
   run: Readonly<WorkflowRun>,
   action: Readonly<RuntimeAction>,
   projectRoot: string,
-  historicalRecovery = false,
 ) {
   const state = parseNativePortableState(run.state);
   const input = run.input as { name?: unknown; artifactRootRef?: unknown };
@@ -621,18 +872,53 @@ async function archiveFinalizeBinding(
   ) {
     throw new Error('Native SDK Archive finalization lacks applied Specs');
   }
+  if (
+    run.workflow.version !== '1' &&
+    preflight.verificationResultHash !== nativeVerificationResultHash(state)
+  )
+    throw new Error('Native SDK Archive finalization belongs to another verification result');
   const config = await readProjectConfig(projectRoot);
   if (!config || config.native.artifact_root !== input.artifactRootRef) {
     throw new Error('Native artifact root changed after Run creation');
   }
   const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, { readOnly: true });
+  return { state, paths, applied, priorReportSha256: preflight.reportSha256 };
+}
+
+async function archiveFinalizeBinding(
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+  projectRoot: string,
+  historicalRecovery = false,
+) {
+  const bound = await archiveFinalizeContext(run, action, projectRoot);
   if (
     !historicalRecovery ||
     ((run.outputs['archive.prepare']?.value as { candidateBinding?: unknown })?.candidateBinding &&
       !['unknown', 'cancelled'].includes(action.status))
   )
-    await assertArchiveCandidate(run, projectRoot);
-  return { state, paths, applied, priorReportSha256: preflight.reportSha256 };
+    await assertArchiveCandidate(run, projectRoot, archiveUsesRecoveryBinding(run, action));
+  return bound;
+}
+
+function derivedArchiveReport(
+  run: Readonly<WorkflowRun>,
+  bound: Awaited<ReturnType<typeof archiveFinalizeBinding>>,
+) {
+  if (run.workflow.version === '1') return undefined;
+  return {
+    verificationResultHash: nativeVerificationResultHash(bound.state),
+    optionalView: run.workflow.version === '3',
+    preservedReportsRef: `native/preserved-verification/${hashRuntimeValue(run.runId)}`,
+    write: (file: string) =>
+      writeNativeSdkVerificationReport({
+        state: bound.state,
+        paths: bound.paths,
+        runId: run.runId,
+        file,
+        previousReportSha256: bound.priorReportSha256,
+      }),
+  };
 }
 
 export const nativeSdkArchiveFinalizeExecutor: RuntimeExecutor = {
@@ -643,14 +929,10 @@ export const nativeSdkArchiveFinalizeExecutor: RuntimeExecutor = {
     if (!context?.projectRoot || !run) {
       throw new Error('Native Archive finalization requires a bound SDK Run');
     }
-    let bound: Awaited<ReturnType<typeof archiveFinalizeBinding>>;
-    try {
-      bound = await archiveFinalizeBinding(run, action, context.projectRoot);
-    } catch (error) {
-      if (!(error instanceof NativeSdkCandidateDriftError)) throw error;
-      return { status: 'failed', output: { reason: 'candidate-drift', message: error.message } };
-    }
+    const bound = await archiveFinalizeContext(run, action, context.projectRoot);
     const { state, paths, applied } = bound;
+    // 在持有归档锁、即将写入的位置核对一次；提交前的独立复核仍保留。
+    let candidateValidated = false;
     const receipt = await finalizeNativeSdkArchive({
       paths,
       state,
@@ -658,8 +940,21 @@ export const nativeSdkArchiveFinalizeExecutor: RuntimeExecutor = {
       transactionId: applied.transactionId as string,
       archiveRef: applied.archiveRef as string,
       priorReportSha256: bound.priorReportSha256,
-      validateCandidate: () => assertArchiveCandidate(run, context.projectRoot!),
+      derivedReport: derivedArchiveReport(run, bound),
+      validateCandidate: async () => {
+        await assertArchiveCandidate(
+          run,
+          context.projectRoot!,
+          archiveUsesRecoveryBinding(run, action),
+        );
+        candidateValidated = true;
+      },
+    }).catch((error: unknown) => {
+      if (!candidateValidated && error instanceof NativeSdkCandidateDriftError) return error;
+      throw error;
     });
+    if (receipt instanceof NativeSdkCandidateDriftError)
+      return { status: 'failed', output: { reason: 'candidate-drift', message: receipt.message } };
     if (
       receipt.transactionId !== applied.transactionId ||
       receipt.archiveRef !== applied.archiveRef
@@ -696,6 +991,9 @@ export const nativeSdkArchiveFinalizeValidator: RuntimeValidator = {
         runId: run.runId,
         archiveRef: applied.archiveRef as string,
         history: action.status === 'unknown',
+        allowMissingReport: run.workflow.version === '3',
+        verificationResultHash:
+          run.workflow.version !== '1' ? nativeVerificationResultHash(state) : undefined,
       });
       if (
         receipt.transactionId !== applied.transactionId ||
@@ -747,7 +1045,21 @@ export async function recoverNativeSdkArchiveOutcome(options: {
     if (action.claim.executorId !== nativeSdkArchiveApplyExecutor.id) {
       throw new Error('Native SDK Archive recovery belongs to another executor');
     }
-    const bound = await archiveApplyBinding(run, action, options.projectRoot);
+    const transactionPaths = await nativeProjectPaths(
+      options.projectRoot,
+      (run.input as { artifactRootRef: string }).artifactRootRef,
+      { readOnly: true },
+    );
+    const prior = await readNativePortableTransaction(transactionPaths, {
+      kind: 'archive',
+      change: run.runId,
+    });
+    const recoveryBinding =
+      prior?.kind === 'archive' && prior.journal.status === 'specs-applied'
+        ? await archiveRecoveryBinding(run, options.projectRoot)
+        : undefined;
+    const recovering = typeof recoveryBinding === 'string';
+    const bound = await archiveApplyBinding(run, action, options.projectRoot, recovering);
     const { state, paths } = bound;
     const transaction = await readNativePortableTransaction(paths, {
       kind: 'archive',
@@ -759,7 +1071,10 @@ export async function recoverNativeSdkArchiveOutcome(options: {
     if (transaction.journal.status === 'prepared') {
       await applyNativeSdkArchiveSpecs(bound);
     }
-    output = (await inspectNativeSdkArchiveSpecs({ paths, state })) as unknown as RuntimeValue;
+    output = {
+      ...(await inspectNativeSdkArchiveSpecs({ paths, state })),
+      ...(recovering ? { recoveryBinding } : {}),
+    } as unknown as RuntimeValue;
   } else {
     if (action.claim.executorId !== nativeSdkArchiveFinalizeExecutor.id) {
       throw new Error('Native SDK Archive recovery belongs to another executor');
@@ -779,13 +1094,22 @@ export async function recoverNativeSdkArchiveOutcome(options: {
           transactionId: applied.transactionId as string,
           archiveRef: applied.archiveRef as string,
           priorReportSha256: bound.priorReportSha256,
-          validateCandidate: () => assertArchiveCandidate(run, options.projectRoot),
+          derivedReport: derivedArchiveReport(run, bound),
+          validateCandidate: () =>
+            assertArchiveCandidate(
+              run,
+              options.projectRoot,
+              archiveUsesRecoveryBinding(run, action),
+            ),
         })
       : await inspectNativeSdkArchiveFinalization({
           paths,
           state,
           runId: run.runId,
           archiveRef: applied.archiveRef as string,
+          allowMissingReport: run.workflow.version === '3',
+          verificationResultHash:
+            run.workflow.version !== '1' ? nativeVerificationResultHash(state) : undefined,
           history: true,
         });
     if (
@@ -865,6 +1189,7 @@ export async function recoverCancelledNativeSdkArchive(options: {
         transactionId: bound.applied.transactionId as string,
         archiveRef: bound.applied.archiveRef as string,
         priorReportSha256: bound.priorReportSha256,
+        derivedReport: derivedArchiveReport(run, bound),
         validateCandidate: () => assertArchiveCandidate(run, projectRoot),
       })
     : await inspectNativeSdkArchiveFinalization({
@@ -872,6 +1197,9 @@ export async function recoverCancelledNativeSdkArchive(options: {
         state: bound.state,
         runId: run.runId,
         archiveRef: bound.applied.archiveRef as string,
+        allowMissingReport: run.workflow.version === '3',
+        verificationResultHash:
+          run.workflow.version !== '1' ? nativeVerificationResultHash(bound.state) : undefined,
         history: true,
       });
   if (receipt.transactionId !== bound.applied.transactionId)

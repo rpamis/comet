@@ -77,6 +77,24 @@ describe('Comet project activation', () => {
     );
   });
 
+  it.each([
+    ['preserves a project walkthrough choice while activating a partial legacy config', true],
+    ['preserves a disabled walkthrough while activating a partial legacy config', false],
+  ] as const)('%s', async (_name, enabled) => {
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.comet/config.yaml'),
+      `change_walkthrough: ${enabled}\n`,
+    );
+    await expect(resolveOrActivateCometEntry(projectRoot, { homeDir })).resolves.toMatchObject({
+      workflow: 'classic',
+      source: 'legacy-project',
+    });
+    await expect(
+      fs.readFile(path.join(projectRoot, '.comet/config.yaml'), 'utf8'),
+    ).resolves.toContain(`change_walkthrough: ${enabled}`);
+  });
+
   it('projects a globally installed Codex Router before publishing project config', async () => {
     await writeWorkflowGlobalConfig(homeDir, {
       schema: 'comet.global.v1',

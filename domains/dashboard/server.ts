@@ -61,7 +61,7 @@ export interface DashboardServerHandle {
 
 const DEFAULT_PORT = 4321;
 const PORT_RETRY_LIMIT = 50;
-const DASHBOARD_PLUGIN_HOST_CACHE_MS = 1000;
+const DASHBOARD_PLUGIN_HOST_CACHE_MS = 60_000;
 
 type DashboardPluginHostInstance = Awaited<ReturnType<DashboardPluginHostFactory>>;
 
@@ -76,14 +76,28 @@ function createDashboardPluginHostAccess(
   if (factory === undefined) return undefined;
   const hosts = new Map<
     string,
-    { readonly promise: Promise<DashboardPluginHostInstance>; expiresAt: number }
+    {
+      readonly promise: Promise<DashboardPluginHostInstance>;
+      readonly projectPath: string;
+      expiresAt: number;
+    }
   >();
   const get: DashboardPluginHostFactory = (projectId, projectPath) => {
+    const resolvedPath = path.resolve(projectPath);
     const existing = hosts.get(projectId);
-    if (existing !== undefined && existing.expiresAt > Date.now()) return existing.promise;
+    if (
+      existing !== undefined &&
+      existing.projectPath === resolvedPath &&
+      existing.expiresAt > Date.now()
+    )
+      return existing.promise;
     if (existing !== undefined) hosts.delete(projectId);
-    const pending = Promise.resolve(factory(projectId, projectPath));
-    const entry = { promise: pending, expiresAt: Number.POSITIVE_INFINITY };
+    const pending = Promise.resolve().then(() => factory(projectId, projectPath));
+    const entry = {
+      promise: pending,
+      projectPath: resolvedPath,
+      expiresAt: Number.POSITIVE_INFINITY,
+    };
     hosts.set(projectId, entry);
     void pending.then(
       () => {
@@ -553,12 +567,12 @@ async function handleRequest(
         return;
       }
       if (req.method === 'POST') {
-        respondJson(
-          res,
-          req.method,
-          200,
-          await updateDashboardProjectConfigSettings(project.path, await readJsonBody(req)),
+        const settings = await updateDashboardProjectConfigSettings(
+          project.path,
+          await readJsonBody(req),
         );
+        pluginHostAccess?.invalidate(project.id);
+        respondJson(res, req.method, 200, settings);
         return;
       }
       respondError(res, 405, 'Method not allowed');

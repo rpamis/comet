@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { lstatSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -7,6 +8,11 @@ import { hashGitPaths } from '../../../domains/comet-classic/classic-check-snaps
 vi.mock('node:child_process', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:child_process')>();
   return { ...original, spawnSync: vi.fn() };
+});
+
+vi.mock('node:fs', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:fs')>();
+  return { ...original, lstatSync: vi.fn() };
 });
 
 const digest = (name: string) => createHash('sha256').update(name).digest('hex');
@@ -25,6 +31,16 @@ const batches = () =>
   vi.mocked(spawnSync).mock.calls.map(([, , options]) => batchInput(options!.input as string));
 
 beforeEach(() => {
+  vi.mocked(lstatSync).mockReturnValue({
+    isSymbolicLink: () => false,
+    isFile: () => true,
+    dev: 1n,
+    ino: 1n,
+    size: 1n,
+    mode: 0o100644n,
+    mtimeNs: 1n,
+    ctimeNs: 1n,
+  } as ReturnType<typeof lstatSync>);
   vi.mocked(spawnSync)
     .mockReset()
     .mockImplementation((_command, _args, options) => {

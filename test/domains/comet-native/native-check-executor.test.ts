@@ -1,13 +1,14 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   executeNativeCheck,
   nativePortableArgvDisplay,
   preflightNativeCheckPlans,
   resolveNativeCheckCwd,
+  normalizeNativeCheckOutputs,
 } from '../../../domains/comet-native/native-check-executor.js';
 
 describe('Native check executor', () => {
@@ -21,6 +22,7 @@ describe('Native check executor', () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     // Windows 进程退出后可能短暂占用 cwd；有限重试，不掩盖持续占用。
     await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
@@ -85,22 +87,37 @@ describe('Native check executor', () => {
   it.runIf(process.platform === 'win32')(
     'resolves Windows command shims without a shell',
     async () => {
+      await fs.writeFile(
+        path.join(root, 'comet-check-shim.cmd'),
+        `@"${process.execPath}" "%~dp0shim.cjs" %*\r\n`,
+      );
+      await fs.writeFile(
+        path.join(root, 'shim.cjs'),
+        'process.stdout.write(JSON.stringify(process.argv.slice(2)))',
+      );
+      vi.stubEnv('PATH', `${root}${path.delimiter}${process.env.PATH ?? ''}`);
       const result = await executeNativeCheck({
         projectRoot: root,
         runtimeDir,
         operationId: 'verify-shim',
         plan: {
-          id: 'pnpm-version',
-          name: 'pnpm version',
-          executable: 'pnpm',
-          argv: ['--version'],
+          id: 'local-shim',
+          name: 'Local Windows command shim',
+          executable: 'comet-check-shim',
+          argv: ['space separated', '中文'],
           cwdRef: '.',
           timeoutMs: 10_000,
           repeatable: true,
         },
       });
 
-      expect(result).toMatchObject({ status: 'passed', exitCode: 0, timedOut: false });
+      const output = await fs.readFile(path.join(runtimeDir, ...result.logRef.split('/')), 'utf8');
+      expect(result, JSON.stringify({ result, output })).toMatchObject({
+        status: 'passed',
+        exitCode: 0,
+        timedOut: false,
+      });
+      expect(output).toBe(JSON.stringify(['space separated', '中文']));
     },
   );
 
@@ -156,6 +173,22 @@ describe('Native check executor', () => {
       '--safe',
       'visible-value',
     ]);
+  });
+
+  it('requires explicit generated output paths and rejects broad or unsafe exclusions', () => {
+    expect(normalizeNativeCheckOutputs(['dist/eval', 'dist/eval'])).toEqual(['dist/eval']);
+    for (const ref of [
+      'dist',
+      '.',
+      '../dist/eval',
+      '/dist/eval',
+      'C:/dist/eval',
+      'dist/eval/**',
+      'src/code.ts',
+      'dist/.comet/state',
+      'dist\\eval',
+    ])
+      expect(() => normalizeNativeCheckOutputs([ref]), ref).toThrow(/outputs/u);
   });
 
   it('rejects a missing check working directory during preflight', () => {

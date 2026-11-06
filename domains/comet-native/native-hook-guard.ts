@@ -42,7 +42,6 @@ import {
   readNativeApprovedShapeSemanticSnapshot,
 } from './native-portable-requirements.js';
 import type { NativePortableState } from './native-portable-types.js';
-import { classifyEditImpact } from '../workflow-contract/edit-impact.js';
 import { prepareEditReview, isReviewedEditProposal } from '../workflow-contract/edit-review.js';
 import { nativeEditReviewScope, nativeEditReviewPreparationScope } from './native-edit-review.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
@@ -298,6 +297,10 @@ async function inspectPortableWriteTargets(options: {
       continue;
     }
     const relative = path.relative(projectRoot, target).replaceAll('\\', '/');
+    if (target === path.join(changeDir, 'walkthrough.html')) {
+      documentTargets.push(relative);
+      continue;
+    }
     if (relative === '.comet/config.yaml') {
       controlTarget = true;
       continue;
@@ -388,7 +391,7 @@ async function inspectPortableWriteTargets(options: {
         (target) => target === 'brief.md' || /^specs\/[^/]+\/spec\.md$/u.test(target),
       )
     ) {
-      if (state.phase !== 'shape' && state.shape_confirmation_hash) {
+      if (documentsRevert && state.phase !== 'shape' && state.shape_confirmation_hash) {
         const review = await formalCommentWriteReview(paths, state, request, formalTargets);
         if (review) return review;
       }
@@ -485,6 +488,15 @@ async function inspectPortableWriteTargets(options: {
         change: state.name,
       };
     }
+    if (['verify', 'archive'].includes(state.phase) && !documentsRevert) {
+      return {
+        allowed: true,
+        reason: `保留当前 Run 和用户编辑。由当前 Agent 在下次推进时运行 comet edit-review observe native ${state.name} --session <当前会话> --json，判断合并后的实际变化和检查适用性；未覆盖的变化仍不能验收或归档。`,
+        workflow: 'native',
+        phase: state.phase,
+        change: state.name,
+      };
+    }
     const editImpact =
       state.phase === 'verify'
         ? await implementationWriteImpact(paths, state, implementationTargets, request)
@@ -504,7 +516,7 @@ async function inspectPortableWriteTargets(options: {
         workflow: 'native',
         phase: state.phase,
         change: state.name,
-        reason: `本地无法确定编辑影响，保留 Verify。使用 comet edit-review show native ${state.name} 读取待复核提案和 continuation；按返回任务由独立会话 claim 并 record，Compat 由用户确认。复核前不得通过或归档。`,
+        reason: `本地无法确定编辑影响，保留 Verify。使用 comet edit-review show native ${state.name} 读取待复核提案和 continuation；按返回任务的实际会话要求 claim 并 record，Compat 由用户确认。复核前不得通过或归档。`,
       };
     if (state.phase === 'verify' || state.phase === 'archive') {
       if (sdkOwned) {
@@ -626,7 +638,7 @@ async function formalCommentWriteReview(
     change: state.name,
     reason:
       state.phase === 'verify' && state.builder_handoff
-        ? `正式材料中的注释可能包含执行指令，不能自动忽略。保留当前候选；使用 comet edit-review show native ${state.name} 完成独立局部复核，然后原样重试编辑。`
+        ? `正式材料中的注释可能包含执行指令，不能自动忽略。保留当前候选；使用 comet edit-review show native ${state.name} 完成当前编辑复核，然后原样重试编辑。`
         : '正式材料中的注释可能包含执行指令，不能自动忽略。当前阶段没有可复核的 Verify 候选；保留原文和当前 Action/claim，或通过当前 continuation 显式修订 Shape。',
   };
 }
@@ -637,14 +649,16 @@ async function implementationWriteImpact(
   targets: readonly string[],
   request: NativeHookRequest,
 ): Promise<'non-behavioral' | 'implementation-changed' | 'review-required'> {
+  const { classifyEditImpact } = await import('../workflow-contract/edit-impact.js');
   const projectRoot = paths.projectRoot;
-  if (
-    (await nativeDocumentWritesRevert(projectRoot)) &&
-    targets.some((target) => isNativeNeutralDocumentWrite(paths, target))
-  )
-    return 'implementation-changed';
+  const documentsRevert = await nativeDocumentWritesRevert(projectRoot);
+  let implementationChanged = false;
   let needsReview = false;
   for (const relative of targets) {
+    if (documentsRevert && isNativeNeutralDocumentWrite(paths, relative)) {
+      implementationChanged = true;
+      continue;
+    }
     const proposals =
       request.writes?.filter(
         (proposal) =>
@@ -656,8 +670,10 @@ async function implementationWriteImpact(
       const after = proposedCometHookFileContent(proposals[0], source.text);
       if (after === null) return 'review-required';
       const impact = classifyEditImpact(relative, source.text, after);
-      if (impact.kind === 'implementation-changed' || impact.kind === 'requirements-changed')
-        return 'implementation-changed';
+      if (impact.kind === 'implementation-changed' || impact.kind === 'requirements-changed') {
+        implementationChanged = true;
+        continue;
+      }
       if (
         impact.kind === 'review-required' &&
         !(await isReviewedEditProposal(
@@ -681,7 +697,11 @@ async function implementationWriteImpact(
     });
     return 'review-required';
   }
-  return targets.length > 0 ? 'non-behavioral' : 'review-required';
+  return implementationChanged
+    ? 'implementation-changed'
+    : targets.length > 0
+      ? 'non-behavioral'
+      : 'review-required';
 }
 
 function isWithin(parent: string, target: string): boolean {
@@ -1028,6 +1048,7 @@ export async function inspectNativeHookGuard(
         : nativeChangeDir(context.paths, state.name);
     if (isWithin(selectedChangeDir, target)) {
       const changeRelative = path.relative(selectedChangeDir, target).replaceAll('\\', '/');
+      if (changeRelative === 'walkthrough.html') continue;
       if (
         changeRelative === 'brief.md' ||
         changeRelative === 'children.yaml' ||
@@ -1101,6 +1122,10 @@ export async function inspectNativeHookGuard(
   const documentsRevert = await nativeDocumentWritesRevert(projectRoot);
   for (const targetPath of request.targets) {
     const target = path.resolve(projectRoot, targetPath);
+    if (target === path.join(nativeChangeDir(context.paths, state.name), 'walkthrough.html')) {
+      documentTarget = true;
+      continue;
+    }
     if (!isWithin(projectRoot, target)) {
       externalTarget = true;
       continue;

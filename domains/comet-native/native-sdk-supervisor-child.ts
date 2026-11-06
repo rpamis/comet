@@ -8,6 +8,7 @@ import {
   nativeSdkSupervisorChildCheckSummaries,
 } from './native-sdk-checks.js';
 import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
+import { nativeSdkRequiresIndependentReview } from './native-sdk-review.js';
 import { supervisorAcceptanceScope } from './native-supervisor-model.js';
 import { nativeSupervisorChildWorktree } from './native-supervisor-workspace.js';
 import {
@@ -34,6 +35,13 @@ export const nativeSdkSupervisorBuilderValidator: RuntimeValidator = {
       const plan = await currentNativeSdkSupervisorPlan(run, context.projectRoot);
       const activation = (action.input as { activation?: Record<string, unknown> }).activation;
       const output = outcome.output as Record<string, unknown> | null;
+      if (
+        run.workflow.version === '3' &&
+        output?.requireIndependentReview !== undefined &&
+        typeof output.requireIndependentReview !== 'boolean'
+      ) {
+        throw new Error('requireIndependentReview must be a boolean');
+      }
       if (
         state.phase !== 'build' ||
         !action.claim?.sessionId ||
@@ -113,7 +121,8 @@ export const nativeSdkSupervisorVerifierValidator: RuntimeValidator = {
         typeof activation.candidateCommit !== 'string' ||
         typeof activation.checkActionId !== 'string' ||
         typeof activation.builderSessionId !== 'string' ||
-        action.claim.sessionId === activation.builderSessionId ||
+        (nativeSdkRequiresIndependentReview(run, action) &&
+          action.claim.sessionId === activation.builderSessionId) ||
         !output ||
         output.candidateCommit !== activation.candidateCommit ||
         !['pass', 'fail', 'blocked'].includes(String(output.verdict)) ||
@@ -123,7 +132,9 @@ export const nativeSdkSupervisorVerifierValidator: RuntimeValidator = {
         !Array.isArray(evidence.checks) ||
         evidence.checks.some((id) => typeof id !== 'string')
       ) {
-        throw new Error('Native SDK Supervisor Verifier lacks an independent bound result');
+        throw new Error(
+          'Native SDK Supervisor Verifier lacks a bound result or required independent session',
+        );
       }
       const checked = await nativeSdkSupervisorChildCheckSummaries({
         run,

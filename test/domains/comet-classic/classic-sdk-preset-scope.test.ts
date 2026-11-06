@@ -134,7 +134,7 @@ describe.each(['hotfix', 'tweak'] as const)('%s approved scope', (profile) => {
     );
   });
   it('upgrades a known previous definition for a fresh scope decision without rewriting completed Actions', async () => {
-    const { root, directory, ok, check } = await fixture(profile, true);
+    const { root, directory, proposal, cli, ok, check } = await fixture(profile, true);
     const legacy = await inspectClassicSdkRun(root, 'example');
     const action = legacy.run.actions.find((action) => action.status === 'pending')!;
     await legacy.runtime.claim({
@@ -161,6 +161,22 @@ describe.each(['hotfix', 'tweak'] as const)('%s approved scope', (profile) => {
       },
     });
     const wait = requested.waits.find((wait) => wait.status === 'pending')!;
+    await fs.appendFile(path.join(directory, 'proposal.md'), 'Change authentication as well.\n');
+    expect(
+      (
+        await cli(
+          'state',
+          'decide-escalation',
+          'example',
+          '--proposal-hash',
+          wait.proposalHash,
+          '--choice',
+          'continue',
+        )
+      ).exitCode,
+    ).not.toBe(0);
+    expect((await inspectClassicSdkRun(root, 'example')).run).toEqual(requested);
+    await fs.writeFile(path.join(directory, 'proposal.md'), proposal);
     await ok(
       'state',
       'decide-escalation',

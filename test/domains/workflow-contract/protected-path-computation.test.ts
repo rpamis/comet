@@ -3,7 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { inspectProtectedProjectPath } from '../../../domains/workflow-contract/protected-project-path.js';
+import {
+  inspectProtectedProjectPath,
+  createProtectedProjectReadSession,
+} from '../../../domains/workflow-contract/protected-project-path.js';
 import {
   invalidateHookReadCache,
   runWithHookReadCache,
@@ -23,6 +26,49 @@ describe('protected chain pure path computations', () => {
   // 不指定 expected，避开既有整体检查缓存，确保每次都执行路径链安全检查。
   const inspect = (projectRoot: string, relative = 'file') =>
     inspectProtectedProjectPath(projectRoot, relative, { label: 'Fixture' });
+
+  it('rejects a cached directory replaced by a junction before reading its leaf', async () => {
+    const source = path.join(root, 'source');
+    const saved = path.join(root, 'source-saved');
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-path-session-outside-'));
+    try {
+      await fs.mkdir(source);
+      await fs.writeFile(path.join(source, 'file'), 'inside');
+      await fs.writeFile(path.join(outside, 'file'), 'outside');
+      const session = await createProtectedProjectReadSession(root, 'Observed inputs');
+      await session.observeDirectory('source');
+      await fs.rename(source, saved);
+      await fs.symlink(outside, source, process.platform === 'win32' ? 'junction' : 'dir');
+      const opened = vi.spyOn(fs, 'open');
+      await expect(session.hash('source/file')).rejects.toThrow(/outside|junction|symbolic link/);
+      expect(
+        opened.mock.calls.some(([target]) => String(target) === path.join(source, 'file')),
+      ).toBe(false);
+      await fs.unlink(source);
+      await fs.rename(saved, source);
+      await expect(session.finish()).rejects.toThrow('directory changed');
+      expect(await fs.readFile(path.join(outside, 'file'), 'utf8')).toBe('outside');
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('allows an excluded directory entry but rejects a newly added input', async () => {
+    await fs.mkdir(path.join(root, '.next'));
+    await fs.writeFile(path.join(root, '.next', 'input'), 'bound input');
+    const options = {
+      ignoredDirectoryEntries: (ref: string) =>
+        ref === '.next' ? (entry: import('node:fs').Dirent) => entry.name === 'trace' : undefined,
+    };
+    const first = await createProtectedProjectReadSession(root, 'Observed inputs', options);
+    await first.hash('.next/input');
+    await fs.writeFile(path.join(root, '.next', 'trace'), 'volatile trace');
+    await expect(first.finish()).resolves.toEqual({ changedDirectories: ['.next'] });
+    const second = await createProtectedProjectReadSession(root, 'Observed inputs', options);
+    await second.hash('.next/input');
+    await fs.writeFile(path.join(root, '.next', 'new-input'), 'new bound input');
+    await expect(second.finish()).rejects.toThrow('directory changed');
+  });
 
   it('reuses only containment arithmetic within a scope and clears it on invalidation and exit', async () => {
     const relative = vi.spyOn(path, 'relative');

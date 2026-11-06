@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { isCommandAvailable, getNpmExecutable } from './openspec.js';
 import { printCommandErrorDetails } from '../../platform/process/command-error.js';
+import { commandInvocation } from '../../platform/process/spawn-command.js';
 import { parse as parseToml } from 'smol-toml';
 import { parse as parseYaml } from 'yaml';
 import { parse as parseJsonc, printParseErrorCode, type ParseError } from 'jsonc-parser';
@@ -76,11 +77,15 @@ function hasCodegraphProjectIndex(projectPath: string): boolean {
 
 function resolvePnpmGlobalCommand(command: string): string | null {
   try {
-    const binDir = execFileSync(getPnpmExecutable(), ['bin', '-g'], {
+    const invocation = commandInvocation(getPnpmExecutable(), ['bin', '-g'], {
+      cwd: process.cwd(),
+    });
+    const binDir = execFileSync(invocation.command, invocation.args, {
+      env: invocation.env,
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 10_000,
-      shell: process.platform === 'win32',
+      shell: false,
     }).trim();
     if (!binDir) return null;
 
@@ -605,12 +610,16 @@ function inspectCodegraphIndex(projectPath: string): CodegraphIndexDiagnostic {
   }
 
   try {
-    const output = execFileSync(codegraphCommand, ['status', '--json', projectPath], {
+    const invocation = commandInvocation(codegraphCommand, ['status', '--json', '.'], {
       cwd: projectPath,
+    });
+    const output = execFileSync(invocation.command, invocation.args, {
+      cwd: projectPath,
+      env: invocation.env,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 30_000,
-      shell: process.platform === 'win32',
+      shell: false,
     });
     const line = String(output).trim().split(/\r?\n/u).filter(Boolean).at(-1);
     if (!line) throw new Error('status returned no JSON');

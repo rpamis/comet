@@ -74,19 +74,7 @@ async function fixture(kind: 'custom' | 'native' = 'custom') {
   const f = await prepareNativeApplication(root, true, kind);
   f.git(f.projectRoot, ['config', 'user.name', 'Comet Test']);
   f.git(f.projectRoot, ['config', 'user.email', 'comet-test@example.com']);
-  let run = await f.dispatch({
-    operation: 'execute',
-    runId: f.name,
-    actionId: f.pending(f.run, 'supervisor.prepare').id,
-    executorId: 'native-supervisor-prepare',
-  });
-  for (let count = 0; count < 2; count++)
-    run = await f.dispatch({
-      operation: 'execute',
-      runId: f.name,
-      actionId: f.pending(run, 'supervisor.child.prepare').id,
-      executorId: 'native-supervisor-child-prepare',
-    });
+  let run = f.run;
   const sibling = run.actions.filter((action) => action.stepId === 'supervisor.child.builder')[1];
   run = await f.submitBuilder(
     f.pending(run, 'supervisor.child.builder'),
@@ -280,20 +268,11 @@ describe('Supervisor Child Verifier execution failure', () => {
     expect(status).toMatchObject({
       continuation: {
         disposition: 'blocked',
-        requiredInputs: ['original-check-execution-evidence'],
-        commandArgs: [
-          'comet',
-          'native',
-          'doctor',
-          f.name,
-          '--repair',
-          '--project-root',
-          f.projectRoot,
-          '--json',
-        ],
+        requiredInputs: ['original-execution-result'],
+        commandArgs: null,
       },
     });
-    // 只读诊断先暴露前序检查缺少停止收据，但不能改写原未知任务。
+    // 本机仍存活的领取方已证明检查停止，未知 Verifier 继续等待原任务结果。
     expect(await runtime.inspect(f.name)).toEqual(run);
     const originalCheck = run.actions.find(
       (action) => action.stepId === 'supervisor.child.checks',
@@ -400,8 +379,7 @@ async function oldCustomFixture(
   const script = `
     import { prepareNativeApplication } from ${JSON.stringify(pathToFileURL(path.resolve('test/helpers/native-application.ts')).href)};
     const f = await prepareNativeApplication(${JSON.stringify(root)}, true, 'custom', process.env.COMET_NATIVE_BASELINE_PACKAGE);
-    let run = await f.dispatch({operation:'execute',runId:f.name,actionId:f.pending(f.run,'supervisor.prepare').id,executorId:'native-supervisor-prepare'});
-    for(let i=0;i<2;i++) run=await f.dispatch({operation:'execute',runId:f.name,actionId:f.pending(run,'supervisor.child.prepare').id,executorId:'native-supervisor-child-prepare'});
+    let run = f.run;
     const sibling=run.actions.filter(a=>a.stepId==='supervisor.child.builder')[1];
     if (${JSON.stringify(mode)} === 'transfer-builder') {
       const builder=f.pending(run,'supervisor.child.builder');
@@ -524,9 +502,23 @@ describe('fixed older custom Supervisor Runs', () => {
     expect(hashRuntimeValue(defineWorkflow(old))).toBe(f.run.workflow.hash);
     expect(old.steps).not.toHaveProperty('supervisor.child.verifier-retry');
     const diagnostic = await nativeDoctorCommand([f.name], f.projectRoot);
-    expect(diagnostic).toMatchObject({
+    expect(
+      diagnostic,
+      JSON.stringify((diagnostic.data as { findings?: unknown }).findings),
+    ).toMatchObject({
       exitCode: 65,
-      data: { findings: [{ code: 'sdk-definition-upgrade-required', ready: true }] },
+      data: {
+        findings: expect.arrayContaining([
+          expect.objectContaining({ code: 'sdk-definition-upgrade-required', ready: true }),
+          expect.objectContaining({
+            code: 'sdk-check-execution-recovery-required',
+            owner: 'dead',
+            quiescent: true,
+            recoveryRequired: true,
+            repairCommand: `comet native doctor ${f.name} --repair`,
+          }),
+        ]),
+      },
     });
     expect(
       await readWorkflowApplicationRun(f.projectRoot, 'native-candidate-review', f.name),

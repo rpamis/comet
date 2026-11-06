@@ -185,7 +185,11 @@ export function createNativeSdkRuntime(projectRoot: string): WorkflowRuntime {
   const application = defineNativeWorkflowApplication();
   return createRuntime({
     store: createNativeSdkStateStore(projectRoot),
-    workflows: [application.workflow],
+    workflows: [
+      application.workflow,
+      defineNativeWorkflowApplication('2').workflow,
+      defineNativeWorkflowApplication('3').workflow,
+    ],
     transitionHandlers: [application.transitionHandler],
     validators: application.validators,
     stateValidators: application.stateValidators,
@@ -539,7 +543,13 @@ export async function loadOwnedNativeSdkRuntime(
     let snapshot = await store.read(name);
     const defined = nativeSdkApplicationForRun(
       snapshot,
-      options.readOnly ? nativeApplicationForRead() : defineNativeWorkflowApplication(),
+      snapshot?.workflow.version === '3'
+        ? defineNativeWorkflowApplication('3')
+        : snapshot?.workflow.version === '2'
+          ? defineNativeWorkflowApplication('2')
+          : options.readOnly
+            ? nativeApplicationForRead()
+            : defineNativeWorkflowApplication(),
     );
     return {
       runtime: createRuntime({

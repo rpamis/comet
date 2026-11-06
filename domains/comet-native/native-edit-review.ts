@@ -1,5 +1,5 @@
-import { nativeEditReviewScope } from './native-edit-review-scope.js';
-export { nativeEditReviewScope } from './native-edit-review-scope.js';
+import { nativeEditReviewScope, nativeFormalEditReviewScope } from './native-edit-review-scope.js';
+export { nativeEditReviewScope, nativeFormalEditReviewScope } from './native-edit-review-scope.js';
 import {
   captureNativeShapeReviewAnchor,
   nativeShapeReviewAnchorMatches,
@@ -7,6 +7,7 @@ import {
 } from './native-shape-review-evidence.js';
 import { readNativeApprovedShapeSemanticSnapshot } from './native-portable-requirements.js';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import {
   proposedCometHookFileContent,
   type CometHookRequest,
@@ -19,6 +20,9 @@ import {
 
 import {
   assertEditReviewsComplete,
+  inspectEditReviews,
+  editReviewContinuation,
+  type EditReviewObservation,
   approvedEditFingerprint,
   prepareEditReview,
   type EditReviewScope,
@@ -26,11 +30,49 @@ import {
 import type { NativeProjectPaths } from './native-types.js';
 import type { NativePortableState } from './native-portable-types.js';
 
+export async function inspectNativeEditReviews(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+) {
+  const scopes = [
+    ...(state.shape_confirmation_hash ? [nativeFormalEditReviewScope(paths, state)] : []),
+    ...(state.builder_handoff || state.phase === 'build'
+      ? [nativeEditReviewScope(paths, state)]
+      : []),
+  ];
+  return (await Promise.all(scopes.map((scope) => inspectEditReviews(scope)))).flat();
+}
+
+export async function nativeEditReviewContinuation(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+  reviews: readonly EditReviewObservation[],
+  sdk = true,
+) {
+  const scopes = [
+    ...(state.shape_confirmation_hash ? [nativeFormalEditReviewScope(paths, state)] : []),
+    ...(state.builder_handoff || state.phase === 'build'
+      ? [nativeEditReviewScope(paths, state)]
+      : []),
+  ];
+  for (const scope of scopes) {
+    const edit = await editReviewContinuation(
+      scope,
+      reviews.filter((review) => review.binding.candidateKey === scope.candidateKey),
+      sdk,
+    );
+    if (edit) return edit;
+  }
+  return null;
+}
+
 export async function assertNativeEditReviewsComplete(
   paths: NativeProjectPaths,
   state: NativePortableState,
 ): Promise<void> {
   if (state.builder_handoff) await assertEditReviewsComplete(nativeEditReviewScope(paths, state));
+  if (state.shape_confirmation_hash)
+    await assertEditReviewsComplete(nativeFormalEditReviewScope(paths, state));
 }
 
 /** 只复核已应用的正式材料注释；原文必须来自当前 Shape 的可信快照。 */
@@ -38,8 +80,12 @@ export async function prepareNativeAppliedFormalReview(
   paths: NativeProjectPaths,
   state: NativePortableState,
   request: CometHookRequest,
+  judgment?: 'agent',
 ) {
-  const scope = nativeEditReviewScope(paths, state);
+  const scope =
+    judgment === 'agent'
+      ? nativeFormalEditReviewScope(paths, state)
+      : nativeEditReviewScope(paths, state);
   const snapshot = (await readNativeApprovedShapeSemanticSnapshot({ paths, state }))?.snapshot;
   if (!snapshot || !request.targets.length)
     throw new Error('缺少已批准的 Shape 原文，须恢复原文或修订需求');
@@ -64,17 +110,22 @@ export async function prepareNativeAppliedFormalReview(
       ref: relative,
       maxBytes: null,
     });
-    const actual = nativeShapeArtifactSnapshot(source, current.text);
+    const actual = judgment === 'agent' ? null : nativeShapeArtifactSnapshot(source, current.text);
     if (
+      actual &&
       nativeShapeArtifactContractHash({ ...actual, commentsHash: approved.commentsHash }) !==
-      nativeShapeArtifactContractHash(approved)
+        nativeShapeArtifactContractHash(approved)
     )
       throw new Error('正式需求或验收内容改变，必须通过 Shape 修订');
     await captureNativeShapeReviewAnchor(scope, approved, original.text, true);
     originals.set(relative, original.text);
     originalPaths.push(original.path);
   }
-  const proposal = await prepareEditReview({ ...scope, formalPrefixes: [] }, request, originals);
+  const proposal = await prepareEditReview(
+    { ...scope, formalPrefixes: ['.comet'] },
+    request,
+    originals,
+  );
   return { proposal, originalPaths };
 }
 
@@ -82,10 +133,14 @@ export async function prepareNativeAppliedFormalReview(
 export async function nativeAppliedFormalReviewRequest(
   paths: NativeProjectPaths,
   state: NativePortableState,
+  judgment?: 'agent',
 ) {
   const snapshot = (await readNativeApprovedShapeSemanticSnapshot({ paths, state }))?.snapshot;
   if (!snapshot) throw new Error('缺少已批准的 Shape 快照；保留当前修改并修订需求');
-  const scope = nativeEditReviewScope(paths, state);
+  const scope =
+    judgment === 'agent'
+      ? nativeFormalEditReviewScope(paths, state)
+      : nativeEditReviewScope(paths, state);
   for (const approved of snapshot.artifacts) {
     const absolute = path.join(paths.changesDir, state.name, approved.source);
     const relative = path.relative(paths.projectRoot, absolute).replaceAll('\\', '/');
@@ -94,8 +149,12 @@ export async function nativeAppliedFormalReviewRequest(
       ref: relative,
       maxBytes: null,
     });
-    const actual = nativeShapeArtifactSnapshot(approved.source, current.text);
-    if (actual.commentsHash !== approved.commentsHash) {
+    const changed =
+      judgment === 'agent'
+        ? createHash('sha256').update(current.text).digest('hex') !== approved.contentHash
+        : nativeShapeArtifactSnapshot(approved.source, current.text).commentsHash !==
+          approved.commentsHash;
+    if (changed) {
       const reviewed = await approvedEditFingerprint(scope, relative, current.text);
       if (reviewed && (await nativeShapeReviewAnchorMatches(scope, approved, reviewed.beforeHash)))
         continue;
@@ -115,8 +174,9 @@ export async function nativeEditReviewPreparationScope(
   paths: NativeProjectPaths,
   state: NativePortableState,
   request: CometHookRequest,
+  judgment?: 'agent',
 ): Promise<EditReviewScope> {
-  const scope = nativeEditReviewScope(paths, state);
+  let scope: EditReviewScope = { ...nativeEditReviewScope(paths, state), judgment };
   const semantic = (await readNativeApprovedShapeSemanticSnapshot({ paths, state }))?.snapshot;
   let formal = false;
   for (const target of request.targets) {
@@ -129,6 +189,7 @@ export async function nativeEditReviewPreparationScope(
     )
       continue;
     formal = true;
+    if (judgment === 'agent') scope = nativeFormalEditReviewScope(paths, state);
     const source = path
       .relative(path.join(paths.changesDir, state.name), absolute)
       .replaceAll('\\', '/');
@@ -139,9 +200,23 @@ export async function nativeEditReviewPreparationScope(
       ) ?? [];
     if (!approved || writes.length !== 1)
       throw new Error('正式材料缺少已批准语义快照或完整差异，必须通过 Shape 修订');
-    const before = await readNativeBoundedTextFile({ root: paths.projectRoot, ref: relative });
+    const before = await readNativeBoundedTextFile({
+      root: paths.projectRoot,
+      ref: relative,
+      ...(judgment === 'agent' ? { maxBytes: null } : {}),
+    });
     const after = proposedCometHookFileContent(writes[0], before.text);
     if (after === null) throw new Error('无法完整重建正式材料差异');
+    if (judgment === 'agent') {
+      const original = await readApprovedShapeOriginal(paths, state, approved);
+      if (before.text !== original.text) {
+        const review = await approvedEditFingerprint(scope, relative, before.text);
+        if (!review || !(await nativeShapeReviewAnchorMatches(scope, approved, review.beforeHash)))
+          throw new Error('正式材料的判断起点未获确认；先处理当前差异');
+      }
+      await captureNativeShapeReviewAnchor(scope, approved, original.text, true);
+      continue;
+    }
     const previous = nativeShapeArtifactSnapshot(source, before.text);
     if (previous.commentsHash !== approved.commentsHash) {
       const review = await approvedEditFingerprint(scope, relative, before.text);
@@ -158,5 +233,5 @@ export async function nativeEditReviewPreparationScope(
         throw new Error('正式需求或验收内容改变，必须通过 Shape 修订，不能以注释复核代替确认');
     }
   }
-  return formal ? { ...scope, formalPrefixes: [] } : scope;
+  return formal ? { ...scope, formalPrefixes: ['.comet'] } : scope;
 }

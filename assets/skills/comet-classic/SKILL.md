@@ -29,6 +29,8 @@ Continue from selection when it supplies Runtime ownership, phase, revision, and
 
 Transfer the actual state file, change documents, referenced artifacts, code, and project configuration together; checkpoints omit separate child worktrees and uncommitted code. For a copied SDK change with `run_checkpoint`, named `state select` or `state next` restores its saved phase, Actions, and approvals. Confirm the original device's execution stopped before continuing external work; reconcile unknown outcomes before retrying. Only if an older state has no checkpoint and the entry reports missing Run history, inspect formal documents, explain that restoration returns to Open and needs fresh approvals/checks, and obtain consent before `comet state restore <change-name> --confirmed`.
 
+On actual file changes to ordinary or formal materials, or when continuation requests an edit judgment, first read and follow [edit continuation](../comet/reference/edit-review.md), then handle phase actions or revision commands. Runtime revision commands do not grant user authorization. Without authorization for the added scope, retain the original phase, accepted results and pending work, and request only the related decision.
+
 When `agent.continuation.mode` exists, follow `comet-classic/reference/auto-transition.md`: execute, wait, ask, reconcile, or finish. Use `nextAction.kind` below only for older responses without `mode`.
 
 Use `data.runtimeFormat` (`sdk` or `compat`), phase, configuration, and `data.nextAction.kind`. Only an SDK `action` loads the returned Skill. For `decision`, `evidence`, or `reconcile`, first resolve the current Run's decision, evidence, or claimed Action; never replay it as a fresh Skill action. Keep the original routing for compat changes. Send a new full change to `/comet-open`, which prepares the workspace, creates OpenSpec artifacts, and initializes an SDK Run. Send confirmed hotfix/tweak choices to their preset Skills. Do not call `/opsx:new` directly. On ownership conflicts or malformed state, follow “Entry Errors and Recovery” in context-recovery.md and stop; do not infer phase from artifacts or create another state record.
@@ -45,15 +47,13 @@ Before completion, record the task-context learning check as `submitted`, `no-ob
 
 Save validated project experience with `comet knowledge remember`. Project experience and personal preferences are stored separately; Personal Memory holds user preferences and stable collaboration habits. Commands and filtering rules: [Task Context and Artifact Language](reference/scripts.md#task-context-and-artifact-language).
 
-| Runtime route or phase        | Entry and responsibility                                                                                        |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| new full / open               | `/comet-open`: clarify scope, create required artifacts, and obtain the user's review and confirmation          |
-| design                        | `/comet-design`: resolve technical tradeoffs and confirm the formal design                                      |
-| build + full                  | `/comet-build`: recover configuration/plan, complete tasks and required reviews                                 |
-| hotfix / build + hotfix       | `/comet-hotfix`: repair a localized existing defect                                                             |
-| tweak / build + tweak         | `/comet-tweak`: make a lightweight adjustment within one change                                                 |
-| verify                        | `/comet-verify`: run acceptance checks, reverify repairs, and perform the only final integrated review          |
-| archive / verify_result: pass | `/comet-archive`: confirm archiving, commit only this change's files, and complete the selected delivery method |
+- new full / open: `/comet-open`: clarify scope, create required artifacts, and obtain the user's review and confirmation
+- design: `/comet-design`: resolve technical tradeoffs and confirm the formal design
+- build + full: `/comet-build`: recover configuration/plan, complete tasks and required reviews
+- hotfix / build + hotfix: `/comet-hotfix`: repair a localized existing defect
+- tweak / build + tweak: `/comet-tweak`: make a lightweight adjustment within one change
+- verify: `/comet-verify`: run acceptance checks, reverify repairs, and perform the only final integrated review
+- archive / verify_result: pass: `/comet-archive`: confirm archiving, commit only this change's files, and complete the selected delivery method
 
 The corresponding Skill performs phase work; load it before authoring artifacts, calling OpenSpec, or advancing. Resolve `decision`, `evidence`, and `reconcile` on the current Run without repeating phase work.
 

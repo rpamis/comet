@@ -1,5 +1,6 @@
 import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
 import { isClassicStateFileName } from './classic-state-file.js';
+import { isChangeWalkthroughPath } from '../workflow-contract/neutral-document-path.js';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { stripUtf8Bom } from '../../platform/fs/strip-bom.js';
@@ -18,7 +19,6 @@ import {
   proposedCometHookFileContent,
   parseCometHookRequest,
 } from '../../platform/process/hook-adapter.js';
-import { classifyEditImpact } from '../workflow-contract/edit-impact.js';
 import { isAgentInstructionPath } from '../workflow-contract/neutral-document-path.js';
 import { prepareEditReview, isReviewedEditProposal } from '../workflow-contract/edit-review.js';
 import { classicEditReviewScope } from './classic-edit-review.js';
@@ -42,7 +42,10 @@ import {
   inspectClassicAutonomousBuildProblems,
   type ClassicPlanReadiness,
 } from './classic-plan-readiness.js';
-import { isClassicNeutralDocumentWrite } from './classic-neutral-documents.js';
+import {
+  isClassicNeutralDocumentWrite,
+  classicDocumentEvidenceMode,
+} from './classic-neutral-documents.js';
 
 // Share the SDK read with current-selection branch checks within this Hook request only.
 const inspectHookSdkRun = memoizedHookRead(
@@ -146,6 +149,7 @@ async function projectRelative(target: string, projectRoot: string): Promise<str
 }
 
 interface GoverningChange {
+  runtimeFormat?: 'sdk';
   changeDir: string | null;
   phase: ClassicPhase;
   classic: ClassicState | null;
@@ -209,6 +213,7 @@ async function loadSdkGoverningChange(
 ): Promise<GoverningChange> {
   const { run, state } = await inspectHookSdkRun(projectRoot, changeName);
   return {
+    runtimeFormat: 'sdk',
     changeDir,
     phase: state.phase,
     classic: state,
@@ -1064,6 +1069,12 @@ async function inspectClassicHookTarget(
   if (isCometConfig(relativePath)) {
     return allowed(`${relativePath} (whitelist: comet config)`);
   }
+  if (
+    isChangeWalkthroughPath(relativePath, path.relative(projectRoot, layout.changesDir)) &&
+    !relativePath.replaceAll('\\', '/').includes('/archive/')
+  ) {
+    return allowed(`${relativePath} (change walkthrough)`);
+  }
   if (isSuperpowersWorkspace(relativePath)) {
     return allowed(`${relativePath} (whitelist: superpowers workspace)`);
   }
@@ -1171,6 +1182,14 @@ async function inspectClassicHookTarget(
       `[COMET-HOOK] blocked: active Classic state is invalid; run comet classic validate ${changeName}, repair only the reported fields, then run comet state next ${changeName} --json before retrying ${relativePath}`,
     );
   }
+  if (
+    ['verify', 'archive'].includes(phase) &&
+    (await classicDocumentEvidenceMode(projectRoot)) !== 'strict'
+  ) {
+    return allowed(
+      `${relativePath} (preserve the current Run and user edits; before advancing, the current Agent must run comet edit-review observe classic ${changeName} --session <current-session> --json and assess the accumulated changes, formal decisions, and check applicability; uncovered changes cannot be accepted or archived)`,
+    );
+  }
   if (phase === 'build' && governing.classic?.workflow === 'full' && !governing.classic.designDoc) {
     return blockedMissingDesignDoc(
       relativePath,
@@ -1224,6 +1243,7 @@ async function inspectClassicHookTarget(
         });
         const after = proposedCometHookFileContent(proposals[0], before);
         if (after !== null) {
+          const { classifyEditImpact } = await import('../workflow-contract/edit-impact.js');
           const impact = classifyEditImpact(relativePath, before, after);
           if (
             impact.kind === 'non-behavioral' ||

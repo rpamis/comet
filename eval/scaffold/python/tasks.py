@@ -99,6 +99,7 @@ class InteractionConfig:
     """Controls whether the runner should simulate user replies."""
 
     mode: str = "none"
+    goal: bool = False
     max_turns: int = 12
     simulator_prompt: str | None = None
     decision_patterns: list[str] = field(default_factory=list)

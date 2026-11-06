@@ -84,6 +84,7 @@ describe('Native project configuration', () => {
       default_workflow: 'native',
       workflows: ['native'],
       ambient_resume: true,
+      change_walkthrough: true,
       memory: {
         learning: true,
         retrieval: true,

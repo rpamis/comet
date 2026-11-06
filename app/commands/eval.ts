@@ -16,6 +16,9 @@ import {
   loadUserEvalEnvironment,
   resolveEvalContext,
   type ResolvedEvalContext,
+  listBuiltinDatasets,
+  inspectBuiltinDataset,
+  type DatasetPlan,
 } from '../../domains/eval/index.js';
 import {
   evalProjectIdentity,
@@ -30,6 +33,14 @@ type EvalSuite = 'local' | 'langsmith' | 'langfuse';
 type EvalAgent = string;
 
 interface EvalCommandOptions {
+  dataset?: string;
+  datasetTreatment?: 'native' | 'goal';
+  datasetRoot?: string;
+  listDatasets?: boolean;
+  fetchDataset?: boolean;
+  count?: string;
+  acceptDatasetLicense?: boolean;
+  datasetPlan?: DatasetPlan;
   project?: string;
   manifest?: string;
   skillPath?: string;
@@ -67,6 +78,11 @@ interface EvalLaunchDetails {
 }
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
+const datasetContexts = new WeakMap<ResolvedEvalContext, string>();
+function optionsForDatasetEnvironment(context: ResolvedEvalContext): NodeJS.ProcessEnv {
+  const file = datasetContexts.get(context);
+  return { COMET_EVAL_DATASET_PLAN: file ?? '' };
+}
 const moduleRoot = path.resolve(moduleDirectory, '../..');
 const packageRoot = path.basename(moduleRoot) === 'dist' ? path.dirname(moduleRoot) : moduleRoot;
 
@@ -279,11 +295,16 @@ async function buildEvalArgs(
   const args = ['run'];
   if (suite === 'langfuse' || suite === 'langsmith') args.push('--extra', suite);
   args.push('pytest', `${suite}/tests/tasks/test_tasks.py`);
-  if (options.task) args.push(`--task=${options.task}`);
+  if (options.task && !options.datasetPlan) args.push(`--task=${options.task}`);
+  if (options.datasetPlan)
+    args.push(
+      `--treatment=${options.datasetPlan.treatment}`,
+      `--count=${options.datasetPlan.count}`,
+    );
 
   if (context.manifestPath) {
     args.push(`--eval-manifest=${context.manifestPath}`);
-  } else if (options.skillPath) {
+  } else if (options.skillPath && !options.datasetPlan) {
     args.push(`--skill-path=${path.resolve(options.skillPath)}`);
     if (options.skillName) args.push(`--skill-name=${options.skillName}`);
     if (options.profile) args.push(`--profile=${options.profile}`);
@@ -331,21 +352,25 @@ async function buildLaunchDetails(
       : `comet-eval-${randomUUID()}`;
   if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,127}$/u.test(experimentId)) throw new Error('评估实验身份无效');
   const execution = await resolveLaunchExecution(options, context);
-  const taskLines = await collectStandaloneTasks(
-    {
-      task: options.task,
-      quick: options.quick,
-      agent: options.agent,
-      model: options.model,
-      baseUrl: options.baseUrl,
-      judgeAgent: options.judgeAgent,
-      judgeModel: options.judgeModel,
-      judgeBaseUrl: options.judgeBaseUrl,
-      profile: options.profile,
-    },
-    context,
-    packageRoot,
-  );
+  const taskLines = options.datasetPlan
+    ? options.datasetPlan.tasks.map(
+        (task) => `${task.id} / ${options.datasetPlan!.treatment} × ${options.datasetPlan!.count}`,
+      )
+    : await collectStandaloneTasks(
+        {
+          task: options.task,
+          quick: options.quick,
+          agent: options.agent,
+          model: options.model,
+          baseUrl: options.baseUrl,
+          judgeAgent: options.judgeAgent,
+          judgeModel: options.judgeModel,
+          judgeBaseUrl: options.judgeBaseUrl,
+          profile: options.profile,
+        },
+        context,
+        packageRoot,
+      );
   return {
     mode: collectOnly ? 'collect' : 'run',
     suite,
@@ -359,9 +384,11 @@ async function buildLaunchDetails(
       experimentId,
       reportConfig ? 'summary.html' : 'summary.md',
     ),
-    target: context.manifestPath
-      ? `manifest ${context.manifestPath}`
-      : `skill ${context.skillRoot}`,
+    target: options.datasetPlan
+      ? `dataset ${options.datasetPlan.dataset.id}@${options.datasetPlan.dataset.version} / ${options.datasetPlan.treatment}`
+      : context.manifestPath
+        ? `manifest ${context.manifestPath}`
+        : `skill ${context.skillRoot}`,
     manifestSource: context.manifestSource,
     agent: execution.agent,
     model: execution.model,
@@ -430,6 +457,7 @@ async function runEval(
   assertUvAvailable();
   await runOwnedCommand('uv', args, {
     cwd: root,
+    timeoutMs: datasetContexts.has(context) ? null : undefined,
     streamOutput: true,
     onRegistered:
       process.env.COMET_EVAL_MANAGED !== '1' && !process.env.COMET_APPLICATION_EVAL_CONTEXT
@@ -446,6 +474,7 @@ async function runEval(
         : undefined,
     env: {
       ...process.env,
+      ...optionsForDatasetEnvironment(context),
       COMET_EVAL_EXPERIMENT_ID: experimentId,
       COMET_EVAL_PROJECT_ID: await evalProjectIdentity(context.artifactOwnerRoot),
       COMET_EVAL_CONTEXT: JSON.stringify(context),
@@ -463,6 +492,12 @@ async function executeEval(options: EvalCommandOptions, collectOnly: boolean): P
   assertTarget(options);
   const context = await resolveEvalContext(options);
   await assertArtifactRootIsSafe(context);
+  if (options.datasetPlan) {
+    const file = await resolveManagedPath(context, 'cache', `dataset-${randomUUID()}.json`);
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, JSON.stringify(options.datasetPlan), { flag: 'wx' });
+    datasetContexts.set(context, file);
+  }
   const suite = resolveSuite(options);
   const root = evalRoot(options, suite);
   const details = await buildLaunchDetails(options, collectOnly, root, context);
@@ -484,19 +519,34 @@ async function executeEval(options: EvalCommandOptions, collectOnly: boolean): P
   const trackCli =
     process.env.COMET_EVAL_MANAGED !== '1' && !process.env.COMET_APPLICATION_EVAL_CONTEXT;
   if (trackCli) {
-    await beginCliEvalTracking(context, details.experimentId, {
-      target: options.manifest ? context.manifestPath! : context.skillRoot,
-      targetType: 'skill',
-      agent: details.agent ?? undefined,
-      ...(details.model !== 'default' ? { model: details.model } : {}),
-      suite: details.suite,
-      ...(options.task ? { task: options.task } : {}),
-      ...(options.quick ? { quick: true } : {}),
-      ...(options.profile ? { profile: options.profile } : {}),
-      ...(details.judge
-        ? { judgeAgent: details.judge.agent, judgeModel: details.judge.model, judgeEnabled: true }
-        : { judgeEnabled: false }),
-    });
+    await beginCliEvalTracking(
+      context,
+      details.experimentId,
+      {
+        target: options.manifest ? context.manifestPath! : context.skillRoot,
+        targetType: 'skill',
+        ...(options.datasetPlan
+          ? {
+              dataset: options.datasetPlan.dataset.id,
+              datasetRoot: options.datasetPlan.root,
+              datasetTreatment: options.datasetTreatment ?? 'native',
+              count: options.datasetPlan.count,
+              timeoutSeconds: 0,
+              ...(options.acceptDatasetLicense ? { acceptDatasetLicense: true } : {}),
+            }
+          : {}),
+        agent: details.agent ?? undefined,
+        ...(details.model !== 'default' ? { model: details.model } : {}),
+        suite: details.suite,
+        ...(options.task ? { task: options.task } : {}),
+        ...(options.quick ? { quick: true } : {}),
+        ...(options.profile ? { profile: options.profile } : {}),
+        ...(details.judge
+          ? { judgeAgent: details.judge.agent, judgeModel: details.judge.model, judgeEnabled: true }
+          : { judgeEnabled: false }),
+      },
+      options.datasetPlan,
+    );
   }
   try {
     const runtimeContext = prepared
@@ -573,6 +623,79 @@ export async function evalCommand(
   target?: string,
   options: EvalCommandOptions = {},
 ): Promise<number> {
+  if (options.listDatasets) {
+    console.log(JSON.stringify(listBuiltinDatasets(), null, 2));
+    return 0;
+  }
+  if (options.dataset) {
+    if (
+      target ||
+      options.manifest ||
+      options.skillPath ||
+      options.quick ||
+      options.profile ||
+      (options.suite && options.suite !== 'local')
+    )
+      throw new Error(
+        '内置数据集使用 Native 或 Goal 和 local 报告；不能混入其他目标、quick 或 profile',
+      );
+    if (options.fetchDataset) {
+      if (options.collect) throw new Error('--collect 不下载数据；请单独执行 --fetch-dataset');
+      if (options.dataset === 'workbuddy-code' && !options.acceptDatasetLicense)
+        throw new Error('下载 WorkBuddy 前请阅读腾讯许可，并用 --accept-dataset-license 声明接受');
+      if (!listBuiltinDatasets().some((item) => item.id === options.dataset))
+        throw new Error('未知内置数据集');
+      if (!options.datasetRoot) throw new Error('请用 --dataset-root 指定下载目标目录');
+      await runOwnedCommand(
+        'uv',
+        [
+          'run',
+          '--no-project',
+          '--python',
+          '>=3.12',
+          'python',
+          path.join(packageRoot, 'eval/scaffold/python/dataset_fetch.py'),
+          options.dataset,
+          path.resolve(options.datasetRoot),
+        ],
+        { cwd: path.join(packageRoot, 'eval'), env: process.env },
+      );
+      console.log(`数据集已下载：${path.resolve(options.datasetRoot)}`);
+      return 0;
+    }
+    const plan = await inspectBuiltinDataset({ ...options, dataset: options.dataset });
+    if (options.collect) {
+      console.log(JSON.stringify(plan, null, 2));
+      return 0;
+    }
+    if (plan.dataset.id === 'workbuddy-code' && !options.acceptDatasetLicense)
+      throw new Error('运行 WorkBuddy 前请阅读其腾讯许可，并用 --accept-dataset-license 声明接受');
+    const unsupported = plan.tasks.filter((task) => !task.supported);
+    if (unsupported.length)
+      throw new Error(
+        `选中任务尚不支持：${unsupported.map((task) => `${task.id}: ${task.reason}`).join('; ')}`,
+      );
+    loadUserEvalEnvironment(process.env, undefined, { create: true });
+    await executeEval(
+      {
+        ...options,
+        skillPath: path.join(packageRoot, 'assets/skills/comet-native'),
+        ...(plan.treatment === 'CLAUDE_CODE_GOAL' ? { agent: 'claude-code' } : {}),
+        datasetPlan: plan,
+        project: options.project ?? process.cwd(),
+      },
+      false,
+    );
+    return 0;
+  }
+  if (
+    options.datasetRoot ||
+    options.count ||
+    options.acceptDatasetLicense ||
+    options.fetchDataset ||
+    options.datasetTreatment
+  )
+    throw new Error('数据集选项需要 --dataset');
   if (target && path.basename(target) === 'application.json') {
     if (
       options.manifest ||

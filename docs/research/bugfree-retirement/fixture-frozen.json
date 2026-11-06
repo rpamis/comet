@@ -1,0 +1,884 @@
+{
+  "schema": "comet.native-bugfree.eval-fixtures.v1",
+  "runtime": {
+    "engine": "node",
+    "minimumMajor": 22,
+    "dependencies": [],
+    "dependencyLockSha256": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+    "preparedEnvironment": {
+      "node": "v22.20.0",
+      "browser": {
+        "name": "Chrome",
+        "version": "156.0.8078.74"
+      },
+      "nativePackageVersion": "0.5.2"
+    },
+    "repositoryDependencyLockSha256": "bd9469e1d6f904bb3e3e79710f38780667c12430c62fad7d67a6a3d9db5ad4d1",
+    "nativeRuntimeSha256": "456b85ed5ab721b028f0abd28df36a554c5c48fcc86724437a083a33e1f83681",
+    "bootstrapSourceHashes": {
+      "test/helpers/native-application.ts": "2a698f05ca38ced1fa96f5ed65ce27542957c4642dcb6f85b32e1062502ee4b5",
+      "test/helpers/native-bugfree-supervisor.ts": "11c18f91e170d718690843d44572d6722d572b98a26329b9f8a3f869e937e6b4",
+      "test/helpers/native-bugfree-oracle.ts": "d4fa242de6d6ee98640194493dc50ebcb6ac1697245bf8f6ca378be06a09a01a",
+      "test/helpers/native-bugfree-benchmark.ts": "ba795b72dc63ce25b44d1918d9fc897a599c77cab82eac4f5be630ea9a12e66e"
+    },
+    "packageArtifact": {
+      "file": "rpamis-comet-0.5.2.tgz",
+      "sha256": "335f727003f8caa73ce1fadee9e6378a4d3e7cea1fc648e9e6d4cd042abe9ed6"
+    }
+  },
+  "authorization": {
+    "modelsStarted": false,
+    "containersStarted": false,
+    "scope": "Preparation and deterministic checks only. Each model run requires separate user authorization."
+  },
+  "cases": [
+    {
+      "id": "F01",
+      "category": "range",
+      "requirements": "Sum values from inclusive index lo through hi.",
+      "expectedVerdict": "pass",
+      "files": {
+        "candidate.cjs": "module.exports=(values,lo,hi)=>values.slice(lo,hi+1).reduce((a,b)=>a+b,0);\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "12c4810d5505c287799a9f1acaaefba223884927cc8e96fc1812667d49e120a5",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "assert.equal(candidate([2,3,5],1,1),3); assert.equal(candidate([2,3,5],0,2),10);",
+      "oracleSha256": "393e023bdeafc9ba095e75d9a3d50e5bb667837b55321d822c89ddc6c495058a",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F02",
+      "category": "range",
+      "requirements": "Sum values from inclusive index lo through hi.",
+      "expectedVerdict": "fail",
+      "files": {
+        "candidate.cjs": "module.exports=(values,lo,hi)=>values.slice(lo,hi).reduce((a,b)=>a+b,0);\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "104c4d71e5ea1f828dc75b4c75c09b5ab40af9948f8bbba3e11e36d075cd28f7",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "assert.equal(candidate([2,3,5],1,1),3); assert.equal(candidate([2,3,5],0,2),10);",
+      "oracleSha256": "393e023bdeafc9ba095e75d9a3d50e5bb667837b55321d822c89ddc6c495058a",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F03",
+      "category": "branches",
+      "requirements": "Ship only when paid and not cancelled.",
+      "expectedVerdict": "pass",
+      "files": {
+        "candidate.cjs": "module.exports=(paid,cancelled)=>paid&&!cancelled;\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "8af05bc5adf92f1b222fed3a6b90fd9089a5160de7046260bf8d3019d2fad2fd",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "for(const paid of [false,true])for(const cancelled of [false,true])assert.equal(candidate(paid,cancelled),paid&&!cancelled);",
+      "oracleSha256": "5e221a7260512fcc8065a475c6df87f89bf055506d6e374548137f7813c4cbe0",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F04",
+      "category": "branches",
+      "requirements": "Ship only when paid and not cancelled.",
+      "expectedVerdict": "fail",
+      "files": {
+        "candidate.cjs": "module.exports=(paid,cancelled)=>paid||!cancelled;\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "2dd037e90ff8c38cb19c7fcf161838451cbcca79a762ec068158800bcdab0e3a",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "for(const paid of [false,true])for(const cancelled of [false,true])assert.equal(candidate(paid,cancelled),paid&&!cancelled);",
+      "oracleSha256": "5e221a7260512fcc8065a475c6df87f89bf055506d6e374548137f7813c4cbe0",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F05",
+      "category": "units",
+      "requirements": "Format the upstream amount in cents as currency units with two decimals.",
+      "expectedVerdict": "pass",
+      "files": {
+        "candidate.cjs": "module.exports=payload=>(payload.cents/100).toFixed(2);\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "5fb4a03bffa623ede79c79fad6cf62795622a6b556463be32a429ecc0eee7434",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "assert.equal(candidate({cents:12345}),\"123.45\"); assert.equal(candidate({cents:0}),\"0.00\");",
+      "oracleSha256": "97e6ba198ac5ef15a15a2ee6540d01fe21680903e77b681bc0149e47e154055e",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F06",
+      "category": "units",
+      "requirements": "Format the upstream amount in cents as currency units with two decimals.",
+      "expectedVerdict": "fail",
+      "files": {
+        "candidate.cjs": "module.exports=payload=>(payload.cents*100).toFixed(2);\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "ad285be252838572d29875afb687c65877bda5269b28466c7fa1dc2906436479",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "assert.equal(candidate({cents:12345}),\"123.45\"); assert.equal(candidate({cents:0}),\"0.00\");",
+      "oracleSha256": "97e6ba198ac5ef15a15a2ee6540d01fe21680903e77b681bc0149e47e154055e",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F07",
+      "category": "modules",
+      "requirements": "Both public order routes apply a 20 percent discount.",
+      "expectedVerdict": "pass",
+      "files": {
+        "candidate.cjs": "module.exports={left:require(\"./left.cjs\"),right:require(\"./right.cjs\")};\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "pricing.cjs": "module.exports=price=>price*0.8;\n",
+        "left.cjs": "module.exports=require(\"./pricing.cjs\");\n",
+        "right.cjs": "module.exports=require(\"./pricing.cjs\");\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "f2fef853c260f4d22458f47741028f32b6b5a9c74f10d4ff0a16a733ed259b71",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "pricing.cjs": "8c5208bf6a5cea23289174e4fe2e5f2d3fe062fa2c4de4247a038a17861791f5",
+        "left.cjs": "a29d6c892db571d18a27239d3aee6d90431365b97b4cfe2ce0091629e95e3a87",
+        "right.cjs": "a29d6c892db571d18a27239d3aee6d90431365b97b4cfe2ce0091629e95e3a87",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "assert.equal(candidate.left(100),80); assert.equal(candidate.right(100),80);",
+      "oracleSha256": "a8455f03b8e6598e8b8363944168dc2b7674bb647edbdf5a56c48eecff13d4d8",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F08",
+      "category": "modules",
+      "requirements": "Both public order routes apply a 20 percent discount.",
+      "expectedVerdict": "fail",
+      "files": {
+        "candidate.cjs": "module.exports={left:require(\"./left.cjs\"),right:require(\"./right.cjs\")};\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "pricing.cjs": "module.exports=price=>price*0.8;\n",
+        "left.cjs": "module.exports=require(\"./pricing.cjs\");\n",
+        "right.cjs": "module.exports=price=>price*0.9;\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "f2fef853c260f4d22458f47741028f32b6b5a9c74f10d4ff0a16a733ed259b71",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "pricing.cjs": "8c5208bf6a5cea23289174e4fe2e5f2d3fe062fa2c4de4247a038a17861791f5",
+        "left.cjs": "a29d6c892db571d18a27239d3aee6d90431365b97b4cfe2ce0091629e95e3a87",
+        "right.cjs": "426c62d26609da535523a3d6780c3426b49fadda31cc7ff0bfde8ffd6d0d0b49",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "assert.equal(candidate.left(100),80); assert.equal(candidate.right(100),80);",
+      "oracleSha256": "a8455f03b8e6598e8b8363944168dc2b7674bb647edbdf5a56c48eecff13d4d8",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F09",
+      "category": "state",
+      "requirements": "Only ready jobs may start. Cancelled jobs must not execute.",
+      "expectedVerdict": "pass",
+      "files": {
+        "candidate.cjs": "module.exports=(state,execute)=>{if(state!==\"ready\")return state;execute();return \"running\"};\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "24b4b45cc4b5527c3956c4a832d91650c95cd79252fd3254ab8c2bac9095de5f",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "let calls=0;assert.equal(candidate(\"cancelled\",()=>calls++),\"cancelled\");assert.equal(calls,0);assert.equal(candidate(\"ready\",()=>calls++),\"running\");assert.equal(calls,1);",
+      "oracleSha256": "9730a2218f5e2e2d40c2f94ad5c545a44252c11e0fe855f26670dc684eb1bd0e",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F10",
+      "category": "state",
+      "requirements": "Only ready jobs may start. Cancelled jobs must not execute.",
+      "expectedVerdict": "fail",
+      "files": {
+        "candidate.cjs": "module.exports=(state,execute)=>{if(![\"ready\",\"cancelled\"].includes(state))return state;execute();return \"running\"};\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "dbf7d5926d8ca49e8f9cf2b766c2f80048c979a9fd1ab5b868998164214f7142",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "let calls=0;assert.equal(candidate(\"cancelled\",()=>calls++),\"cancelled\");assert.equal(calls,0);assert.equal(candidate(\"ready\",()=>calls++),\"running\");assert.equal(calls,1);",
+      "oracleSha256": "9730a2218f5e2e2d40c2f94ad5c545a44252c11e0fe855f26670dc684eb1bd0e",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F11",
+      "category": "recovery",
+      "requirements": "A persisted completed append must not be repeated on recovery.",
+      "expectedVerdict": "pass",
+      "files": {
+        "candidate.cjs": "const fs=require(\"node:fs\"),path=require(\"node:path\");module.exports=root=>{const receipt=path.join(root,\"receipt.json\");if(fs.existsSync(receipt)&&JSON.parse(fs.readFileSync(receipt,\"utf8\")).done)return;fs.appendFileSync(path.join(root,\"append.log\"),\"one\\n\");fs.writeFileSync(receipt,JSON.stringify({done:true}));};\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "worker.cjs": "require(\"./candidate.cjs\")(process.argv[2]);if(process.argv.includes(\"--stop-after-persist\"))process.exit(73);\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "15effc2d2e43a146ebdd730fc75cbbe4571219d9ade41c82c536837de8f2c4e2",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "worker.cjs": "a65333b99cf084e9dd1a338b743c35d90e1772460764b92b441e78865d289453",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "const store=path.join(root,\"persisted-store\");fs.mkdirSync(store);const stopped=spawnSync(process.execPath,[path.join(root,\"worker.cjs\"),store,\"--stop-after-persist\"],{windowsHide:true});assert.equal(stopped.status,73);const resumed=spawnSync(process.execPath,[path.join(root,\"worker.cjs\"),store],{windowsHide:true});assert.equal(resumed.status,0);assert.equal(fs.readFileSync(path.join(store,\"append.log\"),\"utf8\"),\"one\\n\");assert.equal(JSON.parse(fs.readFileSync(path.join(store,\"receipt.json\"),\"utf8\")).done,true);",
+      "oracleSha256": "3d6d3fc7e0fa359a7eef3832c0e4c7bbe894c566b57b10d657204ecbfe4a96e0",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F12",
+      "category": "recovery",
+      "requirements": "A persisted completed append must not be repeated on recovery.",
+      "expectedVerdict": "fail",
+      "files": {
+        "candidate.cjs": "const fs=require(\"node:fs\"),path=require(\"node:path\");module.exports=root=>{const receipt=path.join(root,\"receipt.json\");fs.appendFileSync(path.join(root,\"append.log\"),\"one\\n\");fs.writeFileSync(receipt,JSON.stringify({done:true}));};\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "worker.cjs": "require(\"./candidate.cjs\")(process.argv[2]);if(process.argv.includes(\"--stop-after-persist\"))process.exit(73);\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "853fe721c3fb25e98b3b097f0a92375eefbc5d5be1e699d1c529ddf711cf082d",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "worker.cjs": "a65333b99cf084e9dd1a338b743c35d90e1772460764b92b441e78865d289453",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "const store=path.join(root,\"persisted-store\");fs.mkdirSync(store);const stopped=spawnSync(process.execPath,[path.join(root,\"worker.cjs\"),store,\"--stop-after-persist\"],{windowsHide:true});assert.equal(stopped.status,73);const resumed=spawnSync(process.execPath,[path.join(root,\"worker.cjs\"),store],{windowsHide:true});assert.equal(resumed.status,0);assert.equal(fs.readFileSync(path.join(store,\"append.log\"),\"utf8\"),\"one\\n\");assert.equal(JSON.parse(fs.readFileSync(path.join(store,\"receipt.json\"),\"utf8\")).done,true);",
+      "oracleSha256": "3d6d3fc7e0fa359a7eef3832c0e4c7bbe894c566b57b10d657204ecbfe4a96e0",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F13",
+      "category": "ordering",
+      "requirements": "A late response for an old query must not replace the newer result.",
+      "expectedVerdict": "pass",
+      "files": {
+        "candidate.cjs": "module.exports=(send,apply)=>{let latest=0;return async query=>{const ticket=++latest;const value=await send(query);if(ticket===latest)apply(value)}};\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "4663900e0d62a320854bdcfb0190a367dd369f83051cf3900abbe897284a788d",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "const pending={};const results=[];const search=candidate(query=>new Promise(resolve=>pending[query]=resolve),v=>results.push(v));const old=search(\"old\"),fresh=search(\"new\");pending.new(\"new-result\");await fresh;pending.old(\"old-result\");await old;assert.deepEqual(results,[\"new-result\"]);",
+      "oracleSha256": "847c81402c4a45392ac686813035401088e8fb3c0d90e2e851c28ff90776db9e",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F14",
+      "category": "ordering",
+      "requirements": "A late response for an old query must not replace the newer result.",
+      "expectedVerdict": "fail",
+      "files": {
+        "candidate.cjs": "module.exports=(send,apply)=>async query=>apply(await send(query));\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "a057c38b91787ca5344cbca6a3266626eb0979b95c9ed61305a96b6d1d1eeb40",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "const pending={};const results=[];const search=candidate(query=>new Promise(resolve=>pending[query]=resolve),v=>results.push(v));const old=search(\"old\"),fresh=search(\"new\");pending.new(\"new-result\");await fresh;pending.old(\"old-result\");await old;assert.deepEqual(results,[\"new-result\"]);",
+      "oracleSha256": "847c81402c4a45392ac686813035401088e8fb3c0d90e2e851c28ff90776db9e",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F15",
+      "category": "paths",
+      "requirements": "Accept paths inside the project and reject sibling-directory escapes on Windows and POSIX.",
+      "expectedVerdict": "pass",
+      "files": {
+        "candidate.cjs": "module.exports=(base,input,path)=>{const relative=path.relative(base,path.resolve(base,input));return relative===\"\"||(!relative.startsWith(\"..\"+path.sep)&&relative!==\"..\"&&!path.isAbsolute(relative))};\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "386f4026359190f7705d0dbdc8b8498bec563d3c248af20f8d7558e5e072b1be",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "fs.mkdirSync(path.join(root,\"path-project\"));fs.mkdirSync(path.join(root,\"path-project-other\"));fs.writeFileSync(path.join(root,\"path-project\",\"inside.txt\"),\"inside\");fs.writeFileSync(path.join(root,\"path-project-other\",\"secret\"),\"outside\");for(const p of [path.posix,path.win32]){const base=p.resolve(root,\"path-project\");assert.equal(candidate(base,\"inside.txt\",p),true);assert.equal(candidate(base,\"../path-project-other/secret\",p),false);}",
+      "oracleSha256": "ad94dc885954dc262340209a2b96df8ab4aa797b0b89dff5f776f632247767f5",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F16",
+      "category": "paths",
+      "requirements": "Accept paths inside the project and reject sibling-directory escapes on Windows and POSIX.",
+      "expectedVerdict": "fail",
+      "files": {
+        "candidate.cjs": "module.exports=(base,input,path)=>path.resolve(base,input).startsWith(base);\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "c36b37b33e49e01ca50212370ed9cb6280462670701a1dd9f5133f81bcf82527",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "fs.mkdirSync(path.join(root,\"path-project\"));fs.mkdirSync(path.join(root,\"path-project-other\"));fs.writeFileSync(path.join(root,\"path-project\",\"inside.txt\"),\"inside\");fs.writeFileSync(path.join(root,\"path-project-other\",\"secret\"),\"outside\");for(const p of [path.posix,path.win32]){const base=p.resolve(root,\"path-project\");assert.equal(candidate(base,\"inside.txt\",p),true);assert.equal(candidate(base,\"../path-project-other/secret\",p),false);}",
+      "oracleSha256": "ad94dc885954dc262340209a2b96df8ab4aa797b0b89dff5f776f632247767f5",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F17",
+      "category": "cli",
+      "requirements": "An explicit CLI value false disables the feature; true enables it.",
+      "expectedVerdict": "pass",
+      "files": {
+        "candidate.cjs": "module.exports=value=>({enabled:value===\"true\"});\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "cli.cjs": "const fs=require(\"node:fs\");const parse=require(\"./candidate.cjs\");const value=parse(process.argv[process.argv.indexOf(\"--enabled\")+1]);fs.writeFileSync(\"settings.json\",JSON.stringify(value));process.stdout.write(JSON.stringify(value));\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "53ae6c4ee31158fefe96b49d31d81a3179fe44dd986929d19cbfa612d637435c",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "cli.cjs": "9791c612c89c7f335e5bacef22a757b71b8b8d10a04ee0e20d76dc905e1458d7",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "for(const value of [\"false\",\"true\"]){const result=spawnSync(process.execPath,[path.join(root,\"cli.cjs\"),\"--enabled\",value],{cwd:root,encoding:\"utf8\",windowsHide:true});assert.equal(result.status,0);assert.equal(JSON.parse(result.stdout).enabled,value===\"true\");assert.equal(JSON.parse(fs.readFileSync(path.join(root,\"settings.json\"),\"utf8\")).enabled,value===\"true\");}",
+      "oracleSha256": "f851d3bafee49891d4038943dda20a7e6fbdf038ed17d5555980c100007385fc",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F18",
+      "category": "cli",
+      "requirements": "An explicit CLI value false disables the feature; true enables it.",
+      "expectedVerdict": "fail",
+      "files": {
+        "candidate.cjs": "module.exports=value=>({enabled:Boolean(value)});\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "cli.cjs": "const fs=require(\"node:fs\");const parse=require(\"./candidate.cjs\");const value=parse(process.argv[process.argv.indexOf(\"--enabled\")+1]);fs.writeFileSync(\"settings.json\",JSON.stringify(value));process.stdout.write(JSON.stringify(value));\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "3cd6cc00fd5a83806792a17c8e6b137985dc539212145b9684a164386438afde",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "cli.cjs": "9791c612c89c7f335e5bacef22a757b71b8b8d10a04ee0e20d76dc905e1458d7",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "for(const value of [\"false\",\"true\"]){const result=spawnSync(process.execPath,[path.join(root,\"cli.cjs\"),\"--enabled\",value],{cwd:root,encoding:\"utf8\",windowsHide:true});assert.equal(result.status,0);assert.equal(JSON.parse(result.stdout).enabled,value===\"true\");assert.equal(JSON.parse(fs.readFileSync(path.join(root,\"settings.json\"),\"utf8\")).enabled,value===\"true\");}",
+      "oracleSha256": "f851d3bafee49891d4038943dda20a7e6fbdf038ed17d5555980c100007385fc",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F19",
+      "category": "interaction",
+      "requirements": "The submit handler sends once while a request is pending and allows another submission after completion.",
+      "expectedVerdict": "pass",
+      "files": {
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "index.html": "<!doctype html><html><body><button id=\"submit\">Submit</button><script src=\"/browser.js\"></script></body></html>\n",
+        "browser.js": "const button=document.getElementById(\"submit\");button.addEventListener(\"click\",async()=>{if(button.disabled)return;button.disabled=true;try{await fetch(\"/submit\",{method:\"POST\"})}finally{button.disabled=false;}});\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "index.html": "992423ee99bd36cede9015a334e3f57ce930c9fcc52dc51c61bbb82ae8bdd315",
+        "browser.js": "19b55d35a6939b837bab7eaacf5a028fe5d317b0c041c9cee065e8c546382b4b",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "(async()=>{const pause=()=>fetch(\"/tick\");const count=async()=>+(await(await fetch(\"/state\")).text());const wait=async(fn)=>{for(let i=0;i<50;i++){if(await fn())return;await pause();}throw Error(\"condition timeout\");};let verdict=\"pass\";try{const button=document.getElementById(\"submit\");button.click();await wait(async()=>await count()>=1);button.click();await pause();if(await count()!==1)throw Error(\"duplicate request\");await fetch(\"/release\");await wait(()=>!button.disabled);button.click();await wait(async()=>await count()>=2);if(await count()!==2)throw Error(\"repeat request failed\");await fetch(\"/release\");}catch(error){verdict=\"fail\";await fetch(\"/release\");}const result=document.createElement(\"pre\");result.id=\"oracle-result\";result.dataset.verdict=verdict;document.body.append(result);})();",
+      "oracleSha256": "3897ce9d02e2cd8c3339ac4d68c7c8a526047cf4dffc32466021bdb22678bded",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run.",
+      "boundary": "browser"
+    },
+    {
+      "id": "F20",
+      "category": "interaction",
+      "requirements": "The submit handler sends once while a request is pending and allows another submission after completion.",
+      "expectedVerdict": "fail",
+      "files": {
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "index.html": "<!doctype html><html><body><button id=\"submit\">Submit</button><script src=\"/browser.js\"></script></body></html>\n",
+        "browser.js": "const button=document.getElementById(\"submit\");button.addEventListener(\"click\",async()=>{try{await fetch(\"/submit\",{method:\"POST\"})}finally{button.disabled=false;}});\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "index.html": "992423ee99bd36cede9015a334e3f57ce930c9fcc52dc51c61bbb82ae8bdd315",
+        "browser.js": "db93601f4cc36443f1e22d25f492cbf02a74ec3c937ba182779441ddfbeaab6f",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "(async()=>{const pause=()=>fetch(\"/tick\");const count=async()=>+(await(await fetch(\"/state\")).text());const wait=async(fn)=>{for(let i=0;i<50;i++){if(await fn())return;await pause();}throw Error(\"condition timeout\");};let verdict=\"pass\";try{const button=document.getElementById(\"submit\");button.click();await wait(async()=>await count()>=1);button.click();await pause();if(await count()!==1)throw Error(\"duplicate request\");await fetch(\"/release\");await wait(()=>!button.disabled);button.click();await wait(async()=>await count()>=2);if(await count()!==2)throw Error(\"repeat request failed\");await fetch(\"/release\");}catch(error){verdict=\"fail\";await fetch(\"/release\");}const result=document.createElement(\"pre\");result.id=\"oracle-result\";result.dataset.verdict=verdict;document.body.append(result);})();",
+      "oracleSha256": "3897ce9d02e2cd8c3339ac4d68c7c8a526047cf4dffc32466021bdb22678bded",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run.",
+      "boundary": "browser"
+    },
+    {
+      "id": "F21",
+      "category": "required-check",
+      "requirements": "Enable the required feature. The user explicitly requires node verify.cjs before acceptance.",
+      "expectedVerdict": "pass",
+      "files": {
+        "candidate.cjs": "module.exports={requiredFeature:true};\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "verify.cjs": "if(require(\"./candidate.cjs\").requiredFeature!==true)process.exit(1);\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "492b38c298f90aa9f728e027a782bf03434d597ac506dbe9240893b9b413fc0d",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "verify.cjs": "d9d3c600dd5423517715fdeb506027cb2f191f8b334926d044affe2eaf08dbaf",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "const result=spawnSync(process.execPath,[path.join(root,\"verify.cjs\")],{cwd:root,encoding:\"utf8\",windowsHide:true});assert.equal(result.status,0);assert.equal(candidate.requiredFeature,true);",
+      "oracleSha256": "2b7b7f6236653c090efcae312346e57041b4c6fe9899c89edea751c2eb10e606",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F22",
+      "category": "required-check",
+      "requirements": "Enable the required feature. The user explicitly requires node verify.cjs before acceptance.",
+      "expectedVerdict": "fail",
+      "files": {
+        "candidate.cjs": "module.exports={requiredFeature:false};\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "verify.cjs": "if(require(\"./candidate.cjs\").requiredFeature!==true)process.exit(1);\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "98cab2c7c3bbf9e2684a7d93237ec83a17530e610d45c84c5b92ddfba27b5dd5",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "verify.cjs": "d9d3c600dd5423517715fdeb506027cb2f191f8b334926d044affe2eaf08dbaf",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "const result=spawnSync(process.execPath,[path.join(root,\"verify.cjs\")],{cwd:root,encoding:\"utf8\",windowsHide:true});assert.equal(result.status,0);assert.equal(candidate.requiredFeature,true);",
+      "oracleSha256": "2b7b7f6236653c090efcae312346e57041b4c6fe9899c89edea751c2eb10e606",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run."
+    },
+    {
+      "id": "F23",
+      "category": "supervisor-parent",
+      "requirements": "The integrated left and right task creators persist distinct identifiers and both tasks remain readable.",
+      "expectedVerdict": "pass",
+      "files": {
+        "candidate.cjs": "const store=require(\"./store.cjs\");module.exports=root=>({left:()=>require(\"./left.cjs\")(root),right:()=>require(\"./right.cjs\")(root),read:id=>store.read(root,id)});\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "store.cjs": "const fs=require(\"node:fs\"),path=require(\"node:path\");const file=root=>path.join(root,\"tasks.json\");const load=root=>fs.existsSync(file(root))?JSON.parse(fs.readFileSync(file(root),\"utf8\")):{next:0,tasks:{}};exports.create=(root,id)=>{const data=load(root);const task={id:id??data.next+1};data.next=Math.max(data.next,task.id);data.tasks[task.id]=task;fs.writeFileSync(file(root),JSON.stringify(data));return task;};exports.read=(root,id)=>load(root).tasks[id];\n",
+        "left.cjs": "module.exports=root=>require(\"./store.cjs\").create(root);\n",
+        "right.cjs": "module.exports=root=>require(\"./store.cjs\").create(root);\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "d7fc8fe81d7c8ff06121a9481266c0f7315aa77696b98dcf98339a5c1cd00b7a",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "store.cjs": "b70649d0a243990cfef26c9cff3fcb1dff1e7030a4721b11e912de62fa97208b",
+        "left.cjs": "3212a855c0ee9448011cd199276fc9935e95783d716ebed5bf5e442dd2545a62",
+        "right.cjs": "3212a855c0ee9448011cd199276fc9935e95783d716ebed5bf5e442dd2545a62",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "const store=path.join(root,\"task-store\");fs.mkdirSync(store);const system=candidate(store);const left=system.left(),right=system.right();assert.notEqual(left.id,right.id);const persisted=JSON.parse(fs.readFileSync(path.join(store,\"tasks.json\"),\"utf8\"));assert.equal(Object.keys(persisted.tasks).length,2);assert.equal(system.read(left.id).id,left.id);assert.equal(system.read(right.id).id,right.id);",
+      "oracleSha256": "e3966d0ac4f24dbb17d56acab0fb1dec3220f73f9e172e0dcb86a5396c09923b",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run.",
+      "boundary": "supervisor",
+      "bootstrap": "test/helpers/native-bugfree-supervisor.ts#prepareFrozenSupervisorCandidate",
+      "baselineFiles": {
+        "candidate.cjs": "const store=require(\"./store.cjs\");module.exports=root=>({left:()=>require(\"./left.cjs\")(root),right:()=>require(\"./right.cjs\")(root),read:id=>store.read(root,id)});\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "store.cjs": "const fs=require(\"node:fs\"),path=require(\"node:path\");const file=root=>path.join(root,\"tasks.json\");const load=root=>fs.existsSync(file(root))?JSON.parse(fs.readFileSync(file(root),\"utf8\")):{next:0,tasks:{}};exports.create=(root,id)=>{const data=load(root);const task={id:id??data.next+1};data.next=Math.max(data.next,task.id);data.tasks[task.id]=task;fs.writeFileSync(file(root),JSON.stringify(data));return task;};exports.read=(root,id)=>load(root).tasks[id];\n",
+        "left.cjs": "module.exports=root=>require(\"./store.cjs\").create(root);\n",
+        "right.cjs": "module.exports=root=>require(\"./store.cjs\").create(root);\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "baselineFileHashes": {
+        "candidate.cjs": "d7fc8fe81d7c8ff06121a9481266c0f7315aa77696b98dcf98339a5c1cd00b7a",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "store.cjs": "b70649d0a243990cfef26c9cff3fcb1dff1e7030a4721b11e912de62fa97208b",
+        "left.cjs": "3212a855c0ee9448011cd199276fc9935e95783d716ebed5bf5e442dd2545a62",
+        "right.cjs": "3212a855c0ee9448011cd199276fc9935e95783d716ebed5bf5e442dd2545a62",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      }
+    },
+    {
+      "id": "F24",
+      "category": "supervisor-parent",
+      "requirements": "The integrated left and right task creators persist distinct identifiers and both tasks remain readable.",
+      "expectedVerdict": "fail",
+      "files": {
+        "candidate.cjs": "const store=require(\"./store.cjs\");module.exports=root=>({left:()=>require(\"./left.cjs\")(root),right:()=>require(\"./right.cjs\")(root),read:id=>store.read(root,id)});\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "store.cjs": "const fs=require(\"node:fs\"),path=require(\"node:path\");const file=root=>path.join(root,\"tasks.json\");const load=root=>fs.existsSync(file(root))?JSON.parse(fs.readFileSync(file(root),\"utf8\")):{next:0,tasks:{}};exports.create=(root,id)=>{const data=load(root);const task={id:id??data.next+1};data.next=Math.max(data.next,task.id);data.tasks[task.id]=task;fs.writeFileSync(file(root),JSON.stringify(data));return task;};exports.read=(root,id)=>load(root).tasks[id];\n",
+        "left.cjs": "module.exports=root=>require(\"./store.cjs\").create(root);\n",
+        "right.cjs": "module.exports=root=>require(\"./store.cjs\").create(root,1);\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "fileHashes": {
+        "candidate.cjs": "d7fc8fe81d7c8ff06121a9481266c0f7315aa77696b98dcf98339a5c1cd00b7a",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "store.cjs": "b70649d0a243990cfef26c9cff3fcb1dff1e7030a4721b11e912de62fa97208b",
+        "left.cjs": "3212a855c0ee9448011cd199276fc9935e95783d716ebed5bf5e442dd2545a62",
+        "right.cjs": "2cc051c9aff670a03f680bf085f15c7e41e7b763d786d8a51cd3b417c9be1bc5",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "const store=path.join(root,\"task-store\");fs.mkdirSync(store);const system=candidate(store);const left=system.left(),right=system.right();assert.notEqual(left.id,right.id);const persisted=JSON.parse(fs.readFileSync(path.join(store,\"tasks.json\"),\"utf8\"));assert.equal(Object.keys(persisted.tasks).length,2);assert.equal(system.read(left.id).id,left.id);assert.equal(system.read(right.id).id,right.id);",
+      "oracleSha256": "e3966d0ac4f24dbb17d56acab0fb1dec3220f73f9e172e0dcb86a5396c09923b",
+      "truthBasis": "Authored requirement, deterministic hidden assertions, and the paired single-defect source difference. Independent review is required before any authorized model run.",
+      "boundary": "supervisor",
+      "bootstrap": "test/helpers/native-bugfree-supervisor.ts#prepareFrozenSupervisorCandidate",
+      "baselineFiles": {
+        "candidate.cjs": "const store=require(\"./store.cjs\");module.exports=root=>({left:()=>require(\"./left.cjs\")(root),right:()=>require(\"./right.cjs\")(root),read:id=>store.read(root,id)});\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "store.cjs": "const fs=require(\"node:fs\"),path=require(\"node:path\");const file=root=>path.join(root,\"tasks.json\");const load=root=>fs.existsSync(file(root))?JSON.parse(fs.readFileSync(file(root),\"utf8\")):{next:0,tasks:{}};exports.create=(root,id)=>{const data=load(root);const task={id:id??data.next+1};data.next=Math.max(data.next,task.id);data.tasks[task.id]=task;fs.writeFileSync(file(root),JSON.stringify(data));return task;};exports.read=(root,id)=>load(root).tasks[id];\n",
+        "left.cjs": "module.exports=root=>require(\"./store.cjs\").create(root);\n",
+        "right.cjs": "module.exports=root=>require(\"./store.cjs\").create(root);\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "baselineFileHashes": {
+        "candidate.cjs": "d7fc8fe81d7c8ff06121a9481266c0f7315aa77696b98dcf98339a5c1cd00b7a",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "store.cjs": "b70649d0a243990cfef26c9cff3fcb1dff1e7030a4721b11e912de62fa97208b",
+        "left.cjs": "3212a855c0ee9448011cd199276fc9935e95783d716ebed5bf5e442dd2545a62",
+        "right.cjs": "3212a855c0ee9448011cd199276fc9935e95783d716ebed5bf5e442dd2545a62",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      }
+    }
+  ],
+  "flows": [
+    {
+      "id": "C01",
+      "kind": "first-pass",
+      "requirements": "Sum values from inclusive index lo through hi.",
+      "initialFiles": {
+        "candidate.cjs": "module.exports=(values,lo,hi)=>values.slice(lo,hi+1).reduce((a,b)=>a+b,0);\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "initialFileHashes": {
+        "candidate.cjs": "12c4810d5505c287799a9f1acaaefba223884927cc8e96fc1812667d49e120a5",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "referenceFiles": {
+        "candidate.cjs": "module.exports=(values,lo,hi)=>values.slice(lo,hi+1).reduce((a,b)=>a+b,0);\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "referenceFileHashes": {
+        "candidate.cjs": "12c4810d5505c287799a9f1acaaefba223884927cc8e96fc1812667d49e120a5",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "assert.equal(candidate([2,3,5],1,1),3); assert.equal(candidate([2,3,5],0,2),10);",
+      "oracleSha256": "393e023bdeafc9ba095e75d9a3d50e5bb667837b55321d822c89ddc6c495058a",
+      "operator": null,
+      "interactionPolicy": "Allow the workflow to choose its actual diagnostics and number of repair iterations."
+    },
+    {
+      "id": "C02",
+      "kind": "one-repair",
+      "requirements": "Ship only when paid and not cancelled.",
+      "initialFiles": {
+        "candidate.cjs": "module.exports=(paid,cancelled)=>paid||!cancelled;\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "initialFileHashes": {
+        "candidate.cjs": "2dd037e90ff8c38cb19c7fcf161838451cbcca79a762ec068158800bcdab0e3a",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "referenceFiles": {
+        "candidate.cjs": "module.exports=(paid,cancelled)=>paid&&!cancelled;\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "referenceFileHashes": {
+        "candidate.cjs": "8af05bc5adf92f1b222fed3a6b90fd9089a5160de7046260bf8d3019d2fad2fd",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "for(const paid of [false,true])for(const cancelled of [false,true])assert.equal(candidate(paid,cancelled),paid&&!cancelled);",
+      "oracleSha256": "5e221a7260512fcc8065a475c6df87f89bf055506d6e374548137f7813c4cbe0",
+      "operator": null,
+      "interactionPolicy": "Allow the workflow to choose its actual diagnostics and number of repair iterations."
+    },
+    {
+      "id": "C03",
+      "kind": "multiple-repairs",
+      "requirements": "Both public order routes apply a 20 percent discount.",
+      "initialFiles": {
+        "candidate.cjs": "module.exports={left:price=>price*0.9,right:price=>price*0.7};\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "initialFileHashes": {
+        "candidate.cjs": "e82f073467b75889631352c7cfbc6d59b5d7af47f3f5bd18a44459ed79ad58cf",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "referenceFiles": {
+        "candidate.cjs": "module.exports={left:price=>price*0.8,right:price=>price*0.8};\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "referenceFileHashes": {
+        "candidate.cjs": "4b115d566e1d437d5bb8d3e832b27c1cd55cd99b4f5970b690ef36275cf384dd",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "assert.equal(candidate.left(100),80); assert.equal(candidate.right(100),80);",
+      "oracleSha256": "a8455f03b8e6598e8b8363944168dc2b7674bb647edbdf5a56c48eecff13d4d8",
+      "operator": null,
+      "interactionPolicy": "Use separate stated milestones for the two order routes; record every repair iteration. Do not force the model to fail."
+    },
+    {
+      "id": "C04",
+      "kind": "requested-check",
+      "requirements": "Enable the required feature. The user explicitly requires node verify.cjs before acceptance.",
+      "initialFiles": {
+        "candidate.cjs": "module.exports={requiredFeature:false};\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "verify.cjs": "if(require(\"./candidate.cjs\").requiredFeature!==true)process.exit(1);\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "initialFileHashes": {
+        "candidate.cjs": "98cab2c7c3bbf9e2684a7d93237ec83a17530e610d45c84c5b92ddfba27b5dd5",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "verify.cjs": "d9d3c600dd5423517715fdeb506027cb2f191f8b334926d044affe2eaf08dbaf",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "referenceFiles": {
+        "candidate.cjs": "module.exports={requiredFeature:true};\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "verify.cjs": "if(require(\"./candidate.cjs\").requiredFeature!==true)process.exit(1);\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "referenceFileHashes": {
+        "candidate.cjs": "492b38c298f90aa9f728e027a782bf03434d597ac506dbe9240893b9b413fc0d",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "verify.cjs": "d9d3c600dd5423517715fdeb506027cb2f191f8b334926d044affe2eaf08dbaf",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "assert.equal(candidate.requiredFeature,true);",
+      "oracleSha256": "6c9d37fcbebc333a7ea2906e23cd3018bca437bbca1100e2bfe016c4dd18051b",
+      "operator": null,
+      "interactionPolicy": "The specified verify.cjs is mandatory; preserve its actual receipt."
+    },
+    {
+      "id": "C05",
+      "kind": "blocked-recovery",
+      "requirements": "A persisted completed append must not be repeated on recovery. The caller supplies environment.appendStoreAvailable. Report a blocker while it is false; the simulated operator then enables it. Resume from the original receipt.",
+      "initialFiles": {
+        "candidate.cjs": "module.exports=(receipt,append,environment)=>{if(!environment?.appendStoreAvailable)throw Error(\"append store unavailable\");append();receipt.done=true};\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "environment.json": "{\"appendStoreAvailable\":false}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "initialFileHashes": {
+        "candidate.cjs": "e4291cff6d423e12a7ee0340c1faa26bceb706fba60f12d2766353e98fdddc41",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "environment.json": "d0bb5f82132a49ff056f93b127604ceac6201eeb190a0039ecbca9bfb01bc9dc",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "referenceFiles": {
+        "candidate.cjs": "module.exports=(receipt,append,environment)=>{if(!environment?.appendStoreAvailable)throw Error(\"append store unavailable\");if(!receipt.done){append();receipt.done=true}};\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "environment.json": "{\"appendStoreAvailable\":true}\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "referenceFileHashes": {
+        "candidate.cjs": "e240f1480834353668cb517c635e7ee66b6a424cb6d2bb4e7799833b545afda0",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "environment.json": "30b15f64166e787816a3be98471c5eb00ad0bae029240366ab8581e195b3a0f6",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "let writes=0;const receipt={done:false};assert.throws(()=>candidate(receipt,()=>writes++,{appendStoreAvailable:false}),/append store unavailable/);const environment={appendStoreAvailable:true};candidate(receipt,()=>writes++,environment);candidate(receipt,()=>writes++,environment);assert.equal(writes,1);",
+      "oracleSha256": "dbe04c7afa0eda8126989ccaaeb1b0a8258160ec741be7a93574ab83f1ef177b",
+      "operator": {
+        "action": "restore-environment",
+        "after": "Agent reports the missing append store",
+        "files": {
+          "environment.json": "{\"appendStoreAvailable\":true}\n"
+        },
+        "simulated": true
+      },
+      "interactionPolicy": "Allow the workflow to choose its actual diagnostics and number of repair iterations."
+    },
+    {
+      "id": "C06",
+      "kind": "supervisor-parent-repair",
+      "requirements": "The integrated left and right task creators persist distinct identifiers and both tasks remain readable. Use a Native Supervisor with left and right Children and review the integrated parent. Create real Runtime receipts; never invent Child approval history.",
+      "initialFiles": {
+        "candidate.cjs": "const store=require(\"./store.cjs\");module.exports=root=>({left:()=>require(\"./left.cjs\")(root),right:()=>require(\"./right.cjs\")(root),read:id=>store.read(root,id)});\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "store.cjs": "const fs=require(\"node:fs\"),path=require(\"node:path\");const file=root=>path.join(root,\"tasks.json\");const load=root=>fs.existsSync(file(root))?JSON.parse(fs.readFileSync(file(root),\"utf8\")):{next:0,tasks:{}};exports.create=(root,id)=>{const data=load(root);const task={id:id??data.next+1};data.next=Math.max(data.next,task.id);data.tasks[task.id]=task;fs.writeFileSync(file(root),JSON.stringify(data));return task;};exports.read=(root,id)=>load(root).tasks[id];\n",
+        "left.cjs": "module.exports=root=>require(\"./store.cjs\").create(root);\n",
+        "right.cjs": "module.exports=root=>require(\"./store.cjs\").create(root,1);\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "initialFileHashes": {
+        "candidate.cjs": "d7fc8fe81d7c8ff06121a9481266c0f7315aa77696b98dcf98339a5c1cd00b7a",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "store.cjs": "b70649d0a243990cfef26c9cff3fcb1dff1e7030a4721b11e912de62fa97208b",
+        "left.cjs": "3212a855c0ee9448011cd199276fc9935e95783d716ebed5bf5e442dd2545a62",
+        "right.cjs": "2cc051c9aff670a03f680bf085f15c7e41e7b763d786d8a51cd3b417c9be1bc5",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "referenceFiles": {
+        "candidate.cjs": "const store=require(\"./store.cjs\");module.exports=root=>({left:()=>require(\"./left.cjs\")(root),right:()=>require(\"./right.cjs\")(root),read:id=>store.read(root,id)});\n",
+        "package.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"private\":true}\n",
+        "package-lock.json": "{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\",\"lockfileVersion\":3,\"requires\":true,\"packages\":{\"\":{\"name\":\"bugfree-frozen-case\",\"version\":\"1.0.0\"}}}\n",
+        "store.cjs": "const fs=require(\"node:fs\"),path=require(\"node:path\");const file=root=>path.join(root,\"tasks.json\");const load=root=>fs.existsSync(file(root))?JSON.parse(fs.readFileSync(file(root),\"utf8\")):{next:0,tasks:{}};exports.create=(root,id)=>{const data=load(root);const task={id:id??data.next+1};data.next=Math.max(data.next,task.id);data.tasks[task.id]=task;fs.writeFileSync(file(root),JSON.stringify(data));return task;};exports.read=(root,id)=>load(root).tasks[id];\n",
+        "left.cjs": "module.exports=root=>require(\"./store.cjs\").create(root);\n",
+        "right.cjs": "module.exports=root=>require(\"./store.cjs\").create(root);\n",
+        ".gitattributes": "* text eol=lf\n"
+      },
+      "referenceFileHashes": {
+        "candidate.cjs": "d7fc8fe81d7c8ff06121a9481266c0f7315aa77696b98dcf98339a5c1cd00b7a",
+        "package.json": "58fe5e872285ccfccc95c6643f0061c8cd328e933d0737c0c18b16bc99fc135c",
+        "package-lock.json": "7b9e367bf3af093ff1d7ea8afabf0719801e6a634adfaad9aeaeb2a7ce64c370",
+        "store.cjs": "b70649d0a243990cfef26c9cff3fcb1dff1e7030a4721b11e912de62fa97208b",
+        "left.cjs": "3212a855c0ee9448011cd199276fc9935e95783d716ebed5bf5e442dd2545a62",
+        "right.cjs": "3212a855c0ee9448011cd199276fc9935e95783d716ebed5bf5e442dd2545a62",
+        ".gitattributes": "a79691a93b46e49ce460c26ef22afcc03d6eca1e63bf2edbc20e96159510f6c9"
+      },
+      "oracle": "const store=path.join(root,\"task-store\");fs.mkdirSync(store);const system=candidate(store);const left=system.left(),right=system.right();assert.notEqual(left.id,right.id);const persisted=JSON.parse(fs.readFileSync(path.join(store,\"tasks.json\"),\"utf8\"));assert.equal(Object.keys(persisted.tasks).length,2);assert.equal(system.read(left.id).id,left.id);assert.equal(system.read(right.id).id,right.id);",
+      "oracleSha256": "e3966d0ac4f24dbb17d56acab0fb1dec3220f73f9e172e0dcb86a5396c09923b",
+      "operator": null,
+      "interactionPolicy": "Create real Child and integration history in the authorized Native Supervisor run; this project is the code seed, not fabricated receipts.",
+      "bootstrap": "test/helpers/native-bugfree-supervisor.ts#prepareFrozenSupervisorCandidate"
+    }
+  ],
+  "metrics": {
+    "source": "SDK Action timestamps, platform task events and model usage records",
+    "missing": null,
+    "fields": [
+      "caseId",
+      "mode",
+      "round",
+      "runId",
+      "candidateId",
+      "verifyActiveMs",
+      "allIterationVerifyMs",
+      "baselineCaptureMs",
+      "queueMs",
+      "startupMs",
+      "inputTokens",
+      "outputTokens",
+      "reasoningTokens",
+      "cachedReadTokens",
+      "cachedWriteTokens",
+      "totalTokens",
+      "cost",
+      "verdict",
+      "hiddenVerdict",
+      "completed",
+      "timeout",
+      "censored"
+    ],
+    "qualityBeforePerformance": true,
+    "modeOrder": [
+      "standard",
+      "bugfree"
+    ],
+    "plannedRounds": 3
+  }
+}

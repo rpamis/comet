@@ -3,6 +3,11 @@ import { parseDocument, stringify } from 'yaml';
 import { PORTABLE_RUN_CHECKPOINT_KEY } from '../engine/runtime.js';
 
 export const NATIVE_MANAGED_RUN_MARKER = '# comet-execution: managed-run\n';
+
+/** Git 的换行转换不改变记录归属；只接受完整且位于首行的精确标记。 */
+export function hasNativeManagedRunMarker(source: string): boolean {
+  return /^# comet-execution: managed-run\r?\n/u.test(source);
+}
 const CHECKPOINT_LINE = `\n${PORTABLE_RUN_CHECKPOINT_KEY}: `;
 
 function parseYamlDocument(source: string, label: string): unknown {

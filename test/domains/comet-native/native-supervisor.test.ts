@@ -113,6 +113,7 @@ describe('Native Supervisor v2 state', () => {
       git(['init', '-b', 'main']);
       git(['config', 'user.email', 'native@example.test']);
       git(['config', 'user.name', 'Native Test']);
+      git(['config', 'core.autocrlf', 'false']);
       const config = defaultProjectConfig('docs', 'en');
       config.workflows = ['native'];
       config.default_workflow = 'native';

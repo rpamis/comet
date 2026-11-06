@@ -1,4 +1,6 @@
+import { withGitWorktreeReadScope } from '../../platform/paths/git-worktree.js';
 import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
+import { nativeSdkArchivedReportWarning } from './native-sdk-report.js';
 import { inspectNativeSdkRunDiagnostics } from './native-sdk-diagnostics.js';
 import {
   inspectNativeSdkCheckExecutions,
@@ -48,7 +50,10 @@ export async function inspectNativeSdkStatus(options: {
 }
 
 /** Project one inspected or committed Run without synchronizing its state file again. */
-export async function projectNativeSdkStatus(
+export const projectNativeSdkStatus: typeof projectNativeSdkStatusOnce = (...args) =>
+  withGitWorktreeReadScope(() => projectNativeSdkStatusOnce(...args));
+
+async function projectNativeSdkStatusOnce(
   options: {
     projectRoot: string;
     name: string;
@@ -63,7 +68,7 @@ export async function projectNativeSdkStatus(
     (await inspectNativeSdkCheckExecutions({
       projectRoot: options.projectRoot,
       run,
-      includeSettled: true,
+      includeSettled: run.workflow.version !== '3' || options.details === true,
     }));
   const cancellation = await inspectNativeSdkCancellation({
     projectRoot: options.projectRoot,
@@ -97,14 +102,16 @@ export async function projectNativeSdkStatus(
       },
     ];
   });
-  const editReviews = state.builder_handoff
-    ? await inspectEditReviews(
-        nativeEditReviewScope(
+  const editReviews =
+    !state.archived &&
+    state.shape_confirmation_hash &&
+    ['build', 'verify', 'archive'].includes(state.phase)
+      ? await inspectNativeEditReviews(
           await nativeProjectPaths(options.projectRoot, artifactRootRef, { readOnly: true }),
           state,
-        ),
-      )
-    : [];
+        )
+      : [];
+  const reportWarning = await nativeSdkArchivedReportWarning(options.projectRoot, run);
   return {
     schema: 'comet.native.sdk-status.v1' as const,
     diagnostics: await inspectNativeSdkRunDiagnostics(options.projectRoot, run, {
@@ -117,6 +124,7 @@ export async function projectNativeSdkStatus(
     name: options.name,
     ...(editReviews.length ? { editReviews } : {}),
     ...(preservedReports.length ? { preservedReports } : {}),
+    ...(reportWarning ? { warning: reportWarning } : {}),
     language: state.language,
     phase: state.phase,
     status: cancellation?.status ?? state.status,
@@ -203,5 +211,4 @@ export async function projectNativeSdkStatus(
 }
 
 export type NativeSdkStatusProjection = Awaited<ReturnType<typeof inspectNativeSdkStatus>>;
-import { inspectEditReviews } from '../workflow-contract/edit-review.js';
-import { nativeEditReviewScope } from './native-edit-review.js';
+import { inspectNativeEditReviews } from './native-edit-review.js';

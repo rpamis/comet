@@ -1,16 +1,37 @@
+import {
+  nativeSdkVerificationReportOutput,
+  refreshNativeSdkVerificationReport,
+} from './native-sdk-report.js';
+import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 import { inspectNativeSdkRunDiagnostics } from './native-sdk-diagnostics.js';
 import { reconcileNativeSdkExecutionStops } from './native-sdk-check-execution.js';
 import { recoverNativeSdkReportRevalidation } from './native-sdk-report.js';
 import { validateNativeSdkFailedIntegrationRepair } from './native-sdk-supervisor-integration-repair.js';
 import { randomUUID } from 'node:crypto';
+import { reportCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
 import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
 import { settleNativeSdkCompletion } from './native-sdk-completion-cleanup.js';
+import { archiveNativeSdkChange } from './native-sdk-archive-command.js';
 
-import { hashRuntimeValue, type RuntimeValue, type WorkflowRun } from '../engine/runtime.js';
+import {
+  hashRuntimeValue,
+  createMemoryRuntimeStore,
+  createRuntime,
+  defineWorkflow,
+  preserveRuntimeExecutionOrigins,
+  type RuntimeValue,
+  type WorkflowRun,
+} from '../engine/runtime.js';
+import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import { createNativeSdkStateStore } from './native-sdk-state-store.js';
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
-import { collectNativeSdkShapeProposal } from './native-sdk-application.js';
+import {
+  collectNativeSdkShapeProposal,
+  defineNativeWorkflowApplication,
+} from './native-sdk-application.js';
 import {
   recoverNativeSdkChecks,
+  nativeSdkCheckExecutor,
   nativeSdkCurrentCheckSummaries,
   NativeSdkCheckInputDriftError,
 } from './native-sdk-checks.js';
@@ -36,6 +57,66 @@ import { parseNativePortableState } from './native-portable-state.js';
 import { captureApprovedShapeOriginals } from './native-shape-review-evidence.js';
 import type { NativeSupervisorCoordinationMode } from './native-portable-types.js';
 
+/** 在同一次 CAS 中接入补充检查命令；不重建阶段、候选或原批准。 */
+export async function refreshNativeSdkCheckWork(
+  projectRoot: string,
+  name: string,
+  expectedRevision: number,
+  input: RuntimeValue,
+) {
+  const owner = await readSdkChangeOwner(projectRoot, 'native', name);
+  if (owner?.application !== 'native')
+    throw new Error('固定应用保留其原定义；当前补充检查入口仅用于内置 Native Run');
+  const { run } = await inspectNativeSdkRun(projectRoot, name);
+  const commandId = hashRuntimeValue({
+    runId: run.runId,
+    name: 'refresh-checks',
+    expectedRevision,
+  });
+  const previous = run.commands?.find((command) => command.id === commandId);
+  if (previous) {
+    if (previous.inputHash !== hashRuntimeValue(input))
+      throw new Error('同一补充检查请求不能提交不同内容');
+    return run;
+  }
+  if (run.revision !== expectedRevision) throw new Error('Run 已变化，请重新读取当前输入观察');
+  const application = defineNativeWorkflowApplication(
+    run.workflow.version === '3' ? '3' : run.workflow.version === '2' ? '2' : '1',
+  );
+  const definition = defineWorkflow(application.workflow);
+  const next =
+    run.workflow.hash === hashRuntimeValue(definition)
+      ? structuredClone(run)
+      : preserveRuntimeExecutionOrigins(run);
+  next.workflow.hash = hashRuntimeValue(definition);
+  next.definitionHashes[JSON.stringify([definition.id, definition.version])] = next.workflow.hash;
+  const staging = createMemoryRuntimeStore<WorkflowRun>();
+  await staging.restoreCheckpoint!(run.runId, null, next);
+  const runtime = createRuntime({
+    ...application,
+    store: staging,
+    workflows: [application.workflow],
+    transitionHandlers: [application.transitionHandler],
+  });
+  const refreshed = await runtime.dispatchCommand({
+    runId: run.runId,
+    expectedRevision,
+    commandId,
+    name: 'refresh-checks',
+    input,
+    context: { requestId: commandId, projectRoot },
+  });
+  if (
+    !(await createNativeSdkStateStore(projectRoot).compareAndSwap(
+      run.runId,
+      expectedRevision,
+      refreshed,
+    ))
+  )
+    throw new Error('Run 并发变化，未提交补充检查；重新读取当前输入观察');
+  return refreshed;
+}
+
 async function sdkNextResult(
   projectRoot: string,
   name: string,
@@ -44,7 +125,19 @@ async function sdkNextResult(
   application: Awaited<ReturnType<typeof inspectNativeSdkRun>>['application'],
 ): Promise<DispatchResult> {
   const state = parseNativePortableState(run.state);
+  let warning: { code: string; message: string } | undefined;
+  if (run.workflow.version === '3') {
+    try {
+      await refreshNativeSdkVerificationReport(projectRoot, run);
+    } catch (error) {
+      warning = {
+        code: 'NATIVE_REPORT_PENDING',
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
   return success('next', {
+    ...(warning ? { warning } : {}),
     change: name,
     ...(await projectNativeSdkStatus(
       { projectRoot, name },
@@ -88,22 +181,61 @@ export async function advanceNativeSdkChange(
       },
 ): Promise<DispatchResult> {
   let { run, state, artifactRootRef, application } = await inspectNativeSdkRun(projectRoot, name);
-  if (run.actions.some((action) => ['running', 'unknown'].includes(action.status))) {
-    run = await recoverNativeSdkChecks(
-      projectRoot,
-      run,
-      (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime,
-    );
-    run = await recoverNativeSdkReportRevalidation(
-      projectRoot,
-      run,
-      (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime,
-    );
-    run = await recoverNativeSdkImplementationRevision(
-      projectRoot,
-      run,
-      (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime,
-    );
+  // 已授权的内置归档沿用同一推进入口，避免 next 再执行一套归档前置检查。
+  if (
+    !decision &&
+    !application &&
+    !state.children_contract_hash &&
+    state.phase === 'archive' &&
+    run.status === 'running' &&
+    run.actions.some(
+      (action) => action.status === 'pending' && action.stepId.startsWith('archive.'),
+    )
+  ) {
+    try {
+      return {
+        ...(await archiveNativeSdkChange({
+          projectRoot,
+          name,
+          dryRun: false,
+          recover: false,
+          confirmed: false,
+        })),
+        command: 'next',
+      };
+    } catch (error) {
+      if (
+        state.workspace.change_branch &&
+        inspectGitWorktree(projectRoot).currentBranch !== state.workspace.change_branch
+      ) {
+        const current = await inspectNativeSdkRun(projectRoot, name, { readOnly: true });
+        return sdkNextResult(
+          projectRoot,
+          name,
+          current.run,
+          current.artifactRootRef,
+          current.application,
+        );
+      }
+      throw error;
+    }
+  }
+  const interrupted = run.actions.filter((action) =>
+    ['running', 'unknown'].includes(action.status),
+  );
+  const checkRecovery = interrupted.some((action) => nativeSdkCheckExecutor.supports(action));
+  const reportRecovery = interrupted.some(
+    (action) => action.status === 'unknown' && action.stepId === 'verify.revalidate',
+  );
+  const implementationRecovery = interrupted.some(
+    (action) => action.stepId === 'repair.implementation',
+  );
+  if (checkRecovery || reportRecovery || implementationRecovery) {
+    const { runtime } = await loadOwnedNativeSdkRuntime(projectRoot, name);
+    if (checkRecovery) run = await recoverNativeSdkChecks(projectRoot, run, runtime);
+    if (reportRecovery) run = await recoverNativeSdkReportRevalidation(projectRoot, run, runtime);
+    if (implementationRecovery)
+      run = await recoverNativeSdkImplementationRevision(projectRoot, run, runtime);
     state = parseNativePortableState(run.state);
   }
   if (!decision)
@@ -393,6 +525,39 @@ export async function advanceNativeSdkChange(
     decision?.expectedAction === 'retry-verifier' ||
     decision?.expectedAction === 'resolve-verifier-blocker'
   ) {
+    if (decision.expectedAction === 'accept-result' && state.phase === 'archive') {
+      const approved = run.waits.find(
+        (wait) =>
+          wait.stepId === 'verify.confirm' &&
+          wait.status === 'resolved' &&
+          wait.decision?.choice === 'approved' &&
+          wait.proposalHash === decision.proposalHash,
+      );
+      const report =
+        run.workflow.version === '3'
+          ? (
+              approved?.proposal as {
+                activation?: { report?: { candidateId?: string; reportSha256?: string } };
+              }
+            )?.activation?.report
+          : (
+              approved?.proposal as
+                | {
+                    outputs?: {
+                      'verify.report'?: { candidateId?: string; reportSha256?: string };
+                    };
+                  }
+                | undefined
+            )?.outputs?.['verify.report'];
+      const current = nativeSdkVerificationReportOutput(run) as
+        { reportSha256?: string } | undefined;
+      if (
+        report?.candidateId === state.builder_handoff?.candidate_id &&
+        report?.reportSha256 &&
+        report.reportSha256 === current?.reportSha256
+      )
+        return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+    }
     if (decision.expectedAction === 'revise-implementation') {
       const commandId = hashRuntimeValue({
         name: 'revise-implementation',
@@ -581,59 +746,101 @@ export async function advanceNativeSdkChange(
   const diagnostics = await inspectNativeSdkRunDiagnostics(projectRoot, run);
   if (!diagnostics.healthy)
     return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
-  if (run.ready.length > 0) {
-    await (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime.next({ runId: run.runId });
-    ({ run, state, artifactRootRef, application } = await inspectNativeSdkRun(projectRoot, name));
-  }
-  const pending = nativeSdkNextAction(run, state);
-  if (!pending) {
+  if (run.ready.length === 0 && nativeSdkNextAction(run, state)?.type !== 'call_tool')
     return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
-  }
-  if (pending.stepId !== 'shape.prepare' && pending.stepId !== 'shape.revalidate') {
-    let completed = run;
-    if (pending.type === 'call_tool') {
-      const { runtime, executors } = await loadOwnedNativeSdkRuntime(projectRoot, name);
+  // 同一次请求共享应用加载；每个 Action 仍单独领取、校验并持久化。
+  const owned = await loadOwnedNativeSdkRuntime(projectRoot, name);
+  const initialPhase = state.phase;
+  const automaticSteps = !application && !state.children_contract_hash ? 32 : 1;
+  for (let steps = 0; steps < automaticSteps; steps++) {
+    if (['failed', 'cancelled', 'completed'].includes(run.status)) break;
+    if (steps > 0 && state.children_contract_hash)
+      return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+    // 旧协议保留验收到归档的交接；已进入 Archive 的续行仍一次完成内部动作。
+    if (
+      steps > 0 &&
+      run.workflow.version !== '3' &&
+      initialPhase === 'verify' &&
+      state.phase === 'archive'
+    )
+      return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+    if (
+      steps > 0 &&
+      !state.archived &&
+      state.workspace.change_branch &&
+      inspectGitWorktree(projectRoot).currentBranch !== state.workspace.change_branch
+    )
+      return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+    if (run.ready.length > 0) {
+      run = await owned.runtime.next({ runId: run.runId });
+      state = parseNativePortableState(run.state);
+    }
+    const pending = nativeSdkNextAction(run, state);
+    if (!pending) {
+      return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+    }
+    if (pending.type !== 'call_tool')
+      return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+    if (pending.stepId !== 'shape.prepare' && pending.stepId !== 'shape.revalidate') {
+      const { runtime, executors } = owned;
       const executor = executors.find((candidate) => candidate.supports(pending));
       if (!executor) throw new Error(`Native SDK Action ${pending.stepId} has no executor`);
-      completed = await runtime.execute({
+      if (pending.stepId.startsWith('archive.'))
+        reportCometRuntimeProgress(
+          pending.stepId === 'archive.prepare'
+            ? '核对归档材料'
+            : pending.stepId === 'archive.execute'
+              ? '更新正式规格'
+              : '完成归档',
+        );
+      let completed = await runtime.execute({
         runId: run.runId,
         actionId: pending.id,
         executorId: executor.id,
         context: { requestId: randomUUID(), projectRoot },
       });
       completed = await reconcileNativeSdkExecutionStops(projectRoot, completed, runtime);
+      if (
+        completed.revision === run.revision ||
+        completed.actions.find((action) => action.id === pending.id)?.status !== 'succeeded'
+      )
+        return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
+      run = completed;
+      state = parseNativePortableState(run.state);
+      continue;
     }
-    return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
-  }
-  const paths = await nativeProjectPaths(projectRoot, artifactRootRef);
-  const proposal = await collectNativeSdkShapeProposal({ paths, state });
-  const { runtime } = await loadOwnedNativeSdkRuntime(projectRoot, name);
-  const requestId = randomUUID();
-  const context = { requestId, projectRoot };
-  const claimed = await runtime.claim({
-    runId: run.runId,
-    expectedRevision: run.revision,
-    actionId: pending.id,
-    attempt: pending.attempt,
-    inputHash: pending.inputHash,
-    executorId: 'comet-native-cli',
-    claimToken: requestId,
-    context,
-  });
-  const claimedAction = claimed.actions.find((action) => action.id === pending.id);
-  if (!claimedAction?.claim) throw new Error(`Native SDK Action ${pending.id} was not claimed`);
-  const completed = await runtime.recordOutcome({
-    runId: run.runId,
-    outcome: {
+    const paths = await nativeProjectPaths(projectRoot, artifactRootRef);
+    const proposal = await collectNativeSdkShapeProposal({ paths, state });
+    const { runtime } = owned;
+    const requestId = randomUUID();
+    const context = { requestId, projectRoot };
+    const claimed = await runtime.claim({
+      runId: run.runId,
+      expectedRevision: run.revision,
       actionId: pending.id,
       attempt: pending.attempt,
       inputHash: pending.inputHash,
-      claimToken: claimedAction.claim.token,
-      outcomeId: requestId,
-      status: 'succeeded',
-      output: proposal as unknown as RuntimeValue,
-    },
-    context,
-  });
-  return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
+      executorId: 'comet-native-cli',
+      claimToken: requestId,
+      context,
+    });
+    const claimedAction = claimed.actions.find((action) => action.id === pending.id);
+    if (!claimedAction?.claim) throw new Error(`Native SDK Action ${pending.id} was not claimed`);
+    const completed = await runtime.recordOutcome({
+      runId: run.runId,
+      outcome: {
+        actionId: pending.id,
+        attempt: pending.attempt,
+        inputHash: pending.inputHash,
+        claimToken: claimedAction.claim.token,
+        outcomeId: requestId,
+        status: 'succeeded',
+        output: proposal as unknown as RuntimeValue,
+      },
+      context,
+    });
+    run = completed;
+    state = parseNativePortableState(run.state);
+  }
+  return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
 }

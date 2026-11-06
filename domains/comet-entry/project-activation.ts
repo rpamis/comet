@@ -21,6 +21,7 @@ import {
   ensureCometProjectGitignore,
   readWorkflowGlobalConfig,
   readWorkflowProjectConfig,
+  readWorkflowProjectConfigDocument,
   workflowProjectConfigFromGlobalConfig,
   writeWorkflowProjectConfig,
   type WorkflowProjectConfig,
@@ -104,6 +105,10 @@ export async function activateCometProject(
   let config = globalConfig
     ? workflowProjectConfigFromGlobalConfig(globalConfig)
     : defaultWorkflowProjectConfig('docs');
+  const existingDocument = await readWorkflowProjectConfigDocument(projectRoot, {
+    allowPartialProject: true,
+  });
+  config.change_walkthrough = existingDocument?.change_walkthrough ?? true;
   let source: ProjectActivationResult['source'] = globalConfig
     ? 'global-config'
     : 'built-in-default';
@@ -114,6 +119,7 @@ export async function activateCometProject(
       default_workflow: 'classic',
       workflows: ['classic'],
       ambient_resume: config.ambient_resume,
+      change_walkthrough: config.change_walkthrough,
       classic: {
         artifact_layout: projectDecision.classicArtifactLayout,
         language: config.classic?.language ?? config.native?.language ?? 'en',

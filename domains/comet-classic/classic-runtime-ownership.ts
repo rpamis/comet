@@ -5,6 +5,7 @@ import {
 } from '../workflow-contract/workspace-runtime.js';
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { listGitWorktrees, samePath } from '../../platform/paths/git-worktree.js';
 import path from 'node:path';
 
 import { parseDocument } from 'yaml';
@@ -13,6 +14,7 @@ import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
 import {
   COMET_CHANGE_OWNER_SCHEMA,
   readChangeRuntimeOwner,
+  readSdkChangeOwner,
   registerCompatChangeOwner,
   registerSdkChangeOwner,
   type ChangeRuntimeOwner,
@@ -34,6 +36,14 @@ import {
 } from './classic-sdk-state-store.js';
 import { parseClassicStateDocument, type ClassicState } from './classic-state.js';
 import { readClassicProjectFile } from './classic-protected-path.js';
+import { readClassicSdkDeliveryCheckpoint } from './classic-sdk-delivery-checkpoint.js';
+import {
+  createFileRuntimeStore,
+  PORTABLE_RUN_CHECKPOINT_KEY,
+  hashRuntimeValue,
+  readPortableRunCheckpoint,
+} from '../engine/runtime.js';
+import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
 import { liveGitBranch } from './classic-branch-binding.js';
 import type { WorkflowRun } from '../engine/runtime.js';
 
@@ -217,6 +227,56 @@ export async function resolveClassicChangeRuntimeOwner(
       label: 'Classic change state',
     });
     if (hasClassicManagedRunMarker(source)) {
+      const document = parseDocument(source, { uniqueKeys: true });
+      if (document.errors.length > 0)
+        throw new Error(`Invalid Classic state: ${document.errors[0].message}`);
+      const data = document.toJS() as Record<string, unknown>;
+      const localState = parseClassicStateDocument(data).classic;
+      // 合并后的归档副本只负责发现原权威，不能在查询前导入一份重复 Run。
+      if (
+        localState?.archived &&
+        localState.isolation === 'worktree' &&
+        data.application_checkpoint == null
+      ) {
+        for (const worktree of listGitWorktrees(projectRoot)) {
+          if (samePath(worktree.root, projectRoot)) continue;
+          const owner = await readSdkChangeOwner(worktree.root, 'classic', change, {
+            readOnly: true,
+          });
+          if (
+            !owner ||
+            !['classic-full', 'classic-hotfix', 'classic-tweak'].includes(owner.application)
+          )
+            continue;
+          const run = await createFileRuntimeStore<WorkflowRun>({
+            rootDir: path.join(resolveWorkspaceRuntimeRootSync(worktree.root), 'sdk-runs/classic'),
+          }).read(owner.runId);
+          const state = run?.state as ClassicState | undefined;
+          if (
+            run?.status !== 'completed' ||
+            !state?.archived ||
+            state.isolation !== 'worktree' ||
+            state.boundBranch !== worktree.branch
+          )
+            continue;
+          const baseline = readClassicSdkDeliveryCheckpoint(data[PORTABLE_RUN_CHECKPOINT_KEY], run);
+          if (
+            baseline &&
+            hashRuntimeValue(localState as never) === hashRuntimeValue(baseline.state)
+          )
+            return null;
+        }
+        if (
+          localState.boundBranch &&
+          localState.boundBranch !== liveGitBranch(projectRoot) &&
+          readPortableRunCheckpoint(data[PORTABLE_RUN_CHECKPOINT_KEY], change, {
+            preserveSourceRevision: true,
+          })
+        )
+          throw new Error(
+            `Classic archived change ${change} requires its original completed Run history. The portable checkpoint retains the pre-delivery baseline; restore the matching Run history from the original workspace or backup before querying completion. Do not rewrite the checkpoint or repeat Archive.`,
+          );
+      }
       if (await createClassicSdkStateStore(projectRoot).read(change)) {
         const recovered = await readChangeRuntimeOwner(projectRoot, 'classic', change);
         if (!recovered || recovered.format !== 'sdk') {

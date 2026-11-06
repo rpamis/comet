@@ -3,6 +3,7 @@ import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.j
 import { nativeProjectPaths } from './native-paths.js';
 import { readNativePortableTransaction } from './native-portable-transactions.js';
 import { inspectNativeSdkArchiveFinalization } from './native-portable-archive.js';
+import { nativeVerificationResultHash } from './native-verification-report-v2.js';
 import { importNativeSdkArchiveOriginals } from './native-sdk-archive-originals.js';
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
 import {
@@ -11,6 +12,9 @@ import {
   NATIVE_SDK_ARCHIVE_STEPS,
   nativeSdkRetryableArchivePreflight,
   nativeSdkRetryableArchiveFinalization,
+  nativeSdkArchivePreflightExecutor,
+  nativeSdkArchiveApplyExecutor,
+  nativeSdkArchiveFinalizeExecutor,
   inspectNativeSdkPendingArchiveDrift,
 } from './native-sdk-archive.js';
 import { recoverNativeSdkSupervisorCleanupOutcome } from './native-sdk-supervisor-cleanup.js';
@@ -133,6 +137,9 @@ async function archiveNativeSdkChangeValue(options: {
       runId: run.runId,
       archiveRef: applied.archiveRef,
       history: true,
+      allowMissingReport: run.workflow.version === '3',
+      verificationResultHash:
+        run.workflow.version !== '1' ? nativeVerificationResultHash(state) : undefined,
     });
     if (
       hashRuntimeValue(receipt as unknown as RuntimeValue) !==
@@ -184,6 +191,46 @@ async function archiveNativeSdkChangeValue(options: {
     );
   }
   if (options.recover) {
+    // 内置执行器已返回的拒收结果绑定原 claim；恢复仍须重新核对事务与文件。
+    const archiveExecutors: Record<string, string> = {
+      'archive.prepare': nativeSdkArchivePreflightExecutor.id,
+      'archive.execute': nativeSdkArchiveApplyExecutor.id,
+      'archive.finalize': nativeSdkArchiveFinalizeExecutor.id,
+    };
+    const rejected = run.actions.filter(
+      (action) =>
+        action.type === 'call_tool' &&
+        action.status === 'running' &&
+        NATIVE_SDK_ARCHIVE_STEPS.some(
+          ([stepId, ref]) => action.stepId === stepId && action.ref === ref,
+        ) &&
+        action.claim !== undefined &&
+        action.claim.executorId === archiveExecutors[action.stepId] &&
+        action.rejectedOutcomes?.some(
+          ({ outcome }) =>
+            outcome.actionId === action.id &&
+            outcome.attempt === action.attempt &&
+            outcome.inputHash === action.inputHash &&
+            outcome.claimToken === action.claim!.token,
+        ),
+    );
+    if (
+      rejected.length === 1 &&
+      !run.actions.some(
+        (action) => action.id !== rejected[0].id && ['running', 'unknown'].includes(action.status),
+      )
+    ) {
+      const action = rejected[0];
+      const { runtime } = await loadOwnedNativeSdkRuntime(options.projectRoot, options.name);
+      run = await runtime.markUnknown({
+        runId: run.runId,
+        expectedRevision: run.revision,
+        actionId: action.id,
+        attempt: action.attempt,
+        reason: '原归档执行已返回，但结果提交被拒；重新核对原 Action、事务和文件。',
+      });
+      inspection.run = run;
+    }
     const unknown = run.actions.filter((action) => action.status === 'unknown');
     const action = unknown.length === 1 ? unknown[0] : undefined;
     if (
@@ -237,6 +284,15 @@ async function archiveNativeSdkChangeValue(options: {
     const result = success('archive', {
       change: options.name,
       recoveredAction: { id: action.id, stepId: action.stepId },
+      ...(action.stepId === 'archive.execute' &&
+      (run.outputs['archive.execute']?.value as { recoveryBinding?: string })?.recoveryBinding
+        ? {
+            historicalRecovery: true,
+            currentImplementationRevalidated: false,
+            recoveryMessage:
+              '已核对原候选实现、归档材料和已应用的 Specs，补记原 Action；没有重新运行检查，当前生成输入未重新验收。',
+          }
+        : {}),
       ...(action.stepId === 'archive.finalize'
         ? {
             historicalRecovery: !resumedFinalization,

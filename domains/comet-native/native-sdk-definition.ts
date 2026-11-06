@@ -32,9 +32,33 @@ export const NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH =
 export const NATIVE_SDK_PRE_EDIT_REVIEW_HASH =
   'a4fa2f7ad12c5c7dd37374f9cb5f1154f2c686e3b3b5473533154c01fdcdd9ea';
 
+/** 原始输入引入前已发布的内置定义；仅这些原 Builder 可缺少新的输入收据。 */
+export const NATIVE_SDK_LEGACY_BUILDER_INPUT_HASHES: readonly string[] = [
+  '20c0b8f15998b9da37fbed5b602f669f2a5c7a91f576d5683229c7c5a445a6be',
+  '45671e317435e1bcab778fe7e0f0f36161af294d81afc336fb77842a6ac13e6a',
+  'fb7d10f66cb304d7b7470fdba5aef47f9dba222d8bea539632e2bba50e0743a7',
+  '42c3944e15a25dc0cd179212587049deef1052f47d9c09d2248c2a8de936ec19',
+  '17f90829c4c8f286da5980c0038af9d0f5c12ab02fd4d3e343b317de283427d9',
+  'c37afe9b412ea63f35bb9adbfcb09a292ed00aea07b6fceaf81e5bbd8ffc044f',
+  '21f4e8abde911a4ac5cac0bc449b7441d4326133f3e65d80e4fa4a695d3fcb78',
+  NATIVE_SDK_PRE_EDIT_REVIEW_HASH,
+  NATIVE_SDK_PRE_VERIFIER_RECOVERY_HASH,
+  NATIVE_SDK_PRE_CHECK_RECOVERY_HASH,
+  NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH,
+];
+
 /** 定义新增实现修订入口前的原 Run，保留其余全部步骤及转移。 */
-export function nativeSdkBeforeImplementationRevision(workflow: DefineWorkflowOptions) {
+export function nativeSdkBeforeCheckRefresh(workflow: DefineWorkflowOptions) {
   const previous = structuredClone(workflow);
+  if (previous.commands) delete previous.commands['refresh-checks'];
+  previous.transitions = previous.transitions?.filter(
+    ({ from, to }) => !(from === 'verify.checks' && to === 'archive.prepare'),
+  );
+  return previous;
+}
+
+export function nativeSdkBeforeImplementationRevision(workflow: DefineWorkflowOptions) {
+  const previous = nativeSdkBeforeCheckRefresh(workflow);
   if (previous.commands) delete previous.commands['revise-implementation'];
   delete previous.steps['repair.implementation'];
   previous.transitions = (previous.transitions ?? []).filter(
@@ -141,6 +165,7 @@ export function nativeSdkLegacyDefinitions(workflow: DefineWorkflowOptions) {
     NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH,
   ];
   return [
+    nativeSdkBeforeCheckRefresh(workflow),
     nativeSdkBeforeImplementationRevision(workflow),
     nativeSdkBeforeBlockedVerifierRecovery(workflow),
     nativeSdkBeforeIntegrationRepairRecovery(workflow),

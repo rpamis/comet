@@ -113,13 +113,11 @@ export function createClassicSdkStateStore(
   projectionRead = false,
 ): RuntimeStore<WorkflowRun> {
   const initialRuntimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
-  const boundRuntimeRoot = async () => {
+  const boundRuntimeRoot = async (readOnly = options.readOnly) => {
     const stale = () =>
       new Error('Classic workspace identity changed; recreate the Runtime store before continuing');
     if (resolveWorkspaceRuntimeRootSync(projectRoot) !== initialRuntimeRoot) throw stale();
-    const current = options.readOnly
-      ? initialRuntimeRoot
-      : await resolveWorkspaceRuntimeRoot(projectRoot);
+    const current = readOnly ? initialRuntimeRoot : await resolveWorkspaceRuntimeRoot(projectRoot);
     if (
       current !== initialRuntimeRoot ||
       resolveWorkspaceRuntimeRootSync(projectRoot) !== initialRuntimeRoot
@@ -571,11 +569,47 @@ export function createClassicSdkStateStore(
 
   return {
     queryScope: store.queryScope,
-    read: (runId) => syncStateFile(runId, true),
-    readProjection: (runId) =>
-      createClassicSdkStateStore(projectRoot, { ...options, store, readOnly: true }, true).read(
-        runId,
-      ),
+    async read(runId) {
+      if (!options.readOnly) {
+        await boundRuntimeRoot(true);
+        try {
+          const marker = JSON.parse(
+            (
+              await readProtectedProjectFile(
+                initialRuntimeRoot,
+                `${projectionDir}/${runId}.json`,
+                Number.MAX_SAFE_INTEGER,
+                { label: 'Classic SDK state projection marker' },
+              )
+            ).bytes.toString('utf8'),
+          ) as ProjectionMarker;
+          const run = await createClassicSdkStateStore(projectRoot, {
+            ...options,
+            store,
+            readOnly: true,
+          }).read(runId);
+          if (run && !isClassicSdkCancellationComplete(run)) {
+            if (marker.revision === run.revision && equal(marker.state, run.state)) {
+              await boundRuntimeRoot(true);
+              return run;
+            }
+          }
+        } catch {
+          // 需要修复或导入设置时，在写锁内重新读取并执行原校验。
+        }
+      }
+      return syncStateFile(runId, true);
+    },
+    async readProjection(runId) {
+      await boundRuntimeRoot(true);
+      const run = await createClassicSdkStateStore(
+        projectRoot,
+        { ...options, store, readOnly: true },
+        true,
+      ).read(runId);
+      await boundRuntimeRoot(true);
+      return run;
+    },
     async compareAndSwap(runId, expectedRevision, next) {
       return runWithoutClassicOperationObservations(async () => {
         if (options.readOnly) throw new Error('Classic SDK read-only store cannot change a Run');

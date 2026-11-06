@@ -52,10 +52,12 @@ async function startNativeSdkRun(options: {
   paths: NativeProjectPaths;
   name: string;
   initialState: ReturnType<typeof createNativePortableState>;
+  task?: string;
   recoverySourceHash?: string;
   recoverySource?: string;
+  workflowVersion?: '1' | '2' | '3';
 }): Promise<WorkflowRun> {
-  const application = defineNativeWorkflowApplication();
+  const application = defineNativeWorkflowApplication(options.workflowVersion ?? '1');
   const persistentStore = createNativeSdkStateStore(options.paths.projectRoot);
   const store: RuntimeStore<WorkflowRun> = {
     async read(runId) {
@@ -95,6 +97,7 @@ async function startNativeSdkRun(options: {
     workflow: { id: application.workflow.id, version: application.workflow.version },
     input: {
       name: options.name,
+      ...(options.task === undefined ? {} : { task: options.task }),
       artifactRootRef: options.paths.artifactRootRef,
       ...(options.recoverySourceHash ? { recoverySourceHash: options.recoverySourceHash } : {}),
       ...(options.recoverySource ? { recoverySource: options.recoverySource } : {}),
@@ -205,6 +208,7 @@ export async function createNativeSdkChange(options: {
   paths: NativeProjectPaths;
   name: string;
   language: 'en' | 'zh-CN';
+  task?: string;
   workspaceBinding: NativeWorkspaceBinding;
   initialProjectConfig?: CometProjectConfig;
 }): Promise<WorkflowRun> {
@@ -243,6 +247,8 @@ export async function createNativeSdkChange(options: {
     const run = await startNativeSdkRun({
       paths: options.paths,
       name: options.name,
+      task: options.task,
+      workflowVersion: '3',
       initialState: createNativePortableState({
         name: options.name,
         language: options.language,

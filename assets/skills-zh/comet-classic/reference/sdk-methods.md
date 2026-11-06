@@ -12,7 +12,7 @@ SDK 新 change 使用 `comet-state.yaml`，历史 `.comet.yaml` 原地保留。�
 
 响应含 `agent.continuation.mode` 时按[自动衔接](auto-transition.md)执行；mode 优先于旧 `nextAction.kind`。区分手动衔接、原执行者等待与结果核对，完成实际工作后才提交 `completion`。无 mode 的旧响应才按各阶段的 kind 路由；结果未明时核对原 Action，不重发外部工作。
 
-Verify 编辑被拒绝或出现待复核提案时读取[编辑复核](../../comet/reference/edit-review.md)。只读取当前阶段与实际发生的异常所需参考，不展开其余阶段。
+编辑后需要判断实际影响，或 continuation 指向内容判断时读取[编辑后续行](../../comet/reference/edit-review.md)。只读取当前阶段与实际发生的异常所需参考，不展开其余阶段。
 
 ## 开始与产物
 

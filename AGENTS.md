@@ -59,11 +59,19 @@ Issue、Review 意见、Project Knowledge、Memory 和历史记录只提供调�
 2. 在当前分支与对应旧版本的最小临时项目、公开 CLI 或发布产物上复现并说明根因；不能复现时明确标记“未复现/未解决”，记录已尝试的条件和缺失证据，不宣称已验证修复。
 3. 为每个行为写明预期结果与禁止结果，再新增或复用可执行回归测试。优先取得同一案例在旧代码失败、新代码通过的证据；无法取得时说明具体原因与替代证据，不能把未运行写成通过。
 4. 在 `config/workflow-regressions.json` 的 badcase 分组登记来源、行为、稳定 case ID 和精确测试选择器；复用已有测试必须给出逐行为映射，并确认断言确实覆盖报告。PR 按模板声明所有已修复行为与 case ID。
-5. 选择与故障相同的验证边界：公开 CLI/命令 bundle、安装包、状态转换、恢复或迁移缺陷不能只用内部函数测试证明；模型遵循指令的问题需要真实模型 Eval，UI 交互问题需要浏览器验证。各层结果分别报告，不能互相替代。
+5. 选择与故障相同的验证边界：公开 CLI/命令 bundle、安装包、状态转换、恢复或迁移缺陷不能只用内部函数测试证明；模型遵循指令的问题需要真实模型 Eval 证据，启动须遵守下方“Eval 启动授权”，UI 交互问题需要浏览器验证。各层结果分别报告，不能互相替代。
 6. 补充相关安全反例，包括未获批准不推进、不写入，不绑定陈旧证据，不跨 workflow/候选污染状态，不在恢复时重复副作用；合法流程也须保持可完成。只选与本次故障有关的反例，不机械扩大为全量测试。
 7. 不得静默删除、跳过、缩窄或降低历史案例断言。迁移或替换须保留来源和行为映射、等价或更强的执行证据，并经 Review 明确确认；当前校验器不支持的变更不能靠改 ID 或删除登记绕过。
 
 不涉及用户行为修复时，按模板说明具体理由。确实无法自动化的部分须给出复现/人工验证记录、限制、负责人和后续动作，不作为免测或关闭问题的通用豁免。自动校验只能核对已声明来源和案例，不能发现所有未声明的用户问题；作者负责完整声明，Reviewer 负责核对报告拆分、覆盖边界、豁免证据和遗漏。
+
+## Eval 启动授权
+
+- 只有用户明确要求启动 Eval 时，Agent 才能执行 Eval，包括真实模型评估、容器评估场景、批量评估及重跑。用户未明确要求时，禁止自行启动。
+- “继续 change”、实施、修复、验证、验收或发布请求，以及 AGENTS.md、Skill、change、发布清单中的验证要求，都不构成 Eval 启动授权。已有凭据、历史运行、保存的计划和 Agent 自行设置的授权参数（如 `--authorize-model`）同样不构成用户授权。
+- 获得明确请求后，只执行用户要求覆盖的场景、样本和轮次；未获覆盖的扩展或新一轮评估须等用户明确要求。不能为了补齐验收、关闭 badcase 或排查失败而自行扩大范围或重跑。
+- 没有启动请求时，继续实施和必要的普通定向测试，将缺少的 Eval 如实记为“未执行”，说明模型行为仍缺少对应证据。验证要求只规定证据标准，不授予执行权限；普通确定性单元测试和文档契约检查仍按“测试”章节执行。
+- 用户要求停止时，停止本任务相关 Eval 并核对运行状态，保留已有结果和失败记录；如果执行已结束，如实说明，不能声称已终止。未获新的明确启动请求不得重新启动。
 
 ## 测试
 
@@ -132,6 +140,7 @@ pnpm test           # 仅在满足“测试”章节的全量条件时
 - `domains/comet-classic/classic-application.ts`：公开 Classic 组合工厂，替换执行 Skill 并在领域检查点追加有验收和恢复路径的步骤；沿用 Classic 状态机，SDK Run 保持推进权威。
 - Classic 归档后的交付恢复在 `classic-sdk-delivery-repair-model.ts` 中解析 Run、原批准及续行关联，该模块属于登记的纯模型，不执行文件或命令操作；`classic-sdk-delivery-repair.ts` 核对文件证据，`classic-sdk-delivery-repair-application.ts` 装配检查、批准及交付步骤。归档文档和 checkpoint 读取只依赖纯模型，避免反向依赖检查执行器或应用装配。
 - `eval/scaffold/shell/` 中仅允许 `config/repository-layout.json` 明确列出的隔离评审 sidecar 入口；它们属于 Eval 容器边界，不是产品 Runtime 入口。
+- `eval/local/fixtures/edit-continuation-052/` 保存通过公开 CLI 验证编辑续行的隔离场景；控制器逐文件登记，只在显式加载的 pytest 插件中使用。历史 Agent/User 和补充 Verifier/User 的模拟必须明确标注，不能代替真实 change 的批准或独立验收；装配、静态检查与真实模型结果分别报告。
 - `eval/archives/` 保存可随 Git 克隆的历史实验。归档应用模块必须逐文件登记到 `config/repository-layout.json`，并匹配归档清单的内容摘要；它们只供只读观测，不属于产品 Runtime 或安装入口。冻结文件禁止格式化和换行转换。
 
 测试目录必须跟随被测对象归属：
@@ -159,6 +168,7 @@ pnpm test           # 仅在满足“测试”章节的全量条件时
 ## Native 与 Entry runtime 规范
 
 - Native 运行时源码与每命令 entry 位于 `domains/comet-native/`，修改后必须运行 `pnpm build:native-runtime` 同步 `comet-native-runtime.mjs` 和所有 `comet-native-*.mjs` 命令 bundle
+- `native-portable-delta-rebase.ts` 负责 Delta 重合并及其原输入绑定；`native-portable-requirements.ts` 保留正式材料读取与需求校验，不反向依赖检查执行模块。
 - `comet-native-hook-guard.mjs` 是 Native Guard 的自包含命令 bundle，不作为平台 Hook 直接安装；Native 主流程与 Guard 都不得依赖外部 Skill
 - 共享入口与 Hook Router 源码位于 `domains/comet-entry/`，修改后必须运行 `pnpm build:entry-runtime`，同步 `comet-entry-runtime.mjs` 与 `comet-hook-router.mjs`
 - 每个平台只安装一份 `comet-workflow-guard` Rule；支持 Hook 的平台只安装一个 `comet-hook-router.mjs`

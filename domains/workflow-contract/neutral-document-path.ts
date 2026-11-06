@@ -32,6 +32,18 @@ export function isAgentInstructionPath(file: string): boolean {
 }
 
 const ROOT_DOCUMENTATION_EXTENSIONS = new Set(['.md', '.markdown']);
+
+/** Only the display page inside a change directory is excluded, never application HTML. */
+export function isChangeWalkthroughPath(relativePath: string, changesRoot: string): boolean {
+  const file = normalizeRelative(relativePath);
+  const root = normalizeRelative(changesRoot).replace(/\/+$/u, '');
+  if (!file.startsWith(`${root}/`)) return false;
+  const parts = file.slice(root.length + 1).split('/');
+  return (
+    (parts.length === 2 || (parts.length === 3 && parts[0] === 'archive')) &&
+    parts.at(-1) === 'walkthrough.html'
+  );
+}
 const DIRECTORY_DOCUMENTATION_EXTENSIONS = new Set(['.md', '.markdown', '.rst', '.txt']);
 const DOCUMENTATION_ROOT_DIRECTORIES = new Set(['docs', 'doc', 'documentation', '.github']);
 const ROOT_DOCUMENT_NAME_PATTERNS = [/^LICENSE(?:[.-]|$)/u, /^NOTICE$/u, /^AUTHORS$/u];

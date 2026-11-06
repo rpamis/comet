@@ -12,6 +12,11 @@ export type EvalExecutionStatus =
   | 'unknown';
 export type EvalConclusion = 'passed' | 'failed' | 'incomplete';
 export interface EvalRunConfig {
+  dataset?: string;
+  datasetRoot?: string;
+  datasetTreatment?: 'native' | 'goal';
+  count?: number;
+  acceptDatasetLicense?: boolean;
   target: string;
   targetType: 'skill' | 'application';
   agent?: string;
@@ -26,6 +31,7 @@ export interface EvalRunConfig {
   quick?: boolean;
   profile?: string;
   goal?: string;
+  /** 内置数据集的 0 表示不限制整个 Native 流程的执行时长。 */
   timeoutSeconds?: number;
   maxTurns?: number;
   previousExperimentId?: string;
@@ -74,6 +80,7 @@ export interface EvalCaseResult {
   agent: string | null;
   caseHash: string | null;
   validatorHash: string | null;
+  datasetComparisonIdentity?: string | null;
   artifacts: Array<{ id: string; label: string }>;
 }
 export interface EvalRunDetail {
@@ -185,6 +192,7 @@ export type EvalRunSummary = Pick<
 > & { model: string | null; agent: string | null; retrySourceRunId?: string };
 
 export interface EvalRunComparison {
+  metric?: 'dataset-score';
   comparable: boolean;
   reasons: string[];
   baseline: EvalRunDetail;
@@ -198,6 +206,8 @@ export interface EvalRunComparison {
     repetition: number;
     baseline: boolean | null;
     candidate: boolean | null;
+    baselineScore?: number | null;
+    candidateScore?: number | null;
     change: 'improved' | 'regressed' | 'unchanged' | 'unmatched';
   }>;
 }

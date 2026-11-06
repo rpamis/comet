@@ -1,0 +1,42 @@
+{
+  "schema": "comet.research.case-migrations.v1",
+  "authorization": "https://github.com/rpamis/comet/pull/539#discussion_r4478758481",
+  "cases": [
+    {
+      "id": "native-builder-submitted-at-diagnostic",
+      "kind": "feature-removed",
+      "authorization": "https://github.com/rpamis/comet/pull/539#discussion_r4478758481",
+      "record": "docs/research/2026-11-05-native-builder-time-migration.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native protocol simplification records a Runtime submission time without requiring Agent metadata \\(undefined\\)$",
+          "requiredNames": [
+            "Native protocol simplification records a Runtime submission time without requiring Agent metadata (undefined)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native protocol simplification records a Runtime submission time without requiring Agent metadata \\(local-time-without-a-format\\)$",
+          "requiredNames": [
+            "Native protocol simplification records a Runtime submission time without requiring Agent metadata (local-time-without-a-format)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native protocol simplification records a Runtime submission time without requiring Agent metadata \\(2026-11-05T10:30:00Z\\)$",
+          "requiredNames": [
+            "Native protocol simplification records a Runtime submission time without requiring Agent metadata (2026-11-05T10:30:00Z)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native protocol simplification records a Runtime submission time without requiring Agent metadata \\(2026-10-23T01:00:00\\.00Z\\)$",
+          "requiredNames": [
+            "Native protocol simplification records a Runtime submission time without requiring Agent metadata (2026-10-23T01:00:00.00Z)"
+          ]
+        }
+      ]
+    }
+  ]
+}

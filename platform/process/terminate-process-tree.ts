@@ -60,6 +60,8 @@ export async function terminateProcessTreeConfirmed(child: ChildProcess): Promis
             windowsHide: true,
           });
           killer.once('error', () => finish(false));
+          // 已取得退出码即可核对 taskkill 结果，不能再被延迟的句柄 close 改判。
+          killer.once('exit', (code) => finish(code === 0));
           killer.once('close', (code) => finish(code === 0));
           fallbackTimer = setTimeout(() => finish(false, true), WINDOWS_TASKKILL_ATTEMPT_MS);
         } catch {

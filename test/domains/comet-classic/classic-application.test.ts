@@ -377,6 +377,7 @@ async function fixture(
     if (profile === 'full' || escalate) {
       const handoff = await writeClassicSdkDesignContext({
         projectRoot,
+        run,
         changeDir,
         change: 'example',
         contextCompression: null,

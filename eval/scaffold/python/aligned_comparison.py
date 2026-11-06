@@ -68,6 +68,9 @@ _RUNNER_FILES = (
     "scaffold/docker/agent-overlay.Dockerfile",
 )
 _CONTROLLER_FILES = (
+    "scaffold/python/builtin_datasets.py",
+    "scaffold/python/dataset_score.py",
+    "scaffold/python/install_claude.py",
     "local/tests/tasks/test_tasks.py",
     "local/tests/conftest.py",
     "scaffold/python/tasks.py",
@@ -304,6 +307,8 @@ def build_execution_identity(
         "continue_prompt": getattr(interaction, "continue_prompt", None),
         "fresh_resume_marker": getattr(interaction, "fresh_resume_marker", None),
     }
+    if getattr(interaction, "goal", False):
+        interaction_payload["goal"] = True
     model_source = "explicit" if model else "runtime-default"
     normalized_model_config = {
         key: value
@@ -630,6 +635,7 @@ def expected_case_matrix_payload(
         ):
             raise ValueError("Expected case task and treatment must be non-empty strings")
         from scaffold.python.evidence_contract import valid_repetition
+
         if not valid_repetition(rep):
             raise ValueError("Expected case repetition must be a positive integer")
         rep = int(rep)
@@ -672,6 +678,7 @@ def parse_expected_case_matrix(raw: Any) -> ExpectedCaseMatrix:
         ):
             raise ValueError("expected case matrix contains an invalid task or treatment")
         from scaffold.python.evidence_contract import valid_repetition
+
         if not valid_repetition(rep):
             raise ValueError("expected case matrix contains an invalid repetition")
         rep = int(rep)
@@ -726,6 +733,7 @@ def _report_identity(
         if report_path is None:
             return None
         from scaffold.python.evidence_contract import case_identity
+
         try:
             declared = case_identity(report, report_path.parent.parent.name)
         except (ValueError, TypeError, AttributeError):
@@ -1282,12 +1290,12 @@ _EFFICIENCY_METRICS = (
     ("subject_invocations", "Model starts/resumes", "count"),
     ("num_turns", "Agent turns", "count"),
     ("tool_calls", "Tool calls", "tool-count"),
-    ("duration_seconds", "Wall duration", "seconds"),
+    ("duration_seconds", "Subject active duration", "seconds"),
     ("input_tokens", "Non-cache input tokens", "tokens"),
     ("output_tokens", "Output tokens", "tokens"),
     ("cache_read_input_tokens", "Cache-read input tokens", "tokens"),
-    ("total_tokens", "Total tokens incl. cache", "tokens"),
-    ("total_cost_usd", "Model cost", "usd"),
+    ("total_tokens", "Subject tokens incl. cache", "tokens"),
+    ("total_cost_usd", "CLI-reported cost estimate", "usd"),
     ("peak_context_input_tokens", "Peak context input", "tokens"),
     ("p95_context_input_tokens", "P95 context input", "tokens"),
     ("peak_context_occupancy_pct", "Peak context occupancy", "percent"),

@@ -54,7 +54,17 @@ export async function readCheckIndex(changeDir: string, ref: string): Promise<Ch
         throw new Error('Invalid Trajectory event in Classic check index');
       index = {
         maximumSequence: events.reduce((maximum, event) => Math.max(maximum, event.sequence), 0),
-        events: events.filter((event) => event.type.startsWith('command_check')),
+        events: events.filter(
+          (event) =>
+            event.type.startsWith('command_check') ||
+            (event.type === 'state_transitioned' &&
+              ['build-complete', 'open-complete'].includes(String(event.data?.event)) &&
+              event.data?.source === 'comet-guard') ||
+            (event.type === 'checkpoint' &&
+              ['classic-accepted-verify-check', 'classic-check-not-executed'].includes(
+                String(event.data?.kind),
+              )),
+        ),
       };
     }
     const after = await identity(changeDir, ref);

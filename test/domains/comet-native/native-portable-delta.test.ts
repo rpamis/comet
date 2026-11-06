@@ -263,6 +263,13 @@ describe('Native portable delta integration', () => {
       `${baseline}## Requirement: authentication.profile Profile\n\nProfile behavior.\n\n`,
     );
 
+    await fs.writeFile(path.join(root, 'unreviewed.js'), 'export const changed = true;\n');
+    await expect(archiveNativePortableChange({ paths, name })).rejects.toThrow(
+      'outside its confirmed Spec merge',
+    );
+    expect((await readNativePortableChange(paths, name)).phase).toBe('archive');
+    await fs.rm(path.join(root, 'unreviewed.js'));
+
     await expect(archiveNativePortableChange({ paths, name })).rejects.toThrow(
       /fresh verification/iu,
     );
@@ -461,6 +468,11 @@ describe('Native portable delta integration', () => {
   });
 
   it('returns a specs-applied full Spec transaction to Verify after an external edit', async () => {
+    const config = defaultProjectConfig('docs', 'en');
+    await writeProjectConfig(root, {
+      ...config,
+      native: { ...config.native, document_writes: 'revert' },
+    });
     const name = 'applied-full-drift';
     const target = `${baseline}## Requirement: authentication.sms SMS login\n\nSMS login MUST be available.\n\n`;
     const shaped = await prepareFullChange(name, target);

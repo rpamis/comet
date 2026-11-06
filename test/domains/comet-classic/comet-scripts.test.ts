@@ -6157,6 +6157,10 @@ describe('comet scripts', () => {
     });
 
     it('blocks source code writes in verify phase', async () => {
+      await writeFile(
+        path.join(tmpDir, '.comet', 'config.yaml'),
+        canonicalProjectConfig(['document_evidence: strict']),
+      );
       await createChange(
         tmpDir,
         'test-hook',
@@ -6199,6 +6203,10 @@ describe('comet scripts', () => {
     });
 
     it('blocks source code writes in archive phase', async () => {
+      await writeFile(
+        path.join(tmpDir, '.comet', 'config.yaml'),
+        canonicalProjectConfig(['document_evidence: strict']),
+      );
       await createChange(
         tmpDir,
         'test-hook',

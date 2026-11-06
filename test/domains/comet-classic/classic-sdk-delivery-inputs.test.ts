@@ -1,10 +1,14 @@
 import { execFileSync } from 'node:child_process';
-import { promises as fs } from 'node:fs';
+import nativeFs, { promises as fs } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { collectCheckSnapshot } from '../../../domains/comet-classic/classic-check-snapshot.js';
-import { collectClassicSdkDeliveryInputs } from '../../../domains/comet-classic/classic-sdk-delivery-inputs.js';
+import {
+  assertClassicSdkDeliveryFileInputs,
+  collectClassicSdkDeliveryInputs,
+} from '../../../domains/comet-classic/classic-sdk-delivery-inputs.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
 describe('Classic SDK declared delivery inputs', () => {
@@ -45,7 +49,37 @@ describe('Classic SDK declared delivery inputs', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
+    syncBuiltinESMExports();
     await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it('verifies 100 unchanged committed inputs within 800 filesystem calls', async () => {
+    const names = Array.from({ length: 100 }, (_, index) => `budget/input-${index}.unknown`);
+    await Promise.all(names.map((name) => put(name)));
+    git('add', '--all');
+    git('commit', '-m', 'delivery input budget');
+    const rows = execFileSync('git', ['ls-files', '--stage', '-z', '--', 'budget'], {
+      cwd: root,
+      encoding: 'utf8',
+    });
+    const inputs = Object.fromEntries(
+      rows
+        .split('\0')
+        .filter(Boolean)
+        .map((row) => [row.slice(row.indexOf('\t') + 1), `git:${row.split(' ')[1]}`]),
+    );
+    const probes = [
+      vi.spyOn(fs, 'lstat'),
+      vi.spyOn(fs, 'realpath'),
+      vi.spyOn(fs, 'stat'),
+      vi.spyOn(nativeFs, 'lstatSync'),
+    ];
+    syncBuiltinESMExports();
+    expect(await assertClassicSdkDeliveryFileInputs(root, inputs)).toEqual(new Set(names));
+    expect(probes.reduce((count, probe) => count + probe.mock.calls.length, 0)).toBeLessThanOrEqual(
+      800,
+    );
   });
 
   it.each(['src', 'src/**'])('includes staged deletions covered by %s', async (pattern) => {

@@ -20,21 +20,26 @@ import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
 import { readNativeSdkRunRecord } from '../../../domains/comet-native/native-sdk-state-store.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { createHash } from 'node:crypto';
+import { createLegacyNativeSdkChange } from '../../helpers/native-legacy-sdk-change.js';
 
 const roots: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
-async function fixture() {
+async function fixture(legacyProjection = false) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-sdk-readonly-'));
   roots.push(root);
   await fs.mkdir(path.join(root, '.git'));
   await writeProjectConfig(root, defaultProjectConfig('docs', 'en'));
   await ensureNativeDirectories(await nativeProjectPaths(root, 'docs'));
-  const created = await nativeNewCommand(['lock-test'], root);
-  expect(created.exitCode).toBe(0);
   const name = 'lock-test';
+  if (legacyProjection) {
+    await createLegacyNativeSdkChange(root, name);
+  } else {
+    const created = await nativeNewCommand([name], root);
+    expect(created.exitCode).toBe(0);
+  }
   const lock = path.join(
     resolveWorkspaceRuntimeRootSync(root),
     'state-projections/native',
@@ -256,7 +261,7 @@ describe('Native SDK read-only projection lock diagnostics', () => {
   });
 
   it('reports missing projection recovery without creating a marker during status or doctor', async () => {
-    const { root, name } = await fixture();
+    const { root, name } = await fixture(true);
     const marker = path.join(
       resolveWorkspaceRuntimeRootSync(root),
       'state-projections/native',

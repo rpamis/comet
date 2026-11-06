@@ -1623,22 +1623,13 @@ export function AnyWorkflowPanel({
             ) : null;
           })()}
       </Drawer>
-      <Drawer
-        title={drawer?.title}
-        rootClassName="any-detail-drawer"
-        open={Boolean(drawer)}
+      <ApplicationObservationDrawer
+        data={drawer}
         onClose={() => {
           evidenceRequest.current?.abort();
           setDrawer(null);
         }}
-        size={530}
-      >
-        {drawer?.loading ? (
-          <Skeleton active paragraph={{ rows: 5 }} />
-        ) : (
-          <ApplicationObservationDrawer data={drawer} />
-        )}
-      </Drawer>
+      />
     </section>
   );
 }

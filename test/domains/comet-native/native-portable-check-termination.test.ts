@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -83,6 +84,164 @@ async function candidate() {
 }
 
 describe('Native portable unconfirmed check termination', () => {
+  it('resolves an explicit empty check plan once before dispatching the Verifier', async () => {
+    const { paths } = await candidate();
+    const file = nativeLocalExecutionFile(paths, 'change');
+    const before = await readNativeLocalExecution(file);
+    expect(before?.execution).toBeNull();
+    await expect(
+      dispatchNativePortableVerifier({ paths, name: 'change', checks: [] }),
+    ).rejects.toThrow('must be explicitly resolved');
+    expect(await readNativeLocalExecution(file)).toEqual(before);
+    const execute = vi.spyOn(checkExecutor, 'executeNativeCheck');
+    const first = await executeNativePortableCheckPlan({ paths, name: 'change', plans: [] });
+    expect(first).toMatchObject({ disposition: 'executed', checks: [] });
+    const completed = await readNativeLocalExecution(file);
+    expect(completed).toMatchObject({
+      execution: { stage: 'checking', actor: 'runtime', status: 'completed' },
+      checks: [],
+    });
+    await expect(
+      executeNativePortableCheckPlan({ paths, name: 'change', plans: [] }),
+    ).resolves.toMatchObject({ disposition: 'reused', checks: [] });
+    expect(await readNativeLocalExecution(file)).toEqual(completed);
+    expect(execute).not.toHaveBeenCalled();
+    await dispatchNativePortableVerifier({ paths, name: 'change', checks: [] });
+    expect(await readNativeLocalExecution(file)).toMatchObject({
+      execution: { actor: 'verifier', status: 'running' },
+    });
+    const verifying = await readNativeLocalExecution(file);
+    await expect(
+      executeNativePortableCheckPlan({ paths, name: 'change', plans: [] }),
+    ).resolves.toMatchObject({ disposition: 'reused', checks: [] });
+    expect(await readNativeLocalExecution(file)).toEqual(verifying);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('preserves completed check receipts when an empty plan is requested', async () => {
+    const { paths } = await candidate();
+    const execute = vi.spyOn(checkExecutor, 'executeNativeCheck');
+    const original = await executeNativePortableCheckPlan({
+      paths,
+      name: 'change',
+      plans: [
+        {
+          id: 'existing',
+          name: 'Existing check',
+          executable: process.execPath,
+          argv: ['-e', 'process.exit(0)'],
+          cwdRef: '.',
+          timeoutMs: 10000,
+          repeatable: true,
+        },
+      ],
+    });
+    const file = nativeLocalExecutionFile(paths, 'change');
+    const completed = await readNativeLocalExecution(file);
+    expect(original.checks).toMatchObject([{ id: 'existing', status: 'passed' }]);
+    await expect(
+      executeNativePortableCheckPlan({ paths, name: 'change', plans: [] }),
+    ).resolves.toMatchObject({ disposition: 'reused', checks: original.checks });
+    expect(await readNativeLocalExecution(file)).toEqual(completed);
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('dispatches an explicit empty check plan through the generated Native next bundle', async () => {
+    const { paths } = await candidate();
+    const input = path.join(paths.workspaceRuntimeRoot, 'empty-check-plan.json');
+    await fs.writeFile(input, JSON.stringify({ kind: 'dispatch-verifier', checks: [] }));
+    const result = spawnSync(
+      process.execPath,
+      [
+        path.resolve('assets/skills/comet-native/scripts/comet-native-next.mjs'),
+        'change',
+        '--runner-input',
+        input,
+        '--project-root',
+        paths.projectRoot,
+        '--json',
+      ],
+      { cwd: paths.projectRoot, encoding: 'utf8', windowsHide: true, timeout: 20_000 },
+    );
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      exitCode: 0,
+      data: { checks: [], state: { phase: 'verify', loop: { attempt: 1 } } },
+    });
+    expect(await readNativeLocalExecution(nativeLocalExecutionFile(paths, 'change'))).toMatchObject(
+      {
+        execution: { actor: 'verifier', status: 'running' },
+        checks: [],
+      },
+    );
+  });
+
+  it('persists a proven orphan interruption before allowing an explicit check retry', async () => {
+    const { paths } = await candidate();
+    const plan = {
+      id: 'orphaned',
+      name: 'Orphaned check',
+      executable: process.execPath,
+      argv: ['-e', 'process.exit(0)'],
+      cwdRef: '.',
+      timeoutMs: 10000,
+      repeatable: true,
+    };
+    const failure = new checkExecutor.NativeCheckTerminationUnconfirmedError();
+    const execute = vi
+      .spyOn(checkExecutor, 'executeNativeCheck')
+      .mockImplementationOnce(async ({ onSpawn }) => {
+        await onSpawn?.({ pid: 2147483000, signal: new AbortController().signal });
+        throw failure;
+      });
+    const ordinary = () => executeNativePortableCheckPlan({ paths, name: 'change', plans: [plan] });
+    await expect(ordinary()).rejects.toBe(failure);
+    const file = nativeLocalExecutionFile(paths, 'change');
+    const running = (await readNativeLocalExecution(file))!;
+    expect(running).toMatchObject({
+      execution: { stage: 'checking', status: 'running' },
+      checks: [{ id: plan.id, status: 'running', executionCount: 1 }],
+    });
+    const owner = vi.spyOn(processIdentity, 'inspectProcessLiveness').mockResolvedValue('dead');
+    const child = vi.spyOn(checkExecutor, 'inspectNativeCheckProcessTreeLiveness');
+    for (const liveness of ['alive', 'unknown'] as const) {
+      child.mockResolvedValue(liveness);
+      await expect(ordinary()).rejects.toThrow('原检查仍运行或结果不明');
+      expect(await readNativeLocalExecution(file)).toEqual(running);
+      expect(execute).toHaveBeenCalledTimes(1);
+    }
+    child.mockResolvedValue('dead');
+    await expect(ordinary()).resolves.toMatchObject({
+      disposition: 'reused',
+      checks: [{ id: plan.id, status: 'interrupted' }],
+    });
+    const interrupted = {
+      ...running,
+      execution: { ...running.execution!, status: 'interrupted' },
+      checks: running.checks.map((check) => ({
+        ...check,
+        status: 'interrupted',
+        activeProcess: null,
+      })),
+    };
+    expect(await readNativeLocalExecution(file)).toEqual(interrupted);
+    await expect(ordinary()).resolves.toMatchObject({
+      checks: [{ id: plan.id, status: 'interrupted' }],
+    });
+    expect(await readNativeLocalExecution(file)).toEqual(interrupted);
+    expect(execute).toHaveBeenCalledTimes(1);
+    owner.mockRestore();
+    child.mockRestore();
+    await expect(
+      retryNativePortableCheckPlan({ paths, name: 'change', checkIds: [plan.id] }),
+    ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'passed' }] });
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(await readNativeLocalExecution(file)).toMatchObject({
+      execution: { status: 'completed' },
+      checks: [{ id: plan.id, status: 'passed', executionCount: 2 }],
+    });
+  });
+
   it.each(['runtime', 'verifier', 'legacy-verifier'] as const)(
     'preserves the registered process and blocks retries for %s checks',
     async (source) => {
@@ -151,6 +310,10 @@ describe('Native portable unconfirmed check termination', () => {
       expect((await readNativePortableChange(paths, 'change')).loop.execution_failure_count).toBe(
         0,
       );
+      await expect(
+        executeNativePortableCheckPlan({ paths, name: 'change', plans: [] }),
+      ).rejects.toThrow();
+      expect(await readNativeLocalExecution(file)).toEqual(local);
       await expect(attempt()).rejects.toThrow();
       await expect(
         retryNativePortableCheckPlan({ paths, name: 'change', checkIds: ['pending'] }),

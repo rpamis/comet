@@ -74,14 +74,25 @@ program
   });
 
 program
+  .command('walkthrough <workflow> <change>')
+  .description('Generate an HTML change walkthrough unless change_walkthrough is false')
+  .requiredOption('--file <path>', '当前 Agent 整理的临时 JSON 内容文件')
+  .option('--project-root <path>', '当前项目工作区')
+  .option('--verification-only', '保留已有讲解，仅替换验证结果')
+  .action(async (workflow, change, options) => {
+    const { walkthroughCommand } = await import('../commands/walkthrough.js');
+    await walkthroughCommand(workflow, change, options);
+  });
+
+program
   .command('edit-review <operation> <workflow> <change>')
   .description(
-    'Prepare, claim, record, or show a Verify edit review; Native prepare-applied reviews existing edits',
+    'Review edits with observe, prepare, prepare-applied, judge, record, refresh-checks or show; claim retains the legacy independent review path',
   )
   .option('--project-root <path>', '当前工作区路径')
-  .option('--file <path>', 'prepare/claim 的完整 Hook 请求或 record 的复核结果 JSON')
-  .option('--confirmed', 'Compat 用户已明确确认这份具体复核结果')
-  .option('--session <reference>', '独立复核会话的稳定执行引用')
+  .option('--file <path>', '完整编辑请求、record 判断结果或 refresh-checks 检查输入 JSON')
+  .option('--confirmed', '旧 Compat 受保护编辑流程的具体复核结果已获用户确认')
+  .option('--session <reference>', '当前 Agent 或旧独立复核会话的稳定执行引用')
   .option('--proposal-hash <hash>', '有多个复核提案时选择具体提案')
   .option('--json', '输出 JSON')
   .action(async (operation, workflow, name, options) => {
@@ -643,6 +654,16 @@ program
   .option('--html', 'Enable HTML report output')
   .option('--quick', 'Use the default quick smoke task where applicable')
   .option('--collect', 'Collect targets without executing Claude or Docker workloads')
+  .option('--list-datasets', '列出内置数据集及固定来源')
+  .option('--fetch-dataset', '下载固定版本数据集到 dataset-root，不执行评测')
+  .option('--dataset <id>', '使用内置数据集评测 Native 或 Goal')
+  .option(
+    '--dataset-treatment <mode>',
+    '数据集执行方式：native（默认）或 goal（Claude Code 原生 Goal）',
+  )
+  .option('--dataset-root <dir>', '已获取的数据集根目录，包含 tasks/')
+  .option('--count <number>', '每个数据集任务的运行次数，默认为 1')
+  .option('--accept-dataset-license', '声明已阅读并接受选中数据集的许可')
   .action(async (target, options) => {
     const { evalCommand: evalFacadeCommand } = await import('../commands/eval.js');
     process.exitCode = await evalFacadeCommand(target, options);

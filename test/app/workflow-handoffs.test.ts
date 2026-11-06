@@ -29,6 +29,7 @@ it('keeps Verify across a reviewed edit through the built CLI and Router, report
     home = path.join(base, 'home');
   await fs.mkdir(home);
   await prepareClassicLegacyProject(root);
+  await fs.appendFile(path.join(root, '.comet/config.yaml'), '  document_evidence: strict\n');
   const env = {
     ...process.env,
     HOME: home,

@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -13,6 +14,7 @@ import { runNativeCli as sourceRunNativeCli } from '../../domains/comet-native/n
 import type { RuntimeAction, RuntimeValue, WorkflowRun } from '../../domains/engine/runtime.js';
 import { fixtureAcceptanceReview } from './native-builder-acceptance-review.js';
 import { ensureCliBuilt } from './ensure-cli-built.js';
+import { inspectNativeSdkCheckExecutions } from '../../domains/comet-native/native-sdk-check-execution.js';
 
 const cliBuilds = new Map<string, Promise<void>>();
 
@@ -103,12 +105,31 @@ export async function prepareNativeApplication(
     const envelope = JSON.parse(result.stdout!);
     if (result.exitCode) {
       const observed = await dispatch({ operation: 'inspect', runId: name }).catch(() => null);
+      const executions = observed
+        ? await inspectNativeSdkCheckExecutions({ projectRoot, run: observed }).catch(() => [])
+        : [];
       throw new Error(
         JSON.stringify({
           ...envelope,
           actions: observed?.actions
             .filter((action) => ['running', 'unknown'].includes(action.status))
-            .map(({ id, stepId, status, receipts }) => ({ id, stepId, status, receipts })),
+            .map(({ id, stepId, status, reason, receipts }) => ({
+              id,
+              stepId,
+              status,
+              reason,
+              receipts,
+            })),
+          executions: executions.map(
+            ({ actionId, owner, process: processState, quiescent, phase, execution }) => ({
+              actionId,
+              owner,
+              process: processState,
+              quiescent,
+              phase,
+              terminationUnconfirmed: execution?.terminationUnconfirmed,
+            }),
+          ),
         }),
       );
     }
@@ -148,6 +169,25 @@ export async function prepareNativeApplication(
     ...(supervisor ? ['--coordination-mode', 'multi-session'] : []),
   ]);
   run = await dispatch({ operation: 'inspect', runId: name });
+  if (supervisor) {
+    // Prepare the parent and each Child through the public next boundary.
+    for (let preparation = 0; preparation < 3; preparation++) {
+      await native(['next', name]);
+    }
+    run = await dispatch({ operation: 'inspect', runId: name });
+    assert.deepEqual(
+      run.actions
+        .filter(({ stepId }) => stepId === 'supervisor.prepare')
+        .map(({ status }) => status),
+      ['succeeded'],
+    );
+    assert.deepEqual(
+      run.actions
+        .filter(({ stepId }) => stepId === 'supervisor.child.prepare')
+        .map(({ status }) => status),
+      ['succeeded', 'succeeded'],
+    );
+  }
   async function claim(action: RuntimeAction, sessionId = 'builder') {
     return dispatch({
       operation: 'claim',

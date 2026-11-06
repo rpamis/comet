@@ -51,6 +51,26 @@ JS
     exit $?
 fi
 
+# 内置数据集使用真实 Native SDK 终态；模型声称完成或换一种语言都不能改变结论。
+if [[ -f .dataset-task.json ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    python3 -I - "$SCRIPT_DIR/../python/validation/current_sdk.py" <<'PY'
+import importlib.util
+import sys
+from pathlib import Path
+try:
+    spec = importlib.util.spec_from_file_location("comet_dataset_completion", sys.argv[1])
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    completed = module.dataset_native_runs_completed(Path.cwd())
+except Exception as error:
+    print(f"dataset completion probe unavailable: {type(error).__name__}", file=sys.stderr)
+    raise SystemExit(2)
+raise SystemExit(0 if completed else 1)
+PY
+    exit $?
+fi
+
 ROOT_COMPLETION_PATTERN='(parent|main|root)[[:space:]]+(workflow([[:space:]]+is)?[[:space:]]+(complete|completed)|change([[:space:]]+is)?[[:space:]]+archived|is[[:space:]]+archived)'
 if [[ "$TEXT" =~ (child|sub)[[:space:]-]*workflow[^.!?]*complete && ! "$TEXT" =~ $ROOT_COMPLETION_PATTERN ]]; then
     exit 1

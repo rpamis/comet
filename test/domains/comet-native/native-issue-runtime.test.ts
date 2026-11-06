@@ -5,6 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
+import {
+  defaultProjectConfig,
+  writeProjectConfig,
+} from '../../../domains/comet-native/native-config.js';
 
 const runtime = path.resolve('assets/skills/comet-native/scripts/comet-native-runtime.mjs');
 const router = path.resolve('assets/skills/comet/scripts/comet-hook-router.mjs');
@@ -62,6 +66,11 @@ describe('packaged Runtime issue regressions', () => {
       { cwd: root, stdio: 'ignore' },
     );
     expect(invoke(['new', name, '--runtime', 'compat']).exitCode).toBe(0);
+    const config = defaultProjectConfig('docs', 'en');
+    await writeProjectConfig(root, {
+      ...config,
+      native: { ...config.native, document_writes: 'revert' },
+    });
     const change = path.join(root, 'docs/comet/changes', name);
     await fs.writeFile(
       path.join(change, 'brief.md'),

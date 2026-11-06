@@ -10,6 +10,7 @@ import {
 } from '../../platform/install/platforms.js';
 import { printCommandErrorDetails } from '../../platform/process/command-error.js';
 import { quoteArgsForShell } from '../../platform/process/shell-quote.js';
+import { commandInvocation } from '../../platform/process/spawn-command.js';
 import { atomicWriteContainedBytes } from '../workflow-contract/contained-atomic-write.js';
 import {
   ensureProtectedProjectDirectory,
@@ -513,11 +514,13 @@ function isOpenSpecVersionCompatible(
 
 function getOpenSpecVersion(): string | null {
   try {
-    return execFileSync('openspec', ['--version'], {
+    const invocation = commandInvocation('openspec', ['--version'], { cwd: process.cwd() });
+    return execFileSync(invocation.command, invocation.args, {
+      env: invocation.env,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 10_000,
-      shell: process.platform === 'win32',
+      shell: false,
     })
       .toString()
       .trim();

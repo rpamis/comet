@@ -17,6 +17,8 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import { nativeSdkCheckRuntimeRef } from '../../../domains/comet-native/native-sdk-check-execution.js';
+import { hashRuntimeValue } from '../../../domains/engine/runtime.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -26,6 +28,58 @@ async function fixture(supervisor = false) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-application-'));
   roots.push(root);
   return prepareNativeApplication(root, supervisor);
+}
+
+it.each(['missing', 'invalid'] as const)(
+  'preserves the original CLI error when check execution diagnostics are %s',
+  async (phase) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-error-diagnostics-'));
+    roots.push(root);
+    const f = await prepareNativeApplication(root, false, 'native');
+    const run = await f.submitBuilder(f.pending(f.run, 'build.builder'), 'approved\n');
+    const check = f.pending(run, 'verify.checks');
+    expect(check).toBeTruthy();
+    await f.claim(check, 'check-owner');
+    if (phase === 'invalid') {
+      const directory = path.join(
+        resolveWorkspaceRuntimeRootSync(f.projectRoot),
+        nativeSdkCheckRuntimeRef(run),
+        'executions',
+      );
+      await fs.mkdir(directory, { recursive: true });
+      await fs.writeFile(path.join(directory, `${hashRuntimeValue(check.id)}.json`), '{');
+    }
+    const argv = ['status', f.name, '--unexpected-option'];
+    const original = await runNativeCli([...argv, '--project-root', f.projectRoot, '--json']);
+    expect(original.exitCode).not.toBe(0);
+    const error = await f.native(argv).then(
+      () => {
+        throw new Error('Expected a CLI failure');
+      },
+      (error: Error) => error,
+    );
+    expect(() => JSON.parse(error.message), error.message).not.toThrow();
+    const diagnostic = JSON.parse(error.message);
+    expect(diagnostic).toMatchObject(JSON.parse(original.stdout!));
+    expect(diagnostic.executions).toContainEqual(
+      expect.objectContaining({ actionId: check.id, phase }),
+    );
+  },
+);
+function preparedSupervisor(run: WorkflowRun) {
+  expect(run.actions.filter(({ stepId }) => stepId === 'supervisor.prepare')).toMatchObject([
+    { status: 'succeeded' },
+  ]);
+  expect(run.actions.filter(({ stepId }) => stepId === 'supervisor.child.prepare')).toMatchObject([
+    { status: 'succeeded' },
+    { status: 'succeeded' },
+  ]);
+  expect(
+    run.actions.filter(
+      ({ stepId, status }) => stepId === 'supervisor.child.builder' && status === 'pending',
+    ),
+  ).toHaveLength(2);
+  return run;
 }
 async function removeLocalStores(projectRoot: string) {
   for (const directory of ['applications', 'change-owners', 'state-projections'])
@@ -103,19 +157,7 @@ it('recovers an external Native Application using its exact readonly recovery ar
 
 it('transfers a custom Supervisor through public CLI with fixed identity and an interrupted Child', async () => {
   const f = await fixture(true);
-  let run = await f.dispatch({
-    operation: 'execute',
-    runId: f.name,
-    actionId: f.pending(f.run, 'supervisor.prepare').id,
-    executorId: 'native-supervisor-prepare',
-  });
-  for (let count = 0; count < 2; count++)
-    run = await f.dispatch({
-      operation: 'execute',
-      runId: f.name,
-      actionId: f.pending(run, 'supervisor.child.prepare').id,
-      executorId: 'native-supervisor-child-prepare',
-    });
+  let run = preparedSupervisor(f.run);
   const builder = f.pending(run, 'supervisor.child.builder');
   run = await f.submitBuilder(builder, 'approved\n', 'original-child-builder');
   run = await f.dispatch({
@@ -265,6 +307,10 @@ it('transfers a custom Supervisor through public CLI with fixed identity and an 
 
 it('runs a real disk Skill, repairs a failed candidate, restores cold and retains original Verify/approval', async () => {
   const f = await fixture();
+  // 本案例保留严格策略的写入拒绝断言；默认保留编辑由 edit-review 案例覆盖。
+  const config = defaultProjectConfig('docs', 'en');
+  config.native.document_writes = 'revert';
+  await writeProjectConfig(f.projectRoot, config);
   const builderWork = await f.native(['status', f.name]);
   expect(builderWork.continuation.commandArgs).toEqual([
     'comet',
@@ -484,7 +530,7 @@ it('binds reverse Child reviews, repairs integration in its worktree, and review
   // Runtime 的合并命令也需要此临时仓库的提交身份，不能依赖测试机的全局配置。
   f.git(f.projectRoot, ['config', '--local', 'user.name', 'Comet Test']);
   f.git(f.projectRoot, ['config', '--local', 'user.email', 'comet-test@example.com']);
-  let run = f.run;
+  let run = preparedSupervisor(f.run);
   const execute = async (action: RuntimeAction, executorId: string) => {
     try {
       return await f.dispatch({
@@ -507,16 +553,6 @@ it('binds reverse Child reviews, repairs integration in its worktree, and review
       );
     }
   };
-  run = await execute(f.pending(run, 'supervisor.prepare'), 'native-supervisor-prepare');
-  for (const child of ['left', 'right']) {
-    const action = run.actions.find(
-      (action) =>
-        action.status === 'pending' &&
-        action.stepId === 'supervisor.child.prepare' &&
-        (action.input as { activation: { child: string } }).activation.child === child,
-    )!;
-    run = await execute(action, 'native-supervisor-child-prepare');
-  }
   const childAction = (value: WorkflowRun, step: string, child: string) =>
     value.actions.find(
       (action) =>
@@ -683,19 +719,7 @@ it('binds reverse Child reviews, repairs integration in its worktree, and review
 
 it('does not discard an unknown Child when another review requires Shape revision', async () => {
   const f = await fixture(true);
-  let run = await f.dispatch({
-    operation: 'execute',
-    runId: f.name,
-    actionId: f.pending(f.run, 'supervisor.prepare').id,
-    executorId: 'native-supervisor-prepare',
-  });
-  for (let count = 0; count < 2; count++)
-    run = await f.dispatch({
-      operation: 'execute',
-      runId: f.name,
-      actionId: f.pending(run, 'supervisor.child.prepare').id,
-      executorId: 'native-supervisor-child-prepare',
-    });
+  let run = preparedSupervisor(f.run);
   const builders = run.actions.filter(
     (action) => action.status === 'pending' && action.stepId === 'supervisor.child.builder',
   );

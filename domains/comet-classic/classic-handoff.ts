@@ -38,7 +38,14 @@ import {
 } from './classic-protected-path.js';
 import { classicCommandProjectRoot, withProjectContext } from './classic-command-context.js';
 import { classicHandoffEnvelope, classicLocale } from './classic-output-language.js';
-import { hasClassicManagedRunMarker } from './classic-state.js';
+import { hasClassicManagedRunMarker, type ClassicState } from './classic-state.js';
+import type { WorkflowRun } from '../engine/runtime.js';
+import { classicFormalEditReviewScope } from './classic-edit-review.js';
+import {
+  approvedEditHash,
+  readApprovedEditOriginalForEvidence,
+  rememberApprovedEditOriginal,
+} from '../workflow-contract/edit-review.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -156,6 +163,7 @@ async function readHandoffSources(
   projectRoot: string,
   changeDir: string,
   changeRef: string,
+  run?: Readonly<WorkflowRun>,
 ): Promise<HandoffSource[]> {
   const sources: HandoffSource[] = [];
   for (const file of await handoffSourceFiles(projectRoot, changeDir)) {
@@ -168,7 +176,47 @@ async function readHandoffSources(
     if (content !== null)
       sources.push({ file, reference, content, sha256: handoffSourceHash(file, content) });
   }
+  const state = run
+    ? (run.state as unknown as ClassicState)
+    : (await readClassicState(changeDir, { migrate: false })).classic;
+  if (
+    state?.handoffHash &&
+    state.handoffContext &&
+    contextHashFromSources(sources) !== state.handoffHash
+  ) {
+    const scope = await classicFormalEditReviewScope(
+      projectRoot,
+      path.basename(changeDir),
+      state,
+      false,
+      undefined,
+      run,
+    );
+    for (const source of sources) {
+      const reviewed = await approvedEditHash(scope, source.reference, hashText(source.content));
+      if (!reviewed || reviewed.semantic) continue;
+      const original = await readApprovedEditOriginalForEvidence(
+        scope,
+        source.reference,
+        state.handoffHash,
+      );
+      if (original.contentHash === reviewed.beforeHash)
+        source.sha256 = handoffSourceHash(source.file, original.text);
+    }
+  }
   return sources;
+}
+
+export async function readClassicHandoffSourceHashes(projectRoot: string, changeDir: string) {
+  return new Map(
+    (
+      await readHandoffSources(
+        projectRoot,
+        changeDir,
+        classicProjectRelative(projectRoot, changeDir),
+      )
+    ).map((source) => [source.reference, source.sha256]),
+  );
 }
 
 function contextHashFromSources(sources: readonly HandoffSource[]): string {
@@ -492,12 +540,22 @@ export async function writeClassicSdkDesignContext(options: {
   changeDir: string;
   change: string;
   contextCompression: 'off' | 'beta' | null;
+  run?: Readonly<WorkflowRun>;
 }): Promise<{ handoffContext: string; handoffHash: string }> {
   const { projectRoot, changeDir, change } = options;
   const changeRef = classicProjectRelative(projectRoot, changeDir);
+  if (options.run) {
+    const input = options.run.input as { change?: string; changeDir?: string };
+    if (input.change !== change || input.changeDir !== changeRef)
+      throw new Error('Classic Design context Run does not match its current change');
+  }
+  const state = options.run
+    ? (options.run.state as unknown as ClassicState)
+    : (await readClassicState(changeDir, { migrate: false })).classic;
+  if (!state) throw new Error('Classic Design context requires its current change');
   const requirements = await readClassicArtifactRequirements(projectRoot, changeDir);
   if (requirements.problems.length) throw new Error(requirements.problems.join('\n'));
-  const sources = await readHandoffSources(projectRoot, changeDir, changeRef);
+  const sources = await readHandoffSources(projectRoot, changeDir, changeRef, options.run);
   const sourcesByPath = new Map(sources.map((source) => [path.resolve(source.file), source]));
   for (const file of requirements.files) {
     if (!(await requiredSourceNonempty(projectRoot, file, sourcesByPath))) {
@@ -557,6 +615,34 @@ export async function writeClassicSdkDesignContext(options: {
       sources,
     );
   }
+  const scope = await classicFormalEditReviewScope(
+    projectRoot,
+    change,
+    state,
+    true,
+    undefined,
+    options.run,
+  );
+  for (const source of sources) {
+    const existing = await readApprovedEditOriginalForEvidence(
+      scope,
+      source.reference,
+      handoffHash,
+      { allowMissing: true },
+    );
+    if (existing) {
+      if (handoffSourceHash(source.file, existing.text) !== source.sha256)
+        throw new Error('Classic handoff 原文与当前来源摘要不匹配');
+      continue;
+    }
+    await rememberApprovedEditOriginal(
+      scope,
+      source.reference,
+      source.content,
+      hashText(source.content),
+      handoffHash,
+    );
+  }
   return { handoffContext: classicProjectRelative(projectRoot, json), handoffHash };
 }
 
@@ -569,10 +655,15 @@ export async function validateClassicSdkDesignContext(options: {
   handoffContext: string;
   handoffHash: string;
   allowDesignDocumentChanges?: boolean;
+  run?: Readonly<WorkflowRun>;
 }): Promise<boolean> {
   const { projectRoot, changeDir, change, handoffContext, handoffHash } = options;
   const changeRef = classicProjectRelative(projectRoot, changeDir);
-  const sources = await readHandoffSources(projectRoot, changeDir, changeRef);
+  if (options.run) {
+    const input = options.run.input as { change?: string; changeDir?: string };
+    if (input.change !== change || input.changeDir !== changeRef) return false;
+  }
+  const sources = await readHandoffSources(projectRoot, changeDir, changeRef, options.run);
   const basename = options.contextCompression === 'beta' ? 'spec-context' : 'design-context';
   if (
     handoffContext !== `${changeRef}/.comet/handoff/${basename}.json` ||
@@ -1079,6 +1170,20 @@ export const compatHandoffCommand: ClassicCommandHandler = withProjectContext(as
         handoffContext: contextJsonRef,
         handoffHash: contextHash,
       };
+      const formalScope = await classicFormalEditReviewScope(
+        layout.projectRoot,
+        change,
+        completedClassic,
+        true,
+      );
+      for (const source of sources)
+        await rememberApprovedEditOriginal(
+          formalScope,
+          source.reference,
+          source.content,
+          hashText(source.content),
+          contextHash,
+        );
       const transitionedRun =
         pendingRun.currentStep === 'full.design.handoff'
           ? await transitionClassicRuntimeRun(changeDir, completedClassic, pendingRun, {

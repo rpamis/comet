@@ -91,6 +91,17 @@ function sameStatIdentity(left: AnyStats, right: AnyStats): boolean {
   );
 }
 
+function sameContentState(left: AnyStats, right: AnyStats): boolean {
+  const mtime = (stat: AnyStats) => ('mtimeNs' in stat ? stat.mtimeNs : stat.mtimeMs);
+  return (
+    sameStatIdentity(left, right) &&
+    left.size === right.size &&
+    left.mode === right.mode &&
+    mtime(left) === mtime(right) &&
+    ctimeOf(left) === ctimeOf(right)
+  );
+}
+
 /**
  * Read a regular file through one descriptor with identity re-verification
  * before open, after open, and after the bounded read, so a path swapped for
@@ -151,8 +162,8 @@ export async function readFileRaceSafe(
       !pathAfterOpen.isFile() ||
       pathAfterOpen.isSymbolicLink() ||
       realPathAfterOpen !== beforeRealPath ||
-      !sameStatIdentity(before, opened) ||
-      !sameStatIdentity(before, pathAfterOpen)
+      !sameContentState(before, opened) ||
+      !sameContentState(before, pathAfterOpen)
     ) {
       throw new RaceSafeReadError('changed', `${label} changed while opening`);
     }
@@ -186,8 +197,8 @@ export async function readFileRaceSafe(
       !afterPath.isFile() ||
       afterPath.isSymbolicLink() ||
       afterRealPath !== beforeRealPath ||
-      !sameStatIdentity(before, afterHandle) ||
-      !sameStatIdentity(before, afterPath)
+      !sameContentState(before, afterHandle) ||
+      !sameContentState(before, afterPath)
     ) {
       throw new RaceSafeReadError('changed', `${label} changed while reading`);
     }
@@ -246,8 +257,8 @@ export async function hashFileRaceSafe(
       !pathAfterOpen.isFile() ||
       pathAfterOpen.isSymbolicLink() ||
       realPathAfterOpen !== beforeRealPath ||
-      !sameStatIdentity(before, opened) ||
-      !sameStatIdentity(before, pathAfterOpen)
+      !sameContentState(before, opened) ||
+      !sameContentState(before, pathAfterOpen)
     ) {
       throw new RaceSafeReadError('changed', `${label} changed while opening`);
     }
@@ -275,8 +286,8 @@ export async function hashFileRaceSafe(
       !afterPath.isFile() ||
       afterPath.isSymbolicLink() ||
       afterRealPath !== beforeRealPath ||
-      !sameStatIdentity(before, afterHandle) ||
-      !sameStatIdentity(before, afterPath)
+      !sameContentState(before, afterHandle) ||
+      !sameContentState(before, afterPath)
     ) {
       throw new RaceSafeReadError('changed', `${label} changed while reading`);
     }

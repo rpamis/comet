@@ -7,11 +7,102 @@ import subprocess
 import threading
 import time
 from contextlib import contextmanager
+from pathlib import Path
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from scaffold.python.paths import get_runs_dir
+from scaffold.python.paths import CURRENT_COMET_SNAPSHOT_REF, get_runs_dir
 from scaffold.python.execution import redact_sensitive
+
+
+def candidate_storage_bytes(root: Path) -> int:
+    """统计候选中的普通文件；不跟随链接，不重复计入构建输入与产品快照。"""
+    total = 0
+
+    def unreadable(error):
+        raise error
+
+    for directory, dirs, files in os.walk(root, followlinks=False, onerror=unreadable):
+        dirs[:] = [
+            name
+            for name in dirs
+            if (Path(directory) / name).relative_to(root).as_posix()
+            not in {".dataset-build", "_eval_current_comet", CURRENT_COMET_SNAPSHOT_REF}
+        ]
+        for name in files:
+            file = Path(directory) / name
+            try:
+                if not file.is_symlink():
+                    total += file.stat().st_size
+            except FileNotFoundError:
+                continue  # 活动候选允许原子替换文件。
+    return total
+
+
+@contextmanager
+def observe_dataset_storage(root: Path | None, container_name: str | None):
+    state = {"error": None}
+    if root is None or not (root / ".dataset-task.json").is_file():
+        yield state
+        return
+    execution = json.loads((root / ".dataset-task.json").read_text(encoding="utf-8")).get(
+        "execution", {}
+    )
+    limit = execution.get("storageMb")
+    if limit is None:
+        yield state
+        return
+    if type(limit) not in (int, float) or limit <= 0:
+        raise ValueError("数据集候选存储预算必须为正数")
+    stop = threading.Event()
+
+    def check():
+        used = candidate_storage_bytes(root)
+        if used > limit * 1024 * 1024:
+            state["error"] = f"dataset_storage_limit: candidate={used} bytes, limit={limit} MiB"
+        return state["error"]
+
+    if check():
+        raise ValueError(state["error"])
+    state["check"] = check
+
+    def monitor():
+        while not stop.wait(2):
+            try:
+                error = check()
+            except OSError:
+                state["error"] = "dataset_storage_incomplete: 无法读取候选存储用量"
+                error = state["error"]
+            if stop.is_set():
+                return
+            if (
+                error
+                and container_name
+                and re.fullmatch(
+                    r"comet-eval-(?:turn|loop|agent-loop|score)-[a-f0-9]{24,32}", container_name
+                )
+            ):
+                try:
+                    result = subprocess.run(
+                        ["docker", "kill", container_name],
+                        capture_output=True,
+                        timeout=10,
+                        check=False,
+                    )
+                    if result.returncode == 0:
+                        return
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+
+    thread = threading.Thread(target=monitor, daemon=True)
+    thread.start()
+    try:
+        yield state
+    finally:
+        stop.set()
+        thread.join(timeout=12)
+        check()
+
 
 _LOCK = threading.RLock()
 _LAST_WRITE = {}

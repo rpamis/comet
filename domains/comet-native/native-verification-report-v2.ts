@@ -1,10 +1,44 @@
+import type { WorkflowRun } from '../engine/runtime.js';
+import { parseNativePortableState } from './native-portable-state.js';
 import { promises as fs } from 'node:fs';
 
 import { atomicWriteText } from './native-atomic-file.js';
+import { canonicalHash } from './native-canonical-hash.js';
 import { nativeLocalizedText, nativeVerificationHeading } from './native-artifact-language.js';
 import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 import type { NativePortableState, NativePortableText } from './native-portable-types.js';
 import type { NativeSupervisorState } from './native-supervisor.js';
+
+export function nativeVerificationResultHash(state: NativePortableState): string {
+  if (!state.builder_handoff || !state.verification)
+    throw new Error('Native verification result requires a candidate and accepted evidence');
+  return canonicalHash('comet.native.verification-result.v1', {
+    candidateId: state.builder_handoff.candidate_id,
+    acceptance: state.acceptance,
+    verification: state.verification,
+  });
+}
+
+export function nativeSdkVerificationReportOutput(
+  run: Readonly<WorkflowRun>,
+): Record<string, unknown> | undefined {
+  if (run.workflow.version !== '3')
+    return run.outputs['verify.report']?.value as Record<string, unknown> | undefined;
+  const state = parseNativePortableState(run.state);
+  if (!state.builder_handoff || !state.verification) return undefined;
+  const resultHash = nativeVerificationResultHash(state);
+  for (const wait of [...run.waits].reverse()) {
+    if (wait.stepId !== 'verify.confirm') continue;
+    const report = (wait.proposal as { activation?: { report?: Record<string, unknown> } })
+      .activation?.report;
+    if (
+      report?.candidateId === state.builder_handoff.candidate_id &&
+      report.verificationResultHash === resultHash
+    )
+      return report;
+  }
+  return undefined;
+}
 
 function display(value: NativePortableText | null): string {
   if (value === null) return '—';
@@ -92,6 +126,7 @@ function verificationStatusLabel(state: NativePortableState): string {
     state.language === 'en'
       ? {
           'host-attested': 'Host independently verified',
+          'self-reviewed': 'Acceptance reviewed in the implementation session',
           'skill-coordinated': skillCoordinationConfirmed
             ? 'Checks completed; result confirmed'
             : 'Checks completed, but your confirmation is required',
@@ -101,6 +136,7 @@ function verificationStatusLabel(state: NativePortableState): string {
         }
       : {
           'host-attested': '已完成独立验证',
+          'self-reviewed': '已在实现会话中完成验收',
           'skill-coordinated': skillCoordinationConfirmed
             ? '已完成检查，验证结果已确认'
             : '已完成检查，但需要你确认验证结果',

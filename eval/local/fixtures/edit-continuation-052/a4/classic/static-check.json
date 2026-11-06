@@ -1,0 +1,11 @@
+{
+  "scope": "Static parser and node --check only; no controller, CLI, Runtime, Docker, build, fixture or model execution",
+  "generatedCheckScriptDiagnostics": [],
+  "files": {
+    "common.mjs": "27213b3ae44c6a0f0875ab9f8874ab952b78c28203d4550b3fae8c755dcba65a",
+    "controller.mjs": "67294c0bb812dabe650dac28a0746de84847756d428ae61f849a0f41bbcdc49c",
+    "validator.mjs": "7d646ba4758a44f09075a745c498018fcc63c46b2b99d214f653c5cd38d0394a",
+    "driver.mjs": "361623af70959459bbe1020e2252c13538c0aa21a9192875edc61ca926138a87"
+  },
+  "nodeCheck": "4/4 exit 0"
+}

@@ -16,6 +16,7 @@ Usage:
 
 import sys
 import uuid
+import time
 
 import pytest
 import conftest
@@ -149,6 +150,20 @@ def expand_treatment_patterns(patterns: list[str], all_treatments: dict) -> list
 
 def generate_test_params(task_filter: str | None, treatment_filter: str | None, config=None):
     """Generate (task_name, treatment_name) pairs based on filters."""
+    plan_file = getattr(config, "_comet_dataset_plan_file", None)
+    if plan_file:
+        from scaffold.python.builtin_datasets import load_dataset_tasks
+
+        selected = tuple(
+            ResolvedTask(task.name, "source", task) for task in load_dataset_tasks(plan_file)
+        )
+        if task_filter:
+            selected = tuple(item for item in selected if item.name == task_filter)
+        if not selected:
+            raise ValueError("选中数据集任务为空")
+        config._comet_frozen_task_set = ResolvedTaskSet("explicit", selected, None)
+        config._comet_resolved_tasks = {item.name: item.task for item in selected}
+        return [(item.name, item.task.config.default_treatments[0]) for item in selected]
     params = []
     if config is not None and conftest._release_suite(config):
         from scaffold.python.release_gate import release_cases
@@ -476,6 +491,7 @@ def pytest_generate_tests(metafunc):
 @pytest.mark.timeout(PYTEST_TIMEOUT)
 def test_task_treatment(task_name, treatment_name):
     """Run a task with a treatment and validate results."""
+    case_started = time.monotonic()
     fixtures = get_fixtures()
     from scaffold.python.progress import publish_eval_progress
 
@@ -541,7 +557,11 @@ def test_task_treatment(task_name, treatment_name):
     # 在模型启动前读取控制器准备的真实 CLI 身份，不从模型生成的产物推断。
     from scaffold.python.release_gate import read_json
 
-    build_identity_file = fixtures.test_dir / "_eval_current_comet/build-identity.json"
+    from scaffold.python.paths import CURRENT_COMET_SNAPSHOT_REF
+
+    build_identity_file = fixtures.test_dir / CURRENT_COMET_SNAPSHOT_REF / 'build-identity.json'
+    if not build_identity_file.exists():
+        build_identity_file = fixtures.test_dir / '_eval_current_comet/build-identity.json'
     current_comet_build = read_json(build_identity_file) if build_identity_file.exists() else None
     selected_agent = conftest._resolve_eval_agent(fixtures.request_config).agent
     selected_adapter = get_agent_adapter(selected_agent)
@@ -550,6 +570,7 @@ def test_task_treatment(task_name, treatment_name):
     judge = conftest._resolve_eval_judge(fixtures.request_config)
     role_models = {
         "subject": selected_model,
+        "goal_evaluator": selected_model if interaction.goal else None,
         "simulator": (
             selected_model
             if interaction.mode == "auto_user"
@@ -564,6 +585,17 @@ def test_task_treatment(task_name, treatment_name):
         "simulator": selected_agent if interaction.mode == "auto_user" else None,
         "judge": judge.agent if judge is not None else None,
     }
+    dataset_contract = {}
+    if getattr(task, "dataset_plan", None) and task.dataset_entry.get("instructionHash"):
+        prompt = task.execution_prompt(prompt)
+        dataset_contract["task_contract_file"] = str(
+            task.path
+            / (
+                "task.md"
+                if task.dataset_plan["dataset"]["id"] == "skillsbench"
+                else "instruction.md"
+            )
+        )
     captured_execution = conftest._capture_execution_identity(
         fixtures.test_dir,
         model=selected_model,
@@ -597,6 +629,7 @@ def test_task_treatment(task_name, treatment_name):
         )
         prompt = application_execution_prompt(prompt, skill_package_path, installed_file)
 
+    agent_started = time.monotonic()
     result = fixtures.run_claude(
         prompt,
         timeout=conftest._resolve_agent_timeout(
@@ -607,11 +640,15 @@ def test_task_treatment(task_name, treatment_name):
         model=selected_model,
         interaction=interaction,
         image_id=captured_execution.runtime_image_id,
+        **dataset_contract,
     )
 
     events = extract_events(parse_output(result.stdout), agent=selected_agent)
+    events["agent_wall_duration_seconds"] = time.monotonic() - agent_started
     events["telemetry_status"] = "N/A" if not selected_adapter.supports_telemetry else "available"
-    loop_interaction = conftest._extract_loop_interaction(result.stderr)
+    loop_interaction = conftest._extract_loop_interaction(result.stderr, agent=selected_agent)
+    if "simulator_usage" in loop_interaction:
+        events["simulator_usage"] = loop_interaction["simulator_usage"]
     for role, session_ids in loop_interaction.get("role_sessions", {}).items():
         target = events["role_sessions"].setdefault(role, [])
         for session_id in session_ids:
@@ -676,6 +713,29 @@ def test_task_treatment(task_name, treatment_name):
         "role_sessions": events["role_sessions"],
     }
     events["current_comet_build"] = current_comet_build
+    if getattr(task, "dataset_plan", None) and current_comet_build:
+        import hashlib
+        import json
+
+        comparison = {
+            "product": {
+                key: current_comet_build.get(key)
+                for key in ("sourceHash", "snapshotHash", "packageHash", "assetsHash")
+            },
+            "execution": {
+                key: captured_execution.report_identity.get(key)
+                for key in (
+                    "image_id_hash",
+                    "claude_tool_version_hash",
+                    "agent_cli_version_hash",
+                    "model_selection_hash",
+                    "interaction_hash",
+                )
+            },
+        }
+        events["dataset_comparison_identity"] = (
+            "sha256:" + hashlib.sha256(json.dumps(comparison, sort_keys=True).encode()).hexdigest()
+        )
     events["profile"] = outputs["profile"]
     events["agent"] = selected_agent
     events["role_models"] = role_models
@@ -683,6 +743,8 @@ def test_task_treatment(task_name, treatment_name):
     events["telemetry_status"] = outputs["telemetry_status"]
     events["skill_sources"] = outputs["skill_sources"]
     events["eval_manifest"] = outputs["eval_manifest"]
+    if getattr(fixtures.request_config, "_comet_dataset_plan_file", None):
+        events["eval_manifest"] = fixtures.request_config._comet_dataset_plan_file
     events["interaction"] = outputs["interaction"]
     events["case_manifest"] = case_manifest
     events["eval_generation"] = outputs["eval_generation"]
@@ -735,6 +797,13 @@ def test_task_treatment(task_name, treatment_name):
     # capture policy before sending them remotely.
     events["task"] = task.name
     events["validation_evidence"] = outputs.get("validation_evidence", {})
+    if "dataset_result" in outputs:
+        events["dataset_result"] = outputs["dataset_result"]
+        events["dataset_execution"] = getattr(task, "dataset_entry", {}).get("execution")
+        events["effective_agent_timeout_seconds"] = conftest._resolve_agent_timeout(
+            fixtures.request_config, task_timeout=task.config.timeout_sec, floor=CLAUDE_TIMEOUT
+        )
+    events["case_wall_duration_seconds"] = time.monotonic() - case_started
     if "application_coverage" in outputs:
         events["application_coverage"] = outputs["application_coverage"]
         events["application_executed_steps"] = outputs["application_executed_steps"]

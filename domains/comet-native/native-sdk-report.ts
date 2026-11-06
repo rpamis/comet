@@ -9,6 +9,8 @@ import {
 } from '../workflow-contract/protected-project-path.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { atomicWriteText } from './native-atomic-file.js';
+import type { NativeProjectPaths } from './native-types.js';
+import type { NativePortableState } from './native-portable-types.js';
 import {
   type RuntimeAction,
   type RuntimeExecutor,
@@ -33,9 +35,98 @@ import {
 import {
   renderNativeVerificationReport,
   writeNativeVerificationReport,
+  nativeVerificationResultHash,
+  nativeSdkVerificationReportOutput,
 } from './native-verification-report-v2.js';
 
 class NativeSdkReportDriftError extends Error {}
+
+/** 确认绑定结构化验收结果；Markdown 只供阅读。 */
+export function nativeSdkVerificationReportMetadata(
+  state: NativePortableState,
+  artifactRootRef: string,
+) {
+  return {
+    candidateId: state.builder_handoff!.candidate_id,
+    reportRef: path.posix.join(
+      artifactRootRef.replaceAll('\\', '/'),
+      'comet',
+      'changes',
+      state.name,
+      'verification.md',
+    ),
+    reportSha256: createHash('sha256').update(renderNativeVerificationReport(state)).digest('hex'),
+    stateVersion: state.state_version,
+    verificationResultHash: nativeVerificationResultHash(state),
+  };
+}
+
+/** 结果提交后可重试生成阅读视图，调用方单独报告写入失败。 */
+export async function refreshNativeSdkVerificationReport(
+  projectRoot: string,
+  run: Readonly<WorkflowRun>,
+): Promise<void> {
+  if (run.workflow.version !== '3') return;
+  const state = parseNativePortableState(run.state);
+  if (
+    state.phase !== 'verify' ||
+    state.status !== 'await-user' ||
+    state.verification_result !== 'pass' ||
+    !run.waits.some((wait) => wait.stepId === 'verify.confirm' && wait.status === 'pending')
+  )
+    return;
+  const report = nativeSdkVerificationReportOutput(run);
+  if (!report) throw new Error('Native verification view lacks its confirmed result binding');
+  const artifactRootRef = (run.input as { artifactRootRef: string }).artifactRootRef;
+  const config = await readProjectConfig(projectRoot);
+  if (!config || config.native.artifact_root !== artifactRootRef)
+    throw new Error('Native artifact root changed after Run creation');
+  const paths = await nativeProjectPaths(projectRoot, artifactRootRef);
+  await writeNativeSdkVerificationReport({
+    state,
+    paths,
+    runId: run.runId,
+    file: path.join(paths.changesDir, state.name, 'verification.md'),
+    previousReportSha256: report.reportSha256,
+  });
+}
+
+/** 归档收据保持原值，阅读文件的缺失或改写只影响当前展示。 */
+export async function nativeSdkArchivedReportWarning(
+  projectRoot: string,
+  run: Readonly<WorkflowRun>,
+): Promise<{ code: 'NATIVE_REPORT_PENDING'; message: string; reportRef: string } | undefined> {
+  if (run.workflow.version !== '3' || run.status !== 'completed') return undefined;
+  const state = parseNativePortableState(run.state);
+  if (!state.archived) return undefined;
+  const receipt = run.outputs['archive.finalize']?.value as { archiveRef?: unknown } | undefined;
+  if (
+    typeof receipt?.archiveRef !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}-[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(receipt.archiveRef)
+  )
+    return undefined;
+  const paths = await nativeProjectPaths(
+    projectRoot,
+    (run.input as { artifactRootRef: string }).artifactRootRef,
+    { readOnly: true },
+  );
+  const file = path.join(paths.archiveDir, receipt.archiveRef, 'verification.md');
+  const reportRef = path.relative(projectRoot, file).replaceAll('\\', '/');
+  const current = await readNativeBoundedTextFile({
+    root: paths.archiveDir,
+    ref: `${receipt.archiveRef}/verification.md`,
+    maxBytes: null,
+  }).catch(() => null);
+  const expected = createHash('sha256').update(renderNativeVerificationReport(state)).digest('hex');
+  if (current?.hash === expected) return undefined;
+  return {
+    code: 'NATIVE_REPORT_PENDING',
+    message: current
+      ? '归档已完成，验证报告保留现有原文；阅读视图与结构化验收结果不同。'
+      : '归档已完成，验证报告阅读视图尚不可用；结构化验收结果和归档收据已保存。',
+    reportRef,
+  };
+}
 
 function reportInput(run: Readonly<WorkflowRun>, action: Readonly<RuntimeAction>) {
   const state = parseNativePortableState(run.state);
@@ -78,6 +169,83 @@ async function reportTarget(
   return { state, file, ref, paths };
 }
 
+/** 写入阅读视图前保留用户原文，成功后返回实际文件摘要。 */
+export async function writeNativeSdkVerificationReport(options: {
+  state: NativePortableState;
+  paths: NativeProjectPaths;
+  runId: string;
+  file: string;
+  previousReportSha256?: unknown;
+}) {
+  const { state, paths, runId, file } = options;
+  const readCurrent = () =>
+    readNativeBoundedTextFile({
+      root: path.dirname(file),
+      ref: path.basename(file),
+      maxBytes: null,
+    }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+  const original = await readCurrent();
+  const generatedHash = createHash('sha256')
+    .update(renderNativeVerificationReport(state))
+    .digest('hex');
+  if (original?.hash === generatedHash) return { reportSha256: generatedHash };
+  let preservedReportRef: string | undefined;
+  if (
+    original &&
+    original.hash !== options.previousReportSha256 &&
+    original.hash !== generatedHash
+  ) {
+    const directory = `native/preserved-verification/${hashRuntimeValue(runId)}`;
+    await ensureProtectedProjectDirectory(paths.workspaceRuntimeRoot, directory, {
+      label: 'Native preserved verification report',
+    });
+    preservedReportRef = `${directory}/${original.hash}.md`;
+    const backup = path.join(paths.workspaceRuntimeRoot, ...preservedReportRef.split('/'));
+    let originalText = original.text;
+    if (createHash('sha256').update(originalText).digest('hex') !== original.hash) {
+      const withBom = `\uFEFF${originalText}`;
+      if (createHash('sha256').update(withBom).digest('hex') !== original.hash)
+        throw new Error('Native verification report bytes cannot be preserved');
+      originalText = withBom;
+    }
+    try {
+      await atomicWriteText(backup, originalText, {
+        containedRoot: paths.workspaceRuntimeRoot,
+        exclusive: true,
+      });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
+    const saved = await readNativeBoundedTextFile({
+      root: paths.workspaceRuntimeRoot,
+      ref: preservedReportRef,
+      maxBytes: null,
+    });
+    if (saved.hash !== original.hash)
+      throw new Error('Native preserved verification report changed');
+  }
+  await writeNativeVerificationReport({
+    file,
+    state,
+    beforeCommit: async () => {
+      const current = await readCurrent();
+      if ((current?.hash ?? null) !== (original?.hash ?? null))
+        throw new Error('Native verification report changed while preserving user edits');
+    },
+  });
+  const ref = path.relative(paths.projectRoot, file).replaceAll('\\', '/');
+  const current = await hashProtectedProjectFile(paths.projectRoot, ref, {
+    label: 'Native SDK verification report',
+  });
+  return {
+    reportSha256: current.digest,
+    ...(preservedReportRef ? { preservedReportRef, preservedReportSha256: original!.hash } : {}),
+  };
+}
+
 export const nativeSdkReportExecutor: RuntimeExecutor = {
   id: 'comet-native-report',
   capabilities: [],
@@ -85,72 +253,23 @@ export const nativeSdkReportExecutor: RuntimeExecutor = {
   async execute(action, context, run) {
     if (!context?.projectRoot || !run) throw new Error('Native report requires a bound SDK Run');
     const { state, file, ref, paths } = await reportTarget(run, action, context.projectRoot);
-    const readCurrent = () =>
-      readNativeBoundedTextFile({
-        root: path.dirname(file),
-        ref: path.basename(file),
-        maxBytes: null,
-      }).catch((error: NodeJS.ErrnoException) => {
-        if (error.code === 'ENOENT') return null;
-        throw error;
-      });
-    const original = await readCurrent();
     const previous = run.outputs['verify.report']?.value as { reportSha256?: unknown } | undefined;
-    const generatedHash = createHash('sha256')
-      .update(renderNativeVerificationReport(state))
-      .digest('hex');
-    let preservedReportRef: string | undefined;
-    if (original && original.hash !== previous?.reportSha256 && original.hash !== generatedHash) {
-      const directory = `native/preserved-verification/${hashRuntimeValue(run.runId)}`;
-      await ensureProtectedProjectDirectory(paths.workspaceRuntimeRoot, directory, {
-        label: 'Native preserved verification report',
-      });
-      preservedReportRef = `${directory}/${original.hash}.md`;
-      const backup = path.join(paths.workspaceRuntimeRoot, ...preservedReportRef.split('/'));
-      let originalText = original.text;
-      if (createHash('sha256').update(originalText).digest('hex') !== original.hash) {
-        const withBom = `\uFEFF${originalText}`;
-        if (createHash('sha256').update(withBom).digest('hex') !== original.hash)
-          throw new Error('Native verification report bytes cannot be preserved');
-        originalText = withBom;
-      }
-      try {
-        await atomicWriteText(backup, originalText, {
-          containedRoot: paths.workspaceRuntimeRoot,
-          exclusive: true,
-        });
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      }
-      const saved = await readNativeBoundedTextFile({
-        root: paths.workspaceRuntimeRoot,
-        ref: preservedReportRef,
-        maxBytes: null,
-      });
-      if (saved.hash !== original.hash)
-        throw new Error('Native preserved verification report changed');
-    }
-    await writeNativeVerificationReport({
-      file,
+    const written = await writeNativeSdkVerificationReport({
       state,
-      beforeCommit: async () => {
-        const current = await readCurrent();
-        if ((current?.hash ?? null) !== (original?.hash ?? null))
-          throw new Error('Native verification report changed while preserving user edits');
-      },
-    });
-    const current = await hashProtectedProjectFile(context.projectRoot, ref, {
-      label: 'Native SDK verification report',
+      paths,
+      runId: run.runId,
+      file,
+      previousReportSha256: previous?.reportSha256,
     });
     return {
       status: 'succeeded',
       output: {
         candidateId: state.builder_handoff!.candidate_id,
         reportRef: ref,
-        reportSha256: current.digest,
+        ...written,
         stateVersion: state.state_version,
-        ...(preservedReportRef
-          ? { preservedReportRef, preservedReportSha256: original!.hash }
+        ...(run.workflow.version !== '1'
+          ? { verificationResultHash: nativeVerificationResultHash(state) }
           : {}),
       } as unknown as RuntimeValue,
     };
@@ -171,12 +290,15 @@ export const nativeSdkReportValidator: RuntimeValidator = {
     try {
       const { state, ref, paths } = await reportTarget(run, action, context.projectRoot);
       const output = outcome.output as Record<string, unknown> | null;
-      const actual = await hashProtectedProjectFile(context.projectRoot, ref, {
-        label: 'Native SDK verification report',
-      });
       const expected = createHash('sha256')
         .update(renderNativeVerificationReport(state))
         .digest('hex');
+      const actual =
+        run.workflow.version !== '1'
+          ? { digest: expected }
+          : await hashProtectedProjectFile(context.projectRoot, ref, {
+              label: 'Native SDK verification report',
+            });
       if (
         !output ||
         output.candidateId !== state.builder_handoff!.candidate_id ||
@@ -187,6 +309,11 @@ export const nativeSdkReportValidator: RuntimeValidator = {
       ) {
         return { accepted: false, reason: 'Native verification report changed after generation' };
       }
+      if (
+        run.workflow.version !== '1' &&
+        output.verificationResultHash !== nativeVerificationResultHash(state)
+      )
+        return { accepted: false, reason: 'Native report result does not match accepted evidence' };
       if (output.preservedReportRef !== undefined || output.preservedReportSha256 !== undefined) {
         const expectedRef = `native/preserved-verification/${hashRuntimeValue(run.runId)}/${String(output.preservedReportSha256)}.md`;
         if (
@@ -247,7 +374,7 @@ async function revalidatedReport(
   await assertNativeEditReviewsComplete(paths, state);
   const file = path.join(paths.changesDir, state.name, 'verification.md');
   const ref = path.relative(projectRoot, file).replaceAll('\\', '/');
-  const prior = run.outputs['verify.report']?.value as Record<string, unknown> | undefined;
+  const prior = nativeSdkVerificationReportOutput(run);
   if (
     !prior ||
     prior.candidateId !== state.builder_handoff.candidate_id ||
@@ -256,6 +383,18 @@ async function revalidatedReport(
     typeof prior.reportSha256 !== 'string'
   ) {
     throw new Error('Native report approval is stale for the current candidate');
+  }
+  if (run.workflow.version !== '1') {
+    const verificationResultHash = nativeVerificationResultHash(state);
+    if (prior.verificationResultHash !== verificationResultHash)
+      throw new Error('Native verification result changed after user approval');
+    return {
+      candidateId: state.builder_handoff.candidate_id,
+      reportRef: ref,
+      reportSha256: prior.reportSha256,
+      stateVersion: state.state_version,
+      verificationResultHash,
+    };
   }
   const actual = await hashProtectedProjectFile(projectRoot, ref, {
     label: 'Native SDK verification report',
@@ -435,3 +574,5 @@ export async function recoverNativeSdkReportRevalidation(
     context,
   });
 }
+
+export { nativeSdkVerificationReportOutput } from './native-verification-report-v2.js';

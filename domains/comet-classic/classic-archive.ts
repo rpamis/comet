@@ -1,4 +1,5 @@
 import { assertClassicEditReviewsComplete } from './classic-edit-review.js';
+import { assertClassicAcceptedVerifyInputs } from './classic-command-checks.js';
 import { resolveClassicStateFile } from './classic-state-file.js';
 import { classicSdkEntryData } from './classic-sdk-output.js';
 import { createHash } from 'crypto';
@@ -495,6 +496,12 @@ export const classicArchiveCommand: ClassicCommandHandler = withProjectContext(a
         }
 
         if (!recovering) {
+          await assertClassicAcceptedVerifyInputs(
+            projectRoot,
+            changeDir,
+            runtime.run,
+            runtime.classic,
+          );
           await recordClassicArchiveRequirements(layout.projectRoot, changeDir);
           const action: EngineAction = {
             id: actionId,

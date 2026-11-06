@@ -1,5 +1,9 @@
 import { isNativeSdkChangeCancellationComplete } from './native-sdk-cancellation.js';
 import { assertNativeEditReviewsComplete } from './native-edit-review.js';
+import {
+  assertNativePortableRawCheckInputs,
+  readCurrentLocalExecution,
+} from './native-portable-checks.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -455,8 +459,7 @@ async function applySpecChange(options: {
   }
   const current = await readOptionalCanonicalSpec(options.paths, options.change.capability);
   const resultHash = options.change.result_hash ?? nativeTotalSpecHash(options.change.content);
-  if (current.hash === resultHash) return;
-  if (current.hash !== options.change.expected_target_hash) {
+  if (current.hash !== resultHash && current.hash !== options.change.expected_target_hash) {
     throw new Error(
       `Native canonical Spec changed after Archive preflight: ${options.change.capability}`,
     );
@@ -468,6 +471,7 @@ async function applySpecChange(options: {
   await atomicWriteText(sourceTarget, options.change.source_content ?? options.change.content, {
     containedRoot: options.paths.nativeRoot,
   });
+  if (current.hash === resultHash) return;
   await fs.mkdir(capabilityDirectory, { recursive: true });
   await atomicWriteText(target, options.change.content, {
     containedRoot: options.paths.nativeRoot,
@@ -678,6 +682,9 @@ export async function inspectNativePortableArchive(options: {
   requireCurrentAcceptance?: boolean;
   /** SDK 已校验用户确认报告的 hash，沿用该报告的版本，不在预检中改写。 */
   verificationReportStateVersion?: number;
+  /** 新 SDK 在提交时比较实际 Spec，旧流程保留同能力的串行安排。 */
+  checkCapabilityOwners?: boolean;
+  derivedReport?: boolean;
 }): Promise<{
   ready: boolean;
   blockers: string[];
@@ -703,6 +710,12 @@ export async function inspectNativePortableArchive(options: {
   try {
     assertArchiveReady(state);
     await assertNativeEditReviewsComplete(options.paths, state);
+    if (!options.state) {
+      const local = await readCurrentLocalExecution({ paths: options.paths, state });
+      if (state.builder_handoff?.raw_input_ref && !local)
+        throw new Error('Native 原始执行记录缺失；保留已接受结果并恢复原证据');
+      if (local?.rawInputRef) await assertNativePortableRawCheckInputs(options.paths, state, local);
+    }
   } catch (error) {
     blockers.push((error as Error).message);
   }
@@ -770,15 +783,19 @@ export async function inspectNativePortableArchive(options: {
         : {}),
     }));
   }
-  const alignment =
-    state.verification === null
+  const alignment = options.derivedReport
+    ? 'aligned'
+    : state.verification === null
       ? 'missing'
       : await inspectNativeVerificationReportAlignment({
           file: path.join(nativePortableChangeDir(options.paths, state.name), 'verification.md'),
           stateVersion: options.verificationReportStateVersion ?? state.state_version,
         });
   if (alignment !== 'aligned') blockers.push(`verification.md is ${alignment}`);
-  const peers = await otherPortableCapabilityOwners({ paths: options.paths, state });
+  const peers =
+    options.checkCapabilityOwners === false
+      ? []
+      : await otherPortableCapabilityOwners({ paths: options.paths, state });
   if (peers.length > 0) blockers.push(`capabilities are also declared by: ${peers.join(', ')}`);
   return {
     ready: blockers.length === 0,
@@ -796,6 +813,8 @@ export async function applyNativeSdkArchiveSpecs(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
   verificationReportStateVersion?: number;
+  checkCapabilityOwners?: boolean;
+  derivedReport?: boolean;
 }): Promise<NativePortableArchiveTransaction> {
   const { paths, state } = options;
   return withNativeMutationLock(
@@ -803,7 +822,6 @@ export async function applyNativeSdkArchiveSpecs(options: {
     `apply SDK Archive specs ${state.name}`,
     async () => {
       assertArchiveReady(state);
-      await assertNativeEditReviewsComplete(paths, state);
       let transaction = await readTransaction(paths, state.name);
       if (!transaction) {
         const preflight = await inspectNativePortableArchive({
@@ -811,6 +829,8 @@ export async function applyNativeSdkArchiveSpecs(options: {
           name: state.name,
           state,
           verificationReportStateVersion: options.verificationReportStateVersion,
+          checkCapabilityOwners: options.checkCapabilityOwners,
+          derivedReport: options.derivedReport,
         });
         if (!preflight.ready) {
           throw new Error(
@@ -831,7 +851,9 @@ export async function applyNativeSdkArchiveSpecs(options: {
         await writeTransaction(paths, transaction);
       } else {
         assertTransactionState(transaction, state);
-        await assertAppliedSpecsUnchanged(paths, transaction);
+        await assertNativeEditReviewsComplete(paths, state);
+        if (transaction.status === 'prepared')
+          await assertAppliedSpecsUnchanged(paths, transaction);
       }
       if (transaction.status === 'prepared') {
         for (
@@ -888,7 +910,9 @@ interface NativeSdkArchiveReceipt {
   archiveRef: string;
   transactionId: string;
   stateVersion: number;
-  reportSha256: string;
+  reportSha256: string | null;
+  verificationResultHash?: string;
+  preservedReportsRef?: string;
   specs: Array<{ capability: string; resultHash: string | null }>;
 }
 
@@ -971,7 +995,11 @@ async function assertSdkArchiveSources(
 }
 
 /** 中断恢复只接受原 SDK 状态确定生成的报告，不能为被修改的报告补发收据。 */
-async function assertSdkArchiveReport(directory: string, state: NativePortableState) {
+async function assertSdkArchiveReport(
+  directory: string,
+  state: NativePortableState,
+  derivedReport = false,
+) {
   const report = await readNativeBoundedTextFile({
     root: directory,
     ref: 'verification.md',
@@ -979,8 +1007,9 @@ async function assertSdkArchiveReport(directory: string, state: NativePortableSt
     includeHash: false,
   });
   if (
-    report.text !== renderNativeVerificationReport(state) ||
-    Buffer.byteLength(report.text, 'utf8') !== report.size
+    !derivedReport &&
+    (report.text !== renderNativeVerificationReport(state) ||
+      Buffer.byteLength(report.text, 'utf8') !== report.size)
   )
     throw new Error('Native SDK Archive 最终报告与原状态不匹配，恢复未覆盖报告');
   return report;
@@ -995,6 +1024,12 @@ export async function finalizeNativeSdkArchive(options: {
   priorReportSha256: string;
   /** 已持有 mutation lock；只核对候选，不再获取同一锁。 */
   validateCandidate: () => Promise<void>;
+  derivedReport?: {
+    verificationResultHash: string;
+    preservedReportsRef: string;
+    optionalView?: boolean;
+    write: (file: string) => Promise<unknown>;
+  };
 }): Promise<NativeSdkArchiveReceipt> {
   const { paths, state, runId } = options;
   return withNativeMutationLock(
@@ -1016,6 +1051,8 @@ export async function finalizeNativeSdkArchive(options: {
           state,
           runId,
           archiveRef: options.archiveRef,
+          verificationResultHash: options.derivedReport?.verificationResultHash,
+          allowMissingReport: options.derivedReport?.optionalView,
         });
         if (receipt.transactionId !== options.transactionId)
           throw new Error('Native SDK Archive 收据不属于原事务');
@@ -1053,29 +1090,42 @@ export async function finalizeNativeSdkArchive(options: {
         if (!(await exists(activeDir)) || (await exists(target))) {
           throw new Error('Native SDK Archive layout changed before final report');
         }
-        const report = await readNativeBoundedTextFile({
-          root: activeDir,
-          ref: 'verification.md',
-          maxBytes: null,
-          includeHash: false,
-        });
-        const finalReport = renderNativeVerificationReport(state);
-        if (report.text !== finalReport || Buffer.byteLength(report.text, 'utf8') !== report.size) {
-          if (
-            createHash('sha256').update(report.text).digest('hex') !== options.priorReportSha256 ||
-            Buffer.byteLength(report.text, 'utf8') !== report.size
-          )
-            throw new Error('Native SDK Archive 报告已偏离原预检或最终状态，恢复未覆盖报告');
-          await writeNativeVerificationReport({
-            file: path.join(activeDir, 'verification.md'),
-            state,
+        if (options.derivedReport) {
+          try {
+            await options.derivedReport.write(path.join(activeDir, 'verification.md'));
+          } catch (error) {
+            // 保留未能安全改写的原文，归档继续保存结构化验收结果。
+            if (!options.derivedReport.optionalView) throw error;
+          }
+        } else {
+          const report = await readNativeBoundedTextFile({
+            root: activeDir,
+            ref: 'verification.md',
+            maxBytes: null,
+            includeHash: false,
           });
+          const finalReport = renderNativeVerificationReport(state);
+          if (
+            report.text !== finalReport ||
+            Buffer.byteLength(report.text, 'utf8') !== report.size
+          ) {
+            if (
+              createHash('sha256').update(report.text).digest('hex') !==
+                options.priorReportSha256 ||
+              Buffer.byteLength(report.text, 'utf8') !== report.size
+            )
+              throw new Error('Native SDK Archive 报告已偏离原预检或最终状态，恢复未覆盖报告');
+            await writeNativeVerificationReport({
+              file: path.join(activeDir, 'verification.md'),
+              state,
+            });
+          }
+          const alignment = await inspectNativeVerificationReportAlignment({
+            file: path.join(activeDir, 'verification.md'),
+            stateVersion: state.state_version,
+          });
+          if (alignment !== 'aligned') throw new Error('Native SDK Archive report is not aligned');
         }
-        const alignment = await inspectNativeVerificationReportAlignment({
-          file: path.join(activeDir, 'verification.md'),
-          stateVersion: state.state_version,
-        });
-        if (alignment !== 'aligned') throw new Error('Native SDK Archive report is not aligned');
         transaction = { ...transaction, status: 'report-aligned' };
         await writeTransaction(paths, transaction);
       }
@@ -1084,7 +1134,12 @@ export async function finalizeNativeSdkArchive(options: {
         const targetExists = await exists(target);
         if (activeExists === targetExists)
           throw new Error('Native SDK Archive layout contradicts its transaction');
-        await assertSdkArchiveReport(activeExists ? activeDir : target, state);
+        if (!options.derivedReport?.optionalView)
+          await assertSdkArchiveReport(
+            activeExists ? activeDir : target,
+            state,
+            !!options.derivedReport,
+          );
         if (activeExists && !targetExists) {
           await fs.mkdir(paths.archiveDir, { recursive: true });
           await fs.rename(activeDir, target);
@@ -1097,7 +1152,13 @@ export async function finalizeNativeSdkArchive(options: {
       if (transaction.status !== 'moved' || (await exists(activeDir)) || !(await exists(target))) {
         throw new Error('Native SDK Archive has not moved the change');
       }
-      const report = await assertSdkArchiveReport(target, state);
+      const report = options.derivedReport?.optionalView
+        ? await readNativeBoundedTextFile({
+            root: target,
+            ref: 'verification.md',
+            maxBytes: null,
+          }).catch(() => null)
+        : await assertSdkArchiveReport(target, state, !!options.derivedReport);
       await assertAppliedSpecsUnchanged(paths, transaction);
       await options.validateCandidate();
       const receipt: NativeSdkArchiveReceipt = {
@@ -1106,7 +1167,19 @@ export async function finalizeNativeSdkArchive(options: {
         archiveRef: transaction.archive_ref,
         transactionId: transaction.id,
         stateVersion: state.state_version,
-        reportSha256: createHash('sha256').update(report.text).digest('hex'),
+        reportSha256: options.derivedReport?.optionalView
+          ? (report?.hash ?? null)
+          : createHash('sha256').update(report!.text).digest('hex'),
+        ...(options.derivedReport
+          ? {
+              verificationResultHash: options.derivedReport.verificationResultHash,
+              ...((await exists(
+                path.join(paths.workspaceRuntimeRoot, options.derivedReport.preservedReportsRef),
+              ))
+                ? { preservedReportsRef: options.derivedReport.preservedReportsRef }
+                : {}),
+            }
+          : {}),
         specs: transaction.spec_changes.map((change) => ({
           capability: change.capability,
           resultHash:
@@ -1135,6 +1208,8 @@ export async function inspectNativeSdkArchiveFinalization(options: {
   runId: string;
   archiveRef?: string;
   history?: boolean;
+  verificationResultHash?: string;
+  allowMissingReport?: boolean;
 }): Promise<NativeSdkArchiveReceipt> {
   const { paths, state, runId } = options;
   let receipt: NativeSdkArchiveReceipt;
@@ -1152,7 +1227,8 @@ export async function inspectNativeSdkArchiveFinalization(options: {
     receipt.change !== state.name ||
     receipt.stateVersion !== state.state_version ||
     (options.archiveRef !== undefined && receipt.archiveRef !== options.archiveRef) ||
-    !/^[0-9a-f]{64}$/u.test(receipt.reportSha256) ||
+    (!(typeof receipt.reportSha256 === 'string' && /^[0-9a-f]{64}$/u.test(receipt.reportSha256)) &&
+      !(options.allowMissingReport && receipt.reportSha256 === null)) ||
     !Array.isArray(receipt.specs) ||
     receipt.specs.length !== state.spec_changes.length ||
     receipt.specs.some(
@@ -1169,19 +1245,24 @@ export async function inspectNativeSdkArchiveFinalization(options: {
   }
   const target = archiveDirectory(paths, receipt.archiveRef);
   if (!(await exists(target))) throw new Error('Native SDK Archive destination is missing');
-  const report = await readNativeBoundedTextFile({
-    root: target,
-    ref: 'verification.md',
-    maxBytes: null,
-    includeHash: false,
-  });
-  if (
-    createHash('sha256').update(report.text).digest('hex') !== receipt.reportSha256 ||
-    // TextDecoder removes a leading UTF-8 BOM; report alignment still rejects it.
-    Buffer.byteLength(report.text, 'utf8') !== report.size ||
-    nativeVerificationReportStateVersion(report.text) !== state.state_version
-  ) {
-    throw new Error('Native SDK Archive report changed after finalization');
+  if (options.verificationResultHash !== undefined) {
+    if (receipt.verificationResultHash !== options.verificationResultHash)
+      throw new Error('Native SDK Archive verification result changed after finalization');
+  } else {
+    const report = await readNativeBoundedTextFile({
+      root: target,
+      ref: 'verification.md',
+      maxBytes: null,
+      includeHash: false,
+    });
+    if (
+      createHash('sha256').update(report.text).digest('hex') !== receipt.reportSha256 ||
+      // TextDecoder removes a leading UTF-8 BOM; report alignment still rejects it.
+      Buffer.byteLength(report.text, 'utf8') !== report.size ||
+      nativeVerificationReportStateVersion(report.text) !== state.state_version
+    ) {
+      throw new Error('Native SDK Archive report changed after finalization');
+    }
   }
   // 历史校验保留归档当时的证据；后续需求可以合法更新公共 Spec。
   for (const spec of options.history ? [] : receipt.specs) {
@@ -1252,6 +1333,16 @@ export async function archiveNativePortableChange(options: {
       }
       let supervisor = await readNativeSupervisorState(options.paths, options.name);
       if (
+        !state.archived &&
+        state.builder_handoff?.raw_input_ref &&
+        transaction &&
+        transaction.next_spec_index > 0 &&
+        (await readProjectConfig(options.paths.projectRoot))?.native.document_writes !== 'revert'
+      ) {
+        // 已发布步骤属于原事务；先核对，不能因外部改写删除原事务或重放这些步骤。
+        await assertAppliedSpecsUnchanged(options.paths, transaction);
+      }
+      if (
         activeExists &&
         !state.archived &&
         transaction !== null &&
@@ -1305,6 +1396,8 @@ export async function archiveNativePortableChange(options: {
             paths: options.paths,
             state,
           });
+          if (!deltaInspection.requiresReverification && deltaInspection.blockers.length)
+            throw new Error(deltaInspection.blockers.join('\n'));
           if (deltaInspection.requiresReverification) {
             const rebased = await rebaseNativePortableDeltasLocked({
               paths: options.paths,
@@ -1368,6 +1461,11 @@ export async function archiveNativePortableChange(options: {
         if (!state.archived) {
           assertArchiveReady(state);
           await assertNativeEditReviewsComplete(options.paths, state);
+          if (state.builder_handoff?.raw_input_ref) {
+            const local = await readCurrentLocalExecution({ paths: options.paths, state });
+            if (!local) throw new Error('Native 原始执行记录缺失；不能直接归档旧摘要');
+            await assertNativePortableRawCheckInputs(options.paths, state, local);
+          }
         } else if (state.status !== 'done' || state.loop.stage !== 'done') {
           throw new Error('Native active archived state is inconsistent');
         }
@@ -1399,16 +1497,14 @@ export async function archiveNativePortableChange(options: {
       }
 
       await assertAppliedSpecsUnchanged(options.paths, transaction);
-      const archiveOwnedPaths = transaction.spec_changes
-        .slice(0, transaction.next_spec_index)
-        .map(({ capability }) =>
-          path
-            .relative(
-              options.paths.projectRoot,
-              path.join(options.paths.specsDir, capability, 'spec.md'),
-            )
-            .replaceAll('\\', '/'),
-        );
+      const archiveOwnedPaths = transaction.spec_changes.map(({ capability }) =>
+        path
+          .relative(
+            options.paths.projectRoot,
+            path.join(options.paths.specsDir, capability, 'spec.md'),
+          )
+          .replaceAll('\\', '/'),
+      );
       let supervisorDelivered = false;
       if (transaction.status === 'prepared' && supervisor && !state.archived) {
         // Do not publish the parent's canonical Specs before Supervisor has
@@ -1417,11 +1513,16 @@ export async function archiveNativePortableChange(options: {
           paths: options.paths,
           state: supervisor,
           archiveOwnedPaths,
+          deferCleanup: true,
         });
         supervisor = delivered.state;
-        supervisorDelivered = true;
       }
       if (transaction.status === 'prepared') {
+        if (!state.archived && state.builder_handoff?.raw_input_ref) {
+          const local = await readCurrentLocalExecution({ paths: options.paths, state });
+          if (!local) throw new Error('Native 原始执行记录缺失；保留原归档事务并恢复证据');
+          await assertNativePortableRawCheckInputs(options.paths, state, local);
+        }
         for (
           let index = transaction.next_spec_index;
           index < transaction.spec_changes.length;
@@ -1443,6 +1544,11 @@ export async function archiveNativePortableChange(options: {
       await assertAppliedSpecsUnchanged(options.paths, transaction);
 
       if (transaction.status === 'specs-applied') {
+        if (!state.archived && state.builder_handoff?.raw_input_ref) {
+          const local = await readCurrentLocalExecution({ paths: options.paths, state });
+          if (!local) throw new Error('Native 原始执行记录缺失；保留已应用步骤并恢复证据');
+          await assertNativePortableRawCheckInputs(options.paths, state, local);
+        }
         // Supervisor delivery is the parent-level commit boundary. Do it before
         // finalizing the portable parent as archived so a target-drift blocker
         // cannot expose a false archived state while delivery is still pending.

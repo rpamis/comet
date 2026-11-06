@@ -76,6 +76,51 @@ describe('managed Eval worker process', () => {
       fs.stat(await evalRunPath(project, 'worker-run', 'container-ownership.json')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
   });
+  it.each(['native', 'goal'])(
+    'dispatches a cached dataset through the public CLI using %s',
+    async (datasetTreatment) => {
+      const root = path.join(project, '.comet/eval/cache/datasets/skillsbench-1.1');
+      await fs.mkdir(path.join(root, 'tasks'), { recursive: true });
+      await fs.writeFile(
+        path.join(root, 'dataset-source.json'),
+        JSON.stringify({
+          dataset: 'skillsbench',
+          revision: 'b63b7b2850226b6aa4fb5929a8c1ac7bc4d9a6af',
+          archiveSha256: '525bf1559a1eb3511ca2daaf2a307e2dd882efd646c130a730de0f9f37da34d7',
+        }),
+      );
+      const file = await evalRunPath(project, 'worker-run', 'dashboard-run.json');
+      const record = JSON.parse(await fs.readFile(file, 'utf8'));
+      Object.assign(record.config, {
+        dataset: 'skillsbench',
+        task: 'example',
+        count: 2,
+        datasetTreatment,
+      });
+      await writeEvalJson(file, record);
+      await fs.writeFile(
+        path.join(packageRoot, 'bin/comet.js'),
+        "const fs=require('node:fs'),p=require('node:path');fs.writeFileSync(p.join(process.cwd(),'dataset-args.json'),JSON.stringify(process.argv.slice(2))); ",
+      );
+      await runManagedEvalWorker(project, 'worker-run');
+      const args = JSON.parse(await fs.readFile(path.join(project, 'dataset-args.json'), 'utf8'));
+      expect(args.slice(0, 7)).toEqual([
+        'eval',
+        '--dataset',
+        'skillsbench',
+        '--dataset-root',
+        root,
+        '--count',
+        '2',
+      ]);
+      expect(args).toContain('example');
+      expect(args).not.toContain('skill');
+      expect(args.includes('--dataset-treatment')).toBe(datasetTreatment === 'goal');
+      if (datasetTreatment === 'goal')
+        expect(args[args.indexOf('--dataset-treatment') + 1]).toBe('goal');
+    },
+    30000,
+  );
   it('runs a real harmless child process and indexes its result under the original identity', async () => {
     await fs.writeFile(
       path.join(packageRoot, 'bin/comet.js'),
@@ -101,6 +146,39 @@ describe('managed Eval worker process', () => {
     expect(
       await fs.readFile(await evalRunPath(project, 'worker-run', 'execution.log'), 'utf8'),
     ).toContain('真实评估完成');
+  }, 30000);
+
+  it('runs a dataset without a deadline while preserving managed ownership and completion', async () => {
+    const root = path.join(project, '.comet/eval/cache/datasets/skillsbench-1.1');
+    await fs.mkdir(path.join(root, 'tasks'), { recursive: true });
+    await fs.writeFile(
+      path.join(root, 'dataset-source.json'),
+      JSON.stringify({
+        dataset: 'skillsbench',
+        revision: 'b63b7b2850226b6aa4fb5929a8c1ac7bc4d9a6af',
+        archiveSha256: '525bf1559a1eb3511ca2daaf2a307e2dd882efd646c130a730de0f9f37da34d7',
+      }),
+    );
+    const file = await evalRunPath(project, 'worker-run', 'dashboard-run.json');
+    const record = JSON.parse(await fs.readFile(file, 'utf8'));
+    Object.assign(record.config, { dataset: 'skillsbench', task: 'example', timeoutSeconds: 0 });
+    await writeEvalJson(file, record);
+    await fs.writeFile(
+      path.join(packageRoot, 'bin/comet.js'),
+      `const fs=require('node:fs'),p=require('node:path');console.log('dataset has no deadline');setTimeout(()=>{fs.writeFileSync(p.join(process.cwd(),'.comet/eval/runs/worker-run/metadata.json'),JSON.stringify({completed_at:new Date().toISOString(),total_runs:1}));console.log('dataset finished');},200);`,
+    );
+    await runManagedEvalWorker(project, 'worker-run');
+    const run = await readEvalRun(project, 'worker-run');
+    expect(run.executionStatus).toBe('completed');
+    expect(JSON.parse(await fs.readFile(file, 'utf8')).exitCode).toBe(0);
+    expect(
+      await fs.readFile(await evalRunPath(project, 'worker-run', 'execution.log'), 'utf8'),
+    ).toContain('dataset finished');
+    expect(
+      JSON.parse(
+        await fs.readFile(await evalRunPath(project, 'worker-run', 'process-cleanup.json'), 'utf8'),
+      ).confirmed,
+    ).toBe(true);
   }, 30000);
   it('stops an owned child through its run request and preserves incomplete evidence', async () => {
     await fs.writeFile(

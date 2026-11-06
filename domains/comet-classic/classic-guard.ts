@@ -1,12 +1,14 @@
-import { assertClassicEditReviewsComplete } from './classic-edit-review.js';
+import {
+  assertClassicEditReviewsComplete,
+  rememberClassicCompatFormalSources,
+} from './classic-edit-review.js';
 import { resolveClassicStateFile } from './classic-state-file.js';
-import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import { inspectClassicAutonomousBuildProblems } from './classic-plan-readiness.js';
 import { classicIssue, type ClassicIssue } from './classic-issues.js';
 import { classicDocumentLanguageMismatch } from './classic-document-language.js';
 import { classicRecoveryContext } from './classic-recovery.js';
-import { handoffSourceHash } from './classic-handoff-source.js';
+import { computeContextHash, readClassicHandoffSourceHashes } from './classic-handoff.js';
 import {
   classicArchivedRequirementsProblems,
   readClassicArtifactRequirements,
@@ -25,6 +27,7 @@ import {
   evaluateCommandCheck,
   latestCommandCheck,
   latestInterruptedCommandCheck,
+  rememberClassicAcceptedVerifyCheck,
   executeCommandCheck,
   type CommandCheckEvaluation,
   type CommandCheckScope,
@@ -234,15 +237,6 @@ async function documentLanguageMatchesConfigured(
   return issue ? fail(issue) : pass();
 }
 
-async function hashFile(file: string): Promise<string> {
-  return handoffSourceHash(
-    file,
-    await readClassicProjectFile(classicCommandProjectRoot(), file, {
-      label: `Classic handoff source ${file}`,
-    }),
-  );
-}
-
 async function handoffSourceFiles(changeDir: string): Promise<string[]> {
   // Use forward-slash concatenation (not path.join, which uses the OS separator)
   // so the handoff-hash input and markdown `Source:` references match the frozen
@@ -256,15 +250,11 @@ async function handoffSourceFiles(changeDir: string): Promise<string[]> {
 }
 
 async function computeHandoffHash(changeDir: string): Promise<string> {
-  const lines: string[] = [];
-  for (const file of await handoffSourceFiles(changeDir)) {
-    if (await exists(file)) {
-      lines.push(`path:${file}`, `sha256:${await hashFile(file)}`);
-    }
-  }
-  // Match the frozen shell: command substitution $(...) strips the trailing
-  // newline, so the hashed payload ends with the last sha256 line (no trailing \n).
-  return createHash('sha256').update(lines.join('\n')).digest('hex');
+  return computeContextHash(
+    classicCommandProjectRoot(),
+    changeDir,
+    classicProjectRelative(classicCommandProjectRoot(), changeDir),
+  );
 }
 
 async function preflight(changeDir: string, name: string): Promise<void> {
@@ -1002,12 +992,13 @@ async function designHandoffMarkdownTraceable(changeDir: string): Promise<CheckR
   if (!/^- Mode: (compact|full|beta)$/mu.test(source)) {
     problems.push('handoff markdown is missing Mode marker');
   }
+  const sourceHashes = await readClassicHandoffSourceHashes(classicCommandProjectRoot(), changeDir);
   for (const file of await handoffSourceFiles(changeDir)) {
     if (!(await exists(file))) continue;
     if (!lines.has(`- Source: ${file}`)) {
       problems.push(`handoff markdown is missing source reference: ${file}`);
     }
-    if (!lines.has(`- SHA256: ${await hashFile(file)}`)) {
+    if (!lines.has(`- SHA256: ${sourceHashes.get(file)}`)) {
       problems.push(`handoff markdown is missing current sha256 for: ${file}`);
     }
   }
@@ -1317,6 +1308,7 @@ async function applyStateUpdateLocked(
   // boundBranchMatches may have lazily healed bound_branch on disk, and a
   // stale projection would write the pre-heal null back over it.
   const context = await ensureClassicRuntimeRun(changeDir);
+  let acceptedBuild: RecordedCommandCheck | undefined;
   if (phase === 'verify' || phase === 'archive')
     await assertClassicEditReviewsComplete(classicCommandProjectRoot(), change, context.classic);
   if ((phase === 'build' || phase === 'verify') && process.env.COMET_SKIP_BUILD !== '1') {
@@ -1343,12 +1335,55 @@ async function applyStateUpdateLocked(
             : 'Check evidence changed before transition; rerun the check.';
       throw new GuardFailure(reason);
     }
+    if (phase === 'build') acceptedBuild = record;
   }
   const result = applyClassicTransition(context.classic, event);
+  let formalSources =
+    acceptedBuild && result.classic.workflow === 'full'
+      ? await rememberClassicCompatFormalSources(
+          classicCommandProjectRoot(),
+          change,
+          result.classic,
+          context.run,
+          acceptedBuild,
+        )
+      : {};
+  if (phase === 'open' && result.classic.workflow !== 'full') {
+    const requirements = await readClassicArtifactRequirements(
+      classicCommandProjectRoot(),
+      changeDir,
+    );
+    if (requirements.problems.length) throw new GuardFailure(requirements.problems.join('\n'));
+    formalSources = await rememberClassicCompatFormalSources(
+      classicCommandProjectRoot(),
+      change,
+      result.classic,
+      context.run,
+      undefined,
+      requirements.files.map((file) => classicProjectRelative(classicCommandProjectRoot(), file)),
+    );
+  }
+  if (phase === 'verify' && process.env.COMET_SKIP_BUILD !== '1') {
+    const check = await latestCommandCheck(
+      classicCommandProjectRoot(),
+      changeDir,
+      context.run,
+      'verify',
+    );
+    if (!check) throw new GuardFailure('Verify 检查已变化，不能记录接受证据');
+    await rememberClassicAcceptedVerifyCheck(
+      classicCommandProjectRoot(),
+      changeDir,
+      context.run,
+      result.classic,
+      check,
+    );
+  }
   await transitionClassicRuntimeRun(changeDir, result.classic, context.run, {
     event,
     phase,
     source: 'comet-guard',
+    ...formalSources,
   });
   await appendClassicStateEvent(changeDir, {
     change,
