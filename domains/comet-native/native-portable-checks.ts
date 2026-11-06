@@ -633,8 +633,16 @@ export async function nativeRawInputSnapshot(options: {
           return;
         }
         await readSession.observeDirectory(ref);
-        for (const entry of await fs.readdir(target, { withFileTypes: true })) {
-          if (entry.isDirectory() && NATIVE_DEPENDENCY_INPUT_DIRECTORIES.has(entry.name)) continue;
+        const entries = await fs.readdir(target, { withFileTypes: true });
+        // 同层文件独立核对；目录仍逐个递归，避免嵌套目录放大并发。
+        await mapWithConcurrency(
+          entries.filter((entry) => !entry.isDirectory()),
+          16,
+          (entry) => visit(`${ref}/${entry.name}`),
+        );
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          if (NATIVE_DEPENDENCY_INPUT_DIRECTORIES.has(entry.name)) continue;
           await visit(`${ref}/${entry.name}`);
         }
       };

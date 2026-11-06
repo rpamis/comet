@@ -1725,13 +1725,7 @@ Ship the behavior.
     expect(completed.state.verification?.risks[0]).toMatchObject({ truncated: true });
   });
 
-  it.each([
-    'ordinary',
-    'next-production',
-    'large-dependencies',
-    'incomplete-sensitive-input',
-    'incomplete-file-limit',
-  ])('reruns checks when an ignored generated input changes (%s)', async (fixture) => {
+  const assertGeneratedInputRevalidation = async (fixture: string) => {
     execFileSync('git', ['-C', root, 'init', '-b', 'master'], { stdio: 'ignore' });
     await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n.next/\nnode_modules/\n.comet/\n');
     await fs.writeFile(path.join(root, 'baseline.txt'), 'baseline\n');
@@ -1848,7 +1842,19 @@ Ship the behavior.
     expect(secondLocal?.checks).toMatchObject([
       { id: plan.id, status: 'failed', exitCode: 7, executionCount: 2 },
     ]);
-  });
+  };
+
+  it.each(['ordinary', 'next-production', 'large-dependencies', 'incomplete-sensitive-input'])(
+    'reruns checks when an ignored generated input changes (%s)',
+    assertGeneratedInputRevalidation,
+  );
+
+  // 全量读取 20,001 个生成文件需要独立的测试期限，文件和结果断言保持完整。
+  it(
+    'reruns checks when an ignored generated input changes (incomplete-file-limit)',
+    () => assertGeneratedInputRevalidation('incomplete-file-limit'),
+    240_000,
+  );
 
   it('does not hold the project mutation lock while a requested check is running', async () => {
     await createNativePortableChange({ paths, name: 'requested-check-lock', language: 'en' });

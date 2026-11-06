@@ -10826,6 +10826,33 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-generated-input-metadata-concurrency",
+      "sources": ["https://github.com/rpamis/comet/actions/runs/42132150954/job/127611761192"],
+      "coverageLevel": "runtime",
+      "behavior": "Capture every generated input with bounded concurrent leaf metadata reads, drain failures, and rerun byte-bound checks for a complete 20001-file directory.",
+      "reproduction": "On 5736d365 the Windows core shard completed 55/56 groups; the incomplete-file-limit Runtime scenario exceeded the generic 120-second test deadline. The same scenario passed locally in 51 seconds, so the CI timeout was not reproduced locally. Two latency-controlled leaf-observation tests fail on the serial walker and pass after bounded overlap.",
+      "rootCause": "The new full-input Runtime scenario performs several complete captures of 20001 generated files. Its metadata walk awaited independent files serially and the scenario inherited a generic 120-second suite deadline rather than a dedicated allowance for its full disk workload.",
+      "expected": "Read all 20001 generated files without any count or byte cap; detect the edited input and execute the second command with exit code 7 and executionCount 2. Overlap at most 16 leaf observations, drain started work after failure, and report an incomplete snapshot. Only this large scenario receives a 240-second test allowance.",
+      "forbidden": "Drop files, relax byte or identity fences, restore project-level input limits, reuse incomplete evidence, alter the check command timeout, rename the five Runtime cases, or widen the other four scenario deadlines.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-input-fingerprint.test.ts",
+          "namePattern": "captures generated leaf metadata with bounded overlap and drains failures \\(failure=(?:false|true)\\)",
+          "requiredNames": [
+            "Native check input fingerprint captures generated leaf metadata with bounded overlap and drains failures (failure=false)",
+            "Native check input fingerprint captures generated leaf metadata with bounded overlap and drains failures (failure=true)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^Native portable Runtime vertical path reruns checks when an ignored generated input changes \\(incomplete-file-limit\\)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path reruns checks when an ignored generated input changes (incomplete-file-limit)"
+          ]
+        }
+      ]
     }
   ]
 }
