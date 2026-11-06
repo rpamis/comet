@@ -21,6 +21,9 @@ import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
 import { parseClassicStateDocument } from '../../../domains/comet-classic/classic-state.js';
 
 const roots: string[] = [];
+// Both transient directories that `migrationFiles` can record a fence from. They are
+// omitted from the archived tree, so the fence reaches `optionalFiles` instead.
+const FENCES = ['.comet-state.lock', '.comet-state-transaction.json'] as const;
 afterEach(async () => {
   vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
@@ -52,6 +55,7 @@ async function hotfix(
     interruptArchive?: boolean;
     forgedBaseline?: boolean;
     projectAlias?: boolean;
+    migrationFence?: (typeof FENCES)[number];
   } = {},
 ) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-delivery-scope-'));
@@ -222,6 +226,24 @@ async function hotfix(
   );
   const inspect = () => inspectClassicSdkRun(projectRoot, 'example');
   const verified = (await inspect()).run;
+  // The transient directories are gitignored, but a tracked migration fence
+  // inside one still moves with the change. Track it so the archive commit
+  // contains both sides of the move.
+  if (options.migrationFence) {
+    const fenceRef = `${activeRef}/${options.migrationFence}/.comet-runtime-migration.json`;
+    await put(
+      fenceRef,
+      JSON.stringify({
+        schema: 'comet.workspace-runtime-migration.v1',
+        workspaceId: 'a'.repeat(64),
+        source: path.join(projectRoot, 'runtime-source'),
+        target: path.join(projectRoot, 'runtime-target'),
+        kind: 'file',
+      }),
+    );
+    git('add', '-f', '--', fenceRef);
+    git('commit', '-m', 'track the runtime migration fence');
+  }
   let remoteRoot: string | undefined;
   if (options.deliveryAction === 'push') {
     remoteRoot = path.join(root, 'remote.git');
@@ -1007,3 +1029,90 @@ it('revalidates a portable historical archive outcome without inventing new exec
   expect((await inspectClassicSdkRun(copiedRoot, 'example')).run).toEqual(restored.run);
   expect(await f.openSpec.invocations()).toHaveLength(1);
 });
+
+it.each(FENCES)(
+  'delivers a tracked migration fence in %s that the archive moves with the change',
+  async (fence) => {
+    const f = await hotfix({ migrationFence: fence });
+    f.commitImplementation();
+    f.git('add', '-f', '--', `${f.archiveRef}/${fence}/.comet-runtime-migration.json`);
+    // A real archive commit stages the move, so the active path is recorded as a
+    // deletion. Stage it explicitly: delivery inspects both sides of the move.
+    f.git('add', '-A', '--', f.activeRef);
+    // The manifest is the one an already-archived Run would carry: the writer never
+    // records the active fence path in `sources`, so delivery succeeds only through
+    // the read-side allowance. Assert that shape rather than trusting the outcome,
+    // otherwise a write-side change would silently make this test pass for the wrong
+    // reason and leave existing archives broken.
+    const manifest = JSON.parse(
+      await fs.readFile(
+        path.join(f.projectRoot, f.archiveRef, '.comet/archive-manifest.json'),
+        'utf8',
+      ),
+    ) as { sources: Record<string, string>; optionalFiles: Record<string, string> };
+    expect(Object.keys(manifest.sources).filter((ref) => ref.includes(fence))).toEqual([]);
+    expect(
+      manifest.optionalFiles[`${f.archiveRef}/${fence}/.comet-runtime-migration.json`],
+    ).toEqual(expect.any(String));
+    const commit = f.commitArchive();
+    const runtime = await publicStateRuntime(f.root);
+    const delivered = spawnSync(
+      process.execPath,
+      [runtime, 'complete-delivery', 'example', '--commit', commit, '--json'],
+      { cwd: f.projectRoot, encoding: 'utf8' },
+    );
+    expect(delivered.status, delivered.stdout || delivered.stderr).toBe(0);
+    expect(JSON.parse(delivered.stdout).data.nextAction.kind).toBe('done');
+  },
+);
+
+it.each(FENCES)(
+  'rejects an archive commit that drops a tracked migration fence in %s instead of moving it',
+  async (fence) => {
+    const f = await hotfix({ migrationFence: fence });
+    f.commitImplementation();
+    const archivedFence = `${f.archiveRef}/${fence}/.comet-runtime-migration.json`;
+    // Record the deletion of the active path, then remove the archived copy so the
+    // commit drops the fence instead of moving it. Approving the deletion side must
+    // not be enough on its own.
+    f.git('add', '-A', '--', f.activeRef);
+    await fs.rm(path.join(f.projectRoot, f.archiveRef, fence), {
+      recursive: true,
+      force: true,
+    });
+    const commit = f.commitArchive();
+    const rejected = await f.invoke('state', 'complete-delivery', 'example', '--commit', commit);
+    expect(rejected.exitCode).not.toBe(0);
+    expect(rejected.response.stderr).toContain(archivedFence);
+  },
+);
+
+it.each(FENCES)(
+  'rejects an archive commit whose migrated fence in %s no longer matches the recorded digest',
+  async (fence) => {
+    const f = await hotfix({ migrationFence: fence });
+    f.commitImplementation();
+    const archivedFence = path.join(
+      f.projectRoot,
+      f.archiveRef,
+      fence,
+      '.comet-runtime-migration.json',
+    );
+    f.git('add', '-A', '--', f.activeRef);
+    // The destination is committed, so the deletion is approved, but its bytes are no
+    // longer the ones the archive recorded. Approving the move must not approve a
+    // different file than the one that was archived.
+    await fs.writeFile(archivedFence, `${await fs.readFile(archivedFence, 'utf8')} `);
+    f.git('add', '-f', '--', `${f.archiveRef}/${fence}/.comet-runtime-migration.json`);
+    const commit = f.commitArchive();
+    const rejected = await f.invoke('state', 'complete-delivery', 'example', '--commit', commit);
+    expect(rejected.exitCode).not.toBe(0);
+    // Assert the reason, not just the rejection: the base commit also rejects this
+    // case, but as an unapproved path. Only the content check makes it fail here for
+    // the reason under test.
+    expect(rejected.response.stderr).toContain('Classic verified implementation changed');
+    expect(rejected.response.stderr).toContain(
+      `${f.archiveRef}/${fence}/.comet-runtime-migration.json`,
+    );
+  },
+);

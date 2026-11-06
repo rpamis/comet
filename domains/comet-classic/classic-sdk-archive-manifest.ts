@@ -518,6 +518,14 @@ export async function recoverClassicArchiveManifest(
   return [record.artifact];
 }
 
+/**
+ * Rebuilds the delivery inputs recorded by the Archive action for this Run.
+ *
+ * The manifest is bound to the archived artifact digest, so it is verified before use
+ * and never rewritten. The active path of a tracked migration fence is derived from
+ * `optionalFiles`, which is what lets an archive created before that allowance existed
+ * still complete delivery.
+ */
 export async function readClassicArchiveManifest(
   root: string,
   run: Readonly<WorkflowRun>,
@@ -574,6 +582,15 @@ export async function readClassicArchiveManifest(
   const inputs = { ...manifest.files, [uri]: artifact.sha256 };
   for (const ref of Object.keys(manifest.sources))
     if (ref.startsWith(`${activeRef}/`)) inputs[ref] = 'missing';
+  // `tree()` omits the transient `.comet-state.lock` directory, so a tracked
+  // migration fence is recorded in `optionalFiles` only, remapped to the archive
+  // path. The move still deletes it from the active path, so approve that deletion
+  // from the optional file itself. Doing this on the read side also keeps archives
+  // written before this change deliverable: their manifests are bound to the
+  // Archive outcome digest and cannot be rewritten.
+  for (const ref of Object.keys(manifest.optionalFiles ?? {}))
+    if (ref.startsWith(`${archiveRef}/`))
+      inputs[`${activeRef}/${ref.slice(archiveRef.length + 1)}`] = 'missing';
   inputs[`${activeRef}/${path.posix.basename(stateRef)}`] = 'missing';
   return {
     inputs,
