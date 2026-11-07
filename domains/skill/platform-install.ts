@@ -2671,6 +2671,7 @@ export {
   removeManagedWindsurfHooksFromJsonFile,
   planSkillDirectoryCopy,
   mergeProjectConfig,
+  mergeHookGroups,
   parseProjectConfigOverrides,
   renderProjectConfig,
   getCentralSkillsDir,

@@ -62,7 +62,10 @@ describe('repository layout registry', () => {
   it('tracks active source roots', () => {
     const layout = readRepositoryLayout();
 
-    expect(layout.sourceRoots).toEqual(['app', 'domains', 'platform']);
+    expect(layout.sourceRoots).toEqual(['app', 'domains', 'platform', 'plugin']);
+    expect(layout.pluginModules).toEqual(['codex', 'dsh']);
+    expect(layout.codexPlugin.templateRoot).toBe('plugin/codex');
+    expect(layout.dshPlugin.templateRoot).toBe('plugin/dsh');
     expect(layout.appModules).toEqual(['cli', 'commands']);
     expect(layout.domainModules).toEqual([
       'agent-learning',

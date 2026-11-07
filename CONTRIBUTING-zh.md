@@ -64,7 +64,7 @@ pnpm build
 | `pnpm lint`                  | ESLint + 架构 linter                                                      |
 | `pnpm lint:architecture`     | 仓库分层 linter（`scripts/lint/architecture.mjs`）                        |
 | `pnpm lint:fix`              | ESLint 自动修复                                                           |
-| `pnpm format`                | Prettier 格式化 `app/`、`domains/`、`platform/`                           |
+| `pnpm format`                | Prettier 格式化 `app/`、`domains/`、`platform/`、`plugin/`                |
 | `pnpm format:check`          | Prettier 校验（CI 强制）                                                  |
 | `pnpm benchmark:context`     | 上下文压缩 benchmark                                                      |
 | `pnpm benchmark:execution`   | 上下文执行 benchmark                                                      |
@@ -177,7 +177,7 @@ docs: update contributor commit rules
 
 ## 本地 Pre-commit 钩子
 
-仓库已配置 Git pre-commit 钩子（`.husky/pre-commit` + `lint-staged`），每次 `git commit` 会自动对 `app/`、`domains/`、`platform/` 下的暂存源文件运行 `prettier --write`，与 CI `format:check` 范围一致，不依赖编辑器，所有贡献者生效。
+仓库已配置 Git pre-commit 钩子（`.husky/pre-commit` + `lint-staged`），每次 `git commit` 会自动对 `app/`、`domains/`、`platform/`、`plugin/`、`scripts/`、`test/`、`.github/`、`config/` 下的暂存源文件运行 `prettier --write`，与 CI `format:check` 范围一致，不依赖编辑器，所有贡献者生效。
 
 - 钩子在 `pnpm install` 时由 `husky` 安装。
 - Windows 上若 `core.autocrlf=true`，未改动的旧文件可能因 CRLF 被 `prettier --check` 误报；钩子只处理暂存文件，旧文件下次编辑时会自动转为 LF。
@@ -234,6 +234,10 @@ platform/            # 平台适配层，domain 不直接散落平台差异
 ├── process/         # 子进程、错误处理、shell quoting
 └── version/         # 版本比较
 
+plugin/              # 平台插件源码与模板
+├── codex/           # Codex 清单、MCP 入口与 Dashboard 包装
+└── dsh/             # DeepSeek Harness Host/Client 插件
+
 scripts/             # 仓库自动化脚本（构建/发布/benchmark/lint/install）
 ├── benchmark/       # benchmark 套件
 ├── build/           # Classic、Native、Entry runtime builder
@@ -257,8 +261,8 @@ docs/                # 架构、运维、设计文档（docs/superpowers/ 由工
 `pnpm lint:architecture`（`scripts/lint/architecture.mjs`）会校验：
 
 - 顶层目录白名单（`config/repository-layout.json` 的 `allowedTopLevelEntries`）。
-- 活跃源码根只能是 `app` / `domains` / `platform`（`sourceRoots`）。
-- 各层的子模块（`appModules` / `domainModules` / `platformModules` / `scriptModules`）。
+- 活跃源码根为 `app` / `domains` / `platform` / `plugin`（`sourceRoots`）。
+- 各层的子模块（`appModules` / `domainModules` / `platformModules` / `pluginModules` / `scriptModules`）；`plugin/codex`、`plugin/dsh` 依赖共享层，共享层不反向依赖插件。
 - Classic、Native 与 Entry runtime 入口和生成物一致性。
 - 内置 Skill 根目录与 install manifest 一致。
 - 测试归属（见下节）。

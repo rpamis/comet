@@ -9,6 +9,22 @@ import {
 } from '../../scripts/lint/verify-changed.mjs';
 
 describe('changed verification planner', () => {
+  it('covers plugin adapters and templates with their platform packaging checks', () => {
+    const plan = planChangedVerification(['plugin/codex/mcp-server.ts', 'plugin/dsh/package.json']);
+    expect(plan.map((check) => check.id)).toEqual([
+      'architecture',
+      'typecheck',
+      'format',
+      'plugin:codex',
+      'plugin:dsh',
+    ]);
+    expect(plan.find((check) => check.id === 'plugin:codex')?.args).toContain(
+      'test/scripts/codex-plugin-build.test.ts',
+    );
+    expect(plan.find((check) => check.id === 'plugin:dsh')?.args).toContain(
+      'test/scripts/dsh-plugin-build.test.ts',
+    );
+  });
   it('maps Runtime, rule, and test changes to deterministic read-only checks', () => {
     const plan = planChangedVerification([
       'domains/comet-native/native-portable-checks.ts',

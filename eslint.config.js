@@ -20,7 +20,11 @@ export default tseslint.config(
     },
   },
   {
-    files: ['domains/dashboard/web/src/**/*.{js,jsx}'],
+    files: [
+      'domains/dashboard/web/src/**/*.{js,jsx}',
+      'plugin/codex/web/**/*.js',
+      'plugin/dsh/client.js',
+    ],
     languageOptions: {
       parserOptions: { ecmaFeatures: { jsx: true } },
       // Declare browser APIs without hiding accidental out-of-scope identifiers.
@@ -73,5 +77,15 @@ export default tseslint.config(
       ),
     },
     rules: { 'no-undef': 'error' },
+  },
+  {
+    files: ['plugin/dsh/index.js'],
+    languageOptions: {
+      globals: Object.fromEntries(
+        ['process', 'Buffer', 'URL', 'Response', 'console', 'setTimeout', 'clearTimeout'].map(
+          (name) => [name, 'readonly'],
+        ),
+      ),
+    },
   },
 );

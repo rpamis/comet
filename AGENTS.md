@@ -37,7 +37,7 @@
 
 `website` 是独立 Git 子模块；只有任务明确涉及网站时才能修改其内容或引用状态。
 
-`.agents/skills/comet*`、`.claude/skills/comet*`、平台安装目录和测试生成目录是本地安装或 dogfood 副本，不是产品源码。产品行为应修改 `app/`、`domains/`、`platform/`、`assets/` 或对应构建脚本。
+`.agents/skills/comet*`、`.claude/skills/comet*`、平台安装目录和测试生成目录是本地安装或 dogfood 副本，不是产品源码。产品行为应修改 `app/`、`domains/`、`platform/`、`plugin/`、`assets/` 或对应构建脚本。
 
 ## 分层开发规则
 
@@ -80,7 +80,7 @@ Issue、Review 意见、Project Knowledge、Memory 和历史记录只提供调�
 - 每轮先运行覆盖当前改动的最小相关测试。
 - 需要根据当前差异选择检查时，运行 `pnpm verify:changed --base <比较基线>`；该命令只读取差异并执行检查，不生成文件或更新快照。
 - 纯文档或 Skill 内容修改：运行相关契约测试和受影响文件的 Prettier 检查。
-- 单一 `app/`、`domains/` 或 `platform/` 模块修改：运行对应测试；涉及编译、Runtime 或生成物时再运行 build。
+- 单一 `app/`、`domains/`、`platform/` 或 `plugin/` 模块修改：运行对应测试；涉及编译、Runtime 或生成物时再运行 build。
 - 按具体行为和依赖关系选择测试文件或测试名，再补相关契约、构建或临时项目验证。涉及多个生产模块、Runtime、安装/路由、版本字段或生成物，以及准备提交或交付，本身都不自动触发全量测试。
 - 只有用户明确要求，或共享契约、测试基础设施等变更导致影响范围无法可靠界定，且定向检查无法覆盖时，才考虑全量测试。启动前说明具体覆盖缺口、已有证据为何不足及预计耗时；不能只以“高风险”作为理由。
 - 用户明确要求不跑全量时，遵守该范围，完成必要的定向检查并记录未覆盖部分。正式发布流程的专门检查仍按发布规则执行，不因日常版本字段更新提前运行。
@@ -96,7 +96,7 @@ npx vitest run                                   # 仅在满足上述全量条�
 
 ## 提交前检查
 
-仓库已配置 Git pre-commit 钩子（husky + lint-staged），每次 `git commit` 会自动对 `app/`、`domains/`、`platform/`、`scripts/`、`test/`、`.github/`、`config/` 下的暂存源文件运行 `prettier --write`（与 CI `format:check` 范围一致；冻结的 `test/fixtures/` 除外），编辑器无关，所有贡献者生效。
+仓库已配置 Git pre-commit 钩子（husky + lint-staged），每次 `git commit` 会自动对 `app/`、`domains/`、`platform/`、`plugin/`、`scripts/`、`test/`、`.github/`、`config/` 下的暂存源文件运行 `prettier --write`（与 CI `format:check` 范围一致；冻结的 `test/fixtures/` 除外），编辑器无关，所有贡献者生效。
 
 根据改动范围选择提交前检查；不要求每个提交机械地运行全部命令（CI 会执行完整检查）：
 
@@ -130,6 +130,7 @@ pnpm test           # 仅在满足“测试”章节的全量条件时
 - `platform/`：文件系统、进程、安装平台、版本、路径等平台适配能力。domain 不应直接散落平台差异逻辑。
 - `scripts/`：构建、发布、benchmark、lint 等仓库自动化脚本。可调用源码模块，但不要成为运行时业务入口。
 - `assets/`：发布资产和内置 Skill 内容。修改 runtime 源码后必须通过构建同步生成资产，不要把业务逻辑只写在生成物里。
+- `plugin/codex/`、`plugin/dsh/`：平台插件的清单、适配入口、界面包装、图标与说明。构建脚本位于 `scripts/build/`，共享 Skills、Runtime、Dashboard 与安装能力分别由 `assets/`、`domains/`、`platform/` 提供。插件依赖共享层，共享层不反向依赖插件；插件不承载 Native/Classic 状态机业务逻辑。
 - `domains/workflow-application/`：完整 SDK 应用加载、Skill 适配审查、固定依赖、宿主执行契约和 Run 归属。基础流程种类与应用身份分别表达；Native/Classic 领域可通过 `wrapStore` 同步投影，SDK Run 保持推进权威。
 - `domains/workflow-generation/`：确认方案的确定性装配、本地样板入口与隔离阶段产物验收；可调用 Native 和 Classic 的公开应用工厂准备样板，通过 `workflow-contract` 的受保护路径检查仅在临时项目创建验收样例，不能接管真实领域审批、验收或 Archive。应用安装预览、不可变版本与本地导出位于 `workflow-application`；平台路径和 Runtime 依赖安装位于 `platform/`。
 - `domains/workflow-creation/`：Creator 的固定 SDK 创作流程，关联自然语言目标、具体方案、用户决定、固定依赖、编译验证与安装预览；复用 `workflow-generation` 组合器和 SDK Run，不保存第二套推进状态。

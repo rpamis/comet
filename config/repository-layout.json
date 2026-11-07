@@ -1,6 +1,26 @@
 {
   "assetsRoot": "assets",
   "manifestPath": "assets/manifest.json",
+  "codexPlugin": {
+    "templateRoot": "plugin/codex",
+    "icon": "plugin/codex/icon.png",
+    "files": ["plugin.json", "README.md", "hooks/hooks.json", "mcp.json", "icon.png"]
+  },
+  "dshPlugin": {
+    "templateRoot": "plugin/dsh",
+    "files": [
+      "package.json",
+      "cordis.patch.yml",
+      "index.js",
+      "client.js",
+      "README.md",
+      "README.en.md",
+      "icon.png",
+      "icon-client-64.png",
+      "locale/en.json",
+      "locale/zh.json"
+    ]
+  },
   "skillsRoots": {
     "en": "assets/skills",
     "zh": "assets/skills-zh"
@@ -134,9 +154,10 @@
     "test",
     "tsconfig.json",
     "website",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "plugin"
   ],
-  "sourceRoots": ["app", "domains", "platform"],
+  "sourceRoots": ["app", "domains", "platform", "plugin"],
   "dependencyRules": {
     "compatibilityFacades": [
       {
@@ -177,8 +198,14 @@
       "domains/workflow-contract"
     ],
     "allowedDomainDependencies": [
-      { "from": "workflow-creation", "to": "workflow-contract" },
-      { "from": "dashboard", "to": "comet-classic" },
+      {
+        "from": "workflow-creation",
+        "to": "workflow-contract"
+      },
+      {
+        "from": "dashboard",
+        "to": "comet-classic"
+      },
       {
         "from": "bundle",
         "to": "skill"
@@ -644,5 +671,6 @@
     "bin/comet-daemon-router.js",
     "bin/fast-runtime-router.js"
   ],
-  "testRoots": ["test"]
+  "testRoots": ["test"],
+  "pluginModules": ["codex", "dsh"]
 }

@@ -1,0 +1,56 @@
+{
+  "name": "comet-dsh-plugin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "在 DeepSeek Harness 中运行 Comet 工作流：13 个 Native、Classic 等 Skill 开箱可用，左侧栏入口在主内容区打开项目 Dashboard，并随包安装匹配版本的 Comet CLI。",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rpamis/comet"
+  },
+  "homepage": "https://github.com/rpamis/comet",
+  "type": "module",
+  "icon": "icon.png",
+  "engines": {
+    "dsh": ">=0.2.2-rc.1"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-hooks-claude-code": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-hook-protocol": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.1",
+    "@rpamis/comet": "__COMET_CLI_SPEC__"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.png"
+  },
+  "files": [
+    "skills",
+    "rules",
+    "server",
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.png",
+    "README.md",
+    "README.en.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  }
+}

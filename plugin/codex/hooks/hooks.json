@@ -1,0 +1,32 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/server/comet-cli-setup.mjs\"",
+            "commandWindows": "node \"$env:PLUGIN_ROOT/server/comet-cli-setup.mjs\"",
+            "timeout": 300,
+            "statusMessage": "准备 Comet CLI"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/skills/comet/scripts/comet-hook-router.mjs\" --platform codex",
+            "commandWindows": "node \"$env:PLUGIN_ROOT/skills/comet/scripts/comet-hook-router.mjs\" --platform codex",
+            "statusMessage": "检查 Comet 工作流写入",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -4717,7 +4717,8 @@ async function copyText(text) {
 
 const dashboardRoot = document.getElementById('root');
 const embeddedDashboardBuild = globalThis.__COMET_DASHBOARD_EMBED__ === true;
-if (dashboardRoot && !embeddedDashboardBuild) createRoot(dashboardRoot).render(<App />);
+if (dashboardRoot && !embeddedDashboardBuild && !globalThis.__COMET_DASHBOARD_MCP__)
+  createRoot(dashboardRoot).render(<App />);
 function AntSidebar({
   embedded = false,
   update,
@@ -4891,7 +4892,11 @@ function AntSidebar({
         <div className="dashboard-sidebar-content flex h-full flex-col">
           <div className="dashboard-sidebar-brand flex items-center gap-2">
             <img
-              src={embedded ? '/assets/dashboard-website-demo/favicon.png' : '/favicon.png'}
+              src={
+                embedded
+                  ? '/assets/dashboard-website-demo/favicon.png'
+                  : (globalThis.__COMET_DASHBOARD_LOGO__ ?? '/favicon.png')
+              }
               alt="Comet"
               className="size-7 rounded-[7px]"
             />

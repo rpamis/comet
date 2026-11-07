@@ -1,6 +1,24 @@
-import { accessSync, constants, statSync } from 'node:fs';
+import { accessSync, constants, statSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { resolveWindowsCommand, resolveWindowsNodeShim } from './spawn-command.js';
+
+/** npm 自带的 Windows 启动器会查找前缀；直接调用同一安装中的 npm JS 入口。 */
+export function resolveNpmCommand(
+  args: readonly string[],
+  options: { cwd: string; env?: NodeJS.ProcessEnv },
+) {
+  if (process.platform === 'win32') {
+    const shim = resolveWindowsCommand('npm', options.env ?? process.env, options.cwd);
+    const root = path.join(path.dirname(shim), 'node_modules/npm');
+    const entry = path.join(root, 'bin/npm-cli.js');
+    if (
+      existsSync(entry) &&
+      JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).name === 'npm'
+    )
+      return { command: process.execPath, args: [entry, ...args] };
+  }
+  return resolveNodeCliCommand('npm', args, options);
+}
 
 export function resolveNodeCliCommand(
   command: string,

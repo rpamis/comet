@@ -1212,7 +1212,8 @@ async function runCli(): Promise<void> {
       return;
     }
 
-    await program.parseAsync();
+    // CLI 的入口始终是 Node 参数布局，包括 Electron 以 Node 模式启动的场景。
+    await program.parseAsync(process.argv, { from: 'node' });
   } catch (error) {
     if (error instanceof Error && 'exitCode' in error && error.exitCode === 0) return;
     if (runtimeCommandRequested) {

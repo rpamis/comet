@@ -17,6 +17,6 @@
     "allowSyntheticDefaultImports": true,
     "types": ["node"]
   },
-  "include": ["app/**/*", "domains/**/*", "platform/**/*"],
+  "include": ["app/**/*", "domains/**/*", "platform/**/*", "plugin/**/*"],
   "exclude": ["node_modules", "dist", "test"]
 }

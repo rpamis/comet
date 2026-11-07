@@ -1,5 +1,5 @@
 {
-  "version": "0.5.2",
+  "version": "0.5.3",
   "skills": [
     "comet/SKILL.md",
     "comet/reference/edit-review.md",
@@ -92,7 +92,10 @@
     "comet/runtime/classic/guardrails.yaml",
     "comet/runtime/classic/checks.yaml"
   ],
-  "rules": ["comet/rules/comet-workflow-guard.md", "comet/rules/comet-workflow-guard.en.md"],
+  "rules": [
+    "comet/rules/comet-workflow-guard.md",
+    "comet/rules/comet-workflow-guard.en.md"
+  ],
   "hooks": {
     "comet/scripts/comet-hook-router.mjs": {
       "matcher": "Write|Edit",

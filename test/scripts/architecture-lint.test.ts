@@ -57,10 +57,12 @@ async function makeMinimalRepository(): Promise<string> {
       'eval',
       'package.json',
       'platform',
+      'plugin',
       'test',
       'tsconfig.json',
     ],
-    sourceRoots: ['app', 'domains', 'platform'],
+    sourceRoots: ['app', 'domains', 'platform', 'plugin'],
+    pluginModules: ['codex', 'dsh'],
     dependencyRules: {
       allowedDomainDependencies: [],
       compatibilityFacades: [],
@@ -80,6 +82,8 @@ async function makeMinimalRepository(): Promise<string> {
   await Promise.all([
     fs.mkdir(path.join(root, 'app'), { recursive: true }),
     fs.mkdir(path.join(root, 'platform'), { recursive: true }),
+    fs.mkdir(path.join(root, 'plugin/codex'), { recursive: true }),
+    fs.mkdir(path.join(root, 'plugin/dsh'), { recursive: true }),
     fs.mkdir(path.join(root, 'test'), { recursive: true }),
     fs.mkdir(path.join(root, 'assets', 'skills'), { recursive: true }),
     fs.mkdir(path.join(root, 'assets', 'skills-zh'), { recursive: true }),
@@ -95,7 +99,7 @@ async function makeMinimalRepository(): Promise<string> {
             moduleResolution: 'NodeNext',
             target: 'ES2022',
           },
-          include: ['app/**/*', 'domains/**/*', 'platform/**/*'],
+          include: ['app/**/*', 'domains/**/*', 'platform/**/*', 'plugin/**/*'],
         },
         null,
         2,
@@ -109,7 +113,7 @@ async function makeMinimalRepository(): Promise<string> {
       JSON.stringify(
         {
           scripts: {
-            lint: 'eslint app/ domains/ platform/ && pnpm run lint:architecture',
+            lint: 'eslint app/ domains/ platform/ plugin/ && pnpm run lint:architecture',
             'lint:architecture': 'node scripts/lint/architecture.mjs',
           },
         },
@@ -129,6 +133,29 @@ async function makeMinimalRepository(): Promise<string> {
 }
 
 describe('architecture lint', () => {
+  it('allows platform plugins to use shared modules and rejects reverse core dependencies', async () => {
+    const root = await makeMinimalRepository();
+    await writeFile(root, '.gitignore', '');
+    await writeFile(
+      root,
+      'plugin/codex/adapter.ts',
+      "import '../../domains/comet-classic/classic-state-entry.js';\nexport {};\n",
+    );
+    const check = () =>
+      spawnSync(process.execPath, [path.resolve('scripts/lint/architecture.mjs')], {
+        cwd: root,
+        encoding: 'utf8',
+      });
+    const accepted = check();
+    expect(accepted.status, accepted.stderr).toBe(0);
+    await writeFile(root, 'platform/reverse.ts', "import '../plugin/codex/adapter.js';\n");
+    const rejected = check();
+    expect(rejected.status).not.toBe(0);
+    expect(rejected.stderr).toContain(
+      'platform/reverse.ts must not depend on plugin/codex/adapter.ts',
+    );
+  });
+
   it('accepts only registered archive modules whose bytes match the frozen manifest', async () => {
     const root = await makeMinimalRepository();
     await writeFile(root, '.gitignore', '');

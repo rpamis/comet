@@ -61,3 +61,6 @@ knowledge:
     max_file_mb: 2
     # 本地 Markdown 检索语料允许读取的总 MB 数。
     max_total_mb: 32
+# 是否生成可直接打开的 HTML 变更说明，同时作用于 Native 和 Classic；开启会增加讲解内容的 token 消耗。
+# change_walkthrough: true | false（默认 true）
+change_walkthrough: true

@@ -10877,6 +10877,534 @@
           ]
         }
       ]
+    },
+    {
+      "id": "codex-dashboard-native-csp-rendering",
+      "sources": ["report:2026-11-06-codex-sidebar-blocked"],
+      "coverageLevel": "public-cli",
+      "behavior": "Render the packaged Comet Dashboard in the Codex sidebar without embedding an HTTP localhost frame or making browser API requests.",
+      "reproduction": "The installed 0.5.3 sidebar package produced ERR_BLOCKED_BY_CSP (-30) in Codex 26.1029.9216.0. Desktop logs reject localhost:8761 under both an HTTPS-only outer frame policy and the inner frame-src none policy. The old package also fails the browser harness with nested frames forbidden. The earlier permissive browser harness did not reproduce desktop CSP.",
+      "rootCause": "The plugin embedded an HTTP localhost Dashboard in an MCP resource, but the desktop client filters frame origins to HTTPS and independently restricts nested frames. Restarting cannot authorize the rejected origin.",
+      "expected": "The relocatable package serves a self-contained Dashboard resource with empty frame/connect domains, renders real project/change details through app-only MCP tools, and allows retry and responsive/theme interactions.",
+      "forbidden": "Relax desktop security settings, allow arbitrary API URLs or filesystem paths, hide CSP errors, claim browser simulation proves native desktop acceptance, or increase the requested 0.5.3 version.",
+      "tests": [
+        {
+          "file": "test/scripts/codex-plugin-build.test.ts",
+          "namePattern": "builds a relocatable archive from product assets when invoked outside the repository",
+          "requiredNames": [
+            "Codex plugin package builds a relocatable archive from product assets when invoked outside the repository"
+          ]
+        },
+        {
+          "file": "test/domains/dashboard/mcp-server.test.ts",
+          "namePattern": "advertises independent sidebar and thread entrypoints with a static cached UI and fresh private connection details|serves Dashboard API data through app-only tools and rejects paths outside its local API",
+          "requiredNames": [
+            "advertises independent sidebar and thread entrypoints with a static cached UI and fresh private connection details",
+            "serves Dashboard API data through app-only tools and rejects paths outside its local API"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "browser-srcdoc-desktop-csp",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#12-codex-侧栏内容被屏蔽报告与修复",
+            "test/domains/dashboard/mcp-dashboard-browser.spec.ts: renders the packaged Dashboard without frames or browser network access under desktop CSP; passed 2026-11-06"
+          ]
+        },
+        {
+          "layer": "real-codex-desktop-sidebar",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#12-codex-侧栏内容被屏蔽报告与修复: owner BENYM; reopen the updated 0.5.3 sidebar and confirm project/change content; GUI automation is prohibited by the installed computer-use guidance",
+            "2026-11-06 BENYM confirmed 显示正常了 after installing the compatible 0.5.3 package and restarting Codex; confirms native sidebar rendering, not an exhaustive manual review of every action"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "codex-plugin-listing-website",
+      "sources": ["report:2026-11-06-codex-plugin-listing"],
+      "coverageLevel": "public-cli",
+      "behavior": "Expose the Comet GitHub repository through the plugin listing website field.",
+      "reproduction": "The original 0.5.3 manifest contains homepage and repository but no interface.websiteURL. The user sees 网站不可用. The old build was not rolled back; source readback and the new native plugin/read result provide substitute evidence.",
+      "rootCause": "Plugin listing websiteURL is independent of package homepage.",
+      "expected": "The packaged manifest and native plugin/read interface.websiteUrl point to https://github.com/rpamis/comet.",
+      "forbidden": "Claim homepage alone populates the listing, change plugin identity or version, or publish the account plugin despite the local-only instruction.",
+      "tests": [
+        {
+          "file": "test/scripts/codex-plugin-build.test.ts",
+          "namePattern": "builds a relocatable archive from product assets when invoked outside the repository",
+          "requiredNames": [
+            "Codex plugin package builds a relocatable archive from product assets when invoked outside the repository"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "native-plugin-metadata",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#13-插件展示信息与自动安装-cli: both CLI and bundled desktop app-server read the GitHub URL"
+          ]
+        },
+        {
+          "layer": "real-plugin-details-website",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#13-插件展示信息与自动安装-cli: owner BENYM; reopen local plugin details and follow the website link; native GUI interaction is not automated",
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#15-插件补充验收2026-11-07: on 2026-11-07 BENYM confirmed that the local comet@comet-local plugin logo and GitHub website link are both normal in desktop 26.1103.4239.0; user-provided UI acceptance"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "codex-plugin-windows-listing-logo",
+      "sources": ["report:2026-11-06-codex-plugin-listing"],
+      "coverageLevel": "public-cli",
+      "behavior": "Display the real Comet logo in the Windows local plugin details instead of the paperclip fallback.",
+      "reproduction": "The user still sees the paperclip after replacing the local package. Both native metadata readers resolve the real PNG and fs/readFile returns 139530 bytes. The desktop image loader rejects an absolute Windows drive path; this user-facing behavior remains unresolved.",
+      "rootCause": "The inspected desktop CBsD loader normalizes an absolute Windows path, then requires the original input to start with a forward slash, returning null for the drive-letter path.",
+      "expected": "Package the verified Comet PNG for both presentation icons and preserve the pending Windows rendering acceptance until the client displays it.",
+      "forbidden": "Patch the installed client, claim byte equality proves UI rendering, upload an account update or bump 0.5.3 without permission.",
+      "tests": [
+        {
+          "file": "test/scripts/codex-plugin-build.test.ts",
+          "namePattern": "builds a relocatable archive from product assets when invoked outside the repository",
+          "requiredNames": [
+            "Codex plugin package builds a relocatable archive from product assets when invoked outside the repository"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-windows-plugin-details-logo",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#13-插件展示信息与自动安装-cli: owner BENYM; client-side Windows path rejection remains; retest after a supported client fix",
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#15-插件补充验收2026-11-07: on 2026-11-07 BENYM confirmed that the local comet@comet-local plugin logo and GitHub website link are both normal in desktop 26.1103.4239.0; user-provided UI acceptance"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dsh-plugin-npm-includes-skills",
+      "sources": ["report:2026-11-07-plugin-verification"],
+      "coverageLevel": "public-cli",
+      "behavior": "Include all bundled Comet skills and runtime files in the DSH npm package.",
+      "reproduction": "npm pack on the original DSH build included 10 files and omitted skills/comet/SKILL.md; the same inventory test failed before the fix.",
+      "rootCause": "The npm files allowlist omitted skills even though the raw tar build copied that directory.",
+      "expected": "The npm package contains all 13 skill entrypoints and the shared runtime router.",
+      "forbidden": "Claim the raw tar archive proves npm installation includes the skills.",
+      "tests": [
+        {
+          "file": "test/scripts/dsh-plugin-build.test.ts",
+          "namePattern": "includes bundled skills and runtime in the npm package",
+          "requiredNames": [
+            "DeepSeek Harness plugin package includes bundled skills and runtime in the npm package"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dsh-plugin-bundled-cli-node-mode",
+      "sources": ["report:2026-11-07-plugin-verification"],
+      "coverageLevel": "public-cli",
+      "behavior": "Retain Node mode for the bundled DSH CLI launch and its generated model shell shim.",
+      "reproduction": "The original shim omitted ELECTRON_RUN_AS_NODE. With the actual DSH executable, the unmarked invocation returned no CLI version while the marked invocation returned 0.5.3; the new test failed with an undefined launch flag before the fix.",
+      "rootCause": "The CLI descriptor only set Node mode when the parent exposed an Electron version, and the generated shell shim never set it.",
+      "expected": "Both bundled CLI launch paths explicitly retain Node mode; the desktop Dashboard renders with the bundled 0.5.3 CLI.",
+      "forbidden": "Treat a zero exit code from launching another desktop window as successful CLI execution or silently fall back to an old global CLI.",
+      "tests": [
+        {
+          "file": "test/scripts/dsh-plugin-build.test.ts",
+          "namePattern": "preserves Node launch mode for bundled CLI and shell shim",
+          "requiredNames": [
+            "DeepSeek Harness plugin package preserves Node launch mode for bundled CLI and shell shim"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-dsh-cli-shell-shim",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#15-插件补充验收2026-11-07: the generated Windows shim invoked the real DSH executable and bundled CLI, returning 0.5.3 in an isolated HOME"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cli-node-arguments-under-electron",
+      "sources": ["report:2026-11-07-plugin-verification"],
+      "coverageLevel": "public-cli",
+      "behavior": "Parse the public CLI Node argument layout when Electron executes the CLI script.",
+      "reproduction": "The real DSH Dashboard command rejected the comet.js path as an unknown command. The packaged CLI regression passed under Node and failed with Electron process identity before the fix, then both passed after rebuilding.",
+      "rootCause": "Commander auto-detected a packaged Electron application and treated argv[1], the CLI script path, as the first command instead of starting at argv[2].",
+      "expected": "The same dashboard --json arguments return the project snapshot under Node and Electron, and the real DSH main Dashboard opens with the bundled CLI.",
+      "forbidden": "Use --version alone to claim subcommands execute correctly, remove the script path from ordinary Node invocations, or silently use an old PATH CLI.",
+      "tests": [
+        {
+          "file": "test/app/cli-electron.test.ts",
+          "namePattern": "runs the packaged dashboard CLI with Electron mode",
+          "requiredNames": [
+            "runs the packaged dashboard CLI with Electron mode false",
+            "runs the packaged dashboard CLI with Electron mode true"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-dsh-desktop-dashboard",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#15-插件补充验收2026-11-07: failure reproduced with the actual desktop; rebuilt matching CLI package awaiting reinstall and UI recheck",
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#15-插件补充验收2026-11-07: final npm plugin and bundled CLI 0.5.3 installed; real DSH main iframe and right Browser panel render the Comet project overview, status reports bundled CLI 0.5.3 and 13 skills; isolated native init/new and real desktop executable shell shim pass",
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#15-插件补充验收2026-11-07: final npm plugin and bundled CLI 0.5.3 installed; real DSH main iframe and right Browser panel render the Comet project overview, status reports bundled CLI 0.5.3 and 13 skills; isolated native init/new and real desktop executable shell shim pass"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "codex-plugin-automatic-platform-integration",
+      "sources": ["report:2026-11-07-plugin-install-ready"],
+      "coverageLevel": "runtime",
+      "behavior": "Activate the Codex plugin with CLI preparation, native user-level Hook registration and session rules, without a manual project init.",
+      "reproduction": "The previous 0.5.3 portable package exposes MCP and Skills but the desktop native plugin/read and hooks/list discover no plugin Hooks (research sections 15-16). A project init was still proposed as a first-use step. The new module test initially failed because no integration entry existed; this is a new plugin capability rather than a released CLI defect.",
+      "rootCause": "Plugin activation prepared only the CLI, and the current portable manifest did not expose bundled Hooks to this Codex build.",
+      "expected": "Activation idempotently merges one SessionStart and one PreToolUse user Hook, preserves user configuration and native trust, injects rules in a new session, routes writes by the event project, and becomes neutral after disable or uninstall.",
+      "forbidden": "Auto-trust Hooks, initialize an unrelated project, block ordinary writes, duplicate managed Hooks, discard user Hooks or continue enforcing after disable/uninstall.",
+      "tests": [
+        {
+          "file": "test/domains/skill/plugin-integration.test.ts",
+          "namePattern": "^prepares one user-level Codex router without initializing projects or trusting hooks$",
+          "requiredNames": [
+            "prepares one user-level Codex router without initializing projects or trusting hooks"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-integration.test.ts",
+          "namePattern": "^preserves malformed user config and rejects linked integration targets$",
+          "requiredNames": [
+            "preserves malformed user config and rejects linked integration targets"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "^runs the packaged router in the event project and provides rules without initializing ordinary projects$",
+          "requiredNames": [
+            "runs the packaged router in the event project and provides rules without initializing ordinary projects"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "^keeps disabled and uninstalled Codex plugins inactive while preserving user hooks$",
+          "requiredNames": [
+            "keeps disabled and uninstalled Codex plugins inactive while preserving user hooks"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "^migrates only old Comet project hooks after execution and preserves a legitimate write path$",
+          "requiredNames": [
+            "migrates only old Comet project hooks after execution and preserves a legitimate write path"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "native-codex-hook-discovery",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#17-插件启用时自动接入2026-11-07: desktop 26.1103.4239.0 native hooks/list discovers both user Hooks as untrusted and preserves the existing user Hooks; no trust records written"
+          ]
+        },
+        {
+          "layer": "trusted-codex-event-execution",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#17-插件启用时自动接入2026-11-07: owner BENYM; review and trust the two native Hook definitions, then validate a new session; no automatic trust or model Eval performed",
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#20-最终接入验证2026-11-07: Desktop 26.1103.4239.0 native app-server with the final installed 0.5.3 package and trusted user Hooks delivered SessionStart Rule context, reported a blocked PreToolUse for another Classic change without creating its file, and completed a legitimate native apply_patch file write. Deterministic loopback Responses, no real model Eval."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dsh-plugin-automatic-official-hook-bridge",
+      "sources": ["report:2026-11-07-plugin-install-ready"],
+      "coverageLevel": "runtime",
+      "behavior": "Mount the official DSH Hook bridge when the Comet bundle activates and dispose it with the plugin, without manual project init or profile patch edits.",
+      "reproduction": "The prior plugin registered Skills and Dashboard routes without mounting a tool-event bridge. Real desktop installation of the first integration attempt then exposed missing optional bridge and runtime peer packages; explicit plugin dependencies were added. An old/new automated comparison of the native desktop was not run; the packaged Host lifecycle test, real ready status and installed official bridge offline event test cover distinct boundaries.",
+      "rootCause": "The existing init adapter installed bridge configuration, but the plugin did not invoke the bridge lifecycle; DSH 0.2.2-rc.1 did not itself supply all optional bridge modules.",
+      "expected": "The npm package includes required bridge runtime dependencies and Rule/Router assets; activation mounts a private configuration, new sessions receive Rule context, cross-change writes deny, legitimate writes pass, disposal unmounts, and Router failures encode a denial.",
+      "forbidden": "Require a manual init for plugin setup, rewrite a user profile patch, treat a missing bridge as active, or convert a failed Router process into an allowed tool.",
+      "tests": [
+        {
+          "file": "test/domains/skill/plugin-integration.test.ts",
+          "namePattern": "^gives DSH a private bridge config and does not rewrite profiles or copy skills$",
+          "requiredNames": [
+            "gives DSH a private bridge config and does not rewrite profiles or copy skills"
+          ]
+        },
+        {
+          "file": "test/scripts/dsh-plugin-build.test.ts",
+          "namePattern": "mounts and disposes its hook bridge without rewriting a profile or initializing projects",
+          "requiredNames": [
+            "DeepSeek Harness plugin package mounts and disposes its hook bridge without rewriting a profile or initializing projects"
+          ]
+        },
+        {
+          "file": "test/scripts/dsh-plugin-build.test.ts",
+          "namePattern": "includes bundled skills and runtime in the npm package",
+          "requiredNames": [
+            "DeepSeek Harness plugin package includes bundled skills and runtime in the npm package"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "^denies modified packages and DSH startup failures using the platform protocol$",
+          "requiredNames": [
+            "denies modified packages and DSH startup failures using the platform protocol"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "^does not turn a failed DSH router process into an allowed tool execution$",
+          "requiredNames": [
+            "does not turn a failed DSH router process into an allowed tool execution"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-dsh-desktop-bridge-mount",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#17-插件启用时自动接入2026-11-07: actual desktop profile reports integration ready with bundled CLI 0.5.3 and 13 Skills after installation"
+          ]
+        },
+        {
+          "layer": "installed-official-bridge-offline-events",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#17-插件启用时自动接入2026-11-07: installed official bridge receives offline SessionStart and PreToolUse fixtures, runs actual packaged commands, injects Rule context, denies cross-change writes and permits source writes; event context and shell adapter are fixtures, no model invoked"
+          ]
+        },
+        {
+          "layer": "native-dsh-agent-and-tool-execution",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#20-最终接入验证2026-11-07: Installed DSH 0.2.2-rc.1 actual Cordis Agent factory, Session, Shell, ShellEnv, NativeToolExecutor and filesystem tools injected session rules, migrated a stock legacy entry, rejected a cross-change write, performed a legal write and removed the bridge on plugin disposal. Bundled CLI returned 0.5.3 without global CLI PATH. Restarted desktop loaded fingerprint ccd4d495d17dba18238ee125 with 13 plugin Skills and bundled CLI 0.5.3. No real model."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "codex-plugin-migrate-file-skills",
+      "sources": ["report:2026-11-07-existing-comet-plugin-migration"],
+      "coverageLevel": "runtime",
+      "behavior": "Automatically disable recognized legacy file-based Codex Skills by path without removing shared files or disabling the plugin Skills.",
+      "reproduction": "The previous 0.5.3-ready packaged MCP and the new package were activated with identical isolated legacy 0.5.2 definition and CLI fixtures. The old package left the legacy Skill enabled; the new package appended a path-specific disable while preserving its bytes. The missing migration module test first failed, then passed after implementation.",
+      "rootCause": "Activation prepared the CLI and Hooks but did not migrate pre-existing file-based Skill discovery entries.",
+      "expected": "Known released 0.4.x, 0.5.x and current definitions are disabled by absolute path after configuration backup; custom definitions, explicit user choices and shared files remain; native discovery keeps all 13 plugin Skills enabled.",
+      "forbidden": "Delete shared .agents files, disable every Skill by the Comet name, override explicit user switches, alter unrelated settings, or migrate before verifying input and backup.",
+      "tests": [
+        {
+          "file": "test/domains/skill/plugin-migration.test.ts",
+          "namePattern": "^disables only recognized Codex skill paths and preserves shared files and user settings$",
+          "requiredNames": [
+            "disables only recognized Codex skill paths and preserves shared files and user settings"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-migration.test.ts",
+          "namePattern": "^preserves edited Comet definitions, explicit Codex choices and linked platform directories$",
+          "requiredNames": [
+            "preserves edited Comet definitions, explicit Codex choices and linked platform directories"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-migration.test.ts",
+          "namePattern": "^keeps malformed config intact and never disables a skill if backup publication fails$",
+          "requiredNames": [
+            "keeps malformed config intact and never disables a skill if backup publication fails"
+          ]
+        },
+        {
+          "file": "test/domains/dashboard/mcp-cli-setup.test.ts",
+          "namePattern": "^automatically installs the CLI on MCP activation before any setup tool call$",
+          "requiredNames": [
+            "automatically installs the CLI on MCP activation before any setup tool call"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "^does not migrate files for an invalid hook event or malformed payload$",
+          "requiredNames": ["does not migrate files for an invalid hook event or malformed payload"]
+        },
+        {
+          "file": "test/domains/skill/plugin-migration.test.ts",
+          "namePattern": "recognizes released 0.4.3 Classic definitions without treating customized copies as stock",
+          "requiredNames": [
+            "recognizes released 0.4.3 Classic definitions without treating customized copies as stock"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "native-codex-migrated-skill-discovery",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#18-已有文件式安装自动迁移2026-11-07: actual desktop app-server 0.167.0-alpha.3.2 reports legacy comet enabled=false and 13 enabled plugin Skills in an isolated real CLI init project; no model invoked"
+          ]
+        },
+        {
+          "layer": "real-user-codex-migrated-skill-discovery",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#18-已有文件式安装自动迁移2026-11-07: actual user installation has 17 disabled legacy file-based Skills, 13 enabled plugin Skills and no native discovery errors; all source files remain; nine earlier definitions match unmodified released Git blobs"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dsh-plugin-migrate-file-skills",
+      "sources": ["report:2026-11-07-existing-comet-plugin-migration"],
+      "coverageLevel": "runtime",
+      "behavior": "Back up recognized DSH file-based Skill entry points and migrate only owned Rule and Hook portions after the new Hook executes.",
+      "reproduction": "The prior plugin left project Skill definitions in the higher-precedence discovery directory. A real installed CLI init project reproduced those definitions; the new packaged migration removed their discovery entry points with restorable backups and retained Runtime, references and project state. An old desktop UI rollback comparison was not run; the explicit no-migration old behavior and before/after public filesystem state provide substitute evidence.",
+      "rootCause": "The plugin registered runtime Skills without detaching stock file-based definitions or removing the old Rule/Hook portions with backups.",
+      "expected": "Only content-matched stock entry points and Rule blocks are migrated after Hook execution; user content, old Runtime, other platforms and project data remain; concurrent and repeated runs create one effective migration.",
+      "forbidden": "Delete project data or Runtime, follow linked platform directories, migrate custom or unknown definitions, remove user Hooks or Rule prose, or remove source files when backup publication fails.",
+      "tests": [
+        {
+          "file": "test/domains/skill/plugin-migration.test.ts",
+          "namePattern": "^backs up DSH skill entry points while preserving runtime, data, other platforms and custom skills$",
+          "requiredNames": [
+            "backs up DSH skill entry points while preserving runtime, data, other platforms and custom skills"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-migration.test.ts",
+          "namePattern": "^migrates only owned hook entries and DSH rule blocks after hook execution with backups$",
+          "requiredNames": [
+            "migrates only owned hook entries and DSH rule blocks after hook execution with backups"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-migration.test.ts",
+          "namePattern": "^recognizes a released 0.5.2 definition from the packaged migration catalog$",
+          "requiredNames": [
+            "recognizes a released 0.5.2 definition from the packaged migration catalog"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-migration.test.ts",
+          "namePattern": "^migrates global DSH entries in a custom config root and serializes concurrent runs$",
+          "requiredNames": [
+            "migrates global DSH entries in a custom config root and serializes concurrent runs"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-migration.test.ts",
+          "namePattern": "^preserves edited Comet definitions, explicit Codex choices and linked platform directories$",
+          "requiredNames": [
+            "preserves edited Comet definitions, explicit Codex choices and linked platform directories"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "packaged-dsh-migration-after-public-init",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#18-已有文件式安装自动迁移2026-11-07: installed CLI init creates a real DSH native project; packaged setup migrates seven items with seven backups, repeats with zero changes, and preserves project config and shared AGENTS bytes; the trusted desktop session event after final reinstall remains outside this fixture boundary"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "codex-native-apply-patch-command",
+      "sources": ["report:2026-11-07-plugin-final-validation"],
+      "coverageLevel": "runtime",
+      "behavior": "Apply native Codex apply_patch events to the selected Comet change rather than allowing writes with an unparsed target.",
+      "reproduction": "Desktop 26.1103.4239.0 app-server with trusted installed 0.5.3 Hooks and deterministic local Responses wrote another Classic change through real apply_patch. The new adapter contract failed with unknown intent and no targets before the fix.",
+      "rootCause": "Native Codex passes apply_patch text in tool_input.command; the adapter recognized other patch fields but did not read this canonical field.",
+      "expected": "Decode the native command patch into target paths and proposed content, reject cross-change writes, and allow ordinary selected Build implementation writes.",
+      "forbidden": "Treat arbitrary Bash commands as patches or permit writes to another selected change because targets were lost.",
+      "tests": [
+        {
+          "file": "test/domains/comet-entry/hook-adapter.test.ts",
+          "namePattern": "reads native Codex apply_patch commands without interpreting shell commands as patches",
+          "requiredNames": [
+            "reads native Codex apply_patch commands without interpreting shell commands as patches"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "enforces native Codex command patches through the packaged router and preserves legitimate writes",
+          "requiredNames": [
+            "enforces native Codex command patches through the packaged router and preserves legitimate writes"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "native-codex-client-tool-execution",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#20-最终接入验证2026-11-07: Desktop 26.1103.4239.0 native app-server with the final installed 0.5.3 package and trusted user Hooks delivered SessionStart Rule context, reported a blocked PreToolUse for another Classic change without creating its file, and completed a legitimate native apply_patch file write. Deterministic loopback Responses, no real model Eval."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "codex-plugin-json-denial-on-powershell",
+      "sources": ["report:2026-11-07-plugin-final-validation"],
+      "coverageLevel": "runtime",
+      "behavior": "Preserve a native Codex plugin write denial across a PowerShell Hook launch, including Router failures and changed package contents.",
+      "reproduction": "After target parsing was fixed, the trusted desktop client reported hook exited with code 1 and still performed the forbidden patch. PowerShell -Command converts a native exit 2 into exit 1; direct node retained exit 2. The new packaged JSON denial assertion failed before the fix.",
+      "rootCause": "The plugin forwarded the Router exit code through the platform shell instead of returning the native client structured denial protocol.",
+      "expected": "The plugin emits hookSpecificOutput with PreToolUse and permissionDecision deny at exit 0 for rejected writes, Router failures, invalid inputs and altered packages; actual native tools do not perform rejected writes, while legitimate writes complete.",
+      "forbidden": "Convert a policy denial into a non-blocking Hook error, turn process failures into permission, or change legacy Router command exit-code contracts.",
+      "tests": [
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "enforces native Codex command patches through the packaged router and preserves legitimate writes",
+          "requiredNames": [
+            "enforces native Codex command patches through the packaged router and preserves legitimate writes"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "denies modified packages and DSH startup failures using the platform protocol",
+          "requiredNames": [
+            "denies modified packages and DSH startup failures using the platform protocol"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "does not turn a failed DSH router process into an allowed tool execution",
+          "requiredNames": [
+            "does not turn a failed DSH router process into an allowed tool execution"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "does not migrate files for an invalid hook event or malformed payload",
+          "requiredNames": ["does not migrate files for an invalid hook event or malformed payload"]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "native-codex-client-tool-execution",
+          "status": "verified",
+          "evidence": [
+            "docs/research/2026-11-06-053-agent-plugins-desktop-dashboard.zh.md#20-最终接入验证2026-11-07: Desktop 26.1103.4239.0 native app-server with the final installed 0.5.3 package and trusted user Hooks delivered SessionStart Rule context, reported a blocked PreToolUse for another Classic change without creating its file, and completed a legitimate native apply_patch file write. Deterministic loopback Responses, no real model Eval."
+          ]
+        }
+      ]
     }
   ]
 }

@@ -51,6 +51,8 @@ export interface DashboardServerOptions {
   port?: number;
   webRoot?: string;
   pluginHost?: DashboardPluginHostFactory;
+  /** 每个 MCP 进程生成的临时入口令牌，仅允许跨来源 iframe 首次导航。 */
+  embedToken?: string;
 }
 
 export interface DashboardServerHandle {
@@ -142,6 +144,9 @@ const MIME: Record<string, string> = {
 export async function startDashboardServer(
   options: DashboardServerOptions,
 ): Promise<DashboardServerHandle> {
+  if (options.embedToken !== undefined && !/^[a-f0-9]{64}$/u.test(options.embedToken)) {
+    throw new Error('Invalid dashboard embed token');
+  }
   const webRoot = options.webRoot ?? defaultWebRoot();
   const requestedPort = options.port ?? DEFAULT_PORT;
   const port = requestedPort === 0 ? 0 : await findAvailablePort(requestedPort);
@@ -152,44 +157,50 @@ export async function startDashboardServer(
     .catch(() => path.resolve(options.projectPath));
 
   const server = http.createServer((req, res) => {
-    handleRequest(req, res, currentProjectPath, webRoot, pluginHostAccess, updates).catch(
-      (error) => {
-        if (error instanceof DashboardApplicationQueryError) {
-          respondJson(res, req.method ?? 'GET', error.statusCode, {
-            code: error.code,
-            error: error.message,
-          });
-          return;
-        }
-        if (error instanceof DashboardUpdateError) {
-          respondJson(res, req.method ?? 'GET', error.statusCode, { error: error.message });
-          return;
-        }
-        if (error instanceof EvalRunError) {
-          respondJson(res, req.method ?? 'GET', error.statusCode, { error: error.message });
-          return;
-        }
-        if (
-          error instanceof DashboardChangeQueryError ||
-          error instanceof NativeDashboardQueryError
-        ) {
-          respondJson(res, req.method ?? 'GET', 400, { error: error.message });
-          return;
-        }
-        if (error instanceof DashboardPluginHostError) {
-          respondJson(res, req.method ?? 'GET', error.statusCode, {
-            error: error.message,
-            ...(error.pluginId ? { pluginId: error.pluginId } : {}),
-          });
-          return;
-        }
-        if (error instanceof DashboardProjectConfigError) {
-          respondJson(res, req.method ?? 'GET', error.statusCode, { error: error.message });
-          return;
-        }
-        respondError(res, 500, `Internal server error: ${(error as Error).message}`);
-      },
-    );
+    handleRequest(
+      req,
+      res,
+      currentProjectPath,
+      webRoot,
+      pluginHostAccess,
+      updates,
+      options.embedToken,
+    ).catch((error) => {
+      if (error instanceof DashboardApplicationQueryError) {
+        respondJson(res, req.method ?? 'GET', error.statusCode, {
+          code: error.code,
+          error: error.message,
+        });
+        return;
+      }
+      if (error instanceof DashboardUpdateError) {
+        respondJson(res, req.method ?? 'GET', error.statusCode, { error: error.message });
+        return;
+      }
+      if (error instanceof EvalRunError) {
+        respondJson(res, req.method ?? 'GET', error.statusCode, { error: error.message });
+        return;
+      }
+      if (
+        error instanceof DashboardChangeQueryError ||
+        error instanceof NativeDashboardQueryError
+      ) {
+        respondJson(res, req.method ?? 'GET', 400, { error: error.message });
+        return;
+      }
+      if (error instanceof DashboardPluginHostError) {
+        respondJson(res, req.method ?? 'GET', error.statusCode, {
+          error: error.message,
+          ...(error.pluginId ? { pluginId: error.pluginId } : {}),
+        });
+        return;
+      }
+      if (error instanceof DashboardProjectConfigError) {
+        respondJson(res, req.method ?? 'GET', error.statusCode, { error: error.message });
+        return;
+      }
+      respondError(res, 500, `Internal server error: ${(error as Error).message}`);
+    });
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -220,6 +231,7 @@ async function handleRequest(
   webRoot: string,
   pluginHostAccess?: DashboardPluginHostAccess,
   updates?: ReturnType<typeof createDashboardUpdateService>,
+  embedToken?: string,
 ): Promise<void> {
   const authority = req.headers.host;
   const localPort = req.socket.localPort;
@@ -227,11 +239,17 @@ async function handleRequest(
     respondError(res, 403, 'Untrusted dashboard host');
     return;
   }
+  const embeddedNavigation =
+    embedToken !== undefined &&
+    req.method === 'GET' &&
+    req.url === `/embedded/${embedToken}` &&
+    req.headers['sec-fetch-dest'] === 'iframe';
   if (
-    (req.headers.origin !== undefined && req.headers.origin !== `http://${authority}`) ||
-    (req.headers['sec-fetch-site'] !== undefined &&
-      req.headers['sec-fetch-site'] !== 'same-origin' &&
-      req.headers['sec-fetch-site'] !== 'none')
+    !embeddedNavigation &&
+    ((req.headers.origin !== undefined && req.headers.origin !== `http://${authority}`) ||
+      (req.headers['sec-fetch-site'] !== undefined &&
+        req.headers['sec-fetch-site'] !== 'same-origin' &&
+        req.headers['sec-fetch-site'] !== 'none'))
   ) {
     respondError(res, 403, 'Untrusted dashboard origin');
     return;
@@ -252,6 +270,12 @@ async function handleRequest(
 
   const url = new URL(req.url, 'http://localhost');
   const pathname = url.pathname;
+
+  if (embeddedNavigation) {
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    await serveStatic(res, 'GET', webRoot, '/index.html');
+    return;
+  }
 
   const isPluginRequest = pathname.includes('/plugins');
   const isProjectConfigRequest = pathname.endsWith('/config');
