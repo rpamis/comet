@@ -723,6 +723,21 @@ function globalHookCheckResult(
   scope: InstallScope,
   inspection: Awaited<ReturnType<typeof inspectCometHooksForPlatform>>,
 ): CheckResult {
+  if (platform.supportsGlobalHooks) {
+    const valid =
+      inspection.present &&
+      !inspection.error &&
+      !inspection.legacyPresent &&
+      !inspection.duplicatePresent &&
+      !inspection.activationRequired;
+    return {
+      check: `hooks: ${platform.name} (${scope})`,
+      status: valid ? 'pass' : 'warn',
+      message: valid
+        ? 'exactly one managed Router Hook present'
+        : `${inspection.error ?? inspection.activationMessage ?? 'user-scoped Router Hook is missing, disabled, outdated or duplicated'} — run: comet doctor --repair --scope global`,
+    };
+  }
   const globalHookPresent =
     inspection.present || inspection.managedPresent === true || inspection.legacyPresent === true;
   return {
@@ -746,6 +761,7 @@ async function checkPlatformComponents(
   scope: InstallScope,
   workflowSelection: InitWorkflowSelection,
   assets: DoctorAssetInspection,
+  context: DoctorContext,
 ): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
   const ruleDestinations = await getPlatformRuleDestinations(
@@ -811,7 +827,9 @@ async function checkPlatformComponents(
     }
   }
 
-  results.push(...(await checkHookComponents(baseDir, platform, scope, workflowSelection, assets)));
+  results.push(
+    ...(await checkHookComponents(baseDir, platform, scope, workflowSelection, assets, context)),
+  );
 
   return results;
 }
@@ -822,8 +840,19 @@ async function checkHookComponents(
   scope: InstallScope,
   workflowSelection: InitWorkflowSelection,
   assets: DoctorAssetInspection,
+  context: DoctorContext,
 ): Promise<CheckResult[]> {
   if (!platform.supportsHooks || !platform.hookFormat) return [];
+  if (scope === 'project' && platform.supportsProjectHooks === false) {
+    return checkHookComponents(
+      context.homeDir,
+      platform,
+      'global',
+      workflowSelection,
+      assets,
+      context,
+    );
+  }
 
   const results: CheckResult[] = [];
   const runtime = hookRouterRuntimePaths(baseDir, platform, scope);
@@ -1015,6 +1044,7 @@ async function checkSkillCompleteness(
             base.scope,
             base.scope === 'global' ? 'classic' : workflowSelection,
             assets,
+            context,
           )),
         );
       }
@@ -1031,6 +1061,7 @@ async function checkSkillCompleteness(
           base.scope,
           base.scope === 'global' ? 'classic' : workflowSelection,
           assets,
+          context,
         )),
       );
     }
@@ -1726,6 +1757,24 @@ async function repairDoctorState(
     }
   }
 
+  if (scope !== 'global' && !projectRouterReady) {
+    const assets = await createDoctorAssetInspection();
+    for (const target of [...targets, ...hookOnlyTargets]) {
+      if (target.scope !== 'project' || target.platform.supportsProjectHooks !== false) continue;
+      const checks = await checkHookComponents(
+        context.homeDir,
+        target.platform,
+        'global',
+        workflowSelection,
+        assets,
+        context,
+      );
+      if (checks.length > 0 && checks.every((check) => check.status === 'pass')) {
+        projectRouterReady = true;
+        break;
+      }
+    }
+  }
   if (scope !== 'global' && projectRouterReady) {
     const selectionRepair = await repairCometCurrentSelection(projectPath, {
       migrateLegacyClassic: workflows.includes('classic'),

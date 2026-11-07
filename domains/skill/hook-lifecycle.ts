@@ -13,6 +13,12 @@ export async function reconcileCometHooksForPlatform(
   workflowSelection: InitWorkflowSelection = 'classic',
 ): Promise<HookInstallResult> {
   if (scope === 'project') {
+    if (platform.supportsProjectHooks === false) {
+      return {
+        status: 'skipped',
+        reason: `${platform.name} only executes user-scoped Hooks; run comet update --platform ${platform.id} --scope global --yes`,
+      };
+    }
     return installCometHooksForPlatform(baseDir, platform, scope, workflowSelection);
   }
 
@@ -53,6 +59,9 @@ export async function reconcileProjectCometHooksForPlatform(
   workflowSelection: InitWorkflowSelection,
   options: { globalBaseDir: string },
 ): Promise<HookInstallResult> {
+  if (platform.supportsProjectHooks === false) {
+    return reconcileCometHooksForPlatform(projectRoot, platform, 'project', workflowSelection);
+  }
   const project = await installCometHooksForPlatform(
     projectRoot,
     platform,

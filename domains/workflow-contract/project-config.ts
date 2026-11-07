@@ -1,5 +1,16 @@
 import path from 'path';
-import { stringify, parseDocument, isAlias, isMap, isScalar } from 'yaml';
+import { isDeepStrictEqual } from 'node:util';
+import {
+  stringify,
+  parseDocument,
+  isAlias,
+  isMap,
+  isSeq,
+  isScalar,
+  isNode,
+  type Document,
+  type YAMLMap,
+} from 'yaml';
 
 import type {
   ClassicArtifactLayout,
@@ -396,6 +407,7 @@ function commentKey(
 export function renderStructuredProjectConfig(
   value: Record<string, unknown>,
   language: ProjectConfigCommentLanguage,
+  source?: string | null,
 ): string {
   const output: string[] = [];
   let block: 'native' | 'classic' | 'hook' | 'memory' | 'knowledge' | null = null;
@@ -431,7 +443,149 @@ export function renderStructuredProjectConfig(
     }
   }
   output.push('');
-  return output.join('\n');
+  const rendered = output.join('\n');
+  if (!source) return rendered;
+  const original: Document = parseDocument(source, { uniqueKeys: true });
+  if (original.errors.length > 0) throw new Error(original.errors[0].message);
+  const template = parseDocument(rendered);
+  if (!isMap(original.contents) || !isMap(template.contents)) return rendered;
+  // YAML 将映射首项前的注释放在映射节点上；统一到键，避免键序变化时丢失或重复说明。
+  const attachLeadingComments = (node: unknown) => {
+    if (!isMap(node)) return;
+    const first = node.items[0];
+    if (node.commentBefore && first && isScalar(first.key)) {
+      first.key.commentBefore = [node.commentBefore, first.key.commentBefore]
+        .filter(Boolean)
+        .join('\n');
+      node.commentBefore = undefined;
+    }
+    for (const pair of node.items) attachLeadingComments(pair.value);
+  };
+  attachLeadingComments(original.contents);
+  attachLeadingComments(template.contents);
+  const previousValues = original.toJS() as Record<string, unknown>;
+  const targetClassic = template.get('classic', true);
+  if (isMap(targetClassic)) {
+    for (const pair of [...original.contents.items]) {
+      if (!isScalar(pair.key) || template.has(pair.key)) continue;
+      const key = String(pair.key.value);
+      if (!Object.hasOwn(COMMENTS.en, `classic.${key}`) || !targetClassic.has(key)) continue;
+      let classic = original.get('classic', true);
+      if (!isMap(classic)) {
+        const added = original.createPair('classic', {});
+        original.contents.items.push(added);
+        classic = added.value;
+      }
+      if (!isMap(classic)) continue;
+      const existing = classic.items.find((item) => isScalar(item.key) && item.key.value === key);
+      if (!existing) {
+        classic.items.push(pair);
+        previousValues.classic = {
+          ...(previousValues.classic as Record<string, unknown>),
+          [key]: previousValues[key],
+        };
+      } else {
+        if (isScalar(existing.key))
+          existing.key.commentBefore =
+            [pair.key.commentBefore, existing.key.commentBefore].filter(Boolean).join('\n') ||
+            undefined;
+        if (isNode(existing.value) && isNode(pair.value))
+          existing.value.comment =
+            [pair.value.comment, existing.value.comment].filter(Boolean).join('\n') || undefined;
+      }
+    }
+  }
+  const managedComments = new Set(
+    Object.values(COMMENTS).flatMap((comments) =>
+      Object.values(comments).flatMap((comment) =>
+        comment.split('\n').map((line) => line.replace(/^#\s?/u, '').trim()),
+      ),
+    ),
+  );
+  const merge = (
+    current: YAMLMap,
+    next: YAMLMap,
+    previous: Record<string, unknown>,
+    target: Record<string, unknown>,
+  ) => {
+    for (const pair of [...current.items]) {
+      if (!next.has(pair.key)) current.delete(pair.key);
+    }
+    for (const pair of next.items) {
+      const key = String(isScalar(pair.key) ? pair.key.value : pair.key);
+      const existing = current.items.find((item) =>
+        isScalar(item.key) && isScalar(pair.key) ? item.key.value === pair.key.value : false,
+      );
+      if (!existing) {
+        const added = original.createPair(key, target[key]);
+        if (isScalar(added.key) && isScalar(pair.key))
+          added.key.commentBefore = pair.key.commentBefore;
+        current.items.push(added);
+        if (isMap(added.value) && isMap(pair.value))
+          merge(
+            added.value,
+            pair.value,
+            target[key] as Record<string, unknown>,
+            target[key] as Record<string, unknown>,
+          );
+        continue;
+      }
+      if (isScalar(existing.key) && isScalar(pair.key)) {
+        const userComments = existing.key.commentBefore
+          ?.split('\n')
+          .filter((line) => !managedComments.has(line.trim()))
+          .join('\n');
+        existing.key.commentBefore =
+          [pair.key.commentBefore, userComments].filter(Boolean).join('\n') || undefined;
+      }
+      if (isMap(existing.value) && isMap(pair.value))
+        merge(
+          existing.value,
+          pair.value,
+          (previous[key] ?? {}) as Record<string, unknown>,
+          target[key] as Record<string, unknown>,
+        );
+      else if (!isDeepStrictEqual(previous[key], target[key])) {
+        const previous = existing.value;
+        existing.value = original.createNode(target[key]);
+        if (isNode(previous) && isNode(existing.value)) {
+          existing.value.comment = previous.comment;
+          existing.value.commentBefore = previous.commentBefore;
+          existing.value.spaceBefore = previous.spaceBefore;
+        }
+      }
+    }
+  };
+  merge(original.contents, template.contents, previousValues, value);
+  // anchor 被迁移或修改后，别名不能改变扩展字段的原值；只展开受影响的引用。
+  const stabilizeAliases = (node: unknown, target: unknown): unknown => {
+    if (isAlias(node)) {
+      let matches = false;
+      try {
+        matches = isDeepStrictEqual(node.toJS(original), target);
+      } catch {
+        /* 原 anchor 可能已迁到引用后方。 */
+      }
+      if (matches) return node;
+      const replacement = original.createNode(target);
+      replacement.comment = node.comment;
+      replacement.commentBefore = node.commentBefore;
+      replacement.spaceBefore = node.spaceBefore;
+      return replacement;
+    }
+    if (isMap(node)) {
+      for (const pair of node.items) {
+        const key = String(isScalar(pair.key) ? pair.key.value : pair.key);
+        pair.value = stabilizeAliases(pair.value, (target as Record<string, unknown>)[key]);
+      }
+    } else if (isSeq(node) && Array.isArray(target)) {
+      node.items = node.items.map((item, index) => stabilizeAliases(item, target[index]));
+    }
+    return node;
+  };
+  stabilizeAliases(original.contents, value);
+  const result = original.toString();
+  return source.includes('\r\n') ? result.replaceAll('\n', '\r\n') : result;
 }
 
 function projectRelativeSegments(value: unknown, label: string): string[] {

@@ -6,11 +6,15 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
+- **Dashboard change walkthrough setting**: Enable or disable HTML change walkthroughs for both Native and Classic in project settings, with the existing default and saved configuration preserved.
 - **Codex plugin package**: Build a local or private Comet plugin in the `comet-market` marketplace with workflow Skills, Comet branding and repository details, and the full Dashboard in the sidebar or beside a conversation. Activation prepares the matching CLI, registers native user-level Hooks, and delivers workflow rules to new sessions without a manual project init. Reuse healthy same-version or newer CLI installations, preserve user Hooks, and stop enforcing when the plugin is disabled or removed. Automatically disable recognized file-based Skill paths with configuration backups, while preserving shared files and customized definitions. The bundled interface accesses local data through app-only MCP tools. Hook execution still requires reviewed trust.
 - **DeepSeek Harness plugin**: Build a local or private Comet bundle with Chinese or English workflow Skills, a matching CLI, and the current workspace's Dashboard in the main column or right sidebar. Activation makes the bundled CLI available as `comet` in the DSH process, so shared Skills use the same commands on every platform without a global CLI install. It mounts the Harness' official Hook bridge and delivers workflow rules to new sessions without a manual project init; disabling the plugin removes its bridge and CLI path entry. Back up recognized legacy Skill entry points and migrate owned Hook and Rule portions after the new Hook executes, while preserving customized Skills, Runtime, project data and user profile patches. Reuse one Dashboard per workspace through a loopback proxy that retains its same-origin checks. The plugin does not initialize projects or run an Eval.
 
 ### Fixed
 
+- **Project update preservation**: Keep custom ignore rules, their precedence, and user-authored YAML comments when updating managed project configuration ([#540](https://github.com/rpamis/comet/issues/540)).
+- **ZCode Hook diagnostics**: Recognize valid user-level Hooks, repair disabled or duplicate entries, and preserve them during project updates instead of replacing them with project Hooks that ZCode does not execute ([#541](https://github.com/rpamis/comet/issues/541)).
+- **Cancelled Native history**: Diagnose closed, cancelled legacy Runs after their active documents are removed, while retaining checks for active projections, execution stops and storage integrity ([#542](https://github.com/rpamis/comet/issues/542)).
 - **CLI execution through Electron**: Parse Node-style CLI arguments explicitly when desktop agents run Comet through Electron, so Dashboard and other CLI commands do not reject the script path as an unknown command.
 
 ## What's Changed [0.5.2] - 2026-11-06

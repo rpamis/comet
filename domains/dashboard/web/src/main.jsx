@@ -5443,6 +5443,7 @@ function toCometConfigDraft(data) {
     defaultWorkflow: data.defaultWorkflow,
     workflows: [...data.workflows],
     ambientResume: data.ambientResume,
+    changeWalkthrough: data.changeWalkthrough ?? true,
     hookAllowPaths: data.hookAllowPaths.join('\n'),
     knowledge: {
       provider: data.knowledge?.provider ?? 'local',
@@ -5518,6 +5519,7 @@ function CometConfigSettings({ data, readOnly = false, onSave }) {
         defaultWorkflow: draft.defaultWorkflow,
         workflows: draft.workflows,
         ambientResume: draft.ambientResume,
+        changeWalkthrough: draft.changeWalkthrough,
         hookAllowPaths: draft.hookAllowPaths
           .split(/\r?\n/u)
           .map((item) => item.trim())
@@ -5605,6 +5607,24 @@ function CometConfigSettings({ data, readOnly = false, onSave }) {
             checked={draft.ambientResume}
             aria-label={t('切换环境感知恢复')}
             onChange={(ambientResume) => setDraft((current) => ({ ...current, ambientResume }))}
+          />
+        </div>
+        <div className="dashboard-memory-setting">
+          <div className="dashboard-memory-setting-copy">
+            <strong>{t('变更说明')}</strong>
+            <span>
+              {t(
+                '为 Native 和 Classic 生成可直接打开的 HTML 变更说明；开启后会增加讲解内容的 token 消耗',
+              )}
+            </span>
+          </div>
+          <Switch
+            checked={draft.changeWalkthrough}
+            size="small"
+            aria-label={t('切换变更说明')}
+            onChange={(changeWalkthrough) =>
+              setDraft((current) => ({ ...current, changeWalkthrough }))
+            }
           />
         </div>
         <div className="dashboard-memory-setting dashboard-memory-setting-stack">

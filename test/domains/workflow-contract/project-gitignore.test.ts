@@ -37,7 +37,8 @@ describe('Comet project .gitignore', () => {
 
     const rendered = renderCometProjectGitignore(source);
 
-    expect(rendered).toContain('node_modules/\r\ncoverage/\r\n');
+    expect(rendered).toMatch(/^node_modules\/\r\n/u);
+    expect(rendered).toMatch(/# <<< Comet managed project state <<<\r\ncoverage\/\r\n$/u);
     expect(rendered).toContain(
       [
         '# >>> Comet managed project state >>>',
@@ -117,6 +118,38 @@ describe('Comet project .gitignore', () => {
     expect(git(root, ['status', '--short', '--untracked-files=all', '--', '.comet']).stdout).toBe(
       '?? .comet/config.yaml\n',
     );
+  });
+
+  it('preserves custom managed-block rules, comments and precedence across repeated updates', async () => {
+    expect(git(root, ['init']).status).toBe(0);
+    const target = 'docs/comet/changes/demo/.comet/context.md';
+    const source =
+      renderCometProjectGitignore('node_modules/\n').replace(
+        '# <<< Comet managed project state <<<',
+        `# Keep my archived state\n**/changes/**/custom-state/\n!${target}\n# <<< Comet managed project state <<<`,
+      ) + `# Outside override\n!docs/comet/changes/demo/.comet/checkpoint.json\n`;
+    await fs.writeFile(path.join(root, '.gitignore'), source);
+    for (let iteration = 0; iteration < 2; iteration++) {
+      await ensureCometProjectGitignore(root);
+      expect(await fs.readFile(path.join(root, '.gitignore'), 'utf8')).toBe(source);
+      expect(git(root, ['check-ignore', '--no-index', '--quiet', target]).status).toBe(1);
+      expect(
+        git(root, [
+          'check-ignore',
+          '--no-index',
+          '--quiet',
+          'docs/comet/changes/demo/.comet/checkpoint.json',
+        ]).status,
+      ).toBe(1);
+      expect(
+        git(root, [
+          'check-ignore',
+          '--no-index',
+          '--quiet',
+          'docs/comet/changes/demo/custom-state/file',
+        ]).status,
+      ).toBe(0);
+    }
   });
 
   it('fails closed for malformed managed state and redirected project roots', async () => {

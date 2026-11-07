@@ -42,6 +42,8 @@ export interface Platform {
   supportsHooks?: boolean;
   /** Whether a user-scoped Hook can safely discover the active project from the host request. */
   supportsGlobalHooks?: boolean;
+  /** False when the platform ignores workspace Hook configuration. */
+  supportsProjectHooks?: boolean;
   /** Hook configuration format. Determines how installCometHooksForPlatform writes the hook config. */
   hookFormat?:
     | 'claude-code'
@@ -450,6 +452,7 @@ export const PLATFORMS: Platform[] = [
     supportsHooks: true,
     supportsGlobalHooks: true,
     hookFormat: 'zcode',
+    supportsProjectHooks: false,
   },
   {
     id: 'mimocode',

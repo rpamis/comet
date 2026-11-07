@@ -2604,7 +2604,11 @@ async function mergeProjectConfig(
     }
   }
 
-  const output = renderStructuredProjectConfig(root, resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en');
+  const output = renderStructuredProjectConfig(
+    root,
+    resolvedLanguage === 'zh-CN' ? 'zh-CN' : 'en',
+    snapshot.source,
+  );
   parseWorkflowProjectConfigDocument(output, { allowPartialProject: true });
   await writeWorkflowProjectConfigSource(projectPath, output, {
     allowPartialProject: !completeProjectConfig,

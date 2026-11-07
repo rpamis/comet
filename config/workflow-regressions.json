@@ -11405,6 +11405,176 @@
           ]
         }
       ]
+    },
+    {
+      "id": "issue-540-custom-ignore-preservation",
+      "sources": ["https://github.com/rpamis/comet/issues/540"],
+      "behavior": "Project update preserves custom ignore rules, comments and their precedence.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Reproduced on npm 0.5.2 and pre-fix 00a47ebc in isolated projects; see docs/architecture/issue-540-542-and-dashboard-settings.zh.md.",
+      "expected": "Keep custom rules and the original managed-block position on repeated updates.",
+      "forbidden": "Deleting user rules or moving negation rules across managed patterns.",
+      "rootCause": "Update replaced the entire managed block with canonical patterns.",
+      "tests": [
+        {
+          "file": "test/app/update-user-content.test.ts",
+          "namePattern": "preserves custom ignore rules and YAML comments through repeated public project updates",
+          "requiredNames": [
+            "preserves custom ignore rules and YAML comments through repeated public project updates"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/project-gitignore.test.ts",
+          "namePattern": "preserves custom managed-block rules, comments and precedence across repeated updates",
+          "requiredNames": [
+            "Comet project .gitignore preserves custom managed-block rules, comments and precedence across repeated updates"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-540-config-comment-preservation",
+      "sources": ["https://github.com/rpamis/comet/issues/540"],
+      "behavior": "Project update preserves user-authored YAML comments.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Reproduced on npm 0.5.2 and pre-fix 00a47ebc in isolated projects; see docs/architecture/issue-540-542-and-dashboard-settings.zh.md.",
+      "expected": "Retain key and inline comments, extension values and managed language updates.",
+      "forbidden": "Silently dropping comments while merging configuration.",
+      "rootCause": "Merge rendered plain JavaScript values and discarded YAML nodes.",
+      "tests": [
+        {
+          "file": "test/app/update-user-content.test.ts",
+          "namePattern": "preserves custom ignore rules and YAML comments through repeated public project updates",
+          "requiredNames": [
+            "preserves custom ignore rules and YAML comments through repeated public project updates"
+          ]
+        },
+        {
+          "file": "test/domains/skill/skills.test.ts",
+          "namePattern": "preserves extension aliases and comments on migrated Classic keys|preserves user YAML comments while updating managed defaults and comment language",
+          "requiredNames": [
+            "skills mergeProjectConfig preserves extension aliases and comments on migrated Classic keys",
+            "skills mergeProjectConfig preserves user YAML comments while updating managed defaults and comment language"
+          ]
+        },
+        {
+          "file": "test/domains/skill/skills.test.ts",
+          "namePattern": "preserves extension values referenced by moved or updated YAML anchors",
+          "requiredNames": [
+            "skills mergeProjectConfig preserves extension values referenced by moved or updated YAML anchors (migrated scalar)",
+            "skills mergeProjectConfig preserves extension values referenced by moved or updated YAML anchors (updated mapping)",
+            "skills mergeProjectConfig preserves extension values referenced by moved or updated YAML anchors (alias in a sequence)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-541-global-hook-diagnosis",
+      "sources": ["https://github.com/rpamis/comet/issues/541"],
+      "behavior": "Public doctor accepts valid ZCode user Hooks and repairs disabled or duplicate entries.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Reproduced on npm 0.5.2 and pre-fix 00a47ebc in isolated projects; see docs/architecture/issue-540-542-and-dashboard-settings.zh.md.",
+      "expected": "A valid Hook passes before and after repair; invalid entries warn and can be repaired.",
+      "forbidden": "Treating every global Hook as residue or accepting disabled and duplicate entries.",
+      "rootCause": "Doctor ignored the supported global Hook policy used by installation.",
+      "tests": [
+        {
+          "file": "test/app/doctor-zcode-global.test.ts",
+          "namePattern": "keeps a valid ZCode global Hook healthy through public doctor repair and repairs disabled or duplicate Hooks",
+          "requiredNames": [
+            "keeps a valid ZCode global Hook healthy through public doctor repair and repairs disabled or duplicate Hooks"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-541-project-preserves-user-hook",
+      "sources": ["https://github.com/rpamis/comet/issues/541"],
+      "behavior": "Project update preserves the effective ZCode user Hook without installing ignored project Hooks.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Reproduced on npm 0.5.2 and pre-fix 00a47ebc in isolated projects; see docs/architecture/issue-540-542-and-dashboard-settings.zh.md.",
+      "expected": "Leave user configuration unchanged and explain the user-scoped install command.",
+      "forbidden": "Deleting the user Hook or reporting an ignored project Hook as installed.",
+      "rootCause": "Project reconciliation installed locally and removed the global Hook.",
+      "tests": [
+        {
+          "file": "test/app/update-user-content.test.ts",
+          "namePattern": "preserves custom ignore rules and YAML comments through repeated public project updates",
+          "requiredNames": [
+            "preserves custom ignore rules and YAML comments through repeated public project updates"
+          ]
+        },
+        {
+          "file": "test/app/doctor.test.ts",
+          "namePattern": "repairs a ZCode project selection only with a ready user Router",
+          "requiredNames": [
+            "doctor command repairs a ZCode project selection only with a ready user Router (ready=true)",
+            "doctor command repairs a ZCode project selection only with a ready user Router (ready=false)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-542-cancelled-history-projection",
+      "sources": ["https://github.com/rpamis/comet/issues/542"],
+      "behavior": "Doctor reads closed cancelled legacy Native history after active document cleanup.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Reproduced on npm 0.5.2 and pre-fix 00a47ebc in isolated projects; see docs/architecture/issue-540-542-and-dashboard-settings.zh.md.",
+      "expected": "Named doctor, repair, project doctor and generated bundle succeed without changing the Run or recreating documents.",
+      "forbidden": "Reactivating history, changing revision, or hiding missing active projections and unresolved cancellation.",
+      "rootCause": "Projection sync treated archived=false as active without considering closed cancelled history.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-cancelled-history.test.ts",
+          "namePattern": "diagnoses closed cancelled v1 history without active documents",
+          "requiredNames": [
+            "diagnoses closed cancelled v1 history without active documents (linked=false)",
+            "diagnoses closed cancelled v1 history without active documents (linked=true)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-cancelled-history.test.ts",
+          "namePattern": "still rejects missing active projections and unfinished cancellation history",
+          "requiredNames": [
+            "still rejects missing active projections and unfinished cancellation history"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-cancelled-history.test.ts",
+          "namePattern": "does not skip projection checks for fixed application readers of closed cancelled history",
+          "requiredNames": [
+            "does not skip projection checks for fixed application readers of closed cancelled history"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dashboard-change-walkthrough-setting",
+      "sources": ["report:2026-11-08-dashboard-change-walkthrough"],
+      "behavior": "Dashboard exposes and persists the existing project change_walkthrough option.",
+      "coverageLevel": "runtime",
+      "reproduction": "Reproduced on npm 0.5.2 and pre-fix 00a47ebc in isolated projects; see docs/architecture/issue-540-542-and-dashboard-settings.zh.md.",
+      "expected": "Show the default, persist false and true, retain comments and reject invalid booleans.",
+      "forbidden": "Resetting an omitted choice or claiming a save without YAML persistence.",
+      "rootCause": "Dashboard settings omitted the existing workflow option.",
+      "tests": [
+        {
+          "file": "test/domains/dashboard/project-config-settings.test.ts",
+          "namePattern": "loads the default walkthrough and persists both switch values without discarding user comments",
+          "requiredNames": [
+            "Dashboard project config settings loads the default walkthrough and persists both switch values without discarding user comments"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "Dashboard browser interaction",
+          "status": "verified",
+          "evidence": [
+            "docs/architecture/issue-540-542-and-dashboard-settings.zh.md#验证与限制: Playwright dashboard-settings-browser.spec.ts zh/en toggle save and reload passed; both values, POST payload, desktop and 390px rendering verified. Real YAML persistence is tested separately."
+          ]
+        }
+      ]
     }
   ]
 }

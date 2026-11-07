@@ -116,6 +116,38 @@ describe('Dashboard project config settings', () => {
     });
   });
 
+  it('loads the default walkthrough and persists both switch values without discarding user comments', async () => {
+    const file = path.join(projectRoot, '.comet/config.yaml');
+    await fs.appendFile(file, '# Team extension note\nteam: enabled # inline note\n');
+    let loaded = await collectDashboardProjectConfigSettings(projectRoot);
+    expect(loaded).toMatchObject({ changeWalkthrough: true });
+    for (const enabled of [false, true]) {
+      if (enabled) {
+        const { changeWalkthrough: _omitted, ...legacyConfig } = loaded;
+        loaded = await updateDashboardProjectConfigSettings(projectRoot, {
+          expectedRevision: loaded.revision,
+          config: legacyConfig,
+        });
+        expect(loaded.changeWalkthrough).toBe(false);
+      }
+      loaded = await updateDashboardProjectConfigSettings(projectRoot, {
+        expectedRevision: loaded.revision,
+        config: { ...loaded, changeWalkthrough: enabled },
+      });
+      expect(loaded).toMatchObject({ changeWalkthrough: enabled });
+      const source = await fs.readFile(file, 'utf8');
+      expect(parseWorkflowProjectConfigDocument(source).change_walkthrough).toBe(enabled);
+      expect(source).toContain('Team extension note');
+      expect(source).toContain('inline note');
+    }
+    await expect(
+      updateDashboardProjectConfigSettings(projectRoot, {
+        expectedRevision: loaded.revision,
+        config: { ...loaded, changeWalkthrough: 'false' },
+      }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
   it('loads and saves additional local knowledge include patterns', async () => {
     const current = parseWorkflowProjectConfigDocument(
       await fs.readFile(path.join(projectRoot, '.comet', 'config.yaml'), 'utf8'),

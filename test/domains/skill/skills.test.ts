@@ -1454,6 +1454,26 @@ describe('skills', () => {
       expect(updated.hooks.PreToolUse[1]).toEqual({ matcher: 'Write|Edit', hooks: [] });
     });
 
+    it('preserves the ZCode user Hook when reconciling a project that cannot execute project Hooks', async () => {
+      const platform = PLATFORMS.find((item) => item.id === 'zcode')!;
+      const home = path.join(tmpDir, 'home');
+      const project = path.join(tmpDir, 'project');
+      await installCometHooksForPlatform(home, platform, 'global', 'native');
+      const file = path.join(home, '.zcode/cli/config.json');
+      const source = await fs.readFile(file, 'utf8');
+      const result = await reconcileProjectCometHooksForPlatform(project, platform, 'native', {
+        globalBaseDir: home,
+      });
+      expect(await fs.readFile(file, 'utf8')).toBe(source);
+      expect(result).toMatchObject({
+        status: 'skipped',
+        reason: expect.stringContaining('--scope global'),
+      });
+      await expect(fs.access(path.join(project, '.zcode/config.json'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    });
+
     it('installs a project Router and removes the historical global Router atomically', async () => {
       const codex = PLATFORMS.find((candidate) => candidate.id === 'codex')!;
       const projectRoot = path.join(tmpDir, 'project');
@@ -4652,6 +4672,78 @@ describe('skills', () => {
   });
 
   describe('mergeProjectConfig', () => {
+    it.each([
+      ['migrated scalar', 'language: &english en # user choice\ncopy: *english\n', 'en'],
+      [
+        'updated mapping',
+        'classic: &policy\n  language: en\n  review_mode: thorough\ncopy: *policy\n',
+        { language: 'en', review_mode: 'thorough' },
+      ],
+      [
+        'alias in a sequence',
+        'classic: &policy\n  language: en\n  review_mode: thorough\ncopy: [*policy]\n',
+        [{ language: 'en', review_mode: 'thorough' }],
+      ],
+    ])(
+      'preserves extension values referenced by moved or updated YAML anchors (%s)',
+      async (_label, input, expected) => {
+        const file = path.join(tmpDir, '.comet/config.yaml');
+        await fs.mkdir(path.dirname(file), { recursive: true });
+        await fs.writeFile(file, input as string);
+        await mergeProjectConfig(tmpDir, 'en');
+        const source = await fs.readFile(file, 'utf8');
+        expect(parse(source).copy).toEqual(expected);
+        await mergeProjectConfig(tmpDir, 'en');
+        expect(await fs.readFile(file, 'utf8')).toBe(source);
+      },
+    );
+    it('preserves extension aliases and comments on migrated Classic keys', async () => {
+      const file = path.join(tmpDir, '.comet/config.yaml');
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(
+        file,
+        '# Team uses English\nlanguage: en # Needed by shared scripts\ncustom: &shared\n  note: hello # user note\ncopy: *shared\n',
+      );
+      await mergeProjectConfig(tmpDir, 'en');
+      const source = await fs.readFile(file, 'utf8');
+      expect(parse(source)).toMatchObject({
+        classic: { language: 'en' },
+        custom: { note: 'hello' },
+        copy: { note: 'hello' },
+      });
+      for (const comment of ['Team uses English', 'Needed by shared scripts', 'user note'])
+        expect(source).toContain(comment);
+      expect(source).toContain('&shared');
+      expect(source).toContain('*shared');
+      await mergeProjectConfig(tmpDir, 'en');
+      expect(await fs.readFile(file, 'utf8')).toBe(source);
+    });
+    it('preserves user YAML comments while updating managed defaults and comment language', async () => {
+      const file = path.join(tmpDir, '.comet/config.yaml');
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(
+        file,
+        '# Team preference\nchange_walkthrough: false # keep explanations optional\nclassic:\n  # Keep this review policy\n  review_mode: thorough\ncustom_key: "keep" # extension note\n',
+      );
+      await mergeProjectConfig(tmpDir, 'zh-CN');
+      await mergeProjectConfig(tmpDir, 'en');
+      const source = await fs.readFile(file, 'utf8');
+      for (const comment of [
+        'Team preference',
+        'keep explanations optional',
+        'Keep this review policy',
+        'extension note',
+      ])
+        expect(source).toContain(comment);
+      expect(source).toContain('extra explanation tokens');
+      expect(parse(source)).toMatchObject({
+        change_walkthrough: false,
+        classic: { review_mode: 'thorough' },
+        custom_key: 'keep',
+      });
+      await mergeProjectConfig(tmpDir, 'en');
+      expect(await fs.readFile(file, 'utf8')).toBe(source);
+    });
     it.each([true, false])(
       'preserves change_walkthrough %s across repeated installation updates',
       async (enabled) => {

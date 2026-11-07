@@ -9,6 +9,98 @@ async function openSettings(page: Page) {
   return page.getByRole('dialog', { name: /Comet (设置|settings)/iu });
 }
 
+for (const language of ['zh', 'en'] as const) {
+  test(`saves and reloads the change walkthrough switch in ${language}`, async ({
+    page,
+  }, testInfo) => {
+    const { DEMO_PROJECT_CONFIG } = await import('../../../domains/dashboard/web/demo.js');
+    let config = { ...DEMO_PROJECT_CONFIG, changeWalkthrough: true };
+    const writes: boolean[] = [];
+    await page.setViewportSize({ width: language === 'zh' ? 1280 : 390, height: 900 });
+    await page.addInitScript(
+      (language) => localStorage.setItem('comet-dashboard-language', language),
+      language,
+    );
+    await page.route('**/api/dashboard/**', async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith('/projects'))
+        return route.fulfill({
+          json: {
+            currentProjectId: 'fixture',
+            projects: [
+              {
+                id: 'fixture',
+                name: 'Comet',
+                path: '/project-a',
+                availability: 'available',
+                isCurrent: true,
+              },
+            ],
+          },
+        });
+      if (pathname.endsWith('/overview'))
+        return route.fulfill({
+          json: {
+            project: { name: 'Comet', path: '/project-a' },
+            summary: {},
+            initialChanges: { items: [], total: 0 },
+            git: {},
+            native: null,
+          },
+        });
+      if (pathname.endsWith('/plugins')) return route.fulfill({ json: { pages: [] } });
+      if (pathname.endsWith('/config')) {
+        if (route.request().method() === 'POST') {
+          const input = route.request().postDataJSON();
+          expect(input.expectedRevision).toBe(config.revision);
+          writes.push(input.config.changeWalkthrough);
+          config = { ...config, ...input.config, revision: `revision-${writes.length}` };
+        }
+        return route.fulfill({ json: config });
+      }
+      return route.fulfill({ json: { items: [], total: 0 } });
+    });
+    const openConfig = async () => {
+      const dialog = await openSettings(page);
+      await dialog
+        .getByRole('menuitem', {
+          name: language === 'zh' ? /Comet 配置$/u : /Comet configuration$/u,
+        })
+        .click();
+      return dialog;
+    };
+    await page.goto('/');
+    let dialog = await openConfig();
+    const switchName = language === 'zh' ? '切换变更说明' : 'Toggle change walkthrough';
+    for (const enabled of [false, true]) {
+      const control = dialog.getByRole('switch', { name: switchName, exact: true });
+      await control.scrollIntoViewIfNeeded();
+      await expect(control).toBeChecked({ checked: !enabled });
+      await control.click();
+      await dialog
+        .getByRole('button', {
+          name: language === 'zh' ? '保存 Comet 配置' : 'Save Comet configuration',
+          exact: true,
+        })
+        .click();
+      await expect.poll(() => writes.at(-1)).toBe(enabled);
+      await page.reload();
+      dialog = await openConfig();
+      await expect(dialog.getByRole('switch', { name: switchName, exact: true })).toBeChecked({
+        checked: enabled,
+      });
+    }
+    expect(writes).toEqual([false, true]);
+    await dialog.getByRole('switch', { name: switchName }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`walkthrough-${language}.png`) });
+    expect(
+      await dialog
+        .locator('.dashboard-settings-main')
+        .evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+    ).toBe(true);
+  });
+}
+
 test('shows flat settings tabs and spaces Eval cards like other settings', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/?demo');

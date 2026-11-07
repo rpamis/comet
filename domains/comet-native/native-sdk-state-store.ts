@@ -41,6 +41,7 @@ import {
 import {
   COMET_CHANGE_OWNER_SCHEMA,
   registerSdkChangeOwner,
+  readSdkChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
 import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
 import { ensureProtectedProjectDirectory } from '../workflow-contract/protected-project-path.js';
@@ -600,10 +601,26 @@ export function createNativeSdkStateStore(
       if (config && config.native.artifact_root !== input.artifactRootRef) {
         throw new Error('Native artifact root changed after Run creation');
       }
+      if (marker && marker.revision > run.revision) {
+        throw new Error(`Native SDK state projection marker is invalid for ${runId}`);
+      }
       const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, {
         ...options,
         readOnly,
       });
+      // 已封存取消的业务阶段保持原值；历史诊断不依赖已清理的活动文档。
+      // 这里只跳过投影同步，调用方仍须校验 Run 定义、停止证据及存储状态。
+      if (
+        !options.identity &&
+        run.status === 'cancelled' &&
+        (await readSdkChangeOwner(projectRoot, 'native', runId, { readOnly: true }))
+          ?.application === 'native' &&
+        (await createFileRuntimeStore<WorkflowRun>({
+          rootDir: path.join(workspaceRuntimeRoot, 'sdk-runs', 'native'),
+        }).readPartitionMetadata(runId)) === 'closed'
+      ) {
+        return run;
+      }
       let file = nativePortableStateFile(paths, runId);
       try {
         await fs.access(path.dirname(file));
@@ -653,9 +670,6 @@ export function createNativeSdkStateStore(
         current = parseNativePortableState(currentDocument);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      }
-      if (marker && marker.revision > run.revision) {
-        throw new Error(`Native SDK state projection marker is invalid for ${runId}`);
       }
       if (current && !sameState(current, state)) {
         const recoveryHash = (run.input as { recoverySourceHash?: unknown } | null)

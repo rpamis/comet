@@ -2916,6 +2916,7 @@ export const DEMO_PROJECT_CONFIG = {
   defaultWorkflow: 'classic',
   workflows: ['classic', 'native'],
   ambientResume: true,
+  changeWalkthrough: true,
   hookAllowPaths: ['docs/generated', 'reports'],
   knowledge: {
     provider: 'local',

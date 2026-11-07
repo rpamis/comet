@@ -130,6 +130,38 @@ async function collectDoctorResults(
   return (await collectDoctorPayload(targetPath, scope)).results;
 }
 
+it('accepts a valid ZCode user Hook before and after global repair while diagnosing disabled Hooks', async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'doctor-zcode-global-'));
+  const platform = PLATFORMS.find((item) => item.id === 'zcode')!;
+  try {
+    await installManagedCometSkills(home, '.zcode');
+    await installCometHooksForPlatform(home, platform, 'global', 'native');
+    const hook = (payload: DoctorPayload) =>
+      payload.results.find((item) => item.check === 'hooks: ZCode (global)');
+    expect(hook(await collectDoctorPayload(home, 'global', home))).toMatchObject({
+      status: 'pass',
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await doctorCommand(home, { json: true, repair: true, scope: 'global', homeDir: home });
+    } finally {
+      log.mockRestore();
+    }
+    expect(hook(await collectDoctorPayload(home, 'global', home))).toMatchObject({
+      status: 'pass',
+    });
+    const file = path.join(home, '.zcode/cli/config.json');
+    const config = JSON.parse(await fs.readFile(file, 'utf8'));
+    config.hooks.enabled = false;
+    await fs.writeFile(file, JSON.stringify(config));
+    expect(hook(await collectDoctorPayload(home, 'global', home))).toMatchObject({
+      status: 'warn',
+    });
+  } finally {
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
@@ -1856,6 +1888,41 @@ describe('doctor command', () => {
 
     await expect(readCometCurrentSelection(tmpDir)).resolves.toEqual({ status: 'missing' });
   });
+
+  it.each([true, false])(
+    'repairs a ZCode project selection only with a ready user Router (ready=%s)',
+    async (ready) => {
+      const platform = PLATFORMS.find((item) => item.id === 'zcode')!;
+      const home = path.join(tmpDir, 'home');
+      await installManagedCometSkills(tmpDir, '.zcode');
+      await writeProjectConfig(tmpDir, defaultProjectConfig('.'));
+      if (ready) {
+        await copyCometSkillsForPlatform(
+          home,
+          platform,
+          true,
+          'skills',
+          'global',
+          'copy',
+          'native',
+        );
+        await installCometHooksForPlatform(home, platform, 'global', 'native');
+      }
+      await writeCometCurrentSelection(tmpDir, {
+        schema: 'comet.selection.v2',
+        workflow: 'native',
+        change: 'missing-change',
+        branch: null,
+      });
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        await doctorCommand(tmpDir, { json: true, repair: true, scope: 'project', homeDir: home });
+      } finally {
+        log.mockRestore();
+      }
+      expect((await readCometCurrentSelection(tmpDir)).status).toBe(ready ? 'missing' : 'selected');
+    },
+  );
 
   it('reports a Hook JSON parse failure without rewriting the canonical config', async () => {
     const hookPath = path.join(tmpDir, '.claude', 'settings.local.json');
