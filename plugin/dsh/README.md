@@ -1,11 +1,19 @@
 # Comet DeepSeek Harness 插件
 
-本插件把 Comet 自有的 Native、Classic、Any、Review、Memory 与阶段 Skills 注册到
-DeepSeek Harness 的技能目录，并在左侧栏的入口列表（与「插件」「自动化任务」同一区域）
-增加一个 Comet 入口：选中后在主内容区打开当前会话工作区的本地 Dashboard。插件从包安装
-时会带上匹配版本的 Comet CLI，并在当前 DSH 进程中提供 `comet` 命令；找不到自带
-副本时退回 PATH 中已有的 `comet`。启用时自动接入官方 Hook 桥接，无需手动运行 `comet init`；
-插件不初始化项目，也不执行 Eval。
+Comet 是一个面向 Agent 的可恢复长程任务工作流与 Skill 平台，帮助你从需求推进到实现、
+验收和归档。任务状态保存在项目中，换会话或中断后可以继续。
+
+- **Native 与 Classic**：Native 让 Agent 自主选择计划、实现、测试和审查方法，由 Runtime 检查状态、验收和归档；Classic 保留 OpenSpec 与 Superpowers 的完整阶段流程。
+- **Comet Any 与 SDK**：将 Skill、工具、用户确认和验收步骤组合成可运行、可恢复的工作流。
+- **个人记忆与项目知识**：保留协作偏好、项目结构和经过验证的经验，减少重复交代与探索。
+- **Comet Eval**：用 Rubric、Pass@k 和 Pass^k 记录评估证据，比较 Skill 与完整工作流的表现；仅在用户明确要求时启动。
+- **Dashboard**：从 DSH 左侧的 Comet 入口查看当前项目、工作流进度、变更详情、产物和评估记录，也可在右侧栏打开面板。
+
+插件包含 Comet Skill、工作流 Guard、本地 Dashboard 和配套 CLI。Comet Skill 注册到
+DeepSeek Harness 的技能目录；左侧的 Comet 入口在主内容区打开当前会话工作区的 Dashboard。
+从 npm 或私有包安装时，插件会一并安装匹配版本的 Comet CLI，并在当前 DSH 进程中提供
+`comet` 命令；没有自带副本时使用 PATH 中已有的 CLI。启用时自动接入官方 Hook 桥接，
+无需先手动运行 `comet init`。Classic 依赖沿用项目配置；插件不初始化项目，也不执行 Eval。
 
 源码、文档与问题反馈：[https://github.com/rpamis/comet](https://github.com/rpamis/comet)
 

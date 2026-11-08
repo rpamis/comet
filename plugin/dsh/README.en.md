@@ -1,12 +1,22 @@
 # Comet DeepSeek Harness plugin
 
-This plugin registers Comet's own Native, Classic, Any, Review, Memory and phase Skills
-with DeepSeek Harness, and adds a Comet entry to the sidebar list beside **Plugins** and
-**Scheduled tasks**: selecting it opens the local Dashboard for the current session's
-workspace in the main column. A registry install also brings the matching Comet CLI and
-provides the `comet` command in the current DSH process; when the bundle carries no copy,
-the plugin falls back to `comet` on PATH. The plugin initializes no project and runs no
-Eval.
+Comet is a resumable long-running workflow and Skill platform for agents. It helps you move
+from requirements through implementation, verification and archiving. Task state stays in
+the project, so work can continue in a new session or after an interruption.
+
+- **Native and Classic**: Native lets the agent choose planning, implementation, testing and review methods while the Runtime checks state, verifies results and archives the work. Classic retains the complete OpenSpec and Superpowers phase workflow.
+- **Comet Any and SDK**: Combine Skills, tools, user confirmations and acceptance steps into runnable, resumable workflows.
+- **Personal memory and project knowledge**: Retain collaboration preferences, project structure and verified experience to reduce repeated explanations and exploration.
+- **Comet Eval**: Use Rubric, Pass@k and Pass^k to record evaluation evidence and compare Skills or complete workflows. Evaluations start only when the user explicitly requests them.
+- **Dashboard**: Open Comet from the DSH sidebar to view the current project, workflow progress, change details, artifacts and evaluation records. The Dashboard can also open in the right sidebar.
+
+The plugin includes Comet Skill, workflow guards, the local Dashboard and a matching CLI.
+It registers Comet Skill in DeepSeek Harness and adds a Comet sidebar entry that opens the
+current session workspace's Dashboard in the main column. An npm or private-registry
+install brings the matching Comet CLI and exposes `comet` in the current DSH process;
+without a bundled copy, it uses the CLI on PATH. Activation mounts the official Hook
+bridge without requiring a manual `comet init`. Classic dependencies follow the project
+configuration. The plugin initializes no project and runs no Eval.
 
 Source, documentation and issue tracker: [https://github.com/rpamis/comet](https://github.com/rpamis/comet)
 

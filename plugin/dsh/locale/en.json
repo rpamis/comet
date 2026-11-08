@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Comet",
-    "description": "Run Comet workflows in DeepSeek Harness: 13 Native, Classic and other skills load out of the box, a sidebar entry opens the project Dashboard in the main column, and a matching Comet CLI ships with the bundle.",
+    "description": "Comet is a resumable long-running workflow and Skill platform for agents. Move from requirements through implementation, verification and archiving while retaining personal memory and project knowledge. In DeepSeek Harness, open the current project Dashboard from the sidebar and use the matching Comet CLI installed with the plugin.",
     "detail": "README.en.md"
   }
 }

@@ -11,8 +11,7 @@ Comet 是一个面向 Agent 的可恢复长程任务工作流与 Skill 平台，
 
 项目地址：[rpamis/comet](https://github.com/rpamis/comet)。
 
-本插件打包 Comet 自有的 Native、Classic、Any、Review、Memory 与阶段 Skills，
-并携带工作流 Hook Router 与本地 Dashboard MCP App。
+插件包含 Comet Skill、工作流 Hook Router 和本地 Dashboard MCP App。
 工作流通过本机的公开 `comet` CLI 推进；Dashboard 服务随插件分发。
 启用插件时自动准备配套 CLI，并注册用户级 Hook；不会初始化项目或执行 Eval。
 打开面板时才启动 Dashboard。
