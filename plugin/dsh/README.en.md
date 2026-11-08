@@ -16,7 +16,7 @@ current session workspace's Dashboard in the main column. An npm or private-regi
 install brings the matching Comet CLI and exposes `comet` in the current DSH process;
 without a bundled copy, it uses the CLI on PATH. Activation mounts the official Hook
 bridge without requiring a manual `comet init`. Classic dependencies follow the project
-configuration. The plugin initializes no project and runs no Eval.
+configuration.
 
 Source, documentation and issue tracker: [https://github.com/rpamis/comet](https://github.com/rpamis/comet)
 

@@ -13,7 +13,7 @@ Comet 是一个面向 Agent 的可恢复长程任务工作流与 Skill 平台，
 
 插件包含 Comet Skill、工作流 Hook Router 和本地 Dashboard MCP App。
 工作流通过本机的公开 `comet` CLI 推进；Dashboard 服务随插件分发。
-启用插件时自动准备配套 CLI，并注册用户级 Hook；不会初始化项目或执行 Eval。
+启用插件时自动准备配套 CLI，并注册用户级 Hook。
 打开面板时才启动 Dashboard。
 
 ## 准备执行环境

@@ -13,7 +13,7 @@ Comet 是一个面向 Agent 的可恢复长程任务工作流与 Skill 平台，
 DeepSeek Harness 的技能目录；左侧的 Comet 入口在主内容区打开当前会话工作区的 Dashboard。
 从 npm 或私有包安装时，插件会一并安装匹配版本的 Comet CLI，并在当前 DSH 进程中提供
 `comet` 命令；没有自带副本时使用 PATH 中已有的 CLI。启用时自动接入官方 Hook 桥接，
-无需先手动运行 `comet init`。Classic 依赖沿用项目配置；插件不初始化项目，也不执行 Eval。
+无需先手动运行 `comet init`。Classic 依赖沿用项目配置。
 
 源码、文档与问题反馈：[https://github.com/rpamis/comet](https://github.com/rpamis/comet)
 
