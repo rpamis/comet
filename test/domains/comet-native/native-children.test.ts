@@ -485,6 +485,38 @@ children:
     });
   });
 
+  it('derives referenced v2 acceptance from the current catalog without copying its text', () => {
+    const source =
+      'schema: comet.native.children.v2\nchildren:\n  - name: first\n    depends_on: []\n    covers: [A1]\n  - name: second\n    depends_on: [first]\n    covers: [A2]\n';
+    const acceptanceCatalog = [
+      { id: 'A1', source: 'brief.md', text: 'First approved behavior.' },
+      { id: 'A2', source: 'brief.md', text: 'Second approved behavior.' },
+      { id: 'A3', source: 'specs/demo/spec.md', text: 'Not authorized for a repair child.' },
+    ];
+    const options = { acceptanceCatalog, requiredAcceptanceIds: ['A1', 'A2'] };
+    expect(parseNativeChildrenContract(source, ['A1', 'A2'], options).acceptance_index).toEqual({
+      A1: { source: 'brief.md', text: 'First approved behavior.' },
+      A2: { source: 'brief.md', text: 'Second approved behavior.' },
+    });
+    expect(() =>
+      parseNativeChildrenContract(
+        source.replace('covers: [A2]', 'covers: [A3]'),
+        ['A1', 'A2'],
+        options,
+      ),
+    ).toThrow(/acceptance|coverage/iu);
+    expect(() => parseNativeChildrenContract(source, ['A1', 'A2'])).toThrow(/catalog|summary/iu);
+    expect(
+      parseNativeChildrenContract(source, ['A1', 'A2'], {
+        ...options,
+        acceptanceCatalog: [
+          { ...acceptanceCatalog[0], text: 'Changed behavior requires a new Shape.' },
+          acceptanceCatalog[1],
+        ],
+      }).acceptance_index?.A1.text,
+    ).toBe('Changed behavior requires a new Shape.');
+  });
+
   it('rejects mixed v2 child-plan variants with an actionable format error', () => {
     const indexedWithSummary = READABLE_CHILDREN.replace(
       'depends_on: []\n    covers: [A1]',

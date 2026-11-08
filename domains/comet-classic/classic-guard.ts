@@ -1442,6 +1442,37 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
             throw new GuardFailure('--local requires an applied Build or Verify check');
           args = args.filter((_, index) => index !== localIndex);
         }
+        let requestedCheckCwd: string | undefined;
+        let requestedCheckTimeoutMs: number | undefined;
+        for (const option of ['--cwd', '--timeout-ms']) {
+          const index = args.indexOf(option);
+          const separator = args.indexOf('--');
+          if (index < 0 || (separator >= 0 && index > separator)) continue;
+          const value = args[index + 1];
+          if (
+            !['build', 'verify'].includes(phase) ||
+            !args.includes('--apply') ||
+            !value ||
+            value.startsWith('--')
+          )
+            throw new GuardFailure(
+              `${option} requires an applied Build or Verify check and a value`,
+            );
+          if (option === '--cwd') requestedCheckCwd = value;
+          else {
+            requestedCheckTimeoutMs = Number(value);
+            if (!Number.isSafeInteger(requestedCheckTimeoutMs) || requestedCheckTimeoutMs <= 0)
+              throw new GuardFailure('--timeout-ms requires a positive integer');
+          }
+          args = args.filter((_, current) => current !== index && current !== index + 1);
+        }
+        if (
+          (requestedCheckCwd !== undefined || requestedCheckTimeoutMs !== undefined) &&
+          !args.includes('--')
+        )
+          throw new GuardFailure(
+            'Check cwd and timeout options require a literal program after --',
+          );
         if (phase === 'open') {
           const apply = args.length === 5 && args[2] === '--apply' && args[3] === '--approval-hash';
           if (args.length !== 2 && !apply) {
@@ -1486,8 +1517,8 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
             );
           }
           let argv = separator === 3 ? args.slice(separator + 1) : undefined;
-          let checkCwd: string | undefined;
-          let checkTimeoutMs: number | undefined;
+          let checkCwd: string | undefined = requestedCheckCwd;
+          let checkTimeoutMs: number | undefined = requestedCheckTimeoutMs;
           if (apply && !argv) {
             const pendingReceipt = sdkWorkspace.run.evidenceWaits?.some(
               (wait) =>
@@ -1563,8 +1594,8 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
             );
           }
           let argv = separator === 5 ? args.slice(separator + 1) : undefined;
-          let checkCwd: string | undefined;
-          let checkTimeoutMs: number | undefined;
+          let checkCwd: string | undefined = requestedCheckCwd;
+          let checkTimeoutMs: number | undefined = requestedCheckTimeoutMs;
           if (apply && !argv) {
             const pendingReceipt = sdkWorkspace.run.evidenceWaits?.some(
               (wait) =>

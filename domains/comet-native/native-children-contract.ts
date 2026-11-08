@@ -20,7 +20,7 @@ const V1_CHILD_KEYS = new Set(['name', 'depends_on', 'covers']);
 const V2_CHILD_KEYS = new Set(['name', 'summary', 'depends_on']);
 const CHILD_KEYS = new Set(['name', 'depends_on', 'covers']);
 
-type NativeChildrenContractVariant = 'v1' | 'summary-v2' | 'indexed-v2';
+type NativeChildrenContractVariant = 'v1' | 'summary-v2' | 'indexed-v2' | 'referenced-v2';
 
 export interface NativeChildDefinition {
   name: string;
@@ -301,7 +301,15 @@ export function parseNativeChildrenContract(
       ? 'v1'
       : 'acceptance_index' in root
         ? 'indexed-v2'
-        : 'summary-v2';
+        : Array.isArray(root.children) &&
+            root.children.every(
+              (child) => !child || typeof child !== 'object' || !('summary' in child),
+            ) &&
+            root.children.some((child) => child && typeof child === 'object' && 'covers' in child)
+          ? 'referenced-v2'
+          : 'summary-v2';
+  if (variant === 'referenced-v2' && !options.acceptanceCatalog)
+    throw new Error('Native referenced children require the current acceptance catalog');
   const variantLabel = variant.replace('-', ' ');
   exactKeys(
     root,
@@ -315,7 +323,7 @@ export function parseNativeChildrenContract(
     const child = record(entry, `Native child ${index}`);
     exactKeys(
       child,
-      variant === 'indexed-v2'
+      variant === 'indexed-v2' || variant === 'referenced-v2'
         ? CHILD_KEYS
         : variant === 'summary-v2'
           ? V2_CHILD_KEYS
@@ -339,7 +347,7 @@ export function parseNativeChildrenContract(
       summary: readableV2 ? (child.summary as string) : null,
       depends_on: stringList(child.depends_on, `Native child ${child.name} depends_on`),
       covers:
-        variant === 'indexed-v2' || variant === 'v1'
+        variant === 'indexed-v2' || variant === 'referenced-v2' || variant === 'v1'
           ? stringList(child.covers, `Native child ${child.name} covers`)
           : [],
     };
@@ -356,8 +364,24 @@ export function parseNativeChildrenContract(
   assertAcyclic(children);
   const advisory = options.policy === 'advisory';
   if (schema === NATIVE_CHILDREN_SCHEMA_V2) {
-    if (variant === 'indexed-v2') {
-      const acceptanceIndex = parseAcceptanceIndex(root.acceptance_index);
+    if (variant === 'indexed-v2' || variant === 'referenced-v2') {
+      const ids = [
+        ...new Set([
+          ...(options.requiredAcceptanceIds ?? acceptanceIds ?? []),
+          ...children.flatMap((child) => child.covers),
+        ]),
+      ];
+      const catalog = new Map(options.acceptanceCatalog?.map((entry) => [entry.id, entry]));
+      const acceptanceIndex =
+        variant === 'indexed-v2'
+          ? parseAcceptanceIndex(root.acceptance_index)
+          : Object.fromEntries(
+              ids.map((id) => {
+                const entry = catalog.get(id);
+                if (!entry) throw new Error(`Native acceptance catalog is missing ${id}`);
+                return [id, { source: entry.source, text: entry.text }];
+              }),
+            );
       if (!advisory) validateAcceptanceIndex(acceptanceIndex, acceptanceIds, options);
       const indexedAcceptanceIds = Object.keys(acceptanceIndex);
       if (!advisory) validateCoverage(children, indexedAcceptanceIds, indexedAcceptanceIds);

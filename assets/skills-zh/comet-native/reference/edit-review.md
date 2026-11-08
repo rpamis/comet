@@ -12,6 +12,7 @@ Build、Verify 或待归档阶段出现实际文件变化，或 continuation 提
    通过 `retainedCheckActionIds` 或 `retainedChecks` 明确列出仍适用的原检查，覆盖全部实际差异。每份正式材料也须填写保留项，不能只在普通文件判断中保留 B/一次性检查；只补 A 不代表其他检查已被证明适用。保留原 Action、执行环境、日志和结果来源，只补受影响或缺失的检查。
 
    已记录判断漏填保留项时，原 Agent 可对同一提案再次 `record`，在原保留项上追加保留检查并说明新依据；Runtime 保留完整原收据及补充关联。只允许相同字节、原决定和原执行身份，不能改分类、删除原保留项或借补充判断覆盖新编辑。当前 Agent 沿用已领取 Action，或使用返回的同会话领取信息；普通编辑不增加独立审查会话或用户确认。未选检查缺少有效复用证据时先补判断，不能通过补查自动扩大执行范围。
+
 4. 正式 brief、Spec、Design Doc 或计划变化时，运行 `comet edit-review prepare-applied <native|classic> <change> --session <当前会话> --json`，取得已批准原文后判断。契约未变则保留原批准、阶段和验收项；目标、验收标准、方案或授权发生实质变化且未被已有决定覆盖时，只说明受影响的决定并请求确认。多份正式材料逐一核对；自动准备只返回已处理提案、仍有未覆盖的目标时，用 `prepare-applied --file <完整请求 JSON>` 指定相应已应用编辑，再记录判断。Runtime 返回修订命令只表示路径可用，不构成用户授权。已有明确修订授权时沿原 Run 继续；缺少授权时先请求相关决定，保留原阶段、已接受结果和待办，不执行会变更阶段或重置结果的修订命令。机器状态、报告、锁、检查收据和归档记录仍由 Runtime 管理。
 5. Verify 中保留原 Verifier 和有效检查；真实实现变化按当前 Runtime 的修复动作处理，保留原需求批准和未受影响的检查；后继候选重新验收。已接受结果、尚未执行归档时，普通说明变化仍保留报告和接受结果；需要补检查时填写观察返回的 `refreshInputTemplate`，执行 `comet edit-review refresh-checks <native|classic> <change> --file <输入文件> --json`，再执行响应要求的原 Run 检查动作。检查全部适用后继续原归档；交付目标或授权变化仍须取得相应决定。
 6. 判断后再次编辑，只处理新增变化。新失败、中断、超时、结果未知或未执行均保留真实状态，不能用旧成功覆盖；不可重复的操作先核对原执行。相同补检查请求重试沿用原 Action，归档中断沿用原事务，已完成副作用不重复执行。
@@ -20,4 +21,4 @@ Build、Verify 或待归档阶段出现实际文件变化，或 continuation 提
 
 显式严格配置和原有尚未应用的编辑请求沿用 Runtime 返回的受保护流程：需要领取时使用返回的 `claim`；撤销未应用的请求使用返回的 `discard`；确实需要用户确认时，取得相应决定后才提交 `--confirmed`。这些操作不能被普通编辑判断绕过，也不为普通编辑新增确认。
 
-Native 的 observe 响应包含 formalReview 时，正式材料的准备已完成；直接读取其 originalPaths 和 recordTemplate，分别记录普通差异和正式材料判断，无需再次执行 prepare-applied。仅在缺少所需原文或提案时使用独立准备命令。
+Native 或 Classic 的 observe 响应包含 formalReview 时，正式材料的准备已完成；读取其中的批准原文与判断模板，分别记录普通差异和正式材料判断，无需再次执行 prepare-applied。Native 使用 originalPaths 和 recordTemplate；Classic 使用 originals 中的 path/text 与 recordTemplate。仅在缺少所需原文或提案时使用独立准备命令。

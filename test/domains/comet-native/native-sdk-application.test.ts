@@ -63,11 +63,16 @@ import { removeNativeWorkspaceConfig } from '../../../domains/comet-native/nativ
 import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
 import { advanceNativeSdkChange } from '../../../domains/comet-native/native-sdk-next.js';
 import { nativeSdkImplementationRevisionExecutor } from '../../../domains/comet-native/native-sdk-revise.js';
+import {
+  nativeTotalSpecHash,
+  nativeLegacySectionHash,
+} from '../../../domains/comet-native/native-delta-spec.js';
 import { runNativeEditReviewCommand } from '../../../domains/comet-native/native-edit-review-command.js';
 import { captureApprovedShapeOriginals } from '../../../domains/comet-native/native-shape-review-evidence.js';
 import {
   projectNativeSdkContinuation,
   projectNativeSdkDispatchResult,
+  nativeSdkTaskResultTemplate,
 } from '../../../domains/comet-native/native-sdk-continuation.js';
 import {
   inspectNativeSdkDefinitionUpgrade,
@@ -283,12 +288,17 @@ function preChildArchiveApplication(): NativeApplication {
 function collectProposal(
   paths: Awaited<ReturnType<typeof nativeProjectPaths>>,
   state: NativePortableState,
+  materializeTargets = false,
 ) {
   const collect = (nativeDomain as Record<string, unknown>).collectNativeSdkShapeProposal;
   expect(collect).toBeTypeOf('function');
   return (
-    collect as (options: { paths: typeof paths; state: NativePortableState }) => Promise<unknown>
-  )({ paths, state });
+    collect as (options: {
+      paths: typeof paths;
+      state: NativePortableState;
+      materializeTargets?: boolean;
+    }) => Promise<unknown>
+  )({ paths, state, materializeTargets });
 }
 
 async function succeedLatestAction(
@@ -2060,72 +2070,149 @@ describe('Native SDK Workflow Application', () => {
     });
   });
 
-  it('confirms a Supervisor child plan and coordination mode in the same SDK Run', async () => {
-    const { root, paths, changeDir, initialState } = await fixture();
-    await fs.writeFile(
-      path.join(changeDir, 'children.yaml'),
-      `schema: comet.native.children.v2
+  it('materializes a Delta target before Shape and refuses independent target edits', async () => {
+    const f = await fixture();
+    const baseline =
+      '# Workflow\n\n## Requirement: workflow.existing Existing behavior\n\nExisting behavior stays available.\n';
+    await fs.mkdir(path.join(f.paths.specsDir, 'workflow'), { recursive: true });
+    await fs.writeFile(path.join(f.paths.specsDir, 'workflow/spec.md'), baseline);
+    await fs.writeFile(path.join(f.changeDir, 'specs/workflow/spec.md'), baseline);
+    const delta = {
+      schema: 'comet.native.delta.v1',
+      capability: 'workflow',
+      base_hash: nativeTotalSpecHash(baseline),
+      base_version: 1,
+      legacy_hash: nativeLegacySectionHash(baseline),
+      base_requirements: {
+        'workflow.existing': nativeTotalSpecHash(
+          '## Requirement: workflow.existing Existing behavior\n\nExisting behavior stays available.\n',
+        ),
+      },
+      operations: [
+        {
+          id: 'workflow.added',
+          operation: 'add',
+          title: 'Added behavior',
+          body: 'The additional behavior is available.',
+        },
+      ],
+    };
+    const deltaFile = path.join(f.changeDir, 'specs/workflow/delta.yaml');
+    await fs.writeFile(deltaFile, JSON.stringify(delta));
+    const first = (await collectProposal(f.paths, f.initialState, true)) as {
+      specChanges: unknown[];
+    };
+    expect(first.specChanges[0]).toMatchObject({ delta_source: 'specs/workflow/delta.yaml' });
+    const target = path.join(f.changeDir, 'specs/workflow/spec.md');
+    expect(await fs.readFile(target, 'utf8')).toContain('The additional behavior is available.');
+    delta.operations[0].body = 'The revised additional behavior is available.';
+    await fs.writeFile(deltaFile, JSON.stringify(delta));
+    await expect(collectProposal(f.paths, f.initialState)).rejects.toThrow(
+      /target|requirement|Delta|delta/iu,
+    );
+    expect(await fs.readFile(target, 'utf8')).not.toContain(
+      'The revised additional behavior is available.',
+    );
+    await collectProposal(f.paths, f.initialState, true);
+    expect(await fs.readFile(target, 'utf8')).toContain(
+      'The revised additional behavior is available.',
+    );
+    const independent = (await fs.readFile(target, 'utf8')) + '\nUser independent requirement.\n';
+    await fs.writeFile(target, independent);
+    delta.operations[0].body = 'Another proposed behavior.';
+    await fs.writeFile(deltaFile, JSON.stringify(delta));
+    await expect(collectProposal(f.paths, f.initialState, true)).rejects.toThrow(
+      /independent|独立/iu,
+    );
+    expect(await fs.readFile(target, 'utf8')).toBe(independent);
+  });
+
+  it.each([
+    { suffix: '', format: 'summary' },
+    { suffix: ' with referenced acceptance', format: 'references' },
+  ])(
+    'confirms a Supervisor child plan and coordination mode in the same SDK Run$suffix',
+    async ({ format }) => {
+      const { root, paths, changeDir, initialState } = await fixture();
+      await fs.writeFile(
+        path.join(changeDir, 'children.yaml'),
+        `schema: comet.native.children.v2
 children:
   - name: api
-    summary: Build the API
+    ${format === 'summary' ? 'summary: Build the API' : 'covers: [A1]'}
     depends_on: []
   - name: ui
-    summary: Build the UI
+    ${format === 'summary' ? 'summary: Build the UI' : 'covers: []'}
     depends_on: []
 `,
-    );
-    const application = nativeApplication();
-    const runtime = createRuntime({
-      store: createMemoryRuntimeStore<WorkflowRun>(),
-      workflows: [application.workflow],
-      transitionHandlers: [application.transitionHandler],
-      validators: application.validators,
-      stateValidators: application.stateValidators,
-      commandValidators: application.commandValidators,
-      executors: application.executors,
-    });
-    let run = await runtime.start({
-      runId: 'supervisor-sdk-shape',
-      workflow: { id: application.workflow.id, version: application.workflow.version },
-      input: { name: 'sdk-shape', artifactRootRef: 'docs' },
-      initialState,
-    });
-    run = await succeedLatestAction(
-      runtime,
-      run,
-      await collectProposal(paths, initialState),
-      root,
-      'supervisor-shape-proposal',
-    );
-    const wait = run.waits.at(-1)!;
-    expect(wait).toMatchObject({
-      stepId: 'supervisor.shape.confirm',
-      choices: ['multi-session', 'single-session', 'rejected'],
-    });
-    run = await runtime.resolveWait({
-      runId: run.runId,
-      waitId: wait.id,
-      proposalHash: wait.proposalHash,
-      decisionId: 'supervisor-choice',
-      choice: 'multi-session',
-    });
-    run = await succeedLatestAction(
-      runtime,
-      run,
-      await collectProposal(paths, run.state as NativePortableState),
-      root,
-      'supervisor-shape-revalidated',
-    );
-    expect(run.state).toMatchObject({
-      phase: 'build',
-      coordination_mode: 'multi-session',
-      children_contract_hash: expect.any(String),
-    });
-    expect(run.actions.at(-1)).toMatchObject({
-      stepId: 'supervisor.prepare',
-      type: 'call_tool',
-    });
-  });
+      );
+      const application = nativeApplication();
+      const runtime = createRuntime({
+        store: createMemoryRuntimeStore<WorkflowRun>(),
+        workflows: [application.workflow],
+        transitionHandlers: [application.transitionHandler],
+        validators: application.validators,
+        stateValidators: application.stateValidators,
+        commandValidators: application.commandValidators,
+        executors: application.executors,
+      });
+      let run = await runtime.start({
+        runId: 'supervisor-sdk-shape',
+        workflow: { id: application.workflow.id, version: application.workflow.version },
+        input: { name: 'sdk-shape', artifactRootRef: 'docs' },
+        initialState,
+      });
+      run = await succeedLatestAction(
+        runtime,
+        run,
+        await collectProposal(paths, initialState),
+        root,
+        'supervisor-shape-proposal',
+      );
+      const wait = run.waits.at(-1)!;
+      if (format === 'references') {
+        expect(
+          (
+            run.outputs['shape.prepare'].value as {
+              children: { contract: { acceptance_index: unknown } };
+            }
+          ).children.contract.acceptance_index,
+        ).toEqual({
+          A1: { source: 'brief.md', text: 'The selected workflow resumes.' },
+        });
+        expect(await fs.readFile(path.join(changeDir, 'children.yaml'), 'utf8')).not.toContain(
+          'acceptance_index',
+        );
+      }
+      expect(wait).toMatchObject({
+        stepId: 'supervisor.shape.confirm',
+        choices: ['multi-session', 'single-session', 'rejected'],
+      });
+      run = await runtime.resolveWait({
+        runId: run.runId,
+        waitId: wait.id,
+        proposalHash: wait.proposalHash,
+        decisionId: 'supervisor-choice',
+        choice: 'multi-session',
+      });
+      run = await succeedLatestAction(
+        runtime,
+        run,
+        await collectProposal(paths, run.state as NativePortableState),
+        root,
+        'supervisor-shape-revalidated',
+      );
+      expect(run.state).toMatchObject({
+        phase: 'build',
+        coordination_mode: 'multi-session',
+        children_contract_hash: expect.any(String),
+      });
+      expect(run.actions.at(-1)).toMatchObject({
+        stepId: 'supervisor.prepare',
+        type: 'call_tool',
+      });
+    },
+  );
 
   // 完整 Supervisor 场景包含多个真实 worktree；Windows 独立执行已测得超过两分钟。
   it('repairs failed Supervisor Children and serializes integration after a definition upgrade', async () => {
@@ -10803,6 +10890,13 @@ describe('Native v3 Build check reuse', () => {
       const original = run.actions.find((action) => action.stepId === 'build.checks')!;
       expect(original.status).toBe('succeeded');
       expect(run.actions.at(-1)?.stepId).toBe('build.builder');
+      expect(
+        (
+          nativeSdkTaskResultTemplate(run, run.actions.at(-1)!).output as {
+            verificationChecks: unknown;
+          }
+        ).verificationChecks,
+      ).toEqual(plans);
       if (edited === 'failed-later') {
         await fs.writeFile(path.join(f.root, 'fail-marker'), 'fail');
         run = await succeedLatestAction(

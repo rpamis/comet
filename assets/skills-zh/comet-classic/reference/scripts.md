@@ -28,6 +28,8 @@ comet state delivery <change-name>
 comet state delivery <change-name> --verify
 comet state delivery <change-name> --file <json-path>
 comet check run <change-name> <build|verify> --local -- <program> [args...]
+# SDK Verify 的首次完整检查先声明报告路径，之后按收据写报告并提交 Guard。
+comet check run <change-name> verify --report <report-ref> --local -- <program> [args...]
 comet check rerun <change-name> <build|verify>
 comet guard <change-name> <phase> --apply
 comet handoff <change-name> design --write

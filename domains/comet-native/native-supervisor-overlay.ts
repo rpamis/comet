@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { readNativeChildrenContract } from './native-children.js';
+import { nativeChildrenAcceptanceValidation } from './native-children-contract.js';
 import { canonicalHash } from './native-canonical-hash.js';
 import {
   nativeSupervisorStateFile,
@@ -255,6 +256,7 @@ export async function inspectNativeSupervisorOverlay(options: {
     children = await readNativeChildrenContract({
       changeDir,
       acceptanceIds: options.state.acceptance.map(({ id }) => id),
+      validation: nativeChildrenAcceptanceValidation(options.state),
       policy: 'advisory',
     });
   } catch (error) {

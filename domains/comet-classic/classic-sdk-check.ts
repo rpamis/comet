@@ -1,4 +1,5 @@
 import { resolveClassicCheckTimeout } from './classic-project-config.js';
+import { classicSdkCheckPreparationInput } from './classic-sdk-check-preparation.js';
 import {
   classicCheckInputsRetained,
   observeClassicCheckInputs,
@@ -280,7 +281,9 @@ async function checkedInput(
     run.status !== 'running' ||
     scope === null ||
     !state ||
-    (scope === 'verify' && !state.verificationReport) ||
+    (scope === 'verify' &&
+      !state.verificationReport &&
+      !classicSdkCheckPreparationInput(run, action)) ||
     !changeDirRef ||
     action.runId !== run.runId ||
     (!repairing && action.stepId !== `${profile}.${scope}.check`) ||
@@ -308,6 +311,8 @@ export function classicSdkCheckCommand(
   action: Readonly<RuntimeAction>,
   projectRoot: string,
 ): ClassicSdkCheckInput {
+  const prepared = classicSdkCheckPreparationInput(run, action);
+  if (prepared) return { runId: run.runId, projectRoot, ...prepared.command };
   if (isClassicDeliveryRepairCheck(run, action)) {
     return { runId: run.runId, projectRoot, ...classicDeliveryRepairForAction(action).command };
   }
@@ -396,7 +401,10 @@ export async function runClassicSdkCommandCheck(
   const checksDir = path.join(root, classicSdkCheckDirectoryRef(run));
   await ensureClassicProjectDirectory(root, checksDir, 'Classic SDK check evidence');
   const identity = { argv: [...input.argv], cwd: cwd.relative };
-  const snapshotOptions = { verificationReport: state.verificationReport };
+  const snapshotOptions = {
+    verificationReport:
+      classicSdkCheckPreparationInput(run, action)?.command.reportRef ?? state.verificationReport,
+  };
   const before = await collectCheckSnapshot(root, change.target, identity, snapshotOptions);
   const environment = await checkEnvironmentFingerprint(
     identity.argv,

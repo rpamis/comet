@@ -12,7 +12,7 @@ Native 在项目中保存需求和验收结论。先确认 change 的运行格�
 ## 必须遵守的规则
 
 - 已确认范围内的实现、文档修复、证据复用和恢复连续推进；只在需要新决定、授权或外部信息时暂停。使用最新 continuation 的命令、模板和任务包，修正输入后沿用当前任务。
-- SDK 的推进以 Runtime Run 为准，当前 change 的 `comet-state.yaml` 用于边界恢复；旧 Runtime 继续使用其状态文件。读取实际配置和正式文件，聊天记忆只作辅助。Agent 只编辑 brief、完整目标 Spec、关联时的 `delta.yaml` 和 `children.yaml`；状态、检查结果、报告和事务由 Runtime 管理。
+- SDK 的推进以 Runtime Run 为准，当前 change 的 `comet-state.yaml` 用于边界恢复；旧 Runtime 继续使用其状态文件。读取实际配置和正式文件，聊天记忆只作辅助。Agent 编辑 brief、新能力或旧格式的完整目标 Spec、关联能力的 `delta.yaml` 和 `children.yaml`；关联能力的完整目标 Spec 由 Runtime 在 Shape 确认前生成。状态、检查结果、报告和事务由 Runtime 管理。
 - 通过 PATH 中公开的 `comet native` 命令推进，用户不手工执行命令。命令不可用时报告安装不完整并停止；参数以 `comet native <command> --help` 为准。
 - 新建 change 走 CLI 并使用响应路径；拒绝后按信息中的命令或目标修正并重试；自定义 Hook、非 Comet 工作和普通同名文件保持中立。
 - Builder 提交本轮待验收的代码和相关文件，称为“候选实现”。Verify 覆盖全部验收项，复用仍与当前候选匹配的检查，只补缺失或失效证据。当前 Action 的 `sessionRequirements.independent` 为 `false` 时，由当前 Agent 根据不确定性和用户要求决定是否另请只读 Verifier；为 `true` 时使用独立会话。失败、阻塞、未执行和超时不能算通过。

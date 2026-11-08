@@ -1,6 +1,7 @@
 import { resolveClassicCheckTimeout } from './classic-project-config.js';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import {
   RuntimeProtocolError,
   createMemoryRuntimeStore,
@@ -21,7 +22,12 @@ import { resolveClassicChangeDirectory } from './classic-paths.js';
 import { ensureClassicRuntimeRun } from './classic-runtime-run.js';
 import { resolveClassicChangeRuntimeOwner } from './classic-runtime-ownership.js';
 import { executeClassicSdkCommandCheck } from './classic-sdk-check.js';
-import { findClassicSdkWorkspace, type inspectClassicSdkRun } from './classic-sdk-status.js';
+import {
+  classicSdkCheckPreparationInput,
+  withClassicCheckPreparation,
+} from './classic-sdk-check-preparation.js';
+import { inspectClassicSdkRun } from './classic-sdk-status.js';
+import { findClassicSdkWorkspace } from './classic-sdk-status.js';
 import { classicSdkEntryData } from './classic-sdk-output.js';
 import {
   canReopenClassicVerification,
@@ -49,6 +55,93 @@ function unstableInputDiagnostic(record: RecordedCommandCheck): string {
   ].join('\n');
 }
 
+async function prepareSdkCheck(
+  inspected: Awaited<ReturnType<typeof inspectClassicSdkRun>>,
+  projectRoot: string,
+  scope: 'build' | 'verify',
+  command: {
+    argv: string[];
+    cwd: string;
+    timeoutMs: number;
+    reusable: boolean;
+    reportRef?: string;
+  },
+) {
+  const { run, state, profile } = inspected;
+  if (
+    run.evidenceWaits?.some(
+      (wait) =>
+        wait.status === 'pending' && wait.stepId === `${state.workflow}.${scope}.check.evidence`,
+    )
+  )
+    return inspected;
+  if (
+    run.actions.some(
+      (action) =>
+        action.status === 'pending' && action.stepId === `${state.workflow}.${scope}.check`,
+    )
+  )
+    return inspected;
+  const source = run.actions.find(
+    (action) =>
+      action.status === 'pending' &&
+      action.stepId === `${state.workflow}.${scope === 'build' ? 'build.execute' : 'verify.run'}`,
+  );
+  if (!source)
+    throw new Error('Current Classic SDK Run has no pending check or implementation/review Action');
+  if (scope === 'verify' && !command.reportRef)
+    throw new Error('First Verify check requires --report <report-ref> before writing the report');
+  if (command.reportRef) {
+    if (scope !== 'verify') throw new Error('--report is only valid for a first Verify check');
+    await inspectProtectedProjectPath(projectRoot, command.reportRef, {
+      label: 'Classic planned verification report',
+      expected: 'file',
+    });
+  }
+  const original = classicSdkApplicationForRun(profile, run);
+  const application = Object.hasOwn(original.workflow.commands ?? {}, 'prepare-build-check')
+    ? original
+    : withClassicCheckPreparation(original, state.workflow);
+  const definition = defineWorkflow(application.workflow);
+  const nextHash = hashRuntimeValue(definition);
+  const upgraded =
+    nextHash === run.workflow.hash ? structuredClone(run) : preserveRuntimeExecutionOrigins(run);
+  upgraded.workflow.hash = nextHash;
+  upgraded.definitionHashes[JSON.stringify([definition.id, definition.version])] = nextHash;
+  const memory = createMemoryRuntimeStore<WorkflowRun>();
+  await memory.restoreCheckpoint!(run.runId, null, upgraded);
+  const runtime = createRuntime({
+    store: memory,
+    workflows: [application.workflow],
+    transitionHandlers: [application.transitionHandler],
+    commandValidators: application.commandValidators,
+    validators: application.validators,
+    evidenceValidators: application.evidenceValidators,
+    executors: application.executors,
+  });
+  const input = { scope, sourceActionId: source.id, command };
+  const prepared = await runtime.dispatchCommand({
+    runId: run.runId,
+    expectedRevision: run.revision,
+    name: `prepare-${scope}-check`,
+    commandId: hashRuntimeValue(input),
+    input,
+    context: { requestId: randomUUID(), projectRoot },
+  });
+  if (
+    !(await createClassicSdkStateStore(projectRoot).compareAndSwap(
+      run.runId,
+      run.revision,
+      prepared,
+    ))
+  )
+    throw new RuntimeProtocolError(
+      'REVISION_CONFLICT',
+      'Run 已变化，首次检查尚未执行；读取当前任务后继续。',
+    );
+  return inspectClassicSdkRun(projectRoot, run.runId);
+}
+
 /** 共享检查执行与已提交的响应视图；返回的 Run 仅用于本次输出。 */
 export async function executeClassicSdkCheckCommand(
   inspected: Awaited<ReturnType<typeof inspectClassicSdkRun>>,
@@ -60,6 +153,7 @@ export async function executeClassicSdkCheckCommand(
     cwd?: string;
     timeoutMs?: number;
     reusable?: boolean;
+    reportRef?: string;
   },
 ) {
   const {
@@ -73,6 +167,13 @@ export async function executeClassicSdkCheckCommand(
   if (inspected.state.phase !== scope) {
     throw new Error(`Classic SDK change ${name} is in ${inspected.state.phase}, not ${scope}`);
   }
+  inspected = await prepareSdkCheck(inspected, projectRoot, scope, {
+    argv: requestedArgv,
+    cwd,
+    timeoutMs,
+    reusable,
+    ...(options.reportRef ? { reportRef: options.reportRef } : {}),
+  });
   const pendingEvidence = inspected.run.evidenceWaits?.find(
     (candidate) =>
       candidate.stepId === `${inspected.profile}.${scope}.check.evidence` &&
@@ -123,7 +224,7 @@ export async function executeClassicSdkCheckCommand(
     throw new Error('Classic SDK check recovery does not match the recorded command');
   }
   let finished = checked;
-  if (action?.status === 'succeeded') {
+  if (action?.status === 'succeeded' && !classicSdkCheckPreparationInput(checked, action)) {
     const evidence = checked.evidenceWaits?.find(
       (candidate) =>
         candidate.stepId === `${inspected.profile}.${scope}.check.evidence` &&
@@ -265,7 +366,7 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
     (rerun ? args.length !== 3 : separator < 3 || !args[separator + 1])
   ) {
     throw new Error(
-      'Usage: comet check run <change> <build|verify> [--local] [--incremental] [--cwd <path>] [--timeout-ms <ms>] -- <program> [args...] | comet check rerun <change> <build|verify>',
+      'Usage: comet check run <change> <build|verify> [--report <report-ref>] [--local] [--incremental] [--cwd <path>] [--timeout-ms <ms>] -- <program> [args...] | comet check rerun <change> <build|verify>',
     );
   }
   const root = classicCommandProjectRoot();
@@ -277,13 +378,17 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
     let cwd = '.';
     let timeoutMs: number | undefined;
     let reusable = false;
+    let reportRef: string | undefined;
     for (let index = 3; index < separator; index += 1) {
       const option = args[index];
       if (option === '--cwd' && index + 1 < separator) cwd = args[++index];
       else if (option === '--timeout-ms' && index + 1 < separator)
         timeoutMs = Number(args[++index]);
       else if (option === '--local') reusable = true;
-      else if (option === '--incremental')
+      else if (option === '--report' && index + 1 < separator) {
+        const report = path.resolve(sdkWorkspace.projectRoot, args[++index]);
+        reportRef = path.relative(sdkWorkspace.projectRoot, report).replaceAll('\\', '/');
+      } else if (option === '--incremental')
         throw new Error(`Classic SDK checks require full execution; ${option} is not supported`);
       else throw new Error(`Unknown or incomplete check option: ${option}`);
     }
@@ -294,6 +399,7 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
         cwd,
         timeoutMs,
         reusable,
+        reportRef,
       })
     ).result;
   }

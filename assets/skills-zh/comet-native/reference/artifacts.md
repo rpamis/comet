@@ -19,7 +19,7 @@
   verification.md
 ```
 
-Agent 只编辑 brief、完整目标规格、关联时的 `delta.yaml` 和 Supervisor Change 的 `children.yaml`。`capability-association.yaml` 由 Runtime 创建并维护；`comet-state.yaml` 与 `verification.md` 由 Runtime 管理，Runtime 第一次接受 Verifier 结果后生成报告。
+Agent 编辑 brief、新能力或旧格式的完整目标规格、关联能力的 `delta.yaml` 和 Supervisor Change 的 `children.yaml`。关联能力只维护 Delta，由 Runtime 在准备 Shape 时生成完整目标规格；生成结果仍作为正式材料供用户确认与 Verifier 核对。`capability-association.yaml` 由 Runtime 创建并维护；`comet-state.yaml` 与 `verification.md` 由 Runtime 管理，Runtime 第一次接受 Verifier 结果后生成报告。
 
 当前 Runtime 的本机数据保存在用户 Comet 数据目录，按 checkout 和 Git worktree 隔离。默认数据根为 `~/.comet`，可用 `COMET_DATA_DIR` 指定工作区外的绝对路径；不能设为项目或项目子目录。Native 的本机状态、日志、锁和短期事务位于 Runtime 返回的 `runtimeDir`，由 Runtime 创建、迁移和修复。项目内的 `.comet/runtime/native/` 是旧版本布局；发现旧锁、未完成写入或迁移阻塞时，按 Runtime 诊断恢复，不手工搬移或删除。
 
@@ -97,23 +97,16 @@ Open questions 中只有真实未解决的用户问题使用：
 
 新版 `children.yaml` 使用 `comet.native.children.v2`：
 
-- `acceptance_index` 保存从 brief 生成的 Supervisor 主任务验收 ID、来源和完整文字。
+- Agent 只写子任务及其依赖、`covers` 验收 ID；Runtime 从当前验收列表生成 `acceptance_index` 的来源和完整文字，并绑定 Shape 批准。已有显式索引继续严格核对，不覆盖独立编辑。
 - 每个子任务只包含 `name`、`depends_on` 和 `covers`。所有子任务合起来必须覆盖索引中的全部 ID。
 - Spec 中的验收项仍由 Runtime 统一管理。只有进入修复阶段，才把实际失败的 Spec 验收 ID 补入索引。
 - 子任务名称必须唯一，依赖的子任务必须存在，依赖关系不能形成环。
 - 历史 `comet.native.children.v1` 继续按原规则读取；修改后，Supervisor Change 返回 Shape。
 
-`acceptance_index` 是以验收 ID 为键的对象，不是数组。以下示例中两个子任务可以并行。填写时，从 Runtime 当前返回的验收列表逐字复制对应 ID 的 `source` 和 `text`，不要改写成摘要：
+以下示例中两个子任务可以并行；ID 必须来自 Runtime 当前返回的验收列表，不复制验收正文：
 
 ```yaml
 schema: comet.native.children.v2
-acceptance_index:
-  A1:
-    source: brief.md
-    text: 集成结果包含功能 A。
-  A2:
-    source: brief.md
-    text: 集成结果包含功能 B。
 children:
   - name: alpha
     depends_on: []
@@ -128,7 +121,8 @@ children:
 每个 `specs/<capability>/spec.md` 描述归档后 capability 的完整行为，而不是只写相对旧文本的变化：
 
 - 新 capability：写完整规格；
-- 已有 capability：写修改后的完整规格；若通过能力关联创建 change，还要维护 `delta.yaml`，使用不变的 requirement ID 记录本次变更；
+- 已关联 capability：只维护 `delta.yaml`，使用不变的 requirement ID 记录变更。Runtime 根据当前基线生成完整目标规格；只更新与基线一致或有生成收据的目标。发现独立编辑、基线或 Delta 冲突时保留文件并报告阻塞，先协调内容再准备 Shape；
+- 没有 Delta 的旧 capability：继续编辑完整目标规格；
 - 删除 capability：使用 CLI 的 `spec remove`，不只删除文件。
 
 如果已归档的正式 Spec 与当前 change 冲突，先重读最新 Spec，再按用户意图修改当前 change 的完整目标规格。`delta.yaml` 中互不影响的 requirement 变更可以自动重新对齐；涉及同一 requirement、删除或重命名、共享的旧约束，或无法确定影响时，必须重新 Verify。最后执行 Runtime 返回的 rebase 动作。

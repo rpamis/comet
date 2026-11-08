@@ -48,7 +48,7 @@ Builder 开始本轮实现前、Verifier 开始验收前，复制当前 Action �
 
 `build.builder` 和 `supervisor.parent.builder` 的完成结果填写实际 `summary`、开发期 `checks`（每项 `name`、`result`、`note`）、`knownLimits` 和最终 `verificationChecks`。当前模板不含 `acceptanceReview` 时直接提交这些内容，完整逐项验收在 Verify 完成。旧模板要求该表时，对每个验收 ID 提供 `{id,status,evidence,note}`，全部为 `implemented-with-evidence` 且证据非空才提交；显式提供的表仍须完整、真实。
 
-普通 `build.builder` 的当前指令允许受管检查时，保留 `resultRequest.receipt`，将 `result.output` 填为 `{response:{kind:"request-checks",checks:[检查计划]}}`。计划字段按 `checkRequestTemplate` 填写，只执行可重复命令；提交后运行 `native next`，读取检查结果并继续 Build。最终交接列出仍适用的检查计划，Verify 自动复用输入与执行上下文匹配的 Runtime 记录，只补失效或缺失检查。失败记录优先于更早的成功记录。自行运行的终端命令仍只作开发记录，不能伪造 Runtime 收据。旧 Run 和 Supervisor 按各自返回的模板执行。
+普通 `build.builder` 的当前指令允许受管检查时，保留 `resultRequest.receipt`，将 `result.output` 填为 `{response:{kind:"request-checks",checks:[检查计划]}}`。首次最终 GREEN 或完整验证直接通过此入口运行，不先在终端执行同一完整计划。TDD 的 RED、局部调试和不属于最终计划的检查照常执行。计划字段按 `checkRequestTemplate` 填写，只执行可重复命令；提交后运行 `native next`，读取检查结果并继续 Build。新 Builder 模板保留原检查计划的 argv、工作目录和超时；沿用仍适用的条目，只修改真正变化的检查。最终交接列出仍适用的检查计划，Verify 自动复用输入与执行上下文匹配的 Runtime 记录，只补失效或缺失检查。失败记录优先于更早的成功记录。自行运行的终端命令仍只作开发记录，不能伪造 Runtime 收据。旧 Run 和 Supervisor 按各自返回的模板执行。
 
 ### SDK Verify 协议
 
@@ -274,7 +274,7 @@ Runtime 为每个子任务返回 worktree、集成分支的当前提交、角色
 
 全部子任务都进入 `integrated` 后，立即按 Runtime 返回的 `parentAdvance` 继续，并通知用户 Supervisor Change 进入最终 Verify，不要求用户再次说“推进”。最终 Verify 在集成 worktree 检查全部验收项。
 
-验收失败时，保留冲突文件和阻塞记录，不重新打开已经归档或已进入 `integrated` 的子任务。按 `repair-child` 要求，在 v2 `acceptance_index` 中补充实际失败的 Spec 验收文字，追加一个名称唯一的修复子任务，编辑 `children.yaml` 补充修复子任务后，运行 `comet native next <parent> --summary "<说明>"`——children 契约变化会让 Runtime 把 change 退回 Shape，重新确认后继续。
+验收失败时，保留冲突文件和阻塞记录，不重新打开已经归档或已进入 `integrated` 的子任务。按 `repair-child` 要求，在 v2 子任务的 `covers` 中引用实际失败的 Spec 验收 ID，追加一个名称唯一的修复子任务，编辑 `children.yaml` 补充修复子任务后，运行 `comet native next <parent> --summary "<说明>"`——children 契约变化会让 Runtime 把 change 退回 Shape，重新确认后继续。
 
 最终交付前不修改目标分支。最终 Archive、工作区收尾、merge、push 和 PR 各自仍须遵守用户的授权。
 

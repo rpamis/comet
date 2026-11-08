@@ -131,6 +131,7 @@ import {
 } from './native-loop-runtime.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
+import { materializeNativeDeltaTargetsLocked } from './native-shape-materialization.js';
 import { parseNativeBuilderAcceptanceReview } from './native-builder-acceptance-review.js';
 import {
   assertNativePortableDocuments,
@@ -251,10 +252,11 @@ function nativeSdkShapeConstraintsVersion(state: NativePortableState): 1 | 2 | 3
     : (state.document_constraints_version ?? 2);
 }
 
-/** Reads formal Shape artifacts without creating a second mutable Native state. */
+/** Reads formal Shape artifacts; only an explicit preparation may generate derived targets. */
 export async function collectNativeSdkShapeProposal(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
+  materializeTargets?: boolean;
 }): Promise<NativeShapeProposal> {
   const state = parseNativePortableState({
     ...options.state,
@@ -265,6 +267,15 @@ export async function collectNativeSdkShapeProposal(options: {
   }
   const changeDir = path.join(options.paths.changesDir, state.name);
   const specChanges = await discoverNativePortableSpecChanges({ paths: options.paths, state });
+  if (
+    options.materializeTargets === true &&
+    state.status === 'active' &&
+    state.shape_confirmation_hash === undefined &&
+    specChanges.some((spec) => spec.delta_source)
+  )
+    await withNativeMutationLock(options.paths, `prepare Shape targets ${state.name}`, () =>
+      materializeNativeDeltaTargetsLocked({ paths: options.paths, state, specChanges }),
+    );
   // 新提案只约束本次声明；待确认提案和批准后的重新校验仍绑定原集合。
   const preparing =
     state.status === 'active' &&

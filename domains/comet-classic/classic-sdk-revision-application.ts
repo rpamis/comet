@@ -12,8 +12,10 @@ import {
   defineClassicWorkflowApplication,
   assertClassicPresetRequirementsCurrent,
   assertClassicBuildReady,
+  type ClassicWorkflowApplication,
 } from './classic-sdk-application.js';
 import { classicSdkCheckRefreshInput } from './classic-sdk-check.js';
+import { withClassicCheckPreparation } from './classic-sdk-check-preparation.js';
 import {
   observeClassicCheckInputs,
   classicCheckObservationMatches,
@@ -631,7 +633,23 @@ export function classicSdkApplicationForRun(
   run: WorkflowRun | null,
   options: { upgradePresetRequirements?: boolean; upgradeBuildCheckRecovery?: boolean } = {},
 ) {
-  const base = { ...defineClassicWorkflowApplication(profile), commandValidators: [] };
+  const preparing = run?.commands?.some((command) =>
+    ['prepare-build-check', 'prepare-verify-check'].includes(command.name),
+  );
+  const configured = <
+    T extends ClassicWorkflowApplication & {
+      commandValidators?: readonly RuntimeCommandValidator[];
+    },
+  >(
+    application: T,
+  ): T =>
+    preparing
+      ? (withClassicCheckPreparation(
+          application,
+          (run!.state as unknown as ClassicState).workflow,
+        ) as T)
+      : application;
+  const base = configured({ ...defineClassicWorkflowApplication(profile), commandValidators: [] });
   // 正常 Run 精确匹配原定义后直接返回；旧定义仍按下方完整兼容路径识别。
   if (!run || run.workflow.hash === hashRuntimeValue(defineWorkflow(base.workflow))) return base;
   const withoutCheckRefresh = <T extends { workflow: DefineWorkflowOptions }>(application: T) => {
@@ -643,12 +661,14 @@ export function classicSdkApplicationForRun(
     return { ...application, workflow };
   };
   const effective = (run?.state as unknown as ClassicState | undefined)?.workflow ?? profile;
-  const repair = withClassicDeliveryRepair(
-    classicSdkRevisionApplication(
-      profile,
-      effective === 'full' && profile !== 'full' ? 'full' : true,
+  const repair = configured(
+    withClassicDeliveryRepair(
+      classicSdkRevisionApplication(
+        profile,
+        effective === 'full' && profile !== 'full' ? 'full' : true,
+      ),
+      effective,
     ),
-    effective,
   );
   if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(repair.workflow))) return repair;
   const beforeRepairRefresh = withoutCheckRefresh(repair);
@@ -684,12 +704,14 @@ export function classicSdkApplicationForRun(
     for (const archiveRepair of [true, false]) {
       for (const buildContinuation of [true, false]) {
         for (const workContinuation of [true, false]) {
-          const application = classicSdkRevisionApplication(
-            profile,
-            verification,
-            archiveRepair,
-            buildContinuation,
-            workContinuation,
+          const application = configured(
+            classicSdkRevisionApplication(
+              profile,
+              verification,
+              archiveRepair,
+              buildContinuation,
+              workContinuation,
+            ),
           );
           if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(application.workflow)))
             return application;

@@ -19,6 +19,7 @@ import {
 } from '../workflow-contract/change-runtime-owner.js';
 import { Lexer } from 'marked';
 import { atomicWriteText } from './native-atomic-file.js';
+import { materializeNativeDeltaTargetsLocked } from './native-shape-materialization.js';
 import {
   nativeBriefHasBlockingQuestion,
   NativeDocumentConstraintError,
@@ -822,6 +823,7 @@ export async function prepareNativePortableShapeConfirmation(options: {
           ? { ...state, document_constraints_version: 3 as const }
           : state;
       const specChanges = await discoverNativePortableSpecChanges({ paths: options.paths, state });
+      await materializeNativeDeltaTargetsLocked({ paths: options.paths, state, specChanges });
       if (options.enforceDocumentConstraints === true) {
         await assertNativePortableDocuments({
           paths: options.paths,

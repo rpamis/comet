@@ -11,6 +11,8 @@ After entry returns layout, follow the [shared phase entry](../comet-classic/ref
 
 ## SDK Run path
 
+Run the first final GREEN or complete verification through `comet check run <change-name> build --local -- <program> [args...]` as described in SDK execution methods. Read its real receipt, then continue the current task without first running the same complete plan in a terminal. Keep TDD RED and local debugging. Omit `--local` for external-state or nonrepeatable checks. Submit complete-build and Guard afterward; Runtime advances only after validating evidence.
+
 On first entering the current SDK phase, handing off to a new Agent, or restoring context, read [phase entry and recovery](../comet-classic/reference/sdk-methods.md#phase-entry-and-recovery) and the current phase's section in that reference. Reuse them when already available and still valid in this session. Continue with the phase below; recovery routes based on `nextAction.kind` apply only to older responses without a continuation mode.
 
 Reuse the current valid result's `agent.continuation` / `data.nextAction` and bound state. Run `comet state next <change-name> --json` only on a cold resume, after external state changes, or when necessary information is missing. For `data.runtimeFormat: sdk`, advance only this Run; the implementation methods, plan content, and reviews are in SDK execution methods; submit state and evidence through this section. `data.phase` must be `build`. Reuse valid layout and configuration already in context; use `comet state check <change-name> build --json` only when they are missing. For `nextAction.kind: reconcile`, run `comet state check <change-name> build --recover --json` and establish the original outcome before repeating external work.

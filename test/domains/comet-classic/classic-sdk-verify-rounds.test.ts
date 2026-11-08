@@ -651,6 +651,112 @@ async function fixture(
   };
 }
 
+it('reuses the first generated Verify check after creating its declared report without a policy override', async () => {
+  const f = await fixture('tweak', true, false, 'generated');
+  await fs.unlink(path.join(f.projectRoot, f.reportRef));
+  const argv = f.command('generated-first-green');
+  await f.cli(
+    'check',
+    'run',
+    'example',
+    'verify',
+    '--report',
+    f.reportRef,
+    '--local',
+    '--',
+    ...argv,
+  );
+  await f.put(f.reportRef, '# Verification\nRuntime check passed; acceptance was reviewed.\n');
+  const result = await f.invoke(
+    'guard',
+    'example',
+    'verify',
+    '--report',
+    f.reportRef,
+    '--apply',
+    '--local',
+    '--',
+    ...argv,
+  );
+  expect(result.exitCode, result.stdout).toBe(0);
+  expect(await fs.readFile(f.checkCount, 'utf8')).toBe('build\ngenerated-first-green\n');
+  expect(
+    (await f.inspect()).run.actions.filter((action) => action.ref === 'classic-check').at(-1)
+      ?.outcome?.output,
+  ).toMatchObject({ reused: true });
+});
+
+it(
+  'completes Archive and delivery in the same Run after the first managed check',
+  async () => {
+    const f = await fixture('tweak', false);
+    const openSpec = await createOpenSpecArchiveFixture(path.dirname(f.projectRoot));
+    vi.stubEnv('COMET_OPENSPEC', openSpec.command);
+    const argv = f.command('first-delivery-green');
+    await f.put(
+      '.comet/check-policy.json',
+      JSON.stringify({ version: 2, commands: [{ argv, cwd: '.', files: ['source.js'] }] }),
+    );
+    await f.cli('check', 'run', 'example', 'build', '--local', '--', ...argv);
+    await f.cli('guard', 'example', 'build', '--apply', '--local', '--', ...argv);
+    await f.cli(
+      'guard',
+      'example',
+      'verify',
+      '--report',
+      f.reportRef,
+      '--apply',
+      '--local',
+      '--',
+      ...argv,
+    );
+    const beforeArchive = await f.inspect();
+    expect(beforeArchive.state, JSON.stringify(beforeArchive.state)).toMatchObject({
+      phase: 'archive',
+      archived: false,
+      archiveConfirmation: 'pending',
+    });
+    const proposed = await f.cli(
+      'state',
+      'propose-archive',
+      'example',
+      '--summary',
+      'Simulated fixture authorization for local delivery.',
+    );
+    await f.cli(
+      'state',
+      'decide-archive',
+      'example',
+      '--proposal-hash',
+      proposed.wait.proposalHash,
+      '--choice',
+      'local',
+    );
+    await f.cli('guard', 'example', 'archive', '--apply');
+    const git = (...args: string[]) =>
+      execFileSync('git', args, {
+        cwd: f.projectRoot,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim();
+    git('add', '--all', '--', 'source.js', 'openspec', 'docs/superpowers');
+    git(
+      '-c',
+      'user.name=Test',
+      '-c',
+      'user.email=test@example.invalid',
+      'commit',
+      '-m',
+      'fixture archive',
+    );
+    await f.cli('state', 'complete-delivery', 'example', '--commit', git('rev-parse', 'HEAD'));
+    expect((await f.inspect()).run).toMatchObject({ runId: 'example', status: 'completed' });
+    expect(await openSpec.invocations()).toHaveLength(1);
+    expect(await fs.readFile(f.checkCount, 'utf8')).toBe('first-delivery-green\n');
+  },
+  fullLifecycleTimeout,
+);
+
 it('records an explicitly chosen Build configuration and its approval in one CLI handoff', async () => {
   const f = await fixture('full', false, true);
   const run = (await f.inspect()).run;
@@ -1107,11 +1213,28 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
         commands: [{ argv, cwd: '.', files: ['source.js'] }],
       }),
     );
-    expect(
-      (await f.invoke('guard', 'example', 'build', '--apply', '--local', '--', ...argv)).exitCode,
-    ).toBe(0);
+    const built = await f.invoke('guard', 'example', 'build', '--apply', '--local', '--', ...argv);
+    expect(built.exitCode).toBe(0);
     expect(entryReads).toHaveBeenCalledTimes(1);
     entryReads.mockClear();
+    const continuation = built.response.data.continuation;
+    expect(continuation.completion.commandArgs).toEqual([
+      'comet',
+      'guard',
+      'example',
+      'verify',
+      '--report',
+      '<report-ref>',
+      '--apply',
+      '--local',
+      '--cwd',
+      '.',
+      '--timeout-ms',
+      expect.any(String),
+      '--json',
+      '--',
+      ...argv,
+    ]);
     const result = await f.invoke(
       'guard',
       'example',
@@ -1143,6 +1266,134 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
     expect(
       Object.keys((checks.at(-1)?.outcome?.output as { deliveryInputs: object }).deliveryInputs),
     ).not.toContain('node_modules/.modules.yaml');
+  });
+
+  it.each(['build', 'verify'] as const)(
+    'records the first %s check before completion and reuses it without advancing early',
+    async (scope) => {
+      const f = await fixture(profile, scope === 'verify');
+      const argv = f.command('first-green');
+      await f.put(
+        '.comet/check-policy.json',
+        JSON.stringify({
+          version: 2,
+          commands: [{ argv, cwd: '.', files: ['source.js'] }],
+        }),
+      );
+      const before = (await f.inspect()).run;
+      const checked = await f.invoke(
+        'check',
+        'run',
+        'example',
+        scope,
+        '--local',
+        ...(scope === 'verify' ? ['--report', f.reportRef] : []),
+        '--',
+        ...argv,
+      );
+      expect(checked.exitCode, checked.stdout ?? checked.stderr).toBe(0);
+      const staged = (await f.inspect()).run;
+      expect(staged.runId).toBe(before.runId);
+      expect(staged.state).toMatchObject({ phase: scope });
+      expect(staged.actions.at(-1)?.stepId).toBe(
+        `${profile}.${scope === 'build' ? 'build.execute' : 'verify.run'}`,
+      );
+      const completed = await f.invoke(
+        'guard',
+        'example',
+        scope,
+        ...(scope === 'verify' ? ['--report', f.reportRef] : []),
+        '--apply',
+        '--local',
+        '--',
+        ...argv,
+      );
+      expect(completed.exitCode, completed.stdout ?? completed.stderr).toBe(0);
+      const count = await fs.readFile(f.checkCount, 'utf8');
+      expect(count.split('\n').filter((label) => label === 'first-green')).toHaveLength(1);
+      expect(
+        (await f.inspect()).run.actions.filter((action) => action.ref === 'classic-check').at(-1)
+          ?.outcome?.output,
+      ).toMatchObject({ reused: true });
+    },
+  );
+
+  it.each(['build', 'verify'] as const)(
+    'keeps the original task after a failed first %s check without replay',
+    async (scope) => {
+      const f = await fixture(profile, scope === 'verify');
+      const argv = f.command('first-failure', 7);
+      const failed = await f.invoke(
+        'check',
+        'run',
+        'example',
+        scope,
+        ...(scope === 'verify' ? ['--report', f.reportRef] : []),
+        '--',
+        ...argv,
+      );
+      expect(failed.exitCode).not.toBe(0);
+      const run = (await f.inspect()).run;
+      expect(run.state).toMatchObject({ phase: scope });
+      expect(run.actions.at(-1)).toMatchObject({
+        stepId: `${profile}.${scope === 'build' ? 'build.execute' : 'verify.run'}`,
+        status: 'pending',
+      });
+      expect(
+        run.actions.filter((action) => action.ref === 'classic-check').at(-1)?.outcome,
+      ).toMatchObject({ status: 'failed', output: { exitCode: 7, reused: false } });
+      await f.cli('state', 'next', 'example');
+      expect(await fs.readFile(f.checkCount, 'utf8')).toBe(
+        `${scope === 'verify' ? 'build\n' : ''}first-failure\n`,
+      );
+    },
+  );
+
+  it('retains the exact external check plan without adding local reuse', async () => {
+    const f = await fixture(profile, false);
+    const argv = f.command('external-check');
+    const result = await f.invoke(
+      'guard',
+      'example',
+      'build',
+      '--apply',
+      '--cwd',
+      '.',
+      '--timeout-ms',
+      '45678',
+      '--',
+      ...argv,
+    );
+    expect(result.exitCode, result.stdout).toBe(0);
+    expect(result.response.data.continuation.completion.commandArgs).toEqual([
+      'comet',
+      'guard',
+      'example',
+      'verify',
+      '--report',
+      '<report-ref>',
+      '--apply',
+      '--cwd',
+      '.',
+      '--timeout-ms',
+      '45678',
+      '--json',
+      '--',
+      ...argv,
+    ]);
+    expect(await fs.readFile(f.checkCount, 'utf8')).toBe('external-check\n');
+    const continued = await f.invoke(
+      ...result.response.data.continuation.completion.commandArgs
+        .slice(1)
+        .filter((arg: string) => arg !== '--json')
+        .map((arg: string) => (arg === '<report-ref>' ? f.reportRef : arg)),
+    );
+    expect(continued.exitCode, continued.stdout).toBe(0);
+    expect(await fs.readFile(f.checkCount, 'utf8')).toBe('external-check\nexternal-check\n');
+    expect(
+      (await f.inspect()).run.actions.filter((action) => action.ref === 'classic-check').at(-1)
+        ?.outcome?.output,
+    ).toMatchObject({ reusable: false, reused: false, timeoutMs: 45678 });
   });
 
   it('returns the committed Run and original receipt after a real Build failure without replay', async () => {

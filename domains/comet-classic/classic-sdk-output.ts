@@ -27,6 +27,32 @@ import {
   canRepairClassicDelivery,
 } from './classic-sdk-delivery-repair-model.js';
 
+/** 沿用原检查计划及已选复用语义；实际输入、失败与原收据仍由执行器核对。 */
+function inheritedCheck(run: WorkflowRun) {
+  const previous = [...run.actions].reverse().find((action) => action.ref === 'classic-check');
+  const output = previous?.outcome?.output as
+    { reusable?: boolean; argv?: string[]; cwd?: string; timeoutMs?: number } | undefined;
+  return previous &&
+    ['succeeded', 'failed'].includes(previous.status) &&
+    typeof output?.reusable === 'boolean' &&
+    Array.isArray(output.argv) &&
+    output.argv.length > 0 &&
+    output.argv.every((value) => typeof value === 'string') &&
+    typeof output.cwd === 'string' &&
+    Number.isSafeInteger(output.timeoutMs)
+    ? {
+        argv: [...output.argv],
+        options: [
+          ...(output.reusable ? ['--local'] : []),
+          '--cwd',
+          output.cwd,
+          '--timeout-ms',
+          String(output.timeoutMs),
+        ],
+      }
+    : null;
+}
+
 /** 当前 Run 的有界视图；保留所有并行动作，不把历史输入重复展开。 */
 export function classicSdkRunSummary(run: WorkflowRun, details = false) {
   if (details) return { ...run, id: run.runId };
@@ -514,6 +540,7 @@ export function classicSdkContinuation(
           instruction: classicSdkDeliveryCheckInstruction,
         });
       const scope = action.stepId.includes('.build.') ? 'build' : 'verify';
+      const priorCheck = inheritedCheck(run);
       return result({
         mode: 'execute',
         commandArgs: [
@@ -522,12 +549,12 @@ export function classicSdkContinuation(
           'run',
           change,
           scope,
+          ...(priorCheck?.options ?? []),
           '--json',
           '--',
-          '<program>',
-          '<args...>',
+          ...(priorCheck?.argv ?? ['<program>', '<args...>']),
         ],
-        requiredInputs: ['当前工作区已确认的完整检查 program 与 args'],
+        requiredInputs: priorCheck ? [] : ['当前工作区已确认的完整检查 program 与 args'],
         instruction: classicSdkCheckInstruction,
       });
     }
@@ -592,8 +619,9 @@ export function classicSdkContinuation(
       commandArgs = command('complete-build');
       requiredInputs = ['当前计划任务的真实实现、必要审查和 tasks.md 完成记录'];
       preparation =
-        '先完成实现与任务验收，只补尚未完成任务的完成记录；已有稳定 ID 且已 completed 的任务不得重复 task-complete。缺少 ID 时先读取或补齐，不猜测或使用 None。再提交 Build 完成；后续真实检查仍须执行。';
+        '先完成实现与任务验收，只补尚未完成任务的完成记录；已有稳定 ID 且已 completed 的任务不得重复 task-complete。缺少 ID 时先读取或补齐，不猜测或使用 None。再提交 Build 完成；后续检查仍由 Runtime 核对，有效收据可复用。';
     } else if (action.stepId.endsWith('.verify.run')) {
+      const priorCheck = inheritedCheck(run);
       commandArgs = [
         'comet',
         'guard',
@@ -602,12 +630,15 @@ export function classicSdkContinuation(
         '--report',
         '<report-ref>',
         '--apply',
+        ...(priorCheck?.options ?? []),
         '--json',
         '--',
-        '<program>',
-        '<args...>',
+        ...(priorCheck?.argv ?? ['<program>', '<args...>']),
       ];
-      requiredInputs = ['report-ref: 真实验证与独立审查报告', 'program 与 args: 当前完整验证命令'];
+      requiredInputs = [
+        'report-ref: 真实验证与独立审查报告',
+        ...(priorCheck ? [] : ['program 与 args: 当前完整验证命令']),
+      ];
       preparation = '先完成独立验证并保存真实报告；Guard 会预检报告、执行检查并绑定收据。';
     } else if (action.stepId.endsWith('.archive.prepare')) {
       commandArgs = command('propose-archive', '--summary', '<delivery-summary>');

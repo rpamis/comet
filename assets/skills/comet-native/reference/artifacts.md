@@ -19,7 +19,7 @@ Each active change directory contains only user-readable formal artifacts that c
   verification.md
 ```
 
-The Agent edits only the brief, complete target specifications, an association's `delta.yaml`, and a Supervisor Change's `children.yaml`. Runtime creates and maintains `capability-association.yaml`; it owns `comet-state.yaml` and `verification.md`, generating the report after accepting the first Verifier result.
+The Agent edits the brief, complete target specifications for new capabilities or legacy changes, an association's `delta.yaml`, and a Supervisor Change's `children.yaml`. For associated capabilities, maintain only the Delta: Runtime generates complete target specifications when preparing Shape. These remain formal artifacts for user confirmation and Verifier inspection. Runtime creates and maintains `capability-association.yaml`; it owns `comet-state.yaml` and `verification.md`, generating the report after accepting the first Verifier result.
 
 The current Runtime stores machine-local data in the user Comet data directory, isolated by checkout and Git worktree. The default data root is `~/.comet`. Set `COMET_DATA_DIR` to an absolute path outside the workspace to override it; the root cannot be the project or one of its subdirectories. Native stores local state, logs, locks, and short-lived transactions in the `runtimeDir` returned by Runtime, which creates, migrates, and repairs these files. The project-local `.comet/runtime/native/` is a legacy layout. If Runtime detects old locks, unfinished writes, or a blocked migration, follow its recovery diagnostics without manually moving or deleting files.
 
@@ -97,23 +97,16 @@ Acceptance criteria must be specific, verifiable, and nonduplicative. Runtime ge
 
 New `children.yaml` files use `comet.native.children.v2`:
 
-- `acceptance_index` stores Supervisor acceptance IDs generated from the brief, their sources, and their complete text.
+- The Agent writes children, dependencies, and `covers` IDs only. Runtime derives `acceptance_index` sources and complete text from the current acceptance catalog and binds them to Shape approval. Existing explicit indexes remain strictly validated; independent edits are not overwritten.
 - Each child contains only `name`, `depends_on`, and `covers`. Together, children must cover every indexed ID.
 - Runtime still manages Spec acceptance items. Add actual failed Spec acceptance IDs to the index only during repair.
 - Child names must be unique, dependencies must exist, and the dependency graph must be acyclic.
 - Historical `comet.native.children.v1` files retain their existing interpretation; editing one returns the Supervisor Change to Shape.
 
-`acceptance_index` is an object keyed by acceptance ID, not an array. These two example children can run in parallel. Copy each ID's `source` and `text` verbatim from Runtime's current acceptance list; do not summarize them:
+These two example children can run in parallel. Reference actual IDs from Runtime's current acceptance list without copying their text:
 
 ```yaml
 schema: comet.native.children.v2
-acceptance_index:
-  A1:
-    source: brief.md
-    text: The integrated result includes capability A.
-  A2:
-    source: brief.md
-    text: The integrated result includes capability B.
 children:
   - name: alpha
     depends_on: []
@@ -128,7 +121,8 @@ children:
 Each `specs/<capability>/spec.md` describes the capability's complete behavior after Archive, not just differences from the old text:
 
 - New capability: write the complete specification.
-- Existing capability: write the complete updated specification. If created through capability association, also maintain `delta.yaml` with stable requirement IDs for this change.
+- Associated capability: maintain only `delta.yaml` with stable requirement IDs. Runtime generates the complete target from the current baseline, updating only an unchanged baseline copy or a target with a matching generation receipt. Independent edits, baseline conflicts, or Delta conflicts preserve files and block preparation; reconcile them before preparing Shape.
+- Legacy capability without a Delta: continue editing the complete target specification.
 - Removed capability: use the CLI's `spec remove`; deleting the file alone is insufficient.
 
 If an archived project Spec conflicts with the change, reread the latest Spec, then revise the change's complete target specification according to user intent. Independent requirement changes in `delta.yaml` may be realigned automatically. Changes to the same requirement, deletion or renaming, shared prior constraints, or uncertain impact require Verify again. Finally, execute Runtime's returned rebase action.

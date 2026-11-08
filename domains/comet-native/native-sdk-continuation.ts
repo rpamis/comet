@@ -149,6 +149,26 @@ function nativeSdkOutcomeOutput(
     ...nativeSdkCheckRequestTemplate(),
     ...(run.workflow.version !== '1' ? { repeatable: true } : {}),
   };
+  const inheritedChecks = new Map<string, ReturnType<typeof nativeSdkCheckPlans>[number]>();
+  if (run.workflow.version === '3' && action.stepId === 'build.builder') {
+    for (const previous of run.actions.slice(
+      0,
+      run.actions.findIndex(({ id }) => id === action.id),
+    )) {
+      if (previous.stepId === 'build.builder' && previous.outcome?.status === 'succeeded') {
+        const output = previous.outcome.output as { response?: { kind?: unknown } };
+        if (output.response?.kind !== 'request-checks') {
+          inheritedChecks.clear();
+          for (const plan of nativeSdkCheckPlans(previous.outcome.output))
+            inheritedChecks.set(plan.id, plan);
+        }
+      }
+      if (previous.stepId !== 'build.checks' || !previous.outcome) continue;
+      const activation = (previous.input as { activation?: { checks?: unknown } }).activation;
+      for (const plan of nativeSdkCheckPlans({ verificationChecks: activation?.checks ?? [] }))
+        inheritedChecks.set(plan.id, plan);
+    }
+  }
   const acceptance = (
     Array.isArray(activation?.acceptance)
       ? (activation.acceptance as { id: string }[])
@@ -173,7 +193,9 @@ function nativeSdkOutcomeOutput(
         { name: '<check-name>', result: '<passed|failed|not-run>', note: '<actual-result>' },
       ],
       knownLimits: ['<actual-limit-or-remove-entry>'],
-      verificationChecks: [check],
+      verificationChecks: inheritedChecks.size
+        ? [...inheritedChecks.values()].map((plan) => ({ ...plan }))
+        : [check],
       ...(run.workflow.version === '3' ? { requireIndependentReview: false } : {}),
       ...(action.stepId === 'supervisor.parent.builder'
         ? { candidateCommit: '<current-integration-HEAD>' }

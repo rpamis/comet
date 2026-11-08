@@ -215,7 +215,7 @@ async function projectTaskResult(
         instruction:
           currentTask.stepId === 'verify.verifier'
             ? '对照原始请求、Spec、实现和全部验收项，复用当前有效检查，只补缺失证据。用户要求独立审查时交给独立会话。用实际观察填写结果，存在未解决问题时报告 fail 或 blocked。'
-            : '按已批准的 brief、Spec 和全部验收项完成实现；需要受管检查时在结果中提交 request-checks，收到检查结果后继续 Build。',
+            : '按已批准的 brief、Spec 和全部验收项完成实现。TDD RED 与局部调试照常；首次最终 GREEN 或完整验证直接在结果中提交 request-checks，不先在终端重复同一完整计划。收到真实检查结果后继续 Build，沿用模板中的原检查计划；最终提交仍由 Runtime 核对证据。',
       }
     : undefined;
   const data = {

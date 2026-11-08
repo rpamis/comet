@@ -1,0 +1,223 @@
+{
+  "baseline": "b0a2fc5d03b0e265ba83459667e3cad30c18fe39",
+  "delayMs": 5000,
+  "note": "Public bin/comet.js, separate processes, daemon off, isolated Git fixtures, sample 0 warmup. Simulated approvals in fixtures are not approvals for a real change. Artificial delay represents check duration, not model time.",
+  "rows": [
+    {
+      "kind": "classic",
+      "variant": "baseline",
+      "scope": "build",
+      "sample": 0,
+      "firstMs": 5076.2398,
+      "submitMs": 9147.918,
+      "totalMs": 14224.1578,
+      "executions": 2,
+      "phase": "verify"
+    },
+    {
+      "kind": "classic",
+      "variant": "current",
+      "scope": "build",
+      "sample": 0,
+      "firstMs": 7473.427199999998,
+      "submitMs": 3696.7261,
+      "totalMs": 11170.153299999998,
+      "executions": 1,
+      "phase": "verify"
+    },
+    {
+      "kind": "classic",
+      "variant": "baseline",
+      "scope": "verify",
+      "sample": 0,
+      "firstMs": 5077.509400000003,
+      "submitMs": 9950.239999999998,
+      "totalMs": 15027.7494,
+      "executions": 2,
+      "phase": "archive"
+    },
+    {
+      "kind": "classic",
+      "variant": "current",
+      "scope": "verify",
+      "sample": 0,
+      "firstMs": 8003.2706000000035,
+      "submitMs": 4357.633000000002,
+      "totalMs": 12360.903600000005,
+      "executions": 1,
+      "phase": "archive"
+    },
+    {
+      "kind": "classic",
+      "variant": "current",
+      "scope": "build",
+      "sample": 1,
+      "firstMs": 7594.765199999994,
+      "submitMs": 4036.9858000000095,
+      "totalMs": 11631.751000000004,
+      "executions": 1,
+      "phase": "verify"
+    },
+    {
+      "kind": "classic",
+      "variant": "baseline",
+      "scope": "build",
+      "sample": 1,
+      "firstMs": 5081.266100000008,
+      "submitMs": 9258.886499999993,
+      "totalMs": 14340.152600000001,
+      "executions": 2,
+      "phase": "verify"
+    },
+    {
+      "kind": "classic",
+      "variant": "current",
+      "scope": "verify",
+      "sample": 1,
+      "firstMs": 8081.255999999994,
+      "submitMs": 4709.082699999999,
+      "totalMs": 12790.338699999993,
+      "executions": 1,
+      "phase": "archive"
+    },
+    {
+      "kind": "classic",
+      "variant": "baseline",
+      "scope": "verify",
+      "sample": 1,
+      "firstMs": 5078.319099999993,
+      "submitMs": 9939.252700000012,
+      "totalMs": 15017.571800000005,
+      "executions": 2,
+      "phase": "archive"
+    },
+    {
+      "kind": "classic",
+      "variant": "baseline",
+      "scope": "build",
+      "sample": 2,
+      "firstMs": 5082.449099999998,
+      "submitMs": 9138.934800000017,
+      "totalMs": 14221.383900000015,
+      "executions": 2,
+      "phase": "verify"
+    },
+    {
+      "kind": "classic",
+      "variant": "current",
+      "scope": "build",
+      "sample": 2,
+      "firstMs": 7484.2513000000035,
+      "submitMs": 3694.2878999999957,
+      "totalMs": 11178.5392,
+      "executions": 1,
+      "phase": "verify"
+    },
+    {
+      "kind": "classic",
+      "variant": "baseline",
+      "scope": "verify",
+      "sample": 2,
+      "firstMs": 5076.107099999994,
+      "submitMs": 10089.819600000017,
+      "totalMs": 15165.92670000001,
+      "executions": 2,
+      "phase": "archive"
+    },
+    {
+      "kind": "classic",
+      "variant": "current",
+      "scope": "verify",
+      "sample": 2,
+      "firstMs": 8350.937799999985,
+      "submitMs": 4594.7749000000185,
+      "totalMs": 12945.712700000004,
+      "executions": 1,
+      "phase": "archive"
+    },
+    {
+      "kind": "classic",
+      "variant": "current",
+      "scope": "build",
+      "sample": 3,
+      "firstMs": 8166.196399999957,
+      "submitMs": 4191.128199999977,
+      "totalMs": 12357.324599999934,
+      "executions": 1,
+      "phase": "verify"
+    },
+    {
+      "kind": "classic",
+      "variant": "baseline",
+      "scope": "build",
+      "sample": 3,
+      "firstMs": 5066.665900000022,
+      "submitMs": 9298.958500000008,
+      "totalMs": 14365.62440000003,
+      "executions": 2,
+      "phase": "verify"
+    },
+    {
+      "kind": "classic",
+      "variant": "current",
+      "scope": "verify",
+      "sample": 3,
+      "firstMs": 8045.540999999968,
+      "submitMs": 4507.021799999988,
+      "totalMs": 12552.562799999956,
+      "executions": 1,
+      "phase": "archive"
+    },
+    {
+      "kind": "classic",
+      "variant": "baseline",
+      "scope": "verify",
+      "sample": 3,
+      "firstMs": 5068.71669999999,
+      "submitMs": 10239.696100000001,
+      "totalMs": 15308.412799999991,
+      "executions": 2,
+      "phase": "archive"
+    },
+    {
+      "kind": "native",
+      "variant": "baseline",
+      "scenario": "delta",
+      "exitCode": 65,
+      "ms": 589.2292,
+      "waiting": false,
+      "targetGenerated": false,
+      "error": "Native delta target Spec is missing requirement workflow.added for add"
+    },
+    {
+      "kind": "native",
+      "variant": "current",
+      "scenario": "delta",
+      "exitCode": 0,
+      "ms": 1890.7200000000003,
+      "waiting": true,
+      "targetGenerated": true,
+      "error": "Change example · Shape (agreeing on requirements) · waiting for a user decision; acceptance 0/1 passed (1 pending)"
+    },
+    {
+      "kind": "native",
+      "variant": "baseline",
+      "scenario": "children",
+      "exitCode": 65,
+      "ms": 550.9445000000005,
+      "waiting": false,
+      "targetGenerated": false,
+      "error": "Native summary v2 child fields (child 0) fields are invalid: missing summary; unexpected covers; expected name, summary, depends_on"
+    },
+    {
+      "kind": "native",
+      "variant": "current",
+      "scenario": "children",
+      "exitCode": 0,
+      "ms": 1776.2091999999993,
+      "waiting": true,
+      "targetGenerated": false,
+      "error": "Change example · Shape (agreeing on requirements) · waiting for a user decision; acceptance 0/1 passed (1 pending)"
+    }
+  ]
+}

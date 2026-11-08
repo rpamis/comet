@@ -2,6 +2,108 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "classic-first-managed-check",
+      "behavior": "Run the first complete Build or Verify check inside the original Classic Run and reuse its matching receipt during formal completion.",
+      "coverageLevel": "public-cli",
+      "reproduction": "The pre-change CLI rejected checks while build.execute or verify.run was pending; the same focused test failed before implementation. Generated command coverage additionally creates the declared report after the first check.",
+      "expected": "Stay in the original phase and Run, return to the original task, and execute a deterministic complete command once when final submission has matching inputs.",
+      "forbidden": "Advancing approval or acceptance on the preliminary check, fabricating shell evidence, replaying a failed check on a state read, or reusing changed inputs.",
+      "rootCause": "Only final pending check Actions could execute Runtime checks, so the first final GREEN before task/report submission had no trusted receipt.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "records the first (build|verify) check before completion and reuses it without advancing early|keeps the original task after a failed first (build|verify) check without replay|reuses the first generated Verify check after creating its declared report without a policy override|completes Archive and delivery in the same Run after the first managed check",
+          "requiredNames": [
+            "records the first build check before completion and reuses it without advancing early",
+            "records the first verify check before completion and reuses it without advancing early",
+            "keeps the original task after a failed first build check without replay",
+            "keeps the original task after a failed first verify check without replay",
+            "reuses the first generated Verify check after creating its declared report without a policy override",
+            "completes Archive and delivery in the same Run after the first managed check"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-08-skill-execution-optimization"]
+    },
+    {
+      "id": "native-classic-check-plan-continuation",
+      "behavior": "Keep explicitly selected check plans and local reuse options in subsequent Native and Classic task templates.",
+      "coverageLevel": "runtime",
+      "reproduction": "The same Native reuse fixture returned placeholder plans, and the Classic continuation returned placeholder argv before the change; focused tests failed against those implementations.",
+      "expected": "Retain literal argv, cwd, timeout and previously selected repeatability/reuse settings without treating a template as a successful check.",
+      "forbidden": "Inferring cacheability for external checks or allowing an older success to mask a later failure.",
+      "rootCause": "Task templates rebuilt command placeholders instead of carrying forward the original declared plans.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reuses a Build check only while inputs match",
+          "requiredNames": [
+            "reuses a Build check only while inputs match (edited=false)",
+            "reuses a Build check only while inputs match (edited=true)",
+            "reuses a Build check only while inputs match (edited=failed-later)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "reuses the same successful command across Build and Verify after validating its inputs and log|retains the exact external check plan without adding local reuse",
+          "requiredNames": [
+            "reuses the same successful command across Build and Verify after validating its inputs and log",
+            "retains the exact external check plan without adding local reuse"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-08-skill-execution-optimization"]
+    },
+    {
+      "id": "native-delta-shape-materialization",
+      "behavior": "Generate an associated capability's complete target Spec from its Delta before Shape confirmation without overwriting independent edits.",
+      "coverageLevel": "runtime",
+      "reproduction": "The Delta-only Shape fixture retained the old complete target before implementation; the identical new test failed on missing added behavior.",
+      "expected": "Generate the complete target, update a previously generated target when its receipt matches, and keep complete Specs in approval and acceptance.",
+      "forbidden": "Replacing independently edited targets, changing confirmed targets during revalidation, or treating conflicting baseline requirements as compatible.",
+      "rootCause": "Shape validated the agent-maintained target against Delta but did not materialize it through the public preparation path.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "materializes a Delta target before Shape and refuses independent target edits|does not enter Build when Shape documents change after approval",
+          "requiredNames": [
+            "materializes a Delta target before Shape and refuses independent target edits",
+            "does not enter Build when Shape documents change after approval"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-08-skill-execution-optimization"]
+    },
+    {
+      "id": "native-supervisor-referenced-acceptance",
+      "behavior": "Generate Supervisor acceptance text from the current catalog when child plans contain only names, dependencies and covers references.",
+      "coverageLevel": "runtime",
+      "reproduction": "A v2 children document containing covers without a copied acceptance_index failed as a summary-v2 contract before implementation.",
+      "expected": "Bind complete current acceptance text to Shape, retain the user-authored references, enforce coverage and permitted repair IDs, and retain v1 and explicit-index compatibility.",
+      "forbidden": "Inventing acceptance text, importing unauthorized Spec repair IDs, or interpreting an old approval against changed formal documents.",
+      "rootCause": "The parser required either duplicated explicit acceptance text or a summary-only plan with no covers.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "derives referenced v2 acceptance from the current catalog without copying its text|accepts a readable v2 acceptance index while retaining the v1 contract|validates v2 index text while allowing only failed Spec acceptance into repair children",
+          "requiredNames": [
+            "derives referenced v2 acceptance from the current catalog without copying its text",
+            "accepts a readable v2 acceptance index while retaining the v1 contract",
+            "validates v2 index text while allowing only failed Spec acceptance into repair children"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "confirms a Supervisor child plan and coordination mode in the same SDK Run",
+          "requiredNames": [
+            "confirms a Supervisor child plan and coordination mode in the same SDK Run",
+            "confirms a Supervisor child plan and coordination mode in the same SDK Run with referenced acceptance"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-08-skill-execution-optimization"]
+    },
+    {
       "id": "native-confirmed-stop-probe-reuse",
       "sources": ["report:2026-11-05-native-verify-archive-overhead"],
       "behavior": "Reuse confirmed termination evidence without probing processes again when the execution record is unchanged.",

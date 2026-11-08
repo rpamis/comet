@@ -12,6 +12,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Workflow check execution**: Run the first complete Classic Build or Verify check before task or report submission, then reuse matching Runtime receipts during formal completion. Native and Classic continuations retain declared command plans, working directories, timeouts and reuse choices. TDD RED, approval, full acceptance and failure recovery remain required.
+- **Native Shape authoring**: Generate associated capabilities' complete target Specs from Delta changes before confirmation while preserving independent target edits. Supervisor plans can reference acceptance IDs without copying their text; Runtime binds the complete catalog and child coverage to approval.
 - **Workflow command latency**: Reduce repeated state, path, workflow-definition, checkpoint, and Git reads in Native and Classic commands. Plain state reads and repeated Native outcomes no longer start completion learning. Classic edit observation returns approved originals and a review template together. Uncontended writes use shorter lock coordination, with existing approval, candidate validation, bounded waiting, and recovery checks retained.
 - **Classic task context**: Share layout and edit-continuation instructions across phases, reuse fully delivered profile context during uninterrupted sessions, and restore full context after handoff or compression. Skip empty learning files and review queries when there is no observation, feedback, or known pending review; actual reviews and explicit learning requests remain available.
 

@@ -45,6 +45,8 @@ After approval, update the single Design Doc: reuse its recorded reference, othe
 
 ## Build
 
+Before the first final GREEN or complete verification, follow the initial managed-check procedure in [Check reuse](#check-reuse). This applies to full, hotfix, and tweak; keep TDD RED and local debugging.
+
 Before implementing with the chosen strategy, check its planning, implementation, TDD, and review capabilities under [host capability check](../../comet/reference/host-check.md). Reuse known available capabilities; do not defer discovering a missing required method until implementation.
 
 Reuse the workspace bound during Open. When configuration needs to be presented, completed, or changed, read [presenting execution configuration](decision-point.md#presenting-execution-configuration) and show the current change's values, meanings, and approval status. Field choices and requirements are:
@@ -106,6 +108,8 @@ After the skill loads, use `comet classic openspec -- <args...>` and bound `<cla
 Write actual results, evidence, independent review, unexecuted checks, and accepted deviations into the report. Return clearly repairable failures to Build automatically within the first three failures. CRITICAL/IMPORTANT findings cannot be waived. Ask about WARNING/SUGGESTION findings involving behavior, scope, or risk tradeoffs; repair safe local issues directly. At verify_failures >= 3, ask whether to continue repairs or stop the workflow for an external decision. Failure, timeout, blocked, and unexecuted results never count as passed.
 
 ## Check reuse
+
+Keep TDD RED and local debugging. Run the first final GREEN or complete verification through `comet check run <change> build --local -- <program> [args...]`. In Verify, use `comet check run <change> verify --report <report-ref> --local -- <program> [args...]`: declare the final report path before checking, then write the report from real receipts. These commands return to the original implementation or acceptance task without advancing the phase. Submit complete-build and Guard afterward. When continuation includes the original argv, cwd, timeout, and reuse options, retain them and fill only missing inputs such as the report; do not reconstruct the plan.
 
 For deterministic local checks, add `--local` before `--` in the main Skill's Guard command. Runtime returns reused only when argv, cwd, inputs, environment, timeout, original execution receipt, and log match. Build and Verify can reuse the identical full command. Omit the flag for external or nonrepeatable checks. Recover the original execution and receipt; investigate unknown results before repeating side effects. Runtime reruns changed inputs; remembered conversation claims cannot replace evidence.
 

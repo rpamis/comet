@@ -45,6 +45,8 @@ SDK 新 change 使用 `comet-state.yaml`，历史 `.comet.yaml` 原地保留。�
 
 ## Build
 
+首次最终 GREEN 或完整验证开始前，执行[检查复用](#检查复用)中的首次受管检查安排；full、hotfix 和 tweak 均适用，TDD RED 与局部调试保留。
+
 已选配置要求的实施、TDD 或审查能力，按[宿主能力核对](../../comet/reference/host-check.md) 在开始实现前确认；已有仍有效的核对直接复用。
 
 工作区沿用 Open 的绑定；需要展示、补齐或更改配置时，读取[执行配置展示](decision-point.md#执行配置展示)，按当前 change 的值、含义和确认状态呈现。各字段的选择与要求如下：
@@ -106,6 +108,8 @@ review_mode 为 standard 或 thorough 时，由独立 reviewer 对最终 diff �
 将实际结果、证据、独立审查结论、未执行项和已接受偏差写入报告。明确可修复的失败在前三次内按主 Skill 回 Build；CRITICAL/IMPORTANT 不可豁免。WARNING/SUGGESTION 涉及行为、范围或风险取舍时由用户决定；安全局部修复直接处理。已有 verify_failures >= 3 时，先让用户选择继续修复或停止流程寻求外部决定。失败、超时、阻塞和未执行均不算通过。
 
 ## 检查复用
+
+TDD 的 RED 与局部调试照常执行。首次最终 GREEN 或完整验证直接运行 `comet check run <change> build --local -- <program> [args...]`；Verify 阶段使用 `comet check run <change> verify --report <report-ref> --local -- <program> [args...]`，先声明最终报告路径，读取真实收据后再写报告。这些命令回到原实施或验收任务，不提前推进阶段；随后仍执行主 Skill 的 complete-build 和 Guard 提交。后继 continuation 已带原 argv、cwd、超时和复用选项时直接沿用，只补报告等缺失输入，不重新拼写计划。
 
 确定性的本地检查使用主 Skill 的 Guard 命令并在 `--` 前加 `--local`。Runtime 只有在 argv、cwd、输入、环境、超时、原始收据和日志匹配时才返回 reused；Build 与 Verify 可复用同一完整命令。外部服务或不可重复检查不加该参数。恢复时沿用原执行及收据，结果未知先核对，不重发副作用。输入发生变化时由 Runtime 重跑，不能用旧对话里的通过结论替代检查。
 

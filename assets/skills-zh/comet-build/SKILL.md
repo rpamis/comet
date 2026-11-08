@@ -11,6 +11,8 @@ description: '制定计划、实施并验收 Classic 任务。在用户调用 /c
 
 ## SDK Run 路径
 
+首次最终 GREEN 或完整验证按 SDK 方法参考直接通过 `comet check run <change-name> build --local -- <program> [args...]` 执行，读取真实收据后继续当前任务，不先在终端重复运行同一完整计划。TDD RED 和局部调试保留；外部状态或不可重复检查不加 `--local`。之后仍提交 complete-build 与 Guard，由 Runtime 核对证据后推进。
+
 首次进入当前 SDK 阶段、换 Agent 或恢复上下文时，读取[阶段入口与恢复](../comet-classic/reference/sdk-methods.md#阶段入口与恢复)及该参考的当前阶段章节；本会话已有且仍有效时直接复用。下文按当前阶段执行；`nextAction.kind` 的恢复路由只适用于没有 continuation mode 的旧响应。
 
 优先复用当前有效结果中的 `agent.continuation` / `data.nextAction` 与已绑定状态；只有冷恢复、外部状态变化或缺少必要信息时，才运行 `comet state next <change-name> --json`。`data.runtimeFormat` 为 `sdk` 时，只按本节推进 Run；SDK 方法参考的执行策略选项、计划内容要求、实施与审查方法仍适用，状态和证据通过本节命令提交。`data.phase` 必须为 `build`。已有有效 layout 与当前配置时直接复用；缺少时运行 `comet state check <change-name> build --json`；若 `nextAction.kind` 为 `reconcile`，运行 `comet state check <change-name> build --recover --json` 核对原 Action 的结果，在结果明确前不重发外部工作。

@@ -11,6 +11,8 @@ description: '验证 Classic change 并记录结果。在用户调用 /comet-ver
 
 ## SDK Run 路径
 
+首次完整验证按 SDK 方法参考直接通过 `comet check run <change-name> verify --report <report-ref> --local -- <program> [args...]` 执行；先声明最终报告路径，读取真实收据后继续核验并写报告，不先执行同一完整命令。外部状态或不可重复检查不加 `--local`。之后仍执行 Guard 提交，首次检查本身不推进阶段。
+
 首次进入当前 SDK 阶段、换 Agent 或恢复上下文时，读取[阶段入口与恢复](../comet-classic/reference/sdk-methods.md#阶段入口与恢复)及该参考的当前阶段章节；本会话已有且仍有效时直接复用。下文按当前阶段执行；`nextAction.kind` 的恢复路由只适用于没有 continuation mode 的旧响应。
 
 优先复用同一 change、工作区和 Run 的最新有效响应中的 `agent.continuation`、`data.nextAction`、phase、revision 和路径摘要。只有冷恢复、工作区或外部状态变化、响应版本已过期或缺少当前步骤必要信息时，才运行 `comet state next <change-name> --json`；不要因加载下一 Skill 再读一次。后续写操作仍由 Runtime 校验当前版本与证据，不能用缓存跳过检查或批准。确认 `data.runtimeFormat: sdk`、`data.phase: verify` 和 `nextAction.kind`，在已绑定的 `projectRoot` 执行。路径缺失或绑定发生变化时才运行 `comet classic workspace resolve <change-name> --json`；缺少当前任务、工作区或证据摘要时才运行 `comet state check <change-name> verify --json`。`reconcile` 时改用 `comet state check <change-name> verify --recover --json` 查明原 Action 和检查结果；结果未明时停止，不重复执行外部检查。

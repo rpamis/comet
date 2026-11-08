@@ -231,6 +231,7 @@ export async function findNativeV1SupervisorParents(options: {
       if (state.phase !== 'build' || state.status !== 'active') continue;
       const contract = await readNativeChildrenContract({
         changeDir,
+        validation: nativeChildrenAcceptanceValidation(state),
         ...(state.acceptance.length > 0
           ? { acceptanceIds: state.acceptance.map(({ id }) => id) }
           : {}),

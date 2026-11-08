@@ -818,7 +818,11 @@ export async function advanceNativeSdkChange(
       continue;
     }
     const paths = await nativeProjectPaths(projectRoot, artifactRootRef, { change: name });
-    const proposal = await collectNativeSdkShapeProposal({ paths, state });
+    const proposal = await collectNativeSdkShapeProposal({
+      paths,
+      state,
+      materializeTargets: true,
+    });
     // 纯 Shape 计算可重做：保留原 claim/outcome 校验，只在成功后发布一个 revision。
     // 外部执行和固定应用仍使用原来的持久化两阶段协议。
     const staging =
