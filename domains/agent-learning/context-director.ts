@@ -555,8 +555,15 @@ export class ContextDirector {
         );
         if (
           application.sessionId === request.sessionId &&
-          contextDeliveryMatchesRequest(application, request) &&
           candidate !== undefined &&
+          (contextDeliveryMatchesRequest(application, request) ||
+            (request.contextMode === 'incremental' &&
+              candidate.memoryType === 'core-profile' &&
+              application.delivery === 'full' &&
+              contextDeliveryMatchesRequest(application, {
+                ...request,
+                phase: application.phase,
+              }))) &&
           applicationMatchesCandidate(application, candidate, request)
         ) {
           delivered.set(

@@ -28,7 +28,10 @@ import {
   executeClassicSdkArchivePreflight,
 } from './classic-sdk-archive-preflight.js';
 
+type ClassicSdkInspection = Awaited<ReturnType<typeof inspectClassicSdkRun>>;
+
 interface ClassicSdkOpenGuardOptions {
+  inspected?: ClassicSdkInspection;
   projectRoot: string;
   change: string;
   apply: boolean;
@@ -139,7 +142,7 @@ export async function classicSdkOpenGuard(
   options: ClassicSdkOpenGuardOptions,
 ): Promise<ClassicCommandResult> {
   const { projectRoot, change, apply, approvalHash } = options;
-  const inspected = await inspectClassicSdkRun(projectRoot, change);
+  const inspected = options.inspected ?? (await inspectClassicSdkRun(projectRoot, change));
   let { run } = inspected;
   const { state, runtime, profile } = inspected;
   const guardAttempt = classicSdkGuardAttempt(inspected.run, 'open');
@@ -357,6 +360,7 @@ export async function classicSdkOpenGuard(
 
 /** Preview or commit a full-workflow Design decision using the same SDK preflight. */
 export async function classicSdkDesignGuard(options: {
+  inspected?: ClassicSdkInspection;
   projectRoot: string;
   change: string;
   designDoc: string;
@@ -365,6 +369,7 @@ export async function classicSdkDesignGuard(options: {
 }): Promise<ClassicCommandResult> {
   const { projectRoot, change, designDoc, apply, approvalHash } = options;
   const { inspected, completed } = await inspectAndCompleteClassicSdkDesign({
+    inspected: options.inspected,
     projectRoot,
     change,
     designDoc,
@@ -418,6 +423,7 @@ export async function classicSdkDesignGuard(options: {
 
 /** Preview or finish the current Build through its SDK Action and check receipt. */
 export async function classicSdkBuildGuard(options: {
+  inspected?: ClassicSdkInspection;
   projectRoot: string;
   invocationCwd: string;
   change: string;
@@ -429,7 +435,7 @@ export async function classicSdkBuildGuard(options: {
   sessionId?: string;
 }): Promise<ClassicCommandResult> {
   const { projectRoot, invocationCwd, change, apply, argv } = options;
-  const inspected = await inspectClassicSdkRun(projectRoot, change);
+  const inspected = options.inspected ?? (await inspectClassicSdkRun(projectRoot, change));
   const { run, state, profile } = inspected;
   const guardAttempt = classicSdkGuardAttempt(inspected.run, 'build');
   if (state.phase !== 'build') {
@@ -577,6 +583,7 @@ export async function classicSdkBuildGuard(options: {
 
 /** Preview or finish Verify through report evidence and a real SDK check. */
 export async function classicSdkVerifyGuard(options: {
+  inspected?: ClassicSdkInspection;
   projectRoot: string;
   invocationCwd: string;
   change: string;
@@ -588,7 +595,7 @@ export async function classicSdkVerifyGuard(options: {
   reusable?: boolean;
 }): Promise<ClassicCommandResult> {
   const { projectRoot, invocationCwd, change, reportRef, apply, argv } = options;
-  const inspected = await inspectClassicSdkRun(projectRoot, change);
+  const inspected = options.inspected ?? (await inspectClassicSdkRun(projectRoot, change));
   let { run } = inspected;
   const { state, runtime, profile } = inspected;
   const guardAttempt = classicSdkGuardAttempt(inspected.run, 'verify');
@@ -821,12 +828,13 @@ export async function classicSdkVerifyGuard(options: {
 
 /** Preview or execute only an explicitly approved SDK Archive; delivery remains separate. */
 export async function classicSdkArchiveGuard(options: {
+  inspected?: ClassicSdkInspection;
   projectRoot: string;
   change: string;
   apply: boolean;
 }): Promise<ClassicCommandResult> {
   const { projectRoot, change, apply } = options;
-  const inspected = await inspectClassicSdkRun(projectRoot, change);
+  const inspected = options.inspected ?? (await inspectClassicSdkRun(projectRoot, change));
   const { run, state, runtime, profile } = inspected;
   const guardAttempt = classicSdkGuardAttempt(inspected.run, 'archive');
   if (state.phase !== 'archive') {

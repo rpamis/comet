@@ -78,6 +78,10 @@ export async function createProtectedProjectReadSession(
           ...(ignoreEntry ? { ignoreEntry, namespace: await namespace(target, ignoreEntry) } : {}),
         };
       })();
+      pending = pending.catch((error) => {
+        directories.delete(target);
+        throw error;
+      });
       directories.set(target, pending);
     }
     return pending;
@@ -139,7 +143,43 @@ export async function createProtectedProjectReadSession(
         },
       });
     },
-    async finish() {
+    async read(
+      relativePath: string,
+      maxBytes: number,
+      readOptions: Omit<RaceSafeReadOptions, 'verify'> = {},
+    ): Promise<RaceSafeReadResult> {
+      const target = await targetFor(relativePath);
+      return readFileRaceSafe(target, maxBytes, {
+        ...readOptions,
+        label: `${label} ${relativePath}`,
+        verify: async (_checkpoint, context) => {
+          if (!isInside(realRoot, context.realPath))
+            throw new Error(`${label} resolves outside the project root`);
+          let cursor = root;
+          const parents = [root];
+          for (const segment of path
+            .relative(root, path.dirname(target))
+            .split(path.sep)
+            .filter(Boolean)) {
+            cursor = path.join(cursor, segment);
+            parents.push(cursor);
+          }
+          for (const parent of parents) {
+            const before = await directories.get(parent)!;
+            const current = await fs.lstat(parent, { bigint: true });
+            if (
+              !current.isDirectory() ||
+              current.isSymbolicLink() ||
+              directoryIdentity(current) !== directoryIdentity(before.stat)
+            )
+              throw new Error(
+                `${label} directory changed while reading: ${path.relative(root, parent) || '.'}`,
+              );
+          }
+        },
+      });
+    },
+    async finish(finishOptions: { allowDirectoryContentChanges?: boolean } = {}) {
       if (finished) throw new Error(`${label} read session is already finished`);
       finished = true;
       const changedDirectories: string[] = [];
@@ -150,7 +190,8 @@ export async function createProtectedProjectReadSession(
           !current.isDirectory() ||
           current.isSymbolicLink() ||
           directoryIdentity(before.stat) !== directoryIdentity(current) ||
-          (identity(before.stat) !== identity(current) &&
+          (!finishOptions.allowDirectoryContentChanges &&
+            identity(before.stat) !== identity(current) &&
             (!before.ignoreEntry ||
               (await namespace(target, before.ignoreEntry)) !== before.namespace)) ||
           (await fs.realpath(target)) !== before.real
@@ -518,28 +559,10 @@ async function readProtectedProjectFileUncached(
   maxBytes: number,
   options: Omit<RaceSafeReadOptions, 'verify'> & { label: string },
 ): Promise<RaceSafeReadResult> {
-  const inspection = await inspectProtectedProjectPath(projectRoot, relativePath, {
-    label: options.label,
-    expected: 'file',
-  });
-  if (!inspection.exists) {
-    const error = new Error(`${options.label} does not exist`) as NodeJS.ErrnoException;
-    error.code = 'ENOENT';
-    throw error;
-  }
-  const realRoot = await assertRealProjectRoot(inspection.projectRoot, options.label);
-  return readFileRaceSafe(inspection.target, maxBytes, {
-    ...options,
-    verify: async (_checkpoint, context) => {
-      if (!isInside(realRoot, context.realPath)) {
-        throw new Error(`${options.label} resolves outside the project root`);
-      }
-      await inspectExistingChain(inspection.projectRoot, realRoot, inspection.relative.split('/'), {
-        label: options.label,
-        expected: 'file',
-      });
-    },
-  });
+  const session = await createProtectedProjectReadSession(projectRoot, options.label);
+  const result = await session.read(relativePath, maxBytes, options);
+  await session.finish({ allowDirectoryContentChanges: true });
+  return result;
 }
 
 // Reads co-operating with an atomic write (hooks) bypass the cache so their

@@ -376,6 +376,7 @@ export function createNativeSdkStateStore(
     const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root, {
       ...options,
       readOnly,
+      change: runId,
     });
     const activeFile = nativePortableStateFile(paths, runId);
     let file = activeFile;
@@ -488,7 +489,9 @@ export function createNativeSdkStateStore(
         const current = await store.read(run.runId);
         if (!current) throw new Error(`Native SDK Run ${run.runId} disappeared before checkpoint`);
         const currentState = parseNativePortableState(current.state);
-        const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef as string);
+        const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef as string, {
+          change: run.runId,
+        });
         let file = nativePortableStateFile(paths, run.runId);
         try {
           await fs.access(path.dirname(file));
@@ -607,6 +610,7 @@ export function createNativeSdkStateStore(
       const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, {
         ...options,
         readOnly,
+        change: runId,
       });
       // 已封存取消的业务阶段保持原值；历史诊断不依赖已清理的活动文档。
       // 这里只跳过投影同步，调用方仍须校验 Run 定义、停止证据及存储状态。
@@ -849,7 +853,8 @@ export function createNativeSdkStateStore(
           ? await commitNativeSdkCancellation({ projectRoot, store, runId, expectedRevision, next })
           : await store.compareAndSwap(runId, expectedRevision, next);
       if (committed) {
-        await syncStateFile(runId, true);
+        if (next.workflow.version === '3') await syncBoundaryCheckpoint(next, true);
+        else await syncStateFile(runId, true);
         if (next.status === 'cancelled') {
           await settleNativeSdkCancellation({ projectRoot, run: next });
         }

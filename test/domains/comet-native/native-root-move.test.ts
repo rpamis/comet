@@ -43,6 +43,25 @@ describe('Native artifact root moves', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
+  it('audits historical transactions even when the active transaction directory is absent', async () => {
+    await seedNativeRoot(projectRoot, 'docs');
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const history = path.join(
+      paths.runtimeDir,
+      'transaction-history',
+      'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+    );
+    await fs.mkdir(history, { recursive: true });
+    await fs.writeFile(path.join(history, 'transaction.json'), '{}');
+    await fs.rm(paths.transactionsDir, { recursive: true, force: true });
+    await expect(moveNativeRoot({ projectRoot, toArtifactRoot: 'artifacts' })).rejects.toThrow();
+    expect((await readProjectConfig(projectRoot))?.native.artifact_root).toBe('docs');
+    expect((await readProjectConfig(projectRoot))?.native.pending_root_move).toBeUndefined();
+    await expect(fs.access(path.join(projectRoot, 'artifacts/comet'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
   it('rejects SDK root moves before changing documents or configuration and preserves continuation', async () => {
     await fs.rm(path.join(projectRoot, '.git'), { recursive: true });
     const paths = await nativeProjectPaths(projectRoot, 'docs');

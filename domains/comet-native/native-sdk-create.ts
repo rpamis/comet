@@ -70,14 +70,18 @@ async function startNativeSdkRun(options: {
     async compareAndSwap(runId, expectedRevision, next) {
       if (expectedRevision === null) {
         if (runId !== options.name) throw new Error('Native SDK Run ID and change name differ');
-        await registerSdkChangeOwner(options.paths.projectRoot, {
-          schema: COMET_CHANGE_OWNER_SCHEMA,
-          workflow: 'native',
-          change: options.name,
-          format: 'sdk',
-          application: 'native',
-          runId,
-        });
+        await registerSdkChangeOwner(
+          options.paths.projectRoot,
+          {
+            schema: COMET_CHANGE_OWNER_SCHEMA,
+            workflow: 'native',
+            change: options.name,
+            format: 'sdk',
+            application: 'native',
+            runId,
+          },
+          { canonical: true },
+        );
       }
       return persistentStore.compareAndSwap(runId, expectedRevision, next);
     },

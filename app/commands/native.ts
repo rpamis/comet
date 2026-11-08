@@ -23,7 +23,18 @@ export async function runNativeFacade(args: readonly string[]): Promise<number> 
       ? await nativeCli.runNativeCliDetailed(integration.cliArgs)
       : undefined;
   const result = detailed?.output ?? (await nativeCli.runNativeCli(integration.cliArgs));
-  await recordNativeResult(integration.cliArgs, result, integration.workflow, detailed);
+  await recordNativeResult(
+    integration.cliArgs,
+    result,
+    integration.workflow,
+    detailed,
+    Boolean(
+      integration.task?.trim() ||
+      integration.contextPath ||
+      integration.phase ||
+      integration.workflow,
+    ),
+  );
   if (result.stdout) process.stdout.write(compactCliStdout(result.stdout, outputArgs.compact)!);
   if (result.stderr)
     process.stderr.write(result.stderr + (result.stderr.endsWith('\n') ? '' : '\n'));
@@ -35,9 +46,12 @@ async function recordNativeResult(
   result: Awaited<ReturnType<typeof nativeCli.runNativeCli>>,
   workflowOverride?: string,
   detailed?: NativeCliDetailedResult,
+  explicitContext = false,
 ): Promise<void> {
   const command = args.find((value) => ['next', 'archive', 'handoff', 'check'].includes(value));
   if (!command || !['next', 'archive', 'handoff', 'check'].includes(command)) return;
+  if (command === 'next' && detailed?.dispatch?.workflowCompleted === false && !explicitContext)
+    return;
   if (args.includes('--dry-run')) return;
   if (result.exitCode !== 0 && command !== 'check') return;
   const commandIndex = args.indexOf(command);

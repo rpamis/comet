@@ -23,6 +23,7 @@ export interface GitWorktreeEntry {
 
 const readScope = new AsyncLocalStorage<Map<string, GitWorktreeEntry[]>>();
 const readRoots = new AsyncLocalStorage<Map<string, string>>();
+const localReadContexts = new AsyncLocalStorage<Map<string, GitWorktreeContext>>();
 
 /** Reuse worktree observations only within one read-only query, never across commands. */
 export function withGitWorktreeReadScope<T>(operation: () => T): T {
@@ -32,7 +33,12 @@ export function withGitWorktreeReadScope<T>(operation: () => T): T {
 
 /** daemon 专用；只复用已核对元数据的查询观察，写命令不进入此作用域。 */
 export function createGitWorktreeReadCache(): {
-  run<T>(projectRoot: string, operation: () => Promise<T>, invocationCwd?: string): Promise<T>;
+  run<T>(
+    projectRoot: string,
+    operation: () => Promise<T>,
+    invocationCwd?: string,
+    options?: { localOnly?: boolean },
+  ): Promise<T>;
 } {
   const entries = new Map<
     string,
@@ -40,11 +46,11 @@ export function createGitWorktreeReadCache(): {
   >();
   let configPaths: Promise<string[] | null> | undefined;
   let environment = '';
-  const stamp = async (projectRoot: string, configs: readonly string[]) => {
+  const stamp = async (projectRoot: string, configs: readonly string[], localOnly: boolean) => {
     let timer: ReturnType<typeof setTimeout>;
     try {
       return await Promise.race([
-        gitWorktreeMetadataStamp(projectRoot, configs),
+        gitWorktreeMetadataStamp(projectRoot, configs, { localOnly }),
         new Promise<null>((resolve) => {
           timer = setTimeout(() => resolve(null), 100);
         }),
@@ -54,7 +60,7 @@ export function createGitWorktreeReadCache(): {
     }
   };
   return {
-    async run(projectRoot, operation, invocationCwd = projectRoot) {
+    async run(projectRoot, operation, invocationCwd = projectRoot, options = {}) {
       const gitExecutable =
         process.platform === 'win32'
           ? resolveWindowsCommand('git', process.env, projectRoot)
@@ -98,10 +104,15 @@ export function createGitWorktreeReadCache(): {
           .catch(() => null);
       const configs = cacheAllowed ? await configPaths! : null;
       const paths = [...new Set([path.resolve(projectRoot), path.resolve(invocationCwd)])];
-      const key = JSON.stringify(paths.map(canonicalPathForComparison));
+      const key = JSON.stringify([
+        paths.map(canonicalPathForComparison),
+        Boolean(options.localOnly),
+      ]);
       const metadata = async () => {
         if (!configs) return null;
-        const stamps = await Promise.all(paths.map((target) => stamp(target, configs)));
+        const stamps = await Promise.all(
+          paths.map((target) => stamp(target, configs, Boolean(options.localOnly))),
+        );
         return stamps.every((value) => value !== null) ? JSON.stringify(stamps) : null;
       };
       const before = await metadata();
@@ -158,7 +169,21 @@ export function createGitWorktreeReadCache(): {
           }),
         );
       }
-      const result = await readRoots.run(roots, () => readScope.run(observations, operation));
+      const localContexts = new Map<string, GitWorktreeContext>();
+      if (options.localOnly) {
+        for (const target of paths) {
+          const root = roots.get(canonicalPathForComparison(target));
+          const entries = observations.get(root ?? canonicalPathForComparison(target));
+          const context = entries && gitWorktreeContextFromEntries(root ?? target, entries);
+          if (context) localContexts.set(canonicalPathForComparison(target), context);
+        }
+      }
+      // 本地绑定只能供 inspect 使用；真正的全表查询仍进入新鲜的发现路径。
+      const result = await readRoots.run(roots, () =>
+        localReadContexts.run(localContexts, () =>
+          readScope.run(options.localOnly ? new Map() : observations, operation),
+        ),
+      );
       if (before !== null && observations.size > 0 && before === (await metadata())) {
         if (entries.size >= 8) entries.delete(entries.keys().next().value!);
         entries.set(key, { stamp: before, observations, roots });
@@ -207,6 +232,8 @@ function canonicalPathForComparison(target: string): string {
 }
 
 function inspectGitWorktree(projectPath: string): GitWorktreeContext {
+  const local = localReadContexts.getStore()?.get(canonicalPathForComparison(projectPath));
+  if (local) return { ...local };
   try {
     const observedRoot = readRoots.getStore()?.get(canonicalPathForComparison(projectPath));
     const observed = readScope

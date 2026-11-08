@@ -7,7 +7,12 @@ import { NATIVE_MANAGED_RUN_MARKER } from './native-state-document.js';
 import { atomicWriteText } from './native-atomic-file.js';
 import { defaultProjectConfig, readProjectConfig, writeProjectConfig } from './native-config.js';
 import { acquireNativeLock, releaseNativeLock } from './native-lock.js';
-import { isInsidePath, nativeProjectPaths, normalizeArtifactRootRef } from './native-paths.js';
+import {
+  isInsidePath,
+  nativeProjectPaths,
+  normalizeArtifactRootRef,
+  resolveContainedNativePath,
+} from './native-paths.js';
 import {
   copyNativeProtectedFile,
   ensureNativeProtectedDirectory,
@@ -73,13 +78,22 @@ async function exists(target: string): Promise<boolean> {
 }
 
 async function assertNoUnfinishedTransactions(paths: NativeProjectPaths): Promise<void> {
-  let entries: Dirent[];
+  let entries: Dirent[] = [];
   try {
     entries = await fs.readdir(paths.transactionsDir, { withFileTypes: true });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
-    throw error;
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
+  const history = await resolveContainedNativePath(
+    paths.runtimeDir,
+    path.join(paths.runtimeDir, 'transaction-history'),
+  );
+  entries.push(
+    ...(await fs.readdir(history, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    })),
+  );
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
     let journal: NativeTransactionJournal;

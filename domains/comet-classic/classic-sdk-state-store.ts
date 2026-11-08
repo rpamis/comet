@@ -525,13 +525,9 @@ export function createClassicSdkStateStore(
         if (value === undefined) document.delete(key);
         else document.set(key, value);
       }
-      const checkpoint = createPortableRunCheckpoint(run);
-      if (!equal(current[PORTABLE_RUN_CHECKPOINT_KEY], checkpoint)) {
-        const encodedCheckpoint = encodePortableRunCheckpoint(checkpoint);
-        if (!equal(current[PORTABLE_RUN_CHECKPOINT_KEY], encodedCheckpoint)) {
-          document.set(PORTABLE_RUN_CHECKPOINT_KEY, encodedCheckpoint);
-        }
-      }
+      const encodedCheckpoint = encodePortableRunCheckpoint(createPortableRunCheckpoint(run));
+      if (!equal(current[PORTABLE_RUN_CHECKPOINT_KEY], encodedCheckpoint))
+        document.set(PORTABLE_RUN_CHECKPOINT_KEY, encodedCheckpoint);
       if (options.identity && !equal(current.application_checkpoint, options.identity))
         document.set('application_checkpoint', options.identity);
       const raw = document.toString();

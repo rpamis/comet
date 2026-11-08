@@ -56,6 +56,26 @@ import {
 } from './classic-command-checks.js';
 
 export async function runClassicEditReviewCommand(options: EditReviewCommandOptions) {
+  const result = await runClassicEditReviewCommandOnce(options);
+  if (
+    options.operation !== 'observe' ||
+    !('formalChanges' in result) ||
+    !result.formalChanges?.length
+  )
+    return result;
+  const formalReview = await runClassicEditReviewCommandOnce({
+    ...options,
+    operation: 'prepare-applied',
+  });
+  return {
+    ...result,
+    formalReview,
+    instruction:
+      '由当前 Agent 对照普通差异与 formalReview 的已批准原文，分别填写各自 recordTemplate；保留原 Run、有效批准与检查。',
+  };
+}
+
+async function runClassicEditReviewCommandOnce(options: EditReviewCommandOptions) {
   const { directory } = await resolveClassicChangeDirectory(options.name, options.projectRoot);
   const binding = await resolveBranchBinding(directory, { heal: false, cwd: options.projectRoot });
   if (binding.status === 'drift' || binding.status === 'unbound-detached')
@@ -645,6 +665,9 @@ export async function runClassicEditReviewCommand(options: EditReviewCommandOpti
           : undefined;
       return {
         proposal,
+        ...(appliedOriginals
+          ? { originals: [...appliedOriginals].map(([path, text]) => ({ path, text })) }
+          : {}),
         ...(agentAction?.claim?.sessionId
           ? {
               recordTemplate: agentEditReviewRecordTemplate(proposal.proposalHash, {

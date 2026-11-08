@@ -138,3 +138,13 @@ function nativeResultData(stdout: string): Record<string, unknown> | null {
     ? (data as Record<string, unknown>)
     : record;
 }
+import type { WorkflowRun } from '../engine/runtime.js';
+
+/** 领取与重复回报不构成新的完成事件；只观察本次新提交的结果。 */
+export function hasNativeCompletedWork(before: WorkflowRun, after: WorkflowRun): boolean {
+  if (after.status === 'completed' && before.status !== 'completed') return true;
+  const outcomes = new Set(
+    before.actions.map((action) => action.outcome?.outcomeId).filter(Boolean),
+  );
+  return after.actions.some((action) => action.outcome && !outcomes.has(action.outcome.outcomeId));
+}

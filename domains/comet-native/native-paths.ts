@@ -111,7 +111,7 @@ export async function resolveArtifactRoot(projectRoot: string, value: string): P
 export async function nativeProjectPaths(
   projectRoot: string,
   artifactRootRef: string,
-  options: { readOnly?: boolean } = {},
+  options: { readOnly?: boolean; change?: string } = {},
 ): Promise<NativeProjectPaths> {
   const normalized = normalizeArtifactRootRef(artifactRootRef);
   const artifactRoot = await resolveArtifactRoot(projectRoot, normalized);
@@ -151,10 +151,11 @@ export async function nativeProjectPaths(
     transactionsDir: path.join(runtimeDir, 'transactions'),
   };
   if (options.readOnly) return paths;
-  const migrationKey = `${workspaceRuntimeRoot}\0${nativeRoot}`;
+  if (options.change) assertNativeRuntimeChangeName(options.change);
+  const migrationKey = `${workspaceRuntimeRoot}\0${nativeRoot}\0${options.change ?? '*'}`;
   let migration = runtimeMigrationInspections.get(migrationKey);
   if (!migration) {
-    migration = migrateNativeChangeRuntimeDirectories(paths);
+    migration = migrateNativeChangeRuntimeDirectories(paths, options.change);
     runtimeMigrationInspections.set(migrationKey, migration);
   }
   try {
@@ -167,8 +168,24 @@ export async function nativeProjectPaths(
   return paths;
 }
 
-async function migrateNativeChangeRuntimeDirectories(paths: NativeProjectPaths): Promise<void> {
+async function migrateNativeChangeRuntimeDirectories(
+  paths: NativeProjectPaths,
+  change?: string,
+): Promise<void> {
   await resolveContainedNativePath(paths.nativeRoot, paths.changesDir);
+  if (change) {
+    const source = nativeLegacyChangeRuntimeDir(paths, change);
+    if (await isFileOrDirectory(source))
+      await migrateWorkspaceRuntimeDirectory(
+        source,
+        nativePreferredChangeRuntimeDir(paths, change),
+        {
+          projectRoot: paths.projectRoot,
+          ignoreForeignWorkspaceFence: true,
+        },
+      );
+    return;
+  }
   let entries;
   try {
     entries = await fs.readdir(paths.changesDir, { withFileTypes: true });

@@ -87,6 +87,7 @@ export async function resolveNativeProject(options: {
   startPath: string;
   explicitArtifactRoot?: string;
   allowMissingConfig?: boolean;
+  change?: string;
 }): Promise<{ config: CometProjectConfig; paths: NativeProjectPaths; configured: boolean }> {
   const projectRoot = await discoverNativeProject(options.startPath);
   const existing = await readProjectConfig(projectRoot);
@@ -107,6 +108,8 @@ export async function resolveNativeProject(options: {
     );
   }
   const config = existing ?? defaultProjectConfig(explicit ?? 'docs');
-  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
+  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root, {
+    change: options.change,
+  });
   return { config, paths, configured: existing !== null };
 }

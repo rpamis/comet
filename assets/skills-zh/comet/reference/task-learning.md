@@ -1,6 +1,8 @@
 # 任务学习收尾
 
-任务结束前，由 Agent 分别检查个人偏好与项目经验，准备一个临时 UTF-8 JSON 文件。用户无需编写 JSON；文件不放进 change 产物或提交。
+任务结束前，由 Agent 分别检查个人偏好与项目经验。没有合格观察、可复用经验、已知待评审或待提交的实际使用反馈时，不创建空学习文件，也不为确认空队列运行 review；沿用当前会话与任务参数，用 `--complete --learning-check no-observation --project-learning-check no-observation` 完成收尾。未执行检查时用 `not-run`，不能声明已经检查；完成响应若列出本次 change 的待处理项，仍按返回指引处理。
+
+有实际内容需要提交时，准备一个临时 UTF-8 JSON 文件。用户无需编写 JSON；文件不放进 change 产物或提交。
 
 ```json
 {

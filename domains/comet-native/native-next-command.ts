@@ -284,7 +284,7 @@ export async function nativeNextCommand(
   ) {
     throw new Error(`Native SDK Run ${name} requires .comet/config.yaml before next`);
   }
-  const configured = await configuredPaths(projectRoot);
+  const configured = await configuredPaths(projectRoot, name);
   const owner = await resolveNativeChangeRuntimeOwner(configured.paths, name);
   if (owner?.format === 'sdk') {
     if (taskInput) {

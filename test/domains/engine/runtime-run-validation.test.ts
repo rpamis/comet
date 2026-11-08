@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createRuntime } from '../../../domains/engine/runtime-service.js';
 import { createMemoryRuntimeStore } from '../../../domains/engine/runtime-store.js';
-import { parseWorkflowRun } from '../../../domains/engine/workflow-run-validation.js';
+import {
+  parseWorkflowRun,
+  parseWorkflowRunSnapshot,
+} from '../../../domains/engine/workflow-run-validation.js';
 import type { WorkflowRun } from '../../../domains/engine/workflow-run.js';
 
 async function fixture() {
@@ -56,6 +59,17 @@ async function fixture() {
   });
   return { store, runtime, started, claimed, waiting };
 }
+
+it('reuses only validated immutable Run identities and still rejects changed bytes and keys', async () => {
+  const { started } = await fixture();
+  const parsed = parseWorkflowRunSnapshot(started, started.runId);
+  expect(parseWorkflowRunSnapshot(parsed, started.runId)).toBe(parsed);
+  expect(() => parseWorkflowRunSnapshot(parsed, 'another-run')).toThrow();
+  const changed = structuredClone(parsed);
+  changed.actions[0].inputHash = 'bad';
+  expect(() => parseWorkflowRunSnapshot(changed, changed.runId)).toThrow();
+  expect(parseWorkflowRun(started, started.runId)).not.toBe(started);
+});
 
 describe('persisted WorkflowRun boundary', () => {
   it('round-trips isolated running and approval snapshots through the public parser', async () => {

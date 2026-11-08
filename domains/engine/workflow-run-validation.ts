@@ -322,6 +322,17 @@ export function parseWorkflowRun(value: unknown, expectedRunId?: string): Workfl
 
 /** Store 边界保留不可变上游值的共享关系；公共返回值另行复制。 */
 export function parseWorkflowRunSnapshot(value: unknown, expectedRunId?: string): WorkflowRun {
+  if (
+    value &&
+    typeof value === 'object' &&
+    checkedRuns.has(value) &&
+    isImmutableRuntimeSnapshot(value)
+  ) {
+    const run = value as WorkflowRun;
+    if (expectedRunId !== undefined && run.runId !== expectedRunId)
+      invalid('WorkflowRun.runId 与存储键不一致');
+    return run;
+  }
   validateRuntimeValue(value);
   return sealValidatedRun(
     validateWorkflowRunSnapshot(object(structuredClone(value), 'WorkflowRun'), expectedRunId),

@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import { RaceSafeReadError } from '../../platform/fs/race-safe-read.js';
 
 import { assertNoPendingNativeRootMove } from './native-config.js';
 import {
@@ -15,7 +16,7 @@ import {
   readNativePortableTransactionEntry,
   type NativePortableTransactionRef,
 } from './native-portable-transactions.js';
-import { readNativeTransaction } from './native-transaction.js';
+import { readNativeTransaction, retireNativeTransaction } from './native-transaction.js';
 import type { NativeProjectPaths } from './native-types.js';
 
 async function hasUnfinishedTransaction(
@@ -41,6 +42,8 @@ async function hasUnfinishedTransaction(
       ) {
         return true;
       }
+      if (transaction.status === 'committed' || transaction.status === 'rolled-back')
+        await retireNativeTransaction(paths, transaction.id);
     } catch {
       return true;
     }
@@ -66,6 +69,15 @@ async function hasUnfinishedTransaction(
   return false;
 }
 
+function isChangingNativeLockObservation(error: unknown): boolean {
+  let current = error;
+  for (let depth = 0; depth < 4 && current instanceof Error; depth += 1) {
+    if (current instanceof RaceSafeReadError && current.reason === 'changed') return true;
+    current = current.cause;
+  }
+  return false;
+}
+
 async function acquireNativeMutationLock(
   paths: NativeProjectPaths,
   operation: string,
@@ -76,10 +88,30 @@ async function acquireNativeMutationLock(
     try {
       return await acquireNativeLock(paths, 'root-move', operation);
     } catch (error) {
+      if (isChangingNativeLockObservation(error) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        continue;
+      }
       const cause = (error as Error & { cause?: NodeJS.ErrnoException }).cause;
       if (cause?.code !== 'EEXIST') throw error;
-      const diagnosis = await diagnoseNativeLock(file);
+      let diagnosis;
+      try {
+        diagnosis = await diagnoseNativeLock(file);
+      } catch (observation) {
+        if (!isChangingNativeLockObservation(observation) || Date.now() >= deadline)
+          throw observation;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        continue;
+      }
       if (diagnosis.status === 'missing') continue;
+      if (diagnosis.status === 'unknown' && Date.now() < deadline) {
+        try {
+          await fs.lstat(file);
+        } catch (missing) {
+          if ((missing as NodeJS.ErrnoException).code === 'ENOENT') continue;
+          throw missing;
+        }
+      }
       if (diagnosis.status === 'stale') {
         // A dead-owner lock on this host is leftover from a crash; taking it
         // over here spares the user a doctor round-trip. The takeover still

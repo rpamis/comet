@@ -2,7 +2,7 @@ import {
   resolveWorkspaceRuntimeRootSync,
   isWorkspaceRuntimeMigrationFence,
 } from '../../../domains/workflow-contract/workspace-runtime.js';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -29,8 +29,27 @@ describe('Native artifact root safety', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fs.rm(projectRoot, { recursive: true, force: true });
     await fs.rm(outside, { recursive: true, force: true });
+  });
+
+  it('migrates only the named legacy runtime without enumerating unrelated changes', async () => {
+    const legacy = path.join(projectRoot, 'comet', 'changes', 'target', 'runtime');
+    await fs.mkdir(legacy, { recursive: true });
+    await fs.writeFile(path.join(legacy, 'record.json'), '{"saved":true}');
+    const reads = vi.spyOn(fs, 'readdir');
+    const paths = await nativeProjectPaths(projectRoot, '.', { change: 'target' });
+    expect(
+      await fs.readFile(
+        path.join(nativePreferredChangeRuntimeDir(paths, 'target'), 'record.json'),
+        'utf8',
+      ),
+    ).toBe('{"saved":true}');
+    expect(await isWorkspaceRuntimeMigrationFence(legacy)).toBe(true);
+    reads.mockClear();
+    await nativeProjectPaths(projectRoot, '.', { change: 'target' });
+    expect(reads.mock.calls.some(([file]) => String(file) === paths.changesDir)).toBe(false);
   });
 
   it.each([

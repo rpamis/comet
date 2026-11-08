@@ -132,4 +132,22 @@ it('reviews a generic edit after a normal SDK Build and continues Verify without
       )
     ).data.phase,
   ).toBe('archive');
+  const formalFile = path.join(change, 'proposal.md');
+  const originalFormal = await fs.readFile(formalFile, 'utf8');
+  await fs.appendFile(formalFile, '\n<!-- clarify the same scope -->\n');
+  const observedFormal = await runClassicEditReviewCommand({
+    projectRoot: root,
+    name: 'demo',
+    operation: 'observe',
+    sessionId: 'builder-session',
+  });
+  expect(observedFormal).toHaveProperty('formalReview');
+  expect(observedFormal.formalReview).toMatchObject({
+    originals: [{ path: 'openspec/changes/demo/proposal.md', text: originalFormal }],
+  });
+  expect(JSON.stringify(observedFormal.formalReview)).toContain('proposal.md');
+  expect(JSON.stringify(observedFormal.formalReview)).toContain(
+    originalFormal.trim().split('\n').at(-1)!,
+  );
+  expect(JSON.stringify(observedFormal.formalReview)).toContain('recordTemplate');
 });

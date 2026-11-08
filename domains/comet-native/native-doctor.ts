@@ -276,84 +276,89 @@ async function inspectTransactions(
 ): Promise<{ findings: NativeDoctorFinding[]; unfinished: NativeTransactionJournal[] }> {
   const findings: NativeDoctorFinding[] = [];
   const unfinished: NativeTransactionJournal[] = [];
-  for (const entry of await directoryEntries(
-    paths,
+  for (const directory of [
     paths.transactionsDir,
-    NATIVE_DOCTOR_MAX_TRANSACTION_ENTRIES,
-  )) {
-    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
-    let journal: NativeTransactionJournal;
-    try {
-      journal = await readNativeTransaction(paths, entry.name);
-    } catch (error) {
-      findings.push({
-        severity: 'error',
-        code: 'transaction-invalid',
-        message: `Native transaction ${entry.name} is invalid: ${(error as Error).message}`,
-        path: path.join(paths.transactionsDir, entry.name),
-      });
-      continue;
-    }
-    if (journal.status === 'committed' || journal.status === 'rolled-back') continue;
-    if (options.name && journal.change && journal.change !== options.name) continue;
-    if (journal.kind !== 'archive') {
-      unfinished.push(journal);
-      findings.push({
-        severity: 'error',
-        code: 'root-move-transaction-orphaned',
-        message: `Root-move transaction ${journal.id} is incomplete but project config has no matching pending move`,
-      });
-      continue;
-    }
-    if (options.repair && options.recoveryStrategy) {
+    path.join(paths.runtimeDir, 'transaction-history'),
+  ]) {
+    for (const entry of await directoryEntries(
+      paths,
+      directory,
+      NATIVE_DOCTOR_MAX_TRANSACTION_ENTRIES,
+    )) {
+      if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+      let journal: NativeTransactionJournal;
       try {
-        const locksReady = await withNativeLockRecovery(
-          [paths],
-          `doctor archive recovery ${journal.id}`,
-          async () => {
-            const ready = await clearStaleRecoveryLocks(
-              [
-                { paths, file: path.join(paths.locksDir, 'root-move.lock') },
-                { paths, file: path.join(paths.locksDir, 'archive.lock') },
-              ],
-              findings,
-            );
-            if (!ready) return false;
-            await recoverArchiveTransaction({
-              paths,
-              transactionId: journal.id,
-              strategy: options.recoveryStrategy!,
-            });
-            return true;
-          },
-        );
-        if (!locksReady) {
-          unfinished.push(journal);
-          continue;
-        }
-        findings.push({
-          severity: 'info',
-          code: 'archive-transaction-recovered',
-          message: `${options.recoveryStrategy === 'continue' ? 'Continued' : 'Rolled back'} archive transaction ${journal.id}`,
-        });
+        journal = await readNativeTransaction(paths, entry.name);
       } catch (error) {
+        findings.push({
+          severity: 'error',
+          code: 'transaction-invalid',
+          message: `Native transaction ${entry.name} is invalid: ${(error as Error).message}`,
+          path: path.join(directory, entry.name),
+        });
+        continue;
+      }
+      if (journal.status === 'committed' || journal.status === 'rolled-back') continue;
+      if (options.name && journal.change && journal.change !== options.name) continue;
+      if (journal.kind !== 'archive') {
         unfinished.push(journal);
         findings.push({
           severity: 'error',
-          code: 'archive-recovery-failed',
-          message: `Archive recovery failed: ${(error as Error).message}`,
+          code: 'root-move-transaction-orphaned',
+          message: `Root-move transaction ${journal.id} is incomplete but project config has no matching pending move`,
+        });
+        continue;
+      }
+      if (options.repair && options.recoveryStrategy) {
+        try {
+          const locksReady = await withNativeLockRecovery(
+            [paths],
+            `doctor archive recovery ${journal.id}`,
+            async () => {
+              const ready = await clearStaleRecoveryLocks(
+                [
+                  { paths, file: path.join(paths.locksDir, 'root-move.lock') },
+                  { paths, file: path.join(paths.locksDir, 'archive.lock') },
+                ],
+                findings,
+              );
+              if (!ready) return false;
+              await recoverArchiveTransaction({
+                paths,
+                transactionId: journal.id,
+                strategy: options.recoveryStrategy!,
+              });
+              return true;
+            },
+          );
+          if (!locksReady) {
+            unfinished.push(journal);
+            continue;
+          }
+          findings.push({
+            severity: 'info',
+            code: 'archive-transaction-recovered',
+            message: `${options.recoveryStrategy === 'continue' ? 'Continued' : 'Rolled back'} archive transaction ${journal.id}`,
+          });
+        } catch (error) {
+          unfinished.push(journal);
+          findings.push({
+            severity: 'error',
+            code: 'archive-recovery-failed',
+            message: `Archive recovery failed: ${(error as Error).message}`,
+          });
+        }
+      } else {
+        unfinished.push(journal);
+        findings.push({
+          severity: 'error',
+          code: 'archive-transaction-incomplete',
+          message: options.repair
+            ? `Archive transaction ${journal.id} needs an explicit recovery strategy`
+            : `Archive transaction ${journal.id} is incomplete`,
+          repair: options.recoveryStrategy ?? 'continue',
         });
       }
-    } else {
-      unfinished.push(journal);
-      findings.push({
-        severity: 'error',
-        code: 'archive-transaction-incomplete',
-        message: options.repair
-          ? `Archive transaction ${journal.id} needs an explicit recovery strategy`
-          : `Archive transaction ${journal.id} is incomplete`,
-        repair: options.recoveryStrategy ?? 'continue',
-      });
     }
   }
   return { findings, unfinished };

@@ -1450,6 +1450,7 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
             );
           }
           return classicSdkOpenGuard({
+            inspected: sdkWorkspace,
             projectRoot: sdkWorkspace.projectRoot,
             change,
             apply,
@@ -1464,6 +1465,7 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
             );
           }
           return classicSdkDesignGuard({
+            inspected: sdkWorkspace,
             projectRoot: sdkWorkspace.projectRoot,
             change,
             designDoc: args[3],
@@ -1534,6 +1536,7 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
             }
           }
           return classicSdkBuildGuard({
+            inspected: sdkWorkspace,
             projectRoot: sdkWorkspace.projectRoot,
             invocationCwd: classicCommandInvocationCwd(),
             change,
@@ -1592,6 +1595,7 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
             }
           }
           return classicSdkVerifyGuard({
+            inspected: sdkWorkspace,
             projectRoot: sdkWorkspace.projectRoot,
             invocationCwd: classicCommandInvocationCwd(),
             change,
@@ -1608,6 +1612,7 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
             throw new GuardFailure('Usage: comet guard <change-name> archive [--apply]');
           }
           return classicSdkArchiveGuard({
+            inspected: sdkWorkspace,
             projectRoot: sdkWorkspace.projectRoot,
             change,
             apply: args.length === 3,

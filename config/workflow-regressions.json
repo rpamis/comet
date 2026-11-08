@@ -11575,6 +11575,650 @@
           ]
         }
       ]
+    },
+    {
+      "id": "workflow-simplification-t01-query-learning",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Plain Classic reads and Native claims or repeated outcomes must not create completion learning; genuinely completed work retains its lifecycle events.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Plain Classic reads and Native claims or repeated outcomes must not create completion learning; genuinely completed work retains its lifecycle events.",
+      "forbidden": "Emitting completion learning for plain reads, claims or repeated outcomes, or suppressing real check, review, recovery and archive events.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/app/classic-command.test.ts",
+          "namePattern": "does not record the default read-only state query: get",
+          "requiredNames": [
+            "Classic command facade does not record the default read-only state query: get"
+          ]
+        },
+        {
+          "file": "test/app/native-command.test.ts",
+          "namePattern": "does not learn a claim or repeated outcome|records verification commands as verification lifecycle events|records accepted review and recovered failure events from Native state|records a successful archive through the shared plugin bridge",
+          "requiredNames": [
+            "Native command facade does not learn a claim or repeated outcome without new completed work",
+            "Native command facade records verification commands as verification lifecycle events",
+            "Native command facade records accepted review and recovered failure events from Native state",
+            "Native command facade records a successful archive through the shared plugin bridge"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t02-committed-run",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "A non-boundary Native commit must not reopen its complete authority just to decide checkpoint publication.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "A non-boundary Native commit must not reopen its complete authority just to decide checkpoint publication.",
+      "forbidden": "Reopening the whole authority at a non-boundary or publishing a boundary from stale configuration, workspace or Run evidence.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-read-performance.test.ts",
+          "namePattern": "uses the committed v3 Run without reading the authority again at a non-boundary",
+          "requiredNames": [
+            "Native SDK read work budgets uses the committed v3 Run without reading the authority again at a non-boundary"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t03-command-inspection",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Command-local inspection reuse must retain approval and final evidence checks.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Command-local inspection reuse must retain approval and final evidence checks.",
+      "forbidden": "Reusing command context across an external change or bypassing approval, CAS or final evidence validation.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-design-performance.test.ts",
+          "namePattern": "uses one inspection for apply and retains all CAS and evidence boundaries",
+          "requiredNames": [
+            "Classic Design preflight budget uses one inspection for apply and retains all CAS and evidence boundaries"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-design-performance.test.ts",
+          "namePattern": "blocks a different approval without changing the Run",
+          "requiredNames": [
+            "Classic Design preflight budget blocks a different approval without changing the Run"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-design-performance.test.ts",
+          "namePattern": "preserves a final evidence rejection after the preflight",
+          "requiredNames": [
+            "Classic Design preflight budget preserves a final evidence rejection after the preflight"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-design-performance.test.ts",
+          "namePattern": "accepts the already inspected workspace without reopening the Run for Design Guard",
+          "requiredNames": [
+            "Classic Design preflight budget accepts the already inspected workspace without reopening the Run for Design Guard"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t04-outside-request",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Outside request registration must validate bytes without initializing writable project storage.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Outside request registration must validate bytes without initializing writable project storage.",
+      "forbidden": "Skipping external-byte validation, initializing the project or acquiring a writable registration lock for an outside input.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-read-performance.test.ts",
+          "namePattern": "validates outside request bytes without a writable resolver or registration lock",
+          "requiredNames": [
+            "Native SDK read work budgets validates outside request bytes without a writable resolver or registration lock"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t05-protected-observation",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Directory observation reuse must reject a replaced ancestor before reading outside content.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Directory observation reuse must reject a replaced ancestor before reading outside content.",
+      "forbidden": "Following a replaced ancestor, symbolic link or junction, or treating unstable bytes as a complete read.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/protected-path-computation.test.ts",
+          "namePattern": "rejects a cached directory replaced by a junction before reading its leaf",
+          "requiredNames": [
+            "protected chain pure path computations rejects a cached directory replaced by a junction before reading its leaf"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t06-existing-directories",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Existing-directory preparation must preserve parent replacement rejection and atomic publication.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Existing-directory preparation must preserve parent replacement rejection and atomic publication.",
+      "forbidden": "Skipping required directory durability or accepting a replaced or external parent to shorten a write.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/contained-atomic-write.test.ts",
+          "namePattern": "rejects the write when the managed parent is displaced before commit",
+          "requiredNames": [
+            "contained atomic write rejects the write when the managed parent is displaced before commit"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t07-named-migration",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "A named current-format access must preserve transparent legacy migration without scanning unrelated changes.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "A named current-format access must preserve transparent legacy migration without scanning unrelated changes.",
+      "forbidden": "Scanning unrelated named changes on the steady path, hiding an unsettled journal, trusting a wrong fence or reusing an unstable observation.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-paths.test.ts",
+          "namePattern": "migrates only the named legacy runtime without enumerating unrelated changes",
+          "requiredNames": [
+            "Native artifact root safety migrates only the named legacy runtime without enumerating unrelated changes"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+          "namePattern": "retries a transient fence publication observation with a bounded fresh read",
+          "requiredNames": [
+            "workspace runtime resolution and migration retries a transient fence publication observation with a bounded fresh read"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+          "namePattern": "does not reuse an unstable fence after its bounded publication retries",
+          "requiredNames": [
+            "workspace runtime resolution and migration does not reuse an unstable fence after its bounded publication retries"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t08-short-file-lock",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Uncontended shared lock publication must avoid tickets while retaining a real exclusive owner and exact release.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Uncontended shared lock publication must avoid tickets while retaining a real exclusive owner and exact release.",
+      "forbidden": "Overlapping lock holders, stealing unknown ownership, deleting a replacement lock or converting bounded contention into unbounded waiting.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/platform/recoverable-file-lock.test.ts",
+          "namePattern": "publishes an uncontended owner without creating coordinator tickets",
+          "requiredNames": [
+            "recoverable file lock safety publishes an uncontended owner without creating coordinator tickets"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t09-native-short-lock",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Native lock fast paths must preserve replacement owner identity.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Native lock fast paths must preserve replacement owner identity.",
+      "forbidden": "Exposing partial lock metadata, overlapping new and legacy holders, losing exact release or weakening unknown-owner recovery checks.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-lock-concurrency.test.ts",
+          "namePattern": "prevents an old owner release from removing a replacement owner",
+          "requiredNames": [
+            "Native lock process concurrency prevents an old owner release from removing a replacement owner"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-lock.test.ts",
+          "namePattern": "publishes complete metadata before exposing an uncontended lock",
+          "requiredNames": [
+            "Native operation locks publishes complete metadata before exposing an uncontended lock"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-lock.test.ts",
+          "namePattern": "keeps the coordinated writer usable when atomic hard links are unsupported",
+          "requiredNames": [
+            "Native operation locks keeps the coordinated writer usable when atomic hard links are unsupported"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-lock.test.ts",
+          "namePattern": "coordinates release after a competing claim has already disappeared",
+          "requiredNames": [
+            "Native operation locks coordinates release after a competing claim has already disappeared"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-lock.test.ts",
+          "namePattern": "retries fresh changing acquire observations within the original mutation wait",
+          "requiredNames": [
+            "Native operation locks retries fresh changing acquire observations within the original mutation wait"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-lock.test.ts",
+          "namePattern": "retries fresh changing diagnosis observations within the original mutation wait",
+          "requiredNames": [
+            "Native operation locks retries fresh changing diagnosis observations within the original mutation wait"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-lock.test.ts",
+          "namePattern": "bounds continuously changing lock observations without entering the mutation",
+          "requiredNames": [
+            "Native operation locks bounds continuously changing lock observations without entering the mutation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t11-transaction-history",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Completed transactions must leave daily active scanning while original payload references and finalization remain recoverable.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Completed transactions must leave daily active scanning while original payload references and finalization remain recoverable.",
+      "forbidden": "Reprocessing completed journals in daily mutation scans, breaking original payload references or retiring an unfinished transaction.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-transaction.test.ts",
+          "namePattern": "retires completed journals while preserving their original references and repeatable finalization",
+          "requiredNames": [
+            "Native transaction schema retires completed journals while preserving their original references and repeatable finalization"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-root-move.test.ts",
+          "namePattern": "audits historical transactions even when the active transaction directory is absent",
+          "requiredNames": [
+            "Native artifact root moves audits historical transactions even when the active transaction directory is absent"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t12-owner-observation",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Bound canonical owner records avoid repeated partition body/token reads while legacy writers, corrupt records, conflicts, interrupted tokens and recovery retain their original checks.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Bound canonical owner records avoid repeated partition body/token reads while legacy writers, corrupt records, conflicts, interrupted tokens and recovery retain their original checks.",
+      "forbidden": "Trusting cached metadata as owner content, hiding corrupt or conflicting legacy owners, losing reopen visibility or repairing ownership during a read.",
+      "rootCause": "Named ownership reread partition bodies and tokens. A fixed hard link now streams the actual owner bytes and verifies current file identity; replacement or unsupported identity falls back to the legacy protocol, and reads never repair metadata.",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "detects a complete reopen between active and history enumeration",
+          "requiredNames": [
+            "detects a complete reopen between active and history enumeration rather than returning an empty snapshot"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "reads a bound canonical owner with one token read, no partition body reads and no writes",
+          "requiredNames": [
+            "reads a bound canonical owner with one token read, no partition body reads and no writes"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "falls back after a legacy writer moves or rewrites an owner without refreshing its canonical record",
+          "requiredNames": [
+            "falls back after a legacy writer moves or rewrites an owner without refreshing its canonical record"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "does not hide double owners behind a previously bound canonical record",
+          "requiredNames": [
+            "does not hide double owners behind a previously bound canonical record"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "rejects a junction substituted beneath a canonical owner binding",
+          "requiredNames": ["rejects a junction substituted beneath a canonical owner binding"]
+        },
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "keeps canonical reads blocked by interrupted tokens and restores them through named recovery",
+          "requiredNames": [
+            "keeps canonical reads blocked by interrupted tokens and restores them through named recovery"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "recovers an interrupted canonical publication from the original legacy owner and refreshes reopen bindings",
+          "requiredNames": [
+            "recovers an interrupted canonical publication from the original legacy owner and refreshes reopen bindings"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "reads canonical bytes from the actual linked owner instead of trusting cached metadata",
+          "requiredNames": [
+            "reads canonical bytes from the actual linked owner instead of trusting cached metadata"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "keeps legacy ownership readable when canonical hard links are unsupported",
+          "requiredNames": [
+            "keeps legacy ownership readable when canonical hard links are unsupported"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+          "namePattern": "rebuilds a damaged detached canonical entry only through validated named recovery",
+          "requiredNames": [
+            "rebuilds a damaged detached canonical entry only through validated named recovery"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/contained-atomic-write.test.ts",
+          "namePattern": "publishes a fixed hard link to the actual source bytes",
+          "requiredNames": [
+            "contained atomic write publishes a fixed hard link to the actual source bytes"
+          ]
+        },
+        {
+          "file": "test/domains/workflow-contract/contained-atomic-write.test.ts",
+          "namePattern": "rejects a displaced source parent before publishing its fixed link",
+          "requiredNames": [
+            "contained atomic write rejects a displaced source parent before publishing its fixed link"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t13-inline-shape",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Pure v3 Shape preparation must commit once without losing the original approval Wait.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Pure v3 Shape preparation must commit once without losing the original approval Wait.",
+      "forbidden": "Persisting both pure Shape stages, bypassing original validators or user approval, or changing old and fixed-application execution protocols.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-read-performance.test.ts",
+          "namePattern": "commits a pure v3 Shape once and keeps its user approval reachable",
+          "requiredNames": [
+            "Native SDK read work budgets commits a pure v3 Shape once and keeps its user approval reachable"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t14-builtin-definition",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Builtin immutable definition reuse must preserve separate Run state and mutable executor registrations.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Builtin immutable definition reuse must preserve separate Run state and mutable executor registrations.",
+      "forbidden": "Sharing mutable Run, handler or executor state between runtimes, or turning the public definition factory into shared mutable state.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-read-performance.test.ts",
+          "namePattern": "reuses immutable builtin definitions across read scopes and keeps Run state independent",
+          "requiredNames": [
+            "Native SDK read work budgets reuses immutable builtin definitions across read scopes and keeps Run state independent"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t16-readonly-registration",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Readonly loading must keep the same guarded Shape decision without reconstructing builtin definitions.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Readonly loading must keep the same guarded Shape decision without reconstructing builtin definitions.",
+      "forbidden": "Registering execution machinery during a pure read or omitting definition, candidate, configuration or evidence validation.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-read-performance.test.ts",
+          "namePattern": "loads one definition and returns the same guarded Shape decision from status, next, and show",
+          "requiredNames": [
+            "Native SDK read work budgets loads one definition and returns the same guarded Shape decision from status, next, and show"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t17-classic-checkpoint",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Classic checkpoint optimization must preserve portable user settings and reject edits to Runtime-owned fields.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Classic checkpoint optimization must preserve portable user settings and reject edits to Runtime-owned fields.",
+      "forbidden": "Repeating the expanded checkpoint comparison, losing the portable projection or skipping its actual consistency lock.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-read-performance.test.ts",
+          "namePattern": "imports user settings once, advances its marker, and still rejects Runtime-owned edits",
+          "requiredNames": [
+            "Classic SDK read work budgets imports user settings once, advances its marker, and still rejects Runtime-owned edits"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t18-empty-learning",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Chinese guidance must skip empty maintenance while preserving actual current-change reviews. English synchronization is pending approval.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Chinese guidance must skip empty maintenance while preserving actual current-change reviews. English synchronization is pending approval.",
+      "forbidden": "Creating empty learning files or queries without work, ignoring actual current-change reviews or hiding incomplete learning.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/skill/workflow-optimization-contract.test.ts",
+          "namePattern": "skips empty learning maintenance while preserving current-change reviews and failure reporting",
+          "requiredNames": [
+            "Chinese Classic efficiency contracts skips empty learning maintenance while preserving current-change reviews and failure reporting"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t20-stage-guidance",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Shared stage text must retain independent entry, layout, method and approval routing. English synchronization is pending approval.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Shared stage text must retain independent entry, layout, method and approval routing. English synchronization is pending approval.",
+      "forbidden": "Dropping standalone phase entry, required methods, edit handling, approval or fixed-application rules while deduplicating prose.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/skill/workflow-optimization-contract.test.ts",
+          "namePattern": "keeps standalone stage entry pointers while sharing layout and edit-review instructions",
+          "requiredNames": [
+            "Chinese Classic efficiency contracts keeps standalone stage entry pointers while sharing layout and edit-review instructions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t21-handoff-sources",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Handoff preparation must reuse source bytes while commit validation takes a fresh observation.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Handoff preparation must reuse source bytes while commit validation takes a fresh observation.",
+      "forbidden": "Reading the same proposal source repeatedly or reusing prepared bytes after external edits and during final commit validation.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-handoff-performance.test.ts",
+          "namePattern": "reads each source once per off preparation and once per commit validation",
+          "requiredNames": [
+            "Classic handoff material reuse reads each source once per off preparation and once per commit validation"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-handoff-performance.test.ts",
+          "namePattern": "shares one source observation across proposal evidence, requirements and handoff rendering",
+          "requiredNames": [
+            "Classic handoff material reuse shares one source observation across proposal evidence, requirements and handoff rendering"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t22-incremental-phase",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Explicit incremental stage delivery may deduplicate full profile bytes only while rules, snapshots and new sessions remain complete.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Explicit incremental stage delivery may deduplicate full profile bytes only while rules, snapshots and new sessions remain complete.",
+      "forbidden": "Deduplicating undelivered text, suppressing new phase rules or failing to restore a full snapshot after session or context loss.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/agent-learning/agent-learning.test.ts",
+          "namePattern": "deduplicates proven full profile delivery across incremental phases while restoring rules and snapshots",
+          "requiredNames": [
+            "Context Director deduplicates proven full profile delivery across incremental phases while restoring rules and snapshots"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-optimization-contract.test.ts",
+          "namePattern": "requires retained full text for incremental phase context and restores snapshots in both languages",
+          "requiredNames": [
+            "Chinese Classic efficiency contracts requires retained full text for incremental phase context and restores snapshots in both languages"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t23-formal-observe",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "One Classic observe call must return formal review preparation and approved original bytes without breaking ordinary continuation.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "One Classic observe call must return formal review preparation and approved original bytes without breaking ordinary continuation.",
+      "forbidden": "Requiring an extra preparation call for observed formal edits, inventing approved originals or deciding impact without review.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-edit-review.test.ts",
+          "namePattern": "reviews a generic edit after a normal SDK Build and continues Verify without a stuck claimed Action",
+          "requiredNames": [
+            "reviews a generic edit after a normal SDK Build and continues Verify without a stuck claimed Action"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-optimization-contract.test.ts",
+          "namePattern": "reuses Classic observe formal materials and retains missing-material preparation in both languages",
+          "requiredNames": [
+            "Chinese Classic efficiency contracts reuses Classic observe formal materials and retains missing-material preparation in both languages"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t26-git-batch",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Batch Git metadata uses one process on the normal path while preserving every per-commit delivery check at aggregate resource boundaries.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Use one Git process normally; retain every per-commit path through the original reader after aggregate output or timeout limits, and propagate genuine Git input errors.",
+      "forbidden": "Checking only the final tree, hiding an intermediate unauthorized path or misparsing empty commits, spaces and hash-like filenames. Applying aggregate buffer or timeout restrictions to previously valid per-commit checks, or hiding genuine Git input errors with retries.",
+      "rootCause": "Repeated per-commit subprocesses added latency. Batching must not turn its aggregate buffer or timeout into a new restriction on previously valid per-commit delivery checks.",
+      "tests": [
+        {
+          "file": "test/platform/git-commit-paths.test.ts",
+          "namePattern": "reads 100 commits with one Git process and retains each intermediate path",
+          "requiredNames": [
+            "reads 100 commits with one Git process and retains each intermediate path"
+          ]
+        },
+        {
+          "file": "test/platform/git-commit-paths.test.ts",
+          "namePattern": "retains per-commit delivery coverage when batching reaches ENOBUFS",
+          "requiredNames": ["retains per-commit delivery coverage when batching reaches ENOBUFS"]
+        },
+        {
+          "file": "test/platform/git-commit-paths.test.ts",
+          "namePattern": "retains per-commit delivery coverage when batching reaches ETIMEDOUT",
+          "requiredNames": ["retains per-commit delivery coverage when batching reaches ETIMEDOUT"]
+        },
+        {
+          "file": "test/platform/git-commit-paths.test.ts",
+          "namePattern": "preserves Git input errors instead of treating them as batch resource pressure",
+          "requiredNames": [
+            "preserves Git input errors instead of treating them as batch resource pressure"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t28-immutable-value",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Only verified immutable values may reuse serialized identity; mutable and changed values stay fresh.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Only verified immutable values may reuse serialized identity; mutable and changed values stay fresh.",
+      "forbidden": "Reusing mutable or unchecked values, hiding changed or corrupted data, or bypassing expected Run identity checks.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/domains/engine/runtime-history-storage.test.ts",
+          "namePattern": "reuses immutable value bytes across encodings while mutable and changed values remain fresh",
+          "requiredNames": [
+            "reuses immutable value bytes across encodings while mutable and changed values remain fresh"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t31-local-worktree",
+      "sources": ["report:2026-11-08-native-classic-overdesign-audit"],
+      "behavior": "Named local identity reuse must avoid peer metadata and still refresh real full lists and local branch changes.",
+      "coverageLevel": "unit",
+      "reproduction": "Baseline 053 / 2999b60d. The execution report records paired public CLI timing and precise source-boundary checks; only explicitly recorded old-fail/new-pass cases establish that level of reproduction.",
+      "expected": "Named local identity reuse must avoid peer metadata and still refresh real full lists and local branch changes.",
+      "forbidden": "Returning stale full worktree lists or local branches because a named local inspection reused unrelated peer observations.",
+      "rootCause": "Repeated preparation, observation or serialization across the documented boundary; existing safety and recovery contracts must remain authoritative.",
+      "tests": [
+        {
+          "file": "test/platform/git-worktree.test.ts",
+          "namePattern": "keeps named local inspection independent of peer stamps while full lists remain fresh",
+          "requiredNames": [
+            "Git worktree inspection keeps named local inspection independent of peer stamps while full lists remain fresh"
+          ]
+        }
+      ]
     }
   ]
 }

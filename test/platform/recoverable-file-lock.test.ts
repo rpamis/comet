@@ -34,6 +34,14 @@ const remoteOwner = () => ({
 });
 
 describe('recoverable file lock safety', () => {
+  it('publishes an uncontended owner without creating coordinator tickets', async () => {
+    const { lock } = await fixture();
+    await withRecoverableFileLock(lock, async () => {
+      expect((await diagnoseRecoverableFileLock(lock)).status).toBe('active');
+      await expect(fs.access(`${lock}.contenders`)).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+    expect((await diagnoseRecoverableFileLock(lock)).status).toBe('missing');
+  });
   it.each(['', '{partial-owner:'])(
     'never uses age or clock drift to steal unknown owner %j',
     async (source) => {

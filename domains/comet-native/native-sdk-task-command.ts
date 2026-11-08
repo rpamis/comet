@@ -19,6 +19,7 @@ import { nativeSdkTaskResultTemplate } from './native-sdk-continuation.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { projectNativeSdkStatus } from './native-sdk-status.js';
 import { nativeSdkRequiresIndependentReview } from './native-sdk-review.js';
+import { hasNativeCompletedWork } from './native-experience.js';
 
 interface NativeTaskOptions {
   projectRoot: string;
@@ -286,6 +287,11 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
     throw new NativeUsageError('--accept-on-pass 需要本次验收结果和用户明确委托的摘要。');
   const owned = await loadOwnedNativeSdkRuntime(options.projectRoot, options.name);
   let run = await owned.runtime.inspect(options.name);
+  const originalRun = run;
+  const taskResult = async (...args: Parameters<typeof projectTaskResult>) => ({
+    ...(await projectTaskResult(...args)),
+    workflowCompleted: hasNativeCompletedWork(originalRun, args[1]),
+  });
   if (run.workflow.version !== '3' || owned.application)
     throw new NativeUsageError(
       '当前高层任务入口适用于新建内置 SDK Run；此需求请继续使用原响应中的命令。',
@@ -310,7 +316,12 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
     decision?: Parameters<typeof advanceNativeSdkChange>[2],
   ): Promise<DispatchResult> => {
     try {
-      return await advanceNativeSdkChange(options.projectRoot, options.name, decision);
+      return await advanceNativeSdkChange(options.projectRoot, options.name, decision, {
+        run,
+        state: parseNativePortableState(run.state),
+        artifactRootRef: (run.input as { artifactRootRef: string }).artifactRootRef,
+        application: owned.application,
+      });
     } catch (error) {
       if (!reported) throw error;
       return {
@@ -410,7 +421,7 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
         proposalHash: wait.proposalHash,
         summary: options.acceptOnPass.trim(),
       });
-      return projectTaskResult(options, await owned.runtime.inspect(options.name), advanced);
+      return taskResult(options, await owned.runtime.inspect(options.name), advanced);
     }
   }
   const advanced = repeated ? undefined : await advance();
@@ -468,7 +479,7 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
       context: { requestId: `native-task-${selected.id}`, projectRoot: options.projectRoot },
     });
   }
-  return projectTaskResult(
+  return taskResult(
     options,
     run,
     selected && run.actions.find((entry) => entry.id === selected.id)?.status === 'running'

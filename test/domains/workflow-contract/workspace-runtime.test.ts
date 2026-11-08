@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFileRuntimeStore } from '../../../domains/engine/runtime-store.js';
+import * as raceSafeReads from '../../../platform/fs/race-safe-read.js';
 
 import {
   assertWorkspaceRuntimeMigrationQuiescent,
@@ -43,6 +44,37 @@ afterEach(async () => {
 });
 
 describe('workspace runtime resolution and migration', () => {
+  it('retries a transient fence publication observation with a bounded fresh read', async () => {
+    const target = await resolveWorkspaceRuntimeRoot(project);
+    const read = raceSafeReads.readFileRaceSafe;
+    let attempts = 0;
+    vi.spyOn(raceSafeReads, 'readFileRaceSafe').mockImplementation(async (...args) => {
+      if (args[0] === legacy && ++attempts === 1)
+        throw new raceSafeReads.RaceSafeReadError('changed', 'injected publication change');
+      return read(...args);
+    });
+    expect(await resolveWorkspaceRuntimeRoot(project)).toBe(target);
+    expect(attempts).toBe(2);
+  });
+
+  it('does not reuse an unstable fence after its bounded publication retries', async () => {
+    await resolveWorkspaceRuntimeRoot(project);
+    const before = await fs.readFile(legacy, 'utf8');
+    const read = raceSafeReads.readFileRaceSafe;
+    let attempts = 0;
+    vi.spyOn(raceSafeReads, 'readFileRaceSafe').mockImplementation(async (...args) => {
+      if (args[0] === legacy) {
+        attempts += 1;
+        throw new raceSafeReads.RaceSafeReadError('changed', 'injected continuing change');
+      }
+      return read(...args);
+    });
+    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow(
+      'injected continuing change',
+    );
+    expect(attempts).toBe(3);
+    expect(await fs.readFile(legacy, 'utf8')).toBe(before);
+  });
   it.runIf(process.platform === 'win32')(
     'reads the same saved run and lock through a Windows case alias',
     async (context) => {

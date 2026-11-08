@@ -26,8 +26,102 @@ async function readChineseReference(name: string): Promise<string> {
   return fs.readFile(path.join(zhSkillRoot, 'comet-classic', 'reference', `${name}.md`), 'utf8');
 }
 
-// Approved Chinese semantics are synchronized to English; both languages retain safety contracts.
+// 中文确认后同步英文，保留两个语言版本的安全约束。
 describe('Chinese Classic efficiency contracts', () => {
+  it('reuses Classic observe formal materials and retains missing-material preparation in both languages', async () => {
+    const chinese = await fs.readFile(
+      path.join(zhSkillRoot, 'comet/reference/edit-review.md'),
+      'utf8',
+    );
+    const english = await fs.readFile(
+      path.join(skillRoot, 'comet/reference/edit-review.md'),
+      'utf8',
+    );
+    for (const term of [
+      'Native 或 Classic',
+      'formalReview',
+      'originals 中的 path/text',
+      '无需再次执行 prepare-applied',
+      '仅在缺少所需原文或提案时',
+    ])
+      expect(chinese).toContain(term);
+    for (const term of [
+      'Native or Classic observe',
+      'formalReview',
+      'path/text entries in originals',
+      'do not run prepare-applied again',
+      'only when required originals or proposals are missing',
+    ])
+      expect(english).toContain(term);
+  });
+  it('skips empty learning maintenance while preserving current-change reviews and failure reporting', async () => {
+    const scripts = await readChineseReference('scripts');
+    expect(scripts).toContain('没有合格观察、可复用经验或已知待评审');
+    expect(scripts).toContain('不调用 review，不创建空动作文件');
+    expect(scripts).toContain('只处理本次 change');
+    expect(scripts).toContain('学习失败不阻断已完成的开发任务');
+    expect(scripts).toContain('没有这些内容时不创建空学习文件');
+    const learning = await fs.readFile(
+      path.join(zhSkillRoot, 'comet/reference/task-learning.md'),
+      'utf8',
+    );
+    expect(learning).toContain('不创建空学习文件');
+    expect(learning).toContain(
+      '--complete --learning-check no-observation --project-learning-check no-observation',
+    );
+    expect(learning).toContain('不能声明已经检查');
+    const english = await fs.readFile(
+      path.join(skillRoot, 'comet-classic/reference/scripts.md'),
+      'utf8',
+    );
+    expect(english).toContain('without calling review or creating an empty actions file');
+    expect(english).toContain('Process only this change');
+    const englishLearning = await fs.readFile(
+      path.join(skillRoot, 'comet/reference/task-learning.md'),
+      'utf8',
+    );
+    expect(englishLearning).toContain(
+      '--complete --learning-check no-observation --project-learning-check no-observation',
+    );
+    expect(englishLearning).toContain('do not claim they occurred');
+  });
+  it('keeps standalone stage entry pointers while sharing layout and edit-review instructions', async () => {
+    const scripts = await readChineseReference('scripts');
+    expect(scripts).toContain('## 阶段共用入口');
+    expect(scripts).toContain('TDD、审查和固定应用要求仍按当前阶段正文执行');
+    for (const phase of ['design', 'build', 'verify', 'archive']) {
+      const skill = await fs.readFile(path.join(zhSkillRoot, `comet-${phase}`, 'SKILL.md'), 'utf8');
+      expect(skill).toContain('scripts.md#阶段共用入口');
+      expect(skill).toContain('classic-layout.md');
+      expect(skill).toContain('## SDK Run 路径');
+      const english = await fs.readFile(path.join(skillRoot, `comet-${phase}`, 'SKILL.md'), 'utf8');
+      expect(english).toContain('scripts.md#shared-phase-entry');
+      expect(english).toContain('classic-layout.md');
+    }
+  });
+  it('requires retained full text for incremental phase context and restores snapshots in both languages', async () => {
+    const chinese = await readChineseReference('scripts');
+    const english = await fs.readFile(
+      path.join(skillRoot, 'comet-classic/reference/scripts.md'),
+      'utf8',
+    );
+    for (const term of [
+      '正文仍在上下文中',
+      '--context-mode incremental',
+      '阶段专用规则仍须加载',
+      '上下文压缩或恢复',
+      'snapshot 完整交付',
+    ])
+      expect(chinese).toContain(term);
+    for (const term of [
+      'full text remains in context',
+      '--context-mode incremental',
+      'Phase-specific rules still need loading',
+      'compressed or restored context',
+      'full snapshot',
+    ])
+      expect(english).toContain(term);
+  });
   it('retains per-question options and recommendations throughout clarification and confirmation', async () => {
     const decisions = await readChineseReference('decision-point');
     const presentation = section(decisions, '## 每个问题必须包含的信息', '## 各阶段需要确认什么');

@@ -7,9 +7,7 @@ description: 'Complete the Classic technical design and obtain user confirmation
 
 On first entering a phase, handing off to a new Agent, or restoring context, read and follow [Task Context and Artifact Language](../comet-classic/reference/scripts.md#task-context-and-artifact-language). Prefer the current continuation or claimed Action's `contextRequest`; do not retrieve repeatedly during uninterrupted work in the same phase.
 
-After the entry returns layout, use `comet-classic/reference/classic-layout.md` to resolve each logical root. Reuse this protocol if it is already in context. Route all OpenSpec CLI calls through the adapter and use the bound `<classic-*>` roots for file paths; do not run an extra root show first.
-
-When an edit needs an actual-impact judgement or a continuation points to a content judgement, you must read and follow [edit continuation](../comet/reference/edit-review.md). The current Agent merges the handling of changes, keeps the original Run, valid approvals, and checks, and adds only evidence for what is affected.
+After the entry returns layout, follow the [shared phase entry](../comet-classic/reference/scripts.md#shared-phase-entry) when receiving a phase for the first time or when its binding changes. Reuse the valid [layout](../comet-classic/reference/classic-layout.md); do not run an extra root show first. When edits require judgement, load edit continuation through the shared entry.
 
 ## SDK Run path
 

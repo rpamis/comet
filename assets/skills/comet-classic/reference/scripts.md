@@ -131,15 +131,21 @@ Run all archive steps with:
 comet archive <change-name>
 ```
 
+## Shared phase entry
+
+After entry returns layout, follow [artifact layout](classic-layout.md) to bind the `<classic-*>` logical roots. Reuse the protocol when it is already loaded and its binding remains valid in this session. Use the Comet adapter for OpenSpec CLI calls and these logical roots for file paths, without an extra root show.
+
+When edits need an impact judgement or continuation points to content judgement, read and follow [edit continuation](../../comet/reference/edit-review.md). The current Agent handles changes in the original Run, retains valid approvals and checks, and adds only affected evidence. User confirmations, implementation methods, TDD, reviews, and fixed-application requirements still follow the current phase's instructions.
+
 ## Task Context and Artifact Language
 
-At task completion, prefer [Task learning completion](../../comet/reference/task-learning.md): prepare one learning file and use `comet task --complete --learning-file <file>` to submit personal observations, project lessons, pending review decisions, and actual-use feedback together. The separate save, review, and completion commands later in this section remain available for immediate saves, individual corrections, and older versions; do not repeat them when using a learning file.
+At task completion, first check for submittable content using [Task learning completion](../../comet/reference/task-learning.md). When there are personal observations, project lessons, pending review decisions, or actual-use feedback, prefer `comet task --complete --learning-file <file>` to submit them together. Otherwise, do not create an empty learning file; complete with the actual check results. The separate commands later in this section remain available for immediate saves, individual corrections, and older versions; do not repeat them when using a learning file.
 
 Every OpenSpec and Superpowers artifact must use the configured Comet artifact language, a normalized language ID: `en` or `zh-CN`. For an existing change, prefer `configuration.language` from the current valid entry. Only if entry omits it, read `language` in the actual state file through `comet state get <name> language`. When neither state filename exists, read `classic.language` from project `.comet/config.yaml`, then global `~/.comet/config.yaml`. Use the current user request's language only when neither is configured. Explicitly include the resolved language in prompts or ARGUMENTS sent to external OpenSpec/Superpowers Skills.
 
 When a claim response includes `data.contextDelivery`, read `data.context[].text` and start work without repeating `contextRequest`. Use `data.contextActions.expand`, `restore`, and `complete` for full text, recovery, and learning submission respectively. New Agents use their own session IDs. Empty or unavailable retrieval does not block the task.
 
-Without automatic delivery, on first entering a phase, handing work to a new Agent, or restoring context, retrieve task context once using the current `agent.continuation.contextRequest`. For a claimed SDK Action, prefer that Action's `contextRequest` in `data.continuation.current.actions[]`. This protocol covers full, hotfix and tweak in SDK and Compat, including direct stage Skill invocation. Ordinary status reads, waiting for an existing task and uninterrupted work within a phase do not require another retrieval.
+Without automatic delivery, retrieve task context using the current `agent.continuation.contextRequest`; for a claimed SDK Action, prefer that Action's `contextRequest`. When the same session has verifiable delivery records and the full text remains in context, keep its session ID across phase changes and use `--context-mode incremental` to retrieve newly applicable content. Phase-specific rules still need loading. Use a full snapshot for a new Agent, compressed or restored context, or incomplete delivery records. This protocol covers full, hotfix, tweak, SDK, Compat, and standalone phase entry. Ordinary status reads, waiting for an existing task, and uninterrupted work within a phase do not require another retrieval.
 
 Without a request descriptor, bind the actual workspace, read the current `phase`, and run `comet task <project-root> --task "<original user request>" --phase "<phase>" --session "<stable receiving session id>" --context-mode snapshot --json`. Recover a missing task goal from the current proposal, specs and task scope. Keep the current Agent's session ID across phase changes; a new Agent uses its own ID, never the dispatcher's or another Action owner's ID. A restored Agent keeps its original ID and requests a snapshot so earlier delivery records do not suppress the restored context.
 
@@ -163,8 +169,8 @@ The same title updates the existing entry. `--evidence` binds project files that
 
 Before task completion, the Agent performs a separate project learning check:
 
-1. Run `comet knowledge review <project-root> --workflow classic --change <change-id> --json` and process only this change's pending reviews.
-2. Using the returned `recordFields` and source evidence, the Agent writes actions and submits them with `--id <id> --file <actions.json>`. Submit `[]` when there is no reusable lesson. The user does not write JSON. Confirm `submission.status` is `applied`; `accepted` means the actions were received.
+1. If there is no qualifying observation, reusable lesson, or known pending review, declare `no-observation` without calling review or creating an empty actions file. Run `comet knowledge review <project-root> --workflow classic --change <change-id> --json` only when the current completion response or an existing receipt indicates pending reviews for this change.
+2. For pending reviews, write actions from the returned `recordFields` and source evidence, then submit with `--id <id> --file <actions.json>`. An actual review with no reusable conclusion may submit `[]`. The user does not write JSON. Confirm `submission.status` is `applied`; `accepted` means received. Process only this change; pending reviews newly reported by a later completion response still follow this rule.
 3. After saving project lessons, pass `--project-learning-check submitted --memory <returned slug>` to completion; separate multiple receipts with commas. Pass `no-observation` if there is no reusable lesson, or `not-run` if no check occurred.
 4. Report project learning complete only when `projectLearning.submissionVerified` is `true` and both `pendingHostReviewCount` and `pendingReflectionCount` are `0`. Otherwise follow `nextActions` and report unfinished work. Learning failures do not block completed development work.
 

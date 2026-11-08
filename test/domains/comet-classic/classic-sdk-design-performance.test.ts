@@ -142,6 +142,15 @@ describe('Classic Design preflight budget', () => {
     );
   });
 
+  it('accepts the already inspected workspace without reopening the Run for Design Guard', async () => {
+    const inspected = await fixture.inspect();
+    fixture.inspect.mockClear();
+    const result = await inspectAndCompleteClassicSdkDesign({ ...options, inspected });
+    expect(fixture.inspect).not.toHaveBeenCalled();
+    expect(result.completed?.state).toMatchObject({ phase: 'build' });
+    expect(fixture.recordEvidence).toHaveBeenCalledTimes(1);
+  });
+
   it('blocks a different approval without changing the Run', async () => {
     const result = await inspectAndCompleteClassicSdkDesign({
       ...options,

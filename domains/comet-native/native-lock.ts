@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { linkWithRetry } from '../../platform/fs/transient-retry.js';
 
 import {
   RaceSafeReadError,
@@ -57,6 +58,12 @@ export interface NativeLock {
   locksDir: string;
   owner: NativeLockOwner;
   identity: NativeLockFileIdentity;
+  publicationFile?: string;
+  coordinatorVersion?: string;
+}
+
+function nativeCoordinatorVersion(stat: import('node:fs').BigIntStats): string {
+  return [stat.dev, stat.ino, stat.birthtimeNs, stat.mtimeNs, stat.ctimeNs].join(':');
 }
 
 export interface NativeLockDiagnosis {
@@ -201,10 +208,10 @@ export async function repairNativeProjectLock(
         'Native project lock changed or still has a live owner; preserve the lock and inspect doctor again',
       );
     if (current.owner) {
-      await removeBoundNativeLock(
-        { file: current.file, owner: current.owner, identity: current.identity },
-        path.join(paths.locksDir, NATIVE_LOCK_COORDINATOR_DIR),
-      );
+      const snapshot = { file: current.file, owner: current.owner, identity: current.identity };
+      const coordinatorDir = path.join(paths.locksDir, NATIVE_LOCK_COORDINATOR_DIR);
+      const removed = await removeBoundNativeLock(snapshot, coordinatorDir);
+      if (removed === 'removed') await releaseNativeLockPublication(snapshot, coordinatorDir);
       return;
     }
     const quarantine = path.join(
@@ -466,6 +473,22 @@ async function writeNativeLockFile(
   return snapshot.identity;
 }
 
+async function releaseNativeLockPublication(
+  snapshot: NativeLockSnapshot,
+  coordinatorDir: string,
+): Promise<void> {
+  if (!/^[a-f0-9-]{36}$/u.test(snapshot.owner.id)) return;
+  const file = path.join(coordinatorDir, `.${snapshot.owner.id}.tmp`);
+  const prepared = await readNativeLockSnapshot(file);
+  if (!prepared) return;
+  if (
+    prepared.owner.id !== snapshot.owner.id ||
+    !sameNativeLockObject(prepared.identity, snapshot.identity)
+  )
+    throw new Error(`Native lock publication changed: ${file}`);
+  await removeBoundNativeLock(prepared, coordinatorDir);
+}
+
 async function publishNativeCoordinatorClaim(
   paths: NativeLockCoordinatorPaths,
   operation: string,
@@ -620,6 +643,62 @@ export async function acquireNativeLock(
   name: string,
   operation: string,
 ): Promise<NativeLock> {
+  const locksDir = await resolveContainedNativePath(paths.runtimeDir, paths.locksDir);
+  await fs.mkdir(locksDir, { recursive: true });
+  const coordinatorDir = await resolveContainedNativePath(
+    paths.runtimeDir,
+    path.join(locksDir, NATIVE_LOCK_COORDINATOR_DIR),
+  );
+  const claims = await fs.readdir(coordinatorDir).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  });
+  // 独占创建与旧 writer 使用同一路径；有 claim 时仍服从原协调器。
+  if (claims.every((entry) => /^\.[a-f0-9-]{36}\.tmp$/u.test(entry))) {
+    const file = await resolveContainedNativePath(
+      paths.runtimeDir,
+      path.join(locksDir, lockName(name)),
+    );
+    const owner = await newNativeLockOwner(operation);
+    await fs.mkdir(coordinatorDir, { recursive: true });
+    const publicationFile = path.join(coordinatorDir, `.${owner.id}.tmp`);
+    const preparedIdentity = await writeNativeLockFile(publicationFile, owner);
+    try {
+      const coordinatorVersion = nativeCoordinatorVersion(
+        await fs.lstat(coordinatorDir, { bigint: true }),
+      );
+      await linkWithRetry(publicationFile, file);
+      const published = await readNativeLockSnapshot(file);
+      if (
+        !published ||
+        published.owner.id !== owner.id ||
+        !sameNativeLockObject(published.identity, preparedIdentity)
+      )
+        throw new Error(`Native lock changed after publication: ${file}`);
+      // 保留私有链接直到释放，避免发布后的 unlink 改变主锁 ctime，影响旧 reader 的身份检查。
+      return {
+        file,
+        nativeRoot: paths.runtimeDir,
+        locksDir,
+        owner,
+        identity: published.identity,
+        publicationFile,
+        coordinatorVersion,
+      };
+    } catch (error) {
+      const prepared = await readNativeLockSnapshot(publicationFile);
+      if (
+        prepared?.owner.id === owner.id &&
+        sameNativeLockObject(prepared.identity, preparedIdentity)
+      )
+        await removeBoundNativeLock(prepared, coordinatorDir);
+      if (
+        !['EEXIST', 'ENOTSUP', 'EOPNOTSUPP'].includes((error as NodeJS.ErrnoException).code ?? '')
+      )
+        throw error;
+      // 旧 writer 可能仍在协调器内写元数据；竞争时先进入原协调器，不能直接读取半份主锁。
+    }
+  }
   return withNativeLockCoordinator(paths, `acquire ${name}`, async () => {
     const locksDir = await resolveContainedNativePath(paths.runtimeDir, paths.locksDir);
     await fs.mkdir(locksDir, { recursive: true });
@@ -634,22 +713,50 @@ export async function acquireNativeLock(
 }
 
 export async function releaseNativeLock(lock: NativeLock): Promise<void> {
-  if (!(await readNativeLockSnapshot(lock.file))) return;
+  const releasePublication = async () => {
+    if (!lock.publicationFile) return;
+    const prepared = await readNativeLockSnapshot(lock.publicationFile);
+    if (!prepared) return;
+    if (
+      prepared.owner.id !== lock.owner.id ||
+      !sameNativeLockObject(prepared.identity, lock.identity)
+    )
+      throw new Error(`Native lock publication changed: ${lock.publicationFile}`);
+    await removeBoundNativeLock(prepared, path.join(lock.locksDir, NATIVE_LOCK_COORDINATOR_DIR));
+  };
+  if (!(await readNativeLockSnapshot(lock.file))) return releasePublication();
+  const release = async () => {
+    const current = await readNativeLockSnapshot(lock.file);
+    if (!current) return releasePublication();
+    if (current.owner.id !== lock.owner.id) {
+      throw new Error(`Native lock ownership changed: ${lock.file}`);
+    }
+    if (!sameNativeLockVersion(current.identity, lock.identity)) {
+      throw new Error(`Native lock identity changed: ${lock.file}`);
+    }
+    const coordinatorDir = path.join(lock.locksDir, NATIVE_LOCK_COORDINATOR_DIR);
+    await removeBoundNativeLock(current, coordinatorDir);
+    await releasePublication();
+  };
+  const directory = await resolveContainedNativePath(
+    lock.nativeRoot,
+    path.join(lock.locksDir, NATIVE_LOCK_COORDINATOR_DIR),
+  );
+  const entries = await fs.readdir(directory).catch((error) => {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  });
+  const unchangedCoordinator =
+    lock.coordinatorVersion !== undefined &&
+    lock.coordinatorVersion ===
+      nativeCoordinatorVersion(await fs.lstat(directory, { bigint: true }));
+  // claim 已经退出也属于发生过竞争；保留旧协议的释放排序，不把目录一时为空当作从未竞争。
+  if (unchangedCoordinator && entries.every((entry) => /^\.[a-f0-9-]{36}\.tmp$/u.test(entry)))
+    return release();
   await withNativeLockCoordinator(
     { runtimeDir: lock.nativeRoot, locksDir: lock.locksDir },
     `release ${path.basename(lock.file)}`,
-    async () => {
-      const current = await readNativeLockSnapshot(lock.file);
-      if (!current) return;
-      if (current.owner.id !== lock.owner.id) {
-        throw new Error(`Native lock ownership changed: ${lock.file}`);
-      }
-      if (!sameNativeLockVersion(current.identity, lock.identity)) {
-        throw new Error(`Native lock identity changed: ${lock.file}`);
-      }
-      const coordinatorDir = path.join(lock.locksDir, NATIVE_LOCK_COORDINATOR_DIR);
-      await removeBoundNativeLock(current, coordinatorDir);
-    },
+    release,
   );
 }
 
@@ -711,6 +818,7 @@ export async function takeOverNativeStaleLock(
     }
     const coordinatorDir = path.join(locksDir, NATIVE_LOCK_COORDINATOR_DIR);
     const removed = await removeBoundNativeLock(snapshot, coordinatorDir);
+    if (removed === 'removed') await releaseNativeLockPublication(snapshot, coordinatorDir);
     return removed === 'removed'
       ? { status: 'removed', owner: snapshot.owner }
       : { status: 'missing' };

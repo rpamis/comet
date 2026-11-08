@@ -131,15 +131,21 @@ comet state next <change-name>
 comet archive <change-name>
 ```
 
+## 阶段共用入口
+
+收到入口返回的 layout 后，按 [产物布局](classic-layout.md) 绑定 `<classic-*>` 逻辑根；本会话已加载且绑定仍有效时直接复用。OpenSpec CLI 使用 Comet 适配器，文件路径使用这些逻辑根，无需额外运行 root show。
+
+编辑后需要判断影响，或 continuation 指向内容判断时，读取并执行[编辑后续行](../../comet/reference/edit-review.md)。由当前 Agent 在原 Run 合并处理变化，保留有效批准和检查，只补受影响证据。各阶段的用户确认、实施方法、TDD、审查和固定应用要求仍按当前阶段正文执行。
+
 ## 任务上下文与产物语言
 
-任务结束优先按[任务学习收尾](../../comet/reference/task-learning.md)准备学习文件，用 `comet task --complete --learning-file <file>` 一次提交个人观察、项目经验、待评审动作和实际使用反馈。本节后面的分步保存、评审与完成命令供即时保存、单项纠正及旧版兼容；采用学习文件时无需重复执行。
+任务结束先按[任务学习收尾](../../comet/reference/task-learning.md)检查是否有可提交内容。有个人观察、项目经验、待评审动作或实际使用反馈时，优先用 `comet task --complete --learning-file <file>` 一次提交；没有这些内容时不创建空学习文件，用实际检查结果完成收尾。本节后面的分步命令供即时保存、单项纠正及旧版兼容；采用学习文件时无需重复执行。
 
 所有 OpenSpec 和 Superpowers 产物都必须使用 Comet 配置的产物语言，配置值为规范化语言 ID：`en` 或 `zh-CN`。已有 change 优先使用本次有效入口返回的 `configuration.language`；仅入口未提供该字段时，才通过 `comet state get <name> language` 读取实际状态文件中的 `language`。新旧两种状态文件均不存在时，依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `classic.language`；两处都没有配置时，才使用当前用户请求的语言。调用外部 OpenSpec/Superpowers Skill 时，必须把最终确定的语言明确写入提示词或 ARGUMENTS。
 
 领取响应含 `data.contextDelivery` 时，读取 `data.context[].text` 后直接工作，不重复执行 `contextRequest`。需要正文、恢复或提交学习时分别使用 `data.contextActions.expand`、`restore`、`complete`；新 Agent 使用自己的会话标识。空结果或获取失败不阻断任务。
 
-没有自动交付时，首次进入阶段、交接给新 Agent 或上下文恢复后，按当前 `agent.continuation.contextRequest` 获取一次任务上下文；SDK 已领取 Action 时，优先使用 `data.continuation.current.actions[]` 中对应 Action 的 `contextRequest`。本协议适用于 full、hotfix、tweak 的 SDK 与 Compat 路径，直接调用阶段 Skill 也要执行。普通状态查询、等待原任务和同一阶段内的连续执行不重复获取。
+没有自动交付时，按当前 `agent.continuation.contextRequest` 获取任务上下文；SDK 已领取 Action 时优先使用该 Action 的 `contextRequest`。同一会话已有可核对的交付记录且正文仍在上下文中时，阶段切换沿用同一 session，以 `--context-mode incremental` 获取新增适用内容；阶段专用规则仍须加载。新 Agent、上下文压缩或恢复、记录不完整时使用 snapshot 完整交付。本协议适用于 full、hotfix、tweak、SDK、Compat 及独立阶段入口。普通状态查询、等待原任务和同阶段连续执行不重复获取。
 
 没有请求描述时，绑定实际工作区并读取当前 `phase`，运行 `comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --session "<接收方稳定会话标识>" --context-mode snapshot --json`。原始请求缺失时从当前 proposal、specs 和任务范围恢复目标。阶段切换沿用当前 Agent 的会话标识；换 Agent 时使用接收方自己的标识，不能复用派发者或已领取 Action 的其他执行者标识。同一 Agent 恢复时沿用原标识并获取 snapshot，避免已交付记录阻止内容重新进入上下文。
 
@@ -157,8 +163,8 @@ comet archive <change-name>
 
 任务结束前，Agent 独立完成项目学习检查：
 
-1. 运行 `comet knowledge review <project-root> --workflow classic --change <change-id> --json`，只处理本次 change 的待评审。
-2. 根据返回的 `recordFields` 和来源证据，由 Agent 编写动作文件并用 `--id <id> --file <actions.json>` 提交；无可复用经验时提交 `[]`。用户无需编写 JSON。核对 `submission.status` 为 `applied`；`accepted` 只表示已接收。
+1. 本次没有合格观察、可复用经验或已知待评审时，直接声明 `no-observation`；不调用 review，不创建空动作文件。只有当前完成响应或已有回执提示本次 change 有待评审时，运行 `comet knowledge review <project-root> --workflow classic --change <change-id> --json`。
+2. 有待评审时，根据返回的 `recordFields` 和来源证据编写动作文件，用 `--id <id> --file <actions.json>` 提交；真实评审没有可复用结论时可提交 `[]`。用户无需编写 JSON。核对 `submission.status` 为 `applied`；`accepted` 只表示已接收。只处理本次 change，后续完成响应新出现的待评审仍按该规则处理。
 3. 保存本次项目记忆后，在完成命令中传 `--project-learning-check submitted --memory <返回的 slug>`；多个回执用逗号分隔。无可复用经验时传 `no-observation`，未检查时传 `not-run`。
 4. 完成响应的 `projectLearning.submissionVerified` 为 `true`，`pendingHostReviewCount` 和 `pendingReflectionCount` 都为 `0`，才报告项目学习检查完成；否则按 `nextActions` 处理并说明未完成项。学习失败不阻断已完成的开发任务。
 

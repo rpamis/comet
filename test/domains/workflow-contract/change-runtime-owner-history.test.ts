@@ -41,6 +41,141 @@ afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
 });
 
+it('reads a bound canonical owner with one token read, no partition body reads and no writes', async () => {
+  await registerSdkChangeOwner(root, owner, { canonical: true });
+  const read = vi.spyOn(protectedFiles, 'readProtectedProjectFile');
+  const write = vi.spyOn(contained, 'atomicWriteContainedText');
+  expect(await readSdkChangeOwner(root, 'native', 'first', { readOnly: true })).toEqual(owner);
+  expect(
+    read.mock.calls.filter((call) => call[1] === '.change-owner-partitions.json'),
+  ).toHaveLength(1);
+  expect(read.mock.calls.filter((call) => [activeRef, historyRef].includes(call[1]))).toHaveLength(
+    0,
+  );
+  expect(write).not.toHaveBeenCalled();
+});
+
+it('falls back after a legacy writer moves or rewrites an owner without refreshing its canonical record', async () => {
+  await registerSdkChangeOwner(root, owner, { canonical: true });
+  const canonical = path.join(runtimeRoot, 'change-owner-records/native/first.json');
+  const source = await fs.readFile(canonical, 'utf8');
+  await fs.mkdir(path.dirname(path.join(runtimeRoot, historyRef)), { recursive: true });
+  await fs.copyFile(path.join(runtimeRoot, activeRef), path.join(runtimeRoot, historyRef));
+  await fs.unlink(path.join(runtimeRoot, activeRef));
+  expect(await readSdkChangeOwner(root, 'native', 'first', { readOnly: true })).toEqual(owner);
+  expect(await listSdkChangePartitions(root, 'native', { readOnly: true })).toEqual({
+    active: [],
+    history: ['first'],
+  });
+  expect(await fs.readFile(canonical, 'utf8')).toBe(source);
+  await fs.writeFile(path.join(runtimeRoot, historyRef), '{}');
+  await expect(readSdkChangeOwner(root, 'native', 'first')).rejects.toThrow(
+    'Invalid change runtime owner',
+  );
+});
+
+it('does not hide double owners behind a previously bound canonical record', async () => {
+  await registerSdkChangeOwner(root, owner, { canonical: true });
+  await fs.mkdir(path.dirname(path.join(runtimeRoot, historyRef)), { recursive: true });
+  await fs.copyFile(path.join(runtimeRoot, activeRef), path.join(runtimeRoot, historyRef));
+  await expect(readSdkChangeOwner(root, 'native', 'first')).rejects.toThrow(
+    'Conflicting active and history',
+  );
+  expect(await recoverSdkChangeOwnerToActive(root, 'native', 'first')).toEqual(owner);
+  expect(await readSdkChangeOwner(root, 'native', 'first')).toEqual(owner);
+});
+
+it('rejects a junction substituted beneath a canonical owner binding', async () => {
+  await registerSdkChangeOwner(root, owner, { canonical: true });
+  const directory = path.dirname(path.join(runtimeRoot, activeRef));
+  const external = path.join(root, 'external-owner');
+  await fs.mkdir(external);
+  await fs.writeFile(path.join(external, 'first.json'), JSON.stringify(owner));
+  await fs.rename(directory, `${directory}-original`);
+  await fs.symlink(external, directory, process.platform === 'win32' ? 'junction' : 'dir');
+  await expect(readSdkChangeOwner(root, 'native', 'first', { readOnly: true })).rejects.toThrow(
+    /symbolic link|junction/u,
+  );
+});
+
+it('keeps canonical reads blocked by interrupted tokens and restores them through named recovery', async () => {
+  await registerSdkChangeOwner(root, owner, { canonical: true });
+  const file = path.join(runtimeRoot, '.change-owner-partitions.json');
+  const token = JSON.parse(await fs.readFile(file, 'utf8'));
+  await fs.writeFile(file, JSON.stringify({ ...token, state: 'writing' }));
+  await expect(readSdkChangeOwner(root, 'native', 'first', { readOnly: true })).rejects.toThrow(
+    'incomplete',
+  );
+  expect(await recoverSdkChangeOwnerToActive(root, 'native', 'first')).toEqual(owner);
+  expect(await readSdkChangeOwner(root, 'native', 'first', { readOnly: true })).toEqual(owner);
+});
+
+it('recovers an interrupted canonical publication from the original legacy owner and refreshes reopen bindings', async () => {
+  await registerSdkChangeOwner(root, owner, { canonical: true });
+  const original = contained.atomicLinkContainedFile;
+  const write = vi
+    .spyOn(contained, 'atomicLinkContainedFile')
+    .mockImplementation(async (source, target, ...args) => {
+      if (target.includes('change-owner-records'))
+        throw new Error('injected canonical publication interruption');
+      return original(source, target, ...args);
+    });
+  await expect(closeSdkChangeOwner(root, owner)).rejects.toThrow('injected canonical');
+  write.mockRestore();
+  expect(await readSdkChangeOwner(root, 'native', 'first')).toEqual(owner);
+  expect(await listSdkChangePartitions(root, 'native', { readOnly: true })).toEqual({
+    active: [],
+    history: ['first'],
+  });
+  await reopenSdkChangeOwner(root, owner);
+  const read = vi.spyOn(protectedFiles, 'readProtectedProjectFile');
+  expect(await readSdkChangeOwner(root, 'native', 'first', { readOnly: true })).toEqual(owner);
+  expect(read.mock.calls.filter((call) => [activeRef, historyRef].includes(call[1]))).toHaveLength(
+    0,
+  );
+  expect(await listSdkChangePartitions(root, 'native', { readOnly: true })).toEqual({
+    active: ['first'],
+    history: [],
+  });
+});
+
+it('reads canonical bytes from the actual linked owner instead of trusting cached metadata', async () => {
+  await registerSdkChangeOwner(root, owner, { canonical: true });
+  const canonical = path.join(runtimeRoot, 'change-owner-records/native/first.json');
+  const active = path.join(runtimeRoot, activeRef);
+  expect((await fs.stat(canonical)).ino).toBe((await fs.stat(active)).ino);
+  expect(JSON.parse(await fs.readFile(canonical, 'utf8'))).toEqual(owner);
+  await fs.writeFile(active, '{}');
+  expect(await fs.readFile(canonical, 'utf8')).toBe('{}');
+  await expect(readSdkChangeOwner(root, 'native', 'first')).rejects.toThrow(
+    'Invalid change runtime owner',
+  );
+});
+
+it('keeps legacy ownership readable when canonical hard links are unsupported', async () => {
+  vi.spyOn(contained, 'atomicLinkContainedFile').mockRejectedValue(
+    Object.assign(new Error('unsupported link'), { code: 'ENOTSUP' }),
+  );
+  await registerSdkChangeOwner(root, owner, { canonical: true });
+  expect(await readSdkChangeOwner(root, 'native', 'first')).toEqual(owner);
+  expect(JSON.parse(await fs.readFile(path.join(runtimeRoot, activeRef), 'utf8'))).toEqual(owner);
+});
+
+it('rebuilds a damaged detached canonical entry only through validated named recovery', async () => {
+  await registerSdkChangeOwner(root, owner, { canonical: true });
+  const canonical = path.join(runtimeRoot, 'change-owner-records/native/first.json');
+  await fs.unlink(canonical);
+  await fs.writeFile(canonical, '{}');
+  await expect(readSdkChangeOwner(root, 'native', 'first')).rejects.toThrow(
+    'Invalid change runtime owner',
+  );
+  expect(await recoverSdkChangeOwnerToActive(root, 'native', 'first')).toEqual(owner);
+  expect(await readSdkChangeOwner(root, 'native', 'first')).toEqual(owner);
+  expect((await fs.stat(canonical)).ino).toBe(
+    (await fs.stat(path.join(runtimeRoot, activeRef))).ino,
+  );
+});
+
 it('keeps default discovery and direct reads compatible while active discovery excludes sealed identities', async () => {
   await closeSdkChangeOwner(root, owner);
   await closeSdkChangeOwner(root, owner);

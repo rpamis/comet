@@ -6,6 +6,7 @@ import { nativeSdkReportRevalidationValidator } from './native-sdk-report.js';
 import path from 'node:path';
 import { memoizedHookReadSync } from '../../platform/process/hook-read-cache.js';
 import { promises as fs } from 'node:fs';
+import { readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
 import { parseNativeStateDocument } from './native-state-document.js';
 
 import { listGitWorktrees, samePath } from '../../platform/paths/git-worktree.js';
@@ -61,7 +62,18 @@ export async function registerNativeSdkRequestInput(options: {
   runId: string;
   validateContent: (content: string) => void;
 }): Promise<void> {
-  const paths = await nativeProjectPaths(options.projectRoot, options.artifactRootRef);
+  const file = path.resolve(options.projectRoot, options.file);
+  const relative = path.relative(options.projectRoot, file);
+  if (path.isAbsolute(relative) || relative === '..' || relative.startsWith(`..${path.sep}`)) {
+    const read = await readFileRaceSafe(file, Number.MAX_SAFE_INTEGER, {
+      label: 'Native Runner request input',
+    });
+    options.validateContent(read.bytes.toString('utf8'));
+    return;
+  }
+  const paths = await nativeProjectPaths(options.projectRoot, options.artifactRootRef, {
+    change: options.runId,
+  });
   await withNativeMutationLock(paths, 'sdk-request-input', () =>
     registerNativeRunnerInputArtifactLocked({
       paths,
@@ -504,14 +516,28 @@ async function readNativeApplicationCheckpoint(
   return (data as { application_checkpoint?: ApplicationIdentity }).application_checkpoint ?? null;
 }
 
-// 仅在同次只读发现中复用规范化定义；每个 Runtime 的可变注册对象独立创建。
-const readOnlyNativeApplication = memoizedHookReadSync('nativeBuiltinDefinition', () => {
-  const application = defineNativeWorkflowApplication();
-  return { ...application, workflow: defineWorkflow(application.workflow) };
-});
+// 内置定义仅由版本决定；项目状态和可变注册对象不进入缓存。
+const builtinNativeApplications = new Map<
+  '1' | '2' | '3',
+  ReturnType<typeof defineNativeWorkflowApplication>
+>();
+const readOnlyNativeApplication = memoizedHookReadSync('nativeBuiltinDefinition', () =>
+  nativeBuiltinApplication('1'),
+);
 
-function nativeApplicationForRead() {
-  const application = readOnlyNativeApplication();
+function nativeBuiltinApplication(version: '1' | '2' | '3') {
+  let application = builtinNativeApplications.get(version);
+  if (!application) {
+    const created = defineNativeWorkflowApplication(version);
+    application = { ...created, workflow: defineWorkflow(created.workflow) };
+    builtinNativeApplications.set(version, application);
+  }
+  return application;
+}
+
+function nativeApplicationForRead(version: '1' | '2' | '3' = '1') {
+  const application =
+    version === '1' ? readOnlyNativeApplication() : nativeBuiltinApplication(version);
   return {
     ...application,
     transitionHandler: { ...application.transitionHandler },
@@ -526,13 +552,13 @@ function nativeApplicationForRead() {
 export async function loadOwnedNativeSdkRuntime(
   projectRoot: string,
   name: string,
-  options: { readOnly?: boolean } = {},
+  options: { readOnly?: boolean; owner?: Awaited<ReturnType<typeof readSdkChangeOwner>> } = {},
 ): Promise<{
   runtime: WorkflowRuntime;
   executors: readonly RuntimeExecutor[];
   application: LoadedWorkflowApplication | null;
 }> {
-  const owner = await readSdkChangeOwner(projectRoot, 'native', name, options);
+  const owner = options.owner ?? (await readSdkChangeOwner(projectRoot, 'native', name, options));
   const checkpoint =
     owner?.application === 'native'
       ? null
@@ -544,16 +570,15 @@ export async function loadOwnedNativeSdkRuntime(
     const defined = nativeSdkApplicationForRun(
       snapshot,
       snapshot?.workflow.version === '3'
-        ? defineNativeWorkflowApplication('3')
+        ? nativeApplicationForRead('3')
         : snapshot?.workflow.version === '2'
-          ? defineNativeWorkflowApplication('2')
-          : options.readOnly
-            ? nativeApplicationForRead()
-            : defineNativeWorkflowApplication(),
+          ? nativeApplicationForRead('2')
+          : nativeApplicationForRead(),
     );
     return {
       runtime: createRuntime({
         ...defined,
+        executors: options.readOnly ? [] : defined.executors,
         store: {
           ...store,
           read(runId) {
@@ -585,7 +610,11 @@ export async function loadOwnedNativeSdkRuntime(
   if (application.identity.id !== id || application.identity.base !== 'native')
     throw new Error('Native change owner does not match its fixed Application');
   return {
-    runtime: createRuntime({ ...application.implementation, store: application.store }),
+    runtime: createRuntime({
+      ...application.implementation,
+      ...(options.readOnly ? { executors: [] } : {}),
+      store: application.store,
+    }),
     executors: application.implementation.executors ?? [],
     application,
   };
@@ -603,7 +632,10 @@ export async function inspectNativeSdkRun(
 }> {
   const owner = await readSdkChangeOwner(projectRoot, 'native', name, options);
   if (!owner) throw new Error(`Native change ${name} is not owned by an SDK Run`);
-  const { runtime, application } = await loadOwnedNativeSdkRuntime(projectRoot, name, options);
+  const { runtime, application } = await loadOwnedNativeSdkRuntime(projectRoot, name, {
+    ...options,
+    owner,
+  });
   const run = await runtime.inspect(owner.runId);
   if (
     run.workflow.id !== 'comet-native' ||
@@ -660,7 +692,9 @@ export async function resolveNativeSdkCommandRoot(
   if (!localOwner && !options.readOnly) {
     const config = await readProjectConfig(requestedRoot);
     if (config) {
-      const paths = await nativeProjectPaths(requestedRoot, config.native.artifact_root);
+      const paths = await nativeProjectPaths(requestedRoot, config.native.artifact_root, {
+        change: name,
+      });
       localOwner = await resolveNativeChangeRuntimeOwner(paths, name);
     }
   }

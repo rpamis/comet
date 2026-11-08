@@ -15,6 +15,8 @@ import {
   parseNativeArchiveTransactionJournalV2,
   readNativeTransaction,
   readNativeTransactionEvents,
+  finalizeNativeTransaction,
+  resolveNativeTransactionReference,
 } from '../../../domains/comet-native/native-transaction.js';
 import type {
   NativeProjectPaths,
@@ -61,6 +63,27 @@ describe('Native transaction schema', () => {
     expect(await readNativeTransactionEvents(paths, journal.id)).toEqual([
       expect.objectContaining({ sequence: 1, type: 'prepared' }),
     ]);
+  });
+
+  it('retires completed journals while preserving their original references and repeatable finalization', async () => {
+    await createNativeTransaction(paths, journal);
+    const active = nativeTransactionPaths(paths, journal.id);
+    await fs.writeFile(path.join(active.staged, 'spec.md'), '# Spec\n');
+    const applied = await applyNativeTransaction(paths, journal);
+    const completed = await finalizeNativeTransaction(paths, applied, 'commit');
+    expect(completed.status).toBe('committed');
+    expect(await fs.readdir(paths.transactionsDir)).not.toContain(journal.id);
+    expect(nativeTransactionPaths(paths, journal.id).directory).toBe(
+      path.join(paths.runtimeDir, 'transaction-history', journal.id),
+    );
+    expect(await readNativeTransaction(paths, journal.id)).toEqual(completed);
+    expect(
+      await fs.readFile(
+        resolveNativeTransactionReference(paths, journal.operations[0].staged!)!,
+        'utf8',
+      ),
+    ).toBe('# Spec\n');
+    expect(await finalizeNativeTransaction(paths, completed, 'commit')).toEqual(completed);
   });
 
   it('validates every Native Archive v2 journal and operation binding', () => {

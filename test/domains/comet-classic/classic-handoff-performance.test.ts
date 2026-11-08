@@ -12,6 +12,8 @@ import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { readRunState } from '../../../domains/engine/state.js';
 import { readClassicState } from '../../../domains/comet-classic/classic-store.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
+import { withClassicSourceObservation } from '../../../domains/comet-classic/classic-protected-path.js';
+import { classicOpenEvidenceReceipt } from '../../../domains/comet-classic/classic-sdk-application.js';
 
 describe('Classic handoff material reuse', () => {
   let root: string;
@@ -79,6 +81,26 @@ describe('Classic handoff material reuse', () => {
       }
     },
   );
+
+  it('shares one source observation across proposal evidence, requirements and handoff rendering', async () => {
+    await initializeDesignContext();
+    const open = vi.spyOn(fs, 'open');
+    await withClassicSourceObservation(root, async () => {
+      await classicOpenEvidenceReceipt(root, 'openspec/changes/demo');
+      await classicOpenEvidenceReceipt(root, 'openspec/changes/demo', { designRequirements: true });
+      await writeClassicSdkDesignContext({
+        projectRoot: root,
+        changeDir,
+        change: 'demo',
+        contextCompression: 'off',
+      });
+    });
+    for (const file of sources)
+      expect(
+        open.mock.calls.filter(([target]) => String(target) === file),
+        file,
+      ).toHaveLength(1);
+  });
 
   it.each(['edit', 'add', 'remove'] as const)(
     'rechecks source %s after preparing a handoff',

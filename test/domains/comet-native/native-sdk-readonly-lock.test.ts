@@ -212,6 +212,7 @@ describe('Native SDK read-only projection lock diagnostics', () => {
   it('reports abandoned coordinator tickets even if the projection lock is missing', async () => {
     const { root, name, lock } = await fixture();
     const ticket = path.join(`${lock}.contenders`, 'abandoned.ticket');
+    await fs.mkdir(path.dirname(ticket), { recursive: true });
     await fs.writeFile(
       ticket,
       JSON.stringify({

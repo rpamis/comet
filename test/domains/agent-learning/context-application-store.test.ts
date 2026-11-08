@@ -44,6 +44,56 @@ const record = (i: number): AgentContextApplicationRecord => ({
   appliedAt: new Date(1760000000000 + i * 1000).toISOString(),
 });
 
+test('restores full profile delivery across incremental phases from indexed history only', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-applications-phases-'));
+  const file = path.join(root, 'applications.sqlite');
+  const request = {
+    task: 'Fix login',
+    projectId: 'project-a',
+    sessionId: 'same-session',
+    phase: 'build',
+  };
+  try {
+    await new ContextDirector({
+      applications: new SqliteAgentContextApplicationStore(file),
+    }).select([candidate], request);
+    const applications = new SqliteAgentContextApplicationStore(file);
+    applications.list = async () => {
+      throw new Error('indexed selection must not enumerate all history');
+    };
+    expect(
+      (
+        await new ContextDirector({ applications }).select([candidate], {
+          ...request,
+          phase: 'verify',
+          contextMode: 'incremental',
+        })
+      ).coreMemory,
+    ).toEqual([]);
+    expect(
+      (
+        await new ContextDirector({ applications }).select([candidate], {
+          ...request,
+          phase: 'verify',
+          contextMode: 'snapshot',
+        })
+      ).coreMemory,
+    ).toEqual([candidate]);
+    expect(
+      (
+        await new ContextDirector({ applications }).select([candidate], {
+          ...request,
+          phase: 'verify',
+          sessionId: 'new-session',
+          contextMode: 'incremental',
+        })
+      ).coreMemory,
+    ).toEqual([candidate]);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('resumes a canceled large legacy import from committed batches', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-applications-migration-'));
   const file = path.join(root, 'applications.sqlite');

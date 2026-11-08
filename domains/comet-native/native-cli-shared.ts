@@ -53,6 +53,8 @@ export interface NativeCliErrorShape {
 }
 
 export interface DispatchResult {
+  /** 仅供 CLI 学习桥使用，不加入公开输出；false 表示仅领取或重复回报。 */
+  workflowCompleted?: boolean;
   executionCwd?: string;
   command: string | null;
   exitCode: number;
@@ -200,13 +202,17 @@ export function isNativeReadOnlyCommand(command: string, args: readonly string[]
   return command === 'status' || command === 'show' || (command === 'root' && args[0] === 'show');
 }
 
-export async function configuredPaths(projectRoot: string): Promise<{
+export async function configuredPaths(
+  projectRoot: string,
+  change?: string,
+): Promise<{
   config: CometProjectConfig;
   paths: NativeProjectPaths;
 }> {
   const resolved = await resolveNativeProject({
     startPath: projectRoot,
     allowMissingConfig: false,
+    change,
   });
   return { config: resolved.config, paths: resolved.paths };
 }

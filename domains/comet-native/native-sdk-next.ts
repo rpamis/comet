@@ -1,3 +1,4 @@
+import { hasNativeCompletedWork } from './native-experience.js';
 import {
   nativeSdkVerificationReportOutput,
   refreshNativeSdkVerificationReport,
@@ -28,6 +29,7 @@ import { NativeUsageError, success, type DispatchResult } from './native-cli-sha
 import {
   collectNativeSdkShapeProposal,
   defineNativeWorkflowApplication,
+  nativeSdkApplicationForRun,
 } from './native-sdk-application.js';
 import {
   recoverNativeSdkChecks,
@@ -179,8 +181,15 @@ export async function advanceNativeSdkChange(
         expectedStateVersion: number;
         expectedAction: 'continue-builder' | 'resolve-verifier-blocker';
       },
+  initial?: Awaited<ReturnType<typeof inspectNativeSdkRun>>,
 ): Promise<DispatchResult> {
-  let { run, state, artifactRootRef, application } = await inspectNativeSdkRun(projectRoot, name);
+  let { run, state, artifactRootRef, application } =
+    initial ?? (await inspectNativeSdkRun(projectRoot, name));
+  const originalRun = run;
+  const nextResult = async (...args: Parameters<typeof sdkNextResult>) => ({
+    ...(await sdkNextResult(...args)),
+    workflowCompleted: hasNativeCompletedWork(originalRun, args[2]),
+  });
   // 已授权的内置归档沿用同一推进入口，避免 next 再执行一套归档前置检查。
   if (
     !decision &&
@@ -209,7 +218,7 @@ export async function advanceNativeSdkChange(
         inspectGitWorktree(projectRoot).currentBranch !== state.workspace.change_branch
       ) {
         const current = await inspectNativeSdkRun(projectRoot, name, { readOnly: true });
-        return sdkNextResult(
+        return nextResult(
           projectRoot,
           name,
           current.run,
@@ -246,7 +255,7 @@ export async function advanceNativeSdkChange(
     );
   if (run.status === 'cancelled') {
     await settleNativeSdkCancellation({ projectRoot, run });
-    return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+    return nextResult(projectRoot, name, run, artifactRootRef, application);
   }
   if (run.status === 'completed') {
     await settleNativeSdkCompletion({ projectRoot, run });
@@ -271,7 +280,7 @@ export async function advanceNativeSdkChange(
           prepare?.stepId !== 'shape.prepare'))
     )
       return {
-        ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
+        ...(await nextResult(projectRoot, name, run, artifactRootRef, application)),
         exitCode: 73,
         error: {
           code: 'conflict',
@@ -280,7 +289,7 @@ export async function advanceNativeSdkChange(
       };
   }
   if (!decision && ['failed', 'cancelled'].includes(run.status))
-    return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+    return nextResult(projectRoot, name, run, artifactRootRef, application);
   if (
     decision?.expectedAction === 'retry-verifier' ||
     decision?.expectedAction === 'revise-implementation'
@@ -294,7 +303,7 @@ export async function advanceNativeSdkChange(
         ['failed', 'cancelled', 'completed'].includes(run.status)
       )
         return {
-          ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
+          ...(await nextResult(projectRoot, name, run, artifactRootRef, application)),
           exitCode: 73,
           error: { code: 'conflict', message: 'Native Child Verifier recovery decision is stale' },
         };
@@ -320,7 +329,7 @@ export async function advanceNativeSdkChange(
         }),
         choice,
       });
-      return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
+      return nextResult(projectRoot, name, completed, artifactRootRef, application);
     }
   }
   if (decision?.expectedAction === 'revise-implementation') {
@@ -339,7 +348,7 @@ export async function advanceNativeSdkChange(
         ['failed', 'completed', 'cancelled'].includes(run.status)
       )
         return {
-          ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
+          ...(await nextResult(projectRoot, name, run, artifactRootRef, application)),
           exitCode: 73,
           error: { code: 'conflict', message: 'Native Child check repair decision is stale' },
         };
@@ -358,7 +367,7 @@ export async function advanceNativeSdkChange(
         }),
         choice: 'repair',
       });
-      return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
+      return nextResult(projectRoot, name, completed, artifactRootRef, application);
     }
   }
   if (
@@ -373,7 +382,7 @@ export async function advanceNativeSdkChange(
       recovery.proposalHash !== decision.proposalHash
     ) {
       return {
-        ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
+        ...(await nextResult(projectRoot, name, run, artifactRootRef, application)),
         exitCode: 73,
         error: {
           code: 'conflict',
@@ -390,7 +399,7 @@ export async function advanceNativeSdkChange(
       proposalHash: decision.proposalHash,
       context: { requestId: randomUUID(), projectRoot },
     });
-    return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
+    return nextResult(projectRoot, name, completed, artifactRootRef, application);
   }
   if (decision?.expectedAction === 'continue-builder') {
     const wait = run.waits.find(
@@ -406,7 +415,7 @@ export async function advanceNativeSdkChange(
     );
     if (!wait || state.state_version !== decision.expectedStateVersion) {
       return {
-        ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
+        ...(await nextResult(projectRoot, name, run, artifactRootRef, application)),
         exitCode: 73,
         error: { code: 'conflict', message: `Native SDK Builder decision for ${name} is stale` },
       };
@@ -454,7 +463,7 @@ export async function advanceNativeSdkChange(
       (!renewShape && !nativeSdkRequirementsRevisionAllowed(run, state, decision.proposalHash))
     ) {
       return {
-        ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
+        ...(await nextResult(projectRoot, name, run, artifactRootRef, application)),
         exitCode: 73,
         error: {
           code: 'conflict',
@@ -517,7 +526,7 @@ export async function advanceNativeSdkChange(
         context: { requestId: randomUUID(), projectRoot },
       });
     }
-    return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
+    return nextResult(projectRoot, name, completed, artifactRootRef, application);
   }
   if (
     decision?.expectedAction === 'accept-result' ||
@@ -556,7 +565,7 @@ export async function advanceNativeSdkChange(
         report?.reportSha256 &&
         report.reportSha256 === current?.reportSha256
       )
-        return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+        return nextResult(projectRoot, name, run, artifactRootRef, application);
     }
     if (decision.expectedAction === 'revise-implementation') {
       const commandId = hashRuntimeValue({
@@ -578,12 +587,12 @@ export async function advanceNativeSdkChange(
             context: { requestId: randomUUID(), projectRoot },
           });
         }
-        return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+        return nextResult(projectRoot, name, run, artifactRootRef, application);
       }
       if (state.phase === 'archive') {
         if (state.state_version !== decision.expectedStateVersion || !decision.summary.trim())
           return {
-            ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
+            ...(await nextResult(projectRoot, name, run, artifactRootRef, application)),
             exitCode: 73,
             error: { code: 'conflict', message: 'Native implementation revision is stale' },
           };
@@ -596,7 +605,7 @@ export async function advanceNativeSdkChange(
         const pending = nativeSdkNextAction(run, state);
         if (!pending || !['archive.prepare', 'archive.execute'].includes(pending.stepId))
           return {
-            ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
+            ...(await nextResult(projectRoot, name, run, artifactRootRef, application)),
             exitCode: 73,
             error: { code: 'conflict', message: 'Native Archive action is no longer pending' },
           };
@@ -621,14 +630,14 @@ export async function advanceNativeSdkChange(
         );
         if (!action) throw new Error('Native implementation revision Action is missing');
         if (action.status !== 'pending')
-          return sdkNextResult(projectRoot, name, dispatched, artifactRootRef, application);
+          return nextResult(projectRoot, name, dispatched, artifactRootRef, application);
         const completed = await runtime.execute({
           runId: run.runId,
           actionId: action.id,
           executorId: 'comet-native-revise-implementation',
           context: { requestId: randomUUID(), projectRoot },
         });
-        return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
+        return nextResult(projectRoot, name, completed, artifactRootRef, application);
       }
     }
     const recovery = nativeSdkVerifyDecisions(run, state).find(
@@ -637,7 +646,7 @@ export async function advanceNativeSdkChange(
     );
     if (!recovery || state.state_version !== decision.expectedStateVersion) {
       return {
-        ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
+        ...(await nextResult(projectRoot, name, run, artifactRootRef, application)),
         exitCode: 73,
         error: { code: 'conflict', message: `Native SDK Verify decision for ${name} is stale` },
       };
@@ -651,7 +660,7 @@ export async function advanceNativeSdkChange(
         // 此处原 Verifier 已结束，不能沿用检查校验器给运行中 Verifier 的刷新指令。
         const reason = error.message.split('由当前 Verifier')[0];
         return {
-          ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
+          ...(await nextResult(projectRoot, name, run, artifactRootRef, application)),
           exitCode: 73,
           error: {
             code: 'conflict',
@@ -692,13 +701,13 @@ export async function advanceNativeSdkChange(
       state.loop.next_action !== decision.expectedAction
     ) {
       return {
-        ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
+        ...(await nextResult(projectRoot, name, run, artifactRootRef, application)),
         exitCode: 73,
         error: { code: 'conflict', message: `Native SDK Shape confirmation for ${name} is stale` },
       };
     }
     if (!decision.summary.trim()) throw new NativeUsageError('--summary must not be empty');
-    const paths = await nativeProjectPaths(projectRoot, artifactRootRef);
+    const paths = await nativeProjectPaths(projectRoot, artifactRootRef, { change: name });
     const current = await collectNativeSdkShapeProposal({ paths, state });
     const approved = (wait.proposal as { outputs?: Record<string, RuntimeValue> }).outputs?.[
       'shape.prepare'
@@ -709,7 +718,7 @@ export async function advanceNativeSdkChange(
       current.shapeConfirmationHash !== state.shape_confirmation_hash
     ) {
       return {
-        ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
+        ...(await nextResult(projectRoot, name, run, artifactRootRef, application)),
         exitCode: 73,
         error: {
           code: 'conflict',
@@ -742,12 +751,11 @@ export async function advanceNativeSdkChange(
       (wait) => wait.status === 'pending' && wait.stepId.startsWith('native.extension.revise.'),
     )
   )
-    return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+    return nextResult(projectRoot, name, run, artifactRootRef, application);
   const diagnostics = await inspectNativeSdkRunDiagnostics(projectRoot, run);
-  if (!diagnostics.healthy)
-    return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+  if (!diagnostics.healthy) return nextResult(projectRoot, name, run, artifactRootRef, application);
   if (run.ready.length === 0 && nativeSdkNextAction(run, state)?.type !== 'call_tool')
-    return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+    return nextResult(projectRoot, name, run, artifactRootRef, application);
   // 同一次请求共享应用加载；每个 Action 仍单独领取、校验并持久化。
   const owned = await loadOwnedNativeSdkRuntime(projectRoot, name);
   const initialPhase = state.phase;
@@ -755,7 +763,7 @@ export async function advanceNativeSdkChange(
   for (let steps = 0; steps < automaticSteps; steps++) {
     if (['failed', 'cancelled', 'completed'].includes(run.status)) break;
     if (steps > 0 && state.children_contract_hash)
-      return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+      return nextResult(projectRoot, name, run, artifactRootRef, application);
     // 旧协议保留验收到归档的交接；已进入 Archive 的续行仍一次完成内部动作。
     if (
       steps > 0 &&
@@ -763,24 +771,24 @@ export async function advanceNativeSdkChange(
       initialPhase === 'verify' &&
       state.phase === 'archive'
     )
-      return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+      return nextResult(projectRoot, name, run, artifactRootRef, application);
     if (
       steps > 0 &&
       !state.archived &&
       state.workspace.change_branch &&
       inspectGitWorktree(projectRoot).currentBranch !== state.workspace.change_branch
     )
-      return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+      return nextResult(projectRoot, name, run, artifactRootRef, application);
     if (run.ready.length > 0) {
       run = await owned.runtime.next({ runId: run.runId });
       state = parseNativePortableState(run.state);
     }
     const pending = nativeSdkNextAction(run, state);
     if (!pending) {
-      return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+      return nextResult(projectRoot, name, run, artifactRootRef, application);
     }
     if (pending.type !== 'call_tool')
-      return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+      return nextResult(projectRoot, name, run, artifactRootRef, application);
     if (pending.stepId !== 'shape.prepare' && pending.stepId !== 'shape.revalidate') {
       const { runtime, executors } = owned;
       const executor = executors.find((candidate) => candidate.supports(pending));
@@ -804,14 +812,36 @@ export async function advanceNativeSdkChange(
         completed.revision === run.revision ||
         completed.actions.find((action) => action.id === pending.id)?.status !== 'succeeded'
       )
-        return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
+        return nextResult(projectRoot, name, completed, artifactRootRef, application);
       run = completed;
       state = parseNativePortableState(run.state);
       continue;
     }
-    const paths = await nativeProjectPaths(projectRoot, artifactRootRef);
+    const paths = await nativeProjectPaths(projectRoot, artifactRootRef, { change: name });
     const proposal = await collectNativeSdkShapeProposal({ paths, state });
-    const { runtime } = owned;
+    // 纯 Shape 计算可重做：保留原 claim/outcome 校验，只在成功后发布一个 revision。
+    // 外部执行和固定应用仍使用原来的持久化两阶段协议。
+    const staging =
+      !application && run.workflow.version === '3'
+        ? createMemoryRuntimeStore<WorkflowRun>()
+        : undefined;
+    if (staging) await staging.restoreCheckpoint!(run.runId, null, run);
+    const definition = staging
+      ? nativeSdkApplicationForRun(
+          run,
+          defineNativeWorkflowApplication(
+            run.workflow.version === '3' ? '3' : run.workflow.version === '2' ? '2' : '1',
+          ),
+        )
+      : undefined;
+    const runtime = definition
+      ? createRuntime({
+          ...definition,
+          store: staging!,
+          workflows: [definition.workflow],
+          transitionHandlers: [definition.transitionHandler],
+        })
+      : owned.runtime;
     const requestId = randomUUID();
     const context = { requestId, projectRoot };
     const claimed = await runtime.claim({
@@ -839,8 +869,19 @@ export async function advanceNativeSdkChange(
       },
       context,
     });
-    run = completed;
+    if (staging) {
+      const next = { ...completed, revision: run.revision + 1 };
+      if (
+        !(await createNativeSdkStateStore(projectRoot).compareAndSwap(
+          run.runId,
+          run.revision,
+          next,
+        ))
+      )
+        throw new Error('Native Shape 输入或 Run 已变化，请重新读取当前提案');
+      run = next;
+    } else run = completed;
     state = parseNativePortableState(run.state);
   }
-  return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+  return nextResult(projectRoot, name, run, artifactRootRef, application);
 }

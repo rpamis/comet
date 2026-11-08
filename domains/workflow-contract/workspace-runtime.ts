@@ -15,7 +15,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { decodeJsonValueMaps } from '../../platform/fs/json-value-pool.js';
 
-import { hashFileRaceSafe, readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
+import {
+  hashFileRaceSafe,
+  readFileRaceSafe,
+  RaceSafeReadError,
+} from '../../platform/fs/race-safe-read.js';
 import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
 import {
   inspectProcessLiveness,
@@ -177,8 +181,16 @@ function journalPath(source: string): string {
 }
 
 async function readJson(file: string, maxBytes = MAX_METADATA_BYTES): Promise<unknown> {
-  const { bytes } = await readFileRaceSafe(file, maxBytes, { label: 'Runtime 迁移记录' });
-  return JSON.parse(bytes.toString('utf8')) as unknown;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const { bytes } = await readFileRaceSafe(file, maxBytes, { label: 'Runtime 迁移记录' });
+      return JSON.parse(bytes.toString('utf8')) as unknown;
+    } catch (error) {
+      if (!(error instanceof RaceSafeReadError) || error.reason !== 'changed' || attempt >= 2)
+        throw error;
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+  }
 }
 
 function parseFence(value: unknown): MigrationFence | null {
@@ -1387,11 +1399,32 @@ export function migrateWorkspaceRuntimeDirectory(
 /** 操作前统一调用：校验用户级目录，迁移旧树，并保留阻断旧版写入的兼容标记。 */
 export async function resolveWorkspaceRuntimeRoot(projectRoot: string): Promise<string> {
   const location = resolveWorkspaceRuntimeLocation(projectRoot);
+  const source = path.join(location.projectRoot, '.comet', 'runtime');
+  if (
+    !(await statOrNull(journalPath(source))) &&
+    !(await statOrNull(repairFailureFile(location.workspaceRoot))) &&
+    (await statOrNull(source))?.isFile()
+  ) {
+    await assertPath(location.projectRoot, source, 'file');
+    const fence = parseFence(await readJson(source));
+    if (
+      fence?.workspaceId === location.workspaceId &&
+      fence.target === location.runtimeRoot &&
+      fence.source === source &&
+      fence.kind === 'directory' &&
+      (await assertPath(
+        path.parse(location.workspaceRoot).root,
+        location.runtimeRoot,
+        'directory',
+      )) &&
+      !(await statOrNull(journalPath(source)))
+    )
+      return location.runtimeRoot;
+  }
   await ensureAbsoluteDirectory(location.workspaceRoot);
   await ensureProtectedProjectDirectory(location.projectRoot, '.comet', {
     label: 'Workspace Runtime 兼容标记',
   });
-  const source = path.join(location.projectRoot, '.comet', 'runtime');
   // 本机数据丢失时由 workflow 的便携 checkpoint 决定能否恢复；有效 fence 只
   // 阻断旧路径写入，不能让已存在的便携恢复入口永久失效。未完成迁移须先处理。
   const recalledFailure = await recallFailedMigrationRepair(source, location);

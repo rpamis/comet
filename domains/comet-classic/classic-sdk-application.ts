@@ -1,3 +1,8 @@
+import { readGitCommitPaths } from '../../platform/process/git.js';
+import {
+  readClassicSourceObservation,
+  hashClassicSourceObservation,
+} from './classic-protected-path.js';
 import {
   assertClassicEditReviewsComplete,
   classicFormalEditReviewScope,
@@ -461,7 +466,10 @@ const deliveryOutcomeValidator: RuntimeValidator = {
       }
       let previousCommit = approved.baseCommit;
       const changed = new Set<string>();
-      const commitPaths = new Map<string, string[]>();
+      const commitPaths = readGitCommitPaths(
+        root,
+        commits.map((row) => row.split(/\s+/u)[0]),
+      );
       for (const row of commits) {
         const [commit, ...parents] = row.split(/\s+/u);
         if (parents.length !== 1) {
@@ -477,14 +485,7 @@ const deliveryOutcomeValidator: RuntimeValidator = {
           };
         }
         // 逐提交检查，避免先夹带未批准文件、再撤销的提交躲过最终 tree 对比。
-        const paths = execFileSync(
-          'git',
-          ['diff-tree', '--no-commit-id', '--no-renames', '--name-only', '-r', '-z', commit],
-          { cwd: root, encoding: 'utf8' },
-        )
-          .split('\0')
-          .filter(Boolean);
-        commitPaths.set(commit, paths);
+        const paths = commitPaths.get(commit)!;
         for (const file of paths) changed.add(file);
         previousCommit = commit;
       }
@@ -762,14 +763,11 @@ export async function classicOpenEvidenceReceipt(
         options.presetRequirements ||
         options.taskCheckboxes === 'ignore')
     ) {
-      const taskFile = await readProtectedProjectFile(
-        projectRoot,
-        relative,
-        Number.MAX_SAFE_INTEGER,
-        {
+      const taskFile =
+        (await readClassicSourceObservation(projectRoot, relative)) ??
+        (await readProtectedProjectFile(projectRoot, relative, Number.MAX_SAFE_INTEGER, {
           label: 'Classic task requirements',
-        },
-      );
+        }));
       if (taskFile.stat.size === 0) throw new Error(`Classic Open artifact is empty: ${relative}`);
       let source = taskFile.bytes.toString('utf8');
       if (options.captureOriginals)
@@ -806,11 +804,15 @@ export async function classicOpenEvidenceReceipt(
             )
             .digest('hex');
     } else {
-      const hashed = options.captureOriginals
-        ? await readProtectedProjectFile(projectRoot, relative, Number.MAX_SAFE_INTEGER, {
-            label: 'Classic Open artifact',
-          })
-        : await hashProtectedProjectFile(projectRoot, relative, { label: 'Classic Open artifact' });
+      const hashed =
+        (await hashClassicSourceObservation(projectRoot, relative)) ??
+        (options.captureOriginals
+          ? await readProtectedProjectFile(projectRoot, relative, Number.MAX_SAFE_INTEGER, {
+              label: 'Classic Open artifact',
+            })
+          : await hashProtectedProjectFile(projectRoot, relative, {
+              label: 'Classic Open artifact',
+            }));
       if (hashed.stat.size === 0) throw new Error(`Classic Open artifact is empty: ${relative}`);
       digest =
         'digest' in hashed

@@ -9,7 +9,11 @@ import {
   validateClassicSdkDesignContext,
   writeClassicSdkDesignContext,
 } from './classic-handoff.js';
-import { readClassicProjectFile, writeClassicProjectText } from './classic-protected-path.js';
+import {
+  readClassicProjectFile,
+  writeClassicProjectText,
+  withClassicSourceObservation,
+} from './classic-protected-path.js';
 import {
   classicDesignEvidenceReceipt,
   classicOpenEvidenceReceipt,
@@ -126,17 +130,26 @@ export async function proposeClassicSdkDesign(options: {
       });
     }
   });
-  const sourceEvidence = await classicOpenEvidenceReceipt(projectRoot, input.changeDir);
-  const requirementsEvidence = await classicOpenEvidenceReceipt(projectRoot, input.changeDir, {
-    designRequirements: true,
-  });
-  const handoff = await writeClassicSdkDesignContext({
+  const { sourceEvidence, requirementsEvidence, handoff } = await withClassicSourceObservation(
     projectRoot,
-    run,
-    changeDir: path.join(projectRoot, input.changeDir),
-    change,
-    contextCompression: state.contextCompression,
-  });
+    async () => {
+      const sourceEvidence = await classicOpenEvidenceReceipt(projectRoot, input.changeDir, {
+        run,
+      });
+      const requirementsEvidence = await classicOpenEvidenceReceipt(projectRoot, input.changeDir, {
+        designRequirements: true,
+        run,
+      });
+      const handoff = await writeClassicSdkDesignContext({
+        projectRoot,
+        run,
+        changeDir: path.join(projectRoot, input.changeDir),
+        change,
+        contextCompression: state.contextCompression,
+      });
+      return { sourceEvidence, requirementsEvidence, handoff };
+    },
+  );
   const claimToken = randomUUID();
   const claimed = await runtime.claim({
     runId: run.runId,
@@ -213,12 +226,13 @@ export async function decideClassicSdkDesign(options: {
 
 /** Read-only Design preflight shared by the Guard preview and the Run commit. */
 export async function inspectClassicSdkDesign(options: {
+  inspected?: Awaited<ReturnType<typeof inspectClassicSdkRun>>;
   projectRoot: string;
   change: string;
   designDoc: string;
 }) {
   const { projectRoot, change, designDoc } = options;
-  const inspected = await inspectClassicSdkRun(projectRoot, change);
+  const inspected = options.inspected ?? (await inspectClassicSdkRun(projectRoot, change));
   const { run, state, profile } = inspected;
   if (profile !== 'full' || !['design', 'build'].includes(state.phase)) {
     throw new Error('Classic Design completion requires a full SDK change in Design');
@@ -281,6 +295,7 @@ export async function inspectClassicSdkDesign(options: {
 
 /** Guard 在一次预检后立即完成批准；后续 evidence validator 仍独立验证。 */
 export async function inspectAndCompleteClassicSdkDesign(options: {
+  inspected?: Awaited<ReturnType<typeof inspectClassicSdkRun>>;
   projectRoot: string;
   change: string;
   designDoc: string;

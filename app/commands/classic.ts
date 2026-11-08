@@ -108,7 +108,7 @@ function shouldRecordClassicResult(
 function isReadOnlyClassicStateQuery(command: string, args: readonly string[]): boolean {
   if (command !== 'state') return false;
   const subcommand = args[0];
-  return subcommand === 'current' || subcommand === 'next';
+  return subcommand === 'current' || subcommand === 'next' || subcommand === 'get';
 }
 
 async function recordClassicResult(

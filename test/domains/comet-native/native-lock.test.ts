@@ -22,6 +22,8 @@ import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.j
 import { withNativeTransitionLock } from '../../../domains/comet-native/native-transition-journal.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 import * as processIdentity from '../../../platform/process/process-identity.js';
+import * as nativeLocking from '../../../domains/comet-native/native-lock.js';
+import { RaceSafeReadError } from '../../../platform/fs/race-safe-read.js';
 
 describe('Native operation locks', () => {
   let projectRoot: string;
@@ -225,6 +227,108 @@ describe('Native operation locks', () => {
     );
     await releaseNativeLock(lock);
     expect(await readNativeLock(lock.file)).toBeNull();
+  });
+
+  it('publishes complete metadata before exposing an uncontended lock', async () => {
+    const originalOpen = fs.open.bind(fs);
+    let resume!: () => void;
+    let entered!: () => void;
+    const writing = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const ready = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    let held = false;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+      const handle = await originalOpen(...args);
+      if (args[1] !== 'wx' || held) return handle;
+      held = true;
+      return new Proxy(handle, {
+        get(target, property) {
+          if (property === 'writeFile')
+            return async (...input: Parameters<typeof handle.writeFile>) => {
+              entered();
+              await ready;
+              return handle.writeFile(...input);
+            };
+          const value = Reflect.get(target, property, target);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+    });
+    const pending = acquireNativeLock(paths, 'archive', 'atomic publication');
+    await writing;
+    try {
+      expect(await readNativeLock(path.join(paths.locksDir, 'archive.lock'))).toBeNull();
+    } finally {
+      resume();
+    }
+    const lock = await pending;
+    expect(await readNativeLock(lock.file)).toEqual(lock.owner);
+    await releaseNativeLock(lock);
+    expect(await fs.readdir(path.join(paths.locksDir, '.coordinator'))).toEqual([]);
+  });
+
+  it('keeps the coordinated writer usable when atomic hard links are unsupported', async () => {
+    vi.spyOn(fs, 'link').mockRejectedValue(
+      Object.assign(new Error('unsupported hard link'), { code: 'ENOTSUP' }),
+    );
+    const lock = await acquireNativeLock(paths, 'archive', 'compatible publication');
+    expect(await readNativeLock(lock.file)).toEqual(lock.owner);
+    await releaseNativeLock(lock);
+    expect(await readNativeLock(lock.file)).toBeNull();
+    expect(await fs.readdir(path.join(paths.locksDir, '.coordinator'))).toEqual([]);
+  });
+
+  it('coordinates release after a competing claim has already disappeared', async () => {
+    const lock = await acquireNativeLock(paths, 'archive', 'compatible release');
+    const claim = path.join(paths.locksDir, '.coordinator', 'legacy.claim');
+    await fs.writeFile(claim, JSON.stringify({ ...lock.owner, id: 'legacy-writer' }));
+    await fs.unlink(claim);
+    const rename = vi.spyOn(fs, 'rename');
+    await releaseNativeLock(lock);
+    expect(
+      rename.mock.calls.some(([, destination]) => String(destination).endsWith('.claim')),
+    ).toBe(true);
+    expect(await readNativeLock(lock.file)).toBeNull();
+  });
+
+  it.each(['acquire', 'diagnosis'] as const)(
+    'retries fresh changing %s observations within the original mutation wait',
+    async (boundary) => {
+      const changing = new Error('changing lock observation', {
+        cause: new RaceSafeReadError('changed', 'injected concurrent release'),
+      });
+      const acquire = vi.spyOn(nativeLocking, 'acquireNativeLock');
+      if (boundary === 'acquire') acquire.mockRejectedValueOnce(changing);
+      else {
+        acquire.mockRejectedValueOnce(
+          new Error('contended', { cause: Object.assign(new Error('exists'), { code: 'EEXIST' }) }),
+        );
+        vi.spyOn(nativeLocking, 'diagnoseNativeLock').mockRejectedValueOnce(changing);
+      }
+      const work = vi.fn();
+      await withNativeMutationLock(paths, 'retry changed observation', work);
+      expect(acquire).toHaveBeenCalledTimes(2);
+      expect(work).toHaveBeenCalledTimes(1);
+      expect(await readNativeLock(path.join(paths.locksDir, 'root-move.lock'))).toBeNull();
+    },
+  );
+
+  it('bounds continuously changing lock observations without entering the mutation', async () => {
+    const changing = new Error('continuously changing observation', {
+      cause: new RaceSafeReadError('changed', 'injected continuing release'),
+    });
+    const acquire = vi.spyOn(nativeLocking, 'acquireNativeLock').mockRejectedValue(changing);
+    let now = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => (now += 2_000));
+    const work = vi.fn();
+    await expect(
+      withNativeMutationLock(paths, 'bounded changed observation', work),
+    ).rejects.toThrow('continuously changing');
+    expect(acquire.mock.calls.length).toBeLessThanOrEqual(4);
+    expect(work).not.toHaveBeenCalled();
   });
 
   it('releases a lock when close finalizes its ctime', async () => {

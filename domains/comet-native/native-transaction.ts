@@ -1,8 +1,8 @@
-import { promises as fs } from 'fs';
+import { lstatSync, promises as fs } from 'fs';
 import path from 'path';
 import { TextDecoder } from 'util';
 
-import { atomicWriteJson, atomicWriteText } from './native-atomic-file.js';
+import { atomicWriteJson, atomicWriteText, syncNativeDirectory } from './native-atomic-file.js';
 import { isInsidePath, nativeStorageRoot, resolveContainedNativePath } from './native-paths.js';
 import {
   copyNativeProtectedFile,
@@ -583,7 +583,56 @@ function canonicalEventLogSource(events: readonly NativeTransactionEvent[]): str
 
 function transactionDir(paths: NativeProjectPaths, id: string): string {
   if (!/^[a-f0-9-]{8,}$/u.test(id)) throw new Error(`Invalid Native transaction id: ${id}`);
-  return path.join(paths.transactionsDir, id);
+  const active = path.join(paths.transactionsDir, id);
+  const history = path.join(paths.runtimeDir, 'transaction-history', id);
+  const exists = (file: string) => {
+    try {
+      lstatSync(file);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw error;
+    }
+  };
+  if (!exists(history)) return active;
+  if (exists(active))
+    throw new Error(`Conflicting active and historical Native transaction: ${id}`);
+  return history;
+}
+
+/** 历史日志保持原字节与逻辑引用；只在读写实际 payload 时解析其存放位置。 */
+export function resolveNativeTransactionReference(
+  paths: NativeProjectPaths,
+  ref: string,
+): string | null {
+  const match = /^runtime\/transactions\/([a-f0-9-]{8,})\/(.+)$/u.exec(ref);
+  if (!match) return null;
+  const directory = transactionDir(paths, match[1]);
+  const target = path.resolve(directory, ...match[2].split('/'));
+  if (!isInsidePath(directory, target)) throw new Error(`Unsafe Native transaction ref: ${ref}`);
+  return target;
+}
+
+/** 仅在 mutation 锁内移动已结束事务；崩溃前后至少保留一个完整目录。 */
+export async function retireNativeTransaction(
+  paths: NativeProjectPaths,
+  id: string,
+): Promise<void> {
+  const journal = await readNativeTransaction(paths, id);
+  if (journal.status !== 'committed' && journal.status !== 'rolled-back')
+    throw new Error(`Native transaction ${id} is unfinished`);
+  const source = transactionDir(paths, id);
+  const target = path.join(paths.runtimeDir, 'transaction-history', id);
+  if (source === target) return;
+  await moveNativeProtectedDirectory({
+    root: paths.runtimeDir,
+    source,
+    target,
+    label: 'Native completed transaction',
+  });
+  await syncNativeDirectory(path.dirname(target));
+  await syncNativeDirectory(paths.transactionsDir);
+  await syncNativeDirectory(paths.runtimeDir);
 }
 
 export function nativeTransactionPaths(
@@ -638,6 +687,8 @@ function resolveRefLexically(paths: NativeProjectPaths, ref: string): string {
 }
 
 async function resolveRef(paths: NativeProjectPaths, ref: string): Promise<string> {
+  const historical = resolveNativeTransactionReference(paths, ref);
+  if (historical) return resolveContainedNativePath(paths.runtimeDir, historical);
   const target = resolveRefLexically(paths, ref);
   return resolveContainedNativePath(nativeStorageRoot(paths, target), target);
 }
@@ -818,6 +869,8 @@ export async function setNativeTransactionStatus(
   await atomicWriteJson((await resolveNativeTransactionPaths(paths, journal.id)).journal, updated, {
     containedRoot: paths.runtimeDir,
   });
+  if (status === 'committed' || status === 'rolled-back')
+    await retireNativeTransaction(paths, journal.id);
   return updated;
 }
 

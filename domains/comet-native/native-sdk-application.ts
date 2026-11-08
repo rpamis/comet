@@ -208,7 +208,9 @@ export async function assertNativeSdkStartAvailable(options: {
   name: string;
   artifactRootRef: string;
 }): Promise<void> {
-  const paths = await nativeProjectPaths(options.projectRoot, options.artifactRootRef);
+  const paths = await nativeProjectPaths(options.projectRoot, options.artifactRootRef, {
+    change: options.name,
+  });
   const state = await inspectProtectedProjectPath(
     options.projectRoot,
     path.relative(options.projectRoot, nativePortableStateFile(paths, options.name)),
@@ -224,7 +226,9 @@ export async function registerNativeSdkStartOwner(options: {
   name: string;
   artifactRootRef: string;
 }): Promise<void> {
-  const paths = await nativeProjectPaths(options.projectRoot, options.artifactRootRef);
+  const paths = await nativeProjectPaths(options.projectRoot, options.artifactRootRef, {
+    change: options.name,
+  });
   await withNativeMutationLock(paths, `register SDK change ${options.name}`, async () => {
     await assertNativeSdkStartAvailable(options);
     await registerSdkChangeOwner(options.projectRoot, {
@@ -828,7 +832,9 @@ const shapeValidator: RuntimeValidator = {
       if (!config || config.native.artifact_root !== input.artifactRootRef) {
         return { accepted: false, reason: 'Native artifact root changed after Run creation' };
       }
-      const paths = await nativeProjectPaths(context.projectRoot, input.artifactRootRef);
+      const paths = await nativeProjectPaths(context.projectRoot, input.artifactRootRef, {
+        change: run.runId,
+      });
       const current = await collectNativeSdkShapeProposal({ paths, state });
       if (
         hashRuntimeValue(current as unknown as RuntimeValue) !== hashRuntimeValue(outcome.output)
@@ -876,7 +882,9 @@ const builderValidator: RuntimeValidator = {
       if (!config || config.native.artifact_root !== input.artifactRootRef) {
         return { accepted: false, reason: 'Native artifact root changed after Run creation' };
       }
-      const paths = await nativeProjectPaths(context.projectRoot, input.artifactRootRef);
+      const paths = await nativeProjectPaths(context.projectRoot, input.artifactRootRef, {
+        change: run.runId,
+      });
       const drift = await inspectNativePortableAcceptanceDrift({ paths, state });
       if (drift.drifted) {
         return { accepted: false, reason: drift.reason ?? 'Native acceptance changed' };
@@ -1026,7 +1034,9 @@ const supervisorParentBuilderValidator: RuntimeValidator = {
       ) {
         throw new Error('Native artifact root changed after Run creation');
       }
-      const paths = await nativeProjectPaths(context.projectRoot, config.native.artifact_root);
+      const paths = await nativeProjectPaths(context.projectRoot, config.native.artifact_root, {
+        change: run.runId,
+      });
       const drift = await inspectNativePortableAcceptanceDrift({ paths, state });
       if (drift.drifted) throw new Error(drift.reason ?? 'Native acceptance changed');
       builderCandidateState(run, action, outcome);
@@ -1065,7 +1075,9 @@ const verifierValidator: RuntimeValidator = {
           reason: 'Native project configuration changed after Run creation',
         };
       }
-      const paths = await nativeProjectPaths(context.projectRoot, input.artifactRootRef);
+      const paths = await nativeProjectPaths(context.projectRoot, input.artifactRootRef, {
+        change: run.runId,
+      });
       const state = parseNativePortableState(run.state);
       const drift = await inspectNativePortableAcceptanceDrift({ paths, state });
       if (drift.drifted) {

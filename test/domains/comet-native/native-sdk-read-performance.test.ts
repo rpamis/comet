@@ -21,6 +21,7 @@ import {
   createNativeSdkRuntime,
   loadOwnedNativeSdkRuntime,
   inspectNativeSdkRun,
+  registerNativeSdkRequestInput,
 } from '../../../domains/comet-native/native-runtime-ownership.js';
 import { advanceNativeSdkChange } from '../../../domains/comet-native/native-sdk-next.js';
 import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
@@ -54,7 +55,11 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
-async function preparedChange(name = 'read-budget', existingRoot?: string) {
+async function preparedChange(
+  name = 'read-budget',
+  existingRoot?: string,
+  version: '1' | '3' = '1',
+) {
   const root = existingRoot ?? (await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-sdk-read-')));
   if (!existingRoot) roots.push(root);
   await fs.mkdir(path.join(root, '.git'), { recursive: true });
@@ -74,7 +79,7 @@ async function preparedChange(name = 'read-budget', existingRoot?: string) {
   const runtime = createNativeSdkRuntime(root);
   await runtime.start({
     runId: name,
-    workflow: { id: 'comet-native', version: '1' },
+    workflow: { id: 'comet-native', version },
     input: { name, artifactRootRef: 'docs' },
     initialState: createNativePortableState({
       name,
@@ -108,6 +113,73 @@ async function preparedChange(name = 'read-budget', existingRoot?: string) {
 }
 
 describe('Native SDK read work budgets', () => {
+  it('commits a pure v3 Shape once and keeps its user approval reachable', async () => {
+    const { root, name } = await preparedChange('single-shape', undefined, '3');
+    const { run } = await inspectNativeSdkRun(root, name);
+    expect(run.revision).toBe(2);
+    expect(run.actions[0]).toMatchObject({ stepId: 'shape.prepare', status: 'succeeded' });
+    expect(run.waits.find((wait) => wait.status === 'pending')?.stepId).toBe('shape.confirm');
+  });
+
+  it('validates outside request bytes without a writable resolver or registration lock', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-external-request-'));
+    roots.push(root);
+    const projectRoot = path.join(root, 'project');
+    await fs.mkdir(projectRoot);
+    const file = path.join(root, 'result.json');
+    await fs.writeFile(file, '{"status":"succeeded"}');
+    const locks = vi.spyOn(fileLocks, 'withRecoverableFileLock');
+    const validation = vi.fn((source: string) => {
+      expect(JSON.parse(source)).toEqual({ status: 'succeeded' });
+    });
+    await registerNativeSdkRequestInput({
+      projectRoot,
+      file,
+      artifactRootRef: 'docs',
+      runId: 'external',
+      validateContent: validation,
+    });
+    expect(validation).toHaveBeenCalledTimes(1);
+    expect(locks).not.toHaveBeenCalled();
+    expect(await fs.readdir(projectRoot)).toEqual([]);
+    await fs.writeFile(file, 'invalid');
+    await expect(
+      registerNativeSdkRequestInput({
+        projectRoot,
+        file,
+        artifactRootRef: 'docs',
+        runId: 'external',
+        validateContent: validation,
+      }),
+    ).rejects.toThrow();
+    expect(await fs.readdir(projectRoot)).toEqual([]);
+  });
+
+  it('uses the committed v3 Run without reading the authority again at a non-boundary', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-nonboundary-'));
+    roots.push(root);
+    await fs.mkdir(path.join(root, '.git'));
+    expect(
+      (await runNativeCli(['new', 'nonboundary', '--project-root', root, '--json'])).exitCode,
+    ).toBe(0);
+    const runtime = createNativeSdkRuntime(root);
+    const before = await runtime.inspect('nonboundary');
+    const action = before.actions[0];
+    const claimed = await runtime.claim({
+      runId: before.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'shape-observer',
+      claimToken: 'shape-token',
+    });
+    const read = vi.fn(async () => claimed);
+    const compareAndSwap = vi.fn(async () => true);
+    const store = createNativeSdkStateStore(root, { store: { read, compareAndSwap } });
+    expect(await store.compareAndSwap(claimed.runId, claimed.revision - 1, claimed)).toBe(true);
+    expect(read).not.toHaveBeenCalled();
+    expect(compareAndSwap).toHaveBeenCalledTimes(1);
+  });
   it('reads a current projection without a writer lock and locks only its repair', async () => {
     const { root, name, markerFile } = await preparedChange();
     const locks = vi.spyOn(fileLocks, 'withRecoverableFileLock');
@@ -143,14 +215,14 @@ describe('Native SDK read work budgets', () => {
     await expect(store.read(name)).rejects.toThrow(/projection needs recovery/);
   });
 
-  it('shares only normalized definitions within one read scope and keeps Run state independent', async () => {
+  it('reuses immutable builtin definitions across read scopes and keeps Run state independent', async () => {
     const { root, name, stateFile } = await preparedChange();
     const peer = await preparedChange('independent-peer', root);
     const definitions = vi.spyOn(sdkApplication, 'defineNativeWorkflowApplication');
     await runWithHookReadCache(async () => {
       const first = await loadOwnedNativeSdkRuntime(root, name, { readOnly: true });
       const second = await loadOwnedNativeSdkRuntime(root, peer.name, { readOnly: true });
-      expect(definitions).toHaveBeenCalledTimes(1);
+      expect(definitions).not.toHaveBeenCalled();
       expect(first.executors).not.toBe(second.executors);
       expect(first.executors[0]).not.toBe(second.executors[0]);
       const run = await first.runtime.inspect(name);
@@ -160,7 +232,7 @@ describe('Native SDK read work budgets', () => {
       expect(run.state).not.toBe(other.state);
     });
     await runWithHookReadCache(() => inspectNativeSdkRun(root, name, { readOnly: true }));
-    expect(definitions).toHaveBeenCalledTimes(2);
+    expect(definitions).not.toHaveBeenCalled();
     await runWithHookReadCache(async () => {
       await inspectNativeSdkRun(root, name, { readOnly: true });
       const source = await fs.readFile(stateFile, 'utf8');
@@ -247,10 +319,10 @@ describe('Native SDK read work budgets', () => {
     const { root, name } = await preparedChange();
     const definitions = vi.spyOn(sdkApplication, 'defineNativeWorkflowApplication');
     const status = await inspectNativeSdkStatus({ projectRoot: root, name });
-    expect(definitions).toHaveBeenCalledTimes(1);
+    expect(definitions).not.toHaveBeenCalled();
     definitions.mockClear();
     const next = await advanceNativeSdkChange(root, name);
-    expect(definitions).toHaveBeenCalledTimes(1);
+    expect(definitions).not.toHaveBeenCalled();
     const show = await nativeShowCommand([name], root);
     expect((next.data as typeof status).continuation).toEqual(status.continuation);
     expect((show.data as typeof status).continuation).toEqual(status.continuation);

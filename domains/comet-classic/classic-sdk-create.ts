@@ -51,14 +51,18 @@ export async function createClassicSdkRun(options: {
     async compareAndSwap(runId, expectedRevision, next) {
       if (expectedRevision === null) {
         if (runId !== options.name) throw new Error('Classic SDK Run ID and change name differ');
-        await registerSdkChangeOwner(options.projectRoot, {
-          schema: COMET_CHANGE_OWNER_SCHEMA,
-          workflow: 'classic',
-          change: options.name,
-          format: 'sdk',
-          application: `classic-${options.profile}`,
-          runId,
-        });
+        await registerSdkChangeOwner(
+          options.projectRoot,
+          {
+            schema: COMET_CHANGE_OWNER_SCHEMA,
+            workflow: 'classic',
+            change: options.name,
+            format: 'sdk',
+            application: `classic-${options.profile}`,
+            runId,
+          },
+          { canonical: true },
+        );
       }
       return persistentStore.compareAndSwap(runId, expectedRevision, next);
     },

@@ -329,6 +329,19 @@ async function withCoordinator<T>(
   }
 }
 
+async function coordinatorIsIdle(file: string): Promise<boolean> {
+  const directory = `${file}.contenders`;
+  try {
+    const stat = await fs.lstat(directory);
+    if (!stat.isDirectory() || stat.isSymbolicLink())
+      throw new Error(`File lock coordinator must be a directory: ${directory}`);
+    return (await fs.readdir(directory)).length === 0;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true;
+    throw error;
+  }
+}
+
 /**
  * Changed metadata is retained for investigation. The coordinator serializes metadata
  * updates, but removal is bound to the exact snapshot re-read here rather than to that
@@ -418,7 +431,23 @@ export async function withRecoverableFileLock<T>(
   const deadline = performance.now() + timeoutMs;
   const owner = await newOwner();
   let held: LockSnapshot | null = null;
+  // 无竞争时只尝试原有的 no-clobber 发布。旧 writer 同样使用 link，
+  // 因此至多一方成功；已有协调记录仍完整遵守原等待与修复协议。
+  let uncoordinated = false;
+  try {
+    if (await coordinatorIsIdle(file)) {
+      throwIfOperationAborted();
+      await publish(file, owner);
+      held = await snapshot(file);
+      if (held?.owner?.nonce !== owner.nonce)
+        throw new Error(`File lock ownership changed while publishing: ${file}`);
+      uncoordinated = true;
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
   for (;;) {
+    if (uncoordinated) break;
     const acquired = await withCoordinator(file, owner, deadline, retryMs, async () => {
       throwIfOperationAborted();
       const current = await snapshot(file);
@@ -459,9 +488,11 @@ export async function withRecoverableFileLock<T>(
     };
     let outcome: 'absent' | 'failed' | 'foreign' | 'removed' | 'changed' = 'absent';
     try {
-      await withCoordinator(file, owner, performance.now() + timeoutMs, retryMs, async () => {
-        outcome = await release();
-      });
+      if (await coordinatorIsIdle(file)) outcome = await release();
+      else
+        await withCoordinator(file, owner, performance.now() + timeoutMs, retryMs, async () => {
+          outcome = await release();
+        });
     } catch (error) {
       // `removeBound` normally runs inside the coordinator. Releasing our own lock
       // without it is still safer than leaking the lock: it re-reads the file and

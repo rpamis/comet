@@ -204,6 +204,29 @@ describe('Git worktree inspection', () => {
     expect(snapshotCometRuntimeMetrics().gitCommands).toBeGreaterThan(before.gitCommands);
   });
 
+  it('keeps named local inspection independent of peer stamps while full lists remain fresh', async () => {
+    const cache = createGitWorktreeReadCache();
+    const query = () =>
+      cache.run(primary, async () => inspectGitWorktree(primary), primary, { localOnly: true });
+    const original = await query();
+    const before = snapshotCometRuntimeMetrics().gitCommands;
+    const reads = vi.spyOn(fs, 'readdir');
+    expect(await query()).toEqual(original);
+    expect(snapshotCometRuntimeMetrics().gitCommands).toBe(before);
+    expect(reads.mock.calls.some(([file]) => String(file).includes('worktrees'))).toBe(false);
+    const gitDir = (await fs.readFile(path.join(secondary, '.git'), 'utf8'))
+      .trim()
+      .slice('gitdir: '.length);
+    await fs.writeFile(path.join(gitDir, 'HEAD'), 'ref: refs/heads/feature/next-next\n');
+    expect(await query()).toEqual(original);
+    const all = await cache.run(primary, async () => listGitWorktrees(primary), primary, {
+      localOnly: true,
+    });
+    expect(all.find((entry) => samePath(entry.root, secondary))?.branch).toBe('feature/next-next');
+    await fs.writeFile(path.join(primary, '.git', 'HEAD'), 'ref: refs/heads/feature/local-next\n');
+    expect((await query()).currentBranch).toBe('feature/local-next');
+  });
+
   it('waits for both asynchronous Git probes before falling back from a non-repository', async () => {
     vi.stubEnv('GIT_CONFIG_GLOBAL', path.join(primary, 'empty-config'));
     let release!: () => void;

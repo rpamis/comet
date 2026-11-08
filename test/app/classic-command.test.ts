@@ -350,6 +350,7 @@ describe('Classic command facade', () => {
   it.each([
     ['current', '--json'],
     ['next', 'change-name', '--json'],
+    ['get', 'change-name', 'phase', 'status', '--json'],
   ])('does not record the default read-only state query: %s', async (...args) => {
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     runClassicCli.mockResolvedValue({ exitCode: 0, stdout: '{}' });
