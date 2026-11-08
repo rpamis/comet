@@ -21,7 +21,10 @@ export async function materializeNativeDeltaTargetsLocked(options: {
 }): Promise<void> {
   const { paths, state } = options;
   if (state.phase !== 'shape' || state.status !== 'active' || state.shape_confirmation_hash) return;
-  const specs = options.specChanges.filter((spec) => spec.delta_source && spec.source);
+  // 新能力的完整目标由 Agent 编写，沿用空基线 Delta 校验；只生成已有能力的衍生目标。
+  const specs = options.specChanges.filter(
+    (spec) => spec.operation === 'modify' && spec.delta_source && spec.source,
+  );
   if (!specs.length) return;
   const changeRoot = path.join(paths.changesDir, state.name);
   const receiptRef = `shape-materialization/${state.name}.json`;

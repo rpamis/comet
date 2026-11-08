@@ -651,6 +651,100 @@ async function fixture(
   };
 }
 
+it.each(
+  (['tweak', 'hotfix'] as const).flatMap((profile) =>
+    (['source', 'generated'] as const).map((entry) => ({ profile, entry })),
+  ),
+)(
+  'runs first managed checks after $profile upgrades to full through $entry',
+  async ({ profile, entry }) => {
+    const f = await fixture(profile, false, false, entry);
+    const original = (await f.inspect()).run;
+    const buildArgv = f.command('upgraded-build');
+    const verifyArgv = f.command('upgraded-verify');
+    await f.put(
+      '.comet/check-policy.json',
+      JSON.stringify({
+        version: 2,
+        commands: [buildArgv, verifyArgv].map((argv) => ({
+          argv,
+          cwd: '.',
+          files: ['source.js'],
+        })),
+      }),
+    );
+    const proposal = await f.cli(
+      'state',
+      'propose-escalation',
+      'example',
+      '--reason',
+      'A full design is needed.',
+    );
+    expect(
+      (await f.invoke('check', 'run', 'example', 'build', '--local', '--', ...buildArgv)).exitCode,
+    ).not.toBe(0);
+    await expect(fs.readFile(f.checkCount, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    // 隔离夹具模拟用户批准；首次检查不能代替升级、设计和实施配置的批准。
+    await f.cli(
+      'state',
+      'decide-escalation',
+      'example',
+      '--proposal-hash',
+      proposal.wait.proposalHash,
+      '--choice',
+      'upgrade',
+    );
+    expect((await f.inspect()).state.phase).toBe('design');
+    await f.configure('full');
+    const approved = (await f.inspect()).run.waits.filter((wait) => wait.decision);
+    await f.cli('check', 'run', 'example', 'build', '--local', '--', ...buildArgv);
+    const prepared = (await f.inspect()).run;
+    expect(prepared.workflow).toMatchObject({
+      id: original.workflow.id,
+      version: original.workflow.version,
+    });
+    expect(prepared.state).toMatchObject({ phase: 'build', workflow: 'full' });
+    expect(prepared.actions.at(-1)).toMatchObject({
+      stepId: 'full.build.execute',
+      status: 'pending',
+    });
+    await f.cli('guard', 'example', 'build', '--apply', '--local', '--', ...buildArgv);
+    expect((await f.inspect()).state.phase).toBe('verify');
+    await f.cli(
+      'check',
+      'run',
+      'example',
+      'verify',
+      '--report',
+      f.reportRef,
+      '--local',
+      '--',
+      ...verifyArgv,
+    );
+    expect((await f.inspect()).state).toMatchObject({ phase: 'verify', verifyResult: 'pending' });
+    await f.put(f.reportRef, '# Verification\nThe upgraded full workflow passed acceptance.\n');
+    await f.cli(
+      'guard',
+      'example',
+      'verify',
+      '--report',
+      f.reportRef,
+      '--apply',
+      '--local',
+      '--',
+      ...verifyArgv,
+    );
+    const finished = (await f.inspect()).run;
+    expect(finished.runId).toBe(original.runId);
+    expect(finished.workflow.id).toBe(original.workflow.id);
+    expect(finished.state).toMatchObject({ phase: 'archive', verifyResult: 'pass' });
+    for (const wait of approved)
+      expect(finished.waits.find(({ id }) => id === wait.id)).toEqual(wait);
+    expect(await fs.readFile(f.checkCount, 'utf8')).toBe('upgraded-build\nupgraded-verify\n');
+  },
+  fullLifecycleTimeout,
+);
+
 it('reuses the first generated Verify check after creating its declared report without a policy override', async () => {
   const f = await fixture('tweak', true, false, 'generated');
   await fs.unlink(path.join(f.projectRoot, f.reportRef));

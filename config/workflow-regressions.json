@@ -2,6 +2,50 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "classic-upgraded-preset-first-managed-check",
+      "sources": ["report:2026-11-08-workflow-performance-review"],
+      "behavior": "A hotfix or tweak upgraded to full can run its first managed Build and Verify checks in the original Run.",
+      "coverageLevel": "public-cli",
+      "reproduction": "On 64180708, upgrade hotfix or tweak through its approved escalation, finish full Design and Build configuration, then run check run example build --local. Source CLI and generated Runtime return exit 70 / INVALID_RUN before executing the command.",
+      "expected": "Preserve the original workflow identity and approval records, run each preliminary check once, keep the current phase until formal completion, and reuse matching receipts through Verify acceptance.",
+      "forbidden": "Selecting a full workflow definition for the original preset identity, executing before escalation approval, granting acceptance from a preliminary check, or replaying the same valid check during formal completion.",
+      "rootCause": "The first-check preparation used the effective full profile instead of the original Run workflow identity when loading its fixed definition.",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "runs first managed checks after",
+          "requiredNames": [
+            "runs first managed checks after 'tweak' upgrades to full through 'source'",
+            "runs first managed checks after 'tweak' upgrades to full through 'generated'",
+            "runs first managed checks after 'hotfix' upgrades to full through 'source'",
+            "runs first managed checks after 'hotfix' upgrades to full through 'generated'"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-create-delta-shape-compatibility",
+      "sources": ["report:2026-11-08-workflow-performance-review"],
+      "behavior": "A new capability with a complete target and a legal empty-baseline Delta can prepare Shape without an existing canonical Spec.",
+      "coverageLevel": "public-cli",
+      "reproduction": "The b0a2fc5d next bundle accepts the complete target produced from an empty-baseline add Delta and returns Shape confirmation. On 64180708 the same input exits 65 / ENOENT while reading the nonexistent canonical Spec. Both source CLI and generated commands fail before the fix.",
+      "expected": "Use the existing authored-target validation for new capabilities, retain the target bytes, remain in Shape awaiting explicit approval on repeated next calls, and reject targets that disagree with their Delta.",
+      "forbidden": "Requiring a canonical Spec for a new capability, creating one before Archive, automatically approving Shape, or overwriting independently edited targets to hide a Delta mismatch.",
+      "rootCause": "Automatic target materialization applied the existing-capability baseline reader to create operations, although only associated existing capabilities require that generation path.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-materialization.test.ts",
+          "namePattern": "empty-baseline Delta",
+          "requiredNames": [
+            "prepares a new capability with an empty-baseline Delta through source without granting approval",
+            "prepares a new capability with an empty-baseline Delta through generated without granting approval",
+            "preserves an independently edited new target when its empty-baseline Delta disagrees through source",
+            "preserves an independently edited new target when its empty-baseline Delta disagrees through generated"
+          ]
+        }
+      ]
+    },
+    {
       "id": "classic-first-managed-check",
       "behavior": "Run the first complete Build or Verify check inside the original Classic Run and reuse its matching receipt during formal completion.",
       "coverageLevel": "public-cli",

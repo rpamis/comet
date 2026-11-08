@@ -34,6 +34,7 @@ import {
   classicSdkApplicationForRun,
 } from './classic-sdk-revision-application.js';
 import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
+import type { ClassicProfile } from './classic-state.js';
 import {
   executeCommandCheck,
   latestCommandCheck,
@@ -67,7 +68,7 @@ async function prepareSdkCheck(
     reportRef?: string;
   },
 ) {
-  const { run, state, profile } = inspected;
+  const { run, state } = inspected;
   if (
     run.evidenceWaits?.some(
       (wait) =>
@@ -98,7 +99,8 @@ async function prepareSdkCheck(
       expected: 'file',
     });
   }
-  const original = classicSdkApplicationForRun(profile, run);
+  const originalProfile = run.workflow.id.slice('comet-classic-'.length) as ClassicProfile;
+  const original = classicSdkApplicationForRun(originalProfile, run);
   const application = Object.hasOwn(original.workflow.commands ?? {}, 'prepare-build-check')
     ? original
     : withClassicCheckPreparation(original, state.workflow);
