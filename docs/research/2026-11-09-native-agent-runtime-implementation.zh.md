@@ -33,6 +33,18 @@ Windows、相同 Node 启动方式、临时 Git checkout、独立用户 Runtime 
 
 ## 验证
 
-已运行 Native、Classic、Entry Runtime 构建；TypeScript 编译检查、生成新鲜度及历史登记保留校验通过。其余定向测试与独立 Review 的最终结果在交付前补齐。
+独立 Standards Review 确认历史迁移符合已授权的内容指纹退役，并发现 v4 失败回报重复计算；该路径已改为仅在提交事务内计算。Spec Review 发现重新验收将历史最终结果误当补充检查序列，以及未知 Git 合并回报缺少额外时间字段导致子归档阻塞；均补回归并修正。v4 子归档日期读取已绑定 Git 提交的真实时间，不要求核实原合并时补造执行时间。
+
+最终确定性验证：
+
+- Native、Classic、Entry Runtime 构建、TypeScript 编译检查、生成新鲜度、历史登记保留校验均通过。
+- 最终主流程/观测/登记组 44 项通过；含源码与生成 bundle 的普通完整流程、失败/未运行拒绝、用户接受、独立会话、单次读取、检查点 unknown 恢复。
+- 三套 Runtime 发布资产与 SDK Run 观测组 31 项通过；覆盖自包含命令、生成新鲜度、安装后 Router 与旧流程归属。
+- 中英文 Native Skill、SDK 路由及流程契约组 104 项通过。文案断言同步到平台工具检查和一次提交结果，保留原预算、iteration、attempt 断言。
+- Supervisor 正常/合并后断线两种两子任务集成、第二次验收直至归档，共 3 项通过；共享 createNativeSdkRuntime 入口的重新验收又单独通过。
+- 前轮固定应用兼容、磁盘 Skill、失败候选、冷恢复、转移及旧 Run 定向组有 75 项通过，5 项平台条件跳过；发现的旧日志内容失效断言已按上文迁移，修正后单项通过。没有把跳过计为通过，也没有因此运行全量。
+- lint 为 0 错误、9 条既有 warning；架构检查通过。独立 Standards 与 Spec Review 均已复核修正，未发现剩余实质问题。
+
+Skill 中文已获用户确认后同步英文。版本保持 0.5.3，origin/master 和最近发布 tag 均为 0.5.2，用户可见行为追加在同一未发布条目。
 
 没有启动 Eval、全量测试、发布或真实平台 Hook 验收。普通平台工具检查的协议已作确定性源码 CLI 与生成 bundle 验证，但模型遵循仍需单独的模型证据。完整 Portable Run 恢复保留原 Action、会话与 unknown 状态，不能把未知实现视为完成。

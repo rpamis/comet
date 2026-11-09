@@ -246,7 +246,6 @@ export const nativeSdkSupervisorIntegrateExecutor: RuntimeExecutor = {
         targetCommit: current.plan.targetCommit,
         targetMergeCommit,
         integrationCommit,
-        ...(run.workflow.version === '4' ? { completedAt: new Date().toISOString() } : {}),
         integrationBranch: current.integrationBranch,
         integrationWorktree: current.integrationWorktree,
       },

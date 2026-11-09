@@ -4025,7 +4025,7 @@
           },
           "tests": {
             "file": "docs/research/2026-11-09-native-agent-runtime-retired-tests.json",
-            "sha256": "cf84b0ddff8392c3073e611a6b4266905047a7cb5b0159f16e0e5c63cac552e2"
+            "sha256": "e637ed10792e323bce5698f8c6a6bb52cfe69a16a56e9147fc004055a27f67ff"
           },
           "mapping": {
             "file": "docs/research/2026-11-09-native-agent-runtime-retired-mapping.json",
@@ -22038,6 +22038,20 @@
             "waits for user acceptance and rejects another session reporting the original task",
             "retains an explicit independent review requirement"
           ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "namePattern": "^dispatches the Verifier directly when the user requests another review$",
+          "requiredNames": [
+            "dispatches the Verifier directly when the user requests another review"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "namePattern": "^preserves the original agent task as unknown when recovering a v4 checkpoint$",
+          "requiredNames": [
+            "preserves the original agent task as unknown when recovering a v4 checkpoint"
+          ]
         }
       ]
     },
@@ -22070,9 +22084,10 @@
       "tests": [
         {
           "file": "test/domains/comet-native/native-sdk-application.test.ts",
-          "namePattern": "^(?:integrates two agent-managed children and retains the complete parent acceptance without Runtime checks)$",
+          "namePattern": "^integrates two agent-managed children and retains the complete parent acceptance without Runtime checks \\(interrupted merge: (?:false|true)\\)$",
           "requiredNames": [
-            "integrates two agent-managed children and retains the complete parent acceptance without Runtime checks"
+            "integrates two agent-managed children and retains the complete parent acceptance without Runtime checks (interrupted merge: false)",
+            "integrates two agent-managed children and retains the complete parent acceptance without Runtime checks (interrupted merge: true)"
           ]
         }
       ]

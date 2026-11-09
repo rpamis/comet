@@ -700,6 +700,7 @@ function verifierResultState(
         (!recoveryWait || run.actionContexts[entry.id].sequence > recoveryWait.sequence),
     );
   if (
+    run.workflow.version !== '4' &&
     previousVerifierActions.some(
       (entry) =>
         entry.status !== 'succeeded' ||
@@ -1075,7 +1076,7 @@ const verifierValidator: RuntimeValidator = {
     }
     try {
       if (outcome.status === 'failed') {
-        verifierExecutionFailureState(run, action, outcome);
+        if (run.workflow.version !== '4') verifierExecutionFailureState(run, action, outcome);
         return { accepted: true };
       }
       const config = await readProjectConfig(context.projectRoot);
@@ -2762,10 +2763,10 @@ export function defineNativeWorkflowApplication(
               },
             });
             return {
-              state: (version === '4'
+              state: (run.workflow.version === '4'
                 ? reserveNativeVerifierAttempt(ready)
                 : ready) as unknown as RuntimeValue,
-              next: [version === '4' ? 'verify.verifier' : 'verify.checks'],
+              next: [run.workflow.version === '4' ? 'verify.verifier' : 'verify.checks'],
             };
           }
           if (event.choice === 'approved') {

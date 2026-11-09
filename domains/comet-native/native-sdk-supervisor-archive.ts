@@ -154,10 +154,17 @@ async function childArchiveBinding(
     (agentChecks
       ? integrationChecksOutput?.integrationCommit
       : integrationChecksOutput?.candidateId) !== input.integrationCommit ||
-    typeof integrationChecksOutput?.completedAt !== 'string'
+    (!agentChecks && typeof integrationChecksOutput?.completedAt !== 'string')
   ) {
     throw new Error('Native Supervisor child archive lacks its passed integration checks');
   }
+  const integrationCompletedAt = agentChecks
+    ? runGitCommand(
+        (run.outputs['supervisor.prepare']?.value as { integrationWorktree: string })
+          .integrationWorktree,
+        ['show', '-s', '--format=%cI', input.integrationCommit],
+      ).trim()
+    : (integrationChecksOutput!.completedAt as string);
   const verifier = succeededChildAction(run, 'supervisor.child.verifier', input.child, (output) => {
     const evidence = output.evidence as { summary?: unknown } | null | undefined;
     return (
@@ -192,9 +199,7 @@ async function childArchiveBinding(
     throw new Error('Native Supervisor child archive lacks its completed Child checks');
   }
   const childChecksOutput = (
-    agentChecks
-      ? { checks: [], completedAt: integrationChecksOutput!.completedAt }
-      : childChecks!.output
+    agentChecks ? { checks: [], completedAt: integrationCompletedAt } : childChecks!.output
   ) as {
     checks?: Array<Record<string, unknown>>;
     completedAt?: unknown;
@@ -299,7 +304,7 @@ async function childArchiveBinding(
       ? { reportedChecks: parseNativeReportedChecks(verifierEvidence.checks ?? []) }
       : {}),
     childChecksCompletedAt: childChecksOutput.completedAt,
-    integrationChecksCompletedAt: integrationChecksOutput.completedAt,
+    integrationChecksCompletedAt: integrationCompletedAt,
     scopedAcceptance,
   };
 }

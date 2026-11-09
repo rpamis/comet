@@ -11179,6 +11179,7 @@ it('completes Archive on the returned third call after the user accepts the curr
 async function nativeSupervisorReviewFixture(
   version: '2' | '3' | '4',
   requireIndependentReview: boolean,
+  interruptIntegration = false,
 ) {
   const f = await fixture();
   await fs.writeFile(
@@ -11189,6 +11190,7 @@ async function nativeSupervisorReviewFixture(
   execFileSync('git', ['add', '-A'], { cwd: f.root });
   execFileSync('git', ['commit', '-m', 'Supervisor materials'], { cwd: f.root, stdio: 'ignore' });
   const application = nativeApplication(version);
+  let interruptedOutput: RuntimeValue | undefined;
   const runtime = createRuntime({
     store: createMemoryRuntimeStore<WorkflowRun>(),
     workflows: [application.workflow],
@@ -11196,7 +11198,25 @@ async function nativeSupervisorReviewFixture(
     validators: application.validators,
     stateValidators: application.stateValidators,
     commandValidators: application.commandValidators,
-    executors: application.executors,
+    executors: application.executors.map((executor) =>
+      executor.id === 'native-supervisor-integrate'
+        ? {
+            ...executor,
+            async execute(...args) {
+              const result = await executor.execute(...args);
+              if (
+                interruptIntegration &&
+                interruptedOutput === undefined &&
+                result.status === 'succeeded'
+              ) {
+                interruptedOutput = result.output;
+                throw new Error('Simulated platform disconnect after the actual Git merge.');
+              }
+              return result;
+            },
+          }
+        : executor,
+    ),
   });
   const initialState = createNativePortableState({
     name: 'sdk-shape',
@@ -11306,7 +11326,15 @@ async function nativeSupervisorReviewFixture(
       context: { requestId: 'child-checks', projectRoot: f.root },
     });
   }
-  return { ...f, runtime, run, childWorktree, candidateCommit, check };
+  return {
+    ...f,
+    runtime,
+    run,
+    childWorktree,
+    candidateCommit,
+    check,
+    interruptedOutput: () => interruptedOutput,
+  };
 }
 
 it('integrates an accepted Supervisor child without inventing another check command', async () => {
@@ -11424,104 +11452,141 @@ it.each([
   },
 );
 
-it('integrates two agent-managed children and retains the complete parent acceptance without Runtime checks', async () => {
-  const f = await nativeSupervisorReviewFixture('4', false);
-  let run = f.run;
-  for (const child of ['api', 'ui']) {
-    if (child === 'ui') {
-      expect(run.actions.at(-1)?.stepId).toBe('supervisor.child.prepare');
-      run = await f.runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'native-supervisor-child-prepare',
-        context: { requestId: 'prepare-ui', projectRoot: f.root },
-      });
-      const worktree = path.join(f.root, '.worktrees', 'sdk-shape-ui');
-      await fs.writeFile(path.join(worktree, 'ui.txt'), 'UI implemented\n');
-      execFileSync('git', ['add', 'ui.txt'], { cwd: worktree });
-      execFileSync('git', ['commit', '-m', 'UI candidate'], { cwd: worktree, stdio: 'ignore' });
-      const candidateCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
-        cwd: worktree,
-        encoding: 'utf8',
-      }).trim();
+it.each([false, true])(
+  'integrates two agent-managed children and retains the complete parent acceptance without Runtime checks (interrupted merge: %s)',
+  async (interrupted) => {
+    const f = await nativeSupervisorReviewFixture('4', false, interrupted);
+    let run = f.run;
+    for (const child of ['api', 'ui']) {
+      if (child === 'ui') {
+        expect(run.actions.at(-1)?.stepId).toBe('supervisor.child.prepare');
+        run = await f.runtime.execute({
+          runId: run.runId,
+          actionId: run.actions.at(-1)!.id,
+          executorId: 'native-supervisor-child-prepare',
+          context: { requestId: 'prepare-ui', projectRoot: f.root },
+        });
+        const worktree = path.join(f.root, '.worktrees', 'sdk-shape-ui');
+        await fs.writeFile(path.join(worktree, 'ui.txt'), 'UI implemented\n');
+        execFileSync('git', ['add', 'ui.txt'], { cwd: worktree });
+        execFileSync('git', ['commit', '-m', 'UI candidate'], { cwd: worktree, stdio: 'ignore' });
+        const candidateCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+          cwd: worktree,
+          encoding: 'utf8',
+        }).trim();
+        run = await succeedLatestAction(
+          f.runtime,
+          run,
+          { candidateCommit, checks: [] },
+          f.root,
+          'ui-built',
+          'ui-agent',
+        );
+      }
+      expect(run.actions.at(-1)?.stepId).toBe('supervisor.child.verifier');
+      const activation = (run.actions.at(-1)!.input as { activation: { candidateCommit: string } })
+        .activation;
       run = await succeedLatestAction(
         f.runtime,
         run,
-        { candidateCommit, checks: [] },
+        {
+          candidateCommit: activation.candidateCommit,
+          verdict: 'pass',
+          evidence: {
+            summary: 'Observed approved child behavior.',
+            checks: [],
+            acceptance: [
+              { id: 'child:' + child, result: 'passed', reason: 'Observed child behavior.' },
+            ],
+          },
+        },
         f.root,
-        'ui-built',
-        'ui-agent',
+        child + '-verified',
+        child === 'api' ? 'child-builder' : 'ui-agent',
       );
+      for (const executorId of ['native-supervisor-integrate', 'native-supervisor-child-archive']) {
+        if (interrupted && child === 'api' && executorId === 'native-supervisor-integrate') {
+          const actionId = run.actions.at(-1)!.id;
+          await expect(
+            f.runtime.execute({
+              runId: run.runId,
+              actionId,
+              executorId,
+              context: { requestId: 'interrupted-merge', projectRoot: f.root },
+            }),
+          ).rejects.toMatchObject({ code: 'EXECUTION_UNKNOWN' });
+          run = await f.runtime.inspect(run.runId);
+          const original = run.actions.find((a) => a.id === actionId)!;
+          expect(original.status).toBe('unknown');
+          expect(f.interruptedOutput()).not.toHaveProperty('completedAt');
+          run = await f.runtime.recordOutcome({
+            runId: run.runId,
+            outcome: {
+              actionId: original.id,
+              attempt: original.attempt,
+              inputHash: original.inputHash,
+              claimToken: original.claim!.token,
+              outcomeId: 'confirmed-original-merge',
+              status: 'succeeded',
+              output: f.interruptedOutput()!,
+            },
+            context: { requestId: 'confirmed-original-merge', projectRoot: f.root },
+          });
+          expect(run.actions.find((a) => a.id === actionId)?.status).toBe('succeeded');
+          expect(run.actions.filter((a) => a.stepId === 'supervisor.child.integrate')).toHaveLength(
+            1,
+          );
+          continue;
+        }
+        run = await f.runtime.execute({
+          runId: run.runId,
+          actionId: run.actions.at(-1)!.id,
+          executorId,
+          context: { requestId: child + '-' + executorId, projectRoot: f.root },
+        });
+        expect(
+          run.actions.find((a) => a.id === run.actions.at(-2)?.id)?.reason ?? '',
+        ).not.toContain('lacks');
+      }
+      expect(
+        run.actions.filter(
+          (a) => a.stepId === 'supervisor.child.archive' && a.status === 'succeeded',
+        ),
+      ).toHaveLength(child === 'api' ? 1 : 2);
     }
-    expect(run.actions.at(-1)?.stepId).toBe('supervisor.child.verifier');
-    const activation = (run.actions.at(-1)!.input as { activation: { candidateCommit: string } })
+    expect(run.actions.at(-1)?.stepId).toBe('supervisor.parent.builder');
+    const input = (run.actions.at(-1)!.input as { activation: { integrationWorktree: string } })
       .activation;
+    const candidateCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: input.integrationWorktree,
+      encoding: 'utf8',
+    }).trim();
     run = await succeedLatestAction(
       f.runtime,
       run,
       {
-        candidateCommit: activation.candidateCommit,
-        verdict: 'pass',
-        evidence: {
-          summary: 'Observed approved child behavior.',
-          checks: [],
-          acceptance: [
-            { id: 'child:' + child, result: 'passed', reason: 'Observed child behavior.' },
-          ],
-        },
+        candidateCommit,
+        summary: 'Parent integration reviewed.',
+        addressedAcceptanceIds: ['A1'],
+        checks: [],
+        knownLimits: [],
       },
       f.root,
-      child + '-verified',
-      child === 'api' ? 'child-builder' : 'ui-agent',
+      'parent-built',
+      'parent-agent',
     );
-    for (const executorId of ['native-supervisor-integrate', 'native-supervisor-child-archive']) {
-      run = await f.runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId,
-        context: { requestId: child + '-' + executorId, projectRoot: f.root },
-      });
-      expect(run.actions.find((a) => a.id === run.actions.at(-2)?.id)?.reason ?? '').not.toContain(
-        'lacks',
-      );
-    }
+    expect(run.actions.at(-1)?.stepId).toBe('verify.verifier');
+    expect((run.state as NativePortableState).acceptance.map((a) => a.id)).toEqual(['A1']);
     expect(
-      run.actions.filter(
-        (a) => a.stepId === 'supervisor.child.archive' && a.status === 'succeeded',
+      run.actions.some((a) =>
+        [
+          'build.checks',
+          'verify.checks',
+          'supervisor.child.checks',
+          'supervisor.child.integration-checks',
+        ].includes(a.stepId),
       ),
-    ).toHaveLength(child === 'api' ? 1 : 2);
-  }
-  expect(run.actions.at(-1)?.stepId).toBe('supervisor.parent.builder');
-  const input = (run.actions.at(-1)!.input as { activation: { integrationWorktree: string } })
-    .activation;
-  const candidateCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
-    cwd: input.integrationWorktree,
-    encoding: 'utf8',
-  }).trim();
-  run = await succeedLatestAction(
-    f.runtime,
-    run,
-    {
-      candidateCommit,
-      summary: 'Parent integration reviewed.',
-      addressedAcceptanceIds: ['A1'],
-      checks: [],
-      knownLimits: [],
-    },
-    f.root,
-    'parent-built',
-    'parent-agent',
-  );
-  expect(run.actions.at(-1)?.stepId).toBe('verify.verifier');
-  expect((run.state as NativePortableState).acceptance.map((a) => a.id)).toEqual(['A1']);
-  expect(
-    run.actions.some((a) =>
-      [
-        'build.checks',
-        'verify.checks',
-        'supervisor.child.checks',
-        'supervisor.child.integration-checks',
-      ].includes(a.stepId),
-    ),
-  ).toBe(false);
-}, 120_000);
+    ).toBe(false);
+  },
+  120_000,
+);

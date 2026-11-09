@@ -4,7 +4,10 @@ import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
-import { inspectNativeSdkRun } from '../../../domains/comet-native/native-runtime-ownership.js';
+import {
+  createNativeSdkRuntime,
+  inspectNativeSdkRun,
+} from '../../../domains/comet-native/native-runtime-ownership.js';
 import { loadOwnedNativeSdkRuntime } from '../../../domains/comet-native/native-runtime-ownership.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
@@ -281,7 +284,7 @@ it('dispatches the Verifier directly when the user requests another review', asy
   const wait = run.waits.find(
     (item) => item.stepId === 'verify.confirm' && item.status === 'pending',
   )!;
-  const reviewed = await f.runtime.resolveWait({
+  const reviewed = await createNativeSdkRuntime(f.root).resolveWait({
     runId: f.name,
     waitId: wait.id,
     proposalHash: wait.proposalHash,
@@ -292,4 +295,15 @@ it('dispatches the Verifier directly when the user requests another review', asy
   expect(reviewed.actions.at(-1)?.stepId).toBe('verify.verifier');
   expect(reviewed.actions.filter((item) => item.stepId === 'verify.verifier')).toHaveLength(2);
   expect(reviewed.actions.some((item) => item.stepId.includes('checks'))).toBe(false);
+  const claimed = await f.cli(['next', f.name, '--session', 'actual-agent']);
+  expect(claimed.exitCode, claimed.stdout).toBe(0);
+  const secondOutput = claimed.envelope.data.resultTemplate.output;
+  const { iteration: _iteration, attempt: _attempt, ...conclusion } = output.response.result;
+  Object.assign(secondOutput.response.result, conclusion);
+  const completed = await f.submit(claimed.envelope.data.task.actionId, secondOutput, [
+    '--accept-on-pass',
+    'The user delegated acceptance after the requested second review passes.',
+  ]);
+  expect(completed.exitCode, completed.stdout).toBe(0);
+  expect((await f.runtime.inspect(f.name)).status).toBe('completed');
 });

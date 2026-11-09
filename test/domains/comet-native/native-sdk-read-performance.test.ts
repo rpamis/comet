@@ -922,10 +922,10 @@ describe('Native SDK read work budgets', () => {
     expect((await fs.stat(logFile)).size).toBe(256 * 1024);
     await fs.appendFile(logFile, 'changed after execution');
     const summaries = await nativeSdkCurrentCheckSummaries({ run, projectRoot: root });
+    expect((await runtime.inspect(name)).outputs['verify.checks'].value).toEqual(output);
     expect(summaries[0]).toMatchObject({
       status: 'passed',
       exit_code: 0,
-      log_ref: output.checks[0].logRef,
     });
   });
 });

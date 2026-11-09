@@ -501,7 +501,8 @@ describe('Comet Native Skills', () => {
         language: 'zh' as const,
         required: [
           'Build ↔ Verify Loop',
-          'Builder 提交候选',
+          'Builder 完成实现并用平台工具执行检查后',
+          '一次提交候选与实际结果',
           '新的只读 Verifier',
           '`iteration` 表示提交实现的轮次',
           '`attempt` 表示同一候选的 Verifier 执行次数',
@@ -512,7 +513,8 @@ describe('Comet Native Skills', () => {
         language: 'en' as const,
         required: [
           'Build ↔ Verify Loop',
-          'the Builder submits a candidate',
+          'the Builder implements and runs checks with platform tools',
+          'submits the candidate and actual results together',
           'a new read-only Verifier',
           '`iteration` counts implementation submissions',
           '`attempt` counts Verifier executions for one candidate',
