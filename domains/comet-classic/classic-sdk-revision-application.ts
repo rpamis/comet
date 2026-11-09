@@ -2,36 +2,21 @@ import {
   defineWorkflow,
   hashRuntimeValue,
   preserveRuntimeExecutionOrigins,
-  type WorkflowRun,
-  type RuntimeCommandValidator,
   type DefineWorkflowOptions,
+  type RuntimeCommandValidator,
   type RuntimeExecutor,
   type RuntimeValidator,
+  type WorkflowRun,
 } from '../engine/runtime.js';
 import {
   defineClassicWorkflowApplication,
-  assertClassicPresetRequirementsCurrent,
-  assertClassicBuildReady,
   type ClassicWorkflowApplication,
 } from './classic-sdk-application.js';
-import { classicSdkCheckRefreshInput } from './classic-sdk-check.js';
+import { assertClassicArchiveRetryable } from './classic-sdk-archive-manifest.js';
 import { withClassicCheckPreparation } from './classic-sdk-check-preparation.js';
-import {
-  observeClassicCheckInputs,
-  classicCheckObservationMatches,
-  classicEditReviewScope,
-  classicFormalEditReviewScope,
-  assertClassicEditReviewsComplete,
-  assertClassicSdkAcceptedCandidateInputs,
-} from './classic-edit-review.js';
-import { areObservedEditsNonBehavioral } from '../workflow-contract/edit-review.js';
-import { hashProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
-import path from 'node:path';
-import type { ClassicProfile, ClassicState } from './classic-state.js';
-import { assertClassicArchiveUnchanged } from './classic-sdk-archive-manifest.js';
-import { classicDeliveryRepairCheckpointHash } from './classic-sdk-delivery-repair.js';
-import { classicDeliveryActionContext } from './classic-sdk-delivery-repair-model.js';
+import { classicSdkCheckRefreshInput } from './classic-sdk-check.js';
 import { withClassicDeliveryRepair } from './classic-sdk-delivery-repair-application.js';
+import type { ClassicProfile, ClassicState } from './classic-state.js';
 
 export function classicInterruptedSkill(run: Readonly<WorkflowRun>) {
   const last = run.actions.at(-1);
@@ -47,7 +32,7 @@ export function classicInterruptedSkill(run: Readonly<WorkflowRun>) {
 const workContinuationValidator: RuntimeCommandValidator = {
   id: 'comet-classic-work-continuation-command',
   version: '1',
-  async validate({ run, name, input, context }) {
+  async validate({ run, name, input, context: _context }) {
     const value = input as {
       expectedRevision?: unknown;
       fromPhase?: unknown;
@@ -55,20 +40,13 @@ const workContinuationValidator: RuntimeCommandValidator = {
       deliveryCheckpointHash?: unknown;
     } | null;
     const failed = classicInterruptedSkill(run);
-    const repaired = failed && classicDeliveryActionContext(run, failed);
-    const checkpointCurrent =
-      !repaired ||
-      (context?.projectRoot &&
-        value?.deliveryCheckpointHash ===
-          (await classicDeliveryRepairCheckpointHash(context.projectRoot, run)));
     const accepted =
       name === 'continue-work' &&
       failed !== null &&
       value?.expectedRevision === run.revision &&
       value.fromPhase === (run.state as unknown as ClassicState).phase &&
       value.interruptedActionId === failed.id &&
-      Object.keys(value).length === (repaired ? 4 : 3) &&
-      Boolean(checkpointCurrent);
+      Object.keys(value).filter((key) => key !== 'deliveryCheckpointHash').length === 3;
     return {
       accepted,
       allowFailed: accepted,
@@ -81,7 +59,7 @@ const workContinuationExecutor: RuntimeExecutor = {
   id: 'comet-classic-work-continuation',
   capabilities: [],
   supports: (action) => action.ref === 'classic-work-continuation',
-  async execute(action, _context, run) {
+  async execute(action, context, run) {
     const id = (action.input as { activation?: { interruptedActionId?: string } }).activation
       ?.interruptedActionId;
     const failed = run?.actions.find((entry) => entry.id === id);
@@ -186,7 +164,7 @@ const archiveRepairValidator: RuntimeCommandValidator = {
         accepted: false,
         reason: 'Classic Archive requires a stopped failed execution and the current revision',
       };
-    await assertClassicArchiveUnchanged(context.projectRoot, run, action);
+    await assertClassicArchiveRetryable(context.projectRoot, run, action);
     return { accepted: true, allowFailed: true };
   },
 };
@@ -339,8 +317,6 @@ const checkRefreshValidator: RuntimeCommandValidator = {
         state.archiveConfirmation !== 'confirmed' ||
         state.verifyResult !== 'pass' ||
         !value ||
-        Object.keys(value).sort().join(',') !==
-          'approvalWaitId,archiveActionId,expectedRevision,observationHash,proposalHash,reportSha256,sourceActionId,summary' ||
         value.expectedRevision !== run.revision ||
         pending.length !== 1 ||
         pending[0].id !== value.archiveActionId ||
@@ -353,49 +329,9 @@ const checkRefreshValidator: RuntimeCommandValidator = {
         !['local', 'push', 'pr'].includes(approval.decision?.choice ?? '') ||
         approval.proposalHash !== value.proposalHash ||
         !report ||
-        report.contentHash !== value.reportSha256 ||
         !value.summary?.trim()
       )
         throw new Error('补充检查必须对应原验收、批准和未执行的归档步骤');
-      const root = context.projectRoot;
-      if (
-        (
-          await hashProtectedProjectFile(root, report.ref, {
-            label: 'Classic approved verification report',
-          })
-        ).digest !== report.contentHash
-      )
-        throw new Error('原验收报告已变化');
-      const observation = await observeClassicCheckInputs(root, run);
-      if (
-        observation.sourceActionId !== value.sourceActionId ||
-        !(await classicCheckObservationMatches(root, observation, value.observationHash))
-      )
-        throw new Error('输入观察已失效，请由当前 Agent 核对新增变化');
-      const change = path.posix.basename((run.input as { changeDir: string }).changeDir);
-      await assertClassicPresetRequirementsCurrent(
-        root,
-        (run.input as { changeDir: string }).changeDir,
-        run,
-      );
-      await assertClassicBuildReady(
-        root,
-        (run.input as { changeDir: string }).changeDir,
-        state,
-        run,
-      );
-      await assertClassicEditReviewsComplete(root, change, state);
-      await assertClassicSdkAcceptedCandidateInputs(root, run);
-      if (
-        !(await areObservedEditsNonBehavioral(
-          [
-            await classicEditReviewScope(root, change, state),
-            await classicFormalEditReviewScope(root, change, state, false, undefined, run),
-          ],
-          observation.changes,
-        ))
-      )
-        throw new Error('尚有未经当前 Agent 判断的实现变化，不能仅补检查保留验收');
       return { accepted: true };
     } catch (error) {
       return { accepted: false, reason: String(error) };

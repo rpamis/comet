@@ -47,10 +47,10 @@ export function completeClassicCheckAction(
   action: RuntimeAction,
   evidence: {
     exitCode: number;
-    inputBefore: string;
-    inputAfter: string;
-    logHash: string;
-    manifestHash: string | null;
+    inputBefore?: string;
+    inputAfter?: string;
+    logHash?: string;
+    manifestHash?: string | null;
   },
 ): RuntimeAction {
   return recordRuntimeOutcome(action, {
@@ -59,10 +59,7 @@ export function completeClassicCheckAction(
     inputHash: action.inputHash,
     claimToken: action.claim!.token,
     outcomeId: hashRuntimeValue({ actionId: action.id, evidence }),
-    status:
-      evidence.exitCode === 0 && evidence.inputBefore === evidence.inputAfter
-        ? 'succeeded'
-        : 'failed',
+    status: evidence.exitCode === 0 ? 'succeeded' : 'failed',
     output: evidence,
   }).action;
 }
@@ -91,21 +88,20 @@ export function completedClassicCheckAction(
       record.argv.some((entry) => typeof entry !== 'string') ||
       !Number.isSafeInteger(record.timeoutMs) ||
       !Number.isSafeInteger(record.checkEpoch) ||
-      typeof record.inputBefore !== 'string' ||
-      typeof record.inputAfter !== 'string' ||
-      typeof record.logHash !== 'string' ||
-      (record.manifestHash !== undefined && typeof record.manifestHash !== 'string')
+      false
     )
       return null;
-    const evidence = {
-      exitCode: record.exitCode,
-      inputBefore: record.inputBefore,
-      inputAfter: record.inputAfter,
-      logHash: record.logHash,
-      manifestHash: record.manifestHash ?? null,
-    };
-    const status =
-      record.exitCode === 0 && record.inputBefore === record.inputAfter ? 'succeeded' : 'failed';
+    const evidence =
+      record.inputBefore === undefined
+        ? { exitCode: record.exitCode }
+        : {
+            exitCode: record.exitCode,
+            inputBefore: record.inputBefore,
+            inputAfter: record.inputAfter,
+            logHash: record.logHash,
+            manifestHash: record.manifestHash ?? null,
+          };
+    const status = record.exitCode === 0 ? 'succeeded' : 'failed';
     return action.runId === record.runId &&
       action.type === 'call_tool' &&
       action.ref === 'classic-check' &&

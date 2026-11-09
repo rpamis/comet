@@ -83,26 +83,7 @@ Accepting WARNING/SUGGESTION deviations or choosing a strategy after the fourth 
 
 When verification needs OpenSpec artifacts, use the handoff status already returned by entry. Run this only if entry lacks the current comparison:
 
-```bash
-comet handoff <change-name> --hash-only
-```
-
-Read the `[HANDOFF] status:` verdict from stderr and act on it; the stdout hash stays for scripted callers and is never compared by hand:
-
-- `FRESH`: reuse artifact content already in context, read only acceptance sections still missing, and still verify task completion marks.
-- `STALE (changed: <files>)`: read the listed changed artifacts in full before verifying acceptance against them; if runtime's NEXT suggests `comet handoff <change-name> design --write`, run it before reading.
-- `STALE` without a file list: read every required source file in full because the recorded handoff is missing or predates the current artifacts.
-
-A FRESH verdict does not mean the content is still in context. After context loss, truncation, or uncertainty about what was read, reload the corresponding sources. A handoff summary cannot replace acceptance clauses that have not been read.
-
-Autonomous performs the actual checks and records results under this Skill without requiring an external verification skill. Other strategies load Superpowers `verification-before-completion` through the Skill tool. No strategy may declare verification successful based only on self-assessment.
-
-Verify owns the single final integration code review for the whole change. Build retains task/section reviews only. Before taking the verify_mode branch, review the final diff, including fixes from Build reviews:
-
-- `review_mode: off`: skip automatic code review and record why in the report.
-- `review_mode: standard|thorough`: dispatch an independent reviewer across the entire change. Check requirements, actual diffs, check results, and repairs, focusing on correctness, security, and edge cases. Autonomous needs no external review skill; other strategies load requesting-code-review once. Reuse a valid review covering the current final diff. After input changes, review affected parts rather than unconditionally repeating the whole review. Stop if independent review is unavailable; implementer self-review is not a substitute.
-
-Return CRITICAL/IMPORTANT integration-review findings to Build under Step 1b. Handle non-CRITICAL deviations using Step 1b's tradeoff rules. Then follow verify_mode:
+The Agent reads the current requirements, implementation and actual check results and decides which checks remain applicable. File edits do not automatically withdraw approval or require revalidation. After context loss, reload the required source text; a handoff summary cannot replace unread acceptance criteria.
 
 ### 2a. Light verification
 

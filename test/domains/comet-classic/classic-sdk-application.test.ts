@@ -21,7 +21,7 @@ import { classicCheckCommand } from '../../../domains/comet-classic/classic-chec
 import * as checkSnapshots from '../../../domains/comet-classic/classic-check-snapshot.js';
 import { classicGuardCommand } from '../../../domains/comet-classic/classic-guard.js';
 import { classicArchiveCommand } from '../../../domains/comet-classic/classic-archive.js';
-import { writeClassicSdkDesignContext } from '../../../domains/comet-classic/classic-handoff.js';
+import { resolveClassicDesignContext } from '../../../domains/comet-classic/classic-handoff.js';
 import {
   parseClassicStateDocument,
   type ClassicState,
@@ -333,7 +333,7 @@ async function reachFullBuildConfigurationDecision(
   run = await completeLatestAction(runtime, run, { event: 'open-complete' }, `${runId}-open`);
   run = await acceptOpenEvidence(runtime, run);
   const handoff = projectRoot
-    ? await writeClassicSdkDesignContext({
+    ? await resolveClassicDesignContext({
         projectRoot,
         run,
         changeDir: path.join(projectRoot, 'docs/openspec/changes/example'),
@@ -341,14 +341,7 @@ async function reachFullBuildConfigurationDecision(
         contextCompression: null,
       })
     : {};
-  const designHash = projectRoot
-    ? (
-        await classicDomain.classicDesignEvidenceReceipt(
-          projectRoot,
-          'docs/superpowers/specs/design.md',
-        )
-      ).contentHash
-    : 'b'.repeat(64);
+  const designHash = 'b'.repeat(64);
   run = await completeLatestAction(
     runtime,
     run,
@@ -374,7 +367,7 @@ async function reachFullBuildConfigurationDecision(
     evidenceId: run.evidenceWaits!.at(-1)!.id,
     kind: 'classic-design-document',
     ref: 'docs/superpowers/specs/design.md',
-    contentHash: designHash,
+    contentHash: projectRoot ? run.actions.at(-1)!.inputHash : designHash,
     submissionId: `${runId}-design-evidence`,
     expectedRevision: run.revision,
   });
@@ -426,7 +419,7 @@ async function reachFullBuildCheckAction(
     evidenceId: run.evidenceWaits!.at(-1)!.id,
     kind: 'classic-build-plan',
     ref: 'docs/superpowers/plans/2026-09-24-example.md',
-    contentHash: planHash,
+    contentHash: projectRoot ? run.actions.at(-1)!.inputHash : planHash,
     submissionId: `${runId}-plan-evidence`,
     expectedRevision: run.revision,
   });
@@ -505,7 +498,7 @@ async function checkedFullBuildRun(
     evidenceValidators: testEvidenceValidators(application),
     validators: testOutcomeValidators(application),
   });
-  const planReceipt = await classicDomain.classicPlanEvidenceReceipt(
+  await classicDomain.classicPlanEvidenceReceipt(
     projectRoot,
     'docs/superpowers/plans/2026-09-24-example.md',
     'docs/openspec/changes/example',
@@ -515,7 +508,7 @@ async function checkedFullBuildRun(
     application,
     runId,
     options.boundBranch,
-    planReceipt.contentHash,
+    undefined,
     projectRoot,
   );
   const run = await classicDomain.executeClassicSdkCommandCheck(runtime, {
@@ -541,7 +534,7 @@ async function acceptBuildCheckEvidence(
     evidenceId: run.evidenceWaits!.at(-1)!.id,
     kind: 'classic-build-check',
     ref: output.receiptRef,
-    contentHash: output.contentHash,
+    contentHash: run.actions.at(-1)!.inputHash,
     submissionId: `${run.runId}-build-check-evidence`,
     expectedRevision: run.revision,
     context: { requestId: `${run.runId}-build-check-evidence`, projectRoot },
@@ -575,7 +568,7 @@ async function reachFullVerifyCheckAction(
     evidenceId: reported.evidenceWaits!.at(-1)!.id,
     kind: 'classic-verification-report',
     ref: reportRef,
-    contentHash: createHash('sha256').update(report).digest('hex'),
+    contentHash: reported.actions.at(-1)!.inputHash,
     submissionId: `${runId}-report-evidence`,
     expectedRevision: reported.revision,
     context: { requestId: `${runId}-report-evidence`, projectRoot },
@@ -632,7 +625,7 @@ async function reachFullArchivePrepareAction(
     evidenceId: checked.evidenceWaits!.at(-1)!.id,
     kind: 'classic-verify-check',
     ref: output.receiptRef,
-    contentHash: output.contentHash,
+    contentHash: checked.actions.at(-1)!.inputHash,
     submissionId: `${runId}-verify-check-evidence`,
     expectedRevision: checked.revision,
     context: { requestId: `${runId}-verify-check-evidence`, projectRoot },
@@ -851,7 +844,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
     );
     const handoff = await fs.readFile(handoffFile, 'utf8');
     await expect(
-      writeClassicSdkDesignContext({
+      resolveClassicDesignContext({
         projectRoot,
         changeDir: change,
         change: 'example',
@@ -918,51 +911,6 @@ describe('Classic workflow application through the public Runtime SDK', () => {
     ))!.target;
     await fs.unlink(local);
     expect(await validate()).toMatchObject({ accepted: false });
-  });
-
-  it('recovers an unchanged accepted candidate without its local input manifest while rejecting drift and corruption', async () => {
-    const { run, projectRoot } = await reachFullArchivePrepareAction('example', {
-      projectedStore: true,
-    });
-    await registerSdkChangeOwner(projectRoot, {
-      schema: 'comet.change-owner.v1',
-      workflow: 'classic',
-      change: 'example',
-      format: 'sdk',
-      application: 'classic-full',
-      runId: run.runId,
-    });
-    const check = run.actions.findLast((action) => action.stepId === 'full.verify.check')!;
-    const output = check.outcome!.output as { manifestRef: string };
-    const manifest = (await resolveClassicLocalTarget(
-      projectRoot,
-      path.resolve(projectRoot, output.manifestRef),
-    ))!.target;
-    await fs.unlink(manifest);
-    const options = { json: true, projectRoot, invocationCwd: projectRoot };
-    const proposed = await classicStateCommand(
-      ['propose-archive', 'example', '--summary', 'Archive unchanged verified inputs'],
-      options,
-    );
-    expect(proposed.exitCode, proposed.stderr).toBe(0);
-    const proposalHash = (proposed.data as { wait: { proposalHash: string } }).wait.proposalHash;
-    const approved = await classicStateCommand(
-      ['decide-archive', 'example', '--proposal-hash', proposalHash, '--choice', 'local'],
-      options,
-    );
-    expect(approved.exitCode, approved.stderr).toBe(0);
-    const source = path.join(projectRoot, 'source.js');
-    const original = await fs.readFile(source, 'utf8');
-    await fs.appendFile(source, '\nexport const changed = true;\n');
-    const changed = await classicGuardCommand(['example', 'archive', '--apply'], options);
-    expect(changed.exitCode).not.toBe(0);
-    expect(changed.stderr).toContain('check inputs changed');
-    await fs.writeFile(source, original);
-    await fs.writeFile(manifest, 'corrupted original manifest\n');
-    const corrupted = await classicGuardCommand(['example', 'archive', '--apply'], options);
-    expect(corrupted.exitCode).not.toBe(0);
-    expect(corrupted.stderr).toContain('原输入清单已变化');
-    expect((await inspectClassicSdkRun(projectRoot, 'example')).state.archived).toBe(false);
   });
 
   it('rejects an Archive completion claim while the change is still active', async () => {
@@ -2364,7 +2312,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
       executorId: 'comet-classic-open-revalidate',
       context: { requestId: 'plan-open-revalidation', projectRoot: root },
     });
-    const handoff = await writeClassicSdkDesignContext({
+    const handoff = await resolveClassicDesignContext({
       projectRoot: root,
       run,
       changeDir,

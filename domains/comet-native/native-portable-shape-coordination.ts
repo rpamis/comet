@@ -1,23 +1,36 @@
 import { resolveGitRef } from '../../platform/paths/git-worktree.js';
 import {
-  hashNativeParentContract,
-  inspectNativeChildren,
   nativeChildrenAcceptanceValidation,
   readNativeChildrenContract,
-  readNativeSupervisorShapeIntent,
 } from './native-children.js';
 import { readProjectConfig } from './native-config.js';
-import { confirmNativePortableAcceptance } from './native-loop-runtime.js';
 import {
   rebuildNativeLocalExecution,
   writeNativeLocalExecution,
 } from './native-local-execution.js';
+import { confirmNativePortableAcceptance } from './native-loop-runtime.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
+import {
+  assertNativePortableExpectedContinuationLocked,
+  discoverNativePortableSpecChanges,
+  readNativePortableAcceptance,
+  type NativePortableExpectedContinuation,
+} from './native-portable-requirements.js';
+import { appendNativePortableHistory } from './native-portable-state.js';
+import {
+  currentBranch,
+  lateBindPortableCurrentWorkspace,
+  nativeLocalExecutionFile,
+  nativePortableChangeDir,
+  readNativePortableChange,
+  writePortableMutation,
+} from './native-portable-storage.js';
+import { toNativePortableText } from './native-portable-text.js';
 import type {
   NativePortableState,
   NativeSupervisorCoordinationMode,
 } from './native-portable-types.js';
-import type { NativeProjectPaths } from './native-types.js';
+import { rebuildNativeSupervisorStateFromFacts } from './native-supervisor-coordinator.js';
 import {
   createNativeSupervisorState,
   reconcileNativeSupervisorState,
@@ -28,26 +41,7 @@ import {
   writeNativeSupervisorState,
 } from './native-supervisor-state.js';
 import { prepareNativeSupervisorIntegrationWorkspace } from './native-supervisor-workspace.js';
-import { rebuildNativeSupervisorStateFromFacts } from './native-supervisor-coordinator.js';
-import { appendNativePortableHistory } from './native-portable-state.js';
-import { toNativePortableText } from './native-portable-text.js';
-import {
-  currentBranch,
-  lateBindPortableCurrentWorkspace,
-  nativeLocalExecutionFile,
-  nativePortableChangeDir,
-  readNativePortableChange,
-  writePortableMutation,
-} from './native-portable-storage.js';
-import {
-  assertNativePortableExpectedContinuationLocked,
-  discoverNativePortableSpecChanges,
-  ensureNativePortableAcceptanceCurrentLocked,
-  nativePortableShapeConfirmationHash,
-  readNativePortableAcceptance,
-  returnNativePortableStateToShapeLocked,
-  type NativePortableExpectedContinuation,
-} from './native-portable-requirements.js';
+import type { NativeProjectPaths } from './native-types.js';
 
 export async function confirmNativePortableShape(options: {
   paths: NativeProjectPaths;
@@ -84,7 +78,6 @@ export async function confirmNativePortableShape(options: {
           '--coordination-mode is already bound to this Shape confirmation; revise Shape before changing it',
         );
       }
-      await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
       const specChanges = await discoverNativePortableSpecChanges({ paths: options.paths, state });
       const shape = await readNativePortableAcceptance({
         paths: options.paths,
@@ -125,11 +118,8 @@ export async function confirmNativePortableShape(options: {
         );
       }
       const coordinationRequired =
-        (await readNativeSupervisorShapeIntent(
-          nativePortableChangeDir(options.paths, state.name),
-        )) ||
-        (children?.contract.schema === 'comet.native.children.v2' &&
-          children.contract.children.length >= 2);
+        children?.contract.schema === 'comet.native.children.v2' &&
+        children.contract.children.length >= 2;
       const coordinationMode = options.coordinationMode ?? state.coordination_mode;
       if (!coordinationRequired && options.coordinationMode !== undefined) {
         throw new Error(
@@ -144,70 +134,20 @@ export async function confirmNativePortableShape(options: {
           'Native Supervisor Shape requires --coordination-mode multi-session or single-session',
         );
       }
-      const latestShapeConfirmationHash = nativePortableShapeConfirmationHash({
-        formalHash: shape.formalHash,
-        childrenHash: children?.hash ?? null,
-        coordinationMode: state.coordination_mode,
-      });
-      if (
-        state.shape_confirmation_hash === undefined ||
-        latestShapeConfirmationHash !== state.shape_confirmation_hash
-      ) {
-        const reason =
-          state.shape_confirmation_hash === undefined
-            ? 'Native Shape confirmation fingerprint is missing'
-            : 'Native Shape artifacts changed';
-        await returnNativePortableStateToShapeLocked({
-          paths: options.paths,
-          state,
-          reason,
-          keepFailureBudget: true,
-        });
-        throw new Error(`${reason}; Native change returned to Shape and requires confirmation`);
-      }
       const next = confirmNativePortableAcceptance({
         state: {
           ...bound,
           spec_changes: specChanges,
-          shape_confirmation_hash: nativePortableShapeConfirmationHash({
-            formalHash: shape.formalHash,
-            childrenHash: children?.hash ?? null,
-            coordinationMode,
-          }),
         },
         acceptance: acceptance.map((entry) => ({ ...entry })),
       });
-      delete next.children_contract_hash;
+      delete next.children_contract_ref;
+      delete next.children_contract;
       delete next.coordination_mode;
       if (children) {
-        next.children_contract_hash = hashNativeParentContract({
-          acceptance: next.acceptance,
-          children: children.contract,
-        });
+        next.children_contract_ref = next.name + ':shape:' + next.state_version;
+        next.children_contract = children.contract;
         if (coordinationRequired) next.coordination_mode = coordinationMode;
-        const latestDecision = [...state.history]
-          .reverse()
-          .find(({ outcome }) => outcome === 'pass' || outcome === 'fail');
-        if (latestDecision?.outcome === 'fail' && latestDecision.unresolved_ids.length > 0) {
-          const inspection = await inspectNativeChildren({ paths: options.paths, state: next });
-          const statusByChild = new Map(
-            (inspection?.children ?? []).map(({ name, status }) => [name, status]),
-          );
-          const repairCoverage = new Set(
-            children.contract.children
-              .filter(({ name }) => {
-                const status = statusByChild.get(name);
-                return status !== 'done' && status !== 'integrated' && status !== 'archived';
-              })
-              .flatMap(({ covers }) => covers),
-          );
-          const missing = latestDecision.unresolved_ids.filter((id) => !repairCoverage.has(id));
-          if (missing.length > 0) {
-            throw new Error(
-              `Native parent repair plan requires an unfinished child covering: ${missing.join(', ')}`,
-            );
-          }
-        }
       }
       let supervisorWorkspace: Awaited<
         ReturnType<typeof prepareNativeSupervisorIntegrationWorkspace>

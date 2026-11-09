@@ -56,15 +56,6 @@ export async function inspectNativeSupervisorParentReviewReadiness(options: {
       },
     };
   }
-  if (state.loop.stage === 'repairing' && state.verification_result === 'fail') {
-    return {
-      state,
-      parentAdvance: {
-        ...base,
-        blocker: 'Native parent verification failed; add and confirm a repair child',
-      },
-    };
-  }
   const message =
     state.language === 'zh-CN'
       ? '全部 Child 已完成；Supervisor 父级候选可以提交并进入验证'

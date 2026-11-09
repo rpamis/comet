@@ -1,6 +1,27 @@
-import { assertNativeEditReviewsComplete } from './native-edit-review.js';
 import path from 'node:path';
-import type { NativeWorkspaceFinish } from './native-workspace.js';
+import {
+  rebuildNativeLocalExecution,
+  writeNativeLocalExecution,
+} from './native-local-execution.js';
+import { confirmNativeSkillCoordinatedPass } from './native-loop-runtime.js';
+import { withNativeMutationLock } from './native-mutation-lock.js';
+import {
+  preservedLocalChecksForVersion,
+  readCurrentLocalExecution,
+} from './native-portable-checks.js';
+import {
+  assertNativePortableExpectedContinuationLocked,
+  type NativePortableExpectedContinuation,
+} from './native-portable-requirements.js';
+import {
+  currentBranch,
+  nativeLocalExecutionFile,
+  nativePortableChangeDir,
+  readNativePortableChange,
+  writePortableMutation,
+} from './native-portable-storage.js';
+import { returnNativePortableStateToFinalVerificationLocked } from './native-portable-transitions.js';
+import type { NativePortableState } from './native-portable-types.js';
 import {
   advanceNativeSupervisorFinalVerificationHead,
   recordNativeSupervisorPortableFinalVerification,
@@ -9,33 +30,9 @@ import {
   readNativeSupervisorState,
   writeNativeSupervisorState,
 } from './native-supervisor-state.js';
-import { confirmNativeSkillCoordinatedPass } from './native-loop-runtime.js';
-import {
-  rebuildNativeLocalExecution,
-  writeNativeLocalExecution,
-} from './native-local-execution.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
-import type { NativePortableState } from './native-portable-types.js';
 import type { NativeProjectPaths } from './native-types.js';
 import { writeNativeVerificationReport } from './native-verification-report-v2.js';
-import {
-  currentBranch,
-  nativeLocalExecutionFile,
-  nativePortableChangeDir,
-  readNativePortableChange,
-  writePortableMutation,
-} from './native-portable-storage.js';
-import {
-  assertNativePortableExpectedContinuationLocked,
-  ensureNativePortableAcceptanceCurrentLocked,
-  type NativePortableExpectedContinuation,
-} from './native-portable-requirements.js';
-import { returnNativePortableStateToFinalVerificationLocked } from './native-portable-transitions.js';
-import {
-  readCurrentLocalExecution,
-  preservedLocalChecksForVersion,
-  assertNativePortableRawCheckInputs,
-} from './native-portable-checks.js';
+import type { NativeWorkspaceFinish } from './native-workspace.js';
 
 export async function confirmNativePortableSkillCoordinatedPass(options: {
   paths: NativeProjectPaths;
@@ -53,10 +50,7 @@ export async function confirmNativePortableSkillCoordinatedPass(options: {
         expected: options.expectedContinuation,
         action: 'accept-result',
       });
-      await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
-      await assertNativeEditReviewsComplete(options.paths, state);
       const local = await readCurrentLocalExecution({ paths: options.paths, state });
-      if (local?.rawInputRef) await assertNativePortableRawCheckInputs(options.paths, state, local);
       if (
         options.finish !== undefined &&
         !['keep', 'merge', 'push', 'pull-request'].includes(options.finish)
@@ -88,7 +82,7 @@ export async function confirmNativePortableSkillCoordinatedPass(options: {
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),
-        local?.rawInputRef
+        local
           ? preservedLocalChecksForVersion({
               local,
               state: written,

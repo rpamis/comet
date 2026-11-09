@@ -1,28 +1,73 @@
-import { nativeSdkVerifyWaitDecisions } from './native-sdk-verify-decision.js';
-import { assertNativeEditReviewsComplete } from './native-edit-review.js';
 import path from 'node:path';
+import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
+import { nativeSupervisorContractRef } from './native-children-contract.js';
+import { nativeProjectPaths } from './native-paths.js';
+import { nativePortableStateFile } from './native-portable-storage.js';
+import { nativeSdkVerifyWaitDecisions } from './native-sdk-verify-decision.js';
 
 import { inspectGitWorktree, resolveGitRef, samePath } from '../../platform/paths/git-worktree.js';
 import { runGitCommand } from '../../platform/process/git.js';
 import {
-  type DefineWorkflowOptions,
-  type CreateRuntimeOptions,
-  type RuntimeAction,
-  type RuntimeOutcome,
-  type RuntimeValidator,
-  type RuntimeCommandValidator,
-  type RuntimeStateValidator,
-  type RuntimeExecutor,
-  type RuntimeValue,
-  type WorkflowTransitionHandler,
-  type WorkflowRun,
   hashRuntimeValue,
+  type CreateRuntimeOptions,
+  type DefineWorkflowOptions,
+  type RuntimeAction,
+  type RuntimeCommandValidator,
+  type RuntimeExecutor,
+  type RuntimeOutcome,
+  type RuntimeStateValidator,
+  type RuntimeValidator,
+  type RuntimeValue,
+  type WorkflowRun,
+  type WorkflowTransitionHandler,
 } from '../engine/runtime.js';
 import {
-  hashNativeParentContract,
-  nativeChildrenAcceptanceValidation,
-  readNativeSupervisorShapeIntent,
-} from './native-children.js';
+  COMET_CHANGE_OWNER_SCHEMA,
+  registerSdkChangeOwner,
+} from '../workflow-contract/change-runtime-owner.js';
+import {
+  DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES,
+  normalizeWorkflowRelativePath,
+} from '../workflow-contract/project-config.js';
+import { parseNativeBuilderAcceptanceReview } from './native-builder-acceptance-review.js';
+import { preflightNativeCheckPlans } from './native-check-executor.js';
+import {
+  readNativeChildrenContract,
+  type NativeChildrenContract,
+} from './native-children-contract.js';
+import { nativeChildrenAcceptanceValidation } from './native-children.js';
+import { readProjectConfig } from './native-config.js';
+import {
+  applyNativeVerifierEnvelope,
+  confirmNativePortableAcceptance,
+  confirmNativeSkillCoordinatedPass,
+  NATIVE_MAX_REQUEST_CHECK_ROUNDS,
+  prepareNativePortableShapeConfirmation,
+  recordNativeVerifierExecutionError,
+  reserveNativeVerifierAttempt,
+  resolveNativeVerifierBlocker,
+  retryNativeVerifier,
+  returnNativeCandidateToBuild,
+  submitNativeBuilderCandidate,
+} from './native-loop-runtime.js';
+import { withNativeMutationLock } from './native-mutation-lock.js';
+import type { NativePortableAcceptanceInput } from './native-portable-acceptance.js';
+import {
+  assertNativePortableDocuments,
+  discoverNativePortableSpecChanges,
+  readNativePortableAcceptance,
+} from './native-portable-requirements.js';
+import { appendNativePortableHistory, parseNativePortableState } from './native-portable-state.js';
+import { toNativePortableText } from './native-portable-text.js';
+import type {
+  NativePortableAcceptanceState,
+  NativePortableCheckSummary,
+  NativePortableSpecChange,
+  NativePortableState,
+  NativeSupervisorCoordinationMode,
+} from './native-portable-types.js';
+import { emptyNativePortableHistoryOverflow } from './native-portable-types.js';
+import { createNativeRunnerChannel, NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 import {
   nativeSdkArchiveApplyExecutor,
   nativeSdkArchiveApplyValidator,
@@ -31,22 +76,19 @@ import {
   nativeSdkArchivePreflightExecutor,
   nativeSdkArchivePreflightValidator,
 } from './native-sdk-archive.js';
-import { DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES } from '../workflow-contract/project-config.js';
-import {
-  COMET_CHANGE_OWNER_SCHEMA,
-  registerSdkChangeOwner,
-} from '../workflow-contract/change-runtime-owner.js';
-import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import {
   nativeSdkCheckExecutor,
-  nativeSdkCurrentCheckSummaries,
-  assertNativeSdkCandidateUnchanged,
   nativeSdkCheckPlans,
-  nativeSdkCheckValidator,
   nativeSdkCheckRefreshCommandValidator,
   nativeSdkCheckRefreshInput,
-  rememberNativeSdkBuilderInputs,
+  nativeSdkCheckValidator,
+  nativeSdkCurrentCheckSummaries,
 } from './native-sdk-checks.js';
+import {
+  nativeSdkLegacyDefinitions,
+  nativeSdkLegacyTransitionHandler,
+  nativeSdkMatchesRun,
+} from './native-sdk-definition.js';
 import {
   nativeSdkDisassociateCommandValidator,
   nativeSdkDisassociateExecutor,
@@ -58,20 +100,47 @@ import {
   nativeSdkRemoveValidator,
 } from './native-sdk-remove.js';
 import {
-  nativeSdkReviseCommandValidator,
-  nativeSdkReviseExecutor,
-  nativeSdkReviseValidator,
-  nativeSdkImplementationRevisionCommandValidator,
-  nativeSdkImplementationRevisionExecutor,
-  nativeSdkImplementationRevisionValidator,
-} from './native-sdk-revise.js';
-import {
   nativeSdkReportExecutor,
   nativeSdkReportRevalidationExecutor,
   nativeSdkReportRevalidationValidator,
   nativeSdkReportValidator,
   nativeSdkVerificationReportMetadata,
 } from './native-sdk-report.js';
+import { nativeSdkRequiresIndependentReview } from './native-sdk-review.js';
+import {
+  nativeSdkImplementationRevisionCommandValidator,
+  nativeSdkImplementationRevisionExecutor,
+  nativeSdkImplementationRevisionValidator,
+  nativeSdkReviseCommandValidator,
+  nativeSdkReviseExecutor,
+  nativeSdkReviseValidator,
+} from './native-sdk-revise.js';
+import {
+  nativeSdkSupervisorChildArchiveExecutor,
+  nativeSdkSupervisorChildArchiveValidator,
+} from './native-sdk-supervisor-archive.js';
+import {
+  nativeSdkSupervisorBuilderValidator,
+  nativeSdkSupervisorVerifierValidator,
+} from './native-sdk-supervisor-child.js';
+import {
+  nativeSdkSupervisorCleanupExecutor,
+  nativeSdkSupervisorCleanupValidator,
+} from './native-sdk-supervisor-cleanup.js';
+import {
+  nativeSdkSupervisorDeliverExecutor,
+  nativeSdkSupervisorDeliverValidator,
+} from './native-sdk-supervisor-deliver.js';
+import {
+  nativeSdkSupervisorIntegrateExecutor,
+  nativeSdkSupervisorIntegrateValidator,
+} from './native-sdk-supervisor-integrate.js';
+import { nativeSdkSupervisorIntegrationRepairValidator } from './native-sdk-supervisor-integration-repair.js';
+import { nativeSdkSupervisorParentCandidateCommit } from './native-sdk-supervisor-parent.js';
+import {
+  currentNativeSdkSupervisorActions,
+  selectNativeSdkReadyChildren,
+} from './native-sdk-supervisor-plan.js';
 import {
   currentNativeSdkSupervisorPlan,
   nativeSdkSupervisorChildPrepareExecutor,
@@ -79,91 +148,23 @@ import {
   nativeSdkSupervisorPrepareExecutor,
   nativeSdkSupervisorPrepareValidator,
 } from './native-sdk-supervisor-prepare.js';
-import {
-  nativeSdkSupervisorBuilderValidator,
-  nativeSdkSupervisorVerifierValidator,
-} from './native-sdk-supervisor-child.js';
-import {
-  nativeSdkSupervisorIntegrateExecutor,
-  nativeSdkSupervisorIntegrateValidator,
-} from './native-sdk-supervisor-integrate.js';
-import { nativeSdkSupervisorIntegrationRepairValidator } from './native-sdk-supervisor-integration-repair.js';
-import {
-  nativeSdkSupervisorDeliverExecutor,
-  nativeSdkSupervisorDeliverValidator,
-} from './native-sdk-supervisor-deliver.js';
-import {
-  nativeSdkSupervisorCleanupExecutor,
-  nativeSdkSupervisorCleanupValidator,
-} from './native-sdk-supervisor-cleanup.js';
-import {
-  nativeSdkSupervisorChildArchiveExecutor,
-  nativeSdkSupervisorChildArchiveValidator,
-} from './native-sdk-supervisor-archive.js';
-import {
-  selectNativeSdkReadyChildren,
-  currentNativeSdkSupervisorActions,
-} from './native-sdk-supervisor-plan.js';
-import { nativeSdkSupervisorParentCandidateCommit } from './native-sdk-supervisor-parent.js';
+import { validateNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
+import { nativeSdkFailedChildVerifierActivation } from './native-sdk-supervisor-verifier-recovery.js';
+import { materializeNativeDeltaTargetsLocked } from './native-shape-materialization.js';
 import { supervisorAcceptanceScope } from './native-supervisor-model.js';
 import {
   nativeSupervisorIntegrationBranch,
   nativeSupervisorIntegrationWorktree,
 } from './native-supervisor-workspace.js';
-import { preflightNativeCheckPlans } from './native-check-executor.js';
 import {
-  readNativeChildrenContract,
-  type NativeChildrenContract,
-} from './native-children-contract.js';
-import { readProjectConfig } from './native-config.js';
-import {
-  applyNativeVerifierEnvelope,
-  confirmNativeSkillCoordinatedPass,
-  confirmNativePortableAcceptance,
-  NATIVE_MAX_REQUEST_CHECK_ROUNDS,
-  prepareNativePortableShapeConfirmation,
-  submitNativeBuilderCandidate,
-  reserveNativeVerifierAttempt,
-  recordNativeVerifierExecutionError,
-  retryNativeVerifier,
-  resolveNativeVerifierBlocker,
-  returnNativeCandidateToBuild,
-} from './native-loop-runtime.js';
-import { nativeProjectPaths } from './native-paths.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
-import { materializeNativeDeltaTargetsLocked } from './native-shape-materialization.js';
-import { parseNativeBuilderAcceptanceReview } from './native-builder-acceptance-review.js';
-import {
-  assertNativePortableDocuments,
-  discoverNativePortableSpecChanges,
-  inspectNativePortableAcceptanceDrift,
-  nativePortableShapeConfirmationHash,
-  readNativePortableAcceptance,
-} from './native-portable-requirements.js';
-import { appendNativePortableHistory, parseNativePortableState } from './native-portable-state.js';
-import { nativePortableStateFile } from './native-portable-storage.js';
-import { toNativePortableText } from './native-portable-text.js';
+  nativeBuilderRepairContext,
+  nativeUserEditedReportContext,
+} from './native-task-context.js';
+import type { NativeProjectPaths } from './native-types.js';
 import {
   normalizeNativeCheckRequestId,
   parseNativeVerifierResponse,
 } from './native-verifier-protocol.js';
-import { createNativeRunnerChannel, NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
-import type {
-  NativePortableAcceptanceState,
-  NativePortableCheckSummary,
-  NativePortableSpecChange,
-  NativePortableState,
-  NativeSupervisorCoordinationMode,
-} from './native-portable-types.js';
-import { emptyNativePortableHistoryOverflow } from './native-portable-types.js';
-import { validateNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
-import type { NativeProjectPaths } from './native-types.js';
-import {
-  nativeSdkLegacyDefinitions,
-  nativeSdkLegacyTransitionHandler,
-  nativeSdkMatchesRun,
-} from './native-sdk-definition.js';
-import { nativeSdkFailedChildVerifierActivation } from './native-sdk-supervisor-verifier-recovery.js';
 
 /** 已有 Run 只加载完全匹配的已知定义；升级由显式 doctor 修复完成。 */
 export function nativeSdkApplicationForRun(
@@ -188,10 +189,7 @@ export function nativeSdkApplicationForRun(
 interface NativeShapeProposal {
   specChanges: NativePortableSpecChange[];
   acceptance: Array<Pick<NativePortableAcceptanceState, 'id' | 'source' | 'text'>>;
-  formalHash: string;
-  semanticSnapshot?: import('./native-shape-semantics.js').NativeShapeSemanticSnapshot;
-  children: { hash: string; contract: NativeChildrenContract } | null;
-  shapeConfirmationHash: string;
+  children: { contract: NativeChildrenContract } | null;
 }
 
 export interface NativeWorkflowApplication {
@@ -257,6 +255,7 @@ export async function collectNativeSdkShapeProposal(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
   materializeTargets?: boolean;
+  acceptance?: readonly NativePortableAcceptanceInput[];
 }): Promise<NativeShapeProposal> {
   const state = parseNativePortableState({
     ...options.state,
@@ -286,33 +285,48 @@ export async function collectNativeSdkShapeProposal(options: {
     state: preparing ? { ...state, spec_changes: specChanges } : state,
     specChanges,
   });
-  const { acceptance, formalHash, semanticSnapshot } = await readNativePortableAcceptance({
-    paths: options.paths,
-    state,
-    specChanges,
-    captureSemanticSnapshot: state.phase === 'shape' && state.status === 'active',
-  });
+  const acceptance =
+    options.acceptance === undefined
+      ? (
+          await readNativePortableAcceptance({
+            paths: options.paths,
+            state,
+            specChanges,
+            captureSemanticSnapshot: state.phase === 'shape' && state.status === 'active',
+          })
+        ).acceptance
+      : options.acceptance.map((entry, index) => {
+          const sources = [
+            'brief.md',
+            ...specChanges.flatMap((spec) => (spec.source ? [spec.source] : [])),
+          ];
+          if (
+            !entry ||
+            typeof entry.source !== 'string' ||
+            typeof entry.text !== 'string' ||
+            !entry.text.trim()
+          )
+            throw new Error(
+              'Native acceptance requires a readable source reference and nonempty text',
+            );
+          const source = normalizeWorkflowRelativePath(entry.source, 'Native acceptance source');
+          if (!sources.includes(source))
+            throw new Error(
+              'Native acceptance must reference this change brief or a declared specification',
+            );
+          return { id: `A${index + 1}`, source, text: entry.text.trim() };
+        });
+  if (!acceptance.length)
+    throw new Error('Native Shape requires at least one acceptance criterion');
   const children = await readNativeChildrenContract({
     changeDir,
     acceptanceIds: acceptance.map(({ id }) => id),
     validation: nativeChildrenAcceptanceValidation({ ...state, acceptance }),
   });
-  if ((await readNativeSupervisorShapeIntent(changeDir)) && !children) {
-    throw new Error('Native Supervisor Shape requires children.yaml before confirmation');
-  }
   return {
     specChanges,
     acceptance: acceptance.map(({ id, source, text }) => ({ id, source, text })),
-    formalHash,
-    ...(semanticSnapshot
-      ? { semanticSnapshot: state.shape_semantic_snapshot ?? semanticSnapshot }
-      : {}),
-    children: children ? { hash: children.hash, contract: children.contract } : null,
-    shapeConfirmationHash: nativePortableShapeConfirmationHash({
-      formalHash,
-      childrenHash: children?.hash ?? null,
-      coordinationMode: undefined,
-    }),
+    children: children ? { contract: children.contract } : null,
   };
 }
 
@@ -326,7 +340,8 @@ function resetShape(state: NativePortableState): NativePortableState {
   };
   delete next.shape_confirmation_hash;
   delete next.shape_semantic_snapshot;
-  delete next.children_contract_hash;
+  delete next.children_contract_ref;
+  delete next.children_contract;
   delete next.coordination_mode;
   return parseNativePortableState(next);
 }
@@ -364,7 +379,8 @@ function resetShapeForRemoval(
   };
   delete next.shape_confirmation_hash;
   delete next.shape_semantic_snapshot;
-  delete next.children_contract_hash;
+  delete next.children_contract_ref;
+  delete next.children_contract;
   delete next.coordination_mode;
   delete next.verifier_action;
   return parseNativePortableState(next);
@@ -409,7 +425,8 @@ function resetShapeForRequirementsRevision(
   };
   delete next.shape_confirmation_hash;
   delete next.shape_semantic_snapshot;
-  delete next.children_contract_hash;
+  delete next.children_contract_ref;
+  delete next.children_contract;
   delete next.coordination_mode;
   delete next.verifier_action;
   return parseNativePortableState(next);
@@ -501,23 +518,11 @@ function supervisorParentRepairActivation(
   };
 }
 
-function selectedShapeHash(
-  proposal: NativeShapeProposal,
-  coordinationMode: NativeSupervisorCoordinationMode | undefined,
-): string {
-  return nativePortableShapeConfirmationHash({
-    formalHash: proposal.formalHash,
-    childrenHash: proposal.children?.hash ?? null,
-    coordinationMode,
-  });
-}
-
 function builderCandidateState(
   run: Readonly<WorkflowRun>,
   action: Readonly<RuntimeAction>,
   outcome: Readonly<RuntimeOutcome>,
 ): NativePortableState {
-  const state = parseNativePortableState(run.state);
   const output = outcome.output as Record<string, unknown> | null;
   const sessionId = action.claim?.sessionId;
   if (
@@ -527,6 +532,7 @@ function builderCandidateState(
   ) {
     throw new Error('requireIndependentReview must be a boolean');
   }
+  const state = parseNativePortableState(run.state);
   if (
     state.phase !== 'build' ||
     !['build.builder', 'supervisor.parent.builder'].includes(action.stepId) ||
@@ -612,9 +618,9 @@ function verifierResultState(
   action: Readonly<RuntimeAction>,
   outcome: Readonly<RuntimeOutcome>,
 ): { state: NativePortableState; requestChecks: boolean } {
-  const state = parseNativePortableState(run.state);
   const output = outcome.output as Record<string, unknown> | null;
   const sessionId = action.claim?.sessionId;
+  const state = parseNativePortableState(run.state);
   const candidate = state.builder_handoff;
   if (
     state.phase !== 'verify' ||
@@ -802,7 +808,6 @@ function verifierExecutionFailureState(
   action: Readonly<RuntimeAction>,
   outcome: Readonly<RuntimeOutcome>,
 ): NativePortableState {
-  const state = parseNativePortableState(run.state);
   const output = outcome.output as { summary?: unknown } | null;
   if (
     outcome.status !== 'failed' ||
@@ -817,6 +822,7 @@ function verifierExecutionFailureState(
       'Native Verifier execution failure needs the original claimed session and summary',
     );
   }
+  const state = parseNativePortableState(run.state);
   return recordNativeVerifierExecutionError({ state, summary: output.summary });
 }
 
@@ -831,42 +837,21 @@ const shapeValidator: RuntimeValidator = {
       typeof input.name !== 'string' ||
       typeof input.artifactRootRef !== 'string' ||
       !['shape.prepare', 'shape.revalidate'].includes(action.stepId)
-    ) {
-      return { accepted: false, reason: 'Native Shape result lacks a bound project and change' };
-    }
+    )
+      return { accepted: false, reason: 'Native Shape lacks its project and Action' };
     try {
+      const proposal = proposalFrom(outcome.output);
       const state = parseNativePortableState(run.state);
-      if (state.name !== input.name) {
-        return { accepted: false, reason: 'Native Shape result belongs to another change' };
-      }
-      const config = await readProjectConfig(context.projectRoot);
-      if (!config || config.native.artifact_root !== input.artifactRootRef) {
-        return { accepted: false, reason: 'Native artifact root changed after Run creation' };
-      }
-      const paths = await nativeProjectPaths(context.projectRoot, input.artifactRootRef, {
-        change: run.runId,
-      });
-      const current = await collectNativeSdkShapeProposal({ paths, state });
       if (
-        hashRuntimeValue(current as unknown as RuntimeValue) !== hashRuntimeValue(outcome.output)
-      ) {
-        return { accepted: false, reason: 'Native Shape result does not match current documents' };
-      }
-      if (action.stepId === 'shape.revalidate') {
-        const outputs = (action.input as { outputs?: Record<string, unknown> }).outputs;
-        const approved = outputs?.['shape.prepare'];
-        if (
-          !approved ||
-          hashRuntimeValue(approved as RuntimeValue) !==
-            hashRuntimeValue(current as unknown as RuntimeValue) ||
-          state.shape_confirmation_hash !== selectedShapeHash(current, state.coordination_mode)
-        ) {
-          return { accepted: false, reason: 'Native Shape changed after user approval' };
-        }
-      }
+        state.name !== input.name ||
+        !Array.isArray(proposal.acceptance) ||
+        proposal.acceptance.length === 0 ||
+        !Array.isArray(proposal.specChanges)
+      )
+        throw new Error('Native Shape requires its change, specifications and acceptance criteria');
       return { accepted: true };
     } catch (error) {
-      return { accepted: false, reason: error instanceof Error ? error.message : String(error) };
+      return { accepted: false, reason: String(error) };
     }
   },
 };
@@ -893,13 +878,7 @@ const builderValidator: RuntimeValidator = {
       if (!config || config.native.artifact_root !== input.artifactRootRef) {
         return { accepted: false, reason: 'Native artifact root changed after Run creation' };
       }
-      const paths = await nativeProjectPaths(context.projectRoot, input.artifactRootRef, {
-        change: run.runId,
-      });
-      const drift = await inspectNativePortableAcceptanceDrift({ paths, state });
-      if (drift.drifted) {
-        return { accepted: false, reason: drift.reason ?? 'Native acceptance changed' };
-      }
+
       const output = outcome.output as Record<string, unknown> | null;
       if (
         run.workflow.version === '3' &&
@@ -914,7 +893,7 @@ const builderValidator: RuntimeValidator = {
         if (
           state.phase !== 'build' ||
           state.status !== 'active' ||
-          state.children_contract_hash ||
+          state.children_contract_ref ||
           !action.claim?.sessionId
         )
           throw new Error('Build checks require the current claimed Builder');
@@ -979,7 +958,6 @@ const builderValidator: RuntimeValidator = {
         );
       builderCandidateState(run, action, outcome);
       preflightNativeCheckPlans(context.projectRoot, nativeSdkCheckPlans(outcome.output));
-      await rememberNativeSdkBuilderInputs(run, action, outcome, context.projectRoot);
       return { accepted: true };
     } catch (error) {
       return { accepted: false, reason: error instanceof Error ? error.message : String(error) };
@@ -1001,8 +979,9 @@ const supervisorParentBuilderValidator: RuntimeValidator = {
     }
     try {
       const plan = await currentNativeSdkSupervisorPlan(run, context.projectRoot);
-      const state = parseNativePortableState(run.state);
+
       const input = (action.input as { activation?: Record<string, unknown> }).activation;
+      const state = parseNativePortableState(run.state);
       const worktree = nativeSupervisorIntegrationWorktree(context.projectRoot, state.name);
       const branch = nativeSupervisorIntegrationBranch(state.name);
       const candidateCommit = nativeSdkSupervisorParentCandidateCommit(action, outcome);
@@ -1020,7 +999,7 @@ const supervisorParentBuilderValidator: RuntimeValidator = {
       if (
         state.phase !== 'build' ||
         !input ||
-        input.contractHash !== state.children_contract_hash ||
+        nativeSupervisorContractRef(input) !== state.children_contract_ref ||
         input.integrationBranch !== branch ||
         typeof input.integrationWorktree !== 'string' ||
         !samePath(input.integrationWorktree, worktree) ||
@@ -1045,14 +1024,9 @@ const supervisorParentBuilderValidator: RuntimeValidator = {
       ) {
         throw new Error('Native artifact root changed after Run creation');
       }
-      const paths = await nativeProjectPaths(context.projectRoot, config.native.artifact_root, {
-        change: run.runId,
-      });
-      const drift = await inspectNativePortableAcceptanceDrift({ paths, state });
-      if (drift.drifted) throw new Error(drift.reason ?? 'Native acceptance changed');
+
       builderCandidateState(run, action, outcome);
       const checks = nativeSdkCheckPlans(outcome.output);
-      if (checks.length === 0) throw new Error('Native Supervisor parent candidate needs checks');
       preflightNativeCheckPlans(worktree, checks);
       return { accepted: true };
     } catch (error) {
@@ -1086,14 +1060,7 @@ const verifierValidator: RuntimeValidator = {
           reason: 'Native project configuration changed after Run creation',
         };
       }
-      const paths = await nativeProjectPaths(context.projectRoot, input.artifactRootRef, {
-        change: run.runId,
-      });
-      const state = parseNativePortableState(run.state);
-      const drift = await inspectNativePortableAcceptanceDrift({ paths, state });
-      if (drift.drifted) {
-        return { accepted: false, reason: drift.reason ?? 'Native acceptance changed' };
-      }
+
       const requested =
         (outcome.output as { response?: { kind?: unknown } } | null)?.response?.kind ===
         'request-checks';
@@ -1108,23 +1075,14 @@ const verifierValidator: RuntimeValidator = {
             'Verify requires repeatable checks. Move one-time operations to authorized delivery.',
           );
       }
-      if (requested)
-        await assertNativeSdkCandidateUnchanged({ run, projectRoot: context.projectRoot });
       const passing =
         (outcome.output as { response?: { result?: { verdict?: unknown } } } | null)?.response
           ?.result?.verdict === 'pass';
       if (!requested && passing) {
-        const observedInputs = await assertNativeSdkCandidateUnchanged({
-          run,
-          projectRoot: context.projectRoot,
-          requireEvidence: true,
-        });
         await nativeSdkCurrentCheckSummaries({
           run,
           projectRoot: context.projectRoot,
-          observedInputs,
         });
-        await assertNativeEditReviewsComplete(paths, state);
       }
       verifierResultState(run, action, outcome);
       return { accepted: true };
@@ -1609,6 +1567,7 @@ export function defineNativeWorkflowApplication(
       version: '1',
       apply({ run, event }) {
         const state = parseNativePortableState(run.state);
+
         if (event.kind === 'action-outcome' && event.stepId === 'repair.implementation') {
           if (event.outcome.status !== 'succeeded')
             return { state: state as unknown as RuntimeValue, next: [] };
@@ -1636,7 +1595,7 @@ export function defineNativeWorkflowApplication(
             throw new Error('Native implementation revision has no original Verifier result');
           return {
             state: returned as unknown as RuntimeValue,
-            next: state.children_contract_hash
+            next: state.children_contract_ref
               ? [
                   {
                     stepId: 'supervisor.parent.builder',
@@ -1693,10 +1652,6 @@ export function defineNativeWorkflowApplication(
               ...state,
               document_constraints_version: nativeSdkShapeConstraintsVersion(state),
               spec_changes: proposal.specChanges,
-              shape_confirmation_hash: proposal.shapeConfirmationHash,
-              ...(proposal.semanticSnapshot
-                ? { shape_semantic_snapshot: proposal.semanticSnapshot }
-                : {}),
             },
             acceptance: proposal.acceptance,
           });
@@ -1725,7 +1680,6 @@ export function defineNativeWorkflowApplication(
           const selected = parseNativePortableState({
             ...state,
             coordination_mode: coordinationMode,
-            shape_confirmation_hash: selectedShapeHash(proposal, coordinationMode),
           });
           return { state: selected as unknown as RuntimeValue, next: ['shape.revalidate'] };
         }
@@ -1743,10 +1697,8 @@ export function defineNativeWorkflowApplication(
           }
           const supervisor = parseNativePortableState({
             ...confirmed,
-            children_contract_hash: hashNativeParentContract({
-              acceptance: confirmed.acceptance,
-              children: proposal.children.contract,
-            }),
+            children_contract_ref: event.outcome.actionId,
+            children_contract: proposal.children.contract,
           });
           return { state: supervisor as unknown as RuntimeValue, next: ['supervisor.prepare'] };
         }
@@ -1755,7 +1707,7 @@ export function defineNativeWorkflowApplication(
             return { state: state as unknown as RuntimeValue, next: [] };
           }
           const proposal = proposalFrom(run.outputs['shape.revalidate']?.value);
-          if (!proposal.children || !state.children_contract_hash) {
+          if (!proposal.children || !state.children_contract_ref) {
             throw new Error('Native Supervisor preparation lacks the confirmed child plan');
           }
           const output = event.outcome.output as {
@@ -1776,7 +1728,7 @@ export function defineNativeWorkflowApplication(
               stepId: 'supervisor.child.prepare',
               input: {
                 child,
-                contractHash: state.children_contract_hash!,
+                contractRef: state.children_contract_ref!,
                 integrationBranch: output.integrationBranch,
                 integrationWorktree: output.integrationWorktree,
                 targetCommit: output.integrationCommit ?? output.targetCommit,
@@ -1790,7 +1742,7 @@ export function defineNativeWorkflowApplication(
           }
           const output = event.outcome.output as {
             child: string;
-            contractHash: string;
+            contractRef: string;
             worktree: string;
             branch: string;
             baseCommit: string;
@@ -2134,7 +2086,7 @@ export function defineNativeWorkflowApplication(
                   candidateCommit: checksInput.candidateCommit,
                   integrationCommit: checksOutput.candidateId,
                   checksActionId: event.outcome.actionId,
-                  contractHash: state.children_contract_hash!,
+                  contractRef: state.children_contract_ref!,
                 },
               },
             ],
@@ -2151,7 +2103,7 @@ export function defineNativeWorkflowApplication(
                 integrationWorktree: string;
               }
             | undefined;
-          if (!proposal.children || !state.children_contract_hash || !integration) {
+          if (!proposal.children || !state.children_contract_ref || !integration) {
             throw new Error('Native SDK Supervisor continuation lacks its confirmed plan');
           }
           const integrated = new Set(
@@ -2205,7 +2157,7 @@ export function defineNativeWorkflowApplication(
                 {
                   stepId: 'supervisor.parent.builder',
                   input: {
-                    contractHash: state.children_contract_hash,
+                    contractRef: state.children_contract_ref,
                     integrationBranch: integration.integrationBranch,
                     integrationWorktree: integration.integrationWorktree,
                     integrationCommit: output.integrationCommit,
@@ -2225,7 +2177,7 @@ export function defineNativeWorkflowApplication(
               stepId: 'supervisor.child.prepare',
               input: {
                 child,
-                contractHash: state.children_contract_hash!,
+                contractRef: state.children_contract_ref!,
                 integrationBranch: integration.integrationBranch,
                 integrationWorktree: integration.integrationWorktree,
                 targetCommit: output.integrationCommit,
@@ -2501,10 +2453,10 @@ export function defineNativeWorkflowApplication(
               state: returned as unknown as RuntimeValue,
               next: [
                 {
-                  stepId: state.children_contract_hash
+                  stepId: state.children_contract_ref
                     ? 'supervisor.parent.builder'
                     : 'build.builder',
-                  input: state.children_contract_hash
+                  input: state.children_contract_ref
                     ? supervisorParentRepairActivation(run, {
                         failedCheckActionId: event.outcome.actionId,
                       })
@@ -2556,7 +2508,7 @@ export function defineNativeWorkflowApplication(
                     ]
                   : ['verify.report']
                 : verified.state.phase === 'build'
-                  ? state.children_contract_hash
+                  ? state.children_contract_ref
                     ? [
                         {
                           stepId: 'supervisor.parent.builder',
@@ -2610,10 +2562,8 @@ export function defineNativeWorkflowApplication(
             state: returned as unknown as RuntimeValue,
             next: [
               {
-                stepId: state.children_contract_hash
-                  ? 'supervisor.parent.builder'
-                  : 'build.builder',
-                input: state.children_contract_hash
+                stepId: state.children_contract_ref ? 'supervisor.parent.builder' : 'build.builder',
+                input: state.children_contract_ref
                   ? supervisorParentRepairActivation(run, {
                       failedCheckActionId: failedCheckActionId!,
                     })
@@ -2669,7 +2619,7 @@ export function defineNativeWorkflowApplication(
           if (!failedVerifier) throw new Error('Native Verify stop has no Verifier result');
           return {
             state: returned as unknown as RuntimeValue,
-            next: state.children_contract_hash
+            next: state.children_contract_ref
               ? [
                   {
                     stepId: 'supervisor.parent.builder',
@@ -2740,7 +2690,7 @@ export function defineNativeWorkflowApplication(
             };
           }
           if (event.choice === 'approved') {
-            if (run.workflow.version === '3' && !state.children_contract_hash)
+            if (run.workflow.version === '3' && !state.children_contract_ref)
               return {
                 state: confirmNativeSkillCoordinatedPass(state) as unknown as RuntimeValue,
                 next: ['archive.prepare'],
@@ -2753,7 +2703,7 @@ export function defineNativeWorkflowApplication(
           });
           return {
             state: returned as unknown as RuntimeValue,
-            next: state.children_contract_hash
+            next: state.children_contract_ref
               ? [
                   {
                     stepId: 'supervisor.parent.builder',
@@ -2784,7 +2734,9 @@ export function defineNativeWorkflowApplication(
           };
           if (
             event.outcome.status === 'failed' &&
-            ['check-input-drift', 'candidate-drift'].includes(invalidated.reason ?? '')
+            ['checks-failed', 'check-input-drift', 'candidate-drift'].includes(
+              invalidated.reason ?? '',
+            )
           ) {
             const refresh = invalidated.refreshChecks === true;
             const reason = refresh
@@ -2843,7 +2795,7 @@ export function defineNativeWorkflowApplication(
             };
           }
           const confirmed = confirmNativeSkillCoordinatedPass(state);
-          if (confirmed.children_contract_hash) {
+          if (confirmed.children_contract_ref) {
             const parentBuilder = [...run.actions]
               .reverse()
               .find(
@@ -2902,7 +2854,7 @@ export function defineNativeWorkflowApplication(
           return {
             state: state as unknown as RuntimeValue,
             next:
-              event.outcome.status === 'succeeded' && state.children_contract_hash
+              event.outcome.status === 'succeeded' && state.children_contract_ref
                 ? ['supervisor.cleanup']
                 : [],
           };
@@ -2967,8 +2919,3 @@ export function defineNativeWorkflowApplication(
     ],
   };
 }
-import {
-  nativeBuilderRepairContext,
-  nativeUserEditedReportContext,
-} from './native-task-context.js';
-import { nativeSdkRequiresIndependentReview } from './native-sdk-review.js';

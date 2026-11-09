@@ -1,18 +1,17 @@
 import path from 'node:path';
-import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
-import { parseNativePortableState } from './native-portable-state.js';
 import { createFileRuntimeStore, type WorkflowRun } from '../engine/runtime.js';
-import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
 import { readWorkflowApplicationStorageDisposition } from '../workflow-application/index.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
+import { parseNativePortableState } from './native-portable-state.js';
+import { recoverCancelledNativeSdkArchive } from './native-sdk-archive.js';
+import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
 import {
-  inspectNativeSdkCheckExecutions,
   hasNativeSdkPortableStopEvidence,
+  inspectNativeSdkCheckExecutions,
   type NativeSdkCheckExecutionInspection,
 } from './native-sdk-check-execution.js';
-import { recoverCancelledNativeSdkArchive } from './native-sdk-archive.js';
-import { assertNativeSdkCandidateUnchanged } from './native-sdk-checks.js';
 
 /** 只读区分状态可读、执行核对和存储收尾；正常用户等待不是损坏。 */
 export async function inspectNativeSdkRunDiagnostics(
@@ -75,61 +74,22 @@ export async function inspectNativeSdkRunDiagnostics(
   const preflight = [...run.actions]
     .reverse()
     .find((action) => action.stepId === 'archive.prepare');
-  const state = parseNativePortableState(run.state);
-  const candidateId = state.builder_handoff?.candidate_id;
-  const currentCheck = [...run.actions]
-    .reverse()
-    .find(
-      (action) =>
-        candidateId &&
-        ['verify.checks', 'verify.requested-checks'].includes(action.stepId) &&
-        action.status === 'succeeded' &&
-        (action.outcome?.output as { candidateId?: unknown } | undefined)?.candidateId ===
-          candidateId,
-    );
-  const failedCandidateCapture =
-    (currentCheck?.outcome?.output as { candidateInputFingerprintGate?: unknown } | undefined)
-      ?.candidateInputFingerprintGate === null;
-  if (
-    failedCandidateCapture ||
-    (state.phase === 'archive' &&
-      preflight &&
-      ['pending', 'failed'].includes(preflight.status) &&
-      !run.actions
-        .slice(run.actions.indexOf(preflight) + 1)
-        .some(
-          (action) =>
-            ['build.builder', 'verify.checks', 'verify.requested-checks'].includes(action.stepId) &&
-            action.status === 'succeeded',
-        ))
-  ) {
-    try {
-      await assertNativeSdkCandidateUnchanged({ run, projectRoot, requireEvidence: true });
-    } catch (error) {
-      candidateIssues.push({
-        code: failedCandidateCapture
-          ? 'native-check-candidate-unavailable'
-          : 'native-archive-candidate-unavailable',
-        runId: run.runId,
-        message: (error as Error).message,
-        nextCommand: `comet native status ${run.runId} --json`,
-      });
-    }
-    if (preflight?.status === 'failed' && candidateIssues.length === 0) {
-      const output = preflight.outcome?.output as { message?: string; reason?: string } | undefined;
-      candidateIssues.push({
-        code: 'native-archive-preflight-blocked',
-        runId: run.runId,
-        message: output?.message ?? 'Native Archive 预检未通过，请核对原 Action',
-        nextCommand: `comet native status ${run.runId} --json`,
-      });
-    }
-  }
+
+  if (preflight?.status === 'failed')
+    candidateIssues.push({
+      code: 'native-archive-preflight-blocked',
+      runId: run.runId,
+      message:
+        (preflight.outcome?.output as { message?: string })?.message ??
+        'Native Archive 预检未通过，请核对原 Action',
+      nextCommand: 'comet native status ' + run.runId + ' --json',
+    });
   const closedCancellation =
     owner?.application === 'native' &&
     disposition === 'closed' &&
     (await inspectNativeSdkCancellation({ projectRoot, run, checkExecutionObservation: checks }))
       ?.status === 'cancelled';
+
   const issues = [
     ...(!closedCancellation &&
     !parseNativePortableState(run.state).archived &&

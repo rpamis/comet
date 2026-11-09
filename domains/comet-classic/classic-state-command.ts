@@ -1,22 +1,11 @@
-import { assertClassicEditReviewsComplete } from './classic-edit-review.js';
-import { resolveClassicStateFile, LEGACY_CLASSIC_STATE_FILE } from './classic-state-file.js';
-import { randomUUID } from 'node:crypto';
-import {
-  protectClassicLegacyStateWriter,
-  resolveClassicRunDirectory,
-  resolveClassicLocalTarget,
-} from './classic-runtime-paths.js';
-import { inspectClassicSdkRevisionReadiness } from './classic-sdk-revision-readiness.js';
-import { inspectClassicSdkActionRecovery } from './classic-sdk-check-recovery.js';
-import { reviseClassicSdkWork, rebindClassicSdkWork } from './classic-sdk-revision.js';
-import { measureCometGitCommand } from '../../platform/process/runtime-metrics.js';
 import { spawnSync } from 'child_process';
+import { randomUUID } from 'node:crypto';
 import path from 'path';
 import { Document, parseDocument } from 'yaml';
-import { samePath, inspectGitWorktree } from '../../platform/paths/git-worktree.js';
-import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
-import { formatCliCommandArgs } from '../workflow-contract/output-envelope.js';
-import { classicSdkEntryData as sdkEntryData } from './classic-sdk-output.js';
+import { readRunState } from '../../domains/engine/state.js';
+import { inspectGitWorktree, samePath } from '../../platform/paths/git-worktree.js';
+import { measureCometGitCommand } from '../../platform/process/runtime-metrics.js';
+import type { WorkflowRun } from '../engine/runtime.js';
 import {
   assertChangeNotSdkOwned,
   COMET_CHANGE_OWNER_SCHEMA,
@@ -24,49 +13,9 @@ import {
   readSdkChangeOwner,
   registerCompatChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
-import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
-import {
-  assertClassicSdkStartAvailable,
-  resolveClassicChangeRuntimeOwner,
-  restoreClassicSdkChange,
-  withClassicChangeOwnershipLock,
-} from './classic-runtime-ownership.js';
-import { createClassicSdkRun } from './classic-sdk-create.js';
-import { CLASSIC_MANAGED_RUN_MARKER } from './classic-sdk-state-store.js';
-import {
-  decideClassicSdkArchive,
-  proposeClassicSdkArchive,
-} from './classic-sdk-archive-decision.js';
-import {
-  completeClassicSdkDelivery,
-  completeClassicSdkDeliveryFromRecord,
-  verifyClassicSdkDelivery,
-} from './classic-sdk-delivery.js';
-import {
-  completeClassicSdkBuild,
-  continueClassicSdkBuildPlan,
-  decideClassicSdkBuild,
-  proposeClassicSdkBuild,
-  submitClassicSdkBuildPlan,
-} from './classic-sdk-build.js';
-import {
-  completeClassicSdkDesign,
-  decideClassicSdkDesign,
-  proposeClassicSdkDesign,
-} from './classic-sdk-design.js';
-import { findClassicSdkWorkspace, inspectClassicSdkRun } from './classic-sdk-status.js';
-import type { WorkflowRun } from '../engine/runtime.js';
-import { failClassicSdkVerify } from './classic-sdk-verify-failure.js';
-import {
-  decideClassicSdkEscalation,
-  proposeClassicSdkEscalation,
-} from './classic-sdk-escalation.js';
-import {
-  clearCurrentChange,
-  clearCurrentChangeIf,
-  resolveCurrentChange,
-  selectCurrentChange,
-} from './classic-current-change.js';
+import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
+import { formatCliCommandArgs } from '../workflow-contract/output-envelope.js';
+import { readClassicArtifactRequirements } from './classic-artifact-requirements.js';
 import {
   driftBlockedMessage,
   evaluateBranchBinding,
@@ -77,46 +26,31 @@ import {
   resolveBranchBinding,
   unboundDetachedMessage,
 } from './classic-branch-binding.js';
-import { collectClassicEvidence } from './classic-evidence.js';
+import { classicConfigurationReadiness } from './classic-build-configuration.js';
+import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
 import {
-  collectClassicSpecFiles,
-  ensureClassicActiveChangeDirectory,
-  inspectClassicStateFileCandidates,
-  openSpecChangeNameError,
-  resolveClassicChangeDirectory,
-} from './classic-paths.js';
-import { assertClassicLayoutWritable, assertClassicLayoutReadable } from './classic-layout.js';
+  recordCommandCheck,
+  recoverCommandChecks,
+  type CommandCheckScope,
+} from './classic-command-checks.js';
 import {
   classicCommandInvocationCwd,
   classicCommandProjectRoot,
   withClassicCommandContext,
   withProjectContext,
 } from './classic-command-context.js';
-import { resolveClassicStepId } from './classic-resolver.js';
-import { reconcileClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
-import { appendClassicStateEvent } from './classic-state-events.js';
 import {
-  parseClassicStateDocument,
-  classicStateToDocument,
-  type ClassicProfile,
-  type ClassicState,
-} from './classic-state.js';
-import { FIELD_ENUMS, MACHINE_OWNED_FIELDS, SETTABLE_FIELDS } from './classic-state-options.js';
-import { readClassicState, writeClassicState, withClassicStateLock } from './classic-store.js';
-import {
-  CLASSIC_TRANSITION_EVENTS,
-  applyClassicTransition,
-  type ClassicTransitionEvent,
-} from './classic-transitions.js';
-import { readRunState } from '../../domains/engine/state.js';
-import { appendTrajectory, readTrajectory } from './classic-run-store.js';
-import {
-  recordCommandCheck,
-  recoverCommandChecks,
-  type CommandCheckScope,
-} from './classic-command-checks.js';
+  clearCurrentChange,
+  clearCurrentChangeIf,
+  resolveCurrentChange,
+  selectCurrentChange,
+} from './classic-current-change.js';
+import { collectClassicEvidence } from './classic-evidence.js';
 import { classicGuardCommand } from './classic-guard.js';
-import { readClassicConfigValue } from './classic-project-config.js';
+import { classicHandoffCommand } from './classic-handoff-command.js';
+import { advanceClassicSdkChange } from './classic-sdk-next.js';
+import { classicIssue, type ClassicIssue } from './classic-issues.js';
+import { assertClassicLayoutReadable, assertClassicLayoutWritable } from './classic-layout.js';
 import {
   classicEntryCheckEnvelope,
   classicLocale,
@@ -126,34 +60,99 @@ import {
   classicTransitionEnvelope,
 } from './classic-output-language.js';
 import {
+  collectClassicSpecFiles,
+  ensureClassicActiveChangeDirectory,
+  inspectClassicStateFileCandidates,
+  openSpecChangeNameError,
+  resolveClassicChangeDirectory,
+} from './classic-paths.js';
+import {
+  invalidateClassicDelivery,
+  readClassicCheckpoint,
+  readClassicDelivery,
+  reauthorizeClassicDelivery,
+  writeClassicCheckpoint,
+  writeClassicDelivery,
+} from './classic-progress.js';
+import { readClassicConfigValue } from './classic-project-config.js';
+import {
   classicProjectFileNonempty,
   classicProjectTargetExists,
   inspectClassicProjectTarget,
   readClassicProjectFile,
   writeClassicProjectText,
 } from './classic-protected-path.js';
-import { resolveClassicWorkspace } from './classic-workspace.js';
 import { classicRecoveryContext } from './classic-recovery.js';
-import { classicConfigurationReadiness } from './classic-build-configuration.js';
-import { classicHandoffCommand } from './classic-handoff-command.js';
-import { classicIssue, type ClassicIssue } from './classic-issues.js';
+import { resolveClassicStepId } from './classic-resolver.js';
+import { appendTrajectory, readTrajectory } from './classic-run-store.js';
 import {
-  readClassicCheckpoint,
-  writeClassicCheckpoint,
-  readClassicDelivery,
-  reauthorizeClassicDelivery,
-  writeClassicDelivery,
-  invalidateClassicDelivery,
-} from './classic-progress.js';
-import { readClassicArtifactRequirements } from './classic-artifact-requirements.js';
+  assertClassicSdkStartAvailable,
+  resolveClassicChangeRuntimeOwner,
+  restoreClassicSdkChange,
+  withClassicChangeOwnershipLock,
+} from './classic-runtime-ownership.js';
+import {
+  protectClassicLegacyStateWriter,
+  resolveClassicLocalTarget,
+  resolveClassicRunDirectory,
+} from './classic-runtime-paths.js';
+import { reconcileClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
+import {
+  decideClassicSdkArchive,
+  proposeClassicSdkArchive,
+} from './classic-sdk-archive-decision.js';
+import {
+  completeClassicSdkBuild,
+  continueClassicSdkBuildPlan,
+  decideClassicSdkBuild,
+  proposeClassicSdkBuild,
+  submitClassicSdkBuildPlan,
+} from './classic-sdk-build.js';
+import { inspectClassicSdkActionRecovery } from './classic-sdk-check-recovery.js';
+import { createClassicSdkRun } from './classic-sdk-create.js';
+import {
+  completeClassicSdkDelivery,
+  completeClassicSdkDeliveryFromRecord,
+  verifyClassicSdkDelivery,
+} from './classic-sdk-delivery.js';
+import {
+  completeClassicSdkDesign,
+  decideClassicSdkDesign,
+  proposeClassicSdkDesign,
+} from './classic-sdk-design.js';
+import {
+  decideClassicSdkEscalation,
+  proposeClassicSdkEscalation,
+} from './classic-sdk-escalation.js';
+import { classicSdkEntryData as sdkEntryData } from './classic-sdk-output.js';
+import { inspectClassicSdkRevisionReadiness } from './classic-sdk-revision-readiness.js';
+import { rebindClassicSdkWork, reviseClassicSdkWork } from './classic-sdk-revision.js';
+import { CLASSIC_MANAGED_RUN_MARKER } from './classic-sdk-state-store.js';
+import { findClassicSdkWorkspace, inspectClassicSdkRun } from './classic-sdk-status.js';
+import { failClassicSdkVerify } from './classic-sdk-verify-failure.js';
+import { appendClassicStateEvent } from './classic-state-events.js';
+import { LEGACY_CLASSIC_STATE_FILE, resolveClassicStateFile } from './classic-state-file.js';
+import { FIELD_ENUMS, MACHINE_OWNED_FIELDS, SETTABLE_FIELDS } from './classic-state-options.js';
+import {
+  classicStateToDocument,
+  parseClassicStateDocument,
+  type ClassicProfile,
+  type ClassicState,
+} from './classic-state.js';
+import { readClassicState, withClassicStateLock, writeClassicState } from './classic-store.js';
 import {
   assignClassicTaskIds,
-  classicTaskRevision,
   completeClassicTask,
-  parseClassicTasks,
   inspectClassicPlanTasks,
+  parseClassicTasks,
   synchronizeClassicPlanTasks,
 } from './classic-tasks.js';
+import {
+  applyClassicTransition,
+  CLASSIC_TRANSITION_EVENTS,
+  type ClassicTransitionEvent,
+} from './classic-transitions.js';
+import { resolveClassicWorkspace } from './classic-workspace.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -1058,9 +1057,7 @@ async function transitionLocked(output: CommandOutput, name: string, event: stri
   } else if (event === 'archive-confirm') {
     await requirePhase(name, 'archive');
     const { directory } = await changeDirectory(name);
-    const current = await readClassicState(directory, { migrate: false });
-    if (current.classic)
-      await assertClassicEditReviewsComplete(classicCommandProjectRoot(), name, current.classic);
+    await readClassicState(directory, { migrate: false });
     if ((await readField(name, 'verify_result')) !== 'pass') {
       fail(`ERROR: Cannot transition '${name}': verify_result must be pass before archiving`);
     }
@@ -1089,9 +1086,7 @@ async function transitionLocked(output: CommandOutput, name: string, event: stri
   } else {
     await requirePhase(name, 'archive');
     const { directory } = await changeDirectory(name);
-    const current = await readClassicState(directory, { migrate: false });
-    if (current.classic)
-      await assertClassicEditReviewsComplete(classicCommandProjectRoot(), name, current.classic);
+    await readClassicState(directory, { migrate: false });
     if ((await readField(name, 'verify_result')) !== 'pass') {
       fail(`ERROR: Cannot transition '${name}': verify_result must be pass before archiving`);
     }
@@ -1150,7 +1145,12 @@ async function nextSdk(
   await nextSdkEntry(output, name, { run, projectRoot });
 }
 
-async function next(output: CommandOutput, name: string, details = false): Promise<void> {
+async function next(
+  output: CommandOutput,
+  name: string,
+  details = false,
+  continueRun = false,
+): Promise<void> {
   validateChangeName(name);
   const owner = await resolveClassicChangeRuntimeOwner(classicCommandProjectRoot(), name);
   const sdkWorkspace =
@@ -1158,9 +1158,24 @@ async function next(output: CommandOutput, name: string, details = false): Promi
       ? null
       : await findClassicSdkWorkspace(classicCommandProjectRoot(), name);
   if (sdkWorkspace) {
+    if (continueRun) {
+      const advanced = await advanceClassicSdkChange(sdkWorkspace.projectRoot, name, sdkWorkspace);
+      await nextSdkEntry(
+        output,
+        name,
+        { run: advanced.run, projectRoot: sdkWorkspace.projectRoot },
+        details,
+      );
+      if (advanced.failure) throw new CommandFailure(advanced.failure, 1);
+      return;
+    }
     await nextSdkEntry(output, name, sdkWorkspace, details);
     return;
   }
+  if (continueRun)
+    fail(
+      '--continue requires the current built-in Classic SDK Run; use the Compat continuation command.',
+    );
   const { file, label, directory } = await stateFile(name);
   if (!(await exists(file)))
     fail(`ERROR: ${path.basename(file)} not found at ${label}/${path.basename(file)}`);
@@ -1291,7 +1306,7 @@ async function taskState(
   output: CommandOutput,
   name: string,
   action:
-    { kind: 'list' | 'assign' | 'sync-plan' } | { kind: 'complete'; id: string; revision: string },
+    { kind: 'list' | 'assign' | 'sync-plan' } | { kind: 'complete'; id: string; revision?: string },
 ): Promise<void> {
   validateChangeName(name);
   const { directory } = await stateFile(name);
@@ -1369,14 +1384,13 @@ async function taskState(
     output.data = {
       change: name,
       authority: path.relative(classicCommandProjectRoot(), tasksFile).replaceAll('\\', '/'),
-      revision: classicTaskRevision(updated),
       needsIds: tasks.some((task) => !task.id),
       planSync,
       tasks,
       progress: { total: tasks.length, completed: tasks.filter((task) => task.completed).length },
     };
     output.stdout.push(
-      `Tasks: ${tasks.filter((task) => task.completed).length}/${tasks.length} complete. Use --json for task IDs and revision.`,
+      `Tasks: ${tasks.filter((task) => task.completed).length}/${tasks.length} complete. Use --json for stable task IDs.`,
     );
   };
   if (action.kind === 'list') await operation();
@@ -2480,9 +2494,20 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
       }
       if (
         (subcommand === 'next' || subcommand === 'select') &&
-        !(rest.length === 1 || (rest.length === 2 && rest[1] === '--details'))
+        !(
+          rest.length >= 1 &&
+          rest
+            .slice(1)
+            .every(
+              (option) =>
+                option === '--details' || (subcommand === 'next' && option === '--continue'),
+            ) &&
+          new Set(rest.slice(1)).size === rest.length - 1
+        )
       ) {
-        fail(`Usage: comet state ${subcommand} <change-name> [--details]`);
+        fail(
+          `Usage: comet state ${subcommand} <change-name> [--details]${subcommand === 'next' ? ' [--continue]' : ''}`,
+        );
       }
       if (
         subcommand === 'check' &&
@@ -3101,9 +3126,9 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
       } else if (subcommand === 'checkpoint' || subcommand === 'delivery') {
         await progressCommand(output, subcommand, rest);
       } else if (subcommand === 'task-complete') {
-        if (rest.length !== 4 || rest[2] !== '--expect')
-          fail('Usage: comet state task-complete <change-name> <task-id> --expect <revision>');
-        await taskState(output, rest[0], { kind: 'complete', id: rest[1], revision: rest[3] });
+        if (rest.length !== 2 && !(rest.length === 4 && rest[2] === '--expect'))
+          fail('Usage: comet state task-complete <change-name> <task-id>');
+        await taskState(output, rest[0], { kind: 'complete', id: rest[1] });
       } else if (subcommand === 'rebind') {
         requiredExact(rest, 1, 'Usage: comet state rebind <change-name>');
         await rebind(output, rest[0]);
@@ -3116,7 +3141,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         requiredExact(rest, 0, 'Usage: comet state clear-selection');
         await clearSelection(output);
       } else if (subcommand === 'next') {
-        await next(output, rest[0], rest.includes('--details'));
+        await next(output, rest[0], rest.includes('--details'), rest.includes('--continue'));
       } else {
         fail(`Unknown subcommand: ${subcommand ?? ''}`);
       }

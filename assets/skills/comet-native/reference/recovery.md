@@ -31,7 +31,7 @@ Runtime blocks writes if project root, branch, workspace type, or Git state disa
 SDK Runs recover from `run_checkpoint` in `comet-state.yaml`; the `state.json` rebuild rules below apply only to the older Runtime. For that Runtime, `comet-state.yaml` records the last safely recoverable workflow state. Local `state.json` only describes execution on this machine. If missing, behind, or associated with an old task, Runtime rebuilds it from YAML, the brief, and target Specs. Local state cannot override newer YAML.
 
 - Shape: stay in Shape and continue clarification or confirmation.
-- Build: `repairing` means Verify failed and returned to Build. Ordinary changes retain the current iteration and continue implementation. Supervisor Changes use `repair-child` to add a new repair child for unresolved items (edit `children.yaml`, then run `comet native next <parent> --summary "<note>"` so the contract change returns the change to Shape for reconfirmation) rather than reopening archived children.
+- Build: `repairing` means Verify failed and returned to Build. Ordinary changes retain the current iteration and continue implementation. After failed acceptance, the Agent chooses the repair arrangement; the parent may repair its integration scope or add a uniquely named repair child referencing valid acceptance IDs. Preserve actual failures and budgets without reopening archived or integrated children. Explicitly use the returned --revise-requirements when revising the plan, present the full proposal, and obtain confirmation. File edits do not automatically return the change to Shape.
 - Verify (`verify-ready`): rerun checks needed for the current implementation and launch a new Verifier; do not reuse passes from the old device.
 - Archive (`archive-ready`): safely return to Verify, reset acceptance to `pending`, and assess the implementation synchronized to this device.
 - `await-user` / `blocked`: restore the original blocker, responsible party, and allowed actions, then wait for the corresponding condition.
@@ -54,11 +54,11 @@ Workflow state cannot recover code that was never synchronized from the old devi
 
 Under the older Runtime, reverification of Verify or Archive-ready work on a new device is recovery; it does not increase iteration, failure, or no-progress counters. The Verifier attempt count increases only when a new Verifier actually launches. Completed Shape and Build are not repeated, and Runtime does not scan the entire project to guess progress.
 
-### Failed Verify and repeated lack of progress
+### Failed Verify and Execution Errors
 
-After Verify fails, read failed or blocked acceptance items and failed checks. Make actual repairs before submitting another Builder handoff. Progress requires fewer unresolved problems; changed wording, identical checks, or the same reported cause do not resolve them.
+Read actual failed or blocked criteria and check results. The Agent judges repair direction and progress and submits a new Builder handoff after necessary changes. Repeated or alternating acceptance IDs and nonshrinking sets do not create another pause.
 
-After repeated lack of progress or Verifier execution errors, follow Runtime's blocker-handling action. At `native.max_verify_failures`, wait for the user to continue the current objective, change confirmed requirements, or stop. Verification-failure counts reset after the user confirms a new acceptance list and starts a new objective round.
+When actual failures reach `native.max_verify_failures`, or Verifier executions repeatedly fail, follow the current response for the budget or original execution recovery. Do not record unknown or failed results as passed. Retain the original Run, valid approvals, and existing results. Record a user-confirmed new objective cycle through the existing requirements protocol.
 
 ### Spec and Archive conflicts
 

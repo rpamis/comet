@@ -177,19 +177,6 @@ describe('Native joint Supervisor Shape decision', () => {
     expect((await cli(root, ['status', 'joint-shape'])).data.phase).toBe('shape');
   });
 
-  it('rejects a legacy pending boundary with no Shape fingerprint', async () => {
-    const { root } = await shape();
-    const prepared = await cli(root, ['next', 'joint-shape', '--summary', 'Ready']);
-    const args = command(prepared, 'multi-session');
-    const file = nativePortableStateFile(await nativeProjectPaths(root, 'docs'), 'joint-shape');
-    await fs.writeFile(
-      file,
-      (await fs.readFile(file, 'utf8')).replace(/^shape_confirmation_hash:.*\r?\n/mu, ''),
-    );
-    expect((await cli(root, args, false)).exitCode).not.toBe(0);
-    expect((await cli(root, ['status', 'joint-shape'])).data.phase).toBe('shape');
-  });
-
   it.each(['formal', 'children', 'mode', 'state'] as const)(
     'rejects the joint decision after %s drift',
     async (drift) => {

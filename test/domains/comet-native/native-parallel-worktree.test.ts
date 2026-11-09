@@ -459,10 +459,6 @@ describe('Native parallel linked-worktree Runtime', () => {
     await exerciseParallelEdits('revert');
   }, 120_000);
 
-  it('preserves default linked-worktree edits through current-Agent judgment and candidate revision', async () => {
-    await exerciseParallelEdits('allow');
-  }, 120_000);
-
   it('rejects the retired checkpoint bundle on a linked-worktree-capable host', async () => {
     const repository = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-retired-command-'));
     repositories.push(repository);

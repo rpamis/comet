@@ -1,19 +1,15 @@
-import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { ensureCometProjectGitignore } from '../../../domains/workflow-contract/project-gitignore.js';
 import { nativeArchiveCommand } from '../../../domains/comet-native/native-archive-command.js';
 import {
-  hashNativeParentContract,
-  hasNativeSupervisorShapeIntent,
   findNativeV1SupervisorParents,
   inspectNativeChildren,
-  nativeChildrenIndexDrift,
   parseNativeChildrenContract,
 } from '../../../domains/comet-native/native-children.js';
 import {
@@ -37,8 +33,17 @@ import {
   submitNativePortableBuilderCandidate,
   submitNativePortableVerifierResult,
 } from '../../../domains/comet-native/native-portable-runtime.js';
-import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
+import {
+  readNativePortableState,
+  writeNativePortableState,
+} from '../../../domains/comet-native/native-portable-state.js';
+import { inspectNativePortableStatus } from '../../../domains/comet-native/native-portable-status.js';
+import type {
+  NativePortableAcceptanceState,
+  NativePortableState,
+} from '../../../domains/comet-native/native-portable-types.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
+import { nativeShowCommand } from '../../../domains/comet-native/native-show-command.js';
 import {
   assertChildDependenciesIntegrated,
   createNativeSupervisorState,
@@ -49,17 +54,9 @@ import {
   readNativeSupervisorState,
   writeNativeSupervisorState,
 } from '../../../domains/comet-native/native-supervisor-state.js';
-import {
-  readNativePortableState,
-  writeNativePortableState,
-} from '../../../domains/comet-native/native-portable-state.js';
-import { inspectNativePortableStatus } from '../../../domains/comet-native/native-portable-status.js';
-import { nativeShowCommand } from '../../../domains/comet-native/native-show-command.js';
-import type {
-  NativePortableAcceptanceState,
-  NativePortableState,
-} from '../../../domains/comet-native/native-portable-types.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+import { ensureCometProjectGitignore } from '../../../domains/workflow-contract/project-gitignore.js';
+import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 
 async function guardedShapeConfirmationArgs(
   paths: NativeProjectPaths,
@@ -333,7 +330,7 @@ describe('Native parent and child changes', () => {
     );
   });
 
-  it('validates the DAG and hashes only semantic parent contract changes', () => {
+  it('validates declared dependency structure while allowing parent-only acceptance', () => {
     const acceptance: NativePortableAcceptanceState[] = [
       { id: 'A1', source: 'brief.md', text: 'First behavior.', result: 'pending' },
       { id: 'A2', source: 'brief.md', text: 'Second behavior.', result: 'pending' },
@@ -362,16 +359,12 @@ children:
 
     expect(parsed.children.map(({ name }) => name)).toEqual(['child-a', 'child-b', 'child-c']);
     expect(reformatted.children[1].depends_on).toEqual(['child-a']);
-    expect(hashNativeParentContract({ acceptance, children: parsed })).toBe(
-      hashNativeParentContract({ acceptance, children: reformatted }),
-    );
-    expect(
-      hashNativeParentContract({
-        acceptance,
-        children: { ...parsed, children: [...parsed.children].reverse() },
-      }),
-    ).not.toBe(hashNativeParentContract({ acceptance, children: parsed }));
-
+    expect(() =>
+      parseNativeChildrenContract(
+        CHILDREN.replace('covers: [A2]', 'covers: [A1]'),
+        acceptance.map(({ id }) => id),
+      ),
+    ).not.toThrow();
     const invalidContracts = [
       {
         source: CHILDREN.replace('name: child-b', 'name: child-a'),
@@ -389,10 +382,6 @@ children:
         message: /dependency cycle/iu,
       },
       { source: CHILDREN.replace('covers: [A2]', 'covers: [A3]'), message: /unknown acceptance/iu },
-      {
-        source: CHILDREN.replace('covers: [A2]', 'covers: [A1]'),
-        message: /do not cover parent acceptance/iu,
-      },
     ];
     for (const invalid of invalidContracts) {
       expect(() =>
@@ -402,26 +391,6 @@ children:
         ),
       ).toThrow(invalid.message);
     }
-  });
-
-  it('recognizes an explicit Supervisor split in Decisions before children.yaml exists', () => {
-    expect(
-      hasNativeSupervisorShapeIntent(`# Decisions
-
-- Selected Supervisor Change for two independent outcomes.
-- Child 1 owns the first outcome; Child 2 owns the second outcome.
-
-# Verification expectations
-- Run focused checks.
-`),
-    ).toBe(true);
-    expect(
-      hasNativeSupervisorShapeIntent(`# Decisions
-
-- Keep this as one Native Change.
-- The implementation has two related parts.
-`),
-    ).toBe(false);
   });
 
   it('parses children.v2 summaries without acceptance ownership fields', () => {
@@ -561,126 +530,6 @@ children:
     );
   });
 
-  it('validates v2 index text while allowing only failed Spec acceptance into repair children', () => {
-    const acceptance = [
-      { id: 'A1', source: 'brief.md', text: 'The integrated result contains the first behavior.' },
-      { id: 'A2', source: 'brief.md', text: 'The integrated result contains the second behavior.' },
-      { id: 'A3', source: 'specs/demo/spec.md', text: 'The formal requirement is retained.' },
-    ];
-
-    expect(() =>
-      parseNativeChildrenContract(
-        READABLE_CHILDREN,
-        acceptance.map(({ id }) => id),
-        {
-          acceptanceCatalog: acceptance,
-          requiredAcceptanceIds: ['A1', 'A2'],
-        },
-      ),
-    ).not.toThrow();
-    expect(() =>
-      parseNativeChildrenContract(
-        READABLE_CHILDREN.replace(
-          'The integrated result contains the second behavior.',
-          'A changed behavior.',
-        ),
-        acceptance.map(({ id }) => id),
-        { acceptanceCatalog: acceptance, requiredAcceptanceIds: ['A1', 'A2'] },
-      ),
-    ).toThrow(
-      /acceptance_index.A2 does not match the acceptance catalog: copy text exactly from the current acceptance catalog/iu,
-    );
-    expect(() =>
-      parseNativeChildrenContract(
-        READABLE_CHILDREN.replace('covers: [A1]', 'covers: [A1, A3]'),
-        acceptance.map(({ id }) => id),
-        { acceptanceCatalog: acceptance, requiredAcceptanceIds: ['A1', 'A2'] },
-      ),
-    ).toThrow(/unknown acceptance/iu);
-
-    const childFacingSpec = READABLE_CHILDREN.replace(
-      'children:',
-      `  A3:
-    source: specs/demo/spec.md
-    text: The formal requirement is retained.
-children:`,
-    ).replace('covers: [A1]', 'covers: [A1, A3]');
-    expect(() =>
-      parseNativeChildrenContract(
-        childFacingSpec,
-        acceptance.map(({ id }) => id),
-        { acceptanceCatalog: acceptance, requiredAcceptanceIds: ['A1', 'A2'] },
-      ),
-    ).toThrow(/extra A3/iu);
-    const repairValidation = {
-      acceptanceCatalog: acceptance,
-      requiredAcceptanceIds: ['A1', 'A2'],
-      allowedAcceptanceIds: ['A1', 'A2', 'A3'],
-    };
-    expect(() =>
-      parseNativeChildrenContract(
-        childFacingSpec,
-        acceptance.map(({ id }) => id),
-        repairValidation,
-      ),
-    ).not.toThrow();
-    expect(() =>
-      parseNativeChildrenContract(
-        childFacingSpec.replace(
-          'The formal requirement is retained.',
-          'A stale formal requirement.',
-        ),
-        acceptance.map(({ id }) => id),
-        repairValidation,
-      ),
-    ).toThrow(
-      /acceptance_index.A3 does not match the acceptance catalog: copy text exactly from the current acceptance catalog/iu,
-    );
-  });
-
-  it('reports stale acceptance-index drift under the advisory policy instead of throwing', () => {
-    const acceptance = [
-      { id: 'A1', source: 'brief.md', text: 'The integrated result contains the first behavior.' },
-      { id: 'A2', source: 'brief.md', text: 'The integrated result contains the second behavior.' },
-    ];
-    const acceptanceIds = acceptance.map(({ id }) => id);
-    const options = { acceptanceCatalog: acceptance, requiredAcceptanceIds: acceptanceIds };
-    const driftedText = READABLE_CHILDREN.replace(
-      'The integrated result contains the second behavior.',
-      'A stale copy of the second behavior.',
-    );
-
-    expect(() => parseNativeChildrenContract(driftedText, acceptanceIds, options)).toThrow(
-      /does not match the acceptance catalog/iu,
-    );
-    const drifted = parseNativeChildrenContract(driftedText, acceptanceIds, {
-      ...options,
-      policy: 'advisory',
-    });
-    expect(drifted.acceptance_index?.A2?.text).toBe('A stale copy of the second behavior.');
-    expect(nativeChildrenIndexDrift(drifted, acceptanceIds, options)).toEqual({
-      missing: [],
-      extra: [],
-      mismatched: ['A2'],
-      uncovered: [],
-      unknownCovers: [],
-    });
-
-    const staleIds = READABLE_CHILDREN.replace(
-      /  A2:[\s\S]*?children:/u,
-      '  A9:\n    source: brief.md\n    text: A stale extra acceptance.\nchildren:',
-    );
-    const extraIndex = parseNativeChildrenContract(staleIds, acceptanceIds, {
-      ...options,
-      policy: 'advisory',
-    });
-    expect(nativeChildrenIndexDrift(extraIndex, acceptanceIds, options)).toMatchObject({
-      missing: ['A2'],
-      extra: ['A9'],
-      uncovered: ['A9'],
-    });
-  });
-
   it('derives contract-changed child states through the dependency gate (issue #439)', () => {
     const contract = parseNativeChildrenContract(READABLE_CHILDREN, ['A1', 'A2']);
     const repository = '/tmp/unused-repository';
@@ -734,9 +583,8 @@ children:
     expect(reconciledNew?.status).toBe('ready');
 
     // A child whose dependencies are all integrated may become ready again.
-    // A second contract revision (child-new's summary changes) triggers the
-    // re-derivation for child-b while child-new itself is already integrated
-    // and therefore immutable.
+    // Reconciliation reads actual dependency facts even when only prose changes.
+    // The integrated child remains immutable.
     const integratedNew = reconciled.children.find(({ name }) => name === 'child-new');
     integratedNew!.status = 'integrated';
     const revised2 = parseNativeChildrenContract(
@@ -769,8 +617,7 @@ children:
     expect(promotedB?.status).toBe('ready');
     expect(promoted.children.find(({ name }) => name === 'child-new')?.status).toBe('integrated');
 
-    // A child with a recorded candidate keeps the needs-reverify semantics.
-    // A third revision triggers the re-derivation for the recorded candidate.
+    // Prose changes do not invalidate a recorded candidate.
     const withCandidate = reconcileNativeSupervisorState({ state, contract: revised });
     const candidateB = withCandidate.children.find(({ name }) => name === 'child-b');
     candidateB!.candidateCommit = 'b'.repeat(40);
@@ -779,7 +626,8 @@ children:
       contract: revised2,
     });
     const reverifiedB = reverified.children.find(({ name }) => name === 'child-b');
-    expect(reverifiedB?.status).toBe('needs-reverify');
+    expect(reverifiedB?.status).toBe('pending');
+    expect(reverifiedB?.candidateCommit).toBe('b'.repeat(40));
   });
 
   it('finds and repairs a self-locked supervisor overlay through doctor (issue #439)', async () => {
@@ -898,7 +746,7 @@ children:
     });
   });
 
-  it('downgrades a drifted children copy to a confirmation prompt instead of blocking status', async () => {
+  it('retains approval after a children edit and leaves its meaning to the Agent', async () => {
     const repository = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-children-'));
     repositories.push(repository);
     git(repository, ['init', '-b', 'integration']);
@@ -940,19 +788,18 @@ children:
     });
     expect(confirmedChildren?.confirmed).toBe(true);
 
-    // Simulate a stale copy from another worktree: the child-plan index no
-    // longer matches the confirmed acceptance set.
+    // Reassigning a current ID does not automatically withdraw approval.
     await fs.writeFile(
       path.join(parentDir, 'children.yaml'),
       CHILDREN.replace('covers: [A2]', 'covers: [A3]'),
     );
     const drifted = await inspectNativeChildren({ paths: parentPaths, state: parentState });
-    expect(drifted?.confirmed).toBe(false);
+    expect(drifted?.confirmed).toBe(true);
     expect(
       drifted?.children.some(({ message }) =>
         /Parent Shape confirmation is required/iu.test(message ?? ''),
       ),
-    ).toBe(true);
+    ).toBe(false);
     await expect(
       inspectNativePortableStatus({ paths: parentPaths, name: 'parent' }),
     ).resolves.toMatchObject({ name: 'parent' });
@@ -1233,7 +1080,7 @@ children:
     expect(parentState).toMatchObject({
       phase: 'build',
       workspace: { change_branch: 'integration' },
-      children_contract_hash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      children_contract_ref: expect.stringMatching(/^parent:shape:\d+$/u),
     });
 
     const initialChildren = await inspectNativeChildren({ paths: parentPaths, state: parentState });
@@ -1468,13 +1315,13 @@ children:
     pendingParentState.name = pendingParentName;
     const pendingChildrenSource = `${CHILDREN}  - name: child-pending\n    depends_on: []\n    covers: []\n`;
     await fs.writeFile(path.join(pendingParentDir, 'children.yaml'), pendingChildrenSource);
-    pendingParentState.children_contract_hash = hashNativeParentContract({
-      acceptance: pendingParentState.acceptance,
-      children: parseNativeChildrenContract(
-        pendingChildrenSource,
-        pendingParentState.acceptance.map(({ id }) => id),
-      ),
-    });
+    // 模拟旧格式父级记录的分叉；当前存储引用与声明，不生成内容证明。
+    pendingParentState.children_contract_ref ??= 'children.yaml';
+    delete pendingParentState.children_contract_hash;
+    pendingParentState.children_contract = parseNativeChildrenContract(
+      pendingChildrenSource,
+      pendingParentState.acceptance.map(({ id }) => id),
+    );
     await writeNativePortableState(
       path.join(pendingParentDir, 'comet-state.yaml'),
       pendingParentState,
@@ -1593,29 +1440,72 @@ children:
       repository,
     );
     expect(data(repairRequired).continuation).toMatchObject({
-      action: 'repair',
-      requiredInputs: ['repair-child'],
-      runnerAction: { kind: 'none' },
+      action: 'builder-handoff',
+      requiredInputs: ['builder-handoff-json-file'],
+      runnerAction: { kind: 'builder-handoff' },
     });
     await fs.writeFile(path.join(parentDir, 'children.yaml'), REORDERED_CHILDREN);
     await expect(
       inspectNativePortableStatus({ paths: parentPaths, name: 'parent' }),
     ).resolves.toMatchObject({
-      continuation: {
-        action: 'advance-children',
-        commandArgs: ['comet', 'native', 'next', 'parent', '--summary', '<summary>'],
-        requiredInputs: ['summary'],
-        runnerAction: { kind: 'none' },
-      },
+      continuation: { action: 'builder-handoff', requiredInputs: ['builder-handoff-json-file'] },
     });
-    const bypassAttempt = await nativeNextCommand(
-      ['parent', '--summary', 'Reorder completed children without repairing'],
+    const unchanged = await nativeNextCommand(
+      ['parent', '--summary', 'Inspect edits without withdrawing approval'],
       repository,
     );
-    expect(data(bypassAttempt).state).toMatchObject({
-      phase: 'shape',
-      acceptance: { total: 0 },
+    expect(data(unchanged).state).toMatchObject({ phase: 'build', verification_result: 'fail' });
+    const parentRepair = await nativeNextCommand(
+      ['parent', '--runner-input', parentReviewInput],
+      repository,
+    );
+    expect(data(parentRepair).state).toMatchObject({ phase: 'verify' });
+    const repairChecks = await executeNativePortableCheckPlan({
+      paths: parentPaths,
+      name: 'parent',
+      plans: [],
     });
+    const repairDispatch = await dispatchNativePortableVerifier({
+      paths: parentPaths,
+      name: 'parent',
+      checks: repairChecks.checks,
+    });
+    const failedRepair = await submitNativePortableVerifierResult({
+      paths: parentPaths,
+      name: 'parent',
+      checks: repairChecks.checks,
+      maxVerifyFailures: 3,
+      envelope: verifier.envelopeVerifierResponse({
+        candidateId: repairDispatch.builder_handoff!.candidate_id,
+        identity: verifier.captureExecutionIdentity({
+          identityProvider: 'test-host',
+          executionRef: 'parent-repair-verifier',
+        }),
+        payload: {
+          kind: 'final-result',
+          result: {
+            iteration: repairDispatch.loop.iteration,
+            attempt: repairDispatch.loop.attempt,
+            verdict: 'fail',
+            acceptance: repairDispatch.acceptance.map(({ id }, index) => ({
+              id,
+              result: index === 0 ? 'failed' : 'passed',
+              reason: 'Actual parent verification result.',
+            })),
+            risks: [],
+            summary: 'The Agent chooses to replan after another actual failure.',
+          },
+        },
+      }),
+    });
+    const replanning = await nativeNextCommand(
+      ['parent', '--revise-requirements', '--summary', 'Explicitly revise the repair child plan'],
+      repository,
+    );
+    expect(data(replanning).state).toMatchObject({ phase: 'shape', acceptance: { total: 0 } });
+    expect(
+      (await readNativePortableChange(parentPaths, 'parent')).loop.failed_iteration_count,
+    ).toBe(failedRepair.state.loop.failed_iteration_count);
     await expect(
       nativeNextCommand(
         ['parent', '--summary', 'Prepare the incomplete repair plan for confirmation'],
@@ -1625,52 +1515,31 @@ children:
       exitCode: 0,
       data: { state: { phase: 'shape', status: 'await-user' } },
     });
-    await expect(
-      nativeNextCommand(
-        await guardedShapeConfirmationArgs(
-          parentPaths,
-          'parent',
-          'Try to reconfirm without a repair child',
-        ),
-        repository,
-      ),
-    ).rejects.toThrow(/repair plan requires an unfinished child covering: A1/iu);
-    await fs.appendFile(
-      path.join(parentDir, 'children.yaml'),
-      `  - name: repair-parent-a1
-    depends_on: [child-a, child-b, child-c]
-    covers: [A1]
-`,
-    );
-    await expect(
-      nativeNextCommand(
-        await guardedShapeConfirmationArgs(
-          parentPaths,
-          'parent',
-          'Try the changed repair child plan',
-        ),
-        repository,
-      ),
-    ).rejects.toThrow(/Shape artifacts changed/iu);
-    await expect(
-      nativeNextCommand(
-        ['parent', '--summary', 'Prepare the changed repair child plan'],
-        repository,
-      ),
-    ).resolves.toMatchObject({
-      exitCode: 0,
-      data: { state: { phase: 'shape', status: 'await-user' } },
-    });
     const replanned = await nativeNextCommand(
-      await guardedShapeConfirmationArgs(parentPaths, 'parent', 'Confirm the repair child plan'),
+      await guardedShapeConfirmationArgs(
+        parentPaths,
+        'parent',
+        'Confirm parent-owned integration repair',
+      ),
       repository,
     );
-    expect(data(replanned)).toMatchObject({
-      state: { phase: 'build' },
-      readyChildren: ['repair-parent-a1'],
-    });
-    await expect(readNativePortableChange(parentPaths, 'parent')).resolves.toMatchObject({
-      children_contract_hash: expect.stringMatching(/^[a-f0-9]{64}$/u),
-    });
+    expect(data(replanned)).toMatchObject({ state: { phase: 'build' } });
+    const confirmedRepair = await readNativePortableChange(parentPaths, 'parent');
+    expect(confirmedRepair.loop.failed_iteration_count).toBe(
+      failedRepair.state.loop.failed_iteration_count,
+    );
+    expect(confirmedRepair.children_contract?.children.map(({ name }) => name).sort()).toEqual([
+      'child-a',
+      'child-b',
+      'child-c',
+    ]);
+    const repairedCandidate = await nativeNextCommand(
+      ['parent', '--runner-input', parentReviewInput],
+      repository,
+    );
+    expect(data(repairedCandidate).state).toMatchObject({ phase: 'verify' });
+    expect(
+      (await readNativePortableChange(parentPaths, 'parent')).acceptance.map(({ id }) => id),
+    ).toEqual(parentState.acceptance.map(({ id }) => id));
   }, 300_000);
 });

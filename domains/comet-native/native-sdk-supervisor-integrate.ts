@@ -7,13 +7,14 @@ import type {
   WorkflowRun,
 } from '../engine/runtime.js';
 import { preflightNativeCheckPlans } from './native-check-executor.js';
+import { nativeSupervisorContractRef } from './native-children-contract.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import {
   nativeSdkCheckPlans,
   nativeSdkSupervisorChildCheckSummaries,
 } from './native-sdk-checks.js';
-import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
 import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
+import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
 import {
   nativeSupervisorChildWorktree,
   nativeSupervisorIntegrationBranch,
@@ -33,7 +34,7 @@ async function currentIntegration(
     !input ||
     typeof input.child !== 'string' ||
     !plan.contract.children.some(({ name }) => name === input.child) ||
-    input.contractHash !== state.children_contract_hash ||
+    nativeSupervisorContractRef(input) !== state.children_contract_ref ||
     typeof input.worktree !== 'string' ||
     !samePath(
       input.worktree,
@@ -90,7 +91,7 @@ async function currentIntegration(
     throw new Error('Native SDK Supervisor integration lacks its checked base commit');
   }
   const checks = nativeSdkCheckPlans({ verificationChecks: input.integrationChecks });
-  if (checks.length === 0 || checks.some(({ repeatable }) => !repeatable)) {
+  if (checks.some(({ repeatable }) => !repeatable)) {
     throw new Error('Native SDK Supervisor integration requires repeatable Runtime checks');
   }
   preflightNativeCheckPlans(input.worktree, checks);

@@ -1,32 +1,33 @@
-import { canReopenClassicVerification } from './classic-sdk-revision-application.js';
-import { inspectClassicSdkRevisionReadiness } from './classic-sdk-revision-readiness.js';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { classicSdkEvidenceInputHash } from './classic-sdk-application.js';
+import { canReopenClassicVerification } from './classic-sdk-revision-application.js';
+import { inspectClassicSdkRevisionReadiness } from './classic-sdk-revision-readiness.js';
 
 import type { WorkflowRun } from '../engine/runtime.js';
-import type { ClassicState } from './classic-state.js';
-import type { ClassicCommandResult } from './classic-cli.js';
-import {
-  classicSdkEntryData,
-  classicSdkGuardAttempt,
-  classicSdkBlockedContinuation,
-  type ClassicSdkGuardAttempt,
-} from './classic-sdk-output.js';
 import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
+import { executeClassicSdkCheckCommand } from './classic-check-command.js';
+import type { ClassicCommandResult } from './classic-cli.js';
 import { classicIssue } from './classic-issues.js';
 import { classicOpenContentProblem } from './classic-open-content.js';
 import { assertClassicBuildReady, classicOpenEvidenceReceipt } from './classic-sdk-application.js';
-import { completeClassicSdkBuild } from './classic-sdk-build.js';
-import { executeClassicSdkCheckCommand } from './classic-check-command.js';
-import { inspectAndCompleteClassicSdkDesign } from './classic-sdk-design.js';
-import { inspectClassicSdkRun } from './classic-sdk-status.js';
-import { classicVerificationReportReceipt } from './classic-verification-report.js';
-import { executeClassicSdkArchive } from './classic-sdk-archive.js';
 import {
   assertClassicSdkArchiveReady,
   ClassicSdkArchiveReadinessError,
   executeClassicSdkArchivePreflight,
 } from './classic-sdk-archive-preflight.js';
+import { executeClassicSdkArchive } from './classic-sdk-archive.js';
+import { completeClassicSdkBuild } from './classic-sdk-build.js';
+import { inspectAndCompleteClassicSdkDesign } from './classic-sdk-design.js';
+import {
+  classicSdkBlockedContinuation,
+  classicSdkEntryData,
+  classicSdkGuardAttempt,
+  type ClassicSdkGuardAttempt,
+} from './classic-sdk-output.js';
+import { inspectClassicSdkRun } from './classic-sdk-status.js';
+import type { ClassicState } from './classic-state.js';
+import { classicVerificationReportReceipt } from './classic-verification-report.js';
 
 type ClassicSdkInspection = Awaited<ReturnType<typeof inspectClassicSdkRun>>;
 
@@ -190,6 +191,7 @@ export async function classicSdkOpenGuard(
   }
   const ref = changeDirRef(run);
   const receipt = await classicOpenEvidenceReceipt(projectRoot, ref);
+  const evidenceInputHash = classicSdkEvidenceInputHash(run, profile + '.open');
   const contentIssue = await classicOpenContentProblem(projectRoot, ref, state.language);
   if (contentIssue)
     return guardResult(change, 'open', projectRoot, null, contentIssue, run, guardAttempt);
@@ -198,7 +200,7 @@ export async function classicSdkOpenGuard(
       change,
       'open',
       projectRoot,
-      receipt.contentHash,
+      evidenceInputHash,
       undefined,
       run,
       guardAttempt,
@@ -208,19 +210,19 @@ export async function classicSdkOpenGuard(
       change,
       'open',
       projectRoot,
-      receipt.contentHash,
-      'An approved Open artifact hash is required',
+      evidenceInputHash,
+      'The current Open request identity is required',
       run,
       guardAttempt,
     );
   }
-  if (approvalHash !== receipt.contentHash) {
+  if (approvalHash !== evidenceInputHash) {
     return guardResult(
       change,
       'open',
       projectRoot,
-      receipt.contentHash,
-      'Classic Open artifacts changed after approval',
+      evidenceInputHash,
+      'Classic Open approval belongs to another request',
       run,
       guardAttempt,
     );
@@ -276,7 +278,7 @@ export async function classicSdkOpenGuard(
       evidenceId: evidence.id,
       kind: evidence.kind,
       ref: receipt.ref,
-      contentHash: receipt.contentHash,
+      contentHash: evidenceInputHash,
       submissionId: randomUUID(),
       context,
     });
@@ -307,7 +309,7 @@ export async function classicSdkOpenGuard(
           change,
           'open',
           projectRoot,
-          receipt.contentHash,
+          evidenceInputHash,
           'The pending Open decision does not match approved artifacts',
           run,
           guardAttempt,
@@ -341,7 +343,7 @@ export async function classicSdkOpenGuard(
       change,
       'open',
       projectRoot,
-      receipt.contentHash,
+      evidenceInputHash,
       'Classic Open remains pending in the SDK Run',
       run,
       guardAttempt,
@@ -351,7 +353,7 @@ export async function classicSdkOpenGuard(
     change,
     String(current?.phase ?? 'unknown'),
     projectRoot,
-    receipt.contentHash,
+    evidenceInputHash,
     undefined,
     run,
     guardAttempt,
@@ -644,7 +646,7 @@ export async function classicSdkVerifyGuard(options: {
     .reverse()
     .find((action) => action.stepId === verifyStep);
   const verifyAction = currentVerify?.status === 'pending' ? currentVerify : undefined;
-  const verifySequence = currentVerify ? run.actionContexts[currentVerify.id]?.sequence : undefined;
+
   // 新一轮由新的 Verify Action 确定报告；历史收据只约束其来源轮次。
   if (!verifyAction && state.verificationReport && state.verificationReport !== receipt.ref) {
     return guardResult(
@@ -657,27 +659,7 @@ export async function classicSdkVerifyGuard(options: {
       guardAttempt,
     );
   }
-  const acceptedReport = run.evidenceWaits
-    ?.slice()
-    .reverse()
-    .find(
-      (wait) =>
-        wait.stepId === `${profile}.verify.report.evidence` &&
-        wait.status === 'resolved' &&
-        verifySequence !== undefined &&
-        wait.results[verifyStep]?.sequence === verifySequence,
-    )?.receipt;
-  if (acceptedReport && acceptedReport.contentHash !== receipt.contentHash) {
-    return guardResult(
-      change,
-      'verify',
-      projectRoot,
-      null,
-      'Classic SDK Verify report changed after accepted evidence',
-      run,
-      guardAttempt,
-    );
-  }
+
   const reportWait = run.evidenceWaits?.find(
     (wait) => wait.stepId === `${profile}.verify.report.evidence` && wait.status === 'pending',
   );
@@ -747,7 +729,7 @@ export async function classicSdkVerifyGuard(options: {
       evidenceId: pendingReport.id,
       kind: pendingReport.kind,
       ref: receipt.ref,
-      contentHash: receipt.contentHash,
+      contentHash: classicSdkEvidenceInputHash(run, profile + '.verify.run'),
       submissionId: randomUUID(),
       context,
     });

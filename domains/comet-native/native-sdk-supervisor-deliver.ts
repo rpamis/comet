@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { nativeSupervisorContractRef } from './native-children-contract.js';
 
 import {
   inspectGitWorktree,
@@ -14,16 +15,16 @@ import type {
   WorkflowRun,
   WorkflowRuntime,
 } from '../engine/runtime.js';
-import { parseNativePortableState } from './native-portable-state.js';
 import { nativeProjectPaths } from './native-paths.js';
-import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
+import { parseNativePortableState } from './native-portable-state.js';
 import { nativeSdkSupervisorParentCandidateCommit } from './native-sdk-supervisor-parent.js';
 import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
-import { nativeWorkspaceIsClean } from './native-workspace-config.js';
+import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
 import {
   nativeSupervisorIntegrationBranch,
   nativeSupervisorIntegrationWorktree,
 } from './native-supervisor-workspace.js';
+import { nativeWorkspaceIsClean } from './native-workspace-config.js';
 
 async function currentDelivery(
   run: Readonly<WorkflowRun>,
@@ -63,7 +64,7 @@ async function currentDelivery(
     !confirmed ||
     !revalidated ||
     !input ||
-    input.contractHash !== state.children_contract_hash ||
+    nativeSupervisorContractRef(input) !== state.children_contract_ref ||
     input.candidateId !== state.builder_handoff.candidate_id ||
     input.integrationBranch !== integrationBranch ||
     typeof input.integrationWorktree !== 'string' ||
@@ -113,7 +114,7 @@ async function currentDelivery(
 
 function deliveryOutput(current: Awaited<ReturnType<typeof currentDelivery>>) {
   return {
-    contractHash: current.state.children_contract_hash!,
+    contractRef: current.state.children_contract_ref!,
     integrationCommit: current.integrationCommit,
     targetBranch: current.targetBranch,
     targetRoot: current.targetRoot,
@@ -280,7 +281,7 @@ export const nativeSdkSupervisorDeliverValidator: RuntimeValidator = {
       const output = outcome.output as Record<string, unknown> | null;
       if (
         !output ||
-        output.contractHash !== current.state.children_contract_hash ||
+        nativeSupervisorContractRef(output) !== current.state.children_contract_ref ||
         output.integrationCommit !== current.integrationCommit ||
         output.targetBranch !== current.targetBranch ||
         typeof output.targetRoot !== 'string' ||

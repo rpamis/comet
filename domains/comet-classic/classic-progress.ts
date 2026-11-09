@@ -1,27 +1,20 @@
-import { resolveClassicStateFile, CLASSIC_STATE_FILES } from './classic-state-file.js';
-import { CLASSIC_LOCAL_RECORDS, selectClassicLocalReadTarget } from './classic-runtime-paths.js';
-import {
-  migrateWorkspaceRuntimePath,
-  isWorkspaceRuntimeMigrationFence,
-  resolveWorkspaceRuntimeRoot,
-  resolveWorkspaceRuntimeRootSync,
-} from '../workflow-contract/workspace-runtime.js';
-import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import { parseDocument } from 'yaml';
-import {
-  hashProtectedProjectFile,
-  readProtectedProjectFile,
-} from '../workflow-contract/protected-project-path.js';
 import {
   ExternalCommandError,
   runExternalCommand,
 } from '../../platform/process/external-command.js';
 import { nonInteractiveGitEnvironment } from '../../platform/process/git-environment.js';
 import { memoizedHookRead, memoizedHookReadSync } from '../../platform/process/hook-read-cache.js';
-import { classicTaskRevision, parseClassicTasks } from './classic-tasks.js';
-import type { ClassicState } from './classic-state.js';
+import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
+import {
+  isWorkspaceRuntimeMigrationFence,
+  migrateWorkspaceRuntimePath,
+  resolveWorkspaceRuntimeRoot,
+  resolveWorkspaceRuntimeRootSync,
+} from '../workflow-contract/workspace-runtime.js';
 import {
   classicProjectTargetExists,
   ensureClassicProjectDirectory,
@@ -29,13 +22,17 @@ import {
   readClassicProjectFile,
   writeClassicProjectText,
 } from './classic-protected-path.js';
+import { CLASSIC_LOCAL_RECORDS, selectClassicLocalReadTarget } from './classic-runtime-paths.js';
+import { CLASSIC_STATE_FILES, resolveClassicStateFile } from './classic-state-file.js';
+import type { ClassicState } from './classic-state.js';
+import { parseClassicTasks } from './classic-tasks.js';
 
 const STAGES = ['implementing', 'task-review', 'checkoff', 'done', 'blocked'] as const;
 
 export interface ClassicCheckpoint {
   schemaVersion: 1;
   taskIds: string[];
-  revision: string;
+  revision?: string;
   stage: (typeof STAGES)[number];
   sessionId: string;
   evidence: string[];
@@ -109,8 +106,7 @@ function checkpoint(input: unknown): ClassicCheckpoint {
     taskIds.some((id) => !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/u.test(id))
   )
     throw new Error('Classic checkpoint taskIds must be unique stable IDs');
-  if (typeof value.revision !== 'string' || !/^[a-f0-9]{64}$/u.test(value.revision))
-    throw new Error('Invalid Classic checkpoint revision');
+
   if (!STAGES.includes(value.stage as ClassicCheckpoint['stage']))
     throw new Error(
       `Invalid Classic checkpoint stage '${String(value.stage)}'; stages: ${STAGES.join('|')}`,
@@ -120,7 +116,7 @@ function checkpoint(input: unknown): ClassicCheckpoint {
   return {
     schemaVersion: 1,
     taskIds,
-    revision: value.revision,
+    ...(typeof value.revision === 'string' ? { revision: value.revision } : {}),
     stage: value.stage as ClassicCheckpoint['stage'],
     sessionId: text(value.sessionId, 'sessionId'),
     evidence: strings(value.evidence, 'evidence'),
@@ -220,9 +216,7 @@ export async function readClassicCheckpoint(root: string, changeDir: string, tas
   const ids = new Set(parseClassicTasks(tasksSource).map((task) => task.id));
   return {
     checkpoint: record,
-    stale:
-      record.revision !== classicTaskRevision(tasksSource) ||
-      record.taskIds.some((id) => !ids.has(id)),
+    stale: record.taskIds.some((id) => !ids.has(id)),
   };
 }
 
@@ -235,8 +229,7 @@ export async function writeClassicCheckpoint(
 ) {
   const record = checkpoint(input);
   const tasks = parseClassicTasks(tasksSource);
-  if (record.revision !== classicTaskRevision(tasksSource))
-    throw new Error('Classic checkpoint revision is stale');
+
   if (record.taskIds.some((id) => !tasks.some((task) => task.id === id)))
     throw new Error('Unknown Classic checkpoint task ID');
   const previous = (await readClassicCheckpoint(root, changeDir, tasksSource)).checkpoint;
@@ -575,58 +568,7 @@ interface DeliveryReceipt {
   commit?: string;
   prUrl?: string;
   archiveFiles?: Record<string, string>;
-}
-
-async function archiveFileManifest(
-  root: string,
-  changeDir: string,
-): Promise<Record<string, string>> {
-  const files: Record<string, string> = {};
-  const visit = async (directory: string): Promise<void> => {
-    await inspectClassicProjectTarget(root, directory, {
-      label: 'Classic document archive',
-      expected: 'directory',
-    });
-    const entries = (await fs.readdir(directory, { withFileTypes: true })).sort((left, right) =>
-      left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
-    );
-    for (const entry of entries) {
-      if (['.comet-state.lock', '.comet-state-transaction.json'].includes(entry.name)) continue;
-      if (directory === path.join(changeDir, '.comet') && CLASSIC_LOCAL_RECORDS.has(entry.name))
-        continue;
-      const target = path.join(directory, entry.name);
-      if (entry.isDirectory()) {
-        await visit(target);
-      } else if (entry.isFile()) {
-        const relative = path.relative(root, target).replaceAll('\\', '/');
-        const hashed = await hashProtectedProjectFile(root, relative, {
-          label: 'Classic document archive file',
-        });
-        files[relative] = hashed.digest;
-      } else {
-        throw new Error(`Classic document archive contains unsupported entry: ${target}`);
-      }
-      if (Object.keys(files).length > 10_000)
-        throw new Error('Classic document archive has too many files');
-    }
-  };
-  await visit(changeDir);
-  return files;
-}
-
-function archiveManifestsMatch(
-  left: Record<string, string>,
-  right: Record<string, string>,
-): boolean {
-  const portable = (file: string) => {
-    const match = /\/\.comet\/([^/]+)/u.exec(file);
-    return !match || !CLASSIC_LOCAL_RECORDS.has(match[1]);
-  };
-  const names = Object.keys(left).filter(portable);
-  return (
-    names.length === Object.keys(right).filter(portable).length &&
-    names.every((name) => left[name] === right[name])
-  );
+  archiveCompleted?: boolean;
 }
 
 async function preserveMainSpecSnapshot(root: string, changeDir: string): Promise<void> {
@@ -691,18 +633,13 @@ export async function recordClassicDocumentArchive(root: string, changeDir: stri
   const actual = await currentState(root, changeDir);
   if (actual.archived !== true) throw new Error('Classic document archive must be completed first');
   await preserveMainSpecSnapshot(root, changeDir);
-  const archiveFiles = await archiveFileManifest(root, changeDir);
   const previous = await readReceipt(root, delivery.changeIdentity);
-  if (previous?.archiveFiles !== undefined) {
-    if (!archiveManifestsMatch(previous.archiveFiles, archiveFiles))
-      throw new Error('Classic document archive differs from its sealed receipt');
-    return;
-  }
+  if (previous?.archiveCompleted || previous?.archiveFiles) return;
   await writeReceipt(root, {
     schemaVersion: 1,
     changeIdentity: delivery.changeIdentity,
     authorizationId: delivery.authorizationId,
-    archiveFiles,
+    archiveCompleted: true,
   });
 }
 
@@ -797,6 +734,7 @@ async function readReceipt(root: string, changeIdentity: string): Promise<Delive
       'commit',
       'prUrl',
       'archiveFiles',
+      'archiveCompleted',
     ]);
     if (value.schemaVersion !== 1 || value.changeIdentity !== changeIdentity)
       throw new Error('Invalid Classic delivery receipt schema or identity');
@@ -815,6 +753,7 @@ async function readReceipt(root: string, changeIdentity: string): Promise<Delive
       ...(value.invalidated === true ? { invalidated: true } : {}),
       ...(evidence.commit ? { commit: evidence.commit } : {}),
       ...(evidence.prUrl ? { prUrl: evidence.prUrl } : {}),
+      ...(value.archiveCompleted === true ? { archiveCompleted: true } : {}),
       ...(value.archiveFiles === undefined
         ? {}
         : {
@@ -999,15 +938,8 @@ export async function readClassicDelivery(
     ...(authorizedRemoteUrl ? { authorizedRemoteUrl } : {}),
   };
   if (effectiveInput.action === 'archive-only') {
-    let archiveVerified = false;
-    if (state.archived === true && receipt?.archiveFiles !== undefined) {
-      const files = await archiveFileManifest(root, changeDir).catch((error: unknown) => {
-        const code = (error as NodeJS.ErrnoException | undefined)?.code;
-        if (code === 'ENOENT' || code === 'ENOTDIR') return null;
-        throw error;
-      });
-      archiveVerified = files !== null && archiveManifestsMatch(receipt.archiveFiles, files);
-    }
+    const archiveVerified =
+      state.archived === true && Boolean(receipt?.archiveCompleted || receipt?.archiveFiles);
     return {
       delivery,
       verification: {

@@ -81,18 +81,7 @@ comet state transition <change-name> verify-fail
 
 ### 2. 读取验证所需的产物
 
-验证需要读取 OpenSpec 产物时，使用入口已提供的 handoff 状态；入口未提供当前 hash 核对结果时才执行：
-
-```bash
-comet handoff <change-name> --hash-only
-```
-
-- 读取 stderr 中的 `[HANDOFF] status:` 结论并照此执行（stdout 的裸 hash 供脚本调用方使用，不要自行比对）：
-  - `FRESH`：复用上下文已有的产物内容，只补读当前验收点仍缺的章节，tasks 仍须核对勾选。
-  - `STALE (changed: <files>)`：先完整读取列出的变更产物，再按其内容验收；runtime 的 NEXT 若给出 `comet handoff <change-name> design --write`，先执行它再读取。
-  - 不带清单的 `STALE`：记录的 handoff 缺失或早于当前产物，正常读取所有所需文件全文。
-
-FRESH 不代表当前上下文仍保留该内容。丢失上下文后恢复任务、摘要被截断，或无法确认此前已读取内容时，应重新读取对应源文件；不能用 handoff 摘要代替尚未读取的验收条款。
+按当前验收项读取需要的 OpenSpec 源文件和交接上下文。由 Agent 对照实际修改判断哪些检查仍然适用；文件变化不自动撤回验收。上下文缺失时补读源文件，不使用 hash、FRESH/STALE 或编辑复核记录证明内容。
 
 autonomous 直接按本 Skill 执行实际检查并记录结果，不强制加载外部验证 Skill；其他策略使用 Skill 工具加载 Superpowers `verification-before-completion`。任何策略都不能仅凭自评宣布验证通过。
 

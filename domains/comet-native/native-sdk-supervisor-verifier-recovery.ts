@@ -4,9 +4,10 @@ import {
   type RuntimeValue,
   type WorkflowRun,
 } from '../engine/runtime.js';
+import { nativeSupervisorContractRef } from './native-children-contract.js';
 import { parseNativePortableState } from './native-portable-state.js';
-import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
 import { nativeSdkSupervisorChildCheckSummaries } from './native-sdk-checks.js';
+import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
 import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
 
 /** 失败 Action 保持原 claim 和 outcome；重试创建新 Verifier，不改写成未执行。 */
@@ -19,13 +20,13 @@ export function nativeSdkFailedChildVerifierActivation(
   if (
     state.phase !== 'build' ||
     state.archived ||
-    !state.children_contract_hash ||
+    !state.children_contract_ref ||
     action.stepId !== 'supervisor.child.verifier' ||
     action.status !== 'failed' ||
     action.outcome?.status !== 'failed' ||
     !action.claim ||
     !activation ||
-    activation.contractHash !== state.children_contract_hash ||
+    nativeSupervisorContractRef(activation) !== state.children_contract_ref ||
     typeof activation.child !== 'string' ||
     typeof activation.candidateCommit !== 'string' ||
     typeof activation.checkActionId !== 'string' ||

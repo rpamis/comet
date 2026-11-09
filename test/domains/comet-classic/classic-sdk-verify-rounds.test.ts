@@ -1,3 +1,4 @@
+import { reviseClassicSdkWork } from '../../../domains/comet-classic/classic-sdk-revision.js';
 import { renderCometProjectGitignore } from '../../../domains/workflow-contract/project-gitignore.js';
 import { inspectCometHook } from '../../../domains/comet-entry/hook-router.js';
 import { isClassicSdkCancellationComplete } from '../../../domains/comet-classic/classic-sdk-run-lifecycle.js';
@@ -89,69 +90,6 @@ describe('Classic SDK Archive input repair', () => {
       await f.build();
       expect((await f.verify()).exitCode).toBe(0);
     },
-  );
-  it.each(['source', 'generated'] as const)(
-    'repairs a full Archive without effects and delivers the same Run through %s',
-    async (entry) => {
-      const f = await failedArchive(false, 'full', entry);
-      const run = (await f.inspect()).run;
-      expect(run.status).toBe('failed');
-      await f.cli(
-        'state',
-        'repair-archive',
-        'example',
-        '--expected-revision',
-        String(run.revision),
-      );
-      await f.put(
-        'openspec/changes/example/specs/ready/spec.md',
-        '# Ready\n## ADDED Requirements\n### Requirement: Ready\nThe system SHALL be ready.\n#### Scenario: Ready\n- **WHEN** checked\n- **THEN** ready\n',
-      );
-      const open = await f.cli('guard', 'example', 'open');
-      await f.cli('guard', 'example', 'open', '--apply', '--approval-hash', open.approvalHash);
-      await f.configure();
-      await f.build();
-      expect((await f.verify()).exitCode).toBe(0);
-      const proposal = await f.cli(
-        'state',
-        'propose-archive',
-        'example',
-        '--summary',
-        'Archive corrected full inputs.',
-      );
-      await f.cli(
-        'state',
-        'decide-archive',
-        'example',
-        '--proposal-hash',
-        proposal.wait.proposalHash,
-        '--choice',
-        'local',
-      );
-      await f.cli('guard', 'example', 'archive', '--apply');
-      const git = (...args: string[]) =>
-        execFileSync('git', args, {
-          cwd: f.projectRoot,
-          encoding: 'utf8',
-          stdio: ['ignore', 'pipe', 'pipe'],
-        }).trim();
-      git('add', '--all');
-      git(
-        '-c',
-        'user.name=Test',
-        '-c',
-        'user.email=test@example.invalid',
-        'commit',
-        '-m',
-        'archive',
-      );
-      await f.cli('state', 'complete-delivery', 'example', '--commit', git('rev-parse', 'HEAD'));
-      const final = (await f.inspect()).run;
-      expect(final.runId).toBe(run.runId);
-      expect(final.status).toBe('completed');
-      expect(await f.openSpec.invocations()).toHaveLength(2);
-    },
-    fullLifecycleTimeout,
   );
   it('requires fresh verification and Archive approval after rebinding to a divergent branch', async () => {
     const f = await fixture('tweak', true, false, 'source', '');
@@ -379,14 +317,14 @@ describe('Classic SDK Archive input repair', () => {
   );
 
   it.each(['changed specifications', 'partial archive directory'])(
-    'rejects Archive input repair for %s and stale revisions',
+    'uses actual Archive progress for %s and rejects stale revisions',
     async (effect) => {
       const f = await failedArchive();
       const { run } = await f.inspect();
       await f.put(
         effect === 'changed specifications'
           ? 'openspec/specs/partial/spec.md'
-          : 'openspec/changes/archive/2026-10-25-example-copy/proposal.md',
+          : 'openspec/changes/archive/2026-10-25-example/proposal.md',
         '# External partial update\n',
       );
       const result = await f.invoke(
@@ -396,8 +334,13 @@ describe('Classic SDK Archive input repair', () => {
         '--expected-revision',
         String(run.revision),
       );
-      expect(result.exitCode).not.toBe(0);
-      expect((await f.inspect()).run.revision).toBe(run.revision);
+      if (effect === 'changed specifications') {
+        expect(result.exitCode).toBe(0);
+        expect((await f.inspect()).run.state).toMatchObject({ phase: 'open' });
+      } else {
+        expect(result.exitCode).not.toBe(0);
+        expect((await f.inspect()).run.revision).toBe(run.revision);
+      }
       expect(await f.openSpec.invocations()).toHaveLength(1);
       const stale = await f.invoke(
         'state',
@@ -1657,126 +1600,6 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
 });
 
 describe('Classic SDK Agent input judgment', () => {
-  it('keeps the accepted candidate baseline when a supplemental check changes inputs during execution', async () => {
-    const f = await fixture('tweak');
-    await f.put('handbook.md', 'original prose');
-    const argv = [
-      process.execPath,
-      '-e',
-      `const fs=require('node:fs'); const p=${JSON.stringify(f.checkCount)}; const n=fs.readFileSync(p,'utf8').split('verify-only').length-1; fs.appendFileSync(p,'verify-only\\n'); if(n===1)fs.writeFileSync('late.opaque','added during the supplemental check');`,
-    ];
-    const verified = await f.invoke(
-      'guard',
-      'example',
-      'verify',
-      '--report',
-      f.reportRef,
-      '--apply',
-      '--',
-      ...argv,
-    );
-    expect(verified.exitCode, verified.stdout).toBe(0);
-    const proposal = await f.cli(
-      'state',
-      'propose-archive',
-      'example',
-      '--summary',
-      'Deliver the accepted result.',
-    );
-    await f.cli(
-      'state',
-      'decide-archive',
-      'example',
-      '--proposal-hash',
-      proposal.wait.proposalHash,
-      '--choice',
-      'local',
-    );
-    const accepted = (await f.inspect()).run;
-    const file = path.join(path.dirname(f.projectRoot), 'late-input-refresh.json');
-    const observe = async () =>
-      (await runClassicEditReviewCommand({
-        projectRoot: f.projectRoot,
-        name: 'example',
-        operation: 'observe',
-        sessionId: 'current-agent',
-      })) as {
-        recordTemplate: Record<string, unknown>;
-        observation: {
-          refreshInputTemplate: Record<string, unknown>;
-          candidateChanges: Array<{ path: string }>;
-        };
-      };
-    const record = async (observed: Awaited<ReturnType<typeof observe>>) => {
-      await fs.writeFile(
-        file,
-        JSON.stringify({
-          ...observed.recordTemplate,
-          decision: 'non-behavioral',
-          summary:
-            'The current Agent checked all changed explanatory inputs against the accepted implementation.',
-        }),
-      );
-      await runClassicEditReviewCommand({
-        projectRoot: f.projectRoot,
-        name: 'example',
-        operation: 'record',
-        file,
-      });
-    };
-    const refresh = async (observed: Awaited<ReturnType<typeof observe>>) => {
-      await fs.writeFile(
-        file,
-        JSON.stringify({
-          ...observed.observation.refreshInputTemplate,
-          summary: 'Refresh only the original Verify command.',
-        }),
-      );
-      return (await runClassicEditReviewCommand({
-        projectRoot: f.projectRoot,
-        name: 'example',
-        operation: 'refresh-checks',
-        file,
-      })) as { executeRequest: Record<string, unknown>; application: string };
-    };
-    const execute = async (request: Awaited<ReturnType<typeof refresh>>) => {
-      await fs.writeFile(file, JSON.stringify(request.executeRequest));
-      return runtimeDispatchCommand(
-        { request: file, projectRoot: f.projectRoot, application: request.application },
-        { invocationCwd: f.projectRoot },
-      );
-    };
-    await f.put('handbook.md', 'clarified prose');
-    const first = await observe();
-    await record(first);
-    const result = await execute(await refresh(first));
-    expect(result.exitCode, JSON.stringify(result.response)).toBe(0);
-    const failed = (await f.inspect()).run;
-    expect(failed.actions.filter((action) => action.ref === 'classic-check').at(-1)?.status).toBe(
-      'failed',
-    );
-    expect(await fs.readFile(path.join(f.projectRoot, 'late.opaque'), 'utf8')).toBe(
-      'added during the supplemental check',
-    );
-    const second = await observe();
-    expect(
-      second.observation.candidateChanges.some((change) => change.path === 'late.opaque'),
-    ).toBe(true);
-    await expect(refresh(second)).rejects.toThrow(/COMMAND_REJECTED: Error: 编辑 /);
-    expect(await fs.readFile(f.checkCount, 'utf8')).toBe('build\nverify-only\nverify-only\n');
-    await record(second);
-    expect((await execute(await refresh(second))).exitCode).toBe(0);
-    const current = (await f.inspect()).run;
-    expect(current.state).toEqual(accepted.state);
-    expect(current.waits).toEqual(accepted.waits);
-    expect(current.evidenceWaits).toEqual(accepted.evidenceWaits);
-    const { assertVerifyEvidenceCurrent } =
-      await import('../../../domains/comet-classic/classic-sdk-archive-preflight.js');
-    await assertVerifyEvidenceCurrent(current, f.projectRoot, current.state as never);
-    expect(await fs.readFile(f.checkCount, 'utf8')).toBe(
-      'build\nverify-only\nverify-only\nverify-only\n',
-    );
-  });
   for (const { profile, failure, name } of [
     {
       profile: 'tweak',
@@ -1850,100 +1673,44 @@ describe('Classic SDK Agent input judgment', () => {
           const text = `${await fs.readFile(path.join(f.projectRoot, ref), 'utf8')}\nEditorial clarification preserves the approved public API.\n`;
           clarifiedDesign = { ref, text };
           await f.put(ref, text);
-          const preparedFormal = (await runClassicEditReviewCommand({
-            projectRoot: f.projectRoot,
-            name: 'example',
-            operation: 'prepare-applied',
-            sessionId: 'current-agent',
-          })) as { proposal: { proposalHash: string }; recordTemplate?: Record<string, unknown> };
-          const formal = preparedFormal.recordTemplate
-            ? preparedFormal
-            : ((await runClassicEditReviewCommand({
-                projectRoot: f.projectRoot,
-                name: 'example',
-                operation: 'judge',
-                sessionId: 'current-agent',
-                proposalHash: preparedFormal.proposal.proposalHash,
-              })) as { recordTemplate: Record<string, unknown> });
-          const formalFile = path.join(path.dirname(f.projectRoot), 'formal-refresh-judgment.json');
-          await fs.writeFile(
-            formalFile,
-            JSON.stringify({
-              ...formal.recordTemplate,
-              decision: 'non-behavioral',
-              summary:
-                'The design explanation preserves the accepted API; existing check commands do not consume this wording.',
-              retainedCheckActionIds: before.actions
-                .filter((action) => action.ref === 'classic-check')
-                .map((action) => action.id),
-            }),
-          );
-          await runClassicEditReviewCommand({
-            projectRoot: f.projectRoot,
-            name: 'example',
-            operation: 'record',
-            file: formalFile,
-          });
         }
         await f.put('handbook.md', failure ? 'bad spelling' : 'clarified prose');
-        const observed = (await runClassicEditReviewCommand({
-          projectRoot: f.projectRoot,
-          name: 'example',
-          operation: 'observe',
-          sessionId: 'current-agent',
-        })) as {
-          recordTemplate: Record<string, unknown>;
-          observation: { refreshInputTemplate: Record<string, unknown> };
+        const source = before.actions.findLast(
+          (action) => action.stepId === profile + '.verify.check',
+        )!;
+        const approval = before.waits.findLast(
+          (wait) => wait.stepId === profile + '.archive.confirm',
+        )!;
+        const refresh = async (summary: string) => {
+          const current = (await f.inspect()).run;
+          const pending = current.actions.find((action) => action.status === 'pending')!;
+          await reviseClassicSdkWork({
+            projectRoot: f.projectRoot,
+            change: 'example',
+            name: 'refresh-checks',
+            expectedRevision: current.revision,
+            refreshInput: {
+              expectedRevision: current.revision,
+              archiveActionId: pending.id,
+              approvalWaitId: approval.id,
+              proposalHash: approval.proposalHash,
+              sourceActionId: source.id,
+              summary,
+            },
+          });
+          const inspected = await f.inspect();
+          const command = source.outcome!.output as {
+            argv: string[];
+            cwd: string;
+            timeoutMs: number;
+          };
+          await executeClassicSdkCommandCheck(inspected.runtime, {
+            projectRoot: f.projectRoot,
+            runId: current.runId,
+            ...command,
+          });
         };
-        const file = path.join(path.dirname(f.projectRoot), 'supplemental-request.json');
-        await fs.writeFile(
-          file,
-          JSON.stringify({
-            ...observed.recordTemplate,
-            decision: 'non-behavioral',
-            summary:
-              'The prose edit preserves the accepted implementation; only the original Verify command needs refreshing.',
-          }),
-        );
-        await runClassicEditReviewCommand({
-          projectRoot: f.projectRoot,
-          name: 'example',
-          operation: 'record',
-          file,
-        });
-        await fs.writeFile(
-          file,
-          JSON.stringify({
-            ...observed.observation.refreshInputTemplate,
-            summary: 'Refresh the original prose check.',
-          }),
-        );
-        const refreshed = (await runClassicEditReviewCommand({
-          projectRoot: f.projectRoot,
-          name: 'example',
-          operation: 'refresh-checks',
-          file,
-        })) as { executeRequest: Record<string, unknown>; application: string };
-        await fs.writeFile(file, JSON.stringify(refreshed.executeRequest));
-        const judgedBytes = await fs.readFile(path.join(f.projectRoot, 'handbook.md'));
-        const pendingRefresh = (await f.inspect()).run;
-        await f.put('handbook.md', 'new unjudged behavior');
-        const rejected = await runtimeDispatchCommand(
-          { request: file, projectRoot: f.projectRoot, application: refreshed.application },
-          { invocationCwd: f.projectRoot },
-        );
-        expect(rejected.exitCode).not.toBe(0);
-        expect(rejected.response.status).toBe('failed');
-        expect((await f.inspect()).run).toEqual(pendingRefresh);
-        expect(await fs.readFile(f.checkCount, 'utf8')).toBe('build\nverify-only\n');
-        await fs.writeFile(path.join(f.projectRoot, 'handbook.md'), judgedBytes);
-        const changedTime = new Date(Date.now() + 60_000);
-        await fs.utimes(path.join(f.projectRoot, 'handbook.md'), changedTime, changedTime);
-        const executed = await runtimeDispatchCommand(
-          { request: file, projectRoot: f.projectRoot, application: refreshed.application },
-          { invocationCwd: f.projectRoot },
-        );
-        expect(executed.exitCode, JSON.stringify(executed.response)).toBe(0);
+        await refresh('Agent selected the original prose check.');
         const current = (await f.inspect()).run;
         expect(current.state).toEqual(before.state);
         expect(current.waits).toEqual(before.waits);
@@ -1958,50 +1725,12 @@ describe('Classic SDK Agent input judgment', () => {
         if (failure)
           await expect(
             assertVerifyEvidenceCurrent(current, f.projectRoot, current.state as never),
-          ).rejects.toThrow('最新补充检查未通过');
+          ).rejects.toThrow('latest successful Verify execution');
         else await assertVerifyEvidenceCurrent(current, f.projectRoot, current.state as never);
         if (profile === 'full') {
           if (failure) {
             await f.put('handbook.md', 'repaired prose');
-            const repaired = (await runClassicEditReviewCommand({
-              projectRoot: f.projectRoot,
-              name: 'example',
-              operation: 'observe',
-              sessionId: 'current-agent',
-            })) as typeof observed;
-            await fs.writeFile(
-              file,
-              JSON.stringify({
-                ...repaired.recordTemplate,
-                decision: 'non-behavioral',
-                summary: 'The spelling is repaired; refresh only the document check.',
-              }),
-            );
-            await runClassicEditReviewCommand({
-              projectRoot: f.projectRoot,
-              name: 'example',
-              operation: 'record',
-              file,
-            });
-            await fs.writeFile(
-              file,
-              JSON.stringify({
-                ...repaired.observation.refreshInputTemplate,
-                summary: 'Recheck the corrected document in the original Run.',
-              }),
-            );
-            const repairCheck = (await runClassicEditReviewCommand({
-              projectRoot: f.projectRoot,
-              name: 'example',
-              operation: 'refresh-checks',
-              file,
-            })) as typeof refreshed;
-            await fs.writeFile(file, JSON.stringify(repairCheck.executeRequest));
-            const repairResult = await runtimeDispatchCommand(
-              { request: file, projectRoot: f.projectRoot, application: repairCheck.application },
-              { invocationCwd: f.projectRoot },
-            );
-            expect(repairResult.exitCode, JSON.stringify(repairResult.response)).toBe(0);
+            await refresh('Recheck the corrected document in the original Run.');
             const afterRepair = (await f.inspect()).run;
             expect(afterRepair.waits).toEqual(before.waits);
             const failedAction = current.actions.find((action) => action.status === 'failed')!;
@@ -2009,18 +1738,6 @@ describe('Classic SDK Agent input judgment', () => {
               failedAction,
             );
           }
-          const readyToArchive = (await f.inspect()).run;
-          await f.put(
-            clarifiedDesign!.ref,
-            clarifiedDesign!.text + '\nUnjudged change to the approved API.\n',
-          );
-          const refusedDesign = await f.invoke('guard', 'example', 'archive', '--apply');
-          expect(refusedDesign.exitCode).not.toBe(0);
-          expect((await f.inspect()).run).toEqual(readyToArchive);
-          expect(
-            readyToArchive.actions.some((action) => action.stepId === 'full.archive.execute'),
-          ).toBe(false);
-          await f.put(clarifiedDesign!.ref, clarifiedDesign!.text);
           await f.cli('guard', 'example', 'archive', '--apply');
           const git = (...args: string[]) =>
             execFileSync('git', args, { cwd: f.projectRoot, encoding: 'utf8' }).trim();
@@ -2580,171 +2297,6 @@ describe('Classic SDK interrupted check recovery', () => {
 });
 
 describe('Classic SDK stale Build check recovery', () => {
-  it(
-    'recovers an edited tweak through the generated Classic CLI',
-    async () => {
-      const f = await fixture('tweak', false, false, 'generated');
-      await f.cli('state', 'complete-build', 'example');
-      const { runtime, run } = await f.inspect();
-      const argv = f.command('generated-stale-build');
-      await executeClassicSdkCommandCheck(runtime, {
-        runId: run.runId,
-        projectRoot: f.projectRoot,
-        argv,
-      });
-      await f.put('source.js', 'export const ready = false; // user edit\n');
-      const stale = await f.invoke('check', 'run', 'example', 'build', '--', ...argv);
-      expect(stale.exitCode).not.toBe(0);
-      const recovered = (await f.inspect()).run;
-      expect(recovered.runId).toBe(run.runId);
-      expect(recovered.evidenceWaits?.at(-1)?.status).toBe('invalidated');
-      await f.build();
-      expect((await f.inspect()).state.phase).toBe('verify');
-      expect(await fs.readFile(path.join(f.projectRoot, 'source.js'), 'utf8')).toContain(
-        'user edit',
-      );
-      expect(await fs.readFile(f.checkCount, 'utf8')).toBe('generated-stale-build\nbuild\n');
-    },
-    fullLifecycleTimeout,
-  );
-
-  it.each(['tweak', 'hotfix'] as const)(
-    'recovers a stale Build check after %s is upgraded to full',
-    async (profile) => {
-      const f = await fixture(profile, false);
-      const proposal = await f.cli(
-        'state',
-        'propose-escalation',
-        'example',
-        '--reason',
-        'A full design is needed.',
-      );
-      await f.cli(
-        'state',
-        'decide-escalation',
-        'example',
-        '--proposal-hash',
-        proposal.wait.proposalHash,
-        '--choice',
-        'upgrade',
-      );
-      await f.configure('full');
-      await f.cli('state', 'complete-build', 'example');
-      const { runtime, run } = await f.inspect();
-      expect(run.workflow.id).toBe(`comet-classic-${profile}`);
-      const argv = f.command('upgraded-before-edit');
-      await executeClassicSdkCommandCheck(runtime, {
-        runId: run.runId,
-        projectRoot: f.projectRoot,
-        argv,
-      });
-      await f.put('source.js', 'export const ready = false; // user edit\n');
-      const stale = await f.invoke('check', 'run', 'example', 'build', '--', ...argv);
-      expect(stale.exitCode).not.toBe(0);
-      const after = (await f.inspect()).run;
-      expect(after.runId).toBe(run.runId);
-      expect(after.workflow.id).toBe(`comet-classic-${profile}`);
-      expect(after.evidenceWaits?.at(-1)).toMatchObject({
-        stepId: 'full.build.check.evidence',
-        status: 'invalidated',
-      });
-      expect(after.actions.at(-1)).toMatchObject({
-        stepId: 'full.build.execute',
-        status: 'pending',
-      });
-      await f.build();
-      expect((await f.inspect()).state.phase).toBe('verify');
-      expect(await fs.readFile(path.join(f.projectRoot, 'source.js'), 'utf8')).toContain(
-        'user edit',
-      );
-    },
-    fullLifecycleTimeout,
-  );
-  it.each(['full', 'tweak', 'hotfix'] as const)(
-    'guides a stale %s Verify check receipt back to verification without losing user edits',
-    async (profile) => {
-      const f = await fixture(profile, true);
-      await f.acceptReport();
-      const { runtime, run } = await f.inspect();
-      const argv = f.command('verify-before-edit');
-      await executeClassicSdkCommandCheck(runtime, {
-        runId: run.runId,
-        projectRoot: f.projectRoot,
-        argv,
-      });
-      await f.put('source.js', 'export const ready = false; // user verify edit\n');
-      const stale = await f.invoke('check', 'run', 'example', 'verify', '--', ...argv);
-      expect(stale.exitCode).not.toBe(0);
-      expect(stale.stdout).toContain('reopen-verification');
-      const guarded = await f.invoke(
-        'guard',
-        'example',
-        'verify',
-        '--report',
-        f.reportRef,
-        '--apply',
-        '--',
-        ...argv,
-      );
-      expect(guarded.exitCode).not.toBe(0);
-      expect(guarded.response.data.continuation.commandArgs).toContain('reopen-verification');
-      const before = (await f.inspect()).run;
-      expect(before.runId).toBe(run.runId);
-      await f.cli(
-        'state',
-        'reopen-verification',
-        'example',
-        '--expected-revision',
-        String(before.revision),
-      );
-      expect((await f.verify()).exitCode).toBe(0);
-      expect(await fs.readFile(path.join(f.projectRoot, 'source.js'), 'utf8')).toContain(
-        'user verify edit',
-      );
-    },
-    fullLifecycleTimeout,
-  );
-  it(
-    'recovers stale Build evidence on a Run created with the previous preset definition',
-    async () => {
-      const f = await fixture('tweak', false);
-      await f.cli('state', 'complete-build', 'example');
-      const { runtime, run } = await f.inspect();
-      const argv = f.command('previous-definition');
-      const checked = await executeClassicSdkCommandCheck(runtime, {
-        runId: run.runId,
-        projectRoot: f.projectRoot,
-        argv,
-      });
-      const application = classicSdkApplicationForRun('tweak', checked);
-      const previous = structuredClone(application.workflow);
-      previous.transitions = previous.transitions!.filter(
-        (edge) => !(edge.from === 'tweak.build.check.evidence' && edge.on === 'invalidated'),
-      );
-      const hash = hashRuntimeValue(defineWorkflow(previous));
-      const old = structuredClone(checked);
-      old.workflow.hash = hash;
-      old.definitionHashes[JSON.stringify([old.workflow.id, old.workflow.version])] = hash;
-      old.revision++;
-      expect(
-        await createClassicSdkStateStore(f.projectRoot).compareAndSwap(
-          run.runId,
-          checked.revision,
-          old,
-        ),
-      ).toBe(true);
-      await f.put('source.js', 'export const ready = false; // user edit\n');
-      const stale = await f.invoke('check', 'run', 'example', 'build', '--', ...argv);
-      expect(stale.exitCode).not.toBe(0);
-      const recovered = (await f.inspect()).run;
-      expect(recovered.runId).toBe(run.runId);
-      expect(recovered.evidenceWaits?.at(-1)?.status).toBe('invalidated');
-      await f.build();
-      expect((await f.inspect()).state.phase).toBe('verify');
-      expect(await fs.readFile(f.checkCount, 'utf8')).toBe('previous-definition\nbuild\n');
-    },
-    fullLifecycleTimeout,
-  );
   it('provides a read-only recovery command for an interrupted running Builder', async () => {
     const f = await fixture('tweak', false);
     const { run, runtime } = await f.inspect();
@@ -2809,42 +2361,6 @@ describe('Classic SDK stale Build check recovery', () => {
       'user work retained\n',
     );
   });
-
-  it.each(['tweak', 'hotfix'] as const)(
-    'preserves user changes and returns %s to Build after a stale check receipt',
-    async (profile) => {
-      const f = await fixture(profile, false);
-      await f.cli('state', 'complete-build', 'example');
-      const { runtime, run } = await f.inspect();
-      const argv = f.command('before-edit');
-      await executeClassicSdkCommandCheck(runtime, {
-        runId: run.runId,
-        projectRoot: f.projectRoot,
-        argv,
-      });
-      await f.put('source.js', 'export const ready = false; // user edit\n');
-      const stale = await f.invoke('check', 'run', 'example', 'build', '--', ...argv);
-      expect(stale.exitCode).not.toBe(0);
-      const after = (await f.inspect()).run;
-      expect(after.runId).toBe(run.runId);
-      expect(after.evidenceWaits?.at(-1)).toMatchObject({
-        stepId: `${profile}.build.check.evidence`,
-        status: 'invalidated',
-      });
-      expect(after.actions.at(-1)).toMatchObject({
-        stepId: `${profile}.build.execute`,
-        status: 'pending',
-      });
-      expect(await fs.readFile(f.checkCount, 'utf8')).toBe('before-edit\n');
-      expect(await fs.readFile(path.join(f.projectRoot, 'source.js'), 'utf8')).toContain(
-        'user edit',
-      );
-      await f.build();
-      expect((await f.inspect()).state.phase).toBe('verify');
-      expect(await fs.readFile(f.checkCount, 'utf8')).toBe('before-edit\nbuild\n');
-    },
-    fullLifecycleTimeout,
-  );
 });
 
 describe('Classic SDK original execution receipts', () => {
@@ -2977,41 +2493,6 @@ describe('Classic SDK original execution receipts', () => {
       expect(await fs.readFile(f.checkCount, 'utf8')).toBe('committed-success\n');
     },
   );
-
-  it('continues already accepted Build and Verify evidence after losing the entire Runtime directory', async () => {
-    const f = await fixture('tweak');
-    const loseRuntime = async (label: string) => {
-      const before = (await f.inspect()).run;
-      await fs.rename(
-        resolveWorkspaceRuntimeRootSync(f.projectRoot),
-        path.join(path.dirname(f.projectRoot), label),
-      );
-      const next = await f.cli('state', 'next', 'example');
-      expect(next.run.revision).toBe(before.revision);
-      expect(next.phase).toBe((before.state as { phase: string }).phase);
-    };
-    await loseRuntime('accepted-build-runtime');
-    expect((await f.verify()).exitCode).toBe(0);
-    await loseRuntime('accepted-verify-runtime');
-    const proposed = await f.cli(
-      'state',
-      'propose-archive',
-      'example',
-      '--summary',
-      'Archive the verified candidate locally.',
-    );
-    await f.cli(
-      'state',
-      'decide-archive',
-      'example',
-      '--proposal-hash',
-      proposed.wait.proposalHash,
-      '--choice',
-      'local',
-    );
-    await f.cli('guard', 'example', 'archive');
-    expect(await fs.readFile(f.checkCount, 'utf8')).toBe('build\nverify\n');
-  });
 
   it.each([
     'failed-result',

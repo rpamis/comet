@@ -2,19 +2,10 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 import {
-  NATIVE_BRIEF_STRUCTURE_SUBSECTIONS,
-  type NativeBriefStructureSubsection,
-  isNativeBriefStructureHeading,
-  nativeBriefStructureSubsectionKey,
-  nativeBriefStructureSubsectionLabel,
-  nativeHeadingKey,
-  nativeVerificationHeadingKey,
-} from './native-artifact-language.js';
-import { nativeChangeDir } from './native-change.js';
-import {
   DEFAULT_NATIVE_ARTIFACT_MAX_BYTES,
   readNativeBoundedTextFile,
 } from './native-bounded-file.js';
+import { nativeChangeDir } from './native-change.js';
 import { sha256File } from './native-hash.js';
 import { isInsidePath, resolveContainedNativePath } from './native-paths.js';
 import type {
@@ -23,25 +14,6 @@ import type {
   NativeFinding,
   NativeProjectPaths,
 } from './native-types.js';
-
-const BRIEF_REQUIRED = ['outcome', 'scope', 'nonGoals', 'acceptanceExamples'];
-const BRIEF_ALL = [
-  ...BRIEF_REQUIRED,
-  'constraints',
-  'decisions',
-  'openQuestions',
-  'verificationExpectations',
-];
-const VERIFICATION_ALL = [
-  'acceptanceEvidence',
-  'commandsAndResults',
-  'skippedChecks',
-  'specConsistency',
-  'knownLimitationsAndRisks',
-  'conclusion',
-];
-
-const BRIEF_NONE_ALLOWED = new Set(['nonGoals', 'decisions', 'openQuestions']);
 
 export interface NativeBriefValidationOptions {
   /** Apply the full completeness rule used at new/reconfirmed Shape boundaries. */
@@ -68,29 +40,6 @@ export class NativeDocumentConstraintError extends Error {
 export const NATIVE_ARTIFACT_VALIDATION_LIMITS = {
   maxFileBytes: DEFAULT_NATIVE_ARTIFACT_MAX_BYTES,
 } as const;
-
-function markdownSections(source: string): Map<string, string> {
-  const sections = new Map<string, string>();
-  let heading: string | null = null;
-  let body: string[] = [];
-  const fence: MarkdownFenceState = { marker: null, length: 0 };
-  const flush = () => {
-    if (heading !== null) sections.set(heading, body.join('\n').trim());
-  };
-  for (const line of source.split(/\r?\n/u)) {
-    const transition = markdownFenceTransition(line, fence);
-    const match = transition === null && fence.marker === null ? /^# ([^#].*)$/u.exec(line) : null;
-    if (match) {
-      flush();
-      heading = match[1].trim();
-      body = [];
-    } else if (heading !== null) {
-      body.push(line);
-    }
-  }
-  flush();
-  return sections;
-}
 
 async function readContainedFile(root: string, relativeRef: string): Promise<string> {
   const target = path.resolve(root, ...relativeRef.split(/[\\/]/u));
@@ -131,78 +80,21 @@ export function stripMarkdownHtmlComments(source: string): string {
   return visible.join('');
 }
 
-function meaningfulMarkdown(source: string): string {
-  return stripMarkdownHtmlComments(source).trim();
-}
-
-function markdownBody(source: string): string {
-  const lines = meaningfulMarkdown(source).split(/\r?\n/u);
-  const body: string[] = [];
-  const fence: MarkdownFenceState = { marker: null, length: 0 };
-  for (const line of lines) {
-    if (markdownFenceTransition(line, fence) !== null) continue;
-    if (fence.marker === null && /^\s*#{1,6}\s*$/u.test(line)) continue;
-    if (fence.marker === null && /^\s*#{1,6}\s+/u.test(line)) continue;
-    if (fence.marker === null && /^\s*(?:[-*+]\s*|\d+[.)]\s*)$/u.test(line)) continue;
-    body.push(line);
-  }
-  return body.join('\n').trim();
-}
-
-function isExplicitNone(source: string): boolean {
-  const normalized = markdownBody(source)
-    .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/gmu, '')
-    .replace(/[*_`>#\x5b\x5d()]/gu, ' ')
-    .replace(/\s+/gu, ' ')
-    .trim()
-    .toLocaleLowerCase('en-US');
-  return /^(?:none|n\/a|not applicable|no(?:ne)?(?:\s+at\s+this\s+time)?|no\s+(?:additional\s+)?(?:non-goals?|decisions?|open\s+questions?|questions?)|无|无相关事项|没有(?:额外)?(?:非目标|决定|待解决问题)|不适用|暂无)[.!。；;：:，,、 -]*$/iu.test(
-    normalized,
-  );
-}
-
-function isTemplateOnly(source: string): boolean {
-  const normalized = markdownBody(source)
-    .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/gmu, '')
-    .replace(/\s+/gu, ' ')
-    .trim();
-  if (normalized.length === 0) return false;
-  const placeholderCandidate = normalized
-    .replace(/[*_`]/gu, '')
-    .replace(/^\s*>+\s?/gmu, '')
-    .replace(/\s+/gu, ' ')
-    .trim();
-  if (/^(?:<[^>\r\n]+>|\{\{[^}\r\n]+\}\})[.!。；;：:，,、 -]*$/iu.test(placeholderCandidate))
-    return true;
-  const decorated = normalized
-    .replace(/[*_`>#\x5b\x5d()]/gu, ' ')
-    .replace(/\s+/gu, ' ')
-    .trim();
-  return /^(?:(?:todo|tbd|fixme)(?:\s*[:：-]\s*.+)?|fill(?:\s+this\s+in)?(?:\s*[:：-]\s*.+)?|placeholder(?:\s*[:：-]\s*.+)?|待填写\S*|待补充\S*|<[^>]+>|\{\{[^}]+\}\})[.!。；;：:，,、 -]*$/iu.test(
-    decorated,
-  );
-}
-
 export function validateNativeSpecDocumentText(
   source: string,
   documentRef: string,
 ): NativeArtifactValidation {
-  const findings: NativeFinding[] = [];
-  const body = markdownBody(source);
-  if (body.length === 0) {
-    findings.push({
-      code: 'spec-document-empty',
-      message: `Native target Spec is empty: ${documentRef}. Add the complete target requirements or use an explicit no-product-behavior exemption in brief.md.`,
-      path: documentRef,
-    });
-  } else if (isTemplateOnly(source)) {
-    findings.push({
-      code: 'spec-document-placeholder',
-      message: `Native target Spec contains only template placeholder content: ${documentRef}. Replace it with complete target requirements.`,
-      path: documentRef,
-    });
-  }
-  return result(findings);
+  return result(
+    source.trim()
+      ? []
+      : [
+          {
+            code: 'spec-document-empty',
+            message: 'Native target Spec is empty: ' + documentRef,
+            path: documentRef,
+          },
+        ],
+  );
 }
 
 export function nativeBriefHasBlockingQuestion(source: string): boolean {
@@ -282,160 +174,38 @@ function markdownFenceTransition(
   return null;
 }
 
-function briefStructureSectionBody(scopeBody: string): string | null {
-  const lines = meaningfulMarkdown(scopeBody).split(/\r?\n/u);
-  const fence: MarkdownFenceState = { marker: null, length: 0 };
-  let start = -1;
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? '';
-    if (markdownFenceTransition(line, fence) !== null) continue;
-    if (fence.marker !== null) continue;
-    const heading = /^##\s+(.+)$/u.exec(line);
-    if (heading === null) continue;
-    if (start === -1) {
-      if (isNativeBriefStructureHeading(heading[1] ?? '')) start = index + 1;
-      continue;
-    }
-    return lines.slice(start, index).join('\n');
-  }
-  return start === -1 ? null : lines.slice(start).join('\n');
-}
-
-function briefStructureSubsectionBodies(body: string): Map<NativeBriefStructureSubsection, string> {
-  const subsections = new Map<NativeBriefStructureSubsection, string>();
-  let currentKey: NativeBriefStructureSubsection | null = null;
-  let currentLines: string[] = [];
-  const fence: MarkdownFenceState = { marker: null, length: 0 };
-  const flush = () => {
-    if (currentKey !== null) subsections.set(currentKey, currentLines.join('\n').trim());
-  };
-  for (const line of meaningfulMarkdown(body).split(/\r?\n/u)) {
-    if (markdownFenceTransition(line, fence) !== null) {
-      if (currentKey !== null) currentLines.push(line);
-      continue;
-    }
-    const heading = fence.marker === null ? /^###\s+(.+)$/u.exec(line) : null;
-    if (heading !== null) {
-      flush();
-      currentKey = nativeBriefStructureSubsectionKey(heading[1] ?? '');
-      currentLines = [];
-    } else if (currentKey !== null) {
-      currentLines.push(line);
-    }
-  }
-  flush();
-  return subsections;
-}
-
-function validateBriefStructureSection(scopeBody: string, briefRef: string): NativeFinding[] {
-  const findings: NativeFinding[] = [];
-  const body = briefStructureSectionBody(scopeBody);
-  if (body === null) {
-    findings.push({
-      code: 'brief-structure-missing',
-      message:
-        'Brief scope must include a "## Directory structure"/「## 目录结构」 section. Add the categories needed to describe the affected paths and responsibilities',
-      path: briefRef,
-    });
-    return findings;
-  }
-  const subsections = briefStructureSubsectionBodies(body);
-  if (subsections.size === 0) {
-    return [
-      {
-        code: 'brief-structure-subsection-missing',
-        message: `Brief directory structure needs at least one populated category: ${NATIVE_BRIEF_STRUCTURE_SUBSECTIONS.map(nativeBriefStructureSubsectionLabel).join(', ')}. Add a level-three heading and describe the affected paths and responsibilities`,
-        path: briefRef,
-      },
-    ];
-  }
-  const incomplete: string[] = [];
-  for (const [subsection, content] of subsections) {
-    if (markdownBody(content).length === 0 || isTemplateOnly(content)) {
-      incomplete.push(nativeBriefStructureSubsectionLabel(subsection));
-    }
-  }
-  if (incomplete.length > 0) {
-    findings.push({
-      code: 'brief-structure-subsection-missing',
-      message: `Brief directory structure categories are empty or contain only placeholders: ${incomplete.join(
-        ', ',
-      )}. Describe the affected paths and responsibilities, or omit unused categories`,
-      path: briefRef,
-    });
-  }
-  return findings;
-}
-
+/** 文档语义由 Agent 核对；这里仅检查实际输入及明确的未决标记。 */
 export async function validateNativeBrief(
   changeDir: string,
   briefRef: string,
   options: NativeBriefValidationOptions = {},
 ): Promise<NativeArtifactValidation> {
-  const findings: NativeFinding[] = [];
   let source: string;
   try {
     source = (
       await readNativeBoundedTextFile({
         root: changeDir,
         ref: briefRef,
-        maxBytes:
-          options.maxBytes === undefined
-            ? NATIVE_ARTIFACT_VALIDATION_LIMITS.maxFileBytes
-            : options.maxBytes,
+        maxBytes: options.maxBytes ?? null,
+        includeHash: false,
       })
     ).text;
   } catch (error) {
     return result([{ code: 'brief-missing', message: (error as Error).message, path: briefRef }]);
   }
-  const sections = new Map<string, string>();
-  for (const [heading, body] of markdownSections(source)) {
-    sections.set(nativeHeadingKey(heading) ?? heading, body);
-  }
-  for (const heading of options.compact !== false ? BRIEF_REQUIRED : BRIEF_ALL) {
-    if (!sections.has(heading)) {
-      findings.push({
-        code: 'brief-section-missing',
-        message: `Missing brief section: ${heading}`,
-        path: briefRef,
-      });
-    }
-  }
-  const nonEmptySections = options.strict
-    ? BRIEF_ALL.filter((heading) => options.compact === false || sections.has(heading))
-    : BRIEF_REQUIRED;
-  for (const heading of nonEmptySections) {
-    const section = sections.get(heading) ?? '';
-    if (markdownBody(section).length === 0) {
-      findings.push({
-        code: 'brief-section-empty',
-        message: `Brief section is empty: ${heading}`,
-        path: briefRef,
-      });
-    } else if (isTemplateOnly(section)) {
-      findings.push({
-        code: 'brief-section-placeholder',
-        message: `Brief section contains only template placeholder content: ${heading}`,
-        path: briefRef,
-      });
-    } else if (options.strict && !BRIEF_NONE_ALLOWED.has(heading) && isExplicitNone(section)) {
-      findings.push({
-        code: 'brief-section-empty',
-        message: `Brief section must describe the confirmed work instead of declaring no items: ${heading}`,
-        path: briefRef,
-      });
-    }
-  }
-  if (options.strict && options.structure) {
-    findings.push(...validateBriefStructureSection(sections.get('scope') ?? '', briefRef));
-  }
-  if (nativeBriefHasBlockingQuestion(source)) {
+  const findings: NativeFinding[] = [];
+  if (!source.trim())
+    findings.push({
+      code: 'brief-empty',
+      message: 'Native brief is empty: ' + briefRef,
+      path: briefRef,
+    });
+  if (nativeBriefHasBlockingQuestion(source))
     findings.push({
       code: 'brief-blocking-question',
       message: 'Brief has a blocking open question',
       path: briefRef,
     });
-  }
   return result(findings);
 }
 
@@ -443,41 +213,31 @@ export async function validateNativeVerification(
   changeDir: string,
   reportRef: string,
 ): Promise<NativeArtifactValidation> {
-  const findings: NativeFinding[] = [];
-  let source: string;
   try {
-    source = (
+    const source = (
       await readNativeBoundedTextFile({
         root: changeDir,
         ref: reportRef,
-        maxBytes: NATIVE_ARTIFACT_VALIDATION_LIMITS.maxFileBytes,
+        maxBytes: null,
+        includeHash: false,
       })
     ).text;
+    return result(
+      source.trim()
+        ? []
+        : [
+            {
+              code: 'verification-empty',
+              message: 'Native verification report is empty: ' + reportRef,
+              path: reportRef,
+            },
+          ],
+    );
   } catch (error) {
     return result([
       { code: 'verification-missing', message: (error as Error).message, path: reportRef },
     ]);
   }
-  const sections = new Map<string, string>();
-  for (const [heading, body] of markdownSections(source)) {
-    sections.set(nativeVerificationHeadingKey(heading) ?? heading, body);
-  }
-  for (const heading of VERIFICATION_ALL) {
-    if (!sections.has(heading)) {
-      findings.push({
-        code: 'verification-section-missing',
-        message: `Missing verification section: ${heading}`,
-        path: reportRef,
-      });
-    } else if ((sections.get(heading) ?? '').length === 0) {
-      findings.push({
-        code: 'verification-section-empty',
-        message: `Verification section is empty: ${heading}`,
-        path: reportRef,
-      });
-    }
-  }
-  return result(findings);
 }
 
 export function canonicalSpecPath(paths: NativeProjectPaths, capability: string): string {

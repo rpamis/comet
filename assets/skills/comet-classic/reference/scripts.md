@@ -46,7 +46,7 @@ Query only information still missing for the current action. Putting multiple `c
 
 Task reads, stable IDs, completion, and checkpoints support SDK and Compat. They do not advance the SDK Run or replace checks, phase approval, or complete-build. The same tasks.md remains completion authority. Continue from the current Run after coordination updates without querying again just to discover the next step.
 
-checkpoint input requires schemaVersion:1 and taskIds/revision/stage/sessionId/evidence/unresolved/reviewRounds; reads return `{checkpoint, stale}`. Runtime validates the data and generates Markdown. See context-recovery.md for JSON. task-complete automatically synchronizes legacy-plan tasks with established comet-task ID mappings. Use sync-plan for a separate update; planSync mapping-required requires completing mappings, not reimplementing tasks.
+checkpoint input requires schemaVersion:1 and taskIds/stage/sessionId/evidence/unresolved/reviewRounds; reads return `{checkpoint, stale}`. Runtime validates the data and generates Markdown. See context-recovery.md for JSON. task-complete automatically synchronizes legacy-plan tasks with established comet-task ID mappings. Use sync-plan for a separate update; planSync mapping-required requires completing mappings, not reimplementing tasks.
 
 delivery input includes action (local|push|pr), targetBranch, and optional remote, commit, and prUrl; see comet-archive for examples. Normal entry and delivery reads do not access the network. Only `state delivery <change-name> --verify` checks remote and PR state read-only, returning `{delivery, verification}`. A successful record write does not prove delivery success. Stop for unavailable commands, rejected operations, or inconsistent records; do not bypass checks by editing internal state.
 
@@ -76,44 +76,13 @@ comet state transition <change-name> preset-escalate
 
 Archive through `comet archive <change-name>`. OpenSpec first moves the change into a date-prefixed archive directory; Comet then records state. Update pre-archive confirmation through `archive-confirm` or `archive-reopen`. Do not manually run the `archived` transition outside the archive procedure.
 
-## Check Evidence and Input Declarations
+## Check Commands and Result Reuse
 
-Check evidence reuses by "input scope": the default inputs are working-tree file contents. Commits, staging, ticking tasks.md checkboxes, and environment variable changes no longer invalidate evidence by default; when a build or test actually reads such information, declare the binding through `.comet/check-policy.json`.
+The Agent selects necessary commands, working directories, and scope, and judges whether previous results remain applicable. Guard and status read results without detecting or starting Build. When results are missing, choose a command and execute `comet check run <change-name> <build|verify> --local -- <program> [args...]`. SDK can also execute an explicit command through the current Guard template.
 
-The same full command recorded with `--local` (matching argv, cwd, inputs, and environment) can be reused across Build and Verify. Runtime binds the existing evidence to the current phase and returns `reused=true`; do not rerun it merely because the phase name changed. An explicit failure, manual declaration, stale record, or cwd mismatch is reported with its recovery command before any detected build command is considered.
+`--local` allows reuse of applicable original Runtime results across phases and ordinary edits. Follow current responses for failures, interruptions, unknown results, one-time operations, and actual cwd constraints. Use `comet check rerun <change-name> <build|verify>` for the recorded original command, without substituting another detected build. Manual declarations do not replace execution.
 
-After a Runtime-recorded command fails or is interrupted while snapshotting inputs or launching, use `comet check rerun <change-name> <build|verify>`. Runtime persists argv, cwd, timeout, and reuse tier before execution, so an interrupted attempt retries unchanged instead of running another auto-detected build or reconstructing shell syntax. Guard keeps showing a fresh `comet check run` template only for manual legacy records that have no Runtime argv.
-
-When guard reports evidence as not reusable, it prints the invalidation reason and the changed file list (`Why:`, `Changed inputs:`, `Relevance scope:`). Use that list to decide which command to rerun instead of rerunning everything.
-
-`--incremental` records phase-local evidence: guard previews accept it for quick confirmation, while `--apply` still requires one full rerun of the complete command before advancing the phase. The caller chooses the incremental command (for example, running only related tests); incremental evidence always requires a rerun after cold recovery.
-
-```bash
-comet check run <change-name> build --local -- <program> [args...]
-comet check run <change-name> verify --local --incremental -- <program> [args...]
-```
-
-`.comet/check-policy.json` declares an input scope per command. In the v2 format each command is scoped independently and only the entry matching `argv` and `cwd` applies; editing or adding other entries does not affect this command's existing evidence. `files` accepts literal paths and the `*`, `?`, and `**` wildcards; newly added matching files are picked up automatically without changing the declaration. When a build rewrites files inside its input area, declare those artifacts with `outputs`; Runtime excludes them from that command's input snapshot so the command does not invalidate itself:
-
-```json
-{
-  "version": 2,
-  "commands": [
-    {
-      "argv": ["pnpm", "build"],
-      "cwd": ".",
-      "files": ["src/**", "package.json", "tsconfig.json"],
-      "outputs": ["dist/**"],
-      "git": "all"
-    },
-    { "argv": ["vitest", "run"], "cwd": ".", "files": ["src/**", "test/**"] }
-  ]
-}
-```
-
-Omitted fields keep the defaults: `git` defaults to `none` (no HEAD or index binding), `env` binds no variables (the resolved executable path and its file identity plus the Node version always bind, so switching Node versions still invalidates evidence), and `taskCheckboxes` defaults to `ignore` (ticking tasks does not invalidate evidence; task text changes still do). Declare `git: "all"` when build artifacts embed a commit SHA, list variable names in `env` when the result depends on them, and declare `taskCheckboxes: "include"` when completion marks themselves affect the check result. The older v1 single-command format remains valid and keeps its original semantics.
-
-An entry's `cwd` also declares where that command's evidence belongs. By default the guard reuses only evidence whose cwd matches its own invocation directory; a command matched by a v2 entry may record evidence in the entry's declared `cwd` instead. When a build or verification entry point lives in a subdirectory, declare the command as actually executed (for example `{ "argv": ["npm", "run", "build"], "cwd": "ui/frontend" }`), record it with `--cwd ui/frontend`, and a guard invoked from the project root reuses it. Undeclared commands still require evidence from the guard's invocation directory.
+`--incremental` remains for phase-local checks and does not establish complete phase acceptance. The Agent selects complete scope from requirements. Legacy `.comet/check-policy.json` may retain command cwd compatibility information; file, environment, and content-proof configuration no longer determines invalidation.
 
 ## Resolving the Next Step
 
@@ -122,6 +91,8 @@ After the phase Guard advances phase, follow auto-transition.md and prefer `agen
 ```bash
 comet state next <change-name>
 ```
+
+Plain `state next` only reads the next step. When the response gives `comet state next <change-name> --continue --json`, execute that business command. CLI submits accepted artifacts and actual check receipts in the original Run and continues recorded commands and approved internal steps. The Agent need not fill SDK Actions, claim tokens, or evidence digests. Missing selected commands, Agent work, user decisions, real failures, and unknown executions return the current next step. Submitting an original check receipt does not execute its command again.
 
 Output includes `NEXT: auto|manual|done|delivery`, `SKILL: <skill-name>` (omitted for `done`), and `HINT` (only for `manual`). `auto_transition: false` returns `manual`: it prevents automatic invocation of the next Skill without changing the phase already advanced. `delivery` means the change is archived: finish delivery from the delivery summary instead of advancing phases.
 

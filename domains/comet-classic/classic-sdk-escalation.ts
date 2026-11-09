@@ -7,14 +7,13 @@ import {
   preserveRuntimeExecutionOrigins,
   type WorkflowRun,
 } from '../engine/runtime.js';
-import { isDeepStrictEqual } from 'node:util';
+import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
 import {
   assertClassicPresetRequirementsCurrent,
   classicOpenEvidenceReceipt,
 } from './classic-sdk-application.js';
 import { classicSdkApplicationForRun } from './classic-sdk-revision-application.js';
 import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
-import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
 import { inspectClassicSdkRun } from './classic-sdk-status.js';
 import type { ClassicState } from './classic-state.js';
 
@@ -107,7 +106,11 @@ export async function proposeClassicSdkEscalation(options: {
       claimToken,
       outcomeId: randomUUID(),
       status: 'succeeded',
-      output: { event: 'escalation-requested', proposal: reason, requirementsEvidence },
+      output: {
+        event: 'escalation-requested',
+        proposal: reason,
+        requirementsEvidence: { ...requirementsEvidence, contentHash: action.inputHash },
+      },
     },
     context: { requestId: randomUUID(), projectRoot: options.projectRoot },
   });
@@ -152,7 +155,7 @@ export async function decideClassicSdkEscalation(options: {
         (run.input as { changeDir: string }).changeDir,
         { ...run, waits: run.waits.filter((candidate) => candidate.id !== wait.id) },
       );
-    } else if (!isDeepStrictEqual(expected, current))
+    } else if ((expected as { ref?: unknown }).ref !== current.ref)
       throw new Error(
         'Classic preset requirements changed after the scope proposal; restore the proposed artifacts or choose upgrade for a newly confirmed full Design',
       );

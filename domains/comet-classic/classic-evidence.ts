@@ -1,9 +1,10 @@
-import { classicProjectFileNonempty } from './classic-protected-path.js';
 import path from 'path';
-import { inspectClassicPlanReadiness } from './classic-plan-readiness.js';
-import { parseClassicTasks } from './classic-tasks.js';
-import { collectClassicSpecFiles } from './classic-paths.js';
-import type { ClassicStateProjection } from './classic-state.js';
+import {
+  inspectProtectedProjectPath,
+  protectedProjectFileExists,
+  readProtectedProjectFile,
+} from '../workflow-contract/protected-project-path.js';
+import { readLegacyArchivedHandoffFallback } from './classic-archive-pointer.js';
 import {
   assertClassicLayoutReadable,
   classicLayoutPaths,
@@ -11,12 +12,11 @@ import {
   discoverClassicProject,
   type ClassicLayoutPaths,
 } from './classic-layout.js';
-import { readLegacyArchivedHandoffFallback } from './classic-archive-pointer.js';
-import {
-  inspectProtectedProjectPath,
-  protectedProjectFileExists,
-  readProtectedProjectFile,
-} from '../workflow-contract/protected-project-path.js';
+import { collectClassicSpecFiles } from './classic-paths.js';
+import { inspectClassicPlanReadiness } from './classic-plan-readiness.js';
+import { classicProjectFileNonempty } from './classic-protected-path.js';
+import type { ClassicStateProjection } from './classic-state.js';
+import { parseClassicTasks } from './classic-tasks.js';
 
 export interface ClassicEvidence {
   code: string;
@@ -304,12 +304,6 @@ export async function collectClassicEvidence(
       }
     })(),
   ]);
-
-  const handoff = evidence.find((item) => item.code === 'design.handoff');
-  if (handoff && !classic?.handoffHash) {
-    handoff.satisfied = false;
-    handoff.detail = 'handoff hash is missing';
-  }
 
   evidence.push({
     code: 'archive.confirmed',

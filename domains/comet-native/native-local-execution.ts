@@ -4,15 +4,15 @@ import path from 'node:path';
 
 import { atomicWriteJson, type NativeAtomicWriteOptions } from './native-atomic-file.js';
 import {
-  activeNativeVerifierAction,
-  nativeVerifierActionExecutionRef,
-} from './native-verifier-action.js';
-import {
   NATIVE_LOCAL_EXECUTION_SCHEMA,
   type NativeLocalCheckState,
   type NativeLocalExecutionState,
   type NativePortableState,
 } from './native-portable-types.js';
+import {
+  activeNativeVerifierAction,
+  nativeVerifierActionExecutionRef,
+} from './native-verifier-action.js';
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -100,6 +100,7 @@ function parseCheck(value: unknown, index: number): NativeLocalCheckState {
       'operationId',
       'status',
       'repeatable',
+      'reusable',
       'timeoutMs',
       'executionCount',
       'argv',
@@ -177,6 +178,9 @@ function parseCheck(value: unknown, index: number): NativeLocalCheckState {
     operationId: stringValue(root.operationId, `${label}.operationId`),
     status,
     repeatable: booleanValue(root.repeatable, `${label}.repeatable`),
+    ...(root.reusable === undefined
+      ? {}
+      : { reusable: booleanValue(root.reusable, `${label}.reusable`) }),
     timeoutMs,
     executionCount: integerValue(root.executionCount, `${label}.executionCount`),
     argv,
@@ -316,7 +320,14 @@ export function parseNativeLocalExecution(value: unknown): NativeLocalExecutionS
   if (new Set(checks.map((check) => check.id)).size !== checks.length) {
     throw new Error('Native local check IDs must be unique');
   }
-  if (execution && checks.some((check) => check.operationId !== execution.operationId)) {
+  if (
+    execution &&
+    checks.some(
+      (check) =>
+        check.operationId !== execution.operationId &&
+        !(check.status === 'passed' && check.evidence === 'runtime' && check.reusable === true),
+    )
+  ) {
     throw new Error('Native local checks must belong to the current operation');
   }
   return {
@@ -378,12 +389,6 @@ export function rebuildNativeLocalExecution(options: {
     change: options.portableState.name,
     basedOnStateVersion: options.portableState.state_version,
     candidateId: options.portableState.builder_handoff?.candidate_id ?? null,
-    inputFingerprint: null,
-    inputFingerprintGate: null,
-    candidateInputFingerprintGate: null,
-    ...(options.portableState.builder_handoff?.raw_input_ref
-      ? { rawInputRef: options.portableState.builder_handoff.raw_input_ref }
-      : {}),
     workspace: {
       projectRoot: path.resolve(options.projectRoot),
       worktreeRoot: path.resolve(options.worktreeRoot ?? options.projectRoot),

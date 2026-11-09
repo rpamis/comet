@@ -1,15 +1,14 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import { readNativeChildrenContract } from './native-children.js';
 import { nativeChildrenAcceptanceValidation } from './native-children-contract.js';
-import { canonicalHash } from './native-canonical-hash.js';
+import { readNativeChildrenContract } from './native-children.js';
+import type { NativePortableState } from './native-portable-types.js';
 import {
   nativeSupervisorStateFile,
   readNativeSupervisorState,
   type NativeSupervisorState,
 } from './native-supervisor.js';
-import type { NativePortableState } from './native-portable-types.js';
 import type { NativeProjectPaths } from './native-types.js';
 
 export type NativeSupervisorOverlayInspection =
@@ -153,7 +152,9 @@ function isEmptySupervisorShell(
   for (const [index, entry] of supervisor.children.entries()) {
     const child = record(entry, `Native Supervisor child ${index}`);
     if (!child) return `Native Supervisor child ${index} must be an object`;
-    const { acceptanceScope, contractHash, ...legacyChild } = child;
+    const { acceptanceScope, ...legacyChild } = child;
+    delete legacyChild.contractRef;
+    delete legacyChild.contractHash;
     const childError = exactKeys(
       legacyChild,
       CHILD_KEYS,
@@ -177,10 +178,8 @@ function isEmptySupervisorShell(
             },
           ];
     if (
-      (acceptanceScope !== undefined &&
-        JSON.stringify(acceptanceScope) !== JSON.stringify(expectedScope)) ||
-      (contractHash !== undefined &&
-        contractHash !== canonicalHash('comet.native.supervisor-contract.v1', contract))
+      acceptanceScope !== undefined &&
+      JSON.stringify(acceptanceScope) !== JSON.stringify(expectedScope)
     )
       return `Native Supervisor child ${definition.name} acceptance scope does not match the legacy contract`;
     if (

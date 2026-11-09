@@ -1,8 +1,7 @@
-import path from 'node:path';
 import { promises as fs } from 'node:fs';
+import path from 'node:path';
 
 import { atomicWriteJson } from './native-atomic-file.js';
-import { canonicalHash } from './native-canonical-hash.js';
 import {
   nativeChildrenAcceptanceValidation,
   readNativeChildrenContract,
@@ -208,6 +207,24 @@ export async function readNativeSupervisorState(
   try {
     const source = await fs.readFile(nativeSupervisorStateFile(paths, parent), 'utf8');
     const parsed: unknown = JSON.parse(source);
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      Array.isArray((parsed as { children?: unknown }).children)
+    ) {
+      for (const child of (
+        parsed as {
+          children: Array<{
+            contractRef?: string;
+            contractHash?: string;
+            task?: { contractRef?: string; contractHash?: string };
+          }>;
+        }
+      ).children) {
+        child.contractRef ??= child.contractHash;
+        if (child.task) child.task.contractRef ??= child.task.contractHash;
+      }
+    }
     assertSupervisorState(parsed);
     if (
       parsed.children.some(
@@ -234,13 +251,9 @@ export async function readNativeSupervisorState(
         for (const child of parsed.children) {
           if (!document.contract.children.some(({ name }) => name === child.name)) continue;
           child.acceptanceScope = supervisorAcceptanceScope(document.contract, child.name);
-          child.contractHash = canonicalHash(
-            'comet.native.supervisor-contract.v1',
-            document.contract,
-          );
           if (child.task) {
             child.task.acceptance = structuredClone(child.acceptanceScope);
-            child.task.contractHash = child.contractHash;
+            child.task.contractRef = child.contractRef;
             child.task.verificationBoundary = 'child-scope-parent-reverifies-all';
             child.task.checksReason = 'not-run';
           }

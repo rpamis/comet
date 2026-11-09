@@ -7,11 +7,12 @@ import {
 import type { ClassicState } from './classic-state.js';
 
 export interface ClassicDeliveryRepair {
-  checkpointHash: string;
+  checkpointHash?: string;
   archiveActionId: string;
   checkActionId: string;
-  policyHash: string;
-  excludedOutputs: Record<string, string>;
+  policyHash?: string;
+  excludedOutputs?: Record<string, string>;
+  excludedOutputPaths?: string[];
   command: { argv: string[]; cwd: string; timeoutMs: number; reusable: false };
 }
 
@@ -82,14 +83,12 @@ export function classicDeliveryRepairInputs(
   proof: ClassicDeliveryRepair,
 ) {
   const original = classicDeliveryRepairOriginals(run, proof);
-  return Object.fromEntries(
-    Object.entries(
-      classicDeliveryRepairRecord(original.check.outcome!.output).deliveryInputs as Record<
-        string,
-        string
-      >,
-    ).filter(([ref]) => !Object.hasOwn(proof.excludedOutputs, ref)),
-  );
+  const output = classicDeliveryRepairRecord(original.check.outcome!.output);
+  const paths = Array.isArray(output.deliveryPaths)
+    ? (output.deliveryPaths as string[])
+    : Object.keys((output.deliveryInputs as Record<string, string>) ?? {});
+  const excluded = new Set(proof.excludedOutputPaths ?? Object.keys(proof.excludedOutputs ?? {}));
+  return paths.filter((ref) => !excluded.has(ref));
 }
 
 export function canRepairClassicDelivery(run: Readonly<WorkflowRun>): boolean {

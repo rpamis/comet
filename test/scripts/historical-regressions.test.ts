@@ -3,6 +3,7 @@ import {
   historicalRegressionEntries,
   mergeHistoricalRegressions,
 } from '../../scripts/lint/historical-regressions.mjs';
+import { historicalTestMigrationCases } from '../../scripts/lint/workflow-regressions.mjs';
 
 function catalog() {
   return {
@@ -50,6 +51,62 @@ function catalog() {
 }
 
 describe('historical workflow bad-case inventory', () => {
+  it('migrates a frozen case through an audited overlay while preserving its original ID and body', () => {
+    const original = catalog();
+    const before = structuredClone(original);
+    for (const invalid of [{}, '', null, false])
+      expect(() =>
+        historicalTestMigrationCases(original, { historicalTestMigrations: invalid }),
+      ).toThrow('数组');
+    const test = {
+      file: 'test/scripts/historical-regressions.test.ts',
+      namePattern: '^replacement$',
+      requiredNames: ['replacement'],
+    };
+    const testMigration = {
+      kind: 'feature-removed',
+      reason: '用户明确撤下内容证明协议',
+      authorization: 'report:fixture-removal',
+      record: 'docs/research/fixture-removal.md',
+      tests: [test],
+      evidence: Object.fromEntries(
+        ['registry', 'patch', 'mapping', 'tests'].map((key) => [
+          key,
+          {
+            file: `docs/research/fixture-${key}.${key === 'patch' ? 'patch' : 'json'}`,
+            sha256: 'a'.repeat(64),
+          },
+        ]),
+      ),
+    };
+    const registry = { historicalTestMigrations: [{ id: '157-approval', testMigration }] };
+    const migrations = historicalTestMigrationCases(original, registry);
+    const entries = historicalRegressionEntries(original, migrations);
+    expect(entries[0].caseIds).toEqual(['157-approval']);
+    expect(entries[0].issues).toEqual([157]);
+    expect(entries[0].requiredNames).toEqual(['replacement']);
+    expect(original).toEqual(before);
+    expect(migrations[0].tests).toEqual(original.issues[0].cases[0].tests);
+    expect(() =>
+      historicalTestMigrationCases(original, {
+        historicalTestMigrations: [
+          ...registry.historicalTestMigrations,
+          ...registry.historicalTestMigrations,
+        ],
+      }),
+    ).toThrow('重复');
+    expect(() =>
+      historicalTestMigrationCases(original, {
+        historicalTestMigrations: [{ id: 'missing', testMigration }],
+      }),
+    ).toThrow('无效');
+    expect(() =>
+      historicalTestMigrationCases(original, {
+        historicalTestMigrations: [{ id: '158-removed', testMigration }],
+      }),
+    ).toThrow('无效');
+  });
+
   it('keeps surviving tests and excludes only documented absent behavior', () => {
     const entries = historicalRegressionEntries(catalog());
     expect(entries).toHaveLength(1);

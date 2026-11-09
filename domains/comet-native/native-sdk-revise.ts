@@ -3,21 +3,18 @@ import type {
   RuntimeExecutor,
   RuntimeValidator,
   RuntimeValue,
-  WorkflowRuntime,
   WorkflowRun,
+  WorkflowRuntime,
 } from '../engine/runtime.js';
 import { hashRuntimeValue } from '../engine/runtime.js';
 import { parseNativePortableState } from './native-portable-state.js';
-import { collectNativeSupervisorRevisionWorkspaces } from './native-sdk-supervisor-revision.js';
-import { inspectNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
 import type { NativePortableState } from './native-portable-types.js';
-import { inspectNativeSdkPendingArchiveDrift } from './native-sdk-archive.js';
-import { inspectNativePortableAcceptanceDrift } from './native-portable-requirements.js';
-import { nativeProjectPaths } from './native-paths.js';
 import {
-  inspectNativeSdkCheckExecutions,
   hasNativeSdkPortableStopEvidence,
+  inspectNativeSdkCheckExecutions,
 } from './native-sdk-check-execution.js';
+import { inspectNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
+import { collectNativeSupervisorRevisionWorkspaces } from './native-sdk-supervisor-revision.js';
 
 type ImplementationRevision = {
   reason: string;
@@ -99,33 +96,14 @@ export const nativeSdkImplementationRevisionCommandValidator: RuntimeCommandVali
         accepted: false,
         reason: 'Native original check execution has not been confirmed stopped',
       };
-    const paths = await nativeProjectPaths(
-      context.projectRoot,
-      (run.input as { artifactRootRef: string }).artifactRootRef,
-      { readOnly: true },
-    );
-    const shape = await inspectNativePortableAcceptanceDrift({ paths, state });
-    if (shape.drifted)
-      return {
-        accepted: false,
-        reason: 'Native requirements changed; read the current status and revise the requirements',
-      };
-    const drift = await inspectNativeSdkPendingArchiveDrift({
-      run,
-      action: archive,
-      projectRoot: context.projectRoot,
-    });
-    return {
-      accepted: drift !== null,
-      reason: 'Native candidate no longer differs; read the current status',
-    };
+    return { accepted: true };
   },
 };
 
 async function observeImplementationRevision(
   run: Readonly<WorkflowRun>,
   input: ImplementationRevision,
-  projectRoot: string,
+  _projectRoot: string,
 ) {
   const original = run.actions.find((action) => action.id === input.archiveActionId);
   if (
@@ -134,20 +112,10 @@ async function observeImplementationRevision(
     !['archive.prepare', 'archive.execute'].includes(original.stepId)
   )
     throw new Error('Native implementation revision has no original pending Archive action');
-  const state = parseNativePortableState(run.state);
-  const paths = await nativeProjectPaths(
-    projectRoot,
-    (run.input as { artifactRootRef: string }).artifactRootRef,
-    { readOnly: true },
-  );
-  const shape = await inspectNativePortableAcceptanceDrift({ paths, state });
-  const drift = shape.drifted
-    ? null
-    : await inspectNativeSdkPendingArchiveDrift({ run, action: original, projectRoot });
   return {
-    drift: shape.drifted || drift !== null,
-    requirementsChanged: shape.drifted,
-    driftKind: shape.drifted ? 'shape-drift' : (drift?.reason ?? null),
+    drift: true,
+    requirementsChanged: false,
+    driftKind: 'implementation-changed',
     archiveStep: original.stepId,
     reason: input.reason.trim(),
   };
@@ -254,7 +222,7 @@ export function nativeSdkRequirementsRevisionAllowed(
   if (run.actions.some((action) => ['running', 'unknown'].includes(action.status))) return false;
   if (['verify', 'archive'].includes(state.phase)) return proposalHash === undefined;
   if (state.phase !== 'build') return false;
-  if (state.children_contract_hash) return proposalHash === undefined;
+  if (state.children_contract_ref) return proposalHash === undefined;
   const pending = nativeSdkPendingBuilderRevisionHash(run);
   if (pending) return proposalHash === pending;
   const wait = nativeSdkStoppedBuilderWait(run);
@@ -266,7 +234,7 @@ export function nativeSdkPendingBuilderRevisionHash(run: Readonly<WorkflowRun>):
   const state = parseNativePortableState(run.state);
   if (
     state.phase !== 'build' ||
-    state.children_contract_hash ||
+    state.children_contract_ref ||
     !['running', 'waiting'].includes(run.status) ||
     run.actions.some((action) => ['running', 'unknown'].includes(action.status))
   )
@@ -342,9 +310,9 @@ export const nativeSdkReviseExecutor: RuntimeExecutor = {
     ) {
       throw new Error('Native requirements revision references a stale change');
     }
-    if (state.children_contract_hash && !context?.projectRoot)
+    if (state.children_contract_ref && !context?.projectRoot)
       throw new Error('Native Supervisor 需求修订缺少实际项目');
-    const workspaces = state.children_contract_hash
+    const workspaces = state.children_contract_ref
       ? collectNativeSupervisorRevisionWorkspaces(run, context!.projectRoot!)
       : undefined;
     return {
@@ -362,7 +330,7 @@ export const nativeSdkReviseValidator: RuntimeValidator = {
     const state = parseNativePortableState(run.state);
     let retained = true;
     try {
-      if (state.children_contract_hash) {
+      if (state.children_contract_ref) {
         retained =
           Boolean(context?.projectRoot) &&
           hashRuntimeValue(

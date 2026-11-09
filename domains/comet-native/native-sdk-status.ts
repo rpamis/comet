@@ -1,19 +1,18 @@
+import path from 'node:path';
 import { withGitWorktreeReadScope } from '../../platform/paths/git-worktree.js';
+import { applicationSkillWork } from '../workflow-application/index.js';
+import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
+import { projectNativePortableWorkspace } from './native-portable-status.js';
+import { nativePortableStateSummary } from './native-portable-summary.js';
+import { inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
-import { nativeSdkArchivedReportWarning } from './native-sdk-report.js';
-import { inspectNativeSdkRunDiagnostics } from './native-sdk-diagnostics.js';
 import {
   inspectNativeSdkCheckExecutions,
   type NativeSdkCheckExecutionInspection,
 } from './native-sdk-check-execution.js';
-import { inspectNativeSdkRun } from './native-runtime-ownership.js';
-import { applicationSkillWork } from '../workflow-application/index.js';
-import { nativeProjectPaths } from './native-paths.js';
-import { projectNativePortableWorkspace } from './native-portable-status.js';
 import { projectNativeSdkContinuation } from './native-sdk-continuation.js';
-import { nativePortableStateSummary } from './native-portable-summary.js';
-import path from 'node:path';
-import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
+import { inspectNativeSdkRunDiagnostics } from './native-sdk-diagnostics.js';
+import { nativeSdkArchivedReportWarning } from './native-sdk-report.js';
 
 export { isNativeSdkCancellationComplete } from './native-sdk-cancellation.js';
 
@@ -60,7 +59,12 @@ async function projectNativeSdkStatusOnce(
     details?: boolean;
     checkExecutionObservation?: readonly NativeSdkCheckExecutionInspection[];
   },
-  { run, state, artifactRootRef, application }: Awaited<ReturnType<typeof inspectNativeSdkRun>>,
+  {
+    run,
+    state,
+    artifactRootRef: _artifactRootRef,
+    application,
+  }: Awaited<ReturnType<typeof inspectNativeSdkRun>>,
 ) {
   const summary = nativePortableStateSummary(state);
   const checkExecutionObservation =
@@ -102,15 +106,6 @@ async function projectNativeSdkStatusOnce(
       },
     ];
   });
-  const editReviews =
-    !state.archived &&
-    state.shape_confirmation_hash &&
-    ['build', 'verify', 'archive'].includes(state.phase)
-      ? await inspectNativeEditReviews(
-          await nativeProjectPaths(options.projectRoot, artifactRootRef, { readOnly: true }),
-          state,
-        )
-      : [];
   const reportWarning = await nativeSdkArchivedReportWarning(options.projectRoot, run);
   return {
     schema: 'comet.native.sdk-status.v1' as const,
@@ -122,7 +117,6 @@ async function projectNativeSdkStatusOnce(
       ? { application: application.identity, skillWork: applicationSkillWork(application, run) }
       : {}),
     name: options.name,
-    ...(editReviews.length ? { editReviews } : {}),
     ...(preservedReports.length ? { preservedReports } : {}),
     ...(reportWarning ? { warning: reportWarning } : {}),
     language: state.language,
@@ -133,7 +127,6 @@ async function projectNativeSdkStatusOnce(
     unresolvedAcceptanceIds: summary.unresolved_acceptance_ids,
     verificationResult: state.verification_result,
     candidateId: state.builder_handoff?.candidate_id ?? null,
-    shapeConfirmationHash: state.shape_confirmation_hash ?? null,
     blockers: summary.blockers,
     workspace: projectNativePortableWorkspace({ projectRoot: options.projectRoot }, state),
     run: {
@@ -202,7 +195,6 @@ async function projectNativeSdkStatusOnce(
             workflow.id === 'comet-native' && Boolean(workflow.commands?.['revise-implementation']),
         ),
       skillExecutors: application?.implementation.executors,
-      editReviews,
       cancellationObservation: cancellation,
       checkExecutionObservation,
     })),
@@ -211,4 +203,3 @@ async function projectNativeSdkStatusOnce(
 }
 
 export type NativeSdkStatusProjection = Awaited<ReturnType<typeof inspectNativeSdkStatus>>;
-import { inspectNativeEditReviews } from './native-edit-review.js';

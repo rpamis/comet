@@ -1,18 +1,14 @@
+import { inspectGitWorktree, resolveGitRef, samePath } from '../../platform/paths/git-worktree.js';
+import { gitWorktreeIsClean } from '../../platform/process/git.js';
 import {
   hashRuntimeValue,
   type CreateRuntimeOptions,
   type WorkflowRun,
 } from '../engine/runtime.js';
-import { inspectGitWorktree, resolveGitRef, samePath } from '../../platform/paths/git-worktree.js';
-import { gitWorktreeIsClean } from '../../platform/process/git.js';
+import { nativeSupervisorContractRef } from './native-children-contract.js';
 import { parseNativePortableState } from './native-portable-state.js';
-import { nativeProjectPaths } from './native-paths.js';
-import {
-  inspectNativePortableAcceptanceDrift,
-  nativePortableShapeConfirmationHash,
-} from './native-portable-requirements.js';
-import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
 import { nativeSdkSupervisorChildCheckSummaries } from './native-sdk-checks.js';
+import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
 
 /** 只解释原 blocked 结果；后继修复提交需要由新 Builder 回交并重新检查。 */
 export async function inspectNativeSdkSupervisorRecovery(
@@ -27,8 +23,7 @@ export async function inspectNativeSdkSupervisorRecovery(
     state.phase !== 'build' ||
     state.status !== 'active' ||
     state.archived ||
-    !state.children_contract_hash ||
-    !state.shape_confirmation_hash ||
+    !state.children_contract_ref ||
     run.actions.some((action) => ['pending', 'running', 'unknown'].includes(action.status)) ||
     run.waits.some((wait) => wait.status === 'pending') ||
     run.evidenceWaits?.some((wait) => wait.status === 'pending')
@@ -45,7 +40,7 @@ export async function inspectNativeSdkSupervisorRecovery(
     action.outcome?.status !== 'succeeded' ||
     output?.verdict !== 'blocked' ||
     !activation ||
-    activation.contractHash !== state.children_contract_hash ||
+    nativeSupervisorContractRef(activation) !== state.children_contract_ref ||
     typeof activation.worktree !== 'string' ||
     typeof activation.branch !== 'string' ||
     typeof activation.checkActionId !== 'string' ||
@@ -55,22 +50,10 @@ export async function inspectNativeSdkSupervisorRecovery(
     output.candidateCommit !== activation.candidateCommit
   )
     return null;
-  const input = run.input as { artifactRootRef: string };
-  const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef);
+
   const confirmed = run.outputs['shape.revalidate']?.value as
     { formalHash?: string; children?: { hash: string } | null } | undefined;
-  const drift = await inspectNativePortableAcceptanceDrift({ paths, state });
-  if (
-    !confirmed?.formalHash ||
-    drift.drifted ||
-    state.shape_confirmation_hash !==
-      nativePortableShapeConfirmationHash({
-        formalHash: confirmed.formalHash,
-        childrenHash: confirmed.children?.hash ?? null,
-        coordinationMode: state.coordination_mode,
-      })
-  )
-    throw new Error('Native blocked 恢复的 Shape 确认已变化，请先核对需求');
+  if (!confirmed?.children) throw new Error('Native blocked 恢复缺少原已批准的子任务方案');
   const checked = await nativeSdkSupervisorChildCheckSummaries({
     run,
     checkActionId: activation.checkActionId,
@@ -101,8 +84,7 @@ export async function inspectNativeSdkSupervisorRecovery(
       checkActionId: checkAction.id,
       checkInputHash: checkAction.inputHash,
       checkOutcomeId: checkAction.outcome!.outcomeId,
-      shapeHash: state.shape_confirmation_hash,
-      contractHash: state.children_contract_hash,
+      contractRef: state.children_contract_ref,
       currentCommit,
     }),
   };

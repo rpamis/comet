@@ -1,4 +1,3 @@
-import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import {
   createMemoryRuntimeStore,
   createRuntime,
@@ -6,26 +5,21 @@ import {
   hashRuntimeValue,
   preserveRuntimeExecutionOrigins,
   RuntimeProtocolError,
-  type WorkflowRun,
   type RuntimeValue,
+  type WorkflowRun,
 } from '../engine/runtime.js';
+import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
+import { assertClassicArchiveRetryable } from './classic-sdk-archive-manifest.js';
+import { withClassicDeliveryRepair } from './classic-sdk-delivery-repair-application.js';
+import { captureClassicDeliveryRepair } from './classic-sdk-delivery-repair.js';
 import {
-  classicSdkRevisionApplication,
   classicArchiveRepairAction,
   classicInterruptedSkill,
+  classicSdkRevisionApplication,
 } from './classic-sdk-revision-application.js';
-import { assertClassicArchiveUnchanged } from './classic-sdk-archive-manifest.js';
 import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
 import { inspectClassicSdkRun } from './classic-sdk-status.js';
-import {
-  captureClassicDeliveryRepair,
-  classicDeliveryRepairCheckpointHash,
-} from './classic-sdk-delivery-repair.js';
-import { classicDeliveryActionContext } from './classic-sdk-delivery-repair-model.js';
-import { withClassicDeliveryRepair } from './classic-sdk-delivery-repair-application.js';
-import { classicEditReviewScope, classicFormalEditReviewScope } from './classic-edit-review.js';
-import { assertEditReviewsComplete } from '../workflow-contract/edit-review.js';
 
 /** 只更新当前工作区的分支绑定；原 Action、审批和执行收据继续保留。 */
 export async function rebindClassicSdkWork(
@@ -115,14 +109,6 @@ export async function reviseClassicSdkWork(options: {
         'Classic verification requires its active change directory; reconcile the Archive operation',
       );
   }
-  if (name === 'continue-build') {
-    await assertEditReviewsComplete(await classicEditReviewScope(projectRoot, change, state), {
-      allowImplementationRevision: true,
-    });
-    await assertEditReviewsComplete(
-      await classicFormalEditReviewScope(projectRoot, change, state, false, undefined, run),
-    );
-  }
   const base = classicSdkRevisionApplication(
     run.workflow.id.slice('comet-classic-'.length) as 'full' | 'tweak' | 'hotfix',
     state.workflow === 'full' ? 'full' : true,
@@ -138,11 +124,7 @@ export async function reviseClassicSdkWork(options: {
   const application = repairingDelivery
     ? withClassicDeliveryRepair(base, state.workflow, run)
     : base;
-  const failedSkill = name === 'continue-work' ? classicInterruptedSkill(run) : null;
-  const deliveryCheckpointHash =
-    failedSkill && classicDeliveryActionContext(run, failedSkill)
-      ? await classicDeliveryRepairCheckpointHash(projectRoot, run)
-      : null;
+
   const definition = defineWorkflow(application.workflow);
   const upgraded =
     hashRuntimeValue(definition) === run.workflow.hash
@@ -151,7 +133,7 @@ export async function reviseClassicSdkWork(options: {
   if (name === 'repair-archive') {
     const action = classicArchiveRepairAction(run);
     if (!action) throw new Error('Classic Archive 执行结果未知或尚未失败；先核对原执行');
-    await assertClassicArchiveUnchanged(projectRoot, run, action);
+    await assertClassicArchiveRetryable(projectRoot, run, action);
   }
   upgraded.workflow.hash = hashRuntimeValue(definition);
   upgraded.definitionHashes[JSON.stringify([definition.id, definition.version])] =
@@ -187,7 +169,6 @@ export async function reviseClassicSdkWork(options: {
             ...(name === 'continue-work'
               ? { interruptedActionId: classicInterruptedSkill(run)?.id ?? '' }
               : {}),
-            ...(deliveryCheckpointHash ? { deliveryCheckpointHash } : {}),
           },
     context: { requestId: commandId, projectRoot },
   });
@@ -257,7 +238,7 @@ export async function reviseClassicSdkWork(options: {
       buildPause: null,
     };
     const action = classicArchiveRepairAction(run)!;
-    await assertClassicArchiveUnchanged(projectRoot, run, action);
+    await assertClassicArchiveRetryable(projectRoot, run, action);
   }
   const store = createClassicSdkStateStore(projectRoot);
   if (!(await store.compareAndSwap(run.runId, expectedRevision, revised))) {

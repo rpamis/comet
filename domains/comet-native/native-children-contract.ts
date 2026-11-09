@@ -42,7 +42,6 @@ export interface NativeChildrenContract {
 
 export interface NativeChildrenDocument {
   contract: NativeChildrenContract;
-  hash: string;
   size: number;
   drift: NativeChildrenIndexDrift | null;
 }
@@ -96,7 +95,7 @@ function assertAcyclic(children: readonly NativeChildDefinition[]): void {
 function validateCoverage(
   children: readonly NativeChildDefinition[],
   acceptanceIds: readonly string[],
-  requiredAcceptanceIds: readonly string[] = acceptanceIds,
+  requiredAcceptanceIds: readonly string[] = [],
 ): void {
   const known = new Set(acceptanceIds);
   for (const child of children) {
@@ -127,8 +126,8 @@ export function nativeChildrenIndexDrift(
     unknownCovers: [],
   };
   if (contract.schema === NATIVE_CHILDREN_SCHEMA_V2 && contract.acceptance_index) {
-    const required = options.requiredAcceptanceIds ?? acceptanceIds ?? [];
-    const allowed = options.allowedAcceptanceIds ?? required;
+    const required = options.requiredAcceptanceIds ?? [];
+    const allowed = options.allowedAcceptanceIds ?? acceptanceIds ?? required;
     const indexKeys = Object.keys(contract.acceptance_index);
     drift.missing = required.filter((id) => !(id in contract.acceptance_index!));
     drift.extra = indexKeys.filter((id) => !allowed.includes(id));
@@ -148,7 +147,7 @@ export function nativeChildrenIndexDrift(
     for (const child of contract.children) {
       drift.unknownCovers.push(...child.covers.filter((id) => !known.has(id)));
     }
-    drift.uncovered = indexKeys.filter((id) => !coveredBy(contract.children, id));
+    drift.uncovered = required.filter((id) => !coveredBy(contract.children, id));
     return hasDrift(drift) ? drift : null;
   }
   if (contract.schema === NATIVE_CHILDREN_SCHEMA && acceptanceIds) {
@@ -156,7 +155,9 @@ export function nativeChildrenIndexDrift(
     for (const child of contract.children) {
       drift.unknownCovers.push(...child.covers.filter((id) => !known.has(id)));
     }
-    drift.uncovered = acceptanceIds.filter((id) => !coveredBy(contract.children, id));
+    drift.uncovered = (options.requiredAcceptanceIds ?? []).filter(
+      (id) => !coveredBy(contract.children, id),
+    );
     return hasDrift(drift) ? drift : null;
   }
   return null;
@@ -206,24 +207,11 @@ type NativeChildrenAcceptanceState = Pick<
 export function nativeChildrenAcceptanceValidation(
   state: NativeChildrenAcceptanceState,
 ): NativeChildrenValidationOptions {
-  const currentAcceptanceIds = new Set(state.acceptance.map(({ id }) => id));
-  const requiredAcceptanceIds = new Set(
-    state.acceptance.filter(({ source }) => source === state.brief).map(({ id }) => id),
-  );
-  const allowedAcceptanceIds = new Set(requiredAcceptanceIds);
-  for (const failure of state.history.filter(({ outcome }) => outcome === 'fail')) {
-    for (const id of failure.unresolved_ids) {
-      if (currentAcceptanceIds.has(id)) allowedAcceptanceIds.add(id);
-    }
-  }
-  if (state.loop.stage === 'repairing' && state.verification_result === 'fail') {
-    const latestFailure = [...state.history].reverse().find(({ outcome }) => outcome === 'fail');
-    for (const id of latestFailure?.unresolved_ids ?? []) requiredAcceptanceIds.add(id);
-  }
+  // Agent 决定哪些条目交给子任务；父级验收仍覆盖完整已确认目标。
   return {
     acceptanceCatalog: state.acceptance,
-    requiredAcceptanceIds: [...requiredAcceptanceIds],
-    allowedAcceptanceIds: [...allowedAcceptanceIds],
+    requiredAcceptanceIds: [],
+    allowedAcceptanceIds: state.acceptance.map(({ id }) => id),
   };
 }
 
@@ -253,8 +241,8 @@ function validateAcceptanceIndex(
   acceptanceIds: readonly string[] | undefined,
   options: NativeChildrenValidationOptions,
 ): void {
-  const required = options.requiredAcceptanceIds ?? acceptanceIds ?? [];
-  const allowed = options.allowedAcceptanceIds ?? required;
+  const required = options.requiredAcceptanceIds ?? [];
+  const allowed = options.allowedAcceptanceIds ?? acceptanceIds ?? required;
   const actual = Object.keys(index);
   const missing = required.filter((id) => !(id in index));
   const extra = actual.filter((id) => !allowed.includes(id));
@@ -262,20 +250,6 @@ function validateAcceptanceIndex(
     throw new Error(
       `Native children acceptance_index must match the required acceptance: missing ${missing.join(', ') || 'none'}; extra ${extra.join(', ') || 'none'}`,
     );
-  }
-  const catalog = new Map((options.acceptanceCatalog ?? []).map((entry) => [entry.id, entry]));
-  for (const id of actual) {
-    const expected = catalog.get(id);
-    if (!expected) continue;
-    const actualEntry = index[id];
-    if (actualEntry.source !== expected.source || actualEntry.text !== expected.text) {
-      const mismatched = (['source', 'text'] as const).filter(
-        (key) => actualEntry[key] !== expected[key],
-      );
-      throw new Error(
-        `Native children acceptance_index.${id} does not match the acceptance catalog: copy ${mismatched.join(', ')} exactly from the current acceptance catalog`,
-      );
-    }
   }
 }
 
@@ -365,26 +339,27 @@ export function parseNativeChildrenContract(
   const advisory = options.policy === 'advisory';
   if (schema === NATIVE_CHILDREN_SCHEMA_V2) {
     if (variant === 'indexed-v2' || variant === 'referenced-v2') {
+      const historicalIndex =
+        variant === 'indexed-v2' ? parseAcceptanceIndex(root.acceptance_index) : {};
       const ids = [
         ...new Set([
-          ...(options.requiredAcceptanceIds ?? acceptanceIds ?? []),
+          ...Object.keys(historicalIndex),
+          ...(options.requiredAcceptanceIds ?? []),
           ...children.flatMap((child) => child.covers),
         ]),
       ];
       const catalog = new Map(options.acceptanceCatalog?.map((entry) => [entry.id, entry]));
-      const acceptanceIndex =
-        variant === 'indexed-v2'
-          ? parseAcceptanceIndex(root.acceptance_index)
-          : Object.fromEntries(
-              ids.map((id) => {
-                const entry = catalog.get(id);
-                if (!entry) throw new Error(`Native acceptance catalog is missing ${id}`);
-                return [id, { source: entry.source, text: entry.text }];
-              }),
-            );
+      const acceptanceIndex = Object.fromEntries(
+        ids.map((id) => {
+          const entry = catalog.get(id) ?? historicalIndex[id];
+          if (!entry) throw new Error(`Native acceptance catalog is missing ${id}`);
+          return [id, { source: entry.source, text: entry.text }];
+        }),
+      );
       if (!advisory) validateAcceptanceIndex(acceptanceIndex, acceptanceIds, options);
       const indexedAcceptanceIds = Object.keys(acceptanceIndex);
-      if (!advisory) validateCoverage(children, indexedAcceptanceIds, indexedAcceptanceIds);
+      if (!advisory)
+        validateCoverage(children, indexedAcceptanceIds, options.requiredAcceptanceIds ?? []);
       return { schema: NATIVE_CHILDREN_V2_SCHEMA, acceptance_index: acceptanceIndex, children };
     }
     return { schema: NATIVE_CHILDREN_V2_SCHEMA, children };
@@ -409,6 +384,7 @@ export async function readNativeChildrenContract(options: {
   const source = await readNativeBoundedTextFile({
     root: options.changeDir,
     ref: NATIVE_CHILDREN_FILE,
+    includeHash: false,
   });
   const advisory = options.policy === 'advisory';
   const validation: NativeChildrenValidationOptions = advisory
@@ -417,10 +393,17 @@ export async function readNativeChildrenContract(options: {
   const contract = parseNativeChildrenContract(source.text, options.acceptanceIds, validation);
   return {
     contract,
-    hash: source.hash,
     size: source.size,
     drift: advisory
       ? nativeChildrenIndexDrift(contract, options.acceptanceIds, options.validation ?? {})
       : null,
   };
+}
+
+/** 旧 Run 只读兼容：保留原 Action 输入和 SDK 标识。 */
+export function nativeSupervisorContractRef(
+  value: { contractRef?: unknown; contractHash?: unknown } | null | undefined,
+): string | undefined {
+  const ref = value?.contractRef ?? value?.contractHash;
+  return typeof ref === 'string' ? ref : undefined;
 }

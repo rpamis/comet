@@ -1,10 +1,10 @@
+import { randomUUID } from 'node:crypto';
+import { promises as fs, lstatSync, readFileSync, realpathSync } from 'node:fs';
+import path from 'node:path';
 import {
   resolveWorkspaceRuntimeRoot,
   resolveWorkspaceRuntimeRootSync,
 } from '../workflow-contract/workspace-runtime.js';
-import { createHash } from 'node:crypto';
-import { lstatSync, readFileSync, realpathSync, promises as fs } from 'node:fs';
-import path from 'node:path';
 
 import { gitStatusPaths, runGitCommand } from '../../platform/process/git.js';
 import { atomicWriteJson } from './native-atomic-file.js';
@@ -12,9 +12,8 @@ import { atomicWriteJson } from './native-atomic-file.js';
 const CONFIG = '.comet/config.yaml';
 const snapshotFile = (root: string) =>
   path.join(resolveWorkspaceRuntimeRootSync(root), 'native', 'workspace-config.json');
-const digest = (content: Buffer) => createHash('sha256').update(content).digest('hex');
 
-/** Only an unchanged, untracked configuration created by Runtime is exempt. */
+/** Runtime 创建记录只说明配置路径归属；内容由 Agent 判断。 */
 export function managedConfigMatches(root: string): boolean {
   try {
     if (runGitCommand(root, ['ls-files', '--', CONFIG])) return false;
@@ -34,8 +33,11 @@ export function managedConfigMatches(root: string): boolean {
       realpathSync(saved) !== path.resolve(saved)
     )
       return false;
-    const snapshot = JSON.parse(readFileSync(saved, 'utf8')) as { hash: string };
-    return snapshot.hash === digest(readFileSync(file));
+    const snapshot = JSON.parse(readFileSync(saved, 'utf8')) as {
+      created?: boolean;
+      hash?: string;
+    };
+    return snapshot.created === true || typeof snapshot.hash === 'string';
   } catch {
     return false;
   }
@@ -43,9 +45,9 @@ export function managedConfigMatches(root: string): boolean {
 
 export async function recordNativeWorkspaceConfig(root: string): Promise<void> {
   const file = path.join(root, CONFIG);
-  let content: Buffer;
+
   try {
-    content = await fs.readFile(file);
+    await fs.access(file);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
     throw error;
@@ -53,7 +55,7 @@ export async function recordNativeWorkspaceConfig(root: string): Promise<void> {
   const runtimeRoot = await resolveWorkspaceRuntimeRoot(root);
   const snapshot = snapshotFile(root);
   await fs.mkdir(path.dirname(snapshot), { recursive: true });
-  await atomicWriteJson(snapshot, { hash: digest(content) }, { containedRoot: runtimeRoot });
+  await atomicWriteJson(snapshot, { created: true }, { containedRoot: runtimeRoot });
 }
 
 export function nativeWorkspaceIsClean(root: string, allowed: readonly string[] = []): boolean {
@@ -64,7 +66,18 @@ export function nativeWorkspaceIsClean(root: string, allowed: readonly string[] 
   );
 }
 
-/** Remove only the exact Runtime-created copy before ordinary safe Git cleanup. */
+/** 清理已知 Runtime 配置前保留实际正文，用户编辑无需通过内容证明。 */
 export async function removeNativeWorkspaceConfig(root: string): Promise<void> {
-  if (managedConfigMatches(root)) await fs.unlink(path.join(root, CONFIG));
+  if (!managedConfigMatches(root)) return;
+  const runtimeRoot = await resolveWorkspaceRuntimeRoot(root);
+  const ref = 'native/preserved-configs/' + randomUUID() + '.yaml';
+  const target = path.join(runtimeRoot, ref);
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  await fs.copyFile(path.join(root, CONFIG), target);
+  await atomicWriteJson(
+    snapshotFile(root),
+    { created: true, preservedRef: ref },
+    { containedRoot: runtimeRoot },
+  );
+  await fs.unlink(path.join(root, CONFIG));
 }

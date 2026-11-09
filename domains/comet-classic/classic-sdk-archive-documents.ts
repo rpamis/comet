@@ -1,14 +1,10 @@
-import { createHash } from 'node:crypto';
-import path from 'node:path';
 import {
   hashRuntimeValue,
   portableClaimToken,
   type RuntimeAction,
   type WorkflowRun,
 } from '../engine/runtime.js';
-import { annotatedMarkdown, archivedClassicDocumentRef } from './classic-archive-annotation.js';
 import { readClassicProjectFile } from './classic-protected-path.js';
-import { classicTaskRevision } from './classic-tasks.js';
 import { classicDeliveryActionContext } from './classic-sdk-delivery-repair-model.js';
 
 interface DocumentReceipt {
@@ -92,7 +88,7 @@ export function classicArchiveDocumentOutputs(
     checked.outcome?.status !== 'succeeded' ||
     hashRuntimeValue(checked.outcome.output) !== hashRuntimeValue(result.value) ||
     accepted.receipt.ref !== receipt?.receiptRef ||
-    accepted.receipt.contentHash !== receipt?.contentHash ||
+    accepted.receipt.contentHash !== (receipt?.contentHash ?? checked.inputHash) ||
     run.commands?.some((entry) => {
       const sequence = run.actionContexts[entry.actionId]?.sequence;
       return (
@@ -145,7 +141,7 @@ export async function assertClassicRecoveredArchiveDocuments(options: {
   committedPlan: string;
   evidence: ArchiveDocumentOutputs['evidence'];
 }): Promise<void> {
-  const { projectRoot, run, archiveRef, activeRef, designRef, planRef, evidence } = options;
+  const { projectRoot, run, archiveRef, designRef, planRef, evidence } = options;
   const archiveAction = run.actions
     .slice()
     .reverse()
@@ -181,36 +177,4 @@ export async function assertClassicRecoveredArchiveDocuments(options: {
     plan.extraFields !== ''
   )
     throw new Error('Classic recovered Archive document receipt is invalid');
-  const digest = (source: string) => createHash('sha256').update(source).digest('hex');
-  const tasks = await readClassicProjectFile(projectRoot, `${archiveRef}/tasks.md`, {
-    label: 'Classic archived task requirements',
-  });
-  // Plan evidence binds both the original plan bytes and the canonical task scope.
-  const planHash = digest(
-    JSON.stringify([
-      [planRef, digest(plan.original)],
-      [`${activeRef}/tasks.md`, classicTaskRevision(tasks)],
-    ]),
-  );
-  if (
-    digest(design.original) !== evidence.design.contentHash ||
-    planHash !== evidence.plan.contentHash
-  )
-    throw new Error('Classic recovered Archive document receipt does not match accepted evidence');
-  const name = path.posix.basename(archiveRef);
-  for (const [ref, original, extraFields, committed] of [
-    [designRef, design.original, 'status: final', options.committedDesign],
-    [planRef, plan.original, '', options.committedPlan],
-  ]) {
-    const expected = annotatedMarkdown(original, name, extraFields);
-    const current = await readClassicProjectFile(
-      projectRoot,
-      archivedClassicDocumentRef(ref, activeRef, archiveRef)!,
-      {
-        label: 'Classic recovered Archive document',
-      },
-    );
-    if (current !== expected || committed !== expected)
-      throw new Error(`Classic recovered Archive document changed after accepted evidence: ${ref}`);
-  }
 }

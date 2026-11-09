@@ -1,59 +1,8 @@
+import {
+  assertChangeNotSdkOwned,
+  readSdkChangeOwner,
+} from '../workflow-contract/change-runtime-owner.js';
 import { inspectNativeChildren } from './native-children.js';
-import { captureApprovedShapeOriginals } from './native-shape-review-evidence.js';
-import type { NativeWorkspaceFinish } from './native-workspace.js';
-import {
-  nativePortableContinuation,
-  type NativePortableContinuationOptions,
-} from './native-portable-continuation.js';
-import { nativePortableCheckPlansFromLocal } from './native-portable-checks.js';
-import {
-  nativeVerifierExecutionRefForState,
-  nativeVerifierStartupConfirmationForState,
-} from './native-local-execution.js';
-import { readNativeWorkspaceFinishJournal } from './native-workspace-finish.js';
-import { migrateNativeLegacyChangeToPortable } from './native-portable-migration-runtime.js';
-import {
-  nativePortableWorkspaceMismatch,
-  recoverNativePortableChange,
-  type NativePortableRecoveryResult,
-} from './native-portable-recovery.js';
-import { nativePortableStateSummary } from './native-portable-summary.js';
-import {
-  applyNativeRunnerInput,
-  readNativeRunnerInput,
-  registerNativeRunnerInputFile,
-  validateNativeRunnerInputBoundary,
-} from './native-runner-input.js';
-import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
-import {
-  dispatchNativeSupervisorReadyTasks,
-  projectNativeSupervisorTask,
-  readNativeSupervisorState,
-} from './native-supervisor.js';
-import {
-  confirmNativePortableShape,
-  confirmNativePortableSkillCoordinatedPass,
-  confirmNativePortableVerifierUnavailable,
-  inspectNativePortableAcceptanceDrift,
-  isNativePortableChange,
-  prepareNativePortableShapeConfirmation,
-  assertNativePortableDocuments,
-  readNativePortableChange,
-  readNativePortableRuntime,
-  recoverNativeSupervisorFinalVerificationOnResume,
-  resolveNativePortableVerifierBlocker,
-  returnNativePortableChangeToBuild,
-  returnNativePortableChangeToShape,
-  retryNativePortableVerifier,
-  inspectNativeSupervisorParentReviewReadiness,
-  type NativePortableExpectedContinuation,
-  type NativePortableExpectedContinuationAction,
-} from './native-portable-runtime.js';
-import {
-  NATIVE_SUPERVISOR_COORDINATION_MODES,
-  type NativePortableState,
-  type NativeSupervisorCoordinationMode,
-} from './native-portable-types.js';
 import {
   assertNoArguments,
   configuredPaths,
@@ -65,15 +14,64 @@ import {
   takeOption,
   type DispatchResult,
 } from './native-cli-shared.js';
-import type { NativeProjectPaths } from './native-types.js';
-import {
-  assertChangeNotSdkOwned,
-  readSdkChangeOwner,
-} from '../workflow-contract/change-runtime-owner.js';
 import { readProjectConfig } from './native-config.js';
+import {
+  nativeVerifierExecutionRefForState,
+  nativeVerifierStartupConfirmationForState,
+} from './native-local-execution.js';
+import { nativePortableCheckPlansFromLocal } from './native-portable-checks.js';
+import {
+  nativePortableContinuation,
+  type NativePortableContinuationOptions,
+} from './native-portable-continuation.js';
+import { migrateNativeLegacyChangeToPortable } from './native-portable-migration-runtime.js';
+import {
+  nativePortableWorkspaceMismatch,
+  recoverNativePortableChange,
+  type NativePortableRecoveryResult,
+} from './native-portable-recovery.js';
+import {
+  assertNativePortableDocuments,
+  confirmNativePortableShape,
+  confirmNativePortableSkillCoordinatedPass,
+  confirmNativePortableVerifierUnavailable,
+  inspectNativeSupervisorParentReviewReadiness,
+  isNativePortableChange,
+  prepareNativePortableShapeConfirmation,
+  readNativePortableChange,
+  readNativePortableRuntime,
+  recoverNativeSupervisorFinalVerificationOnResume,
+  resolveNativePortableVerifierBlocker,
+  retryNativePortableVerifier,
+  returnNativePortableChangeToBuild,
+  returnNativePortableChangeToShape,
+  type NativePortableExpectedContinuation,
+  type NativePortableExpectedContinuationAction,
+} from './native-portable-runtime.js';
+import { nativePortableStateSummary } from './native-portable-summary.js';
+import {
+  NATIVE_SUPERVISOR_COORDINATION_MODES,
+  type NativePortableState,
+  type NativeSupervisorCoordinationMode,
+} from './native-portable-types.js';
+import {
+  applyNativeRunnerInput,
+  readNativeRunnerInput,
+  validateNativeRunnerInputBoundary,
+} from './native-runner-input.js';
+import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 import { resolveNativeChangeRuntimeOwner } from './native-runtime-ownership.js';
 import { advanceNativeSdkChange } from './native-sdk-next.js';
 import { advanceNativeSdkTask } from './native-sdk-task-command.js';
+import { captureApprovedShapeOriginals } from './native-shape-review-evidence.js';
+import {
+  dispatchNativeSupervisorReadyTasks,
+  projectNativeSupervisorTask,
+  readNativeSupervisorState,
+} from './native-supervisor.js';
+import type { NativeProjectPaths } from './native-types.js';
+import { readNativeWorkspaceFinishJournal } from './native-workspace-finish.js';
+import type { NativeWorkspaceFinish } from './native-workspace.js';
 
 const EXPECTED_CONTINUATION_ACTIONS = new Set<NativePortableExpectedContinuationAction>([
   'prepare-shape-confirmation',
@@ -635,11 +633,7 @@ export async function nativeNextCommand(
       input = await readNativeRunnerInput(runnerInputFile, projectRoot);
       // Valid transport files are bookkeeping even when their action is rejected.
       // Classifying them grants no authority to change state or supply identities.
-      await registerNativeRunnerInputFile({
-        paths: configured.paths,
-        file: runnerInputFile,
-        input,
-      });
+
       await validateNativeRunnerInputBoundary({
         paths: configured.paths,
         name,
@@ -689,26 +683,6 @@ export async function nativeNextCommand(
       });
     }
     if (current.phase === 'build') {
-      const drift = await inspectNativePortableAcceptanceDrift({
-        paths: configured.paths,
-        state: current,
-      });
-      if (drift.drifted) {
-        if (drift.reviewRequired)
-          throw new NativeUsageError(
-            drift.reason ?? 'Native formal comments require independent review',
-          );
-        const state = await returnNativePortableChangeToShape({
-          paths: configured.paths,
-          name,
-          reason: drift.reason ?? 'Native confirmed requirements changed',
-          keepFailureBudget: true,
-        });
-        return success('next', {
-          state: nativePortableStateSummary(state, configured.paths),
-          ...(await portableParentView(configured.paths, state)),
-        });
-      }
       const supervisor = await readNativeSupervisorState(configured.paths, name);
       const children = await inspectNativeChildren({ paths: configured.paths, state: current });
       if (children && !children.allDone && !supervisor) {
@@ -848,15 +822,28 @@ export async function nativeNextCommand(
       expectedContinuation,
     });
   } else if (reviseRequirements) {
-    if (!expectedContinuation && current.phase !== 'verify' && current.phase !== 'archive') {
-      throw new NativeUsageError('--revise-requirements is only valid from Verify or Archive');
+    const repairParentPlan =
+      current.phase === 'build' &&
+      current.loop.stage === 'repairing' &&
+      current.verification_result === 'fail' &&
+      Boolean(current.children_contract_ref);
+    if (
+      !repairParentPlan &&
+      !expectedContinuation &&
+      current.phase !== 'verify' &&
+      current.phase !== 'archive'
+    ) {
+      throw new NativeUsageError(
+        '--revise-requirements requires Verify, Archive, or a failed Supervisor parent Build',
+      );
     }
     state = await returnNativePortableChangeToShape({
       paths: configured.paths,
       name,
       reason: summary,
-      allowedPhases: ['verify', 'archive'],
+      allowedPhases: repairParentPlan ? ['build'] : ['verify', 'archive'],
       expectedContinuation,
+      ...(repairParentPlan ? { keepFailureBudget: true } : {}),
     });
   } else if (retryVerifier) {
     state = await retryNativePortableVerifier({
@@ -896,79 +883,59 @@ export async function nativeNextCommand(
       });
     }
     if (current.phase === 'build') {
-      const drift = await inspectNativePortableAcceptanceDrift({
-        paths: configured.paths,
-        state: current,
-      });
-      if (drift.drifted) {
-        if (drift.reviewRequired)
-          throw new NativeUsageError(
-            drift.reason ?? 'Native formal comments require independent review',
+      const children = await inspectNativeChildren({ paths: configured.paths, state: current });
+      if (children) {
+        let effectiveChildren = children;
+        let supervisorTasks = [] as Awaited<
+          ReturnType<typeof dispatchNativeSupervisorReadyTasks>
+        >['tasks'];
+        let supervisorBlockers: Array<{ child: string; message: string }> = [];
+        let readySupervisorChildren: string[] | null = null;
+        const supervisor = await readNativeSupervisorState(configured.paths, name);
+        if (supervisor && !children.allDone) {
+          const dispatched = await dispatchNativeSupervisorReadyTasks({
+            paths: configured.paths,
+            parent: name,
+            maxParallel: current.coordination_mode === 'single-session' ? 1 : maxParallel,
+          });
+          supervisorTasks = dispatched.state.children.flatMap(({ task }) =>
+            task ? [projectNativeSupervisorTask(task, name, configured.paths.projectRoot)] : [],
           );
-        state = await returnNativePortableChangeToShape({
-          paths: configured.paths,
-          name,
-          reason: drift.reason ?? 'Native confirmed requirements changed',
-          keepFailureBudget: true,
-        });
-      } else {
-        const children = await inspectNativeChildren({ paths: configured.paths, state: current });
-        if (children) {
-          let effectiveChildren = children;
-          let supervisorTasks = [] as Awaited<
-            ReturnType<typeof dispatchNativeSupervisorReadyTasks>
-          >['tasks'];
-          let supervisorBlockers: Array<{ child: string; message: string }> = [];
-          let readySupervisorChildren: string[] | null = null;
-          const supervisor = await readNativeSupervisorState(configured.paths, name);
-          if (supervisor && !children.allDone) {
-            const dispatched = await dispatchNativeSupervisorReadyTasks({
-              paths: configured.paths,
-              parent: name,
-              maxParallel: current.coordination_mode === 'single-session' ? 1 : maxParallel,
-            });
-            supervisorTasks = dispatched.state.children.flatMap(({ task }) =>
-              task ? [projectNativeSupervisorTask(task, name, configured.paths.projectRoot)] : [],
-            );
-            readySupervisorChildren = dispatched.tasks.map(({ child }) => child);
-            supervisorBlockers = dispatched.state.children.flatMap(({ name: child, blocker }) =>
-              blocker ? [{ child, message: blocker }] : [],
-            );
-            if (
-              supervisorTasks.length > 0 ||
-              dispatched.state.stateVersion !== supervisor.stateVersion
-            ) {
-              effectiveChildren =
-                (await inspectNativeChildren({ paths: configured.paths, state: current })) ??
-                effectiveChildren;
-            }
-          }
+          readySupervisorChildren = dispatched.tasks.map(({ child }) => child);
+          supervisorBlockers = dispatched.state.children.flatMap(({ name: child, blocker }) =>
+            blocker ? [{ child, message: blocker }] : [],
+          );
           if (
-            effectiveChildren.allDone &&
-            !(current.loop.stage === 'repairing' && current.verification_result === 'fail')
+            supervisorTasks.length > 0 ||
+            dispatched.state.stateVersion !== supervisor.stateVersion
           ) {
-            parentAdvance = await inspectNativeSupervisorParentReviewReadiness({
-              paths: configured.paths,
-              name,
-              trigger: 'recovery',
-            });
-            state = parentAdvance.state;
-          } else {
-            return success('next', {
-              state: nativePortableStateSummary(current, configured.paths),
-              childSummary: effectiveChildren.children.reduce<Record<string, number>>(
-                (childSummary, child) => ({
-                  ...childSummary,
-                  [child.status]: (childSummary[child.status] ?? 0) + 1,
-                }),
-                { total: effectiveChildren.children.length },
-              ),
-              readyChildren: readySupervisorChildren ?? effectiveChildren.readyChildren,
-              ...(supervisorTasks.length > 0 ? { supervisorTasks } : {}),
-              ...(supervisorBlockers.length > 0 ? { supervisorBlockers } : {}),
-              continuation: nativePortableContinuation(current, effectiveChildren),
-            });
+            effectiveChildren =
+              (await inspectNativeChildren({ paths: configured.paths, state: current })) ??
+              effectiveChildren;
           }
+        }
+        if (effectiveChildren.allDone) {
+          parentAdvance = await inspectNativeSupervisorParentReviewReadiness({
+            paths: configured.paths,
+            name,
+            trigger: 'recovery',
+          });
+          state = parentAdvance.state;
+        } else {
+          return success('next', {
+            state: nativePortableStateSummary(current, configured.paths),
+            childSummary: effectiveChildren.children.reduce<Record<string, number>>(
+              (childSummary, child) => ({
+                ...childSummary,
+                [child.status]: (childSummary[child.status] ?? 0) + 1,
+              }),
+              { total: effectiveChildren.children.length },
+            ),
+            readyChildren: readySupervisorChildren ?? effectiveChildren.readyChildren,
+            ...(supervisorTasks.length > 0 ? { supervisorTasks } : {}),
+            ...(supervisorBlockers.length > 0 ? { supervisorBlockers } : {}),
+            continuation: nativePortableContinuation(current, effectiveChildren),
+          });
         }
       }
     }

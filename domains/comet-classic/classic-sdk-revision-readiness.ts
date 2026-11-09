@@ -1,13 +1,12 @@
-import { canReopenClassicVerification } from './classic-sdk-revision-application.js';
-import { classicFormalEditReviewScope } from './classic-edit-review.js';
 import type { WorkflowRun } from '../engine/runtime.js';
 import {
-  assertClassicSdkDesignRequirementsCurrent,
-  classicOpenEvidenceReceipt,
-  classicAcceptedDesignEvidence,
-  classicPlanEvidenceReceipt,
   assertClassicPresetRequirementsCurrent,
+  assertClassicSdkDesignRequirementsCurrent,
+  classicAcceptedDesignEvidence,
+  classicOpenEvidenceReceipt,
+  classicPlanEvidenceReceipt,
 } from './classic-sdk-application.js';
+import { canReopenClassicVerification } from './classic-sdk-revision-application.js';
 import type { ClassicState } from './classic-state.js';
 import { classicVerificationReportReceipt } from './classic-verification-report.js';
 
@@ -79,7 +78,7 @@ export async function inspectClassicSdkRevisionReadiness(projectRoot: string, ru
         const current = await classicOpenEvidenceReceipt(projectRoot, input.changeDir, {
           designRequirements: Boolean(proposal?.requirementsEvidence),
         });
-        if (expected.ref !== current.ref || expected.contentHash !== current.contentHash)
+        if (expected.ref !== current.ref)
           record('design', 'Classic Design requirements changed after the proposal');
       } catch (error) {
         record('design', error instanceof Error ? error.message : String(error));
@@ -124,17 +123,13 @@ export async function inspectClassicSdkRevisionReadiness(projectRoot: string, ru
         ?.receipt;
     if (expected) {
       try {
-        const current = await classicPlanEvidenceReceipt(projectRoot, state.plan, input.changeDir, {
-          scope: await classicFormalEditReviewScope(
-            projectRoot,
-            change,
-            state,
-            false,
-            undefined,
-            run,
-          ),
-        });
-        if (expected.ref !== current.ref || expected.contentHash !== current.contentHash)
+        const current = await classicPlanEvidenceReceipt(
+          projectRoot,
+          state.plan,
+          input.changeDir,
+          {},
+        );
+        if (expected.ref !== current.ref)
           record('plan', 'Classic Build plan or task requirements changed after accepted evidence');
       } catch (error) {
         record('plan', error instanceof Error ? error.message : String(error));
@@ -189,7 +184,7 @@ export async function inspectClassicSdkRevisionReadiness(projectRoot: string, ru
           state.verificationReport,
           state.language,
         );
-        if (expected.ref !== current.ref || expected.contentHash !== current.contentHash)
+        if (expected.ref !== current.ref)
           throw new Error('Classic Verify report changed within the accepted verification round');
       } catch (error) {
         reverify(error instanceof Error ? error.message : String(error));

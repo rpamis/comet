@@ -2,6 +2,19 @@
 
 必须采用中文回答用户
 
+## 充分相信Agent的能力
+
+- 在开发Comet的特性时需要充分相信Agent的能力，Comet跑在Agent平台之上，能够让Agent判断识别搞定的东西尽量采用Agent
+- 在非常需要稳定性的技术上，应该采用代码编写，或封装在CLI中给Agent提供调用入口，语义需要清晰，减少Agent工具调用的往返
+- 开发的CLI输入输出尽可能让Agent/人类看懂
+
+## 防过度防御
+
+- 几乎不会发生的边界/并发问题，讲清概率并经用户确认之后再加，严禁为“理论上代码更稳”私自膨胀代码
+- 入口单次校验：外部数据只在边界校验一次，内部靠类型系统流转，禁止层层重复判断
+- 非必要不能使用hash、sha256、指纹等技术特征、如果确实要使用需列出理由并由用户确认
+- 不要过度思考极限场景，Agent工作在沙箱或Worktree或分支环境时，自带了一部分环境隔离机制
+
 ## 表达与文档风格
 
 适用于回复、Skill、开发文档、CLI 帮助、错误提示和代码注释。
@@ -322,20 +335,3 @@ Changelog写英文
 ## Comet Dashboard规范
 
 Comet Dashboard实现时尽量采用使用AntD React组件
-
-<claude-mem-context>
-# Memory Context
-
-# claude-mem status
-
-This project has no memory yet. The current session will seed it; subsequent sessions will receive auto-injected context for relevant past work.
-
-Memory injection starts on your second session in a project.
-
-`/learn-codebase` is available if the user wants to front-load the entire repo into memory in a single pass (~5 minutes on a typical repo, optional). Otherwise memory builds passively as work happens.
-
-Live activity: http://localhost:37777
-How it works: `/how-it-works`
-
-This message disappears once the first observation lands.
-</claude-mem-context>

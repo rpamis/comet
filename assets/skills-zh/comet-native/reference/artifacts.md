@@ -29,7 +29,7 @@ Agent 编辑 brief、新能力或旧格式的完整目标规格、关联能力�
 
 `verification.md` 是 Runtime 根据同一版本的 YAML 生成的可读验收报告。报告缺失或版本落后时，Runtime 只重建报告，不会因此重新运行检查或 Verifier。工作流进度始终以 YAML 为准，不能通过修改 Markdown 报告来推进。
 
-Shape、Build、Verify 和 Archive 会复查正式文件与已确认需求的绑定。目标规格必须位于 `specs/<capability>/spec.md`；`specs/` 下的其他文件不会被当作正式 Spec，Hook 会拒绝并提示正确位置。空文档、只有标题或围栏、以及只含模板占位（如 `TODO`、`<TODO>`、`{{reason}}`）的内容都不能满足完整规格。无产品行为变更豁免也必须写具体理由，注释和占位理由不算。Archive 预检若只报告 `verification.md` 缺失、过期或无效，`continuation` 会直接给出 `comet native doctor <change> --repair`；完成后重新运行 dry-run。
+Agent 对照当前请求、正式文件和已确认验收判断文档是否充分。Runtime 检查正式路径、文件可读取性、非空内容和机器实际使用的结构；不通过标题、措辞、语言比例或占位词判断语义。目标规格位于 `specs/<capability>/spec.md`。报告缺失时按当前 continuation 恢复原报告，再继续归档。
 
 Shape、Verify 和 Archive 中的普通文档写入默认保持当前阶段和候选：范围为仓库根目录及 `docs/`、`doc/`、`documentation/`、`.github/` 下的 Markdown/text 和 LICENSE 类文件，且必须位于 Native 产物根目录之外。在 `.comet/config.yaml` 设置 `native.document_writes: revert` 可恢复严格行为。正式需求文件始终按上面的绑定规则检查。
 
@@ -39,69 +39,21 @@ Runtime 返回的 `artifacts` 是当前工作区的唯一位置依据：`briefPa
 
 ### Brief
 
-`brief.md` 保存 Native 的需求澄清记录，使用以下四个核心一级标题，各节内容不能为空：
+`brief.md` 记录目标、范围、非目标、约束和影响结果的用户决定。Agent 按任务需要组织段落、列表或表格，说明预计修改的位置和职责；模板中的标题和目录树是写作参考。已有有效确认不因格式变化撤回。
 
-```text
-# Outcome
-# Scope
-# Non-goals
-# Acceptance examples
-```
+新建普通 SDK Run 可用 `comet native next <change> --session <真实会话标识> --json` 领取 Shape 任务，从自由格式需求中提取完整、可验证的验收条目。在返回的 `resultTemplate.output.acceptance` 中填写每项 `source` 和 `text`，按返回命令提交。来源引用本 change 的 `brief.md` 或声明的目标 Spec。CLI 分配 A1..An，等待用户确认后才允许实现。
 
-有实际约束、关键决定、未决问题或特殊检查要求时，再补 `Constraints and invariants`、`Decisions`、`Open questions` 或 `Verification expectations` 章节。已有章节必须填写真实内容；简单任务无需补写“无”来满足模板。用户决定可记录在相关核心章节；需要追踪多个决定时使用 Decisions。
+旧入口仍可从 brief 的 `Acceptance examples` 顶层列表和 Spec 的完整 `Scenario:` 场景提取条目。该格式用于便捷提取，需求是否充分由 Agent 判断。对应已有条目的场景可以用 `Acceptance: A1` 或 `验收：A1` 引用当前 ID，避免重复。
 
-`# Scope` 下必须包含「## 目录结构」二级章节，写清该需求预计改动的位置和职责。以下四种三级子节只保留有实际内容的类别，至少填写一个有效类别；无内容的类别可以省略，已保留的标题必须有有效正文，不能留空或只放模板占位：
-
-- `### 新建`、`### 修改`、`### 删除`：列出预计新建、修改、删除的模块和关键文件；目录树（`├─`、`└─`、`│`）或列表均可，每个路径后以「— 说明」标注职责或改动点，可带大致行号。文件之间存在目录归属关系时用树形呈现；互不归属的独立文件或单文件内的多个改动点，用列表逐行列出；同一子节内两者可以混用。
-- `### 明确不建`：有明确取舍时，写出无需新增的模块、配置或目录及理由。没有文件变更但存在真实取舍时，也可只写这一类，不编造路径。
-
-Shape 阶段先明确模块和关键文件即可；实现过程中在已确认模块内部新增常规辅助文件，不需要重新确认。扩大改动范围或改变职责分配时，先更新目录结构和对应 Decision，再继续实现。目录结构随最终 Shape 一并确认；Runtime 检查章节、至少一个有效类别及已出现类别的正文，不核对实际文件差异。实际改动是否符合已确认范围，由实现审查和验收核对。完整旧格式及「无」/`None` 写法继续有效，不要求改写历史文档；已经确认且需求未变的 change 不因本次格式调整重新确认。
-
-落点选择遵循项目自身的目录层级与命名规则；项目没有相关规则时按仓库现状选择，并在说明中写明依据。以下路径仅示意写法，不限定编程语言、框架或项目分层：
-
-```text
-## 目录结构
-
-### 新建
-
-- src/export/ — 组织导出流程，复用现有数据查询能力。
-- tests/export/ — 覆盖导出结果及异常处理。
-
-### 修改
-
-- src/reporting/ — 增加导出入口。
-
-### 明确不建
-
-- 独立的数据访问层 — 现有接口已满足需求。
-```
-
-单文件任务只列实际路径和一句改动说明，无需展开目录树或补写其余类别：
-
-```text
-## 目录结构
-### 修改
-- config/defaults.yaml — 调整默认超时时间，沿用现有配置加载方式。
-```
-
-Open questions 中只有真实未解决的用户问题使用：
-
-```text
-- [blocking] <Sequential 当前问题>
-- [blocking] Q1: <Batch 问题>
-```
-
-用户确认每个决定后，立即将结论写入 brief 的相关章节和完整目标规格，再移除对应阻塞项。Runtime 会保存最终 Shape 的确认摘要，并通过 `await-user` 等待用户确认；不在 brief 中另加一条确认问题。正式文件只记录结论和理由，不记录模型的隐藏推理过程。按[源文档完整覆盖](#源文档完整覆盖)记录需求来源与 Spec、验收项的对应关系。
-
-验收标准必须具体，结果能够验证，各项互不重复。Runtime 只从 brief 顶层的验收示例和 Spec 中明确以 `Scenario:` 标出的完整场景生成验收项；说明段落、普通列表和单独的 WHEN/THEN 行不能拆成额外验收项。验收 ID 按顺序编号，例如 `A1`、`A2`、`A3`；ID 用于把验收结果对应到验收项，不根据内容计算，也不用于标识文件。Runtime 在 Shape 确认时保存完整验收文字及其来源。Spec 场景与 brief 已有验收项对应时，在场景正文单独写 `Acceptance: A1`（中文可用 `验收：A1`），引用当前 brief 的真实 ID，不再生成重复验收项。一个场景只能引用一个 ID；新的行为仍写成独立场景。引用只合并验收身份，完整 Spec 仍绑定确认且必须由 Verifier 核对。
+真实未解决的用户决定使用 `[blocking]` 标记。用户明确回答后，将结论写回相关材料并移除阻塞项，再展示完整当前 Shape 等待确认。Agent 对照原始请求和[源文档完整覆盖](#源文档完整覆盖)判断是否有遗漏。
 
 新版 `children.yaml` 使用 `comet.native.children.v2`：
 
-- Agent 只写子任务及其依赖、`covers` 验收 ID；Runtime 从当前验收列表生成 `acceptance_index` 的来源和完整文字，并绑定 Shape 批准。已有显式索引继续严格核对，不覆盖独立编辑。
-- 每个子任务只包含 `name`、`depends_on` 和 `covers`。所有子任务合起来必须覆盖索引中的全部 ID。
-- Spec 中的验收项仍由 Runtime 统一管理。只有进入修复阶段，才把实际失败的 Spec 验收 ID 补入索引。
+- Agent 选择子任务、依赖和 `covers` ID；Runtime 从原验收列表读取正文，历史索引不要求重复抄写文字。
+- 每个子任务包含 `name`、`depends_on` 和 `covers`。Agent 决定如何分配验收项；允许父级保留集成验收，父级最终覆盖全部要求。
+- Brief 与 Spec 中的任意有效验收 ID 均可分配给子任务，无需先出现一次失败。
 - 子任务名称必须唯一，依赖的子任务必须存在，依赖关系不能形成环。
-- 历史 `comet.native.children.v1` 继续按原规则读取；修改后，Supervisor Change 返回 Shape。
+- 历史 `comet.native.children.v1` 和 `acceptance_index` 继续兼容读取；是否修订方案由 Agent 判断，编辑不自动退回 Shape。
 
 以下示例中两个子任务可以并行；ID 必须来自 Runtime 当前返回的验收列表，不复制验收正文：
 

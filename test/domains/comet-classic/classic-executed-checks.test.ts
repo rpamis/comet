@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as checkSnapshot from '../../../domains/comet-classic/classic-check-snapshot.js';
+import * as processAdapter from '../../../platform/process/spawn-command.js';
 import {
   runClassicCli,
   type ClassicCommandResult,
@@ -1042,14 +1043,10 @@ describe('Classic executed check evidence', () => {
         },
       }),
     );
-    // An incomplete input snapshot retains the reserved plan without executing it.
-    // Guard must not replace that deliberate plan with an inferred build.
-    await fs.mkdir(path.join(root, 'linked-dir'));
-    await fs.symlink(
-      path.join(root, 'linked-dir'),
-      path.join(root, 'alias-link'),
-      process.platform === 'win32' ? 'junction' : 'dir',
-    );
+    // 在进程启动前中断，保留真实预留的命令；Guard 不能自行换成推测的 build。
+    const launch = vi.spyOn(processAdapter, 'spawnCommand').mockImplementationOnce(() => {
+      throw new Error('simulated prelaunch interruption');
+    });
     const check = await cli(
       'check',
       'run',
@@ -1061,7 +1058,10 @@ describe('Classic executed check evidence', () => {
       'check.cjs',
     );
     expect(check.exitCode).not.toBe(0);
-    expect(`${check.stdout ?? ''}${check.stderr ?? ''}`).toContain('check-policy.json');
+    expect(`${check.stdout ?? ''}${check.stderr ?? ''}`).toContain(
+      'simulated prelaunch interruption',
+    );
+    launch.mockRestore();
     const guard = await cli('guard', 'demo', 'build');
     expect(guard.exitCode).not.toBe(0);
     expect(`${guard.stdout ?? ''}${guard.stderr ?? ''}`).toContain('did not complete');
@@ -1070,19 +1070,15 @@ describe('Classic executed check evidence', () => {
       code: 'ENOENT',
     });
 
-    await fs.rm(path.join(root, 'alias-link'), { recursive: true, force: true });
     const rerun = await cli('check', 'rerun', 'demo', 'build');
     expect(rerun.exitCode, rerun.stderr).toBe(0);
   });
 
   it('does not rerun an interrupted check with a corrupted SDK Action binding', async () => {
     const changeDir = path.join(root, 'openspec', 'changes', 'demo');
-    await fs.mkdir(path.join(root, 'linked-dir'));
-    await fs.symlink(
-      path.join(root, 'linked-dir'),
-      path.join(root, 'alias-link'),
-      process.platform === 'win32' ? 'junction' : 'dir',
-    );
+    const launch = vi.spyOn(processAdapter, 'spawnCommand').mockImplementationOnce(() => {
+      throw new Error('simulated prelaunch interruption');
+    });
     const marker = path.join(root, 'unexpected-rerun');
     const check = await cli(
       'check',
@@ -1095,6 +1091,7 @@ describe('Classic executed check evidence', () => {
       `require('fs').writeFileSync(${JSON.stringify(marker)}, 'ran')`,
     );
     expect(check.exitCode).not.toBe(0);
+    launch.mockRestore();
     const { run } = await ensureClassicRuntimeRun(changeDir);
     const trajectoryFile = path.join(
       await resolveClassicRunDirectory(changeDir),
@@ -1110,8 +1107,6 @@ describe('Classic executed check evidence', () => {
       trajectoryFile,
       events.map((event) => JSON.stringify(event)).join('\n') + '\n',
     );
-    await fs.rm(path.join(root, 'alias-link'), { recursive: true, force: true });
-
     const rerun = await cli('check', 'rerun', 'demo', 'verify');
     expect(rerun.exitCode).not.toBe(0);
     await expect(fs.access(marker)).rejects.toMatchObject({ code: 'ENOENT' });

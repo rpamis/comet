@@ -1,10 +1,16 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import {
+  assertWorkflowMigrationEvidence,
+  historicalTestMigrationCases,
+  WORKFLOW_REGISTRY,
+  workflowTestMigrationChain,
+} from './workflow-regressions.mjs';
 
 const testPath = /^test\/[a-zA-Z0-9_./-]+\.test\.ts$/u;
 
 /** 历史清单必须逐项有回归或明确移除证据；gap 不能被发布入口静默跳过。 */
-export function historicalRegressionEntries(catalog) {
+export function historicalRegressionEntries(catalog, migrations = []) {
   if (catalog?.schema !== 'comet.release.historical-bad-cases.v1' || !Array.isArray(catalog.issues))
     throw new Error('历史 bad case 清单缺失或 schema 不正确');
   if (!catalog.issues.length) throw new Error('历史 bad case 清单不能为空');
@@ -64,7 +70,10 @@ export function historicalRegressionEntries(catalog) {
       }
       if (item.status !== 'covered' || !Array.isArray(item.tests) || !item.tests.length)
         throw new Error(`历史 case 尚无必过回归：${item.id}`);
-      for (const test of item.tests) {
+      const migration = workflowTestMigrationChain(
+        migrations.find((entry) => entry.id === item.id) ?? {},
+      ).at(-1);
+      for (const test of migration?.tests ?? item.tests) {
         if (
           !testPath.test(test.file) ||
           test.file.split('/').includes('..') ||
@@ -107,19 +116,23 @@ export function historicalRegressionEntries(catalog) {
 }
 
 export function loadHistoricalRegressions(repositoryRoot) {
+  const historical = JSON.parse(
+    readFileSync(path.join(repositoryRoot, 'config/historical-workflow-regressions.json'), 'utf8'),
+  );
+  const registry = JSON.parse(readFileSync(path.join(repositoryRoot, WORKFLOW_REGISTRY), 'utf8'));
+  assertWorkflowMigrationEvidence(repositoryRoot, registry);
   return historicalRegressionEntries(
-    JSON.parse(
-      readFileSync(
-        path.join(repositoryRoot, 'config/historical-workflow-regressions.json'),
-        'utf8',
-      ),
-    ),
+    historical,
+    historicalTestMigrationCases(historical, registry),
   );
 }
 
 /** 相同文件已被核心组完整执行时只增加必需断言，不重复整组运行。 */
 export function mergeHistoricalRegressions(core, historical) {
   const merged = structuredClone(core);
+  const patterns = new Map(
+    merged.map((entry) => [entry, new Set(entry.testNamePattern ? [entry.testNamePattern] : [])]),
+  );
   for (const entry of historical) {
     const existing = merged.find(
       (group) =>
@@ -128,15 +141,29 @@ export function mergeHistoricalRegressions(core, historical) {
         (!group.testNamePattern || group.files.length === 1),
     );
     if (!existing) {
-      merged.push(structuredClone(entry));
+      const added = structuredClone(entry);
+      merged.push(added);
+      patterns.set(added, new Set(added.testNamePattern ? [added.testNamePattern] : []));
       continue;
     }
     existing.caseIds = [...new Set([...(existing.caseIds ?? []), ...(entry.caseIds ?? [])])];
     existing.issues = [...new Set([...existing.issues, ...entry.issues])];
     existing.requiredNames = [...new Set([...existing.requiredNames, ...entry.requiredNames])];
-    existing.requiredCases = [...(existing.requiredCases ?? []), ...(entry.requiredCases ?? [])];
-    if (existing.testNamePattern)
-      existing.testNamePattern = `(?:${existing.testNamePattern})|(?:${entry.testNamePattern})`;
+    existing.requiredCases = [
+      ...new Map(
+        [...(existing.requiredCases ?? []), ...(entry.requiredCases ?? [])].map((item) => [
+          JSON.stringify(item),
+          item,
+        ]),
+      ).values(),
+    ];
+    if (!entry.testNamePattern) delete existing.testNamePattern;
+    else if (existing.testNamePattern) patterns.get(existing).add(entry.testNamePattern);
   }
-  return merged;
+  return merged.map((entry) => ({
+    ...entry,
+    ...(entry.testNamePattern
+      ? { testNamePattern: [...patterns.get(entry)].map((pattern) => `(?:${pattern})`).join('|') }
+      : {}),
+  }));
 }

@@ -1,16 +1,15 @@
-import { canonicalHash } from './native-canonical-hash.js';
-import { nativeTaskContextRequest } from './native-task-context.js';
 import type { NativeChildrenContract } from './native-children-contract.js';
 import type { NativeChildStatusProjection, NativeChildrenInspection } from './native-children.js';
-import {
-  validateAndScopeNativeVerifierFinalResult,
-  type NativeVerifierAcceptanceResult,
-} from './native-verifier-protocol.js';
 import {
   NATIVE_VERIFIER_ACCEPTANCE_RESULTS,
   NATIVE_VERIFIER_VERDICTS,
   nativeEnumPlaceholder,
 } from './native-input-enum.js';
+import { nativeTaskContextRequest } from './native-task-context.js';
+import {
+  validateAndScopeNativeVerifierFinalResult,
+  type NativeVerifierAcceptanceResult,
+} from './native-verifier-protocol.js';
 
 const COMMIT_PATTERN = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 
@@ -70,7 +69,7 @@ export interface NativeSupervisorTask {
   baseCommit: string;
   runId: string;
   acceptance?: Array<{ id: string; source: string; text: string }>;
-  contractHash?: string;
+  contractRef?: string;
   verificationBoundary?: 'child-scope-parent-reverifies-all';
   checksReason?: 'not-run' | 'running' | 'completed';
   checkExecution?: {
@@ -88,6 +87,7 @@ export interface NativeSupervisorTask {
     receiptRef?: string;
     machineId?: string;
     inputFingerprint?: string;
+    plans?: import('./native-check-executor.js').NativeCheckPlan[];
     checkStates?: NativeSupervisorCheckExecutionState[];
   };
 }
@@ -127,7 +127,7 @@ export interface NativeSupervisorChildState {
   projectRoot?: string | null;
   task: NativeSupervisorTask | null;
   acceptanceScope?: Array<{ id: string; source: string; text: string }>;
-  contractHash?: string;
+  contractRef?: string;
   /** Consecutive Builder failures for this child since its last candidate. */
   builderFailureCount?: number;
 }
@@ -253,7 +253,6 @@ export function createNativeSupervisorState(options: {
     projectRoot: null,
     task: null,
     acceptanceScope: supervisorAcceptanceScope(options.contract, child.name),
-    contractHash: canonicalHash('comet.native.supervisor-contract.v1', options.contract),
     builderFailureCount: 0,
   }));
   for (const child of children) {
@@ -319,36 +318,7 @@ export function reconcileNativeSupervisorState(options: {
     child.summary = definition.summary;
     child.dependsOn = [...definition.depends_on];
     const nextScope = supervisorAcceptanceScope(options.contract, child.name);
-    const nextContractHash = canonicalHash('comet.native.supervisor-contract.v1', options.contract);
-    if (
-      child.contractHash &&
-      child.contractHash !== nextContractHash &&
-      child.status !== 'integrated' &&
-      child.status !== 'archived'
-    ) {
-      child.task = null;
-      child.verifiedCommit = null;
-      child.verification = null;
-      child.checks = [];
-      // The same gate the dispatcher asserts: a child without a candidate can
-      // only be `ready` when every dependency is integrated, otherwise it
-      // stays `pending` until its dependencies integrate. Deriving and
-      // asserting through one helper keeps the two from drifting apart again.
-      if (child.candidateCommit) {
-        child.status = 'needs-reverify';
-        child.blocker =
-          'Confirmed Supervisor contract changed; verify the current acceptance scope again.';
-      } else if (supervisorDependenciesIntegrated(child.dependsOn, next.children)) {
-        child.status = 'ready';
-        child.blocker =
-          'Confirmed Supervisor contract changed; verify the current acceptance scope again.';
-      } else {
-        child.status = 'pending';
-        child.blocker = null;
-      }
-    }
     child.acceptanceScope = nextScope;
-    child.contractHash = nextContractHash;
     child.builderFailureCount ??= 0;
   }
   for (const definition of options.contract.children) {
@@ -372,9 +342,21 @@ export function reconcileNativeSupervisorState(options: {
       projectRoot: null,
       task: null,
       acceptanceScope: supervisorAcceptanceScope(options.contract, definition.name),
-      contractHash: canonicalHash('comet.native.supervisor-contract.v1', options.contract),
       builderFailureCount: 0,
     });
+  }
+  // Only dependency facts determine dispatch readiness. A prose edit must not
+  // clear an execution, candidate, verification, or failure record.
+  for (const child of next.children) {
+    if (
+      (child.status === 'pending' || child.status === 'ready') &&
+      child.task === null &&
+      child.candidateCommit === null
+    ) {
+      child.status = supervisorDependenciesIntegrated(child.dependsOn, next.children)
+        ? 'ready'
+        : 'pending';
+    }
   }
   next.stateVersion += 1;
   return next;
@@ -393,9 +375,6 @@ export function markNativeSupervisorChildVerified(
   assertCommit(options.verifiedCommit, 'Native Supervisor verified commit');
   if (options.evidence.summary.trim().length === 0) {
     throw new Error('Native Supervisor verification summary must not be empty');
-  }
-  if (options.evidence.checks.length === 0) {
-    throw new Error('Native Supervisor verification requires at least one check');
   }
   const next = cloneState(state);
   const child = next.children.find(({ name }) => name === options.name);
@@ -546,7 +525,7 @@ export function createNativeSupervisorTask(
     acceptance: child.acceptanceScope ?? [
       { id: `child:${child.name}`, source: 'children.yaml', text: child.summary ?? child.name },
     ],
-    contractHash: child.contractHash,
+    contractRef: child.contractRef,
     verificationBoundary: 'child-scope-parent-reverifies-all',
     checksReason: 'not-run',
   };
@@ -692,9 +671,6 @@ export function applyNativeSupervisorVerifierResult(
   if (options.evidence.summary.trim().length === 0) {
     throw new Error('Native Supervisor verification summary must not be empty');
   }
-  if (options.verdict === 'pass' && options.evidence.checks.length === 0) {
-    throw new Error('Native Supervisor verification pass requires at least one check');
-  }
   const next = cloneState(state);
   const child = next.children.find(({ name }) => name === options.child);
   if (!child) throw new Error(`Native Supervisor child ${options.child} does not exist`);
@@ -799,7 +775,7 @@ export function integrateNativeSupervisorChild(
   if (child.status !== 'verified' || !child.verifiedCommit) {
     throw new Error(`Native Supervisor child ${options.name} must be verified before integration`);
   }
-  if (options.checks.length === 0 || options.checks.some(({ status }) => status !== 'passed')) {
+  if (options.checks.some(({ status }) => status !== 'passed')) {
     throw new Error(`Native Supervisor child ${options.name} integration checks are incomplete`);
   }
   child.status = 'integrated';
@@ -856,7 +832,7 @@ export function projectNativeSupervisorChildren(
     builderFailureCount: child.builderFailureCount ?? 0,
   }));
   return {
-    contractHash: null,
+    contractRef: null,
     supervisorStateVersion: state.stateVersion,
     confirmed,
     parentBranch: state.integration.branch,

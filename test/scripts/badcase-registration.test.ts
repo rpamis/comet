@@ -139,6 +139,70 @@ describe('continuous badcase registration', () => {
       expect(() => assertWorkflowMigrationEvidence(root, changed)).toThrow();
     }
   });
+  it('appends a second audited migration without replacing the first migration', () => {
+    const catalog = registry();
+    const first = JSON.parse(readFileSync('config/workflow-regressions.json', 'utf8')).cases.find(
+      (item) => item.testMigration,
+    ).testMigration;
+    Object.assign(catalog.cases[0], { testMigration: { ...first, kind: 'tests-moved' } });
+    const before = structuredClone(catalog);
+    const entry = catalog.cases[0] as Record<string, any>;
+    entry.testMigration.supersededBy = {
+      ...first,
+      tests: [
+        {
+          file: 'test/app/replacement.test.ts',
+          namePattern: '^latest contract$',
+          requiredNames: ['latest contract'],
+        },
+      ],
+    };
+    expect(workflowRegressionEntries(catalog)[0].requiredNames).toEqual(['latest contract']);
+    expect(() =>
+      assertBadcaseRegistration({
+        ...input(),
+        baseRegistry: before,
+        registry: catalog,
+        declaration: undefined,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertBadcaseRegistration({ ...input(), baseRegistry: before, registry: catalog }),
+    ).toThrow('原问题修复');
+    const changed = structuredClone(catalog) as Record<string, any>;
+    changed.cases[0].testMigration.reason = '覆盖旧迁移';
+    expect(() =>
+      assertBadcaseRegistration({
+        ...input(),
+        baseRegistry: before,
+        registry: changed,
+        declaration: undefined,
+      }),
+    ).toThrow('缩减');
+    entry.testMigration.supersededBy.authorization = '';
+    expect(() => workflowRegressionEntries(catalog)).toThrow('迁移');
+  });
+  it('keeps a removed feature retired when only its replacement tests move', () => {
+    const catalog = registry();
+    const migration = structuredClone(
+      JSON.parse(readFileSync('config/workflow-regressions.json', 'utf8')).cases.find(
+        (item) => item.testMigration,
+      ).testMigration,
+    );
+    delete migration.supersededBy;
+    Object.assign(catalog.cases[0], {
+      testMigration: {
+        ...migration,
+        kind: 'feature-removed',
+        supersededBy: { ...migration, kind: 'tests-moved' },
+      },
+      additionalAcceptance: [{ layer: 'retired-model-protocol', status: 'pending', evidence: [] }],
+    });
+    expect(() => assertBadcaseRegistration({ ...input(), registry: catalog })).toThrow(
+      '原问题修复',
+    );
+    expect(() => assertWorkflowAcceptanceComplete(catalog)).not.toThrow();
+  });
   it('requires exactly one structured PR declaration, not closing keywords', () => {
     expect(() => parseBadcaseDeclaration('Fixes #1')).toThrow('只包含一个');
     const block = `<!-- badcase-registration\n${JSON.stringify(declaration())}\n-->`;

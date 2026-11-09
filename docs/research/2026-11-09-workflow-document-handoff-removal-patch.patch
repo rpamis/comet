@@ -1,0 +1,1395 @@
+diff --git "a/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-old-0.ts" "b/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-next-0.ts"
+index ea3ac33a..51b11451 100644
+--- "a/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-old-0.ts"
++++ "b/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-next-0.ts"
+@@ -1,19 +1,15 @@
+-import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
+ import { execFileSync } from 'node:child_process';
+ import { promises as fs } from 'node:fs';
+ import os from 'node:os';
+ import path from 'node:path';
++import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
+ 
+ import { afterEach, describe, expect, it } from 'vitest';
+ 
+-import { ensureCometProjectGitignore } from '../../../domains/workflow-contract/project-gitignore.js';
+ import { nativeArchiveCommand } from '../../../domains/comet-native/native-archive-command.js';
+ import {
+-  hashNativeParentContract,
+-  hasNativeSupervisorShapeIntent,
+   findNativeV1SupervisorParents,
+   inspectNativeChildren,
+-  nativeChildrenIndexDrift,
+   parseNativeChildrenContract,
+ } from '../../../domains/comet-native/native-children.js';
+ import {
+@@ -37,8 +33,17 @@ import {
+   submitNativePortableBuilderCandidate,
+   submitNativePortableVerifierResult,
+ } from '../../../domains/comet-native/native-portable-runtime.js';
+-import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
++import {
++  readNativePortableState,
++  writeNativePortableState,
++} from '../../../domains/comet-native/native-portable-state.js';
++import { inspectNativePortableStatus } from '../../../domains/comet-native/native-portable-status.js';
++import type {
++  NativePortableAcceptanceState,
++  NativePortableState,
++} from '../../../domains/comet-native/native-portable-types.js';
+ import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
++import { nativeShowCommand } from '../../../domains/comet-native/native-show-command.js';
+ import {
+   assertChildDependenciesIntegrated,
+   createNativeSupervisorState,
+@@ -49,17 +54,9 @@ import {
+   readNativeSupervisorState,
+   writeNativeSupervisorState,
+ } from '../../../domains/comet-native/native-supervisor-state.js';
+-import {
+-  readNativePortableState,
+-  writeNativePortableState,
+-} from '../../../domains/comet-native/native-portable-state.js';
+-import { inspectNativePortableStatus } from '../../../domains/comet-native/native-portable-status.js';
+-import { nativeShowCommand } from '../../../domains/comet-native/native-show-command.js';
+-import type {
+-  NativePortableAcceptanceState,
+-  NativePortableState,
+-} from '../../../domains/comet-native/native-portable-types.js';
+ import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
++import { ensureCometProjectGitignore } from '../../../domains/workflow-contract/project-gitignore.js';
++import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
+ 
+ async function guardedShapeConfirmationArgs(
+   paths: NativeProjectPaths,
+@@ -333,7 +330,7 @@ describe('Native parent and child changes', () => {
+     );
+   });
+ 
+-  it('validates the DAG and hashes only semantic parent contract changes', () => {
++  it('validates declared dependency structure while allowing parent-only acceptance', () => {
+     const acceptance: NativePortableAcceptanceState[] = [
+       { id: 'A1', source: 'brief.md', text: 'First behavior.', result: 'pending' },
+       { id: 'A2', source: 'brief.md', text: 'Second behavior.', result: 'pending' },
+@@ -362,16 +359,12 @@ children:
+ 
+     expect(parsed.children.map(({ name }) => name)).toEqual(['child-a', 'child-b', 'child-c']);
+     expect(reformatted.children[1].depends_on).toEqual(['child-a']);
+-    expect(hashNativeParentContract({ acceptance, children: parsed })).toBe(
+-      hashNativeParentContract({ acceptance, children: reformatted }),
+-    );
+-    expect(
+-      hashNativeParentContract({
+-        acceptance,
+-        children: { ...parsed, children: [...parsed.children].reverse() },
+-      }),
+-    ).not.toBe(hashNativeParentContract({ acceptance, children: parsed }));
+-
++    expect(() =>
++      parseNativeChildrenContract(
++        CHILDREN.replace('covers: [A2]', 'covers: [A1]'),
++        acceptance.map(({ id }) => id),
++      ),
++    ).not.toThrow();
+     const invalidContracts = [
+       {
+         source: CHILDREN.replace('name: child-b', 'name: child-a'),
+@@ -389,10 +382,6 @@ children:
+         message: /dependency cycle/iu,
+       },
+       { source: CHILDREN.replace('covers: [A2]', 'covers: [A3]'), message: /unknown acceptance/iu },
+-      {
+-        source: CHILDREN.replace('covers: [A2]', 'covers: [A1]'),
+-        message: /do not cover parent acceptance/iu,
+-      },
+     ];
+     for (const invalid of invalidContracts) {
+       expect(() =>
+@@ -404,26 +393,6 @@ children:
+     }
+   });
+ 
+-  it('recognizes an explicit Supervisor split in Decisions before children.yaml exists', () => {
+-    expect(
+-      hasNativeSupervisorShapeIntent(`# Decisions
+-
+-- Selected Supervisor Change for two independent outcomes.
+-- Child 1 owns the first outcome; Child 2 owns the second outcome.
+-
+-# Verification expectations
+-- Run focused checks.
+-`),
+-    ).toBe(true);
+-    expect(
+-      hasNativeSupervisorShapeIntent(`# Decisions
+-
+-- Keep this as one Native Change.
+-- The implementation has two related parts.
+-`),
+-    ).toBe(false);
+-  });
+-
+   it('parses children.v2 summaries without acceptance ownership fields', () => {
+     const parsed = parseNativeChildrenContract(`
+ schema: comet.native.children.v2
+@@ -561,126 +530,6 @@ children:
+     );
+   });
+ 
+-  it('validates v2 index text while allowing only failed Spec acceptance into repair children', () => {
+-    const acceptance = [
+-      { id: 'A1', source: 'brief.md', text: 'The integrated result contains the first behavior.' },
+-      { id: 'A2', source: 'brief.md', text: 'The integrated result contains the second behavior.' },
+-      { id: 'A3', source: 'specs/demo/spec.md', text: 'The formal requirement is retained.' },
+-    ];
+-
+-    expect(() =>
+-      parseNativeChildrenContract(
+-        READABLE_CHILDREN,
+-        acceptance.map(({ id }) => id),
+-        {
+-          acceptanceCatalog: acceptance,
+-          requiredAcceptanceIds: ['A1', 'A2'],
+-        },
+-      ),
+-    ).not.toThrow();
+-    expect(() =>
+-      parseNativeChildrenContract(
+-        READABLE_CHILDREN.replace(
+-          'The integrated result contains the second behavior.',
+-          'A changed behavior.',
+-        ),
+-        acceptance.map(({ id }) => id),
+-        { acceptanceCatalog: acceptance, requiredAcceptanceIds: ['A1', 'A2'] },
+-      ),
+-    ).toThrow(
+-      /acceptance_index.A2 does not match the acceptance catalog: copy text exactly from the current acceptance catalog/iu,
+-    );
+-    expect(() =>
+-      parseNativeChildrenContract(
+-        READABLE_CHILDREN.replace('covers: [A1]', 'covers: [A1, A3]'),
+-        acceptance.map(({ id }) => id),
+-        { acceptanceCatalog: acceptance, requiredAcceptanceIds: ['A1', 'A2'] },
+-      ),
+-    ).toThrow(/unknown acceptance/iu);
+-
+-    const childFacingSpec = READABLE_CHILDREN.replace(
+-      'children:',
+-      `  A3:
+-    source: specs/demo/spec.md
+-    text: The formal requirement is retained.
+-children:`,
+-    ).replace('covers: [A1]', 'covers: [A1, A3]');
+-    expect(() =>
+-      parseNativeChildrenContract(
+-        childFacingSpec,
+-        acceptance.map(({ id }) => id),
+-        { acceptanceCatalog: acceptance, requiredAcceptanceIds: ['A1', 'A2'] },
+-      ),
+-    ).toThrow(/extra A3/iu);
+-    const repairValidation = {
+-      acceptanceCatalog: acceptance,
+-      requiredAcceptanceIds: ['A1', 'A2'],
+-      allowedAcceptanceIds: ['A1', 'A2', 'A3'],
+-    };
+-    expect(() =>
+-      parseNativeChildrenContract(
+-        childFacingSpec,
+-        acceptance.map(({ id }) => id),
+-        repairValidation,
+-      ),
+-    ).not.toThrow();
+-    expect(() =>
+-      parseNativeChildrenContract(
+-        childFacingSpec.replace(
+-          'The formal requirement is retained.',
+-          'A stale formal requirement.',
+-        ),
+-        acceptance.map(({ id }) => id),
+-        repairValidation,
+-      ),
+-    ).toThrow(
+-      /acceptance_index.A3 does not match the acceptance catalog: copy text exactly from the current acceptance catalog/iu,
+-    );
+-  });
+-
+-  it('reports stale acceptance-index drift under the advisory policy instead of throwing', () => {
+-    const acceptance = [
+-      { id: 'A1', source: 'brief.md', text: 'The integrated result contains the first behavior.' },
+-      { id: 'A2', source: 'brief.md', text: 'The integrated result contains the second behavior.' },
+-    ];
+-    const acceptanceIds = acceptance.map(({ id }) => id);
+-    const options = { acceptanceCatalog: acceptance, requiredAcceptanceIds: acceptanceIds };
+-    const driftedText = READABLE_CHILDREN.replace(
+-      'The integrated result contains the second behavior.',
+-      'A stale copy of the second behavior.',
+-    );
+-
+-    expect(() => parseNativeChildrenContract(driftedText, acceptanceIds, options)).toThrow(
+-      /does not match the acceptance catalog/iu,
+-    );
+-    const drifted = parseNativeChildrenContract(driftedText, acceptanceIds, {
+-      ...options,
+-      policy: 'advisory',
+-    });
+-    expect(drifted.acceptance_index?.A2?.text).toBe('A stale copy of the second behavior.');
+-    expect(nativeChildrenIndexDrift(drifted, acceptanceIds, options)).toEqual({
+-      missing: [],
+-      extra: [],
+-      mismatched: ['A2'],
+-      uncovered: [],
+-      unknownCovers: [],
+-    });
+-
+-    const staleIds = READABLE_CHILDREN.replace(
+-      /  A2:[\s\S]*?children:/u,
+-      '  A9:\n    source: brief.md\n    text: A stale extra acceptance.\nchildren:',
+-    );
+-    const extraIndex = parseNativeChildrenContract(staleIds, acceptanceIds, {
+-      ...options,
+-      policy: 'advisory',
+-    });
+-    expect(nativeChildrenIndexDrift(extraIndex, acceptanceIds, options)).toMatchObject({
+-      missing: ['A2'],
+-      extra: ['A9'],
+-      uncovered: ['A9'],
+-    });
+-  });
+-
+   it('derives contract-changed child states through the dependency gate (issue #439)', () => {
+     const contract = parseNativeChildrenContract(READABLE_CHILDREN, ['A1', 'A2']);
+     const repository = '/tmp/unused-repository';
+@@ -734,9 +583,8 @@ children:
+     expect(reconciledNew?.status).toBe('ready');
+ 
+     // A child whose dependencies are all integrated may become ready again.
+-    // A second contract revision (child-new's summary changes) triggers the
+-    // re-derivation for child-b while child-new itself is already integrated
+-    // and therefore immutable.
++    // Reconciliation reads actual dependency facts even when only prose changes.
++    // The integrated child remains immutable.
+     const integratedNew = reconciled.children.find(({ name }) => name === 'child-new');
+     integratedNew!.status = 'integrated';
+     const revised2 = parseNativeChildrenContract(
+@@ -769,8 +617,7 @@ children:
+     expect(promotedB?.status).toBe('ready');
+     expect(promoted.children.find(({ name }) => name === 'child-new')?.status).toBe('integrated');
+ 
+-    // A child with a recorded candidate keeps the needs-reverify semantics.
+-    // A third revision triggers the re-derivation for the recorded candidate.
++    // Prose changes do not invalidate a recorded candidate.
+     const withCandidate = reconcileNativeSupervisorState({ state, contract: revised });
+     const candidateB = withCandidate.children.find(({ name }) => name === 'child-b');
+     candidateB!.candidateCommit = 'b'.repeat(40);
+@@ -779,7 +626,8 @@ children:
+       contract: revised2,
+     });
+     const reverifiedB = reverified.children.find(({ name }) => name === 'child-b');
+-    expect(reverifiedB?.status).toBe('needs-reverify');
++    expect(reverifiedB?.status).toBe('pending');
++    expect(reverifiedB?.candidateCommit).toBe('b'.repeat(40));
+   });
+ 
+   it('finds and repairs a self-locked supervisor overlay through doctor (issue #439)', async () => {
+@@ -898,7 +746,7 @@ children:
+     });
+   });
+ 
+-  it('downgrades a drifted children copy to a confirmation prompt instead of blocking status', async () => {
++  it('retains approval after a children edit and leaves its meaning to the Agent', async () => {
+     const repository = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-children-'));
+     repositories.push(repository);
+     git(repository, ['init', '-b', 'integration']);
+@@ -940,19 +788,18 @@ children:
+     });
+     expect(confirmedChildren?.confirmed).toBe(true);
+ 
+-    // Simulate a stale copy from another worktree: the child-plan index no
+-    // longer matches the confirmed acceptance set.
++    // Reassigning a current ID does not automatically withdraw approval.
+     await fs.writeFile(
+       path.join(parentDir, 'children.yaml'),
+       CHILDREN.replace('covers: [A2]', 'covers: [A3]'),
+     );
+     const drifted = await inspectNativeChildren({ paths: parentPaths, state: parentState });
+-    expect(drifted?.confirmed).toBe(false);
++    expect(drifted?.confirmed).toBe(true);
+     expect(
+       drifted?.children.some(({ message }) =>
+         /Parent Shape confirmation is required/iu.test(message ?? ''),
+       ),
+-    ).toBe(true);
++    ).toBe(false);
+     await expect(
+       inspectNativePortableStatus({ paths: parentPaths, name: 'parent' }),
+     ).resolves.toMatchObject({ name: 'parent' });
+@@ -1233,7 +1080,7 @@ children:
+     expect(parentState).toMatchObject({
+       phase: 'build',
+       workspace: { change_branch: 'integration' },
+-      children_contract_hash: expect.stringMatching(/^[a-f0-9]{64}$/u),
++      children_contract_ref: expect.stringMatching(/^parent:shape:\d+$/u),
+     });
+ 
+     const initialChildren = await inspectNativeChildren({ paths: parentPaths, state: parentState });
+@@ -1468,13 +1315,13 @@ children:
+     pendingParentState.name = pendingParentName;
+     const pendingChildrenSource = `${CHILDREN}  - name: child-pending\n    depends_on: []\n    covers: []\n`;
+     await fs.writeFile(path.join(pendingParentDir, 'children.yaml'), pendingChildrenSource);
+-    pendingParentState.children_contract_hash = hashNativeParentContract({
+-      acceptance: pendingParentState.acceptance,
+-      children: parseNativeChildrenContract(
+-        pendingChildrenSource,
+-        pendingParentState.acceptance.map(({ id }) => id),
+-      ),
+-    });
++    // 模拟旧格式父级记录的分叉；当前存储引用与声明，不生成内容证明。
++    pendingParentState.children_contract_ref ??= 'children.yaml';
++    delete pendingParentState.children_contract_hash;
++    pendingParentState.children_contract = parseNativeChildrenContract(
++      pendingChildrenSource,
++      pendingParentState.acceptance.map(({ id }) => id),
++    );
+     await writeNativePortableState(
+       path.join(pendingParentDir, 'comet-state.yaml'),
+       pendingParentState,
+@@ -1593,68 +1440,75 @@ children:
+       repository,
+     );
+     expect(data(repairRequired).continuation).toMatchObject({
+-      action: 'repair',
+-      requiredInputs: ['repair-child'],
+-      runnerAction: { kind: 'none' },
++      action: 'builder-handoff',
++      requiredInputs: ['builder-handoff-json-file'],
++      runnerAction: { kind: 'builder-handoff' },
+     });
+     await fs.writeFile(path.join(parentDir, 'children.yaml'), REORDERED_CHILDREN);
+     await expect(
+       inspectNativePortableStatus({ paths: parentPaths, name: 'parent' }),
+     ).resolves.toMatchObject({
+-      continuation: {
+-        action: 'advance-children',
+-        commandArgs: ['comet', 'native', 'next', 'parent', '--summary', '<summary>'],
+-        requiredInputs: ['summary'],
+-        runnerAction: { kind: 'none' },
+-      },
++      continuation: { action: 'builder-handoff', requiredInputs: ['builder-handoff-json-file'] },
+     });
+-    const bypassAttempt = await nativeNextCommand(
+-      ['parent', '--summary', 'Reorder completed children without repairing'],
++    const unchanged = await nativeNextCommand(
++      ['parent', '--summary', 'Inspect edits without withdrawing approval'],
+       repository,
+     );
+-    expect(data(bypassAttempt).state).toMatchObject({
+-      phase: 'shape',
+-      acceptance: { total: 0 },
++    expect(data(unchanged).state).toMatchObject({ phase: 'build', verification_result: 'fail' });
++    const parentRepair = await nativeNextCommand(
++      ['parent', '--runner-input', parentReviewInput],
++      repository,
++    );
++    expect(data(parentRepair).state).toMatchObject({ phase: 'verify' });
++    const repairChecks = await executeNativePortableCheckPlan({
++      paths: parentPaths,
++      name: 'parent',
++      plans: [],
+     });
+-    await expect(
+-      nativeNextCommand(
+-        ['parent', '--summary', 'Prepare the incomplete repair plan for confirmation'],
+-        repository,
+-      ),
+-    ).resolves.toMatchObject({
+-      exitCode: 0,
+-      data: { state: { phase: 'shape', status: 'await-user' } },
++    const repairDispatch = await dispatchNativePortableVerifier({
++      paths: parentPaths,
++      name: 'parent',
++      checks: repairChecks.checks,
+     });
+-    await expect(
+-      nativeNextCommand(
+-        await guardedShapeConfirmationArgs(
+-          parentPaths,
+-          'parent',
+-          'Try to reconfirm without a repair child',
+-        ),
+-        repository,
+-      ),
+-    ).rejects.toThrow(/repair plan requires an unfinished child covering: A1/iu);
+-    await fs.appendFile(
+-      path.join(parentDir, 'children.yaml'),
+-      `  - name: repair-parent-a1
+-    depends_on: [child-a, child-b, child-c]
+-    covers: [A1]
+-`,
++    const failedRepair = await submitNativePortableVerifierResult({
++      paths: parentPaths,
++      name: 'parent',
++      checks: repairChecks.checks,
++      maxVerifyFailures: 3,
++      envelope: verifier.envelopeVerifierResponse({
++        candidateId: repairDispatch.builder_handoff!.candidate_id,
++        identity: verifier.captureExecutionIdentity({
++          identityProvider: 'test-host',
++          executionRef: 'parent-repair-verifier',
++        }),
++        payload: {
++          kind: 'final-result',
++          result: {
++            iteration: repairDispatch.loop.iteration,
++            attempt: repairDispatch.loop.attempt,
++            verdict: 'fail',
++            acceptance: repairDispatch.acceptance.map(({ id }, index) => ({
++              id,
++              result: index === 0 ? 'failed' : 'passed',
++              reason: 'Actual parent verification result.',
++            })),
++            risks: [],
++            summary: 'The Agent chooses to replan after another actual failure.',
++          },
++        },
++      }),
++    });
++    const replanning = await nativeNextCommand(
++      ['parent', '--revise-requirements', '--summary', 'Explicitly revise the repair child plan'],
++      repository,
+     );
++    expect(data(replanning).state).toMatchObject({ phase: 'shape', acceptance: { total: 0 } });
++    expect(
++      (await readNativePortableChange(parentPaths, 'parent')).loop.failed_iteration_count,
++    ).toBe(failedRepair.state.loop.failed_iteration_count);
+     await expect(
+       nativeNextCommand(
+-        await guardedShapeConfirmationArgs(
+-          parentPaths,
+-          'parent',
+-          'Try the changed repair child plan',
+-        ),
+-        repository,
+-      ),
+-    ).rejects.toThrow(/Shape artifacts changed/iu);
+-    await expect(
+-      nativeNextCommand(
+-        ['parent', '--summary', 'Prepare the changed repair child plan'],
++        ['parent', '--summary', 'Prepare the incomplete repair plan for confirmation'],
+         repository,
+       ),
+     ).resolves.toMatchObject({
+@@ -1662,15 +1516,30 @@ children:
+       data: { state: { phase: 'shape', status: 'await-user' } },
+     });
+     const replanned = await nativeNextCommand(
+-      await guardedShapeConfirmationArgs(parentPaths, 'parent', 'Confirm the repair child plan'),
++      await guardedShapeConfirmationArgs(
++        parentPaths,
++        'parent',
++        'Confirm parent-owned integration repair',
++      ),
+       repository,
+     );
+-    expect(data(replanned)).toMatchObject({
+-      state: { phase: 'build' },
+-      readyChildren: ['repair-parent-a1'],
+-    });
+-    await expect(readNativePortableChange(parentPaths, 'parent')).resolves.toMatchObject({
+-      children_contract_hash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+-    });
++    expect(data(replanned)).toMatchObject({ state: { phase: 'build' } });
++    const confirmedRepair = await readNativePortableChange(parentPaths, 'parent');
++    expect(confirmedRepair.loop.failed_iteration_count).toBe(
++      failedRepair.state.loop.failed_iteration_count,
++    );
++    expect(confirmedRepair.children_contract?.children.map(({ name }) => name).sort()).toEqual([
++      'child-a',
++      'child-b',
++      'child-c',
++    ]);
++    const repairedCandidate = await nativeNextCommand(
++      ['parent', '--runner-input', parentReviewInput],
++      repository,
++    );
++    expect(data(repairedCandidate).state).toMatchObject({ phase: 'verify' });
++    expect(
++      (await readNativePortableChange(parentPaths, 'parent')).acceptance.map(({ id }) => id),
++    ).toEqual(parentState.acceptance.map(({ id }) => id));
+   }, 300_000);
+ });
+diff --git "a/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-old-1.ts" "b/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-next-1.ts"
+index faad84ca..fd9f251a 100644
+--- "a/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-old-1.ts"
++++ "b/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-next-1.ts"
+@@ -2059,7 +2059,7 @@ children:
+       expect(run.state).toMatchObject({
+         phase: 'build',
+         coordination_mode: 'multi-session',
+-        children_contract_hash: expect.any(String),
++        children_contract_ref: expect.any(String),
+       });
+       expect(run.actions.at(-1)).toMatchObject({
+         stepId: 'supervisor.prepare',
+@@ -11298,6 +11298,50 @@ async function nativeSupervisorReviewFixture(
+   return { ...f, runtime, run, childWorktree, candidateCommit, check };
+ }
+ 
++it('integrates an accepted Supervisor child without inventing another check command', async () => {
++  const f = await nativeSupervisorReviewFixture('3', false);
++  let run = await succeedLatestAction(
++    f.runtime,
++    f.run,
++    {
++      candidateCommit: f.candidateCommit,
++      verdict: 'pass',
++      evidence: {
++        summary: 'Reviewed the complete child scope using its original Runtime check.',
++        checks: ['api-check'],
++        acceptance: [
++          { id: 'child:api', result: 'passed', reason: 'Observed the requested API behavior.' },
++        ],
++      },
++      integrationChecks: [],
++    },
++    f.root,
++    'child-reviewed-with-existing-check',
++    'child-builder',
++  );
++  for (const executorId of [
++    'native-supervisor-integrate',
++    'comet-native-checks',
++    'native-supervisor-child-archive',
++  ]) {
++    run = await f.runtime.execute({
++      runId: run.runId,
++      actionId: run.actions.at(-1)!.id,
++      executorId,
++      context: { requestId: executorId, projectRoot: f.root },
++    });
++    expect(run.actions.at(-2)?.status).not.toBe('failed');
++  }
++  const originalCheck = run.actions.find((action) => action.stepId === 'supervisor.child.checks')!;
++  expect(originalCheck.status).toBe('succeeded');
++  expect((originalCheck.outcome!.output as { checks: unknown[] }).checks).toHaveLength(1);
++  const integration = run.actions.find(
++    (action) => action.stepId === 'supervisor.child.integration-checks',
++  )!;
++  expect(integration).toMatchObject({ status: 'succeeded', outcome: { output: { checks: [] } } });
++  expect(run.outputs['supervisor.child.archive']).toBeDefined();
++});
++
+ it.each([
+   { version: '2', required: false, session: 'child-builder', accepted: false },
+   { version: '3', required: false, session: 'child-builder', accepted: true },
+diff --git "a/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-old-2.ts" "b/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-next-2.ts"
+index 237801f6..ec5bdaa9 100644
+--- "a/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-old-2.ts"
++++ "b/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-next-2.ts"
+@@ -1,15 +1,11 @@
+-import { resolveClassicRunDirectory } from '../../../domains/comet-classic/classic-runtime-paths.js';
+ import { spawnSync } from 'child_process';
+-import { createHash } from 'crypto';
+ import { existsSync, promises as fs } from 'fs';
+ import os from 'os';
+ import path from 'path';
+ import { afterEach, describe, expect, it } from 'vitest';
+-import { parse, stringify } from 'yaml';
+-import { readRunState, writeRunState } from '../../../domains/engine/state.js';
+ import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
+-import { runClassicEditReviewCommand } from '../../../domains/comet-classic/classic-edit-review-command.js';
+-import { computeContextHash } from '../../../domains/comet-classic/classic-handoff.js';
++import { resolveClassicRunDirectory } from '../../../domains/comet-classic/classic-runtime-paths.js';
++import { readRunState, writeRunState } from '../../../domains/engine/state.js';
+ 
+ const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
+ const scriptByCommand: Record<string, string> = {
+@@ -92,7 +88,13 @@ describe('Classic handoff command', () => {
+         process.platform === 'win32' ? 'junction' : 'dir',
+       );
+ 
+-      const result = await runClassicCli(['handoff', 'linked-handoff', 'design', '--write']);
++      const result = await runClassicCli([
++        'handoff',
++        'linked-handoff',
++        'design',
++        '--write',
++        '--full',
++      ]);
+ 
+       expect(result.exitCode).not.toBe(0);
+       expect(result.stderr).toMatch(/symbolic link or junction/iu);
+@@ -103,214 +105,53 @@ describe('Classic handoff command', () => {
+     }
+   });
+ 
+-  it('writes a compact design handoff and records the context fields', async () => {
++  it('references original requirements without generating a default handoff copy', async () => {
+     const dir = await makeProject();
+     const changeDir = await seedDesignChange(dir);
+-
+     const result = run(dir, 'handoff', 'demo', 'design', '--write');
+-    expect(result.status).toBe(0);
+-    expect(result.stderr).toContain(
+-      '[HANDOFF] wrote openspec/changes/demo/.comet/handoff/design-context.json',
+-    );
+-    expect(result.stderr).toMatch(/\[HANDOFF\] handoff_hash=[a-f0-9]{64}/);
+-
+-    const md = await fs.readFile(
+-      path.join(changeDir, '.comet', 'handoff', 'design-context.md'),
+-      'utf8',
+-    );
+-    expect(md).toContain('Generated-by: comet-handoff.sh');
+-    expect(md).toContain('- Mode: compact');
+-    expect(md).toContain('- Source: openspec/changes/demo/proposal.md');
+-
++    expect(result.status, result.stderr).toBe(0);
++    expect(result.stderr).toContain('[HANDOFF] source openspec/changes/demo/proposal.md');
++    expect(existsSync(path.join(changeDir, '.comet/handoff'))).toBe(false);
+     expect(run(dir, 'state', 'get', 'demo', 'handoff_context').stdout.trim()).toBe(
+-      'openspec/changes/demo/.comet/handoff/design-context.json',
+-    );
+-    expect(run(dir, 'state', 'get', 'demo', 'handoff_hash').stdout).toMatch(/^[a-f0-9]{64}/);
+-
+-    const state = parse(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')) as Record<
+-      string,
+-      unknown
+-    >;
+-    const runState = await readRunState(await resolveClassicRunDirectory(changeDir));
+-    expect(runState).not.toBeNull();
+-    const context = await fs.readFile(
+-      path.join(await resolveClassicRunDirectory(changeDir), runState!.contextRef),
+-      'utf8',
++      'openspec/changes/demo/proposal.md',
+     );
+-    const artifacts = JSON.parse(
+-      await fs.readFile(
+-        path.join(await resolveClassicRunDirectory(changeDir), runState!.artifactsRef),
+-        'utf8',
+-      ),
+-    ) as Record<string, string>;
+-    const checkpoint = JSON.parse(
++    expect(run(dir, 'state', 'get', 'demo', 'handoff_hash').stdout.trim()).toBe('null');
++    const state = await readRunState(await resolveClassicRunDirectory(changeDir));
++    expect(state).toMatchObject({
++      currentStep: 'full.design.document',
++      iteration: 1,
++      pending: null,
++    });
++    expect(
+       await fs.readFile(
+-        path.join(await resolveClassicRunDirectory(changeDir), runState!.checkpointRef),
++        path.join(await resolveClassicRunDirectory(changeDir), state!.contextRef),
+         'utf8',
+       ),
+-    ) as Record<string, unknown>;
+-    expect(context).toBe(md);
+-    expect(artifacts).toMatchObject({
+-      handoff_context: 'openspec/changes/demo/.comet/handoff/design-context.json',
+-      handoff_markdown: 'openspec/changes/demo/.comet/handoff/design-context.md',
+-    });
+-    expect(checkpoint).toMatchObject({
+-      runId: state.run_id,
+-      contextHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+-      artifactsHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+-    });
+-    expect(runState!.currentStep).toBe('full.design.document');
+-    expect(runState!.iteration).toBe(1);
+-    expect(runState!.pending).toBeNull();
++    ).toBe(await fs.readFile(path.join(changeDir, 'proposal.md'), 'utf8'));
+     await expect(
+-      fs.access(path.join(await resolveClassicRunDirectory(changeDir), runState!.pendingRef)),
+-    ).rejects.toMatchObject({
+-      code: 'ENOENT',
+-    });
+-  });
+-
+-  it('computes and prints the hash without writing files in --hash-only mode', async () => {
+-    const dir = await makeProject();
+-    const changeDir = await seedDesignChange(dir);
+-
+-    const result = run(dir, 'handoff', 'demo', '--hash-only');
+-    expect(result.status).toBe(0);
+-    expect(result.stdout.trim()).toMatch(/^[a-f0-9]{64}$/);
+-    expect(existsSync(path.join(changeDir, '.comet', 'handoff'))).toBe(false);
+-  });
+-
+-  it('reports a FRESH verdict on stderr while keeping the bare hash on stdout', async () => {
+-    const dir = await makeProject();
+-    await seedDesignChange(dir);
+-    expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
+-
+-    const result = run(dir, 'handoff', 'demo', '--hash-only');
+-    expect(result.status).toBe(0);
+-    expect(result.stdout.trim()).toMatch(/^[a-f0-9]{64}$/);
+-    expect(result.stderr).toContain('[HANDOFF] status: FRESH');
+-    expect(result.stderr).not.toContain('STALE');
+-  });
+-
+-  it('reports a STALE verdict with the changed artifacts instead of a bare comparison', async () => {
+-    const dir = await makeProject();
+-    const changeDir = await seedDesignChange(dir);
+-    expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
+-    await fs.appendFile(path.join(changeDir, 'proposal.md'), 'changed\n');
+-
+-    const result = run(dir, 'handoff', 'demo', '--hash-only');
+-    expect(result.status).toBe(0);
+-    expect(result.stdout.trim()).toMatch(/^[a-f0-9]{64}$/);
+-    expect(result.stderr).toContain(
+-      '[HANDOFF] status: STALE (changed: openspec/changes/demo/proposal.md)',
+-    );
+-    expect(result.stderr).toContain('Recorded: ');
+-    expect(result.stderr).toContain('Current:  ');
+-    expect(result.stderr).toContain('NEXT: comet handoff demo design --write');
+-  });
+-
+-  it('forces context regeneration when a delta spec was deleted after the handoff', async () => {
+-    const dir = await makeProject();
+-    const changeDir = await seedDesignChange(dir);
+-
+-    // Handoff over a delta spec, then capture the markdown that embeds it.
+-    await fs.mkdir(path.join(changeDir, 'specs', 'feature'), { recursive: true });
+-    await fs.writeFile(path.join(changeDir, 'specs', 'feature', 'spec.md'), '# Feature\n');
+-    expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
+-    const specHash = run(dir, 'state', 'get', 'demo', 'handoff_hash').stdout.trim();
+-    expect(specHash).toMatch(/^[a-f0-9]{64}$/);
+-    let md = await fs.readFile(
+-      path.join(changeDir, '.comet', 'handoff', 'design-context.md'),
+-      'utf8',
+-    );
+-    expect(md).toContain('specs/feature/spec.md');
+-
+-    // Delete the delta spec and align the recorded hash to the reduced source
+-    // set — the exact deadlock workaround from issue #324. The on-disk
+-    // markdown still carries the old Context hash, so --write must regenerate
+-    // the context files instead of short-circuiting on the aligned hash.
+-    await fs.rm(path.join(changeDir, 'specs', 'feature'), { recursive: true });
+-    const hashOnly = run(dir, 'handoff', 'demo', '--hash-only').stdout.trim();
+-    expect(hashOnly).toMatch(/^[a-f0-9]{64}$/);
+-    expect(hashOnly).not.toBe(specHash);
+-    expect(run(dir, 'state', 'set', 'demo', 'handoff_hash', hashOnly).status).toBe(0);
+-
+-    const result = run(dir, 'handoff', 'demo', 'design', '--write');
+-    expect(result.status).toBe(0);
+-
+-    // The regenerated markdown must match the new hash and drop the deleted
+-    // delta spec; merely printing "wrote" without regenerating is a regression.
+-    md = await fs.readFile(path.join(changeDir, '.comet', 'handoff', 'design-context.md'), 'utf8');
+-    expect(md).toContain(`- Context hash: ${hashOnly}`);
+-    expect(md).not.toContain('specs/feature/spec.md');
++      fs.access(path.join(await resolveClassicRunDirectory(changeDir), state!.pendingRef)),
++    ).rejects.toMatchObject({ code: 'ENOENT' });
+   });
+ 
+-  it('forces context regeneration when a delta spec was added after the handoff', async () => {
++  it('generates one complete optional handoff view without advancing the original Run', async () => {
+     const dir = await makeProject();
+     const changeDir = await seedDesignChange(dir);
+-
+-    // Handoff without any delta spec, then capture the markdown that omits it.
+     expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
+-    const baseHash = run(dir, 'state', 'get', 'demo', 'handoff_hash').stdout.trim();
+-    expect(baseHash).toMatch(/^[a-f0-9]{64}$/);
+-    let md = await fs.readFile(
+-      path.join(changeDir, '.comet', 'handoff', 'design-context.md'),
++    const before = await readRunState(await resolveClassicRunDirectory(changeDir));
++    const spec = path.join(changeDir, 'specs', 'nested', 'worker', 'spec.md');
++    await fs.mkdir(path.dirname(spec), { recursive: true });
++    await fs.writeFile(spec, 'The complete nested worker requirement.\n');
++    const result = run(dir, 'handoff', 'demo', 'design', '--write', '--full');
++    expect(result.status, result.stderr).toBe(0);
++    expect(await fs.readdir(path.join(changeDir, '.comet/handoff'))).toEqual(['design-context.md']);
++    const view = await fs.readFile(
++      path.join(changeDir, '.comet/handoff/design-context.md'),
+       'utf8',
+     );
+-    expect(md).not.toContain('specs/feature/spec.md');
+-
+-    // Add a delta spec and align the recorded hash to the enlarged source
+-    // set. The old markdown still carries the previous Context hash, so
+-    // --write must embed the new spec instead of short-circuiting.
+-    await fs.mkdir(path.join(changeDir, 'specs', 'feature'), { recursive: true });
+-    await fs.writeFile(path.join(changeDir, 'specs', 'feature', 'spec.md'), '# Feature\n');
+-    const hashOnly = run(dir, 'handoff', 'demo', '--hash-only').stdout.trim();
+-    expect(hashOnly).toMatch(/^[a-f0-9]{64}$/);
+-    expect(hashOnly).not.toBe(baseHash);
+-    expect(run(dir, 'state', 'set', 'demo', 'handoff_hash', hashOnly).status).toBe(0);
+-
+-    const result = run(dir, 'handoff', 'demo', 'design', '--write');
+-    expect(result.status).toBe(0);
+-
+-    // The regenerated markdown must embed the new delta spec and carry the
+-    // new Context hash.
+-    md = await fs.readFile(path.join(changeDir, '.comet', 'handoff', 'design-context.md'), 'utf8');
+-    expect(md).toContain('specs/feature/spec.md');
+-    expect(md).toContain(`- Context hash: ${hashOnly}`);
+-  });
+-
+-  it('regenerates the beta spec context when a delta spec was deleted after the handoff', async () => {
+-    const dir = await makeProject();
+-    const changeDir = await seedDesignChange(dir);
+-    expect(run(dir, 'state', 'set', 'demo', 'context_compression', 'beta').status).toBe(0);
+-
+-    // Beta mode writes spec-context.md, which must carry the same Context hash
+-    // marker so the stale-context short circuit cannot hide a deleted spec.
+-    await fs.mkdir(path.join(changeDir, 'specs', 'feature'), { recursive: true });
+-    await fs.writeFile(path.join(changeDir, 'specs', 'feature', 'spec.md'), '# Feature\n');
+-    expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
+-    const specHash = run(dir, 'state', 'get', 'demo', 'handoff_hash').stdout.trim();
+-    expect(specHash).toMatch(/^[a-f0-9]{64}$/);
+-    const specContext = path.join(changeDir, '.comet', 'handoff', 'spec-context.md');
+-    let md = await fs.readFile(specContext, 'utf8');
+-    expect(md).toContain('- Mode: beta');
+-    expect(md).toContain('specs/feature/spec.md');
+-    expect(md).toContain(`- Context hash: ${specHash}`);
+-
+-    // Delete the delta spec and align the recorded hash to the reduced set.
+-    await fs.rm(path.join(changeDir, 'specs', 'feature'), { recursive: true });
+-    const hashOnly = run(dir, 'handoff', 'demo', '--hash-only').stdout.trim();
+-    expect(hashOnly).toMatch(/^[a-f0-9]{64}$/);
+-    expect(hashOnly).not.toBe(specHash);
+-    expect(run(dir, 'state', 'set', 'demo', 'handoff_hash', hashOnly).status).toBe(0);
+-
+-    const result = run(dir, 'handoff', 'demo', 'design', '--write');
+-    expect(result.status).toBe(0);
+-
+-    // The regenerated beta markdown must drop the deleted spec and match the
+-    // new Context hash, just like the default mode.
+-    md = await fs.readFile(specContext, 'utf8');
+-    expect(md).toContain(`- Context hash: ${hashOnly}`);
+-    expect(md).not.toContain('specs/feature/spec.md');
++    expect(view).toContain('The complete nested worker requirement.');
++    expect(view).toContain('openspec/changes/demo/specs/nested/worker/spec.md');
++    expect(view).not.toContain('sha256');
++    expect(await readRunState(await resolveClassicRunDirectory(changeDir))).toEqual(before);
+   });
+ 
+   it('refreshes the design handoff from the build phase after a Spec Patch', async () => {
+@@ -392,6 +233,7 @@ describe('Classic handoff command', () => {
+     const afterRunState = await readRunState(await resolveClassicRunDirectory(changeDir));
+     expect(afterRunState).not.toBeNull();
+     expect(afterRunState!.pending).toBeNull();
++    expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
+     const trajectory = (
+       await fs.readFile(
+         path.join(await resolveClassicRunDirectory(changeDir), afterRunState!.trajectoryRef),
+diff --git "a/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-old-3.ts" "b/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-next-3.ts"
+index 3b53389d..368161ba 100644
+--- "a/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-old-3.ts"
++++ "b/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-next-3.ts"
+@@ -1,19 +1,13 @@
+-import { resolveClassicRunDirectory } from '../../../domains/comet-classic/classic-runtime-paths.js';
+ import { promises as fs } from 'node:fs';
+ import os from 'node:os';
+ import path from 'node:path';
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
+ import {
+-  computeContextHash,
++  resolveClassicDesignContext,
+   validateClassicSdkDesignContext,
+-  writeClassicSdkDesignContext,
+ } from '../../../domains/comet-classic/classic-handoff.js';
+-import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
+-import { readRunState } from '../../../domains/engine/state.js';
+-import { readClassicState } from '../../../domains/comet-classic/classic-store.js';
+ import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
+-import { withClassicSourceObservation } from '../../../domains/comet-classic/classic-protected-path.js';
+-import { classicOpenEvidenceReceipt } from '../../../domains/comet-classic/classic-sdk-application.js';
+ 
+ describe('Classic handoff material reuse', () => {
+   let root: string;
+@@ -49,41 +43,34 @@ describe('Classic handoff material reuse', () => {
+   }
+ 
+   it.each(['off', 'beta'] as const)(
+-    'reads each source once per %s preparation and once per commit validation',
++    'reads only the original proposal for %s handoff references',
+     async (contextCompression) => {
+       await initializeDesignContext();
+       const open = vi.spyOn(fs, 'open');
+       const options = { projectRoot: root, changeDir, change: 'demo', contextCompression };
+-      const prepared = await writeClassicSdkDesignContext(options);
++      const prepared = await resolveClassicDesignContext(options);
++      expect(prepared).toEqual({
++        handoffContext: 'openspec/changes/demo/proposal.md',
++        handoffHash: null,
++      });
+       for (const file of sources)
+-        expect(open.mock.calls.filter(([target]) => String(target) === file)).toHaveLength(1);
++        expect(open.mock.calls.filter(([target]) => String(target) === file)).toHaveLength(
++          file === sources[0] ? 1 : 0,
++        );
+       open.mockClear();
+       expect(await validateClassicSdkDesignContext({ ...options, ...prepared })).toBe(true);
+       for (const file of sources)
+-        expect(open.mock.calls.filter(([target]) => String(target) === file)).toHaveLength(1);
+-      expect(prepared.handoffHash).toBe(
+-        await computeContextHash(root, changeDir, 'openspec/changes/demo'),
+-      );
+-      const document = JSON.parse(
+-        await fs.readFile(path.join(root, prepared.handoffContext), 'utf8'),
+-      );
+-      expect(document.files).toHaveLength(sources.length);
+-      if (contextCompression === 'beta') {
+-        const markdown = await fs.readFile(
+-          path.join(root, prepared.handoffContext.replace(/\.json$/u, '.md')),
+-          'utf8',
++        expect(open.mock.calls.filter(([target]) => String(target) === file)).toHaveLength(
++          file === sources[0] ? 1 : 0,
+         );
+-        for (let index = 0; index < 10; index += 1) {
+-          expect(markdown).toContain(`## openspec/changes/demo/specs/capability-${index}/spec.md`);
+-        }
+-        expect(markdown).toContain('```md\n# spec.md');
+-        expect(markdown).not.toContain('No delta spec files found.');
+-      }
++      await expect(fs.stat(path.join(changeDir, '.comet/handoff'))).rejects.toMatchObject({
++        code: 'ENOENT',
++      });
+     },
+   );
+ 
+   it.each(['edit', 'add', 'remove'] as const)(
+-    'rechecks source %s after preparing a handoff',
++    'keeps the original handoff reference after Agent-managed source %s',
+     async (change) => {
+       await initializeDesignContext();
+       const options = {
+@@ -92,15 +79,16 @@ describe('Classic handoff material reuse', () => {
+         change: 'demo',
+         contextCompression: 'off' as const,
+       };
+-      const prepared = await writeClassicSdkDesignContext(options);
+-      if (change === 'edit') await fs.appendFile(sources[0], '\nchanged\n');
++      const prepared = await resolveClassicDesignContext(options);
++      if (change === 'edit') await fs.appendFile(sources[0], '\nUpdated source.\n');
+       else if (change === 'remove') await fs.unlink(sources.at(-1)!);
+       else {
+-        const spec = path.join(changeDir, 'specs', 'new', 'spec.md');
+-        await fs.mkdir(path.dirname(spec));
+-        await fs.writeFile(spec, '# New requirement\n');
++        const spec = path.join(changeDir, 'specs/new/spec.md');
++        await fs.mkdir(path.dirname(spec), { recursive: true });
++        await fs.writeFile(spec, 'A new requirement.\n');
+       }
+-      expect(await validateClassicSdkDesignContext({ ...options, ...prepared })).toBe(false);
++      expect(await validateClassicSdkDesignContext({ ...options, ...prepared })).toBe(true);
++      expect(prepared.handoffContext).toBe('openspec/changes/demo/proposal.md');
+     },
+   );
+ 
+@@ -112,7 +100,7 @@ describe('Classic handoff material reuse', () => {
+       change: 'demo',
+       contextCompression: 'off' as const,
+     };
+-    const prepared = await writeClassicSdkDesignContext(options);
++    const prepared = await resolveClassicDesignContext(options);
+     await fs.unlink(sources[0]);
+     try {
+       await fs.symlink(sources[1], sources[0]);
+@@ -126,36 +114,4 @@ describe('Classic handoff material reuse', () => {
+       /symbolic link|junction/i,
+     );
+   });
+-
+-  it('releases only its stale handoff claim so a changed source can be retried', async () => {
+-    const run = (args: string[]) =>
+-      runClassicCli(args, undefined, { projectRoot: root, invocationCwd: root });
+-    expect((await run(['state', 'init', 'demo', 'full', '--runtime', 'compat'])).exitCode).toBe(0);
+-    expect((await run(['state', 'transition', 'demo', 'open-complete'])).exitCode).toBe(0);
+-    const rename = fs.rename.bind(fs);
+-    let changed = false;
+-    vi.spyOn(fs, 'rename').mockImplementation(async (...args: Parameters<typeof fs.rename>) => {
+-      const result = await rename(...args);
+-      if (
+-        !changed &&
+-        String(args[1]).endsWith(`${path.sep}handoff${path.sep}design-context.json`)
+-      ) {
+-        changed = true;
+-        await fs.appendFile(sources[0], '\nsource changed during preparation\n');
+-      }
+-      return result;
+-    });
+-    const rejected = await run(['handoff', 'demo', 'design', '--write']);
+-    expect(changed).toBe(true);
+-    expect(rejected.exitCode).not.toBe(0);
+-    expect(rejected.stderr).toContain('handoff sources changed before completion');
+-    expect((await readClassicState(changeDir)).classic?.handoffHash).toBeNull();
+-    expect((await readRunState(await resolveClassicRunDirectory(changeDir)))?.pending).toBeNull();
+-    const retried = await run(['handoff', 'demo', 'design', '--write']);
+-    expect(retried.exitCode, retried.stderr).toBe(0);
+-    expect((await readRunState(await resolveClassicRunDirectory(changeDir)))?.pending).toBeNull();
+-    expect((await readClassicState(changeDir)).classic?.handoffHash).toBe(
+-      await computeContextHash(root, changeDir, 'openspec/changes/demo'),
+-    );
+-  });
+ });
+diff --git "a/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-old-4.ts" "b/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-next-4.ts"
+index 8cb52efa..ef944234 100644
+--- "a/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-old-4.ts"
++++ "b/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-next-4.ts"
+@@ -1,6 +1,9 @@
+ import path from 'node:path';
+ import { beforeEach, describe, expect, it, vi } from 'vitest';
+-import { writeClassicSdkDesignContext } from '../../../domains/comet-classic/classic-handoff.js';
++import {
++  resolveClassicDesignContext,
++  writeClassicDesignHandoffView,
++} from '../../../domains/comet-classic/classic-handoff.js';
+ 
+ const memory = vi.hoisted(() => ({
+   files: new Map<string, string>(),
+@@ -34,8 +37,9 @@ vi.mock('../../../domains/comet-classic/classic-protected-path.js', async (impor
+   >()),
+   classicProjectTargetExists: async (_root: string, file: string) =>
+     memory.files.has(file.replaceAll('\\', '/')),
+-  readClassicProjectFile: async (_root: string, file: string) => {
+-    const content = memory.files.get(file.replaceAll('\\', '/'));
++  readClassicProjectFile: async (root: string, file: string) => {
++    const target = path.win32.isAbsolute(file) ? file : path.win32.join(root, file);
++    const content = memory.files.get(target.replaceAll('\\', '/'));
+     if (content === undefined) throw new Error(`Missing fixture: ${file}`);
+     return content;
+   },
+@@ -70,21 +74,27 @@ describe('Classic beta handoff Windows paths', () => {
+     const changeDir = path.win32.join(projectRoot, 'openspec', 'changes', 'demo');
+     const spec = 'C:/project/openspec/changes/demo/specs/login/spec.md';
+     memory.specs.push(spec);
++    memory.files.set(
++      'C:/project/openspec/changes/demo/proposal.md',
++      'Original Windows requirements.\n',
++    );
+     memory.files.set(spec, '## Requirement: Windows acceptance\n### Scenario: Login succeeds\n');
+-    const result = await writeClassicSdkDesignContext({
++    const result = await resolveClassicDesignContext({
+       projectRoot,
+       changeDir,
+       change: 'demo',
+       contextCompression: 'beta',
+     });
+-    expect(result.handoffContext).toBe('openspec/changes/demo/.comet/handoff/spec-context.json');
++    expect(result.handoffContext).toBe('openspec/changes/demo/proposal.md');
++    expect([...memory.files.keys()].some((file) => file.includes('/.comet/handoff/'))).toBe(false);
++    await writeClassicDesignHandoffView({ projectRoot, changeDir, change: 'demo' });
+     const markdown = memory.files.get(
+-      'C:/project/openspec/changes/demo/.comet/handoff/spec-context.md',
++      'C:/project/openspec/changes/demo/.comet/handoff/design-context.md',
+     );
+     expect(markdown).toContain('## openspec/changes/demo/specs/login/spec.md');
+     expect(markdown).toContain('## Requirement: Windows acceptance');
+     expect(markdown).toContain('### Scenario: Login succeeds');
+     expect(markdown).not.toContain('No delta spec files found.');
+-    expect(memory.originals).toContain('openspec/changes/demo/specs/login/spec.md');
++    expect(memory.originals).toEqual([]);
+   });
+ });
+diff --git "a/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-old-6.ts" "b/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-next-6.ts"
+index 79e69339..699ffc51 100644
+--- "a/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-old-6.ts"
++++ "b/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-next-6.ts"
+@@ -280,8 +280,8 @@ describe('Chinese Classic efficiency contracts', () => {
+     expect(tasks).toContain('仅补缺失检查或独立审查');
+     expect(tasks).toContain('已有部分实现时仅补剩余部分');
+     expect(tasks.indexOf('核对当前文件')).toBeLessThan(tasks.indexOf('comet state task-complete'));
+-    expect(tasks).toContain('--expect <revision> --json');
+-    expect(tasks).toContain('revision 冲突时，重新核对任务要求是否变化');
++    expect(tasks).toContain('task-complete <name> <task-id> --json');
++    expect(tasks).toContain('文件编辑不自动撤销任务完成记录');
+     expect(tasks).toContain('task-complete 会根据 tasks.md 自动同步这些任务在旧计划中的状态');
+     expect(tasks).toContain('comet state sync-plan <name>');
+     expect(tasks).toContain('mapping-required');
+@@ -297,7 +297,7 @@ describe('Chinese Classic efficiency contracts', () => {
+     expect(entry).toContain('`agent.continuation`');
+     expect(entry).toContain('信息仍有效时不重复 next、select 或 check');
+     expect(entry).toContain('只有这些信息缺失或失效时，才运行一次入口检查');
+-    expect(entry).toContain('{authority, revision, total, completed, needsIds, next}');
++    expect(entry).toContain('{authority, total, completed, needsIds, next}');
+     expect(entry).toContain('{path, stale, taskIds, stage, sessionId, reviewRounds, unresolved}');
+     expect(entry).toContain('{kind, reason, taskId?}');
+     expect(entry).toContain('先阅读 reason，再根据 kind 完成对应步骤');
+@@ -318,7 +318,7 @@ describe('Chinese Classic efficiency contracts', () => {
+     expect(entry).toContain('需要完整任务和检查点时，再加 `--details`');
+     expect(entry).toContain('在 taskState 中增加 tasks，在 coordination 中增加 checkpoint');
+     expect(entry).toContain('comet state check <change-name> <phase> --recover --details --json');
+-    expect(entry).toContain('恢复时保留计划、任务、审查记录和已用复查次数');
++    expect(entry).toContain('保留计划、任务、审查记录和原进度');
+   });
+ 
+   it('documents structured configuration gaps and bounded Native continuation consumption', async () => {
+@@ -397,7 +397,6 @@ describe('Chinese Classic efficiency contracts', () => {
+     expect(JSON.parse(example!)).toEqual({
+       schemaVersion: 1,
+       taskIds: ['task-1'],
+-      revision: '<task-revision>',
+       stage: 'implementing',
+       sessionId: '<implementer-session-id>',
+       evidence: [],
+@@ -407,7 +406,7 @@ describe('Chinese Classic efficiency contracts', () => {
+     expect(checkpoint).toContain('必须替换为本次实际值');
+     expect(checkpoint).toContain('comet state checkpoint <change-name> --file <json-path>');
+     expect(checkpoint).toContain('读取结果为 `{checkpoint, stale}`');
+-    expect(checkpoint).toContain('stale 为 true 时，先核对 revision、任务范围和实际成果');
++    expect(checkpoint).toContain('stale 为 true 时，先核对任务范围和实际成果');
+     expect(checkpoint).toContain('checkpoint 为空也不表示尚未实施');
+     expect(checkpoint).toContain('Runtime 检查数据后生成 Markdown');
+     expect(checkpoint).toContain('<classic-change-dir>/.comet/coordination.json');
+@@ -1241,7 +1240,7 @@ describe('Approved English Classic efficiency contracts', () => {
+     expect(tasks).toContain('Git diff');
+     expect(tasks).toContain('comet state task-complete');
+     expect(tasks.indexOf('Git diff')).toBeLessThan(tasks.indexOf('comet state task-complete'));
+-    expect(tasks).toContain('--expect <revision> --json');
++    expect(tasks).toContain('task-complete <name> <task-id> --json');
+     expect(tasks).toContain('mapping-required');
+     expect(tasks).toContain('comet state sync-plan <name>');
+     expect(tasks).toContain('comet-task');
+@@ -1251,7 +1250,7 @@ describe('Approved English Classic efficiency contracts', () => {
+   it('keeps normal entry compact and documents valid isolated coordination JSON for cold recovery', async () => {
+     const recovery = await reference('context-recovery');
+     expect(recovery).toContain('Run one entry check only when it is missing or no longer valid');
+-    expect(recovery).toContain('{authority, revision, total, completed, needsIds, next}');
++    expect(recovery).toContain('{authority, total, completed, needsIds, next}');
+     expect(recovery).toContain('{kind, reason, taskId?}');
+     expect(recovery).toContain('--recover --details --json');
+     expect(recovery).toContain('this adds tasks to taskState and checkpoint to coordination');
+@@ -1259,7 +1258,6 @@ describe('Approved English Classic efficiency contracts', () => {
+     expect(JSON.parse(checkpoint.match(/```json\s*([\s\S]*?)```/u)![1])).toEqual({
+       schemaVersion: 1,
+       taskIds: ['task-1'],
+-      revision: '<task-revision>',
+       stage: 'implementing',
+       sessionId: '<implementer-session-id>',
+       evidence: [],
+diff --git "a/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-old-8.ts" "b/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-next-8.ts"
+index 517f452d..db36d917 100644
+--- "a/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-old-8.ts"
++++ "b/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-next-8.ts"
+@@ -215,7 +215,7 @@ describe('Comet Native Skills', () => {
+       '恰好标记一次',
+       '响应只列出当前 `scopeIds`',
+       '已通过且仍报告通过的合法超集会由 Runtime 过滤',
+-      '至少一项集成检查',
++      'Agent 选择适用的检查',
+       '只在 `inputOptions.template` 中补充缺失或失效的检查',
+       '等待同一个 Verifier',
+       '`verifier-started`',
+@@ -233,9 +233,8 @@ describe('Comet Native Skills', () => {
+     for (const term of [
+       '子任务角色、任务包、worktree、基线提交、`runId`、验收项的编号与引用、依赖关系和停止条件',
+       '`supervisor-checks`',
+-      '`contractHash`',
+       '`verificationBoundary`',
+-      '非空、`repeatable: true`',
++      '其 `checks` 由 Agent 选择，可为空',
+       '`retry_check_ids`',
+       '`receiptRef`',
+       '每个验收 ID 必须恰好出现一次',
+@@ -262,7 +261,7 @@ describe('Comet Native Skills', () => {
+       'exactly once',
+       'The response lists only the current `scopeIds`',
+       'Runtime filters a known superset only when the extra criteria already passed and still report `passed`',
+-      'at least one integration check',
++      'The Agent selects applicable checks',
+       'Add only missing or invalidated checks',
+       'waiting for the same Verifier',
+       '`verifier-started`',
+@@ -278,9 +277,8 @@ describe('Comet Native Skills', () => {
+     for (const term of [
+       'role, task package, worktree, baseline commit, `runId`, acceptance IDs and references, dependencies, and stopping conditions',
+       '`supervisor-checks`',
+-      '`contractHash`',
+       '`verificationBoundary`',
+-      'nonempty',
++      '`checks` are Agent-selected and may be empty',
+       '`repeatable: true`',
+       '`retry_check_ids`',
+       '`receiptRef`',
+@@ -324,7 +322,7 @@ describe('Comet Native Skills', () => {
+           '最终验收，覆盖全部验收项',
+           '原先通过 `finish=merge` 完成的合入步骤现由 Runtime 负责',
+           'Supervisor 统筹动作',
+-          '`repair-child`',
++          '父级可以修复其集成范围',
+         ],
+       },
+       {
+@@ -353,7 +351,7 @@ describe('Comet Native Skills', () => {
+           'final verification of every Supervisor acceptance item',
+           'Runtime now owns the integration step formerly performed through `finish=merge`',
+           'Supervisor coordination actions',
+-          '`repair-child`',
++          'the parent may repair its integration scope',
+         ],
+       },
+     ];
+@@ -392,19 +390,13 @@ describe('Comet Native Skills', () => {
+     }
+   });
+ 
+-  it('allows omitted Chinese directory categories while requiring content for retained headings', async () => {
++  it('lets the Agent organize Chinese briefs without fixed directory headings', async () => {
+     const brief = section(await read('zh', 'reference/artifacts.md'), 'brief');
+-    expect(brief).toContain('至少填写一个有效类别');
+-    expect(brief).toContain('无内容的类别可以省略');
+-    expect(brief).toContain('已保留的标题必须有有效正文，不能留空或只放模板占位');
+-    expect(brief).toContain('完整旧格式及「无」/`None` 写法继续有效');
+-    expect(brief).not.toContain('章节固定四个三级子节');
+-
+-    const examples = [...brief.matchAll(/```text\r?\n([\s\S]*?)```/gu)].map((match) => match[1]);
+-    const singleFile = examples.find((example) => example.includes('config/defaults.yaml'));
+-    expect(singleFile).toBeDefined();
+-    expect(singleFile!.match(/^### .+$/gmu)).toEqual(['### 修改']);
+-    expect(singleFile).toContain('config/defaults.yaml — 调整默认超时时间');
++    expect(brief).toContain('Agent 按任务需要组织段落、列表或表格');
++    expect(brief).toContain('模板中的标题和目录树是写作参考');
++    expect(brief).toContain('已有有效确认不因格式变化撤回');
++    expect(brief).toContain('resultTemplate.output.acceptance');
++    expect(brief).toContain('等待用户确认后才允许实现');
+   });
+ 
+   it('explains Chinese requirement changes before reconfirming the complete current Shape', async () => {
+@@ -423,17 +415,12 @@ describe('Comet Native Skills', () => {
+     expect(reconfirmation).toContain('不复用旧 Shape 批准');
+   });
+ 
+-  it('keeps the English directory example minimal without accepting empty retained headings', async () => {
++  it('lets the Agent organize English briefs without fixed directory headings', async () => {
+     const brief = section(await read('en', 'reference/artifacts.md'), 'brief');
+-    expect(brief).toContain('at least one valid category');
+-    expect(brief).toContain('Categories with no content may be omitted');
+-    expect(brief).toContain('retained headings must have meaningful body content');
+-    expect(brief).toContain('The complete legacy format and "None"/「无」 remain valid');
+-    expect(brief).not.toContain('four fixed level-three subsections');
+-    const examples = [...brief.matchAll(/```text\r?\n([\s\S]*?)```/gu)].map((match) => match[1]);
+-    const singleFile = examples.find((example) => example.includes('config/defaults.yaml'));
+-    expect(singleFile).toBeDefined();
+-    expect(singleFile!.match(/^### .+$/gmu)).toEqual(['### Modified']);
++    expect(brief).toContain('Template headings and directory trees are writing aids');
++    expect(brief).toContain('Formatting changes do not revoke valid confirmation');
++    expect(brief).toContain('resultTemplate.output.acceptance');
++    expect(brief).toContain('waits for user confirmation before implementation');
+   });
+ 
+   it('keeps English reconfirmation reachable and bound to the complete current Shape', async () => {
+@@ -517,8 +504,8 @@ describe('Comet Native Skills', () => {
+           'Builder 提交候选',
+           '新的只读 Verifier',
+           '`iteration` 表示提交实现的轮次',
+-          '`attempt` 表示对同一份候选实现启动 Verifier 的次数',
+-          '所有计数都由 Runtime 更新',
++          '`attempt` 表示同一候选的 Verifier 执行次数',
++          'Runtime 保留真实失败次数预算和执行上限',
+         ],
+       },
+       {
+@@ -528,8 +515,8 @@ describe('Comet Native Skills', () => {
+           'the Builder submits a candidate',
+           'a new read-only Verifier',
+           '`iteration` counts implementation submissions',
+-          '`attempt` counts Verifier launches for the same candidate',
+-          'Runtime updates all counters',
++          '`attempt` counts Verifier executions for one candidate',
++          'Runtime retains actual failure budgets and execution limits',
+         ],
+       },
+     ];
+@@ -761,8 +748,8 @@ describe('Comet Native Skills', () => {
+         'acceptance_index',
+         'specs/<capability>/spec.md',
+         'verification.md',
+-        '# Acceptance examples',
+-        'Verification expectations',
++        'resultTemplate.output.acceptance',
++        '[blocking]',
+         'comet-state.yaml',
+         'verification.md',
+         'Runtime',
+@@ -772,7 +759,7 @@ describe('Comet Native Skills', () => {
+       expect(artifacts).toContain(
+         language === 'zh' ? '完整目标规格' : 'complete target specification',
+       );
+-      expect(artifacts).toContain(language === 'zh' ? '验收循环' : 'acceptance Loop');
++
+       for (const RuntimeDetail of [
+         'comet.native.workspace.v3',
+         'baselineProjectionRef',
+@@ -840,7 +827,12 @@ describe('Comet Native Skills', () => {
+       const artifacts = await read(language, 'reference/artifacts.md');
+       const example = /```yaml\n([\s\S]*?)\n```/u.exec(artifacts)?.[1];
+       expect(example).toBeTruthy();
+-      const contract = parseNativeChildrenContract(example!, ['A1', 'A2']);
++      const contract = parseNativeChildrenContract(example!, ['A1', 'A2'], {
++        acceptanceCatalog: [
++          { id: 'A1', source: 'brief.md', text: 'Actual first criterion.' },
++          { id: 'A2', source: 'brief.md', text: 'Actual second criterion.' },
++        ],
++      });
+       expect(contract.acceptance_index).toEqual({
+         A1: { source: 'brief.md', text: expect.any(String) },
+         A2: { source: 'brief.md', text: expect.any(String) },
+@@ -860,7 +852,7 @@ describe('Comet Native Skills', () => {
+         expect(commands).toContain(`\`${field}\``);
+       }
+       expect(commands).toContain(
+-        language === 'zh' ? '至少一项集成检查' : 'at least one integration check',
++        language === 'zh' ? 'Agent 选择适用的检查' : 'The Agent selects applicable checks',
+       );
+     },
+   );
+@@ -877,7 +869,7 @@ describe('Comet Native Skills', () => {
+           '`migration-required`',
+           '`workspaceFinishResult.status`',
+           '`recoveryArgs`',
+-          '`repair-child`',
++          '父级可以修复其集成范围',
+         ],
+       },
+       {
+@@ -890,7 +882,7 @@ describe('Comet Native Skills', () => {
+           '`migration-required`',
+           '`workspaceFinishResult.status`',
+           '`recoveryArgs`',
+-          '`repair-child`',
++          'the parent may repair its integration scope',
+         ],
+       },
+     ];
+diff --git "a/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-old-9.ts" "b/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-next-9.ts"
+index 40393a28..9eca10aa 100644
+--- "a/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-old-9.ts"
++++ "b/C:\\Users\\BENYM\\.codex\\visualizations\\2026\\11\\08\\01a1bb4a-6bd2-7d00-9366-d5948ae83944\\agent-workflow-simplification\\document-handoff-next-9.ts"
+@@ -65,16 +65,25 @@ describe.each(['skills-zh', 'skills'])('%s SDK flow handoffs', (root) => {
+   });
+   it('ships the complete edit-review protocol and distinguishes SDK Archive from Git delivery', async () => {
+     const review = await read('comet/reference/edit-review.md');
+-    for (const command of [
+-      'claim',
+-      'recordTemplate',
+-      'non-behavioral',
+-      'implementation-changed',
+-      'requirements-changed',
+-      'discard',
+-      '--confirmed',
+-    ])
+-      expect(review).toContain(command);
++    const required =
++      root === 'skills-zh'
++        ? [
++            '当前 Agent 判断实际影响',
++            '文件内容变化不自动撤回批准',
++            '不提交文件指纹',
++            '用户决定',
++            '归档进度',
++          ]
++        : [
++            'current Agent judges their effect',
++            'do not automatically revoke approval',
++            'Do not submit file fingerprints',
++            'user decisions',
++            'Archive progress',
++          ];
++    for (const term of required) expect(review).toContain(term);
++    for (const obsolete of ['recordTemplate', 'prepare-applied --', 'edit-review record'])
++      expect(review).not.toContain(obsolete);
+     const native = await read('comet-native/SKILL.md');
+     expect(native).toContain('reference/edit-review.md');
+     expect(await read('comet-native/reference/edit-review.md')).toBe(review);

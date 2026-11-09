@@ -1,14 +1,15 @@
-import { parseNativeShapeSemanticSnapshot } from './native-shape-semantics.js';
 import { promises as fs } from 'node:fs';
 import {
   assertNativeBuilderAcceptanceComplete,
   parseNativeBuilderAcceptanceReview,
 } from './native-builder-acceptance-review.js';
+import { parseNativeChildrenContract } from './native-children-contract.js';
 import { NATIVE_BUILDER_CHECK_RESULTS, NATIVE_VERIFIER_VERDICTS } from './native-input-enum.js';
+import { parseNativeShapeSemanticSnapshot } from './native-shape-semantics.js';
 
 import { stringify } from 'yaml';
-import { parseNativeStateDocument } from './native-state-document.js';
 import { parseRuntimeAction } from '../engine/runtime-action.js';
+import { parseNativeStateDocument } from './native-state-document.js';
 import {
   nativeVerifierActionInput,
   nativeVerifierActionMatchesState,
@@ -51,7 +52,9 @@ const ROOT_KEYS = new Set([
   'document_constraints_version',
   'shape_confirmation_hash',
   'shape_semantic_snapshot',
+  'children_contract_ref',
   'children_contract_hash',
+  'children_contract',
   'coordination_mode',
   'spec_changes',
   'workspace',
@@ -71,6 +74,29 @@ const ROOT_KEYS = new Set([
   'archive_receipt',
   'application_checkpoint',
 ]);
+
+function parseStoredChildren(value: unknown, acceptance: NativePortableAcceptanceState[]) {
+  const plan = record(value, 'Native approved children plan');
+  if (!Array.isArray(plan.children))
+    throw new Error('Native approved children plan requires children');
+  const children = plan.children.map((value) => {
+    const child = { ...record(value, 'Native approved child') };
+    // 领域模型含 summary 和 covers；还原用户 YAML 形式后复用同一个边界解析器。
+    if (
+      plan.schema === 'comet.native.children.v2' &&
+      !plan.acceptance_index &&
+      typeof child.summary === 'string'
+    )
+      delete child.covers;
+    else delete child.summary;
+    return child;
+  });
+  return parseNativeChildrenContract(
+    JSON.stringify({ ...plan, children }),
+    acceptance.map((item) => item.id),
+    { acceptanceCatalog: acceptance },
+  );
+}
 
 export class NativePortableStateVersionConflictError extends Error {
   readonly code = 'native-state-version-conflict';
@@ -226,12 +252,6 @@ function parseSpecChange(value: unknown, index: number): NativePortableSpecChang
   }
   if (delta_source !== undefined && operation === 'remove') {
     throw new Error(`${label} remove cannot contain delta_source`);
-  }
-  if (delta_source !== undefined && (base_hash === undefined || base_hash === null)) {
-    throw new Error(`${label} delta_source requires a non-null base_hash`);
-  }
-  if (base_hash !== undefined && delta_source === undefined && operation !== 'remove') {
-    throw new Error(`${label} base_hash requires delta_source for non-remove specs`);
   }
   return {
     capability,
@@ -873,14 +893,17 @@ export function parseNativePortableState(value: unknown): NativePortableState {
       : {
           shape_semantic_snapshot: parseNativeShapeSemanticSnapshot(root.shape_semantic_snapshot),
         }),
-    ...(root.children_contract_hash === undefined
+    ...((root.children_contract_ref ?? root.children_contract_hash) === undefined
       ? {}
       : {
-          children_contract_hash: hashValue(
-            root.children_contract_hash,
-            'Native children contract hash',
+          children_contract_ref: stringValue(
+            root.children_contract_ref ?? root.children_contract_hash,
+            'Native children approval reference',
           ),
         }),
+    ...(root.children_contract === undefined
+      ? {}
+      : { children_contract: parseStoredChildren(root.children_contract, acceptance) }),
     ...(root.coordination_mode === undefined
       ? {}
       : {
@@ -920,8 +943,6 @@ export function parseNativePortableState(value: unknown): NativePortableState {
     created_at: timestamp(root.created_at, 'Native created_at'),
   };
   if (state.shape_semantic_snapshot) {
-    if (!state.shape_confirmation_hash && state.phase !== 'shape')
-      throw new Error('Native Shape semantic snapshot requires its approval fingerprint');
     const expected = [
       'brief.md',
       ...state.spec_changes.flatMap(({ source }) => (source ? [source] : [])),

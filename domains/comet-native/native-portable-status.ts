@@ -3,21 +3,22 @@ import path from 'node:path';
 
 import { inspectGitWorktree, type GitWorktreeContext } from '../../platform/paths/git-worktree.js';
 
+import { type EditReviewObservation } from '../workflow-contract/edit-review.js';
 import { inspectNativeChildren } from './native-children.js';
-import { readNativeSupervisorState, type NativeSupervisorState } from './native-supervisor.js';
-import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
-import { nativePortableContinuation } from './native-portable-continuation.js';
-import { nativePortableCheckPlansFromLocal } from './native-portable-checks.js';
-import { activeNativeVerifierAction, nativeVerifierActionInput } from './native-verifier-action.js';
 import {
   nativeVerifierExecutionRefForState,
   nativeVerifierStartupConfirmationForState,
 } from './native-local-execution.js';
+import { nativeChangeArtifactPaths } from './native-paths.js';
+import { nativePortableCheckPlansFromLocal } from './native-portable-checks.js';
+import { nativePortableContinuation } from './native-portable-continuation.js';
 import { nativePortableChangeDir, readNativePortableRuntime } from './native-portable-runtime.js';
 import { nativePortableStateSummary } from './native-portable-summary.js';
 import type { NativeLocalExecutionState, NativePortableState } from './native-portable-types.js';
-import { nativeChangeArtifactPaths } from './native-paths.js';
-import type { NativeProjectPaths, NativeChangeArtifactPaths } from './native-types.js';
+import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
+import { readNativeSupervisorState, type NativeSupervisorState } from './native-supervisor.js';
+import type { NativeChangeArtifactPaths, NativeProjectPaths } from './native-types.js';
+import { activeNativeVerifierAction, nativeVerifierActionInput } from './native-verifier-action.js';
 import type { NativeWorkspaceFinishJournal } from './native-workspace-finish.js';
 
 export interface NativePortableAcceptanceCounts {
@@ -468,9 +469,6 @@ export async function inspectNativePortableStatus(options: {
   gitContext?: GitWorktreeContext;
 }): Promise<NativePortableStatusProjection> {
   const runtime = await readNativePortableRuntime(options);
-  const editReviews = runtime.state.builder_handoff
-    ? await inspectEditReviews(nativeEditReviewScope(options.paths, runtime.state))
-    : [];
   const stateSummary = nativePortableStateSummary(runtime.state);
   const localExpected = runtime.state.status === 'active' && runtime.state.loop.stage !== 'done';
   const children = await inspectNativeChildren({ paths: options.paths, state: runtime.state });
@@ -504,7 +502,7 @@ export async function inspectNativePortableStatus(options: {
         }
       : {}),
   });
-  let effectiveContinuation =
+  const effectiveContinuation =
     workspace.bindingState === 'mismatch'
       ? {
           ...continuation,
@@ -520,37 +518,6 @@ export async function inspectNativePortableStatus(options: {
           },
         }
       : continuation;
-  if (
-    workspace.bindingState !== 'mismatch' &&
-    runtime.state.phase === 'verify' &&
-    runtime.state.builder_handoff
-  ) {
-    const edit = await editReviewContinuation(
-      nativeEditReviewScope(options.paths, runtime.state),
-      editReviews,
-      false,
-    );
-    if (edit)
-      effectiveContinuation = {
-        ...effectiveContinuation,
-        ...edit,
-        action: 'review-edit',
-        commandArgs: edit.commandArgs ? [...edit.commandArgs] : null,
-        requiredInputs: [...edit.requiredInputs],
-        requiresUserDecision: edit.mode === 'ask',
-        disposition:
-          edit.mode === 'ask' ? 'await-user' : edit.mode === 'reconcile' ? 'blocked' : 'continue',
-        inputOptions: [],
-        commandAlternatives: undefined,
-        runnerAction: { ...effectiveContinuation.runnerAction, kind: 'none' },
-        userCommunication: {
-          ...effectiveContinuation.userCommunication,
-          agentInstruction: edit.instruction ?? '',
-          message: edit.instruction ?? null,
-          required: edit.mode === 'ask',
-        },
-      };
-  }
   const supervisorRoots = supervisor ? supervisorPublicRoots(options.paths, supervisor) : [];
   const supervisorSummary = supervisor
     ? (() => {
@@ -659,7 +626,6 @@ export async function inspectNativePortableStatus(options: {
   return {
     schema: 'comet.native.status.v2',
     name: runtime.state.name,
-    ...(editReviews.length ? { editReviews } : {}),
     artifacts: nativeChangeArtifactPaths(options.paths, runtime.state.name),
     phase: runtime.state.phase,
     status: runtime.state.status,
@@ -790,9 +756,3 @@ export async function listNativePortableStatus(options: {
     nextOffset: offset + selected.length < names.length ? offset + selected.length : null,
   };
 }
-import {
-  inspectEditReviews,
-  editReviewContinuation,
-  type EditReviewObservation,
-} from '../workflow-contract/edit-review.js';
-import { nativeEditReviewScope } from './native-edit-review.js';

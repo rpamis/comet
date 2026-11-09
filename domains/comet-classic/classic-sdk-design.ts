@@ -1,18 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { classicSdkEvidenceInputHash } from './classic-sdk-application.js';
 
 import type { WorkflowRun } from '../engine/runtime.js';
 import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
 import { inspectClassicDesignReadiness } from './classic-design-readiness.js';
-import { classicDocumentLanguageMismatch } from './classic-document-language.js';
-import {
-  validateClassicSdkDesignContext,
-  writeClassicSdkDesignContext,
-} from './classic-handoff.js';
+import { resolveClassicDesignContext, validateClassicSdkDesignContext } from './classic-handoff.js';
 import {
   readClassicProjectFile,
-  writeClassicProjectText,
   withClassicSourceObservation,
+  writeClassicProjectText,
 } from './classic-protected-path.js';
 import {
   classicDesignEvidenceReceipt,
@@ -48,18 +45,13 @@ async function assertDesignProposalSourcesCurrent(options: {
   const currentSources = await classicOpenEvidenceReceipt(projectRoot, input.changeDir, {
     designRequirements: phaseScoped && options.allowDesignDocumentChanges === true,
   });
-  if (
-    !approvedSources ||
-    approvedSources.ref !== currentSources.ref ||
-    approvedSources.contentHash !== currentSources.contentHash
-  ) {
+  if (!approvedSources || approvedSources.ref !== currentSources.ref) {
     throw new Error(
       `Classic Design OpenSpec artifacts changed after the approved proposal; run comet state revise-design ${change} --expected-revision ${run.revision}, then propose and approve the revised design`,
     );
   }
   if (
     !state.handoffContext ||
-    !state.handoffHash ||
     !(await validateClassicSdkDesignContext({
       run,
       projectRoot,
@@ -140,7 +132,7 @@ export async function proposeClassicSdkDesign(options: {
         designRequirements: true,
         run,
       });
-      const handoff = await writeClassicSdkDesignContext({
+      const handoff = await resolveClassicDesignContext({
         projectRoot,
         run,
         changeDir: path.join(projectRoot, input.changeDir),
@@ -284,11 +276,6 @@ export async function inspectClassicSdkDesign(options: {
   if (state.language !== 'en' && state.language !== 'zh-CN') {
     throw new Error('Classic change language is not set');
   }
-  const source = await readClassicProjectFile(projectRoot, designDoc, {
-    label: 'Classic Design document',
-  });
-  const languageIssue = classicDocumentLanguageMismatch(source, state.language, designDoc);
-  if (languageIssue) throw new Error(languageIssue);
   const receipt = await classicDesignEvidenceReceipt(projectRoot, designDoc);
   return { ...inspected, decision, receipt };
 }
@@ -390,7 +377,7 @@ async function completeInspectedClassicSdkDesign(
       evidenceId: evidence.id,
       kind: evidence.kind,
       ref: receipt.ref,
-      contentHash: receipt.contentHash,
+      contentHash: classicSdkEvidenceInputHash(run, 'full.design.document'),
       submissionId: randomUUID(),
       context: { requestId: randomUUID(), projectRoot },
     });

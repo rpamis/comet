@@ -1,63 +1,79 @@
+import { randomUUID } from 'node:crypto';
+import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
+import { reportCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
 import { hasNativeCompletedWork } from './native-experience.js';
+import { archiveNativeSdkChange } from './native-sdk-archive-command.js';
+import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
+import { reconcileNativeSdkExecutionStops } from './native-sdk-check-execution.js';
+import { settleNativeSdkCompletion } from './native-sdk-completion-cleanup.js';
+import { inspectNativeSdkRunDiagnostics } from './native-sdk-diagnostics.js';
 import {
-  nativeSdkVerificationReportOutput,
+  recoverNativeSdkReportRevalidation,
   refreshNativeSdkVerificationReport,
 } from './native-sdk-report.js';
-import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
-import { inspectNativeSdkRunDiagnostics } from './native-sdk-diagnostics.js';
-import { reconcileNativeSdkExecutionStops } from './native-sdk-check-execution.js';
-import { recoverNativeSdkReportRevalidation } from './native-sdk-report.js';
 import { validateNativeSdkFailedIntegrationRepair } from './native-sdk-supervisor-integration-repair.js';
-import { randomUUID } from 'node:crypto';
-import { reportCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
-import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
-import { settleNativeSdkCompletion } from './native-sdk-completion-cleanup.js';
-import { archiveNativeSdkChange } from './native-sdk-archive-command.js';
 
 import {
-  hashRuntimeValue,
   createMemoryRuntimeStore,
   createRuntime,
   defineWorkflow,
+  hashRuntimeValue,
   preserveRuntimeExecutionOrigins,
   type RuntimeValue,
   type WorkflowRun,
 } from '../engine/runtime.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
-import { createNativeSdkStateStore } from './native-sdk-state-store.js';
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
+import { nativeProjectPaths } from './native-paths.js';
+import { parseNativePortableState } from './native-portable-state.js';
+import type {
+  NativeSupervisorCoordinationMode,
+  NativePortableState,
+} from './native-portable-types.js';
+import {
+  inspectNativeSdkDefinitionUpgrade,
+  inspectNativeSdkRun,
+  loadOwnedNativeSdkRuntime,
+} from './native-runtime-ownership.js';
 import {
   collectNativeSdkShapeProposal,
   defineNativeWorkflowApplication,
   nativeSdkApplicationForRun,
 } from './native-sdk-application.js';
 import {
-  recoverNativeSdkChecks,
   nativeSdkCheckExecutor,
+  NativeSdkCheckResultError,
   nativeSdkCurrentCheckSummaries,
-  NativeSdkCheckInputDriftError,
+  recoverNativeSdkChecks,
 } from './native-sdk-checks.js';
-import { nativeSdkVerifyDecisions } from './native-sdk-verify-decision.js';
-import { nativeProjectPaths } from './native-paths.js';
+import { nativeSdkNextAction, nativeSdkPendingActions } from './native-sdk-continuation.js';
 import {
-  loadOwnedNativeSdkRuntime,
-  inspectNativeSdkRun,
-  inspectNativeSdkDefinitionUpgrade,
-} from './native-runtime-ownership.js';
+  nativeSdkRequirementsRevisionAllowed,
+  recoverNativeSdkImplementationRevision,
+} from './native-sdk-revise.js';
+import { createNativeSdkStateStore } from './native-sdk-state-store.js';
+import { projectNativeSdkStatus } from './native-sdk-status.js';
 import { inspectNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
 import {
   nativeSdkChildVerifierRetryWaits,
   validateNativeSdkFailedChildVerifier,
 } from './native-sdk-supervisor-verifier-recovery.js';
-import {
-  nativeSdkRequirementsRevisionAllowed,
-  recoverNativeSdkImplementationRevision,
-} from './native-sdk-revise.js';
-import { projectNativeSdkStatus } from './native-sdk-status.js';
-import { nativeSdkNextAction } from './native-sdk-continuation.js';
-import { parseNativePortableState } from './native-portable-state.js';
-import { captureApprovedShapeOriginals } from './native-shape-review-evidence.js';
-import type { NativeSupervisorCoordinationMode } from './native-portable-types.js';
+import { nativeSdkVerifyDecisions } from './native-sdk-verify-decision.js';
+
+/** 子任务可并行领取；已就绪的内部检查与集成继续按队列串行执行。 */
+function nextAutomaticAction(
+  run: WorkflowRun,
+  state: NativePortableState,
+  fixedApplication: boolean,
+) {
+  const next = nativeSdkNextAction(run, state);
+  return !fixedApplication &&
+    run.workflow.version === '3' &&
+    state.children_contract_ref &&
+    next?.type === 'handoff'
+    ? (nativeSdkPendingActions(run).find((action) => action.type === 'call_tool') ?? next)
+    : next;
+}
 
 /** 在同一次 CAS 中接入补充检查命令；不重建阶段、候选或原批准。 */
 export async function refreshNativeSdkCheckWork(
@@ -194,7 +210,7 @@ export async function advanceNativeSdkChange(
   if (
     !decision &&
     !application &&
-    !state.children_contract_hash &&
+    !state.children_contract_ref &&
     state.phase === 'archive' &&
     run.status === 'running' &&
     run.actions.some(
@@ -558,13 +574,7 @@ export async function advanceNativeSdkChange(
                   }
                 | undefined
             )?.outputs?.['verify.report'];
-      const current = nativeSdkVerificationReportOutput(run) as
-        { reportSha256?: string } | undefined;
-      if (
-        report?.candidateId === state.builder_handoff?.candidate_id &&
-        report?.reportSha256 &&
-        report.reportSha256 === current?.reportSha256
-      )
+      if (approved && report?.candidateId === state.builder_handoff?.candidate_id)
         return nextResult(projectRoot, name, run, artifactRootRef, application);
     }
     if (decision.expectedAction === 'revise-implementation') {
@@ -656,7 +666,7 @@ export async function advanceNativeSdkChange(
       try {
         await nativeSdkCurrentCheckSummaries({ run, projectRoot });
       } catch (error) {
-        if (!(error instanceof NativeSdkCheckInputDriftError)) throw error;
+        if (!(error instanceof NativeSdkCheckResultError)) throw error;
         // 此处原 Verifier 已结束，不能沿用检查校验器给运行中 Verifier 的刷新指令。
         const reason = error.message.split('由当前 Verifier')[0];
         return {
@@ -707,30 +717,6 @@ export async function advanceNativeSdkChange(
       };
     }
     if (!decision.summary.trim()) throw new NativeUsageError('--summary must not be empty');
-    const paths = await nativeProjectPaths(projectRoot, artifactRootRef, { change: name });
-    const current = await collectNativeSdkShapeProposal({ paths, state });
-    const approved = (wait.proposal as { outputs?: Record<string, RuntimeValue> }).outputs?.[
-      'shape.prepare'
-    ];
-    if (
-      !approved ||
-      hashRuntimeValue(current as unknown as RuntimeValue) !== hashRuntimeValue(approved) ||
-      current.shapeConfirmationHash !== state.shape_confirmation_hash
-    ) {
-      return {
-        ...(await nextResult(projectRoot, name, run, artifactRootRef, application)),
-        exitCode: 73,
-        error: {
-          code: 'conflict',
-          message: `Native SDK Shape documents changed after the approval proposal for ${name}; use revise-requirements from the current continuation, then confirm the new complete Shape`,
-        },
-      };
-    }
-    try {
-      await captureApprovedShapeOriginals(paths, state);
-    } catch {
-      // 原文缓存只用于后续编辑复核；批准后仍由 Shape revalidate 检查实际内容。
-    }
     const { runtime } = await loadOwnedNativeSdkRuntime(projectRoot, name);
     await runtime.resolveWait({
       runId: run.runId,
@@ -754,15 +740,22 @@ export async function advanceNativeSdkChange(
     return nextResult(projectRoot, name, run, artifactRootRef, application);
   const diagnostics = await inspectNativeSdkRunDiagnostics(projectRoot, run);
   if (!diagnostics.healthy) return nextResult(projectRoot, name, run, artifactRootRef, application);
-  if (run.ready.length === 0 && nativeSdkNextAction(run, state)?.type !== 'call_tool')
+  if (
+    run.ready.length === 0 &&
+    nextAutomaticAction(run, state, Boolean(application))?.type !== 'call_tool'
+  )
     return nextResult(projectRoot, name, run, artifactRootRef, application);
   // 同一次请求共享应用加载；每个 Action 仍单独领取、校验并持久化。
   const owned = await loadOwnedNativeSdkRuntime(projectRoot, name);
+  // 取走加载时的快照，后续 Shape 的 CAS 发布后从同一 store 读取新 Action。
+  run = await owned.runtime.inspect(name);
+  state = parseNativePortableState(run.state);
   const initialPhase = state.phase;
-  const automaticSteps = !application && !state.children_contract_hash ? 32 : 1;
+  const automaticSteps =
+    !application && (run.workflow.version === '3' || !state.children_contract_ref) ? 32 : 1;
   for (let steps = 0; steps < automaticSteps; steps++) {
     if (['failed', 'cancelled', 'completed'].includes(run.status)) break;
-    if (steps > 0 && state.children_contract_hash)
+    if (steps > 0 && state.children_contract_ref && run.workflow.version !== '3')
       return nextResult(projectRoot, name, run, artifactRootRef, application);
     // 旧协议保留验收到归档的交接；已进入 Archive 的续行仍一次完成内部动作。
     if (
@@ -783,7 +776,7 @@ export async function advanceNativeSdkChange(
       run = await owned.runtime.next({ runId: run.runId });
       state = parseNativePortableState(run.state);
     }
-    const pending = nativeSdkNextAction(run, state);
+    const pending = nextAutomaticAction(run, state, Boolean(application));
     if (!pending) {
       return nextResult(projectRoot, name, run, artifactRootRef, application);
     }
@@ -818,11 +811,12 @@ export async function advanceNativeSdkChange(
       continue;
     }
     const paths = await nativeProjectPaths(projectRoot, artifactRootRef, { change: name });
-    const proposal = await collectNativeSdkShapeProposal({
-      paths,
-      state,
-      materializeTargets: true,
-    });
+    const proposal =
+      pending.stepId === 'shape.revalidate'
+        ? (run.outputs['shape.prepare']?.value as unknown as Awaited<
+            ReturnType<typeof collectNativeSdkShapeProposal>
+          >)
+        : await collectNativeSdkShapeProposal({ paths, state, materializeTargets: true });
     // 纯 Shape 计算可重做：保留原 claim/outcome 校验，只在成功后发布一个 revision。
     // 外部执行和固定应用仍使用原来的持久化两阶段协议。
     const staging =

@@ -1,31 +1,32 @@
-import { inspectClassicSdkRunDiagnostics } from './classic-sdk-diagnostics.js';
-import { isClassicSdkRejectedBuildProposal } from './classic-build-configuration.js';
-import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
 import type { RuntimeAction, RuntimeValue, WorkflowRun } from '../engine/runtime.js';
 import type { CliActionContinuation } from '../workflow-contract/output-envelope.js';
-import { classicRecoveryContext } from './classic-recovery.js';
+import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
+import { isClassicSdkRejectedBuildProposal } from './classic-build-configuration.js';
 import { resolveClassicChangeDirectory } from './classic-paths.js';
-import {
-  classicSdkNextAction,
-  classicSdkCheckInstruction,
-  classicSdkDeliveryCheckInstruction,
-  findClassicSdkWorkspace,
-} from './classic-sdk-status.js';
+import { classicRecoveryContext } from './classic-recovery.js';
 import { inspectClassicSdkActionRecovery } from './classic-sdk-check-recovery.js';
-import type { ClassicState } from './classic-state.js';
-import { classicTaskContextRequest } from './classic-task-context.js';
+import { classicSdkCheckPreparationInput } from './classic-sdk-check-preparation.js';
+import { classicSdkCheckRefreshInput } from './classic-sdk-check.js';
+import {
+  canRepairClassicDelivery,
+  classicDeliveryActionContext,
+} from './classic-sdk-delivery-repair-model.js';
+import { inspectClassicSdkRunDiagnostics } from './classic-sdk-diagnostics.js';
 import {
   classicArchiveRepairAction,
   classicInterruptedBuilder,
   classicInterruptedSkill,
-  canReopenClassicVerification,
 } from './classic-sdk-revision-application.js';
 import { inspectClassicSdkRevisionReadiness } from './classic-sdk-revision-readiness.js';
-import { evaluateBranchBinding, liveGitBranch, isGitWorkTree } from './classic-branch-binding.js';
+import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
 import {
-  classicDeliveryActionContext,
-  canRepairClassicDelivery,
-} from './classic-sdk-delivery-repair-model.js';
+  classicSdkCheckInstruction,
+  classicSdkDeliveryCheckInstruction,
+  classicSdkNextAction,
+  findClassicSdkWorkspace,
+} from './classic-sdk-status.js';
+import type { ClassicState } from './classic-state.js';
+import { classicTaskContextRequest } from './classic-task-context.js';
 
 /** 沿用原检查计划及已选复用语义；实际输入、失败与原收据仍由执行器核对。 */
 function inheritedCheck(run: WorkflowRun) {
@@ -495,6 +496,23 @@ export function classicSdkContinuation(
   }
   if (nextAction?.kind === 'evidence') {
     const evidence = current.evidenceWaits.find((entry) => entry.id === nextAction.evidenceId)!;
+    if (
+      [
+        'classic-open-artifacts',
+        'classic-design-document',
+        'classic-build-plan',
+        'classic-verification-report',
+        'classic-build-check',
+        'classic-verify-check',
+      ].includes(evidence.kind)
+    )
+      return result({
+        mode: 'execute',
+        commandArgs: command('next', '--continue'),
+        requiredInputs: [],
+        instruction:
+          '沿原 Run 提交已接受材料和真实检查收据；CLI 装配原请求身份，不重跑已完成检查。',
+      });
     return result({
       mode: 'execute',
       commandArgs: dispatch,
@@ -515,31 +533,32 @@ export function classicSdkContinuation(
     if (action.ref === 'classic-open-revalidate')
       return result({
         mode: 'execute',
-        commandArgs: dispatch,
-        requiredInputs: ['request-json-file'],
+        commandArgs: command('next', '--continue'),
+        requiredInputs: [],
         instruction: '由原 Open 执行器重新校验已批准的产物；授权或来源变化仍由 Runtime 拒绝。',
-        request: {
-          operation: 'execute',
-          ...identity,
-          actionId: action.id,
-          executorId: 'comet-classic-open-revalidate',
-        },
       });
     if (action.ref === 'classic-check') {
       if (action.stepId.endsWith('.delivery.check'))
         return result({
           mode: 'execute',
-          commandArgs: dispatch,
-          requiredInputs: ['request-json-file'],
-          request: {
-            operation: 'execute',
-            ...identity,
-            actionId: action.id,
-            executorId: 'comet-classic-check',
-          },
+          commandArgs: command('next', '--continue'),
+          requiredInputs: [],
           instruction: classicSdkDeliveryCheckInstruction,
         });
       const scope = action.stepId.includes('.build.') ? 'build' : 'verify';
+      const plans = (run.input as { checkCommands?: Partial<Record<'build' | 'verify', unknown>> })
+        .checkCommands;
+      if (
+        plans?.[scope] ||
+        classicSdkCheckPreparationInput(run, action) ||
+        classicSdkCheckRefreshInput(run, action)
+      )
+        return result({
+          mode: 'execute',
+          commandArgs: command('next', '--continue'),
+          requiredInputs: [],
+          instruction: classicSdkCheckInstruction,
+        });
       const priorCheck = inheritedCheck(run);
       return result({
         mode: 'execute',
@@ -720,59 +739,8 @@ export async function classicSdkEntryData(
 ) {
   const { run, projectRoot } = inspected;
   const state = run.state as unknown as ClassicState;
-  const scope = await classicEditReviewScope(projectRoot, change, state);
-  const formalScope = await classicFormalEditReviewScope(
-    projectRoot,
-    change,
-    state,
-    false,
-    scope,
-    run,
-  );
-  const [ordinaryReviews, formalReviews] = state.archived
-    ? [[], []]
-    : await Promise.all([inspectEditReviews(scope), inspectEditReviews(formalScope)]);
-  const editReviews = [...ordinaryReviews, ...formalReviews];
   const normalContinuation = classicSdkContinuation(run, projectRoot, change, observation);
   const nextAction = classicSdkNextAction(run);
-  let edit =
-    !state.archived && ['design', 'build', 'verify', 'archive'].includes(state.phase)
-      ? ((await editReviewContinuation(formalScope, formalReviews, true)) ??
-        (await editReviewContinuation(scope, ordinaryReviews, true)))
-      : null;
-  if (
-    edit?.mode === 'reconcile' &&
-    canReopenClassicVerification(run) &&
-    !(await editReviewContinuation(formalScope, formalReviews, true))
-  ) {
-    const remaining = ordinaryReviews.filter(
-      (review) =>
-        !(
-          review.applied &&
-          review.receipt?.authority.kind === 'runtime-agent' &&
-          review.receipt.decision === 'implementation-changed'
-        ),
-    );
-    if (
-      remaining.length !== ordinaryReviews.length &&
-      !(await editReviewContinuation(scope, remaining, true))
-    )
-      edit = {
-        mode: 'execute',
-        commandArgs: [
-          'comet',
-          'state',
-          'continue-build',
-          change,
-          '--expected-revision',
-          String(run.revision),
-          '--json',
-        ],
-        requiredInputs: [],
-        instruction:
-          '在同一 Run 更新实现并重新验收当前候选；保留已有需求批准、配置和未受影响的检查。需求或授权范围变化时先取得对应决定。',
-      };
-  }
   const base = {
     change,
     runtimeFormat: 'sdk' as const,
@@ -783,43 +751,16 @@ export async function classicSdkEntryData(
       nextAction?.stepId === 'full.open'
         ? { ...nextAction, instruction: normalContinuation.instruction }
         : nextAction,
-    continuation: edit
-      ? { ...normalContinuation, ...edit, skill: undefined, completion: undefined }
-      : normalContinuation,
+    continuation: normalContinuation,
     configuration: state,
     delivery: state.phase === 'archive' ? classicSdkDeliverySummary(run) : null,
     projectRoot,
     workspace: { projectRoot },
-    ...(editReviews.length ? { editReviews } : {}),
     run: classicSdkRunSummary(run, details),
   };
   try {
     const { directory } = await resolveClassicChangeDirectory(change, projectRoot);
     const revisionIssues = await inspectClassicSdkRevisionReadiness(projectRoot, run);
-    if (!edit && !state.archived && Object.keys(formalScope.approvedSources ?? {}).length) {
-      for (const issue of revisionIssues) {
-        const operation = issue.commandArgs[2];
-        if (
-          !['revise-design', 'revise-plan', 'propose-escalation'].includes(operation) &&
-          !(state.workflow !== 'full' && operation === 'continue-build')
-        )
-          continue;
-        issue.commandArgs = [
-          'comet',
-          'edit-review',
-          'prepare-applied',
-          'classic',
-          change,
-          '--project-root',
-          projectRoot,
-          '--session',
-          '<current-agent-session>',
-          '--json',
-        ];
-        issue.remediation =
-          '先读取已批准原文，由当前 Agent 判断实际变化和影响；契约未变时保留原批准，需要新决定时再使用原流程修订。';
-      }
-    }
     const branch = ['completed', 'cancelled'].includes(run.status)
       ? null
       : evaluateBranchBinding({
@@ -842,7 +783,6 @@ export async function classicSdkEntryData(
           : ['comet', 'state', 'rebind', change, '--json'],
       });
     const unresolved = run.actions.some((action) => ['running', 'unknown'].includes(action.status));
-    const prepareFormalReview = revisionIssues[0]?.commandArgs[1] === 'edit-review';
     const recovery = await classicRecoveryContext(projectRoot, directory, state, details, null, {
       editReview: false,
     });
@@ -860,11 +800,11 @@ export async function classicSdkEntryData(
         ? {
             issues: revisionIssues,
             recoveryActions: revisionIssues.map((issue) => ({ commandArgs: issue.commandArgs })),
-            ...(!unresolved && (!edit || edit.mode === 'reconcile')
+            ...(!unresolved
               ? {
                   continuation: {
                     ...base.continuation,
-                    mode: prepareFormalReview ? ('execute' as const) : ('reconcile' as const),
+                    mode: 'reconcile' as const,
                     commandArgs:
                       revisionIssues[0].commandArgs[0] === 'comet'
                         ? [...revisionIssues[0].commandArgs, '--json'].filter(
@@ -872,7 +812,7 @@ export async function classicSdkEntryData(
                               arg !== '--json' || index === args.indexOf('--json'),
                           )
                         : revisionIssues[0].commandArgs,
-                    requiredInputs: prepareFormalReview ? ['current-agent-session'] : [],
+                    requiredInputs: [],
                     instruction: `${revisionIssues[0].message}；${revisionIssues[0].remediation}`,
                     completion: undefined,
                   },
@@ -987,5 +927,3 @@ export function classicSdkBlockedContinuation(
     instruction: `当前工作仍被阻塞：${message}。先修复或核对所列问题；不要重复原失败命令，也不要重放已领取的工作。`,
   };
 }
-import { inspectEditReviews, editReviewContinuation } from '../workflow-contract/edit-review.js';
-import { classicEditReviewScope, classicFormalEditReviewScope } from './classic-edit-review.js';

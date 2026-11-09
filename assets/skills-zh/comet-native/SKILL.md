@@ -33,13 +33,13 @@ Native 在项目中保存需求和验收结论。先确认 change 的运行格�
 
 ## SDK Run 路径
 
-Shape 已明确确认并进入 Build 后，新建普通 SDK 任务使用 `native next <change> --session <真实会话标识> --json` 领取当前任务。响应 `comet.native.task-result.v1` 给出阶段、完整验收正文、结果模板和一个下一步，直接照此执行。
+新建内置 SDK 的普通任务和 Supervisor 任务使用 `native next <change> --session <真实会话标识> --json` 领取。Shape 中由 Agent 提取验收条目并提交，等待用户明确确认后进入 Build。响应 `comet.native.task-result.v1` 给出阶段、实际工作区、验收正文、结果模板和下一步，直接照此执行。多个任务可领取时，从 `availableTasks` 选择真实执行范围，并用其 Action 和实际会话领取；按 `task.child`、`task.scope` 和工作区完成当前任务。
 
 1. Builder 完成实现后，将 `resultTemplate` 的实际业务结果写入临时 UTF-8 JSON，用返回的 `next.commandArgs` 提交。保留命令中的 `--action` 和真实 `--session`。Runtime 连续运行必要检查；当前会话继续验收时使用 `--review current-session`，另请审查者时使用 `--review independent`，由接收者以自己的真实会话领取。
 2. Verify 覆盖全部验收项，复用有效检查，只补缺失证据；提交实际结论后，Runtime 返回用户接受结果的步骤。用户明确要求独立审查时必须选择独立会话。
 3. 只有用户事前明确委托“验收通过后接受并归档”时，才在本次 Verify 回报中加 `--accept-on-pass <用户授权摘要>`。该摘要绑定本次通过结果。其他情况等待用户接受，再执行返回的确认命令。Git 交付仍使用已有的对应授权。
 
-普通任务无需读取底层协议。当前响应为旧 `comet.native.sdk-status.v1`、`comet.native.dispatch-result.v1`、`comet.native.run-view.v1`，且高层入口不适用，或任务属于 Supervisor、固定应用时，读取[SDK Run 命令与恢复](reference/commands.md#sdk-run)。完整协议需要时用 `--details`，不额外查询 status 来识别已有响应。
+新建内置任务无需读取底层协议。Supervisor 回报后，Runtime 连续处理所选检查、集成和子归档；接收下一个子任务需使用其真实执行会话。父级验收保留全部要求，复用适用的子结果并补足集成缺口。当前响应为旧 `comet.native.sdk-status.v1`、`comet.native.dispatch-result.v1`、`comet.native.run-view.v1`，且高层入口不适用，或属于固定应用时，读取[SDK Run 命令与恢复](reference/commands.md#sdk-run)。完整协议需要时用 `--details`，不额外查询 status 来识别已有响应。
 
 两种 Runtime 均使用最新 `continuation`；`--runner-input` 和旧 Archive 输入仅用于旧 Runtime。SDK 路径遵守用户确认、当前 Action 的验收要求和工作区授权。旧 change 不自动迁移。
 
@@ -65,9 +65,9 @@ Agent 先调查能够查明的事实，只询问会改变用户可见结果、�
 
 完成标准：需求来源已在用户指定的覆盖边界内完整处理并按用途分类，所有影响结果的决定和假设已处理，没有 `[blocking]`，用户明确确认目标、范围、关键决定、全部验收项和非目标，并且 Runtime 已进入 Build。
 
-新建需求或重新确认 Shape 时，brief 只要求目标、范围、非目标和验收示例四个核心章节；有约束、关键决定、待解决问题或特殊验证要求时再补对应章节。Runtime 同时检查完整目标 Spec 或明确的无产品行为变更理由及正式路径。失败会给出文件和修复动作；补齐后重跑 continuation。后续阶段的旧需求保留进度，回到 Shape 时再检查。
+新建需求或重新确认 Shape 时，由 Agent 判断目标、范围、非目标、验收和必要 Spec 是否充分，按任务需要组织文档。Runtime 保留正式路径、非空输入、机器结构和用户确认检查。新建普通 SDK Run 可通过 `next --session` 提交明确验收条目，不要求为解析器改写文档。
 
-Build、Verify 或待归档阶段出现实际文件变化，或 continuation 指向内容判断时，必须先读取并执行[编辑后续行](reference/edit-review.md)，再处理阶段动作或修订命令。由当前 Agent 合并判断实际变化，只补受影响证据，沿用原 Run 和仍有效的批准。修订命令不构成用户授权；缺授权时保留原阶段与已接受结果，只请求相关决定。
+Build、Verify 或待归档阶段发生编辑时，按[编辑后续行](reference/edit-review.md)由当前 Agent 判断影响，沿用原 Run 和有效批准，只补必要检查。文件变化不自动作废验收，不提交指纹、hash 或编辑复核记录。修订命令不构成用户授权；缺授权时只请求受影响的决定。
 
 ## Build ↔ Verify Loop
 
@@ -75,13 +75,13 @@ Builder 提交候选实现后，由 Runtime 执行检查，再由实际领取 Ve
 
 Verifier 先读原始请求，再对照 Spec 和实现，核对有无遗漏、未经授权的范围缩减或接口行为变化。SDK Run 使用同一份验收结果中的 `requestReview` 说明结论；有冲突或仍影响交付的疑问时，保留 fail 或 blocked。旧 Run 和 Compat 没有保存原始请求时，从交接材料和用户记录补查，不把新生成的 Spec 当成唯一需求来源；Compat 沿用原结果结构。语义核对沿用当前 Verifier，不增加 Agent 或固定测试轮次。
 
-`iteration` 表示提交实现的轮次，`attempt` 表示对同一份候选实现启动 Verifier 的次数。所有计数都由 Runtime 更新。连续验收失败或没有进展的次数达到配置上限时，按最新指令等待用户决定或处理阻塞。
+`iteration` 表示提交实现的轮次，`attempt` 表示同一候选的 Verifier 执行次数。Runtime 保留真实失败次数预算和执行上限；Agent 根据实际修改和结果判断进展。未解决验收项 ID 相同或集合未缩小，不触发额外提示、暂停或重新确认。
 
 ## Build
 
 首次实现前，读取当前 brief、完整目标规格和全部验收项，在已确认的需求范围内修改项目代码和测试。修复时优先处理 Verifier 指出的未通过项、无法验证的原因和失败检查；提交前仍要核对其他已确认行为。`previous_unresolved_ids` 只提示本轮修复重点，下一次正式验收仍覆盖全部验收项。
 
-Build、Verify 和 Archive 会复查正式文件与已批准原文的绑定。出现变化时由当前 Agent 判断语义和影响；契约未变则保留批准，目标、验收标准或授权发生实质变化时才请求相关决定。Hook 编辑后在下一次实现写入或推进前核对实际内容，Hook 未触发也会核对。旧 Shape 沿用原绑定；文档或报告失效时保留工作，只处理具体缺项。普通文档默认不作废候选，可用 `native.document_writes: revert` 保留严格行为；路径范围见[正式产物](reference/artifacts.md#正式产物)。
+Build、Verify 和 Archive 由 Agent 对照实际文件和用户要求判断变化，不以内容摘要决定批准或验收是否失效。需求未变则保留批准，目标、验收标准或授权发生实质变化且原决定未覆盖时才重新确认。正式产物位置和阶段权限见[正式产物](reference/artifacts.md#正式产物)。
 
 用户 Hook 的共享输出目录可通过 `.comet/config.yaml` 的 `hook.allow_paths` 放行；该配置对 Native 和 Classic 共用，工作流产物目录不在白名单范围。详见[用户 Hook 写入](reference/commands.md#用户-hook-写入)。
 

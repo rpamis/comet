@@ -1,11 +1,11 @@
-import { assertNativeInputKeys as exactKeys } from './native-input-error.js';
 import {
+  NATIVE_REQUEST_REVIEW_RESULTS,
   NATIVE_VERIFIER_ACCEPTANCE_RESULTS,
   NATIVE_VERIFIER_RESPONSE_KINDS,
   NATIVE_VERIFIER_VERDICTS,
-  NATIVE_REQUEST_REVIEW_RESULTS,
   nativeEnumText,
 } from './native-input-enum.js';
+import { assertNativeInputKeys as exactKeys } from './native-input-error.js';
 import {
   isNativeTrustedVerifierEnvelope,
   type NativeTrustedVerifierEnvelope,
@@ -37,6 +37,7 @@ export interface NativeVerifierCheckRequest {
   cwdRef: string;
   timeoutMs: number;
   repeatable: boolean;
+  reusable?: boolean;
 }
 
 export type NativeVerifierResponse =
@@ -171,7 +172,16 @@ function parseCheckRequest(
   const input = plainRecord(value, `Native Verifier check request ${index}`);
   exactKeys(
     input,
-    ['id', 'name', 'executable', 'argv', 'cwdRef', 'timeoutMs', 'repeatable'],
+    [
+      'id',
+      'name',
+      'executable',
+      'argv',
+      'cwdRef',
+      'timeoutMs',
+      'repeatable',
+      ...(Object.hasOwn(input, 'reusable') ? ['reusable'] : []),
+    ],
     `Native Verifier check request ${index}`,
     `${inputPath}/${index}`,
   );
@@ -191,6 +201,7 @@ function parseCheckRequest(
     cwdRef: text(input.cwdRef, `Native Verifier check request ${index} cwd`),
     timeoutMs,
     repeatable: input.repeatable,
+    ...(input.reusable === undefined ? {} : { reusable: input.reusable === true }),
   };
 }
 

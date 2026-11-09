@@ -1,5 +1,66 @@
-import { assertNativeEditReviewsComplete } from './native-edit-review.js';
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
+import {
+  isNativeCheckTerminationUnconfirmedError,
+  type NativeCheckPlan,
+} from './native-check-executor.js';
+import {
+  inspectNativeChildren,
+  nativeChildrenAcceptanceValidation,
+  readNativeChildrenContract,
+} from './native-children.js';
+import {
+  readNativeLocalExecution,
+  readOrRebuildNativeLocalExecution,
+  rebuildNativeLocalExecution,
+  writeNativeLocalExecution,
+} from './native-local-execution.js';
+import {
+  applyNativeVerifierEnvelope,
+  confirmNativeVerifierUnavailable,
+  NATIVE_MAX_VERIFIER_EXECUTION_FAILURES,
+  recordNativeVerifierUnavailable,
+  reserveNativeVerifierAttempt,
+  resolveNativeVerifierBlocker,
+  retryNativeVerifier,
+  returnNativeCandidateToBuild,
+  submitNativeBuilderCandidate,
+  type NativeBuilderCandidateInput,
+} from './native-loop-runtime.js';
+import { withNativeMutationLock } from './native-mutation-lock.js';
+import {
+  authoritativePortableChecks,
+  executeReservedVerifierRequestedChecks,
+  persistVerifierExecutionError,
+  preservedLocalChecksForVersion,
+  readCurrentLocalExecution,
+  rebindNativeCheckEvidence,
+  reserveVerifierRequestedChecks,
+  type NativePortableRequestChecksOutcome,
+} from './native-portable-checks.js';
+import {
+  assertNativePortableExpectedContinuationLocked,
+  type NativePortableExpectedContinuation,
+} from './native-portable-requirements.js';
+import {
+  currentBranch,
+  nativeLocalExecutionFile,
+  nativePortableChangeDir,
+  readNativePortableChange,
+  writePortableMutation,
+} from './native-portable-storage.js';
+import type {
+  NativeLocalExecutionState,
+  NativePortableCheckSummary,
+  NativePortableState,
+} from './native-portable-types.js';
+import type { NativeTrustedVerifierEnvelope } from './native-runner-protocol.js';
+import { isNativeTrustedVerifierEnvelope } from './native-runner-protocol.js';
+import type { NativeProjectPaths } from './native-types.js';
+import {
+  inspectNativeVerificationReportAlignment,
+  writeNativeVerificationReport,
+} from './native-verification-report-v2.js';
 import {
   activeNativeVerifierAction,
   completeNativeVerifierAction,
@@ -10,75 +71,9 @@ import {
   startNativeVerifierAction,
 } from './native-verifier-action.js';
 import {
-  isNativeCheckTerminationUnconfirmedError,
-  type NativeCheckPlan,
-} from './native-check-executor.js';
-import path from 'node:path';
-import {
-  inspectNativeChildren,
-  nativeChildrenAcceptanceValidation,
-  readNativeChildrenContract,
-} from './native-children.js';
-import {
-  applyNativeVerifierEnvelope,
-  confirmNativeVerifierUnavailable,
-  NATIVE_MAX_VERIFIER_EXECUTION_FAILURES,
-  recordNativeVerifierUnavailable,
-  resolveNativeVerifierBlocker,
-  returnNativeCandidateToBuild,
-  reserveNativeVerifierAttempt,
-  retryNativeVerifier,
-  submitNativeBuilderCandidate,
-  type NativeBuilderCandidateInput,
-} from './native-loop-runtime.js';
-import {
-  readNativeLocalExecution,
-  readOrRebuildNativeLocalExecution,
-  rebuildNativeLocalExecution,
-  writeNativeLocalExecution,
-} from './native-local-execution.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
-import type {
-  NativeLocalExecutionState,
-  NativePortableCheckSummary,
-  NativePortableState,
-} from './native-portable-types.js';
-import type { NativeTrustedVerifierEnvelope } from './native-runner-protocol.js';
-import {
   parseNativeVerifierResponse,
   type NativeVerifierResponse,
 } from './native-verifier-protocol.js';
-import {
-  inspectNativeVerificationReportAlignment,
-  writeNativeVerificationReport,
-} from './native-verification-report-v2.js';
-import type { NativeProjectPaths } from './native-types.js';
-import { isNativeTrustedVerifierEnvelope } from './native-runner-protocol.js';
-import {
-  currentBranch,
-  nativeLocalExecutionFile,
-  nativePortableChangeDir,
-  readNativePortableChange,
-  writePortableMutation,
-} from './native-portable-storage.js';
-import {
-  assertNativePortableExpectedContinuationLocked,
-  ensureNativePortableAcceptanceCurrentLocked,
-  type NativePortableExpectedContinuation,
-} from './native-portable-requirements.js';
-import {
-  authoritativePortableChecks,
-  executeReservedVerifierRequestedChecks,
-  persistVerifierExecutionError,
-  preservedLocalChecksForVersion,
-  readCurrentLocalExecution,
-  rebindNativeCheckEvidence,
-  reserveVerifierRequestedChecks,
-  captureNativePortableCandidateInputs,
-  assertNativePortableRawCandidate,
-  assertNativePortableRawCheckInputs,
-  type NativePortableRequestChecksOutcome,
-} from './native-portable-checks.js';
 
 export interface NativeVerifierAttemptBinding {
   stateVersion: number;
@@ -187,29 +182,20 @@ export async function submitNativePortableBuilderCandidate(options: {
     `submit portable candidate ${options.name}`,
     async () => {
       const state = await readNativePortableChange(options.paths, options.name);
-      await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
       const children = await readNativeChildrenContract({
         changeDir: nativePortableChangeDir(options.paths, state.name),
         acceptanceIds: state.acceptance.map(({ id }) => id),
         validation: nativeChildrenAcceptanceValidation(state),
       });
-      if (children || state.children_contract_hash) {
+      if (children || state.children_contract_ref) {
         const childStatus = await inspectNativeChildren({ paths: options.paths, state });
         if (!childStatus?.confirmed || !childStatus.allDone) {
           throw new Error('Native parent Build advances child changes before parent review');
         }
-        if (state.loop.stage === 'repairing' && state.verification_result === 'fail') {
-          throw new Error('Native parent verification failed; complete the repair child first');
-        }
       }
       const next = submitNativeBuilderCandidate({ state, input: options.input });
+      delete next.builder_handoff!.raw_input_ref;
       const projectRoot = options.projectRoot ?? options.paths.projectRoot;
-      const rawCandidate = await captureNativePortableCandidateInputs(
-        options.paths,
-        next,
-        projectRoot,
-      );
-      next.builder_handoff!.raw_input_ref = rawCandidate.rawInputRef;
       const reusable =
         options.verificationChecks === undefined
           ? null
@@ -231,7 +217,6 @@ export async function submitNativePortableBuilderCandidate(options: {
               projectRoot,
               branch: currentBranch(projectRoot),
             })),
-          ...rawCandidate,
         },
         { containedRoot: options.paths.runtimeDir },
       );
@@ -253,7 +238,6 @@ export async function dispatchNativePortableVerifier(options: {
     async () => {
       const state = await readNativePortableChange(options.paths, options.name);
       const projectRoot = options.projectRoot ?? options.paths.projectRoot;
-      await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
       const localBeforeDispatch = (
         await readOrRebuildNativeLocalExecution({
           file: nativeLocalExecutionFile(options.paths, state.name),
@@ -274,9 +258,6 @@ export async function dispatchNativePortableVerifier(options: {
         local: localBeforeDispatch,
         projectRoot,
         supplied: options.checks,
-      });
-      await assertNativePortableRawCheckInputs(options.paths, state, localBeforeDispatch, {
-        requirePassed: false,
       });
       const next = reserveNativeVerifierAttempt(state);
       const operationId = randomUUID();
@@ -441,7 +422,6 @@ export async function submitNativePortableVerifierResult(options: {
           },
         };
       }
-      await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
       const local = await readCurrentLocalExecution({ paths: options.paths, state });
       const trustedEnvelope = assertCurrentVerifierEnvelope({
         state,
@@ -458,8 +438,6 @@ export async function submitNativePortableVerifierResult(options: {
         );
       }
       const position = nativeVerifierResponsePosition(parsedResponse);
-      if (parsedResponse.kind !== 'request-checks')
-        await assertNativeEditReviewsComplete(options.paths, state);
       if (position.iteration !== state.loop.iteration || position.attempt !== state.loop.attempt) {
         throw new Error(
           `Native Verifier result is stale for the current iteration or attempt: expected iteration=${state.loop.iteration}, attempt=${state.loop.attempt}; received iteration=${position.iteration}, attempt=${position.attempt}. Inspect the current Verifier input before submitting again`,
@@ -469,10 +447,6 @@ export async function submitNativePortableVerifierResult(options: {
       let finalResult: ReturnType<typeof applyNativeVerifierEnvelope>;
       try {
         if (local !== null) {
-          if (parsedResponse.kind === 'request-checks')
-            await assertNativePortableRawCandidate(options.paths, state, local);
-          else if (parsedResponse.result.verdict === 'pass')
-            await assertNativePortableRawCheckInputs(options.paths, state, local);
           runtimeChecks = authoritativePortableChecks({
             local,
             projectRoot,
@@ -649,7 +623,6 @@ export async function recordNativePortableVerifierUnavailable(options: {
     `record unavailable portable verifier ${options.name}`,
     async () => {
       const state = await readNativePortableChange(options.paths, options.name);
-      await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
       const local = await readCurrentLocalExecution({ paths: options.paths, state });
       const activeLocal = assertCurrentVerifierAttempt({
         state,
@@ -717,14 +690,12 @@ export async function confirmNativePortableVerifierUnavailable(options: {
         expected: options.expectedContinuation,
         action: 'confirm-verifier-unavailable',
       });
-      await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
       const local = await readCurrentLocalExecution({ paths: options.paths, state });
-      if (local?.rawInputRef) await assertNativePortableRawCheckInputs(options.paths, state, local);
       const next = confirmNativeVerifierUnavailable({ state, summary: options.summary });
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),
-        local?.rawInputRef
+        local
           ? preservedLocalChecksForVersion({
               local,
               state: written,
@@ -762,7 +733,6 @@ export async function resolveNativePortableVerifierBlocker(options: {
         expected: options.expectedContinuation,
         action: 'resolve-verifier-blocker',
       });
-      await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
       const local = await readCurrentLocalExecution({ paths: options.paths, state });
       const next = resolveNativeVerifierBlocker(state, { reason: options.reason });
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });

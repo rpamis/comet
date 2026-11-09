@@ -1,6 +1,6 @@
-import { CLASSIC_TRANSITION_EVENTS } from './classic-transitions.js';
-import { CLASSIC_WIRE_KEYS, RUN_WIRE_KEYS } from './classic-state.js';
 import { FIELD_ENUMS, SETTABLE_FIELDS } from './classic-state-options.js';
+import { CLASSIC_WIRE_KEYS, RUN_WIRE_KEYS } from './classic-state.js';
+import { CLASSIC_TRANSITION_EVENTS } from './classic-transitions.js';
 
 const OUTPUT_HELP =
   '\nOptions: --json (machine-readable output), --compact (requires --json), --help\n' +
@@ -139,7 +139,7 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
     ],
     handoff: [
       'comet handoff <change-name> design --write [--full]',
-      'comet handoff <change-name> --hash-only',
+      'References the original source files; --full explicitly generates one readable Markdown view without changing approvals.',
     ],
     archive: [
       'comet archive <change-name> [--dry-run|--recover]',
@@ -158,8 +158,8 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'Reports the selected Classic change. Does not advance the phase.',
     ],
     next: [
-      'comet state next <change-name> [--details]',
-      'Reports the next workflow action. Does not execute build or verification checks.',
+      'comet state next <change-name> [--details] [--continue]',
+      'Reports the next workflow action. --continue executes only recorded SDK commands and authorized internal steps, stopping for Agent work, user decisions, failures or unresolved executions.',
       'SDK JSON includes recovery paths, configuration, compact task state and current Run handles. --details expands tasks, checkpoint content and full Run history.',
     ],
     select: [

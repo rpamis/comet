@@ -10,42 +10,6 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
-it('captures a stable complete input proof for an isolated Node syntax check', async () => {
-  vi.stubEnv('LD_LIBRARY_PATH', undefined);
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-check-scope-'));
-  roots.push(root);
-  await fs.writeFile(path.join(root, 'value.mjs'), 'export const value = 1;\n');
-  const options = {
-    projectRoot: root,
-    contract: 'approved-shape',
-    plan: {
-      id: 'syntax',
-      name: 'Syntax',
-      executable: process.execPath,
-      argv: ['--check', 'value.mjs'],
-      cwdRef: '.',
-      timeoutMs: 5_000,
-      repeatable: true,
-    },
-  };
-  const first = await captureNativeCheckScope(options);
-  expect(first).not.toBeNull();
-  expect(await captureNativeCheckScope(options)).toEqual(first);
-  await fs.writeFile(path.join(root, 'package.json'), '{"type":"module"}');
-  expect((await captureNativeCheckScope(options))?.inputDigest).not.toBe(first?.inputDigest);
-  expect(
-    await captureNativeCheckScope({
-      ...options,
-      plan: { ...options.plan, argv: ['-e', 'process.exit(0)'] },
-    }),
-  ).toBeNull();
-  vi.stubEnv('NODE_OPTIONS', '--require ./preload.cjs');
-  expect(await captureNativeCheckScope(options)).toBeNull();
-  vi.stubEnv('NODE_OPTIONS', undefined);
-  vi.stubEnv('LD_LIBRARY_PATH', '/unproven-loader-path');
-  expect(await captureNativeCheckScope(options)).toBeNull();
-});
-
 it('does not establish a reusable scope for a directory replacing the syntax input', async () => {
   vi.stubEnv('LD_LIBRARY_PATH', undefined);
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-check-scope-directory-'));

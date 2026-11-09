@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import * as classic from '../../../domains/comet-classic/index.js';
-import { writeClassicSdkDesignContext } from '../../../domains/comet-classic/classic-handoff.js';
+import { resolveClassicDesignContext } from '../../../domains/comet-classic/classic-handoff.js';
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
 import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
 import {
@@ -375,7 +375,7 @@ async function fixture(
       await approve('upgrade');
     }
     if (profile === 'full' || escalate) {
-      const handoff = await writeClassicSdkDesignContext({
+      const handoff = await resolveClassicDesignContext({
         projectRoot,
         run,
         changeDir,

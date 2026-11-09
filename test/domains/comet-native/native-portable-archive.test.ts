@@ -7,6 +7,8 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as gitCommands from '../../../platform/process/git.js';
+import * as checkExecutor from '../../../domains/comet-native/native-check-executor.js';
+import { retryNativePortableCheckPlan } from '../../../domains/comet-native/native-portable-checks.js';
 import { ensureCometProjectGitignore } from '../../../domains/workflow-contract/project-gitignore.js';
 import { nativeArchiveCommand } from '../../../domains/comet-native/native-archive-command.js';
 import { atomicWriteJson } from '../../../domains/comet-native/native-atomic-file.js';
@@ -818,7 +820,10 @@ describe('Native portable Archive', () => {
           id: 'check',
           name: 'Count execution',
           executable: process.execPath,
-          argv: ['-e', `require('node:fs').appendFileSync(${JSON.stringify(counter)}, 'x')`],
+          argv: [
+            '-e',
+            `const fs=require('node:fs');fs.appendFileSync(${JSON.stringify(counter)}, 'x');if(fs.readFileSync(${JSON.stringify(input)},'utf8')!=='original')process.exit(1)`,
+          ],
           cwdRef: '.',
           timeoutMs: 10000,
           repeatable: true,
@@ -828,71 +833,37 @@ describe('Native portable Archive', () => {
         path.join(nativePortableChangeDir(paths, name), 'verification.md'),
         'utf8',
       );
-      const prepare = async () => {
-        const observed = (await runNativeEditReviewCommand({
-          projectRoot: root,
-          name,
-          operation: 'observe',
-          sessionId: 'current-agent',
-        })) as { observation: { refreshInputTemplate: Record<string, unknown> } };
-        await fs.writeFile(
-          request,
-          JSON.stringify({
-            ...observed.observation.refreshInputTemplate,
-            checkIds: ['check'],
-            summary: 'Refresh original repeatable check.',
-          }),
-        );
+      const plan = {
+        id: 'check',
+        name: 'Count execution',
+        executable: process.execPath,
+        argv: [
+          '-e',
+          `const fs=require('node:fs');fs.appendFileSync(${JSON.stringify(counter)}, 'x');if(fs.readFileSync(${JSON.stringify(input)},'utf8')!=='original')process.exit(1)`,
+        ],
+        cwdRef: '.',
+        timeoutMs: 10000,
+        repeatable: true,
+        reusable: true,
       };
-      await prepare();
-      const actualRename = fs.rename.bind(fs);
-      let injected = false;
-      const spy = vi.spyOn(fs, 'rename').mockImplementation(async (from, to) => {
-        await actualRename(from, to);
-        if (injected || String(to) !== nativeLocalExecutionFile(paths, name)) return;
-        const local = (await readNativeLocalExecution(String(to)))!;
-        if (
-          local.execution?.status === 'running' &&
-          local.checks.some((check) => check.status === 'planned')
-        ) {
-          injected = true;
-          await fs.writeFile(input, 'late edit after reservation');
-        }
-      });
+      const launch = vi
+        .spyOn(checkExecutor, 'executeNativeCheck')
+        .mockRejectedValueOnce(new Error('simulated prelaunch interruption'));
       try {
         await expect(
-          runNativeEditReviewCommand({
-            projectRoot: root,
-            name,
-            operation: 'refresh-checks',
-            file: request,
-          }),
-        ).rejects.toThrow('当前 Agent');
+          executeNativePortableCheckPlan({ paths, name, plans: [plan], retryCheckIds: ['check'] }),
+        ).rejects.toThrow('simulated prelaunch interruption');
       } finally {
-        spy.mockRestore();
+        launch.mockRestore();
       }
       const interrupted = (await readNativeLocalExecution(nativeLocalExecutionFile(paths, name)))!;
-      expect(injected).toBe(true);
       expect(interrupted.checks[0]).toMatchObject({
         status: 'interrupted',
-        rawInput: expect.any(Object),
       });
       expect(interrupted.checks[0].evidenceDigest ?? null).toBeNull();
       expect(await fs.readFile(counter, 'utf8')).toBe('x');
-      await fs.writeFile(input, 'original');
-      await prepare();
-      await runNativeEditReviewCommand({
-        projectRoot: root,
-        name,
-        operation: 'refresh-checks',
-        file: request,
-      });
-      await runNativeEditReviewCommand({
-        projectRoot: root,
-        name,
-        operation: 'refresh-checks',
-        file: request,
-      });
+      await retryNativePortableCheckPlan({ paths, name, checkIds: ['check'] });
+      await executeNativePortableCheckPlan({ paths, name, plans: [plan] });
       expect(await fs.readFile(counter, 'utf8')).toBe('xx');
       expect(await readNativePortableChange(paths, name)).toEqual(state);
       expect(
@@ -901,6 +872,25 @@ describe('Native portable Archive', () => {
           'utf8',
         ),
       ).toBe(report);
+      await fs.writeFile(input, 'bad');
+      const failed = await executeNativePortableCheckPlan({
+        paths,
+        name,
+        plans: [plan],
+        retryCheckIds: ['check'],
+      });
+      expect(failed.checks[0]).toMatchObject({ status: 'failed', exit_code: 1 });
+      expect((await inspectNativePortableArchive({ paths, name })).ready).toBe(false);
+      await expect(archiveNativePortableChange({ paths, name })).rejects.toThrow('最新检查');
+      await fs.writeFile(input, 'original');
+      await executeNativePortableCheckPlan({
+        paths,
+        name,
+        plans: [plan],
+        retryCheckIds: ['check'],
+      });
+      expect((await archiveNativePortableChange({ paths, name })).state.archived).toBe(true);
+      expect(await fs.readFile(counter, 'utf8')).toBe('xxxx');
     } finally {
       await fs.rm(counter, { force: true });
       await fs.rm(request, { force: true });
@@ -1147,22 +1137,6 @@ describe('Native portable Archive', () => {
       expect(await readNativeLocalExecution(nativeLocalExecutionFile(paths, name))).toEqual(local);
       state = await dispatchNativePortableVerifier({ paths, name, checks: original.checks });
       await fs.writeFile(path.join(root, 'note.unknown'), 'additional explanation');
-      const observed = (await runNativeEditReviewCommand({
-        projectRoot: root,
-        name,
-        operation: 'observe',
-        sessionId: 'once-verifier',
-      })) as { recordTemplate: Record<string, unknown> };
-      await fs.writeFile(
-        file,
-        JSON.stringify({
-          ...observed.recordTemplate,
-          decision: 'non-behavioral',
-          summary: 'Accepted behavior is unchanged, but the once-only check is not retained.',
-          retainedChecks: [],
-        }),
-      );
-      await runNativeEditReviewCommand({ projectRoot: root, name, operation: 'record', file });
       await expect(
         submitNativePortableVerifierResult({
           paths,
@@ -1185,9 +1159,11 @@ describe('Native portable Archive', () => {
         }),
       ).rejects.toThrow('not repeatable');
       expect(await fs.readFile(counter, 'utf8')).toBe('x');
+      const originalCheck = { ...local!.checks[0] };
+      delete (originalCheck as Partial<typeof originalCheck>).operationId;
       expect(
-        (await readNativeLocalExecution(nativeLocalExecutionFile(paths, name)))?.checks[0].rawInput,
-      ).toEqual(local?.checks[0].rawInput);
+        (await readNativeLocalExecution(nativeLocalExecutionFile(paths, name)))?.checks[0],
+      ).toMatchObject(originalCheck);
       expect(await readNativePortableChange(paths, name)).toMatchObject({
         phase: 'verify',
         builder_handoff: { candidate_id: 'once-candidate' },
@@ -1633,122 +1609,6 @@ children:
 
     await expect(archiveNativePortableChange({ paths, name: state.name })).resolves.toMatchObject({
       state: { status: 'done', archived: true },
-    });
-  });
-
-  it('resumes from frozen Spec contents after a later active Spec edit', async () => {
-    const config = defaultProjectConfig('docs', 'en');
-    await writeProjectConfig(root, {
-      ...config,
-      native: { ...config.native, document_writes: 'revert' },
-    });
-    const originalBeta = '# Beta\n\nRuntime MUST preserve the confirmed beta behavior.\n';
-    const state = await archiveReady('frozen-specs', [
-      ['alpha', '# Alpha\n\nRuntime MUST preserve the confirmed alpha behavior.\n'],
-      ['beta', originalBeta],
-    ]);
-    await expect(
-      archiveNativePortableChange({
-        paths,
-        name: state.name,
-        hooks: {
-          afterSpecApplied: (index) => {
-            if (index === 0) throw new Error('pause-after-first-spec');
-          },
-        },
-      }),
-    ).rejects.toThrow('pause-after-first-spec');
-
-    await fs.writeFile(
-      path.join(nativePortableChangeDir(paths, state.name), 'specs', 'beta', 'spec.md'),
-      '# Beta\n\nRuntime MUST use an unconfirmed replacement.\n',
-    );
-    const resumed = await archiveNativePortableChange({ paths, name: state.name });
-
-    await expect(fs.readFile(path.join(paths.specsDir, 'beta', 'spec.md'), 'utf8')).resolves.toBe(
-      originalBeta,
-    );
-    await expect(
-      fs.readFile(path.join(resumed.archiveDir, 'specs', 'beta', 'spec.md'), 'utf8'),
-    ).resolves.toBe(originalBeta);
-  });
-
-  it('preserves a concurrent canonical Spec edit when recovering an interrupted Archive', async () => {
-    const config = defaultProjectConfig('docs', 'en');
-    await writeProjectConfig(root, {
-      ...config,
-      native: { ...config.native, document_writes: 'revert' },
-    });
-    const state = await archiveReady('canonical-edit-recovery');
-    await expect(
-      archiveNativePortableChange({
-        paths,
-        name: state.name,
-        hooks: { afterSpecApplied: () => Promise.reject(new Error('pause-after-spec')) },
-      }),
-    ).rejects.toThrow('pause-after-spec');
-    const file = path.join(paths.specsDir, 'sample', 'spec.md');
-    const edited = '# Sample\n\nConcurrent user change.\n';
-    await fs.writeFile(file, edited);
-    await expect(archiveNativePortableChange({ paths, name: state.name })).rejects.toThrow(
-      /fresh verification/iu,
-    );
-    expect(await fs.readFile(file, 'utf8')).toBe(edited);
-    expect((await readNativePortableChange(paths, state.name)).archived).toBe(false);
-  });
-
-  it('does not resume an old full-Spec journal without canonical target bindings', async () => {
-    const config = defaultProjectConfig('docs', 'en');
-    await writeProjectConfig(root, {
-      ...config,
-      native: { ...config.native, document_writes: 'revert' },
-    });
-    const state = await archiveReady('legacy-full-journal');
-    await expect(
-      archiveNativePortableChange({
-        paths,
-        name: state.name,
-        hooks: { afterSpecApplied: () => Promise.reject(new Error('pause-after-spec')) },
-      }),
-    ).rejects.toThrow('pause-after-spec');
-    const transaction = await readNativePortableTransaction(paths, {
-      kind: 'archive',
-      change: state.name,
-    });
-    expect(transaction?.kind).toBe('archive');
-    if (!transaction || transaction.kind !== 'archive') throw new Error('transaction missing');
-    await atomicWriteJson(
-      transaction.file,
-      {
-        ...transaction.journal,
-        spec_changes: transaction.journal.spec_changes.map((change) => {
-          const legacy = { ...change };
-          delete legacy.expected_target_hash;
-          delete legacy.result_hash;
-          return legacy;
-        }),
-      },
-      { containedRoot: paths.runtimeDir },
-    );
-    const file = path.join(paths.specsDir, 'sample', 'spec.md');
-    const edited = '# Sample\n\nConcurrent legacy journal edit.\n';
-    await fs.writeFile(file, edited);
-
-    await expect(nativeArchiveCommand([state.name, '--dry-run'], root)).resolves.toMatchObject({
-      exitCode: 0,
-      data: {
-        archived: false,
-        ready: false,
-        recovery: { action: 'reverify' },
-      },
-    });
-    await expect(archiveNativePortableChange({ paths, name: state.name })).rejects.toThrow(
-      /fresh verification/iu,
-    );
-    expect(await fs.readFile(file, 'utf8')).toBe(edited);
-    await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
-      phase: 'verify',
-      verification_result: 'pending',
     });
   });
 

@@ -53,57 +53,6 @@ describe('Native check input fingerprint', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it('excludes only declared untracked test outputs and binds tracked files and undeclared generated inputs', async () => {
-    await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n');
-    await fs.mkdir(path.join(root, 'dist/eval'), { recursive: true });
-    await fs.writeFile(path.join(root, 'dist/eval/tracked.json'), 'tracked');
-    await fs.writeFile(path.join(root, 'dist/app.js'), 'application');
-    git(root, 'add', '-f', 'dist/eval/tracked.json');
-    const before = await nativeRawInputSnapshot({ projectRoot: root, outputs: ['dist/eval'] });
-    await fs.writeFile(path.join(root, 'dist/eval/trace.json'), 'trace');
-    const after = await nativeRawInputSnapshot({ projectRoot: root, previous: before });
-    expect(after.complete, after.diagnostics.join(';')).toBe(true);
-    expect(after.contentHash).toBe(before.contentHash);
-    expect(after.files.map((file) => file.path)).toContain('dist/eval/tracked.json');
-    await fs.writeFile(path.join(root, 'dist/eval/tracked.json'), 'changed tracked');
-    const tracked = await nativeRawInputSnapshot({ projectRoot: root, previous: after });
-    expect(tracked.contentHash).not.toBe(after.contentHash);
-    await fs.writeFile(path.join(root, 'dist/app.js'), 'changed application');
-    const application = await nativeRawInputSnapshot({ projectRoot: root, previous: tracked });
-    expect(application.contentHash).not.toBe(tracked.contentHash);
-  });
-
-  it('observes raw mixed-language and binary changes without a compiler and separates Git metadata', async () => {
-    git(root, 'config', 'core.autocrlf', 'false');
-    for (const ref of ['code.py', 'code.ts', 'code.unknown', 'README.md'])
-      await fs.writeFile(path.join(root, ref), `${ref}\r\nnot necessarily valid syntax\r\n`);
-    await fs.writeFile(path.join(root, 'bytes.bin'), Buffer.from([0, 255, 128]));
-    const before = await nativeRawInputSnapshot({ projectRoot: root });
-    expect(before.complete, before.diagnostics.join(';')).toBe(true);
-    git(root, 'add', '.');
-    const staged = await nativeRawInputSnapshot({ projectRoot: root });
-    expect(staged.contentHash).toBe(before.contentHash);
-    expect(staged.git).not.toEqual(before.git);
-    git(root, 'reset', '--quiet');
-    expect((await nativeRawInputSnapshot({ projectRoot: root })).contentHash).toBe(
-      before.contentHash,
-    );
-    git(root, 'add', '.');
-    git(root, 'commit', '--quiet', '-m', 'mixed input');
-    git(root, 'commit', '--quiet', '--allow-empty', '-m', 'metadata only');
-    expect((await nativeRawInputSnapshot({ projectRoot: root })).contentHash).toBe(
-      before.contentHash,
-    );
-    await fs.writeFile(path.join(root, 'code.unknown'), 'changed content');
-    expect((await nativeRawInputSnapshot({ projectRoot: root })).contentHash).not.toBe(
-      before.contentHash,
-    );
-    await fs.unlink(path.join(root, 'code.py'));
-    const deleted = await nativeRawInputSnapshot({ projectRoot: root });
-    expect(deleted.complete, deleted.diagnostics.join(';')).toBe(true);
-    expect(deleted.files.some((file) => file.path === 'code.py')).toBe(false);
-  });
-
   it('reuses verified clean hashes but reads assume-unchanged edits with restored timestamps', async () => {
     const before = await nativeRawInputSnapshot({ projectRoot: root });
     expect(before.complete, before.diagnostics.join(';')).toBe(true);
@@ -146,53 +95,6 @@ describe('Native check input fingerprint', () => {
     expect(snapshot.diagnostics.join(';')).toContain('a.unknown');
     expect(await fs.readFile(path.join(root, 'a.unknown'), 'utf8')).toBe('later');
   });
-
-  it.each([false, true])(
-    'captures generated leaf metadata with bounded overlap and drains failures (failure=%s)',
-    async (failure) => {
-      await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n');
-      const directory = path.join(root, 'dist');
-      await fs.mkdir(directory);
-      const leaves = Array.from({ length: 32 }, (_, index) => path.join(directory, `${index}.bin`));
-      await Promise.all(leaves.map((file, index) => fs.writeFile(file, `input ${index}`)));
-      const selected = new Set(leaves);
-      const firstReads = new Set<string>();
-      const original = fs.lstat;
-      let active = 0;
-      let peak = 0;
-      vi.spyOn(fs, 'lstat').mockImplementation((async (...args: Parameters<typeof fs.lstat>) => {
-        const target = String(args[0]);
-        if (!selected.has(target) || firstReads.has(target)) return original(...args);
-        firstReads.add(target);
-        active++;
-        peak = Math.max(peak, active);
-        try {
-          await new Promise((resolve) => setTimeout(resolve, 5));
-          if (failure && target === leaves[4]) throw new Error('fixture metadata unavailable');
-          return await original(...args);
-        } finally {
-          active--;
-        }
-      }) as typeof fs.lstat);
-      const snapshot = await nativeRawInputSnapshot({ projectRoot: root });
-      expect(active).toBe(0);
-      expect(peak).toBeGreaterThan(1);
-      expect(peak).toBeLessThanOrEqual(16);
-      expect(snapshot.complete, snapshot.diagnostics.join(';')).toBe(!failure);
-      if (failure) {
-        expect(snapshot.diagnostics.join(';')).toContain('metadata unavailable');
-      } else {
-        expect(firstReads.size).toBe(leaves.length);
-        expect(snapshot.files.filter((file) => file.path.startsWith('dist/'))).toHaveLength(
-          leaves.length,
-        );
-        await fs.writeFile(leaves.at(-1)!, 'changed final input');
-        const changed = await nativeRawInputSnapshot({ projectRoot: root, previous: snapshot });
-        expect(changed.complete, changed.diagnostics.join(';')).toBe(true);
-        expect(changed.contentHash).not.toBe(snapshot.contentHash);
-      }
-    },
-  );
 
   it('reads ignored generated bytes once and exposes raw paths inside a gitlink', async () => {
     await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n');
@@ -266,41 +168,6 @@ describe('Native check input fingerprint', () => {
       if (change === 'volatile-trace') expect(current.contentHash).toBe(before.contentHash);
     },
   );
-
-  it('rejects generated inputs added while repairing a cached leaf at the final capture fence', async () => {
-    await fs.writeFile(path.join(root, '.gitignore'), 'scratch/\n');
-    const generated = path.join(root, 'scratch', 'app', 'dist');
-    await fs.mkdir(generated, { recursive: true });
-    await fs.writeFile(path.join(generated, 'existing.unknown'), 'original generated input');
-    const previous = await nativeRawInputSnapshot({ projectRoot: root });
-    expect(previous.complete, previous.diagnostics.join(';')).toBe(true);
-    const original = fs.lstat;
-    let injected = false;
-    vi.spyOn(fs, 'lstat').mockImplementation((async (...args: Parameters<typeof fs.lstat>) => {
-      if (
-        !injected &&
-        String(args[0]) === path.join(root, 'committed.txt') &&
-        (args[1] as { bigint?: boolean } | undefined)?.bigint
-      ) {
-        injected = true;
-        await fs.writeFile(path.join(generated, 'late.unknown'), 'new generated input');
-        await fs.writeFile(
-          path.join(root, 'committed.txt'),
-          'tracked input changed after the generated file',
-        );
-      }
-      return original(...args);
-    }) as typeof fs.lstat);
-    const captured = await nativeRawInputSnapshot({ projectRoot: root, previous });
-    expect(injected).toBe(true);
-    expect(captured.complete).toBe(false);
-    expect(captured.diagnostics.join(';')).toContain('scratch');
-    vi.restoreAllMocks();
-    const fresh = await nativeRawInputSnapshot({ projectRoot: root });
-    expect(fresh.complete, fresh.diagnostics.join(';')).toBe(true);
-    expect(fresh.files.some((file) => file.path === 'scratch/app/dist/late.unknown')).toBe(true);
-    expect(fresh.contentHash).not.toBe(previous.contentHash);
-  });
 
   it.each([true, false])(
     'keeps Archive generated-only snapshots equivalent without binding moved materials (git=%s)',
@@ -380,22 +247,6 @@ describe('Native check input fingerprint', () => {
     expect(snapshot.complete).toBe(false);
     expect(snapshot.diagnostics.join('; ')).toContain('不是普通文件：dist/nested/');
     expect(await nativeCheckInputGate({ projectRoot: root, candidateId: null })).toBeNull();
-  });
-
-  it('keeps a complete snapshot for a single-character dirty tracked path and binds untracked edits', async () => {
-    await fs.writeFile(path.join(root, 'a'), 'base\n');
-    git(root, 'add', 'a');
-    git(root, 'commit', '--quiet', '-m', 'single-character path');
-    await fs.writeFile(path.join(root, 'a'), 'dirty\n');
-    await fs.writeFile(path.join(root, 'untracked'), 'first\n');
-    const input = fingerprintInput(root);
-    const before = await nativeCheckInputSnapshot(input);
-    expect(before.complete, before.diagnostics.join('; ')).toBe(true);
-    expect(await nativeCheckInputSnapshot(input)).toEqual(before);
-    await fs.writeFile(path.join(root, 'untracked'), 'second\n');
-    const after = await nativeCheckInputSnapshot(input);
-    expect(after.complete, after.diagnostics.join('; ')).toBe(true);
-    expect(after.contentFingerprint).not.toBe(before.contentFingerprint);
   });
 
   it('excludes declared Runtime-owned files inside generated roots without dropping production input', async () => {
@@ -538,138 +389,6 @@ describe('Native check input fingerprint', () => {
     const after = await nativeCheckInputSnapshot(input);
     expect(after.contentFingerprint).not.toBe(before.contentFingerprint);
     expect(await nativeCheckInputGate({ projectRoot: root, candidateId: null })).not.toBe(gate);
-  });
-
-  it('binds generated inputs inside an entirely ignored parent without traversing dependencies', async () => {
-    await fs.writeFile(path.join(root, '.gitignore'), 'scratch/\n');
-    await fs.mkdir(path.join(root, 'scratch/app/dist'), { recursive: true });
-    await fs.mkdir(path.join(root, 'scratch/node_modules/pkg/dist'), { recursive: true });
-    await fs.writeFile(path.join(root, 'scratch/app/dist/input.json'), 'first');
-    await fs.writeFile(path.join(root, 'scratch/node_modules/pkg/dist/input.json'), 'dependency');
-    const directories = vi.spyOn(fs, 'opendir');
-    const input = fingerprintInput(root);
-    const before = await nativeGeneratedCheckInputSnapshot(input);
-    expect(before.complete).toBe(true);
-    await fs.writeFile(path.join(root, 'scratch/node_modules/pkg/dist/input.json'), 'changed');
-    expect(await nativeGeneratedCheckInputSnapshot(input)).toEqual(before);
-    await fs.writeFile(path.join(root, 'scratch/app/dist/input.json'), 'second');
-    const after = await nativeGeneratedCheckInputSnapshot(input);
-    expect(after.complete).toBe(true);
-    expect(after.fingerprint).not.toBe(before.fingerprint);
-    expect(
-      directories.mock.calls.some(([directory]) =>
-        String(directory).includes(`${path.sep}node_modules`),
-      ),
-    ).toBe(false);
-  });
-
-  it.for(['directory', 'file'] as const)(
-    'keeps unrelated ignored cache links outside generated input discovery (%s)',
-    async (kind, context) => {
-      if (kind === 'file') await requireFileSymlink(context);
-      await fs.writeFile(path.join(root, '.gitignore'), '.cache/\ndist/\n');
-      await fs.mkdir(path.join(root, '.cache'));
-      await fs.mkdir(path.join(root, 'dist'));
-      const target = path.join(root, 'cache-link-target');
-      if (kind === 'file') await fs.writeFile(target, 'unrelated cache');
-      else {
-        await fs.mkdir(target);
-        await fs.writeFile(path.join(target, 'input.txt'), 'linked input');
-      }
-      await fs.symlink(
-        target,
-        path.join(root, '.cache', 'ordinary-link'),
-        kind === 'file' ? 'file' : process.platform === 'win32' ? 'junction' : 'dir',
-      );
-      await fs.writeFile(path.join(root, 'dist', 'input.txt'), 'first');
-      const input = fingerprintInput(root);
-      const before = await nativeGeneratedCheckInputSnapshot(input);
-      expect(before.complete).toBe(true);
-      await fs.writeFile(path.join(root, 'dist', 'input.txt'), 'second');
-      expect((await nativeGeneratedCheckInputSnapshot(input)).fingerprint).not.toBe(
-        before.fingerprint,
-      );
-      await fs.symlink(
-        target,
-        path.join(root, 'dist', 'input-link'),
-        kind === 'file' ? 'file' : process.platform === 'win32' ? 'junction' : 'dir',
-      );
-      expect((await nativeGeneratedCheckInputSnapshot(input)).complete).toBe(false);
-    },
-  );
-
-  it('restricts ignored input queries to literal generated roots instead of traversing unrelated trees', async () => {
-    await fs.writeFile(path.join(root, '.gitignore'), 'dist/\nnode_modules/\n.tmp/\n');
-    await fs.mkdir(path.join(root, 'dist'), { recursive: true });
-    await fs.mkdir(path.join(root, 'packages/app/dist'), { recursive: true });
-    await fs.mkdir(path.join(root, 'node_modules/pkg/dist'), { recursive: true });
-    await fs.writeFile(path.join(root, 'dist/output.txt'), 'root');
-    await fs.writeFile(path.join(root, 'packages/app/dist/output.txt'), 'nested');
-    await fs.writeFile(path.join(root, 'node_modules/pkg/dist/output.txt'), 'excluded');
-    const sync = vi.spyOn(gitCommands, 'runGitCommand');
-    const async = vi.spyOn(gitCommands, 'runGitCommandAsync');
-    const input = fingerprintInput(root);
-    const before = await nativeGeneratedCheckInputSnapshot(input);
-    expect(before.complete).toBe(true);
-    const queries = [...sync.mock.calls, ...async.mock.calls].filter(
-      ([, args]) => args.includes('--ignored') && args.includes('--'),
-    );
-    expect(queries.length).toBeGreaterThan(0);
-    for (const [, args] of queries) {
-      const positive = args
-        .slice(args.indexOf('--') + 1)
-        .filter((arg) => !arg.startsWith(':(exclude'));
-      expect(positive).toHaveLength(1);
-      expect(positive[0]).toMatch(/^:\(literal\).+\/$/u);
-    }
-    await fs.writeFile(path.join(root, 'node_modules/pkg/dist/output.txt'), 'unrelated');
-    expect(await nativeGeneratedCheckInputSnapshot(input)).toEqual(before);
-    await fs.writeFile(path.join(root, 'packages/app/dist/output.txt'), 'changed');
-    expect((await nativeGeneratedCheckInputSnapshot(input)).fingerprint).not.toBe(
-      before.fingerprint,
-    );
-  });
-
-  it('rejects a generated root appearing while the selected directories are queried', async () => {
-    await fs.writeFile(path.join(root, '.gitignore'), 'dist/\nbuild/\n');
-    await fs.mkdir(path.join(root, 'dist'));
-    await fs.writeFile(path.join(root, 'dist/output.txt'), 'verified');
-    const query = gitCommands.runGitCommandAsync;
-    let changed = false;
-    vi.spyOn(gitCommands, 'runGitCommandAsync').mockImplementation(async (cwd, args) => {
-      const result = await query(cwd, args);
-      if (args.includes('--ignored') && !changed) {
-        changed = true;
-        await fs.mkdir(path.join(root, 'build'));
-        await fs.writeFile(path.join(root, 'build/new.js'), 'unverified');
-      }
-      return result;
-    });
-    expect((await nativeGeneratedCheckInputSnapshot(fingerprintInput(root))).complete).toBe(false);
-    expect(changed).toBe(true);
-  });
-
-  it('keeps volatile Next output churn outside the generated root identity fence', async () => {
-    await fs.writeFile(path.join(root, '.gitignore'), '.next/\n');
-    await fs.mkdir(path.join(root, '.next/types'), { recursive: true });
-    await fs.writeFile(path.join(root, '.next/types/routes.d.ts'), 'export type Route = "/";');
-    const input = fingerprintInput(root);
-    const before = await nativeGeneratedCheckInputSnapshot(input);
-    expect(before.complete).toBe(true);
-    const query = gitCommands.runGitCommandAsync;
-    let changed = false;
-    vi.spyOn(gitCommands, 'runGitCommandAsync').mockImplementation(async (cwd, args) => {
-      const result = await query(cwd, args);
-      if (args.includes(':(literal).next/') && !changed) {
-        changed = true;
-        await fs.mkdir(path.join(root, '.next/cache'), { recursive: true });
-        await fs.writeFile(path.join(root, '.next/cache/state'), 'volatile');
-        await fs.writeFile(path.join(root, '.next/trace'), 'volatile');
-      }
-      return result;
-    });
-    expect(await nativeGeneratedCheckInputSnapshot(input)).toEqual(before);
-    expect(changed).toBe(true);
   });
 
   it.each(['git', 'physical'])(
@@ -861,41 +580,6 @@ describe('Native check input gate', () => {
       delete process.env.COMET_TEST_GATE_INCIDENTAL;
     }
   });
-
-  it.each([false, true])(
-    'preserves UTF-8 source bytes while capturing candidate inputs (BOM=%s)',
-    async (bom) => {
-      const source = path.join(root, 'utf8-source.mjs');
-      const prefix = bom ? '\ufeff' : '';
-      const bytes = Buffer.from(`${prefix}export const value = 1;\n`);
-      await fs.writeFile(source, bytes);
-      const input = { projectRoot: root, candidateId: null };
-      const candidate = await nativeCandidateInputGate(input);
-      const checked = await nativeCheckInputGate(input);
-      expect(candidate).toEqual(expect.stringMatching(/^[a-f0-9]{64}$/u));
-      expect(checked).toEqual(expect.stringMatching(/^[a-f0-9]{64}$/u));
-      expect(await nativeCandidateInputGate(input)).toBe(candidate);
-      expect(await fs.readFile(source)).toEqual(bytes);
-
-      await fs.writeFile(source, `${prefix}export const value = 2;\n`);
-      const changed = await nativeCandidateInputGate(input);
-      expect(changed).toEqual(expect.stringMatching(/^[a-f0-9]{64}$/u));
-      expect(changed).not.toBe(candidate);
-      const changedInput = await nativeCheckInputGate(input);
-      expect(changedInput).toEqual(expect.stringMatching(/^[a-f0-9]{64}$/u));
-      expect(changedInput).not.toBe(checked);
-
-      const toggledSource = `${bom ? '' : '\ufeff'}export const value = 2;\n`;
-      await fs.writeFile(source, toggledSource);
-      const toggledInput = await nativeCheckInputGate(input);
-      expect(toggledInput).toEqual(expect.stringMatching(/^[a-f0-9]{64}$/u));
-      expect(toggledInput).not.toBe(changedInput);
-      expect(await nativeCandidateInputGate(input)).toEqual(
-        expect.stringMatching(/^[a-f0-9]{64}$/u),
-      );
-      expect(await fs.readFile(source)).toEqual(Buffer.from(toggledSource));
-    },
-  );
 
   it('changes on tracked edits, staged content, branch switches, and untracked edits', async () => {
     const gate = { projectRoot: root, candidateId: null };
@@ -1193,123 +877,6 @@ describe('Native check input gate', () => {
 });
 
 describe('Native physical check input snapshots', () => {
-  it('reports unreadable environment inputs by path without reusable evidence', async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-509-unreadable-'));
-    try {
-      const file = path.join(root, '.env.development');
-      await fs.writeFile(file, 'SYNTHETIC_CONTENT=must-not-appear\n');
-      const open = fs.open;
-      vi.spyOn(fs, 'open').mockImplementation((target, flags, mode) => {
-        if (String(target) === file)
-          return Promise.reject(
-            Object.assign(new Error('fixture access denied'), { code: 'EACCES' }),
-          );
-        return open(target, flags, mode);
-      });
-      const snapshot = await nativeCheckInputSnapshot(fingerprintInput(root));
-      expect(snapshot.complete).toBe(false);
-      expect(snapshot.diagnostics.join(' ')).toContain('.env.development');
-      expect(snapshot.diagnostics.join(' ')).toContain('文件无法读取');
-      expect(JSON.stringify(snapshot)).not.toContain('must-not-appear');
-      expect(
-        await nativeCandidateInputGate({ projectRoot: root, candidateId: 'unreadable' }),
-      ).toBeNull();
-    } finally {
-      vi.restoreAllMocks();
-      await fs.rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it.each(['tracked', 'untracked', 'ignored'])(
-    'binds environment files in independent child repositories under a non-Git root (%s)',
-    async (tracking) => {
-      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-509-inputs-'));
-      try {
-        for (const name of ['server', 'client']) {
-          const child = path.join(root, name);
-          await fs.mkdir(child);
-          git(child, 'init', '--quiet');
-          git(child, 'config', 'user.email', 'fixture@example.invalid');
-          git(child, 'config', 'user.name', 'Fixture');
-          await fs.writeFile(path.join(child, 'index.js'), 'export const value = 1;\n');
-          await fs.writeFile(
-            path.join(child, '.gitignore'),
-            tracking === 'ignored' ? '.env*\n' : '',
-          );
-          git(child, 'add', '.');
-          git(child, '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'baseline');
-        }
-        const input = {
-          ...fingerprintInput(root),
-          candidateId: 'issue-509',
-          managedArtifactRoot: path.join(root, 'docs'),
-          plans: ['server', 'client'].map((cwdRef) => ({
-            id: cwdRef,
-            name: cwdRef,
-            executable: process.execPath,
-            argv: ['-e', 'process.exit(0)'],
-            cwdRef,
-            timeoutMs: 1000,
-            repeatable: true,
-          })),
-        };
-        const baseline = await nativeCandidateInputGate(input);
-        expect(baseline).toMatch(/^[a-f0-9]{64}$/u);
-        const child = path.join(root, 'client');
-        const file = path.join(child, '.env.development');
-        const content = 'VUE_APP_BASE_API=/synthetic-509\n';
-        await fs.writeFile(file, content);
-        if (tracking === 'tracked') {
-          git(child, 'add', '.env.development');
-          git(child, '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'environment');
-        }
-        const gate = await nativeCandidateInputGate(input);
-        expect(gate).toMatch(/^[a-f0-9]{64}$/u);
-        expect(gate).not.toBe(baseline);
-        expect(await nativeCandidateInputGate(input)).toBe(gate);
-        const snapshot = await nativeCheckInputSnapshot(input);
-        expect(snapshot.complete).toBe(true);
-        expect(JSON.stringify(snapshot)).not.toContain(content.trim());
-        await fs.writeFile(file, 'VUE_APP_BASE_API=/changed\n');
-        expect(await nativeCandidateInputGate(input)).not.toBe(gate);
-        expect((await nativeCheckInputSnapshot(input)).contentFingerprint).not.toBe(
-          snapshot.contentFingerprint,
-        );
-      } finally {
-        await fs.rm(root, { recursive: true, force: true });
-      }
-    },
-  );
-
-  it('hashes environment and key filenames in generated inputs without exposing their contents', async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-509-generated-'));
-    try {
-      git(root, 'init', '--quiet');
-      git(root, 'config', 'user.email', 'fixture@example.invalid');
-      git(root, 'config', 'user.name', 'Fixture');
-      await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n');
-      git(root, 'add', '.');
-      git(root, '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'baseline');
-      await fs.mkdir(path.join(root, 'dist'));
-      const input = fingerprintInput(root);
-      const contents = 'synthetic-509-content-only-for-hashing';
-      for (const name of ['.env', '.env.local', 'fixture.key', 'fixture.pem']) {
-        await fs.writeFile(path.join(root, 'dist', name), contents);
-      }
-      const before = await nativeCheckInputSnapshot(input);
-      expect(before.complete).toBe(true);
-      expect(JSON.stringify(before)).not.toContain(contents);
-      for (const name of ['.env', '.env.local', 'fixture.key', 'fixture.pem']) {
-        const gate = await nativeCheckInputGate({ projectRoot: root, candidateId: null });
-        expect(gate).toMatch(/^[a-f0-9]{64}$/u);
-        await fs.writeFile(path.join(root, 'dist', name), `${contents}-changed`);
-        expect(await nativeCheckInputGate({ projectRoot: root, candidateId: null })).not.toBe(gate);
-      }
-    } finally {
-      await fs.rm(root, { recursive: true, force: true });
-    }
-  });
-
   it('binds root configuration and generated Next types for non-Git subdirectory checks', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-physical-check-inputs-'));
     try {

@@ -490,13 +490,15 @@ async function activeParentChildren(
     const { changeDir, read, sdk } = await readEntryState(candidate.source.paths, candidate.entry);
     if (sdk) return sdk.children.map((child) => childSummary(child, candidates));
     if (read.kind !== 'portable') return [];
-    const document = await readNativeChildrenContract({
-      changeDir,
-      policy: 'advisory',
-      ...(read.state.acceptance.length > 0
-        ? { acceptanceIds: read.state.acceptance.map(({ id }) => id) }
-        : {}),
-    });
+    const document = read.state.children_contract
+      ? { contract: read.state.children_contract, drift: null }
+      : await readNativeChildrenContract({
+          changeDir,
+          policy: 'advisory',
+          ...(read.state.acceptance.length > 0
+            ? { acceptanceIds: read.state.acceptance.map(({ id }) => id) }
+            : {}),
+        });
     if (!document) return [];
     if (document.contract.schema === 'comet.native.children.v2') {
       const inspection = await inspectNativeChildren({
@@ -585,7 +587,7 @@ async function archivedParentChildren(
   try {
     if (!(await hasNativeChildrenContract(candidate))) return [];
     const { changeDir, read } = await readEntryState(candidate.source.paths, candidate.entry);
-    if (read.kind !== 'portable' || !read.state.children_contract_hash) return [];
+    if (read.kind !== 'portable' || !read.state.children_contract_ref) return [];
     const document = await readNativeChildrenContract({
       changeDir,
       policy: 'advisory',

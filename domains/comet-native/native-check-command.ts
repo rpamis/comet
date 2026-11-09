@@ -1,53 +1,20 @@
-import { checkNativeChange } from './native-check.js';
-import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
-import { resolveNativeSdkCommandRoot } from './native-runtime-ownership.js';
-import { isNativePortableChange } from './native-portable-runtime.js';
 import {
   assertNoArguments,
-  configuredPaths,
   NativeUsageError,
   requiredPositional,
   type DispatchResult,
 } from './native-cli-shared.js';
-
 export async function nativeCheckCommand(
   args: string[],
-  projectRoot: string,
+  _projectRoot: string,
 ): Promise<DispatchResult> {
   const name = requiredPositional(args, 'change name');
   assertNoArguments(args);
-  const commandRoot = await resolveNativeSdkCommandRoot(projectRoot, name);
-  if (await readSdkChangeOwner(commandRoot, 'native', name)) {
-    throw new NativeUsageError(
-      `comet native check is not available for this change. Run comet native status ${name} --json and follow its next action through comet native next.`,
-    );
-  }
-  const { paths } = await configuredPaths(projectRoot);
-  if (await isNativePortableChange(paths, name)) {
-    throw new NativeUsageError(
-      `comet native check is not available for this change. Run comet native status ${name} --json and follow its continuation to dispatch verification through comet native next.`,
-    );
-  }
-  const checked = await checkNativeChange({ paths, name });
-  const data = {
-    ref: checked.ref,
-    hash: checked.receipt.receiptHash,
-    status: checked.receipt.status,
-    checker: checked.receipt.checker,
-    counts: checked.receipt.counts,
-    issues: checked.receipt.issues,
-    issuesTruncated: checked.receipt.issuesTruncated,
-    stale: checked.receipt.stale,
-    staleReasons: checked.receipt.staleReasons,
-    startedAt: checked.receipt.startedAt,
-    endedAt: checked.receipt.endedAt,
-    sourceRevision: checked.receipt.sourceRevision,
-  };
-  const passed = checked.receipt.status === 'passed' && !checked.receipt.stale;
-  return {
-    command: 'check',
-    exitCode: passed ? 0 : 1,
-    data,
-    text: `Native check ${passed ? 'passed' : 'failed'}: ${checked.ref}\n`,
-  };
+  throw new NativeUsageError(
+    'Native 内容证明检查已移除。运行 comet native status ' +
+      name +
+      ' --json，按原 Run 的 continuation 执行实际检查；旧需求通过 comet native next ' +
+      name +
+      ' --summary <迁移说明> 使用现有迁移入口。',
+  );
 }

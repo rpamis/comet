@@ -10,7 +10,7 @@
 comet state check <change-name> <phase> --json
 ```
 
-普通入口和恢复入口都会返回 layout、configuration、`configurationReadiness`、nextAction、taskState、coordination 和 delivery。`configurationReadiness` 的 `missingFields` 与 `invalidFields` 为空时，表示当前执行配置可沿用；只根据其中列出的字段补问或修复，不逐字段重新查询。taskState 为 `{authority, revision, total, completed, needsIds, next}`；coordination 为 `{path, stale, taskIds, stage, sessionId, reviewRounds, unresolved}`。按 classic-layout.md 确定各逻辑路径对应的目录，根据实际 phase 进入对应阶段。摘要中已有的字段不再逐个查询。状态写入，或工作区、需求发生变化后，重新读取受影响的状态。
+普通入口和恢复入口都会返回 layout、configuration、`configurationReadiness`、nextAction、taskState、coordination 和 delivery。`configurationReadiness` 的 `missingFields` 与 `invalidFields` 为空时，表示当前执行配置可沿用；只根据其中列出的字段补问或修复，不逐字段重新查询。taskState 为 `{authority, total, completed, needsIds, next}`；coordination 为 `{path, stale, taskIds, stage, sessionId, reviewRounds, unresolved}`。按 classic-layout.md 确定各逻辑路径对应的目录，根据实际 phase 进入对应阶段。摘要中已有的字段不再逐个查询。状态写入，或工作区、需求发生变化后，重新读取受影响的状态。
 
 需要展示或补齐配置时，SDK 与 Compat 均读取[执行配置展示](decision-point.md#执行配置展示)，保留同一 change 的有效选择，并使用当前路径的原有保存方式。SDK 已有 Wait 继续复用；不因恢复或重新 Design 重问已确认配置，也不把其他 change 的选择当作本次批准。
 
@@ -32,7 +32,7 @@ comet state check <change-name> <phase> --recover --json
 comet state check <change-name> <phase> --recover --details --json
 ```
 
-只读取当前步骤还缺少的正文。Runtime 会将检查证据标为 `revalidated` 或 `rerun-required`，只有前者可以复用。如果本地输入、环境、日志或仅适用于当次执行的证据不满足复用条件，只重新运行对应检查。恢复时保留计划、任务、审查记录和已用复查次数。
+只读取当前步骤还缺少的正文。Agent 判断原检查是否仍适用，并保留原执行来源。Runtime 返回实际可复用结果或需要恢复的原因；只补缺失或受影响检查。真实失败、未知执行和一次性操作按原记录处理，保留计划、任务、审查记录和原进度。
 
 ## Ambient Resume
 
@@ -66,11 +66,11 @@ comet state check <change-name> <phase> --recover --details --json
 
 任务完成状态只以 `tasks.md` 为准，计划用于说明实施方法。任务未勾选不能直接作为重新实施的依据，已有勾选也不能替代当前验收证据。
 
-1. 根据稳定的 task ID、需求 revision 和计划中的 base-ref，核对当前文件、Git diff/提交、检查结果、审查记录与未解决的反馈。未提交改动先按 dirty-worktree.md 核对来源和归属。
+1. 根据稳定的 task ID 和计划中的 base-ref，核对当前文件、Git diff/提交、检查结果、审查记录与未解决的反馈。未提交改动先按 dirty-worktree.md 核对来源和归属。
 2. 实现、检查和所需审查均已满足：直接通过 task-complete 补勾，不重复实施。
 3. 实现已完成但证据不足：仅补缺失检查或独立审查；已有部分实现时仅补剩余部分。TDD 历史 RED 缺失要如实记录，不能回退代码伪造证据或自行宣布满足 TDD。
 4. 有效证据与当前输入不匹配时，只重新验证受影响部分；验收通过后再勾选。
-5. 使用 `comet state task-complete <name> <task-id> --expect <revision> --json`。revision 冲突时，重新核对任务要求是否变化，不能只换成新 revision 就重试。
+5. 使用 `comet state task-complete <name> <task-id> --json`。由 Agent 对照任务要求核对实际完成结果，文件编辑不自动撤销任务完成记录。
 
 旧计划中仍有任务复选框时，先明确每一项对应的 comet-task ID。task-complete 会根据 tasks.md 自动同步这些任务在旧计划中的状态；需要单独更新显示时运行：
 
@@ -91,13 +91,12 @@ comet state checkpoint <change-name>
 comet state checkpoint <change-name> --file <json-path>
 ```
 
-JSON 必须包含 `schemaVersion: 1`，其余字段为 taskIds/revision/stage/sessionId/evidence/unresolved/reviewRounds。以下示例中的任务 ID、revision 和会话标识必须替换为本次实际值：
+JSON 必须包含 `schemaVersion: 1`，其余字段为 taskIds/stage/sessionId/evidence/unresolved/reviewRounds。以下示例中的任务 ID 和会话标识必须替换为本次实际值：
 
 ```json
 {
   "schemaVersion": 1,
   "taskIds": ["task-1"],
-  "revision": "<task-revision>",
   "stage": "implementing",
   "sessionId": "<implementer-session-id>",
   "evidence": [],
@@ -108,11 +107,11 @@ JSON 必须包含 `schemaVersion: 1`，其余字段为 taskIds/revision/stage/se
 
 evidence 保存实际提交、RED/GREEN 结果和审查证据的引用；unresolved 保存未解决事项，不复制完整对话。stage 记录当前处于执行、审查还是补记任务状态的步骤；reviewRounds 记录已经使用的复查次数。Runtime 检查数据后生成 Markdown；不手写 subagent-progress.md，也不把协调记录当作任务完成清单。
 
-读取结果为 `{checkpoint, stale}`。stale 为 true 时，先核对 revision、任务范围和实际成果，不直接重新执行原步骤；checkpoint 为空也不表示尚未实施。补齐记录后重新读取确认，不能手写内部状态来绕过检查。
+读取结果为 `{checkpoint, stale}`。stale 为 true 时，先核对任务范围和实际成果，不直接重新执行原步骤；checkpoint 为空也不表示尚未实施。补齐记录后重新读取确认，不能手写内部状态来绕过检查。
 
 分配任务前，保存任务范围和协调会话信息；取得子代理会话 ID 后立即保存 sessionId，再继续等待或处理回复。在阶段交接、审查完成、验收或遇到阻塞时，保存新增证据和下一步安排。同一步骤的零碎消息可以合并，不逐条复制对话。保存失败时，停止继续分配任务和推进阶段，保留现有文件供核对。
 
-记录缺失、会话失效或 revision 不匹配时，先检查实际成果，重建恢复所需的记录；不能把“无检查点”解释为“无实现”。保留仍有效的审查结果和已用复查次数，不能因为换了会话就重新计算次数。
+记录缺失或会话失效时，先检查实际成果，重建恢复所需的记录；不能把“无检查点”解释为“无实现”。保留仍有效的审查结果和已用复查次数，不能因为换了会话就重新计算次数。
 
 ## 各阶段恢复
 

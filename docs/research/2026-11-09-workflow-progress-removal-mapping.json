@@ -1,0 +1,29 @@
+{
+  "schema": "comet.workflow.migration-map.v1",
+  "cases": [
+    {
+      "id": "native-242-budget-progress",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-agent-managed-workflow-simplification",
+      "record": "docs/research/2026-11-09-agent-managed-workflow-simplification.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-loop-runtime.test.ts",
+          "namePattern": "^(?:Native portable Build/Verify loop continues real repairs when unresolved acceptance IDs repeat, alternate or increase|Native portable Build/Verify loop keeps the configured failure budget when old no-progress counters are present|Native portable Build/Verify loop explains a budget-exhausted stop without calling it a no-progress loop)$",
+          "requiredNames": [
+            "Native portable Build/Verify loop continues real repairs when unresolved acceptance IDs repeat, alternate or increase",
+            "Native portable Build/Verify loop keeps the configured failure budget when old no-progress counters are present",
+            "Native portable Build/Verify loop explains a budget-exhausted stop without calling it a no-progress loop"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-config.test.ts",
+          "namePattern": "round-trips a custom Native completion-loop budget",
+          "requiredNames": [
+            "round-trips a custom Native completion-loop budget"
+          ]
+        }
+      ]
+    }
+  ]
+}

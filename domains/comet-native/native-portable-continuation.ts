@@ -1,13 +1,5 @@
-import { nativeTaskContextRequest } from './native-task-context.js';
-import { nativeRecoveryForContinuation, type NativeRecovery } from './native-recovery.js';
 import type { CliContinuationMode } from '../workflow-contract/output-envelope.js';
 import type { NativeChildrenInspection } from './native-children.js';
-import type { NativePortableExpectedContinuationAction } from './native-portable-runtime.js';
-import {
-  NATIVE_SUPERVISOR_COORDINATION_MODES,
-  type NativePortableState,
-} from './native-portable-types.js';
-import { NATIVE_MAX_SUPERVISOR_BUILDER_FAILURES } from './native-supervisor-model.js';
 import {
   NATIVE_ACCEPTANCE_REVIEW_STATUSES,
   NATIVE_BUILDER_CHECK_RESULTS,
@@ -15,6 +7,14 @@ import {
   NATIVE_VERIFIER_VERDICTS,
   nativeEnumPlaceholder,
 } from './native-input-enum.js';
+import type { NativePortableExpectedContinuationAction } from './native-portable-runtime.js';
+import {
+  NATIVE_SUPERVISOR_COORDINATION_MODES,
+  type NativePortableState,
+} from './native-portable-types.js';
+import { nativeRecoveryForContinuation, type NativeRecovery } from './native-recovery.js';
+import { NATIVE_MAX_SUPERVISOR_BUILDER_FAILURES } from './native-supervisor-model.js';
+import { nativeTaskContextRequest } from './native-task-context.js';
 
 type NativePortableContinuationInputOption = {
   name: string;
@@ -1051,29 +1051,6 @@ function nativePortableContinuationValue(
           runnerAction: runner('none'),
         };
       }
-      if (state.loop.stage === 'repairing' && state.verification_result === 'fail') {
-        return {
-          ...base,
-          disposition: 'continue',
-          action: 'repair',
-          // The repair loop continues by editing children.yaml and running
-          // `next`; the children-contract drift detection then returns the
-          // change to Shape for confirmation (issue: an actionless repair
-          // continuation left agents with no executable step).
-          commandArgs: ['comet', 'native', 'next', state.name, '--summary', '<summary>'],
-          requiredInputs: ['repair-child'],
-          inputOptions: [
-            {
-              name: 'summary',
-              flag: '--summary',
-              valueKind: 'text' as const,
-              required: true,
-              template: null,
-            },
-          ],
-          runnerAction: runner('none'),
-        };
-      }
       if (children.allDone) {
         return {
           ...base,
@@ -1087,6 +1064,20 @@ function nativePortableContinuationValue(
             '--runner-input',
             '<temporary-json-file>',
           ],
+          ...(state.loop.stage === 'repairing' && state.verification_result === 'fail'
+            ? {
+                commandAlternatives: [
+                  nativeNextDecisionAlternative({
+                    name: 'revise-requirements',
+                    change: state.name,
+                    stateVersion: state.state_version,
+                    expectedAction: 'revise-requirements',
+                    flag: '--revise-requirements',
+                    confirmationInput: 'user-decision',
+                  }),
+                ],
+              }
+            : {}),
           requiredInputs: ['builder-handoff-json-file'],
           inputOptions: [
             {
@@ -1294,7 +1285,7 @@ function nativePortableContinuationValue(
   }
   if (state.phase === 'verify') {
     const awaiting = state.loop.next_action === 'await-verifier-result';
-    const supervisor = Boolean(state.children_contract_hash);
+    const supervisor = Boolean(state.children_contract_ref);
     const checkTemplate = nativeCheckPlanTemplate();
     if (!awaiting && options.retryCheckIds && options.retryCheckIds.length > 0) {
       return {
@@ -1333,8 +1324,8 @@ function nativePortableContinuationValue(
               ...base.userCommunication,
               agentInstruction: `${base.userCommunication.agentInstruction} ${localized(
                 state,
-                'Resolve at least one integration check for the Supervisor parent; cwdRef is relative to the integration worktree.',
-                '为 Supervisor 父级解析至少一项集成检查；cwdRef 相对于集成工作区。',
+                'Select necessary integration checks and reuse applicable Child results; cwdRef is relative to the integration worktree. Parent acceptance must cover every confirmed criterion.',
+                '选择必要的集成检查并复用适用的子任务结果；cwdRef 相对于集成工作区。父级验收仍须覆盖全部已确认条目。',
               )}`,
             }
           : base.userCommunication,
@@ -1417,9 +1408,7 @@ function nativePortableContinuationValue(
                       ...plan,
                       argv: [...plan.argv],
                     }))
-                  : supervisor
-                    ? [checkTemplate]
-                    : [],
+                  : [],
               },
         },
       ]),

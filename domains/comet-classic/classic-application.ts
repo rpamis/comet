@@ -1,11 +1,9 @@
-import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
-import { isClassicStateFileName } from './classic-state-file.js';
 import path from 'node:path';
 import {
   hashRuntimeValue,
   type RuntimeAction,
-  type RuntimeValidator,
   type RuntimeCommandValidator,
+  type RuntimeValidator,
   type RuntimeValue,
   type WorkflowRun,
   type WorkflowTransitionEvent,
@@ -15,29 +13,25 @@ import type {
   WorkflowApplicationImplementation,
 } from '../workflow-application/index.js';
 import {
-  hashProtectedProjectFile,
-  inspectProtectedProjectPath,
-} from '../workflow-contract/protected-project-path.js';
-import {
   COMET_CHANGE_OWNER_SCHEMA,
   readChangeRuntimeOwner,
   registerSdkChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
-import { defineClassicWorkflowApplication } from './classic-sdk-application.js';
+import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import { validateClassicSdkDesignContext } from './classic-handoff.js';
-import { applyClassicTransition } from './classic-transitions.js';
-import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
-import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
-import {
-  createClassicSdkCheckExecutor,
-  assertClassicSdkCheckCommandBinding,
-} from './classic-sdk-check.js';
+import { defineClassicWorkflowApplication } from './classic-sdk-application.js';
 import { createClassicSdkArchivePreflightExecutor } from './classic-sdk-archive-preflight.js';
+import { createClassicSdkArchiveExecutor } from './classic-sdk-archive.js';
 import {
-  classicArchivedArtifactMatches,
-  createClassicSdkArchiveExecutor,
-} from './classic-sdk-archive.js';
+  assertClassicSdkCheckCommandBinding,
+  createClassicSdkCheckExecutor,
+} from './classic-sdk-check.js';
+import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
+import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js';
+import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
+import { isClassicStateFileName } from './classic-state-file.js';
 import { type ClassicProfile, type ClassicState } from './classic-state.js';
+import { applyClassicTransition } from './classic-transitions.js';
 
 export { parseClassicStateDocument } from './classic-state.js';
 
@@ -280,7 +274,7 @@ export function createClassicApplication(
       }),
     });
   for (const [stepId, extension] of extensions) {
-    const validate = async (input: ValidationInput, archive?: ArchivedArtifacts) => {
+    const validate = async (input: ValidationInput, _archive?: ArchivedArtifacts) => {
       if (input.outcome.status === 'failed') return { accepted: true };
       const source = activation(input.action)?.source;
       const output = input.outcome.output as {
@@ -338,32 +332,6 @@ export function createClassicApplication(
             context: { requestId: 'classic-extension-source', projectRoot: context.projectRoot },
           });
           if (!checked.accepted) return checked;
-        }
-      }
-      for (const ref of extension.artifactRefs) {
-        try {
-          const matches = archive
-            ? await classicArchivedArtifactMatches(
-                context.projectRoot,
-                input.run,
-                archive.action,
-                archive.directory,
-                ref,
-                output.artifactHashes?.[ref],
-              )
-            : output.artifactHashes?.[ref] ===
-              (
-                await hashProtectedProjectFile(context.projectRoot, ref, {
-                  label: 'Classic 新增检查工件',
-                })
-              ).digest;
-          if (!matches)
-            return { accepted: false, reason: `Classic 检查工件已变化：${ref}；请重新检查` };
-        } catch (error) {
-          return {
-            accepted: false,
-            reason: error instanceof Error ? error.message : String(error),
-          };
         }
       }
       return extension.validator.validate(input);
@@ -656,7 +624,6 @@ export function createClassicApplication(
           const change = input.run.input as { change: string; changeDir: string };
           if (
             !state.handoffContext ||
-            !state.handoffHash ||
             !(await validateClassicSdkDesignContext({
               run: input.run,
               projectRoot: context.projectRoot,
@@ -728,6 +695,7 @@ export function createClassicApplication(
             ? input.outcome.output
             : archiveAction?.outcome?.output
         ) as { archiveDirectory?: string } | undefined;
+
         let archive: ArchivedArtifacts | undefined;
         if (archiveAction && typeof archiveOutput?.archiveDirectory === 'string') {
           const archiveValidator = base.validators.find(

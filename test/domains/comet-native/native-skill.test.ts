@@ -215,7 +215,7 @@ describe('Comet Native Skills', () => {
       '恰好标记一次',
       '响应只列出当前 `scopeIds`',
       '已通过且仍报告通过的合法超集会由 Runtime 过滤',
-      '至少一项集成检查',
+      'Agent 选择适用的检查',
       '只在 `inputOptions.template` 中补充缺失或失效的检查',
       '等待同一个 Verifier',
       '`verifier-started`',
@@ -233,9 +233,8 @@ describe('Comet Native Skills', () => {
     for (const term of [
       '子任务角色、任务包、worktree、基线提交、`runId`、验收项的编号与引用、依赖关系和停止条件',
       '`supervisor-checks`',
-      '`contractHash`',
       '`verificationBoundary`',
-      '非空、`repeatable: true`',
+      '其 `checks` 由 Agent 选择，可为空',
       '`retry_check_ids`',
       '`receiptRef`',
       '每个验收 ID 必须恰好出现一次',
@@ -262,7 +261,7 @@ describe('Comet Native Skills', () => {
       'exactly once',
       'The response lists only the current `scopeIds`',
       'Runtime filters a known superset only when the extra criteria already passed and still report `passed`',
-      'at least one integration check',
+      'The Agent selects applicable checks',
       'Add only missing or invalidated checks',
       'waiting for the same Verifier',
       '`verifier-started`',
@@ -278,9 +277,8 @@ describe('Comet Native Skills', () => {
     for (const term of [
       'role, task package, worktree, baseline commit, `runId`, acceptance IDs and references, dependencies, and stopping conditions',
       '`supervisor-checks`',
-      '`contractHash`',
       '`verificationBoundary`',
-      'nonempty',
+      '`checks` are Agent-selected and may be empty',
       '`repeatable: true`',
       '`retry_check_ids`',
       '`receiptRef`',
@@ -324,7 +322,7 @@ describe('Comet Native Skills', () => {
           '最终验收，覆盖全部验收项',
           '原先通过 `finish=merge` 完成的合入步骤现由 Runtime 负责',
           'Supervisor 统筹动作',
-          '`repair-child`',
+          '父级可以修复其集成范围',
         ],
       },
       {
@@ -353,7 +351,7 @@ describe('Comet Native Skills', () => {
           'final verification of every Supervisor acceptance item',
           'Runtime now owns the integration step formerly performed through `finish=merge`',
           'Supervisor coordination actions',
-          '`repair-child`',
+          'the parent may repair its integration scope',
         ],
       },
     ];
@@ -392,19 +390,13 @@ describe('Comet Native Skills', () => {
     }
   });
 
-  it('allows omitted Chinese directory categories while requiring content for retained headings', async () => {
+  it('lets the Agent organize Chinese briefs without fixed directory headings', async () => {
     const brief = section(await read('zh', 'reference/artifacts.md'), 'brief');
-    expect(brief).toContain('至少填写一个有效类别');
-    expect(brief).toContain('无内容的类别可以省略');
-    expect(brief).toContain('已保留的标题必须有有效正文，不能留空或只放模板占位');
-    expect(brief).toContain('完整旧格式及「无」/`None` 写法继续有效');
-    expect(brief).not.toContain('章节固定四个三级子节');
-
-    const examples = [...brief.matchAll(/```text\r?\n([\s\S]*?)```/gu)].map((match) => match[1]);
-    const singleFile = examples.find((example) => example.includes('config/defaults.yaml'));
-    expect(singleFile).toBeDefined();
-    expect(singleFile!.match(/^### .+$/gmu)).toEqual(['### 修改']);
-    expect(singleFile).toContain('config/defaults.yaml — 调整默认超时时间');
+    expect(brief).toContain('Agent 按任务需要组织段落、列表或表格');
+    expect(brief).toContain('模板中的标题和目录树是写作参考');
+    expect(brief).toContain('已有有效确认不因格式变化撤回');
+    expect(brief).toContain('resultTemplate.output.acceptance');
+    expect(brief).toContain('等待用户确认后才允许实现');
   });
 
   it('explains Chinese requirement changes before reconfirming the complete current Shape', async () => {
@@ -423,17 +415,12 @@ describe('Comet Native Skills', () => {
     expect(reconfirmation).toContain('不复用旧 Shape 批准');
   });
 
-  it('keeps the English directory example minimal without accepting empty retained headings', async () => {
+  it('lets the Agent organize English briefs without fixed directory headings', async () => {
     const brief = section(await read('en', 'reference/artifacts.md'), 'brief');
-    expect(brief).toContain('at least one valid category');
-    expect(brief).toContain('Categories with no content may be omitted');
-    expect(brief).toContain('retained headings must have meaningful body content');
-    expect(brief).toContain('The complete legacy format and "None"/「无」 remain valid');
-    expect(brief).not.toContain('four fixed level-three subsections');
-    const examples = [...brief.matchAll(/```text\r?\n([\s\S]*?)```/gu)].map((match) => match[1]);
-    const singleFile = examples.find((example) => example.includes('config/defaults.yaml'));
-    expect(singleFile).toBeDefined();
-    expect(singleFile!.match(/^### .+$/gmu)).toEqual(['### Modified']);
+    expect(brief).toContain('Template headings and directory trees are writing aids');
+    expect(brief).toContain('Formatting changes do not revoke valid confirmation');
+    expect(brief).toContain('resultTemplate.output.acceptance');
+    expect(brief).toContain('waits for user confirmation before implementation');
   });
 
   it('keeps English reconfirmation reachable and bound to the complete current Shape', async () => {
@@ -517,8 +504,8 @@ describe('Comet Native Skills', () => {
           'Builder 提交候选',
           '新的只读 Verifier',
           '`iteration` 表示提交实现的轮次',
-          '`attempt` 表示对同一份候选实现启动 Verifier 的次数',
-          '所有计数都由 Runtime 更新',
+          '`attempt` 表示同一候选的 Verifier 执行次数',
+          'Runtime 保留真实失败次数预算和执行上限',
         ],
       },
       {
@@ -528,8 +515,8 @@ describe('Comet Native Skills', () => {
           'the Builder submits a candidate',
           'a new read-only Verifier',
           '`iteration` counts implementation submissions',
-          '`attempt` counts Verifier launches for the same candidate',
-          'Runtime updates all counters',
+          '`attempt` counts Verifier executions for one candidate',
+          'Runtime retains actual failure budgets and execution limits',
         ],
       },
     ];
@@ -761,8 +748,8 @@ describe('Comet Native Skills', () => {
         'acceptance_index',
         'specs/<capability>/spec.md',
         'verification.md',
-        '# Acceptance examples',
-        'Verification expectations',
+        'resultTemplate.output.acceptance',
+        '[blocking]',
         'comet-state.yaml',
         'verification.md',
         'Runtime',
@@ -772,7 +759,7 @@ describe('Comet Native Skills', () => {
       expect(artifacts).toContain(
         language === 'zh' ? '完整目标规格' : 'complete target specification',
       );
-      expect(artifacts).toContain(language === 'zh' ? '验收循环' : 'acceptance Loop');
+
       for (const RuntimeDetail of [
         'comet.native.workspace.v3',
         'baselineProjectionRef',
@@ -840,7 +827,12 @@ describe('Comet Native Skills', () => {
       const artifacts = await read(language, 'reference/artifacts.md');
       const example = /```yaml\n([\s\S]*?)\n```/u.exec(artifacts)?.[1];
       expect(example).toBeTruthy();
-      const contract = parseNativeChildrenContract(example!, ['A1', 'A2']);
+      const contract = parseNativeChildrenContract(example!, ['A1', 'A2'], {
+        acceptanceCatalog: [
+          { id: 'A1', source: 'brief.md', text: 'Actual first criterion.' },
+          { id: 'A2', source: 'brief.md', text: 'Actual second criterion.' },
+        ],
+      });
       expect(contract.acceptance_index).toEqual({
         A1: { source: 'brief.md', text: expect.any(String) },
         A2: { source: 'brief.md', text: expect.any(String) },
@@ -860,7 +852,7 @@ describe('Comet Native Skills', () => {
         expect(commands).toContain(`\`${field}\``);
       }
       expect(commands).toContain(
-        language === 'zh' ? '至少一项集成检查' : 'at least one integration check',
+        language === 'zh' ? 'Agent 选择适用的检查' : 'The Agent selects applicable checks',
       );
     },
   );
@@ -877,7 +869,7 @@ describe('Comet Native Skills', () => {
           '`migration-required`',
           '`workspaceFinishResult.status`',
           '`recoveryArgs`',
-          '`repair-child`',
+          '父级可以修复其集成范围',
         ],
       },
       {
@@ -890,7 +882,7 @@ describe('Comet Native Skills', () => {
           '`migration-required`',
           '`workspaceFinishResult.status`',
           '`recoveryArgs`',
-          '`repair-child`',
+          'the parent may repair its integration scope',
         ],
       },
     ];

@@ -1,12 +1,12 @@
+import { promises as fs } from 'node:fs';
 import type { WorkflowRun } from '../engine/runtime.js';
 import { parseNativePortableState } from './native-portable-state.js';
-import { promises as fs } from 'node:fs';
 
+import { nativeLocalizedText, nativeVerificationHeading } from './native-artifact-language.js';
 import { atomicWriteText } from './native-atomic-file.js';
 import { canonicalHash } from './native-canonical-hash.js';
-import { nativeLocalizedText, nativeVerificationHeading } from './native-artifact-language.js';
-import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 import type { NativePortableState, NativePortableText } from './native-portable-types.js';
+import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 import type { NativeSupervisorState } from './native-supervisor.js';
 
 export function nativeVerificationResultHash(state: NativePortableState): string {
@@ -26,14 +26,14 @@ export function nativeSdkVerificationReportOutput(
     return run.outputs['verify.report']?.value as Record<string, unknown> | undefined;
   const state = parseNativePortableState(run.state);
   if (!state.builder_handoff || !state.verification) return undefined;
-  const resultHash = nativeVerificationResultHash(state);
   for (const wait of [...run.waits].reverse()) {
     if (wait.stepId !== 'verify.confirm') continue;
     const report = (wait.proposal as { activation?: { report?: Record<string, unknown> } })
       .activation?.report;
     if (
       report?.candidateId === state.builder_handoff.candidate_id &&
-      report.verificationResultHash === resultHash
+      (report.iteration === undefined || report.iteration === state.loop.iteration) &&
+      (report.attempt === undefined || report.attempt === state.loop.attempt)
     )
       return report;
   }

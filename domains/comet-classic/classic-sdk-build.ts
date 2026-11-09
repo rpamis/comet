@@ -1,6 +1,5 @@
-import { classicTaskRevision } from './classic-tasks.js';
-import { classicFormalEditReviewScope } from './classic-edit-review.js';
 import { randomUUID } from 'node:crypto';
+import { classicSdkEvidenceInputHash } from './classic-sdk-application.js';
 
 import type { WorkflowRun } from '../engine/runtime.js';
 import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
@@ -12,8 +11,8 @@ import { readClassicProjectFile } from './classic-protected-path.js';
 import {
   assertClassicBuildReady,
   assertClassicSdkDesignRequirementsCurrent,
-  classicPlanEvidenceReceipt,
   classicAcceptedDesignEvidence,
+  classicPlanEvidenceReceipt,
 } from './classic-sdk-application.js';
 import { inspectClassicSdkRun } from './classic-sdk-status.js';
 import type { ClassicState } from './classic-state.js';
@@ -261,23 +260,9 @@ export async function submitClassicSdkBuildPlan(options: {
       : null;
   if (!changeDirRef) throw new Error('Classic SDK Run has no change directory');
   await assertClassicSdkDesignRequirementsCurrent(projectRoot, changeDirRef, inspected);
-  const receipt = await classicPlanEvidenceReceipt(projectRoot, planRef, changeDirRef, {
-    scope: await classicFormalEditReviewScope(
-      projectRoot,
-      change,
-      state,
-      false,
-      undefined,
-      inspected,
-    ),
-  });
+  const receipt = await classicPlanEvidenceReceipt(projectRoot, planRef, changeDirRef, {});
   const designEvidence = await classicAcceptedDesignEvidence(projectRoot, inspected);
 
-  const taskRevision = classicTaskRevision(
-    await readClassicProjectFile(projectRoot, `${changeDirRef}/tasks.md`, {
-      label: 'Classic Build task requirements',
-    }),
-  );
   const requirePause = pause || state.buildPause === 'plan-ready';
   let run = inspected;
   if (action) {
@@ -303,9 +288,11 @@ export async function submitClassicSdkBuildPlan(options: {
         status: 'succeeded',
         output: {
           plan: planRef,
-          planEvidence: receipt,
-          designEvidence,
-          taskRevision,
+          planEvidence: { ...receipt, contentHash: action.inputHash },
+          designEvidence: {
+            ...designEvidence,
+            contentHash: classicSdkEvidenceInputHash(run, 'full.design.document'),
+          },
           ...(requirePause ? { buildPause: 'plan-ready' } : {}),
         },
       },
@@ -322,7 +309,7 @@ export async function submitClassicSdkBuildPlan(options: {
     evidenceId: evidence.id,
     kind: evidence.kind,
     ref: receipt.ref,
-    contentHash: receipt.contentHash,
+    contentHash: classicSdkEvidenceInputHash(run, 'full.build.plan'),
     submissionId: randomUUID(),
     context: { requestId: randomUUID(), projectRoot },
   });
@@ -373,16 +360,7 @@ export async function continueClassicSdkBuildPlan(options: {
       ? inspected.input.changeDir
       : null;
   if (!changeDirRef) throw new Error('Classic SDK Run has no change directory');
-  const receipt = await classicPlanEvidenceReceipt(projectRoot, state.plan, changeDirRef, {
-    scope: await classicFormalEditReviewScope(
-      projectRoot,
-      change,
-      state,
-      false,
-      undefined,
-      inspected,
-    ),
-  });
+  const receipt = await classicPlanEvidenceReceipt(projectRoot, state.plan, changeDirRef, {});
   const acceptedPlan = inspected.evidenceWaits
     ?.slice()
     .reverse()
@@ -390,11 +368,7 @@ export async function continueClassicSdkBuildPlan(options: {
       (candidate) =>
         candidate.stepId === 'full.build.plan.evidence' && candidate.status === 'resolved',
     )?.receipt;
-  if (
-    !acceptedPlan ||
-    acceptedPlan.ref !== receipt.ref ||
-    acceptedPlan.contentHash !== receipt.contentHash
-  ) {
+  if (!acceptedPlan || acceptedPlan.ref !== receipt.ref) {
     throw new Error(
       `Classic Build plan or tasks changed after the plan-ready pause; run comet state revise-plan ${change} --expected-revision ${inspected.revision}, then submit-plan --pause again`,
     );
@@ -421,7 +395,7 @@ export async function continueClassicSdkBuildPlan(options: {
     evidenceId: evidence.id,
     kind: evidence.kind,
     ref: receipt.ref,
-    contentHash: receipt.contentHash,
+    contentHash: classicSdkEvidenceInputHash(run, 'full.build.plan'),
     submissionId: randomUUID(),
     context: { requestId: randomUUID(), projectRoot },
   });

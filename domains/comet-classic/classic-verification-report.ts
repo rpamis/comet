@@ -1,19 +1,17 @@
-import { createHash } from 'node:crypto';
 import path from 'node:path';
 
 import {
   inspectProtectedProjectPath,
   readProtectedProjectFile,
 } from '../workflow-contract/protected-project-path.js';
-import { classicDocumentLanguageMismatch } from './classic-document-language.js';
 import { resolveClassicLayout } from './classic-layout.js';
 
-/** Validate and fingerprint a Classic Verify report for SDK evidence submission. */
+/** 读取已选验收报告；语言与结论由验收 Agent 核对。 */
 export async function classicVerificationReportReceipt(
   projectRoot: string,
   ref: string,
-  language: 'en' | 'zh-CN' | null,
-): Promise<{ ref: string; contentHash: string }> {
+  _language: 'en' | 'zh-CN' | null,
+): Promise<{ ref: string }> {
   const layout = await resolveClassicLayout(projectRoot);
   const report = await inspectProtectedProjectPath(projectRoot, ref, {
     label: 'Classic Verify report',
@@ -36,12 +34,7 @@ export async function classicVerificationReportReceipt(
   });
   const content = file.bytes.toString('utf8');
   if (!content.trim()) throw new Error('Classic Verify report is empty');
-  const languageIssue = language
-    ? classicDocumentLanguageMismatch(content, language, normalizedRef)
-    : null;
-  if (languageIssue) throw new Error(languageIssue);
   return {
     ref: normalizedRef,
-    contentHash: createHash('sha256').update(file.bytes).digest('hex'),
   };
 }

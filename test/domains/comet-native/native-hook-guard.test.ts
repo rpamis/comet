@@ -669,36 +669,6 @@ describe('Native phase Hook guard', () => {
     });
   });
 
-  it('preserves a Verify candidate for resource messages and holds unclassified mixed writes', async () => {
-    await useRevertPolicy('.');
-    const { paths, state } = await portableBuild('portable-resource-targets');
-    const runner = createNativeRunnerChannel();
-    await submitNativePortableBuilderCandidate({
-      paths,
-      name: state.name,
-      input: {
-        identity: runner.captureExecutionIdentity({
-          identityProvider: 'test-host',
-          executionRef: 'builder',
-        }),
-        summary: 'Built.',
-        addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
-        acceptanceReview: fixtureAcceptanceReview(state.acceptance.map(({ id }) => id)),
-      },
-    });
-    const before = await readNativePortableChange(paths, state.name);
-    await expect(
-      inspectNativeHookGuard(
-        projectRoot,
-        writeRequest('agent:/Main', 'proc:/worker/kill', 'xd:/report_issue'),
-      ),
-    ).resolves.toMatchObject({ allowed: true });
-    expect(await readNativePortableChange(paths, state.name)).toEqual(before);
-    await expect(
-      inspectNativeHookGuard(projectRoot, writeRequest('agent:/Main', 'src/new-file.ts')),
-    ).resolves.toMatchObject({ allowed: false, phase: 'verify' });
-  });
-
   it('keeps a portable Verify candidate valid for neutral document writes', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const { paths, state } = await portableBuild('portable-doc-write');
@@ -729,44 +699,6 @@ describe('Native phase Hook guard', () => {
     await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
       phase: 'verify',
       builder_handoff: { candidate_id: 'candidate' },
-    });
-  });
-
-  it('holds an unclassified material write mixed with documents in Verify', async () => {
-    const config = defaultProjectConfig('.');
-    await writeProjectConfig(projectRoot, {
-      ...config,
-      native: { ...config.native, document_writes: 'revert' },
-    });
-    const { paths, state } = await portableBuild('portable-mixed-write');
-    const runner = createNativeRunnerChannel();
-    await submitNativePortableBuilderCandidate({
-      paths,
-      name: state.name,
-      input: {
-        identity: runner.captureExecutionIdentity({
-          identityProvider: 'test-host',
-          executionRef: 'builder',
-        }),
-        candidateId: 'candidate',
-        summary: 'Built.',
-        addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
-        acceptanceReview: fixtureAcceptanceReview(state.acceptance.map(({ id }) => id)),
-        review: passedReview('mixed-write-reviewer'),
-      },
-    });
-
-    const decision = await inspectNativeHookGuard(
-      projectRoot,
-      writeRequest('README.md', 'src/index.ts'),
-    );
-    expect(decision, JSON.stringify(decision)).toMatchObject({
-      allowed: false,
-      phase: 'verify',
-      reason: expect.stringContaining('edit-review show native'),
-    });
-    await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
-      phase: 'verify',
     });
   });
 

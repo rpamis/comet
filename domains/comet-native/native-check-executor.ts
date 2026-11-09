@@ -1,29 +1,28 @@
 import {
   accessSync,
-  constants as fsConstants,
   existsSync,
   promises as fs,
+  constants as fsConstants,
   statSync,
 } from 'node:fs';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
 
 import {
-  assertSafeWindowsBatchArguments,
-  resolveWindowsCommand,
-} from '../../platform/process/spawn-command.js';
+  spawnOwnedCommand,
+  type OwnedProcessInstance,
+} from '../../platform/process/owned-command.js';
 import {
   inspectProcessTreeLiveness,
   readProcessIdentity,
   type ProcessLiveness,
 } from '../../platform/process/process-identity.js';
+import { observeRuntimeOperation } from '../../platform/process/runtime-performance.js';
 import {
-  spawnOwnedCommand,
-  type OwnedProcessInstance,
-} from '../../platform/process/owned-command.js';
+  assertSafeWindowsBatchArguments,
+  resolveWindowsCommand,
+} from '../../platform/process/spawn-command.js';
 import { terminateProcessTreeConfirmed } from '../../platform/process/terminate-process-tree.js';
 import { redactNativeCredentialText } from './native-redaction.js';
-import { observeRuntimeOperation } from '../../platform/process/runtime-performance.js';
 
 /** 不确定的停止不能当作普通失败清除登记或允许重试。 */
 export class NativeCheckTerminationUnconfirmedError extends Error {
@@ -70,6 +69,8 @@ export interface NativeCheckPlan {
   cwdRef: string;
   timeoutMs: number;
   repeatable: boolean;
+  /** Agent 判断原命令结果仍适用于当前实现时允许复用。 */
+  reusable?: boolean;
   /** 项目相对的测试产物路径；已跟踪文件仍参与输入核对。 */
   outputs?: string[];
 }
@@ -287,7 +288,7 @@ async function executeNativeCheckOperation(options: {
   now?: () => Date;
   onSpawn?: (child: OwnedProcessInstance & { signal: AbortSignal }) => Promise<void>;
   onTerminated?: (child: OwnedProcessInstance, confirmed: boolean) => Promise<void>;
-}): Promise<NativeExecutedCheck & { logSha256: string }> {
+}): Promise<NativeExecutedCheck> {
   const { plan } = options;
   safeSegment(options.operationId, 'Native check operation ID');
   const cwd = validateNativeCheckPlan(options.projectRoot, plan);
@@ -300,9 +301,8 @@ async function executeNativeCheckOperation(options: {
   const logHandle = await fs.open(logFile, 'wx');
   const stream = logHandle.createWriteStream();
   const started = (options.now ?? (() => new Date()))();
-  const logHash = createHash('sha256');
 
-  return new Promise<NativeExecutedCheck & { logSha256: string }>((resolve, reject) => {
+  return new Promise<NativeExecutedCheck>((resolve, reject) => {
     let child;
     let start: () => void;
     let ready: Promise<void>;
@@ -417,7 +417,6 @@ async function executeNativeCheckOperation(options: {
           spawnError = new Error(message.message ?? '检查启动失败');
           const text = `\n[comet] failed to start check: ${redactNativeCredentialText(spawnError.message)}\n`;
           stream.write(text);
-          logHash.update(text);
         }
         if (
           commandStarted &&
@@ -437,13 +436,10 @@ async function executeNativeCheckOperation(options: {
     child.stderr.pipe(stream, { end: false });
     // These listeners observe the same event order as the log stream writes.
     // Outcome validation must still hash the finished file before committing it.
-    child.stdout.on('data', (chunk: Buffer) => logHash.update(chunk));
-    child.stderr.on('data', (chunk: Buffer) => logHash.update(chunk));
     child.once('error', (error) => {
       spawnError = error;
       const message = `\n[comet] failed to start check: ${redactNativeCredentialText(error.message)}\n`;
       stream.write(message);
-      logHash.update(message);
       if (!commandStarted && !registrationSettled) {
         registrationController.abort();
         cancelRegistration?.(error);
@@ -504,7 +500,6 @@ async function executeNativeCheckOperation(options: {
               completedAt: completed.toISOString(),
               repeatable: plan.repeatable,
               logRef: path.relative(options.runtimeDir, logFile).split(path.sep).join('/'),
-              logSha256: logHash.digest('hex'),
             });
           });
         })

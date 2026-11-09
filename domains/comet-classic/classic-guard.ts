@@ -1,55 +1,50 @@
-import {
-  assertClassicEditReviewsComplete,
-  rememberClassicCompatFormalSources,
-} from './classic-edit-review.js';
-import { resolveClassicStateFile } from './classic-state-file.js';
-import { promises as fs } from 'fs';
-import { inspectClassicAutonomousBuildProblems } from './classic-plan-readiness.js';
-import { classicIssue, type ClassicIssue } from './classic-issues.js';
-import { classicDocumentLanguageMismatch } from './classic-document-language.js';
-import { classicRecoveryContext } from './classic-recovery.js';
-import { computeContextHash, readClassicHandoffSourceHashes } from './classic-handoff.js';
+import path from 'path';
+import { parseDocument } from 'yaml';
+import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
+import { readWorkflowProjectConfigDocument } from '../workflow-contract/project-config-reader.js';
 import {
   classicArchivedRequirementsProblems,
   readClassicArtifactRequirements,
 } from './classic-artifact-requirements.js';
-import path from 'path';
 import {
-  inspectClassicPlanTasks,
-  parseClassicTasks,
-  validateClassicTaskPlan,
-} from './classic-tasks.js';
-import { parseDocument } from 'yaml';
+  driftBlockedMessage,
+  resolveBranchBinding,
+  unboundDetachedMessage,
+  type BranchBindingOutcome,
+} from './classic-branch-binding.js';
+import { readCheckPolicy } from './classic-check-policy.js';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
-import { classicGuardCheckEnvelope, classicLocale } from './classic-output-language.js';
-import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
 import {
   evaluateCommandCheck,
   latestCommandCheck,
   latestInterruptedCommandCheck,
   rememberClassicAcceptedVerifyCheck,
-  executeCommandCheck,
   type CommandCheckEvaluation,
   type CommandCheckScope,
   type RecordedCommandCheck,
 } from './classic-command-checks.js';
-import { readCheckPolicy } from './classic-check-policy.js';
-import { inspectClassicChange } from './classic-diagnostics.js';
-import { assertClassicLayoutWritable, classicProjectRelative } from './classic-layout.js';
 import {
-  collectClassicSpecFiles,
-  openSpecChangeNameError,
-  resolveClassicChangeDirectory,
-} from './classic-paths.js';
-import { ensureClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
+  classicCommandInvocationCwd,
+  classicCommandProjectRoot,
+  withProjectContext,
+} from './classic-command-context.js';
+import { inspectClassicChange } from './classic-diagnostics.js';
+import { validateClassicSdkDesignContext } from './classic-handoff.js';
+import { classicIssue, type ClassicIssue } from './classic-issues.js';
+import { assertClassicLayoutWritable } from './classic-layout.js';
 import type { ClassicRunContext } from './classic-migrate.js';
-import type { ClassicPhase, ClassicState } from './classic-state.js';
-import { appendClassicStateEvent } from './classic-state-events.js';
-import { CLASSIC_GUARD_TRANSITION_EVENT, applyClassicTransition } from './classic-transitions.js';
-import { classicValidateCommand } from './classic-validate-command.js';
-import { readClassicState, withClassicStateLock } from './classic-store.js';
-import { readClassicConfigValue } from './classic-project-config.js';
+import { classicGuardCheckEnvelope, classicLocale } from './classic-output-language.js';
+import { openSpecChangeNameError, resolveClassicChangeDirectory } from './classic-paths.js';
+import { inspectClassicAutonomousBuildProblems } from './classic-plan-readiness.js';
+import {
+  classicProjectFileNonempty,
+  classicProjectTargetExists,
+  inspectClassicProjectTarget,
+  readClassicProjectFile,
+} from './classic-protected-path.js';
+import { classicRecoveryContext } from './classic-recovery.js';
 import { resolveClassicChangeRuntimeOwner } from './classic-runtime-ownership.js';
+import { ensureClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
 import {
   classicSdkArchiveGuard,
   classicSdkBuildGuard,
@@ -58,24 +53,17 @@ import {
   classicSdkVerifyGuard,
 } from './classic-sdk-guard.js';
 import { findClassicSdkWorkspace } from './classic-sdk-status.js';
-import { readWorkflowProjectConfigDocument } from '../workflow-contract/project-config-reader.js';
+import { appendClassicStateEvent } from './classic-state-events.js';
+import { resolveClassicStateFile } from './classic-state-file.js';
+import type { ClassicPhase, ClassicState } from './classic-state.js';
+import { readClassicState, withClassicStateLock } from './classic-store.js';
 import {
-  classicProjectFileNonempty,
-  classicProjectTargetExists,
-  inspectClassicProjectTarget,
-  readClassicProjectFile,
-} from './classic-protected-path.js';
-import {
-  driftBlockedMessage,
-  resolveBranchBinding,
-  unboundDetachedMessage,
-  type BranchBindingOutcome,
-} from './classic-branch-binding.js';
-import {
-  classicCommandInvocationCwd,
-  classicCommandProjectRoot,
-  withProjectContext,
-} from './classic-command-context.js';
+  inspectClassicPlanTasks,
+  parseClassicTasks,
+  validateClassicTaskPlan,
+} from './classic-tasks.js';
+import { CLASSIC_GUARD_TRANSITION_EVENT, applyClassicTransition } from './classic-transitions.js';
+import { classicValidateCommand } from './classic-validate-command.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -212,51 +200,6 @@ async function readField(changeDir: string, field: string): Promise<string> {
   return String(value);
 }
 
-async function projectConfigValue(field: string, changeDir: string): Promise<string> {
-  const changeValue = await readField(changeDir, field);
-  if (changeValue && changeValue !== 'null') return changeValue;
-  return (await readClassicConfigValue(field, { cwd: classicCommandProjectRoot() }))?.value ?? '';
-}
-
-async function configuredLanguage(changeDir: string): Promise<'en' | 'zh-CN'> {
-  const language = await projectConfigValue('language', changeDir);
-  if (!language) return 'en';
-  if (language === 'en' || language === 'zh-CN') return language;
-  throw new Error(`configured language '${language}' is invalid; expected en or zh-CN.`);
-}
-
-async function documentLanguageMatchesConfigured(
-  changeDir: string,
-  file: string,
-): Promise<CheckResult> {
-  const language = await configuredLanguage(changeDir);
-  const source = await readClassicProjectFile(classicCommandProjectRoot(), file, {
-    label: `Classic language-check artifact ${file}`,
-  });
-  const issue = classicDocumentLanguageMismatch(source, language, file);
-  return issue ? fail(issue) : pass();
-}
-
-async function handoffSourceFiles(changeDir: string): Promise<string[]> {
-  // Use forward-slash concatenation (not path.join, which uses the OS separator)
-  // so the handoff-hash input and markdown `Source:` references match the frozen
-  // shell + comet-handoff provenance byte-for-byte. changeDir is a relative forward-slash
-  // path (openspec/changes/<name>); forward slashes are readable on Windows too.
-  const changeRef = classicProjectRelative(classicCommandProjectRoot(), changeDir);
-  const files = [`${changeRef}/proposal.md`, `${changeRef}/design.md`, `${changeRef}/tasks.md`];
-  if (await exists(`${changeRef}/.openspec.yaml`)) files.push(`${changeRef}/.openspec.yaml`);
-  files.push(...(await collectClassicSpecFiles(classicCommandProjectRoot(), `${changeRef}/specs`)));
-  return files;
-}
-
-async function computeHandoffHash(changeDir: string): Promise<string> {
-  return computeContextHash(
-    classicCommandProjectRoot(),
-    changeDir,
-    classicProjectRelative(classicCommandProjectRoot(), changeDir),
-  );
-}
-
 async function preflight(changeDir: string, name: string): Promise<void> {
   if (!(await exists(changeDir))) {
     throw new GuardFailure(red(`FATAL: change directory not found: ${changeDir}`));
@@ -366,12 +309,6 @@ interface CommandRun {
   output: string;
 }
 
-const INFERRED_COMMAND_SOURCES = [
-  'package.json with a build script (invocation root, or a single workspace package when the root has none)',
-  'pom.xml',
-  'Cargo.toml',
-] as const;
-
 async function removedProjectCommandField(
   field: 'build_command' | 'verify_command',
   projectRoot = classicCommandProjectRoot(),
@@ -395,141 +332,6 @@ function removedProjectCommandRun(field: 'build_command' | 'verify_command'): Co
     status: 1,
     output: `${field} has been removed from .comet/config.yaml. Delete this field and run any required ${field === 'build_command' ? 'build' : 'verification'} command manually before retrying.`,
   };
-}
-
-/**
- * Expands one workspace pattern level (`packages/*`, `apps/*`); deeper globs
- * are left unexpanded so pathological repositories stay cheap to probe.
- */
-function workspaceGlobDirectories(pattern: string): { prefix: string; wildcard: boolean } | null {
-  const normalized = pattern.replaceAll('\\', '/').replace(/\/+$/u, '');
-  const match = /^(.+\/)?\*(?:\/\*\*)?$/u.exec(normalized);
-  if (match) return { prefix: match[1] ?? '', wildcard: true };
-  if (normalized.includes('*')) return null;
-  return { prefix: normalized, wildcard: false };
-}
-
-const WORKSPACE_PACKAGE_LIMIT = 32;
-
-async function workspacePackageDirectories(
-  rootWorkspaces: unknown,
-  basePath = classicCommandInvocationCwd(),
-  projectRoot = classicCommandProjectRoot(),
-): Promise<string[]> {
-  const listed = Array.isArray(rootWorkspaces)
-    ? rootWorkspaces
-    : rootWorkspaces &&
-        typeof rootWorkspaces === 'object' &&
-        Array.isArray((rootWorkspaces as { packages?: unknown }).packages)
-      ? (rootWorkspaces as { packages: unknown[] }).packages
-      : [];
-  const patterns = listed.filter((entry): entry is string => typeof entry === 'string');
-  const target = (relative: string) => path.resolve(basePath, relative);
-  const pnpmWorkspace = target('pnpm-workspace.yaml');
-  if (await exists(pnpmWorkspace)) {
-    try {
-      const document = parseDocument(
-        await readClassicProjectFile(projectRoot, pnpmWorkspace, {
-          label: 'pnpm-workspace.yaml',
-        }),
-      );
-      const packages = document.get('packages');
-      if (Array.isArray(packages))
-        for (const entry of packages) if (typeof entry === 'string') patterns.push(entry);
-    } catch {
-      // An unreadable workspace file must not break build detection.
-    }
-  }
-  const directories = new Set<string>();
-  for (const pattern of patterns) {
-    const parsed = workspaceGlobDirectories(pattern);
-    if (!parsed) continue;
-    if (!parsed.wildcard) {
-      directories.add(parsed.prefix);
-      continue;
-    }
-    const base = parsed.prefix ? target(parsed.prefix) : basePath;
-    let entries: import('fs').Dirent[];
-    try {
-      entries = await fs.readdir(base, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries.slice(0, WORKSPACE_PACKAGE_LIMIT))
-      if (entry.isDirectory()) directories.add(`${parsed.prefix}${entry.name}`);
-    if (directories.size >= WORKSPACE_PACKAGE_LIMIT) break;
-  }
-  return [...directories].sort();
-}
-
-interface InferredBuildCommand {
-  display: string;
-  argv: string[];
-}
-
-async function inferredBuildCommand(
-  basePath = classicCommandInvocationCwd(),
-  projectRoot = classicCommandProjectRoot(),
-): Promise<InferredBuildCommand | { ambiguous: string[] } | null> {
-  const target = (relative: string) => path.resolve(basePath, relative);
-  const packageJson = target('package.json');
-  if (await exists(packageJson)) {
-    const parsed = JSON.parse(
-      await readClassicProjectFile(projectRoot, packageJson, {
-        label: 'package.json',
-      }),
-    ) as {
-      scripts?: Record<string, unknown>;
-      workspaces?: unknown;
-    };
-    if (typeof parsed.scripts?.build === 'string')
-      return { display: 'npm run build', argv: ['npm', 'run', 'build'] };
-    // A monorepo root without its own build script falls back to workspace
-    // packages; exactly one candidate auto-runs like a root script, several
-    // candidates stay explicit because choosing for the user would be a guess.
-    const candidates: string[] = [];
-    for (const directory of await workspacePackageDirectories(
-      parsed.workspaces,
-      basePath,
-      projectRoot,
-    )) {
-      const subPackage = target(path.posix.join(directory, 'package.json'));
-      if (!(await exists(subPackage))) continue;
-      try {
-        const sub = JSON.parse(
-          await readClassicProjectFile(projectRoot, subPackage, {
-            label: `package.json (${directory})`,
-          }),
-        ) as {
-          scripts?: Record<string, unknown>;
-        };
-        if (typeof sub.scripts?.build === 'string') candidates.push(directory);
-      } catch {
-        continue;
-      }
-    }
-    if (candidates.length === 1) {
-      const directory = candidates[0].includes(' ') ? `"${candidates[0]}"` : candidates[0];
-      return {
-        display: `npm --prefix ${directory} run build`,
-        argv: ['npm', '--prefix', candidates[0], 'run', 'build'],
-      };
-    }
-    if (candidates.length > 1) return { ambiguous: candidates };
-  }
-  if (await exists(target('pom.xml'))) {
-    if (process.platform === 'win32') {
-      if (await exists(target('mvnw.cmd')))
-        return { display: 'mvnw.cmd compile -q', argv: ['mvnw.cmd', 'compile', '-q'] };
-      return { display: 'mvn.cmd compile -q', argv: ['mvn.cmd', 'compile', '-q'] };
-    }
-    if (await exists(target('mvnw')))
-      return { display: './mvnw compile -q', argv: ['./mvnw', 'compile', '-q'] };
-    return { display: 'mvn compile -q', argv: ['mvn', 'compile', '-q'] };
-  }
-  if (await exists(target('Cargo.toml')))
-    return { display: 'cargo build', argv: ['cargo', 'build'] };
-  return null;
 }
 
 function evidenceDetail(record: RecordedCommandCheck): string {
@@ -581,9 +383,6 @@ async function commandCheckPasses(
   run: ClassicRunContext['run'],
   scope: CommandCheckScope,
 ): Promise<CommandRun> {
-  if (process.env.COMET_SKIP_BUILD === '1') {
-    return { status: 0, output: 'SKIPPED via COMET_SKIP_BUILD=1' };
-  }
   const removedFields: Array<'build_command' | 'verify_command'> =
     scope === 'build' ? ['build_command'] : ['verify_command', 'build_command'];
   for (const removedField of removedFields) {
@@ -611,58 +410,9 @@ async function commandCheckPasses(
     !recorded && !previous
       ? await latestInterruptedCommandCheck(root, changeDir, run, scope)
       : null;
-  const inferred =
-    scope === 'build' && !recorded && !previous && !interrupted
-      ? await inferredBuildCommand()
-      : null;
-  if (inferred !== null && 'argv' in inferred) {
-    // Only this fixed, Runtime-inferred command is shell syntax. Attestations
-    // and check-run argv never enter this path.
-    recorded = await executeCommandCheck(root, changeDir, run, {
-      scope,
-      reusable: true,
-      cwd: invocationDir,
-      argv:
-        process.platform === 'win32'
-          ? [process.env.ComSpec || 'cmd.exe', '/d', '/s', '/c', inferred.display]
-          : ['/bin/sh', '-c', inferred.display],
-    });
-    if (recorded.exitCode !== 0)
-      return {
-        status: recorded.exitCode,
-        output: `Build failed (guard auto-ran the detected command '${inferred.display}' in '${invocationDir}'; disable with COMET_SKIP_BUILD=1). Log: ${recorded.logRef}`,
-      };
-    if (recorded.inputBefore !== recorded.inputAfter)
-      return {
-        status: 1,
-        output: [
-          `The detected build command '${inferred.display}' changed its own check inputs (for example nondeterministic build artifacts).`,
-          ...(recorded.changedDuringExecution?.length
-            ? [`Changed inputs: ${recorded.changedDuringExecution.slice(0, 20).join(', ')}.`]
-            : []),
-          'If these paths are generated artifacts, add them to the matching command outputs in .comet/check-policy.json; otherwise stabilize the inputs before rerunning.',
-          `Next: ${recoveryCommand(change, scope, '<program> [args...]')}`,
-        ].join('\n'),
-      };
-    return {
-      status: 0,
-      output: `${evidenceDetail(recorded)} (guard auto-ran the detected command '${inferred.display}' in '${invocationDir}')`,
-    };
-  }
-  if (inferred !== null && 'ambiguous' in inferred) {
-    const example = inferred.ambiguous[0].includes(' ')
-      ? `"${inferred.ambiguous[0]}"`
-      : inferred.ambiguous[0];
-    return {
-      status: 1,
-      output: [
-        `The invocation root has no build script, and several workspace packages declare one: ${inferred.ambiguous.join(', ')}.`,
-        'Guard auto-runs a build only when exactly one candidate exists.',
-        `Next: record the intended build explicitly, for example:\n${recoveryCommand(change, scope, `npm --prefix ${example} run build`)}`,
-      ].join('\n'),
-    };
-  }
   if (!recorded) {
+    if (!previous && !interrupted && process.env.COMET_SKIP_BUILD === '1')
+      return { status: 0, output: 'SKIPPED via explicit COMET_SKIP_BUILD=1' };
     if (interrupted)
       return {
         status: 1,
@@ -702,7 +452,7 @@ async function commandCheckPasses(
       status: 1,
       output:
         scope === 'build'
-          ? `No current Runtime build evidence. Detection searched: ${INFERRED_COMMAND_SOURCES.join(', ')}.${invalidation}\nNext: ${recoveryCommand(change, scope, '<program> [args...]')}`
+          ? `No current Runtime build result. The Agent must explicitly choose its command.${invalidation}\nNext: ${recoveryCommand(change, scope, '<program> [args...]')}`
           : `No current Runtime verify evidence. Manual attestations, stale inputs and recovered checks require a new execution.${invalidation}\nNext: ${recoveryCommand(change, scope, '<program> [args...]')}`,
     };
   }
@@ -912,28 +662,6 @@ async function archivedIsTrue(changeDir: string): Promise<boolean> {
   return (await readField(changeDir, 'archived')) === 'true';
 }
 
-async function designDocFrontmatterHas(
-  designDoc: string,
-  field: string,
-  expected: string,
-): Promise<boolean> {
-  const source = (
-    await readClassicProjectFile(classicCommandProjectRoot(), designDoc, {
-      label: `Classic Design Doc ${designDoc}`,
-    })
-  ).replace(/^\uFEFF/u, '');
-  let inFrontmatter = false;
-  for (const line of source.split(/\r?\n/u)) {
-    if (!inFrontmatter) {
-      if (line === '---') inFrontmatter = true;
-      continue;
-    }
-    if (line === '---') break;
-    if (new RegExp(`^${field}: ['"]?${expected}['"]?\\s*$`, 'u').test(line)) return true;
-  }
-  return false;
-}
-
 async function designDocRecorded(changeDir: string, change: string): Promise<CheckResult> {
   const designDoc = await readField(changeDir, 'design_doc');
   if (designDoc && designDoc !== 'null' && (await exists(designDoc))) return pass();
@@ -941,115 +669,19 @@ async function designDocRecorded(changeDir: string, change: string): Promise<Che
     `design_doc must point to an existing Superpowers Design Doc for full workflow before leaving design.\nNext: create the Design Doc and run: comet state set ${change} design_doc <path>`,
   );
 }
-
 async function designHandoffContextValid(changeDir: string, change: string): Promise<CheckResult> {
   const context = await readField(changeDir, 'handoff_context');
-  const recordedHash = await readField(changeDir, 'handoff_hash');
-  if (!context || context === 'null') {
-    return fail(
-      `handoff_context is missing from .comet.yaml\nNext: run comet handoff ${change} design --write before invoking Superpowers.`,
-    );
-  }
-  if (!(await nonempty(context))) {
-    return fail(
-      `handoff_context does not point to a non-empty file: ${context}\nNext: regenerate the design handoff with comet handoff ${change} design --write.`,
-    );
-  }
-  if (!/^[a-f0-9]{64}$/u.test(recordedHash)) {
-    return fail(
-      `handoff_hash is missing or invalid: ${recordedHash || 'null'}\nNext: regenerate the design handoff with comet handoff ${change} design --write.`,
-    );
-  }
-  const actualHash = await computeHandoffHash(changeDir);
-  if (actualHash !== recordedHash) {
-    return fail(
-      `OpenSpec artifacts changed after handoff was generated.\nExpected handoff_hash: ${recordedHash}\nActual handoff_hash:   ${actualHash}\nNext: run comet handoff ${change} design --write so Superpowers receives the current OpenSpec context.`,
-    );
-  }
-  const markdown = `${context.replace(/\.json$/u, '')}.md`;
-  if (!(await nonempty(markdown))) {
-    return fail(
-      `design handoff markdown is missing or empty: ${markdown}\nNext: regenerate the design handoff with comet handoff ${change} design --write.`,
-    );
-  }
-  return pass();
-}
-
-async function designHandoffMarkdownTraceable(changeDir: string): Promise<CheckResult> {
-  const context = await readField(changeDir, 'handoff_context');
-  if (!context || context === 'null') return fail('handoff_context is missing from .comet.yaml');
-  const markdown = `${context.replace(/\.json$/u, '')}.md`;
-  if (!(await nonempty(markdown)))
-    return fail(`design handoff markdown is missing or empty: ${markdown}`);
-  const source = await readClassicProjectFile(classicCommandProjectRoot(), markdown, {
-    label: `Classic handoff markdown ${markdown}`,
-  });
-  const lines = new Set(source.split(/\r?\n/u));
-  const problems: string[] = [];
-  if (!/^Generated-by: comet-handoff\.sh$/mu.test(source)) {
-    problems.push('handoff markdown is missing Generated-by marker');
-  }
-  if (!/^- Mode: (compact|full|beta)$/mu.test(source)) {
-    problems.push('handoff markdown is missing Mode marker');
-  }
-  const sourceHashes = await readClassicHandoffSourceHashes(classicCommandProjectRoot(), changeDir);
-  for (const file of await handoffSourceFiles(changeDir)) {
-    if (!(await exists(file))) continue;
-    if (!lines.has(`- Source: ${file}`)) {
-      problems.push(`handoff markdown is missing source reference: ${file}`);
-    }
-    if (!lines.has(`- SHA256: ${sourceHashes.get(file)}`)) {
-      problems.push(`handoff markdown is missing current sha256 for: ${file}`);
-    }
-  }
-  return problems.length === 0 ? pass() : fail(problems.join('\n'));
-}
-
-async function contextCompressionMode(changeDir: string): Promise<string> {
-  return (await readField(changeDir, 'context_compression')) || 'off';
-}
-
-async function betaSpecJsonStructurallyValid(changeDir: string): Promise<CheckResult> {
-  if ((await contextCompressionMode(changeDir)) !== 'beta') return pass();
-  const context = await readField(changeDir, 'handoff_context');
-  if (!context || context === 'null') return fail('handoff_context is missing from .comet.yaml');
-  if (!(await nonempty(context))) return fail(`spec-context.json is missing or empty: ${context}`);
-  const source = await readClassicProjectFile(classicCommandProjectRoot(), context, {
-    label: `Classic handoff context ${context}`,
-  });
-  const problems: string[] = [];
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(source);
-  } catch (error) {
-    return fail(
-      `spec-context.json invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return fail('spec-context.json root must be an object');
-  }
-  const record = parsed as Record<string, unknown>;
-  if (typeof record.change !== 'string') problems.push("spec-context.json missing 'change' field");
-  if (typeof record.phase !== 'string') problems.push("spec-context.json missing 'phase' field");
-  if (record.mode !== 'beta') problems.push('spec-context.json mode is not beta');
-  if (typeof record.context_hash !== 'string') {
-    problems.push("spec-context.json missing 'context_hash' field");
-  }
-  if (!Array.isArray(record.files)) problems.push("spec-context.json missing 'files' field");
-  const files = Array.isArray(record.files)
-    ? record.files.filter(
-        (file): file is Record<string, unknown> =>
-          Boolean(file) && typeof file === 'object' && !Array.isArray(file),
-      )
-    : [];
-  for (const file of await handoffSourceFiles(changeDir)) {
-    if (!(await exists(file))) continue;
-    if (!files.some((entry) => entry.path === file && typeof entry.sha256 === 'string')) {
-      problems.push(`spec-context.json missing source file reference: ${file}`);
-    }
-  }
-  return problems.length === 0 ? pass() : fail(problems.join('\n'));
+  if (!context || context === 'null') return fail('Design proposal has no source reference');
+  return (await validateClassicSdkDesignContext({
+    projectRoot: classicCommandProjectRoot(),
+    changeDir,
+    change,
+    contextCompression:
+      (await readField(changeDir, 'context_compression')) === 'beta' ? 'beta' : 'off',
+    handoffContext: context,
+  }))
+    ? pass()
+    : fail('Design context must reference the selected change sources');
 }
 
 async function guardOpenChecks(output: GuardOutput, changeDir: string): Promise<boolean> {
@@ -1065,14 +697,8 @@ async function guardOpenChecks(output: GuardOutput, changeDir: string): Promise<
     check('proposal.md exists and non-empty', async () =>
       (await nonempty(path.join(changeDir, 'proposal.md'))) ? pass() : fail(''),
     ),
-    check('proposal.md matches configured language', () =>
-      documentLanguageMatchesConfigured(changeDir, path.join(changeDir, 'proposal.md')),
-    ),
     check('tasks.md exists and non-empty', async () =>
       (await nonempty(path.join(changeDir, 'tasks.md'))) ? pass() : fail(''),
-    ),
-    check('tasks.md matches configured language', () =>
-      documentLanguageMatchesConfigured(changeDir, path.join(changeDir, 'tasks.md')),
     ),
     check('tasks.md has at least one task', async () =>
       (await tasksHasAny(changeDir)) ? pass() : fail(''),
@@ -1087,9 +713,6 @@ async function guardOpenChecks(output: GuardOutput, changeDir: string): Promise<
       0,
       check('design.md exists and non-empty', async () =>
         (await nonempty(path.join(changeDir, 'design.md'))) ? pass() : fail(''),
-      ),
-      check('design.md matches configured language', () =>
-        documentLanguageMatchesConfigured(changeDir, path.join(changeDir, 'design.md')),
       ),
     );
   }
@@ -1116,33 +739,14 @@ async function guardDesignChecks(
     check('proposal.md exists', async () =>
       (await nonempty(path.join(changeDir, 'proposal.md'))) ? pass() : fail(''),
     ),
-    check('proposal.md matches configured language', () =>
-      documentLanguageMatchesConfigured(changeDir, path.join(changeDir, 'proposal.md')),
-    ),
     check('design.md exists', async () =>
       !checkDesign || (await nonempty(path.join(changeDir, 'design.md'))) ? pass() : fail(''),
-    ),
-    check('design.md matches configured language', async () =>
-      checkDesign
-        ? documentLanguageMatchesConfigured(changeDir, path.join(changeDir, 'design.md'))
-        : pass(),
     ),
     check('tasks.md exists', async () =>
       (await nonempty(path.join(changeDir, 'tasks.md'))) ? pass() : fail(''),
     ),
-    check('tasks.md matches configured language', () =>
-      documentLanguageMatchesConfigured(changeDir, path.join(changeDir, 'tasks.md')),
-    ),
     check('design handoff context exists', () => designHandoffContextValid(changeDir, change)),
-    check('design handoff markdown is traceable', () => designHandoffMarkdownTraceable(changeDir)),
   ];
-  if ((await contextCompressionMode(changeDir)) === 'beta') {
-    builders.push(
-      check('beta spec-context.json is structurally valid', () =>
-        betaSpecJsonStructurallyValid(changeDir),
-      ),
-    );
-  }
   if (workflow === 'full') {
     builders.push(
       check('design_doc is recorded for full workflow', () => designDocRecorded(changeDir, change)),
@@ -1155,27 +759,6 @@ async function guardDesignChecks(
         check(`Design Doc (${designDoc}) exists`, async () =>
           (await nonempty(designDoc)) ? pass() : fail(''),
         ),
-        check('Design Doc matches configured language', () =>
-          documentLanguageMatchesConfigured(changeDir, designDoc),
-        ),
-        check('Design Doc frontmatter links current change', async () => {
-          if (!(await nonempty(designDoc))) return fail('');
-          return (await designDocFrontmatterHas(designDoc, 'comet_change', change))
-            ? pass()
-            : fail('');
-        }),
-        check('Design Doc declares technical design role', async () => {
-          if (!(await nonempty(designDoc))) return fail('');
-          return (await designDocFrontmatterHas(designDoc, 'role', 'technical-design'))
-            ? pass()
-            : fail('');
-        }),
-        check('Design Doc declares OpenSpec as canonical spec', async () => {
-          if (!(await nonempty(designDoc))) return fail('');
-          return (await designDocFrontmatterHas(designDoc, 'canonical_spec', 'openspec'))
-            ? pass()
-            : fail('');
-        }),
       ])) || blocked;
   } else if (workflow !== 'full') {
     output.stderr.push(
@@ -1214,14 +797,6 @@ async function guardBuildChecks(
     check('proposal.md exists', async () =>
       (await nonempty(path.join(changeDir, 'proposal.md'))) ? pass() : fail(''),
     ),
-    check('proposal.md matches configured language', () =>
-      documentLanguageMatchesConfigured(changeDir, path.join(changeDir, 'proposal.md')),
-    ),
-    check('Superpowers plan matches configured language', async () => {
-      const plan = await readField(changeDir, 'plan');
-      if (!plan || plan === 'null' || !(await exists(plan))) return pass();
-      return documentLanguageMatchesConfigured(changeDir, plan);
-    }),
   ]);
   if (blocked) return true;
   return runChecks(output, [
@@ -1244,11 +819,6 @@ async function guardVerifyChecks(
     check('verification_report exists', async () =>
       (await verificationReportExists(changeDir)) ? pass() : fail(''),
     ),
-    check('verification_report matches configured language', async () => {
-      const report = await readField(changeDir, 'verification_report');
-      if (!report || report === 'null' || !(await exists(report))) return pass();
-      return documentLanguageMatchesConfigured(changeDir, report);
-    }),
   ]);
   if (blocked) return true;
   return runChecks(output, [
@@ -1308,9 +878,7 @@ async function applyStateUpdateLocked(
   // boundBranchMatches may have lazily healed bound_branch on disk, and a
   // stale projection would write the pre-heal null back over it.
   const context = await ensureClassicRuntimeRun(changeDir);
-  let acceptedBuild: RecordedCommandCheck | undefined;
-  if (phase === 'verify' || phase === 'archive')
-    await assertClassicEditReviewsComplete(classicCommandProjectRoot(), change, context.classic);
+
   if ((phase === 'build' || phase === 'verify') && process.env.COMET_SKIP_BUILD !== '1') {
     const evaluation = await evaluateCommandCheck(
       classicCommandProjectRoot(),
@@ -1335,34 +903,8 @@ async function applyStateUpdateLocked(
             : 'Check evidence changed before transition; rerun the check.';
       throw new GuardFailure(reason);
     }
-    if (phase === 'build') acceptedBuild = record;
   }
   const result = applyClassicTransition(context.classic, event);
-  let formalSources =
-    acceptedBuild && result.classic.workflow === 'full'
-      ? await rememberClassicCompatFormalSources(
-          classicCommandProjectRoot(),
-          change,
-          result.classic,
-          context.run,
-          acceptedBuild,
-        )
-      : {};
-  if (phase === 'open' && result.classic.workflow !== 'full') {
-    const requirements = await readClassicArtifactRequirements(
-      classicCommandProjectRoot(),
-      changeDir,
-    );
-    if (requirements.problems.length) throw new GuardFailure(requirements.problems.join('\n'));
-    formalSources = await rememberClassicCompatFormalSources(
-      classicCommandProjectRoot(),
-      change,
-      result.classic,
-      context.run,
-      undefined,
-      requirements.files.map((file) => classicProjectRelative(classicCommandProjectRoot(), file)),
-    );
-  }
   if (phase === 'verify' && process.env.COMET_SKIP_BUILD !== '1') {
     const check = await latestCommandCheck(
       classicCommandProjectRoot(),
@@ -1383,7 +925,6 @@ async function applyStateUpdateLocked(
     event,
     phase,
     source: 'comet-guard',
-    ...formalSources,
   });
   await appendClassicStateEvent(changeDir, {
     change,
@@ -1546,24 +1087,9 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
                 `A previous Classic SDK Build check exists; run comet check run ${change} build -- <program> [args...] explicitly`,
               );
             } else {
-              if (await removedProjectCommandField('build_command', sdkWorkspace.projectRoot)) {
-                throw new GuardFailure(removedProjectCommandRun('build_command').output);
-              }
-              const inferred = await inferredBuildCommand(
-                sdkWorkspace.projectRoot,
-                sdkWorkspace.projectRoot,
+              throw new GuardFailure(
+                `Build command is not selected; run comet guard ${change} build --apply -- <program> [args...] explicitly`,
               );
-              if (!inferred) {
-                throw new GuardFailure(
-                  `No unambiguous Build command was found; run comet guard ${change} build --apply -- <program> [args...]`,
-                );
-              }
-              if ('ambiguous' in inferred) {
-                throw new GuardFailure(
-                  `Several workspace packages declare a Build command: ${inferred.ambiguous.join(', ')}. Choose one explicitly.`,
-                );
-              }
-              argv = inferred.argv;
             }
           }
           return classicSdkBuildGuard({
@@ -1660,12 +1186,6 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
       const changeDir = await resolveChangeDir(change);
       await preflight(changeDir, change);
       const runContext = await ensureClassicRuntimeRun(changeDir);
-      if (phase === 'verify' || phase === 'archive')
-        await assertClassicEditReviewsComplete(
-          classicCommandProjectRoot(),
-          change,
-          runContext.classic,
-        );
       output.data = {
         change,
         phase: runContext.classic.phase,

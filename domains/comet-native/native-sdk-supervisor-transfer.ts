@@ -1,9 +1,9 @@
-import { isWorkspaceRuntimeMigrationFence } from '../workflow-contract/workspace-runtime.js';
-import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { parseDocument } from 'yaml';
+import { isWorkspaceRuntimeMigrationFence } from '../workflow-contract/workspace-runtime.js';
 
 import {
   inspectGitWorktree,
@@ -14,13 +14,17 @@ import {
 import {
   createFileRuntimeStore,
   createMemoryRuntimeStore,
-  createRuntime,
   createPortableRunCheckpoint,
+  createRuntime,
   hashRuntimeValue,
   PORTABLE_RUN_CHECKPOINT_KEY,
   readPortableRunCheckpoint,
   type WorkflowRun,
 } from '../engine/runtime.js';
+import {
+  loadWorkflowApplication,
+  type ApplicationIdentity,
+} from '../workflow-application/index.js';
 import {
   COMET_CHANGE_OWNER_SCHEMA,
   readChangeRuntimeOwner,
@@ -32,29 +36,25 @@ import {
 } from '../workflow-contract/contained-atomic-write.js';
 import {
   ensureProtectedProjectDirectory,
-  inspectProtectedProjectPath,
   hashProtectedProjectFile,
+  inspectProtectedProjectPath,
 } from '../workflow-contract/protected-project-path.js';
 import { readProjectConfig } from './native-config.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { nativePortableStateFile } from './native-portable-storage.js';
 import { inspectNativeSdkRun } from './native-runtime-ownership.js';
+import { nativeSdkApplicationForRun } from './native-sdk-application.js';
+import {
+  nativeSdkBeforeVerifierRecovery,
+  nativeSdkLegacyTransitionHandler,
+  nativeSdkMatchesRun,
+} from './native-sdk-definition.js';
 import {
   createNativeSdkStateStore,
   readNativeSdkRunRecord,
   writeNativeManagedRunState,
 } from './native-sdk-state-store.js';
-import {
-  loadWorkflowApplication,
-  type ApplicationIdentity,
-} from '../workflow-application/index.js';
-import { nativeSdkApplicationForRun } from './native-sdk-application.js';
-import {
-  nativeSdkBeforeVerifierRecovery,
-  nativeSdkMatchesRun,
-  nativeSdkLegacyTransitionHandler,
-} from './native-sdk-definition.js';
 import {
   nativeSupervisorChildWorktree,
   nativeSupervisorIntegrationWorktree,
@@ -145,7 +145,7 @@ function workspacesFromRun(
   workspaces: TransferWorkspace[];
 } {
   const state = parseNativePortableState(run.state);
-  if (state.phase !== 'build' || state.archived || !state.children_contract_hash) {
+  if (state.phase !== 'build' || state.archived || !state.children_contract_ref) {
     throw new Error('Native Supervisor transfer requires an active SDK Build');
   }
   if (

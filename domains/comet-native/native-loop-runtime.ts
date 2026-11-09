@@ -259,16 +259,6 @@ export function reserveNativeVerifierAttempt(stateInput: NativePortableState): N
   });
 }
 
-function progressCounters(state: NativePortableState, unresolvedIds: string[]): number {
-  const previous = state.loop.previous_unresolved_ids;
-  if (previous.length === 0) return 0;
-  const previousSet = new Set(previous);
-  const currentSet = new Set(unresolvedIds);
-  const strictSubset =
-    currentSet.size < previousSet.size && [...currentSet].every((id) => previousSet.has(id));
-  return strictSubset ? 0 : state.loop.no_progress_count + 1;
-}
-
 function verificationState(options: {
   state: NativePortableState;
   envelope: NativeTrustedVerifierEnvelope<unknown>;
@@ -442,14 +432,8 @@ export function applyNativeVerifierEnvelope(options: {
   }
 
   const failedIterationCount = state.loop.failed_iteration_count + 1;
-  const noProgressCount = progressCounters(state, unresolvedIds);
-  const limitReached = failedIterationCount >= options.maxVerifyFailures;
-  const stalled = noProgressCount >= 3;
-  const stop = limitReached || stalled;
-  // A stagnation stop is more specific than a generic failure budget stop.
-  // Persist the decision so continuation text and the durable blocker cannot
-  // disagree when both thresholds are crossed by the same result.
-  const stopReason = stalled ? 'stalled' : limitReached ? 'budget' : undefined;
+  // 进展由 Agent 根据实际修复判断；编号集合不用于推断停滞。
+  const stop = failedIterationCount >= options.maxVerifyFailures;
   const withHistory = appendNativePortableHistory(
     { ...state, acceptance, verification } as NativePortableState,
     historyEntry({
@@ -478,34 +462,21 @@ export function applyNativeVerifierEnvelope(options: {
             {
               owner: 'user',
               reason: toNativePortableText(
-                stopReason === 'budget'
-                  ? 'Native verification reached the configured failed iteration limit.'
-                  : 'Native verification did not strictly reduce the unresolved acceptance set three times.',
+                'Native verification reached the configured failed iteration limit.',
               ),
               acceptance_ids: unresolvedIds,
               resolution_action: 'await-user',
             },
           ]
-        : noProgressCount >= 2
-          ? [
-              {
-                owner: 'builder',
-                reason: toNativePortableText(
-                  'Native verification has not made reliable progress twice; use a different repair hypothesis before resubmitting.',
-                ),
-                acceptance_ids: unresolvedIds,
-                resolution_action: 'return-build',
-              },
-            ]
-          : [],
+        : [],
       loop: {
         ...state.loop,
         stage: stop ? 'await-user' : 'repairing',
         iteration: stop ? state.loop.iteration : state.loop.iteration + 1,
         attempt: stop ? state.loop.attempt : 0,
         failed_iteration_count: failedIterationCount,
-        no_progress_count: noProgressCount,
-        ...(stopReason === undefined ? {} : { stop_reason: stopReason }),
+        no_progress_count: 0,
+        stop_reason: stop ? 'budget' : undefined,
         execution_failure_count: 0,
         previous_unresolved_ids: unresolvedIds,
         next_action: stop ? 'await-user' : 'repair-failed-acceptance',

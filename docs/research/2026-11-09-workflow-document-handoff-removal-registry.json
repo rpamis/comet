@@ -1,0 +1,167 @@
+{
+  "schema": "comet.workflow.migration-originals.v1",
+  "base": "5426c4cbb3569e749ce8050888517f93b8437f5d",
+  "cases": [
+    {
+      "id": "native-supervisor-referenced-acceptance",
+      "behavior": "Generate Supervisor acceptance text from the current catalog when child plans contain only names, dependencies and covers references.",
+      "coverageLevel": "runtime",
+      "reproduction": "A v2 children document containing covers without a copied acceptance_index failed as a summary-v2 contract before implementation.",
+      "expected": "Bind complete current acceptance text to Shape, retain the user-authored references, enforce coverage and permitted repair IDs, and retain v1 and explicit-index compatibility.",
+      "forbidden": "Inventing acceptance text, importing unauthorized Spec repair IDs, or interpreting an old approval against changed formal documents.",
+      "rootCause": "The parser required either duplicated explicit acceptance text or a summary-only plan with no covers.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "derives referenced v2 acceptance from the current catalog without copying its text|accepts a readable v2 acceptance index while retaining the v1 contract|validates v2 index text while allowing only failed Spec acceptance into repair children",
+          "requiredNames": [
+            "derives referenced v2 acceptance from the current catalog without copying its text",
+            "accepts a readable v2 acceptance index while retaining the v1 contract",
+            "validates v2 index text while allowing only failed Spec acceptance into repair children"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "confirms a Supervisor child plan and coordination mode in the same SDK Run",
+          "requiredNames": [
+            "confirms a Supervisor child plan and coordination mode in the same SDK Run",
+            "confirms a Supervisor child plan and coordination mode in the same SDK Run with referenced acceptance"
+          ]
+        }
+      ],
+      "sources": [
+        "report:2026-11-08-skill-execution-optimization"
+      ]
+    },
+    {
+      "id": "native-299-dag-contract",
+      "behavior": "确认完整父子 DAG、拒绝缺依赖/环/漂移，独立任务可并行且依赖任务只在前驱集成后ready",
+      "status": "covered",
+      "reason": "v1/v2 兼容解析与 SDK ready frontier 均保留。",
+      "coverageLayer": "SDK and Compat",
+      "evidence": [
+        "https://github.com/rpamis/comet/issues/299"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "validates the DAG and hashes only semantic parent contract changes|accepts a readable v2 acceptance index while retaining the v1 contract",
+          "requiredNames": [
+            "validates the DAG and hashes only semantic parent contract changes",
+            "accepts a readable v2 acceptance index while retaining the v1 contract"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-plan.test.ts",
+          "namePattern": "dispatches independent children first and waits for both integrations before their dependent child|rejects child facts that do not match the confirmed plan",
+          "requiredNames": [
+            "dispatches independent children first and waits for both integrations before their dependent child",
+            "rejects child facts that do not match the confirmed plan"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-439-child-dependency",
+      "behavior": "Shape重确认后子任务ready/pending按依赖重新派生，已集成兄弟不被重放，损坏overlay可诊断。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "compat-and-sdk",
+      "evidence": [
+        "test/domains/comet-native/native-children.test.ts",
+        "test/domains/comet-native/native-sdk-supervisor-plan.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "derives contract-changed child states through the dependency gate \\(issue #439\\)|finds and repairs a self-locked supervisor overlay through doctor \\(issue #439\\)",
+          "requiredNames": [
+            "derives contract-changed child states through the dependency gate (issue #439)",
+            "finds and repairs a self-locked supervisor overlay through doctor (issue #439)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-plan.test.ts",
+          "namePattern": "dispatches independent children first and waits for both integrations before their dependent child",
+          "requiredNames": [
+            "dispatches independent children first and waits for both integrations before their dependent child"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-299-real-integration-parent-verify",
+      "behavior": "真实 Child 分支串行集成后才解锁依赖，父级最终验收覆盖组合候选",
+      "status": "covered",
+      "reason": "SDK 和 Compat 真实 Git 链路支持父级最终 Verify；不能把子项全部通过当父级通过。",
+      "coverageLayer": "SDK and Compat",
+      "evidence": [
+        "https://github.com/rpamis/comet/issues/299"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "gates the parent on real child merges and starts dependents from the integrated HEAD",
+          "requiredNames": [
+            "gates the parent on real child merges and starts dependents from the integrated HEAD"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "repairs failed Supervisor Children and serializes integration after a definition upgrade|handles parent repair, delivery, and cleanup after Supervisor DAG restart \\(",
+          "requiredNames": [
+            "repairs failed Supervisor Children and serializes integration after a definition upgrade",
+            "handles parent repair, delivery, and cleanup after Supervisor DAG restart ("
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-308-bounded-guidance",
+      "behavior": "Classic 的恢复与交接按需读取，不无条件重复输出全部历史；不承诺某模型任务的 token 数值。",
+      "status": "covered",
+      "reason": "保存可确定性回归的提示词/恢复边界；报告套餐消耗没有可重放任务，不能从静态测试推断真实模型成本已修复。",
+      "coverageLayer": "skill-contract",
+      "evidence": [
+        "test/domains/skill/workflow-optimization-contract.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/skill/workflow-optimization-contract.test.ts",
+          "namePattern": "uses compact local entry summaries and requests full recovery details only when needed|bounds implementer reuse while preserving per-task acceptance and independent review",
+          "requiredNames": [
+            "uses compact local entry summaries and requests full recovery details only when needed",
+            "bounds implementer reuse while preserving per-task acceptance and independent review"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-421-classic-context",
+      "behavior": "Classic full保留所需方法步骤，但恢复/交接不重复全历史输出；不从静态回归宣称某模型token绝对下降。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "sdk-output-and-skill",
+      "evidence": [
+        "test/domains/comet-classic/classic-sdk-output.test.ts",
+        "test/domains/skill/workflow-optimization-contract.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-output.test.ts",
+          "namePattern": "keeps current Skill scope, activation, approved delivery and manual completion without cumulative receipts",
+          "requiredNames": [
+            "keeps current Skill scope, activation, approved delivery and manual completion without cumulative receipts"
+          ]
+        },
+        {
+          "file": "test/domains/skill/workflow-optimization-contract.test.ts",
+          "namePattern": "uses compact local entry summaries and requests full recovery details only when needed",
+          "requiredNames": [
+            "uses compact local entry summaries and requests full recovery details only when needed"
+          ]
+        }
+      ]
+    }
+  ]
+}

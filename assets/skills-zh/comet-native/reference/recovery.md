@@ -31,7 +31,7 @@ SDK 恢复时只读取 commands.md 的 SDK Run 与 SDK Verify 协议；以下 Co
 SDK Run 从 `comet-state.yaml` 的 `run_checkpoint` 恢复；本节以下的 `state.json` 重建规则只适用于旧 Runtime。旧 Runtime 的 `comet-state.yaml` 记录最后一个可以安全恢复的工作流状态。本机 `state.json` 只说明这台机器正在执行什么；如果它缺失、版本落后或属于旧任务，Runtime 会根据 YAML、brief 和目标 Spec 重建。本机状态不能覆盖版本更新的 YAML。
 
 - Shape：保持 Shape，继续澄清或确认。
-- Build：如果 Runtime 显示 `repairing`，表示 Verify 未通过后已返回 Build。普通 change 保持当前验收轮次并继续修改；Supervisor Change 按 `repair-child` 添加新的修复子任务，处理尚未通过的验收项（编辑 `children.yaml` 后运行 `comet native next <parent> --summary "<说明>"`，契约变化会让 Runtime 退回 Shape 重新确认），不重新打开已经归档的子任务。
+- Build：`repairing` 表示 Verify 未通过后已返回 Build。普通 change 保留当前轮次并继续修复。验收失败后，Agent 根据实际失败选择修复安排，父级可以修复其集成范围，也可追加名称唯一、引用有效验收 ID 的修复子任务。保留失败记录和预算，不重新打开已归档或 integrated 的子任务。需要修改计划时显式执行返回的 --revise-requirements，展示完整方案并确认；文件编辑不会自动退回 Shape。
 - Verify（`verify-ready`）：重新运行当前实现所需的检查，并启动新的 Verifier；不沿用旧设备上的通过结果。
 - Archive（`archive-ready`）：先安全返回 Verify，把验收结果重置为待检查（`pending`），再验收已经同步到新设备的实现。
 - 等待用户或阻塞（`await-user` / `blocked`）：恢复原来的阻塞原因、负责处理的人和允许动作，等待对应条件满足后再继续。
@@ -54,11 +54,11 @@ SDK Run 从 `comet-state.yaml` 的 `run_checkpoint` 恢复；本节以下的 `st
 
 旧 Runtime 处于 Verify 或待归档状态的 change，在新设备上重新验收属于恢复操作，不增加验收轮次、失败轮次或无进展次数。只有实际启动新的 Verifier 时，Verifier 尝试次数才增加。已经完成的 Shape 和 Build 不会重做，Runtime 也不会扫描整个项目来猜测进度。
 
-### Verify 未通过与持续无进展
+### Verify 未通过与执行失败
 
-Verify 未通过后，读取未通过、暂时无法验证的验收项以及失败检查。完成实际修改后，再提交新的 Builder handoff。只有未解决的问题变少才算有进展；只改说明文字、重复相同检查或再次报告同一原因，不算解决问题。
+读取实际失败或无法验证的条目和检查结果，由 Agent 判断修复方向与进展，完成必要修改后提交新的 Builder handoff。验收编号重复、交替或集合未缩小不触发额外暂停。
 
-连续多轮没有进展，或 Verifier 任务多次执行出错时，按 Runtime 返回的阻塞处理动作继续。失败轮次达到 `native.max_verify_failures` 时进入等待用户，让用户选择继续当前目标、修改已经确认的需求或停止。用户确认新的验收清单并开始一轮新目标后，验收失败计数清零。
+真实失败达到 `native.max_verify_failures`，或 Verifier 多次执行出错时，按当前响应处理预算或恢复原执行。不能将未知或失败结果记为通过；沿用原 Run、有效批准和已有结果。用户确认新的目标周期时按原协议记录需求变化。
 
 ### 规格与 Archive 冲突
 

@@ -1,99 +1,70 @@
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
+import { parseDocument } from 'yaml';
 import { readGitCommitPaths } from '../../platform/process/git.js';
 import {
-  readClassicSourceObservation,
-  hashClassicSourceObservation,
-} from './classic-protected-path.js';
-import {
-  assertClassicEditReviewsComplete,
-  classicFormalEditReviewScope,
-} from './classic-edit-review.js';
-import {
-  approvedEditFingerprint,
-  approvedEditHash,
-  inspectEditReviews,
-  rememberApprovedEditOriginal,
-  readApprovedEditOriginalForEvidence,
-  type EditReviewScope,
-} from '../workflow-contract/edit-review.js';
-import { readClassicState } from './classic-store.js';
-import { classicSdkPresetSourceEvidence } from './classic-formal-source-evidence.js';
-import {
-  readClassicArchiveManifest,
-  assertClassicArchiveExecutionReceipt,
-} from './classic-sdk-archive-manifest.js';
-import {
-  assertClassicSdkDeliveryInputs,
-  assertClassicSdkDeliveryFileInputs,
-  assertClassicSdkArchiveCommitInputs,
-} from './classic-sdk-delivery-inputs.js';
-import { resolveClassicStateFile } from './classic-state-file.js';
-import { readClassicSdkDeliveryCheckpoint } from './classic-sdk-delivery-checkpoint.js';
-import { classicSdkCheckDirectoryRef, classicSdkCheckLogHash } from './classic-sdk-check-record.js';
-import { archivedClassicDocumentRef } from './classic-archive-annotation.js';
-import {
-  classicArchiveDocumentOutputs,
-  assertClassicRecoveredArchiveDocuments,
-} from './classic-sdk-archive-documents.js';
-import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
-import { isDeepStrictEqual } from 'node:util';
-import path from 'node:path';
-import { parseDocument } from 'yaml';
-import {
   createPortableRunCheckpoint,
-  portableRunCheckpointMatches,
+  hashRuntimeValue,
   PORTABLE_RUN_CHECKPOINT_KEY,
+  portableRunCheckpointMatches,
   readPortableRunCheckpoint,
   type DefineWorkflowOptions,
+  type RuntimeAction,
   type RuntimeEvidenceValidator,
   type RuntimeExecutor,
-  type RuntimeAction,
   type RuntimeValidator,
   type RuntimeValue,
   type WorkflowRun,
   type WorkflowTransitionHandler,
-  hashRuntimeValue,
 } from '../engine/runtime.js';
+import { type EditReviewScope } from '../workflow-contract/edit-review.js';
+import { normalizeWorkflowRelativePath } from '../workflow-contract/project-config.js';
 import {
-  hashProtectedProjectFile,
   inspectProtectedProjectPath,
   readProtectedProjectFile,
 } from '../workflow-contract/protected-project-path.js';
-import { normalizeWorkflowRelativePath } from '../workflow-contract/project-config.js';
+import { archivedClassicDocumentRef } from './classic-archive-annotation.js';
 import {
   classicArchivedRequirementsProblems,
   readClassicArtifactRequirements,
 } from './classic-artifact-requirements.js';
 import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
 import { classicConfigurationReadiness } from './classic-build-configuration.js';
-import { inspectClassicDesignReadiness } from './classic-design-readiness.js';
 import { validateClassicSdkDesignContext } from './classic-handoff.js';
-import { classicDocumentLanguageMismatch } from './classic-document-language.js';
+import { resolveClassicLayout } from './classic-layout.js';
 import { classicOpenContentProblem } from './classic-open-content.js';
+import {
+  inspectClassicAutonomousBuildProblems,
+  inspectClassicPlanReadiness,
+} from './classic-plan-readiness.js';
 import { readClassicProjectFile } from './classic-protected-path.js';
-import { checkEnvironmentFingerprint, collectCheckSnapshot } from './classic-check-snapshot.js';
-import { readCheckPolicy } from './classic-check-policy.js';
+import {
+  assertClassicRecoveredArchiveDocuments,
+  classicArchiveDocumentOutputs,
+} from './classic-sdk-archive-documents.js';
+import {
+  assertClassicArchiveExecutionReceipt,
+  readClassicArchiveManifest,
+} from './classic-sdk-archive-manifest.js';
+import { assertClassicSdkCheckReceipt } from './classic-sdk-check-record.js';
 import { assertClassicSdkCheckCommandBinding } from './classic-sdk-check.js';
+import { readClassicSdkDeliveryCheckpoint } from './classic-sdk-delivery-checkpoint.js';
+import {
+  assertClassicSdkDeliveryFileInputs,
+  assertClassicSdkDeliveryInputs,
+} from './classic-sdk-delivery-inputs.js';
+import { classicDeliveryActionContext } from './classic-sdk-delivery-repair-model.js';
 import {
   classicSdkPullRequestMatches,
   classicSdkRemoteBranchHead,
   classicSdkRemoteIdentity,
 } from './classic-sdk-remote.js';
-import { resolveClassicLayout } from './classic-layout.js';
-import {
-  inspectClassicAutonomousBuildProblems,
-  inspectClassicPlanReadiness,
-} from './classic-plan-readiness.js';
+import { resolveClassicStateFile } from './classic-state-file.js';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
-import {
-  classicTaskRevision,
-  classicTaskRequirements,
-  parseClassicTasks,
-  validateClassicTaskPlan,
-} from './classic-tasks.js';
+import { parseClassicTasks } from './classic-tasks.js';
 import { applyClassicTransition } from './classic-transitions.js';
 import { classicVerificationReportReceipt } from './classic-verification-report.js';
-import { classicDeliveryActionContext } from './classic-sdk-delivery-repair-model.js';
 
 export interface ClassicWorkflowApplication {
   workflow: DefineWorkflowOptions;
@@ -108,12 +79,8 @@ const openRevalidationExecutor: RuntimeExecutor = {
   capabilities: [],
   supports: (action) => action.type === 'call_tool' && action.ref === 'classic-open-revalidate',
   async execute(action, context) {
-    const input = action.input as { input?: { changeDir?: unknown } };
-    if (!context?.projectRoot || typeof input.input?.changeDir !== 'string') {
-      throw new Error('Classic Open revalidation requires a change-bound project root');
-    }
-    const receipt = await classicOpenEvidenceReceipt(context.projectRoot, input.input.changeDir);
-    return { status: 'succeeded', output: { contentHash: receipt.contentHash } };
+    if (!context?.projectRoot) throw new Error('Classic Open requires its project root');
+    return { status: 'succeeded', output: { contentHash: action.inputHash } };
   },
 };
 
@@ -122,37 +89,19 @@ const openRevalidationValidator: RuntimeValidator = {
   version: '1',
   async validate({ run, action, outcome, context }) {
     if (outcome.status === 'failed') return { accepted: true };
-    const input = action.input as { input?: { changeDir?: unknown } };
-    const output = outcome.output as { contentHash?: unknown } | null;
-    const evidence = run.outputs['full.open.evidence']?.value as
-      { ref?: unknown; contentHash?: unknown } | undefined;
-    const confirmation = run.outputs['full.open.confirm']?.value as
-      { choice?: unknown; proposal?: { outputs?: Record<string, RuntimeValue> } } | undefined;
-    const approvedEvidence = confirmation?.proposal?.outputs?.['full.open.evidence'] as
-      { ref?: unknown; contentHash?: unknown } | undefined;
-    if (
-      !context?.projectRoot ||
-      action.claim?.executorId !== openRevalidationExecutor.id ||
-      typeof input.input?.changeDir !== 'string' ||
-      typeof evidence?.ref !== 'string' ||
-      !/^[a-f0-9]{64}$/u.test(String(evidence.contentHash)) ||
-      confirmation?.choice !== 'approved' ||
-      approvedEvidence?.ref !== evidence.ref ||
-      approvedEvidence.contentHash !== evidence.contentHash ||
-      input.input.changeDir !== evidence.ref ||
-      !/^[a-f0-9]{64}$/u.test(String(output?.contentHash))
-    ) {
-      return { accepted: false, reason: 'Classic Open result is not bound to approved artifacts' };
-    }
-    try {
-      const current = await classicOpenEvidenceReceipt(context.projectRoot, evidence.ref, { run });
-      return {
-        accepted: current.contentHash === output?.contentHash,
-        reason: 'Classic Open artifacts changed after the reported revalidation',
-      };
-    } catch (error) {
-      return { accepted: false, reason: error instanceof Error ? error.message : String(error) };
-    }
+    const confirmation = run.waits.find(
+      (wait) =>
+        wait.stepId === 'full.open.confirm' &&
+        wait.status === 'resolved' &&
+        wait.decision?.choice === 'approved',
+    );
+    const output = outcome.output as { contentHash?: string } | null;
+    return confirmation &&
+      context?.projectRoot &&
+      action.claim?.executorId === openRevalidationExecutor.id &&
+      output?.contentHash === action.inputHash
+      ? { accepted: true }
+      : { accepted: false, reason: 'Classic Open has no approval for its current SDK request' };
   },
 };
 
@@ -175,8 +124,7 @@ const designHandoffValidator: RuntimeValidator = {
       typeof input.change !== 'string' ||
       typeof input.changeDir !== 'string' ||
       typeof output?.proposal !== 'string' ||
-      typeof output.handoffContext !== 'string' ||
-      typeof output.handoffHash !== 'string'
+      typeof output.handoffContext !== 'string'
     ) {
       return {
         accepted: false,
@@ -197,8 +145,8 @@ const designHandoffValidator: RuntimeValidator = {
           },
         );
         if (
-          !isDeepStrictEqual(output.sourceEvidence, source) ||
-          !isDeepStrictEqual(output.requirementsEvidence, requirements)
+          output.sourceEvidence?.ref !== source.ref ||
+          output.requirementsEvidence?.ref !== requirements.ref
         ) {
           return {
             accepted: false,
@@ -213,7 +161,7 @@ const designHandoffValidator: RuntimeValidator = {
         change: input.change,
         contextCompression: state.contextCompression,
         handoffContext: output.handoffContext,
-        handoffHash: output.handoffHash,
+        handoffHash: typeof output.handoffHash === 'string' ? output.handoffHash : null,
       });
       return {
         accepted,
@@ -574,12 +522,12 @@ const deliveryOutcomeValidator: RuntimeValidator = {
         archiveAction,
         archiveRef,
       );
-      for (const [ref, hash] of Object.entries(archiveManifest.optionalFiles ?? {})) {
+      for (const ref of archiveManifest.optionalPaths) {
         const committed = execFileSync('git', ['ls-tree', '-z', 'HEAD', '--', ref], {
           cwd: root,
           encoding: 'utf8',
         });
-        if (committed) archiveManifest.inputs[ref] = hash;
+        if (committed) archiveManifest.paths.push(ref);
         else {
           // The deletion of this optional file's active path is approved from the
           // optional file itself. That approval must not cover a commit which drops
@@ -595,14 +543,7 @@ const deliveryOutcomeValidator: RuntimeValidator = {
             );
         }
       }
-      const archiveFiles = await assertClassicSdkDeliveryFileInputs(root, archiveManifest.inputs);
-      await assertClassicSdkArchiveCommitInputs(
-        root,
-        archiveManifest.inputs,
-        commitPaths,
-        archiveManifest.sources,
-        archiveManifest.stateFiles,
-      );
+      const archiveFiles = await assertClassicSdkDeliveryFileInputs(root, archiveManifest.paths);
       const allowed = (file: string) =>
         implementationFiles.has(file) ||
         archiveFiles.has(file) ||
@@ -721,148 +662,31 @@ export async function classicOpenEvidenceReceipt(
     observation?: { scope: EditReviewScope; originalEvidenceHash: string };
     run?: Readonly<WorkflowRun>;
   } = {},
-): Promise<{ ref: string; contentHash: string }> {
+): Promise<{ ref: string }> {
   const inspected = await inspectProtectedProjectPath(projectRoot, changeDirRef, {
     label: 'Classic change',
     expected: 'directory',
   });
-  if (!inspected.exists) throw new Error('Classic change directory does not exist');
-  if (options.run && (options.run.input as { changeDir?: string }).changeDir !== inspected.relative)
-    throw new Error('Classic source evidence Run does not match its current change');
+  if (
+    !inspected.exists ||
+    (options.run && (options.run.input as { changeDir?: string }).changeDir !== inspected.relative)
+  )
+    throw new Error('Classic artifacts do not belong to the current change');
   const requirements = await readClassicArtifactRequirements(projectRoot, inspected.target);
   if (requirements.problems.length) throw new Error(requirements.problems.join('\n'));
-  const entries: Array<[string, string]> = [];
-  const originals: Array<{ ref: string; source: string; hash: string }> = [];
-  const state = options.observation
-    ? null
-    : options.run
-      ? (options.run.state as unknown as ClassicState)
-      : (await readClassicState(inspected.target, { migrate: false })).classic;
-  const scope =
-    !options.captureOriginals && state?.handoffHash
-      ? await classicFormalEditReviewScope(
-          projectRoot,
-          path.basename(inspected.target),
-          state,
-          false,
-          undefined,
-          options.run,
-        )
-      : options.captureOriginals
-        ? undefined
-        : options.observation?.scope;
-  const originalEvidenceHash = options.observation?.originalEvidenceHash ?? state?.handoffHash;
-  const reviews = scope ? await inspectEditReviews(scope) : [];
-  for (const file of requirements.files) {
-    const relative = path.relative(projectRoot, file).replaceAll('\\', '/');
-    if (options.designRequirements && relative === `${inspected.relative}/design.md`) continue;
-    let digest: string;
-    if (
-      relative === `${inspected.relative}/tasks.md` &&
-      (options.designRequirements ||
-        options.presetRequirements ||
-        options.taskCheckboxes === 'ignore')
-    ) {
-      const taskFile =
-        (await readClassicSourceObservation(projectRoot, relative)) ??
-        (await readProtectedProjectFile(projectRoot, relative, Number.MAX_SAFE_INTEGER, {
-          label: 'Classic task requirements',
-        }));
-      if (taskFile.stat.size === 0) throw new Error(`Classic Open artifact is empty: ${relative}`);
-      let source = taskFile.bytes.toString('utf8');
-      if (options.captureOriginals)
-        originals.push({
-          ref: relative,
-          source,
-          hash: createHash('sha256').update(taskFile.bytes).digest('hex'),
-        });
-      const judgment = scope
-        ? await approvedEditHash(
-            scope,
-            relative,
-            createHash('sha256').update(taskFile.bytes).digest('hex'),
-            reviews,
-          )
-        : null;
-      if (judgment && !judgment.semantic && originalEvidenceHash) {
-        const original = await readApprovedEditOriginalForEvidence(
-          scope!,
-          relative,
-          originalEvidenceHash,
-        );
-        if (original.contentHash !== judgment.beforeHash)
-          throw new Error('Classic 正式判断与原始来源不匹配');
-        source = original.text;
-      }
-      digest = options.designRequirements
-        ? classicTaskRevision(source)
-        : createHash('sha256')
-            .update(
-              classicTaskRequirements(source, {
-                taskIds: options.presetRequirements ? 'ignore' : 'include',
-              }),
-            )
-            .digest('hex');
-    } else {
-      const hashed =
-        (await hashClassicSourceObservation(projectRoot, relative)) ??
-        (options.captureOriginals
-          ? await readProtectedProjectFile(projectRoot, relative, Number.MAX_SAFE_INTEGER, {
-              label: 'Classic Open artifact',
-            })
-          : await hashProtectedProjectFile(projectRoot, relative, {
-              label: 'Classic Open artifact',
-            }));
-      if (hashed.stat.size === 0) throw new Error(`Classic Open artifact is empty: ${relative}`);
-      digest =
-        'digest' in hashed
-          ? hashed.digest
-          : createHash('sha256').update(hashed.bytes).digest('hex');
-      if ('bytes' in hashed)
-        originals.push({ ref: relative, source: hashed.bytes.toString('utf8'), hash: digest });
-      const judgment = scope ? await approvedEditHash(scope, relative, digest, reviews) : null;
-      if (judgment && !judgment.semantic && judgment.beforeHash) digest = judgment.beforeHash;
-    }
-    entries.push([relative, digest]);
-  }
-  entries.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
-  const contentHash = createHash('sha256').update(JSON.stringify(entries)).digest('hex');
-  if (
-    options.captureOriginals &&
-    (!options.captureForEvidenceHash || options.captureForEvidenceHash === contentHash)
-  )
-    for (const original of originals) {
-      const existing = await readApprovedEditOriginalForEvidence(
-        options.captureOriginals,
-        original.ref,
-        contentHash,
-        { allowMissing: true },
-      );
-      if (!existing)
-        await rememberApprovedEditOriginal(
-          options.captureOriginals,
-          original.ref,
-          original.source,
-          original.hash,
-          contentHash,
-        );
-    }
-  return {
-    ref: inspected.relative,
-    contentHash,
-  };
+  return { ref: inspected.relative };
 }
 
 export async function classicDesignEvidenceReceipt(
   projectRoot: string,
   designDocRef: string,
-): Promise<{ ref: string; contentHash: string }> {
+): Promise<{ ref: string }> {
   const ref = normalizeWorkflowRelativePath(designDocRef, 'Classic Design document');
-  const hashed = await hashProtectedProjectFile(projectRoot, ref, {
+  const file = await readProtectedProjectFile(projectRoot, ref, Number.MAX_SAFE_INTEGER, {
     label: 'Classic Design document',
   });
-  if (hashed.stat.size === 0) throw new Error('Classic Design document is empty');
-  return { ref, contentHash: hashed.digest };
+  if (!file.bytes.length) throw new Error('Classic Design document is empty');
+  return { ref };
 }
 
 /** Reuse only the document accepted by the latest Design evidence. */
@@ -877,102 +701,33 @@ export async function classicAcceptedDesignEvidence(projectRoot: string, run: Wo
         wait.status === 'resolved' &&
         wait.receipt?.ref === state.designDoc,
     )?.receipt;
-  const current = state.designDoc
-    ? await classicDesignEvidenceReceipt(projectRoot, state.designDoc)
-    : null;
-  if (
-    expected &&
-    current &&
-    expected.ref === current.ref &&
-    expected.contentHash !== current.contentHash
-  ) {
-    const source = await readProtectedProjectFile(
-      projectRoot,
-      current.ref,
-      Number.MAX_SAFE_INTEGER,
-      { label: 'Classic Design judgment input' },
-    );
-    if (createHash('sha256').update(source.bytes).digest('hex') !== current.contentHash)
-      throw new Error('Classic Design changed while reading judgment inputs');
-    const judgment = await approvedEditFingerprint(
-      await classicFormalEditReviewScope(projectRoot, run.runId, state, false, undefined, run),
-      current.ref,
-      source.bytes.toString('utf8'),
-    );
-    if (judgment?.beforeHash === expected.contentHash) return current;
-  }
-  if (
-    !expected ||
-    !current ||
-    expected.ref !== current.ref ||
-    expected.contentHash !== current.contentHash
-  ) {
-    throw new Error(
-      `Classic Design document changed after accepted evidence; run comet state revise-design ${run.runId} --expected-revision ${run.revision}, then approve the revised design`,
-    );
-  }
-  return current;
+  if (!expected || !state.designDoc)
+    throw new Error('Classic Build requires its accepted Design step');
+  await inspectProtectedProjectPath(projectRoot, state.designDoc, {
+    label: 'Classic accepted Design',
+    expected: 'file',
+  });
+  return { ref: expected.ref };
 }
 
 export async function classicPlanEvidenceReceipt(
   projectRoot: string,
   planRef: string,
   changeDirRef: string,
-  observation: { scope?: EditReviewScope; captureForEvidenceHash?: string } = {},
-): Promise<{ ref: string; contentHash: string }> {
+  _observation: { scope?: EditReviewScope; captureForEvidenceHash?: string } = {},
+): Promise<{ ref: string }> {
   const readiness = await inspectClassicPlanReadiness(projectRoot, planRef);
   if (readiness.status !== 'ready') throw new Error('Classic Build plan is not ready');
+  const plan = await inspectProtectedProjectPath(projectRoot, planRef, {
+    label: 'Classic Build plan',
+    expected: 'file',
+  });
   const change = await inspectProtectedProjectPath(projectRoot, changeDirRef, {
     label: 'Classic change',
     expected: 'directory',
   });
-  if (!change.exists) throw new Error('Classic change directory does not exist');
-  const tasksRef = path.posix.join(change.relative.replaceAll('\\', '/'), 'tasks.md');
-  const [planFile, tasksFile] = await Promise.all([
-    readProtectedProjectFile(projectRoot, planRef, Number.MAX_SAFE_INTEGER, {
-      label: 'Classic Build plan',
-    }),
-    readProtectedProjectFile(projectRoot, tasksRef, Number.MAX_SAFE_INTEGER, {
-      label: 'Classic tasks',
-    }),
-  ]);
-  if (!planFile.bytes.toString('utf8').trim()) throw new Error('Classic Build plan is not ready');
-  const mapping = validateClassicTaskPlan(
-    planFile.bytes.toString('utf8'),
-    tasksRef,
-    parseClassicTasks(tasksFile.bytes.toString('utf8')),
-  );
-  if (mapping !== 'canonical') throw new Error('Classic Build plan task authority is missing');
-  const rawHash = createHash('sha256').update(planFile.bytes).digest('hex');
-  const judgment = observation.scope
-    ? await approvedEditHash(observation.scope, planRef, rawHash)
-    : null;
-  const planHash =
-    judgment && !judgment.semantic && judgment.beforeHash !== null ? judgment.beforeHash : rawHash;
-  const receipt = {
-    ref: planRef,
-    contentHash: createHash('sha256')
-      .update(
-        JSON.stringify([
-          [planRef, planHash],
-          [tasksRef, classicTaskRevision(tasksFile.bytes.toString('utf8'))],
-        ]),
-      )
-      .digest('hex'),
-  };
-  if (
-    observation.scope &&
-    observation.captureForEvidenceHash === receipt.contentHash &&
-    planHash === rawHash
-  )
-    await rememberApprovedEditOriginal(
-      observation.scope,
-      planRef,
-      planFile.bytes.toString('utf8'),
-      rawHash,
-      receipt.contentHash,
-    );
-  return receipt;
+  if (!plan.exists || !change.exists) throw new Error('Classic Build plan or change is missing');
+  return { ref: plan.relative };
 }
 
 export async function assertClassicSdkDesignRequirementsCurrent(
@@ -980,38 +735,20 @@ export async function assertClassicSdkDesignRequirementsCurrent(
   changeDirRef: string,
   run: WorkflowRun,
 ): Promise<void> {
-  const expected = (
-    run.outputs['full.design.handoff']?.value as
-      | {
-          requirementsEvidence?: { ref: string; contentHash: string };
-        }
-      | undefined
-  )?.requirementsEvidence;
   const state = run.state as unknown as ClassicState;
-  const current = expected
-    ? await classicOpenEvidenceReceipt(projectRoot, changeDirRef, { designRequirements: true, run })
-    : null;
-  const handoffCurrent =
-    state.handoffContext &&
-    state.handoffHash &&
-    (await validateClassicSdkDesignContext({
-      run,
-      projectRoot,
-      changeDir: path.join(projectRoot, changeDirRef),
-      change: (run.input as { change: string }).change,
-      contextCompression: state.contextCompression,
-      handoffContext: state.handoffContext,
-      handoffHash: state.handoffHash,
-      allowDesignDocumentChanges:
-        state.designDoc !== null &&
-        path.resolve(projectRoot, state.designDoc) ===
-          path.resolve(projectRoot, changeDirRef, 'design.md'),
-    }));
-  if (!handoffCurrent || (expected && !isDeepStrictEqual(expected, current))) {
-    throw new Error(
-      `Classic Design requirements changed after approval; run comet state revise-design ${run.runId} --expected-revision ${run.revision}, then propose and approve the changed requirements`,
-    );
-  }
+  if (state.workflow !== 'full') return;
+  const open = run.waits.find(
+    (wait) =>
+      wait.stepId === 'full.open.confirm' &&
+      wait.status === 'resolved' &&
+      wait.decision?.choice === 'approved',
+  );
+  const handoff = run.actions
+    .slice()
+    .reverse()
+    .find((action) => action.stepId === 'full.design.handoff' && action.status === 'succeeded');
+  if (!open || !handoff || (run.input as { changeDir?: string }).changeDir !== changeDirRef)
+    throw new Error('Classic Design requires its approved Open and completed handoff');
 }
 
 export async function assertClassicBuildReady(
@@ -1059,16 +796,6 @@ export async function assertClassicBuildReady(
     await assertClassicSdkDesignRequirementsCurrent(projectRoot, changeDirRef, run);
     await classicAcceptedDesignEvidence(projectRoot, run);
     if (!state.plan) throw new Error('Classic Build plan is missing');
-    const currentPlan = await classicPlanEvidenceReceipt(projectRoot, state.plan, changeDirRef, {
-      scope: await classicFormalEditReviewScope(
-        projectRoot,
-        run.runId,
-        state,
-        false,
-        undefined,
-        run,
-      ),
-    });
     const acceptedPlan = run.evidenceWaits
       ?.slice()
       .reverse()
@@ -1077,12 +804,8 @@ export async function assertClassicBuildReady(
           wait.stepId === 'full.build.plan.evidence' &&
           wait.status === 'resolved' &&
           wait.receipt?.ref === state.plan,
-      )?.receipt;
-    if (!acceptedPlan || acceptedPlan.contentHash !== currentPlan.contentHash) {
-      throw new Error(
-        `Classic Build plan or task requirements changed after accepted evidence; run comet state revise-plan ${run.runId} --expected-revision ${run.revision}, then submit-plan again`,
       );
-    }
+    if (!acceptedPlan) throw new Error('Classic Build requires its accepted plan step');
   }
   const proposalRef = path.posix.join(change.relative.replaceAll('\\', '/'), 'proposal.md');
   const proposal = await readProtectedProjectFile(
@@ -1109,108 +832,50 @@ export async function assertClassicPresetRequirementsCurrent(
 ): Promise<void> {
   const state = run.state as unknown as ClassicState;
   if (state.workflow === 'full') return;
-  const selected = classicSdkPresetSourceEvidence(run);
-  if (!selected) throw new Error('当前 Preset Open 或范围决定尚未接受；保留 Run，先完成当前决定');
-  const expected = { ref: selected.ref, contentHash: selected.evidenceHash };
-  const observation = {
-    scope: await classicFormalEditReviewScope(projectRoot, run.runId, state, false, undefined, run),
-    originalEvidenceHash: selected.evidenceHash,
-  };
-  const current = await classicOpenEvidenceReceipt(projectRoot, changeDirRef, {
-    presetRequirements: true,
-    observation,
-  });
-  const legacyProgress =
-    expected &&
-    !isDeepStrictEqual(expected, current) &&
-    isDeepStrictEqual(
-      expected,
-      await classicOpenEvidenceReceipt(projectRoot, changeDirRef, {
-        taskCheckboxes: 'ignore',
-        observation,
-      }),
+  const accepted = run.evidenceWaits
+    ?.slice()
+    .reverse()
+    .find(
+      (wait) =>
+        wait.stepId === state.workflow + '.open.evidence' &&
+        wait.status === 'resolved' &&
+        wait.receipt?.ref === changeDirRef,
     );
-  const unchangedLegacy =
-    !isDeepStrictEqual(expected, current) &&
-    !legacyProgress &&
-    isDeepStrictEqual(
-      expected,
-      await classicOpenEvidenceReceipt(projectRoot, changeDirRef, { observation }),
-    );
-  if (!expected || (!isDeepStrictEqual(expected, current) && !legacyProgress && !unchangedLegacy)) {
-    throw new Error(
-      `Classic preset requirements changed after approval; restore the approved artifacts or return to Build and run comet state propose-escalation ${run.runId} --reason "<scope-change>" to confirm the current scope`,
-    );
-  }
+  const open = run.actions
+    .slice()
+    .reverse()
+    .find((action) => action.stepId === state.workflow + '.open' && action.status === 'succeeded');
+  if (!accepted || !open) throw new Error('Classic preset requires its accepted Open step');
 }
 
 const openEvidenceValidator: RuntimeEvidenceValidator = {
   id: 'comet-classic-open-artifacts',
   version: '1',
   async validate({ run, ref, contentHash, context }) {
-    const expectedRef =
-      run.input !== null &&
-      typeof run.input === 'object' &&
-      !Array.isArray(run.input) &&
-      typeof run.input.changeDir === 'string'
-        ? run.input.changeDir
-        : null;
-    if (!context?.projectRoot || !expectedRef || ref !== expectedRef) {
-      return { accepted: false, actualHash: '', reason: '证据不属于当前 Classic change' };
-    }
-    try {
-      const state = run.state as ClassicState | null;
-      const contentIssue = await classicOpenContentProblem(
-        context.projectRoot,
-        ref,
-        state?.language ?? null,
-      );
-      if (contentIssue) return { accepted: false, actualHash: '', reason: contentIssue };
-      const current = await classicOpenEvidenceReceipt(context.projectRoot, ref, { run });
-      if (state?.workflow !== 'full') {
-        const expected = (
-          run.outputs[`${state?.workflow}.open`]?.value as
-            { requirementsEvidence?: unknown } | undefined
-        )?.requirementsEvidence;
-        const captureScope =
-          current.contentHash === contentHash && state
-            ? await classicFormalEditReviewScope(
-                context.projectRoot,
-                run.runId,
-                state,
-                true,
-                undefined,
-                run,
-              )
-            : undefined;
-        if (!expected && captureScope)
-          await classicOpenEvidenceReceipt(context.projectRoot, ref, {
-            captureOriginals: captureScope,
-            captureForEvidenceHash: contentHash,
-          });
-        const preset = await classicOpenEvidenceReceipt(context.projectRoot, ref, {
-          presetRequirements: true,
-          captureOriginals: captureScope,
-          captureForEvidenceHash: (expected as { contentHash?: string } | undefined)?.contentHash,
-        });
-        if (expected && !isDeepStrictEqual(expected, preset))
-          return {
-            accepted: false,
-            actualHash: current.contentHash,
-            reason: 'Classic preset Open scope does not match its artifacts',
-          };
-      }
-      return {
-        accepted: current.contentHash === contentHash,
-        actualHash: current.contentHash,
-        ...(current.contentHash === contentHash ? {} : { reason: 'Classic Open 工件已变化' }),
-      };
-    } catch (error) {
+    const state = run.state as unknown as ClassicState;
+    const expected = (run.input as { changeDir?: string }).changeDir;
+    const action = run.actions
+      .slice()
+      .reverse()
+      .find((entry) => entry.stepId === state.workflow + '.open');
+    if (
+      !context?.projectRoot ||
+      ref !== expected ||
+      action?.status !== 'succeeded' ||
+      contentHash !== action.inputHash
+    )
       return {
         accepted: false,
         actualHash: '',
-        reason: error instanceof Error ? error.message : String(error),
+        reason: 'Classic Open evidence does not belong to its completed Action',
       };
+    try {
+      await classicOpenEvidenceReceipt(context.projectRoot, ref, { run });
+      const issue = await classicOpenContentProblem(context.projectRoot, ref, state.language);
+      if (issue) throw new Error(issue);
+      return { accepted: true, actualHash: action.inputHash };
+    } catch (error) {
+      return { accepted: false, actualHash: '', reason: String(error) };
     }
   },
 };
@@ -1219,112 +884,27 @@ const designEvidenceValidator: RuntimeEvidenceValidator = {
   id: 'comet-classic-design-document',
   version: '1',
   async validate({ run, ref, contentHash, context }) {
-    const state = run.state as ClassicState | null;
-    const changeDir =
-      run.input !== null &&
-      typeof run.input === 'object' &&
-      !Array.isArray(run.input) &&
-      typeof run.input.changeDir === 'string'
-        ? run.input.changeDir
-        : null;
-    const expectedRef = state && typeof state.designDoc === 'string' ? state.designDoc : null;
-    if (!context?.projectRoot || !state || !expectedRef || ref !== expectedRef || !changeDir) {
-      return { accepted: false, actualHash: '', reason: '证据不属于当前 Classic Design 文档' };
-    }
-    try {
-      const readiness = await inspectClassicDesignReadiness(
-        context.projectRoot,
-        path.join(context.projectRoot, changeDir),
-        state,
-      );
-      if (readiness.design !== 'ready') {
-        return {
-          accepted: false,
-          actualHash: '',
-          reason:
-            readiness.issues.map((issue) => issue.message).join('\n') ||
-            'Classic Design document is not ready',
-        };
-      }
-      const proposal = run.outputs['full.design.handoff']?.value as
-        | {
-            requirementsEvidence?: { ref: string; contentHash: string };
-          }
-        | undefined;
-      if (proposal?.requirementsEvidence) {
-        const currentRequirements = await classicOpenEvidenceReceipt(
-          context.projectRoot,
-          changeDir,
-          {
-            designRequirements: true,
-            run,
-          },
-        );
-        if (!isDeepStrictEqual(proposal.requirementsEvidence, currentRequirements)) {
-          return {
-            accepted: false,
-            actualHash: '',
-            reason:
-              'Classic Design requirements changed after approval; revise-design and approve a new proposal',
-          };
-        }
-      }
-      const change = (run.input as { change?: unknown }).change;
-      if (
-        typeof change !== 'string' ||
-        !state.handoffContext ||
-        !state.handoffHash ||
-        !(await validateClassicSdkDesignContext({
-          run,
-          projectRoot: context.projectRoot,
-          changeDir: path.join(context.projectRoot, changeDir),
-          change,
-          contextCompression: state.contextCompression,
-          handoffContext: state.handoffContext,
-          handoffHash: state.handoffHash,
-          allowDesignDocumentChanges:
-            Boolean(proposal?.requirementsEvidence) &&
-            path.resolve(context.projectRoot, ref) ===
-              path.resolve(context.projectRoot, changeDir, 'design.md'),
-        }))
-      ) {
-        return { accepted: false, actualHash: '', reason: 'Classic Design handoff has changed' };
-      }
-      if (state.language !== 'en' && state.language !== 'zh-CN') {
-        return { accepted: false, actualHash: '', reason: 'Classic change language is not set' };
-      }
-      const source = await readClassicProjectFile(context.projectRoot, ref, {
-        label: 'Classic Design document',
-      });
-      const languageIssue = classicDocumentLanguageMismatch(source, state.language, ref);
-      if (languageIssue) return { accepted: false, actualHash: '', reason: languageIssue };
-      const current = await classicDesignEvidenceReceipt(context.projectRoot, ref);
-      if (current.contentHash === contentHash) {
-        await rememberApprovedEditOriginal(
-          await classicFormalEditReviewScope(
-            context.projectRoot,
-            run.runId,
-            state,
-            true,
-            undefined,
-            run,
-          ),
-          ref,
-          source,
-          current.contentHash,
-        );
-      }
-      return {
-        accepted: current.contentHash === contentHash,
-        actualHash: current.contentHash,
-        ...(current.contentHash === contentHash ? {} : { reason: 'Classic Design 文档已变化' }),
-      };
-    } catch (error) {
+    const state = run.state as unknown as ClassicState;
+    const action = run.actions
+      .slice()
+      .reverse()
+      .find((entry) => entry.stepId === 'full.design.document');
+    if (
+      !context?.projectRoot ||
+      state.designDoc !== ref ||
+      action?.status !== 'succeeded' ||
+      contentHash !== action.inputHash
+    )
       return {
         accepted: false,
         actualHash: '',
-        reason: error instanceof Error ? error.message : String(error),
+        reason: 'Classic Design evidence does not belong to its completed Action',
       };
+    try {
+      await classicDesignEvidenceReceipt(context.projectRoot, ref);
+      return { accepted: true, actualHash: action.inputHash };
+    } catch (error) {
+      return { accepted: false, actualHash: '', reason: String(error) };
     }
   },
 };
@@ -1333,61 +913,31 @@ const planEvidenceValidator: RuntimeEvidenceValidator = {
   id: 'comet-classic-build-plan',
   version: '1',
   async validate({ run, ref, contentHash, context }) {
-    const expectedRef =
-      run.state !== null &&
-      typeof run.state === 'object' &&
-      !Array.isArray(run.state) &&
-      typeof run.state.plan === 'string'
-        ? run.state.plan
-        : null;
-    const changeDirRef =
-      run.input !== null &&
-      typeof run.input === 'object' &&
-      !Array.isArray(run.input) &&
-      typeof run.input.changeDir === 'string'
-        ? run.input.changeDir
-        : null;
-    if (!context?.projectRoot || !expectedRef || !changeDirRef || ref !== expectedRef) {
-      return { accepted: false, actualHash: '', reason: '证据不属于当前 Classic Build 计划' };
-    }
-    try {
-      await assertClassicSdkDesignRequirementsCurrent(context.projectRoot, changeDirRef, run);
-      const current = await classicPlanEvidenceReceipt(context.projectRoot, ref, changeDirRef, {
-        scope: await classicFormalEditReviewScope(
-          context.projectRoot,
-          run.runId,
-          run.state as unknown as ClassicState,
-          true,
-          undefined,
-          run,
-        ),
-        captureForEvidenceHash: contentHash,
-      });
-      const recorded = (
-        run.outputs['full.build.plan']?.value as
-          | {
-              planEvidence?: { ref: string; contentHash: string };
-            }
-          | undefined
-      )?.planEvidence;
-      if (recorded && !isDeepStrictEqual(recorded, current)) {
-        return {
-          accepted: false,
-          actualHash: current.contentHash,
-          reason: 'Classic Build plan candidate changed; revise-plan and submit-plan again',
-        };
-      }
-      return {
-        accepted: current.contentHash === contentHash,
-        actualHash: current.contentHash,
-        ...(current.contentHash === contentHash ? {} : { reason: 'Classic Build 计划已变化' }),
-      };
-    } catch (error) {
+    const state = run.state as unknown as ClassicState;
+    const action = run.actions
+      .slice()
+      .reverse()
+      .find((entry) => entry.stepId === 'full.build.plan');
+    if (
+      !context?.projectRoot ||
+      state.plan !== ref ||
+      action?.status !== 'succeeded' ||
+      contentHash !== action.inputHash
+    )
       return {
         accepted: false,
         actualHash: '',
-        reason: error instanceof Error ? error.message : String(error),
+        reason: 'Classic plan evidence does not belong to its completed Action',
       };
+    try {
+      await classicPlanEvidenceReceipt(
+        context.projectRoot,
+        ref,
+        String((run.input as { changeDir: string }).changeDir),
+      );
+      return { accepted: true, actualHash: action.inputHash };
+    } catch (error) {
+      return { accepted: false, actualHash: '', reason: String(error) };
     }
   },
 };
@@ -1396,156 +946,73 @@ const verificationReportEvidenceValidator: RuntimeEvidenceValidator = {
   id: 'comet-classic-verification-report',
   version: '1',
   async validate({ run, ref, contentHash, context }) {
-    const reject = (reason: string) => ({ accepted: false, actualHash: '', reason });
-    const state = run.state as ClassicState | undefined;
-    if (!context?.projectRoot || state?.phase !== 'verify' || state.verificationReport !== ref) {
-      return reject('Classic Verify report does not belong to the current SDK Run');
-    }
+    const state = run.state as unknown as ClassicState;
+    const action = run.actions
+      .slice()
+      .reverse()
+      .find((entry) => entry.stepId === state.workflow + '.verify.run');
+    if (
+      !context?.projectRoot ||
+      state.phase !== 'verify' ||
+      state.verificationReport !== ref ||
+      action?.status !== 'succeeded' ||
+      contentHash !== action.inputHash
+    )
+      return {
+        accepted: false,
+        actualHash: '',
+        reason: 'Classic report does not belong to its completed Verify Action',
+      };
     try {
-      const receipt = await classicVerificationReportReceipt(
-        context.projectRoot,
-        ref,
-        state.language,
-      );
-      await assertClassicEditReviewsComplete(
-        context.projectRoot,
-        path.posix.basename(String((run.input as { changeDir?: string }).changeDir)),
-        state,
-      );
-      if (receipt.ref !== ref || receipt.contentHash !== contentHash) {
-        return reject('Classic Verify report changed');
-      }
-      return { accepted: true, actualHash: receipt.contentHash };
+      await classicVerificationReportReceipt(context.projectRoot, ref, state.language);
+      return { accepted: true, actualHash: action.inputHash };
     } catch (error) {
-      return reject(error instanceof Error ? error.message : String(error));
+      return { accepted: false, actualHash: '', reason: String(error) };
     }
   },
 };
 
 function classicCheckEvidenceValidator(scope: 'build' | 'verify'): RuntimeEvidenceValidator {
   return {
-    id: `comet-classic-${scope}-check`,
+    id: 'comet-classic-' + scope + '-check',
     version: '1',
     async validate({ run, ref, contentHash, context }) {
-      const reject = (reason: string) => ({ accepted: false, actualHash: '', reason });
-      const root = context?.projectRoot;
-      const changeDirRef =
-        run.input !== null &&
-        typeof run.input === 'object' &&
-        !Array.isArray(run.input) &&
-        typeof run.input.changeDir === 'string'
-          ? run.input.changeDir
-          : null;
       const state = run.state as ClassicState | undefined;
       const action = run.actions
         .slice()
         .reverse()
-        .find((candidate) => candidate.stepId === `${state?.workflow}.${scope}.check`);
-      const output = action?.outcome?.output;
+        .find((entry) => entry.stepId === state?.workflow + '.' + scope + '.check');
+      const check = action?.outcome?.output as Record<string, RuntimeValue> | undefined;
       if (
-        !root ||
-        !changeDirRef ||
+        !context?.projectRoot ||
         state?.phase !== scope ||
-        action?.status !== 'succeeded' ||
+        !action ||
+        action.status !== 'succeeded' ||
         action.claim?.executorId !== 'comet-classic-check' ||
-        output === null ||
-        typeof output !== 'object' ||
-        Array.isArray(output)
-      ) {
-        return reject(`Classic ${scope} check does not belong to the current SDK Run`);
-      }
-      const check = output as Record<string, RuntimeValue>;
-      if (
+        !check ||
         check.scope !== scope ||
         check.receiptRef !== ref ||
-        check.contentHash !== contentHash ||
+        contentHash !== action.inputHash ||
         check.exitCode !== 0 ||
         check.tier !== 'full' ||
-        check.checkEpoch !== (state.checkEpoch ?? 0) ||
-        typeof check.inputBefore !== 'string' ||
-        check.inputBefore !== check.inputAfter ||
-        typeof check.environment !== 'string' ||
-        !Array.isArray(check.argv) ||
-        check.argv.length === 0 ||
-        check.argv.some((arg) => typeof arg !== 'string' || arg.includes('\0')) ||
-        typeof check.cwd !== 'string'
+        check.checkEpoch !== (state.checkEpoch ?? 0)
       ) {
-        return reject(`Classic ${scope} check receipt is incomplete, failed, or stale`);
+        return {
+          accepted: false,
+          actualHash: '',
+          reason: 'Classic check lacks a successful execution for the current step',
+        };
       }
       try {
-        if (scope === 'verify')
-          await assertClassicEditReviewsComplete(root, path.posix.basename(changeDirRef), state);
-        if (
-          run.input !== null &&
-          typeof run.input === 'object' &&
-          !Array.isArray(run.input) &&
-          run.input.checkCommands !== undefined
-        )
-          await assertClassicSdkCheckCommandBinding(run, action, root, check);
-        const change = await inspectProtectedProjectPath(root, changeDirRef, {
-          label: 'Classic change',
-          expected: 'directory',
+        await assertClassicSdkCheckReceipt(context.projectRoot, run, action, {
+          status: action.outcome!.status,
+          output: action.outcome!.output,
         });
-        const cwd =
-          check.cwd === '.'
-            ? { exists: true, relative: '.', target: path.resolve(root) }
-            : await inspectProtectedProjectPath(root, check.cwd, {
-                label: 'Classic check working directory',
-                expected: 'directory',
-              });
-        const logPrefix = `${change.relative.replaceAll('\\', '/')}/.comet/checks/`;
-        if (
-          !change.exists ||
-          !cwd.exists ||
-          (!ref.startsWith(logPrefix) && !ref.startsWith(`${classicSdkCheckDirectoryRef(run)}/`)) ||
-          path.posix.normalize(ref) !== ref ||
-          !ref.endsWith('.log')
-        ) {
-          return reject(`Classic ${scope} check log is outside the current change`);
-        }
-        const logHash = await classicSdkCheckLogHash(
-          root,
-          run,
-          action,
-          ref,
-          contentHash,
-          `Classic ${scope} check log`,
-        );
-        const identity = { argv: check.argv as string[], cwd: cwd.relative || '.' };
-        const policy = await readCheckPolicy(root, identity);
-        const environment = await checkEnvironmentFingerprint(identity.argv, cwd.target, policy);
-        if (environment !== check.environment)
-          return reject(`Classic ${scope} check environment changed`);
-        const snapshot = await collectCheckSnapshot(root, change.target, identity, {
-          verificationReport: state.verificationReport,
-        });
-        if (snapshot.digest !== check.inputAfter)
-          return reject(`Classic ${scope} check inputs changed`);
-        await assertClassicBuildReady(root, changeDirRef, state, run);
-        if (scope === 'verify') {
-          const reportReceipt = run.evidenceWaits
-            ?.slice()
-            .reverse()
-            .find(
-              (wait) =>
-                wait.stepId === `${state.workflow}.verify.report.evidence` &&
-                wait.status === 'resolved',
-            )?.receipt;
-          if (!reportReceipt || reportReceipt.ref !== state.verificationReport) {
-            return reject('Classic Verify report receipt is missing');
-          }
-          const report = await verificationReportEvidenceValidator.validate({
-            run,
-            kind: 'classic-verification-report',
-            ref: reportReceipt.ref,
-            contentHash: reportReceipt.contentHash,
-            context,
-          });
-          if (!report.accepted) return reject(report.reason ?? 'Classic Verify report changed');
-        }
-        return { accepted: true, actualHash: logHash };
+        if ((run.input as { checkCommands?: unknown }).checkCommands !== undefined)
+          await assertClassicSdkCheckCommandBinding(run, action, context.projectRoot, check);
+        return { accepted: true, actualHash: action.inputHash };
       } catch (error) {
-        return reject(error instanceof Error ? error.message : String(error));
+        return { accepted: false, actualHash: '', reason: String(error) };
       }
     },
   };
@@ -1608,20 +1075,12 @@ const presetScopeValidator: RuntimeValidator = {
         (run.input as { changeDir: string }).changeDir,
         {
           presetRequirements: true,
-          captureOriginals: await classicFormalEditReviewScope(
-            context.projectRoot,
-            run.runId,
-            run.state as unknown as ClassicState,
-            true,
-            undefined,
-            run,
-          ),
           captureForEvidenceHash: (output.requirementsEvidence as { contentHash?: string })
             .contentHash,
         },
       );
       return {
-        accepted: isDeepStrictEqual(output.requirementsEvidence, current),
+        accepted: (output.requirementsEvidence as { ref?: unknown }).ref === current.ref,
         reason: 'Classic preset scope changed before the proposal was recorded',
       };
     } catch (error) {
@@ -2435,12 +1894,6 @@ export function defineClassicWorkflowApplication(
           if (event.outcome.status !== 'succeeded') {
             throw new Error('Classic Open revalidation did not complete');
           }
-          const approved = run.outputs[evidenceStep]?.value as
-            { contentHash?: unknown } | undefined;
-          const observed = event.outcome.output as { contentHash?: unknown };
-          if (observed.contentHash !== approved?.contentHash) {
-            return { state: run.state!, next: [openStep] };
-          }
           const state = applyClassicTransition(
             run.state as unknown as ClassicState,
             'open-complete',
@@ -2457,7 +1910,7 @@ export function defineClassicWorkflowApplication(
           }
           const output = event.outcome.output as {
             handoffContext?: string;
-            handoffHash?: string;
+            handoffHash?: string | null;
           };
           return {
             state: {
@@ -2473,8 +1926,8 @@ export function defineClassicWorkflowApplication(
                     archiveConfirmation: null,
                   }
                 : {}),
-              ...(output.handoffContext && output.handoffHash
-                ? { handoffContext: output.handoffContext, handoffHash: output.handoffHash }
+              ...(output.handoffContext
+                ? { handoffContext: output.handoffContext, handoffHash: output.handoffHash ?? null }
                 : {}),
             } as RuntimeValue,
             next: ['full.design.confirm'],
@@ -2928,4 +2381,14 @@ export function defineClassicWorkflowApplication(
       },
     },
   };
+}
+
+/** 通用 SDK 证据接口沿用原 Action 请求身份；不读取或摘要文件内容。 */
+export function classicSdkEvidenceInputHash(run: Readonly<WorkflowRun>, stepId: string): string {
+  const action = run.actions
+    .slice()
+    .reverse()
+    .find((entry) => entry.stepId === stepId);
+  if (!action) throw new Error('Classic evidence has no originating Action');
+  return action.inputHash;
 }

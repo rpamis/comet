@@ -1,7 +1,5 @@
-import { resolveClassicCheckTimeout } from './classic-project-config.js';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import {
   RuntimeProtocolError,
   createMemoryRuntimeStore,
@@ -11,7 +9,14 @@ import {
   preserveRuntimeExecutionOrigins,
   type WorkflowRun,
 } from '../engine/runtime.js';
+import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import type { ClassicCommandHandler } from './classic-cli.js';
+import {
+  executeCommandCheck,
+  latestCommandCheck,
+  latestInterruptedCommandCheck,
+  type RecordedCommandCheck,
+} from './classic-command-checks.js';
 import {
   classicCommandInvocationCwd,
   classicCommandProjectRoot,
@@ -19,28 +24,22 @@ import {
 } from './classic-command-context.js';
 import { assertClassicLayoutWritable } from './classic-layout.js';
 import { resolveClassicChangeDirectory } from './classic-paths.js';
-import { ensureClassicRuntimeRun } from './classic-runtime-run.js';
+import { resolveClassicCheckTimeout } from './classic-project-config.js';
 import { resolveClassicChangeRuntimeOwner } from './classic-runtime-ownership.js';
-import { executeClassicSdkCommandCheck } from './classic-sdk-check.js';
+import { ensureClassicRuntimeRun } from './classic-runtime-run.js';
 import {
   classicSdkCheckPreparationInput,
   withClassicCheckPreparation,
 } from './classic-sdk-check-preparation.js';
-import { inspectClassicSdkRun } from './classic-sdk-status.js';
-import { findClassicSdkWorkspace } from './classic-sdk-status.js';
+import { executeClassicSdkCommandCheck } from './classic-sdk-check.js';
 import { classicSdkEntryData } from './classic-sdk-output.js';
 import {
   canReopenClassicVerification,
   classicSdkApplicationForRun,
 } from './classic-sdk-revision-application.js';
 import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
+import { findClassicSdkWorkspace, inspectClassicSdkRun } from './classic-sdk-status.js';
 import type { ClassicProfile } from './classic-state.js';
-import {
-  executeCommandCheck,
-  latestCommandCheck,
-  latestInterruptedCommandCheck,
-  type RecordedCommandCheck,
-} from './classic-command-checks.js';
 
 function unstableInputDiagnostic(record: RecordedCommandCheck): string {
   const changed = record.changedDuringExecution ?? [];
@@ -232,7 +231,7 @@ export async function executeClassicSdkCheckCommand(
         candidate.stepId === `${inspected.profile}.${scope}.check.evidence` &&
         candidate.status === 'pending',
     );
-    if (!evidence || !result.receiptRef || !result.contentHash) {
+    if (!evidence || !result.receiptRef) {
       throw new Error('Classic SDK check has no verified receipt to submit');
     }
     const submission = {
@@ -241,7 +240,8 @@ export async function executeClassicSdkCheckCommand(
       evidenceId: evidence.id,
       kind: evidence.kind,
       ref: result.receiptRef,
-      contentHash: result.contentHash,
+      // SDK 的通用证据字段沿用当前请求身份，不绑定日志或项目文件内容。
+      contentHash: action.inputHash,
       submissionId: randomUUID(),
       context: { requestId: randomUUID(), projectRoot },
     };

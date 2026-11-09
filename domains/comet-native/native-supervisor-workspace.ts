@@ -14,7 +14,6 @@ import {
   readProcessIdentity,
 } from '../../platform/process/process-identity.js';
 import { atomicWriteJson } from './native-atomic-file.js';
-import { canonicalHash } from './native-canonical-hash.js';
 import {
   executeNativeCheck,
   inspectNativeCheckProcessTreeLiveness,
@@ -27,10 +26,11 @@ import { withNativeMutationLock } from './native-mutation-lock.js';
 import { nativePreferredChangeRuntimeDir } from './native-paths.js';
 import {
   completedNativeSupervisorCheckState,
-  nativeSupervisorCheckInputFingerprint,
   nativeSupervisorCheckMachineId,
   nativeSupervisorExecutedCheckFromState,
   plannedNativeSupervisorCheckState,
+  sameNativeSupervisorCheckPlans,
+  writeNativeSupervisorCheckReceipt,
 } from './native-supervisor-check-binding.js';
 import {
   cloneState,
@@ -317,13 +317,8 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
           throw new Error(
             'Native Supervisor integration checks must be repeatable for safe recovery',
           );
-        if (
-          options.checkPlans.length === 0 ||
-          new Set(options.checkPlans.map(({ id }) => id)).size !== options.checkPlans.length
-        )
-          throw new Error(
-            'Native Supervisor integration requires non-empty checks with unique IDs',
-          );
+        if (new Set(options.checkPlans.map(({ id }) => id)).size !== options.checkPlans.length)
+          throw new Error('Native Supervisor integration checks require unique IDs');
         // Do all command and platform validation before the integration check
         // reservation is persisted. Invalid plans must not consume a lease or
         // leave a recovery record behind.
@@ -421,29 +416,13 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
       const integrationCommit = head;
       if (options.checkPlans) {
         const machineId = nativeSupervisorCheckMachineId();
-        const inputFingerprint = await nativeSupervisorCheckInputFingerprint({
-          kind: 'integration',
-          parent: state.parent,
-          child: options.name,
-          runId: child.verification?.execution?.runId ?? `integration:${options.name}`,
-          projectRoot: state.integration.worktree,
-          candidateCommit: child.verifiedCommit,
-          integrationCommit,
-          contractHash: child.contractHash ?? null,
-          plans: options.checkPlans,
-          materials: [],
-        });
-        const key = canonicalHash('comet.native.supervisor-integration-plan.v2', {
-          machineId,
-          inputFingerprint,
-        });
         const sameBinding =
-          previous?.key === key &&
-          previous.machineId === machineId &&
-          previous.inputFingerprint === inputFingerprint &&
-          previous.child === options.name &&
+          previous?.machineId === machineId &&
+          sameNativeSupervisorCheckPlans(previous?.plans, options.checkPlans) &&
+          previous?.child === options.name &&
           previous.candidateCommit === child.verifiedCommit &&
           previous.integrationCommit === integrationCommit;
+        const key = sameBinding ? previous!.key : randomUUID();
         if (requestedRetryIds) {
           if (!sameBinding || previous?.status !== 'interrupted') {
             throw new Error(
@@ -508,7 +487,7 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
           startedAt: new Date().toISOString(),
           activeProcess: null,
           machineId,
-          inputFingerprint,
+          plans: options.checkPlans,
           checkStates,
         };
         state.stateVersion += 1;
@@ -521,7 +500,7 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
             operationId,
             key,
             machineId,
-            inputFingerprint,
+            plans: options.checkPlans,
             plansToExecute: options.checkPlans.filter(
               (plan) => !requestedRetryIds || requestedRetryIds.has(plan.id),
             ),
@@ -539,8 +518,6 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
   );
   if (prepared.completed) return prepared.completed;
   const { state, candidateCommit, integrationCommit, operationId, key } = prepared.pending!;
-  const { writeNativeVerificationReportSnapshot } = await import('./native-evidence-storage.js');
-  const { createHash } = await import('node:crypto');
   const recordActiveProcess = async (
     activeProcess: NonNullable<NativeSupervisorTask['checkExecution']>['activeProcess'],
   ) =>
@@ -638,13 +615,12 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
       candidateCommit,
       integrationCommit,
       operationId,
-      planHash: key,
       results,
     });
-    const receiptRef = await writeNativeVerificationReportSnapshot({
+    const receiptRef = await writeNativeSupervisorCheckReceipt({
       paths: options.paths,
       name: state.parent,
-      hash: createHash('sha256').update(text).digest('hex'),
+      operationId,
       text,
     });
     const checks: NativeSupervisorIntegrationCheck[] = results.map((result) => ({

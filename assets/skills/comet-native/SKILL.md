@@ -33,13 +33,13 @@ Project experience and personal preferences are stored separately: use `comet kn
 
 ## SDK Run path
 
-After Shape is explicitly approved and Runtime enters Build, claim a new ordinary SDK task with `native next <change> --session <actual-session-id> --json`. A `comet.native.task-result.v1` response contains the phase, complete acceptance text, result template, and one next step. Use that response directly.
+Claim ordinary or Supervisor tasks in new built-in SDK Runs with `native next <change> --session <actual-session-id> --json`. During Shape, the Agent extracts and submits acceptance criteria and waits for explicit user confirmation before Build. A `comet.native.task-result.v1` response contains the phase, actual workspace, acceptance text, result template, and next step. When several tasks are available, select the actual scope from `availableTasks` and claim its Action with the real session. Follow `task.child`, `task.scope`, and the supplied workspace.
 
 1. After implementation, write the actual business result from `resultTemplate` to a temporary UTF-8 JSON file and submit with `next.commandArgs`. Preserve `--action` and the actual `--session`. Runtime runs the necessary checks in that call. Choose `--review current-session` to continue verification in this session, or `--review independent` for a separate reviewer who claims with their own session identity.
 2. Verify every acceptance requirement, reuse valid checks, and collect only missing evidence. Submit the actual conclusion and follow the returned user-acceptance step. Explicit user requests for independent review require a separate reviewer.
 3. Add `--accept-on-pass <user-authorization-summary>` to the Verify submission only when the user explicitly delegated acceptance and Archive after all criteria pass. The summary binds to that result. Otherwise wait for the user to accept and execute the returned decision command. Git delivery still requires its corresponding authorization.
 
-Read [SDK Run commands and recovery](reference/commands.md#sdk-run) only for older `comet.native.sdk-status.v1`, `comet.native.dispatch-result.v1`, or `comet.native.run-view.v1` responses where the high-level entry does not apply, fixed applications, Supervisor work, or a specific protocol question. Use `--details` when the full protocol is needed. Do not query status again to identify an existing response.
+New built-in tasks do not require the lower-level protocol. After Supervisor results, Runtime continues selected checks, integration, and Child Archive; receive the next child with its actual execution session. Parent acceptance retains all requirements, reuses applicable child results, and fills integration gaps. Read [SDK Run commands and recovery](reference/commands.md#sdk-run) for older `comet.native.sdk-status.v1`, `comet.native.dispatch-result.v1`, or `comet.native.run-view.v1` responses where the high-level entry does not apply, fixed applications, or a specific protocol question. Use `--details` when needed. Do not query status again to identify an existing response.
 
 Both runtimes use the latest `continuation`; `--runner-input` and legacy Archive inputs apply only to the legacy Runtime. SDK requires approval, the current Action's verification conditions, and workspace authorization. Do not migrate legacy changes automatically.
 
@@ -65,9 +65,9 @@ After drafting Shape, compare its outcome, acceptance criteria and non-goals wit
 
 Complete when requirements sources are fully processed within the coverage boundary and classified by purpose, all outcome-affecting decisions and assumptions are resolved, no `[blocking]` remains, the user explicitly confirms the outcome, scope, key decisions, all acceptance items, and non-goals, and Runtime has entered Build.
 
-New or reconfirmed briefs need outcome, scope, non-goals, and acceptance examples. Add constraints, decisions, open questions, or special verification requirements when applicable. Runtime also checks formal paths and a complete target Spec or concrete no-product-behavior-change reason. Repair reported artifacts and rerun continuation. Existing later-phase changes retain progress until Shape.
+For new or reconfirmed Shape, the Agent judges whether goals, scope, non-goals, acceptance, and necessary Specs are sufficient and organizes documents for the task. Runtime checks formal paths, nonempty inputs, machine structure, and user confirmation. New ordinary SDK Runs can submit explicit criteria through `next --session` without rewriting prose for a parser.
 
-On actual file changes during Build, Verify, or before Archive, or when continuation requests a content judgment, first read and follow [edit continuation](reference/edit-review.md), then handle phase actions or revision commands. The current Agent judges the actual changes together, adds only affected evidence, and keeps the original Run and still-valid approvals. Runtime revision commands do not grant user authorization. Without authorization, retain the original phase and accepted results and request only the related decision.
+When files change during Build, Verify, or before Archive, the current Agent follows [edit continuation](reference/edit-review.md), judges the actual impact, and retains the original Run and valid approvals. File edits do not automatically invalidate acceptance. Do not submit fingerprints, content hashes, or edit-review records. Add only the checks that the changed behavior needs. Revision commands do not grant user authorization; request only the affected decision when authorization is missing.
 
 ## Build ↔ Verify Loop
 
@@ -75,7 +75,7 @@ After the Builder submits a candidate, Runtime runs checks and the Agent claimin
 
 The Verifier reads the original request before comparing the Spec and implementation, checking for omissions, unauthorized scope reductions and interface behavior changes. SDK Runs record the conclusion in `requestReview` in the same verification result; retain fail or blocked for conflicts or unresolved questions affecting delivery. For older Runs and Compat without a saved original request, consult handoff materials and user records rather than treating the generated Spec as the only requirements source; Compat keeps its existing result format. Use the current Verifier for this semantic review; add no Agent or fixed test rounds.
 
-`iteration` counts implementation submissions; `attempt` counts Verifier launches for the same candidate. Runtime updates all counters. When consecutive failures or lack of progress reach configured limits, follow the latest instructions to wait for a user decision or address the blocker.
+`iteration` counts implementation submissions; `attempt` counts Verifier executions for one candidate. Runtime retains actual failure budgets and execution limits. The Agent judges progress from changes and results. Repeated unresolved IDs or a nonshrinking set do not add warnings, pauses, or confirmation steps.
 
 ## Build
 

@@ -1,12 +1,12 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
+import { memoizedHookReadSync } from '../../platform/process/hook-read-cache.js';
 import {
-  nativeSdkArchivePreflightValidator,
   nativeSdkArchiveApplyValidator,
+  nativeSdkArchivePreflightValidator,
 } from './native-sdk-archive.js';
 import { nativeSdkReportRevalidationValidator } from './native-sdk-report.js';
-import path from 'node:path';
-import { memoizedHookReadSync } from '../../platform/process/hook-read-cache.js';
-import { promises as fs } from 'node:fs';
-import { readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
 import { parseNativeStateDocument } from './native-state-document.js';
 
 import { listGitWorktrees, samePath } from '../../platform/paths/git-worktree.js';
@@ -15,13 +15,19 @@ import {
   defineWorkflow,
   hashRuntimeValue,
   preserveRuntimeExecutionOrigins,
+  type CreateRuntimeOptions,
+  type DefineWorkflowOptions,
+  type RuntimeExecutor,
+  type RuntimeStore,
   type WorkflowRun,
   type WorkflowRuntime,
-  type RuntimeExecutor,
-  type DefineWorkflowOptions,
-  type RuntimeStore,
-  type CreateRuntimeOptions,
 } from '../engine/runtime.js';
+import {
+  loadWorkflowApplication,
+  resolveWorkflowApplicationFile,
+  type ApplicationIdentity,
+  type LoadedWorkflowApplication,
+} from '../workflow-application/index.js';
 import {
   COMET_CHANGE_OWNER_SCHEMA,
   listSdkChangeNames,
@@ -31,28 +37,39 @@ import {
   type ChangeRuntimeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
+import { readProjectConfig } from './native-config.js';
+import { withNativeMutationLock } from './native-mutation-lock.js';
+import { nativeProjectPaths } from './native-paths.js';
+import { parseNativePortableState } from './native-portable-state.js';
+import { nativeLocalExecutionFile, nativePortableStateFile } from './native-portable-storage.js';
+import type { NativePortableState } from './native-portable-types.js';
 import {
   defineNativeWorkflowApplication,
   nativeSdkApplicationForRun,
 } from './native-sdk-application.js';
 import { nativeSdkCheckValidator } from './native-sdk-checks.js';
+import { recoverPristineNativeSdkChange } from './native-sdk-create.js';
 import {
-  nativeSdkBeforeVerifierRecovery,
-  nativeSdkBeforeImplementationRevision,
-  nativeSdkBeforeBlockedVerifierRecovery,
-  nativeSdkBeforeIntegrationRepairRecovery,
-  nativeSdkLegacyDefinitions,
-  nativeSdkMatchesRun,
   NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH,
   NATIVE_SDK_RECOVERABLE_FAILURE_STEPS,
+  nativeSdkBeforeBlockedVerifierRecovery,
+  nativeSdkBeforeImplementationRevision,
+  nativeSdkBeforeIntegrationRepairRecovery,
+  nativeSdkBeforeVerifierRecovery,
+  nativeSdkLegacyDefinitions,
+  nativeSdkMatchesRun,
   nativeSdkRecoverableFailureReason,
 } from './native-sdk-definition.js';
-import { validateNativeSdkFailedChildVerifier } from './native-sdk-supervisor-verifier-recovery.js';
+import {
+  createNativeSdkStateStore,
+  findNativeSdkArchivedStateFile,
+  hasNativeManagedRunMarker,
+  hasNativePortableRunCheckpoint,
+} from './native-sdk-state-store.js';
 import { validateNativeSdkFailedIntegrationRepair } from './native-sdk-supervisor-integration-repair.js';
-import { readProjectConfig } from './native-config.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
-import { nativeProjectPaths } from './native-paths.js';
-import { registerNativeRunnerInputArtifactLocked } from './native-runner-input-artifacts.js';
+import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
+import { validateNativeSdkFailedChildVerifier } from './native-sdk-supervisor-verifier-recovery.js';
+import type { NativeProjectPaths } from './native-types.js';
 
 /** 在已绑定的 SDK 入口登记请求文件；只读 inspect 不调用此写入口。 */
 export async function registerNativeSdkRequestInput(options: {
@@ -62,45 +79,13 @@ export async function registerNativeSdkRequestInput(options: {
   runId: string;
   validateContent: (content: string) => void;
 }): Promise<void> {
-  const file = path.resolve(options.projectRoot, options.file);
-  const relative = path.relative(options.projectRoot, file);
-  if (path.isAbsolute(relative) || relative === '..' || relative.startsWith(`..${path.sep}`)) {
-    const read = await readFileRaceSafe(file, Number.MAX_SAFE_INTEGER, {
-      label: 'Native Runner request input',
-    });
-    options.validateContent(read.bytes.toString('utf8'));
-    return;
-  }
-  const paths = await nativeProjectPaths(options.projectRoot, options.artifactRootRef, {
-    change: options.runId,
-  });
-  await withNativeMutationLock(paths, 'sdk-request-input', () =>
-    registerNativeRunnerInputArtifactLocked({
-      paths,
-      file: options.file,
-      runtimeRunId: options.runId,
-      validateContent: options.validateContent,
-    }),
+  const read = await readFileRaceSafe(
+    path.resolve(options.projectRoot, options.file),
+    Number.MAX_SAFE_INTEGER,
+    { label: 'Native Runner request input' },
   );
+  options.validateContent(read.bytes.toString('utf8'));
 }
-import { parseNativePortableState } from './native-portable-state.js';
-import { recoverPristineNativeSdkChange } from './native-sdk-create.js';
-import { createNativeSdkStateStore } from './native-sdk-state-store.js';
-import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
-import {
-  findNativeSdkArchivedStateFile,
-  hasNativeManagedRunMarker,
-  hasNativePortableRunCheckpoint,
-} from './native-sdk-state-store.js';
-import { nativeLocalExecutionFile, nativePortableStateFile } from './native-portable-storage.js';
-import type { NativePortableState } from './native-portable-types.js';
-import type { NativeProjectPaths } from './native-types.js';
-import {
-  loadWorkflowApplication,
-  resolveWorkflowApplicationFile,
-  type ApplicationIdentity,
-  type LoadedWorkflowApplication,
-} from '../workflow-application/index.js';
 
 export { inspectPristineNativeSdkChange } from './native-sdk-create.js';
 
@@ -450,7 +435,7 @@ export async function inspectNativeSdkDefinitionUpgrade(
   if (unarchived.length > 1)
     throw new Error('Multiple unarchived Child integrations require fresh integration checks');
   for (const check of unarchived) {
-    if (state.phase !== 'build' || state.status !== 'active' || !state.children_contract_hash)
+    if (state.phase !== 'build' || state.status !== 'active' || !state.children_contract_ref)
       throw new Error('Native SDK Child archive upgrade requires the active Supervisor Build');
     const input = (check.input as { activation?: Record<string, unknown> }).activation;
     const output = check.outcome?.output as { candidateId?: unknown } | undefined;
@@ -475,7 +460,7 @@ export async function inspectNativeSdkDefinitionUpgrade(
         candidateCommit: input.candidateCommit,
         integrationCommit: output.candidateId,
         checksActionId: check.id,
-        contractHash: state.children_contract_hash,
+        contractRef: state.children_contract_ref,
       },
     });
   }

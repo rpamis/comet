@@ -1,44 +1,45 @@
-import {
-  closeNativeSdkHistory,
-  migrateNativeSdkPortableCancellationHistory,
-  hasNativeSdkPortableHistoryImport,
-} from './native-sdk-history.js';
-import { readWorkflowApplicationRun } from '../workflow-application/index.js';
-import type { RuntimeStoppedAction } from '../engine/runtime.js';
-import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
-import { settleNativeSdkCompletion } from './native-sdk-completion-cleanup.js';
 import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import type { RuntimeStoppedAction } from '../engine/runtime.js';
+import { readWorkflowApplicationRun } from '../workflow-application/index.js';
 import {
-  readChangeRuntimeOwner,
-  readSdkChangeOwner,
-  registerSdkChangeOwner,
   COMET_CHANGE_OWNER_SCHEMA,
   listSdkChangeNames,
   listSdkChangeOwnerRecoveryNames,
+  readChangeRuntimeOwner,
+  readSdkChangeOwner,
   recoverSdkChangeOwnerToActive,
+  registerSdkChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
 import {
-  inspectNativeSdkRun,
   inspectNativeSdkDefinitionUpgrade,
-  resolveNativeSdkCommandRoot,
+  inspectNativeSdkRun,
   loadOwnedNativeSdkRuntime,
+  resolveNativeSdkCommandRoot,
 } from './native-runtime-ownership.js';
-import { inspectPristineNativeSdkChange, restoreNativeSdkChange } from './native-sdk-create.js';
-import {
-  hasNativeManagedRunMarker,
-  hasNativePortableRunCheckpoint,
-  readNativeSdkRunRecord,
-  findNativeSdkArchivedStateFile,
-  isNativeSdkRunRecoveryRequiredError,
-} from './native-sdk-state-store.js';
+import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
+import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
 import {
   inspectNativeSdkCheckExecutions,
   reconcileNativeSdkExecutionStops,
 } from './native-sdk-check-execution.js';
-import { recoverNativeSdkChecks, nativeSdkCompletedCheckInputDrift } from './native-sdk-checks.js';
-import { projectNativeSdkStatus } from './native-sdk-status.js';
+import { recoverNativeSdkChecks } from './native-sdk-checks.js';
+import { settleNativeSdkCompletion } from './native-sdk-completion-cleanup.js';
+import { inspectPristineNativeSdkChange, restoreNativeSdkChange } from './native-sdk-create.js';
+import {
+  closeNativeSdkHistory,
+  hasNativeSdkPortableHistoryImport,
+  migrateNativeSdkPortableCancellationHistory,
+} from './native-sdk-history.js';
 import { inspectNativeSdkLocks, repairNativeSdkLock } from './native-sdk-projection-lock.js';
-import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
+import {
+  findNativeSdkArchivedStateFile,
+  hasNativeManagedRunMarker,
+  hasNativePortableRunCheckpoint,
+  isNativeSdkRunRecoveryRequiredError,
+  readNativeSdkRunRecord,
+} from './native-sdk-state-store.js';
+import { projectNativeSdkStatus } from './native-sdk-status.js';
 
 /**
  * A dispatched Verifier that never confirmed startup is presumed lost after
@@ -47,46 +48,39 @@ import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
  * reclaim). Genuine startups report progress well within the window.
  */
 const NATIVE_VERIFIER_CONFIRM_TAKEOVER_MS = 30 * 60 * 1_000;
-import path from 'node:path';
 
 import { inspectGitWorktree, resolveGitRef } from '../../platform/paths/git-worktree.js';
 import { gitWorktreeIsClean } from '../../platform/process/git.js';
 
-import { doctorNativeProject } from './native-doctor.js';
-import { inspectNativeProjectLocks, repairNativeProjectLock } from './native-lock.js';
-import { nativeRecoveryCommand } from './native-recovery.js';
-import { inspectNativeChildren, readNativeChildrenContract } from './native-children.js';
-import { archiveNativePortableChange } from './native-portable-archive.js';
-import { nativePortableContinuation } from './native-portable-continuation.js';
-import {
-  compareAndSwapNativePortableState,
-  parseNativePortableState,
-  readNativePortableState,
-} from './native-portable-state.js';
-import { recordNativeVerifierExecutionError } from './native-loop-runtime.js';
-import {
-  hasIncompleteNativePortableMigration,
-  migrateNativeLegacyChangeToPortable,
-} from './native-portable-migration-runtime.js';
-import {
-  inspectNativePortableAcceptanceDrift,
-  recoverNativePortableShapeConfirmationDrift,
-} from './native-portable-requirements.js';
-import { recoverNativePortableChange } from './native-portable-recovery.js';
-import { readNativeLocalExecution } from './native-local-execution.js';
-import { inspectNativePortableCheckExecution } from './native-portable-checks.js';
+import { listNativeArchivedStatusRecords } from './native-archived-status.js';
 import {
   inspectNativeCheckStopEvidenceTargets,
   recoverNativeChecksWithStopEvidence,
 } from './native-check-stop-evidence.js';
-import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
+import { inspectNativeChildren, readNativeChildrenContract } from './native-children.js';
 import {
-  activeNativeSupervisorTaskNames,
-  readNativeSupervisorState,
-  writeNativeSupervisorState,
-} from './native-supervisor-state.js';
-import { supervisorDependenciesIntegrated } from './native-supervisor-model.js';
+  assertNoArguments,
+  doctorPaths,
+  NativeUsageError,
+  success,
+  takeFlag,
+  takeOption,
+  type DispatchResult,
+} from './native-cli-shared.js';
+import { doctorNativeProject } from './native-doctor.js';
+import { readNativeLocalExecution } from './native-local-execution.js';
+import { inspectNativeProjectLocks, repairNativeProjectLock } from './native-lock.js';
+import { recordNativeVerifierExecutionError } from './native-loop-runtime.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
+import { archiveNativePortableChange } from './native-portable-archive.js';
+import { inspectNativePortableCheckExecution } from './native-portable-checks.js';
+import { nativePortableContinuation } from './native-portable-continuation.js';
+import {
+  hasIncompleteNativePortableMigration,
+  migrateNativeLegacyChangeToPortable,
+} from './native-portable-migration-runtime.js';
+import { recoverNativePortableChange } from './native-portable-recovery.js';
+import { recoverNativePortableShapeConfirmationDrift } from './native-portable-requirements.js';
 import {
   isNativePortableChange,
   nativeLocalExecutionFile,
@@ -95,21 +89,10 @@ import {
   readNativePortableChange,
 } from './native-portable-runtime.js';
 import {
-  listNativeWorkspaceFinishJournals,
-  quarantineNativeWorkspaceFinishJournal,
-  readNativeWorkspaceFinishJournal,
-  readNativeWorkspaceFinishArchive,
-  inspectNativeWorkspaceFinishCompletion,
-  clearNativeWorkspaceFinishJournal,
-  writeNativeWorkspaceFinishJournal,
-  type NativeWorkspaceFinishJournal,
-} from './native-workspace-finish.js';
-import { listNativeArchivedStatusRecords } from './native-archived-status.js';
-import type { NativePortableState } from './native-portable-types.js';
-import type {
-  NativeSupervisorChildState,
-  NativeSupervisorState,
-} from './native-supervisor-model.js';
+  compareAndSwapNativePortableState,
+  parseNativePortableState,
+  readNativePortableState,
+} from './native-portable-state.js';
 import {
   inspectNativePortableStatus,
   listNativePortableChangeNames,
@@ -121,16 +104,30 @@ import {
   readNativePortableTransactionEntry,
   type NativePortableTransaction,
 } from './native-portable-transactions.js';
+import type { NativePortableState } from './native-portable-types.js';
+import { nativeRecoveryCommand } from './native-recovery.js';
+import type {
+  NativeSupervisorChildState,
+  NativeSupervisorState,
+} from './native-supervisor-model.js';
+import { supervisorDependenciesIntegrated } from './native-supervisor-model.js';
+import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
 import {
-  assertNoArguments,
-  doctorPaths,
-  NativeUsageError,
-  success,
-  takeFlag,
-  takeOption,
-  type DispatchResult,
-} from './native-cli-shared.js';
+  activeNativeSupervisorTaskNames,
+  readNativeSupervisorState,
+  writeNativeSupervisorState,
+} from './native-supervisor-state.js';
 import type { NativeDoctorFinding, NativeProjectPaths } from './native-types.js';
+import {
+  clearNativeWorkspaceFinishJournal,
+  inspectNativeWorkspaceFinishCompletion,
+  listNativeWorkspaceFinishJournals,
+  quarantineNativeWorkspaceFinishJournal,
+  readNativeWorkspaceFinishArchive,
+  readNativeWorkspaceFinishJournal,
+  writeNativeWorkspaceFinishJournal,
+  type NativeWorkspaceFinishJournal,
+} from './native-workspace-finish.js';
 
 async function portableContinuation(paths: NativeProjectPaths, state: NativePortableState) {
   const children = await inspectNativeChildren({ paths, state });
@@ -166,31 +163,6 @@ async function portableCheckExecutionFinding(
       : `${name}: ${message}; run comet native doctor ${name} --repair to recover it`,
     path: nativeLocalExecutionFile(paths, name),
     ...(unconfirmedProcess ? {} : { repair: 'recover' as const }),
-  };
-}
-
-async function portableShapeConfirmationFinding(
-  paths: NativeProjectPaths,
-  name: string,
-  state: NativePortableState,
-): Promise<NativeDoctorFinding | null> {
-  if (
-    state.phase !== 'shape' ||
-    state.status !== 'await-user' ||
-    state.loop.next_action !== 'confirm-shape'
-  ) {
-    return null;
-  }
-  const drift = await inspectNativePortableAcceptanceDrift({ paths, state });
-  if (!drift.drifted) return null;
-  const reason = drift.reason ?? 'Native confirmed requirements changed';
-  return {
-    severity: 'error',
-    code: 'portable-shape-confirmation-drift',
-    message: `${name}: pending Shape confirmation is stale (${reason}); run comet native doctor ${name} --repair to reopen Shape`,
-    path: nativePortableStateFile(paths, name),
-    repair: 'recover',
-    repairCommand: `comet native doctor ${name} --repair`,
   };
 }
 
@@ -995,21 +967,6 @@ export async function nativeDoctorCommand(
         );
         const unresolved = run.actions.filter((action) => action.status === 'unknown');
         const staleCompleted = new Set<string>();
-        for (const check of checks) {
-          const action = run.actions.find((entry) => entry.id === check.actionId);
-          if (
-            action &&
-            check.recoveryRequired &&
-            check.quiescent &&
-            check.execution?.phase === 'completed' &&
-            check.execution.outcome &&
-            (await nativeSdkCompletedCheckInputDrift(
-              { projectRoot: commandRoot, run, action },
-              check.execution.outcome,
-            ))
-          )
-            staleCompleted.add(action.id);
-        }
         const findings = [
           ...lockFindings,
           ...transactionFindings,
@@ -1436,19 +1393,6 @@ export async function nativeDoctorCommand(
         continuation: await portableContinuation(paths, result.state),
       });
     }
-    const shapeFinding = await portableShapeConfirmationFinding(paths, name, portableState);
-    if (shapeFinding) {
-      const result = await inspectNativePortableStatus({ paths, name, details: true });
-      return unhealthyDoctor({
-        healthy: false,
-        workflow: 'native-portable',
-        change: name,
-        repaired: false,
-        result,
-        findings: [shapeFinding],
-        continuation: result.continuation,
-      });
-    }
     const executionFinding = await portableCheckExecutionFinding(paths, name);
     const checkStopTargets = await inspectNativeCheckStopEvidenceTargets(paths, name);
     if (executionFinding) {
@@ -1747,7 +1691,6 @@ export async function nativeDoctorCommand(
       changes,
       conflicts,
       incompleteMigrations,
-      shapeFindings,
       gitBindingFindings,
       executionFindings,
       legacyResults,
@@ -1759,12 +1702,6 @@ export async function nativeDoctorCommand(
       Promise.all(portableNames.map((change) => activeArchiveConflictFinding(paths, change))),
       Promise.all(
         portableNames.map((change) => hasIncompleteNativePortableMigration(paths, change)),
-      ),
-      Promise.all(
-        portableNames.map(async (change) => {
-          const state = await readNativePortableChange(paths, change);
-          return portableShapeConfirmationFinding(paths, change, state);
-        }),
       ),
       Promise.all(
         portableNames.map(async (change) => {
@@ -1798,7 +1735,6 @@ export async function nativeDoctorCommand(
           ? [incompleteMigrationFinding(paths, change)]
           : [],
       ),
-      ...shapeFindings.filter((finding): finding is NativeDoctorFinding => finding !== null),
       ...gitBindingFindings.filter((finding): finding is NativeDoctorFinding => finding !== null),
       ...executionFindings.filter((finding): finding is NativeDoctorFinding => finding !== null),
       ...projectPortableTransactions.findings,

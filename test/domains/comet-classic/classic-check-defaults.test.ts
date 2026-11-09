@@ -133,19 +133,6 @@ it('reports undeclared output drift and accepts only explicitly selected output 
   expect(passed.response.data.inputBefore).toBe(passed.response.data.inputAfter);
 });
 
-it('includes ignored files explicitly declared by glob, including new files', async () => {
-  await put('.gitignore', 'fixtures/generated/\n');
-  await put('fixtures/generated/a.json', 'one');
-  await policy({ files: ['fixtures/generated/**'] });
-  const first = await snapshot();
-  expect(first.entries.map((entry) => entry.p)).toContain('fixtures/generated/a.json');
-  await put('fixtures/generated/a.json', 'two');
-  const second = await snapshot();
-  expect(second.digest).not.toBe(first.digest);
-  await put('fixtures/generated/b.json', 'new');
-  expect((await snapshot()).digest).not.toBe(second.digest);
-});
-
 it('expands output presets canonically without dropping source or dependency inputs', async () => {
   await policy({ presets: ['vite', 'coverage', 'dotnet'] });
   const first = await snapshot();

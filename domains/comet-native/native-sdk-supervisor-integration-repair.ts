@@ -1,15 +1,16 @@
 import { inspectGitWorktree, resolveGitRef, samePath } from '../../platform/paths/git-worktree.js';
 import { runGitCommand } from '../../platform/process/git.js';
 import type { RuntimeAction, RuntimeValidator, WorkflowRun } from '../engine/runtime.js';
-import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
 import { preflightNativeCheckPlans } from './native-check-executor.js';
+import { nativeSupervisorContractRef } from './native-children-contract.js';
 import { nativeSdkCheckPlans } from './native-sdk-checks.js';
+import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
 import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
-import { nativeWorkspaceIsClean } from './native-workspace-config.js';
 import {
   nativeSupervisorIntegrationBranch,
   nativeSupervisorIntegrationWorktree,
 } from './native-supervisor-workspace.js';
+import { nativeWorkspaceIsClean } from './native-workspace-config.js';
 
 const COMMIT_PATTERN = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 
@@ -31,7 +32,7 @@ export async function validateNativeSdkFailedIntegrationRepair(
     !input ||
     !currentNativeSdkSupervisorActions(run).some(({ id }) => id === action.id) ||
     !plan.contract.children.some(({ name }) => name === input.child) ||
-    input.contractHash !== plan.state.children_contract_hash ||
+    nativeSupervisorContractRef(input) !== plan.state.children_contract_ref ||
     typeof input.integrationWorktree !== 'string' ||
     !samePath(input.integrationWorktree, worktree) ||
     input.integrationBranch !== branch ||
@@ -97,7 +98,7 @@ export const nativeSdkSupervisorIntegrationRepairValidator: RuntimeValidator = {
         !input ||
         typeof input.child !== 'string' ||
         !plan.contract.children.some(({ name }) => name === input.child) ||
-        input.contractHash !== plan.state.children_contract_hash ||
+        nativeSupervisorContractRef(input) !== plan.state.children_contract_ref ||
         typeof input.integrationWorktree !== 'string' ||
         !samePath(input.integrationWorktree, worktree) ||
         input.integrationBranch !== branch ||
@@ -132,7 +133,7 @@ export const nativeSdkSupervisorIntegrationRepairValidator: RuntimeValidator = {
         output.integrationCommit,
       ]);
       const checks = nativeSdkCheckPlans({ verificationChecks: output.integrationChecks });
-      if (checks.length === 0 || checks.some(({ repeatable }) => !repeatable)) {
+      if (checks.some(({ repeatable }) => !repeatable)) {
         throw new Error('Native Supervisor integration repair requires repeatable checks');
       }
       preflightNativeCheckPlans(worktree, checks);

@@ -4,15 +4,19 @@
 
 ## SDK Run
 
-### 普通任务结果回报
+### 任务结果回报
 
-新建普通 SDK 任务用 `comet native next <change> --session <实际会话标识> --json` 领取。当前响应是 `comet.native.task-result.v1` 时直接使用 `task`、`resultTemplate` 和 `next.commandArgs`；`--details` 才附带完整 SDK 状态。结果文件只保存实际 `status`、`output` 和需要的业务结果字段，命令中的 `--action` 绑定原任务，`--session` 绑定实际领取者。结果文件放在临时目录；没有 Git 跟踪信息时放在项目之外，避免它成为候选输入。
+新建内置 SDK 的普通任务与 Supervisor 任务用 `comet native next <change> --session <实际会话标识> --json` 领取。当前响应是 `comet.native.task-result.v1` 时直接使用 `task`、`resultTemplate` 和 `next.commandArgs`；`--details` 才附带完整 SDK 状态。结果文件只保存实际 `status`、`output` 和需要的业务结果字段，命令中的 `--action` 绑定原任务，`--session` 绑定实际领取者。结果文件放在临时目录；没有 Git 跟踪信息时放在项目之外，避免它成为候选输入。
+
+`shape.prepare` 任务由 Agent 从正式文档整理验收项，按 `resultTemplate` 提交 `output.acceptance`，每项填写实际 `source` 与 `text`。来源使用 brief 或已声明的目标 Spec；CLI 分配稳定验收 ID。自由格式文档无需补固定章节，提交后仍须展示完整方案并取得用户确认。
+
+Supervisor 响应中的 `task.child`、`task.scope` 和 `workspace.projectRoot` 确定实际执行范围；多个候选任务从 `availableTasks` 选择并用真实会话领取。子任务只验收自身条目，父级覆盖全部已确认要求。集成修复使用集成工作区；独立 Verifier 不会自动领取实现或集成修复任务。
 
 Builder 回报和必要 Runtime 检查在同一调用中推进。`--review current-session` 由当前真实会话领取 Verify；`--review independent` 保留待领取任务，由独立接收者填写自己的会话身份后执行返回命令。用户明确要求独立审查时选择后者。一次响应只执行其当前下一步，完整验收正文不能裁掉。
 
 Verify 回报默认停在用户接受结果。只有用户已明确委托“全部通过后接受并归档”时，才添加 `--accept-on-pass <授权摘要>`；Runtime 只在本次结果通过且对应当前确认时接受，保存该摘要，并连续归档。该选项不授权 Git merge、push、PR 或清理，也不改变旧 `--accept-result` 的提案绑定。重复结果使用原 Action 和相同内容，错误会话、不同结果、候选漂移按原 Runtime 协议拒绝。
 
-以下底层协议只供旧 Run、固定应用、Supervisor、明确异常或调试使用。当前高层响应已充分时直接继续。
+以下底层协议只供旧 Run、固定应用、明确异常或调试使用。当前高层响应已充分时直接继续。
 
 响应的 `runtimeFormat` 为 `sdk`，或 `data.schema` 为 `comet.native.sdk-status.v1`、`comet.native.dispatch-result.v1`、`comet.native.run-view.v1` 时使用本节，直接识别当前响应，不额外查询 status。Run ID 使用当前响应的 `data.run.id` 或 `data.runId`；最新 `pendingActions`、`activeActions`、`action` 和 `stateVersion` 决定当前工作。领取响应已经包含当前 Action 输入和回报模板，直接使用；只有缺少实际所需正文时才读取同一响应给出的详情命令。SDK 请求保存为临时 UTF-8 JSON，通过 `comet runtime dispatch --application native --project-root <projectRoot> --request <file>` 提交，不放进 change 产物、提交或报告。命令返回 `status: succeeded` 后，核对同一 Action 的领取或已持久化结果身份；相同领取或结果的幂等确认可以保留原 revision，不要求重复提交产生状态变化。提交后沿用返回的当前身份和 continuation。
 
@@ -22,11 +26,11 @@ Verify 回报默认停在用户接受结果。只有用户已明确委托“全�
 
 新 Run 的 Verify 通过后直接等待接受，报告由 Runtime 生成阅读视图。报告写入失败时按 warning 继续或重试 `next`，保留已保存的验收结论。接受后普通流程在 Archive 准备时核对候选和实际输入；候选变化必须重新处理。Supervisor 交付仍使用自己的执行步骤。
 
-完成正式 brief 和完整目标 Spec 后，运行 `comet native next <change> --json`，直到 `run.waits` 出现待处理的 `shape.confirm` 或 `supervisor.shape.confirm`。向用户展示完整 Shape；Supervisor 还要展示 Child 计划，并让用户选择多会话或单会话推进。得到明确确认后，按当前 `continuation.commandAlternatives` 的状态版本和动作执行对应命令；文档变化时重新提案。之后一次 `next` 连续执行已获授权的 Runtime 内部 Action，遇到用户决定、Agent 任务、失败或未知结果时返回；查看返回的 `pendingActions` 处理全部待办，`pendingAction` 只表示其中第一项。对 `build.builder`、`verify.verifier`、`supervisor.child.builder`、`supervisor.child.verifier`、`supervisor.child.integration-repair` 和 `supervisor.parent.builder`，按下文协议领取并回报各自的 Action；多个 Child 可以并行工作，但集成 Action 与紧随其后的集成检查按 Run 顺序串行推进。每次提交后重新读取 Action、Wait 和状态。
+完成正式 brief 和完整目标 Spec 后，运行 `comet native next <change> --json`，直到 `run.waits` 出现待处理的 `shape.confirm` 或 `supervisor.shape.confirm`。向用户展示完整 Shape；Supervisor 还要展示 Child 计划，并让用户选择多会话或单会话推进。得到明确确认后，按当前 `continuation.commandAlternatives` 的状态版本和动作执行对应命令；Agent 判断目标、验收或授权发生实质变化时重新提案。之后一次 `next` 连续执行已获授权的 Runtime 内部 Action，遇到用户决定、Agent 任务、失败或未知结果时返回；查看返回的 `pendingActions` 处理全部待办，`pendingAction` 只表示其中第一项。对 `build.builder`、`verify.verifier`、`supervisor.child.builder`、`supervisor.child.verifier`、`supervisor.child.integration-repair` 和 `supervisor.parent.builder`，按下文协议领取并回报各自的 Action；多个 Child 可以并行工作，但集成 Action 与紧随其后的集成检查按 Run 顺序串行推进。每次提交后重新读取 Action、Wait 和状态。
 
 Supervisor Child 的 Runtime 检查失败或 Verifier 明确判定失败时，Run 会为同一 Child 生成新的 `supervisor.child.builder`，其激活输入指向失败 Action。读取该 Action 的真实失败结果，在原 Child worktree 修复并提交新的候选；随后重新执行检查与验收。`blocked` 或执行结果未知没有这项自动修复授权，先核对原任务和证据。
 
-Supervisor Child 合并后的集成检查明确失败时，Run 会生成 `supervisor.child.integration-repair`，其输入绑定失败的检查 Action、Child、集成 worktree 与原集成提交。先读取检查失败记录，再在该集成 worktree 的原分支修复并提交后继 Git commit；成功回报的 `output` 包含非空 `summary`、新提交 `integrationCommit` 和非空、可重复的 `integrationChecks`。Runtime 验证提交祖先关系和工作区后才重新执行集成检查；修复和重检完成前，其他已通过验收的 Child 继续排队，不抢先合并。修复执行失败、合并冲突或执行结果未知时，保留原 Action 与现场，先核对证据，不推断检查通过或重新派发。
+Supervisor Child 合并后的集成检查明确失败时，Run 会生成 `supervisor.child.integration-repair`，其输入绑定失败的检查 Action、Child、集成 worktree 与原集成提交。先读取检查失败记录，再在该集成 worktree 的原分支修复并提交后继 Git commit；成功回报的 `output` 包含非空 `summary`、新提交 `integrationCommit` 和 Agent 选择的可重复 `integrationChecks`（可为空）。Runtime 验证提交祖先关系和工作区后才重新执行集成检查；修复和重检完成前，其他已通过验收的 Child 继续排队，不抢先合并。修复执行失败、合并冲突或执行结果未知时，保留原 Action 与现场，先核对证据，不推断检查通过或重新派发。
 
 集成修复明确回报 `failed` 后，保留原 Action 和未提交修改，等待 `supervisor.child.integration-resume`。向用户说明失败和保留现场；用户明确选择继续后，按当前 continuation 的 `continue-builder` 命令及最新提案哈希、状态版本创建后继修复 Action。旧 Run 因该失败终止时，先运行只读 `native doctor <change>`，仅按其建议使用 `--repair` 迁移恢复，再处理同一确认。结果未知仍先核对原领取和执行，不使用这条失败恢复路径。
 
@@ -58,7 +62,7 @@ Builder 开始本轮实现前、Verifier 开始验收前，复制当前 Action �
 
 ### 用户决定、Archive 与恢复
 
-`verify.confirm` 待处理时，先展示实际验收结论并等待用户决定。只用当前 `run.waits[].proposalHash`、`stateVersion` 和对应 `--expected-action`，执行 `native next <change> --accept-result|--revise-implementation --summary <text> --proposal-hash <hash> --expected-state-version <n> --expected-action <action>`；Runtime 将接受决定绑定到当前候选和结构化验收结果。新 Run 的 Markdown 报告作为阅读视图；旧 Run 沿用原报告核对。用户修改需求或验收标准时，先说明重新确认 Shape 的影响，得到明确选择后使用当前状态版本执行 `native next <change> --revise-requirements --summary <text> --expected-state-version <n> --expected-action revise-requirements`；该 SDK 命令通过版本化命令替换当前未领取的工作，不使用 Verify 的提案哈希。从新的 Shape 继续，不复用原验收。Archive 中 `archive.execute` 尚未成功时也可修订；已执行归档后不得倒退修改。`verify.retry` 待处理时，用户明确选择重试后才以相同保护参数执行 `--retry-verifier`，继续使用原候选和有效检查。
+`verify.confirm` 待处理时，先展示实际验收结论并等待用户决定。只用当前 `run.waits[].proposalHash`、`stateVersion` 和对应 `--expected-action`，执行 `native next <change> --accept-result|--revise-implementation --summary <text> --proposal-hash <hash> --expected-state-version <n> --expected-action <action>`；Runtime 将接受决定绑定到当前候选和结构化验收结果。新 Run 的 Markdown 报告作为阅读视图；旧 Run 保留原报告与执行关联，不根据当前文件字节重新验收。用户修改需求或验收标准时，先说明重新确认 Shape 的影响，得到明确选择后使用当前状态版本执行 `native next <change> --revise-requirements --summary <text> --expected-state-version <n> --expected-action revise-requirements`；该 SDK 命令通过版本化命令替换当前未领取的工作，不使用 Verify 的提案哈希。从新的 Shape 继续，不复用原验收。Archive 中 `archive.execute` 尚未成功时也可修订；已执行归档后不得倒退修改。`verify.retry` 待处理时，用户明确选择重试后才以相同保护参数执行 `--retry-verifier`，继续使用原候选和有效检查。
 
 进入 Archive 后直接执行当前 continuation 返回的 `native archive <change> --json` 命令；Runtime 会按顺序组合执行可安全推进的 `archive.prepare`、`archive.execute`、`archive.finalize`，并保留每个 Action 的真实结果。仅需预览或诊断时使用 `native archive <change> --dry-run --json`。每次只按返回的最新 continuation 继续，不固定重复 Archive，不用旧状态版本重放。Supervisor 还会有 `supervisor.cleanup`：Runtime 只在目标分支仍是已验收提交、临时 worktree 干净且分支已合入时清理本次创建的 Child 和集成 worktree；遇到脏 worktree 或结果未知，保留现场并按原 Action 核对，不强制删除。只有 SDK Run 为 `completed` 且业务状态为 `done` 才说 SDK 归档完成。merge、push、PR 和非 Supervisor 临时工作区的收尾仍按用户授权分别执行和核对，SDK 归档不自动证明这些外部交付已完成。
 
@@ -191,7 +195,7 @@ Builder 的交接摘要必须写明本轮修改、处理的验收项、实际运
 
 ### 检查计划与任务包
 
-普通 change 确认没有适用的命令检查时，可提交空列表。Supervisor 主任务必须填写至少一项集成检查，`cwdRef` 是相对于集成工作区的路径。Runtime 负责执行并记录验收检查；Builder 在 handoff 中列出的开发期检查只用于说明本轮实现，不能代替正式检查结果。
+Agent 选择适用的检查；普通 change 和 Supervisor 父级没有需要补跑的命令时可提交空列表。父级仍覆盖全部验收项，并复用适用的子结果。`cwdRef` 相对于实际执行工作区；Runtime 记录真实执行，开发期说明不替代正式结果。
 
 启动 Verifier 时，原样传递 `verifierDispatch` 中的工作目录和文件位置：
 
@@ -253,13 +257,13 @@ Verifier 明确请求重跑失败检查时，使用当前 `request-checks` 模�
 
 ### 分配任务与核对任务标识
 
-用户确认一次 Supervisor Change 的 Shape，就授权执行已确认范围内的全部子任务，不要求用户重复确认相同范围。Skill 只执行 Runtime 在 `continuation` 中返回的动作，每个任务完成后重新读取 `readyChildren`。每个子任务都必须经过 `active → verified → integrated`；验证未通过、Verifier 失联登记失败、或契约修订波及已有候选时进入 `needs-reverify`，Runtime 会在下一次 `next` 自动为它重派 Verifier，`childSummary` 里计入 blocked。最后，Supervisor 主任务仍要在集成 worktree 检查全部验收项。
+用户确认一次 Supervisor Change 的 Shape，就授权执行已确认范围内的全部子任务，不要求用户重复确认相同范围。Skill 只执行 Runtime 在 `continuation` 中返回的动作，每个任务完成后重新读取 `readyChildren`。每个子任务都必须经过 `active → verified → integrated`；验证未通过、Verifier 失联登记失败、或 Agent 明确将已有候选退回重验时进入 `needs-reverify`，Runtime 会在下一次 `next` 自动为它重派 Verifier，`childSummary` 里计入 blocked。最后，Supervisor 主任务仍要在集成 worktree 检查全部验收项。
 
 处理 `childSummary` 时，不要运行 Supervisor Change Builder，只处理 `readyChildren` 列出的当前可执行子任务和 Supervisor 统筹动作。存在在途任务时，`readyChildren` 列出的是在途任务本身；容量未满且还有未派发子任务时，下一次 `next` 会在任务完成后自动派发。需要某个子任务的完整状态时再读取详情。
 
 Runtime 为每个子任务返回 worktree、集成分支的当前提交、角色、任务包和 `runId`。Builder 与 Verifier 返回结果时必须携带当前 `runId`；Runtime 会拒绝重复提交或已经失效的任务结果。子任务检查中断时，只按最新任务模板中的 `retry_check_ids` 重试本轮实现中允许重复执行的检查，已经通过的项不重复执行。
 
-子任务不单独执行 Archive；原先通过 `finish=merge` 完成的合入步骤现由 Runtime 负责。只有经过 `active → verified → integrated`，且最小集成检查通过，才算完成集成。执行任务的 Agent 声称完成，或 worktree 中仍有未提交修改，都不能证明已经集成。
+子任务不单独执行 Archive；原先通过 `finish=merge` 完成的合入步骤现由 Runtime 负责。只有经过 `active → verified → integrated`，且所选集成检查通过，才算完成集成。执行任务的 Agent 声称完成，或 worktree 中仍有未提交修改，都不能证明已经集成。
 
 选择多会话协作时，当前会话只负责分配任务、检查进度、处理阻塞、集成和 Supervisor 主任务的最终 Verify，不直接实现子任务。需要修改文件的子任务，只能使用 Runtime 为它创建的 worktree。不得为同一子任务另建 worktree，也不得写入 Supervisor 主任务或其他子任务的 worktree。
 
@@ -274,7 +278,7 @@ Runtime 为每个子任务返回 worktree、集成分支的当前提交、角色
 
 全部子任务都进入 `integrated` 后，立即按 Runtime 返回的 `parentAdvance` 继续，并通知用户 Supervisor Change 进入最终 Verify，不要求用户再次说“推进”。最终 Verify 在集成 worktree 检查全部验收项。
 
-验收失败时，保留冲突文件和阻塞记录，不重新打开已经归档或已进入 `integrated` 的子任务。按 `repair-child` 要求，在 v2 子任务的 `covers` 中引用实际失败的 Spec 验收 ID，追加一个名称唯一的修复子任务，编辑 `children.yaml` 补充修复子任务后，运行 `comet native next <parent> --summary "<说明>"`——children 契约变化会让 Runtime 把 change 退回 Shape，重新确认后继续。
+验收失败后，Agent 根据实际失败选择修复安排，父级可以修复其集成范围，也可追加名称唯一、引用有效验收 ID 的修复子任务。保留失败记录和预算，不重新打开已归档或 integrated 的子任务。需要修改计划时显式执行返回的 --revise-requirements，展示完整方案并确认；文件编辑不会自动退回 Shape。
 
 最终交付前不修改目标分支。最终 Archive、工作区收尾、merge、push 和 PR 各自仍须遵守用户的授权。
 
@@ -284,13 +288,13 @@ Runtime 为每个子任务返回 worktree、集成分支的当前提交、角色
 
 子任务 Verifier 按以下步骤提交检查与验收结果：
 
-1. 读取任务包的 `acceptance`、`contractHash` 和 `verificationBoundary`，再提交 `supervisor-checks`。输入字段为 `kind`、`child`、`runId`、`checks`（非空、`repeatable: true` 的 Runtime 检查计划）和 `materials`（可为空，每份材料为 `{name, content}`）；中断后可填写最新模板中的 `retry_check_ids`。
+1. 读取任务包的 `acceptance`、`contractHash` 和 `verificationBoundary`，再提交 `supervisor-checks`。输入字段为 `kind`、`child`、`runId`、`checks`（Agent 选择的 Runtime 检查计划，可为空；命令须 `repeatable: true`）和 `materials`（可为空，每份材料为 `{name, content}`）；中断后可填写最新模板中的 `retry_check_ids`。
 2. Runtime 在已提交本轮实现、没有未提交修改的子任务工作区执行检查，返回 `checkExecution.status`、`operationId`，检查完成后返回 `receiptRef`。检查回执是 Runtime 保存的检查结果记录，用来证明检查针对哪份实现、在哪个工作区和输入条件下执行。
 3. 实现版本、工作区、机器、输入和工具环境均未变化时，可继续使用原检查任务或已保存的回执。中断后只重试列出的可重复检查，保留已经通过的检查和有效日志；每项最多执行三次。失败或中断不算通过。
 4. 外部报告通过 `materials` 保存内容快照。普通文件路径和口头报告仅供调查，不能代替正式检查结果。
 5. 提交 `supervisor-verifier-result`：`verdict` 为 `pass`、`fail` 或 `blocked`；`evidence` 包含 `summary`、`checks`（非正式备注）、`receiptRef` 和 `acceptance`（每项 `{id, result, reason}`）。任务包中每个验收 ID 必须恰好出现一次，总判定必须与逐项结论一致；正式检查结果以 Runtime 回执为准。失败或阻塞时，`receiptRef` 可为 null。报告有遗漏或前后矛盾时，按具体错误修正，不能编造通过项。
 
-集成子任务时使用 `supervisor-integrate`，不携带 `runId`。集成报 Git 冲突时，Runtime 保留现场于集成 worktree：在该 worktree 内解决冲突并提交，然后重跑 `supervisor-integrate` 续跑；不要在父任务分支上手工处理。其 `checks` 必须是非空、`repeatable: true` 的可执行 Runtime 检查计划，不能自行填写“已通过”；中断后也只能使用本轮实现对应的 `retry_check_ids`。Runtime 在集成工作区合入子任务提交后执行检查，全部通过才记录为 `integrated`。子任务通过后，Supervisor 主任务仍须完成全部验收项的最终验收。
+集成子任务时使用 `supervisor-integrate`，不携带 `runId`。集成报 Git 冲突时，Runtime 保留现场于集成 worktree：在该 worktree 内解决冲突并提交，然后重跑 `supervisor-integrate` 续跑；不要在父任务分支上手工处理。其 `checks` 由 Agent 选择，可为空；已选择命令须为 `repeatable: true` 的可执行 Runtime 计划，不能自行填写“已通过”；中断后也只能使用本轮实现对应的 `retry_check_ids`。Runtime 在集成工作区合入子任务提交后执行检查，全部通过才记录为 `integrated`。子任务通过后，Supervisor 主任务仍须完成全部验收项的最终验收。
 
 Runtime 可以校验已保存检查记录的内容，以及它对应的实现版本、工作区、机器和输入。普通外部文件的写权限隔离仍由运行平台负责。
 
@@ -353,3 +357,5 @@ Verifier 失联时，使用普通 `next --summary` 恢复。Runtime 返回恢复
 跨 worktree 查找状态时，Runtime 会核对 active 和 archive 中的记录。只有 change 的创建信息与已提交的 Git 历史能够证明归档记录替代了活跃记录，才采用归档状态。发生冲突时按实际记录处理，不能仅凭名称相同或版本号更大就认定任务完成。
 
 先运行只读 `doctor`。只有 `doctor` 明确给出修复命令时才执行；锁、跨设备状态和事务仍由 Runtime 管理。
+
+检查计划中的 `reusable: true` 表示 Agent 判断原成功结果仍适用；`repeatable: true` 仅表示命令可重跑。默认不跨候选复用；选择复用时保留原执行来源。无需提交文件列表、指纹、hash、日志摘要或 edit-review 记录。

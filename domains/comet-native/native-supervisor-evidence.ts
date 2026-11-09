@@ -1,14 +1,18 @@
-import { nativeWorkspaceIsClean } from './native-workspace-config.js';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import {
+  readNativeSupervisorCheckReceipt,
+  sameNativeSupervisorCheckPlans,
+  writeNativeSupervisorCheckReceipt,
+} from './native-supervisor-check-binding.js';
+import { nativeWorkspaceIsClean } from './native-workspace-config.js';
 
 import { runGitCommand } from '../../platform/process/git.js';
 import {
   processInstanceMayBeAlive,
   readProcessIdentity,
 } from '../../platform/process/process-identity.js';
-import { canonicalHash } from './native-canonical-hash.js';
 import {
   executeNativeCheck,
   inspectNativeCheckProcessTreeLiveness,
@@ -17,20 +21,15 @@ import {
   type NativeCheckPlan,
   type NativeExecutedCheck,
 } from './native-check-executor.js';
-import {
-  nativeSupervisorCheckInputFingerprint,
-  nativeSupervisorCheckMachineId,
-  completedNativeSupervisorCheckState,
-  nativeSupervisorExecutedCheckFromState,
-  plannedNativeSupervisorCheckState,
-} from './native-supervisor-check-binding.js';
-import {
-  readNativeVerificationReportSnapshot,
-  writeNativeVerificationReportSnapshot,
-} from './native-evidence-storage.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { nativePreferredChangeRuntimeDir, resolveContainedNativePath } from './native-paths.js';
 import { redactNativeCredentialText } from './native-redaction.js';
+import {
+  completedNativeSupervisorCheckState,
+  nativeSupervisorCheckMachineId,
+  nativeSupervisorExecutedCheckFromState,
+  plannedNativeSupervisorCheckState,
+} from './native-supervisor-check-binding.js';
 import {
   readNativeSupervisorState,
   writeNativeSupervisorState,
@@ -51,17 +50,11 @@ interface SupervisorCheckRecord {
   child: string;
   runId: string;
   candidateCommit: string;
-  contractHash: string | null;
+  contractRef: string | null;
   operationId: string;
-  planHash: string;
   machineId: string;
-  inputFingerprint: string;
-  checks: Array<NativeExecutedCheck & { logContent: string; logDigest: string }>;
-  materials: Array<NativeSupervisorMaterial & { hash: string }>;
-}
-
-function hashText(text: string): string {
-  return createHash('sha256').update(text).digest('hex');
+  checks: Array<NativeExecutedCheck & { logContent: string }>;
+  materials: Array<NativeSupervisorMaterial>;
 }
 
 function assertCandidate(parent: string, task: NativeSupervisorTask): void {
@@ -104,7 +97,6 @@ async function supervisorCheckRecords(
       return {
         ...result,
         logContent: redacted.slice(0, 128 * 1024),
-        logDigest: hashText(redacted),
       };
     }),
   );
@@ -116,8 +108,6 @@ function supervisorCheckRecordMatchesState(
 ): boolean {
   return (
     typeof record.logContent === 'string' &&
-    typeof record.logDigest === 'string' &&
-    record.logDigest.length > 0 &&
     state.status === record.status &&
     state.id === record.id &&
     state.name === record.name &&
@@ -132,35 +122,6 @@ function supervisorCheckRecordMatchesState(
     state.repeatable === record.repeatable &&
     state.logRef === record.logRef
   );
-}
-
-async function supervisorCheckLogsMatchCurrentFiles(options: {
-  paths: NativeProjectPaths;
-  parent: string;
-  checks: SupervisorCheckRecord['checks'];
-}): Promise<boolean> {
-  try {
-    const runtimeDir = nativePreferredChangeRuntimeDir(options.paths, options.parent);
-    const matches = await Promise.all(
-      options.checks.map(async (check) => {
-        if (typeof check.logContent !== 'string' || typeof check.logDigest !== 'string') {
-          return false;
-        }
-        const logFile = await resolveContainedNativePath(
-          runtimeDir,
-          path.resolve(runtimeDir, ...check.logRef.split(/[\\/]/u)),
-        );
-        const redacted = redactNativeCredentialText(await fs.readFile(logFile, 'utf8'));
-        return (
-          hashText(redacted) === check.logDigest &&
-          redacted.slice(0, 128 * 1024) === check.logContent
-        );
-      }),
-    );
-    return matches.every(Boolean);
-  } catch {
-    return false;
-  }
 }
 
 function retryIds(value: readonly string[] | undefined): Set<string> | null {
@@ -235,26 +196,11 @@ export async function executeNativeSupervisorChecks(options: {
       // reserving the durable Supervisor check lease.
       preflightNativeCheckPlans(task.projectRoot, options.plans);
       const machineId = nativeSupervisorCheckMachineId();
-      const inputFingerprint = await nativeSupervisorCheckInputFingerprint({
-        kind: 'child',
-        parent: options.parent,
-        child: options.child,
-        runId: options.runId,
-        projectRoot: task.projectRoot,
-        candidateCommit: task.baseCommit,
-        contractHash: task.contractHash ?? null,
-        plans: options.plans,
-        materials: options.materials,
-      });
-      const key = canonicalHash('comet.native.supervisor-check-plan.v2', {
-        machineId,
-        inputFingerprint,
-      });
       const previous = task.checkExecution;
       const sameBinding =
-        previous?.key === key &&
-        previous.machineId === machineId &&
-        previous.inputFingerprint === inputFingerprint;
+        previous?.machineId === machineId &&
+        sameNativeSupervisorCheckPlans(previous?.plans, options.plans);
+      const key = sameBinding ? previous!.key : randomUUID();
       if (previous?.status === 'running') {
         const alive = await processInstanceMayBeAlive(previous.ownerPid, previous.ownerIdentity);
         // An expired lease cannot prove a live owner stopped; never start overlapping checks.
@@ -322,7 +268,12 @@ export async function executeNativeSupervisorChecks(options: {
       } else if (previous?.status === 'interrupted' && sameBinding) {
         return { task: structuredClone(task), execute: false, key };
       }
-      if (previous?.status === 'completed' && sameBinding && previous.receiptRef) {
+      if (
+        previous?.status === 'completed' &&
+        sameBinding &&
+        previous.receiptRef &&
+        options.plans.every((plan) => plan.reusable)
+      ) {
         try {
           await readNativeSupervisorCheckEvidence({
             ...options,
@@ -369,7 +320,7 @@ export async function executeNativeSupervisorChecks(options: {
           Date.now() + options.plans.reduce((total, plan) => total + plan.timeoutMs, 0) + 30000,
         ).toISOString(),
         machineId,
-        inputFingerprint,
+        plans: options.plans,
         checkStates,
       };
       task.checksReason = 'running';
@@ -492,22 +443,20 @@ export async function executeNativeSupervisorChecks(options: {
       child: options.child,
       runId: options.runId,
       candidateCommit: task.baseCommit,
-      contractHash: task.contractHash ?? null,
+      contractRef: task.contractRef ?? null,
       operationId,
-      planHash: reservation.key!,
       machineId: latestTask.checkExecution!.machineId!,
-      inputFingerprint: latestTask.checkExecution!.inputFingerprint!,
       checks,
       materials: options.materials.map(({ name, content }) => {
         const redacted = redactNativeCredentialText(content);
-        return { name, content: redacted, hash: hashText(redacted) };
+        return { name, content: redacted };
       }),
     };
     const text = JSON.stringify(record);
-    const receiptRef = await writeNativeVerificationReportSnapshot({
+    const receiptRef = await writeNativeSupervisorCheckReceipt({
       paths: options.paths,
       name: options.parent,
-      hash: hashText(text),
+      operationId,
       text,
     });
     await withNativeMutationLock(options.paths, 'complete Supervisor checks', async () => {
@@ -552,10 +501,8 @@ export async function readNativeSupervisorCheckEvidence(options: {
   task: NativeSupervisorTask;
   receiptRef: string;
 }): Promise<SupervisorCheckRecord> {
-  const match = /^runtime\/evidence\/reports\/([a-f0-9]{64})\.json$/u.exec(options.receiptRef);
-  if (!match) throw new Error('Native Supervisor receipt ref is invalid');
   const record = JSON.parse(
-    await readNativeVerificationReportSnapshot(options.paths, options.parent, match[1]),
+    await readNativeSupervisorCheckReceipt(options.paths, options.parent, options.receiptRef),
   ) as SupervisorCheckRecord;
   const task = options.task;
   const checkStates = task.checkExecution?.checkStates;
@@ -566,32 +513,20 @@ export async function readNativeSupervisorCheckEvidence(options: {
     record.checks.every((check, index) =>
       supervisorCheckRecordMatchesState(check, checkStates[index]),
     );
-  const checkLogsMatchCurrentFiles =
-    Array.isArray(record.checks) &&
-    (await supervisorCheckLogsMatchCurrentFiles({
-      paths: options.paths,
-      parent: options.parent,
-      checks: record.checks,
-    }));
   if (
     record.schema !== 'comet.native.supervisor-checks.v1' ||
     record.parent !== options.parent ||
     record.child !== task.child ||
     record.runId !== task.runId ||
     record.candidateCommit !== task.baseCommit ||
-    record.contractHash !== (task.contractHash ?? null) ||
+    record.contractRef !== (task.contractRef ?? null) ||
     record.operationId !== task.checkExecution?.operationId ||
-    record.planHash !== task.checkExecution.key ||
     record.machineId !== task.checkExecution.machineId ||
-    record.inputFingerprint !== task.checkExecution.inputFingerprint ||
     task.checkExecution.status !== 'completed' ||
     task.checkExecution.receiptRef !== options.receiptRef ||
     !Array.isArray(record.checks) ||
-    record.checks.length === 0 ||
     !checksMatchCurrentExecution ||
-    !checkLogsMatchCurrentFiles ||
-    !Array.isArray(record.materials) ||
-    record.materials.some(({ content, hash }) => hashText(content) !== hash)
+    !Array.isArray(record.materials)
   ) {
     throw new Error(
       'Native Supervisor receipt does not match the current candidate, runId, contract or execution',

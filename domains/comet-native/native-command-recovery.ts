@@ -1,18 +1,17 @@
 import path from 'node:path';
+import { runGitCommand } from '../../platform/process/git.js';
+import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 import type { DispatchResult } from './native-cli-shared.js';
-import { inspectNativeSdkLocks } from './native-sdk-projection-lock.js';
+import { readProjectConfig } from './native-config.js';
 import {
   NativeLockBusyError,
   inspectNativeLockRecovery,
   inspectNativeProjectLocks,
 } from './native-lock.js';
-import { readProjectConfig } from './native-config.js';
 import { nativeProjectPaths } from './native-paths.js';
-import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
-import { runGitCommand } from '../../platform/process/git.js';
-import { resolveNativeSdkCommandRoot, inspectNativeSdkRun } from './native-runtime-ownership.js';
-import { inspectNativePortableAcceptanceDrift } from './native-portable-requirements.js';
 import { nativeRecoveryCommand, type NativeRecovery } from './native-recovery.js';
+import { resolveNativeSdkCommandRoot } from './native-runtime-ownership.js';
+import { inspectNativeSdkLocks } from './native-sdk-projection-lock.js';
 
 function object(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -205,75 +204,6 @@ export async function withNativeCommandRecovery(
             ]
           : ['The original local writer has exited; repair only this observed lock.'],
     };
-  } else if (
-    name &&
-    options.rejectedOutcome &&
-    /Native (?:Shape artifacts|confirmed acceptance criteria) changed/u.test(actualReason)
-  ) {
-    const inspected = await inspectNativeSdkRun(root, name, { readOnly: true }).catch(() => null);
-    const action = inspected?.run.actions.find(
-      (entry) => entry.id === options.rejectedOutcome!.actionId,
-    );
-    const submitted = options.rejectedOutcome;
-    if (
-      inspected &&
-      action &&
-      action.stepId === 'build.builder' &&
-      action.status === 'running' &&
-      action.attempt === submitted.attempt &&
-      action.inputHash === submitted.inputHash &&
-      action.claim?.token === submitted.claimToken
-    ) {
-      const paths = await nativeProjectPaths(root, inspected.artifactRootRef, { readOnly: true });
-      const drift = await inspectNativePortableAcceptanceDrift({ paths, state: inspected.state });
-      if (drift.drifted && !drift.reviewRequired) {
-        recovery = {
-          ...base,
-          code: 'shape-drift',
-          reason: actualReason,
-          affectedPaths: (drift.affectedSources ?? []).map((source) =>
-            path.resolve(paths.changesDir, name, source),
-          ),
-          owner: {
-            actionId: action.id,
-            attempt: action.attempt,
-            executorId: action.claim.executorId,
-            sessionId: action.claim.sessionId,
-          },
-          diagnosticArgs: command(['comet', 'native', 'status', name, '--details']),
-          recoveryArgs: command([
-            'comet',
-            'runtime',
-            'dispatch',
-            '--application',
-            options.application ?? 'native',
-            '--request',
-            '<failure-outcome-request-json-file>',
-          ]),
-          request: {
-            operation: 'record-outcome',
-            runId: inspected.run.runId,
-            outcome: {
-              actionId: action.id,
-              attempt: action.attempt,
-              inputHash: action.inputHash,
-              claimToken: action.claim.token,
-              outcomeId: `${action.id}:${action.attempt}:shape-drift`,
-              status: 'failed',
-              output: { summary: actualReason },
-            },
-          },
-          preconditions: [
-            'Only the original claim owner may submit this failure receipt, after confirming its Builder execution and all writers have stopped.',
-            'Write request to the named JSON file and execute recoveryArgs. Then read the returned continuation and request explicit revise-requirements approval on this same change. Preserve the Run, documents, and original receipts; do not recreate the change or delete managed Runtime data.',
-          ],
-          preserved: {
-            candidateId: inspected.state.builder_handoff?.candidate_id ?? null,
-            shapeConfirmationHash: inspected.state.shape_confirmation_hash ?? null,
-          },
-        };
-      }
-    }
   } else if (options.error instanceof NativeLockBusyError) {
     const diagnosis = await inspectNativeLockRecovery(options.error.file).catch(() => null);
     const active = diagnosis?.status === 'active';
@@ -305,6 +235,7 @@ export async function withNativeCommandRecovery(
   } else if (gitLocked) {
     const gitRoot = typeof finish.targetRoot === 'string' ? finish.targetRoot : root;
     const paths: string[] = [];
+
     try {
       if (/index\.lock/iu.test(actualReason))
         paths.push(

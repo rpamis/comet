@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { nativeSupervisorContractRef } from './native-children-contract.js';
 
 import {
   inspectGitWorktree,
@@ -80,7 +81,7 @@ function cleanupBinding(
     action.stepId !== 'supervisor.cleanup' ||
     state.status !== 'done' ||
     !state.archived ||
-    !state.children_contract_hash ||
+    !state.children_contract_ref ||
     !outputOf(run, 'archive.finalize') ||
     !delivery ||
     typeof delivery.targetRoot !== 'string' ||
@@ -100,7 +101,7 @@ function cleanupBinding(
   const integrationBranch = nativeSupervisorIntegrationBranch(state.name);
   if (
     !prepared ||
-    prepared.contractHash !== state.children_contract_hash ||
+    nativeSupervisorContractRef(prepared) !== state.children_contract_ref ||
     typeof prepared.integrationWorktree !== 'string' ||
     !samePath(prepared.integrationWorktree, integrationRoot) ||
     prepared.integrationBranch !== integrationBranch
@@ -118,7 +119,7 @@ function cleanupBinding(
     if (
       typeof receipt.child !== 'string' ||
       typeof receipt.worktree !== 'string' ||
-      receipt.contractHash !== state.children_contract_hash ||
+      nativeSupervisorContractRef(receipt) !== state.children_contract_ref ||
       !samePath(
         receipt.worktree,
         nativeSupervisorChildWorktree(projectRoot, state.name, receipt.child),

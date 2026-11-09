@@ -1,35 +1,33 @@
-import { reconcileNativeSdkExecutionStops } from './native-sdk-check-execution.js';
-import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
-import { nativeProjectPaths } from './native-paths.js';
-import { readNativePortableTransaction } from './native-portable-transactions.js';
-import { inspectNativeSdkArchiveFinalization } from './native-portable-archive.js';
-import { nativeVerificationResultHash } from './native-verification-report-v2.js';
-import { importNativeSdkArchiveOriginals } from './native-sdk-archive-originals.js';
+import { randomUUID } from 'node:crypto';
+import { hashRuntimeValue, type RuntimeValue, type WorkflowRun } from '../engine/runtime.js';
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
+import { nativeProjectPaths } from './native-paths.js';
+import { inspectNativeSdkArchiveFinalization } from './native-portable-archive.js';
+import { parseNativePortableState } from './native-portable-state.js';
+import { readNativePortableTransaction } from './native-portable-transactions.js';
+import { inspectNativeSdkRun, loadOwnedNativeSdkRuntime } from './native-runtime-ownership.js';
+import { importNativeSdkArchiveOriginals } from './native-sdk-archive-originals.js';
 import {
-  recoverNativeSdkArchiveOutcome,
-  recoverCancelledNativeSdkArchive,
+  inspectNativeSdkPendingArchiveDrift,
   NATIVE_SDK_ARCHIVE_STEPS,
-  nativeSdkRetryableArchivePreflight,
-  nativeSdkRetryableArchiveFinalization,
-  nativeSdkArchivePreflightExecutor,
   nativeSdkArchiveApplyExecutor,
   nativeSdkArchiveFinalizeExecutor,
-  inspectNativeSdkPendingArchiveDrift,
+  nativeSdkArchivePreflightExecutor,
+  nativeSdkRetryableArchiveFinalization,
+  nativeSdkRetryableArchivePreflight,
+  recoverCancelledNativeSdkArchive,
+  recoverNativeSdkArchiveOutcome,
 } from './native-sdk-archive.js';
+import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
+import { reconcileNativeSdkExecutionStops } from './native-sdk-check-execution.js';
+import { nativeSdkNextAction, nativeSdkPendingActions } from './native-sdk-continuation.js';
+import { inspectNativeSdkStatus, projectNativeSdkStatus } from './native-sdk-status.js';
+import { restoreNativeSupervisorChildArchiveMaterials } from './native-sdk-supervisor-archive.js';
 import { recoverNativeSdkSupervisorCleanupOutcome } from './native-sdk-supervisor-cleanup.js';
 import {
   inspectNativeSdkSupervisorDelivery,
   recoverNativeSdkSupervisorDeliveryOutcome,
 } from './native-sdk-supervisor-deliver.js';
-import { inspectNativeSdkStatus, projectNativeSdkStatus } from './native-sdk-status.js';
-import { loadOwnedNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
-import { restoreNativeSupervisorChildArchiveMaterials } from './native-sdk-supervisor-archive.js';
-import { parseNativePortableState } from './native-portable-state.js';
-import { randomUUID } from 'node:crypto';
-import { assertNativeSdkCandidateUnchanged } from './native-sdk-checks.js';
-import { hashRuntimeValue, type WorkflowRun, type RuntimeValue } from '../engine/runtime.js';
-import { nativeSdkNextAction, nativeSdkPendingActions } from './native-sdk-continuation.js';
 
 function pendingArchiveAction(run: WorkflowRun) {
   const actions = nativeSdkPendingActions(run);
@@ -138,8 +136,6 @@ async function archiveNativeSdkChangeValue(options: {
       archiveRef: applied.archiveRef,
       history: true,
       allowMissingReport: run.workflow.version === '3',
-      verificationResultHash:
-        run.workflow.version !== '1' ? nativeVerificationResultHash(state) : undefined,
     });
     if (
       hashRuntimeValue(receipt as unknown as RuntimeValue) !==
@@ -284,13 +280,12 @@ async function archiveNativeSdkChangeValue(options: {
     const result = success('archive', {
       change: options.name,
       recoveredAction: { id: action.id, stepId: action.stepId },
-      ...(action.stepId === 'archive.execute' &&
-      (run.outputs['archive.execute']?.value as { recoveryBinding?: string })?.recoveryBinding
+      ...(action.stepId === 'archive.execute'
         ? {
             historicalRecovery: true,
             currentImplementationRevalidated: false,
             recoveryMessage:
-              '已核对原候选实现、归档材料和已应用的 Specs，补记原 Action；没有重新运行检查，当前生成输入未重新验收。',
+              '沿原 Specs 事务补记原 Action；没有重新运行检查，也未重新验收当前文件。',
           }
         : {}),
       ...(action.stepId === 'archive.finalize'
@@ -365,12 +360,6 @@ async function archiveNativeSdkChangeValue(options: {
             projectRoot: options.projectRoot,
           });
           if (drift) throw new Error(drift.message);
-        } else {
-          await assertNativeSdkCandidateUnchanged({
-            run,
-            projectRoot: options.projectRoot,
-            requireEvidence: true,
-          });
         }
       } catch (error) {
         ready = false;

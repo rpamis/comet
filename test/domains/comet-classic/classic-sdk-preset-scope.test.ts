@@ -108,32 +108,49 @@ describe.each(['hotfix', 'tweak'] as const)('%s approved scope', (profile) => {
     expect((await ok('guard', 'example', 'build', ...check)).phase).toBe('verify');
   });
 
-  it('blocks changed requirements at Build and Verify while allowing checkbox completion', async () => {
-    const { root, directory, proposal, cli, ok, check } = await fixture(profile);
-    const changed = '# Proposal\nReplace authentication and migrate credentials.\n';
-    await fs.writeFile(path.join(directory, 'proposal.md'), changed);
-    expect((await cli('guard', 'example', 'build', ...check)).exitCode).not.toBe(0);
-    await fs.writeFile(path.join(directory, 'proposal.md'), proposal);
-    await fs.writeFile(path.join(directory, 'tasks.md'), '- [x] Replace authentication instead\n');
-    expect((await cli('guard', 'example', 'build', ...check)).exitCode).not.toBe(0);
-    await fs.writeFile(path.join(directory, 'tasks.md'), '- [x] Fix the greeting typo\n');
+  it('reconfirms actual requirement revisions explicitly in Build and Verify', async () => {
+    const { root, directory, cli, ok, check } = await fixture(profile);
+    const approve = async (reason: string) => {
+      const proposal = await ok('state', 'propose-escalation', 'example', '--reason', reason);
+      const before = (await inspectClassicSdkRun(root, 'example')).run;
+      expect((await cli('guard', 'example', 'build', ...check)).exitCode).not.toBe(0);
+      expect((await inspectClassicSdkRun(root, 'example')).run).toEqual(before);
+      await ok(
+        'state',
+        'decide-escalation',
+        'example',
+        '--proposal-hash',
+        proposal.wait.proposalHash,
+        '--choice',
+        'continue',
+      );
+    };
+    await fs.writeFile(
+      path.join(directory, 'proposal.md'),
+      '# Proposal\nFix the typo and punctuation.\n',
+    );
+    await approve('Fixture user approves adding punctuation.');
+    await fs.writeFile(path.join(directory, 'tasks.md'), '- [x] Fix typo and punctuation\n');
+    expect((await ok('guard', 'example', 'build', ...check)).phase).toBe('verify');
+    const before = (await inspectClassicSdkRun(root, 'example')).run;
+    await ok('state', 'continue-build', 'example', '--expected-revision', String(before.revision));
+    await fs.appendFile(
+      path.join(directory, 'proposal.md'),
+      'Also improve greeting capitalization.\n',
+    );
+    await approve('Fixture user approves the capitalization revision.');
     expect((await ok('guard', 'example', 'build', ...check)).phase).toBe('verify');
     const report = 'docs/superpowers/reports/example.md';
     await fs.mkdir(path.dirname(path.join(root, report)), { recursive: true });
     await fs.writeFile(
       path.join(root, report),
-      '# Verification report\nThe greeting typo is corrected and related checks passed.\n',
+      '# Verification\nThe revised greeting checks passed.\n',
     );
-    await fs.writeFile(path.join(directory, 'proposal.md'), changed);
-    expect(
-      (await cli('guard', 'example', 'verify', '--report', report, ...check)).exitCode,
-    ).not.toBe(0);
-    await fs.writeFile(path.join(directory, 'proposal.md'), proposal);
     expect((await ok('guard', 'example', 'verify', '--report', report, ...check)).phase).toBe(
       'archive',
     );
   });
-  it('upgrades a known previous definition for a fresh scope decision without rewriting completed Actions', async () => {
+  it('upgrades a known previous definition without rewriting completed Actions after neutral edits', async () => {
     const { root, directory, proposal, cli, ok, check } = await fixture(profile, true);
     const legacy = await inspectClassicSdkRun(root, 'example');
     const action = legacy.run.actions.find((action) => action.status === 'pending')!;
@@ -161,22 +178,10 @@ describe.each(['hotfix', 'tweak'] as const)('%s approved scope', (profile) => {
       },
     });
     const wait = requested.waits.find((wait) => wait.status === 'pending')!;
-    await fs.appendFile(path.join(directory, 'proposal.md'), 'Change authentication as well.\n');
-    expect(
-      (
-        await cli(
-          'state',
-          'decide-escalation',
-          'example',
-          '--proposal-hash',
-          wait.proposalHash,
-          '--choice',
-          'continue',
-        )
-      ).exitCode,
-    ).not.toBe(0);
-    expect((await inspectClassicSdkRun(root, 'example')).run).toEqual(requested);
-    await fs.writeFile(path.join(directory, 'proposal.md'), proposal);
+    await fs.appendFile(
+      path.join(directory, 'proposal.md'),
+      '<!-- Agent clarified the same scope. -->\n',
+    );
     await ok(
       'state',
       'decide-escalation',
@@ -212,7 +217,7 @@ describe.each(['hotfix', 'tweak'] as const)('%s approved scope', (profile) => {
     );
     expect((await ok('guard', 'example', 'build', ...check)).phase).toBe('verify');
   });
-  it('binds scope confirmation to the proposed artifacts before continuing the same preset', async () => {
+  it('keeps the original scope decision after neutral edits and rejects a stale SDK proposal', async () => {
     const { directory, cli, ok, check } = await fixture(profile);
     const proposal = '# Proposal\nCorrect greeting punctuation as well as the typo.\n';
     await fs.writeFile(path.join(directory, 'proposal.md'), proposal);
@@ -228,7 +233,10 @@ describe.each(['hotfix', 'tweak'] as const)('%s approved scope', (profile) => {
       'Include greeting punctuation in the same change.',
     );
     const hash = proposed.wait.proposalHash;
-    await fs.appendFile(path.join(directory, 'proposal.md'), 'Also change authentication.\n');
+    await fs.appendFile(
+      path.join(directory, 'proposal.md'),
+      '<!-- Agent clarified the same scope. -->\n',
+    );
     expect(
       (
         await cli(
@@ -236,7 +244,7 @@ describe.each(['hotfix', 'tweak'] as const)('%s approved scope', (profile) => {
           'decide-escalation',
           'example',
           '--proposal-hash',
-          hash,
+          '0'.repeat(64),
           '--choice',
           'continue',
         )

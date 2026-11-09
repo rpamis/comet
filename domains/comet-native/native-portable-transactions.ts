@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
-import { nativeTotalSpecHash, parseNativeDelta } from './native-delta-spec.js';
+import { parseNativeDelta } from './native-delta-spec.js';
 import {
   parseNativePortableMigrationTransaction,
   type NativePortableMigrationTransaction,
@@ -162,17 +162,12 @@ function parseSpecChange(value: unknown, index: number): NativePortableArchiveSp
   );
   const result_hash = optionalHash(input.result_hash, `${label}.result_hash`);
   const hasDelta = delta_source !== undefined;
-  if (hasDelta && (base_hash === undefined || base_hash === null)) {
-    throw new Error(`${label}.delta_source requires a non-null base_hash`);
-  }
   if (
     hasDelta &&
     (delta_content === undefined ||
       delta_content === null ||
       source_content === undefined ||
-      source_content === null ||
-      result_hash === undefined ||
-      result_hash === null)
+      source_content === null)
   ) {
     throw new Error(
       `${label}.delta_source requires delta_content, source_content, and result_hash`,
@@ -186,16 +181,8 @@ function parseSpecChange(value: unknown, index: number): NativePortableArchiveSp
     if (parsedDelta.capability !== input.capability) {
       throw new Error(`${label}.delta_content capability does not match capability`);
     }
-    if (parsedDelta.base_hash !== base_hash) {
-      throw new Error(`${label}.delta_content base_hash does not match base_hash`);
-    }
-    if (nativeTotalSpecHash(input.content as string) !== result_hash) {
-      throw new Error(`${label}.content does not match result_hash`);
-    }
-    if (nativeTotalSpecHash(source_content!) !== result_hash) {
-      throw new Error(`${label}.source_content does not match result_hash`);
-    }
   }
+
   if (operation === 'remove') {
     if (
       input.source !== null ||
@@ -228,11 +215,6 @@ function parseSpecChange(value: unknown, index: number): NativePortableArchiveSp
   }
   if (typeof input.content !== 'string') {
     throw new Error(`${label}.${operation} content is invalid`);
-  }
-  if (result_hash !== undefined) {
-    if (result_hash === null || nativeTotalSpecHash(input.content) !== result_hash) {
-      throw new Error(`${label}.content does not match result_hash`);
-    }
   }
   return {
     capability: input.capability,

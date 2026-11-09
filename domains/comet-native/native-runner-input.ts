@@ -1,91 +1,89 @@
-import { assertNativeInputKeys as exactKeys } from './native-input-error.js';
+import { randomUUID } from 'node:crypto';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { stripUtf8Bom } from '../../platform/fs/strip-bom.js';
+import { NATIVE_ACCEPTANCE_PAGE_LIMITS } from './native-acceptance.js';
+import {
+  assertNativeBuilderAcceptanceComplete,
+  parseNativeBuilderAcceptanceReview,
+  type NativeBuilderAcceptanceReview,
+} from './native-builder-acceptance-review.js';
+import { inspectNativeChildren } from './native-children.js';
 import {
   NATIVE_BUILDER_CHECK_RESULTS,
   NATIVE_RUNNER_INPUT_KINDS,
   NATIVE_VERIFIER_VERDICTS,
   nativeEnumText,
 } from './native-input-enum.js';
-import {
-  assertNativeBuilderAcceptanceComplete,
-  parseNativeBuilderAcceptanceReview,
-  type NativeBuilderAcceptanceReview,
-} from './native-builder-acceptance-review.js';
-import { stripUtf8Bom } from '../../platform/fs/strip-bom.js';
-import { NATIVE_ACCEPTANCE_PAGE_LIMITS } from './native-acceptance.js';
+import { assertNativeInputKeys as exactKeys } from './native-input-error.js';
 import { nativeWorkspaceIsClean } from './native-workspace-config.js';
-import { inspectNativeChildren } from './native-children.js';
-import { randomUUID } from 'node:crypto';
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import { canonicalHash } from './native-canonical-hash.js';
-import { registerNativeRunnerInputArtifactLocked } from './native-runner-input-artifacts.js';
 
-import { runGitCommand } from '../../platform/process/git.js';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
+import { runGitCommand } from '../../platform/process/git.js';
 
 import { preflightNativeCheckPlans, type NativeCheckPlan } from './native-check-executor.js';
-import {
-  executeNativeSupervisorChecks,
-  readNativeSupervisorCheckEvidence,
-  type NativeSupervisorMaterial,
-} from './native-supervisor-evidence.js';
-import {
-  parseNativeVerifierAcceptance,
-  parseNativeVerifierResponse,
-  type NativeVerifierResponse,
-} from './native-verifier-protocol.js';
 import { readNativeLocalExecution } from './native-local-execution.js';
+import { withNativeMutationLock } from './native-mutation-lock.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import {
   confirmNativePortableVerifierStart,
   dispatchNativePortableVerifier,
   executeNativePortableCheckPlan,
-  retryNativePortableCheckPlan,
+  inspectNativeSupervisorParentReviewReadiness,
   nativeLocalExecutionFile,
   nativePortableChangeDir,
   readNativePortableChange,
   recordNativePortableVerifierFailure,
   recordNativePortableVerifierUnavailable,
+  retryNativePortableCheckPlan,
   returnNativePortableChangeToBuild,
   submitNativePortableBuilderCandidate,
   submitNativePortableVerifierResult,
-  inspectNativeSupervisorParentReviewReadiness,
 } from './native-portable-runtime.js';
-import {
-  applyNativeSupervisorBuilderResult,
-  applyNativeSupervisorVerifierResult,
-  advanceNativeSupervisorFinalVerificationHead,
-  blockNativeSupervisorTask,
-  cancelNativeSupervisorTask,
-  createNativeSupervisorTask,
-  integrateNativeSupervisorChildWorkspace,
-  nativeSupervisorStateFile,
-  recordNativeSupervisorPortableFinalVerification,
-  readNativeSupervisorState,
-  reconnectNativeSupervisorTaskWithState,
-  projectNativeSupervisorTask,
-  retryNativeSupervisorBuilder,
-  NATIVE_MAX_SUPERVISOR_BUILDER_FAILURES,
-  writeNativeSupervisorState,
-  type NativeSupervisorState,
-  type NativeSupervisorVerificationEvidence,
-} from './native-supervisor.js';
-import { withNativeMutationLock } from './native-mutation-lock.js';
-import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
-import { createNativeRunnerChannel, NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
-import {
-  activeNativeVerifierAction,
-  isDuplicateNativeVerifierResponse,
-  nativeVerifierActionExecutionRef,
-  nativeVerifierActionInput,
-} from './native-verifier-action.js';
 import type {
   NativeBuilderHandoff,
   NativeLocalExecutionState,
   NativePortableCheckSummary,
   NativePortableState,
 } from './native-portable-types.js';
+import { createNativeRunnerChannel, NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
+import {
+  executeNativeSupervisorChecks,
+  readNativeSupervisorCheckEvidence,
+  type NativeSupervisorMaterial,
+} from './native-supervisor-evidence.js';
+import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
+import {
+  advanceNativeSupervisorFinalVerificationHead,
+  applyNativeSupervisorBuilderResult,
+  applyNativeSupervisorVerifierResult,
+  blockNativeSupervisorTask,
+  cancelNativeSupervisorTask,
+  createNativeSupervisorTask,
+  integrateNativeSupervisorChildWorkspace,
+  NATIVE_MAX_SUPERVISOR_BUILDER_FAILURES,
+  nativeSupervisorStateFile,
+  projectNativeSupervisorTask,
+  readNativeSupervisorState,
+  reconnectNativeSupervisorTaskWithState,
+  recordNativeSupervisorPortableFinalVerification,
+  retryNativeSupervisorBuilder,
+  writeNativeSupervisorState,
+  type NativeSupervisorState,
+  type NativeSupervisorVerificationEvidence,
+} from './native-supervisor.js';
 import type { NativeProjectPaths } from './native-types.js';
+import {
+  activeNativeVerifierAction,
+  isDuplicateNativeVerifierResponse,
+  nativeVerifierActionExecutionRef,
+  nativeVerifierActionInput,
+} from './native-verifier-action.js';
+import {
+  parseNativeVerifierAcceptance,
+  parseNativeVerifierResponse,
+  type NativeVerifierResponse,
+} from './native-verifier-protocol.js';
 
 interface RunnerBuilderInput {
   kind: 'builder-handoff';
@@ -272,7 +270,16 @@ function checkPlans(value: unknown): NativeCheckPlan[] {
     const input = record(entry, `Native Runtime check ${index}`);
     exactKeys(
       input,
-      ['id', 'name', 'executable', 'argv', 'cwdRef', 'timeoutMs', 'repeatable'],
+      [
+        'id',
+        'name',
+        'executable',
+        'argv',
+        'cwdRef',
+        'timeoutMs',
+        'repeatable',
+        ...(Object.hasOwn(input, 'reusable') ? ['reusable'] : []),
+      ],
       `Native Runtime check ${index}`,
       `/checks/${index}`,
     );
@@ -282,6 +289,8 @@ function checkPlans(value: unknown): NativeCheckPlan[] {
     if (!Number.isSafeInteger(input.timeoutMs) || (input.timeoutMs as number) < 1) {
       throw new Error(`Native Runtime check ${index} timeoutMs is invalid`);
     }
+    if (input.reusable !== undefined && typeof input.reusable !== 'boolean')
+      throw new Error('Check reusable must be a boolean');
     if (typeof input.repeatable !== 'boolean') {
       throw new Error(`Native Runtime check ${index} repeatable is invalid`);
     }
@@ -293,6 +302,7 @@ function checkPlans(value: unknown): NativeCheckPlan[] {
       cwdRef: text(input.cwdRef, `Native Runtime check ${index} cwdRef`),
       timeoutMs: input.timeoutMs as number,
       repeatable: input.repeatable,
+      ...(input.reusable === undefined ? {} : { reusable: input.reusable === true }),
     };
   });
 }
@@ -602,28 +612,6 @@ export async function readNativeRunnerInput(
   return parseNativeRunnerInput(parsed);
 }
 
-/** Classify transport bytes independently of whether their requested action is accepted. */
-export async function registerNativeRunnerInputFile(options: {
-  paths: NativeProjectPaths;
-  file: string;
-  input: NativeRunnerInput;
-}): Promise<void> {
-  await withNativeMutationLock(options.paths, 'register-runner-input', async () => {
-    await registerNativeRunnerInputArtifactLocked({
-      paths: options.paths,
-      file: options.file,
-      validateContent: (content) => {
-        const current = parseNativeRunnerInput(JSON.parse(stripUtf8Bom(content)));
-        if (
-          canonicalHash('comet.native.runner-input.v1', current) !==
-          canonicalHash('comet.native.runner-input.v1', options.input)
-        )
-          throw new Error('Native Runner input changed after parsing');
-      },
-    });
-  });
-}
-
 function isGenericPortableRunnerInput(input: NativeRunnerInput): boolean {
   return (
     input.kind === 'builder-handoff' ||
@@ -803,13 +791,6 @@ export async function validateNativeRunnerInputBoundary(options: {
         'Native parent Build advances child changes and does not accept a Builder handoff',
       );
     }
-    if (
-      supervisorParentReview &&
-      options.state.loop.stage === 'repairing' &&
-      options.state.verification_result === 'fail'
-    ) {
-      throw new Error('Native parent verification failed; complete the repair child first');
-    }
     if (options.input.verification_checks !== undefined) {
       preflightNativeCheckPlans(executionRoot, options.input.verification_checks);
     }
@@ -818,9 +799,6 @@ export async function validateNativeRunnerInputBoundary(options: {
 
   if (options.input.kind === 'dispatch-verifier') {
     assertPortableVerifyReadyBoundary(options.state);
-    if (supervisorParentVerification && options.input.checks.length === 0) {
-      throw new Error('Native Supervisor parent verification requires at least one check');
-    }
     preflightNativeCheckPlans(executionRoot, options.input.checks);
     return;
   }
@@ -922,11 +900,8 @@ export async function validateNativeRunnerInputBoundary(options: {
 
   if (options.input.kind === 'supervisor-checks') {
     const input = options.input;
-    if (
-      input.checks.length === 0 ||
-      new Set(input.checks.map(({ id }) => id)).size !== input.checks.length
-    ) {
-      throw new Error('Native Supervisor checks require a non-empty plan with unique IDs');
+    if (new Set(input.checks.map(({ id }) => id)).size !== input.checks.length) {
+      throw new Error('Native Supervisor checks require unique IDs');
     }
     if (input.checks.some(({ repeatable }) => !repeatable)) {
       throw new Error('Native Supervisor checks must be repeatable for safe recovery');
@@ -947,11 +922,8 @@ export async function validateNativeRunnerInputBoundary(options: {
   }
   if (options.input.kind === 'supervisor-integrate') {
     const input = options.input;
-    if (
-      input.checks.length === 0 ||
-      new Set(input.checks.map(({ id }) => id)).size !== input.checks.length
-    ) {
-      throw new Error('Native Supervisor integration requires non-empty checks with unique IDs');
+    if (new Set(input.checks.map(({ id }) => id)).size !== input.checks.length) {
+      throw new Error('Native Supervisor integration checks require unique IDs');
     }
     if (input.checks.some(({ repeatable }) => !repeatable)) {
       throw new Error('Native Supervisor integration checks must be repeatable for safe recovery');
@@ -1196,13 +1168,6 @@ export async function applyNativeRunnerInput(options: {
   inputFile?: string;
 }) {
   const input = options.input;
-  if (options.inputFile) {
-    await registerNativeRunnerInputFile({
-      paths: options.paths,
-      file: options.inputFile,
-      input,
-    });
-  }
   const portableBeforeInput = await readNativePortableChange(options.paths, options.name);
   if (
     input.kind === 'verifier-response' &&
@@ -1745,9 +1710,6 @@ export async function applyNativeRunnerInput(options: {
     };
   }
   if (input.kind === 'dispatch-verifier') {
-    if (supervisorParentVerification && input.checks.length === 0) {
-      throw new Error('Native Supervisor parent verification requires at least one check');
-    }
     const ready = await readNativePortableChange(options.paths, options.name);
     if (
       ready.builder_handoff !== null &&
@@ -1913,10 +1875,10 @@ export async function applyNativeRunnerInput(options: {
   if (supervisorParentVerification && applied.response.kind === 'final-result') {
     if (
       applied.state.verification_result === 'pass' &&
-      (applied.checks.length === 0 || applied.checks.some(({ status }) => status !== 'passed'))
+      applied.checks.some(({ status }) => status !== 'passed')
     ) {
       throw new Error(
-        'Native Supervisor parent verification cannot pass without completed integration checks',
+        'Native Supervisor parent verification cannot pass with failed or incomplete integration checks',
       );
     }
     const supervisorState =

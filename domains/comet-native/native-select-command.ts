@@ -1,15 +1,6 @@
 import { inspectGitWorktree, samePath } from '../../platform/paths/git-worktree.js';
+import type { RuntimeValue, WorkflowRun } from '../engine/runtime.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
-import { createNativeSdkStateStore } from './native-sdk-state-store.js';
-import { parseNativePortableState } from './native-portable-state.js';
-import type { WorkflowRun, RuntimeValue } from '../engine/runtime.js';
-import { isNativeSdkRunRecoveryRequiredError } from './native-sdk-state-store.js';
-import { resolveNativeChangeRuntimeOwner } from './native-runtime-ownership.js';
-import {
-  inspectDiscoveredNativeStatus,
-  NativePristineSdkRunRecoverableError,
-} from './native-status-discovery.js';
-import { selectNativeChange } from './native-selection.js';
 import {
   assertNoArguments,
   configuredPaths,
@@ -18,6 +9,17 @@ import {
   takeFlag,
   type DispatchResult,
 } from './native-cli-shared.js';
+import { parseNativePortableState } from './native-portable-state.js';
+import { resolveNativeChangeRuntimeOwner } from './native-runtime-ownership.js';
+import {
+  createNativeSdkStateStore,
+  isNativeSdkRunRecoveryRequiredError,
+} from './native-sdk-state-store.js';
+import { selectNativeChange } from './native-selection.js';
+import {
+  inspectDiscoveredNativeStatus,
+  NativePristineSdkRunRecoverableError,
+} from './native-status-discovery.js';
 
 /** 明确接管当前分支；只改变绑定，原执行和批准仍由同一个 Run 保存。 */
 async function rebindNativeSdkWork(projectRoot: string, name: string): Promise<WorkflowRun> {
@@ -53,7 +55,7 @@ async function rebindNativeSdkWork(projectRoot: string, name: string): Promise<W
     throw new Error('Native rebind requires all original executions to have stopped and settled');
   if (state.workspace.change_branch === git.currentBranch) return run;
   if (
-    state.children_contract_hash &&
+    state.children_contract_ref &&
     run.actions.some(
       (action) => action.stepId === 'supervisor.prepare' && action.status === 'succeeded',
     )

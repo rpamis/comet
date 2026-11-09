@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { inspectGitWorktree, resolveGitRef } from '../../platform/paths/git-worktree.js';
 import {
   hashRuntimeValue,
   type RuntimeAction,
@@ -12,35 +13,30 @@ import type {
   WorkflowApplicationImplementation,
 } from '../workflow-application/index.js';
 import {
-  hashProtectedProjectFile,
-  readProtectedProjectFile,
-} from '../workflow-contract/protected-project-path.js';
-import { inspectGitWorktree, resolveGitRef } from '../../platform/paths/git-worktree.js';
-import { defineNativeWorkflowApplication } from './native-sdk-application.js';
-import {
-  nativeSdkBeforeVerifierRecovery,
-  nativeSdkBeforeBlockedVerifierRecovery,
-  nativeSdkMatchesRun,
-  nativeSdkLegacyTransitionHandler,
-} from './native-sdk-definition.js';
-import { createNativeSdkStateStore } from './native-sdk-state-store.js';
-import { createNativePortableState, parseNativePortableState } from './native-portable-state.js';
-import { returnNativeCandidateToBuild } from './native-loop-runtime.js';
-import { inspectNativeHookGuard } from './native-hook-guard.js';
-import { nativeSdkSupervisorParentCandidateCommit } from './native-sdk-supervisor-parent.js';
-import { nativeProjectPaths } from './native-paths.js';
-import { inspectNativePortableAcceptanceDrift } from './native-portable-requirements.js';
-import {
   COMET_CHANGE_OWNER_SCHEMA,
   readChangeRuntimeOwner,
   registerSdkChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
+import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
+import { inspectNativeHookGuard } from './native-hook-guard.js';
+import { returnNativeCandidateToBuild } from './native-loop-runtime.js';
+import { nativeProjectPaths } from './native-paths.js';
+import { createNativePortableState, parseNativePortableState } from './native-portable-state.js';
+import { defineNativeWorkflowApplication } from './native-sdk-application.js';
+import {
+  nativeSdkBeforeBlockedVerifierRecovery,
+  nativeSdkBeforeVerifierRecovery,
+  nativeSdkLegacyTransitionHandler,
+  nativeSdkMatchesRun,
+} from './native-sdk-definition.js';
+import { createNativeSdkStateStore } from './native-sdk-state-store.js';
+import { nativeSdkSupervisorParentCandidateCommit } from './native-sdk-supervisor-parent.js';
 
-export { createNativePortableState as createNativeApplicationState };
 export {
   prepareNativeCandidateReviewExample,
   prepareNativeCandidateReviewProject,
 } from './native-candidate-review-example.js';
+export { createNativePortableState as createNativeApplicationState };
 
 export type NativeExtensionScope = 'candidate' | 'parent' | 'child' | 'integration';
 
@@ -98,7 +94,7 @@ function sourceFor(run: Readonly<WorkflowRun>, action: Readonly<RuntimeAction>):
       ? 'child'
       : action.stepId === CHECKS.integration
         ? 'integration'
-        : state.children_contract_hash
+        : state.children_contract_ref
           ? 'parent'
           : 'candidate';
   const output = action.outcome?.output as { candidateId?: unknown } | undefined;
@@ -158,22 +154,6 @@ function executionRoot(context: WorkflowApplicationFactoryContext, source: Revie
   return path.resolve(ref);
 }
 
-/** 工件摘要与 Action 绑定分别保存，加载声明不充当质量证据。 */
-export async function nativeExtensionArtifactHashes(
-  root: string,
-  refs: readonly string[],
-): Promise<Record<string, string>> {
-  if (!refs.length) throw new Error('扩展必须声明实际检查的工件');
-  const hashes: Record<string, string> = {};
-  for (const ref of refs)
-    hashes[ref] = (
-      await hashProtectedProjectFile(root, ref, {
-        label: 'Native extension artifact',
-      })
-    ).digest;
-  return hashes;
-}
-
 export function createNativeWorkflowApplication(
   context: WorkflowApplicationFactoryContext,
   options: NativeApplicationOptions,
@@ -227,15 +207,6 @@ export function createNativeWorkflowApplication(
               context.projectRoot,
               (input.run.input as { artifactRootRef: string }).artifactRootRef,
             );
-            const drift = await inspectNativePortableAcceptanceDrift({ paths, state });
-            if (
-              drift.drifted &&
-              (input.outcome.output as { verdict?: string } | null)?.verdict !==
-                'revise-requirements'
-            )
-              throw new Error(
-                '已确认需求发生变化，请沿 Native 需求修订流程重新确认：' + drift.reason,
-              );
             const output = input.outcome.output as Record<string, RuntimeValue> | null;
             const bindingHash = hashRuntimeValue(source as unknown as RuntimeValue);
             let normalized = input.outcome;
@@ -299,9 +270,6 @@ export function createNativeWorkflowApplication(
                 resolveGitRef(root, branch) !== commit)
             )
               throw new Error('扩展候选提交或分支已变化');
-            const hashes = await nativeExtensionArtifactHashes(root, extension.artifactRefs);
-            if (hashRuntimeValue(hashes) !== hashRuntimeValue(output.artifactHashes ?? null))
-              throw new Error('扩展工件变化或缺少真实摘要，请重新检查当前候选');
             return await extension.validator.validate({
               ...input,
               outcome: normalized,
@@ -609,7 +577,7 @@ export function createNativeWorkflowApplication(
       );
       const scope: NativeExtensionScope = checkId
         ? 'child'
-        : state.children_contract_hash
+        : state.children_contract_ref
           ? 'parent'
           : 'candidate';
       for (const stepId of chains.get(scope)!) {

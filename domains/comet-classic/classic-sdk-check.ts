@@ -1,17 +1,12 @@
-import { resolveClassicCheckTimeout } from './classic-project-config.js';
-import { classicSdkCheckPreparationInput } from './classic-sdk-check-preparation.js';
-import {
-  classicCheckInputsRetained,
-  observeClassicCheckInputs,
-  classicCheckObservationMatches,
-  assertClassicEditReviewsComplete,
-  assertClassicSdkAcceptedCandidateInputs,
-} from './classic-edit-review.js';
-import { createHash, randomUUID } from 'node:crypto';
-import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
+import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { samePath } from '../../platform/paths/git-worktree.js';
+import { spawnOwnedCommand } from '../../platform/process/owned-command.js';
+import { inspectProcessTreeLiveness } from '../../platform/process/process-identity.js';
+import { reportCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
+import { observeRuntimeOperation } from '../../platform/process/runtime-performance.js';
+import { terminateProcessTreeConfirmed } from '../../platform/process/terminate-process-tree.js';
 import {
   hashRuntimeValue,
   type RuntimeAction,
@@ -21,37 +16,27 @@ import {
   type WorkflowRun,
   type WorkflowRuntime,
 } from '../engine/runtime.js';
-import {
-  inspectProtectedProjectPath,
-  hashProtectedProjectFile,
-} from '../workflow-contract/protected-project-path.js';
-import { terminateProcessTreeConfirmed } from '../../platform/process/terminate-process-tree.js';
-import { spawnOwnedCommand } from '../../platform/process/owned-command.js';
-import { inspectProcessTreeLiveness } from '../../platform/process/process-identity.js';
-import { reportCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
-import { observeRuntimeOperation } from '../../platform/process/runtime-performance.js';
-import { collectClassicSdkDeliveryInputs } from './classic-sdk-delivery-inputs.js';
-import { checkEnvironmentFingerprint, collectCheckSnapshot } from './classic-check-snapshot.js';
-import { checkManifestHash, diffCheckManifests } from './classic-check-manifest.js';
-import { readCheckPolicy } from './classic-check-policy.js';
+import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
+import { resolveClassicCheckTimeout } from './classic-project-config.js';
 import {
   ensureClassicProjectDirectory,
   writeClassicProjectText,
 } from './classic-protected-path.js';
-import type { ClassicState } from './classic-state.js';
-import { assertClassicDeliveryRepairCurrent } from './classic-sdk-delivery-repair.js';
+import { classicSdkCheckPreparationInput } from './classic-sdk-check-preparation.js';
 import {
-  classicDeliveryRepairInputs,
+  assertClassicSdkCheckReceipt,
+  classicSdkCheckDirectoryRef,
+  classicSdkCheckRecordRef,
+  recordClassicSdkCheckReceipt,
+} from './classic-sdk-check-record.js';
+import { collectClassicSdkDeliveryInputs } from './classic-sdk-delivery-inputs.js';
+import {
   classicDeliveryRepairForAction,
+  classicDeliveryRepairInputs,
   isClassicDeliveryRepairCheck,
 } from './classic-sdk-delivery-repair-model.js';
-import {
-  classicSdkCheckRecordRef,
-  classicSdkCheckDirectoryRef,
-  recordClassicSdkCheckReceipt,
-  assertClassicSdkCheckReceipt,
-  classicSdkCheckLogHash,
-} from './classic-sdk-check-record.js';
+import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
+import type { ClassicState } from './classic-state.js';
 
 interface ClassicSdkCheckInput {
   runId: string;
@@ -231,7 +216,6 @@ async function checkedInput(
   const repairing = state && isClassicDeliveryRepairCheck(run, action);
   const refreshing = state && state.phase === 'archive' && classicSdkCheckRefreshInput(run, action);
   if (refreshing) {
-    await assertClassicSdkAcceptedCandidateInputs(root, run);
     const original = run.actions.find((entry) => entry.id === refreshing.sourceActionId);
     if (
       !original?.outcome ||
@@ -243,23 +227,8 @@ async function checkedInput(
       status: original.outcome.status,
       output: original.outcome.output,
     });
-    const observed = await observeClassicCheckInputs(root, run);
-    if (
-      observed.sourceActionId !== refreshing.sourceActionId ||
-      !(await classicCheckObservationMatches(root, observed, refreshing.observationHash))
-    )
-      throw new Error('补充检查前输入再次变化；保留原阶段，由当前 Agent 只判断新增变化');
-    await assertClassicEditReviewsComplete(root, path.posix.basename(changeDirRef!), state!);
-    if (
-      !state?.verificationReport ||
-      (
-        await hashProtectedProjectFile(root, state.verificationReport, {
-          label: 'Classic approved verification report',
-        })
-      ).digest !== refreshing.reportSha256
-    )
-      throw new Error('补充检查前原验收报告已变化');
   }
+
   const scope =
     state?.phase === 'build'
       ? 'build'
@@ -397,148 +366,27 @@ export async function runClassicSdkCommandCheck(
   action: Readonly<RuntimeAction>,
   input: ClassicSdkCheckInput,
 ): Promise<Pick<RuntimeOutcome, 'status' | 'output'>> {
-  const { root, cwd, state, scope, timeoutMs, change } = await checkedInput(run, action, input);
+  const { root, cwd, state, scope, timeoutMs } = await checkedInput(run, action, input);
   const checksDir = path.join(root, classicSdkCheckDirectoryRef(run));
-  await ensureClassicProjectDirectory(root, checksDir, 'Classic SDK check evidence');
+  await ensureClassicProjectDirectory(root, checksDir, 'Classic SDK check logs');
   const identity = { argv: [...input.argv], cwd: cwd.relative };
-  const snapshotOptions = {
-    verificationReport:
-      classicSdkCheckPreparationInput(run, action)?.command.reportRef ?? state.verificationReport,
-  };
-  const before = await collectCheckSnapshot(root, change.target, identity, snapshotOptions);
-  const environment = await checkEnvironmentFingerprint(
-    identity.argv,
-    cwd.absolute,
-    await readCheckPolicy(root, identity),
-  );
-  // 只有明确声明为本地可复用的检查才跳过执行；新的失败或中断会遮蔽旧成功记录。
+  const currentIndex = run.actions.findIndex((entry) => entry.id === action.id);
   const previous =
     input.reusable && !classicSdkCheckRefreshInput(run, action)
       ? run.actions
-          .slice(
-            0,
-            run.actions.findIndex((entry) => entry.id === action.id),
-          )
+          .slice(0, currentIndex)
           .reverse()
           .find((entry) => {
-            const output = entry.outcome?.output as Record<string, unknown> | undefined;
+            const value = entry.outcome?.output as Record<string, unknown> | undefined;
             return (
               entry.ref === 'classic-check' &&
-              (output === undefined ||
-                (hashRuntimeValue(output.argv ?? null) === hashRuntimeValue(identity.argv) &&
-                  output.cwd === identity.cwd))
+              value &&
+              JSON.stringify(value.argv) === JSON.stringify(identity.argv) &&
+              value.cwd === identity.cwd
             );
           })
       : undefined;
-  const prior = previous?.outcome?.output as Record<string, unknown> | undefined;
-  let inputsMatch = prior?.inputBefore === before.digest && prior.inputAfter === before.digest;
-  let retainedInput = false;
-  if (
-    !inputsMatch &&
-    previous?.status === 'succeeded' &&
-    prior?.reusable === true &&
-    prior.exitCode === 0 &&
-    prior.inputBefore === prior.inputAfter &&
-    prior.environment === environment &&
-    prior.timeoutMs === timeoutMs
-  ) {
-    await assertClassicSdkCheckReceipt(root, run, previous, {
-      status: previous.outcome!.status,
-      output: previous.outcome!.output,
-    });
-    retainedInput = await classicCheckInputsRetained(
-      root,
-      run.runId,
-      state,
-      previous.id,
-      prior,
-      before.manifest,
-      run,
-    );
-    inputsMatch = retainedInput;
-  }
-  if (
-    previous?.status === 'succeeded' &&
-    prior?.reusable === true &&
-    prior.exitCode === 0 &&
-    inputsMatch &&
-    prior.environment === environment &&
-    prior.timeoutMs === timeoutMs &&
-    typeof prior.receiptRef === 'string' &&
-    typeof prior.contentHash === 'string'
-  ) {
-    await assertClassicSdkCheckReceipt(root, run, previous, {
-      status: previous.outcome!.status,
-      output: previous.outcome!.output,
-    });
-    await classicSdkCheckLogHash(
-      root,
-      run,
-      previous,
-      prior.receiptRef,
-      prior.contentHash,
-      'Classic reusable check log',
-    );
-    let retainedManifest: { manifestRef: string; manifestHash: string } | undefined;
-    if (retainedInput) {
-      const target = path.join(checksDir, `${randomUUID()}.manifest`);
-      await writeClassicProjectText(root, target, before.manifest, {
-        label: 'Classic retained check input manifest',
-      });
-      retainedManifest = {
-        manifestRef: path.relative(root, target).replaceAll('\\', '/'),
-        manifestHash: checkManifestHash(before.manifest),
-      };
-    }
-    const reused: Pick<RuntimeOutcome, 'status' | 'output'> = {
-      status: 'succeeded',
-      output: {
-        ...(prior as Record<string, RuntimeValue>),
-        ...(retainedManifest
-          ? {
-              ...retainedManifest,
-              inputBefore: before.digest,
-              inputAfter: before.digest,
-              retainedInput: true,
-            }
-          : {}),
-        scope,
-        ...(scope === 'verify'
-          ? {
-              deliveryInputs:
-                (await collectClassicSdkDeliveryInputs(root, before.manifest, identity, run)) ?? {},
-            }
-          : {}),
-        checkEpoch: state.checkEpoch ?? 0,
-        reused: true,
-        reusedFrom: previous.id,
-      },
-    };
-    await recordClassicSdkCheckReceipt(root, run, action, reused);
-    await writeClassicProjectText(
-      root,
-      classicSdkCheckRecordRef(run, action),
-      JSON.stringify({
-        schema: 'comet.classic-sdk-check.v1',
-        runId: run.runId,
-        actionId: action.id,
-        attempt: action.attempt,
-        inputHash: action.inputHash,
-        claim: action.claim,
-        command: { ...identity, timeoutMs },
-        receiptRef: prior.receiptRef,
-        manifestRef: retainedManifest?.manifestRef ?? prior.manifestRef,
-        status: 'completed',
-        result: reused,
-      }),
-      { label: 'Classic SDK reused check recovery record' },
-    );
-    return reused;
-  }
-  const logPath = path.join(checksDir, `${randomUUID()}.log`);
-  const manifestPath = path.join(checksDir, `${randomUUID()}.manifest`);
-  const receiptRef = path.relative(root, logPath).replaceAll('\\', '/');
-  const manifestRef = path.relative(root, manifestPath).replaceAll('\\', '/');
+  const prior = previous?.outcome?.output as Record<string, RuntimeValue> | undefined;
   const recordRef = classicSdkCheckRecordRef(run, action);
   const executionRecord = {
     schema: 'comet.classic-sdk-check.v1',
@@ -548,101 +396,90 @@ export async function runClassicSdkCommandCheck(
     inputHash: action.inputHash,
     claim: action.claim,
     command: { ...identity, timeoutMs },
-    receiptRef,
-    manifestRef,
   };
+  if (
+    previous?.status === 'succeeded' &&
+    prior?.exitCode === 0 &&
+    typeof prior.receiptRef === 'string'
+  ) {
+    await assertClassicSdkCheckReceipt(root, run, previous, {
+      status: previous.outcome!.status,
+      output: previous.outcome!.output,
+    });
+    const original = { ...prior };
+    delete original.contentHash;
+    delete original.inputBefore;
+    delete original.inputAfter;
+    delete original.environment;
+    delete original.manifestRef;
+    delete original.manifestHash;
+    delete original.changedDuringExecution;
+    const reused = {
+      status: 'succeeded' as const,
+      output: {
+        ...original,
+        contentHash: action.inputHash,
+        scope,
+        checkEpoch: state.checkEpoch ?? 0,
+        timeoutMs,
+        deliveryPaths: await collectClassicSdkDeliveryInputs(root, '', identity, run),
+        reusable: true,
+        reused: true,
+        reusedFrom: previous.id,
+      },
+    };
+    await recordClassicSdkCheckReceipt(root, run, action, reused);
+    await writeClassicProjectText(
+      root,
+      recordRef,
+      JSON.stringify({
+        ...executionRecord,
+        receiptRef: prior.receiptRef,
+        status: 'completed',
+        result: reused,
+      }),
+      { label: 'Classic reused check record' },
+    );
+    return reused;
+  }
+  const logPath = path.join(checksDir, randomUUID() + '.log');
+  const receiptRef = path.relative(root, logPath).replaceAll('\\', '/');
   await writeClassicProjectText(
     root,
     recordRef,
-    JSON.stringify({ ...executionRecord, status: 'started' }),
-    {
-      label: 'Classic SDK check recovery record',
-    },
+    JSON.stringify({ ...executionRecord, receiptRef, status: 'started' }),
+    { label: 'Classic check execution record' },
   );
-  reportCometRuntimeProgress(`执行 ${scope} 检查：${identity.argv[0]}`);
+  reportCometRuntimeProgress('执行 ' + scope + ' 检查：' + identity.argv[0]);
   const result = await observeRuntimeOperation(
     { projectRoot: () => root, workflow: 'classic', kind: 'check', command: 'check' },
     () => runCommand(identity.argv, cwd.absolute, timeoutMs),
   );
+  await writeClassicProjectText(root, logPath, result.output, { label: 'Classic SDK check log' });
   if (!result.stopConfirmed) {
-    await writeClassicProjectText(root, logPath, result.output, { label: 'Classic SDK check log' });
     await writeClassicProjectText(
       root,
       recordRef,
-      JSON.stringify({ ...executionRecord, status: 'stop-unconfirmed', stopConfirmed: false }),
-      { label: 'Classic SDK check recovery record' },
+      JSON.stringify({
+        ...executionRecord,
+        receiptRef,
+        status: 'stop-unconfirmed',
+        stopConfirmed: false,
+      }),
+      { label: 'Classic check execution record' },
     );
-    throw new Error(
-      'Classic 检查进程树尚未确认停止；必须核实原进程及后代全部停止，不得继续写入或重跑检查',
-    );
-  }
-  const after = await collectCheckSnapshot(root, change.target, identity, snapshotOptions).catch(
-    () => null,
-  );
-  let inputAfter = after?.digest ?? 'unavailable';
-  if (
-    environment !==
-    (await checkEnvironmentFingerprint(
-      identity.argv,
-      cwd.absolute,
-      await readCheckPolicy(root, identity),
-    ))
-  )
-    inputAfter = 'environment-changed';
-  await writeClassicProjectText(root, logPath, result.output, { label: 'Classic SDK check log' });
-  const contentHash = createHash('sha256').update(result.output).digest('hex');
-  if (after)
-    await writeClassicProjectText(root, manifestPath, after.manifest, {
-      label: 'Classic SDK check manifest',
-    });
-  const changedDuringExecution = after
-    ? (() => {
-        const diff = diffCheckManifests(before.entries, after.entries);
-        return [...diff.added, ...diff.removed, ...diff.changed].slice(0, 100);
-      })()
-    : [];
-  let regeneration: Record<string, string> | undefined;
-  let regenerationFailure: string | undefined;
-  if (isClassicDeliveryRepairCheck(run, action)) {
-    try {
-      regeneration = (
-        await assertClassicDeliveryRepairCurrent(
-          root,
-          run,
-          classicDeliveryRepairForAction(action),
-          'checked',
-          after?.manifest,
-        )
-      ).regeneratedOutputs;
-    } catch (error) {
-      regenerationFailure = error instanceof Error ? error.message : String(error);
-    }
+    throw new Error('Classic 检查进程树尚未确认停止；保留原执行记录，不能验收或重跑');
   }
   const outcome: Pick<RuntimeOutcome, 'status' | 'output'> = {
-    status:
-      result.exitCode === 0 && before.digest === inputAfter && !regenerationFailure
-        ? 'succeeded'
-        : 'failed',
+    status: result.exitCode === 0 ? 'succeeded' : 'failed',
     output: {
       scope,
-      argv: identity.argv,
-      cwd: identity.cwd,
+      ...identity,
       timeoutMs,
       exitCode: result.exitCode,
-      inputBefore: before.digest,
-      inputAfter,
-      environment,
-      changedDuringExecution,
       receiptRef,
-      contentHash,
-      manifestRef: after ? manifestRef : null,
-      manifestHash: after ? checkManifestHash(after.manifest) : null,
-      ...(scope === 'verify' && after
-        ? {
-            deliveryInputs:
-              (await collectClassicSdkDeliveryInputs(root, after.manifest, identity, run)) ?? {},
-          }
-        : {}),
+      contentHash: action.inputHash,
+      deliveryPaths: await collectClassicSdkDeliveryInputs(root, '', identity, run),
       tier: 'full',
       checkEpoch: state.checkEpoch ?? 0,
       reusable: input.reusable === true,
@@ -650,12 +487,7 @@ export async function runClassicSdkCommandCheck(
       ...(isClassicDeliveryRepairCheck(run, action)
         ? {
             deliveryRepair: classicDeliveryRepairForAction(action) as unknown as RuntimeValue,
-            deliveryInputs: classicDeliveryRepairInputs(
-              run,
-              classicDeliveryRepairForAction(action),
-            ),
-            ...(regeneration ? { regeneratedOutputs: regeneration } : {}),
-            ...(regenerationFailure ? { regenerationFailure } : {}),
+            deliveryPaths: classicDeliveryRepairInputs(run, classicDeliveryRepairForAction(action)),
           }
         : {}),
     },
@@ -664,10 +496,8 @@ export async function runClassicSdkCommandCheck(
   await writeClassicProjectText(
     root,
     recordRef,
-    JSON.stringify({ ...executionRecord, status: 'completed', result: outcome }),
-    {
-      label: 'Classic SDK check recovery record',
-    },
+    JSON.stringify({ ...executionRecord, receiptRef, status: 'completed', result: outcome }),
+    { label: 'Classic check execution record' },
   );
   return outcome;
 }

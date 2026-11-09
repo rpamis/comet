@@ -56,7 +56,7 @@ Reversible implementation decisions within specifications may be made autonomous
 After per-task acceptance under the configuration, use the inspected revision to record completion:
 
 ```bash
-comet state task-complete <name> <task-id> --expect <revision> --json
+comet state task-complete <name> <task-id> --json
 ```
 
 This command records completion; it does not replace acceptance. If changed requirements cause rejection, reread tasks and affected design and reassess, rather than blindly retrying with a new revision. Completion-only changes do not alter revision; the command may be retried idempotently. Follow existing commit policy without mechanical per-microtask progress commits.

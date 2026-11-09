@@ -49,7 +49,8 @@ function childProgress(
   const actions = currentNativeSdkSupervisorActions(run).filter(
     (action) =>
       action.stepId.startsWith('supervisor.child.') &&
-      activation(action)?.contractHash === state.children_contract_hash &&
+      (activation(action)?.contractRef ?? activation(action)?.contractHash) ===
+        state.children_contract_ref &&
       action.status !== 'cancelled',
   );
   const latest = new Map<string, Action>();

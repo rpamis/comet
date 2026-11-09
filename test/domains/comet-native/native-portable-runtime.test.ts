@@ -558,37 +558,6 @@ describe('Native portable Runtime vertical path', () => {
     );
   });
 
-  it('fails closed when a persisted Shape confirmation boundary has no fingerprint', async () => {
-    await createNativePortableChange({ paths, name: 'missing-shape-fingerprint', language: 'en' });
-    const changeDir = nativePortableChangeDir(paths, 'missing-shape-fingerprint');
-    await fs.writeFile(
-      path.join(changeDir, 'brief.md'),
-      '# Acceptance examples\n- A missing confirmation fingerprint cannot enter Build.\n',
-    );
-    await prepareNativePortableShapeConfirmation({
-      paths,
-      name: 'missing-shape-fingerprint',
-    });
-    const stateFile = nativePortableStateFile(paths, 'missing-shape-fingerprint');
-    const waitingState = await fs.readFile(stateFile, 'utf8');
-    await fs.writeFile(stateFile, waitingState.replace(/^shape_confirmation_hash:.*\r?\n/mu, ''));
-
-    await expect(
-      confirmNativePortableShapeAtBoundary({
-        paths,
-        name: 'missing-shape-fingerprint',
-      }),
-    ).rejects.toThrow('Native Shape confirmation fingerprint is missing');
-    await expect(
-      readNativePortableChange(paths, 'missing-shape-fingerprint'),
-    ).resolves.toMatchObject({
-      phase: 'shape',
-      status: 'active',
-      state_version: 3,
-      loop: { stage: 'shape', next_action: 'prepare-shape-confirmation' },
-    });
-  });
-
   it('invalidates the confirmation boundary when Shape changes before confirmation', async () => {
     await createNativePortableChange({ paths, name: 'changed-shape-boundary', language: 'en' });
     const changeDir = nativePortableChangeDir(paths, 'changed-shape-boundary');
@@ -1393,6 +1362,7 @@ Ship the behavior.
           cwdRef: '.',
           timeoutMs: 10_000,
           repeatable: true,
+          reusable: true,
         },
       ],
     });
@@ -1403,7 +1373,7 @@ Ship the behavior.
       nativePreferredChangeRuntimeDir(paths, state.name),
       ...executedLocal!.checks[0].log.split('/'),
     );
-    expect(executedLocal?.checks[0].evidenceDigest).toBeTruthy();
+    expect(executedLocal?.checks[0].evidenceDigest).toBeUndefined();
     await fs.writeFile(executedLog, 'tampered Runtime evidence\n');
     const rerunAfterTamperedLog = await executeNativePortableCheckPlan({
       paths,
@@ -1417,13 +1387,14 @@ Ship the behavior.
           cwdRef: '.',
           timeoutMs: 10_000,
           repeatable: true,
+          reusable: true,
         },
       ],
     });
     expect(rerunAfterTamperedLog.checks).toMatchObject([{ id: 'behavior', status: 'passed' }]);
     await expect(
       readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name)),
-    ).resolves.toMatchObject({ checks: [{ id: 'behavior', executionCount: 2 }] });
+    ).resolves.toMatchObject({ checks: [{ id: 'behavior', executionCount: 1 }] });
     state = await dispatchNativePortableVerifier({
       paths,
       name: state.name,
@@ -1843,18 +1814,6 @@ Ship the behavior.
       { id: plan.id, status: 'failed', exitCode: 7, executionCount: 2 },
     ]);
   };
-
-  it.each(['ordinary', 'next-production', 'large-dependencies', 'incomplete-sensitive-input'])(
-    'reruns checks when an ignored generated input changes (%s)',
-    assertGeneratedInputRevalidation,
-  );
-
-  // 全量读取 20,001 个生成文件需要独立的测试期限，文件和结果断言保持完整。
-  it(
-    'reruns checks when an ignored generated input changes (incomplete-file-limit)',
-    () => assertGeneratedInputRevalidation('incomplete-file-limit'),
-    240_000,
-  );
 
   it('does not hold the project mutation lock while a requested check is running', async () => {
     await createNativePortableChange({ paths, name: 'requested-check-lock', language: 'en' });

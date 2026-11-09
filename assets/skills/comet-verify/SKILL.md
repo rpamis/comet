@@ -11,6 +11,8 @@ After entry returns layout, follow the [shared phase entry](../comet-classic/ref
 
 ## SDK Run path
 
+Verify owns the single final integration code review for the whole change. Reuse applicable task reviews and inspect the integrated result against all confirmed requirements.
+
 Run the first complete verification through `comet check run <change-name> verify --report <report-ref> --local -- <program> [args...]` as described in SDK execution methods. Declare the final report path first, inspect the real receipt, finish acceptance, and write the report without first running the same command separately. Omit `--local` for external-state or nonrepeatable checks. Submit Guard afterward; this first check does not advance the phase.
 
 On first entering the current SDK phase, handing off to a new Agent, or restoring context, read [phase entry and recovery](../comet-classic/reference/sdk-methods.md#phase-entry-and-recovery) and the current phase's section in that reference. Reuse them when already available and still valid in this session. Continue with the phase below; recovery routes based on `nextAction.kind` apply only to older responses without a continuation mode.

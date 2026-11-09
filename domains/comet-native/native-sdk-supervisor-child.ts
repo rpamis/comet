@@ -2,13 +2,14 @@ import { inspectGitWorktree, resolveGitRef, samePath } from '../../platform/path
 import { runGitCommand } from '../../platform/process/git.js';
 import type { RuntimeValidator } from '../engine/runtime.js';
 import { preflightNativeCheckPlans } from './native-check-executor.js';
+import { nativeSupervisorContractRef } from './native-children-contract.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import {
   nativeSdkCheckPlans,
   nativeSdkSupervisorChildCheckSummaries,
 } from './native-sdk-checks.js';
-import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
 import { nativeSdkRequiresIndependentReview } from './native-sdk-review.js';
+import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
 import { supervisorAcceptanceScope } from './native-supervisor-model.js';
 import { nativeSupervisorChildWorktree } from './native-supervisor-workspace.js';
 import {
@@ -48,7 +49,7 @@ export const nativeSdkSupervisorBuilderValidator: RuntimeValidator = {
         !activation ||
         typeof activation.child !== 'string' ||
         !plan.contract.children.some(({ name }) => name === activation.child) ||
-        activation.contractHash !== state.children_contract_hash ||
+        nativeSupervisorContractRef(activation) !== state.children_contract_ref ||
         typeof activation.worktree !== 'string' ||
         !samePath(
           activation.worktree,
@@ -71,9 +72,6 @@ export const nativeSdkSupervisorBuilderValidator: RuntimeValidator = {
         throw new Error('Native SDK Supervisor Builder candidate does not match its worktree');
       }
       const checkPlans = nativeSdkCheckPlans(output);
-      if (checkPlans.length === 0) {
-        throw new Error('Native SDK Supervisor Builder candidate needs a Runtime check plan');
-      }
       preflightNativeCheckPlans(activation.worktree, checkPlans);
       runGitCommand(activation.worktree, [
         'merge-base',
@@ -112,7 +110,7 @@ export const nativeSdkSupervisorVerifierValidator: RuntimeValidator = {
         !activation ||
         typeof activation.child !== 'string' ||
         !plan.contract.children.some(({ name }) => name === activation.child) ||
-        activation.contractHash !== state.children_contract_hash ||
+        nativeSupervisorContractRef(activation) !== state.children_contract_ref ||
         typeof activation.worktree !== 'string' ||
         !samePath(
           activation.worktree,
@@ -163,10 +161,7 @@ export const nativeSdkSupervisorVerifierValidator: RuntimeValidator = {
         const integrationChecks = nativeSdkCheckPlans({
           verificationChecks: output.integrationChecks,
         });
-        if (
-          integrationChecks.length === 0 ||
-          integrationChecks.some(({ repeatable }) => !repeatable)
-        ) {
+        if (integrationChecks.some(({ repeatable }) => !repeatable)) {
           throw new Error('Native SDK Supervisor pass needs repeatable integration checks');
         }
         preflightNativeCheckPlans(activation.worktree, integrationChecks);

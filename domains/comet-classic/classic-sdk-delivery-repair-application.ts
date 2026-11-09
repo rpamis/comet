@@ -7,17 +7,17 @@ import {
   type WorkflowRun,
 } from '../engine/runtime.js';
 import type { ClassicWorkflowApplication } from './classic-sdk-application.js';
-import { createClassicSdkCheckExecutor } from './classic-sdk-check.js';
 import { assertClassicSdkCheckReceipt } from './classic-sdk-check-record.js';
+import { createClassicSdkCheckExecutor } from './classic-sdk-check.js';
 import {
-  captureClassicDeliveryRepair,
-  assertClassicDeliveryRepairCurrent,
-} from './classic-sdk-delivery-repair.js';
-import {
-  classicDeliveryRepairRecord as record,
   classicDeliveryRepairForAction,
   isClassicDeliveryRepairCheck,
+  classicDeliveryRepairRecord as record,
 } from './classic-sdk-delivery-repair-model.js';
+import {
+  assertClassicDeliveryRepairCurrent,
+  captureClassicDeliveryRepair,
+} from './classic-sdk-delivery-repair.js';
 
 export function withClassicDeliveryRepair<
   T extends ClassicWorkflowApplication & { commandValidators: RuntimeCommandValidator[] },
@@ -78,21 +78,6 @@ export function withClassicDeliveryRepair<
         output: outcome.output,
       });
       if (outcome.status === 'succeeded') {
-        const generated = record(record(outcome.output).regeneratedOutputs);
-        const proof = classicDeliveryRepairForAction(action);
-        if (
-          hashRuntimeValue(Object.keys(generated).sort()) !==
-            hashRuntimeValue(Object.keys(proof.excludedOutputs).sort()) ||
-          Object.values(generated).some(
-            (hash) =>
-              typeof hash !== 'string' ||
-              !/^(?:git:[a-f0-9]{40}(?:[a-f0-9]{24})?|[a-f0-9]{64})$/u.test(hash),
-          )
-        )
-          return {
-            accepted: false,
-            reason: 'Classic delivery repair lacks Runtime-bound output generation evidence',
-          };
         await assertClassicDeliveryRepairCurrent(
           context.projectRoot,
           run,

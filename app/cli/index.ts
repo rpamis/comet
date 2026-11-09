@@ -87,7 +87,7 @@ program
 program
   .command('edit-review <operation> <workflow> <change>')
   .description(
-    'Review edits with observe, prepare, prepare-applied, judge, record, refresh-checks or show; claim retains the legacy independent review path',
+    'Report the removal of Native/Classic content-proof commands; continue through the original workflow',
   )
   .option('--project-root <path>', '当前工作区路径')
   .option('--file <path>', '完整编辑请求、record 判断结果或 refresh-checks 检查输入 JSON')

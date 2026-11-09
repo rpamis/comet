@@ -171,7 +171,8 @@ export interface NativePortableState {
   shape_confirmation_hash?: string;
   /** Approved contract and explicit auxiliary fields; absent on hash-only legacy states. */
   shape_semantic_snapshot?: import('./native-shape-semantics.js').NativeShapeSemanticSnapshot;
-  children_contract_hash?: string;
+  children_contract_ref?: string;
+  children_contract?: import('./native-children-contract.js').NativeChildrenContract;
   coordination_mode?: NativeSupervisorCoordinationMode;
   spec_changes: NativePortableSpecChange[];
   workspace: NativePortableWorkspace;
@@ -245,6 +246,7 @@ export interface NativeLocalCheckState {
   operationId: string;
   status: 'planned' | 'running' | 'passed' | 'failed' | 'interrupted';
   repeatable: boolean;
+  reusable?: boolean;
   timeoutMs: number;
   executionCount: number;
   argv: string[];
