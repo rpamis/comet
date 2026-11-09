@@ -33,13 +33,13 @@ Native 在项目中保存需求和验收结论。先确认 change 的运行格�
 
 ## SDK Run 路径
 
-新建内置 SDK 的普通任务和 Supervisor 任务使用 `native next <change> --session <真实会话标识> --json` 领取。Shape 中由 Agent 提取验收条目并提交，等待用户明确确认后进入 Build。响应 `comet.native.task-result.v1` 给出阶段、实际工作区、验收正文、结果模板和下一步，直接照此执行。多个任务可领取时，从 `availableTasks` 选择真实执行范围，并用其 Action 和实际会话领取；按 `task.child`、`task.scope` 和工作区完成当前任务。
+新建内置 SDK v4 的普通任务和 Supervisor 任务使用 `native next <change> --session <真实会话标识> --json` 领取。Shape 中由 Agent 提取验收条目并提交，等待用户明确确认后进入 Build。响应 `comet.native.task-result.v1` 给出阶段、实际工作区、验收正文、结果模板和下一步，直接照此执行。多个任务可领取时，从 `availableTasks` 选择真实执行范围，并用其 Action 和实际会话领取；按 `task.child`、`task.scope` 和工作区完成当前任务。
 
-1. Builder 完成实现后，将 `resultTemplate` 的实际业务结果写入临时 UTF-8 JSON，用返回的 `next.commandArgs` 提交。保留命令中的 `--action` 和真实 `--session`。Runtime 连续运行必要检查；当前会话继续验收时使用 `--review current-session`，另请审查者时使用 `--review independent`，由接收者以自己的真实会话领取。
+1. Builder 完成实现后，将 `resultTemplate` 的实际业务结果写入临时 UTF-8 JSON，用返回的 `next.commandArgs` 提交。保留命令中的 `--action` 和真实 `--session`。新建 v4 Run 由 Agent 使用平台工具运行必要检查，等待真实结果，并在 checks 的 name/result/note 中记录命令、目录、结果和日志引用。Builder 一次回报实现与检查；Verifier 的 output.checks 填写本次采信的实际结果。失败、未运行和未知结果不能算通过，不提交 verificationChecks、request-checks 或自制收据。旧 v1–v3 Run 和固定应用仍按原模板执行。当前会话继续验收时使用 `--review current-session`，另请审查者时使用 `--review independent`，由接收者以自己的真实会话领取。
 2. Verify 覆盖全部验收项，复用有效检查，只补缺失证据；提交实际结论后，Runtime 返回用户接受结果的步骤。用户明确要求独立审查时必须选择独立会话。
 3. 只有用户事前明确委托“验收通过后接受并归档”时，才在本次 Verify 回报中加 `--accept-on-pass <用户授权摘要>`。该摘要绑定本次通过结果。其他情况等待用户接受，再执行返回的确认命令。Git 交付仍使用已有的对应授权。
 
-新建内置任务无需读取底层协议。Supervisor 回报后，Runtime 连续处理所选检查、集成和子归档；接收下一个子任务需使用其真实执行会话。父级验收保留全部要求，复用适用的子结果并补足集成缺口。当前响应为旧 `comet.native.sdk-status.v1`、`comet.native.dispatch-result.v1`、`comet.native.run-view.v1`，且高层入口不适用，或属于固定应用时，读取[SDK Run 命令与恢复](reference/commands.md#sdk-run)。完整协议需要时用 `--details`，不额外查询 status 来识别已有响应。
+新建内置任务无需读取底层协议。Supervisor 回报后，Runtime 连续处理 Git 集成和子归档；旧 Run 仍按原协议处理受管检查；接收下一个子任务需使用其真实执行会话。父级验收保留全部要求，复用适用的子结果并补足集成缺口。当前响应为旧 `comet.native.sdk-status.v1`、`comet.native.dispatch-result.v1`、`comet.native.run-view.v1`，且高层入口不适用，或属于固定应用时，读取[SDK Run 命令与恢复](reference/commands.md#sdk-run)。完整协议需要时用 `--details`，不额外查询 status 来识别已有响应。
 
 两种 Runtime 均使用最新 `continuation`；`--runner-input` 和旧 Archive 输入仅用于旧 Runtime。SDK 路径遵守用户确认、当前 Action 的验收要求和工作区授权。旧 change 不自动迁移。
 
@@ -71,7 +71,7 @@ Build、Verify 或待归档阶段发生编辑时，按[编辑后续行](referenc
 
 ## Build ↔ Verify Loop
 
-Builder 提交候选实现后，由 Runtime 执行检查，再由实际领取 Verify Action 的 Agent 完成验收。未通过则回 Build 修复并重新提交；全部通过后，等待用户接受验收结果。
+新建 v4 Run 的 Builder 完成实现并用平台工具执行检查后，一次提交候选与实际结果，再由领取 Verify Action 的 Agent 完成验收。旧 Run 的检查执行沿用其原协议。未通过则回 Build 修复并重新提交；全部通过后，等待用户接受验收结果。
 
 Verifier 先读原始请求，再对照 Spec 和实现，核对有无遗漏、未经授权的范围缩减或接口行为变化。SDK Run 使用同一份验收结果中的 `requestReview` 说明结论；有冲突或仍影响交付的疑问时，保留 fail 或 blocked。旧 Run 和 Compat 没有保存原始请求时，从交接材料和用户记录补查，不把新生成的 Spec 当成唯一需求来源；Compat 沿用原结果结构。语义核对沿用当前 Verifier，不增加 Agent 或固定测试轮次。
 
@@ -105,7 +105,7 @@ Build、Verify 和 Archive 由 Agent 对照实际文件和用户要求判断变�
 
 Compat 按 [Verify 协议](reference/commands.md#verify-协议) 立即启动新的只读 Verifier，原样传递任务包。派发只代表登记：平台接受启动调用、且 Verifier 回报 `verifier-started` 后，才说明它已运行；启动失败立即按异常流程处理。任务包含验收正文时直接使用，否则按分页读取全部 scopeIds。
 
-Verifier 独立判断全部验收项，同时核对 brief 中登记的产物位置、必需章节和格式，不能用另一文件中的同类内容代替；缺项或错位时报告实际差异，不能给当前候选通过结论。复用与当前实现、工作区和输入匹配的 Runtime 检查，只补缺失或失效证据；文件和日志正文按需读取。等待工具超时后，继续等待同一个 Verifier。只有平台确认执行失败、超时、任务丢失或结束后无结果时才登记错误。Runtime 接受完整结果后按最新状态继续。
+Verifier 独立判断全部验收项，同时核对 brief 中登记的产物位置、必需章节和格式，不能用另一文件中的同类内容代替；缺项或错位时报告实际差异，不能给当前候选通过结论。由验收者判断已有真实检查是否仍适用，只补必要证据；新建 v4 Run 通过平台工具执行检查，旧 Run 沿用原 Runtime 检查协议；文件和日志正文按需读取。等待工具超时后，继续等待同一个 Verifier。只有平台确认执行失败、超时、任务丢失或结束后无结果时才登记错误。Runtime 接受完整结果后按最新状态继续。
 
 用户明确接受当前结果后执行 `--accept-result`。用户事前明确委托通过后接受并归档时，按上文使用带授权摘要的 `--accept-on-pass`；fail、blocked 和执行失败均不能触发接受。Compat 的接受与交付方式仍按当前备选命令处理。
 

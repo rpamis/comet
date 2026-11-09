@@ -32,7 +32,7 @@ export async function inspectNativeSdkRunDiagnostics(
     (await inspectNativeSdkCheckExecutions({
       projectRoot,
       run,
-      includeSettled: run.workflow.version !== '3',
+      includeSettled: !['3', '4'].includes(run.workflow.version),
     }));
   const missingStops = checks.filter((item) => {
     const action = run.actions.find((entry) => entry.id === item.actionId)!;

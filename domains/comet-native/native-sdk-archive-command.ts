@@ -135,7 +135,7 @@ async function archiveNativeSdkChangeValue(options: {
       runId: run.runId,
       archiveRef: applied.archiveRef,
       history: true,
-      allowMissingReport: run.workflow.version === '3',
+      allowMissingReport: ['3', '4'].includes(run.workflow.version),
     });
     if (
       hashRuntimeValue(receipt as unknown as RuntimeValue) !==

@@ -32,7 +32,6 @@ import {
   preflightNativeCheckPlans,
   type NativeCheckPlan,
 } from './native-check-executor.js';
-import { type NativeCheckScope } from './native-check-scope.js';
 import { readProjectConfig } from './native-config.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { toNativePortableText } from './native-portable-text.js';
@@ -117,8 +116,6 @@ interface NativeSdkCheckResult {
   exitCode: number | null;
   durationMs: number;
   logRef: string;
-  logSha256?: string;
-  inputScope?: NativeCheckScope;
   reusedFrom?: { actionId: string; attempt: number; candidateId: string; checkId: string };
 }
 
@@ -135,18 +132,6 @@ interface NativeSdkCheckInterruption {
 }
 
 interface NativeSdkCheckOutcome {
-  rawInput?: { beforeRef: string; afterRef: string };
-  candidateInputFingerprintGate?: string | null;
-  inputBefore?: string;
-  inputAfter?: string;
-  inputSnapshot?: {
-    schema: 'comet.native.check-input.v2';
-    before: string;
-    after: string;
-    candidateBefore: string | null;
-    complete: boolean;
-    diagnostics: string[];
-  };
   interruption?: NativeSdkCheckInterruption;
   candidateId: string;
   checks: NativeSdkCheckResult[];
@@ -457,7 +442,7 @@ function checkInput(run: Readonly<WorkflowRun>, action: Readonly<RuntimeAction>)
   const input = record(run.input, 'Native SDK Run input');
   if (action.stepId === 'build.checks') {
     if (
-      run.workflow.version !== '3' ||
+      !['3', '4'].includes(run.workflow.version) ||
       state.phase !== 'build' ||
       state.status !== 'active' ||
       state.children_contract_ref ||

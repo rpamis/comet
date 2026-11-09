@@ -29,7 +29,7 @@ export function nativeSdkFailedChildVerifierActivation(
     nativeSupervisorContractRef(activation) !== state.children_contract_ref ||
     typeof activation.child !== 'string' ||
     typeof activation.candidateCommit !== 'string' ||
-    typeof activation.checkActionId !== 'string' ||
+    (run.workflow.version !== '4' && typeof activation.checkActionId !== 'string') ||
     typeof activation.builderSessionId !== 'string' ||
     !currentNativeSdkSupervisorActions(run).some((candidate) => candidate.id === action.id)
   )
@@ -47,6 +47,7 @@ export async function validateNativeSdkFailedChildVerifier(
   const plan = await currentNativeSdkSupervisorPlan(run, projectRoot);
   if (!plan.contract.children.some((child) => child.name === activation.child))
     throw new Error('Native failed Child Verifier is outside the confirmed plan');
+  if (run.workflow.version === '4') return;
   const checked = await nativeSdkSupervisorChildCheckSummaries({
     run,
     checkActionId: activation.checkActionId as string,

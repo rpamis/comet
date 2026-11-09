@@ -410,7 +410,7 @@ async function closeNativeSdkHistoryLocked(options: NativeHistoryOptions): Promi
       runId: run.runId,
       archiveRef: applied.archiveRef,
       history: true,
-      allowMissingReport: run.workflow.version === '3',
+      allowMissingReport: ['3', '4'].includes(run.workflow.version),
       verificationResultHash:
         run.workflow.version !== '1' ? nativeVerificationResultHash(state) : undefined,
     });

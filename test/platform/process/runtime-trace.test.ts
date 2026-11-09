@@ -88,6 +88,41 @@ describe('Runtime trace storage and propagation', () => {
       startedAt: start.startedAt,
     });
   });
+  it('batches workflow observations until the enclosing command finishes and flushes on failure', async () => {
+    await expect(
+      observeRuntimeSpan(
+        {
+          projectRoot: () => project,
+          workflow: 'native',
+          kind: 'command',
+          name: 'next',
+          change: 'change',
+          runId: 'change',
+        },
+        async () => {
+          await recordRuntimeTraceSpans(project, [span({ spanId: 'batched-action' })]);
+          expect(
+            (await readRuntimeTraceSpans(project)).spans.some(
+              (item) => item.spanId === 'batched-action',
+            ),
+          ).toBe(false);
+          await recordRuntimeTraceSpans(project, [
+            span({
+              spanId: 'batched-action',
+              revision: 2,
+              status: 'succeeded',
+              startedAt: null,
+              endedAt: new Date().toISOString(),
+            }),
+          ]);
+          throw new Error('Original command failure');
+        },
+      ),
+    ).rejects.toThrow('Original command failure');
+    expect(
+      (await readRuntimeTraceSpans(project)).spans.find((item) => item.spanId === 'batched-action'),
+    ).toMatchObject({ status: 'succeeded', revision: 2, startedAt: expect.any(String) });
+  });
   it('keeps parallel command trees and workspace identities separate, including failed checks', async () => {
     await Promise.all(
       ['one', 'two'].map((change) =>

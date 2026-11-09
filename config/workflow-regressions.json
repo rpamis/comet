@@ -3996,7 +3996,47 @@
           ]
         }
       ],
-      "sources": ["report:2026-10-25-051-native-classic-acceptance"]
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户授权将普通检查交给Agent，撤下已无生产消费者的语法输入/环境内容证明；原测试全文归档，替代契约覆盖入口退役和真实平台结果续行，不声称Docker指纹规则已修复。",
+        "authorization": "report:2026-11-09-native-agent-runtime-simplification",
+        "record": "docs/research/2026-11-09-native-agent-runtime-implementation.zh.md",
+        "tests": [
+          {
+            "file": "test/repository/native-agent-runtime-retirement.test.ts",
+            "namePattern": "^keeps project snapshot creation and scope proof APIs out of the Native entry point$",
+            "requiredNames": [
+              "keeps project snapshot creation and scope proof APIs out of the Native entry point"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-agent-checks.test.ts",
+            "namePattern": "^accepts platform check reports and completes authorized Archive without Runtime check actions \\(source\\)$",
+            "requiredNames": [
+              "accepts platform check reports and completes authorized Archive without Runtime check actions (source)"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-native-agent-runtime-retired-registry.json",
+            "sha256": "aae60d9edadff97c746a3b5167566e01545eaeb5a6c10579b085aab43ba2a229"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-native-agent-runtime-retired-tests.json",
+            "sha256": "cf84b0ddff8392c3073e611a6b4266905047a7cb5b0159f16e0e5c63cac552e2"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-native-agent-runtime-retired-mapping.json",
+            "sha256": "b70d57be6e3241d0a8f4e2e18a022395de753646d77a44f7f0d812699811207a"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-native-agent-runtime-retired.patch",
+            "sha256": "fcc34492d49df404419cc407696b942e3f565a61e2954d8c39c645d629a20f8a"
+          }
+        }
+      }
     },
     {
       "id": "eval-claude-tool-search-forwarding",
@@ -21973,6 +22013,123 @@
           "requiredNames": [
             "completes Classic full from an Agent-reviewed design without metadata rules through source",
             "completes Classic full from an Agent-reviewed design without metadata rules through generated"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-agent-platform-check-reports",
+      "behavior": "Agent平台检查结果可直接推进验收和授权归档，无需重跑或Runtime收据。",
+      "sources": ["report:2026-11-09-native-agent-runtime-simplification"],
+      "coverageLevel": "public-cli",
+      "reproduction": "按实施记录使用公开CLI或对应Runtime边界的隔离夹具，比较原路径与Agent报告路径。",
+      "expected": "Agent平台检查结果可直接推进验收和授权归档，无需重跑或Runtime收据。",
+      "forbidden": "重复执行已有检查、接受失败或未知为通过、绕过用户决定、跨任务污染或丢弃已完成事实。",
+      "rootCause": "普通检查与工作流推进耦合，或同一动作重复准备、读取及落盘。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "namePattern": "^(?:accepts platform check reports and completes authorized Archive without Runtime check actions \\(source\\)|accepts platform check reports and completes authorized Archive without Runtime check actions \\(bundle\\)|does not pass acceptance with a failed platform check|does not pass acceptance with a not-run platform check|waits for user acceptance and rejects another session reporting the original task|retains an explicit independent review requirement)$",
+          "requiredNames": [
+            "accepts platform check reports and completes authorized Archive without Runtime check actions (source)",
+            "accepts platform check reports and completes authorized Archive without Runtime check actions (bundle)",
+            "does not pass acceptance with a failed platform check",
+            "does not pass acceptance with a not-run platform check",
+            "waits for user acceptance and rejects another session reporting the original task",
+            "retains an explicit independent review requirement"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-agent-report-single-read",
+      "behavior": "高层检查报告在同一回报只读取一次，避免重复读取并比较JSON。",
+      "sources": ["report:2026-11-09-native-agent-runtime-simplification"],
+      "coverageLevel": "public-cli",
+      "reproduction": "按实施记录使用公开CLI或对应Runtime边界的隔离夹具，比较原路径与Agent报告路径。",
+      "expected": "高层检查报告在同一回报只读取一次，避免重复读取并比较JSON。",
+      "forbidden": "重复执行已有检查、接受失败或未知为通过、绕过用户决定、跨任务污染或丢弃已完成事实。",
+      "rootCause": "普通检查与工作流推进耦合，或同一动作重复准备、读取及落盘。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "namePattern": "^(?:reads the submitted platform report once before committing its result)$",
+          "requiredNames": ["reads the submitted platform report once before committing its result"]
+        }
+      ]
+    },
+    {
+      "id": "native-agent-supervisor-integration",
+      "behavior": "两个Agent验收的子任务按真实Git链集成归档，父级保留完整验收。",
+      "sources": ["report:2026-11-09-native-agent-runtime-simplification"],
+      "coverageLevel": "runtime",
+      "reproduction": "按实施记录使用公开CLI或对应Runtime边界的隔离夹具，比较原路径与Agent报告路径。",
+      "expected": "两个Agent验收的子任务按真实Git链集成归档，父级保留完整验收。",
+      "forbidden": "重复执行已有检查、接受失败或未知为通过、绕过用户决定、跨任务污染或丢弃已完成事实。",
+      "rootCause": "普通检查与工作流推进耦合，或同一动作重复准备、读取及落盘。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:integrates two agent-managed children and retains the complete parent acceptance without Runtime checks)$",
+          "requiredNames": [
+            "integrates two agent-managed children and retains the complete parent acceptance without Runtime checks"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-runtime-namespace-preparation",
+      "behavior": "同一Store只准备一次Runtime目录，同时继续拒绝工作区身份变化。",
+      "sources": ["report:2026-11-09-native-agent-runtime-simplification"],
+      "coverageLevel": "runtime",
+      "reproduction": "按实施记录使用公开CLI或对应Runtime边界的隔离夹具，比较原路径与Agent报告路径。",
+      "expected": "同一Store只准备一次Runtime目录，同时继续拒绝工作区身份变化。",
+      "forbidden": "重复执行已有检查、接受失败或未知为通过、绕过用户决定、跨任务污染或丢弃已完成事实。",
+      "rootCause": "普通检查与工作流推进耦合，或同一动作重复准备、读取及落盘。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-read-performance.test.ts",
+          "namePattern": "^(?:Native SDK read work budgets prepares the captured Runtime namespace once and still rejects a changed workspace identity)$",
+          "requiredNames": [
+            "Native SDK read work budgets prepares the captured Runtime namespace once and still rejects a changed workspace identity"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-command-trace-batching",
+      "behavior": "观测在命令边界集中落盘，失败命令仍保存结果且保留原错误。",
+      "sources": ["report:2026-11-09-native-agent-runtime-simplification"],
+      "coverageLevel": "runtime",
+      "reproduction": "按实施记录使用公开CLI或对应Runtime边界的隔离夹具，比较原路径与Agent报告路径。",
+      "expected": "观测在命令边界集中落盘，失败命令仍保存结果且保留原错误。",
+      "forbidden": "重复执行已有检查、接受失败或未知为通过、绕过用户决定、跨任务污染或丢弃已完成事实。",
+      "rootCause": "普通检查与工作流推进耦合，或同一动作重复准备、读取及落盘。",
+      "tests": [
+        {
+          "file": "test/platform/process/runtime-trace.test.ts",
+          "namePattern": "^(?:Runtime trace storage and propagation batches workflow observations until the enclosing command finishes and flushes on failure)$",
+          "requiredNames": [
+            "Runtime trace storage and propagation batches workflow observations until the enclosing command finishes and flushes on failure"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "badcase-large-baseline-registry",
+      "behavior": "历史登记超过默认子进程缓冲时仍能读取真实Git基线并完成保留校验。",
+      "sources": ["report:2026-11-09-native-agent-runtime-simplification"],
+      "coverageLevel": "unit",
+      "reproduction": "临时Git仓库提交超过2MiB的登记，调用readBaseRegistry读取。",
+      "expected": "完整读取并返回原登记。",
+      "forbidden": "ENOBUFS、静默截断或将不可读基线当成空登记。",
+      "rootCause": "git show沿用Node默认1MiB输出缓冲。",
+      "tests": [
+        {
+          "file": "test/scripts/badcase-registration.test.ts",
+          "namePattern": "^continuous badcase registration reads a committed baseline registry larger than the default process output buffer$",
+          "requiredNames": [
+            "continuous badcase registration reads a committed baseline registry larger than the default process output buffer"
           ]
         }
       ]

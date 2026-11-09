@@ -69,11 +69,13 @@ async function projectNativeSdkStatusOnce(
   const summary = nativePortableStateSummary(state);
   const checkExecutionObservation =
     options.checkExecutionObservation ??
-    (await inspectNativeSdkCheckExecutions({
-      projectRoot: options.projectRoot,
-      run,
-      includeSettled: run.workflow.version !== '3' || options.details === true,
-    }));
+    (run.workflow.version === '4'
+      ? []
+      : await inspectNativeSdkCheckExecutions({
+          projectRoot: options.projectRoot,
+          run,
+          includeSettled: !['3', '4'].includes(run.workflow.version) || options.details === true,
+        }));
   const cancellation = await inspectNativeSdkCancellation({
     projectRoot: options.projectRoot,
     run,

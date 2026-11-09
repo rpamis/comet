@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -449,6 +449,36 @@ describe('continuous badcase registration', () => {
       readFileSync('.github/PULL_REQUEST_TEMPLATE.md', 'utf8'),
     );
     expect(() => assertBadcaseRegistration({ ...input(), declaration: placeholder })).toThrow();
+  });
+
+  it('reads a committed baseline registry larger than the default process output buffer', () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'badcase-large-base-'));
+    try {
+      const expected = registry();
+      expected.cases[0].reproduction = 'x'.repeat(2 * 1024 * 1024);
+      mkdirSync(path.join(dir, 'config'));
+      writeFileSync(path.join(dir, 'config/workflow-regressions.json'), JSON.stringify(expected));
+      execFileSync('git', ['init', '--quiet'], { cwd: dir });
+      execFileSync('git', ['add', 'config/workflow-regressions.json'], { cwd: dir });
+      execFileSync(
+        'git',
+        [
+          '-c',
+          'user.name=Test',
+          '-c',
+          'user.email=test@example.invalid',
+          'commit',
+          '--quiet',
+          '-m',
+          'large baseline',
+        ],
+        { cwd: dir },
+      );
+      const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+      expect(readBaseRegistry(dir, sha, 'config/workflow-regressions.json')).toEqual(expected);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('allows first incremental registry introduction but never treats an unreadable base as empty', () => {

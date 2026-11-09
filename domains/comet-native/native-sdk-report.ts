@@ -83,7 +83,7 @@ export async function refreshNativeSdkVerificationReport(
   projectRoot: string,
   run: Readonly<WorkflowRun>,
 ): Promise<void> {
-  if (run.workflow.version !== '3') return;
+  if (!['3', '4'].includes(run.workflow.version)) return;
   const state = parseNativePortableState(run.state);
   if (
     state.phase !== 'verify' ||
@@ -224,7 +224,8 @@ async function acceptedResult(
     )
   )
     throw new Error('Native completion lacks its accepted Verifier result');
-  const checks = await nativeSdkCurrentCheckSummaries({ run, projectRoot });
+  const checks =
+    run.workflow.version === '4' ? [] : await nativeSdkCurrentCheckSummaries({ run, projectRoot });
   if (checks.some((check) => check.status !== 'passed'))
     throw new Error('最新实际检查仍有失败、中断或未执行项');
   return nativeSdkVerificationReportMetadata(state, input.artifactRootRef);

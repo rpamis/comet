@@ -23,7 +23,7 @@ Classic 旧项目没有新版配置时只按 Classic legacy fallback 处理，�
 | Native   | Shape、Verify、Archive        | Build            |
 | Classic  | Open、Design、Verify、Archive | Build            |
 
-- Native 的 Verify 保持只读：Runtime 执行缺失或已失效的检查，验收者覆盖全部条目。新 Run 由 Agent 按任务需要选择当前会话或独立只读会话；用户明确要求独立时保留 requireIndependentReview，使用真实的不同会话。旧 Run 按当前 sessionRequirements 执行；发现实现问题时，先记录失败并通过 Native Runtime 回到 Build，再修改实现。点号开头的普通项目文件不因名称而自动成为跨阶段白名单。
+- Native 的 Verify 保持只读：新建内置 v4 Run 由 Agent 使用平台工具执行必要检查并提交实际结果，旧 Run 和固定应用沿用原检查协议；验收者覆盖全部条目。新 Run 由 Agent 按任务需要选择当前会话或独立只读会话；用户明确要求独立时保留 requireIndependentReview，使用真实的不同会话。旧 Run 按当前 sessionRequirements 执行；发现实现问题时，先记录失败并通过 Native Runtime 回到 Build，再修改实现。点号开头的普通项目文件不因名称而自动成为跨阶段白名单。
   Native 表中的写入限制用于验收执行者主动实现或修复。用户普通编辑按当前 native.document_writes 策略处理；允许保留编辑时，当前 Agent 在推进前判断真实影响，需求变化重新确认、实现变化修订候选、检查变化只补失效证据。采用 revert 策略时按 Hook 拒绝与恢复指引处理。
 
 - Classic 的 Verify 只写验证报告和状态等阶段产物，不修改 tasks 或普通项目实现；需要更新任务状态或修复实现时，先执行 `verify-fail` 回到 Build。

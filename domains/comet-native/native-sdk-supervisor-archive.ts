@@ -20,10 +20,11 @@ import { nativeProjectPaths } from './native-paths.js';
 import {
   createNativePortableState,
   parseNativePortableState,
+  parseNativeReportedChecks,
   readNativePortableState,
 } from './native-portable-state.js';
 import { toNativePortableText } from './native-portable-text.js';
-import type { NativePortableState } from './native-portable-types.js';
+import type { NativeBuilderCheckSummary, NativePortableState } from './native-portable-types.js';
 import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
 import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
@@ -43,7 +44,8 @@ export interface NativeSupervisorChildArchiveActivation {
   child: string;
   candidateCommit: string;
   integrationCommit: string;
-  checksActionId: string;
+  checksActionId?: string;
+  mergeActionId?: string;
   contractRef: string;
 }
 
@@ -73,6 +75,7 @@ interface NativeSupervisorChildArchiveBinding {
     exitCode: number | null;
     durationMs: number;
   }>;
+  reportedChecks?: NativeBuilderCheckSummary[];
   childChecksCompletedAt: string;
   integrationChecksCompletedAt: string;
   scopedAcceptance: Array<{ id: string; source: string; text: string }>;
@@ -85,7 +88,7 @@ function activation(input: unknown): NativeSupervisorChildArchiveActivation {
     typeof record.child !== 'string' ||
     typeof record.candidateCommit !== 'string' ||
     typeof record.integrationCommit !== 'string' ||
-    typeof record.checksActionId !== 'string' ||
+    (typeof record.checksActionId !== 'string' && typeof record.mergeActionId !== 'string') ||
     typeof nativeSupervisorContractRef(record) !== 'string'
   ) {
     throw new Error('Native Supervisor child archive lacks its activation');
@@ -134,15 +137,23 @@ async function childArchiveBinding(
   ) {
     throw new Error('Native Supervisor child archive does not match the confirmed plan');
   }
-  const integrationChecks = run.actions.find((candidate) => candidate.id === input.checksActionId);
+  const agentChecks = run.workflow.version === '4';
+  const integrationChecks = run.actions.find(
+    (candidate) => candidate.id === (agentChecks ? input.mergeActionId : input.checksActionId),
+  );
   const integrationChecksOutput = integrationChecks?.outcome?.output as
-    { candidateId?: unknown; completedAt?: unknown } | null | undefined;
+    | { candidateId?: unknown; integrationCommit?: unknown; completedAt?: unknown }
+    | null
+    | undefined;
   if (
-    integrationChecks?.stepId !== 'supervisor.child.integration-checks' ||
+    integrationChecks?.stepId !==
+      (agentChecks ? 'supervisor.child.integrate' : 'supervisor.child.integration-checks') ||
     integrationChecks.status !== 'succeeded' ||
     (integrationChecks.input as { activation?: { child?: unknown } } | null)?.activation?.child !==
       input.child ||
-    integrationChecksOutput?.candidateId !== input.integrationCommit ||
+    (agentChecks
+      ? integrationChecksOutput?.integrationCommit
+      : integrationChecksOutput?.candidateId) !== input.integrationCommit ||
     typeof integrationChecksOutput?.completedAt !== 'string'
   ) {
     throw new Error('Native Supervisor child archive lacks its passed integration checks');
@@ -163,6 +174,7 @@ async function childArchiveBinding(
     summary: string;
     risks?: unknown;
     acceptance?: Array<{ id?: unknown; result?: unknown; reason?: unknown }>;
+    checks?: unknown;
   };
   const builder = succeededChildAction(
     run,
@@ -176,10 +188,14 @@ async function childArchiveBinding(
     input.child,
     (output) => output.candidateId === input.candidateCommit,
   );
-  if (!childChecks) {
+  if (!agentChecks && !childChecks) {
     throw new Error('Native Supervisor child archive lacks its completed Child checks');
   }
-  const childChecksOutput = childChecks.output as {
+  const childChecksOutput = (
+    agentChecks
+      ? { checks: [], completedAt: integrationChecksOutput!.completedAt }
+      : childChecks!.output
+  ) as {
     checks?: Array<Record<string, unknown>>;
     completedAt?: unknown;
   };
@@ -279,6 +295,9 @@ async function childArchiveBinding(
     verifierRisks: risks,
     verifierAcceptance,
     childChecks: childCheckRows,
+    ...(agentChecks
+      ? { reportedChecks: parseNativeReportedChecks(verifierEvidence.checks ?? []) }
+      : {}),
     childChecksCompletedAt: childChecksOutput.completedAt,
     integrationChecksCompletedAt: integrationChecksOutput.completedAt,
     scopedAcceptance,
@@ -317,7 +336,7 @@ async function childArchiveMaterials(
         : specs.length === 1
           ? specs[0].text
           : specs.map((spec) => `# ${spec.ref}\n\n${spec.text}`).join('\n\n'),
-    'archive-source.md': `# ${binding.language === 'zh-CN' ? '归档材料来源' : 'Archive material sources'}\n\n- Parent Run: ${run.runId}\n- Archive Action: ${action.id}\n- Contract: ${nativeSupervisorContractRef(activation(action.input))}\n- Candidate: ${binding.candidateCommit}\n- Verifier: ${binding.verifierSessionId}\n- Integration checks: ${activation(action.input).checksActionId}\n\n${sources}\n\n## ${binding.language === 'zh-CN' ? 'Parent 原始简报' : 'Original Parent brief'}\n\n${brief.text}`,
+    'archive-source.md': `# ${binding.language === 'zh-CN' ? '归档材料来源' : 'Archive material sources'}\n\n- Parent Run: ${run.runId}\n- Archive Action: ${action.id}\n- Contract: ${nativeSupervisorContractRef(activation(action.input))}\n- Candidate: ${binding.candidateCommit}\n- Verifier: ${binding.verifierSessionId}\n- ${run.workflow.version === '4' ? 'Integration Action' : 'Integration checks'}: ${activation(action.input).mergeActionId ?? activation(action.input).checksActionId}\n\n${sources}\n\n## ${binding.language === 'zh-CN' ? 'Parent 原始简报' : 'Original Parent brief'}\n\n${brief.text}`,
   };
 }
 
@@ -496,6 +515,7 @@ function buildChildArchiveState(binding: NativeSupervisorChildArchiveBinding): N
           ? 'self-reviewed'
           : 'skill-coordinated',
       verdict: 'pass',
+      ...(binding.reportedChecks ? { reported_checks: binding.reportedChecks } : {}),
       checks: binding.childChecks.map((check) => ({
         id: check.id,
         name: toNativePortableText(check.name),

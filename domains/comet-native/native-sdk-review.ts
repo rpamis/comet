@@ -6,8 +6,9 @@ export function nativeSdkRequiresIndependentReview(
   action: Readonly<RuntimeAction>,
 ): boolean {
   const child = action.stepId === 'supervisor.child.verifier';
-  if (run.workflow.version === '1' || (child && run.workflow.version !== '3')) return true;
-  if (run.workflow.version !== '3') return false;
+  if (run.workflow.version === '1' || (child && !['3', '4'].includes(run.workflow.version)))
+    return true;
+  if (!['3', '4'].includes(run.workflow.version)) return false;
   const activation = (action.input as { activation?: { child?: string } }).activation;
   const actionIndex = run.actions.findIndex((entry) => entry.id === action.id);
   for (let index = actionIndex - 1; index >= 0; index -= 1) {

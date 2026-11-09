@@ -15,10 +15,7 @@ import { nativeProjectPaths } from './native-paths.js';
 import type { NativePortableAcceptanceInput } from './native-portable-acceptance.js';
 import type { NativePortableState } from './native-portable-types.js';
 import { parseNativePortableState } from './native-portable-state.js';
-import {
-  loadOwnedNativeSdkRuntime,
-  registerNativeSdkRequestInput,
-} from './native-runtime-ownership.js';
+import { loadOwnedNativeSdkRuntime } from './native-runtime-ownership.js';
 import { collectNativeSdkShapeProposal } from './native-sdk-application.js';
 import { nativeSdkTaskResultTemplate } from './native-sdk-continuation.js';
 import { advanceNativeSdkChange } from './native-sdk-next.js';
@@ -284,6 +281,13 @@ async function projectTaskResult(
               ).activeActions?.find((entry) => entry.id === currentTask.id)?.contextRequest,
             }
           : {}),
+        ...(run.workflow.version === '4' && currentTask.stepId === 'supervisor.child.verifier'
+          ? {
+              checks:
+                (currentTask.input as { activation?: { checks?: unknown } }).activation?.checks ??
+                [],
+            }
+          : {}),
         originalRequest: (run.input as { task?: string }).task,
         artifacts: {
           brief: path.posix.join(artifactRootRef, 'comet', 'changes', state.name, 'brief.md'),
@@ -296,7 +300,14 @@ async function projectTaskResult(
         ...(state.builder_handoff
           ? {
               candidateId: state.builder_handoff.candidate_id,
-              checks: [...checks.values()],
+              checks:
+                run.workflow.version === '4'
+                  ? state.builder_handoff.checks.map((check) => ({
+                      name: check.name.text,
+                      result: check.result,
+                      note: check.note?.text ?? null,
+                    }))
+                  : [...checks.values()],
             }
           : {}),
         instruction:
@@ -307,10 +318,16 @@ async function projectTaskResult(
               : verifierTask(currentTask)
                 ? '对照原始请求、Spec、实现和全部验收项，复用当前有效检查，只补缺失证据。用户要求独立审查时交给独立会话。用实际观察填写结果，存在未解决问题时报告 fail 或 blocked。'
                 : currentTask.stepId === 'supervisor.child.builder'
-                  ? '在当前 Child 工作区完成本任务的验收范围并提交实际 Git commit；将 candidateCommit 和必要 verificationChecks 写入结果。Runtime 执行所选命令后继续验收，不为进入下一步编造检查。'
+                  ? run.workflow.version === '4'
+                    ? '在当前 Child 工作区完成实现，用平台工具运行必要检查并读取实际结果。提交真实 candidateCommit、实现摘要和 checks 报告，再继续本子任务验收。'
+                    : '在当前 Child 工作区完成本任务的验收范围并提交实际 Git commit；将 candidateCommit 和必要 verificationChecks 写入结果。Runtime 执行所选命令后继续验收，不为进入下一步编造检查。'
                   : currentTask.stepId === 'supervisor.parent.builder'
-                    ? '在集成工作区核对全部已确认验收项，复用适用的子任务结果并补足集成缺口。提交实际 candidateCommit、实现总结和所选 verificationChecks，再完成父级的完整验收。'
-                    : '按已批准的 brief、Spec 和全部验收项完成实现。TDD RED 与局部调试照常；首次最终 GREEN 或完整验证直接在结果中提交 request-checks，不先在终端重复同一完整计划。收到真实检查结果后继续 Build，沿用模板中的原检查计划；最终提交仍由 Runtime 核对证据。',
+                    ? run.workflow.version === '4'
+                      ? '在集成工作区覆盖全部验收项，复用适用的子结果并用平台工具补足集成检查。提交真实 candidateCommit、实现摘要和 checks 报告，再完成父级验收。'
+                      : '在集成工作区核对全部已确认验收项，复用适用的子任务结果并补足集成缺口。提交实际 candidateCommit、实现总结和所选 verificationChecks，再完成父级的完整验收。'
+                    : run.workflow.version === '4'
+                      ? '按已批准的需求完成实现，用平台工具执行必要检查并等待真实结果。将命令、目录、结果和日志引用写入 checks 的 name/result/note，提交实现和实际报告后直接验收；不提交 Runtime 检查计划或收据。'
+                      : '按已批准的 brief、Spec 和全部验收项完成实现。TDD RED 与局部调试照常；首次最终 GREEN 或完整验证直接在结果中提交 request-checks，不先在终端重复同一完整计划。收到真实检查结果后继续 Build，沿用模板中的原检查计划；最终提交仍由 Runtime 核对证据。',
       }
     : undefined;
   const data = {
@@ -413,7 +430,7 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
     ...(await projectTaskResult(...args)),
     workflowCompleted: hasNativeCompletedWork(originalRun, args[1]),
   });
-  if (run.workflow.version !== '3' || owned.application)
+  if (!['3', '4'].includes(run.workflow.version) || owned.application)
     throw new NativeUsageError(
       '当前高层任务入口适用于新建内置 SDK Run；此需求请继续使用原响应中的命令。',
     );
@@ -528,16 +545,6 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
         result,
       });
     repeated = action.outcome?.outcomeId === outcomeId;
-    await registerNativeSdkRequestInput({
-      projectRoot: options.projectRoot,
-      artifactRootRef: (run.input as { artifactRootRef: string }).artifactRootRef,
-      file,
-      runId: run.runId,
-      validateContent(content) {
-        if (JSON.stringify(JSON.parse(stripUtf8Bom(content))) !== JSON.stringify(original))
-          throw new Error('Native 结果文件在读取后发生变化，请保留原结果重新提交。');
-      },
-    });
     reportCometRuntimeProgress(
       action.stepId === 'shape.prepare'
         ? '保存需求与验收条目'

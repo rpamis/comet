@@ -3,7 +3,7 @@ import { runGitCommand } from '../../platform/process/git.js';
 import type { RuntimeValidator } from '../engine/runtime.js';
 import { preflightNativeCheckPlans } from './native-check-executor.js';
 import { nativeSupervisorContractRef } from './native-children-contract.js';
-import { parseNativePortableState } from './native-portable-state.js';
+import { parseNativeReportedChecks, parseNativePortableState } from './native-portable-state.js';
 import {
   nativeSdkCheckPlans,
   nativeSdkSupervisorChildCheckSummaries,
@@ -37,7 +37,7 @@ export const nativeSdkSupervisorBuilderValidator: RuntimeValidator = {
       const activation = (action.input as { activation?: Record<string, unknown> }).activation;
       const output = outcome.output as Record<string, unknown> | null;
       if (
-        run.workflow.version === '3' &&
+        ['3', '4'].includes(run.workflow.version) &&
         output?.requireIndependentReview !== undefined &&
         typeof output.requireIndependentReview !== 'boolean'
       ) {
@@ -71,8 +71,11 @@ export const nativeSdkSupervisorBuilderValidator: RuntimeValidator = {
       ) {
         throw new Error('Native SDK Supervisor Builder candidate does not match its worktree');
       }
-      const checkPlans = nativeSdkCheckPlans(output);
-      preflightNativeCheckPlans(activation.worktree, checkPlans);
+      if (run.workflow.version === '4') parseNativeReportedChecks(output.checks ?? []);
+      else {
+        const checkPlans = nativeSdkCheckPlans(output);
+        preflightNativeCheckPlans(activation.worktree, checkPlans);
+      }
       runGitCommand(activation.worktree, [
         'merge-base',
         '--is-ancestor',
@@ -117,7 +120,7 @@ export const nativeSdkSupervisorVerifierValidator: RuntimeValidator = {
           nativeSupervisorChildWorktree(context.projectRoot, state.name, activation.child),
         ) ||
         typeof activation.candidateCommit !== 'string' ||
-        typeof activation.checkActionId !== 'string' ||
+        (run.workflow.version !== '4' && typeof activation.checkActionId !== 'string') ||
         typeof activation.builderSessionId !== 'string' ||
         (nativeSdkRequiresIndependentReview(run, action) &&
           action.claim.sessionId === activation.builderSessionId) ||
@@ -128,25 +131,29 @@ export const nativeSdkSupervisorVerifierValidator: RuntimeValidator = {
         typeof evidence.summary !== 'string' ||
         !evidence.summary.trim() ||
         !Array.isArray(evidence.checks) ||
-        evidence.checks.some((id) => typeof id !== 'string')
+        (run.workflow.version !== '4' && evidence.checks.some((id) => typeof id !== 'string'))
       ) {
         throw new Error(
           'Native SDK Supervisor Verifier lacks a bound result or required independent session',
         );
       }
-      const checked = await nativeSdkSupervisorChildCheckSummaries({
-        run,
-        checkActionId: activation.checkActionId,
-        projectRoot: context.projectRoot,
-      });
-      if (
-        checked.child !== activation.child ||
-        checked.candidateCommit !== activation.candidateCommit ||
-        checked.checkIds.length !== evidence.checks.length ||
-        checked.checkIds.some((id) => !(evidence.checks as string[]).includes(id))
-      ) {
-        throw new Error('Native SDK Supervisor Verifier check evidence is not current');
+      if (run.workflow.version !== '4') {
+        const checked = await nativeSdkSupervisorChildCheckSummaries({
+          run,
+          checkActionId: activation.checkActionId as string,
+          projectRoot: context.projectRoot,
+        });
+        if (
+          checked.child !== activation.child ||
+          checked.candidateCommit !== activation.candidateCommit ||
+          checked.checkIds.length !== evidence.checks.length ||
+          checked.checkIds.some((id) => !(evidence.checks as string[]).includes(id))
+        ) {
+          throw new Error('Native SDK Supervisor Verifier check evidence is not current');
+        }
       }
+      const reported =
+        run.workflow.version === '4' ? parseNativeReportedChecks(evidence.checks) : [];
       const acceptance = parseNativeVerifierAcceptance(evidence.acceptance);
       validateAndScopeNativeVerifierFinalResult(
         { verdict: output.verdict as 'pass' | 'fail' | 'blocked', acceptance },
@@ -154,10 +161,10 @@ export const nativeSdkSupervisorVerifierValidator: RuntimeValidator = {
           acceptanceIds: supervisorAcceptanceScope(plan.contract, activation.child).map(
             ({ id }) => id,
           ),
-          requiredChecksPassed: true,
+          requiredChecksPassed: reported.every((check) => check.result === 'passed'),
         },
       );
-      if (output.verdict === 'pass') {
+      if (output.verdict === 'pass' && run.workflow.version !== '4') {
         const integrationChecks = nativeSdkCheckPlans({
           verificationChecks: output.integrationChecks,
         });

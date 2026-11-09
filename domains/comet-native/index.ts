@@ -1,7 +1,25 @@
 export * from './native-artifacts.js';
 export * from './native-artifact-language.js';
 export * from './native-archive.js';
-export * from './native-change.js';
+// Legacy snapshot-based creation stays inside the old-format compatibility modules.
+export {
+  NATIVE_BRIEF_TEMPLATE,
+  NativeWorkspaceIsolationRequiredError,
+  nativeChangeDir,
+  hasPendingNativeSchemaMigration,
+  hasPendingNativeCheckpointRecovery,
+  inspectNativeChange,
+  inspectNativeChangeStateDocument,
+  readNativeChange,
+  writeNativeChange,
+  compareAndSwapNativeChangeFile,
+  compareAndSwapNativeChangeLocked,
+  compareAndSwapNativeChange,
+  writeNativeChangeFile,
+  readNativeChangeFile,
+  listNativeChanges,
+  listActiveNativeChangesOwnedByWorkspace,
+} from './native-change.js';
 export * from './native-change-recovery.js';
 export * from './native-children.js';
 export * from './native-checkpoint-journal.js';
@@ -36,7 +54,11 @@ export * from './native-run-consistency.js';
 export * from './native-selection.js';
 export * from './native-schema-migration.js';
 export * from './native-supervisor.js';
-export * from './native-snapshot.js';
+export {
+  parseNativeContentSnapshotManifest,
+  readNativeBaselineManifest,
+  inspectNativeContentSnapshotHealth,
+} from './native-snapshot.js';
 export * from './native-specs.js';
 export * from './native-transitions.js';
 export * from './native-transaction.js';

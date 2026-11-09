@@ -186,6 +186,7 @@ export function createNativeSdkRuntime(projectRoot: string): WorkflowRuntime {
       application.workflow,
       defineNativeWorkflowApplication('2').workflow,
       defineNativeWorkflowApplication('3').workflow,
+      defineNativeWorkflowApplication('4').workflow,
     ],
     transitionHandlers: [application.transitionHandler],
     validators: application.validators,
@@ -503,14 +504,14 @@ async function readNativeApplicationCheckpoint(
 
 // 内置定义仅由版本决定；项目状态和可变注册对象不进入缓存。
 const builtinNativeApplications = new Map<
-  '1' | '2' | '3',
+  '1' | '2' | '3' | '4',
   ReturnType<typeof defineNativeWorkflowApplication>
 >();
 const readOnlyNativeApplication = memoizedHookReadSync('nativeBuiltinDefinition', () =>
   nativeBuiltinApplication('1'),
 );
 
-function nativeBuiltinApplication(version: '1' | '2' | '3') {
+function nativeBuiltinApplication(version: '1' | '2' | '3' | '4') {
   let application = builtinNativeApplications.get(version);
   if (!application) {
     const created = defineNativeWorkflowApplication(version);
@@ -520,7 +521,7 @@ function nativeBuiltinApplication(version: '1' | '2' | '3') {
   return application;
 }
 
-function nativeApplicationForRead(version: '1' | '2' | '3' = '1') {
+function nativeApplicationForRead(version: '1' | '2' | '3' | '4' = '1') {
   const application =
     version === '1' ? readOnlyNativeApplication() : nativeBuiltinApplication(version);
   return {
@@ -554,11 +555,13 @@ export async function loadOwnedNativeSdkRuntime(
     let snapshot = await store.read(name);
     const defined = nativeSdkApplicationForRun(
       snapshot,
-      snapshot?.workflow.version === '3'
-        ? nativeApplicationForRead('3')
-        : snapshot?.workflow.version === '2'
-          ? nativeApplicationForRead('2')
-          : nativeApplicationForRead(),
+      snapshot?.workflow.version === '4'
+        ? nativeApplicationForRead('4')
+        : snapshot?.workflow.version === '3'
+          ? nativeApplicationForRead('3')
+          : snapshot?.workflow.version === '2'
+            ? nativeApplicationForRead('2')
+            : nativeApplicationForRead(),
     );
     return {
       runtime: createRuntime({

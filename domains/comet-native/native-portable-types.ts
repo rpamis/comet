@@ -135,6 +135,7 @@ export interface NativePortableVerificationState {
   assurance: NativePortableVerificationAssurance;
   verdict: 'pass' | 'fail' | 'blocked';
   checks: NativePortableCheckSummary[];
+  reported_checks?: NativeBuilderCheckSummary[];
   summary: NativePortableText;
   risks: NativePortableText[];
   risks_truncated: boolean;

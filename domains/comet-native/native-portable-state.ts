@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { toNativePortableText } from './native-portable-text.js';
 import {
   assertNativeBuilderAcceptanceComplete,
   parseNativeBuilderAcceptanceReview,
@@ -386,6 +387,24 @@ function parseBuilderCheck(value: unknown, index: number): NativeBuilderCheckSum
   };
 }
 
+/** Platform-tool results are business reports, not Runtime execution receipts. */
+export function parseNativeReportedChecks(value: unknown): NativeBuilderCheckSummary[] {
+  return arrayValue(value, 'Native reported checks', (entry, index) => {
+    const check = record(entry, `Native reported checks[${index}]`);
+    return parseBuilderCheck(
+      {
+        name: toNativePortableText(stringValue(check.name, 'Reported check name')),
+        result: check.result,
+        note:
+          check.note == null
+            ? null
+            : toNativePortableText(stringValue(check.note, 'Reported check note')),
+      },
+      index,
+    );
+  });
+}
+
 function parseBuilderHandoff(value: unknown): NativeBuilderHandoff {
   const label = 'Native builder_handoff';
   const root = record(value, label);
@@ -538,6 +557,7 @@ function parseVerification(value: unknown): NativePortableVerificationState {
       'assurance',
       'verdict',
       'checks',
+      'reported_checks',
       'summary',
       'risks',
       'risks_truncated',
@@ -578,6 +598,15 @@ function parseVerification(value: unknown): NativePortableVerificationState {
           ),
     verdict: enumValue(root.verdict, NATIVE_VERIFIER_VERDICTS, `${label}.verdict`),
     checks,
+    ...(root.reported_checks === undefined
+      ? {}
+      : {
+          reported_checks: arrayValue(
+            root.reported_checks,
+            `${label}.reported_checks`,
+            parseBuilderCheck,
+          ),
+        }),
     summary: parsePortableText(root.summary, `${label}.summary`),
     risks: arrayValue(root.risks, `${label}.risks`, (entry, index) =>
       parsePortableText(entry, `${label}.risks[${index}]`),

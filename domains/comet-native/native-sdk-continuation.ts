@@ -142,7 +142,7 @@ function nativeSdkOutcomeOutput(
     ...(run.workflow.version !== '1' ? { repeatable: true } : {}),
   };
   const inheritedChecks = new Map<string, ReturnType<typeof nativeSdkCheckPlans>[number]>();
-  if (run.workflow.version === '3' && action.stepId === 'build.builder') {
+  if (['3', '4'].includes(run.workflow.version) && action.stepId === 'build.builder') {
     for (const previous of run.actions.slice(
       0,
       run.actions.findIndex(({ id }) => id === action.id),
@@ -170,7 +170,7 @@ function nativeSdkOutcomeOutput(
     return {
       summary: '<actual-implementation-summary>',
       addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
-      ...(run.workflow.version !== '3'
+      ...(!['3', '4'].includes(run.workflow.version)
         ? {
             acceptanceReview: state.acceptance.map(({ id }) => ({
               id,
@@ -185,16 +185,29 @@ function nativeSdkOutcomeOutput(
         { name: '<check-name>', result: '<passed|failed|not-run>', note: '<actual-result>' },
       ],
       knownLimits: ['<actual-limit-or-remove-entry>'],
-      verificationChecks: inheritedChecks.size
-        ? [...inheritedChecks.values()].map((plan) => ({ ...plan }))
-        : [check],
-      ...(run.workflow.version === '3' ? { requireIndependentReview: false } : {}),
+      ...(run.workflow.version === '4'
+        ? {}
+        : {
+            verificationChecks: inheritedChecks.size
+              ? [...inheritedChecks.values()].map((plan) => ({ ...plan }))
+              : [check],
+          }),
+      ...(['3', '4'].includes(run.workflow.version) ? { requireIndependentReview: false } : {}),
       ...(action.stepId === 'supervisor.parent.builder'
         ? { candidateCommit: '<current-integration-HEAD>' }
         : {}),
     };
   if (action.stepId === 'verify.verifier')
     return {
+      ...(run.workflow.version === '4'
+        ? {
+            checks: (state.builder_handoff?.checks ?? []).map((check) => ({
+              name: check.name.text,
+              result: check.result,
+              note: check.note?.text ?? null,
+            })),
+          }
+        : {}),
       candidateId: state.builder_handoff?.candidate_id ?? null,
       verifierExecutionRef: action.claim?.sessionId ?? '<actual-session-id>',
       response: {
@@ -221,27 +234,33 @@ function nativeSdkOutcomeOutput(
   if (action.stepId === 'supervisor.child.builder')
     return {
       candidateCommit: '<current-child-HEAD>',
-      verificationChecks: [check],
-      ...(run.workflow.version === '3' ? { requireIndependentReview: false } : {}),
+      ...(run.workflow.version === '4'
+        ? { checks: [], summary: '<implementation-summary>' }
+        : { verificationChecks: [check] }),
+      ...(['3', '4'].includes(run.workflow.version) ? { requireIndependentReview: false } : {}),
     };
   if (action.stepId === 'supervisor.child.verifier')
     return {
       candidateCommit: activation?.candidateCommit ?? null,
       verdict: '<pass|fail|blocked>',
       evidence: {
-        summary:
-          run.workflow.version === '3'
-            ? '<verification-summary>'
-            : '<independent-verification-summary>',
-        checks: (
-          (
-            run.actions.find(({ id }) => id === activation?.checkActionId)?.outcome?.output as
-              { checks?: { id: string }[] } | undefined
-          )?.checks ?? []
-        ).map(({ id }) => id),
+        summary: ['3', '4'].includes(run.workflow.version)
+          ? '<verification-summary>'
+          : '<independent-verification-summary>',
+        checks:
+          run.workflow.version === '4'
+            ? (activation?.checks ?? [])
+            : (
+                (
+                  run.actions.find(({ id }) => id === activation?.checkActionId)?.outcome
+                    ?.output as { checks?: { id: string }[] } | undefined
+                )?.checks ?? []
+              ).map(({ id }) => id),
         acceptance,
       },
-      integrationChecks: [{ ...check, repeatable: true }],
+      ...(run.workflow.version === '4'
+        ? {}
+        : { integrationChecks: [{ ...check, repeatable: true }] }),
     };
   if (action.stepId === 'supervisor.child.integration-repair')
     return {
@@ -292,7 +311,7 @@ function nativeSdkOutcomeAlternatives(
   state: NativePortableState,
 ) {
   const request = nativeSdkOutcomeRequest(run, action, state);
-  if (!request || action.type !== 'handoff') return undefined;
+  if (!request || action.type !== 'handoff' || run.workflow.version === '4') return undefined;
   const checks =
     action.stepId === 'verify.verifier'
       ? [
@@ -395,7 +414,7 @@ function nativeSdkOutcomeAlternatives(
         }
       : {}),
   };
-  if (run.workflow.version === '3') {
+  if (['3', '4'].includes(run.workflow.version)) {
     alternatives.outcomeTemplateInstruction +=
       state.language === 'zh-CN'
         ? ' 执行失败时沿用 resultRequest，填写 result.status=failed 和 output.summary。普通 build.builder 需要受管检查时，将 output 填为 {response:{kind:"request-checks",checks:[检查计划]}}，随后运行 native next；检查完成后继续 Build。Verify 补充检查时保留候选身份，将 response 改为 request-checks 并填写 iteration、attempt、checks。计划字段使用 checkRequestTemplate。'
@@ -441,7 +460,7 @@ function nativeSdkHostRecoveryRequests(run: WorkflowRun, action: RuntimeAction) 
   if (
     action.type !== 'handoff' ||
     !action.claim ||
-    (run.workflow.version === '3' && action.status === 'running' && !action.reason)
+    (['3', '4'].includes(run.workflow.version) && action.status === 'running' && !action.reason)
   )
     return {};
   const identity = {
@@ -522,10 +541,10 @@ export async function projectNativeSdkDispatchResult(options: {
               : {}),
             inputRef: 'action.input',
             outcomeRequestRef: run.workflow.version !== '1' ? 'resultRequest' : 'outcomeRequest',
-            ...(action.type === 'handoff' && run.workflow.version !== '3'
+            ...(action.type === 'handoff' && !['3', '4'].includes(run.workflow.version)
               ? { failureOutcomeRequestRef: 'failureOutcomeRequest' }
               : {}),
-            ...(action.stepId === 'verify.verifier' && run.workflow.version !== '3'
+            ...(action.stepId === 'verify.verifier' && !['3', '4'].includes(run.workflow.version)
               ? { requestChecksOutcomeRequestRef: 'requestChecksOutcomeRequest' }
               : {}),
           };

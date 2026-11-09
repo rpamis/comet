@@ -136,7 +136,11 @@ export function readBaseRegistry(repositoryRoot, base, file, optional = false) {
     throw new Error(`比较基线缺少 ${file}`);
   }
   return JSON.parse(
-    execFileSync('git', ['show', `${base}:${file}`], { cwd: repositoryRoot, encoding: 'utf8' }),
+    execFileSync('git', ['show', `${base}:${file}`], {
+      cwd: repositoryRoot,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    }),
   );
 }
 

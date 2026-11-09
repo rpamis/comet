@@ -12,7 +12,7 @@
 
 Supervisor 响应中的 `task.child`、`task.scope` 和 `workspace.projectRoot` 确定实际执行范围；多个候选任务从 `availableTasks` 选择并用真实会话领取。子任务只验收自身条目，父级覆盖全部已确认要求。集成修复使用集成工作区；独立 Verifier 不会自动领取实现或集成修复任务。
 
-Builder 回报和必要 Runtime 检查在同一调用中推进。`--review current-session` 由当前真实会话领取 Verify；`--review independent` 保留待领取任务，由独立接收者填写自己的会话身份后执行返回命令。用户明确要求独立审查时选择后者。一次响应只执行其当前下一步，完整验收正文不能裁掉。
+新建内置 v4 Run 的普通任务、Child 和父级任务由 Agent 使用平台工具执行检查，读取真实结果后填写 checks 的 name/result/note，记录命令、目录、结果和日志引用。Builder 一次提交实现与结果；Verifier 普通任务填写 output.checks，Child 填写 evidence.checks。checks 可为空，但未运行与失败不能当作通过；验收者负责判断证据是否充分。v4 不提交 verificationChecks、integrationChecks、request-checks 或自制收据，Runtime 不再重复执行普通检查。旧 v1–v3 Run 与固定应用沿用其原计划和收据模板。`--review current-session` 由当前真实会话领取 Verify；`--review independent` 保留待领取任务，由独立接收者填写自己的会话身份后执行返回命令。用户明确要求独立审查时选择后者。一次响应只执行其当前下一步，完整验收正文不能裁掉。
 
 Verify 回报默认停在用户接受结果。只有用户已明确委托“全部通过后接受并归档”时，才添加 `--accept-on-pass <授权摘要>`；Runtime 只在本次结果通过且对应当前确认时接受，保存该摘要，并连续归档。该选项不授权 Git merge、push、PR 或清理，也不改变旧 `--accept-result` 的提案绑定。重复结果使用原 Action 和相同内容，错误会话、不同结果、候选漂移按原 Runtime 协议拒绝。
 
@@ -52,7 +52,7 @@ Builder 开始本轮实现前、Verifier 开始验收前，复制当前 Action �
 
 `build.builder` 和 `supervisor.parent.builder` 的完成结果填写实际 `summary`、开发期 `checks`（每项 `name`、`result`、`note`）、`knownLimits` 和最终 `verificationChecks`。当前模板不含 `acceptanceReview` 时直接提交这些内容，完整逐项验收在 Verify 完成。旧模板要求该表时，对每个验收 ID 提供 `{id,status,evidence,note}`，全部为 `implemented-with-evidence` 且证据非空才提交；显式提供的表仍须完整、真实。
 
-普通 `build.builder` 的当前指令允许受管检查时，保留 `resultRequest.receipt`，将 `result.output` 填为 `{response:{kind:"request-checks",checks:[检查计划]}}`。首次最终 GREEN 或完整验证直接通过此入口运行，不先在终端执行同一完整计划。TDD 的 RED、局部调试和不属于最终计划的检查照常执行。计划字段按 `checkRequestTemplate` 填写，只执行可重复命令；提交后运行 `native next`，读取检查结果并继续 Build。新 Builder 模板保留原检查计划的 argv、工作目录和超时；沿用仍适用的条目，只修改真正变化的检查。最终交接列出仍适用的检查计划，Verify 自动复用输入与执行上下文匹配的 Runtime 记录，只补失效或缺失检查。失败记录优先于更早的成功记录。自行运行的终端命令仍只作开发记录，不能伪造 Runtime 收据。旧 Run 和 Supervisor 按各自返回的模板执行。
+以下受管检查回路仅用于旧 v3 Run 与明确要求该契约的固定应用，新建 v4 不使用。普通 `build.builder` 的当前指令允许受管检查时，保留 `resultRequest.receipt`，将 `result.output` 填为 `{response:{kind:"request-checks",checks:[检查计划]}}`。首次最终 GREEN 或完整验证直接通过此入口运行，不先在终端执行同一完整计划。TDD 的 RED、局部调试和不属于最终计划的检查照常执行。计划字段按 `checkRequestTemplate` 填写，只执行可重复命令；提交后运行 `native next`，读取检查结果并继续 Build。新 Builder 模板保留原检查计划的 argv、工作目录和超时；沿用仍适用的条目，只修改真正变化的检查。最终交接列出仍适用的检查计划，Verify 自动复用输入与执行上下文匹配的 Runtime 记录，只补失效或缺失检查。失败记录优先于更早的成功记录。自行运行的终端命令仍只作开发记录，不能伪造 Runtime 收据。旧 Run 和 Supervisor 按各自返回的模板执行。
 
 ### SDK Verify 协议
 

@@ -1,4 +1,5 @@
 import { runWithHookReadCache } from '../../../platform/process/hook-read-cache.js';
+import * as runtimeRoots from '../../../domains/workflow-contract/workspace-runtime.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { constants as fsConstants, promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -113,6 +114,22 @@ async function preparedChange(
 }
 
 describe('Native SDK read work budgets', () => {
+  it('prepares the captured Runtime namespace once and still rejects a changed workspace identity', async () => {
+    const { root, name } = await preparedChange('prepared-runtime', undefined, '3');
+    const resolve = vi.spyOn(runtimeRoots, 'resolveWorkspaceRuntimeRoot');
+    const store = createNativeSdkStateStore(root);
+    await store.read(name);
+    await store.read(name);
+    expect(resolve).toHaveBeenCalledTimes(1);
+    const original = process.env.COMET_DATA_DIR;
+    try {
+      process.env.COMET_DATA_DIR = path.join(os.tmpdir(), 'different-native-data');
+      await expect(store.read(name)).rejects.toThrow('workspace identity changed');
+    } finally {
+      if (original === undefined) delete process.env.COMET_DATA_DIR;
+      else process.env.COMET_DATA_DIR = original;
+    }
+  });
   it('commits a pure v3 Shape once and keeps its user approval reachable', async () => {
     const { root, name } = await preparedChange('single-shape', undefined, '3');
     const { run } = await inspectNativeSdkRun(root, name);
@@ -831,7 +848,7 @@ describe('Native SDK read work budgets', () => {
     },
   );
 
-  it('reads each check log only at commit, then rechecks its bytes at the next evidence boundary', async () => {
+  it('retains actual check records without content-based log invalidation', async () => {
     const { root, name, runtime } = await preparedChange();
     const before = await inspectNativeSdkRun(root, name);
     await advanceNativeSdkChange(root, name, {
@@ -901,11 +918,14 @@ describe('Native SDK read work budgets', () => {
             ? (flags & (fsConstants.O_WRONLY | fsConstants.O_RDWR)) === 0
             : flags === 'r' || flags === 'rs'),
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
     expect((await fs.stat(logFile)).size).toBe(256 * 1024);
     await fs.appendFile(logFile, 'changed after execution');
-    await expect(nativeSdkCurrentCheckSummaries({ run, projectRoot: root })).rejects.toThrow(
-      /log changed after execution/u,
-    );
+    const summaries = await nativeSdkCurrentCheckSummaries({ run, projectRoot: root });
+    expect(summaries[0]).toMatchObject({
+      status: 'passed',
+      exit_code: 0,
+      log_ref: output.checks[0].logRef,
+    });
   });
 });

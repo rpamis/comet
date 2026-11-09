@@ -112,7 +112,7 @@ async function inspectArchivePreflightOutput(
   projectRoot: string,
 ) {
   const bound = await archivePreflightBinding(run, action, projectRoot);
-  await assertNativeSdkArchiveCheckInputs({ run, projectRoot });
+  if (run.workflow.version !== '4') await assertNativeSdkArchiveCheckInputs({ run, projectRoot });
   const inspected = await inspectNativePortableArchive({
     paths: bound.paths,
     name: bound.state.name,
@@ -371,7 +371,7 @@ function derivedArchiveReport(
 ) {
   if (run.workflow.version === '1') return undefined;
   return {
-    optionalView: run.workflow.version === '3',
+    optionalView: ['3', '4'].includes(run.workflow.version),
     preservedReportsRef: `native/preserved-verification/${hashRuntimeValue(run.runId)}`,
     write: (file: string) =>
       writeNativeSdkVerificationReport({
@@ -437,7 +437,7 @@ export const nativeSdkArchiveFinalizeValidator: RuntimeValidator = {
         runId: run.runId,
         archiveRef: applied.archiveRef as string,
         history: action.status === 'unknown',
-        allowMissingReport: run.workflow.version === '3',
+        allowMissingReport: ['3', '4'].includes(run.workflow.version),
       });
       if (
         receipt.transactionId !== applied.transactionId ||
@@ -532,7 +532,7 @@ export async function recoverNativeSdkArchiveOutcome(options: {
           state,
           runId: run.runId,
           archiveRef: applied.archiveRef as string,
-          allowMissingReport: run.workflow.version === '3',
+          allowMissingReport: ['3', '4'].includes(run.workflow.version),
           history: true,
         });
     if (
@@ -618,7 +618,7 @@ export async function recoverCancelledNativeSdkArchive(options: {
         state: bound.state,
         runId: run.runId,
         archiveRef: bound.applied.archiveRef as string,
-        allowMissingReport: run.workflow.version === '3',
+        allowMissingReport: ['3', '4'].includes(run.workflow.version),
         history: true,
       });
   if (receipt.transactionId !== bound.applied.transactionId)

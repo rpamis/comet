@@ -45,7 +45,7 @@ async function currentIntegration(
     resolveGitRef(input.worktree, input.branch) !== input.candidateCommit ||
     typeof input.verifierActionId !== 'string' ||
     typeof input.verifierSessionId !== 'string' ||
-    typeof input.checkActionId !== 'string'
+    (run.workflow.version !== '4' && typeof input.checkActionId !== 'string')
   ) {
     throw new Error('Native SDK Supervisor integration lacks its verified Child candidate');
   }
@@ -60,13 +60,15 @@ async function currentIntegration(
   ) {
     throw new Error('Native SDK Supervisor integration lacks a bound passing Verifier');
   }
-  const checked = await nativeSdkSupervisorChildCheckSummaries({
-    run,
-    checkActionId: input.checkActionId,
-    projectRoot,
-  });
-  if (checked.child !== input.child || checked.candidateCommit !== input.candidateCommit) {
-    throw new Error('Native SDK Supervisor integration checks belong to another Child candidate');
+  if (run.workflow.version !== '4') {
+    const checked = await nativeSdkSupervisorChildCheckSummaries({
+      run,
+      checkActionId: input.checkActionId as string,
+      projectRoot,
+    });
+    if (checked.child !== input.child || checked.candidateCommit !== input.candidateCommit) {
+      throw new Error('Native SDK Supervisor integration checks belong to another Child candidate');
+    }
   }
   const integrationBranch = nativeSupervisorIntegrationBranch(state.name);
   const integrationWorktree = nativeSupervisorIntegrationWorktree(projectRoot, state.name);
@@ -79,18 +81,25 @@ async function currentIntegration(
     .reverse()
     .find(
       (candidate) =>
-        candidate.stepId === 'supervisor.child.integration-checks' &&
-        candidate.status === 'succeeded',
+        candidate.stepId ===
+          (run.workflow.version === '4'
+            ? 'supervisor.child.integrate'
+            : 'supervisor.child.integration-checks') && candidate.status === 'succeeded',
     );
   const prepared = run.outputs['supervisor.prepare']?.value as
     { targetCommit?: unknown; integrationCommit?: unknown } | undefined;
   const expectedBaseCommit = previousCheck
-    ? (previousCheck.outcome?.output as { candidateId?: unknown } | null)?.candidateId
+    ? run.workflow.version === '4'
+      ? (previousCheck.outcome?.output as { integrationCommit?: unknown })?.integrationCommit
+      : (previousCheck.outcome?.output as { candidateId?: unknown } | null)?.candidateId
     : (prepared?.integrationCommit ?? prepared?.targetCommit);
   if (typeof expectedBaseCommit !== 'string') {
     throw new Error('Native SDK Supervisor integration lacks its checked base commit');
   }
-  const checks = nativeSdkCheckPlans({ verificationChecks: input.integrationChecks });
+  const checks =
+    run.workflow.version === '4'
+      ? []
+      : nativeSdkCheckPlans({ verificationChecks: input.integrationChecks });
   if (checks.some(({ repeatable }) => !repeatable)) {
     throw new Error('Native SDK Supervisor integration requires repeatable Runtime checks');
   }
@@ -237,6 +246,7 @@ export const nativeSdkSupervisorIntegrateExecutor: RuntimeExecutor = {
         targetCommit: current.plan.targetCommit,
         targetMergeCommit,
         integrationCommit,
+        ...(run.workflow.version === '4' ? { completedAt: new Date().toISOString() } : {}),
         integrationBranch: current.integrationBranch,
         integrationWorktree: current.integrationWorktree,
       },

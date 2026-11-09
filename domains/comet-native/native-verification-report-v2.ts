@@ -22,7 +22,7 @@ export function nativeVerificationResultHash(state: NativePortableState): string
 export function nativeSdkVerificationReportOutput(
   run: Readonly<WorkflowRun>,
 ): Record<string, unknown> | undefined {
-  if (run.workflow.version !== '3')
+  if (!['3', '4'].includes(run.workflow.version))
     return run.outputs['verify.report']?.value as Record<string, unknown> | undefined;
   const state = parseNativePortableState(run.state);
   if (!state.builder_handoff || !state.verification) return undefined;
@@ -164,8 +164,16 @@ export function renderNativeVerificationReport(
         `| ${tableCell(entry.id)} | ${tableCell(entry.result)} | ${tableCell(entry.source)} | ${tableCell(entry.text)} | ${tableCell(display(entry.reason))} |`,
     )
     .join('\n');
-  const checks =
-    state.verification.checks.length === 0
+  const checks = state.verification.reported_checks
+    ? [
+        `| ${localized('Agent-reported check', 'Agent 报告的检查')} | ${localized('Result', '结果')} | ${localized('Execution and evidence', '执行与证据')} |`,
+        '| --- | --- | --- |',
+        ...state.verification.reported_checks.map(
+          (check) =>
+            `| ${tableCell(display(check.name))} | ${check.result} | ${tableCell(display(check.note))} |`,
+        ),
+      ].join('\n')
+    : state.verification.checks.length === 0
       ? `_${localized('No Runtime checks were recorded.', '没有记录 Runtime 检查。')}_`
       : [
           `| ${localized('Check', '检查')} | ${localized('Command', '命令')} | ${localized('Working directory', '工作目录')} | ${localized('Status', '状态')} | ${localized('Exit', '退出码')} | ${localized('Duration', '耗时')} |`,

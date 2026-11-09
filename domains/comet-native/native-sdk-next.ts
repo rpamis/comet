@@ -68,7 +68,7 @@ function nextAutomaticAction(
 ) {
   const next = nativeSdkNextAction(run, state);
   return !fixedApplication &&
-    run.workflow.version === '3' &&
+    ['3', '4'].includes(run.workflow.version) &&
     state.children_contract_ref &&
     next?.type === 'handoff'
     ? (nativeSdkPendingActions(run).find((action) => action.type === 'call_tool') ?? next)
@@ -99,7 +99,13 @@ export async function refreshNativeSdkCheckWork(
   }
   if (run.revision !== expectedRevision) throw new Error('Run 已变化，请重新读取当前输入观察');
   const application = defineNativeWorkflowApplication(
-    run.workflow.version === '3' ? '3' : run.workflow.version === '2' ? '2' : '1',
+    run.workflow.version === '4'
+      ? '4'
+      : run.workflow.version === '3'
+        ? '3'
+        : run.workflow.version === '2'
+          ? '2'
+          : '1',
   );
   const definition = defineWorkflow(application.workflow);
   const next =
@@ -144,7 +150,7 @@ async function sdkNextResult(
 ): Promise<DispatchResult> {
   const state = parseNativePortableState(run.state);
   let warning: { code: string; message: string } | undefined;
-  if (run.workflow.version === '3') {
+  if (['3', '4'].includes(run.workflow.version)) {
     try {
       await refreshNativeSdkVerificationReport(projectRoot, run);
     } catch (error) {
@@ -558,22 +564,21 @@ export async function advanceNativeSdkChange(
           wait.decision?.choice === 'approved' &&
           wait.proposalHash === decision.proposalHash,
       );
-      const report =
-        run.workflow.version === '3'
-          ? (
-              approved?.proposal as {
-                activation?: { report?: { candidateId?: string; reportSha256?: string } };
-              }
-            )?.activation?.report
-          : (
-              approved?.proposal as
-                | {
-                    outputs?: {
-                      'verify.report'?: { candidateId?: string; reportSha256?: string };
-                    };
-                  }
-                | undefined
-            )?.outputs?.['verify.report'];
+      const report = ['3', '4'].includes(run.workflow.version)
+        ? (
+            approved?.proposal as {
+              activation?: { report?: { candidateId?: string; reportSha256?: string } };
+            }
+          )?.activation?.report
+        : (
+            approved?.proposal as
+              | {
+                  outputs?: {
+                    'verify.report'?: { candidateId?: string; reportSha256?: string };
+                  };
+                }
+              | undefined
+          )?.outputs?.['verify.report'];
       if (approved && report?.candidateId === state.builder_handoff?.candidate_id)
         return nextResult(projectRoot, name, run, artifactRootRef, application);
     }
@@ -752,15 +757,17 @@ export async function advanceNativeSdkChange(
   state = parseNativePortableState(run.state);
   const initialPhase = state.phase;
   const automaticSteps =
-    !application && (run.workflow.version === '3' || !state.children_contract_ref) ? 32 : 1;
+    !application && (['3', '4'].includes(run.workflow.version) || !state.children_contract_ref)
+      ? 32
+      : 1;
   for (let steps = 0; steps < automaticSteps; steps++) {
     if (['failed', 'cancelled', 'completed'].includes(run.status)) break;
-    if (steps > 0 && state.children_contract_ref && run.workflow.version !== '3')
+    if (steps > 0 && state.children_contract_ref && !['3', '4'].includes(run.workflow.version))
       return nextResult(projectRoot, name, run, artifactRootRef, application);
     // 旧协议保留验收到归档的交接；已进入 Archive 的续行仍一次完成内部动作。
     if (
       steps > 0 &&
-      run.workflow.version !== '3' &&
+      !['3', '4'].includes(run.workflow.version) &&
       initialPhase === 'verify' &&
       state.phase === 'archive'
     )
@@ -820,7 +827,7 @@ export async function advanceNativeSdkChange(
     // 纯 Shape 计算可重做：保留原 claim/outcome 校验，只在成功后发布一个 revision。
     // 外部执行和固定应用仍使用原来的持久化两阶段协议。
     const staging =
-      !application && run.workflow.version === '3'
+      !application && ['3', '4'].includes(run.workflow.version)
         ? createMemoryRuntimeStore<WorkflowRun>()
         : undefined;
     if (staging) await staging.restoreCheckpoint!(run.runId, null, run);
@@ -828,7 +835,13 @@ export async function advanceNativeSdkChange(
       ? nativeSdkApplicationForRun(
           run,
           defineNativeWorkflowApplication(
-            run.workflow.version === '3' ? '3' : run.workflow.version === '2' ? '2' : '1',
+            run.workflow.version === '4'
+              ? '4'
+              : run.workflow.version === '3'
+                ? '3'
+                : run.workflow.version === '2'
+                  ? '2'
+                  : '1',
           ),
         )
       : undefined;

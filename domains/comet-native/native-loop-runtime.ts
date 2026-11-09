@@ -292,6 +292,7 @@ export function applyNativeVerifierEnvelope(options: {
   requireIndependentSession?: boolean;
   envelope: NativeTrustedVerifierEnvelope<unknown> | unknown;
   checks: NativePortableCheckSummary[];
+  reportedChecks?: NativeBuilderCheckSummary[];
   maxVerifyFailures: number;
   now?: Date;
 }): { state: NativePortableState; response: NativeVerifierResponse } {
@@ -317,7 +318,9 @@ export function applyNativeVerifierEnvelope(options: {
       previouslyPassedAcceptanceIds: state.acceptance
         .filter(({ result }) => result === 'passed')
         .map(({ id }) => id),
-      requiredChecksPassed: options.checks.every(({ status }) => status === 'passed'),
+      requiredChecksPassed:
+        options.checks.every(({ status }) => status === 'passed') &&
+        (options.reportedChecks ?? []).every(({ result }) => result === 'passed'),
     },
   });
   if (response.kind === 'request-checks') return { state, response };
@@ -346,6 +349,7 @@ export function applyNativeVerifierEnvelope(options: {
     checks: options.checks,
     completedAt,
   });
+  if (options.reportedChecks) verification.reported_checks = options.reportedChecks;
 
   if (response.result.verdict === 'pass') {
     const withHistory = appendNativePortableHistory(

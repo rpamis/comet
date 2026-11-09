@@ -322,6 +322,7 @@ export function createNativeSdkStateStore(
         rootDir: path.join(workspaceRuntimeRoot, 'sdk-runs', 'native'),
       }),
   );
+  let runtimePrepared = false;
   async function assertWorkspaceRuntimeCurrent(): Promise<void> {
     const rejectChangedRoot = (currentRoot: string) => {
       if (currentRoot !== workspaceRuntimeRoot) {
@@ -332,7 +333,10 @@ export function createNativeSdkStateStore(
     };
     // 旧 handle 不能初始化新 namespace，更不能继续读写它捕获的旧 authority。
     rejectChangedRoot(resolveWorkspaceRuntimeRootSync(projectRoot));
-    if (!options.readOnly) rejectChangedRoot(await resolveWorkspaceRuntimeRoot(projectRoot));
+    if (!options.readOnly && !runtimePrepared) {
+      rejectChangedRoot(await resolveWorkspaceRuntimeRoot(projectRoot));
+      runtimePrepared = true;
+    }
   }
 
   const projectionDir = 'state-projections/native';
@@ -543,7 +547,7 @@ export function createNativeSdkStateStore(
           run = null;
         }
       } else run = await store.read(runId);
-      if (run?.workflow.version === '3')
+      if (run && ['3', '4'].includes(run.workflow.version))
         return syncBoundaryCheckpoint(run, publishCheckpoint && !options.readOnly);
       const markerFile = path.join(workspaceRuntimeRoot, projectionDir, `${runId}.json`);
       let marker: ProjectionMarker | null = null;
@@ -590,7 +594,7 @@ export function createNativeSdkStateStore(
         run = recovered;
       }
       if (!run) return null;
-      if (run.workflow.version === '3') return syncBoundaryCheckpoint(run, false);
+      if (['3', '4'].includes(run.workflow.version)) return syncBoundaryCheckpoint(run, false);
       const state = parseNativePortableState(run.state);
       const input = run.input as { name?: unknown; artifactRootRef?: unknown } | null;
       if (
@@ -853,7 +857,7 @@ export function createNativeSdkStateStore(
           ? await commitNativeSdkCancellation({ projectRoot, store, runId, expectedRevision, next })
           : await store.compareAndSwap(runId, expectedRevision, next);
       if (committed) {
-        if (next.workflow.version === '3') await syncBoundaryCheckpoint(next, true);
+        if (['3', '4'].includes(next.workflow.version)) await syncBoundaryCheckpoint(next, true);
         else await syncStateFile(runId, true);
         if (next.status === 'cancelled') {
           await settleNativeSdkCancellation({ projectRoot, run: next });

@@ -1,0 +1,24 @@
+{
+  "schema": "comet.release.bad-cases.v1",
+  "cases": [
+    {
+      "id": "native-docker-syntax-scope",
+      "behavior": "Docker Node 镜像的版本元数据不应禁用可证明范围的语法检查增量复用。",
+      "coverageLevel": "runtime",
+      "reproduction": "在官方 Node Docker 环境运行跨候选语法复用，NODE_VERSION 被误判为加载代码的 Node 选项，未变化文件也重新检查。",
+      "expected": "NODE_VERSION 保持不变时建立范围证明，版本元数据改变时执行上下文失效；NODE_OPTIONS 预加载仍禁用范围复用。",
+      "forbidden": "忽略环境变化或放行可执行预加载，仅为让测试通过清除真实 Docker 环境。",
+      "rootCause": "保守排除所有未知 NODE_ 变量时没有区分官方镜像的静态版本元数据。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-scope.test.ts",
+          "namePattern": "binds Docker NODE_VERSION metadata without disabling a proven syntax scope",
+          "requiredNames": [
+            "binds Docker NODE_VERSION metadata without disabling a proven syntax scope"
+          ]
+        }
+      ],
+      "sources": ["report:2026-10-25-051-native-classic-acceptance"]
+    }
+  ]
+}

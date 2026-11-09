@@ -224,10 +224,10 @@ async function allowAgentDocumentReview(root: string) {
   });
 }
 
-function nativeApplication(version: '1' | '2' | '3' = '1'): NativeApplication {
+function nativeApplication(version: '1' | '2' | '3' | '4' = '1'): NativeApplication {
   const define = (nativeDomain as Record<string, unknown>).defineNativeWorkflowApplication;
   expect(define).toBeTypeOf('function');
-  return (define as (version: '1' | '2' | '3') => NativeApplication)(version);
+  return (define as (version: '1' | '2' | '3' | '4') => NativeApplication)(version);
 }
 
 function preCheckRecoveryApplication(): NativeApplication {
@@ -10175,6 +10175,7 @@ describe('Native v3 Build check reuse', () => {
           cwdRef: '.',
           timeoutMs: 10000,
           repeatable: true,
+          reusable: edited === false,
         },
       ];
       run = await succeedLatestAction(
@@ -10964,6 +10965,10 @@ describe('Native high-level task safeguards', () => {
     expect(wrong.exitCode).toBe(64);
     expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)?.status).toBe('running');
     await fs.writeFile(path.join(f.root, 'implementation.js'), 'export const result = false;');
+    // File edits are judged by the Agent; an outcome for another candidate remains invalid.
+    const obsoleteResult = JSON.parse(await fs.readFile(f.resultFile, 'utf8'));
+    obsoleteResult.output.candidateId = 'another-candidate';
+    await fs.writeFile(f.resultFile, JSON.stringify(obsoleteResult));
     const drift = await runNativeCli([
       ...args,
       '--session',
@@ -11172,7 +11177,7 @@ it('completes Archive on the returned third call after the user accepts the curr
 });
 
 async function nativeSupervisorReviewFixture(
-  version: '2' | '3',
+  version: '2' | '3' | '4',
   requireIndependentReview: boolean,
 ) {
   const f = await fixture();
@@ -11285,16 +11290,22 @@ async function nativeSupervisorReviewFixture(
       claimToken: run.actions.at(-1)!.claim!.token,
       outcomeId: 'child-built',
       status: 'succeeded',
-      output: { candidateCommit, verificationChecks: [check], requireIndependentReview },
+      output: {
+        candidateCommit,
+        ...(version === '4' ? { checks: [] } : { verificationChecks: [check] }),
+        requireIndependentReview,
+      },
     },
     context: { requestId: 'child-built', projectRoot: f.root },
   });
-  run = await runtime.execute({
-    runId: run.runId,
-    actionId: run.actions.at(-1)!.id,
-    executorId: 'comet-native-checks',
-    context: { requestId: 'child-checks', projectRoot: f.root },
-  });
+  if (version !== '4') {
+    run = await runtime.execute({
+      runId: run.runId,
+      actionId: run.actions.at(-1)!.id,
+      executorId: 'comet-native-checks',
+      context: { requestId: 'child-checks', projectRoot: f.root },
+    });
+  }
   return { ...f, runtime, run, childWorktree, candidateCommit, check };
 }
 
@@ -11412,3 +11423,105 @@ it.each([
     });
   },
 );
+
+it('integrates two agent-managed children and retains the complete parent acceptance without Runtime checks', async () => {
+  const f = await nativeSupervisorReviewFixture('4', false);
+  let run = f.run;
+  for (const child of ['api', 'ui']) {
+    if (child === 'ui') {
+      expect(run.actions.at(-1)?.stepId).toBe('supervisor.child.prepare');
+      run = await f.runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId: 'native-supervisor-child-prepare',
+        context: { requestId: 'prepare-ui', projectRoot: f.root },
+      });
+      const worktree = path.join(f.root, '.worktrees', 'sdk-shape-ui');
+      await fs.writeFile(path.join(worktree, 'ui.txt'), 'UI implemented\n');
+      execFileSync('git', ['add', 'ui.txt'], { cwd: worktree });
+      execFileSync('git', ['commit', '-m', 'UI candidate'], { cwd: worktree, stdio: 'ignore' });
+      const candidateCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: worktree,
+        encoding: 'utf8',
+      }).trim();
+      run = await succeedLatestAction(
+        f.runtime,
+        run,
+        { candidateCommit, checks: [] },
+        f.root,
+        'ui-built',
+        'ui-agent',
+      );
+    }
+    expect(run.actions.at(-1)?.stepId).toBe('supervisor.child.verifier');
+    const activation = (run.actions.at(-1)!.input as { activation: { candidateCommit: string } })
+      .activation;
+    run = await succeedLatestAction(
+      f.runtime,
+      run,
+      {
+        candidateCommit: activation.candidateCommit,
+        verdict: 'pass',
+        evidence: {
+          summary: 'Observed approved child behavior.',
+          checks: [],
+          acceptance: [
+            { id: 'child:' + child, result: 'passed', reason: 'Observed child behavior.' },
+          ],
+        },
+      },
+      f.root,
+      child + '-verified',
+      child === 'api' ? 'child-builder' : 'ui-agent',
+    );
+    for (const executorId of ['native-supervisor-integrate', 'native-supervisor-child-archive']) {
+      run = await f.runtime.execute({
+        runId: run.runId,
+        actionId: run.actions.at(-1)!.id,
+        executorId,
+        context: { requestId: child + '-' + executorId, projectRoot: f.root },
+      });
+      expect(run.actions.find((a) => a.id === run.actions.at(-2)?.id)?.reason ?? '').not.toContain(
+        'lacks',
+      );
+    }
+    expect(
+      run.actions.filter(
+        (a) => a.stepId === 'supervisor.child.archive' && a.status === 'succeeded',
+      ),
+    ).toHaveLength(child === 'api' ? 1 : 2);
+  }
+  expect(run.actions.at(-1)?.stepId).toBe('supervisor.parent.builder');
+  const input = (run.actions.at(-1)!.input as { activation: { integrationWorktree: string } })
+    .activation;
+  const candidateCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: input.integrationWorktree,
+    encoding: 'utf8',
+  }).trim();
+  run = await succeedLatestAction(
+    f.runtime,
+    run,
+    {
+      candidateCommit,
+      summary: 'Parent integration reviewed.',
+      addressedAcceptanceIds: ['A1'],
+      checks: [],
+      knownLimits: [],
+    },
+    f.root,
+    'parent-built',
+    'parent-agent',
+  );
+  expect(run.actions.at(-1)?.stepId).toBe('verify.verifier');
+  expect((run.state as NativePortableState).acceptance.map((a) => a.id)).toEqual(['A1']);
+  expect(
+    run.actions.some((a) =>
+      [
+        'build.checks',
+        'verify.checks',
+        'supervisor.child.checks',
+        'supervisor.child.integration-checks',
+      ].includes(a.stepId),
+    ),
+  ).toBe(false);
+}, 120_000);
