@@ -22879,6 +22879,27 @@
           ]
         }
       ]
+    },
+    {
+      "id": "classic-agent-check-help",
+      "sources": ["report:2026-11-09-workflow-feature-removal-audit"],
+      "behavior": "Classic检查帮助准确描述Agent判断复用及真实执行事实，不继续承诺已撤下的内容自动失效。",
+      "coverageLevel": "public-cli",
+      "reproduction": "209f0429的公开comet-check.mjs --help仍声称输入环境日志匹配和编辑返回1。",
+      "expected": "源码、公开CLI和独立bundle帮助一致，说明真实退出码、超时、阶段与Agent判断。",
+      "forbidden": "把文件内容扫描、环境或日志指纹、自动编辑失效描述为仍执行。",
+      "rootCause": "内容证明逻辑撤下时漏同步CLI帮助。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-cli-help.test.ts",
+          "namePattern": "explains execution, reuse, defaults and machine output|explains selective recovery revalidation|keeps public and self-contained check help aligned without a project",
+          "requiredNames": [
+            "Classic operational help explains execution, reuse, defaults and machine output for check run",
+            "Classic operational help explains selective recovery revalidation",
+            "Classic operational help keeps public and self-contained check help aligned without a project"
+          ]
+        }
+      ]
     }
   ],
   "historicalTestMigrations": [

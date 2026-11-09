@@ -13,6 +13,7 @@ import {
 
 import { inspectNativeHookGuard } from '../../../domains/comet-native/native-hook-guard.js';
 import { parseCometHookRequest } from '../../../platform/process/hook-adapter.js';
+import { createLegacyNativeSdkChange } from '../../helpers/native-legacy-sdk-change.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 
 const roots: string[] = [];
@@ -100,7 +101,8 @@ it.each(
     expect(result.exitCode, result.stdout ?? result.stderr).toBe(0);
     return JSON.parse(result.stdout!);
   };
-  await cli('new', 'demo', '--runtime', 'sdk');
+  // Managed-check assertions cover supported legacy Runs; v4 platform reports have their own CLI suite.
+  await createLegacyNativeSdkChange(root, 'demo', '3');
   const change = path.join(root, 'docs/comet/changes/demo');
   await fs.writeFile(
     path.join(change, 'brief.md'),

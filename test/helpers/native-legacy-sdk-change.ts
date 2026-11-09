@@ -10,11 +10,16 @@ import {
   nativeProjectPaths,
 } from '../../domains/comet-native/native-paths.js';
 import { createNativePortableState } from '../../domains/comet-native/native-portable-state.js';
+import { registerNativeSdkStartOwner } from '../../domains/comet-native/native-sdk-application.js';
 import { createNativeSdkRuntime } from '../../domains/comet-native/native-runtime-ownership.js';
 import { runtimeDispatchCommand } from '../../app/commands/runtime.js';
 
-/** Start the supported v1 protocol through its real factory, including its portable projection. */
-export async function createLegacyNativeSdkChange(projectRoot: string, name: string) {
+/** Start a supported legacy protocol through its real factory, including its portable projection. */
+export async function createLegacyNativeSdkChange(
+  projectRoot: string,
+  name: string,
+  version: '1' | '2' | '3' = '1',
+) {
   const config = (await readProjectConfig(projectRoot)) ?? defaultProjectConfig('docs', 'en');
   await writeProjectConfig(projectRoot, config);
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
@@ -24,7 +29,7 @@ export async function createLegacyNativeSdkChange(projectRoot: string, name: str
   const request = {
     operation: 'start',
     runId: name,
-    workflow: { id: 'comet-native', version: '1' },
+    workflow: { id: 'comet-native', version },
     input: { name, artifactRootRef: paths.artifactRootRef },
     initialState: createNativePortableState({
       name,
@@ -32,6 +37,20 @@ export async function createLegacyNativeSdkChange(projectRoot: string, name: str
       nextAction: 'prepare-shape-confirmation',
     }),
   };
+  if (version !== '1') {
+    await registerNativeSdkStartOwner({
+      projectRoot,
+      name,
+      artifactRootRef: paths.artifactRootRef,
+    });
+    const run = await createNativeSdkRuntime(projectRoot).start({
+      runId: name,
+      workflow: request.workflow,
+      input: request.input,
+      initialState: request.initialState,
+    });
+    return { run, paths, changeDir };
+  }
   const file = path.join(paths.workspaceRuntimeRoot, `legacy-start-${name}.json`);
   await fs.writeFile(file, JSON.stringify(request));
   try {

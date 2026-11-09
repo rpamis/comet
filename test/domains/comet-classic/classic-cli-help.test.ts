@@ -20,6 +20,8 @@ describe('Classic operational help', () => {
       '70',
       'comet check rerun',
       'latest Runtime-recorded argv',
+      'The Agent judges whether prior results still apply after edits',
+      'does not scan or fingerprint file contents',
     ]) {
       expect(help).toContain(text);
     }
@@ -34,7 +36,7 @@ describe('Classic operational help', () => {
 
   it('explains selective recovery revalidation', () => {
     const help = classicCommandHelp('state', ['check', '--help'])!;
-    expect(help).toContain('invalidates');
+    expect(help).toContain('original execution records and phase');
     expect(help).toContain('revalidates reusable local evidence');
     expect(help).toContain('cold recovery');
     expect(help).not.toContain('record-check');

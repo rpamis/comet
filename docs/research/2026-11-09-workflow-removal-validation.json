@@ -1,0 +1,401 @@
+{
+  "baseline": "5426c4cbb3569e749ce8050888517f93b8437f5d",
+  "remainingWorkCommit": "209f042962e59022aef85fa43d02908c6548080d",
+  "groups": [
+    {
+      "name": "compatibility fixes",
+      "passed": 36,
+      "pending": 139,
+      "failed": 0,
+      "assertions": [
+        {
+          "file": "test/scripts/badcase-registration.test.ts",
+          "name": "continuous badcase registration reads a committed baseline registry larger than the default process output buffer"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "name": "runs actual full domain checks with source.js and archive recovery=false"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "name": "runs actual hotfix domain checks with source.js and archive recovery=false"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "name": "runs actual tweak domain checks with source.js and archive recovery=false"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "name": "runs actual tweak domain checks with docs/openspec/changes/example/proposal.md and archive recovery=false"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "name": "runs actual full domain checks with docs/superpowers/plans/example-plan.md and archive recovery=false"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "name": "runs actual full domain checks with docs/superpowers/specs/example-design.md and archive recovery=false"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "name": "runs actual tweak domain checks with docs/openspec/changes/example/proposal.md and archive recovery=true"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "name": "runs actual full domain checks with docs/superpowers/plans/example-plan.md and archive recovery=true"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-legacy-check-continuation.test.ts",
+          "name": "accepts an original legacy Verify receipt after business continuation through source without repeating the command"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-legacy-check-continuation.test.ts",
+          "name": "accepts an original legacy Verify receipt after business continuation through generated without repeating the command"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-legacy-check-continuation.test.ts",
+          "name": "continues a committed Classic Verify through source after losing auxiliary receipts without replay"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-legacy-check-continuation.test.ts",
+          "name": "continues a committed Classic Verify through generated after losing auxiliary receipts without replay"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-legacy-check-continuation.test.ts",
+          "name": "retains original receipt, latest failure, and pending user decision checks for legacy continuation"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "runs first managed checks after 'tweak' upgrades to full through 'source'"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "runs first managed checks after 'tweak' upgrades to full through 'generated'"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "runs first managed checks after 'hotfix' upgrades to full through 'source'"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "runs first managed checks after 'hotfix' upgrades to full through 'generated'"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK full Verify rounds completes the source Runtime lifecycle across sessions, declared outputs and a reopened verification"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK full Verify rounds completes the generated Runtime lifecycle across sessions, declared outputs and a reopened verification"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK interrupted check recovery returns the original claim and completed check request, then resumes without executing again"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK original execution receipts keeps a previously committed successful check usable without new receipts (checkpoint recovery=false)"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK original execution receipts keeps a previously committed successful check usable without new receipts (checkpoint recovery=true)"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK original execution receipts rejects failed-result in recovery and direct SDK evidence without replay"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK original execution receipts rejects removed-binding in recovery and direct SDK evidence without replay"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK original execution receipts rejects old-claim in recovery and direct SDK evidence without replay"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK original execution receipts rejects changed-receipt in recovery and direct SDK evidence without replay"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "name": "Classic SDK original execution receipts rejects missing-receipt in recovery and direct SDK evidence without replay"
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+          "name": "Native portable unconfirmed check termination persists a proven orphan interruption before allowing an explicit check retry"
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+          "name": "Native portable unconfirmed check termination preserves the registered process and blocks retries for runtime checks"
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+          "name": "Native portable unconfirmed check termination preserves the registered process and blocks retries for verifier checks"
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+          "name": "Native portable unconfirmed check termination preserves the registered process and blocks retries for legacy-verifier checks"
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "name": "Native portable Runtime vertical path returns a retry action for an interrupted check and reruns it explicitly"
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "name": "Native portable Runtime vertical path recovers an orphaned running check only when process exit can be proven"
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "name": "Native portable Runtime vertical path returns an interrupted non-repeatable check to Build before exposing retry"
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "name": "Native portable Runtime vertical path does not infer that an external Verifier ended when its dispatch process exits"
+        }
+      ]
+    },
+    {
+      "name": "help and Delta contracts",
+      "passed": 23,
+      "pending": 0,
+      "failed": 0,
+      "assertions": [
+        {
+          "file": "test/domains/comet-classic/classic-cli-help.test.ts",
+          "name": "Classic operational help explains execution, reuse, defaults and machine output for check run"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-cli-help.test.ts",
+          "name": "Classic operational help separates manual attestations from executed evidence"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-cli-help.test.ts",
+          "name": "Classic operational help explains selective recovery revalidation"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-cli-help.test.ts",
+          "name": "Classic operational help does not describe guard preview as read-only"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-cli-help.test.ts",
+          "name": "Classic operational help leaves child help untouched"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-cli-help.test.ts",
+          "name": "Classic operational help makes writable fields and transition events discoverable"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-cli-help.test.ts",
+          "name": "Classic operational help explains batched field reads and revision-bound SDK continuations"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-cli-help.test.ts",
+          "name": "Classic operational help provides JSON help without invoking a state handler"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-cli-help.test.ts",
+          "name": "Classic operational help explains safe revise-design recovery"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-cli-help.test.ts",
+          "name": "Classic operational help explains safe revise-plan recovery"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-cli-help.test.ts",
+          "name": "Classic operational help keeps public and self-contained check help aligned without a project"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-cli-help.test.ts",
+          "name": "Classic operational help keeps public and self-contained state help aligned without a project"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-cli-help.test.ts",
+          "name": "Classic operational help keeps public and self-contained state help aligned without a project"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-cli-help.test.ts",
+          "name": "Classic operational help keeps public and self-contained guard help aligned without a project"
+        },
+        {
+          "file": "test/domains/comet-native/native-delta-spec.test.ts",
+          "name": "Native delta specs adds a requirement without replacing existing total capability content"
+        },
+        {
+          "file": "test/domains/comet-native/native-delta-spec.test.ts",
+          "name": "Native delta specs modifies, removes, and renames only the addressed stable requirements"
+        },
+        {
+          "file": "test/domains/comet-native/native-delta-spec.test.ts",
+          "name": "Native delta specs rejects invalid targets, duplicate operations, and malformed delta input"
+        },
+        {
+          "file": "test/domains/comet-native/native-delta-spec.test.ts",
+          "name": "Native delta specs applies the Agent-selected requirement edit and preserves independent current sections"
+        },
+        {
+          "file": "test/domains/comet-native/native-delta-spec.test.ts",
+          "name": "Native delta specs preserves unselected shared policy text while applying the selected requirement"
+        },
+        {
+          "file": "test/domains/comet-native/native-delta-spec.test.ts",
+          "name": "Native delta specs preserves current legacy constraints when adding a selected requirement"
+        },
+        {
+          "file": "test/domains/comet-native/native-delta-spec.test.ts",
+          "name": "Native delta specs keeps legacy full-text specs readable without requiring a content proof"
+        },
+        {
+          "file": "test/domains/comet-native/native-delta-spec.test.ts",
+          "name": "Native delta specs scopes acceptance to changed requirements instead of replaying the baseline"
+        },
+        {
+          "file": "test/domains/comet-native/native-delta-spec.test.ts",
+          "name": "Native delta specs is idempotent when recovery sees the already-applied result"
+        }
+      ]
+    },
+    {
+      "name": "Native v4 ordinary/Supervisor/recovery",
+      "passed": 12,
+      "pending": 204,
+      "failed": 0,
+      "assertions": [
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "creates an agent-managed Native Run without a project content snapshot"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "accepts platform check reports and completes authorized Archive without Runtime check actions (source)"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "accepts platform check reports and completes authorized Archive without Runtime check actions (bundle)"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "does not pass acceptance with a failed platform check"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "does not pass acceptance with a not-run platform check"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "waits for user acceptance and rejects another session reporting the original task"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "retains an explicit independent review requirement"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "reads the submitted platform report once before committing its result"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "preserves the original agent task as unknown when recovering a v4 checkpoint"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "dispatches the Verifier directly when the user requests another review"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "name": "integrates two agent-managed children and retains the complete parent acceptance without Runtime checks (interrupted merge: false)"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "name": "integrates two agent-managed children and retains the complete parent acceptance without Runtime checks (interrupted merge: true)"
+        }
+      ]
+    },
+    {
+      "name": "Native v3 retained managed-check flow",
+      "passed": 7,
+      "pending": 0,
+      "failed": 0,
+      "assertions": [
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "continues the same Native Verify after an Agent accepts an ordinary edit without content proof"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "keeps a real failed Native check failed after file edits without replay"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "continues Native Verify and Archive through the generated Runtime without content proof"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "blocks Native Archive when a new real check fails after an accepted pass"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "continues the original Native Run through a parent directory alias"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "continues the original Native Run through a generated Runtime and parent directory alias"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "name": "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+        }
+      ]
+    },
+    {
+      "name": "Classic core continuity",
+      "passed": 9,
+      "pending": 0,
+      "failed": 0,
+      "assertions": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "name": "continues the same Classic full Verify and Archive after ordinary edits without content proof"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "name": "continues the same Classic hotfix Verify and Archive after ordinary edits without content proof"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "name": "continues the same Classic tweak Verify and Archive after ordinary edits without content proof"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "name": "blocks Classic Archive when a new real check fails after an accepted pass"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "name": "completes Classic full from an Agent-reviewed design without metadata rules through source"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "name": "completes Classic full from an Agent-reviewed design without metadata rules through generated"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "name": "continues the same Classic full Verify and Archive through the generated Runtime without content proof"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "name": "continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "name": "continues the same Classic tweak Verify and Archive through the generated Runtime without content proof"
+        }
+      ]
+    }
+  ],
+  "notRun": [
+    "repository full suite",
+    "model Eval: not authorized",
+    "real platform Hook",
+    "npm package/install and release"
+  ],
+  "fullLint": "Source ESLint: 0 errors, 9 existing warnings; architecture blocked by existing .ruff_cache; no unrelated cache deleted."
+}

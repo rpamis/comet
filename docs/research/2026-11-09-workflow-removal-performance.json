@@ -1,0 +1,670 @@
+{
+  "baseline": "5426c4cb",
+  "node": "v22.20.0",
+  "platform": "win32",
+  "records": [
+    {
+      "variant": "before",
+      "kind": "native",
+      "count": 0,
+      "round": 0,
+      "operation": "new",
+      "ms": 1418.8221,
+      "gitCalls": 5,
+      "reused": false
+    },
+    {
+      "variant": "before",
+      "kind": "native",
+      "count": 0,
+      "round": 0,
+      "operation": "status",
+      "ms": 503.3442,
+      "gitCalls": 1,
+      "reused": false
+    },
+    {
+      "variant": "before",
+      "kind": "classic",
+      "count": 0,
+      "round": 0,
+      "operation": "first-check",
+      "ms": 3867.5872,
+      "gitCalls": 6,
+      "reused": false
+    },
+    {
+      "variant": "before",
+      "kind": "classic",
+      "count": 0,
+      "round": 0,
+      "operation": "repeat-check",
+      "ms": 1490.630299999999,
+      "gitCalls": 3,
+      "reused": true
+    },
+    {
+      "variant": "after",
+      "kind": "native",
+      "count": 0,
+      "round": 0,
+      "operation": "new",
+      "ms": 2194.6901,
+      "gitCalls": 5,
+      "reused": false
+    },
+    {
+      "variant": "after",
+      "kind": "native",
+      "count": 0,
+      "round": 0,
+      "operation": "status",
+      "ms": 482.65799999999945,
+      "gitCalls": 1,
+      "reused": false
+    },
+    {
+      "variant": "after",
+      "kind": "classic",
+      "count": 0,
+      "round": 0,
+      "operation": "first-check",
+      "ms": 2984.8743000000013,
+      "gitCalls": 0,
+      "reused": false
+    },
+    {
+      "variant": "after",
+      "kind": "classic",
+      "count": 0,
+      "round": 0,
+      "operation": "repeat-check",
+      "ms": 1062.596300000001,
+      "gitCalls": 0,
+      "reused": true
+    },
+    {
+      "variant": "after",
+      "kind": "native",
+      "count": 0,
+      "round": 1,
+      "operation": "new",
+      "ms": 1360.2202999999972,
+      "gitCalls": 5,
+      "reused": false
+    },
+    {
+      "variant": "after",
+      "kind": "native",
+      "count": 0,
+      "round": 1,
+      "operation": "status",
+      "ms": 501.22019999999975,
+      "gitCalls": 1,
+      "reused": false
+    },
+    {
+      "variant": "after",
+      "kind": "classic",
+      "count": 0,
+      "round": 1,
+      "operation": "first-check",
+      "ms": 3078.5877,
+      "gitCalls": 0,
+      "reused": false
+    },
+    {
+      "variant": "after",
+      "kind": "classic",
+      "count": 0,
+      "round": 1,
+      "operation": "repeat-check",
+      "ms": 1106.5339999999997,
+      "gitCalls": 0,
+      "reused": true
+    },
+    {
+      "variant": "before",
+      "kind": "native",
+      "count": 0,
+      "round": 1,
+      "operation": "new",
+      "ms": 1394.0852999999988,
+      "gitCalls": 5,
+      "reused": false
+    },
+    {
+      "variant": "before",
+      "kind": "native",
+      "count": 0,
+      "round": 1,
+      "operation": "status",
+      "ms": 504.7681999999986,
+      "gitCalls": 1,
+      "reused": false
+    },
+    {
+      "variant": "before",
+      "kind": "classic",
+      "count": 0,
+      "round": 1,
+      "operation": "first-check",
+      "ms": 3862.733799999998,
+      "gitCalls": 6,
+      "reused": false
+    },
+    {
+      "variant": "before",
+      "kind": "classic",
+      "count": 0,
+      "round": 1,
+      "operation": "repeat-check",
+      "ms": 1507.1129999999976,
+      "gitCalls": 3,
+      "reused": true
+    },
+    {
+      "variant": "before",
+      "kind": "native",
+      "count": 0,
+      "round": 2,
+      "operation": "new",
+      "ms": 1494.6368000000002,
+      "gitCalls": 5,
+      "reused": false
+    },
+    {
+      "variant": "before",
+      "kind": "native",
+      "count": 0,
+      "round": 2,
+      "operation": "status",
+      "ms": 488.6586000000025,
+      "gitCalls": 1,
+      "reused": false
+    },
+    {
+      "variant": "before",
+      "kind": "classic",
+      "count": 0,
+      "round": 2,
+      "operation": "first-check",
+      "ms": 3836.821100000001,
+      "gitCalls": 6,
+      "reused": false
+    },
+    {
+      "variant": "before",
+      "kind": "classic",
+      "count": 0,
+      "round": 2,
+      "operation": "repeat-check",
+      "ms": 1508.266300000003,
+      "gitCalls": 3,
+      "reused": true
+    },
+    {
+      "variant": "after",
+      "kind": "native",
+      "count": 0,
+      "round": 2,
+      "operation": "new",
+      "ms": 1359.4900999999954,
+      "gitCalls": 5,
+      "reused": false
+    },
+    {
+      "variant": "after",
+      "kind": "native",
+      "count": 0,
+      "round": 2,
+      "operation": "status",
+      "ms": 528.8263000000006,
+      "gitCalls": 1,
+      "reused": false
+    },
+    {
+      "variant": "after",
+      "kind": "classic",
+      "count": 0,
+      "round": 2,
+      "operation": "first-check",
+      "ms": 2972.721400000002,
+      "gitCalls": 0,
+      "reused": false
+    },
+    {
+      "variant": "after",
+      "kind": "classic",
+      "count": 0,
+      "round": 2,
+      "operation": "repeat-check",
+      "ms": 1057.8238000000056,
+      "gitCalls": 0,
+      "reused": true
+    },
+    {
+      "variant": "before",
+      "kind": "native",
+      "count": 2000,
+      "round": 0,
+      "operation": "new",
+      "ms": 1404.5102000000043,
+      "gitCalls": 5,
+      "reused": false
+    },
+    {
+      "variant": "before",
+      "kind": "native",
+      "count": 2000,
+      "round": 0,
+      "operation": "status",
+      "ms": 492.3307999999961,
+      "gitCalls": 1,
+      "reused": false
+    },
+    {
+      "variant": "before",
+      "kind": "classic",
+      "count": 2000,
+      "round": 0,
+      "operation": "first-check",
+      "ms": 4964.574999999997,
+      "gitCalls": 6,
+      "reused": false
+    },
+    {
+      "variant": "before",
+      "kind": "classic",
+      "count": 2000,
+      "round": 0,
+      "operation": "repeat-check",
+      "ms": 2016.294200000004,
+      "gitCalls": 3,
+      "reused": true
+    },
+    {
+      "variant": "after",
+      "kind": "native",
+      "count": 2000,
+      "round": 0,
+      "operation": "new",
+      "ms": 1419.3516999999993,
+      "gitCalls": 5,
+      "reused": false
+    },
+    {
+      "variant": "after",
+      "kind": "native",
+      "count": 2000,
+      "round": 0,
+      "operation": "status",
+      "ms": 480.1353999999992,
+      "gitCalls": 1,
+      "reused": false
+    },
+    {
+      "variant": "after",
+      "kind": "classic",
+      "count": 2000,
+      "round": 0,
+      "operation": "first-check",
+      "ms": 3035.6955000000016,
+      "gitCalls": 0,
+      "reused": false
+    },
+    {
+      "variant": "after",
+      "kind": "classic",
+      "count": 2000,
+      "round": 0,
+      "operation": "repeat-check",
+      "ms": 1048.6843999999983,
+      "gitCalls": 0,
+      "reused": true
+    },
+    {
+      "variant": "after",
+      "kind": "native",
+      "count": 2000,
+      "round": 1,
+      "operation": "new",
+      "ms": 1381.0227000000014,
+      "gitCalls": 5,
+      "reused": false
+    },
+    {
+      "variant": "after",
+      "kind": "native",
+      "count": 2000,
+      "round": 1,
+      "operation": "status",
+      "ms": 495.4774000000034,
+      "gitCalls": 1,
+      "reused": false
+    },
+    {
+      "variant": "after",
+      "kind": "classic",
+      "count": 2000,
+      "round": 1,
+      "operation": "first-check",
+      "ms": 3101.1080000000075,
+      "gitCalls": 0,
+      "reused": false
+    },
+    {
+      "variant": "after",
+      "kind": "classic",
+      "count": 2000,
+      "round": 1,
+      "operation": "repeat-check",
+      "ms": 1082.8540999999968,
+      "gitCalls": 0,
+      "reused": true
+    },
+    {
+      "variant": "before",
+      "kind": "native",
+      "count": 2000,
+      "round": 1,
+      "operation": "new",
+      "ms": 1440.8215000000055,
+      "gitCalls": 5,
+      "reused": false
+    },
+    {
+      "variant": "before",
+      "kind": "native",
+      "count": 2000,
+      "round": 1,
+      "operation": "status",
+      "ms": 495.76720000000205,
+      "gitCalls": 1,
+      "reused": false
+    },
+    {
+      "variant": "before",
+      "kind": "classic",
+      "count": 2000,
+      "round": 1,
+      "operation": "first-check",
+      "ms": 4864.150399999999,
+      "gitCalls": 6,
+      "reused": false
+    },
+    {
+      "variant": "before",
+      "kind": "classic",
+      "count": 2000,
+      "round": 1,
+      "operation": "repeat-check",
+      "ms": 2020.1126999999979,
+      "gitCalls": 3,
+      "reused": true
+    },
+    {
+      "variant": "before",
+      "kind": "native",
+      "count": 2000,
+      "round": 2,
+      "operation": "new",
+      "ms": 1435.3538999999873,
+      "gitCalls": 5,
+      "reused": false
+    },
+    {
+      "variant": "before",
+      "kind": "native",
+      "count": 2000,
+      "round": 2,
+      "operation": "status",
+      "ms": 495.82880000000296,
+      "gitCalls": 1,
+      "reused": false
+    },
+    {
+      "variant": "before",
+      "kind": "classic",
+      "count": 2000,
+      "round": 2,
+      "operation": "first-check",
+      "ms": 4893.176000000007,
+      "gitCalls": 6,
+      "reused": false
+    },
+    {
+      "variant": "before",
+      "kind": "classic",
+      "count": 2000,
+      "round": 2,
+      "operation": "repeat-check",
+      "ms": 2006.7474999999977,
+      "gitCalls": 3,
+      "reused": true
+    },
+    {
+      "variant": "after",
+      "kind": "native",
+      "count": 2000,
+      "round": 2,
+      "operation": "new",
+      "ms": 1385.824099999998,
+      "gitCalls": 5,
+      "reused": false
+    },
+    {
+      "variant": "after",
+      "kind": "native",
+      "count": 2000,
+      "round": 2,
+      "operation": "status",
+      "ms": 487.3451999999961,
+      "gitCalls": 1,
+      "reused": false
+    },
+    {
+      "variant": "after",
+      "kind": "classic",
+      "count": 2000,
+      "round": 2,
+      "operation": "first-check",
+      "ms": 3018.4964000000036,
+      "gitCalls": 0,
+      "reused": false
+    },
+    {
+      "variant": "after",
+      "kind": "classic",
+      "count": 2000,
+      "round": 2,
+      "operation": "repeat-check",
+      "ms": 1048.537400000001,
+      "gitCalls": 0,
+      "reused": true
+    }
+  ],
+  "currentBase": "209f042962e59022aef85fa43d02908c6548080d",
+  "currentIncludes": "Classic help correction built from the current working tree; benchmarked product implementation is unchanged afterward.",
+  "sampling": "Three fresh-process samples per variant/operation/size, alternating variant order; Git fixture and Runtime preparation excluded; disk/OS cache not flushed.",
+  "files": "0 or 2000 non-ignored untracked project files, each about 1KiB; empty Git repository, not the Comet checkout.",
+  "gitMeasurement": "GIT_TRACE2_EVENT counts all descendant Git starts in each measured invocation; enabled for both variants.",
+  "classicCommand": [
+    "check",
+    "run",
+    "bench",
+    "build",
+    "--local",
+    "--json",
+    "--",
+    "D:\\nodejs\\node.exe",
+    "-e",
+    "process.stdout.write(\"ok\")"
+  ],
+  "nativeCommands": [
+    "new bench --project-root <root> --json",
+    "status bench --project-root <root> --json"
+  ],
+  "classicFixture": "Public state init bench tweak --runtime compat; state set build_mode direct tdd_mode direct verify_mode light isolation current phase build; COMET_FORCE_PHASE=1 only for isolated measurement setup.",
+  "reused": "All Classic second invocations reused the original successful command on both variants. No model, Eval, full workflow timing or token measurement.",
+  "excludedAttempts": [
+    "initial Classic smoke without configured artifact layout",
+    "initial incomplete preset fixture",
+    "Native next --session is unavailable at the old Shape boundary; switched to the common status command before the final 48-sample run"
+  ],
+  "driver": "C:\\Users\\BENYM\\AppData\\Local\\Temp\\workflow-cut-review-w0bt2s\\benchmark.mjs",
+  "summary": [
+    {
+      "count": 0,
+      "kind": "native",
+      "operation": "new",
+      "before": {
+        "medianMs": 1419,
+        "minMs": 1394,
+        "maxMs": 1495,
+        "gitCalls": [5, 5, 5],
+        "reused": [false, false, false]
+      },
+      "after": {
+        "medianMs": 1360,
+        "minMs": 1359,
+        "maxMs": 2195,
+        "gitCalls": [5, 5, 5],
+        "reused": [false, false, false]
+      }
+    },
+    {
+      "count": 0,
+      "kind": "native",
+      "operation": "status",
+      "before": {
+        "medianMs": 503,
+        "minMs": 489,
+        "maxMs": 505,
+        "gitCalls": [1, 1, 1],
+        "reused": [false, false, false]
+      },
+      "after": {
+        "medianMs": 501,
+        "minMs": 483,
+        "maxMs": 529,
+        "gitCalls": [1, 1, 1],
+        "reused": [false, false, false]
+      }
+    },
+    {
+      "count": 0,
+      "kind": "classic",
+      "operation": "first-check",
+      "before": {
+        "medianMs": 3863,
+        "minMs": 3837,
+        "maxMs": 3868,
+        "gitCalls": [6, 6, 6],
+        "reused": [false, false, false]
+      },
+      "after": {
+        "medianMs": 2985,
+        "minMs": 2973,
+        "maxMs": 3079,
+        "gitCalls": [0, 0, 0],
+        "reused": [false, false, false]
+      }
+    },
+    {
+      "count": 0,
+      "kind": "classic",
+      "operation": "repeat-check",
+      "before": {
+        "medianMs": 1507,
+        "minMs": 1491,
+        "maxMs": 1508,
+        "gitCalls": [3, 3, 3],
+        "reused": [true, true, true]
+      },
+      "after": {
+        "medianMs": 1063,
+        "minMs": 1058,
+        "maxMs": 1107,
+        "gitCalls": [0, 0, 0],
+        "reused": [true, true, true]
+      }
+    },
+    {
+      "count": 2000,
+      "kind": "native",
+      "operation": "new",
+      "before": {
+        "medianMs": 1435,
+        "minMs": 1405,
+        "maxMs": 1441,
+        "gitCalls": [5, 5, 5],
+        "reused": [false, false, false]
+      },
+      "after": {
+        "medianMs": 1386,
+        "minMs": 1381,
+        "maxMs": 1419,
+        "gitCalls": [5, 5, 5],
+        "reused": [false, false, false]
+      }
+    },
+    {
+      "count": 2000,
+      "kind": "native",
+      "operation": "status",
+      "before": {
+        "medianMs": 496,
+        "minMs": 492,
+        "maxMs": 496,
+        "gitCalls": [1, 1, 1],
+        "reused": [false, false, false]
+      },
+      "after": {
+        "medianMs": 487,
+        "minMs": 480,
+        "maxMs": 495,
+        "gitCalls": [1, 1, 1],
+        "reused": [false, false, false]
+      }
+    },
+    {
+      "count": 2000,
+      "kind": "classic",
+      "operation": "first-check",
+      "before": {
+        "medianMs": 4893,
+        "minMs": 4864,
+        "maxMs": 4965,
+        "gitCalls": [6, 6, 6],
+        "reused": [false, false, false]
+      },
+      "after": {
+        "medianMs": 3036,
+        "minMs": 3018,
+        "maxMs": 3101,
+        "gitCalls": [0, 0, 0],
+        "reused": [false, false, false]
+      }
+    },
+    {
+      "count": 2000,
+      "kind": "classic",
+      "operation": "repeat-check",
+      "before": {
+        "medianMs": 2016,
+        "minMs": 2007,
+        "maxMs": 2020,
+        "gitCalls": [3, 3, 3],
+        "reused": [true, true, true]
+      },
+      "after": {
+        "medianMs": 1049,
+        "minMs": 1049,
+        "maxMs": 1083,
+        "gitCalls": [0, 0, 0],
+        "reused": [true, true, true]
+      }
+    }
+  ]
+}

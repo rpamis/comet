@@ -118,7 +118,7 @@ operations:
     ).toThrow(/duplicate|unique/iu);
   });
 
-  it('automatically rebases independent changes and blocks overlapping changes', () => {
+  it('applies the Agent-selected requirement edit and preserves independent current sections', () => {
     const baseline = `# Authentication\n\n## Requirement: authentication.password Password login\n\nPassword behavior.\n\n## Requirement: authentication.profile Profile\n\nProfile behavior.\n\n`;
     const passwordSection = `## Requirement: authentication.password Password login\n\nPassword behavior.\n\n`;
     const change = delta(
@@ -148,29 +148,30 @@ operations:
       currentMarkdown: independentCurrent,
       delta: change,
     });
-    expect(rebased.rebased).toBe(true);
+    expect(rebased.changedRequirementIds).toEqual(['authentication.password']);
     expect(rebased.markdown).toContain('avatar');
     expect(rebased.markdown).toContain('session check');
 
-    expect(() =>
+    expect(
       mergeNativeDelta({
         baselineMarkdown: baseline,
         currentMarkdown: independentCurrent,
         delta: { ...change, base_requirements: undefined },
-      }),
-    ).toThrow(/base_requirements|independent/iu);
+      }).markdown,
+    ).toBe(rebased.markdown);
 
     const conflictingCurrent = baseline.replace('Password behavior.', 'Concurrent password edit.');
-    expect(() =>
-      mergeNativeDelta({
-        baselineMarkdown: baseline,
-        currentMarkdown: conflictingCurrent,
-        delta: change,
-      }),
-    ).toThrow(/authentication\.password|conflict/iu);
+    const selected = mergeNativeDelta({
+      baselineMarkdown: baseline,
+      currentMarkdown: conflictingCurrent,
+      delta: change,
+    });
+    expect(selected.markdown).toContain('Password behavior with a session check.');
+    expect(selected.markdown).not.toContain('Concurrent password edit.');
+    expect(selected.markdown).toContain('Profile behavior.');
   });
 
-  it('allows clearly independent edits but blocks shared or referenced requirement impact', () => {
+  it('preserves unselected shared policy text while applying the selected requirement', () => {
     const baseline = `# Authentication\n\n## Requirement: authentication.password Password login\n\nPassword behavior.\n\n## Requirement: authentication.policy Session policy\n\nSession policy behavior.\n\n`;
     const passwordSection =
       '## Requirement: authentication.password Password login\n\nPassword behavior.\n\n';
@@ -209,32 +210,34 @@ operations:
       'Session policy behavior.',
       'Shared session policy MUST apply to all authentication flows.',
     );
-    expect(() =>
-      mergeNativeDelta({
-        baselineMarkdown: baseline,
-        currentMarkdown: shared,
-        delta: change,
-      }),
-    ).toThrow(/shared|referenced|uncertain/iu);
+    const merged = mergeNativeDelta({
+      baselineMarkdown: baseline,
+      currentMarkdown: shared,
+      delta: change,
+    });
+    expect(merged.markdown).toContain(
+      'Shared session policy MUST apply to all authentication flows.',
+    );
+    expect(merged.markdown).toContain('Password behavior with a session check.');
   });
 
-  it('blocks a concurrent change to legacy shared constraints', () => {
+  it('preserves current legacy constraints when adding a selected requirement', () => {
     const baseline = '# Authentication\n\nShared session constraint.\n';
     const change = delta(baseline, [
       { id: 'authentication.sms', operation: 'add', body: 'SMS behavior.' },
     ]);
     const current = baseline.replace('Shared session constraint.', 'Changed session constraint.');
 
-    expect(() =>
-      mergeNativeDelta({
-        baselineMarkdown: baseline,
-        currentMarkdown: current,
-        delta: change,
-      }),
-    ).toThrow(/shared legacy constraints|conflict/iu);
+    const merged = mergeNativeDelta({
+      baselineMarkdown: baseline,
+      currentMarkdown: current,
+      delta: change,
+    });
+    expect(merged.markdown).toContain('Changed session constraint.');
+    expect(merged.markdown).toContain('SMS behavior.');
   });
 
-  it('keeps legacy full-text specs readable and makes a legacy merge explicit', () => {
+  it('keeps legacy full-text specs readable without requiring a content proof', () => {
     const baseline = '# Legacy authentication\n\nExisting behavior.\n';
     const change = delta(
       baseline,
@@ -251,16 +254,15 @@ operations:
     expect(result.markdown).toContain('Existing behavior.');
     expect(result.markdown).toContain('authentication.sms');
 
-    expect(() =>
-      applyNativeDelta({
-        baselineMarkdown: baseline,
-        delta: delta(
-          baseline,
-          [{ id: 'authentication.sms', operation: 'add', body: 'SMS behavior.' }],
-          { legacy_hash: undefined },
-        ),
-      }),
-    ).toThrow(/legacy_hash|legacy/iu);
+    const withoutProof = applyNativeDelta({
+      baselineMarkdown: baseline,
+      delta: delta(
+        baseline,
+        [{ id: 'authentication.sms', operation: 'add', body: 'SMS behavior.' }],
+        { legacy_hash: undefined },
+      ),
+    });
+    expect(withoutProof.markdown).toBe(result.markdown);
   });
 
   it('scopes acceptance to changed requirements instead of replaying the baseline', () => {
@@ -291,7 +293,7 @@ operations:
       delta: change,
     });
     expect(second.markdown).toBe(first.markdown);
-    expect(second.rebased).toBe(true);
+    expect(second.markdown.match(/## Requirement: authentication\.sms/g)).toHaveLength(1);
     expect(second.changedRequirementIds).toEqual([]);
   });
 });
