@@ -432,6 +432,12 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
       if (
         /^\..+\.tmp$/u.test(entry.name) ||
         entry.name === lockName ||
+        [
+          lockName + '.sqlite',
+          lockName + '.sqlite-journal',
+          lockName + '.sqlite-wal',
+          lockName + '.sqlite-shm',
+        ].includes(entry.name) ||
         /^\.write\.lock\.[a-f0-9-]+\.removed$/u.test(entry.name)
       )
         continue;

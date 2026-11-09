@@ -1,48 +1,23 @@
-import { AsyncLocalStorage } from 'async_hooks';
-import { randomUUID } from 'crypto';
-import { promises as fs } from 'fs';
-import os from 'os';
-import path from 'path';
-import { linkWithRetry } from '../../platform/fs/transient-retry.js';
-
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import {
-  RaceSafeReadError,
-  readFileRaceSafe,
-  hashFileRaceSafe,
-} from '../../platform/fs/race-safe-read.js';
-import { canonicalHash } from './native-canonical-hash.js';
-import {
-  inspectProcessLiveness,
-  readProcessIdentity,
-} from '../../platform/process/process-identity.js';
-
+  acquireRecoverableFileLock,
+  diagnoseRecoverableFileLock,
+  repairRecoverableFileLock,
+  withRecoverableFileLock,
+} from '../../platform/fs/recoverable-file-lock.js';
+import { readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
 import { resolveContainedNativePath } from './native-paths.js';
-import { hasComparableNativeFileObject, sameNativeFileObject } from './native-file-identity.js';
 import type { NativeProjectPaths } from './native-types.js';
 
-const NATIVE_LOCK_MAX_BYTES = 16 * 1024;
-const NATIVE_LOCK_COORDINATOR_DIR = '.coordinator';
-const NATIVE_LOCK_COORDINATOR_TIMEOUT_MS = 5_000;
-/**
- * Locks whose owner cannot be proven stale (different hostname, or a liveness
- * probe that never succeeds) become takeable by an explicit doctor repair once
- * their recorded creation time is at least this old. Fifteen minutes clears
- * crashed owners from any machine quickly enough that a user running doctor
- * right after a crash usually passes the threshold, while the longest legal
- * holder (an Archive transaction with its snapshot fences) finishes within a
- * few minutes, well out of reach of a blind takeover.
- */
-export const NATIVE_LOCK_UNKNOWN_TAKEOVER_MS = 15 * 60 * 1_000;
-
+/** Legacy source compatibility; lock recovery no longer waits for an owner age. */
+export const NATIVE_LOCK_UNKNOWN_TAKEOVER_MS = 0;
 export interface NativeLockOwner {
   id: string;
-  pid: number;
-  hostname: string;
   createdAt: string;
   operation: string;
-  processIdentity?: string;
 }
-
 export interface NativeLockFileIdentity {
   device: string;
   inode: string;
@@ -51,7 +26,6 @@ export interface NativeLockFileIdentity {
   ctimeNs: string;
   mtimeNs: string;
 }
-
 export interface NativeLock {
   file: string;
   nativeRoot: string;
@@ -61,30 +35,11 @@ export interface NativeLock {
   publicationFile?: string;
   coordinatorVersion?: string;
 }
-
-function nativeCoordinatorVersion(stat: import('node:fs').BigIntStats): string {
-  return [stat.dev, stat.ino, stat.birthtimeNs, stat.mtimeNs, stat.ctimeNs].join(':');
-}
-
 export interface NativeLockDiagnosis {
   status: 'missing' | 'active' | 'stale' | 'unknown';
   owner: NativeLockOwner | null;
   identity: NativeLockFileIdentity | null;
 }
-
-export class NativeLockBusyError extends Error {
-  constructor(
-    readonly file: string,
-    readonly owner: NativeLockOwner | null,
-    cause?: unknown,
-  ) {
-    super(
-      `Native lock is already held: ${file}${owner ? ` by pid ${owner.pid} for ${owner.operation}` : ''}`,
-      { cause },
-    );
-  }
-}
-
 export interface NativeLockRecovery extends Omit<NativeLockDiagnosis, 'status'> {
   kind?: 'lock' | 'coordinator';
   status: NativeLockDiagnosis['status'] | 'malformed';
@@ -92,48 +47,93 @@ export interface NativeLockRecovery extends Omit<NativeLockDiagnosis, 'status'> 
   token: string | null;
   contentDigest?: string;
 }
-
-export async function inspectNativeLockRecovery(file: string): Promise<NativeLockRecovery> {
-  let diagnosis: NativeLockDiagnosis;
-  try {
-    diagnosis = await diagnoseNativeLock(file);
-  } catch {
-    const hashed = await hashFileRaceSafe(file, {
-      bigint: true,
-      label: 'Native lock recovery record',
-    }).catch((error: NodeJS.ErrnoException) => {
-      if (error.code === 'ENOENT') return null;
-      throw error;
-    });
-    if (!hashed) return { file, status: 'missing', owner: null, identity: null, token: null };
-    const identity = nativeLockFileIdentity(hashed.stat as import('fs').BigIntStats);
-    return {
-      file,
-      status: 'malformed',
-      owner: null,
-      identity,
-      contentDigest: hashed.digest,
-      token: canonicalHash('comet.native.lock-repair.v1', {
-        file: path.resolve(file),
-        identity,
-        digest: hashed.digest,
-      }),
-    };
+export type NativeStaleLockTakeover =
+  | { status: 'removed'; owner: NativeLockOwner }
+  | { status: 'missing' }
+  | { status: 'changed'; diagnosis: NativeLockDiagnosis };
+export class NativeLockBusyError extends Error {
+  constructor(
+    readonly file: string,
+    readonly owner: NativeLockOwner | null,
+    cause?: unknown,
+  ) {
+    super('Native lock is busy: ' + file, { cause });
+    this.name = 'NativeLockBusyError';
   }
+}
+type Paths = Pick<NativeProjectPaths, 'runtimeDir' | 'locksDir'>;
+const handles = new WeakMap<NativeLock, Awaited<ReturnType<typeof acquireRecoverableFileLock>>>();
+const recovery = new AsyncLocalStorage<ReadonlySet<string>>();
+function fileIdentity(stat: import('node:fs').BigIntStats): NativeLockFileIdentity {
   return {
-    ...diagnosis,
-    file,
-    token:
-      diagnosis.status === 'missing'
-        ? null
-        : canonicalHash('comet.native.lock-repair.v1', {
-            file: path.resolve(file),
-            owner: diagnosis.owner,
-            identity: diagnosis.identity,
-          }),
+    device: String(stat.dev),
+    inode: String(stat.ino),
+    size: String(stat.size),
+    birthtimeNs: String(stat.birthtimeNs),
+    ctimeNs: String(stat.ctimeNs),
+    mtimeNs: String(stat.mtimeNs),
   };
 }
-
+async function snapshot(file: string) {
+  try {
+    const read = await readFileRaceSafe(file, 16 * 1024, {
+      bigint: true,
+      label: 'Native lock metadata',
+    });
+    const value = JSON.parse(read.bytes.toString('utf8'));
+    const id = value.id ?? value.nonce;
+    const createdAt =
+      typeof value.createdAt === 'number'
+        ? new Date(value.createdAt).toISOString()
+        : value.createdAt;
+    if (
+      typeof id !== 'string' ||
+      !id ||
+      typeof createdAt !== 'string' ||
+      !Number.isFinite(Date.parse(createdAt))
+    )
+      throw new Error('Invalid Native lock metadata: ' + file);
+    return {
+      owner: {
+        id,
+        createdAt,
+        operation: typeof value.operation === 'string' ? value.operation : 'Runtime operation',
+      },
+      identity: fileIdentity(read.stat as import('node:fs').BigIntStats),
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
+export async function readNativeLock(file: string): Promise<NativeLockOwner | null> {
+  return (await snapshot(file))?.owner ?? null;
+}
+export async function diagnoseNativeLock(file: string): Promise<NativeLockDiagnosis> {
+  const diagnosis = await diagnoseRecoverableFileLock(file);
+  const record = await snapshot(file);
+  return {
+    status: diagnosis.status === 'malformed' ? 'unknown' : diagnosis.status,
+    owner: record?.owner ?? null,
+    identity: record?.identity ?? null,
+  };
+}
+export async function inspectNativeLockRecovery(file: string): Promise<NativeLockRecovery> {
+  const diagnosis = await diagnoseRecoverableFileLock(file);
+  let record: Awaited<ReturnType<typeof snapshot>> = null;
+  try {
+    record = await snapshot(file);
+  } catch {
+    /* Malformed legacy metadata can be explicitly retired without process probes. */
+  }
+  return {
+    file,
+    status: diagnosis.status,
+    token: diagnosis.token,
+    owner: record?.owner ?? null,
+    identity: record?.identity ?? null,
+  };
+}
 export async function inspectNativeProjectLocks(
   paths: NativeProjectPaths,
 ): Promise<NativeLockRecovery[]> {
@@ -144,683 +144,127 @@ export async function inspectNativeProjectLocks(
       if (error.code === 'ENOENT') return [];
       throw error;
     });
-  const result: NativeLockRecovery[] = [];
-  const coordinator = await resolveContainedNativePath(
-    paths.runtimeDir,
-    path.join(directory, NATIVE_LOCK_COORDINATOR_DIR),
+  const files = entries
+    .filter((entry) => entry.name.endsWith('.lock') && entry.name !== '.recovery.lock')
+    .map((entry) => ({ file: path.join(directory, entry.name), kind: 'lock' as const }));
+  const coordinator = path.join(directory, '.coordinator');
+  const old = await fs.readdir(coordinator).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  });
+  files.push(
+    ...old
+      .filter((name) => name.endsWith('.claim'))
+      .map((name) => ({ file: path.join(coordinator, name), kind: 'coordinator' as 'lock' })),
   );
-  const claims = await fs
-    .readdir(coordinator, { withFileTypes: true })
-    .catch((error: NodeJS.ErrnoException) => {
-      if (error.code === 'ENOENT') return [];
-      throw error;
-    });
-  for (const entry of claims) {
-    if (!entry.name.endsWith('.claim')) continue;
-    if (!entry.isFile() || entry.isSymbolicLink()) {
-      result.push({
-        file: path.join(coordinator, entry.name),
-        kind: 'coordinator',
-        status: 'malformed',
-        owner: null,
-        identity: null,
-        token: null,
-      });
-      continue;
-    }
-    const lock = await inspectNativeLockRecovery(path.join(coordinator, entry.name));
-    if (lock.status !== 'missing') result.push({ ...lock, kind: 'coordinator' });
-  }
-  for (const entry of entries) {
-    if (!entry.name.endsWith('.lock')) continue;
-    if (!entry.isFile() || entry.isSymbolicLink()) {
-      result.push({
-        file: path.join(directory, entry.name),
-        kind: 'lock',
-        status: 'malformed',
-        owner: null,
-        identity: null,
-        token: null,
-      });
-      continue;
-    }
-    const lock = await inspectNativeLockRecovery(path.join(directory, entry.name));
-    if (lock.status !== 'missing') result.push({ ...lock, kind: 'lock' });
+  const result: NativeLockRecovery[] = [];
+  for (const entry of files) {
+    const record = await inspectNativeLockRecovery(entry.file);
+    if (record.status !== 'missing') result.push({ ...record, kind: entry.kind });
   }
   return result;
 }
-
-/** 精确令牌和明确的停止确认共同允许恢复未知归属记录；时间流逝不构成确认。 */
 export async function repairNativeProjectLock(
   paths: NativeProjectPaths,
   token: string,
   confirmedOwnerStopped: boolean,
 ): Promise<void> {
-  const observed = (await inspectNativeProjectLocks(paths)).find((lock) => lock.token === token);
-  if (!observed || !confirmedOwnerStopped)
+  const current = (await inspectNativeProjectLocks(paths)).find((entry) => entry.token === token);
+  if (!current || !confirmedOwnerStopped)
     throw new Error(
-      'Native project lock changed or its stopped owner was not confirmed; inspect doctor again',
+      'Native lock changed; inspect doctor and confirm the interrupted operation before recovery',
     );
-  const repair = async () => {
-    const current = await inspectNativeLockRecovery(observed.file);
-    if (current.token !== token || current.status === 'active' || !current.identity)
-      throw new Error(
-        'Native project lock changed or still has a live owner; preserve the lock and inspect doctor again',
-      );
-    if (current.owner) {
-      const snapshot = { file: current.file, owner: current.owner, identity: current.identity };
-      const coordinatorDir = path.join(paths.locksDir, NATIVE_LOCK_COORDINATOR_DIR);
-      const removed = await removeBoundNativeLock(snapshot, coordinatorDir);
-      if (removed === 'removed') await releaseNativeLockPublication(snapshot, coordinatorDir);
-      return;
-    }
-    const quarantine = path.join(
-      paths.locksDir,
-      NATIVE_LOCK_COORDINATOR_DIR,
-      `${randomUUID()}.repaired`,
-    );
-    await fs.rename(current.file, quarantine);
-    const moved = await inspectNativeLockRecovery(quarantine);
-    if (
-      !moved.identity ||
-      !sameNativeLockObject(moved.identity, current.identity) ||
-      moved.contentDigest !== current.contentDigest
-    ) {
-      throw new Error(
-        `Native malformed lock changed during repair; preserve the quarantined record at ${quarantine}`,
-      );
-    }
-  };
-  // 协调票据本身阻止新协调者进入；核对精确身份后直接隔离原票据，不能再申请同一协调锁。
-  if (observed.kind === 'coordinator') await repair();
-  else await withNativeLockCoordinator(paths, 'repair exact project lock', repair);
+  const result = await repairRecoverableFileLock(current.file, token, { confirmedOwnerStopped });
+  if (result !== 'removed' && result !== 'missing')
+    throw new Error('Native lock is still held or changed; preserve the current operation');
 }
-
-export type NativeStaleLockTakeover =
-  | { status: 'removed'; owner: NativeLockOwner }
-  | { status: 'missing' }
-  | { status: 'changed'; diagnosis: NativeLockDiagnosis };
-
-interface NativeLockSnapshot {
-  file: string;
-  owner: NativeLockOwner;
-  identity: NativeLockFileIdentity;
-}
-
-type NativeLockCoordinatorPaths = Pick<NativeProjectPaths, 'runtimeDir' | 'locksDir'>;
-
-const nativeLockCoordinator = new AsyncLocalStorage<Map<string, NativeLock>>();
-const nativeLockLocalCoordinator = new Map<string, Promise<void>>();
-
-function lockName(value: string): string {
-  if (!/^[a-z][a-z0-9-]*$/u.test(value)) throw new Error(`Invalid Native lock name: ${value}`);
-  return `${value}.lock`;
-}
-
-function parseNativeLockOwner(value: unknown, file: string): NativeLockOwner {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(`Invalid Native lock metadata: ${file}`);
-  }
-  const owner = value as Partial<NativeLockOwner>;
-  if (
-    typeof owner.id !== 'string' ||
-    owner.id.length === 0 ||
-    typeof owner.pid !== 'number' ||
-    !Number.isSafeInteger(owner.pid) ||
-    owner.pid < 1 ||
-    typeof owner.hostname !== 'string' ||
-    owner.hostname.length === 0 ||
-    typeof owner.createdAt !== 'string' ||
-    owner.createdAt.length === 0 ||
-    typeof owner.operation !== 'string' ||
-    owner.operation.length === 0 ||
-    (owner.processIdentity !== undefined &&
-      (typeof owner.processIdentity !== 'string' || owner.processIdentity.length === 0))
-  ) {
-    throw new Error(`Invalid Native lock metadata: ${file}`);
-  }
-  return owner as NativeLockOwner;
-}
-
-function nativeLockFileIdentity(stat: import('fs').BigIntStats): NativeLockFileIdentity {
-  return {
-    device: stat.dev.toString(),
-    inode: stat.ino.toString(),
-    size: stat.size.toString(),
-    birthtimeNs: stat.birthtimeNs.toString(),
-    ctimeNs: stat.ctimeNs.toString(),
-    mtimeNs: stat.mtimeNs.toString(),
-  };
-}
-
-function sameNativeLockObject(
-  left: NativeLockFileIdentity,
-  right: NativeLockFileIdentity,
-): boolean {
-  const leftObject = { dev: left.device, ino: left.inode, birthtime: left.birthtimeNs };
-  const rightObject = { dev: right.device, ino: right.inode, birthtime: right.birthtimeNs };
-  if (hasComparableNativeFileObject(leftObject, rightObject)) {
-    return sameNativeFileObject(leftObject, rightObject);
-  }
-  return sameNativeFileObject(leftObject, rightObject) && left.size === right.size;
-}
-
-function sameNativeLockVersion(
-  left: NativeLockFileIdentity,
-  right: NativeLockFileIdentity,
-): boolean {
-  return (
-    sameNativeLockObject(left, right) &&
-    left.size === right.size &&
-    left.birthtimeNs === right.birthtimeNs &&
-    left.ctimeNs === right.ctimeNs &&
-    left.mtimeNs === right.mtimeNs
-  );
-}
-
-function sameNativeLockDiagnosis(left: NativeLockDiagnosis, right: NativeLockDiagnosis): boolean {
-  if (left.status !== right.status) return false;
-  if (!left.owner || !left.identity || !right.owner || !right.identity) {
-    return left.owner === right.owner && left.identity === right.identity;
-  }
-  return left.owner.id === right.owner.id && sameNativeLockVersion(left.identity, right.identity);
-}
-
-async function readNativeLockSnapshot(file: string): Promise<NativeLockSnapshot | null> {
-  let bytes: Buffer;
-  let stat: import('fs').BigIntStats;
-  try {
-    const result = await readFileRaceSafe(file, NATIVE_LOCK_MAX_BYTES, {
-      bigint: true,
-      label: 'Native lock',
-    });
-    bytes = result.bytes;
-    stat = result.stat as import('fs').BigIntStats;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    if (error instanceof RaceSafeReadError) {
-      if (error.reason === 'too-large') {
-        throw new Error(`Native lock metadata exceeds ${NATIVE_LOCK_MAX_BYTES} bytes: ${file}`, {
-          cause: error,
-        });
-      }
-      if (error.reason === 'not-regular-file') {
-        throw new Error(`Native lock must be a regular file: ${file}`, { cause: error });
-      }
-      throw new Error(`Native lock changed while reading: ${file}`, { cause: error });
-    }
-    throw error;
-  }
-  return {
-    file,
-    owner: parseNativeLockOwner(JSON.parse(bytes.toString('utf8')) as unknown, file),
-    identity: nativeLockFileIdentity(stat),
-  };
-}
-
-export async function readNativeLock(file: string): Promise<NativeLockOwner | null> {
-  return (await readNativeLockSnapshot(file))?.owner ?? null;
-}
-
-async function diagnosisFromSnapshot(
-  snapshot: NativeLockSnapshot | null,
-): Promise<NativeLockDiagnosis> {
-  if (!snapshot) return { status: 'missing', owner: null, identity: null };
-  if (snapshot.owner.hostname !== os.hostname()) {
-    return { status: 'unknown', owner: snapshot.owner, identity: snapshot.identity };
-  }
-  const liveness = await inspectProcessLiveness(snapshot.owner.pid, snapshot.owner.processIdentity);
-  return {
-    status: liveness === 'alive' ? 'active' : liveness === 'dead' ? 'stale' : 'unknown',
-    owner: snapshot.owner,
-    identity: snapshot.identity,
-  };
-}
-
-async function restoreQuarantinedNativeLock(quarantine: string, file: string): Promise<void> {
-  try {
-    await fs.lstat(file);
-    return;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-  }
-  try {
-    await fs.rename(quarantine, file);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-  }
-}
-
-async function removeBoundNativeLock(
-  expected: NativeLockSnapshot,
-  quarantineDir: string,
-): Promise<'removed' | 'missing'> {
-  const current = await readNativeLockSnapshot(expected.file);
-  if (!current) return 'missing';
-  if (current.owner.id !== expected.owner.id) {
-    throw new Error(`Native lock ownership changed: ${expected.file}`);
-  }
-  if (!sameNativeLockVersion(current.identity, expected.identity)) {
-    throw new Error(`Native lock identity changed: ${expected.file}`);
-  }
-  await fs.mkdir(quarantineDir, { recursive: true });
-  const quarantine = path.join(
-    quarantineDir,
-    `${path.basename(expected.file)}.${expected.owner.id}.${randomUUID()}.removed`,
-  );
-  try {
-    await fs.rename(expected.file, quarantine);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 'missing';
-    throw error;
-  }
-  const moved = await readNativeLockSnapshot(quarantine);
-  if (
-    !moved ||
-    moved.owner.id !== expected.owner.id ||
-    !sameNativeLockObject(moved.identity, expected.identity)
-  ) {
-    await restoreQuarantinedNativeLock(quarantine, expected.file);
-    throw new Error(`Native lock changed before quarantine: ${expected.file}`);
-  }
-  await fs.rm(quarantine, { force: true });
-  return 'removed';
-}
-
-async function newNativeLockOwner(operation: string): Promise<NativeLockOwner> {
-  const processIdentity = await readProcessIdentity(process.pid);
-  return {
-    id: randomUUID(),
-    pid: process.pid,
-    hostname: os.hostname(),
-    createdAt: new Date().toISOString(),
-    operation,
-    ...(processIdentity === null ? {} : { processIdentity }),
-  };
-}
-
-async function writeNativeLockFile(
-  file: string,
-  owner: NativeLockOwner,
-): Promise<NativeLockFileIdentity> {
-  let handle: Awaited<ReturnType<typeof fs.open>>;
-  try {
-    handle = await fs.open(file, 'wx');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-      const existing = await readNativeLock(file);
-      throw new NativeLockBusyError(file, existing, error);
-    }
-    throw error;
-  }
-  let writtenIdentity: NativeLockFileIdentity | undefined;
-  try {
-    await handle.writeFile(JSON.stringify(owner, null, 2) + '\n', 'utf8');
-    await handle.sync();
-    writtenIdentity = nativeLockFileIdentity(await handle.stat({ bigint: true }));
-  } finally {
-    await handle.close();
-  }
-  const snapshot = await readNativeLockSnapshot(file);
-  if (
-    !writtenIdentity ||
-    !snapshot ||
-    snapshot.owner.id !== owner.id ||
-    !sameNativeLockObject(snapshot.identity, writtenIdentity)
-  ) {
-    throw new Error(`Native lock changed after write: ${file}`);
-  }
-  return snapshot.identity;
-}
-
-async function releaseNativeLockPublication(
-  snapshot: NativeLockSnapshot,
-  coordinatorDir: string,
-): Promise<void> {
-  if (!/^[a-f0-9-]{36}$/u.test(snapshot.owner.id)) return;
-  const file = path.join(coordinatorDir, `.${snapshot.owner.id}.tmp`);
-  const prepared = await readNativeLockSnapshot(file);
-  if (!prepared) return;
-  if (
-    prepared.owner.id !== snapshot.owner.id ||
-    !sameNativeLockObject(prepared.identity, snapshot.identity)
-  )
-    throw new Error(`Native lock publication changed: ${file}`);
-  await removeBoundNativeLock(prepared, coordinatorDir);
-}
-
-async function publishNativeCoordinatorClaim(
-  paths: NativeLockCoordinatorPaths,
-  operation: string,
-): Promise<NativeLock> {
-  const locksDir = await resolveContainedNativePath(paths.runtimeDir, paths.locksDir);
-  await fs.mkdir(locksDir, { recursive: true });
-  const coordinatorDir = await resolveContainedNativePath(
-    paths.runtimeDir,
-    path.join(locksDir, NATIVE_LOCK_COORDINATOR_DIR),
-  );
-  await fs.mkdir(coordinatorDir, { recursive: true });
-  const owner = await newNativeLockOwner(operation);
-  const temporary = path.join(coordinatorDir, `.${owner.id}.tmp`);
-  const file = path.join(coordinatorDir, `${owner.id}.claim`);
-  try {
-    const identity = await writeNativeLockFile(temporary, owner);
-    await fs.rename(temporary, file);
-    const published = await readNativeLockSnapshot(file);
-    if (!published || !sameNativeLockObject(identity, published.identity)) {
-      throw new Error(`Native lock coordinator claim changed while publishing: ${file}`);
-    }
-    return { file, nativeRoot: paths.runtimeDir, locksDir, owner, identity: published.identity };
-  } finally {
-    await fs.rm(temporary, { force: true });
-  }
-}
-
-async function hasNativeCoordinatorPredecessor(claim: NativeLock): Promise<boolean> {
-  const coordinatorDir = path.dirname(claim.file);
-  let predecessor = false;
-  const claimName = path.basename(claim.file);
-  for (const entry of await fs.readdir(coordinatorDir, { withFileTypes: true })) {
-    if (!entry.isFile() || entry.isSymbolicLink() || !entry.name.endsWith('.claim')) continue;
-    const file = path.join(coordinatorDir, entry.name);
-    if (path.resolve(file) === path.resolve(claim.file)) continue;
-    try {
-      const snapshot = await readNativeLockSnapshot(file);
-      const diagnosis = await diagnosisFromSnapshot(snapshot);
-      if (diagnosis.status === 'missing') continue;
-      // Process inspection can outlast the claim. Recheck its bound file before
-      // treating the observed owner as a blocker or removing a stale claim.
-      const current = await readNativeLockSnapshot(file);
-      if (!current) continue;
-      if (
-        !snapshot ||
-        current.owner.id !== snapshot.owner.id ||
-        !sameNativeLockVersion(current.identity, snapshot.identity)
-      ) {
-        if (entry.name < claimName) predecessor = true;
-        continue;
-      }
-      if (diagnosis.status === 'stale' && snapshot) {
-        await removeBoundNativeLock(snapshot, coordinatorDir);
-        continue;
-      }
-      if (entry.name < claimName) predecessor = true;
-    } catch {
-      if (entry.name < claimName) predecessor = true;
-    }
-  }
-  return predecessor;
-}
-
-async function releaseNativeCoordinatorClaim(claim: NativeLock): Promise<void> {
-  const current = await readNativeLockSnapshot(claim.file);
-  if (!current) return;
-  if (
-    current.owner.id !== claim.owner.id ||
-    !sameNativeLockVersion(current.identity, claim.identity)
-  ) {
-    throw new Error(`Native lock coordinator ownership changed: ${claim.file}`);
-  }
-  await removeBoundNativeLock(current, path.dirname(claim.file));
-}
-
-async function acquireNativeCoordinator(
-  paths: NativeLockCoordinatorPaths,
-  operation: string,
-): Promise<NativeLock> {
-  const deadline = Date.now() + NATIVE_LOCK_COORDINATOR_TIMEOUT_MS;
-  while (true) {
-    const claim = await publishNativeCoordinatorClaim(paths, operation);
-    // A total order prevents two simultaneous claimants from symmetrically observing each
-    // other, releasing, and retrying until both time out. The lexicographically first live
-    // claim proceeds; later claims wait for it to publish the actual lock.
-    if (!(await hasNativeCoordinatorPredecessor(claim))) return claim;
-    await releaseNativeCoordinatorClaim(claim);
-    if (Date.now() >= deadline) {
-      throw new Error(`Native lock coordinator is busy: ${paths.locksDir}`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 2 + Math.floor(Math.random() * 7)));
-  }
-}
-
-async function acquireNativeLocalCoordinator(key: string): Promise<() => void> {
-  const previous = nativeLockLocalCoordinator.get(key) ?? Promise.resolve();
-  let release!: () => void;
-  const current = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const turn = previous.then(() => current);
-  nativeLockLocalCoordinator.set(key, turn);
-  await previous;
-  return () => {
-    release();
-    if (nativeLockLocalCoordinator.get(key) === turn) nativeLockLocalCoordinator.delete(key);
-  };
-}
-
-async function withNativeLockCoordinator<T>(
-  paths: NativeLockCoordinatorPaths,
-  operation: string,
-  work: () => Promise<T>,
-): Promise<T> {
-  const key = path.resolve(paths.locksDir);
-  const current = nativeLockCoordinator.getStore();
-  if (current?.has(key)) return work();
-  const releaseLocal = await acquireNativeLocalCoordinator(key);
-  try {
-    const claim = await acquireNativeCoordinator(paths, operation);
-    const next = new Map(current ?? []);
-    next.set(key, claim);
-    return await nativeLockCoordinator.run(next, async () => {
-      try {
-        return await work();
-      } finally {
-        await releaseNativeCoordinatorClaim(claim);
-      }
-    });
-  } finally {
-    releaseLocal();
-  }
-}
-
 export async function withNativeLockRecovery<T>(
-  pathEntries: readonly NativeLockCoordinatorPaths[],
+  entries: readonly Paths[],
   operation: string,
   work: () => Promise<T>,
 ): Promise<T> {
   const unique = [
-    ...new Map(pathEntries.map((entry) => [path.resolve(entry.locksDir), entry])).values(),
-  ].sort((left, right) => path.resolve(left.locksDir).localeCompare(path.resolve(right.locksDir)));
+    ...new Map(entries.map((entry) => [path.resolve(entry.locksDir), entry])).values(),
+  ].sort((a, b) => a.locksDir.localeCompare(b.locksDir));
   const enter = async (index: number): Promise<T> => {
     const entry = unique[index];
-    return entry ? withNativeLockCoordinator(entry, operation, () => enter(index + 1)) : work();
+    if (!entry) return work();
+    const key = path.resolve(entry.locksDir);
+    const held = recovery.getStore();
+    if (held?.has(key)) return enter(index + 1);
+    return withRecoverableFileLock(
+      path.join(key, '.recovery.lock'),
+      () => recovery.run(new Set([...(held ?? []), key]), () => enter(index + 1)),
+      { operation },
+    );
   };
   return enter(0);
 }
-
 export async function acquireNativeLock(
   paths: NativeProjectPaths,
   name: string,
   operation: string,
 ): Promise<NativeLock> {
+  if (!/^[a-z][a-z0-9-]*$/u.test(name)) throw new Error('Invalid Native lock name: ' + name);
   const locksDir = await resolveContainedNativePath(paths.runtimeDir, paths.locksDir);
-  await fs.mkdir(locksDir, { recursive: true });
-  const coordinatorDir = await resolveContainedNativePath(
-    paths.runtimeDir,
-    path.join(locksDir, NATIVE_LOCK_COORDINATOR_DIR),
-  );
-  const claims = await fs.readdir(coordinatorDir).catch((error: NodeJS.ErrnoException) => {
-    if (error.code === 'ENOENT') return [];
-    throw error;
-  });
-  // 独占创建与旧 writer 使用同一路径；有 claim 时仍服从原协调器。
-  if (claims.every((entry) => /^\.[a-f0-9-]{36}\.tmp$/u.test(entry))) {
-    const file = await resolveContainedNativePath(
-      paths.runtimeDir,
-      path.join(locksDir, lockName(name)),
-    );
-    const owner = await newNativeLockOwner(operation);
-    await fs.mkdir(coordinatorDir, { recursive: true });
-    const publicationFile = path.join(coordinatorDir, `.${owner.id}.tmp`);
-    const preparedIdentity = await writeNativeLockFile(publicationFile, owner);
-    try {
-      const coordinatorVersion = nativeCoordinatorVersion(
-        await fs.lstat(coordinatorDir, { bigint: true }),
-      );
-      await linkWithRetry(publicationFile, file);
-      const published = await readNativeLockSnapshot(file);
-      if (
-        !published ||
-        published.owner.id !== owner.id ||
-        !sameNativeLockObject(published.identity, preparedIdentity)
-      )
-        throw new Error(`Native lock changed after publication: ${file}`);
-      // 保留私有链接直到释放，避免发布后的 unlink 改变主锁 ctime，影响旧 reader 的身份检查。
-      return {
-        file,
-        nativeRoot: paths.runtimeDir,
-        locksDir,
-        owner,
-        identity: published.identity,
-        publicationFile,
-        coordinatorVersion,
-      };
-    } catch (error) {
-      const prepared = await readNativeLockSnapshot(publicationFile);
-      if (
-        prepared?.owner.id === owner.id &&
-        sameNativeLockObject(prepared.identity, preparedIdentity)
-      )
-        await removeBoundNativeLock(prepared, coordinatorDir);
-      if (
-        !['EEXIST', 'ENOTSUP', 'EOPNOTSUPP'].includes((error as NodeJS.ErrnoException).code ?? '')
-      )
-        throw error;
-      // 旧 writer 可能仍在协调器内写元数据；竞争时先进入原协调器，不能直接读取半份主锁。
-    }
-  }
-  return withNativeLockCoordinator(paths, `acquire ${name}`, async () => {
-    const locksDir = await resolveContainedNativePath(paths.runtimeDir, paths.locksDir);
-    await fs.mkdir(locksDir, { recursive: true });
-    const file = await resolveContainedNativePath(
-      paths.runtimeDir,
-      path.join(locksDir, lockName(name)),
-    );
-    const owner = await newNativeLockOwner(operation);
-    const identity = await writeNativeLockFile(file, owner);
-    return { file, nativeRoot: paths.runtimeDir, locksDir, owner, identity };
-  });
-}
-
-export async function releaseNativeLock(lock: NativeLock): Promise<void> {
-  const releasePublication = async () => {
-    if (!lock.publicationFile) return;
-    const prepared = await readNativeLockSnapshot(lock.publicationFile);
-    if (!prepared) return;
-    if (
-      prepared.owner.id !== lock.owner.id ||
-      !sameNativeLockObject(prepared.identity, lock.identity)
-    )
-      throw new Error(`Native lock publication changed: ${lock.publicationFile}`);
-    await removeBoundNativeLock(prepared, path.join(lock.locksDir, NATIVE_LOCK_COORDINATOR_DIR));
-  };
-  if (!(await readNativeLockSnapshot(lock.file))) return releasePublication();
-  const release = async () => {
-    const current = await readNativeLockSnapshot(lock.file);
-    if (!current) return releasePublication();
-    if (current.owner.id !== lock.owner.id) {
-      throw new Error(`Native lock ownership changed: ${lock.file}`);
-    }
-    if (!sameNativeLockVersion(current.identity, lock.identity)) {
-      throw new Error(`Native lock identity changed: ${lock.file}`);
-    }
-    const coordinatorDir = path.join(lock.locksDir, NATIVE_LOCK_COORDINATOR_DIR);
-    await removeBoundNativeLock(current, coordinatorDir);
-    await releasePublication();
-  };
-  const directory = await resolveContainedNativePath(
-    lock.nativeRoot,
-    path.join(lock.locksDir, NATIVE_LOCK_COORDINATOR_DIR),
-  );
-  const entries = await fs.readdir(directory).catch((error) => {
-    if (error.code === 'ENOENT') return [];
-    throw error;
-  });
-  const unchangedCoordinator =
-    lock.coordinatorVersion !== undefined &&
-    lock.coordinatorVersion ===
-      nativeCoordinatorVersion(await fs.lstat(directory, { bigint: true }));
-  // claim 已经退出也属于发生过竞争；保留旧协议的释放排序，不把目录一时为空当作从未竞争。
-  if (unchangedCoordinator && entries.every((entry) => /^\.[a-f0-9-]{36}\.tmp$/u.test(entry)))
-    return release();
-  await withNativeLockCoordinator(
-    { runtimeDir: lock.nativeRoot, locksDir: lock.locksDir },
-    `release ${path.basename(lock.file)}`,
-    release,
-  );
-}
-
-export function isProcessAlive(pid: number): boolean | null {
+  const file = path.join(locksDir, name + '.lock');
+  let handle: Awaited<ReturnType<typeof acquireRecoverableFileLock>>;
   try {
-    process.kill(pid, 0);
-    return true;
+    handle = await acquireRecoverableFileLock(file, { timeoutMs: 0, operation });
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === 'ESRCH') return false;
-    if (code === 'EPERM') return true;
-    return null;
+    if (/Timed out waiting for file lock/u.test(String(error)))
+      throw new NativeLockBusyError(file, await readNativeLock(file), error);
+    throw error;
+  }
+  try {
+    const current = await snapshot(file);
+    if (!current) throw new Error('Native lock metadata disappeared before acquisition');
+    const lock: NativeLock = { file, locksDir, nativeRoot: paths.runtimeDir, ...current };
+    handles.set(lock, handle);
+    return lock;
+  } catch (error) {
+    await handle.release();
+    throw error;
   }
 }
-
+export async function releaseNativeLock(lock: NativeLock): Promise<void> {
+  const handle = handles.get(lock);
+  if (!handle) {
+    if (!(await snapshot(lock.file))) return;
+    throw new Error('Native lock handle is not active');
+  }
+  try {
+    await handle.release();
+  } finally {
+    handles.delete(lock);
+  }
+}
 export function nativeLockOwnerAgeMs(owner: NativeLockOwner | null, now = Date.now()): number {
-  if (!owner) return 0;
-  const createdAt = Date.parse(owner.createdAt);
-  return Number.isFinite(createdAt) ? Math.max(0, now - createdAt) : Number.POSITIVE_INFINITY;
+  return owner ? Math.max(0, now - Date.parse(owner.createdAt)) : 0;
 }
-
-export async function diagnoseNativeLock(file: string): Promise<NativeLockDiagnosis> {
-  return diagnosisFromSnapshot(await readNativeLockSnapshot(file));
-}
-
 export interface NativeLockTakeoverOptions {
-  /**
-   * Also remove locks whose owner cannot be proven stale when the owner record is
-   * older than NATIVE_LOCK_UNKNOWN_TAKEOVER_MS. Reserved for the explicit doctor
-   * repair path; automatic acquisition never opts in.
-   */
   allowAgedUnknown?: boolean;
 }
-
 export async function takeOverNativeStaleLock(
   paths: NativeProjectPaths,
   file: string,
   expected?: NativeLockDiagnosis,
-  options: NativeLockTakeoverOptions = {},
+  _options: NativeLockTakeoverOptions = {},
 ): Promise<NativeStaleLockTakeover> {
-  return withNativeLockCoordinator(paths, `take over ${path.basename(file)}`, async () => {
-    const locksDir = await resolveContainedNativePath(paths.runtimeDir, paths.locksDir);
-    const containedFile = await resolveContainedNativePath(paths.runtimeDir, file);
-    if (path.resolve(path.dirname(containedFile)) !== path.resolve(locksDir)) {
-      throw new Error(`Native lock takeover target is outside the lock directory: ${file}`);
-    }
-    const snapshot = await readNativeLockSnapshot(containedFile);
-    const diagnosis = await diagnosisFromSnapshot(snapshot);
-    if (diagnosis.status === 'missing') return { status: 'missing' };
-    if (expected && !sameNativeLockDiagnosis(expected, diagnosis)) {
-      return { status: 'changed', diagnosis };
-    }
-    const agedUnknownTakeable =
-      options.allowAgedUnknown === true &&
-      diagnosis.status === 'unknown' &&
-      nativeLockOwnerAgeMs(snapshot?.owner ?? null) >= NATIVE_LOCK_UNKNOWN_TAKEOVER_MS;
-    if ((diagnosis.status !== 'stale' && !agedUnknownTakeable) || !snapshot) {
-      return { status: 'changed', diagnosis };
-    }
-    const coordinatorDir = path.join(locksDir, NATIVE_LOCK_COORDINATOR_DIR);
-    const removed = await removeBoundNativeLock(snapshot, coordinatorDir);
-    if (removed === 'removed') await releaseNativeLockPublication(snapshot, coordinatorDir);
-    return removed === 'removed'
-      ? { status: 'removed', owner: snapshot.owner }
-      : { status: 'missing' };
+  const contained = await resolveContainedNativePath(paths.runtimeDir, file);
+  if (path.resolve(path.dirname(contained)) !== path.resolve(paths.locksDir))
+    throw new Error('Native lock recovery target is outside its directory');
+  const current = await diagnoseNativeLock(contained);
+  if (current.status === 'missing') return { status: 'missing' };
+  if (current.status === 'active' || (expected && expected.owner?.id !== current.owner?.id))
+    return { status: 'changed', diagnosis: current };
+  const record = await diagnoseRecoverableFileLock(contained);
+  const result = await repairRecoverableFileLock(contained, record.token!, {
+    confirmedOwnerStopped: true,
   });
+  return result === 'missing'
+    ? { status: 'missing' }
+    : result === 'removed' && current.owner
+      ? { status: 'removed', owner: current.owner }
+      : { status: 'changed', diagnosis: current };
 }
