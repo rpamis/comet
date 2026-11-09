@@ -192,7 +192,54 @@
           ]
         }
       ],
-      "sources": ["report:2026-11-08-skill-execution-optimization"]
+      "sources": ["report:2026-11-08-skill-execution-optimization"],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "撤下本案例中依赖文件/日志内容摘要、编辑证明或自动漂移的策略。保留原来源和完整旧正文；显式修订、真实失败/超时、原用户决定、检查来源及无重复副作用继续由逐项选择器执行。具体差异与保留行为见记录。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "^(?:Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=false\\)|Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=true\\)|Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=failed-later\\))$",
+            "requiredNames": [
+              "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=false)",
+              "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=true)",
+              "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=failed-later)"
+            ]
+          },
+          {
+            "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+            "namePattern": "^(?:Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK full Verify rounds retains the exact external check plan without adding local reuse|Classic SDK tweak Verify rounds retains the exact external check plan without adding local reuse|Classic SDK hotfix Verify rounds retains the exact external check plan without adding local reuse)$",
+            "requiredNames": [
+              "Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+              "Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+              "Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+              "Classic SDK full Verify rounds retains the exact external check plan without adding local reuse",
+              "Classic SDK tweak Verify rounds retains the exact external check plan without adding local reuse",
+              "Classic SDK hotfix Verify rounds retains the exact external check plan without adding local reuse"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
     },
     {
       "id": "native-delta-shape-materialization",
@@ -4456,7 +4503,42 @@
             "Original current-051 failure: eval/local/logs/acceptance-051-final-matrix/explicit-native-contract-20261025/native-hard"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "撤下本案例中依赖文件/日志内容摘要、编辑证明或自动漂移的策略。保留原来源和完整旧正文；显式修订、真实失败/超时、原用户决定、检查来源及无重复副作用继续由逐项选择器执行。具体差异与保留行为见记录。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+            "namePattern": "^(?:blocked Verifier recovery command contract ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: running|blocked Verifier recovery command contract ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: changed-requirements|blocked Verifier recovery command contract ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: unknown)$",
+            "requiredNames": [
+              "blocked Verifier recovery command contract ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: running",
+              "blocked Verifier recovery command contract ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: changed-requirements",
+              "blocked Verifier recovery command contract ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: unknown"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
     },
     {
       "id": "native-dirty-gitlink-archive",
@@ -4994,7 +5076,40 @@
             "blocked Verifier recovery command contract reports candidate drift in read-only Archive and Doctor without changing the accepted Run"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "撤下本案例中依赖文件/日志内容摘要、编辑证明或自动漂移的策略。保留原来源和完整旧正文；显式修订、真实失败/超时、原用户决定、检查来源及无重复副作用继续由逐项选择器执行。具体差异与保留行为见记录。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+            "namePattern": "^(?:blocked Verifier recovery command contract keeps Archive and Doctor read-only after an Agent-accepted edit without content proof)$",
+            "requiredNames": [
+              "blocked Verifier recovery command contract keeps Archive and Doctor read-only after an Agent-accepted edit without content proof"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
     },
     {
       "id": "task-unavailable-context-cli-diagnostic",
@@ -5838,7 +5953,40 @@
             "blocked Verifier recovery command contract repairs an implementation edited after Archive approval using the emitted recovery command and original Shape"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "撤下本案例中依赖文件/日志内容摘要、编辑证明或自动漂移的策略。保留原来源和完整旧正文；显式修订、真实失败/超时、原用户决定、检查来源及无重复副作用继续由逐项选择器执行。具体差异与保留行为见记录。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+            "namePattern": "^(?:blocked Verifier recovery command contract repairs an implementation edited after Archive approval through explicit revision and original Shape)$",
+            "requiredNames": [
+              "blocked Verifier recovery command contract repairs an implementation edited after Archive approval through explicit revision and original Shape"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
     },
     {
       "id": "native-branch-and-archive-repair-combination",
@@ -5857,7 +6005,40 @@
             "blocked Verifier recovery command contract recovers a branch rename followed by implementation changes without replaying one-shot checks"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "撤下本案例中依赖文件/日志内容摘要、编辑证明或自动漂移的策略。保留原来源和完整旧正文；显式修订、真实失败/超时、原用户决定、检查来源及无重复副作用继续由逐项选择器执行。具体差异与保留行为见记录。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+            "namePattern": "^(?:blocked Verifier recovery command contract recovers a branch rename followed by implementation changes without replaying one-shot checks)$",
+            "requiredNames": [
+              "blocked Verifier recovery command contract recovers a branch rename followed by implementation changes without replaying one-shot checks"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
     },
     {
       "id": "classic-archived-branch-recovery-boundary",
@@ -7855,7 +8036,47 @@
             "Runtime regression covers the deterministic continuation. A real-model run with the final candidate is still required."
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "撤下本案例中依赖文件/日志内容摘要、编辑证明或自动漂移的策略。保留原来源和完整旧正文；显式修订、真实失败/超时、原用户决定、检查来源及无重复副作用继续由逐项选择器执行。具体差异与保留行为见记录。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "^(?:continues an authorized implementation edit without requesting the same decision again)$",
+            "requiredNames": [
+              "continues an authorized implementation edit without requesting the same decision again"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+            "namePattern": "^(?:blocked Verifier recovery command contract hands the existing user revision to the successor Builder without requiring a rewrite)$",
+            "requiredNames": [
+              "blocked Verifier recovery command contract hands the existing user revision to the successor Builder without requiring a rewrite"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
     },
     {
       "id": "manual-recovery-native-repeat-edit",
@@ -11512,7 +11733,40 @@
             "Classic command check evidence retries only a proven prelaunch failure in the same check Action without replaying a process"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "原来源与测试名保留；夹具从已删除的快照失败改为原 Action 的 command_check_started 加 classic-check-not-executed 记录。仍断言同 Action attempt 2、仅一次进程副作用及重复调用不重放。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+            "namePattern": "^(?:Classic command check evidence retries only a proven prelaunch failure in the same check Action without replaying a process)$",
+            "requiredNames": [
+              "Classic command check evidence retries only a proven prelaunch failure in the same check Action without replaying a process"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
     },
     {
       "id": "classic-compat-unknown-check-no-replay",
@@ -13212,7 +13466,40 @@
             "Native Shape target replacement replaces an unapproved target without removing the canonical capability"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "文件内容变化不再使原有效批准自动失效；显式 revise-requirements 后仍刷新目标，保留原 canonical Spec、显式删除和 SDK state_version 拒绝旧请求。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-shape-target-replacement.test.ts",
+            "namePattern": "^(?:Native Shape target replacement replaces an unapproved target without removing the canonical capability)$",
+            "requiredNames": [
+              "Native Shape target replacement replaces an unapproved target without removing the canonical capability"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
     },
     {
       "id": "native-unapproved-shape-withdraw-last-target",
@@ -13231,7 +13518,49 @@
             "Native Shape target replacement requires an explicit exemption after withdrawing the last unapproved target"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户撤下固定文档关键词与 Spec 豁免语句；保留无 Spec 的公开源码/bundle Shape 可完成，以及显式替换目标不改 canonical Spec。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-agent-document-judgment.test.ts",
+            "namePattern": "^(?:prepares a Native Shape without fixed sections or a Spec exemption phrase through source|prepares a Native Shape without fixed sections or a Spec exemption phrase through generated)$",
+            "requiredNames": [
+              "prepares a Native Shape without fixed sections or a Spec exemption phrase through source",
+              "prepares a Native Shape without fixed sections or a Spec exemption phrase through generated"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-shape-target-replacement.test.ts",
+            "namePattern": "^(?:Native Shape target replacement replaces an unapproved target without removing the canonical capability|Native Shape target replacement preserves an explicit removal while refreshing the unapproved target set)$",
+            "requiredNames": [
+              "Native Shape target replacement replaces an unapproved target without removing the canonical capability",
+              "Native Shape target replacement preserves an explicit removal while refreshing the unapproved target set"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
     },
     {
       "id": "native-unapproved-shape-preserve-removal",
@@ -17787,7 +18116,49 @@
             "Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "撤下本案例中依赖文件/日志内容摘要、编辑证明或自动漂移的策略。保留原来源和完整旧正文；显式修订、真实失败/超时、原用户决定、检查来源及无重复副作用继续由逐项选择器执行。具体差异与保留行为见记录。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "^(?:Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=false\\)|Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=true\\)|Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=failed-later\\))$",
+            "requiredNames": [
+              "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=false)",
+              "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=true)",
+              "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=failed-later)"
+            ]
+          },
+          {
+            "file": "test/app/native-runtime-dispatch.test.ts",
+            "namePattern": "^(?:Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder)$",
+            "requiredNames": [
+              "Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
     },
     {
       "id": "native-v3-compact-builder-result",
@@ -18156,7 +18527,48 @@
             "runs actual full domain checks with source.js and archive recovery=false"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "撤下本案例中依赖文件/日志内容摘要、编辑证明或自动漂移的策略。保留原来源和完整旧正文；显式修订、真实失败/超时、原用户决定、检查来源及无重复副作用继续由逐项选择器执行。具体差异与保留行为见记录。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+            "namePattern": "^(?:Classic workflow application through the public Runtime SDK keeps check inputs unchanged when adopting a raw SDK Run into its portable projection|Classic workflow application through the public Runtime SDK keeps Build authoritative until original Runtime check evidence is accepted after an Agent-reviewed edit)$",
+            "requiredNames": [
+              "Classic workflow application through the public Runtime SDK keeps check inputs unchanged when adopting a raw SDK Run into its portable projection",
+              "Classic workflow application through the public Runtime SDK keeps Build authoritative until original Runtime check evidence is accepted after an Agent-reviewed edit"
+            ]
+          },
+          {
+            "file": "test/domains/comet-classic/classic-application.test.ts",
+            "namePattern": "^(?:runs actual full domain checks with source\\.js and archive recovery=false)$",
+            "requiredNames": [
+              "runs actual full domain checks with source.js and archive recovery=false"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
     },
     {
       "sources": ["report:2026-11-05-pr539-ci-classic-sdk-previous-preset-scope-decision"],
@@ -18379,7 +18791,49 @@
             "Classic SDK read-only diagnostics reads a current writable projection without writes and repairs only stale projections"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "撤下本案例中依赖文件/日志内容摘要、编辑证明或自动漂移的策略。保留原来源和完整旧正文；显式修订、真实失败/超时、原用户决定、检查来源及无重复副作用继续由逐项选择器执行。具体差异与保留行为见记录。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+            "namePattern": "^(?:Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source)$",
+            "requiredNames": [
+              "Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+              "Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+              "Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source"
+            ]
+          },
+          {
+            "file": "test/domains/comet-classic/classic-sdk-readonly.test.ts",
+            "namePattern": "^(?:Classic SDK read-only diagnostics reads a current writable projection without writes and repairs only stale projections)$",
+            "requiredNames": [
+              "Classic SDK read-only diagnostics reads a current writable projection without writes and repairs only stale projections"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
     },
     {
       "sources": ["report:2026-11-05-pr539-ci-native-supported-version-cancellation-ownership"],
@@ -19419,7 +19873,40 @@
         }
       ],
       "sources": ["report:2026-11-05-pr539-ci-native-portable-explicit-interrupted-check-retry"],
-      "coverageLevel": "runtime"
+      "coverageLevel": "runtime",
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "撤下本案例中依赖文件/日志内容摘要、编辑证明或自动漂移的策略。保留原来源和完整旧正文；显式修订、真实失败/超时、原用户决定、检查来源及无重复副作用继续由逐项选择器执行。具体差异与保留行为见记录。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+            "namePattern": "^(?:Native portable Runtime vertical path returns a retry action for an interrupted check and reruns it explicitly)$",
+            "requiredNames": [
+              "Native portable Runtime vertical path returns a retry action for an interrupted check and reruns it explicitly"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
     },
     {
       "id": "native-portable-generated-input-revalidation",
@@ -19777,7 +20264,53 @@
         }
       ],
       "sources": ["report:2026-11-05-pr539-ci-native-explicit-document-write-policy-update"],
-      "coverageLevel": "runtime"
+      "coverageLevel": "runtime",
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "撤下本案例中依赖文件/日志内容摘要、编辑证明或自动漂移的策略。保留原来源和完整旧正文；显式修订、真实失败/超时、原用户决定、检查来源及无重复副作用继续由逐项选择器执行。具体差异与保留行为见记录。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+            "namePattern": "^(?:workflow contract normalization merges Native document writes when explicit allow replaces revert|workflow contract normalization merges Native document writes when omitted policy preserves revert|workflow contract normalization merges Native document writes when explicit revert replaces allow)$",
+            "requiredNames": [
+              "workflow contract normalization merges Native document writes when explicit allow replaces revert",
+              "workflow contract normalization merges Native document writes when omitted policy preserves revert",
+              "workflow contract normalization merges Native document writes when explicit revert replaces allow"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+            "namePattern": "^(?:continues the same Native Verify after an Agent accepts an ordinary edit without content proof|keeps a real failed Native check failed after file edits without replay|continues Native Verify and Archive through the generated Runtime without content proof|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+            "requiredNames": [
+              "continues the same Native Verify after an Agent accepts an ordinary edit without content proof",
+              "keeps a real failed Native check failed after file edits without replay",
+              "continues Native Verify and Archive through the generated Runtime without content proof",
+              "blocks Native Archive when a new real check fails after an accepted pass",
+              "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
     },
     {
       "id": "classic-sdk-stale-workspace-read-identity",
@@ -19889,7 +20422,47 @@
             "Native portable Runtime vertical path recovers an orphaned running check only when process exit can be proven"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "撤下本案例中依赖文件/日志内容摘要、编辑证明或自动漂移的策略。保留原来源和完整旧正文；显式修订、真实失败/超时、原用户决定、检查来源及无重复副作用继续由逐项选择器执行。具体差异与保留行为见记录。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+            "namePattern": "^(?:Native portable unconfirmed check termination persists a proven orphan interruption before allowing an explicit check retry)$",
+            "requiredNames": [
+              "Native portable unconfirmed check termination persists a proven orphan interruption before allowing an explicit check retry"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+            "namePattern": "^(?:Native portable Runtime vertical path recovers an orphaned running check only when process exit can be proven)$",
+            "requiredNames": [
+              "Native portable Runtime vertical path recovers an orphaned running check only when process exit can be proven"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
     },
     {
       "id": "eval-static-dataset-mapping-cleanup",
@@ -22133,7 +22706,10 @@
     {
       "id": "badcase-large-baseline-registry",
       "behavior": "历史登记超过默认子进程缓冲时仍能读取真实Git基线并完成保留校验。",
-      "sources": ["report:2026-11-09-native-agent-runtime-simplification"],
+      "sources": [
+        "report:2026-11-09-native-agent-runtime-simplification",
+        "report:2026-11-09-latest-commit-review-fixes"
+      ],
       "coverageLevel": "unit",
       "reproduction": "临时Git仓库提交超过2MiB的登记，调用readBaseRegistry读取。",
       "expected": "完整读取并返回原登记。",
@@ -22145,6 +22721,161 @@
           "namePattern": "^continuous badcase registration reads a committed baseline registry larger than the default process output buffer$",
           "requiredNames": [
             "continuous badcase registration reads a committed baseline registry larger than the default process output buffer"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-legacy-verify-receipt-continuation",
+      "sources": ["report:2026-11-09-latest-commit-review-fixes"],
+      "behavior": "Classic 继续旧版本已成功的 Verify 检查和待接收证据时，沿用原命令收据进入归档用户决定，不重复执行。",
+      "coverageLevel": "public-cli",
+      "reproduction": "5426c4c 的真实 Runtime 生成已成功 Verify Action、保留 pending evidence；6b4c26f 经 state next --continue 后 decide-archive local 报 execution does not belong。新增同输入回归在 6b4 源码失败，修复后源码和生成 bundle 均通过。",
+      "expected": "沿用原 Run、Action、真实日志和原收据；Verify 副作用仍仅一次；用户未决时保持等待。",
+      "forbidden": "因旧日志摘要与新 Action 请求标识不同拒绝原成功执行，或重跑命令、接受缺失/错归属收据、掩盖最新失败、越过用户决定。",
+      "rootCause": "归档将 evidence.contentHash 仅与旧 output.contentHash 比较；业务续行使用同一 Action.inputHash 作为请求标识，二者职责不同。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-legacy-check-continuation.test.ts",
+          "namePattern": "^(?:accepts an original legacy Verify receipt after business continuation through source without repeating the command|accepts an original legacy Verify receipt after business continuation through generated without repeating the command|retains original receipt, latest failure, and pending user decision checks for legacy continuation)$",
+          "requiredNames": [
+            "accepts an original legacy Verify receipt after business continuation through source without repeating the command",
+            "accepts an original legacy Verify receipt after business continuation through generated without repeating the command",
+            "retains original receipt, latest failure, and pending user decision checks for legacy continuation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-approved-preset-upgrade-continuation",
+      "sources": ["report:2026-11-09-latest-commit-review-fixes"],
+      "behavior": "Classic hotfix/tweak 经用户批准升级到 full 后，沿用原升级决定进入 full Build 和 Verify，无需补造 full Open 决定。",
+      "coverageLevel": "public-cli",
+      "reproduction": "6b4c26f 的四个 source/generated x hotfix/tweak 最小公开 CLI 用例，在 full.build.plan 返回70：Classic Design requires its approved Open and completed handoff。使用相同流程在当前修复后执行。",
+      "expected": "未批准时不运行检查；原升级批准、成功handoff、设计和Build批准保留，原Run完成后续真实检查。",
+      "forbidden": "已批准升级被不存在的 full.open.confirm 阻塞，或取消真实批准/handoff条件直接推进。",
+      "rootCause": "简化内容证明后，Design readiness仅承认full.open.confirm，遗漏preset.build.escalation-confirm upgrade这一正式入口。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^(?:runs first managed checks after 'tweak' upgrades to full through 'source'|runs first managed checks after 'tweak' upgrades to full through 'generated'|runs first managed checks after 'hotfix' upgrades to full through 'source'|runs first managed checks after 'hotfix' upgrades to full through 'generated')$",
+          "requiredNames": [
+            "runs first managed checks after 'tweak' upgrades to full through 'source'",
+            "runs first managed checks after 'tweak' upgrades to full through 'generated'",
+            "runs first managed checks after 'hotfix' upgrades to full through 'source'",
+            "runs first managed checks after 'hotfix' upgrades to full through 'generated'"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-committed-check-without-auxiliary-receipt",
+      "sources": ["report:2026-11-09-latest-commit-review-fixes"],
+      "behavior": "Classic 已提交的真实检查在辅助收据丢失或冷恢复后继续有效，不重复执行；未提交结果仍不能靠恢复JSON建立成功。",
+      "coverageLevel": "public-cli",
+      "reproduction": "6b4c26f 的2个原公开CLI恢复用例删除辅助check-receipts或恢复checkpoint后，guard返回原执行收据不可用。修复后同输入及5个攻击反例、断线原claim恢复通过。",
+      "expected": "读取SDK已持久化的同workflow/input/完整原Action/claim/outcome，保留执行次数；缺少或伪造未提交收据必须拒绝。",
+      "forbidden": "要求已提交结果重新执行，或通过可编辑JSON、其他claim和未提交结果建立成功。",
+      "rootCause": "验证入口只读取辅助收据，遗漏state-store已明确认可的SDK已提交结果权威。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-legacy-check-continuation.test.ts",
+          "namePattern": "^(?:continues a committed Classic Verify through source after losing auxiliary receipts without replay|continues a committed Classic Verify through generated after losing auxiliary receipts without replay)$",
+          "requiredNames": [
+            "continues a committed Classic Verify through source after losing auxiliary receipts without replay",
+            "continues a committed Classic Verify through generated after losing auxiliary receipts without replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^(?:Classic SDK interrupted check recovery returns the original claim and completed check request, then resumes without executing again|Classic SDK original execution receipts keeps a previously committed successful check usable without new receipts \\(checkpoint recovery=false\\)|Classic SDK original execution receipts keeps a previously committed successful check usable without new receipts \\(checkpoint recovery=true\\)|Classic SDK original execution receipts rejects failed-result in recovery and direct SDK evidence without replay|Classic SDK original execution receipts rejects removed-binding in recovery and direct SDK evidence without replay|Classic SDK original execution receipts rejects old-claim in recovery and direct SDK evidence without replay|Classic SDK original execution receipts rejects changed-receipt in recovery and direct SDK evidence without replay|Classic SDK original execution receipts rejects missing-receipt in recovery and direct SDK evidence without replay)$",
+          "requiredNames": [
+            "Classic SDK interrupted check recovery returns the original claim and completed check request, then resumes without executing again",
+            "Classic SDK original execution receipts keeps a previously committed successful check usable without new receipts (checkpoint recovery=false)",
+            "Classic SDK original execution receipts keeps a previously committed successful check usable without new receipts (checkpoint recovery=true)",
+            "Classic SDK original execution receipts rejects failed-result in recovery and direct SDK evidence without replay",
+            "Classic SDK original execution receipts rejects removed-binding in recovery and direct SDK evidence without replay",
+            "Classic SDK original execution receipts rejects old-claim in recovery and direct SDK evidence without replay",
+            "Classic SDK original execution receipts rejects changed-receipt in recovery and direct SDK evidence without replay",
+            "Classic SDK original execution receipts rejects missing-receipt in recovery and direct SDK evidence without replay"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-reverified-full-delivery-without-document-proof",
+      "sources": ["report:2026-11-09-latest-commit-review-fixes"],
+      "behavior": "Classic full明确重新验收后，归档交付沿用原文档路径和真实Git提交，不要求已撤下的重复正文收据。",
+      "coverageLevel": "public-cli",
+      "reproduction": "当前source/generated公开CLI完整生命周期经full重新验收再交付，旧代码因不存在的archive-documents.json返回70/ENOENT。",
+      "expected": "原Run完成重新验收、再次批准、真实归档和Git交付；未批准隐藏路径仍拒绝。",
+      "forbidden": "要求生成或补造重复正文证明，越过原批准/Archive执行/提交范围/归档标记。",
+      "rootCause": "正文证明生成已删除，full恢复交付仍调用旧收据读取器。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^(?:Classic SDK full Verify rounds completes the source Runtime lifecycle across sessions, declared outputs and a reopened verification|Classic SDK full Verify rounds completes the generated Runtime lifecycle across sessions, declared outputs and a reopened verification)$",
+          "requiredNames": [
+            "Classic SDK full Verify rounds completes the source Runtime lifecycle across sessions, declared outputs and a reopened verification",
+            "Classic SDK full Verify rounds completes the generated Runtime lifecycle across sessions, declared outputs and a reopened verification"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-composed-archive-fixed-command-scope",
+      "sources": ["report:2026-11-09-latest-commit-review-fixes"],
+      "behavior": "组合Classic应用进入Archive后仍按原Build/Verify Action校验固定命令，保留扩展验收及归档中断恢复。",
+      "coverageLevel": "runtime",
+      "reproduction": "迁移夹具到当前无内容证明协议后，修复前八个组合应用生命周期在Archive preflight均报Classic check scope is invalid；该scope实现与6b4c26f一致。红色记录包含此前四项修复与当前夹具迁移，不能当作未改基线整套测试结果。",
+      "expected": "沿用原Action的固定argv/cwd/timeout，三种profile完成真实检查、扩展验收、Archive和Git交付；中断恢复不重复副作用。",
+      "forbidden": "把当前Archive阶段当成原检查种类而阻塞，或不校验原命令直接接受其他执行。",
+      "rootCause": "classicSdkCheckCommand从run.state.phase选择checkCommands，归档核对历史Verify Action时phase已是archive。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "namePattern": "^(?:runs actual full domain checks with source\\.js and archive recovery=false|runs actual hotfix domain checks with source\\.js and archive recovery=false|runs actual tweak domain checks with source\\.js and archive recovery=false|runs actual tweak domain checks with docs/openspec/changes/example/proposal\\.md and archive recovery=false|runs actual full domain checks with docs/superpowers/plans/example-plan\\.md and archive recovery=false|runs actual full domain checks with docs/superpowers/specs/example-design\\.md and archive recovery=false|runs actual tweak domain checks with docs/openspec/changes/example/proposal\\.md and archive recovery=true|runs actual full domain checks with docs/superpowers/plans/example-plan\\.md and archive recovery=true)$",
+          "requiredNames": [
+            "runs actual full domain checks with source.js and archive recovery=false",
+            "runs actual hotfix domain checks with source.js and archive recovery=false",
+            "runs actual tweak domain checks with source.js and archive recovery=false",
+            "runs actual tweak domain checks with docs/openspec/changes/example/proposal.md and archive recovery=false",
+            "runs actual full domain checks with docs/superpowers/plans/example-plan.md and archive recovery=false",
+            "runs actual full domain checks with docs/superpowers/specs/example-design.md and archive recovery=false",
+            "runs actual tweak domain checks with docs/openspec/changes/example/proposal.md and archive recovery=true",
+            "runs actual full domain checks with docs/superpowers/plans/example-plan.md and archive recovery=true"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-proven-orphan-check-explicit-retry",
+      "sources": ["report:2026-11-09-latest-commit-review-fixes"],
+      "behavior": "Native 原检查和进程树已确认退出后保存中断事实，沿原命令显式重试；存活/未知执行、外部Verifier和一次性检查不得自动重放。",
+      "coverageLevel": "runtime",
+      "reproduction": "将原回归错误文案对齐当前响应后，未修改的Native源代码在owner与child都dead时仍拒绝普通查询/续行，orphan-red.json记录214行失败。",
+      "expected": "原operationId/命令/执行次数保留，已停止process登记清除；未显式retry返回原中断结果，retry后真实执行一次；相关活跃/未知/外部Verifier反例继续阻塞。",
+      "forbidden": "已经停止的执行永远卡在running，或未证明停止就接管、推断外部Verifier结束、隐式重跑或绕过retry预算。",
+      "rootCause": "简化后的reserve无条件拒绝running，遗漏原进程停止核对与中断持久化；恢复转中断后又遗留activeProcess。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+          "namePattern": "^(?:Native portable unconfirmed check termination persists a proven orphan interruption before allowing an explicit check retry|Native portable unconfirmed check termination preserves the registered process and blocks retries for runtime checks|Native portable unconfirmed check termination preserves the registered process and blocks retries for verifier checks|Native portable unconfirmed check termination preserves the registered process and blocks retries for legacy-verifier checks)$",
+          "requiredNames": [
+            "Native portable unconfirmed check termination persists a proven orphan interruption before allowing an explicit check retry",
+            "Native portable unconfirmed check termination preserves the registered process and blocks retries for runtime checks",
+            "Native portable unconfirmed check termination preserves the registered process and blocks retries for verifier checks",
+            "Native portable unconfirmed check termination preserves the registered process and blocks retries for legacy-verifier checks"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path returns a retry action for an interrupted check and reruns it explicitly|Native portable Runtime vertical path recovers an orphaned running check only when process exit can be proven|Native portable Runtime vertical path does not infer that an external Verifier ended when its dispatch process exits|Native portable Runtime vertical path returns an interrupted non-repeatable check to Build before exposing retry)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path returns a retry action for an interrupted check and reruns it explicitly",
+            "Native portable Runtime vertical path recovers an orphaned running check only when process exit can be proven",
+            "Native portable Runtime vertical path does not infer that an external Verifier ended when its dispatch process exits",
+            "Native portable Runtime vertical path returns an interrupted non-repeatable check to Build before exposing retry"
           ]
         }
       ]
@@ -23181,6 +23912,229 @@
           "patch": {
             "file": "docs/research/2026-11-09-workflow-document-handoff-removal-patch.patch",
             "sha256": "c29b71cbea1fe3288357ee3b880017d057627b8f7d0f72b0228c1fc6188b3a37"
+          }
+        }
+      }
+    },
+    {
+      "id": "issue-188-evidence",
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "撤下扫描 submodule HEAD/dirty 内容来计算输入指纹的证明；Git 本身的提交标识和工作区仍保留。替代契约验证原 Run 的路径别名归属、真实检查失败和 Agent 选择复用，不再声称验证已删除的子模块内容摘要。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+            "namePattern": "^(?:continues the same Native Verify after an Agent accepts an ordinary edit without content proof|keeps a real failed Native check failed after file edits without replay|continues Native Verify and Archive through the generated Runtime without content proof|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+            "requiredNames": [
+              "continues the same Native Verify after an Agent accepts an ordinary edit without content proof",
+              "keeps a real failed Native check failed after file edits without replay",
+              "continues Native Verify and Archive through the generated Runtime without content proof",
+              "blocks Native Archive when a new real check fails after an accepted pass",
+              "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+            "namePattern": "^(?:continues the original Native Run through a parent directory alias|continues the original Native Run through a generated Runtime and parent directory alias)$",
+            "requiredNames": [
+              "continues the original Native Run through a parent directory alias",
+              "continues the original Native Run through a generated Runtime and parent directory alias"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-240-failed-incomplete-checks",
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "撤下检查输入文件枚举与不完整快照策略；Agent 选择实际命令，Runtime 保留真实失败、失败后的归档阻塞和非重复执行来源，不复用已失败检查。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-verifier-protocol.test.ts",
+            "namePattern": "^(?:Native package-local Verifier protocol rejects pass when a required check failed or any criterion did not pass)$",
+            "requiredNames": [
+              "Native package-local Verifier protocol rejects pass when a required check failed or any criterion did not pass"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+            "namePattern": "^(?:continues the same Native Verify after an Agent accepts an ordinary edit without content proof|keeps a real failed Native check failed after file edits without replay|continues Native Verify and Archive through the generated Runtime without content proof|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+            "requiredNames": [
+              "continues the same Native Verify after an Agent accepts an ordinary edit without content proof",
+              "keeps a real failed Native check failed after file edits without replay",
+              "continues Native Verify and Archive through the generated Runtime without content proof",
+              "blocks Native Archive when a new real check fails after an accepted pass",
+              "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
+    },
+    {
+      "id": "issue-391-reference-sync",
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "保留公开 spec sync 的输入校验、正文链接替换、代码/引用示例保护、actor 审计、过期状态和任意语义替换拒绝；仅撤下内容指纹断言。审计改读 spec-sync/UUID.json，失败时保留事实并回滚未提交正文，不恢复内容寻址或内容摘要。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-reliability-regressions.test.ts",
+            "namePattern": "^(?:Native reliability issue regressions audits reference sync and preserves unaffected passes while rejecting semantic and stale updates)$",
+            "requiredNames": [
+              "Native reliability issue regressions audits reference sync and preserves unaffected passes while rejecting semantic and stale updates"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
+    },
+    {
+      "id": "classic-existing-tests-as-verification-command",
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "撤下本案例中依赖文件/日志内容摘要、编辑证明或自动漂移的策略。保留原来源和完整旧正文；显式修订、真实失败/超时、原用户决定、检查来源及无重复副作用继续由逐项选择器执行。具体差异与保留行为见记录。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+            "namePattern": "^(?:Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK full Verify rounds reports the current continuation after failure and accepts a revised report after Build repair|Classic SDK tweak Verify rounds reports the current continuation after failure and accepts a revised report after Build repair|Classic SDK hotfix Verify rounds reports the current continuation after failure and accepts a revised report after Build repair)$",
+            "requiredNames": [
+              "Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+              "Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+              "Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+              "Classic SDK full Verify rounds reports the current continuation after failure and accepts a revised report after Build repair",
+              "Classic SDK tweak Verify rounds reports the current continuation after failure and accepts a revised report after Build repair",
+              "Classic SDK hotfix Verify rounds reports the current continuation after failure and accepts a revised report after Build repair"
+            ]
+          },
+          {
+            "file": "test/domains/skill/classic-sdk-skill-routing.test.ts",
+            "namePattern": "^(?:Classic Chinese Skill SDK routing routes SDK Verify review failures and checked reports through one Run)$",
+            "requiredNames": [
+              "Classic Chinese Skill SDK routing routes SDK Verify review failures and checked reports through one Run"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
+          }
+        }
+      }
+    },
+    {
+      "id": "classic-custom-validation-script-and-result",
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "撤下本案例中依赖文件/日志内容摘要、编辑证明或自动漂移的策略。保留原来源和完整旧正文；显式修订、真实失败/超时、原用户决定、检查来源及无重复副作用继续由逐项选择器执行。具体差异与保留行为见记录。",
+        "authorization": "report:2026-11-09-latest-commit-review-fixes",
+        "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+            "namePattern": "^(?:Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK full Verify rounds reports the current continuation after failure and accepts a revised report after Build repair|Classic SDK tweak Verify rounds reports the current continuation after failure and accepts a revised report after Build repair|Classic SDK hotfix Verify rounds reports the current continuation after failure and accepts a revised report after Build repair|Classic SDK full Verify rounds keeps the selected report path and original check after Agent-accepted report edits|Classic SDK tweak Verify rounds keeps the selected report path and original check after Agent-accepted report edits|Classic SDK hotfix Verify rounds keeps the selected report path and original check after Agent-accepted report edits)$",
+            "requiredNames": [
+              "Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+              "Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+              "Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+              "Classic SDK full Verify rounds reports the current continuation after failure and accepts a revised report after Build repair",
+              "Classic SDK tweak Verify rounds reports the current continuation after failure and accepts a revised report after Build repair",
+              "Classic SDK hotfix Verify rounds reports the current continuation after failure and accepts a revised report after Build repair",
+              "Classic SDK full Verify rounds keeps the selected report path and original check after Agent-accepted report edits",
+              "Classic SDK tweak Verify rounds keeps the selected report path and original check after Agent-accepted report edits",
+              "Classic SDK hotfix Verify rounds keeps the selected report path and original check after Agent-accepted report edits"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-registry.json",
+            "sha256": "a6262a8ab94973b1b3c09a7ce5bdfae671ba3fa8d7c0eea71ed3037168287bfb"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-tests.json",
+            "sha256": "72c516436264ca9b3c57829c9cc2aec22c04522706d194429224e5e4817a7972"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-mapping.json",
+            "sha256": "ca6a77c352673cd0a7ea186dbb59a8a58979cae6a938f57eaa5d076e77cbd030"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-workflow-review-fixes-patch.patch",
+            "sha256": "056f7c4e8fc376cb033e7d8505c09f6ea90fd1f0618d7bc954eef0d433b250cc"
           }
         }
       }

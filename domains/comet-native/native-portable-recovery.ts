@@ -14,16 +14,13 @@ import {
   rebuildNativeLocalExecution,
   writeNativeLocalExecution,
 } from './native-local-execution.js';
-import { inspectNativePortableCheckExecution } from './native-portable-checks.js';
+import { returnNativeCandidateToBuild } from './native-loop-runtime.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
+import { inspectNativePortableCheckExecution } from './native-portable-checks.js';
 import {
-  inspectNativeSupervisorOverlay,
-  removeNativeSupervisorOverlayIfUnchanged,
-} from './native-supervisor-overlay.js';
-import {
+  ensureNativePortableReport,
   nativeLocalExecutionFile,
   nativePortableStateFile,
-  ensureNativePortableReport,
   readNativePortableChange,
 } from './native-portable-runtime.js';
 import {
@@ -31,9 +28,12 @@ import {
   compareAndSwapNativePortableState,
   parseNativePortableState,
 } from './native-portable-state.js';
-import { returnNativeCandidateToBuild } from './native-loop-runtime.js';
 import { toNativePortableText } from './native-portable-text.js';
 import type { NativeLocalExecutionState, NativePortableState } from './native-portable-types.js';
+import {
+  inspectNativeSupervisorOverlay,
+  removeNativeSupervisorOverlayIfUnchanged,
+} from './native-supervisor-overlay.js';
 import type { NativeProjectPaths } from './native-types.js';
 
 export interface NativePortableRecoveryResult {
@@ -288,7 +288,7 @@ export async function recoverNativePortableChange(options: {
             execution: { ...inspected.local.execution, status: 'interrupted' },
             checks: inspected.local.checks.map((check) =>
               check.status === 'planned' || check.status === 'running'
-                ? { ...check, status: 'interrupted' }
+                ? { ...check, status: 'interrupted', activeProcess: null }
                 : check,
             ),
           };

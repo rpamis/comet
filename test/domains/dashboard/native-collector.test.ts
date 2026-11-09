@@ -1,12 +1,11 @@
-import { promises as fs } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { NATIVE_CHANGE_STATE_FILE } from '../../../domains/comet-native/native-change.js';
 import {
-  hashNativeParentContract,
   NATIVE_CHILDREN_SCHEMA,
   type NativeChildrenContract,
 } from '../../../domains/comet-native/native-children.js';
@@ -29,21 +28,21 @@ import {
   type NativeLocalExecutionState,
   type NativePortableState,
 } from '../../../domains/comet-native/native-portable-types.js';
+import * as nativeRunStore from '../../../domains/comet-native/native-sdk-state-store.js';
+import { createNativeSupervisorState } from '../../../domains/comet-native/native-supervisor-model.js';
+import { writeNativeSupervisorState } from '../../../domains/comet-native/native-supervisor-state.js';
+import { DashboardIndexReconciler } from '../../../domains/dashboard/index-reconciler.js';
+import { DashboardIndexStore } from '../../../domains/dashboard/index-store.js';
 import {
   collectNativeDashboardChangeDetail,
   collectNativeDashboardChangePage,
   collectNativeDashboardOverview,
   collectNativeDashboardProjection,
 } from '../../../domains/dashboard/native-collector.js';
-import { DashboardIndexStore } from '../../../domains/dashboard/index-store.js';
-import { DashboardIndexReconciler } from '../../../domains/dashboard/index-reconciler.js';
 import * as dashboardWorkspace from '../../../domains/dashboard/workspace.js';
-import * as nativeRunStore from '../../../domains/comet-native/native-sdk-state-store.js';
+import type { WorkflowRun } from '../../../domains/engine/runtime.js';
 import * as applicationRunStore from '../../../domains/workflow-application/application.js';
 import * as changeOwnership from '../../../domains/workflow-contract/change-runtime-owner.js';
-import { createNativeSupervisorState } from '../../../domains/comet-native/native-supervisor-model.js';
-import { writeNativeSupervisorState } from '../../../domains/comet-native/native-supervisor-state.js';
-import type { WorkflowRun } from '../../../domains/engine/runtime.js';
 
 const NOW = '2026-08-09T08:00:00.000Z';
 const LEGACY_ARCHIVE_FIXTURE = path.resolve('docs/comet/archive/2026-07-21-classic-config-block');
@@ -273,7 +272,8 @@ describe('Native Dashboard v2 collector', () => {
       loop: { ...initial.loop, stage: 'building' },
       state_version: 12,
       acceptance,
-      children_contract_hash: hashNativeParentContract({ acceptance, children: contract }),
+      children_contract_ref: 'fixture:shape:1',
+      children_contract: contract,
     });
     const changeDir = await writeActiveState(state);
     await fs.writeFile(
@@ -323,7 +323,7 @@ describe('Native Dashboard v2 collector', () => {
           stepId: 'supervisor.child.integration-checks',
           status: 'succeeded',
           input: {
-            activation: { child: 'foundation', contractHash: state.children_contract_hash },
+            activation: { child: 'foundation', contractRef: state.children_contract_ref },
           },
         },
         {
@@ -331,7 +331,7 @@ describe('Native Dashboard v2 collector', () => {
           stepId: 'supervisor.child.checks',
           status: 'running',
           input: {
-            activation: { child: 'native-extension', contractHash: state.children_contract_hash },
+            activation: { child: 'native-extension', contractRef: state.children_contract_ref },
           },
           claim: { executorId: 'native-supervisor-child-checks', token: 'test-claim' },
         },
@@ -373,7 +373,7 @@ describe('Native Dashboard v2 collector', () => {
       id: 'sdk-parent:3-archive',
       stepId: 'supervisor.child.archive',
       status: 'succeeded',
-      input: { activation: { child: 'foundation', contractHash: state.children_contract_hash } },
+      input: { activation: { child: 'foundation', contractRef: state.children_contract_ref } },
     } as WorkflowRun['actions'][number]);
     const archived = await collectNativeDashboardChangePage(projectRoot, { status: 'active' });
     expect(archived.items[0].children.map(({ status }) => status)).toEqual([
@@ -470,7 +470,8 @@ describe('Native Dashboard v2 collector', () => {
       phase: 'build',
       loop: { ...base.loop, stage: 'building' },
       acceptance,
-      children_contract_hash: hashNativeParentContract({ acceptance, children: contract }),
+      children_contract_ref: 'fixture:shape:1',
+      children_contract: contract,
     });
     const parentDir = await writeActiveState(parent);
     await fs.writeFile(path.join(parentDir, 'children.yaml'), JSON.stringify(contract));
@@ -521,7 +522,7 @@ describe('Native Dashboard v2 collector', () => {
           id: 'sdk-parent:2',
           stepId: 'supervisor.child.archive',
           status: 'succeeded',
-          input: { activation: { child: child.name, contractHash: parent.children_contract_hash } },
+          input: { activation: { child: child.name, contractRef: parent.children_contract_ref } },
           outcome: { output: { child: child.name, archiveRef: archiveName } },
         },
       ],
@@ -812,7 +813,8 @@ describe('Native Dashboard v2 collector', () => {
         next_action: 'Advance ready children.',
       },
       acceptance,
-      children_contract_hash: hashNativeParentContract({ acceptance, children: contract }),
+      children_contract_ref: 'fixture:shape:1',
+      children_contract: contract,
     });
     const parentDir = await writeActiveStateAt(projectRoot, parentState);
     await fs.writeFile(

@@ -1,45 +1,33 @@
-import { reviseClassicSdkWork } from '../../../domains/comet-classic/classic-sdk-revision.js';
-import { renderCometProjectGitignore } from '../../../domains/workflow-contract/project-gitignore.js';
-import { inspectCometHook } from '../../../domains/comet-entry/hook-router.js';
-import { isClassicSdkCancellationComplete } from '../../../domains/comet-classic/classic-sdk-run-lifecycle.js';
-import { EventEmitter } from 'node:events';
-import { PassThrough } from 'node:stream';
-import * as spawnedCommands from '../../../platform/process/owned-command.js';
-import * as processTermination from '../../../platform/process/terminate-process-tree.js';
-import * as processIdentity from '../../../platform/process/process-identity.js';
-import { inspectClassicSdkActionRecovery } from '../../../domains/comet-classic/classic-sdk-check-recovery.js';
-import {
-  hashRuntimeValue,
-  createFileRuntimeStore,
-  defineWorkflow,
-} from '../../../domains/engine/runtime.js';
-import { classicSdkApplicationForRun } from '../../../domains/comet-classic/classic-sdk-revision-application.js';
-import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
-import { resolveClassicLocalTarget } from '../../../domains/comet-classic/classic-runtime-paths.js';
-import { parse, stringify } from 'yaml';
-import {
-  classicSdkCheckLogHash,
-  classicSdkCheckDirectoryRef,
-} from '../../../domains/comet-classic/classic-sdk-check-record.js';
-import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { execFile, execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
+import * as openSpecCommands from '../../../domains/comet-classic/classic-openspec-command.js';
+import { resolveClassicLocalTarget } from '../../../domains/comet-classic/classic-runtime-paths.js';
+import { classicArchiveDocumentOutputs } from '../../../domains/comet-classic/classic-sdk-archive-documents.js';
+import { classicSdkCheckDirectoryRef } from '../../../domains/comet-classic/classic-sdk-check-record.js';
+import { inspectClassicSdkActionRecovery } from '../../../domains/comet-classic/classic-sdk-check-recovery.js';
 import { executeClassicSdkCommandCheck } from '../../../domains/comet-classic/classic-sdk-check.js';
 import * as sdkOutput from '../../../domains/comet-classic/classic-sdk-output.js';
+import { reviseClassicSdkWork } from '../../../domains/comet-classic/classic-sdk-revision.js';
+import { isClassicSdkCancellationComplete } from '../../../domains/comet-classic/classic-sdk-run-lifecycle.js';
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
 import { classicVerificationReportReceipt } from '../../../domains/comet-classic/classic-verification-report.js';
-import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
-import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
-import { requireFileSymlink } from '../../helpers/file-symlink.js';
+import { inspectCometHook } from '../../../domains/comet-entry/hook-router.js';
+import { createFileRuntimeStore, hashRuntimeValue } from '../../../domains/engine/runtime.js';
+import { renderCometProjectGitignore } from '../../../domains/workflow-contract/project-gitignore.js';
+import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
+import * as spawnedCommands from '../../../platform/process/owned-command.js';
+import * as processIdentity from '../../../platform/process/process-identity.js';
+import * as processTermination from '../../../platform/process/terminate-process-tree.js';
 import { createOpenSpecArchiveFixture } from '../../helpers/classic-openspec-fixture.js';
-import { classicArchiveDocumentOutputs } from '../../../domains/comet-classic/classic-sdk-archive-documents.js';
-import { runClassicEditReviewCommand } from '../../../domains/comet-classic/classic-edit-review-command.js';
-import * as openSpecCommands from '../../../domains/comet-classic/classic-openspec-command.js';
+import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
 const roots: string[] = [];
 // Windows full 生命周期包含多轮归档与真实进程树核对，使用有界预算保留完整断言。
@@ -571,6 +559,7 @@ async function fixture(
       evidenceId: wait.id,
       kind: wait.kind,
       ...receipt,
+      contentHash: action.inputHash,
       submissionId: randomUUID(),
       context: { requestId: randomUUID(), projectRoot },
     });
@@ -807,63 +796,6 @@ it('records an explicitly chosen Build configuration and its approval in one CLI
   expect(run.waits.filter((wait) => wait.stepId === 'full.build.confirm')).toHaveLength(1);
 });
 
-it.each(['input', 'environment', 'unmarked', 'log'] as const)(
-  'does not reuse SDK checks after %s changes',
-  async (mutation) => {
-    const f = await fixture('tweak', false);
-    const argv = f.command('shared');
-    vi.stubEnv('COMET_REUSE_TEST_ENV', 'before');
-    await f.put(
-      '.comet/check-policy.json',
-      JSON.stringify({
-        version: 2,
-        commands: [{ argv, cwd: '.', files: ['source.js'], env: ['COMET_REUSE_TEST_ENV'] }],
-      }),
-    );
-    await f.cli(
-      'guard',
-      'example',
-      'build',
-      '--apply',
-      ...(mutation === 'unmarked' ? [] : ['--local']),
-      '--',
-      ...argv,
-    );
-    if (mutation === 'input') await f.put('source.js', 'export const ready = false;\n');
-    if (mutation === 'environment') vi.stubEnv('COMET_REUSE_TEST_ENV', 'after');
-    if (mutation === 'log') {
-      const action = (await f.inspect()).run.actions.find(
-        (entry) => entry.ref === 'classic-check',
-      )!;
-      const output = action.outcome!.output as { receiptRef: string };
-      const log = (await resolveClassicLocalTarget(
-        f.projectRoot,
-        path.join(f.projectRoot, output.receiptRef),
-      ))!.target;
-      await fs.writeFile(log, 'changed execution log');
-    }
-    const result = await f.invoke(
-      'guard',
-      'example',
-      'verify',
-      '--report',
-      f.reportRef,
-      '--apply',
-      '--local',
-      '--',
-      ...argv,
-    );
-    if (mutation === 'log') {
-      expect(result.exitCode).not.toBe(0);
-      expect(await fs.readFile(f.checkCount, 'utf8')).toBe('shared\n');
-    } else {
-      expect(result.exitCode, result.stdout).toBe(0);
-      expect(result.response.data.reused).toBe(false);
-      expect(await fs.readFile(f.checkCount, 'utf8')).toBe('shared\nshared\n');
-    }
-  },
-);
-
 it('uses the committed claim without redundant inspection and rejects a stale supplied Run before executing', async () => {
   const f = await fixture('tweak', false);
   await f.cli('state', 'complete-build', 'example');
@@ -887,7 +819,7 @@ it('uses the committed claim without redundant inspection and rejects a stale su
 });
 
 it.each(['changed-path', 'new-preferred-command'] as const)(
-  'executes the newly selected PATH command instead of reusing another executable (%s)',
+  'executes an Agent-selected PATH command when reuse is not requested (%s)',
   async (mutation) => {
     const f = await fixture('tweak', false);
     const parent = path.dirname(f.projectRoot);
@@ -937,7 +869,6 @@ it.each(['changed-path', 'new-preferred-command'] as const)(
       '--report',
       f.reportRef,
       '--apply',
-      '--local',
       '--',
       ...argv,
     );
@@ -1052,7 +983,6 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
       expect(verified).toMatchObject({
         phase: 'archive',
         reused: true,
-        changedDuringExecution: [],
       });
       const proposal = await f.cli(
         'state',
@@ -1071,9 +1001,6 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
         'local',
       );
       await f.put('source.js', 'export const ready = true; // revised implementation\n');
-      const blocked = await f.invoke('guard', 'example', 'archive', '--apply');
-      expect(blocked.exitCode).not.toBe(0);
-      expect(blocked.stdout).toContain('reopen-verification');
       await expect(openSpec.invocations()).rejects.toMatchObject({ code: 'ENOENT' });
       const stale = await f.cli('state', 'next', 'example');
       await f.cli(
@@ -1095,7 +1022,6 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
         '--report',
         f.reportRef,
         '--apply',
-        '--local',
         '--',
         ...argv,
       );
@@ -1151,54 +1077,12 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
         'local',
       );
       vi.stubEnv('CODEX_THREAD_ID', 'classic-archive-session');
-      if (profile === 'full') {
-        for (const ref of ['docs/superpowers/specs/technical design.md', f.planRef]) {
-          const original = await fs.readFile(path.join(f.projectRoot, ref), 'utf8');
-          await f.put(ref, `${original}\nUnapproved document change.\n`);
-          const changed = await f.invoke('guard', 'example', 'archive', '--apply');
-          expect(changed.exitCode).not.toBe(0);
-          expect(changed.stdout).toMatch(/changed after accepted evidence/u);
-          await expect(openSpec.invocations()).rejects.toMatchObject({ code: 'ENOENT' });
-          await f.put(ref, original);
-        }
-      }
       await f.cli('guard', 'example', 'archive', '--apply');
       expect(await openSpec.invocations()).toEqual([
         { args: ['archive', 'example', '--yes'], cwd: await fs.realpath(f.projectRoot) },
       ]);
       git('add', '--all');
       git('commit', '-m', 'archive');
-      if (profile === 'full') {
-        const archivedRun = (await f.inspect()).run;
-        const archiveRef = (
-          archivedRun.outputs['full.archive.execute'].value as { archiveDirectory: string }
-        ).archiveDirectory;
-        const receiptRef = `${archiveRef}/.comet/archive-documents.json`;
-        for (const ref of ['docs/superpowers/specs/technical design.md', f.planRef, receiptRef]) {
-          const original = await fs.readFile(path.join(f.projectRoot, ref), 'utf8');
-          if (ref === receiptRef) {
-            const receipt = JSON.parse(original);
-            receipt.documents['docs/superpowers/specs/technical design.md'].original +=
-              '\nUnapproved receipt change.\n';
-            await f.put(ref, JSON.stringify(receipt));
-          } else await f.put(ref, `${original}\nUnapproved post-Archive content.\n`);
-          git('add', '--', ref);
-          git('commit', '--amend', '--no-edit');
-          const rejected = await f.invoke(
-            'state',
-            'complete-delivery',
-            'example',
-            '--commit',
-            git('rev-parse', 'HEAD'),
-          );
-          expect(rejected.exitCode).not.toBe(0);
-          expect(rejected.stdout).toMatch(/Classic recovered Archive document/u);
-          expect((await f.inspect()).run.revision).toBe(archivedRun.revision);
-          await f.put(ref, original);
-          git('add', '--', ref);
-          git('commit', '--amend', '--no-edit');
-        }
-      }
       const beforeDelivery = (await f.inspect()).run;
       const archiveRef = (
         beforeDelivery.outputs[`${profile}.archive.execute`].value as { archiveDirectory: string }
@@ -1216,7 +1100,9 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
         git('rev-parse', 'HEAD'),
       );
       expect(rejectedInternalFile.exitCode).not.toBe(0);
-      expect(rejectedInternalFile.stdout).toContain(unapproved);
+      expect(rejectedInternalFile.stdout, JSON.parse(rejectedInternalFile.stdout).stderr).toContain(
+        unapproved,
+      );
       expect((await f.inspect()).run).toEqual(beforeDelivery);
       await fs.unlink(path.join(f.projectRoot, unapproved));
       git('add', '--update', '--', unapproved);
@@ -1235,7 +1121,7 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
     profile === 'full' ? fullLifecycleTimeout : undefined,
   );
 
-  it('reuses the same successful command across Build and Verify after validating its inputs and log', async () => {
+  it('reuses the Agent-selected successful command across Build and Verify with its original source', async () => {
     const f = await fixture(profile, false);
     const argv = f.command('shared');
     await f.put('source.js', 'export const ready = false;\n');
@@ -1298,11 +1184,7 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
     expect(checks.at(-1)?.outcome?.output).toMatchObject({
       reused: true,
       reusedFrom: checks[0].id,
-      deliveryInputs: { 'source.js': expect.stringMatching(/^(?:git:)?[a-f0-9]{40,64}$/) },
     });
-    expect(
-      Object.keys((checks.at(-1)?.outcome?.output as { deliveryInputs: object }).deliveryInputs),
-    ).not.toContain('node_modules/.modules.yaml');
   });
 
   it.each(['build', 'verify'] as const)(
@@ -1548,7 +1430,7 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
         evidenceId: wait.id,
         kind: wait.kind,
         ref: oldOutput.receiptRef,
-        contentHash: oldOutput.contentHash,
+        contentHash: oldCheck.inputHash,
         submissionId: randomUUID(),
         context: { requestId: randomUUID(), projectRoot: f.projectRoot },
       }),
@@ -1564,7 +1446,7 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
     expect(await fs.readFile(f.checkCount, 'utf8')).toBe('build\nverify\nverify\n');
   });
 
-  it('blocks same-round report drift before and after the check, then resumes without executing it twice', async () => {
+  it('keeps the selected report path and original check after Agent-accepted report edits', async () => {
     const f = await fixture(profile);
     await f.acceptReport();
     const before = (await f.inspect()).run;
@@ -1574,27 +1456,21 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
     expect(changedRef.exitCode).not.toBe(0);
     expect(changedRef.stdout).toContain('report does not match the current Run');
     expect((await f.inspect()).run).toEqual(before);
-    await f.put(f.reportRef, '# Verification\nChanged after accepted evidence.\n');
-    const drift = await f.verify();
-    expect(drift.exitCode).not.toBe(0);
-    expect(drift.stdout).toContain('changed after accepted evidence');
-    expect((await f.inspect()).run).toEqual(before);
-    await f.put(f.reportRef, f.reportText);
+    await f.put(f.reportRef, '# Verification\nAgent accepted the updated report.\n');
     const { runtime, run } = await f.inspect();
     const checked = await executeClassicSdkCommandCheck(runtime, {
       runId: run.runId,
       projectRoot: f.projectRoot,
       argv: f.command('verify'),
     });
-    await f.put(f.reportRef, '# Verification\nChanged after successful check.\n');
-    const afterCheckDrift = await f.verify();
-    expect(afterCheckDrift.exitCode).not.toBe(0);
-    expect(afterCheckDrift.stdout).toContain('changed after accepted evidence');
-    expect((await f.inspect()).run).toEqual(checked);
-    await f.put(f.reportRef, f.reportText);
+    const original = checked.actions.at(-1)!;
+    await f.put(f.reportRef, '# Verification\nAgent accepted a further report explanation.\n');
     const resumed = await f.verify();
     expect(resumed.exitCode, resumed.stdout).toBe(0);
     expect(resumed.response.data.phase).toBe('archive');
+    expect((await f.inspect()).run.actions.find((action) => action.id === original.id)).toEqual(
+      original,
+    );
     expect(await fs.readFile(f.checkCount, 'utf8')).toBe('build\nverify\n');
   });
 });
@@ -1799,7 +1675,7 @@ describe('Classic SDK Agent input judgment', () => {
       fullLifecycleTimeout,
     );
   }
-  it('observes a batch of unknown-file saves in the current Agent and reuses the selected real command', async () => {
+  it('continues after a batch of Agent-accepted saves without edit-review proof', async () => {
     const f = await fixture('tweak', false);
     const argv = f.command('shared');
     await f.put('notes.unknown', 'original input');
@@ -1808,35 +1684,6 @@ describe('Classic SDK Agent input judgment', () => {
     const before = (await f.inspect()).run;
     const original = before.actions.filter((action) => action.ref === 'classic-check').at(-1)!;
     for (let save = 0; save < 10; save++) await f.put('notes.unknown', `Explanation ${save}`);
-    const observed = (await runClassicEditReviewCommand({
-      projectRoot: f.projectRoot,
-      name: 'example',
-      operation: 'observe',
-      sessionId: 'current-agent',
-    })) as {
-      recordTemplate: Record<string, unknown>;
-      proposal: { proposalHash: string };
-      observation: { changes: Array<{ path: string }> };
-    };
-    expect(observed.observation.changes.some((change) => change.path === 'notes.unknown')).toBe(
-      true,
-    );
-    const file = path.join(path.dirname(f.projectRoot), 'observed-judgment.json');
-    await fs.writeFile(
-      file,
-      JSON.stringify({
-        ...observed.recordTemplate,
-        decision: 'non-behavioral',
-        summary: 'The counter command is unaffected by these explanatory inputs.',
-        retainedCheckActionIds: [original.id],
-      }),
-    );
-    await runClassicEditReviewCommand({
-      projectRoot: f.projectRoot,
-      name: 'example',
-      operation: 'record',
-      file,
-    });
     expect((await f.inspect()).run).toEqual(before);
     const verified = await f.invoke(
       'guard',
@@ -1851,13 +1698,16 @@ describe('Classic SDK Agent input judgment', () => {
     );
     expect(verified.exitCode, verified.stdout).toBe(0);
     expect(verified.response.data).toMatchObject({ reused: true, exitCode: 0 });
+    expect((await f.inspect()).run.actions.find((action) => action.id === original.id)).toEqual(
+      original,
+    );
     expect(await fs.readFile(f.checkCount, 'utf8')).toBe('shared\n');
     expect(await fs.readFile(path.join(f.projectRoot, 'notes.unknown'), 'utf8')).toBe(
       'Explanation 9',
     );
   });
   it.each([true, false])(
-    'only reuses a raw README check when the current Agent explicitly retains it (retain: %s)',
+    'runs or reuses the README check according to the Agent selection (retain: %s)',
     async (retain) => {
       const f = await fixture('tweak', false);
       const argv = f.command('shared');
@@ -1875,36 +1725,6 @@ describe('Classic SDK Agent input judgment', () => {
       const run = (await f.inspect()).run;
       const original = run.actions.filter((action) => action.ref === 'classic-check').at(-1)!;
       const after = '# Guide\n\nExplain how to use the project.\n';
-      const file = path.join(path.dirname(f.projectRoot), 'readme-judgment.json');
-      await fs.writeFile(
-        file,
-        JSON.stringify({
-          tool_name: 'Write',
-          tool_input: { file_path: path.join(f.projectRoot, 'README.md'), content: after },
-        }),
-      );
-      const judged = (await runClassicEditReviewCommand({
-        projectRoot: f.projectRoot,
-        name: 'example',
-        operation: 'judge',
-        file,
-        sessionId: 'current-agent',
-      })) as { recordTemplate: Record<string, unknown> };
-      await fs.writeFile(
-        file,
-        JSON.stringify({
-          ...judged.recordTemplate,
-          decision: 'non-behavioral',
-          summary: 'Usage prose does not affect this command.',
-          retainedCheckActionIds: retain ? [original.id] : [],
-        }),
-      );
-      await runClassicEditReviewCommand({
-        projectRoot: f.projectRoot,
-        name: 'example',
-        operation: 'record',
-        file,
-      });
       await f.put('README.md', after);
       const verified = await f.invoke(
         'guard',
@@ -1913,12 +1733,15 @@ describe('Classic SDK Agent input judgment', () => {
         '--report',
         f.reportRef,
         '--apply',
-        '--local',
+        ...(retain ? ['--local'] : []),
         '--',
         ...argv,
       );
       expect(verified.exitCode, verified.stdout).toBe(0);
       expect(verified.response.data).toMatchObject({ reused: retain, exitCode: 0 });
+      expect((await f.inspect()).run.actions.find((action) => action.id === original.id)).toEqual(
+        original,
+      );
       expect(await fs.readFile(f.checkCount, 'utf8')).toBe(
         retain ? 'shared\n' : 'shared\nshared\n',
       );
@@ -2214,7 +2037,7 @@ describe('Classic SDK interrupted check recovery', () => {
       claim: action.claim,
       command: { argv, cwd: '.', timeoutMs: 300_000 },
       record: { status: 'completed' },
-      evidence: { receiptRef: { exists: true }, manifestRef: { exists: true } },
+      evidence: { receiptRef: { exists: true } },
       recordOutcomeRequest: {
         operation: 'record-outcome',
         runId: run.runId,
@@ -2364,106 +2187,6 @@ describe('Classic SDK stale Build check recovery', () => {
 });
 
 describe('Classic SDK original execution receipts', () => {
-  async function portableCheck() {
-    const f = await fixture('tweak', false);
-    await f.cli('state', 'complete-build', 'example');
-    const { runtime, run } = await f.inspect();
-    const checked = await executeClassicSdkCommandCheck(runtime, {
-      runId: run.runId,
-      projectRoot: f.projectRoot,
-      argv: f.command('proof-boundary'),
-    });
-    const action = checked.actions.find(
-      (entry) => entry.ref === 'classic-check' && entry.status === 'succeeded',
-    )!;
-    const output = action.outcome!.output as { receiptRef: string; contentHash: string };
-    const local = (await resolveClassicLocalTarget(
-      f.projectRoot,
-      path.join(f.projectRoot, output.receiptRef),
-    ))!.target;
-    const stateFile = path.join(f.projectRoot, 'openspec/changes/example/comet-state.yaml');
-    const original = await fs.readFile(stateFile, 'utf8');
-    const validate = () =>
-      classicSdkCheckLogHash(
-        f.projectRoot,
-        checked,
-        action,
-        output.receiptRef,
-        output.contentHash,
-        'Portable check log',
-      );
-    return { f, checked, action, output, local, stateFile, original, validate };
-  }
-
-  it('rejects a symbolic link replacing the local check log', async (context) => {
-    await requireFileSymlink(context);
-    const { local, stateFile, validate } = await portableCheck();
-    await fs.unlink(local);
-    await fs.symlink(stateFile, local);
-    await expect(validate()).rejects.toThrow();
-    expect((await fs.lstat(local)).isSymbolicLink()).toBe(true);
-  });
-
-  it('uses only a matching committed portable check when the local log is missing', async () => {
-    const { f, checked, action, output, local, stateFile, original, validate } =
-      await portableCheck();
-    await fs.writeFile(local, 'tampered log');
-    await expect(validate()).rejects.toThrow('changed');
-    await fs.unlink(local);
-    await fs.mkdir(local);
-    await expect(validate()).rejects.toThrow('real file');
-    await fs.rmdir(local);
-    await expect(validate()).resolves.toBe(output.contentHash);
-    for (const mutation of ['hash', 'claim', 'future', 'marker'] as const) {
-      const document = parse(original);
-      const checkpoint = document.run_checkpoint;
-      if (mutation === 'hash') checkpoint.hash = '0'.repeat(64);
-      if (mutation === 'claim') {
-        checkpoint.run.actions.find(
-          (entry: { id: string }) => entry.id === action.id,
-        ).claim.executorId = 'other-executor';
-        checkpoint.hash = hashRuntimeValue(checkpoint.run);
-      }
-      if (mutation === 'future') checkpoint.sourceRevision = checked.revision + 1;
-      checkpoint.sourceHash = hashRuntimeValue({
-        hash: checkpoint.hash,
-        sourceRevision: checkpoint.sourceRevision,
-      });
-      await fs.writeFile(
-        stateFile,
-        (mutation === 'marker' ? '' : '# comet-execution: managed-run\n') + stringify(document),
-      );
-      await expect(validate(), mutation).rejects.toThrow();
-    }
-    await fs.writeFile(stateFile, original);
-    for (const changed of [
-      { ...action, attempt: action.attempt + 1 },
-      { ...action, status: 'unknown' as const },
-    ])
-      await expect(
-        classicSdkCheckLogHash(
-          f.projectRoot,
-          checked,
-          changed,
-          output.receiptRef,
-          output.contentHash,
-          'Portable check log',
-        ),
-      ).rejects.toThrow();
-    await fs.writeFile(path.join(f.projectRoot, 'source.js'), 'export const ready = false;\n');
-    const drifted = await f.invoke(
-      'guard',
-      'example',
-      'build',
-      '--apply',
-      '--',
-      ...f.command('proof-boundary'),
-    );
-    expect(drifted.exitCode).not.toBe(0);
-    expect(drifted.stdout).toContain('inputs changed');
-    expect(await fs.readFile(f.checkCount, 'utf8')).toBe('proof-boundary\n');
-  });
-
   it.each([false, true])(
     'keeps a previously committed successful check usable without new receipts (checkpoint recovery=%s)',
     async (cold) => {

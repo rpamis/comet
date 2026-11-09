@@ -8,13 +8,13 @@ import {
   parseBadcaseDeclaration,
   readBaseRegistry,
 } from '../../scripts/lint/badcase-registration.mjs';
-import {
-  workflowRegressionEntries,
-  assertWorkflowAcceptanceComplete,
-  assertWorkflowMigrationEvidence,
-} from '../../scripts/lint/workflow-regressions.mjs';
 import { assertCoreRegressionResult } from '../../scripts/lint/core-regressions.mjs';
 import { mergeHistoricalRegressions } from '../../scripts/lint/historical-regressions.mjs';
+import {
+  assertWorkflowAcceptanceComplete,
+  assertWorkflowMigrationEvidence,
+  workflowRegressionEntries,
+} from '../../scripts/lint/workflow-regressions.mjs';
 
 const source = 'report:regression-fixture';
 function registry() {

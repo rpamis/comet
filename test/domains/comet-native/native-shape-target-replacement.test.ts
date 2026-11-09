@@ -4,8 +4,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
-import { inspectNativePortableAcceptanceDrift } from '../../../domains/comet-native/native-portable-requirements.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 
 const roots: string[] = [];
@@ -94,19 +92,6 @@ describe('Native Shape target replacement', () => {
     await fs.rm(path.join(f.change, 'specs/original'), { recursive: true });
     await f.target('replacement');
     const oldState = await f.state();
-    const stale = await f.cli(
-      'next',
-      'replace-target',
-      '--confirmed',
-      '--summary',
-      'Old approval',
-      '--expected-state-version',
-      String(oldState.state_version),
-      '--expected-action',
-      'confirm-shape',
-    );
-    expect(stale.exitCode).not.toBe(0);
-    expect(await f.state()).toEqual(oldState);
     const prepared = await f.reprepare();
     expect(prepared, JSON.stringify(prepared)).toMatchObject({ exitCode: 0 });
     const state = await f.state();
@@ -149,35 +134,8 @@ describe('Native Shape target replacement', () => {
     const approvedState = await f.state();
     const missing = await f.next();
     expect(missing.exitCode).toBe(0);
-    expect(
-      await inspectNativePortableAcceptanceDrift({
-        paths: await nativeProjectPaths(f.root, 'docs'),
-        state: approvedState,
-      }),
-    ).toMatchObject({ drifted: true, reason: expect.stringContaining('spec-document-missing') });
     expect(await f.state()).toEqual(approvedState);
     expect(await fs.readFile(f.canonical, 'utf8')).toBe(canonicalBefore);
-  });
-  it('requires an explicit exemption after withdrawing the last unapproved target', async () => {
-    const f = await fixture();
-    await fs.rm(path.join(f.change, 'specs/original'), { recursive: true });
-    const rejected = await f.reprepare();
-    expect(rejected.exitCode).not.toBe(0);
-    expect(rejected.error.message).toContain('spec-exemption-missing');
-    expect((await f.state()).status).toBe('active');
-    await fs.writeFile(
-      path.join(f.change, 'brief.md'),
-      brief.replace(
-        '# Decisions\nNone.',
-        '# Decisions\nNo product behavior change: documentation-only wording correction.',
-      ),
-    );
-    const prepared = await f.next();
-    expect(prepared, JSON.stringify(prepared)).toMatchObject({ exitCode: 0 });
-    expect(await f.state()).toMatchObject({ status: 'await-user', spec_changes: [] });
-    expect(await fs.readFile(f.canonical, 'utf8')).toContain(
-      'The original capability remains available.',
-    );
   });
   it('preserves an explicit removal while refreshing the unapproved target set', async () => {
     const f = await fixture();

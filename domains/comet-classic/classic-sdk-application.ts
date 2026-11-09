@@ -39,10 +39,7 @@ import {
   inspectClassicPlanReadiness,
 } from './classic-plan-readiness.js';
 import { readClassicProjectFile } from './classic-protected-path.js';
-import {
-  assertClassicRecoveredArchiveDocuments,
-  classicArchiveDocumentOutputs,
-} from './classic-sdk-archive-documents.js';
+import { classicArchiveDocumentOutputs } from './classic-sdk-archive-documents.js';
 import {
   assertClassicArchiveExecutionReceipt,
   readClassicArchiveManifest,
@@ -490,24 +487,6 @@ const deliveryOutcomeValidator: RuntimeValidator = {
               stdio: ['ignore', 'pipe', 'pipe'],
             })
           : null;
-      if (
-        documentBinding.recovered &&
-        typeof designDoc === 'string' &&
-        typeof plan === 'string' &&
-        committedDesign !== null &&
-        committedPlan !== null
-      )
-        await assertClassicRecoveredArchiveDocuments({
-          projectRoot: root,
-          run,
-          archiveRef,
-          activeRef,
-          designRef: designDoc,
-          planRef: plan,
-          committedDesign,
-          committedPlan,
-          evidence: documentBinding.evidence,
-        });
       const implementationFiles = await assertClassicSdkDeliveryInputs(root, run);
       const archiveAction = run.actions
         .slice()
@@ -739,9 +718,12 @@ export async function assertClassicSdkDesignRequirementsCurrent(
   if (state.workflow !== 'full') return;
   const open = run.waits.find(
     (wait) =>
-      wait.stepId === 'full.open.confirm' &&
       wait.status === 'resolved' &&
-      wait.decision?.choice === 'approved',
+      ((wait.stepId === 'full.open.confirm' && wait.decision?.choice === 'approved') ||
+        (['hotfix', 'tweak'].some(
+          (profile) => wait.stepId === `${profile}.build.escalation-confirm`,
+        ) &&
+          wait.decision?.choice === 'upgrade')),
   );
   const handoff = run.actions
     .slice()

@@ -1,27 +1,27 @@
 import { promises as fs } from 'node:fs';
-import { resolveClassicStateFile } from './classic-state-file.js';
-import { resolveWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
 import path from 'node:path';
 import { parseDocument } from 'yaml';
-import { hasClassicManagedRunMarker } from './classic-state.js';
 import {
-  hashClassicProjectFile,
-  readClassicProjectFile,
-  inspectClassicProjectTarget,
-  classicProjectTargetExists,
-} from './classic-protected-path.js';
-import {
+  PORTABLE_RUN_CHECKPOINT_KEY,
   createFileRuntimeStore,
   createPortableRunCheckpoint,
-  readPortableRunCheckpoint,
-  PORTABLE_RUN_CHECKPOINT_KEY,
   hashRuntimeValue,
   portableClaimToken,
+  readPortableRunCheckpoint,
   runtimeExecutionBinding,
   type RuntimeAction,
   type RuntimeOutcome,
   type WorkflowRun,
 } from '../engine/runtime.js';
+import { resolveWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
+import {
+  classicProjectTargetExists,
+  hashClassicProjectFile,
+  inspectClassicProjectTarget,
+  readClassicProjectFile,
+} from './classic-protected-path.js';
+import { resolveClassicStateFile } from './classic-state-file.js';
+import { hasClassicManagedRunMarker } from './classic-state.js';
 
 export function classicSdkCheckDirectoryRef(run: Pick<WorkflowRun, 'runId'>): string {
   return `.comet/runtime/classic-sdk-checks/${hashRuntimeValue({ runId: run.runId })}`;
@@ -190,10 +190,30 @@ export async function assertClassicSdkCheckReceipt(
   const receipts = (
     await Promise.all(ids.map(async (id) => ({ id, receipt: await store.read(id) })))
   ).filter((entry) => entry.receipt !== null);
-  if (!receipts.length)
+  if (!receipts.length) {
+    const committed = await createFileRuntimeStore<WorkflowRun>({
+      rootDir: path.join(await resolveWorkspaceRuntimeRoot(projectRoot), 'sdk-runs', 'classic'),
+    }).read(run.runId);
+    const recorded = committed?.actions.find((entry) => entry.id === action.id);
+    // 已提交的 SDK 结果继续有效；待提交结果不能借可编辑恢复记录建立成功事实。
+    if (
+      committed &&
+      committed.revision <= run.revision &&
+      hashRuntimeValue(committed.workflow) === hashRuntimeValue(run.workflow) &&
+      hashRuntimeValue(committed.input) === hashRuntimeValue(run.input) &&
+      recorded?.ref === 'classic-check' &&
+      recorded.claim?.executorId === 'comet-classic-check' &&
+      ['succeeded', 'failed'].includes(recorded.status) &&
+      recorded.outcome &&
+      hashRuntimeValue(recorded) === hashRuntimeValue(action) &&
+      hashRuntimeValue({ status: recorded.outcome.status, output: recorded.outcome.output }) ===
+        hashRuntimeValue(result)
+    )
+      return;
     throw new Error(
       'Classic check original Runtime execution receipt is unavailable; an editable recovery file or stdout cannot establish success',
     );
+  }
   for (const { id, receipt } of receipts) {
     if (
       !receipt ||

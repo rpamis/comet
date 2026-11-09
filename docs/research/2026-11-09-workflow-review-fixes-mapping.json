@@ -1,0 +1,446 @@
+{
+  "schema": "comet.workflow.migration-mapping.v1",
+  "base": "6b4c26f34b5969912edc04591e513ef4ad2b7d57",
+  "cases": [
+    {
+      "id": "native-docker-syntax-scope",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues the same Native Verify after an Agent accepts an ordinary edit without content proof|keeps a real failed Native check failed after file edits without replay|continues Native Verify and Archive through the generated Runtime without content proof|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues the same Native Verify after an Agent accepts an ordinary edit without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-compat-proven-prelaunch-retry",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+          "namePattern": "^(?:Classic command check evidence retries only a proven prelaunch failure in the same check Action without replaying a process)$",
+          "requiredNames": [
+            "Classic command check evidence retries only a proven prelaunch failure in the same check Action without replaying a process"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-unapproved-shape-replace-target",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-shape-target-replacement.test.ts",
+          "namePattern": "^(?:Native Shape target replacement replaces an unapproved target without removing the canonical capability)$",
+          "requiredNames": [
+            "Native Shape target replacement replaces an unapproved target without removing the canonical capability"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-unapproved-shape-withdraw-last-target",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-document-judgment.test.ts",
+          "namePattern": "^(?:prepares a Native Shape without fixed sections or a Spec exemption phrase through source|prepares a Native Shape without fixed sections or a Spec exemption phrase through generated)$",
+          "requiredNames": [
+            "prepares a Native Shape without fixed sections or a Spec exemption phrase through source",
+            "prepares a Native Shape without fixed sections or a Spec exemption phrase through generated"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-shape-target-replacement.test.ts",
+          "namePattern": "^(?:Native Shape target replacement replaces an unapproved target without removing the canonical capability|Native Shape target replacement preserves an explicit removal while refreshing the unapproved target set)$",
+          "requiredNames": [
+            "Native Shape target replacement replaces an unapproved target without removing the canonical capability",
+            "Native Shape target replacement preserves an explicit removal while refreshing the unapproved target set"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-188-evidence",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues the same Native Verify after an Agent accepts an ordinary edit without content proof|keeps a real failed Native check failed after file edits without replay|continues Native Verify and Archive through the generated Runtime without content proof|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues the same Native Verify after an Agent accepts an ordinary edit without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues the original Native Run through a parent directory alias|continues the original Native Run through a generated Runtime and parent directory alias)$",
+          "requiredNames": [
+            "continues the original Native Run through a parent directory alias",
+            "continues the original Native Run through a generated Runtime and parent directory alias"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-240-failed-incomplete-checks",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-verifier-protocol.test.ts",
+          "namePattern": "^(?:Native package-local Verifier protocol rejects pass when a required check failed or any criterion did not pass)$",
+          "requiredNames": [
+            "Native package-local Verifier protocol rejects pass when a required check failed or any criterion did not pass"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues the same Native Verify after an Agent accepts an ordinary edit without content proof|keeps a real failed Native check failed after file edits without replay|continues Native Verify and Archive through the generated Runtime without content proof|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues the same Native Verify after an Agent accepts an ordinary edit without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-391-reference-sync",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-reliability-regressions.test.ts",
+          "namePattern": "^(?:Native reliability issue regressions audits reference sync and preserves unaffected passes while rejecting semantic and stale updates)$",
+          "requiredNames": [
+            "Native reliability issue regressions audits reference sync and preserves unaffected passes while rejecting semantic and stale updates"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-classic-check-plan-continuation",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=false\\)|Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=true\\)|Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=failed-later\\))$",
+          "requiredNames": [
+            "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=false)",
+            "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=true)",
+            "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=failed-later)"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^(?:Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK full Verify rounds retains the exact external check plan without adding local reuse|Classic SDK tweak Verify rounds retains the exact external check plan without adding local reuse|Classic SDK hotfix Verify rounds retains the exact external check plan without adding local reuse)$",
+          "requiredNames": [
+            "Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+            "Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+            "Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+            "Classic SDK full Verify rounds retains the exact external check plan without adding local reuse",
+            "Classic SDK tweak Verify rounds retains the exact external check plan without adding local reuse",
+            "Classic SDK hotfix Verify rounds retains the exact external check plan without adding local reuse"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-verifier-failure-original-claim",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "^(?:blocked Verifier recovery command contract ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: running|blocked Verifier recovery command contract ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: changed-requirements|blocked Verifier recovery command contract ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: unknown)$",
+          "requiredNames": [
+            "blocked Verifier recovery command contract ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: running",
+            "blocked Verifier recovery command contract ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: changed-requirements",
+            "blocked Verifier recovery command contract ends a misclaimed Verifier as failed and archives through an independent replacement without repeating checks: unknown"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-readonly-candidate-diagnostics",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "^(?:blocked Verifier recovery command contract keeps Archive and Doctor read-only after an Agent-accepted edit without content proof)$",
+          "requiredNames": [
+            "blocked Verifier recovery command contract keeps Archive and Doctor read-only after an Agent-accepted edit without content proof"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-implementation-repair-continuation",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "^(?:blocked Verifier recovery command contract repairs an implementation edited after Archive approval through explicit revision and original Shape)$",
+          "requiredNames": [
+            "blocked Verifier recovery command contract repairs an implementation edited after Archive approval through explicit revision and original Shape"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-branch-and-archive-repair-combination",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "^(?:blocked Verifier recovery command contract recovers a branch rename followed by implementation changes without replaying one-shot checks)$",
+          "requiredNames": [
+            "blocked Verifier recovery command contract recovers a branch rename followed by implementation changes without replaying one-shot checks"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-implementation",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:continues an authorized implementation edit without requesting the same decision again)$",
+          "requiredNames": [
+            "continues an authorized implementation edit without requesting the same decision again"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+          "namePattern": "^(?:blocked Verifier recovery command contract hands the existing user revision to the successor Builder without requiring a rewrite)$",
+          "requiredNames": [
+            "blocked Verifier recovery command contract hands the existing user revision to the successor Builder without requiring a rewrite"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-build-managed-check-reuse",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=false\\)|Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=true\\)|Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution \\(edited=failed-later\\))$",
+          "requiredNames": [
+            "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=false)",
+            "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=true)",
+            "Native v3 Build check reuse reuses a Build check only when the Agent selects the original execution (edited=failed-later)"
+          ]
+        },
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "^(?:Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder)$",
+          "requiredNames": [
+            "Native dispatch CLI presentation executes managed Build checks through public receipt dispatch and resumes the Builder"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-authoritative-handoff-sources",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "namePattern": "^(?:Classic workflow application through the public Runtime SDK keeps check inputs unchanged when adopting a raw SDK Run into its portable projection|Classic workflow application through the public Runtime SDK keeps Build authoritative until original Runtime check evidence is accepted after an Agent-reviewed edit)$",
+          "requiredNames": [
+            "Classic workflow application through the public Runtime SDK keeps check inputs unchanged when adopting a raw SDK Run into its portable projection",
+            "Classic workflow application through the public Runtime SDK keeps Build authoritative until original Runtime check evidence is accepted after an Agent-reviewed edit"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-application.test.ts",
+          "namePattern": "^(?:runs actual full domain checks with source\\.js and archive recovery=false)$",
+          "requiredNames": [
+            "runs actual full domain checks with source.js and archive recovery=false"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-sdk-reuse-read-overhead",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^(?:Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source)$",
+          "requiredNames": [
+            "Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+            "Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+            "Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-readonly.test.ts",
+          "namePattern": "^(?:Classic SDK read-only diagnostics reads a current writable projection without writes and repairs only stale projections)$",
+          "requiredNames": [
+            "Classic SDK read-only diagnostics reads a current writable projection without writes and repairs only stale projections"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-portable-explicit-interrupted-check-retry",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path returns a retry action for an interrupted check and reruns it explicitly)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path returns a retry action for an interrupted check and reruns it explicitly"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-explicit-document-write-policy-update",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+          "namePattern": "^(?:workflow contract normalization merges Native document writes when explicit allow replaces revert|workflow contract normalization merges Native document writes when omitted policy preserves revert|workflow contract normalization merges Native document writes when explicit revert replaces allow)$",
+          "requiredNames": [
+            "workflow contract normalization merges Native document writes when explicit allow replaces revert",
+            "workflow contract normalization merges Native document writes when omitted policy preserves revert",
+            "workflow contract normalization merges Native document writes when explicit revert replaces allow"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues the same Native Verify after an Agent accepts an ordinary edit without content proof|keeps a real failed Native check failed after file edits without replay|continues Native Verify and Archive through the generated Runtime without content proof|blocks Native Archive when a new real check fails after an accepted pass|reuses an Agent-selected original Runtime check for a repaired Native candidate)$",
+          "requiredNames": [
+            "continues the same Native Verify after an Agent accepts an ordinary edit without content proof",
+            "keeps a real failed Native check failed after file edits without replay",
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "reuses an Agent-selected original Runtime check for a repaired Native candidate"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-portable-orphan-interruption-persistence",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+          "namePattern": "^(?:Native portable unconfirmed check termination persists a proven orphan interruption before allowing an explicit check retry)$",
+          "requiredNames": [
+            "Native portable unconfirmed check termination persists a proven orphan interruption before allowing an explicit check retry"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path recovers an orphaned running check only when process exit can be proven)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path recovers an orphaned running check only when process exit can be proven"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-existing-tests-as-verification-command",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^(?:Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK full Verify rounds reports the current continuation after failure and accepts a revised report after Build repair|Classic SDK tweak Verify rounds reports the current continuation after failure and accepts a revised report after Build repair|Classic SDK hotfix Verify rounds reports the current continuation after failure and accepts a revised report after Build repair)$",
+          "requiredNames": [
+            "Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+            "Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+            "Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+            "Classic SDK full Verify rounds reports the current continuation after failure and accepts a revised report after Build repair",
+            "Classic SDK tweak Verify rounds reports the current continuation after failure and accepts a revised report after Build repair",
+            "Classic SDK hotfix Verify rounds reports the current continuation after failure and accepts a revised report after Build repair"
+          ]
+        },
+        {
+          "file": "test/domains/skill/classic-sdk-skill-routing.test.ts",
+          "namePattern": "^(?:Classic Chinese Skill SDK routing routes SDK Verify review failures and checked reports through one Run)$",
+          "requiredNames": [
+            "Classic Chinese Skill SDK routing routes SDK Verify review failures and checked reports through one Run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-custom-validation-script-and-result",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-latest-commit-review-fixes",
+      "record": "docs/research/2026-11-09-workflow-review-fixes.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "namePattern": "^(?:Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source|Classic SDK full Verify rounds reports the current continuation after failure and accepts a revised report after Build repair|Classic SDK tweak Verify rounds reports the current continuation after failure and accepts a revised report after Build repair|Classic SDK hotfix Verify rounds reports the current continuation after failure and accepts a revised report after Build repair|Classic SDK full Verify rounds keeps the selected report path and original check after Agent-accepted report edits|Classic SDK tweak Verify rounds keeps the selected report path and original check after Agent-accepted report edits|Classic SDK hotfix Verify rounds keeps the selected report path and original check after Agent-accepted report edits)$",
+          "requiredNames": [
+            "Classic SDK full Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+            "Classic SDK tweak Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+            "Classic SDK hotfix Verify rounds reuses the Agent-selected successful command across Build and Verify with its original source",
+            "Classic SDK full Verify rounds reports the current continuation after failure and accepts a revised report after Build repair",
+            "Classic SDK tweak Verify rounds reports the current continuation after failure and accepts a revised report after Build repair",
+            "Classic SDK hotfix Verify rounds reports the current continuation after failure and accepts a revised report after Build repair",
+            "Classic SDK full Verify rounds keeps the selected report path and original check after Agent-accepted report edits",
+            "Classic SDK tweak Verify rounds keeps the selected report path and original check after Agent-accepted report edits",
+            "Classic SDK hotfix Verify rounds keeps the selected report path and original check after Agent-accepted report edits"
+          ]
+        }
+      ]
+    }
+  ]
+}

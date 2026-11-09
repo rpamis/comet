@@ -3,14 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  createMemoryRuntimeStore,
-  createFileRuntimeStore,
-  createRuntime,
-  hashRuntimeValue,
-  type WorkflowRun,
-  type RuntimeValue,
-} from '../../../domains/engine/runtime.js';
+import type { NativeCheckPlan } from '../../../domains/comet-native/native-check-executor.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -25,51 +18,21 @@ import {
   collectNativeSdkShapeProposal,
   defineNativeWorkflowApplication,
 } from '../../../domains/comet-native/native-sdk-application.js';
-import {
-  nativeSdkCurrentCheckSummaries,
-  recoverNativeSdkChecks,
-  assertNativeSdkCandidateUnchanged,
-  observeNativeSdkInputs,
-  assertNativeSdkArchiveCheckInputs,
-} from '../../../domains/comet-native/native-sdk-checks.js';
-import { inspectNativeSdkRunDiagnostics } from '../../../domains/comet-native/native-sdk-diagnostics.js';
 import { inspectNativeSdkCheckExecutions } from '../../../domains/comet-native/native-sdk-check-execution.js';
-import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
+import {
+  assertNativeSdkArchiveCheckInputs,
+  nativeSdkCurrentCheckSummaries,
+} from '../../../domains/comet-native/native-sdk-checks.js';
+import {
+  createFileRuntimeStore,
+  createMemoryRuntimeStore,
+  createRuntime,
+  hashRuntimeValue,
+  type RuntimeValue,
+  type WorkflowRun,
+} from '../../../domains/engine/runtime.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
-import type { NativeCheckPlan } from '../../../domains/comet-native/native-check-executor.js';
-import {
-  nativeEditReviewScope,
-  nativeFormalEditReviewScope,
-} from '../../../domains/comet-native/native-edit-review-scope.js';
-import { prepareNativeAppliedFormalReview } from '../../../domains/comet-native/native-edit-review.js';
-import { captureApprovedShapeOriginals } from '../../../domains/comet-native/native-shape-review-evidence.js';
-import {
-  prepareEditReview,
-  prepareObservedEditReview,
-  recordEditReview,
-  isCheckInputRetained,
-} from '../../../domains/workflow-contract/edit-review.js';
-import {
-  nativeRawInputSnapshot,
-  nativeCheckInputSnapshot,
-  nativeCandidateInputGate,
-} from '../../../domains/comet-native/native-portable-checks.js';
-import { readNativeApprovedShapeSemanticSnapshot } from '../../../domains/comet-native/native-portable-requirements.js';
-
-type ReceiptFault = 'null-snapshot' | 'unknown-schema' | 'missing-candidate' | 'incomplete';
-
-const gitlinkOutputCheck: NativeCheckPlan = {
-  id: 'gitlink-output',
-  name: 'Read generated output in the child repository',
-  executable: process.execPath,
-  argv: [
-    '-e',
-    'if (require("node:fs").readFileSync("dist/output.txt", "utf8") !== "good") process.exit(1)',
-  ],
-  cwdRef: 'dependency',
-  timeoutMs: 5_000,
-  repeatable: true,
-};
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -127,7 +90,6 @@ async function checkedCandidate(
     legacyReceipt?: boolean;
     legacyArchivePreflight?: boolean;
     artifactRootRef?: string;
-    receiptFault?: ReceiptFault;
     checkSource?: string;
     executeChecks?: boolean;
     verificationChecks?: NativeCheckPlan[];
@@ -266,45 +228,30 @@ Run focused Native checks.
   };
   let runtime = createRuntime({
     ...runtimeOptions,
-    executors:
-      options.legacyReceipt || options.receiptFault
-        ? application.executors.map((executor) =>
-            executor.id !== 'comet-native-checks'
-              ? executor
-              : {
-                  ...executor,
-                  async execute(...args: Parameters<typeof executor.execute>) {
-                    const result = await executor.execute(...args);
-                    const output = { ...(result.output as Record<string, RuntimeValue>) };
-                    // 通过真实执行器生成结果，只改变被测收据格式，不伪造状态推进。
-                    if (options.legacyReceipt) {
-                      // 历史证明值故意过期；实际命令仍由当前 Runtime 执行，旧字段只作历史读取。
-                      output.inputBefore = '0'.repeat(64);
-                      output.inputAfter = '1'.repeat(64);
-                      output.candidateInputFingerprintGate = {
-                        schema: 'comet.native.candidate-input.v1',
-                        fingerprint: '2'.repeat(64),
-                      };
-                    } else if (options.receiptFault === 'null-snapshot')
-                      output.inputSnapshot = null;
-                    else {
-                      const snapshot = {
-                        ...(output.inputSnapshot as Record<string, RuntimeValue>),
-                      };
-                      if (options.receiptFault === 'unknown-schema') snapshot.schema = 'unknown';
-                      if (options.receiptFault === 'missing-candidate')
-                        delete snapshot.candidateBefore;
-                      if (options.receiptFault === 'incomplete') {
-                        snapshot.complete = false;
-                        snapshot.diagnostics = ['Fixture input enumeration was incomplete.'];
-                      }
-                      output.inputSnapshot = snapshot;
-                    }
-                    return { ...result, output };
-                  },
+    executors: options.legacyReceipt
+      ? application.executors.map((executor) =>
+          executor.id !== 'comet-native-checks'
+            ? executor
+            : {
+                ...executor,
+                async execute(...args: Parameters<typeof executor.execute>) {
+                  const result = await executor.execute(...args);
+                  const output = { ...(result.output as Record<string, RuntimeValue>) };
+                  // 通过真实执行器生成结果，只改变被测收据格式，不伪造状态推进。
+                  if (options.legacyReceipt) {
+                    // 历史证明值故意过期；实际命令仍由当前 Runtime 执行，旧字段只作历史读取。
+                    output.inputBefore = '0'.repeat(64);
+                    output.inputAfter = '1'.repeat(64);
+                    output.candidateInputFingerprintGate = {
+                      schema: 'comet.native.candidate-input.v1',
+                      fingerprint: '2'.repeat(64),
+                    };
+                  }
+                  return { ...result, output };
                 },
-          )
-        : application.executors,
+              },
+        )
+      : application.executors,
   });
   let run = await runtime.start({
     runId: 'verification-inputs',
@@ -504,60 +451,6 @@ async function completeArchive(
   return run;
 }
 
-async function approveCheckRepair(
-  prepared: Awaited<ReturnType<typeof checkedCandidate>>,
-  rejected: WorkflowRun,
-) {
-  const { root, runtime } = prepared;
-  const action = rejected.actions.at(-1)!;
-  expect(action).toMatchObject({ stepId: 'verify.checks', status: 'running' });
-  expect(
-    (await inspectNativeSdkCheckExecutions({ projectRoot: root, run: rejected }))[0],
-  ).toMatchObject({
-    phase: 'completed',
-    quiescent: true,
-    execution: { outcome: { status: 'succeeded' } },
-  });
-  const stillWaiting = await recoverNativeSdkChecks(root, rejected, runtime);
-  expect(stillWaiting.actions.at(-1)).toMatchObject({ id: action.id, status: 'running' });
-  const reconciled = await recoverNativeSdkChecks(root, stillWaiting, runtime, {
-    reconcileInterrupted: true,
-    stoppedActions: [
-      {
-        actionId: action.id,
-        attempt: action.attempt,
-        inputHash: action.inputHash,
-        claimToken: action.claim!.token,
-        evidence:
-          'The original Node check exited after its file operations and its process group is quiescent. It started no detached descendants.',
-      },
-    ],
-  });
-  expect(reconciled.actions.find((entry) => entry.id === action.id)).toMatchObject({
-    status: 'failed',
-    outcome: {
-      output: {
-        checks: [{ id: prepared.check.id, status: 'passed', exitCode: 0 }],
-        interruption: { kind: 'completed-input-drift', unknownCheckIds: [] },
-      },
-    },
-  });
-  expect(reconciled.state).toMatchObject({ phase: 'verify', status: 'await-user' });
-  const repair = reconciled.waits.at(-1)!;
-  expect(repair).toMatchObject({ stepId: 'verify.checks-stop', status: 'pending' });
-  const repaired = await runtime.resolveWait({
-    runId: reconciled.runId,
-    waitId: repair.id,
-    proposalHash: repair.proposalHash,
-    decisionId: 'approve-source-drift-repair',
-    choice: 'repair',
-  });
-  expect(repaired.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'pending' });
-  expect(repaired.state).toMatchObject({ phase: 'build', status: 'active' });
-  expect(repaired.actions.some((entry) => entry.stepId === 'verify.verifier')).toBe(false);
-  return repaired;
-}
-
 describe('Native SDK verification input binding', () => {
   it.each([
     [
@@ -613,48 +506,7 @@ describe('Native SDK verification input binding', () => {
       checks: Array<{ logRef: string }>;
     };
     let run = await submitVerifierResult(prepared, 'fail');
-    const scope = {
-      ...nativeEditReviewScope(prepared.paths, run.state as unknown as NativePortableState),
-      judgment: 'agent' as const,
-    };
-    const proposal = await prepareEditReview(scope, {
-      intent: 'write',
-      toolName: 'Write',
-      targets: ['left.unknown'],
-      writes: [{ path: 'left.unknown', content: 'repaired left' }],
-    });
-    await recordEditReview(
-      scope,
-      {
-        proposalHash: proposal.proposalHash,
-        decision: 'implementation-changed',
-        summary: 'The left input changed; the right command and its inputs remain applicable.',
-        retainedChecks: [{ actionId: originalAction.id, checkId: 'right' }],
-      },
-      { kind: 'runtime-agent', executionRef: 'current-repair-builder' },
-    );
     await writeProjectFile(prepared.root, 'left.unknown', 'repaired left');
-    const beforeRef = (originalAction.outcome!.output as { rawInput: { afterRef: string } })
-      .rawInput.afterRef;
-    const observedBefore = JSON.parse(
-      await fs.readFile(path.join(prepared.paths.workspaceRuntimeRoot, beforeRef), 'utf8'),
-    ) as { files: Array<{ path: string; hash: string }> };
-    const observedAfter = await nativeRawInputSnapshot({
-      projectRoot: prepared.root,
-      managedArtifactRoot: prepared.paths.artifactRoot,
-    });
-    const originals = new Map(observedBefore.files.map((file) => [file.path, file.hash]));
-    const changes = observedAfter.files
-      .filter((file) => originals.get(file.path) !== file.hash)
-      .map((file) => ({
-        path: file.path,
-        beforeHash: originals.get(file.path) ?? 'missing',
-        afterHash: file.hash,
-      }));
-    expect(
-      await isCheckInputRetained(scope, originalAction.id, changes, [], 'right'),
-      JSON.stringify(changes),
-    ).toBe(true);
     run = await succeedLatestAction(
       prepared.runtime,
       run,
@@ -668,7 +520,7 @@ describe('Native SDK verification input binding', () => {
         knownLimits: [],
         review: null,
         submittedAt: '2026-10-23T02:00:00.000Z',
-        verificationChecks: plans,
+        verificationChecks: plans.map((plan) => ({ ...plan, reusable: plan.id === 'right' })),
       },
       'current-repair-builder',
     );
@@ -797,50 +649,6 @@ describe('Native SDK verification input binding', () => {
     expect(await fs.readFile(counter, 'utf8')).toBe('x');
   });
 
-  it.each([
-    ['value.ts', 'export const value = 2;\n'],
-    ['.next/types/routes.d.ts', 'export type Route = "/changed";\n'],
-    ['.next/dev/types/routes.d.ts', 'export type DevRoute = "/changed";\n'],
-    ['.next/server/app/page.js', 'bad'],
-    ['.next/static/chunks/main.js', 'bad'],
-    ['.next/BUILD_ID', 'build-two'],
-    ['.next/routes-manifest.json', '{"changed":true}'],
-  ])('rejects the final result when a verified input changes: %s', async (file, content) => {
-    const prepared = await checkedCandidate();
-    await writeProjectFile(prepared.root, file, content);
-    await expect(submitVerifierResult(prepared)).rejects.toThrow('OUTCOME_REJECTED');
-    expect((await prepared.store.read(prepared.run.runId))?.actions.at(-1)).toMatchObject({
-      stepId: 'verify.verifier',
-      status: 'running',
-    });
-  });
-
-  it.each<ReceiptFault>(['null-snapshot', 'unknown-schema', 'missing-candidate', 'incomplete'])(
-    'rejects a %s receipt instead of falling back to matching legacy fingerprints',
-    async (receiptFault) => {
-      const prepared = await checkedCandidate({ receiptFault, executeChecks: false });
-      const { root, runtime, store, run } = prepared;
-      const action = run.actions.at(-1)!;
-      await expect(
-        runtime.execute({
-          runId: run.runId,
-          actionId: action.id,
-          executorId: 'comet-native-checks',
-          context: { requestId: 'invalid-snapshot-checks', projectRoot: root },
-        }),
-      ).rejects.toThrow('OUTCOME_REJECTED');
-      const rejected = (await store.read(run.runId))!;
-      expect(rejected.actions.some((entry) => entry.stepId === 'verify.verifier')).toBe(false);
-      const rejectedAction = rejected.actions.find((entry) => entry.id === action.id)!;
-      expect(rejectedAction.status).not.toBe('succeeded');
-      expect(rejectedAction.rejectedOutcomes?.at(-1)?.outcome.output).toMatchObject({
-        inputBefore: expect.any(String),
-        inputAfter: expect.any(String),
-        checks: [{ id: prepared.check.id, status: 'passed', exitCode: 0 }],
-      });
-    },
-  );
-
   it('accepts a persisted 0.5.0 check receipt in its original execution environment', async () => {
     const prepared = await checkedCandidate({ legacyReceipt: true });
     const receipt = prepared.run.outputs['verify.checks'].value;
@@ -906,7 +714,7 @@ it.each(['verify', 'archive'] as const)(
       // 文件扩展名不决定其语义。检查只是读取实际数值，不调用编译器或语法分类器。
       prepareProject: async (root) => writeProjectFile(root, 'value.ts', '1\n'),
     });
-    const { root, runtime, paths } = prepared;
+    const { root, runtime } = prepared;
     const originalCandidate = (prepared.run.state as unknown as NativePortableState)
       .builder_handoff!.candidate_id;
     const shapeWaits = structuredClone(

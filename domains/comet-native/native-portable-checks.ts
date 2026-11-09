@@ -395,7 +395,7 @@ async function reserveNativePortableCheckPlan(options: {
       if (!state.builder_handoff) throw new Error('Native checks require a Builder result');
       const file = nativeLocalExecutionFile(options.paths, state.name);
       const existing = await readNativeLocalExecution(file);
-      const local =
+      let local =
         existing?.change === state.name &&
         existing.candidateId === state.builder_handoff.candidate_id
           ? existing
@@ -407,8 +407,39 @@ async function reserveNativePortableCheckPlan(options: {
       if (
         local.execution?.status === 'running' ||
         local.checks.some((check) => check.activeProcess !== null || check.status === 'running')
+      ) {
+        if (
+          local.execution?.stage !== 'checking' ||
+          local.execution.actor !== 'runtime' ||
+          (await inspectNativePortableCheckExecution(local)) !== 'orphaned'
+        )
+          throw new Error('原检查或验收仍在执行；保留原执行，先等待或核对停止结果');
+        local = {
+          ...local,
+          execution: { ...local.execution, status: 'interrupted' },
+          checks: local.checks.map((check) =>
+            check.status === 'planned' || check.status === 'running'
+              ? { ...check, status: 'interrupted', activeProcess: null }
+              : check,
+          ),
+        };
+        await writeNativeLocalExecution(file, local, { containedRoot: options.paths.runtimeDir });
+      }
+      if (
+        !options.retryCheckIds?.length &&
+        sameNativeCheckCommands(local, options.plans, options.projectRoot) &&
+        local.checks.some((check) => check.status === 'interrupted') &&
+        local.checks.every((check) => check.repeatable)
       )
-        throw new Error('原检查或验收仍在执行；保留原执行，先等待或核对停止结果');
+        return {
+          kind: 'reuse' as const,
+          state,
+          checks: authoritativePortableChecks({
+            local,
+            projectRoot: options.projectRoot,
+            supplied: [],
+          }),
+        };
       const operationId = randomUUID();
       const execute: NativeCheckPlan[] = [];
       const checks = options.plans.map((plan) => {

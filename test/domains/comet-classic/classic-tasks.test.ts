@@ -2,12 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   assignClassicTaskIds,
   classicTaskRequirements,
-  classicTaskRevision,
   completeClassicTask,
-  parseClassicTasks,
-  validateClassicTaskPlan,
   inspectClassicPlanTasks,
+  parseClassicTasks,
   synchronizeClassicPlanTasks,
+  validateClassicTaskPlan,
 } from '../../../domains/comet-classic/classic-tasks.js';
 
 describe('Classic canonical tasks', () => {
@@ -73,29 +72,28 @@ describe('Classic canonical tasks', () => {
       ].join(eol);
       const assigned = assignClassicTaskIds(source);
       const tasks = parseClassicTasks(assigned);
-      const completed = completeClassicTask(assigned, tasks[0].id!, classicTaskRevision(assigned));
+      const completed = completeClassicTask(assigned, tasks[0].id!, 'legacy-task-revision');
       const scope = (text: string) => classicTaskRequirements(text, { taskIds: 'ignore' });
       expect(scope(completed)).toBe(scope(source));
       expect(scope(completed.replace('first', 'different scope'))).not.toBe(scope(source));
       expect(scope(completed.replace('- [x] example', '- [ ] example'))).not.toBe(scope(source));
-      expect(classicTaskRevision(assigned)).not.toBe(classicTaskRevision(source));
     },
   );
-  it('completes the correct ID after reorder and refuses a stale renamed task', () => {
+  it('completes the current task by ID after reorder or an Agent-accepted description edit', () => {
     const source = '- [ ] one <!-- comet-task:a -->\n- [ ] two <!-- comet-task:b -->\n';
     const reordered = source.split('\n').slice(0, 2).reverse().join('\n') + '\n';
-    const result = completeClassicTask(reordered, 'a', classicTaskRevision(reordered));
+    const result = completeClassicTask(reordered, 'a', 'legacy-task-revision');
     expect(parseClassicTasks(result).map((task) => [task.id, task.completed])).toEqual([
       ['b', false],
       ['a', true],
     ]);
-    expect(() =>
-      completeClassicTask(source.replace('one', 'changed'), 'a', classicTaskRevision(source)),
-    ).toThrow('requirements changed');
+    expect(
+      completeClassicTask(source.replace('one', 'changed'), 'a', 'legacy-task-revision'),
+    ).toContain('- [x] changed <!-- comet-task:a -->');
   });
   it('permits independent completion and idempotent retries without changing requirements', () => {
     const source = assignClassicTaskIds('- [ ] one\n- [ ] two\n');
-    const revision = classicTaskRevision(source);
+    const revision = 'legacy-task-revision';
     const [one, two] = parseClassicTasks(source);
     const first = completeClassicTask(source, one.id!, revision);
     const second = completeClassicTask(first, two.id!, revision);
@@ -109,6 +107,6 @@ describe('Classic canonical tasks', () => {
     ).toThrow('Duplicate');
     expect(() => parseClassicTasks('- [ ] one <!-- comet-task: -->')).toThrow('Malformed');
     const legacy = '- [ ] one\n';
-    expect(() => completeClassicTask(legacy, 'one', classicTaskRevision(legacy))).toThrow('Legacy');
+    expect(() => completeClassicTask(legacy, 'one', 'legacy-task-revision')).toThrow('Legacy');
   });
 });

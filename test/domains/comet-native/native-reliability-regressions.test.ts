@@ -1,9 +1,9 @@
-import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
 import { execFileSync } from 'node:child_process';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -11,39 +11,37 @@ import {
 import {
   ensureNativeDirectories,
   nativeProjectPaths,
-  nativePreferredChangeRuntimeDir,
 } from '../../../domains/comet-native/native-paths.js';
-import {
-  createNativePortableChange,
-  nativePortableChangeDir,
-  prepareNativePortableShapeConfirmation,
-  confirmNativePortableShape,
-  submitNativePortableBuilderCandidate,
-  executeNativePortableCheckPlan,
-  dispatchNativePortableVerifier,
-  submitNativePortableVerifierResult,
-  confirmNativePortableSkillCoordinatedPass,
-  readNativePortableChange,
-  syncNativePortableSpecReferences,
-  inspectNativePortableAcceptanceDrift,
-} from '../../../domains/comet-native/native-portable-runtime.js';
-import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
 import { archiveNativePortableChange } from '../../../domains/comet-native/native-portable-archive.js';
 import {
-  inspectDiscoveredNativeStatus,
-  listDiscoveredNativeStatusPage,
-} from '../../../domains/comet-native/native-status-discovery.js';
-import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+  confirmNativePortableShape,
+  confirmNativePortableSkillCoordinatedPass,
+  createNativePortableChange,
+  dispatchNativePortableVerifier,
+  executeNativePortableCheckPlan,
+  nativePortableChangeDir,
+  prepareNativePortableShapeConfirmation,
+  readNativePortableChange,
+  submitNativePortableBuilderCandidate,
+  submitNativePortableVerifierResult,
+  syncNativePortableSpecReferences,
+} from '../../../domains/comet-native/native-portable-runtime.js';
 import {
   applyNativeRunnerInput,
   parseNativeRunnerInput,
 } from '../../../domains/comet-native/native-runner-input.js';
+import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
+import {
+  inspectDiscoveredNativeStatus,
+  listDiscoveredNativeStatusPage,
+} from '../../../domains/comet-native/native-status-discovery.js';
+import { executeNativeSupervisorChecks } from '../../../domains/comet-native/native-supervisor-evidence.js';
 import {
   dispatchNativeSupervisorReadyTasks,
-  readNativeSupervisorState,
   nativeSupervisorStateFile,
+  readNativeSupervisorState,
 } from '../../../domains/comet-native/native-supervisor.js';
-import { executeNativeSupervisorChecks } from '../../../domains/comet-native/native-supervisor-evidence.js';
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 
 function requireStoppedPid(): number {
   // Reap a real short-lived process, then prove its PID is not currently alive.
@@ -308,10 +306,6 @@ describe('Native reliability issue regressions', () => {
       '[quoted-example](old.md)',
     );
     expect(synced.history.at(-1)?.summary.text).toContain('reviewer');
-    expect(await inspectNativePortableAcceptanceDrift({ paths, state: synced })).toEqual({
-      drifted: false,
-      reason: null,
-    });
     await expect(syncNativePortableSpecReferences(input)).rejects.toThrow('stale');
     await expect(
       syncNativePortableSpecReferences({
@@ -419,7 +413,7 @@ describe('Native reliability issue regressions', () => {
     120000,
   );
 
-  it('requires Runtime checks and complete child acceptance, binds immutable material and integrates with executed checks', async () => {
+  it('requires Runtime checks and complete child acceptance, retains original material and integrates with executed checks', async () => {
     const { root, paths, changeDir } = await project();
     await fs.writeFile(
       path.join(changeDir, 'children.yaml'),
@@ -468,7 +462,7 @@ describe('Native reliability issue regressions', () => {
       parent: 'change',
       child: 'core',
       runId: task.runId,
-      plans: [plan()],
+      plans: [{ ...plan(), reusable: true }],
       materials: [{ name: 'probe', content: 'Current candidate probe.' }],
     };
     await expect(executeNativeSupervisorChecks({ ...options, runId: 'stale-run' })).rejects.toThrow(
@@ -595,19 +589,6 @@ describe('Native reliability issue regressions', () => {
         input: input([{ ...evidence.acceptance[0], result: 'failed' }, evidence.acceptance[1]]),
       }),
     ).rejects.toThrow('every acceptance');
-    const file = path.join(
-      nativePreferredChangeRuntimeDir(paths, 'change'),
-      receipt.receiptRef!.replace(/^runtime\//u, ''),
-    );
-    const original = await fs.readFile(file, 'utf8');
-    await fs.writeFile(
-      file,
-      original.replace('Current candidate probe.', 'Tampered candidate probe.'),
-    );
-    await expect(
-      applyNativeRunnerInput({ paths, name: 'change', maxVerifyFailures: 5, input: input() }),
-    ).rejects.toThrow('hash');
-    await fs.writeFile(file, original);
     await applyNativeRunnerInput({ paths, name: 'change', maxVerifyFailures: 5, input: input() });
     expect((await readNativeSupervisorState(paths, 'change'))!.children[0].status).toBe('verified');
     await expect(
@@ -639,7 +620,7 @@ describe('Native reliability issue regressions', () => {
           checks: [plan('failed-integration', 'process.exit(7)')],
         }),
       }),
-    ).rejects.toThrow(/failed-integration: exit 7.*receipt runtime\/evidence/);
+    ).rejects.toThrow(/integration checks did not pass \(failed-integration: exit 7\)/);
     const integrated = await applyNativeRunnerInput({
       paths,
       name: 'change',

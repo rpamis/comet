@@ -1,33 +1,33 @@
-import * as applications from '../../../domains/workflow-application/index.js';
-import { inspectCometHook } from '../../../domains/comet-entry/hook-router.js';
-import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
-import { getCurrentVersion } from '../../../platform/version/version.js';
-import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import * as classic from '../../../domains/comet-classic/index.js';
 import { resolveClassicDesignContext } from '../../../domains/comet-classic/classic-handoff.js';
-import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
 import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
+import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
+import type { ClassicProfile } from '../../../domains/comet-classic/classic-state.js';
+import * as classic from '../../../domains/comet-classic/index.js';
+import { inspectCometHook } from '../../../domains/comet-entry/hook-router.js';
 import {
-  createRuntime,
   createFileRuntimeStore,
+  createRuntime,
   hashRuntimeValue,
-  type WorkflowRun,
   type RuntimeValue,
+  type WorkflowRun,
 } from '../../../domains/engine/runtime.js';
+import * as applications from '../../../domains/workflow-application/index.js';
 import {
   adaptApplicationSkill,
-  inspectApplicationSkill,
   createApplicationSkillExecutor,
-  type WorkflowApplicationFactoryContext,
+  inspectApplicationSkill,
   type ApplicationSkillBinding,
   type SkillAdapterContract,
+  type WorkflowApplicationFactoryContext,
 } from '../../../domains/workflow-application/index.js';
-import type { ClassicProfile } from '../../../domains/comet-classic/classic-state.js';
+import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
+import { getCurrentVersion } from '../../../platform/version/version.js';
 import { createOpenSpecArchiveFixture } from '../../helpers/classic-openspec-fixture.js';
 
 const roots: string[] = [];
@@ -318,7 +318,7 @@ async function fixture(
   };
   const evidence = async () => {
     const wait = run.evidenceWaits!.find((entry) => entry.status === 'pending')!;
-    let receipt: { ref: string; contentHash: string };
+    let receipt: { ref: string };
     if (wait.kind === 'classic-open-artifacts')
       receipt = await classic.classicOpenEvidenceReceipt(projectRoot, changeRef);
     else if (wait.kind === 'classic-design-document')
@@ -336,19 +336,26 @@ async function fixture(
       const ref = (run.state as { verificationReport: string }).verificationReport;
       receipt = {
         ref,
-        contentHash: digest(await fs.readFile(path.join(projectRoot, ref), 'utf8')),
       };
     } else {
       const output = run.actions.findLast(
         (action) => action.stepId === wait.stepId.replace('.evidence', ''),
       )!.outcome!.output as { receiptRef: string; contentHash: string };
-      receipt = { ref: output.receiptRef, contentHash: output.contentHash };
+      receipt = { ref: output.receiptRef };
     }
+    const sourceStep =
+      wait.kind === 'classic-design-document'
+        ? 'full.design.document'
+        : wait.kind === 'classic-verification-report'
+          ? (run.state as { workflow: string }).workflow + '.verify.run'
+          : wait.stepId.replace('.evidence', '');
+    const source = run.actions.findLast((action) => action.stepId === sourceStep)!;
     run = await runtime.recordEvidence({
       runId: 'example',
       evidenceId: wait.id,
       kind: wait.kind,
       ...receipt,
+      contentHash: source.inputHash,
       submissionId: `evidence-${++counter}`,
       context: { requestId: 'evidence', projectRoot },
     });
@@ -811,13 +818,7 @@ it.each([
         context: { requestId: 'claim-archive', projectRoot: f.projectRoot },
       });
       const claimed = f.run.actions.find((entry) => entry.id === action.id)!;
-      const result = await classic.runClassicSdkArchive(f.run, claimed, f.projectRoot);
-      const archiveDirectory = (result.output as { archiveDirectory: string }).archiveDirectory;
-      const archivedArtifact = path.join(
-        f.projectRoot,
-        artifactRef.replace('docs/openspec/changes/example/', `${archiveDirectory}/`),
-      );
-      const acceptedArtifact = await fs.readFile(archivedArtifact, 'utf8');
+      await classic.runClassicSdkArchive(f.run, claimed, f.projectRoot);
       f.run = await f.runtime.markUnknown({
         runId: 'example',
         actionId: action.id,
@@ -826,32 +827,6 @@ it.each([
       });
       f.runtime = f.runtimeFactory();
       await f.refresh();
-      await fs.writeFile(archivedArtifact, `${acceptedArtifact}\nUnaccepted content\n`);
-      await expect(
-        classic.recoverClassicSdkArchive(f.runtime, {
-          runId: 'example',
-          projectRoot: f.projectRoot,
-        }),
-      ).rejects.toThrow(/Classic/);
-      await fs.writeFile(archivedArtifact, acceptedArtifact);
-      if (profile === 'full') {
-        const receiptFile = path.join(
-          f.projectRoot,
-          archiveDirectory,
-          '.comet/archive-documents.json',
-        );
-        const originalReceipt = await fs.readFile(receiptFile, 'utf8');
-        const forged = JSON.parse(originalReceipt);
-        forged.documents[artifactRef].original += '\nForged preimage\n';
-        await fs.writeFile(receiptFile, JSON.stringify(forged));
-        await expect(
-          classic.recoverClassicSdkArchive(f.runtime, {
-            runId: 'example',
-            projectRoot: f.projectRoot,
-          }),
-        ).rejects.toThrow(/Classic/);
-        await fs.writeFile(receiptFile, originalReceipt);
-      }
       f.run = await classic.recoverClassicSdkArchive(f.runtime, {
         runId: 'example',
         projectRoot: f.projectRoot,

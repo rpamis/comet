@@ -1,35 +1,44 @@
-import {
-  captureClassicArchiveInputs,
-  recordClassicArchiveManifest,
-} from '../../../domains/comet-classic/classic-sdk-archive-manifest.js';
-import { annotatedMarkdown } from '../../../domains/comet-classic/classic-archive-annotation.js';
-import { classicSdkRevisionApplication } from '../../../domains/comet-classic/classic-sdk-revision-application.js';
-import { classicOpenEvidenceReceipt } from '../../../domains/comet-classic/classic-sdk-application.js';
-import { defineWorkflow, hashRuntimeValue } from '../../../domains/engine/runtime.js';
-import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
-import { resolveClassicLocalTarget } from '../../../domains/comet-classic/classic-runtime-paths.js';
-import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
 import * as childProcess from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import * as classicDomain from '../../../domains/comet-classic/index.js';
-import { classicStateCommand } from '../../../domains/comet-classic/classic-state-command.js';
+import { annotatedMarkdown } from '../../../domains/comet-classic/classic-archive-annotation.js';
+import { classicArchiveCommand } from '../../../domains/comet-classic/classic-archive.js';
+import { recordClassicArchiveRequirements } from '../../../domains/comet-classic/classic-artifact-requirements.js';
 import { classicCheckCommand } from '../../../domains/comet-classic/classic-check-command.js';
 import * as checkSnapshots from '../../../domains/comet-classic/classic-check-snapshot.js';
+import { withClassicCommandContext } from '../../../domains/comet-classic/classic-command-context.js';
 import { classicGuardCommand } from '../../../domains/comet-classic/classic-guard.js';
-import { classicArchiveCommand } from '../../../domains/comet-classic/classic-archive.js';
 import { resolveClassicDesignContext } from '../../../domains/comet-classic/classic-handoff.js';
+import { resolveClassicChangeRuntimeOwner } from '../../../domains/comet-classic/classic-runtime-ownership.js';
+import { resolveClassicLocalTarget } from '../../../domains/comet-classic/classic-runtime-paths.js';
+import { classicOpenEvidenceReceipt } from '../../../domains/comet-classic/classic-sdk-application.js';
+import {
+  captureClassicArchiveInputs,
+  recordClassicArchiveManifest,
+} from '../../../domains/comet-classic/classic-sdk-archive-manifest.js';
+import {
+  assertClassicSdkDeliveryInputs,
+  collectClassicSdkDeliveryInputs,
+} from '../../../domains/comet-classic/classic-sdk-delivery-inputs.js';
+import { classicSdkRevisionApplication } from '../../../domains/comet-classic/classic-sdk-revision-application.js';
+import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
+import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
+import { classicStateCommand } from '../../../domains/comet-classic/classic-state-command.js';
 import {
   parseClassicStateDocument,
   type ClassicState,
 } from '../../../domains/comet-classic/classic-state.js';
+import * as classicDomain from '../../../domains/comet-classic/index.js';
 import {
-  createMemoryRuntimeStore,
   createFileRuntimeStore,
+  createMemoryRuntimeStore,
   createRuntime,
+  defineWorkflow,
+  hashRuntimeValue,
   type DefineWorkflowOptions,
   type RuntimeEvidenceValidator,
   type RuntimeValidator,
@@ -39,15 +48,7 @@ import {
   type WorkflowTransitionHandler,
 } from '../../../domains/engine/runtime.js';
 import { registerSdkChangeOwner } from '../../../domains/workflow-contract/change-runtime-owner.js';
-import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
-import { resolveClassicChangeRuntimeOwner } from '../../../domains/comet-classic/classic-runtime-ownership.js';
-import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
-import { recordClassicArchiveRequirements } from '../../../domains/comet-classic/classic-artifact-requirements.js';
-import { withClassicCommandContext } from '../../../domains/comet-classic/classic-command-context.js';
-import {
-  assertClassicSdkDeliveryInputs,
-  collectClassicSdkDeliveryInputs,
-} from '../../../domains/comet-classic/classic-sdk-delivery-inputs.js';
+import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 
 vi.mock('node:child_process', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:child_process')>();
@@ -851,9 +852,9 @@ describe('Classic workflow application through the public Runtime SDK', () => {
         contextCompression: null,
         run: { ...run, input: { change: 'other', changeDir: 'docs/openspec/changes/other' } },
       }),
-    ).rejects.toThrow('Run does not match its current change');
+    ).rejects.toThrow('Classic Design context belongs to a different Run');
     expect(await fs.readFile(handoffFile, 'utf8')).toBe(handoff);
-    const before = await checkSnapshots.collectCheckSnapshot(projectRoot, change, check);
+    const original = run.actions.at(-1)!;
     await registerSdkChangeOwner(projectRoot, {
       schema: 'comet.change-owner.v1',
       workflow: 'classic',
@@ -862,29 +863,23 @@ describe('Classic workflow application through the public Runtime SDK', () => {
       application: 'classic-full',
       runId: run.runId,
     });
-    await inspectClassicSdkRun(projectRoot, 'example');
-    const after = await checkSnapshots.collectCheckSnapshot(projectRoot, change, check);
-    expect(after.entries).toEqual(before.entries);
-    expect(after.digest).toBe(before.digest);
-
-    const source = path.join(projectRoot, 'source.js');
-    const contents = await fs.readFile(source, 'utf8');
-    await fs.writeFile(source, `${contents}\n// changed input\n`);
-    expect((await checkSnapshots.collectCheckSnapshot(projectRoot, change, check)).digest).not.toBe(
-      before.digest,
+    const adopted = (await inspectClassicSdkRun(projectRoot, 'example')).run;
+    const action = adopted.actions.find((action) => action.id === original.id)!;
+    expect(action.input).toEqual(original.input);
+    expect(action.inputHash).toBe(original.inputHash);
+    expect(action.outcome!.output).toMatchObject({ argv: check.argv, cwd: check.cwd });
+    await fs.appendFile(
+      path.join(projectRoot, 'source.js'),
+      '\n// Agent accepted an explanatory edit\n',
     );
-    await fs.writeFile(source, contents);
-    const restored = await checkSnapshots.collectCheckSnapshot(projectRoot, change, check, {
-      verificationReport: null,
+    const after = (await inspectClassicSdkRun(projectRoot, 'example')).run;
+    expect(after.runId).toBe(adopted.runId);
+    expect(after.state).toMatchObject({ phase: 'build' });
+    expect(after.actions.find((entry) => entry.id === action.id)).toMatchObject({
+      input: action.input,
+      inputHash: action.inputHash,
+      outcome: action.outcome,
     });
-    await fs.writeFile(path.join(change, '.comet-state.lock', 'extra-source.js'), 'export {};\n');
-    expect(
-      (
-        await checkSnapshots.collectCheckSnapshot(projectRoot, change, check, {
-          verificationReport: null,
-        })
-      ).digest,
-    ).not.toBe(restored.digest);
   });
 
   it('accepts an existing log for an independent public Run ID but cannot invent portable proof for its missing log', async () => {
@@ -2439,7 +2434,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
     });
   });
 
-  it('keeps Build authoritative until Runtime check evidence is accepted', async () => {
+  it('keeps Build authoritative until original Runtime check evidence is accepted after an Agent-reviewed edit', async () => {
     const application = classicDomain.defineClassicWorkflowApplication('full');
     const runtime = createRuntime({
       store: createMemoryRuntimeStore<WorkflowRun>(),
@@ -2545,27 +2540,40 @@ describe('Classic workflow application through the public Runtime SDK', () => {
       run,
       kind: 'classic-build-check',
       ref: checkOutput.receiptRef,
-      contentHash: checkOutput.contentHash,
+      contentHash: run.actions.at(-1)!.inputHash,
       context: { requestId: 'verify-check-result', projectRoot },
     });
     expect(validation, validation.reason).toMatchObject({
       accepted: true,
-      actualHash: checkOutput.contentHash,
+      actualHash: run.actions.at(-1)!.inputHash,
     });
-    await fs.writeFile(path.join(projectRoot, 'source.js'), 'const ready = false;\n');
+    const checkAction = run.actions.at(-1)!;
     await expect(
       runtime.recordEvidence({
         runId: run.runId,
         evidenceId: run.evidenceWaits!.at(-1)!.id,
         kind: 'classic-build-check',
-        ref: checkOutput.receiptRef,
-        contentHash: checkOutput.contentHash,
-        submissionId: 'unverified-build-check',
+        ref: checkOutput.receiptRef + '-wrong',
+        contentHash: checkAction.inputHash,
+        submissionId: 'wrong-execution',
         expectedRevision: run.revision,
-        context: { requestId: 'stale-check-result', projectRoot },
+        context: { projectRoot },
       }),
     ).rejects.toThrow(/EVIDENCE_REJECTED/);
     expect((await runtime.inspect(run.runId)).state).toMatchObject({ phase: 'build' });
+    await fs.writeFile(path.join(projectRoot, 'source.js'), 'const ready = false;\n');
+    const accepted = await runtime.recordEvidence({
+      runId: run.runId,
+      evidenceId: run.evidenceWaits!.at(-1)!.id,
+      kind: 'classic-build-check',
+      ref: checkOutput.receiptRef,
+      contentHash: checkAction.inputHash,
+      submissionId: 'agent-accepted-execution',
+      expectedRevision: run.revision,
+      context: { projectRoot },
+    });
+    expect(accepted.state).toMatchObject({ phase: 'verify' });
+    expect(accepted.actions.find((action) => action.id === checkAction.id)).toEqual(checkAction);
   });
 
   it('returns a failed SDK Build check to Build work without leaving its claimed Action unknown', async () => {

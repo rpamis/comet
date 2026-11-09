@@ -308,9 +308,14 @@ export function classicSdkCheckCommand(
       reusable: command.reusable === true,
     };
   }
-  const scope = classicSdkCheckRefreshInput(run, action)
-    ? 'verify'
-    : (run.state as unknown as ClassicState).phase;
+  const profile = (run.state as unknown as ClassicState).workflow;
+  // 归档仍核对原 Verify Action 的命令，不把当前 Archive 阶段当作检查种类。
+  const scope =
+    action.stepId === `${profile}.build.check`
+      ? 'build'
+      : action.stepId === `${profile}.verify.check`
+        ? 'verify'
+        : null;
   if (scope !== 'build' && scope !== 'verify') throw new Error('Classic check scope is invalid');
   const label = `Classic input.checkCommands.${scope} must declare literal argv`;
   const runInput = object(run.input, label);

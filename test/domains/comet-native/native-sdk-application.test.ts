@@ -1,51 +1,47 @@
 import { build } from 'esbuild';
-import * as portableCheckpoints from '../../../domains/engine/portable-run-checkpoint.js';
-import * as checkpointLocks from '../../../platform/fs/recoverable-file-lock.js';
-import { parse as parseYaml } from 'yaml';
-import { inspectNativeHookGuard } from '../../../domains/comet-native/native-hook-guard.js';
-import { refreshNativeSdkVerificationReport } from '../../../domains/comet-native/native-sdk-report.js';
-import * as nativeReportView from '../../../domains/comet-native/native-verification-report-v2.js';
-import { withCometRuntimeMetrics } from '../../../platform/process/runtime-metrics.js';
-import { readRuntimePerformanceRecords } from '../../../platform/process/runtime-performance.js';
-import { inspectNativeSdkCancellation } from '../../../domains/comet-native/native-sdk-cancellation.js';
-import * as nativeSdkChecks from '../../../domains/comet-native/native-sdk-checks.js';
-import * as nativeSdkReportRecovery from '../../../domains/comet-native/native-sdk-report.js';
-import * as nativeSdkRevisionRecovery from '../../../domains/comet-native/native-sdk-revise.js';
-import * as processIdentity from '../../../platform/process/process-identity.js';
-import * as windowsIdentity from '../../../platform/process/windows-process-identity.js';
-import { nativeCandidateInputGate } from '../../../domains/comet-native/native-portable-checks.js';
-import * as nativePortableChecks from '../../../domains/comet-native/native-portable-checks.js';
-import { nativeEditReviewScope } from '../../../domains/comet-native/native-edit-review.js';
-import {
-  nativeSdkAutomaticReportAction,
-  recoverNativeSdkReportRevalidation,
-} from '../../../domains/comet-native/native-sdk-report.js';
-import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
-import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
-import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
-import { createLegacyNativeSdkChange } from '../../helpers/native-legacy-sdk-change.js';
-import { requireFileSymlink } from '../../helpers/file-symlink.js';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
 import { pathToFileURL } from 'node:url';
-import { waitForCondition, waitForProcessExit } from '../../helpers/native-portable-process.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { parse as parseYaml } from 'yaml';
+import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import { inspectNativeHookGuard } from '../../../domains/comet-native/native-hook-guard.js';
+import { inspectNativeSdkCancellation } from '../../../domains/comet-native/native-sdk-cancellation.js';
 import {
-  assertNativeSdkCandidateUnchanged,
+  acknowledgeNativeSdkCheckStopped,
+  createNativeSdkCheckExecution,
+  hasNativeSdkPortableStopEvidence,
+  inspectNativeSdkCheckExecutions,
+  reconcileNativeSdkExecutionStops,
+} from '../../../domains/comet-native/native-sdk-check-execution.js';
+import * as nativeSdkChecks from '../../../domains/comet-native/native-sdk-checks.js';
+import {
   nativeSdkCheckExecutor,
   nativeSdkCurrentCheckSummaries,
   recoverNativeSdkChecks,
 } from '../../../domains/comet-native/native-sdk-checks.js';
+import * as nativeSdkReportRecovery from '../../../domains/comet-native/native-sdk-report.js';
 import {
-  inspectNativeSdkCheckExecutions,
-  hasNativeSdkPortableStopEvidence,
-  reconcileNativeSdkExecutionStops,
-  createNativeSdkCheckExecution,
-  acknowledgeNativeSdkCheckStopped,
-} from '../../../domains/comet-native/native-sdk-check-execution.js';
+  nativeSdkAutomaticReportAction,
+  recoverNativeSdkReportRevalidation,
+  refreshNativeSdkVerificationReport,
+} from '../../../domains/comet-native/native-sdk-report.js';
+import * as nativeSdkRevisionRecovery from '../../../domains/comet-native/native-sdk-revise.js';
+import * as nativeReportView from '../../../domains/comet-native/native-verification-report-v2.js';
+import * as portableCheckpoints from '../../../domains/engine/portable-run-checkpoint.js';
+import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
+import * as checkpointLocks from '../../../platform/fs/recoverable-file-lock.js';
+import * as processIdentity from '../../../platform/process/process-identity.js';
+import { withCometRuntimeMetrics } from '../../../platform/process/runtime-metrics.js';
+import { readRuntimePerformanceRecords } from '../../../platform/process/runtime-performance.js';
+import * as windowsIdentity from '../../../platform/process/windows-process-identity.js';
+import { requireFileSymlink } from '../../helpers/file-symlink.js';
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
+import { createLegacyNativeSdkChange } from '../../helpers/native-legacy-sdk-change.js';
+import { waitForCondition, waitForProcessExit } from '../../helpers/native-portable-process.js';
 
 import * as nativeDomain from '../../../domains/comet-native/index.js';
 import {
@@ -53,67 +49,64 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import {
+  nativeLegacySectionHash,
+  nativeTotalSpecHash,
+} from '../../../domains/comet-native/native-delta-spec.js';
+import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
+import { prepareNativePortableShapeConfirmation } from '../../../domains/comet-native/native-loop-runtime.js';
+import {
   ensureNativeDirectories,
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
-import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
-import { prepareNativePortableShapeConfirmation } from '../../../domains/comet-native/native-loop-runtime.js';
 import { inspectNativeSdkArchiveFinalization } from '../../../domains/comet-native/native-portable-archive.js';
-import { removeNativeWorkspaceConfig } from '../../../domains/comet-native/native-workspace-config.js';
-import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
-import { advanceNativeSdkChange } from '../../../domains/comet-native/native-sdk-next.js';
-import { nativeSdkImplementationRevisionExecutor } from '../../../domains/comet-native/native-sdk-revise.js';
-import {
-  nativeTotalSpecHash,
-  nativeLegacySectionHash,
-} from '../../../domains/comet-native/native-delta-spec.js';
-import { runNativeEditReviewCommand } from '../../../domains/comet-native/native-edit-review-command.js';
-import { captureApprovedShapeOriginals } from '../../../domains/comet-native/native-shape-review-evidence.js';
-import {
-  projectNativeSdkContinuation,
-  projectNativeSdkDispatchResult,
-  nativeSdkTaskResultTemplate,
-} from '../../../domains/comet-native/native-sdk-continuation.js';
+import * as nativeRequirements from '../../../domains/comet-native/native-portable-requirements.js';
+import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
+import type { NativePortableState } from '../../../domains/comet-native/native-portable-types.js';
 import {
   inspectNativeSdkDefinitionUpgrade,
   loadOwnedNativeSdkRuntime,
 } from '../../../domains/comet-native/native-runtime-ownership.js';
-import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
+import { archiveNativeSdkChange } from '../../../domains/comet-native/native-sdk-archive-command.js';
 import {
-  nativeSdkBeforeReportRecovery,
-  nativeSdkBeforeImplementationRevision,
-  nativeSdkBeforeArchiveCandidateRecovery,
-  nativeSdkLegacyTransitionHandler,
-  nativeSdkBeforeVerifierRecovery,
-} from '../../../domains/comet-native/native-sdk-definition.js';
-import {
+  nativeSdkArchiveApplyExecutor,
+  nativeSdkArchiveFinalizeExecutor,
   nativeSdkArchivePreflightExecutor,
   nativeSdkArchivePreflightValidator,
-  nativeSdkArchiveFinalizeExecutor,
-  nativeSdkArchiveApplyExecutor,
 } from '../../../domains/comet-native/native-sdk-archive.js';
-import { archiveNativeSdkChange } from '../../../domains/comet-native/native-sdk-archive-command.js';
-import * as nativeRequirements from '../../../domains/comet-native/native-portable-requirements.js';
-import { nativeSupervisorStateFile } from '../../../domains/comet-native/native-supervisor-state.js';
-import type { NativePortableState } from '../../../domains/comet-native/native-portable-types.js';
 import {
+  nativeSdkTaskResultTemplate,
+  projectNativeSdkContinuation,
+  projectNativeSdkDispatchResult,
+} from '../../../domains/comet-native/native-sdk-continuation.js';
+import {
+  nativeSdkBeforeArchiveCandidateRecovery,
+  nativeSdkBeforeReportRecovery,
+  nativeSdkBeforeVerifierRecovery,
+  nativeSdkLegacyTransitionHandler,
+} from '../../../domains/comet-native/native-sdk-definition.js';
+import { advanceNativeSdkChange } from '../../../domains/comet-native/native-sdk-next.js';
+import { nativeSdkImplementationRevisionExecutor } from '../../../domains/comet-native/native-sdk-revise.js';
+import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
+import { nativeSupervisorStateFile } from '../../../domains/comet-native/native-supervisor-state.js';
+import { removeNativeWorkspaceConfig } from '../../../domains/comet-native/native-workspace-config.js';
+import {
+  createFileRuntimeStore,
   createMemoryRuntimeStore,
   createPortableRunCheckpoint,
-  readPortableRunCheckpoint,
-  createFileRuntimeStore,
   createRuntime,
+  hashRuntimeValue,
+  readPortableRunCheckpoint,
   type DefineWorkflowOptions,
-  type RuntimeValidator,
-  type RuntimeStateValidator,
   type RuntimeExecutor,
+  type RuntimeStateValidator,
+  type RuntimeValidator,
   type WorkflowRun,
   type WorkflowTransitionHandler,
-  hashRuntimeValue,
 } from '../../../domains/engine/runtime.js';
 import {
   COMET_CHANGE_OWNER_SCHEMA,
-  registerSdkChangeOwner,
   recoverSdkChangeOwnerToActive,
+  registerSdkChangeOwner,
 } from '../../../domains/workflow-contract/change-runtime-owner.js';
 
 /** 归档阻塞保留原错误；未完成的 Action 通过退出码 73 返回恢复信息。 */
@@ -437,23 +430,6 @@ async function dispatchedVerifier(
       context: { requestId: 'native-check-execution', projectRoot: root },
     });
   return { ...prepared, run };
-}
-
-async function recordNonBehavioralEdit(root: string, name: string, summary: string) {
-  const observed = (await runNativeEditReviewCommand({
-    projectRoot: root,
-    name,
-    operation: 'observe',
-    sessionId: 'builder-session-1',
-  })) as { recordTemplate: Record<string, unknown> };
-  const reviewRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'native-reviewed-edit-'));
-  roots.push(reviewRoot);
-  const file = path.join(reviewRoot, 'review.json');
-  await fs.writeFile(
-    file,
-    JSON.stringify({ ...observed.recordTemplate, decision: 'non-behavioral', summary }),
-  );
-  await runNativeEditReviewCommand({ projectRoot: root, name, operation: 'record', file });
 }
 
 async function stalledVerifier(storeKind: 'memory' | 'sdk' = 'memory') {
@@ -7194,43 +7170,6 @@ children:
     expect(run.actions.some((action) => action.stepId === 'archive.prepare')).toBe(false);
   });
 
-  it('accepts a legacy candidate binding only while its original environment and source remain current', async () => {
-    const { root, paths, run } = await dispatchedVerifier();
-    const state = run.state as NativePortableState;
-    const check = run.actions.find((action) => action.stepId === 'verify.checks')!;
-    const legacy = await nativeCandidateInputGate({
-      projectRoot: root,
-      candidateId: state.builder_handoff!.candidate_id,
-      plans: [],
-      managedArtifactRoot: paths.artifactRoot,
-      editReviewScope: nativeEditReviewScope(paths, state),
-      shapeSemanticSnapshot: state.shape_semantic_snapshot,
-      legacyExecutionBinding: true,
-    });
-    const legacyRun = structuredClone(run);
-    const legacyOutput = legacyRun.actions.find((action) => action.id === check.id)!.outcome!
-      .output as Record<string, unknown>;
-    // 旧绑定使用执行环境摘要，没有现代 rawInput 与分离的 v2 输入快照。
-    const legacyInputs = await nativePortableChecks.nativeCheckInputSnapshot({
-      projectRoot: root,
-      state,
-      plans: [],
-      managedArtifactRoot: paths.artifactRoot,
-    });
-    legacyOutput.candidateInputFingerprintGate = legacy;
-    delete legacyOutput.rawInput;
-    delete legacyOutput.inputSnapshot;
-    legacyOutput.inputBefore = legacyInputs.fingerprint;
-    legacyOutput.inputAfter = legacyInputs.fingerprint;
-    await expect(
-      assertNativeSdkCandidateUnchanged({ run: legacyRun, projectRoot: root }),
-    ).resolves.toMatchObject({ complete: true, projectRoot: await fs.realpath(root) });
-    vi.stubEnv('NODE_ENV', 'legacy-context-changed');
-    await expect(
-      assertNativeSdkCandidateUnchanged({ run: legacyRun, projectRoot: root }),
-    ).rejects.toThrow('候选实现已变化');
-  });
-
   it.each([
     'environment-only',
     'generated-input',
@@ -7967,132 +7906,43 @@ it('continues an authorized implementation edit without requesting the same deci
     false,
     initializeArchiveGit,
   );
+  await reconcileNativeSdkExecutionStops(root, run, runtime);
   await fs.writeFile(path.join(root, 'implementation.js'), 'export const result = "user edit";');
-  const result = await runNativeCli(['archive', run.runId, '--project-root', root, '--json']);
-  expect(result.exitCode).toBe(73);
-  const data = JSON.parse(result.stdout!).data;
-  expect(data.recovery.code).toBe('candidate-drift');
-  expect(data.continuation.requiresUserDecision).toBe(false);
-  expect(data.continuation.userCommunication.agentInstruction).toMatch(
-    /已有授权|already authorized/iu,
-  );
-  expect(data.continuation.userCommunication.agentInstruction).toMatch(/需求|requirements/iu);
-  expect(data.continuation.userCommunication.agentInstruction).toMatch(/一次性|one-shot/iu);
-  expect(data.continuation.userCommunication.agentInstruction).toMatch(
-    /缺少继续授权|not authorized/iu,
-  );
-  expect(data.continuation.userCommunication.agentInstruction).toMatch(
-    /不得自动接受|Do not automatically accept/iu,
-  );
-  expect(
-    data.continuation.commandAlternatives.find(
-      (option: { name: string }) => option.name === 'revise-implementation',
-    ).requiredInputs,
-  ).not.toContain('user-decision');
-  const preserved = await runtime.inspect(run.runId);
-  expect(preserved.state).toMatchObject({ archived: false });
-  expect(await fs.readFile(path.join(root, 'implementation.js'), 'utf8')).toBe(
-    'export const result = "user edit";',
-  );
-  const resumeArgs = (data.recovery.recoveryArgs as string[])
-    .slice(2)
-    .map((arg) => (arg === '<summary>' ? 'Continue the authorized implementation edit.' : arg));
-  const resumed = await runNativeCli(resumeArgs);
+  const before = await runtime.inspect(run.runId);
+  expect(before.state).toEqual(run.state);
+  const approval = run.waits.findLast(
+    (wait) =>
+      wait.stepId === 'verify.confirm' &&
+      wait.status === 'resolved' &&
+      wait.decision?.choice === 'approved',
+  )!;
+  const resumed = await runNativeCli([
+    'next',
+    run.runId,
+    '--project-root',
+    root,
+    '--json',
+    '--revise-implementation',
+    '--summary',
+    'Continue the authorized implementation edit.',
+    '--proposal-hash',
+    approval.proposalHash,
+    '--expected-state-version',
+    String((run.state as NativePortableState).state_version),
+    '--expected-action',
+    'revise-implementation',
+  ]);
   expect(resumed.exitCode, resumed.stdout).toBe(0);
   const continuing = await runtime.inspect(run.runId);
   expect(continuing.state).toMatchObject({ archived: false, phase: 'build' });
   expect(continuing.runId).toBe(run.runId);
+  expect(continuing.waits.filter((wait) => wait.stepId === 'shape.confirm')).toEqual(
+    run.waits.filter((wait) => wait.stepId === 'shape.confirm'),
+  );
   expect(await fs.readFile(path.join(root, 'implementation.js'), 'utf8')).toBe(
     'export const result = "user edit";',
   );
 });
-
-async function reviewAppliedCommentAtArchive(
-  preparePending: boolean,
-  decision: 'non-behavioral' | 'requirements-changed' = 'non-behavioral',
-) {
-  const { root, paths, changeDir, runtime, run } = await awaitingArchiveApplication(
-    'sdk',
-    undefined,
-    preparePending,
-    initializeArchiveGit,
-    nativeApplication(),
-    decision === 'requirements-changed' ? allowAgentDocumentReview : undefined,
-  );
-  await reconcileNativeSdkExecutionStops(root, run, runtime);
-  const before = await runtime.inspect(run.runId);
-  await captureApprovedShapeOriginals(paths, before.state as NativePortableState);
-  const brief = path.join(changeDir, 'brief.md');
-  const modified = `${await fs.readFile(brief, 'utf8')}\n<!-- The user clarified this example. -->\n`;
-  await fs.writeFile(brief, modified);
-  const status = await runNativeCli(['status', run.runId, '--project-root', root, '--json']);
-  expect(status.exitCode, status.stdout).toBe(0);
-  const data = JSON.parse(status.stdout!).data;
-  expect(data.continuation.commandArgs).toEqual(
-    expect.arrayContaining(['edit-review', 'prepare-applied']),
-  );
-  expect(await runtime.inspect(run.runId)).toEqual(before);
-  const prepared = (await runNativeEditReviewCommand({
-    projectRoot: root,
-    name: run.runId,
-    operation: 'prepare-applied',
-  })) as { proposal: { proposalHash: string } };
-  const claimed = (await runNativeEditReviewCommand({
-    projectRoot: root,
-    name: run.runId,
-    operation: 'claim',
-    proposalHash: prepared.proposal.proposalHash,
-    sessionId: 'archive-comment-reviewer',
-  })) as { recordTemplate: Record<string, unknown> };
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-archive-review-'));
-  roots.push(directory);
-  const receipt = path.join(directory, 'review.json');
-  await fs.writeFile(
-    receipt,
-    JSON.stringify({
-      ...claimed.recordTemplate,
-      decision,
-      summary: 'Review the user clarification.',
-    }),
-  );
-  await runNativeEditReviewCommand({
-    projectRoot: root,
-    name: run.runId,
-    operation: 'record',
-    file: receipt,
-  });
-  const ready = await runNativeCli(['status', run.runId, '--project-root', root, '--json']);
-  if (decision === 'requirements-changed') {
-    const continuation = JSON.parse(ready.stdout!).data.continuation;
-    expect(continuation.action).toBe('repair');
-    expect(continuation.commandArgs).toContain('--revise-requirements');
-    const args = (continuation.commandArgs as string[])
-      .slice(2)
-      .map((arg) => (arg === '<summary>' ? 'Revise the user clarification.' : arg));
-    const resumed = await runNativeCli(args);
-    expect(resumed.exitCode, resumed.stdout).toBe(0);
-    const after = await runtime.inspect(run.runId);
-    expect(after.runId).toBe(before.runId);
-    expect(after.state).toMatchObject({ phase: 'shape', archived: false });
-    expect(await fs.readFile(brief, 'utf8')).toBe(modified);
-    expect(
-      after.waits.filter((wait) => wait.stepId === 'shape.confirm' && wait.status === 'pending'),
-    ).toHaveLength(0);
-    return;
-  }
-  expect(JSON.parse(ready.stdout!).data.continuation.action).toBe('archive');
-  expect((await runtime.inspect(run.runId)).state).toMatchObject({
-    phase: 'archive',
-    archived: false,
-  });
-  const archived = await runNativeCli(['archive', run.runId, '--project-root', root, '--json']);
-  expect(archived.exitCode, archived.stdout).toBe(0);
-  const after = await runtime.inspect(run.runId);
-  expect(after.runId).toBe(before.runId);
-  expect(after.state).toMatchObject({ phase: 'archive', archived: true });
-  const ref = (after.outputs['archive.execute'].value as { archiveRef: string }).archiveRef;
-  expect(await fs.readFile(path.join(paths.archiveDir, ref, 'brief.md'), 'utf8')).toBe(modified);
-}
 
 it.each(['archive.prepare', 'archive.execute'] as const)(
   'offers revalidation when the user moved the report before %s',
@@ -10148,7 +9998,7 @@ it('returns one receipt result template for a claimed v2 Verifier', async () => 
 
 describe('Native v3 Build check reuse', () => {
   it.each([false, true, 'failed-later'])(
-    'reuses a Build check only while inputs match (edited=%s)',
+    'reuses a Build check only when the Agent selects the original execution (edited=%s)',
     async (edited) => {
       const f = await preparedShape('sdk', nativeApplication('3'));
       const wait = f.run.waits.at(-1)!;
@@ -10229,7 +10079,12 @@ describe('Native v3 Build check reuse', () => {
       run = await succeedLatestAction(
         f.runtime,
         run,
-        { summary: 'Implementation ready', checks: [], knownLimits: [], verificationChecks: plans },
+        {
+          summary: 'Implementation ready',
+          checks: [],
+          knownLimits: [],
+          verificationChecks: plans.map((plan) => ({ ...plan, reusable: edited === false })),
+        },
         f.root,
         'builder-final',
         'builder-session-1',

@@ -1,20 +1,9 @@
-import {
-  hashRuntimeValue,
-  portableClaimToken,
-  type RuntimeAction,
-  type WorkflowRun,
-} from '../engine/runtime.js';
-import { readClassicProjectFile } from './classic-protected-path.js';
+import { hashRuntimeValue, type RuntimeAction, type WorkflowRun } from '../engine/runtime.js';
 import { classicDeliveryActionContext } from './classic-sdk-delivery-repair-model.js';
 
-interface DocumentReceipt {
-  ref: string;
-  contentHash: string;
-}
 interface ArchiveDocumentOutputs {
   outputs: Record<string, unknown>;
   recovered: boolean;
-  evidence?: { design: DocumentReceipt; plan: DocumentReceipt };
 }
 
 /** 显式续行不继承旧执行结果；仍有效的 Design 与 Plan 使用原接受来源。 */
@@ -88,7 +77,8 @@ export function classicArchiveDocumentOutputs(
     checked.outcome?.status !== 'succeeded' ||
     hashRuntimeValue(checked.outcome.output) !== hashRuntimeValue(result.value) ||
     accepted.receipt.ref !== receipt?.receiptRef ||
-    accepted.receipt.contentHash !== (receipt?.contentHash ?? checked.inputHash) ||
+    (accepted.receipt.contentHash !== checked.inputHash &&
+      accepted.receipt.contentHash !== receipt?.contentHash) ||
     run.commands?.some((entry) => {
       const sequence = run.actionContexts[entry.actionId]?.sequence;
       return (
@@ -120,61 +110,5 @@ function recoveredArchiveDocuments(inherited: ArchiveDocumentOutputs): ArchiveDo
       ),
     ),
     recovered: true,
-    evidence: inherited.evidence ?? {
-      design: (source['full.design.evidence'] ??
-        (source['full.build.plan'] as { designEvidence?: unknown })
-          ?.designEvidence) as DocumentReceipt,
-      plan: source['full.build.plan.evidence'] as DocumentReceipt,
-    },
   };
-}
-
-/** 旧版已归档 Run 也必须携带原验收正文，只允许确定性的归档注记。 */
-export async function assertClassicRecoveredArchiveDocuments(options: {
-  projectRoot: string;
-  run: Readonly<WorkflowRun>;
-  archiveRef: string;
-  activeRef: string;
-  designRef: string;
-  planRef: string;
-  committedDesign: string;
-  committedPlan: string;
-  evidence: ArchiveDocumentOutputs['evidence'];
-}): Promise<void> {
-  const { projectRoot, run, archiveRef, designRef, planRef, evidence } = options;
-  const archiveAction = run.actions
-    .slice()
-    .reverse()
-    .find(
-      (action) =>
-        action.stepId === 'full.archive.execute' &&
-        action.status === 'succeeded' &&
-        (action.outcome?.output as { archiveDirectory?: string } | undefined)?.archiveDirectory ===
-          archiveRef,
-    );
-  const receipt = JSON.parse(
-    await readClassicProjectFile(projectRoot, `${archiveRef}/.comet/archive-documents.json`, {
-      label: 'Classic Archive document receipt',
-    }),
-  );
-  if (
-    !archiveAction?.claim ||
-    receipt.runId !== run.runId ||
-    receipt.actionId !== archiveAction.id ||
-    receipt.attempt !== archiveAction.attempt ||
-    receipt.inputHash !== archiveAction.inputHash ||
-    receipt.claimToken !== portableClaimToken(archiveAction.claim.token) ||
-    evidence?.design?.ref !== designRef ||
-    evidence.plan?.ref !== planRef
-  )
-    throw new Error('Classic recovered Archive document evidence is missing or changed');
-  const design = receipt.documents?.[designRef];
-  const plan = receipt.documents?.[planRef];
-  if (
-    typeof design?.original !== 'string' ||
-    design.extraFields !== 'status: final' ||
-    typeof plan?.original !== 'string' ||
-    plan.extraFields !== ''
-  )
-    throw new Error('Classic recovered Archive document receipt is invalid');
 }

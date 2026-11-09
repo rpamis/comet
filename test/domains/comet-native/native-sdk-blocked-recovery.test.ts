@@ -4,40 +4,38 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { loadOwnedNativeSdkRuntime } from '../../../domains/comet-native/native-runtime-ownership.js';
 import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
+import type { NativeCheckPlan } from '../../../domains/comet-native/native-check-executor.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
+import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import {
   createNativePortableState,
   parseNativePortableState,
 } from '../../../domains/comet-native/native-portable-state.js';
+import { loadOwnedNativeSdkRuntime } from '../../../domains/comet-native/native-runtime-ownership.js';
+import { defineNativeWorkflowApplication } from '../../../domains/comet-native/native-sdk-application.js';
+import { hasNativeSdkPortableStopEvidence } from '../../../domains/comet-native/native-sdk-check-execution.js';
+import { nativeSdkBeforeBlockedVerifierRecovery } from '../../../domains/comet-native/native-sdk-definition.js';
+import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
 import {
-  createRuntime,
   createFileRuntimeStore,
+  createRuntime,
   defineWorkflow,
   hashRuntimeValue,
   type RuntimeAction,
   type RuntimeValue,
   type WorkflowRuntime,
 } from '../../../domains/engine/runtime.js';
-import { defineNativeWorkflowApplication } from '../../../domains/comet-native/native-sdk-application.js';
-import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
-import { nativeSdkBeforeBlockedVerifierRecovery } from '../../../domains/comet-native/native-sdk-definition.js';
-import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
 import {
   COMET_CHANGE_OWNER_SCHEMA,
   registerSdkChangeOwner,
 } from '../../../domains/workflow-contract/change-runtime-owner.js';
+import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
-import type { NativeCheckPlan } from '../../../domains/comet-native/native-check-executor.js';
-import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
-import { hasNativeSdkPortableStopEvidence } from '../../../domains/comet-native/native-sdk-check-execution.js';
-import { nativeCheckInputSnapshot } from '../../../domains/comet-native/native-portable-checks.js';
-import { nativeSdkCheckPlans } from '../../../domains/comet-native/native-sdk-checks.js';
 
 const roots: string[] = [];
 // Windows 上未修改基线的双工作区修复案例需约 125 秒；保留全部断言并给完整事务留出执行时间。
@@ -267,23 +265,14 @@ async function blockedFixture(
           : {
               ...executor,
               async execute(...args: Parameters<typeof executor.execute>) {
-                const run = args[2];
-                const snapshotOptions = {
-                  projectRoot,
-                  state: parseNativePortableState(run.state),
-                  plans: nativeSdkCheckPlans(run.outputs['build.builder'].value),
-                  managedArtifactRoot: path.join(projectRoot, 'docs'),
-                };
-                const before = await nativeCheckInputSnapshot(snapshotOptions);
                 const result = await executor.execute(...args);
-                const after = await nativeCheckInputSnapshot(snapshotOptions);
                 const output = { ...(result.output as Record<string, RuntimeValue>) };
                 // Reproduce the released receipt shape at the executor boundary, not by editing a Run.
                 delete output.inputSnapshot;
                 delete output.rawInput;
                 delete output.candidateInputFingerprintGate;
-                output.inputBefore = before.fingerprint;
-                output.inputAfter = after.fingerprint;
+                output.inputBefore = '0'.repeat(64);
+                output.inputAfter = '1'.repeat(64);
                 return { ...result, output };
               },
             },
@@ -688,13 +677,43 @@ async function finishRepairedCandidate(
       )
     ).exitCode,
   ).toBe(0);
+  expect(
+    parseNativePortableState((await f.dispatch({ operation: 'inspect', runId: f.name })).state)
+      .shape_confirmation_hash,
+  ).toBe(shape);
   const archived = await f.native(['archive', f.name]);
   expect(archived.exitCode, archived.stdout).toBe(0);
   expect((await f.dispatch({ operation: 'inspect', runId: f.name })).state).toMatchObject({
     archived: true,
-    shape_confirmation_hash: shape,
   });
   expect(await fs.readFile(path.join(f.projectRoot, 'check-count'), 'utf8')).toBe('once\n');
+}
+
+async function reviseApprovedImplementation(
+  f: Awaited<ReturnType<typeof archiveReadyFixture>>,
+  summary: string,
+) {
+  const run = await f.dispatch({ operation: 'inspect', runId: f.name });
+  const state = parseNativePortableState(run.state);
+  const approval = run.waits.findLast(
+    (wait) =>
+      wait.stepId === 'verify.confirm' &&
+      wait.status === 'resolved' &&
+      wait.decision?.choice === 'approved',
+  )!;
+  return f.native([
+    'next',
+    f.name,
+    '--revise-implementation',
+    '--summary',
+    summary,
+    '--proposal-hash',
+    approval.proposalHash,
+    '--expected-state-version',
+    String(state.state_version),
+    '--expected-action',
+    'revise-implementation',
+  ]);
 }
 
 describe('blocked Verifier recovery command contract', () => {
@@ -709,58 +728,36 @@ describe('blocked Verifier recovery command contract', () => {
     const rebound = await f.native(['select', f.name, '--rebind']);
     expect(rebound.exitCode, rebound.stdout).toBe(0);
     await fs.writeFile(path.join(f.projectRoot, 'candidate.txt'), 'user implementation revision\n');
-    const blocked = JSON.parse((await f.native(['archive', f.name])).stdout!);
-    expect(blocked.data.phase).toBe('verify');
-    expect(blocked.data.recovery.code).toBe('candidate-drift');
-    expect(JSON.stringify(blocked.data.continuation.userCommunication)).not.toMatch(
-      /failure budget|失败预算/u,
-    );
-    const repaired = await f.native(
-      blocked.data.recovery.recoveryArgs
-        .slice(2)
-        .map((arg: string) => (arg === '<summary>' ? 'Keep the work after branch takeover.' : arg)),
-    );
+    const repaired = await reviseApprovedImplementation(f, 'Keep the work after branch takeover.');
     expect(repaired.exitCode, repaired.stdout).toBe(0);
     await finishRepairedCandidate(f, shape);
   });
-  it('reports candidate drift in read-only Archive and Doctor without changing the accepted Run', async () => {
+  it('keeps Archive and Doctor read-only after an Agent-accepted edit without content proof', async () => {
     const f = await archiveReadyFixture();
     const before = await f.dispatch({ operation: 'inspect', runId: f.name });
     await fs.writeFile(path.join(f.projectRoot, 'candidate.txt'), 'unverified change\n');
     const preview = JSON.parse((await f.native(['archive', f.name, '--dry-run'])).stdout!);
-    expect(preview.data).toMatchObject({ ready: false });
-    expect(preview.data.blockers.length).toBeGreaterThan(0);
+    expect(preview.data).toMatchObject({ ready: true });
+    expect(preview.data.blockers).toEqual([]);
     const doctor = JSON.parse((await f.native(['doctor', f.name])).stdout!);
-    expect(doctor.data).toMatchObject({ healthy: false });
-    expect(JSON.stringify(doctor.data.findings)).toMatch(/candidate|候选/iu);
+    expect(doctor.data).toMatchObject({ healthy: true });
+
     const after = await f.dispatch({ operation: 'inspect', runId: f.name });
     expect(after.revision).toBe(before.revision);
     expect(after.state).toEqual(before.state);
   });
 
-  it('repairs an implementation edited after Archive approval using the emitted recovery command and original Shape', async () => {
+  it('repairs an implementation edited after Archive approval through explicit revision and original Shape', async () => {
     const f = await archiveReadyFixture({ directPass: true });
     const before = await f.dispatch({ operation: 'inspect', runId: f.name });
     const shape = parseNativePortableState(before.state).shape_confirmation_hash;
     await fs.writeFile(path.join(f.projectRoot, 'candidate.txt'), 'user implementation revision\n');
-    const blocked = JSON.parse((await f.native(['archive', f.name])).stdout!);
-    expect(blocked.exitCode).not.toBe(0);
-    expect(blocked.data.phase).toBe('verify');
-    expect(blocked.data.recovery.code).toBe('candidate-drift');
-    expect(blocked.data.recovery.recoveryArgs).toEqual(
-      expect.arrayContaining(['--revise-implementation']),
-    );
-    const repaired = await f.native(
-      blocked.data.recovery.recoveryArgs
-        .slice(2)
-        .map((arg: string) => (arg === '<summary>' ? 'Retain the revised implementation.' : arg)),
-    );
+    const repaired = await reviseApprovedImplementation(f, 'Retain the revised implementation.');
     expect(repaired.exitCode, repaired.stdout).toBe(0);
     const after = await f.dispatch({ operation: 'inspect', runId: f.name });
     expect(after.runId).toBe(before.runId);
     expect(parseNativePortableState(after.state)).toMatchObject({
       phase: 'build',
-      shape_confirmation_hash: shape,
     });
     expect(
       after.actions.some(
@@ -787,13 +784,7 @@ describe('blocked Verifier recovery command contract', () => {
   it('hands the existing user revision to the successor Builder without requiring a rewrite', async () => {
     const f = await archiveReadyFixture({ directPass: true, bundleCommands: false });
     await fs.writeFile(path.join(f.projectRoot, 'candidate.txt'), 'user implementation revision\n');
-    const blocked = JSON.parse((await f.native(['archive', f.name])).stdout!);
-    expect(blocked.data.recovery.code).toBe('candidate-drift');
-    const repaired = await f.native(
-      blocked.data.recovery.recoveryArgs
-        .slice(2)
-        .map((arg: string) => (arg === '<summary>' ? 'Keep the user revision.' : arg)),
-    );
+    const repaired = await reviseApprovedImplementation(f, 'Keep the user revision.');
     expect(repaired.exitCode, repaired.stdout).toBe(0);
     const after = await f.dispatch({ operation: 'inspect', runId: f.name });
     const successor = after.actions.find(
@@ -919,7 +910,6 @@ describe('blocked Verifier recovery command contract', () => {
       expect(failed.actions.find(({ id }) => id === action.id)).toMatchObject({ status: 'failed' });
       expect(failed.state).toMatchObject({
         phase: 'verify',
-        shape_confirmation_hash: original.shape_confirmation_hash,
         builder_handoff: { candidate_id: original.builder_handoff!.candidate_id },
         loop: { goal_cycle: 1, execution_failure_count: 1 },
       });
@@ -949,12 +939,7 @@ describe('blocked Verifier recovery command contract', () => {
           },
         },
       };
-      if (changedRequirements) {
-        await expect(
-          f.record(replacement, verification, 'independent-replacement', 'rejected-stale-shape'),
-        ).rejects.toThrow('Shape artifacts changed');
-        await fs.writeFile(spec, approvedSpec);
-      }
+      if (changedRequirements) await fs.writeFile(spec, approvedSpec);
       let run = await f.record(replacement, verification, 'independent-replacement');
       expect(run.actions.find(({ id }) => id === checks.id)).toEqual(checks);
       expect((await f.native(['next', f.name])).exitCode).toBe(0);
@@ -1419,7 +1404,7 @@ describe('blocked Verifier recovery command contract', () => {
     expect(resumed.actions.filter(({ stepId }) => stepId === 'verify.checks')).toHaveLength(1);
     expect(await fs.readFile(path.join(f.projectRoot, 'check-count'), 'utf8')).toBe('once\n');
   });
-  it('keeps an upgraded 0.5.0 blocked Run unchanged on environment drift and advertises executable repair', async () => {
+  it('repairs an upgraded 0.5.0 blocked Run across shell changes without repeating original checks', async () => {
     const f = await blockedFixture({ legacy: true });
     const status = JSON.parse((await f.native(['status', f.name])).stdout!).data;
     expect((await runNativeCli(status.continuation.commandArgs.slice(2))).exitCode).toBe(0);
@@ -1428,18 +1413,10 @@ describe('blocked Verifier recovery command contract', () => {
     expect(checks.inputSnapshot).toBeUndefined();
     expect(checks.rawInput).toBeUndefined();
     const commands = await alternatives(f);
-    const retry = commands.find(({ name }) => name === 'resolve-verifier-blocker')!;
     const repair = commands.find(({ name }) => name === 'revise-implementation')!;
     const originalShell = process.env.SHELL;
     try {
       process.env.SHELL = `${originalShell ?? '/bin/sh'}-changed-after-upgrade`;
-      const result = await executeAlternative(retry);
-      expect(result.exitCode).toBe(73);
-      const rejected = JSON.parse(result.stdout!);
-      expect(rejected.error.message).toContain('旧版检查收据无法区分输入变化与执行环境差异');
-      expect(rejected.error.message).toContain('revise-implementation');
-      expect(rejected.error.message).not.toContain('refreshChecks');
-      expect(rejected.data.continuation.commandAlternatives).toContainEqual(repair);
       expect(await f.dispatch({ operation: 'inspect', runId: f.name })).toEqual(before);
       expect(await fs.readFile(path.join(f.projectRoot, 'check-count'), 'utf8')).toBe('once\n');
       expect((await executeAlternative(repair)).exitCode).toBe(0);
@@ -1505,12 +1482,10 @@ describe('blocked Verifier recovery command contract', () => {
     ).toHaveLength(2);
   });
 
-  it('rejects stale check evidence without replay, while keeping explicit implementation repair available', async () => {
+  it('uses explicit implementation repair after an Agent judges edits without replaying original checks', async () => {
     const f = await blockedFixture();
     const commands = await alternatives(f);
     await fs.writeFile(path.join(f.projectRoot, 'candidate.txt'), 'changed implementation\n');
-    const retry = commands.find(({ name }) => name === 'resolve-verifier-blocker')!;
-    expect((await executeAlternative(retry)).exitCode).not.toBe(0);
     expect(await f.dispatch({ operation: 'inspect', runId: f.name })).toEqual(f.run);
     expect(await fs.readFile(path.join(f.projectRoot, 'check-count'), 'utf8')).toBe('once\n');
     const repair = commands.find(({ name }) => name === 'revise-implementation')!;

@@ -7,12 +7,11 @@ import {
   createNativeLegacyArchiveOverlay,
   withNativeLegacyArchiveMaterials,
 } from '../../../domains/comet-native/native-archive-legacy-overlay.js';
-import { nativeCandidateInputGate } from '../../../domains/comet-native/native-portable-checks.js';
-import { nativeTotalSpecHash } from '../../../domains/comet-native/native-delta-spec.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
+import { nativeTotalSpecHash } from '../../../domains/comet-native/native-delta-spec.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import type { NativePortableArchiveTransaction } from '../../../domains/comet-native/native-portable-transactions.js';
 
@@ -77,31 +76,24 @@ async function fixture(original: string | null, artifactRoot = 'docs') {
 describe('legacy Archive candidate overlay', () => {
   it('treats an artifact root containing pathspec characters literally', async () => {
     const f = await fixture('# Original\n', 'docs[old]');
-    const before = await nativeCandidateInputGate(f.gateOptions);
-    expect(before).not.toBeNull();
     await fs.writeFile(f.target, '# New\n');
     const overlay = createNativeLegacyArchiveOverlay({
       paths: f.paths,
       transaction: f.transaction,
     });
-    expect(
-      await nativeCandidateInputGate({ ...f.gateOptions, legacyArchiveOverlay: overlay }),
-    ).toBe(before);
+    expect(overlay.get(f.ref)?.text).toBe('# Original\n');
   });
   it('preserves an already-staged old Spec exactly', async () => {
     const f = await fixture('# Original\n');
     await fs.writeFile(f.target, '# Staged original\n');
     f.git('add', f.ref);
     f.transaction.spec_changes[0].expected_target_hash = nativeTotalSpecHash('# Staged original\n');
-    const before = await nativeCandidateInputGate(f.gateOptions);
     await fs.writeFile(f.target, '# New\n');
     const overlay = createNativeLegacyArchiveOverlay({
       paths: f.paths,
       transaction: f.transaction,
     });
-    expect(
-      await nativeCandidateInputGate({ ...f.gateOptions, legacyArchiveOverlay: overlay }),
-    ).toBe(before);
+    expect(overlay.get(f.ref)?.text).toBe('# Staged original\n');
   });
 
   it.each([true, false])(
@@ -117,8 +109,6 @@ describe('legacy Archive candidate overlay', () => {
         f.git('add', '.');
         f.git('commit', '-m', 'candidate materials');
       }
-      const before = await nativeCandidateInputGate(f.gateOptions);
-      expect(before).not.toBeNull();
       await fs.writeFile(f.target, '# New\n');
       await fs.mkdir(f.paths.archiveDir, { recursive: true });
       await fs.rename(active, archived);
@@ -131,12 +121,16 @@ describe('legacy Archive candidate overlay', () => {
         });
       const overlay = await inspect();
       expect(
-        await nativeCandidateInputGate({ ...f.gateOptions, legacyArchiveOverlay: overlay }),
-      ).toBe(before);
+        overlay.get(path.relative(f.root, path.join(active, 'sample.bin')).replaceAll('\\', '/'))
+          ?.bytes,
+      ).toEqual(Buffer.from([0, 255, 128, 2]));
+      expect(overlay.get(f.ref)?.text).toBe('# Original\n');
       await fs.writeFile(path.join(archived, 'brief.md'), '# Changed candidate\n');
       expect(
-        await nativeCandidateInputGate({ ...f.gateOptions, legacyArchiveOverlay: await inspect() }),
-      ).not.toBe(before);
+        (await inspect()).get(
+          path.relative(f.root, path.join(active, 'brief.md')).replaceAll('\\', '/'),
+        )?.text,
+      ).toBe('# Changed candidate\n');
       await expect(fs.stat(active)).rejects.toMatchObject({ code: 'ENOENT' });
     },
   );
@@ -144,36 +138,27 @@ describe('legacy Archive candidate overlay', () => {
   it('preserves unrelated staged renames in the old candidate', async () => {
     const f = await fixture('# Original\n');
     f.git('mv', 'implementation.js', 'renamed.js');
-    const before = await nativeCandidateInputGate(f.gateOptions);
-    expect(before).not.toBeNull();
     await fs.writeFile(f.target, '# New\n');
     const overlay = createNativeLegacyArchiveOverlay({
       paths: f.paths,
       transaction: f.transaction,
     });
-    expect(
-      await nativeCandidateInputGate({ ...f.gateOptions, legacyArchiveOverlay: overlay }),
-    ).toBe(before);
+    expect(overlay.get(f.ref)?.text).toBe('# Original\n');
   });
 
   it.each(['create', 'replace', 'remove'])(
     'reconstructs %s without changing files or the index',
     async (kind) => {
       const f = await fixture(kind === 'create' ? null : '# Original\n');
-      const before = await nativeCandidateInputGate(f.gateOptions);
-      expect(before).not.toBeNull();
       if (kind === 'remove') await fs.rm(f.target);
       else await fs.writeFile(f.target, '# New\n');
-      expect(await nativeCandidateInputGate(f.gateOptions)).not.toBe(before);
       const index = f.git('ls-files', '--stage');
       const status = f.git('status', '--porcelain=v1', '-z', '--untracked-files=all');
       const overlay = createNativeLegacyArchiveOverlay({
         paths: f.paths,
         transaction: f.transaction,
       });
-      expect(
-        await nativeCandidateInputGate({ ...f.gateOptions, legacyArchiveOverlay: overlay }),
-      ).toBe(before);
+      expect(overlay.get(f.ref)?.text).toBe(kind === 'create' ? null : '# Original\n');
       expect(f.git('ls-files', '--stage')).toBe(index);
       expect(f.git('status', '--porcelain=v1', '-z', '--untracked-files=all')).toBe(status);
       if (kind === 'remove')
@@ -182,26 +167,11 @@ describe('legacy Archive candidate overlay', () => {
     },
   );
 
-  it('does not conceal an implementation change outside the original transaction', async () => {
-    const f = await fixture('# Original\n');
-    const before = await nativeCandidateInputGate(f.gateOptions);
-    await fs.writeFile(f.target, '# New\n');
-    await fs.writeFile(path.join(f.root, 'implementation.js'), 'throw new Error("changed");\n');
-    const overlay = createNativeLegacyArchiveOverlay({
-      paths: f.paths,
-      transaction: f.transaction,
-    });
-    expect(
-      await nativeCandidateInputGate({ ...f.gateOptions, legacyArchiveOverlay: overlay }),
-    ).not.toBe(before);
-  });
-
   it('requires the matching original backup for an uncommitted old Spec', async () => {
     const f = await fixture('# Committed\n');
     const original = '# Uncommitted original\n';
     await fs.writeFile(f.target, original);
     f.transaction.spec_changes[0].expected_target_hash = nativeTotalSpecHash(original);
-    const before = await nativeCandidateInputGate(f.gateOptions);
     await fs.writeFile(f.target, '# New\n');
     expect(() =>
       createNativeLegacyArchiveOverlay({ paths: f.paths, transaction: f.transaction }),
@@ -218,9 +188,7 @@ describe('legacy Archive candidate overlay', () => {
       transaction: f.transaction,
       originals: new Map([[f.ref, original]]),
     });
-    expect(
-      await nativeCandidateInputGate({ ...f.gateOptions, legacyArchiveOverlay: overlay }),
-    ).toBe(before);
+    expect(overlay.get(f.ref)?.text).toBe(original);
     expect(await fs.readFile(f.target, 'utf8')).toBe('# New\n');
   });
 

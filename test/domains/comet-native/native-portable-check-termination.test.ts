@@ -1,16 +1,12 @@
-import { promises as fs } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import * as checkExecutor from '../../../domains/comet-native/native-check-executor.js';
-import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
 import * as atomicFile from '../../../domains/comet-native/native-atomic-file.js';
 import { canonicalHash } from '../../../domains/comet-native/native-canonical-hash.js';
-import { nativePortableStateFile } from '../../../domains/comet-native/native-portable-storage.js';
-import { writeNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
-import * as processIdentity from '../../../platform/process/process-identity.js';
+import * as checkExecutor from '../../../domains/comet-native/native-check-executor.js';
 import {
   inspectNativeCheckStopEvidenceTargets,
   recoverNativeChecksWithStopEvidence,
@@ -19,11 +15,12 @@ import {
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
+import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
 import { readNativeLocalExecution } from '../../../domains/comet-native/native-local-execution.js';
 import {
   ensureNativeDirectories,
-  nativeProjectPaths,
   nativePreferredChangeRuntimeDir,
+  nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
 import { inspectNativePortableCheckExecution } from '../../../domains/comet-native/native-portable-checks.js';
 import { recoverNativePortableChange } from '../../../domains/comet-native/native-portable-recovery.js';
@@ -38,7 +35,10 @@ import {
   submitNativePortableBuilderCandidate,
   submitNativePortableVerifierResult,
 } from '../../../domains/comet-native/native-portable-runtime.js';
+import { writeNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
+import { nativePortableStateFile } from '../../../domains/comet-native/native-portable-storage.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
+import * as processIdentity from '../../../platform/process/process-identity.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 
@@ -206,7 +206,7 @@ describe('Native portable unconfirmed check termination', () => {
     const child = vi.spyOn(checkExecutor, 'inspectNativeCheckProcessTreeLiveness');
     for (const liveness of ['alive', 'unknown'] as const) {
       child.mockResolvedValue(liveness);
-      await expect(ordinary()).rejects.toThrow('原检查仍运行或结果不明');
+      await expect(ordinary()).rejects.toThrow('原检查或验收仍在执行');
       expect(await readNativeLocalExecution(file)).toEqual(running);
       expect(execute).toHaveBeenCalledTimes(1);
     }

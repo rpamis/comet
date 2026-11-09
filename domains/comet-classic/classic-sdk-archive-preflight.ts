@@ -189,7 +189,7 @@ export async function assertVerifyEvidenceCurrent(
   if (
     !supplemental &&
     (evidence.ref !== output.receiptRef ||
-      evidence.contentHash !== (output.contentHash ?? check.inputHash))
+      (evidence.contentHash !== check.inputHash && evidence.contentHash !== output.contentHash))
   ) {
     throw new Error(
       'Classic Verify execution does not belong to the accepted SDK evidence request',

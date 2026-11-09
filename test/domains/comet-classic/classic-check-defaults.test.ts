@@ -3,9 +3,8 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
-import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
-import { collectCheckSnapshot } from '../../../domains/comet-classic/classic-check-snapshot.js';
 import { readCheckPolicy } from '../../../domains/comet-classic/classic-check-policy.js';
+import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
 let root: string;
@@ -48,8 +47,6 @@ async function prepare(runtime: 'compat' | 'sdk') {
   );
   if (runtime === 'sdk') await cli('state', 'complete-build', 'demo');
 }
-const snapshot = () =>
-  collectCheckSnapshot(root, path.join(root, 'openspec/changes/demo'), identity);
 const policy = (command: Record<string, unknown>) =>
   put(
     '.comet/check-policy.json',
@@ -99,103 +96,13 @@ it.each(['compat', 'sdk'] as const)(
   },
 );
 
-it('already excludes untracked ignored outputs in the public default check surface', async () => {
-  await prepare('compat');
-  await put('.gitignore', '.vite/\ncoverage/\nbin/\nobj/\n');
-  const script = `for (const dir of ['.vite', 'coverage', 'bin', 'obj']) { require('fs').mkdirSync(dir, { recursive: true }); require('fs').writeFileSync(dir + '/result', 'generated'); }`;
-  const result = await invoke(
-    'check',
-    'run',
-    'demo',
-    'build',
-    '--',
-    process.execPath,
-    '-e',
-    script,
-  );
-  expect(result.exitCode, result.stdout).toBe(0);
-  expect(result.response.data.inputBefore).toBe(result.response.data.inputAfter);
-});
-
-it('reports undeclared output drift and accepts only explicitly selected output presets', async () => {
-  await prepare('compat');
-  const argv = [
-    process.execPath,
-    '-e',
-    `require('fs').mkdirSync('.vite', { recursive: true }); require('fs').writeFileSync('.vite/result', String(Date.now()));`,
-  ];
-  const failed = await invoke('check', 'run', 'demo', 'build', '--', ...argv);
-  expect(failed.exitCode, failed.stdout).toBe(1);
-  expect(failed.response.stderr).toContain('.vite/result');
-  await policy({ argv, presets: ['vite'] });
-  const passed = await invoke('check', 'run', 'demo', 'build', '--', ...argv);
-  expect(passed.exitCode, passed.stdout).toBe(0);
-  expect(passed.response.data.inputBefore).toBe(passed.response.data.inputAfter);
-});
-
-it('expands output presets canonically without dropping source or dependency inputs', async () => {
-  await policy({ presets: ['vite', 'coverage', 'dotnet'] });
-  const first = await snapshot();
-  for (const output of [
-    '.vite/cache',
-    'packages/ui/.vite/cache',
-    'coverage/report',
-    'packages/api/bin/app',
-    'packages/api/obj/app',
-    '.nyc_output/data',
-  ])
-    await put(output, 'output');
-  expect((await snapshot()).digest).toBe(first.digest);
-  const declaration = await readCheckPolicy(root, identity);
-  await policy({ outputs: declaration.outputs, presets: ['dotnet', 'vite', 'coverage', 'vite'] });
-  expect((await snapshot()).digest).toBe(first.digest);
-  await put('src/source.ts', 'source');
-  const source = await snapshot();
-  expect(source.digest).not.toBe(first.digest);
-  await put('node_modules/.modules.yaml', 'dependencies');
-  expect((await snapshot()).digest).not.toBe(source.digest);
-});
-
 it.each([{ presets: ['unknown'] }, { presets: 'vite' }, { presets: [false] }])(
   'rejects invalid presets %j',
   async ({ presets }) => {
     await policy({ presets });
-    await expect(snapshot()).rejects.toThrow(/preset/iu);
+    await expect(readCheckPolicy(root, identity)).rejects.toThrow(/preset/iu);
   },
 );
-
-it('does not ignore tracked inputs just because a gitignore rule matches', async () => {
-  await put('.gitignore', 'generated/\n');
-  await put('generated/input.json', 'one');
-  execFileSync('git', ['add', '-f', 'generated/input.json'], { cwd: root });
-  const first = await snapshot();
-  expect(first.entries.map((entry) => entry.p)).toContain('generated/input.json');
-  await put('generated/input.json', 'two');
-  expect((await snapshot()).digest).not.toBe(first.digest);
-});
-
-it('includes ignored directory inputs and node_modules inputs when explicitly declared', async () => {
-  await put('.gitignore', 'fixtures/\nnode_modules/\n');
-  await put('fixtures/input.json', 'one');
-  await put('node_modules/local-fixture/value.json', 'one');
-  await policy({ files: ['fixtures', 'node_modules/local-fixture/**'] });
-  const first = await snapshot();
-  expect(first.entries.map((entry) => entry.p)).toEqual(
-    expect.arrayContaining(['fixtures/input.json', 'node_modules/local-fixture/value.json']),
-  );
-  await put('fixtures/next.json', 'new');
-  expect((await snapshot()).digest).not.toBe(first.digest);
-});
-
-it('keeps explicitly selected output directories neutral outside Git too', async () => {
-  await fs.rm(path.join(root, '.git'), { recursive: true, force: true });
-  await policy({ presets: ['vite', 'coverage', 'dotnet'] });
-  const first = await snapshot();
-  await put('.vite/result', 'cache');
-  await put('bin/result', 'output');
-  await put('coverage/result', 'report');
-  expect((await snapshot()).digest).toBe(first.digest);
-});
 
 it('does not reuse a command executed under a different explicit timeout', async () => {
   await prepare('compat');
@@ -247,34 +154,4 @@ it('rerun preserves the previous resolved timeout rather than a changed project 
   await fs.writeFile(configPath, initialConfig + '  check_timeout_ms: 1\n');
   const rerun = await cli('check', 'rerun', 'demo', 'build');
   expect(rerun.timeoutMs).toBe(5000);
-});
-
-it('does not treat source files named bin or coverage as preset output directories', async () => {
-  await policy({ presets: ['dotnet', 'coverage'] });
-  const first = await snapshot();
-  await put('bin', 'source script');
-  await put('coverage', 'source script');
-  const next = await snapshot();
-  expect(next.digest).not.toBe(first.digest);
-  expect(next.entries.map((entry) => entry.p)).toEqual(expect.arrayContaining(['bin', 'coverage']));
-});
-
-it('still binds policy file bytes when the command declares the policy itself as input', async () => {
-  await policy({ files: ['.comet/check-policy.json'], presets: ['vite'] });
-  const first = await snapshot();
-  expect(first.entries.map((entry) => entry.p)).toContain('.comet/check-policy.json');
-  await fs.appendFile(path.join(root, '.comet/check-policy.json'), '\n');
-  expect((await snapshot()).digest).not.toBe(first.digest);
-});
-
-it('keeps new intermediate directories containing only declared outputs neutral outside Git', async () => {
-  await fs.rm(path.join(root, '.git'), { recursive: true, force: true });
-  await policy({ presets: ['vite', 'coverage', 'dotnet'] });
-  const first = await snapshot();
-  await put('packages/new-app/.vite/result', 'cache');
-  await put('packages/new-service/obj/result', 'output');
-  const outputs = await snapshot();
-  expect(outputs.digest).toBe(first.digest);
-  await put('packages/new-app/source.ts', 'real input');
-  expect((await snapshot()).digest).not.toBe(first.digest);
 });
