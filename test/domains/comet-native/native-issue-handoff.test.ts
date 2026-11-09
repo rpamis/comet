@@ -286,16 +286,4 @@ describe('Native issue handoff regressions', () => {
     });
     expect((await cli(['show', name])).data.state).toEqual(before);
   });
-
-  it('still rejects source drift after an otherwise complete handoff', async () => {
-    const check = plan();
-    expect(
-      (await cli(['next', name], { ...handoff(), verification_checks: [check] }, true)).exitCode,
-    ).toBe(0);
-    await fs.writeFile(path.join(root, 'source.txt'), 'Changed implementation.\n');
-    expect(
-      (await cli(['next', name], { kind: 'dispatch-verifier', checks: [check] }, true)).exitCode,
-    ).toBe(65);
-    expect((await cli(['show', name])).data.state.phase).toBe('build');
-  });
 });

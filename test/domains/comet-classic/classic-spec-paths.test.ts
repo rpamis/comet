@@ -66,39 +66,22 @@ describe('Classic nested capability paths', () => {
         state,
         (await fs.readFile(state, 'utf8')).replace('phase: open', 'phase: design'),
       );
-      const before = await cli('handoff', 'nested', '--hash-only');
-      expect(before.exitCode, before.stderr).toBe(0);
-      const written = await cli('handoff', 'nested', 'design', '--write');
+      const written = await cli('handoff', 'nested', 'design', '--write', '--full');
       expect(written.exitCode, written.stderr).toBe(0);
-      const contextName = mode === 'beta' ? 'spec-context' : 'design-context';
-      const markdown = path.join(change, '.comet', 'handoff', `${contextName}.md`);
+      const markdown = path.join(change, '.comet', 'handoff', 'design-context.md');
       expect(await fs.readFile(markdown, 'utf8')).toContain('specs/identity/auth/spec.md');
-      if (mode === 'beta') {
-        const context = JSON.parse(
-          await fs.readFile(path.join(change, '.comet', 'handoff', 'spec-context.json'), 'utf8'),
-        );
-        expect(context.files).toContainEqual(
-          expect.objectContaining({
-            path: 'openspec/changes/nested/specs/identity/auth/spec.md',
-            role: 'spec',
-          }),
-        );
-      }
+      expect(await fs.readdir(path.join(change, '.comet', 'handoff'))).toEqual([
+        'design-context.md',
+      ]);
       await fs.writeFile(path.join(change, 'tasks.md'), '- [x] implement auth\n');
-      expect((await cli('handoff', 'nested', '--hash-only')).stdout).toBe(before.stdout);
       const progressGuard = await cli('guard', 'nested', 'design');
       expect(progressGuard.stderr).not.toContain('OpenSpec artifacts changed');
-      expect(progressGuard.stderr).not.toContain('missing current sha256');
-      await fs.writeFile(path.join(change, 'tasks.md'), '- [x] implement different auth\n');
-      expect((await cli('handoff', 'nested', '--hash-only')).stdout).not.toBe(before.stdout);
-      await fs.writeFile(path.join(change, 'tasks.md'), '- [x] implement auth\n');
       await fs.appendFile(spec, '\nAdditional authentication requirement.\n');
-      const after = await cli('handoff', 'nested', '--hash-only');
-      expect(after.exitCode).toBe(0);
-      expect(after.stdout).not.toBe(before.stdout);
-      const guard = await cli('guard', 'nested', 'design');
-      expect(guard.exitCode).not.toBe(0);
-      expect(guard.stderr).toContain('OpenSpec artifacts changed');
+      const refreshed = await cli('handoff', 'nested', 'design', '--write', '--full');
+      expect(refreshed.exitCode, refreshed.stderr).toBe(0);
+      expect(await fs.readFile(markdown, 'utf8')).toContain(
+        'Additional authentication requirement.',
+      );
     },
   );
 

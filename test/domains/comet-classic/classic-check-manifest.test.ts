@@ -30,29 +30,6 @@ describe('Classic check manifests', () => {
     expect(parseCheckManifest('')).toEqual([]);
   });
 
-  it('reports added, removed and changed files by content hash only', () => {
-    const baseline = [
-      { p: 'kept.js', h: 'a', s: 1, m: '1' },
-      { p: 'removed.js', h: 'b', s: 2, m: '2' },
-      { p: 'changed.js', h: 'c', s: 3, m: '3' },
-    ];
-    const current = [
-      { p: 'kept.js', h: 'a', s: 1, m: '9' },
-      { p: 'changed.js', h: 'd', s: 3, m: '3' },
-      { p: 'added.js', h: 'e', s: 4, m: '4' },
-    ];
-    expect(diffCheckManifests(baseline, current)).toEqual({
-      added: ['added.js'],
-      removed: ['removed.js'],
-      changed: ['changed.js'],
-    });
-    expect(diffCheckManifests(baseline, baseline)).toEqual({
-      added: [],
-      removed: [],
-      changed: [],
-    });
-  });
-
   it('detects glob characters', () => {
     expect(hasGlobCharacters('src/**')).toBe(true);
     expect(hasGlobCharacters('src/a?b.ts')).toBe(true);

@@ -532,6 +532,15 @@ async function inspectTrajectoryTailRepairs(
   for (const name of names) {
     try {
       const inspection = await inspectNativeTrajectoryTail(paths, name);
+      if (inspection.status === 'invalid') {
+        findings.push({
+          severity: 'error',
+          code: 'trajectory-invalid',
+          message: `Native trajectory for ${name} is invalid at line ${inspection.line}: ${inspection.message}`,
+          path: inspection.file,
+        });
+        continue;
+      }
       if (inspection.status !== 'repairable') continue;
       if (!options.repair) {
         findings.push({

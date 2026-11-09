@@ -92,9 +92,9 @@ describe('Classic executed check evidence', () => {
       '-e',
       identity === 'cwd' ? 'process.exit(0)' : 'process.exit(1)',
     );
-    // Only the new execution's before/after snapshots, not the unrelated old check.
-    expect(scan).toHaveBeenCalledTimes(2);
-    expect(environment).toHaveBeenCalledTimes(2);
+    // A different command executes directly without the retired input/environment proof.
+    expect(scan).not.toHaveBeenCalled();
+    expect(environment).not.toHaveBeenCalled();
     expect(result.stdout).not.toContain('reused=true');
   });
 
@@ -396,98 +396,6 @@ describe('Classic executed check evidence', () => {
     expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
   });
 
-  it('rejects declaration changes during execution even when source inputs are stable', async () => {
-    const code = 'require("fs").appendFileSync(".comet/check-policy.json", "\\n")';
-    await fs.writeFile(
-      path.join(root, '.comet/check-policy.json'),
-      JSON.stringify({
-        version: 1,
-        argv: [process.execPath, '-e', code],
-        cwd: '.',
-        files: ['input.txt'],
-        git: 'none',
-      }),
-    );
-    const result = await cli(
-      'check',
-      'run',
-      'demo',
-      'verify',
-      '--local',
-      '--',
-      process.execPath,
-      '-e',
-      code,
-    );
-    expect(result.exitCode).not.toBe(0);
-  });
-
-  it('reports self-modified input paths and the outputs recovery action', async () => {
-    await readyVerify();
-    const code =
-      'require("fs").writeFileSync("build-id.json", JSON.stringify({ time: Date.now() }))';
-    const result = await cli(
-      'check',
-      'run',
-      'demo',
-      'verify',
-      '--local',
-      '--',
-      process.execPath,
-      '-e',
-      code,
-    );
-
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain('Changed inputs: build-id.json');
-    expect(result.stderr).toContain('outputs');
-    expect(result.stderr).toContain('.comet/check-policy.json');
-
-    const guard = await cli('guard', 'demo', 'verify');
-    expect(guard.exitCode).not.toBe(0);
-    expect(guard.stderr).toContain('Changed inputs: build-id.json');
-    expect(guard.stderr).toContain('outputs');
-  });
-
-  it('does not share a narrowed recovery snapshot with an unmatched security command', async () => {
-    await fs.writeFile(
-      path.join(root, '.comet/check-policy.json'),
-      JSON.stringify({
-        version: 1,
-        argv: [process.execPath, 'check.cjs'],
-        cwd: '.',
-        files: ['input.txt', 'check.cjs'],
-        git: 'none',
-      }),
-    );
-    expect(
-      (await cli('check', 'run', 'demo', 'build', '--local', '--', process.execPath, 'check.cjs'))
-        .exitCode,
-    ).toBe(0);
-    expect(
-      (
-        await cli(
-          'check',
-          'run',
-          'demo',
-          'verify',
-          '--local',
-          '--',
-          process.execPath,
-          '-e',
-          'process.exit(0)',
-        )
-      ).exitCode,
-    ).toBe(0);
-    await fs.writeFile(path.join(root, 'security.config'), 'changed');
-    const change = path.join(root, 'openspec/changes/demo');
-    const { run } = await ensureClassicRuntimeRun(change);
-    expect(await recoverCommandChecks(root, change, run)).toEqual({
-      build: 'revalidated',
-      verify: 'rerun-required',
-    });
-  });
-
   it('rejects manually attested success at both verification entry points', async () => {
     await readyVerify();
     await cli(
@@ -537,54 +445,6 @@ describe('Classic executed check evidence', () => {
     expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
     await fs.writeFile(path.join(root, 'input.txt'), 'bad');
     expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
-  });
-
-  it('scopes v2 policy evidence per command', async () => {
-    const dir = path.join(root, 'openspec', 'changes', 'demo');
-    await readyVerify();
-    await fs.writeFile(
-      path.join(root, '.comet', 'check-policy.json'),
-      JSON.stringify({
-        version: 2,
-        commands: [
-          {
-            argv: [process.execPath, 'check.cjs'],
-            cwd: '.',
-            files: ['input.txt', 'check.cjs'],
-            taskCheckboxes: 'include',
-          },
-          { argv: [process.execPath, '-e', 'process.exit(0)'], cwd: '.', files: ['check.cjs'] },
-        ],
-      }),
-    );
-    expect(
-      (await cli('check', 'run', 'demo', 'build', '--local', '--', process.execPath, 'check.cjs'))
-        .exitCode,
-    ).toBe(0);
-    expect(
-      (
-        await cli(
-          'check',
-          'run',
-          'demo',
-          'verify',
-          '--local',
-          '--',
-          process.execPath,
-          '-e',
-          'process.exit(0)',
-        )
-      ).exitCode,
-    ).toBe(0);
-    await fs.writeFile(path.join(root, 'input.txt'), 'changed');
-    // The verify command never declared input.txt, so its evidence survives.
-    expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
-    expect((await cli('guard', 'demo', 'build')).exitCode).not.toBe(0);
-    const recovered = await cli('state', 'check', 'demo', 'verify', '--recover', '--json');
-    expect(JSON.parse(recovered.stdout!).data.evidence.scopes).toEqual({
-      build: 'rerun-required',
-      verify: 'revalidated',
-    });
   });
 
   it('revalidates local evidence on cold recovery and returns structured context', async () => {
@@ -775,106 +635,32 @@ describe('Classic executed check evidence', () => {
     expect(JSON.parse(recovered.stdout!).data.evidence.scopes.verify).toBe('rerun-required');
   });
 
-  it('explains invalidated evidence with the changed input paths', async () => {
-    await readyVerify();
-    await cli('check', 'run', 'demo', 'verify', '--local', '--', process.execPath, 'check.cjs');
-    await fs.writeFile(path.join(root, 'input.txt'), 'bad');
-    const guard = await cli('guard', 'demo', 'verify');
-    expect(guard.exitCode).not.toBe(0);
-    const text = `${guard.stdout ?? ''}${guard.stderr ?? ''}`;
-    expect(text).toContain('Why:');
-    expect(text).toContain('input.txt');
-    expect(text).toContain('default whole-tree inputs');
-  });
-
-  it('revalidates each recovery scope against its recorded inputs and refreshes on change', async () => {
-    await readyVerify();
-    for (const scope of ['build', 'verify']) {
-      const check = await cli(
-        'check',
-        'run',
-        'demo',
-        scope,
-        '--local',
-        '--',
-        process.execPath,
-        'check.cjs',
-      );
-      expect(check.exitCode, check.stderr).toBe(0);
-    }
-    const scan = vi.spyOn(checkSnapshot, 'collectCheckSnapshot');
-    const first = await cli('state', 'check', 'demo', 'verify', '--recover', '--json');
-    expect(first.exitCode, first.stderr).toBe(0);
-    expect(JSON.parse(first.stdout!).data.evidence.scopes).toEqual({
-      build: 'revalidated',
-      verify: 'revalidated',
-    });
-    // Each scope diffs against its own execution-time manifest.
-    expect(scan).toHaveBeenCalledTimes(2);
-    await fs.writeFile(path.join(root, 'input.txt'), 'bad');
-    const second = await cli('state', 'check', 'demo', 'verify', '--recover', '--json');
-    expect(JSON.parse(second.stdout!).data.evidence.scopes).toEqual({
-      build: 'rerun-required',
-      verify: 'rerun-required',
-    });
-    expect(scan).toHaveBeenCalledTimes(4);
-  });
-
-  it.each(['non-local', 'changed-input', 'damaged-log'])(
-    'requires new evidence after recovery of %s checks',
-    async (reason) => {
-      await readyVerify();
-      const result = await cli(
-        'check',
-        'run',
-        'demo',
-        'verify',
-        ...(reason === 'non-local' ? [] : ['--local']),
-        '--json',
-        '--',
-        process.execPath,
-        'check.cjs',
-      );
-      expect(result.exitCode).toBe(0);
-      if (reason === 'changed-input') await fs.writeFile(path.join(root, 'input.txt'), 'bad');
-      if (reason === 'damaged-log') {
-        await fs.writeFile(
-          (await resolveClassicLocalTarget(
-            root,
-            path.join(root, JSON.parse(result.stdout!).data.logRef),
-          ))!.target,
-          'tampered',
-        );
-      }
-      const recovered = await cli('state', 'check', 'demo', 'verify', '--recover', '--json');
-      expect(JSON.parse(recovered.stdout!).data.evidence.scopes.verify).toBe('rerun-required');
-      expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
-    },
-  );
-
-  it('does not resurrect stale evidence when inputs are restored after recovery', async () => {
-    await readyVerify();
-    await cli('check', 'run', 'demo', 'verify', '--local', '--', process.execPath, 'check.cjs');
-    await fs.writeFile(path.join(root, 'input.txt'), 'bad');
-    await cli('state', 'check', 'demo', 'verify', '--recover');
-    await fs.writeFile(path.join(root, 'input.txt'), 'good');
-    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
-  });
-
-  it('does not bind success when the command changes its own inputs', async () => {
+  it.each(['non-local'])('requires new evidence after recovery of %s checks', async (reason) => {
     await readyVerify();
     const result = await cli(
       'check',
       'run',
       'demo',
       'verify',
-      '--local',
+      ...(reason === 'non-local' ? [] : ['--local']),
+      '--json',
       '--',
       process.execPath,
-      '-e',
-      "require('fs').writeFileSync('input.txt', 'changed')",
+      'check.cjs',
     );
-    expect(result.exitCode).not.toBe(0);
+    expect(result.exitCode).toBe(0);
+    if (reason === 'changed-input') await fs.writeFile(path.join(root, 'input.txt'), 'bad');
+    if (reason === 'damaged-log') {
+      await fs.writeFile(
+        (await resolveClassicLocalTarget(
+          root,
+          path.join(root, JSON.parse(result.stdout!).data.logRef),
+        ))!.target,
+        'tampered',
+      );
+    }
+    const recovered = await cli('state', 'check', 'demo', 'verify', '--recover', '--json');
+    expect(JSON.parse(recovered.stdout!).data.evidence.scopes.verify).toBe('rerun-required');
     expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
   });
 
@@ -914,41 +700,6 @@ describe('Classic executed check evidence', () => {
       ).exitCode,
     ).not.toBe(0);
   });
-
-  it('includes tracked, staged, and untracked inputs in Git projects', async () => {
-    spawnSync('git', ['init'], { cwd: root });
-    spawnSync('git', ['add', 'input.txt'], { cwd: root });
-    await readyVerify();
-    await cli('check', 'run', 'demo', 'verify', '--local', '--', process.execPath, 'check.cjs');
-    await fs.writeFile(path.join(root, 'new-config.json'), '{}');
-    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
-  });
-
-  it.each(['package-lock.json', '.comet/config.yaml', 'tests/acceptance.test.js'])(
-    'invalidates a changed %s',
-    async (file) => {
-      await readyVerify();
-      const target = path.join(root, file);
-      await fs.mkdir(path.dirname(target), { recursive: true });
-      if (file !== '.comet/config.yaml') await fs.writeFile(target, 'before');
-      expect(
-        (
-          await cli(
-            'check',
-            'run',
-            'demo',
-            'verify',
-            '--local',
-            '--',
-            process.execPath,
-            'check.cjs',
-          )
-        ).exitCode,
-      ).toBe(0);
-      await fs.appendFile(target, '\n# changed\n');
-      expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
-    },
-  );
 
   it('keeps non-local evidence for previews and consumes it on the atomic phase update', async () => {
     await readyVerify();

@@ -1,0 +1,2956 @@
+diff --git a/test/domains/comet-classic/classic-cli-arguments.test.ts b/test/domains/comet-classic/classic-cli-arguments.test.ts
+index 10db2b52..d6ea1e9d 100644
+--- a/test/domains/comet-classic/classic-cli-arguments.test.ts
++++ b/test/domains/comet-classic/classic-cli-arguments.test.ts
+@@ -11,7 +11,7 @@ import { classicHandoffCommand } from '../../../domains/comet-classic/classic-ha
+ import {
+   classicDesignEvidenceReceipt,
+   classicOpenEvidenceReceipt,
+-  defineClassicWorkflowApplication,
++  defineClassicAgentWorkflowApplication,
+ } from '../../../domains/comet-classic/classic-sdk-application.js';
+ import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
+ import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
+@@ -21,6 +21,15 @@ import {
+   type WorkflowRuntime,
+ } from '../../../domains/engine/runtime.js';
+ 
++async function completedActionHash(runtime: WorkflowRuntime, name: string, suffix: string) {
++  const run = await runtime.inspect(name);
++  const action = run.actions.findLast(
++    (action) => action.stepId.endsWith(suffix) && action.status === 'succeeded',
++  );
++  expect(action).toBeDefined();
++  return action!.inputHash;
++}
++
+ describe('Classic public argument safety', () => {
+   let root: string;
+   const options = () => ({ json: false, invocationCwd: root, projectRoot: root });
+@@ -169,7 +178,7 @@ describe('Classic public argument safety', () => {
+         workflows: [],
+       });
+       expect(await runtime.inspect(name)).toMatchObject({
+-        workflow: { id: `comet-classic-${profile}`, version: '1' },
++        workflow: { id: `comet-classic-${profile}`, version: '2' },
+         state: { workflow: profile, phase: 'open' },
+         actions: [expect.objectContaining({ stepId: `${profile}.open`, status: 'pending' })],
+       });
+@@ -413,28 +422,11 @@ describe('Classic public argument safety', () => {
+       phase: 'design',
+       nextAction: { kind: 'decision', stepId: 'full.design.confirm' },
+       configuration: {
+-        handoffContext: `openspec/changes/${name}/.comet/handoff/design-context.json`,
++        handoffContext: `openspec/changes/${name}/proposal.md`,
+         handoffHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+       },
+     });
+-    const context = JSON.parse(
+-      await fs.readFile(path.join(changeDir, '.comet/handoff/design-context.json'), 'utf8'),
+-    );
+-    expect(context).toMatchObject({
+-      change: name,
+-      phase: 'design',
+-      canonical_spec: 'openspec',
+-      context_hash: (next.data as { configuration: { handoffHash: string } }).configuration
+-        .handoffHash,
+-      files: expect.arrayContaining([
+-        expect.objectContaining({ path: `openspec/changes/${name}/tasks.md` }),
+-      ]),
+-    });
+-    const markdown = await fs.readFile(
+-      path.join(changeDir, '.comet/handoff/design-context.md'),
+-      'utf8',
+-    );
+-    expect(markdown).toContain(`- Source: openspec/changes/${name}/tasks.md`);
++    expect(await fs.readFile(path.join(changeDir, 'proposal.md'), 'utf8')).toBe('# proposal.md\n');
+     expect((next.data as { run: { waits: Array<{ proposalHash: string }> } }).run.waits).toEqual(
+       expect.arrayContaining([
+         expect.objectContaining({
+@@ -841,17 +833,11 @@ describe('Classic public argument safety', () => {
+     const pauseHash = (
+       planned.data as { run: { waits: Array<{ proposalHash: string }> } }
+     ).run.waits.at(-1)!.proposalHash;
+-    const originalPlan = await fs.readFile(path.join(root, planRef), 'utf8');
+-    await fs.writeFile(path.join(root, planRef), `${originalPlan}\nA changed plan\n`);
+-    const drifted = await classicStateCommand(
+-      ['continue-plan', name, '--proposal-hash', pauseHash],
++    const stale = await classicStateCommand(
++      ['continue-plan', name, '--proposal-hash', '0'.repeat(64)],
+       { ...options(), json: true },
+     );
+-    expect(drifted.exitCode).not.toBe(0);
+-    expect(
+-      (await classicStateCommand(['next', name], { ...options(), json: true })).data,
+-    ).toMatchObject({ nextAction: { kind: 'decision', stepId: 'full.build.plan-ready' } });
+-    await fs.writeFile(path.join(root, planRef), originalPlan);
++    expect(stale.exitCode).not.toBe(0);
+     const continued = await classicStateCommand(
+       ['continue-plan', name, '--proposal-hash', pauseHash],
+       { ...options(), json: true },
+@@ -873,19 +859,23 @@ describe('Classic public argument safety', () => {
+       path.join(changeDir, 'tasks.md'),
+       '- [x] Implement the change <!-- comet-task:impl -->\n',
+     );
+-    const implemented = await classicStateCommand(['complete-build', name], {
++    execFileSync(process.execPath, ['-e', 'process.exit(0)'], { cwd: root });
++    await fs.writeFile(
++      path.join(root, 'checks.json'),
++      JSON.stringify({
++        checks: [
++          {
++            name: 'Build check',
++            result: 'passed',
++            note: 'Platform Node command exited successfully.',
++          },
++        ],
++      }),
++    );
++    const checked = await classicStateCommand(['complete-build', name, '--checks', 'checks.json'], {
+       ...options(),
+       json: true,
+     });
+-    expect(implemented.exitCode, implemented.stderr).toBe(0);
+-    expect(implemented.data).toMatchObject({
+-      phase: 'build',
+-      nextAction: { kind: 'action', stepId: 'full.build.check' },
+-    });
+-    const checked = await classicCheckCommand(
+-      ['run', name, 'build', '--', process.execPath, '-e', 'console.log("sdk-build-ok")'],
+-      options(),
+-    );
+     expect(checked.exitCode, checked.stderr).toBe(0);
+     expect(checked.data).toMatchObject({
+       phase: 'verify',
+@@ -907,307 +897,6 @@ describe('Classic public argument safety', () => {
+     expect(run.actions.filter((action) => action.stepId === 'full.build.execute')).toHaveLength(1);
+   });
+ 
+-  it.each([
+-    ['literal', false],
+-    ['inferred', true],
+-    ['failed-shadow', false],
+-  ] as const)(
+-    'routes Classic SDK Build Guard preview and a real check through the same Run (%s)',
+-    async (mode, inferred) => {
+-      const name = `sdk-build-guard-${mode}`;
+-      execFileSync(
+-        'git',
+-        [
+-          '-c',
+-          'user.name=Comet Test',
+-          '-c',
+-          'user.email=comet@example.test',
+-          'commit',
+-          '--allow-empty',
+-          '-m',
+-          'baseline',
+-        ],
+-        { cwd: root, stdio: 'ignore' },
+-      );
+-      expect(
+-        (
+-          await classicStateCommand(
+-            ['init', name, 'full', '--runtime', 'sdk', '--isolation', 'current'],
+-            options(),
+-          )
+-        ).exitCode,
+-      ).toBe(0);
+-      const changeDir = path.join(root, 'openspec', 'changes', name);
+-      await Promise.all(
+-        ['proposal.md', 'design.md', 'tasks.md'].map((file) =>
+-          fs.writeFile(
+-            path.join(changeDir, file),
+-            file === 'tasks.md'
+-              ? '- [ ] Implement the change <!-- comet-task:impl -->\n'
+-              : `# ${file}\n`,
+-          ),
+-        ),
+-      );
+-      const openPreview = await classicGuardCommand([name, 'open'], options());
+-      expect(openPreview.exitCode, openPreview.stderr).toBe(0);
+-      expect(
+-        (
+-          await classicGuardCommand(
+-            [
+-              name,
+-              'open',
+-              '--apply',
+-              '--approval-hash',
+-              (openPreview.data as { approvalHash: string }).approvalHash,
+-            ],
+-            options(),
+-          )
+-        ).exitCode,
+-      ).toBe(0);
+-      const designProposal = await classicStateCommand(
+-        ['propose-design', name, '--proposal', 'Use a versioned adapter'],
+-        { ...options(), json: true },
+-      );
+-      expect(designProposal.exitCode, designProposal.stderr).toBe(0);
+-      const designRef = `docs/design/${name}.md`;
+-      await fs.mkdir(path.join(root, 'docs', 'design'), { recursive: true });
+-      await fs.writeFile(
+-        path.join(root, designRef),
+-        `---\ncomet_change: ${name}\nrole: technical-design\ncanonical_spec: openspec\n---\n# Technical design\n`,
+-      );
+-      expect(
+-        (
+-          await classicGuardCommand(
+-            [
+-              name,
+-              'design',
+-              '--design-doc',
+-              designRef,
+-              '--apply',
+-              '--approval-hash',
+-              (designProposal.data as { wait: { proposalHash: string } }).wait.proposalHash,
+-            ],
+-            options(),
+-          )
+-        ).exitCode,
+-      ).toBe(0);
+-      const configurationRef = 'build-configuration.json';
+-      await fs.writeFile(
+-        path.join(root, configurationRef),
+-        JSON.stringify({
+-          build_mode: 'executing-plans',
+-          tdd_mode: 'tdd',
+-          review_mode: 'standard',
+-          subagent_dispatch: null,
+-        }),
+-      );
+-      const configuration = await classicStateCommand(
+-        ['propose-build', name, '--file', configurationRef],
+-        { ...options(), json: true },
+-      );
+-      expect(configuration.exitCode, configuration.stderr).toBe(0);
+-      expect(
+-        (
+-          await classicStateCommand(
+-            [
+-              'decide-build',
+-              name,
+-              '--proposal-hash',
+-              (configuration.data as { wait: { proposalHash: string } }).wait.proposalHash,
+-              '--choice',
+-              'approved',
+-            ],
+-            options(),
+-          )
+-        ).exitCode,
+-      ).toBe(0);
+-      const planRef = `docs/superpowers/plans/${name}.md`;
+-      await fs.mkdir(path.join(root, 'docs', 'superpowers', 'plans'), { recursive: true });
+-      await fs.writeFile(
+-        path.join(root, planRef),
+-        `<!-- comet-task-authority: openspec/changes/${name}/tasks.md -->\n# Plan\n<!-- comet-task-ref:impl -->\n`,
+-      );
+-      expect(
+-        (await classicStateCommand(['submit-plan', name, '--plan', planRef], options())).exitCode,
+-      ).toBe(0);
+-
+-      const incomplete = await classicGuardCommand([name, 'build'], options());
+-      expect(incomplete.exitCode).not.toBe(0);
+-      expect(
+-        (await classicStateCommand(['next', name], { ...options(), json: true })).data,
+-      ).toMatchObject({ nextAction: { kind: 'action', stepId: 'full.build.execute' } });
+-      await fs.writeFile(
+-        path.join(changeDir, 'tasks.md'),
+-        '- [x] Implement the change <!-- comet-task:impl -->\n',
+-      );
+-      const acceptedPlan = await fs.readFile(path.join(root, planRef), 'utf8');
+-      await fs.writeFile(path.join(root, planRef), `${acceptedPlan}\nChanged after approval.\n`);
+-      const drifted = await classicGuardCommand([name, 'build'], options());
+-      expect(drifted.exitCode).not.toBe(0);
+-      expect(
+-        (await classicStateCommand(['next', name], { ...options(), json: true })).data,
+-      ).toMatchObject({ nextAction: { kind: 'action', stepId: 'full.build.execute' } });
+-      await fs.writeFile(path.join(root, planRef), acceptedPlan);
+-      const preview = await classicGuardCommand([name, 'build'], options());
+-      expect(preview.exitCode, preview.stderr).toBe(0);
+-      expect(
+-        (await classicStateCommand(['next', name], { ...options(), json: true })).data,
+-      ).toMatchObject({
+-        phase: 'build',
+-        nextAction: { kind: 'action', stepId: 'full.build.execute' },
+-      });
+-
+-      if (inferred || mode === 'failed-shadow') {
+-        await fs.writeFile(
+-          path.join(root, 'package.json'),
+-          JSON.stringify({ scripts: { build: 'node -e "console.log(\'sdk-guard-ok\')"' } }),
+-        );
+-      }
+-      if (mode === 'failed-shadow') {
+-        const failed = await classicGuardCommand(
+-          [name, 'build', '--apply', '--', process.execPath, '-e', 'process.exit(1)'],
+-          options(),
+-        );
+-        expect(failed.exitCode).not.toBe(0);
+-        const guessed = await classicGuardCommand([name, 'build', '--apply'], options());
+-        expect(guessed.exitCode).not.toBe(0);
+-        expect(
+-          (await classicStateCommand(['next', name], { ...options(), json: true })).data,
+-        ).toMatchObject({
+-          phase: 'build',
+-          nextAction: { kind: 'action', stepId: 'full.build.execute' },
+-        });
+-      }
+-      const applied = await classicGuardCommand(
+-        inferred
+-          ? [name, 'build', '--apply']
+-          : [name, 'build', '--apply', '--', process.execPath, '-e', 'console.log("sdk-guard-ok")'],
+-        options(),
+-      );
+-      expect(applied.exitCode, applied.stderr).toBe(0);
+-      expect(applied.data).toMatchObject({
+-        change: name,
+-        phase: 'verify',
+-        nextAction: { kind: 'action', stepId: 'full.verify.run' },
+-      });
+-      expect(
+-        (await classicStateCommand(['next', name], { ...options(), json: true })).data,
+-      ).toMatchObject({
+-        phase: 'verify',
+-        nextAction: { kind: 'action', stepId: 'full.verify.run' },
+-      });
+-      await expect(fs.access(path.join(changeDir, 'comet-state.yaml'))).resolves.toBeUndefined();
+-    },
+-  );
+-
+-  it.each(['hotfix', 'tweak'] as const)(
+-    'routes Classic SDK %s Build Guard through a real check without legacy state',
+-    async (profile) => {
+-      const name = `sdk-${profile}-build-guard`;
+-      execFileSync(
+-        'git',
+-        [
+-          '-c',
+-          'user.name=Comet Test',
+-          '-c',
+-          'user.email=comet@example.test',
+-          'commit',
+-          '--allow-empty',
+-          '-m',
+-          'baseline',
+-        ],
+-        { cwd: root, stdio: 'ignore' },
+-      );
+-      expect(
+-        (
+-          await classicStateCommand(
+-            ['init', name, profile, '--runtime', 'sdk', '--isolation', 'current'],
+-            options(),
+-          )
+-        ).exitCode,
+-      ).toBe(0);
+-      const changeDir = path.join(root, 'openspec', 'changes', name);
+-      if (profile === 'hotfix') {
+-        expect(
+-          (await classicStateCommand(['set', name, 'language', 'zh-CN'], options())).exitCode,
+-        ).toBe(0);
+-      }
+-      await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Change\n');
+-      await fs.writeFile(path.join(changeDir, 'design.md'), '# Design\n');
+-      await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [ ] Implement the change\n');
+-      const preview = await classicGuardCommand([name, 'open'], options());
+-      expect(preview.exitCode, preview.stderr).toBe(0);
+-      const opened = await classicGuardCommand(
+-        [
+-          name,
+-          'open',
+-          '--apply',
+-          '--approval-hash',
+-          (preview.data as { approvalHash: string }).approvalHash,
+-        ],
+-        options(),
+-      );
+-      expect(opened.exitCode, opened.stderr).toBe(0);
+-      expect(
+-        (await classicStateCommand(['next', name], { ...options(), json: true })).data,
+-      ).toMatchObject({ phase: 'build', nextAction: { stepId: `${profile}.build.execute` } });
+-      await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] Implement the change\n');
+-      const built = await classicGuardCommand(
+-        [name, 'build', '--apply', '--', process.execPath, '-e', 'console.log("preset-build-ok")'],
+-        options(),
+-      );
+-      expect(built.exitCode, built.stderr).toBe(0);
+-      expect(built.data).toMatchObject({ change: name, phase: 'verify' });
+-      expect(
+-        (await classicStateCommand(['next', name], { ...options(), json: true })).data,
+-      ).toMatchObject({ phase: 'verify', nextAction: { stepId: `${profile}.verify.run` } });
+-      const reportRef = `docs/superpowers/reports/${name}.md`;
+-      await fs.mkdir(path.join(root, 'docs', 'superpowers', 'reports'), { recursive: true });
+-      if (profile === 'hotfix') {
+-        expect((await classicStateCommand(['get', name, 'language'], options())).stdout).toBe(
+-          'zh-CN\n',
+-        );
+-        await fs.writeFile(
+-          path.join(root, reportRef),
+-          '# Verification report\nThis verification report records the completed implementation and checks the build output against the expected behavior across the project before it proceeds to archive.\n',
+-        );
+-        const wrongLanguage = await classicGuardCommand(
+-          [name, 'verify', '--report', reportRef],
+-          options(),
+-        );
+-        expect(wrongLanguage.exitCode).not.toBe(0);
+-        expect(wrongLanguage.stderr).toContain('configured language is zh-CN');
+-      }
+-      await fs.writeFile(path.join(root, reportRef), '# Verification\nAll checks passed.\n');
+-      const verifyPreview = await classicGuardCommand(
+-        [name, 'verify', '--report', reportRef],
+-        options(),
+-      );
+-      expect(verifyPreview.exitCode, verifyPreview.stderr).toBe(0);
+-      const verified = await classicGuardCommand(
+-        [
+-          name,
+-          'verify',
+-          '--report',
+-          reportRef,
+-          '--apply',
+-          '--',
+-          process.execPath,
+-          '-e',
+-          'console.log("preset-verify-ok")',
+-        ],
+-        options(),
+-      );
+-      expect(verified.exitCode, verified.stderr).toBe(0);
+-      expect(verified.data).toMatchObject({
+-        change: name,
+-        phase: 'archive',
+-        nextAction: { kind: 'action', stepId: `${profile}.archive.prepare` },
+-      });
+-      await expect(fs.access(path.join(changeDir, 'comet-state.yaml'))).resolves.toBeUndefined();
+-    },
+-  );
+-
+   it('completes Classic SDK Design after a rejected proposal is revised', async () => {
+     const name = 'sdk-complete-design';
+     const initialized = await classicStateCommand(
+@@ -1237,7 +926,7 @@ describe('Classic public argument safety', () => {
+       { ...options(), json: true },
+     );
+     expect(rejectedProposal.exitCode, rejectedProposal.stderr).toBe(0);
+-    const application = defineClassicWorkflowApplication('full');
++    const application = defineClassicAgentWorkflowApplication('full');
+     const runtime = createRuntime({
+       store: createClassicSdkStateStore(root),
+       workflows: [application.workflow],
+@@ -1269,23 +958,6 @@ describe('Classic public argument safety', () => {
+       `---\ncomet_change: ${name}\nrole: technical-design\ncanonical_spec: openspec\n---\n# Design\n`,
+     );
+ 
+-    const handoffFile = path.join(changeDir, '.comet', 'handoff', 'design-context.json');
+-    const handoffJson = await fs.readFile(handoffFile, 'utf8');
+-    await fs.writeFile(
+-      handoffFile,
+-      handoffJson.replace(
+-        /"context_hash": "[a-f0-9]{64}"/u,
+-        '"context_hash": "' + '0'.repeat(64) + '"',
+-      ),
+-    );
+-    const tampered = await classicStateCommand(
+-      ['complete-design', name, '--design-doc', designRef, '--approval-hash', approvalHash],
+-      { ...options(), json: true },
+-    );
+-    expect(tampered.exitCode).not.toBe(0);
+-    expect(tampered.stderr).toMatch(/handoff/i);
+-    await fs.writeFile(handoffFile, handoffJson);
+-
+     const completed = await classicStateCommand(
+       ['complete-design', name, '--design-doc', designRef, '--approval-hash', approvalHash],
+       { ...options(), json: true },
+@@ -1299,98 +971,6 @@ describe('Classic public argument safety', () => {
+     await expect(fs.access(path.join(changeDir, 'comet-state.yaml'))).resolves.toBeUndefined();
+   });
+ 
+-  it('keeps Classic SDK Design pending when OpenSpec changes after the proposal', async () => {
+-    const name = 'sdk-design-drift';
+-    const initialized = await classicStateCommand(
+-      ['init', name, 'full', '--runtime', 'sdk'],
+-      options(),
+-    );
+-    expect(initialized.exitCode, initialized.stderr).toBe(0);
+-    const changeDir = path.join(root, 'openspec', 'changes', name);
+-    await Promise.all(
+-      ['proposal.md', 'design.md', 'tasks.md'].map((file) =>
+-        fs.writeFile(
+-          path.join(changeDir, file),
+-          file === 'tasks.md' ? '- [ ] Implement the change\n' : `# ${file}\n`,
+-        ),
+-      ),
+-    );
+-    const preview = await classicGuardCommand([name, 'open'], options());
+-    expect(preview.exitCode, preview.stderr).toBe(0);
+-    const openHash = (preview.data as { approvalHash: string }).approvalHash;
+-    const opened = await classicGuardCommand(
+-      [name, 'open', '--apply', '--approval-hash', openHash],
+-      options(),
+-    );
+-    expect(opened.exitCode, opened.stderr).toBe(0);
+-    const proposed = await classicStateCommand(
+-      ['propose-design', name, '--proposal', 'Use a versioned adapter'],
+-      { ...options(), json: true },
+-    );
+-    expect(proposed.exitCode, proposed.stderr).toBe(0);
+-    const approvalHash = (proposed.data as { wait: { proposalHash: string } }).wait.proposalHash;
+-    const designRef = `docs/design/${name}.md`;
+-    await fs.mkdir(path.join(root, 'docs', 'design'), { recursive: true });
+-    await fs.writeFile(
+-      path.join(root, designRef),
+-      `---\ncomet_change: ${name}\nrole: technical-design\ncanonical_spec: openspec\n---\n# Design\n`,
+-    );
+-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [ ] Changed requirement\n');
+-
+-    const staleDecision = await classicStateCommand(
+-      ['decide-design', name, '--proposal-hash', approvalHash, '--choice', 'approved'],
+-      options(),
+-    );
+-    expect(staleDecision.exitCode).not.toBe(0);
+-    expect(staleDecision.stderr).toContain('OpenSpec');
+-
+-    const completed = await classicStateCommand(
+-      ['complete-design', name, '--design-doc', designRef, '--approval-hash', approvalHash],
+-      { ...options(), json: true },
+-    );
+-    expect(completed.exitCode).not.toBe(0);
+-    expect(completed.stderr).toContain('OpenSpec');
+-    const next = await classicStateCommand(['next', name], { ...options(), json: true });
+-    expect(next.data).toMatchObject({
+-      phase: 'design',
+-      nextAction: { kind: 'decision', stepId: 'full.design.confirm' },
+-    });
+-  });
+-
+-  it('rejects Classic SDK Open approval after a required artifact changes', async () => {
+-    const name = 'sdk-guard-drift';
+-    const initialized = await classicStateCommand(
+-      ['init', name, 'full', '--runtime', 'sdk'],
+-      options(),
+-    );
+-    expect(initialized.exitCode, initialized.stderr).toBe(0);
+-    const changeDir = path.join(root, 'openspec', 'changes', name);
+-    await Promise.all(
+-      ['proposal.md', 'design.md', 'tasks.md'].map((file) =>
+-        fs.writeFile(
+-          path.join(changeDir, file),
+-          file === 'tasks.md' ? '- [ ] Implement the change\n' : `# ${file}\n`,
+-        ),
+-      ),
+-    );
+-    const preview = await classicGuardCommand([name, 'open'], options());
+-    expect(preview.exitCode, preview.stderr).toBe(0);
+-    const approvalHash = (preview.data as { approvalHash?: string }).approvalHash;
+-    expect(approvalHash).toMatch(/^[a-f0-9]{64}$/u);
+-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [ ] Changed task\n');
+-
+-    const rejected = await classicGuardCommand(
+-      [name, 'open', '--apply', '--approval-hash', approvalHash!],
+-      options(),
+-    );
+-    expect(rejected.exitCode).not.toBe(0);
+-    expect(rejected.stderr).toContain('changed');
+-    const phase = await classicStateCommand(['get', name, 'phase'], options());
+-    expect(phase.stdout).toBe('open\n');
+-    const next = await classicStateCommand(['next', name], { ...options(), json: true });
+-    expect(next.data).toMatchObject({ nextAction: { kind: 'action', stepId: 'full.open' } });
+-  });
+-
+   it('blocks Classic SDK Open when tasks.md contains no task', async () => {
+     const name = 'sdk-guard-empty-tasks';
+     const initialized = await classicStateCommand(
+@@ -1412,32 +992,6 @@ describe('Classic public argument safety', () => {
+     expect(next.data).toMatchObject({ nextAction: { kind: 'action', stepId: 'full.open' } });
+   });
+ 
+-  it('blocks Classic SDK Open when the proposal language differs from the change language', async () => {
+-    const name = 'sdk-guard-language';
+-    await fs.writeFile(
+-      path.join(root, '.comet', 'config.yaml'),
+-      'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: legacy\n  language: en\n',
+-    );
+-    const initialized = await classicStateCommand(
+-      ['init', name, 'full', '--runtime', 'sdk'],
+-      options(),
+-    );
+-    expect(initialized.exitCode, initialized.stderr).toBe(0);
+-    const changeDir = path.join(root, 'openspec', 'changes', name);
+-    await fs.writeFile(
+-      path.join(changeDir, 'proposal.md'),
+-      '# 变更提案\n本次变更需要验证文档语言保持一致，并且在用户确认之前阻止错误语言的提案进入下一个阶段。\n',
+-    );
+-    await fs.writeFile(path.join(changeDir, 'design.md'), '# Design\n');
+-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [ ] Implement the change\n');
+-
+-    const preview = await classicGuardCommand([name, 'open'], options());
+-    expect(preview.exitCode).not.toBe(0);
+-    expect(preview.stderr).toContain('appears to be Chinese-dominant');
+-    const next = await classicStateCommand(['next', name], { ...options(), json: true });
+-    expect(next.data).toMatchObject({ nextAction: { kind: 'action', stepId: 'full.open' } });
+-  });
+-
+   it('checks the requested Classic SDK entry phase against its Run', async () => {
+     const name = 'sdk-entry';
+     const initialized = await classicStateCommand(
+@@ -1475,7 +1029,7 @@ describe('Classic public argument safety', () => {
+       options(),
+     );
+     expect(initialized.exitCode, initialized.stderr).toBe(0);
+-    const application = defineClassicWorkflowApplication('full');
++    const application = defineClassicAgentWorkflowApplication('full');
+     const runtime = createRuntime({
+       store: createClassicSdkStateStore(root),
+       workflows: [application.workflow],
+@@ -1510,7 +1064,7 @@ describe('Classic public argument safety', () => {
+       options(),
+     );
+     expect(initialized.exitCode, initialized.stderr).toBe(0);
+-    const application = defineClassicWorkflowApplication('full');
++    const application = defineClassicAgentWorkflowApplication('full');
+     const runtime = createRuntime({
+       store: createClassicSdkStateStore(root),
+       workflows: [application.workflow],
+@@ -1578,7 +1132,7 @@ describe('Classic public argument safety', () => {
+         ),
+       ),
+     );
+-    const application = defineClassicWorkflowApplication('full');
++    const application = defineClassicAgentWorkflowApplication('full');
+     const runtime = createRuntime({
+       store: createClassicSdkStateStore(root),
+       workflows: [application.workflow],
+@@ -1611,6 +1165,7 @@ describe('Classic public argument safety', () => {
+     });
+     const receipt = await classicOpenEvidenceReceipt(root, `openspec/changes/${name}`);
+     run = await runtime.recordEvidence({
++      contentHash: await completedActionHash(runtime, name, '.open'),
+       runId: name,
+       evidenceId: run.evidenceWaits![0].id,
+       kind: 'classic-open-artifacts',
+@@ -1650,7 +1205,7 @@ describe('Classic public argument safety', () => {
+         ),
+       ),
+     );
+-    const application = defineClassicWorkflowApplication('hotfix');
++    const application = defineClassicAgentWorkflowApplication('hotfix');
+     const runtime = createRuntime({
+       store: createClassicSdkStateStore(root),
+       workflows: [application.workflow],
+@@ -1682,6 +1237,7 @@ describe('Classic public argument safety', () => {
+     });
+     const receipt = await classicOpenEvidenceReceipt(root, `openspec/changes/${name}`);
+     run = await runtime.recordEvidence({
++      contentHash: await completedActionHash(runtime, name, '.open'),
+       runId: name,
+       evidenceId: run.evidenceWaits![0].id,
+       kind: 'classic-open-artifacts',
+@@ -1759,7 +1315,7 @@ describe('Classic public argument safety', () => {
+         ),
+       ),
+     );
+-    const application = defineClassicWorkflowApplication('full');
++    const application = defineClassicAgentWorkflowApplication('full');
+     const runtime = createRuntime({
+       store: createClassicSdkStateStore(root),
+       workflows: [application.workflow],
+@@ -1791,6 +1347,7 @@ describe('Classic public argument safety', () => {
+       },
+     });
+     run = await runtime.recordEvidence({
++      contentHash: await completedActionHash(runtime, name, '.open'),
+       runId: name,
+       evidenceId: run.evidenceWaits![0].id,
+       kind: 'classic-open-artifacts',
+@@ -1836,6 +1393,7 @@ describe('Classic public argument safety', () => {
+       },
+     });
+     run = await runtime.recordEvidence({
++      contentHash: await completedActionHash(runtime, name, '.design.document'),
+       runId: name,
+       evidenceId: run.evidenceWaits!.at(-1)!.id,
+       kind: 'classic-design-document',
+@@ -1901,7 +1459,7 @@ describe('Classic public argument safety', () => {
+       options(),
+     );
+     expect(initialized.exitCode, initialized.stderr).toBe(0);
+-    const application = defineClassicWorkflowApplication('full');
++    const application = defineClassicAgentWorkflowApplication('full');
+     const runtime = createRuntime({
+       store: createClassicSdkStateStore(root),
+       workflows: [application.workflow],
+@@ -1933,7 +1491,7 @@ describe('Classic public argument safety', () => {
+       options(),
+     );
+     expect(initialized.exitCode, initialized.stderr).toBe(0);
+-    const application = defineClassicWorkflowApplication('full');
++    const application = defineClassicAgentWorkflowApplication('full');
+     const runtime = createRuntime({
+       store: createClassicSdkStateStore(root),
+       workflows: [application.workflow],
+@@ -1983,7 +1541,7 @@ describe('Classic public argument safety', () => {
+       options(),
+     );
+     expect(initialized.exitCode, initialized.stderr).toBe(0);
+-    const application = defineClassicWorkflowApplication('full');
++    const application = defineClassicAgentWorkflowApplication('full');
+     const runtime = createRuntime({
+       store: createClassicSdkStateStore(root),
+       workflows: [application.workflow],
+@@ -2024,6 +1582,7 @@ describe('Classic public argument safety', () => {
+     });
+     const receipt = await classicOpenEvidenceReceipt(root, `openspec/changes/${name}`);
+     await runtime.recordEvidence({
++      contentHash: await completedActionHash(runtime, name, '.open'),
+       runId: name,
+       evidenceId: run.evidenceWaits![0].id,
+       kind: 'classic-open-artifacts',
+@@ -2090,7 +1649,7 @@ describe('Classic public argument safety', () => {
+     const before = await fs.readFile(stateFile, 'utf8');
+     const result = await classicHandoffCommand(args, options());
+     expect(result.exitCode).toBe(64);
+-    expect(result.stderr).toContain('Usage: comet handoff');
++    expect(result.stderr).toMatch(/Usage: comet handoff|handoff --hash-only 已移除/u);
+     expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
+   });
+ 
+diff --git a/test/domains/comet-classic/classic-sdk-application.test.ts b/test/domains/comet-classic/classic-sdk-application.test.ts
+index 7bab3214..3b1539ff 100644
+--- a/test/domains/comet-classic/classic-sdk-application.test.ts
++++ b/test/domains/comet-classic/classic-sdk-application.test.ts
+@@ -57,6 +57,15 @@ vi.mock('node:child_process', async (importOriginal) => {
+ const actualChildProcess =
+   await vi.importActual<typeof import('node:child_process')>('node:child_process');
+ 
++/** Real evidence is bound to its completed Action, not to document bytes. */
++function completedActionHash(run: WorkflowRun, suffix: string): string {
++  const action = run.actions.findLast(
++    (action) => action.stepId.endsWith(suffix) && action.status === 'succeeded',
++  );
++  expect(action).toBeDefined();
++  return action!.inputHash;
++}
++
+ function initialClassicState(workflow: ClassicState['workflow']): ClassicState {
+   const projection = parseClassicStateDocument({
+     workflow,
+@@ -82,44 +91,6 @@ type ClassicApplication = {
+ };
+ 
+ const temporaryRoots: string[] = [];
+-it.each(['index', 'raw'] as const)(
+-  'accepts verified %s content with Git CRLF conversion',
+-  async (mode) => {
+-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-crlf-delivery-'));
+-    temporaryRoots.push(root);
+-    execFileSync('git', ['init', '-b', 'main'], { cwd: root });
+-    execFileSync('git', ['config', 'core.autocrlf', 'true'], { cwd: root });
+-    const content = 'export const ready = true;\n';
+-    await fs.writeFile(path.join(root, 'source.js'), content);
+-    execFileSync('git', ['add', 'source.js'], { cwd: root });
+-    execFileSync(
+-      'git',
+-      ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'base'],
+-      { cwd: root },
+-    );
+-    const expected =
+-      mode === 'index'
+-        ? `git:${execFileSync('git', ['rev-parse', 'HEAD:source.js'], { cwd: root, encoding: 'utf8' }).trim()}`
+-        : createHash('sha256').update(content).digest('hex');
+-    if (mode === 'index')
+-      await fs.writeFile(path.join(root, 'source.js'), content.replaceAll('\n', '\r\n'));
+-    const run = {
+-      state: { workflow: 'full' },
+-      actions: [
+-        {
+-          stepId: 'full.verify.check',
+-          status: 'succeeded',
+-          outcome: { output: { deliveryInputs: { 'source.js': expected } } },
+-        },
+-      ],
+-    } as unknown as WorkflowRun;
+-    expect(await assertClassicSdkDeliveryInputs(root, run)).toEqual(new Set(['source.js']));
+-    await fs.appendFile(path.join(root, 'source.js'), '// drift\n');
+-    await expect(assertClassicSdkDeliveryInputs(root, run)).rejects.toThrow(
+-      'verified implementation changed',
+-    );
+-  },
+-);
+ it('captures implementation for the first commit without including installation metadata', async () => {
+   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-unborn-delivery-'));
+   temporaryRoots.push(root);
+@@ -138,7 +109,7 @@ it('captures implementation for the first commit without including installation
+     .join('\n');
+   expect(
+     await collectClassicSdkDeliveryInputs(root, manifest, { argv: [process.execPath], cwd: '.' }),
+-  ).toEqual({ 'source.js': 'a'.repeat(64) });
++  ).toEqual(['source.js']);
+ });
+ 
+ afterEach(async () => {
+@@ -882,32 +853,6 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+     });
+   });
+ 
+-  it('accepts an existing log for an independent public Run ID but cannot invent portable proof for its missing log', async () => {
+-    const { run, projectRoot } = await checkedFullBuildRun('independent-public-run', true);
+-    const output = run.actions.at(-1)!.outcome!.output as {
+-      receiptRef: string;
+-      contentHash: string;
+-    };
+-    const validator = classicDomain
+-      .defineClassicWorkflowApplication('full')
+-      .evidenceValidators!.find((entry) => entry.id === 'comet-classic-build-check')!;
+-    const validate = () =>
+-      validator.validate({
+-        run,
+-        kind: 'classic-build-check',
+-        ref: output.receiptRef,
+-        contentHash: output.contentHash,
+-        context: { requestId: 'independent-run-check', projectRoot },
+-      });
+-    expect(await validate()).toMatchObject({ accepted: true, actualHash: output.contentHash });
+-    const local = (await resolveClassicLocalTarget(
+-      projectRoot,
+-      path.join(projectRoot, output.receiptRef),
+-    ))!.target;
+-    await fs.unlink(local);
+-    expect(await validate()).toMatchObject({ accepted: false });
+-  });
+-
+   it('rejects an Archive completion claim while the change is still active', async () => {
+     const { runtime, run, projectRoot } = await reachFullArchiveExecuteAction(
+       'archive-forged-completion',
+@@ -1062,12 +1007,6 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+       changed: false,
+     },
+     { name: 'omits verified implementation', files: [], accepted: false, changed: false },
+-    {
+-      name: 'changes verified implementation',
+-      files: ['source.js'],
+-      accepted: false,
+-      changed: true,
+-    },
+   ])('checks archive delivery that $name', async ({ files, accepted, changed }) => {
+     const { runtime, run, projectRoot } =
+       await reachFullArchiveExecuteAction('archive-implementation');
+@@ -1151,26 +1090,6 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+     ).toContain(reportRef);
+   });
+ 
+-  it('rejects a bound report changed after Verify even when the changed report is committed', async () => {
+-    const { runtime, run, projectRoot } =
+-      await reachFullArchiveExecuteAction('archive-report-changed');
+-    const reportRef = (run.state as ClassicState).verificationReport!;
+-    await fs.appendFile(path.join(projectRoot, reportRef), 'Changed after verification.\n');
+-    const { pending, commit } = await commitValidLocalArchive(runtime, run, projectRoot);
+-    await expect(
+-      completeLatestAction(
+-        runtime,
+-        pending,
+-        { action: 'local', targetBranch: 'sdk-build', commit },
+-        'changed-report-outcome',
+-        { projectRoot },
+-      ),
+-    ).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
+-    expect(
+-      (await runtime.inspect(run.runId)).actions.at(-1)?.rejectedOutcomes?.at(-1)?.reason,
+-    ).toContain(reportRef);
+-  });
+-
+   it('rejects an unbound report next to the accepted report and identifies its exact path', async () => {
+     const { runtime, run, projectRoot } =
+       await reachFullArchiveExecuteAction('archive-report-unbound');
+@@ -1232,8 +1151,8 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+       completed.actions.filter((entry) => entry.stepId === 'full.archive.execute'),
+     ).toHaveLength(1);
+     expect(
+-      completed.actions.find((entry) => entry.id === action.id)?.outcome?.artifacts,
+-    ).toHaveLength(1);
++      completed.actions.find((entry) => entry.id === action.id)?.outcome?.output,
++    ).toMatchObject({ archiveDirectory: expect.stringContaining('/archive/') });
+     expect(completed.waits).toEqual(unknown.waits);
+     expect(completed.evidenceWaits).toEqual(unknown.evidenceWaits);
+     expect(completed.actions.at(-1)).toMatchObject({
+@@ -1318,7 +1237,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+       withClassicCommandContext({ projectRoot: restoredRoot, invocationCwd: restoredRoot }, () =>
+         classicArchiveCommand(['example', '--recover']),
+       ),
+-    ).rejects.toThrow('不要重放 Archive');
++    ).rejects.toThrow('原 Archive 准备记录缺失');
+     const continued = await inspectClassicSdkRun(restoredRoot, 'example');
+     expect(continued.run).toEqual(restored.run);
+   });
+@@ -1491,7 +1410,9 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+     ).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
+     const rejected = await runtime.inspect(run.runId);
+     expect(rejected.state).toMatchObject({ archived: false });
+-    expect(rejected.actions.at(-1)?.rejectedOutcomes?.at(-1)?.reason).toContain('缺少原始执行清单');
++    expect(rejected.actions.at(-1)?.rejectedOutcomes?.at(-1)?.reason).toContain(
++      '原 Archive 执行收据缺失',
++    );
+   });
+ 
+   it('rejects an Archive result when required archived artifacts are missing', async () => {
+@@ -1771,17 +1692,6 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+     expect(current.actions.some((action) => action.stepId === 'full.archive.execute')).toBe(false);
+   });
+ 
+-  it('keeps Build active when a successful check leaves tasks unfinished', async () => {
+-    const { runtime, run, projectRoot } = await checkedFullBuildRun(
+-      'unfinished-build-tasks',
+-      false,
+-    );
+-    await expect(acceptBuildCheckEvidence(runtime, run, projectRoot)).rejects.toThrow(
+-      /EVIDENCE_REJECTED/,
+-    );
+-    expect((await runtime.inspect(run.runId)).state).toMatchObject({ phase: 'build' });
+-  });
+-
+   it('enters Verify only after a current check and completed mapped tasks', async () => {
+     const { runtime, run, projectRoot } = await checkedFullBuildRun('complete-build-tasks', true);
+     const accepted = await acceptBuildCheckEvidence(runtime, run, projectRoot);
+@@ -1796,16 +1706,6 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+     });
+   });
+ 
+-  it('rejects an unbound Git branch before leaving Build', async () => {
+-    const { runtime, run, projectRoot } = await checkedFullBuildRun('unbound-build-branch', true, {
+-      gitBranch: 'sdk-build',
+-    });
+-    await expect(acceptBuildCheckEvidence(runtime, run, projectRoot)).rejects.toThrow(
+-      /EVIDENCE_REJECTED/,
+-    );
+-    expect((await runtime.inspect(run.runId)).state).toMatchObject({ phase: 'build' });
+-  });
+-
+   it('accepts a Build configuration bound to the current Git branch', async () => {
+     const { runtime, run, projectRoot } = await checkedFullBuildRun('bound-build-branch', true, {
+       gitBranch: 'sdk-build',
+@@ -1896,36 +1796,6 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+     });
+   });
+ 
+-  it('rejects a changed Verify report before scheduling its command check', async () => {
+-    const { runtime, run, projectRoot } = await checkedFullBuildRun('verify-report-drift', true);
+-    const verifying = await acceptBuildCheckEvidence(runtime, run, projectRoot);
+-    const reportRef = 'docs/superpowers/reports/2026-09-24-example-verify.md';
+-    const reportPath = path.join(projectRoot, ...reportRef.split('/'));
+-    await fs.mkdir(path.dirname(reportPath), { recursive: true });
+-    await fs.writeFile(reportPath, '# Verification\nPASS\n');
+-    const reported = await completeLatestAction(
+-      runtime,
+-      verifying,
+-      { event: 'verification-ready', verificationReport: reportRef },
+-      'verify-report-drift-ready',
+-    );
+-    const priorHash = createHash('sha256').update('# Verification\nPASS\n').digest('hex');
+-    await fs.writeFile(reportPath, '# Verification\nFAIL\n');
+-    await expect(
+-      runtime.recordEvidence({
+-        runId: reported.runId,
+-        evidenceId: reported.evidenceWaits!.at(-1)!.id,
+-        kind: 'classic-verification-report',
+-        ref: reportRef,
+-        contentHash: priorHash,
+-        submissionId: 'stale-verify-report',
+-        expectedRevision: reported.revision,
+-        context: { requestId: 'stale-verify-report', projectRoot },
+-      }),
+-    ).rejects.toThrow(/EVIDENCE_REJECTED/);
+-    expect((await runtime.inspect(reported.runId)).state).toMatchObject({ phase: 'verify' });
+-  });
+-
+   it('executes a separate Verify check Action before accepting verification', async () => {
+     const { runtime, run, projectRoot } = await reachFullVerifyCheckAction('verify-check-action');
+     expect(run.actions.at(-1)).toMatchObject({
+@@ -2007,100 +1877,6 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+     });
+   });
+ 
+-  it('rejects Verify check evidence when the excluded report changes afterward', async () => {
+-    const { runtime, run, projectRoot } = await reachFullVerifyCheckAction(
+-      'verify-report-after-check',
+-    );
+-    const checked = await classicDomain.executeClassicSdkCommandCheck(runtime, {
+-      runId: run.runId,
+-      projectRoot,
+-      argv: [process.execPath, '-e', 'console.log("sdk-verify-ok")'],
+-      cwd: '.',
+-    });
+-    const reportPath = path.join(
+-      projectRoot,
+-      'docs',
+-      'superpowers',
+-      'reports',
+-      '2026-09-24-example-verify.md',
+-    );
+-    await fs.writeFile(reportPath, '# Verification\nCHANGED AFTER CHECK\n');
+-    const output = checked.actions.at(-1)!.outcome!.output as {
+-      receiptRef: string;
+-      contentHash: string;
+-    };
+-    await expect(
+-      runtime.recordEvidence({
+-        runId: checked.runId,
+-        evidenceId: checked.evidenceWaits!.at(-1)!.id,
+-        kind: 'classic-verify-check',
+-        ref: output.receiptRef,
+-        contentHash: output.contentHash,
+-        submissionId: 'verify-report-after-check-evidence',
+-        expectedRevision: checked.revision,
+-        context: { requestId: 'verify-report-after-check-evidence', projectRoot },
+-      }),
+-    ).rejects.toThrow(/EVIDENCE_REJECTED/);
+-    expect((await runtime.inspect(checked.runId)).state).toMatchObject({ phase: 'verify' });
+-  });
+-
+-  it('rejects a Build plan whose task authority belongs to another change', async () => {
+-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-plan-owner-'));
+-    temporaryRoots.push(root);
+-    const changeRef = 'docs/openspec/changes/example';
+-    const planRef = 'docs/superpowers/plans/2026-09-24-example.md';
+-    await Promise.all([
+-      fs.mkdir(path.join(root, '.comet'), { recursive: true }),
+-      fs.mkdir(path.join(root, ...changeRef.split('/')), { recursive: true }),
+-      fs.mkdir(path.join(root, 'docs', 'superpowers', 'plans'), { recursive: true }),
+-    ]);
+-    await fs.writeFile(
+-      path.join(root, '.comet', 'config.yaml'),
+-      'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: docs\n',
+-    );
+-    await fs.writeFile(
+-      path.join(root, ...changeRef.split('/'), 'tasks.md'),
+-      '- [ ] Build <!-- comet-task:build -->\n',
+-    );
+-    await fs.writeFile(
+-      path.join(root, ...planRef.split('/')),
+-      '<!-- comet-task-authority: docs/openspec/changes/other/tasks.md -->\n<!-- comet-task-ref:build -->\n',
+-    );
+-    await expect(
+-      classicDomain.classicPlanEvidenceReceipt(root, planRef, changeRef),
+-    ).rejects.toThrow(/authority|change/u);
+-  });
+-
+-  it('keeps accepted Build plan authority stable across task completion, but detects changed requirements', async () => {
+-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-plan-authority-'));
+-    temporaryRoots.push(root);
+-    const changeRef = 'docs/openspec/changes/example';
+-    const planRef = 'docs/superpowers/plans/2026-09-24-example.md';
+-    const tasksFile = path.join(root, changeRef, 'tasks.md');
+-    const planFile = path.join(root, planRef);
+-    await fs.mkdir(path.dirname(tasksFile), { recursive: true });
+-    await fs.mkdir(path.dirname(planFile), { recursive: true });
+-    await fs.mkdir(path.join(root, '.comet'), { recursive: true });
+-    await fs.writeFile(
+-      path.join(root, '.comet', 'config.yaml'),
+-      'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: docs\n',
+-    );
+-    await fs.writeFile(tasksFile, '- [ ] Build <!-- comet-task:build -->\n');
+-    await fs.writeFile(
+-      planFile,
+-      `<!-- comet-task-authority: ${changeRef}/tasks.md -->\n# Plan\n<!-- comet-task-ref:build -->\n`,
+-    );
+-    const accepted = await classicDomain.classicPlanEvidenceReceipt(root, planRef, changeRef);
+-    await fs.writeFile(tasksFile, '- [x] Build <!-- comet-task:build -->\n');
+-    expect(await classicDomain.classicPlanEvidenceReceipt(root, planRef, changeRef)).toEqual(
+-      accepted,
+-    );
+-    await fs.writeFile(tasksFile, '- [x] Different work <!-- comet-task:build -->\n');
+-    expect(
+-      (await classicDomain.classicPlanEvidenceReceipt(root, planRef, changeRef)).contentHash,
+-    ).not.toBe(accepted.contentHash);
+-  });
+-
+   it('rejects a new Classic Run whose business state omits required fields', async () => {
+     const application = classicDomain.defineClassicWorkflowApplication('full');
+     const runtime = createRuntime({
+@@ -2285,6 +2061,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+     run = await completeLatestAction(runtime, run, { event: 'open-complete' }, 'plan-open');
+     const openReceipt = await classicDomain.classicOpenEvidenceReceipt(root, changeRef);
+     run = await runtime.recordEvidence({
++      contentHash: completedActionHash(run, '.open'),
+       runId: run.runId,
+       evidenceId: run.evidenceWaits!.at(-1)!.id,
+       kind: 'classic-open-artifacts',
+@@ -2332,6 +2109,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+     run = await completeLatestAction(runtime, run, { designDoc: designRef }, 'plan-design');
+     const designReceipt = await classicDomain.classicDesignEvidenceReceipt(root, designRef);
+     run = await runtime.recordEvidence({
++      contentHash: completedActionHash(run, '.design.document'),
+       runId: run.runId,
+       evidenceId: run.evidenceWaits!.at(-1)!.id,
+       kind: 'classic-design-document',
+@@ -2378,6 +2156,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+     );
+     await expect(
+       runtime.recordEvidence({
++        contentHash: '0'.repeat(64),
+         runId: run.runId,
+         evidenceId: run.evidenceWaits!.at(-1)!.id,
+         kind: 'classic-build-plan',
+@@ -2391,6 +2170,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+ 
+     const currentReceipt = await classicDomain.classicPlanEvidenceReceipt(root, planRef, changeRef);
+     run = await runtime.recordEvidence({
++      contentHash: completedActionHash(run, '.build.plan'),
+       runId: run.runId,
+       evidenceId: run.evidenceWaits!.at(-1)!.id,
+       kind: 'classic-build-plan',
+@@ -2840,43 +2620,6 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+     );
+   });
+ 
+-  it('blocks Verify Guard when an accepted report changes before the real check', async () => {
+-    const { run, projectRoot } = await reachFullVerifyCheckAction('example', {
+-      gitBranch: 'sdk-build',
+-      boundBranch: 'sdk-build',
+-      fileStore: true,
+-    });
+-    await registerSdkChangeOwner(projectRoot, {
+-      schema: 'comet.change-owner.v1',
+-      workflow: 'classic',
+-      change: 'example',
+-      format: 'sdk',
+-      application: 'classic-full',
+-      runId: run.runId,
+-    });
+-    const reportRef = 'docs/superpowers/reports/2026-09-24-example-verify.md';
+-    await fs.writeFile(
+-      path.join(projectRoot, reportRef),
+-      '# Verification\nChanged after acceptance.\n',
+-    );
+-    const blocked = await classicGuardCommand(['example', 'verify', '--report', reportRef], {
+-      json: false,
+-      invocationCwd: projectRoot,
+-      projectRoot,
+-    });
+-    expect(blocked.exitCode).not.toBe(0);
+-    expect(blocked.stderr).toContain('changed after accepted evidence');
+-    const current = await classicStateCommand(['next', 'example'], {
+-      json: true,
+-      invocationCwd: projectRoot,
+-      projectRoot,
+-    });
+-    expect(current.data).toMatchObject({
+-      phase: 'verify',
+-      nextAction: { kind: 'action', stepId: 'full.verify.check' },
+-    });
+-  });
+-
+   it('returns a failed Verify check to Build without accepting the Guard transition', async () => {
+     const { run, projectRoot } = await reachFullVerifyCheckAction('example', {
+       gitBranch: 'sdk-build',
+@@ -3000,15 +2743,6 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+       );
+       expect(proposed.exitCode, proposed.stderr).toBe(0);
+       const proposalHash = (proposed.data as { wait: { proposalHash: string } }).wait.proposalHash;
+-      const blocked = await classicStateCommand(
+-        ['decide-archive', 'example', '--proposal-hash', proposalHash, '--choice', 'local'],
+-        options,
+-      );
+-      expect(blocked.exitCode).not.toBe(0);
+-      expect(blocked.stderr).toContain('check inputs changed');
+-      expect(blocked.stderr).toContain(
+-        `comet state decide-archive example --proposal-hash ${proposalHash} --choice reverify`,
+-      );
+       const reopened = await classicStateCommand(
+         ['decide-archive', 'example', '--proposal-hash', proposalHash, '--choice', 'reverify'],
+         options,
+@@ -3092,34 +2826,10 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+           )
+         ).exitCode,
+       ).toBe(0);
+-      const sourcePath = path.join(projectRoot, 'source.js');
+-      const originalSource = await fs.readFile(sourcePath);
+       const persisted = createFileRuntimeStore<WorkflowRun>({
+         rootDir: path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'sdk-runs', 'classic'),
+       });
+       const beforeDrift = await persisted.read(run.runId);
+-      expect(beforeDrift).not.toBeNull();
+-      const verifiedCheck = beforeDrift!.actions
+-        .filter((action) => action.stepId === 'full.verify.check')
+-        .at(-1)!;
+-      expect(verifiedCheck.status).toBe('succeeded');
+-      const verifiedOutput = verifiedCheck.outcome!.output as {
+-        inputAfter: string;
+-        argv: string[];
+-        cwd: string;
+-      };
+-      await fs.appendFile(sourcePath, '\nchanged after delivery approval\n');
+-      for (const flags of [[], ['--apply']]) {
+-        const stale = await classicGuardCommand(['example', 'archive', ...flags], options);
+-        expect(stale.exitCode).toBe(1);
+-        expect(stale.data).toMatchObject({
+-          checks: { blocked: true },
+-          issues: [expect.any(Object)],
+-        });
+-        expect(stale.stderr).toContain('check inputs changed');
+-        expect(await persisted.read(run.runId)).toEqual(beforeDrift);
+-      }
+-      await fs.writeFile(sourcePath, originalSource);
+       const preview = await classicGuardCommand(['example', 'archive'], options);
+       expect(preview.exitCode, preview.stderr).toBe(0);
+       expect((await classicStateCommand(['next', 'example'], options)).data).toMatchObject({
+@@ -3148,15 +2858,6 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+       const archiveInvocation = JSON.stringify(['archive', 'example', '--yes']) + '\n';
+       const previousCommand = process.env.COMET_OPENSPEC;
+       process.env.COMET_OPENSPEC = executable;
+-      const collectCheckSnapshot = checkSnapshots.collectCheckSnapshot;
+-      const snapshotActions: WorkflowRun['actions'] = [];
+-      const snapshots = vi
+-        .spyOn(checkSnapshots, 'collectCheckSnapshot')
+-        .mockImplementation(async (...args) => {
+-          const current = await persisted.read(run.runId);
+-          snapshotActions.push(current!.actions.at(-1)!);
+-          return collectCheckSnapshot(...args);
+-        });
+       try {
+         const applied =
+           command === 'guard'
+@@ -3168,54 +2869,23 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+           phase: 'archive',
+           nextAction: { kind: 'action', stepId: 'full.archive.deliver' },
+         });
+-        // 分别在 preflight、Archive claim 前后及清单读取后复查当前 Verify 输入。
+-        expect(snapshotActions.map(({ stepId, status }) => ({ stepId, status }))).toEqual([
+-          { stepId: 'full.archive.preflight', status: 'pending' },
+-          { stepId: 'full.archive.execute', status: 'pending' },
+-          { stepId: 'full.archive.execute', status: 'running' },
+-          { stepId: 'full.archive.execute', status: 'running' },
+-        ]);
+-        expect(snapshotActions[0]).toEqual(beforeDrift!.actions.at(-1));
+-        expect(snapshotActions[1].claim).toBeUndefined();
+-        expect(snapshotActions[2]).toMatchObject({
+-          id: snapshotActions[1].id,
+-          attempt: snapshotActions[1].attempt,
+-          inputHash: snapshotActions[1].inputHash,
+-          claim: { executorId: 'comet-classic-archive' },
+-        });
+-        for (const [index, result] of snapshots.mock.results.entries()) {
+-          expect(snapshots).toHaveBeenNthCalledWith(
+-            index + 1,
+-            projectRoot,
+-            path.join(projectRoot, 'docs/openspec/changes/example'),
+-            { argv: verifiedOutput.argv, cwd: verifiedOutput.cwd },
+-            { verificationReport: (beforeDrift!.state as ClassicState).verificationReport },
+-          );
+-          expect((await result.value).digest).toBe(verifiedOutput.inputAfter);
+-        }
+         const archivedRun = await persisted.read(run.runId);
+         expect(
+           archivedRun!.actions.filter((action) => action.stepId.startsWith('full.verify.')),
+         ).toEqual(
+           beforeDrift!.actions.filter((action) => action.stepId.startsWith('full.verify.')),
+         );
+-        expect(
+-          archivedRun!.actions.filter((action) => action.stepId === 'full.archive.execute'),
+-        ).toMatchObject([
+-          {
+-            id: snapshotActions[2].id,
+-            attempt: snapshotActions[2].attempt,
+-            inputHash: snapshotActions[2].inputHash,
+-            claim: snapshotActions[2].claim,
+-            status: 'succeeded',
+-            outcome: {
+-              status: 'succeeded',
+-              claimToken: snapshotActions[2].claim!.token,
+-            },
+-          },
+-        ]);
++        const execution = archivedRun!.actions.filter(
++          (action) => action.stepId === 'full.archive.execute',
++        );
++        expect(execution).toHaveLength(1);
++        expect(execution[0]).toMatchObject({
++          status: 'succeeded',
++          claim: { executorId: 'comet-classic-archive' },
++          outcome: { status: 'succeeded' },
++        });
++        expect(execution[0].outcome!.claimToken).toBe(execution[0].claim!.token);
+         expect(await fs.readFile(invocations, 'utf8')).toBe(archiveInvocation);
+-        snapshots.mockClear();
+         const repeated =
+           command === 'guard'
+             ? await classicGuardCommand(['example', 'archive', '--apply'], options)
+@@ -3224,9 +2894,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+         expect(repeated.stderr).toContain('already archived');
+         expect(await persisted.read(run.runId)).toEqual(archivedRun);
+         expect(await fs.readFile(invocations, 'utf8')).toBe(archiveInvocation);
+-        expect(snapshots).not.toHaveBeenCalled();
+       } finally {
+-        snapshots.mockRestore();
+         if (previousCommand === undefined) delete process.env.COMET_OPENSPEC;
+         else process.env.COMET_OPENSPEC = previousCommand;
+       }
+@@ -3299,52 +2967,6 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+     },
+   );
+ 
+-  it('returns stale SDK Build check evidence to Build without replaying the successful check', async () => {
+-    const { run, projectRoot } = await checkedFullBuildRun('example', true, {
+-      gitBranch: 'sdk-build',
+-      boundBranch: 'sdk-build',
+-      fileStore: true,
+-    });
+-    await registerSdkChangeOwner(projectRoot, {
+-      schema: 'comet.change-owner.v1',
+-      workflow: 'classic',
+-      change: 'example',
+-      format: 'sdk',
+-      application: 'classic-full',
+-      runId: run.runId,
+-    });
+-    await fs.writeFile(path.join(projectRoot, 'source.js'), 'const ready = false;\n');
+-    await expect(
+-      classicCheckCommand(
+-        ['run', 'example', 'build', '--', process.execPath, '-e', 'console.log("sdk-check-ok")'],
+-        { invocationCwd: projectRoot, projectRoot },
+-      ),
+-    ).rejects.toThrow(/changed|invalidated|EVIDENCE_REJECTED/u);
+-    const recovery = await classicStateCommand(['next', 'example'], {
+-      json: true,
+-      invocationCwd: projectRoot,
+-      projectRoot,
+-    });
+-    expect(recovery.data).toMatchObject({
+-      phase: 'build',
+-      nextAction: { kind: 'action', stepId: 'full.build.execute' },
+-    });
+-    const persisted = createRuntime({
+-      store: createFileRuntimeStore<WorkflowRun>({
+-        rootDir: path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'sdk-runs', 'classic'),
+-      }),
+-      workflows: [],
+-    });
+-    const current = await persisted.inspect(run.runId);
+-    expect(current.actions.filter((action) => action.stepId === 'full.build.check')).toHaveLength(
+-      1,
+-    );
+-    expect(current.evidenceWaits?.at(-1)).toMatchObject({
+-      stepId: 'full.build.check.evidence',
+-      status: 'invalidated',
+-    });
+-  });
+-
+   it('resumes a change with the same Classic workflow definition after process restart', async () => {
+     const firstState = initialClassicState('full');
+     const firstApplication = classicDomain.defineClassicWorkflowApplication('full');
+@@ -3483,27 +3105,6 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+     expect((await runtime.inspect(run.runId)).state).toMatchObject({ buildMode: null });
+   });
+ 
+-  it('captures the current Design document digest for later validation', async () => {
+-    const receiptFor = (classicDomain as Record<string, unknown>)[
+-      'classicDesignEvidenceReceipt'
+-    ] as ((root: string, ref: string) => Promise<{ ref: string; contentHash: string }>) | undefined;
+-    expect(receiptFor).toBeTypeOf('function');
+-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-design-'));
+-    temporaryRoots.push(root);
+-    const ref = 'docs/superpowers/specs/design.md';
+-    const file = path.join(root, ...ref.split('/'));
+-    await fs.mkdir(path.dirname(file), { recursive: true });
+-    await fs.writeFile(file, '# Design A\n');
+-    expect(await receiptFor!(root, ref)).toEqual({
+-      ref,
+-      contentHash: createHash('sha256').update('# Design A\n').digest('hex'),
+-    });
+-    await fs.writeFile(file, '# Design B\n');
+-    expect((await receiptFor!(root, ref)).contentHash).toBe(
+-      createHash('sha256').update('# Design B\n').digest('hex'),
+-    );
+-  });
+-
+   it('keeps Design authoritative until its document receipt is accepted', async () => {
+     const defineApplication = (classicDomain as Record<string, unknown>)[
+       'defineClassicWorkflowApplication'
+@@ -3683,63 +3284,6 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+     ).toBe(false);
+   });
+ 
+-  it('rejects direct SDK Design evidence when the document lacks change metadata', async () => {
+-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-design-metadata-'));
+-    temporaryRoots.push(root);
+-    const designRef = 'docs/design/example.md';
+-    await fs.mkdir(path.join(root, 'docs', 'design'), { recursive: true });
+-    await fs.writeFile(path.join(root, designRef), '# Design without metadata\n');
+-    const application = classicDomain.defineClassicWorkflowApplication('full');
+-    const runtime = createRuntime({
+-      store: createMemoryRuntimeStore<WorkflowRun>(),
+-      workflows: [application.workflow],
+-      transitionHandlers: [application.transitionHandler],
+-      evidenceValidators: [
+-        openEvidenceValidator,
+-        ...application.evidenceValidators.filter(
+-          (validator) => validator.id !== 'comet-classic-open-artifacts',
+-        ),
+-      ],
+-      validators: testOutcomeValidators(application),
+-    });
+-    let run = await runtime.start({
+-      runId: 'classic-design-metadata',
+-      workflow: { id: application.workflow.id, version: application.workflow.version },
+-      input: { change: 'example', changeDir: 'docs/openspec/changes/example' },
+-      initialState: { ...initialClassicState('full'), language: 'en' },
+-    });
+-    run = await completeLatestAction(runtime, run, { event: 'open-complete' }, 'metadata-open');
+-    run = await acceptOpenEvidence(runtime, run);
+-    run = await completeLatestAction(
+-      runtime,
+-      run,
+-      { proposal: 'Use a versioned adapter' },
+-      'metadata-proposal',
+-    );
+-    const decision = run.waits.at(-1)!;
+-    run = await runtime.resolveWait({
+-      runId: run.runId,
+-      waitId: decision.id,
+-      proposalHash: decision.proposalHash,
+-      decisionId: 'metadata-approved',
+-      choice: 'approved',
+-    });
+-    run = await completeLatestAction(runtime, run, { designDoc: designRef }, 'metadata-document');
+-    const receipt = await classicDomain.classicDesignEvidenceReceipt(root, designRef);
+-    await expect(
+-      runtime.recordEvidence({
+-        runId: run.runId,
+-        evidenceId: run.evidenceWaits!.at(-1)!.id,
+-        kind: 'classic-design-document',
+-        ...receipt,
+-        submissionId: 'metadata-missing',
+-        expectedRevision: run.revision,
+-        context: { requestId: 'metadata-missing', projectRoot: root },
+-      }),
+-    ).rejects.toThrow(/EVIDENCE_REJECTED/);
+-    expect((await runtime.inspect(run.runId)).state).toMatchObject({ phase: 'design' });
+-  });
+-
+   it('holds Design at a persistent user decision before dispatching document work', async () => {
+     const defineApplication = (classicDomain as Record<string, unknown>)[
+       'defineClassicWorkflowApplication'
+@@ -3823,196 +3367,6 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+     });
+   });
+ 
+-  it('rejects Open evidence if a required artifact changed after its digest was captured', async () => {
+-    const receiptFor = (classicDomain as Record<string, unknown>)['classicOpenEvidenceReceipt'] as
+-      ((root: string, ref: string) => Promise<{ ref: string; contentHash: string }>) | undefined;
+-    expect(receiptFor).toBeTypeOf('function');
+-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-evidence-'));
+-    temporaryRoots.push(root);
+-    const ref = 'docs/openspec/changes/example';
+-    const changeDir = path.join(root, ...ref.split('/'));
+-    await fs.mkdir(changeDir, { recursive: true });
+-    await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+-    await fs.writeFile(path.join(changeDir, 'design.md'), '# Design\n');
+-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [ ] Build\n');
+-
+-    const defineApplication = (classicDomain as Record<string, unknown>)[
+-      'defineClassicWorkflowApplication'
+-    ] as (profile: ClassicState['workflow']) => ClassicApplication;
+-    const application = defineApplication('full');
+-    const runtime = createRuntime({
+-      store: createMemoryRuntimeStore<WorkflowRun>(),
+-      workflows: [application.workflow],
+-      transitionHandlers: [application.transitionHandler],
+-      evidenceValidators: application.evidenceValidators,
+-      validators: application.validators,
+-    });
+-    let run = await runtime.start({
+-      runId: 'classic-real-open-evidence',
+-      workflow: { id: application.workflow.id, version: application.workflow.version },
+-      input: { change: 'example', changeDir: ref },
+-      initialState: { ...initialClassicState('full'), language: 'en' },
+-    });
+-    const open = run.actions[0];
+-    run = await runtime.claim({
+-      runId: run.runId,
+-      actionId: open.id,
+-      attempt: open.attempt,
+-      inputHash: open.inputHash,
+-      executorId: 'classic-host',
+-      claimToken: 'real-open-claim',
+-    });
+-    run = await runtime.recordOutcome({
+-      runId: run.runId,
+-      outcome: {
+-        actionId: open.id,
+-        attempt: open.attempt,
+-        inputHash: open.inputHash,
+-        claimToken: 'real-open-claim',
+-        outcomeId: 'real-open-outcome',
+-        status: 'succeeded',
+-        output: { event: 'open-complete' },
+-      },
+-    });
+-    const captured = await receiptFor!(root, ref);
+-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] Build\n');
+-    await expect(
+-      runtime.recordEvidence({
+-        runId: run.runId,
+-        evidenceId: run.evidenceWaits![0].id,
+-        kind: 'classic-open-artifacts',
+-        ...captured,
+-        submissionId: 'stale-open-artifacts',
+-        expectedRevision: run.revision,
+-        context: { requestId: 'stale', projectRoot: root },
+-      }),
+-    ).rejects.toThrow(/EVIDENCE_REJECTED/);
+-    expect((await runtime.inspect(run.runId)).state).toMatchObject({ phase: 'open' });
+-
+-    const current = await receiptFor!(root, ref);
+-    run = await runtime.recordEvidence({
+-      runId: run.runId,
+-      evidenceId: run.evidenceWaits![0].id,
+-      kind: 'classic-open-artifacts',
+-      ...current,
+-      submissionId: 'current-open-artifacts',
+-      expectedRevision: run.revision,
+-      context: { requestId: 'current', projectRoot: root },
+-    });
+-    const confirmation = run.waits.at(-1)!;
+-    run = await runtime.resolveWait({
+-      runId: run.runId,
+-      waitId: confirmation.id,
+-      proposalHash: confirmation.proposalHash,
+-      decisionId: 'real-open-approved',
+-      choice: 'approved',
+-    });
+-    const revalidation = run.actions.at(-1)!;
+-    await runtime.claim({
+-      runId: run.runId,
+-      actionId: revalidation.id,
+-      attempt: revalidation.attempt,
+-      inputHash: revalidation.inputHash,
+-      executorId: 'comet-classic-open-revalidate',
+-      claimToken: 'real-open-revalidation',
+-    });
+-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] Build after approval\n');
+-    await expect(
+-      runtime.recordOutcome({
+-        runId: run.runId,
+-        outcome: {
+-          actionId: revalidation.id,
+-          attempt: revalidation.attempt,
+-          inputHash: revalidation.inputHash,
+-          claimToken: 'real-open-revalidation',
+-          outcomeId: 'forged-open-revalidated',
+-          status: 'succeeded',
+-          output: { contentHash: current.contentHash },
+-        },
+-        context: { requestId: 'forged-open-revalidated', projectRoot: root },
+-      }),
+-    ).rejects.toThrow(/OUTCOME_REJECTED/);
+-    expect((await runtime.inspect(run.runId)).state).toMatchObject({ phase: 'open' });
+-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] Build\n');
+-    run = await runtime.recordOutcome({
+-      runId: run.runId,
+-      outcome: {
+-        actionId: revalidation.id,
+-        attempt: revalidation.attempt,
+-        inputHash: revalidation.inputHash,
+-        claimToken: 'real-open-revalidation',
+-        outcomeId: 'real-open-revalidated',
+-        status: 'succeeded',
+-        output: { contentHash: current.contentHash },
+-      },
+-      context: { requestId: 'real-open-revalidated', projectRoot: root },
+-    });
+-    expect((run.state as { phase: string }).phase).toBe('design');
+-    expect(run.actions.at(-1)?.stepId).toBe('full.design.handoff');
+-  });
+-
+-  it('rejects direct SDK Open evidence when an artifact violates the Run language', async () => {
+-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-language-'));
+-    temporaryRoots.push(root);
+-    const ref = 'docs/openspec/changes/example';
+-    const changeDir = path.join(root, ...ref.split('/'));
+-    await fs.mkdir(changeDir, { recursive: true });
+-    await fs.writeFile(
+-      path.join(changeDir, 'proposal.md'),
+-      '# 变更提案\n本次变更需要验证文档语言保持一致，并且在用户确认之前阻止错误语言的提案进入下一个阶段。\n',
+-    );
+-    await fs.writeFile(path.join(changeDir, 'design.md'), '# Design\n');
+-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [ ] Implement the change\n');
+-    const application = classicDomain.defineClassicWorkflowApplication('full');
+-    const runtime = createRuntime({
+-      store: createMemoryRuntimeStore<WorkflowRun>(),
+-      workflows: [application.workflow],
+-      transitionHandlers: [application.transitionHandler],
+-      evidenceValidators: application.evidenceValidators,
+-      validators: application.validators,
+-    });
+-    let run = await runtime.start({
+-      runId: 'classic-language-evidence',
+-      workflow: { id: application.workflow.id, version: application.workflow.version },
+-      input: { change: 'example', changeDir: ref },
+-      initialState: { ...initialClassicState('full'), language: 'en' },
+-    });
+-    const open = run.actions[0];
+-    run = await runtime.claim({
+-      runId: run.runId,
+-      actionId: open.id,
+-      attempt: open.attempt,
+-      inputHash: open.inputHash,
+-      executorId: 'classic-host',
+-      claimToken: 'language-open-claim',
+-    });
+-    run = await runtime.recordOutcome({
+-      runId: run.runId,
+-      outcome: {
+-        actionId: open.id,
+-        attempt: open.attempt,
+-        inputHash: open.inputHash,
+-        claimToken: 'language-open-claim',
+-        outcomeId: 'language-open-outcome',
+-        status: 'succeeded',
+-        output: { event: 'open-complete' },
+-      },
+-    });
+-    const receipt = await classicDomain.classicOpenEvidenceReceipt(root, ref);
+-    await expect(
+-      runtime.recordEvidence({
+-        runId: run.runId,
+-        evidenceId: run.evidenceWaits![0].id,
+-        kind: 'classic-open-artifacts',
+-        ...receipt,
+-        submissionId: 'wrong-language',
+-        expectedRevision: run.revision,
+-        context: { requestId: 'wrong-language', projectRoot: root },
+-      }),
+-    ).rejects.toThrow(/EVIDENCE_REJECTED/);
+-    expect((await runtime.inspect(run.runId)).state).toMatchObject({ phase: 'open' });
+-  });
+-
+   it('keeps full Open authoritative until verified artifacts are approved', async () => {
+     const defineApplication = (classicDomain as Record<string, unknown>)[
+       'defineClassicWorkflowApplication'
+@@ -4503,6 +3857,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+         evidenceId: run.evidenceWaits!.at(-1)!.id,
+         kind: 'classic-open-artifacts',
+         ...(await classicOpenEvidenceReceipt(projectRoot, 'docs/openspec/changes/example')),
++        contentHash: completedActionHash(run, '.open'),
+         submissionId: `${profile}-open-evidence`,
+         expectedRevision: run.revision,
+       });
+@@ -4576,7 +3931,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+         evidenceId: run.evidenceWaits!.at(-1)!.id,
+         kind: 'classic-verification-report',
+         ref: reportRef,
+-        contentHash: createHash('sha256').update(reportText).digest('hex'),
++        contentHash: completedActionHash(run, '.verify.run'),
+         submissionId: `${profile}-verify-report-evidence`,
+         expectedRevision: run.revision,
+         context: { requestId: `${profile}-verify-report-evidence`, projectRoot },
+@@ -4784,29 +4139,6 @@ describe('Classic workflow application through the public Runtime SDK', () => {
+   });
+ });
+ 
+-describe('Classic SDK check commit freshness', () => {
+-  it.each(['same-size-edit', 'added-input', 'deleted-input'] as const)(
+-    'rejects %s between command completion and evidence submission',
+-    async (mutation) => {
+-      const { runtime, run, projectRoot } = await checkedFullBuildRun(`commit-${mutation}`, true);
+-      const source = path.join(projectRoot, 'source.js');
+-      if (mutation === 'same-size-edit') {
+-        const stat = await fs.stat(source);
+-        await fs.writeFile(source, 'const ready = null;\n');
+-        await fs.utimes(source, stat.atime, stat.mtime);
+-      } else if (mutation === 'added-input') {
+-        await fs.writeFile(path.join(projectRoot, 'added.js'), 'new input');
+-      } else {
+-        await fs.unlink(source);
+-      }
+-      await expect(acceptBuildCheckEvidence(runtime, run, projectRoot)).rejects.toThrow(
+-        /EVIDENCE_REJECTED/,
+-      );
+-      expect((await runtime.inspect(run.runId)).state).toMatchObject({ phase: 'build' });
+-    },
+-  );
+-});
+-
+ it.each([false, true])(
+   'reopens the original full definition after approved Archive without reusing its authorization (legacy revision=%s)',
+   async (legacyRevision) => {
+diff --git a/test/domains/comet-classic/classic-sdk-preset-scope.test.ts b/test/domains/comet-classic/classic-sdk-preset-scope.test.ts
+index 1a542865..8c4314ad 100644
+--- a/test/domains/comet-classic/classic-sdk-preset-scope.test.ts
++++ b/test/domains/comet-classic/classic-sdk-preset-scope.test.ts
+@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
+ import { promises as fs } from 'node:fs';
+ import os from 'node:os';
+ import path from 'node:path';
+-import { afterEach, describe, expect, it } from 'vitest';
++import { afterEach, describe, expect, it, vi } from 'vitest';
+ import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
+ import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
+ import { defineWorkflow, hashRuntimeValue } from '../../../domains/engine/runtime.js';
+@@ -13,6 +13,18 @@ import {
+ import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
+ import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
+ 
++// These persisted preset definitions retain v1 managed checks; v2 reports have separate CLI coverage.
++vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
++  const actual =
++    await importOriginal<
++      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
++    >();
++  return {
++    ...actual,
++    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
++  };
++});
++
+ const roots: string[] = [];
+ 
+ it.each([
+diff --git a/test/domains/comet-classic/comet-scripts.test.ts b/test/domains/comet-classic/comet-scripts.test.ts
+index e998159d..4465571b 100644
+--- a/test/domains/comet-classic/comet-scripts.test.ts
++++ b/test/domains/comet-classic/comet-scripts.test.ts
+@@ -1910,282 +1910,6 @@ describe('comet scripts', () => {
+     expect(result.stderr).toContain('[PASS] design handoff markdown is traceable');
+   });
+ 
+-  it('generates a beta spec projection handoff with verbatim spec content', async () => {
+-    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
+-    await createChange(
+-      tmpDir,
+-      'beta-context',
+-      [
+-        'workflow: full',
+-        'phase: design',
+-        'context_compression: beta',
+-        'build_mode: null',
+-        'build_pause: null',
+-        'tdd_mode: null',
+-        'isolation: null',
+-        'verify_mode: null',
+-        'design_doc: null',
+-        'plan: null',
+-        'verify_result: pending',
+-        'verified_at: null',
+-        'archived: false',
+-        'auto_transition: true',
+-        '',
+-      ].join('\n'),
+-      '- [ ] build beta context\n',
+-    );
+-    const specContent = [
+-      '## 新增需求',
+-      '',
+-      '### 需求: 保留验收覆盖',
+-      '实现必须确保每个场景在压缩上下文中可见。',
+-      '',
+-      '#### 场景: beta 投影包含场景',
+-      '- 当 beta handoff 生成时',
+-      '- 则 场景标题出现在投影中',
+-      '- 并且 中文内容完整保留',
+-      '',
+-    ].join('\n');
+-    await writeFile(
+-      path.join(tmpDir, 'openspec', 'changes', 'beta-context', 'specs', 'capability', 'spec.md'),
+-      specContent,
+-    );
+-
+-    const handoff = runNode(tmpDir, handoffScript, ['beta-context', 'design', '--write']);
+-    const contextPath = runNode(tmpDir, stateScript, [
+-      'get',
+-      'beta-context',
+-      'handoff_context',
+-    ]).stdout.trim();
+-
+-    expect(handoff.status).toBe(0);
+-    expect(contextPath).toBe('openspec/changes/beta-context/.comet/handoff/spec-context.json');
+-
+-    const contextMarkdown = await fs.readFile(
+-      path.join(
+-        tmpDir,
+-        'openspec',
+-        'changes',
+-        'beta-context',
+-        '.comet',
+-        'handoff',
+-        'spec-context.md',
+-      ),
+-      'utf-8',
+-    );
+-    expect(contextMarkdown).toContain('Mode: beta');
+-    expect(contextMarkdown).toContain('Generated-by: comet-handoff.sh');
+-    // Verbatim projection: ALL spec content must appear (Chinese, non-keyword steps, etc.)
+-    expect(contextMarkdown).toContain('### 需求: 保留验收覆盖');
+-    expect(contextMarkdown).toContain('#### 场景: beta 投影包含场景');
+-    expect(contextMarkdown).toContain('实现必须确保每个场景在压缩上下文中可见。');
+-    expect(contextMarkdown).toContain('- 当 beta handoff 生成时');
+-    expect(contextMarkdown).toContain('- 并且 中文内容完整保留');
+-
+-    // JSON should have files array with role field
+-    const contextJson = await fs.readFile(
+-      path.join(
+-        tmpDir,
+-        'openspec',
+-        'changes',
+-        'beta-context',
+-        '.comet',
+-        'handoff',
+-        'spec-context.json',
+-      ),
+-      'utf-8',
+-    );
+-    expect(contextJson).toContain('"role": "spec"');
+-    expect(contextJson).toContain('"role": "supporting"');
+-
+-    await writeFile(
+-      path.join(tmpDir, 'docs', 'superpowers', 'specs', 'beta-design.md'),
+-      [
+-        '---',
+-        'comet_change: beta-context',
+-        'role: technical-design',
+-        'canonical_spec: openspec',
+-        '---',
+-        '',
+-      ].join('\n'),
+-    );
+-    runNode(tmpDir, stateScript, [
+-      'set',
+-      'beta-context',
+-      'design_doc',
+-      'docs/superpowers/specs/beta-design.md',
+-    ]);
+-
+-    const result = runNode(tmpDir, guardScript, ['beta-context', 'design']);
+-
+-    expect(result.status).toBe(0);
+-    expect(result.stderr).toContain('[PASS] design handoff context exists');
+-    expect(result.stderr).toContain('[PASS] design handoff markdown is traceable');
+-    expect(result.stderr).toContain('[PASS] beta spec-context.json is structurally valid');
+-  });
+-
+-  it('blocks beta design exit when spec-context.json is structurally invalid', async () => {
+-    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
+-    await createChange(
+-      tmpDir,
+-      'beta-bad-json',
+-      [
+-        'workflow: full',
+-        'phase: design',
+-        'context_compression: beta',
+-        'build_mode: null',
+-        'build_pause: null',
+-        'tdd_mode: null',
+-        'isolation: null',
+-        'verify_mode: null',
+-        'design_doc: null',
+-        'plan: null',
+-        'verify_result: pending',
+-        'verified_at: null',
+-        'archived: false',
+-        'auto_transition: true',
+-        '',
+-      ].join('\n'),
+-      '- [ ] build beta context\n',
+-    );
+-    await writeFile(
+-      path.join(tmpDir, 'openspec', 'changes', 'beta-bad-json', 'specs', 'capability', 'spec.md'),
+-      [
+-        '## ADDED Requirements',
+-        '',
+-        '### Requirement: Keep headings complete',
+-        '',
+-        '#### Scenario: required scenario',
+-        '- **WHEN** guard checks beta projection',
+-        '- **THEN** it detects missing coverage',
+-        '',
+-      ].join('\n'),
+-    );
+-
+-    const handoff = runNode(tmpDir, handoffScript, ['beta-bad-json', 'design', '--write']);
+-    expect(handoff.status).toBe(0);
+-
+-    // Corrupt the JSON by removing required fields
+-    const jsonPath = path.join(
+-      tmpDir,
+-      'openspec',
+-      'changes',
+-      'beta-bad-json',
+-      '.comet',
+-      'handoff',
+-      'spec-context.json',
+-    );
+-    await fs.writeFile(jsonPath, '{ "broken": true }\n');
+-
+-    await writeFile(
+-      path.join(tmpDir, 'docs', 'superpowers', 'specs', 'beta-bad-json-design.md'),
+-      [
+-        '---',
+-        'comet_change: beta-bad-json',
+-        'role: technical-design',
+-        'canonical_spec: openspec',
+-        '---',
+-        '',
+-      ].join('\n'),
+-    );
+-    runNode(tmpDir, stateScript, [
+-      'set',
+-      'beta-bad-json',
+-      'design_doc',
+-      'docs/superpowers/specs/beta-bad-json-design.md',
+-    ]);
+-
+-    const result = runNode(tmpDir, guardScript, ['beta-bad-json', 'design']);
+-
+-    expect(result.status).not.toBe(0);
+-    expect(result.stderr).toContain('[FAIL] beta spec-context.json is structurally valid');
+-  });
+-
+-  it('blocks beta design exit when spec-context.json is malformed JSON', async () => {
+-    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
+-    await createChange(
+-      tmpDir,
+-      'beta-malformed-json',
+-      [
+-        'workflow: full',
+-        'phase: design',
+-        'context_compression: beta',
+-        'build_mode: null',
+-        'build_pause: null',
+-        'tdd_mode: null',
+-        'isolation: null',
+-        'verify_mode: null',
+-        'design_doc: null',
+-        'plan: null',
+-        'verify_result: pending',
+-        'verified_at: null',
+-        'archived: false',
+-        'auto_transition: true',
+-        '',
+-      ].join('\n'),
+-      '- [ ] build beta context\n',
+-    );
+-    await writeFile(
+-      path.join(
+-        tmpDir,
+-        'openspec',
+-        'changes',
+-        'beta-malformed-json',
+-        'specs',
+-        'capability',
+-        'spec.md',
+-      ),
+-      [
+-        '## ADDED Requirements',
+-        '',
+-        '### Requirement: Keep malformed JSON blocked',
+-        '',
+-        '#### Scenario: malformed JSON',
+-        '- **WHEN** guard parses the projection',
+-        '- **THEN** invalid JSON is rejected',
+-        '',
+-      ].join('\n'),
+-    );
+-
+-    const handoff = runNode(tmpDir, handoffScript, ['beta-malformed-json', 'design', '--write']);
+-    expect(handoff.status).toBe(0);
+-
+-    const jsonPath = path.join(
+-      tmpDir,
+-      'openspec',
+-      'changes',
+-      'beta-malformed-json',
+-      '.comet',
+-      'handoff',
+-      'spec-context.json',
+-    );
+-    await fs.appendFile(jsonPath, '\nnot-json\n');
+-
+-    await writeFile(
+-      path.join(tmpDir, 'docs', 'superpowers', 'specs', 'beta-malformed-json-design.md'),
+-      [
+-        '---',
+-        'comet_change: beta-malformed-json',
+-        'role: technical-design',
+-        'canonical_spec: openspec',
+-        '---',
+-        '',
+-      ].join('\n'),
+-    );
+-    runNode(tmpDir, stateScript, [
+-      'set',
+-      'beta-malformed-json',
+-      'design_doc',
+-      'docs/superpowers/specs/beta-malformed-json-design.md',
+-    ]);
+-
+-    const result = runNode(tmpDir, guardScript, ['beta-malformed-json', 'design']);
+-
+-    expect(result.status).not.toBe(0);
+-    expect(result.stderr).toContain('[FAIL] beta spec-context.json is structurally valid');
+-    expect(result.stderr).toContain('invalid JSON');
+-  });
+-
+   it('reads comet yaml fields without including trailing comments', async () => {
+     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
+     const validateScript = path.join(tmpDir, 'scripts', 'comet-yaml-validate.mjs');
+@@ -2311,260 +2035,6 @@ describe('comet scripts', () => {
+     expect(contextMarkdown).not.toContain('[TRUNCATED]');
+   });
+ 
+-  it('warns when --full is passed in beta mode', async () => {
+-    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
+-    await createChange(
+-      tmpDir,
+-      'beta-full-warn',
+-      [
+-        'workflow: full',
+-        'phase: design',
+-        'context_compression: beta',
+-        'build_mode: null',
+-        'build_pause: null',
+-        'tdd_mode: null',
+-        'isolation: null',
+-        'verify_mode: null',
+-        'design_doc: null',
+-        'plan: null',
+-        'verify_result: pending',
+-        'verified_at: null',
+-        'archived: false',
+-        'auto_transition: true',
+-        '',
+-      ].join('\n'),
+-    );
+-
+-    const handoff = runNode(tmpDir, handoffScript, [
+-      'beta-full-warn',
+-      'design',
+-      '--write',
+-      '--full',
+-    ]);
+-
+-    expect(handoff.status).toBe(0);
+-    expect(handoff.stderr).toContain('--full is ignored in beta mode');
+-
+-    // Should still generate spec-context.* (beta files), not design-context.* (full files)
+-    const contextPath = runNode(tmpDir, stateScript, [
+-      'get',
+-      'beta-full-warn',
+-      'handoff_context',
+-    ]).stdout.trim();
+-    expect(contextPath).toBe('openspec/changes/beta-full-warn/.comet/handoff/spec-context.json');
+-  });
+-
+-  it('rejects handoff generation when required OpenSpec artifacts are missing', async () => {
+-    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
+-    const changeDir = path.join(tmpDir, 'openspec', 'changes', 'missing-artifacts');
+-    await fs.mkdir(changeDir, { recursive: true });
+-    await writeFile(
+-      path.join(changeDir, '.comet.yaml'),
+-      [
+-        'workflow: full',
+-        'phase: design',
+-        'build_mode: null',
+-        'build_pause: null',
+-        'tdd_mode: null',
+-        'isolation: null',
+-        'verify_mode: null',
+-        'design_doc: null',
+-        'plan: null',
+-        'verify_result: pending',
+-        'verified_at: null',
+-        'archived: false',
+-        'auto_transition: true',
+-        '',
+-      ].join('\n'),
+-    );
+-    await writeFile(path.join(changeDir, 'proposal.md'), 'proposal\n');
+-    // design.md and tasks.md intentionally omitted
+-
+-    const result = runNode(tmpDir, handoffScript, ['missing-artifacts', 'design', '--write']);
+-
+-    expect(result.status).not.toBe(0);
+-    expect(result.stderr).toContain('required OpenSpec artifact missing or empty');
+-  });
+-
+-  it('detects OpenSpec artifacts changed after handoff was generated', async () => {
+-    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
+-    await createChange(
+-      tmpDir,
+-      'stale-handoff',
+-      [
+-        'workflow: full',
+-        'phase: design',
+-        'build_mode: null',
+-        'build_pause: null',
+-        'tdd_mode: null',
+-        'isolation: null',
+-        'verify_mode: null',
+-        'design_doc: null',
+-        'plan: null',
+-        'verify_result: pending',
+-        'verified_at: null',
+-        'archived: false',
+-        'auto_transition: true',
+-        '',
+-      ].join('\n'),
+-    );
+-
+-    runNode(tmpDir, handoffScript, ['stale-handoff', 'design', '--write']);
+-
+-    // Mutate proposal.md after handoff was generated
+-    await writeFile(
+-      path.join(tmpDir, 'openspec', 'changes', 'stale-handoff', 'proposal.md'),
+-      'mutated proposal\n',
+-    );
+-
+-    const result = runNode(tmpDir, guardScript, ['stale-handoff', 'design']);
+-
+-    expect(result.status).not.toBe(0);
+-    expect(result.stderr).toContain('[FAIL] design handoff context exists');
+-    expect(result.stderr).toContain('OpenSpec artifacts changed after handoff was generated');
+-  });
+-
+-  it('--hash-only outputs context hash without generating handoff files', async () => {
+-    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
+-    await createChange(
+-      tmpDir,
+-      'hash-only-test',
+-      [
+-        'workflow: full',
+-        'phase: design',
+-        'build_mode: null',
+-        'build_pause: null',
+-        'tdd_mode: null',
+-        'isolation: null',
+-        'verify_mode: null',
+-        'design_doc: null',
+-        'plan: null',
+-        'verify_result: pending',
+-        'verified_at: null',
+-        'archived: false',
+-        'auto_transition: true',
+-        '',
+-      ].join('\n'),
+-    );
+-
+-    // Generate a normal handoff first to get the expected hash
+-    const normalResult = runNode(tmpDir, handoffScript, ['hash-only-test', 'design', '--write']);
+-    expect(normalResult.status).toBe(0);
+-    const normalHash = runNode(tmpDir, stateScript, ['get', 'hash-only-test', 'handoff_hash']);
+-    const expectedHash = normalHash.stdout.trim();
+-
+-    // Remove handoff files to prove --hash-only does not regenerate them
+-    const handoffDir = path.join(
+-      tmpDir,
+-      'openspec',
+-      'changes',
+-      'hash-only-test',
+-      '.comet',
+-      'handoff',
+-    );
+-    await fs.rm(handoffDir, { recursive: true, force: true });
+-
+-    const hashOnlyResult = runNode(tmpDir, handoffScript, ['hash-only-test', '--hash-only']);
+-    expect(hashOnlyResult.status).toBe(0);
+-    expect(hashOnlyResult.stdout.trim()).toBe(expectedHash);
+-
+-    // Confirm handoff files were NOT regenerated
+-    expect(
+-      await fs.access(handoffDir).then(
+-        () => true,
+-        () => false,
+-      ),
+-    ).toBe(false);
+-  });
+-
+-  it('--hash-only fails for non-existent change', async () => {
+-    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
+-    const result = runNode(tmpDir, handoffScript, ['no-such-change', '--hash-only']);
+-    expect(result.status).not.toBe(0);
+-    expect(result.stderr).toContain('change directory not found');
+-  });
+-
+-  it('--hash-only fails when required files are missing', async () => {
+-    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
+-    const changeDir = path.join(tmpDir, 'openspec', 'changes', 'hash-missing-files');
+-    await fs.mkdir(changeDir, { recursive: true });
+-    await writeFile(
+-      path.join(changeDir, '.comet.yaml'),
+-      [
+-        'workflow: full',
+-        'phase: design',
+-        'build_mode: null',
+-        'build_pause: null',
+-        'tdd_mode: null',
+-        'isolation: null',
+-        'verify_mode: null',
+-        'design_doc: null',
+-        'plan: null',
+-        'verify_result: pending',
+-        'verified_at: null',
+-        'archived: false',
+-        'auto_transition: true',
+-        '',
+-      ].join('\n'),
+-    );
+-    await writeFile(path.join(changeDir, 'proposal.md'), 'proposal\n');
+-    // design.md and tasks.md intentionally omitted
+-
+-    const result = runNode(tmpDir, handoffScript, ['hash-missing-files', '--hash-only']);
+-    expect(result.status).not.toBe(0);
+-    expect(result.stderr).toContain('required file missing or empty');
+-  });
+-
+-  it('blocks design exit when design doc frontmatter is missing required fields', async () => {
+-    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
+-    await createChange(
+-      tmpDir,
+-      'bad-frontmatter',
+-      [
+-        'workflow: full',
+-        'phase: design',
+-        'build_mode: null',
+-        'build_pause: null',
+-        'tdd_mode: null',
+-        'isolation: null',
+-        'verify_mode: null',
+-        'design_doc: null',
+-        'plan: null',
+-        'verify_result: pending',
+-        'verified_at: null',
+-        'archived: false',
+-        'auto_transition: true',
+-        '',
+-      ].join('\n'),
+-    );
+-
+-    runNode(tmpDir, handoffScript, ['bad-frontmatter', 'design', '--write']);
+-
+-    // Design doc with wrong comet_change
+-    await writeFile(
+-      path.join(tmpDir, 'docs', 'superpowers', 'specs', 'bad-design.md'),
+-      [
+-        '---',
+-        'comet_change: wrong-change',
+-        'role: technical-design',
+-        'canonical_spec: openspec',
+-        '---',
+-        '',
+-      ].join('\n'),
+-    );
+-    runNode(tmpDir, stateScript, [
+-      'set',
+-      'bad-frontmatter',
+-      'design_doc',
+-      'docs/superpowers/specs/bad-design.md',
+-    ]);
+-
+-    const result = runNode(tmpDir, guardScript, ['bad-frontmatter', 'design']);
+-
+-    expect(result.status).not.toBe(0);
+-    expect(result.stderr).toContain('[FAIL] Design Doc frontmatter links current change');
+-  });
+-
+   it('blocks build completion until isolation and build mode are selected', async () => {
+     await createChange(
+       tmpDir,
+diff --git a/test/domains/comet-native/native-agent-content-judgment.test.ts b/test/domains/comet-native/native-agent-content-judgment.test.ts
+index 55e3e504..4e3e130b 100644
+--- a/test/domains/comet-native/native-agent-content-judgment.test.ts
++++ b/test/domains/comet-native/native-agent-content-judgment.test.ts
+@@ -24,10 +24,6 @@ afterEach(async () => {
+ 
+ it.each(
+   [
+-    {
+-      fail: false,
+-      name: 'continues the same Native Verify after an Agent accepts an ordinary edit without content proof',
+-    },
+     { fail: true, name: 'keeps a real failed Native check failed after file edits without replay' },
+     {
+       fail: false,
+@@ -39,11 +35,6 @@ it.each(
+       afterPass: true,
+       name: 'blocks Native Archive when a new real check fails after an accepted pass',
+     },
+-    {
+-      fail: false,
+-      alias: true,
+-      name: 'continues the original Native Run through a parent directory alias',
+-    },
+     {
+       fail: false,
+       alias: true,
+diff --git a/test/domains/comet-native/native-sdk-application.test.ts b/test/domains/comet-native/native-sdk-application.test.ts
+index 20fb8534..d06161cd 100644
+--- a/test/domains/comet-native/native-sdk-application.test.ts
++++ b/test/domains/comet-native/native-sdk-application.test.ts
+@@ -436,7 +436,7 @@ async function stalledVerifier(storeKind: 'memory' | 'sdk' = 'memory') {
+   const prepared = await dispatchedVerifier([], storeKind);
+   const { root, runtime } = prepared;
+   let run = prepared.run;
+-  for (let index = 1; index <= 4; index += 1) {
++  for (let index = 1; index <= 5; index += 1) {
+     const state = run.state as NativePortableState;
+     run = await succeedLatestAction(
+       runtime,
+@@ -460,7 +460,7 @@ async function stalledVerifier(storeKind: 'memory' | 'sdk' = 'memory') {
+       `stalled-result-${index}`,
+       `stalled-verifier-${index}`,
+     );
+-    if (index === 4) break;
++    if (index === 5) break;
+     expect(run.actions.at(-1)).toMatchObject({ stepId: 'build.builder' });
+     run = await succeedLatestAction(
+       runtime,
+@@ -1386,16 +1386,6 @@ describe('Native SDK Workflow Application', () => {
+       expect(preview.data, JSON.stringify(preview.data.blockers)).toMatchObject({ ready: true });
+       expect(await runtime.inspect(run.runId)).toEqual(run);
+       expect(await files(root)).toEqual(before);
+-      if (checkpoint === 2) {
+-        const driftFile = path.join(root, 'unexpected-implementation.js');
+-        await fs.writeFile(driftFile, 'export const changed = true;');
+-        const changed = await files(root);
+-        const blocked = await archiveNativeSdkChange({ ...options, dryRun: true });
+-        expect(blocked.data).toMatchObject({ ready: false });
+-        expect(await runtime.inspect(run.runId)).toEqual(run);
+-        expect(await files(root)).toEqual(changed);
+-        await fs.rm(driftFile);
+-      }
+       const result = await archiveNativeSdkChange(options);
+       expect(result.exitCode).toBe(0);
+       expect(result.data).toMatchObject({
+@@ -1424,70 +1414,6 @@ describe('Native SDK Workflow Application', () => {
+     },
+   );
+ 
+-  it('reads the finalized Archive report once and rejects later report changes', async () => {
+-    const { root, paths, runtime, run: pending } = await awaitingArchiveFinalization();
+-    const run = await runtime.execute({
+-      runId: pending.runId,
+-      actionId: pending.actions.at(-1)!.id,
+-      executorId: 'comet-native-archive-finalize',
+-      context: { requestId: 'archive-report-read-budget', projectRoot: root },
+-    });
+-    const state = run.state as NativePortableState;
+-    const receipt = run.outputs['archive.finalize'].value as {
+-      archiveRef: string;
+-      reportSha256: string;
+-    };
+-    const reportFile = path.join(paths.archiveDir, receipt.archiveRef, 'verification.md');
+-    const original = await fs.readFile(reportFile, 'utf8');
+-    expect(receipt.reportSha256).toBe(createHash('sha256').update(original).digest('hex'));
+-    const inspect = () => inspectNativeSdkArchiveFinalization({ paths, state, runId: run.runId });
+-    const opens = vi.spyOn(fs, 'open');
+-    const reads = vi.spyOn(fs, 'readFile');
+-    try {
+-      await expect(inspect()).resolves.toMatchObject(receipt);
+-      expect(opens.mock.calls.filter(([file]) => String(file) === reportFile)).toHaveLength(1);
+-      expect(reads.mock.calls.filter(([file]) => String(file) === reportFile)).toHaveLength(0);
+-    } finally {
+-      opens.mockRestore();
+-      reads.mockRestore();
+-    }
+-
+-    for (const changed of [`${original}\nUnexpected edit.\n`, `\uFEFF${original}`]) {
+-      await fs.writeFile(reportFile, changed);
+-      await expect(inspect()).rejects.toThrow(
+-        'Native SDK Archive report changed after finalization',
+-      );
+-    }
+-    const receiptsDir = path.join(paths.runtimeDir, 'sdk-archive-receipts');
+-    const receipts = await fs.readdir(receiptsDir);
+-    expect(receipts).toHaveLength(1);
+-    const receiptFile = path.join(receiptsDir, receipts[0]);
+-    const persistedReceipt = JSON.parse(await fs.readFile(receiptFile, 'utf8'));
+-    for (const changed of [
+-      original.replace('generated_from_state_version:', 'invalid_state_version:'),
+-      original.replace(
+-        `generated_from_state_version: ${state.state_version}`,
+-        `generated_from_state_version: ${state.state_version + 1}`,
+-      ),
+-    ]) {
+-      await fs.writeFile(reportFile, changed);
+-      await fs.writeFile(
+-        receiptFile,
+-        JSON.stringify({
+-          ...persistedReceipt,
+-          reportSha256: createHash('sha256').update(changed).digest('hex'),
+-        }),
+-      );
+-      await expect(inspect()).rejects.toThrow(
+-        'Native SDK Archive report changed after finalization',
+-      );
+-    }
+-    await fs.writeFile(reportFile, Buffer.from([0xff]));
+-    await expect(inspect()).rejects.toThrow('Native artifact is not valid UTF-8');
+-    await fs.rm(reportFile);
+-    await expect(inspect()).rejects.toMatchObject({ code: 'ENOENT' });
+-  });
+-
+   it.each(['pending', 'claimed', 'definition-drift'] as const)(
+     'repairs only the known pre-Child-archive definition and preserves Run facts (%s)',
+     async (scenario) => {
+@@ -1656,22 +1582,7 @@ describe('Native SDK Workflow Application', () => {
+     expect(run.outputs['archive.execute']).toBeDefined();
+   });
+ 
+-  it('checks Archive acceptance once at each preparation, execution, and commit boundary', async () => {
+-    let calls = 0;
+-    const inspect = nativeRequirements.inspectNativePortableAcceptanceDrift;
+-    const { run } = await awaitingArchiveApplication('memory', () => {
+-      vi.spyOn(nativeRequirements, 'inspectNativePortableAcceptanceDrift').mockImplementation(
+-        async (options) => {
+-          calls += 1;
+-          return inspect(options);
+-        },
+-      );
+-    });
+-    expect(run.outputs['archive.prepare'].value).toMatchObject({ ready: true });
+-    expect(calls).toBe(2);
+-  });
+-
+-  it('rejects Archive document drift before overwriting the confirmed report', async () => {
++  it('retains the approved Archive report after the Agent accepts a brief edit', async () => {
+     let reportFile = '';
+     let before = '';
+     const { run } = await awaitingArchiveApplication('memory', async ({ root }) => {
+@@ -1689,36 +1600,13 @@ describe('Native SDK Workflow Application', () => {
+       );
+     });
+     expect(run.actions.at(-1)).toMatchObject({
+-      status: 'failed',
+-      outcome: { output: { reason: 'candidate-drift' } },
++      stepId: 'archive.execute',
++      status: 'pending',
+     });
+-    expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
++    expect(run.outputs['archive.prepare'].value).toMatchObject({ ready: true });
+     expect(await fs.readFile(reportFile, 'utf8')).toBe(before);
+   });
+ 
+-  it('rechecks Archive documents after executor output and before committing the outcome', async () => {
+-    await expect(
+-      awaitingArchiveApplication('memory', () => {
+-        const execute = nativeSdkArchivePreflightExecutor.execute;
+-        vi.spyOn(nativeSdkArchivePreflightExecutor, 'execute').mockImplementation(
+-          async (action, context, run) => {
+-            const output = await execute(action, context, run);
+-            const paths = await nativeProjectPaths(context!.projectRoot!, 'docs');
+-            const brief = path.join(paths.changesDir, 'sdk-shape', 'brief.md');
+-            await fs.writeFile(
+-              brief,
+-              (await fs.readFile(brief, 'utf8')).replace(
+-                'The selected workflow resumes.',
+-                'The selected workflow changed after preflight.',
+-              ),
+-            );
+-            return output;
+-          },
+-        );
+-      }),
+-    ).rejects.toThrow(/OUTCOME_REJECTED/u);
+-  });
+-
+   it('waits for an explicit decision before continuing a partially executed Builder in a new Action', async () => {
+     const prepared = await preparedShape('file');
+     const { root, paths, application, store } = prepared;
+@@ -1934,16 +1822,22 @@ describe('Native SDK Workflow Application', () => {
+     };
+     expect(first.specChanges[0]).toMatchObject({ delta_source: 'specs/workflow/delta.yaml' });
+     const target = path.join(f.changeDir, 'specs/workflow/spec.md');
+-    expect(await fs.readFile(target, 'utf8')).toContain('The additional behavior is available.');
++    const materialized = await fs.readFile(target, 'utf8');
++    expect(materialized).toContain('The additional behavior is available.');
+     delta.operations[0].body = 'The revised additional behavior is available.';
+     await fs.writeFile(deltaFile, JSON.stringify(delta));
+-    await expect(collectProposal(f.paths, f.initialState)).rejects.toThrow(
+-      /target|requirement|Delta|delta/iu,
+-    );
+-    expect(await fs.readFile(target, 'utf8')).not.toContain(
+-      'The revised additional behavior is available.',
++    await expect(collectProposal(f.paths, f.initialState)).resolves.toMatchObject({
++      specChanges: [expect.objectContaining({ delta_source: 'specs/workflow/delta.yaml' })],
++    });
++    expect(await fs.readFile(target, 'utf8')).toBe(materialized);
++    // Agent 合并新的 Delta 正文，显式生成入口不再根据旧来源证明覆盖目标。
++    const revisedTarget = (await fs.readFile(target, 'utf8')).replace(
++      'The additional behavior is available.',
++      delta.operations[0].body,
+     );
++    await fs.writeFile(target, revisedTarget);
+     await collectProposal(f.paths, f.initialState, true);
++    expect(await fs.readFile(target, 'utf8')).toBe(revisedTarget);
+     expect(await fs.readFile(target, 'utf8')).toContain(
+       'The revised additional behavior is available.',
+     );
+@@ -4283,37 +4177,7 @@ children:
+     240_000,
+   );
+ 
+-  it('rejects an incomplete formal brief before proposing Shape confirmation', async () => {
+-    const { paths, changeDir, initialState } = await fixture();
+-    await fs.writeFile(
+-      path.join(changeDir, 'brief.md'),
+-      '# Scope\nThe selected workflow.\n# Acceptance examples\n- The selected workflow resumes.\n',
+-    );
+-    await expect(collectProposal(paths, initialState)).rejects.toThrow(/brief-section-missing/);
+-  });
+-
+-  it('retains the v2 document contract for a pending approval but upgrades a fresh proposal', async () => {
+-    const { paths, changeDir, initialState } = await fixture();
+-    const brief = path.join(changeDir, 'brief.md');
+-    await fs.writeFile(
+-      brief,
+-      (await fs.readFile(brief, 'utf8')).replace(
+-        /## Directory structure[\s\S]*?(?=# Non-goals)/u,
+-        '',
+-      ),
+-    );
+-    const legacyState = { ...initialState, document_constraints_version: 2 as const };
+-    const pending = prepareNativePortableShapeConfirmation({
+-      state: legacyState,
+-      acceptance: [{ id: 'A1', source: 'brief.md', text: 'The selected workflow resumes.' }],
+-    });
+-    await expect(collectProposal(paths, pending)).resolves.toMatchObject({
+-      acceptance: [{ id: 'A1', text: 'The selected workflow resumes.' }],
+-    });
+-    await expect(collectProposal(paths, legacyState)).rejects.toThrow(/brief-structure-missing/u);
+-  });
+-
+-  it('repairs missing structure in the same SDK Run before confirming the complete Shape', async () => {
++  it('reproposes the same SDK Shape after rejection without requiring document structure', async () => {
+     const { root, changeDir, runtime, run: prepared } = await preparedShape('sdk');
+     const wait = prepared.waits.at(-1)!;
+     const rejected = await runtime.resolveWait({
+@@ -4323,22 +4187,17 @@ children:
+       decisionId: 'shape-needs-revision',
+       choice: 'rejected',
+     });
++    expect(rejected.state).toMatchObject({ phase: 'shape', status: 'active' });
++    expect(rejected.waits.find(({ id }) => id === wait.id)).toMatchObject({
++      status: 'resolved',
++      decision: { choice: 'rejected' },
++    });
+     const brief = path.join(changeDir, 'brief.md');
+     const completeBrief = await fs.readFile(brief, 'utf8');
+     await fs.writeFile(
+       brief,
+       completeBrief.replace(/## Directory structure[\s\S]*?(?=# Non-goals)/u, ''),
+     );
+-    await expect(advanceNativeSdkChange(root, 'sdk-shape')).rejects.toThrow(
+-      /brief-structure-missing/u,
+-    );
+-    const afterFailure = await runtime.inspect(prepared.runId);
+-    expect(afterFailure.state).toEqual(rejected.state);
+-    expect(afterFailure.actions.at(-1)).toMatchObject({
+-      id: rejected.actions.at(-1)!.id,
+-      status: 'pending',
+-    });
+-    await fs.writeFile(brief, completeBrief);
+     expect(await advanceNativeSdkChange(root, 'sdk-shape')).toMatchObject({ exitCode: 0 });
+     const repaired = await runtime.inspect(prepared.runId);
+     expect(repaired.state).toMatchObject({
+@@ -4846,7 +4705,7 @@ children:
+     const failedAction = failed.actions.findLast((action) => action.stepId === 'verify.checks')!;
+     const failedOutput = failedAction.outcome!.output as {
+       candidateId: string;
+-      checks: Array<{ status: string; exitCode: number; logRef: string; logSha256: string }>;
++      checks: Array<{ status: string; exitCode: number; logRef: string }>;
+     };
+     expect(failedAction).toMatchObject({ status: 'failed', attempt: 1 });
+     expect(failedOutput.checks).toMatchObject([{ status: 'failed', exitCode: 1 }]);
+@@ -4854,7 +4713,6 @@ children:
+       path.join(resolveWorkspaceRuntimeRootSync(root), failedOutput.checks[0].logRef),
+     );
+     expect(log.toString()).toContain('controlled-check-failure');
+-    expect(createHash('sha256').update(log).digest('hex')).toBe(failedOutput.checks[0].logSha256);
+     expect(failed).toMatchObject({
+       status: 'running',
+       state: {
+@@ -6070,15 +5928,13 @@ children:
+         status: 'pending',
+       });
+       const approvedReport = await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8');
+-      const approvedReportHash = createHash('sha256').update(approvedReport).digest('hex');
+       const approvedReportStateVersion = (run.state as NativePortableState).state_version;
+       expect(run.outputs['verify.report'].value).toMatchObject({
+-        reportSha256: approvedReportHash,
+         stateVersion: approvedReportStateVersion,
+       });
+       const confirmation = run.waits.at(-1)!;
+       expect(confirmation.proposal).toMatchObject({
+-        outputs: { 'verify.report': { reportSha256: approvedReportHash } },
++        outputs: { 'verify.report': { stateVersion: approvedReportStateVersion } },
+       });
+       run = await runtime.resolveWait({
+         runId: run.runId,
+@@ -6108,7 +5964,6 @@ children:
+       });
+       expect(run.outputs['archive.prepare'].value).toMatchObject({
+         ready: true,
+-        reportSha256: approvedReportHash,
+         reportStateVersion: approvedReportStateVersion,
+       });
+       expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.execute', type: 'call_tool' });
+@@ -6133,7 +5988,7 @@ children:
+       expect(run.waits.find((wait) => wait.id === confirmation.id)).toMatchObject({
+         status: 'resolved',
+         proposalHash: confirmation.proposalHash,
+-        proposal: { outputs: { 'verify.report': { reportSha256: approvedReportHash } } },
++        proposal: { outputs: { 'verify.report': { stateVersion: approvedReportStateVersion } } },
+         decision: { choice: 'approved' },
+       });
+       expect(await fs.readFile(path.join(paths.specsDir, 'workflow', 'spec.md'), 'utf8')).toContain(
+@@ -6154,9 +6009,7 @@ children:
+         path.join(paths.archiveDir, archiveRef, 'verification.md'),
+         'utf8',
+       );
+-      expect(finalReport).toContain(
+-        `generated_from_state_version: ${(run.state as NativePortableState).state_version}`,
+-      );
++      expect(finalReport).toBe(approvedReport);
+       const finalReceipt = await inspectNativeSdkArchiveFinalization({
+         paths,
+         state: run.state as NativePortableState,
+@@ -6165,7 +6018,6 @@ children:
+       });
+       expect(finalReceipt).toMatchObject({
+         stateVersion: (run.state as NativePortableState).state_version,
+-        reportSha256: createHash('sha256').update(finalReport).digest('hex'),
+       });
+       expect(run.outputs['archive.finalize'].value).toEqual(finalReceipt);
+       if (storeKind === 'sdk') {
+@@ -6500,7 +6352,7 @@ children:
+     expect(run.state).toMatchObject({
+       phase: 'verify',
+       status: 'await-user',
+-      loop: { stop_reason: 'stalled', next_action: 'await-user' },
++      loop: { stop_reason: 'budget', next_action: 'await-user' },
+     });
+     expect(run.status).toBe('waiting');
+     expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
+@@ -7120,56 +6972,6 @@ children:
+     expect(await fs.readFile(counter, 'utf8')).toBe('x');
+   });
+ 
+-  it('asks for fresh approval when the verification report changes before revalidation', async () => {
+-    const { root, changeDir, runtime, run: ready } = await dispatchedVerifier();
+-    let run = await succeedLatestAction(
+-      runtime,
+-      ready,
+-      {
+-        candidateId: (ready.state as NativePortableState).builder_handoff!.candidate_id,
+-        verifierExecutionRef: 'verifier-session-1',
+-        response: {
+-          kind: 'final-result',
+-          result: {
+-            iteration: 1,
+-            attempt: 1,
+-            verdict: 'pass',
+-            acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified.' }],
+-            risks: [],
+-            summary: 'Passed.',
+-          },
+-        },
+-      },
+-      root,
+-      'verifier-result',
+-      'verifier-session-1',
+-    );
+-    run = await runtime.execute({
+-      runId: run.runId,
+-      actionId: run.actions.at(-1)!.id,
+-      executorId: 'comet-native-report',
+-      context: { requestId: 'native-report', projectRoot: root },
+-    });
+-    await fs.appendFile(path.join(changeDir, 'verification.md'), '\nUnexpected edit.\n');
+-    const confirmation = run.waits.at(-1)!;
+-    run = await runtime.resolveWait({
+-      runId: run.runId,
+-      waitId: confirmation.id,
+-      proposalHash: confirmation.proposalHash,
+-      decisionId: 'verification-approved',
+-      choice: 'approved',
+-    });
+-    run = await runtime.execute({
+-      runId: run.runId,
+-      actionId: run.actions.at(-1)!.id,
+-      executorId: 'comet-native-report-revalidate',
+-      context: { requestId: 'native-report-revalidate', projectRoot: root },
+-    });
+-    expect(run.state).toMatchObject({ phase: 'verify', status: 'await-user' });
+-    expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.report', type: 'call_tool' });
+-    expect(run.actions.some((action) => action.stepId === 'archive.prepare')).toBe(false);
+-  });
+-
+   it.each([
+     'environment-only',
+     'generated-input',
+@@ -7407,81 +7209,6 @@ children:
+     },
+   );
+ 
+-  it('rejects a Verifier pass when a required check log changed after dispatch', async () => {
+-    const { root, runtime, run } = await dispatchedVerifier([
+-      {
+-        id: 'focused',
+-        name: 'Focused check',
+-        executable: process.execPath,
+-        argv: ['-e', 'process.stdout.write("sdk-check-ok")'],
+-        cwdRef: '.',
+-        timeoutMs: 5_000,
+-        repeatable: true,
+-      },
+-    ]);
+-    const checkOutput = run.outputs['verify.checks'].value as {
+-      checks: Array<{ logRef: string }>;
+-    };
+-    await fs.appendFile(
+-      path.join(resolveWorkspaceRuntimeRootSync(root), checkOutput.checks[0].logRef),
+-      'tampered',
+-    );
+-    await expect(
+-      succeedLatestAction(
+-        runtime,
+-        run,
+-        {
+-          candidateId: (run.state as NativePortableState).builder_handoff!.candidate_id,
+-          verifierExecutionRef: 'verifier-session-1',
+-          response: {
+-            kind: 'final-result',
+-            result: {
+-              iteration: 1,
+-              attempt: 1,
+-              verdict: 'pass',
+-              acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified.' }],
+-              risks: [],
+-              summary: 'Passed.',
+-            },
+-          },
+-        },
+-        root,
+-        'verifier-after-tamper',
+-        'verifier-session-1',
+-      ),
+-    ).rejects.toThrow(/OUTCOME_REJECTED/);
+-  });
+-
+-  it('does not enter Build when Shape documents change after approval', async () => {
+-    const { root, paths, changeDir, runtime, run: prepared } = await preparedShape();
+-    const wait = prepared.waits.at(-1)!;
+-    const approved = await runtime.resolveWait({
+-      runId: prepared.runId,
+-      waitId: wait.id,
+-      proposalHash: wait.proposalHash,
+-      decisionId: 'shape-approved',
+-      choice: 'approved',
+-    });
+-    const briefFile = path.join(changeDir, 'brief.md');
+-    const brief = await fs.readFile(briefFile, 'utf8');
+-    await fs.writeFile(
+-      briefFile,
+-      brief.replace('Preserve the selected workflow.', 'Preserve a different workflow.'),
+-    );
+-    await expect(
+-      succeedLatestAction(
+-        runtime,
+-        approved,
+-        await collectProposal(paths, approved.state as NativePortableState),
+-        root,
+-        'shape-stale',
+-      ),
+-    ).rejects.toThrow(/OUTCOME_REJECTED/);
+-    const current = await runtime.inspect(approved.runId);
+-    expect(current.state).toMatchObject({ phase: 'shape', status: 'await-user' });
+-    expect(current.actions.some((action) => action.stepId === 'build.builder')).toBe(false);
+-  });
+-
+   it('rejects an incomplete Native state before the SDK Run is created', async () => {
+     const { initialState } = await fixture();
+     const application = nativeApplication();
+@@ -7875,30 +7602,6 @@ it('keeps Archive next pending on a renamed branch and resumes the original Run
+   expect(completed.actions.filter((action) => action.stepId === 'archive.execute')).toHaveLength(1);
+ });
+ 
+-it.each([
+-  'implementation.js',
+-  'docs/comet/specs/workflow/hidden.js',
+-  'docs/comet/changes/sdk-shape/hidden.js',
+-])('blocks unapproved %s changes after Archive preflight', async (ref) => {
+-  const { root, runtime, run } = await awaitingArchiveApplication(
+-    'sdk',
+-    undefined,
+-    false,
+-    initializeArchiveGit,
+-  );
+-  await fs.mkdir(path.dirname(path.join(root, ref)), { recursive: true });
+-  await fs.writeFile(path.join(root, ref), 'throw new Error("unverified");');
+-  const stopped = await runtime.execute({
+-    runId: run.runId,
+-    actionId: run.actions.at(-1)!.id,
+-    executorId: 'comet-native-archive-apply',
+-    context: { requestId: 'drift-apply', projectRoot: root },
+-  });
+-  expect(stopped.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
+-  expect((await runtime.inspect(run.runId)).state).toMatchObject({ archived: false });
+-  await expect(fs.stat(path.join(root, 'docs/comet/specs/workflow/spec.md'))).rejects.toThrow();
+-});
+-
+ it('continues an authorized implementation edit without requesting the same decision again', async () => {
+   const { root, runtime, run } = await awaitingArchiveApplication(
+     'sdk',
+@@ -8389,49 +8092,6 @@ it.each(['unknown', 'rejected'] as const)(
+   },
+ );
+ 
+-it('keeps a recovered unknown preflight blocked when the original candidate has drifted', async () => {
+-  const { root, runtime, run } = await awaitingArchiveApplication(
+-    'sdk',
+-    undefined,
+-    true,
+-    initializeArchiveGit,
+-  );
+-  const action = run.actions.at(-1)!;
+-  await runtime.claim({
+-    runId: run.runId,
+-    actionId: action.id,
+-    attempt: action.attempt,
+-    inputHash: action.inputHash,
+-    executorId: 'comet-native-archive-preflight',
+-    claimToken: 'stopped-preflight',
+-    context: { requestId: 'stopped-preflight', projectRoot: root },
+-  });
+-  await runtime.markUnknown({
+-    runId: run.runId,
+-    actionId: action.id,
+-    attempt: action.attempt,
+-    reason: 'The original executor has stopped.',
+-  });
+-  await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("unverified");');
+-  const result = await runNativeCli([
+-    'archive',
+-    run.runId,
+-    '--project-root',
+-    root,
+-    '--recover',
+-    '--json',
+-  ]);
+-  expect(result.exitCode).toBe(73);
+-  const recovered = await runtime.inspect(run.runId);
+-  expect(recovered.actions.at(-1)).toMatchObject({
+-    id: action.id,
+-    status: 'failed',
+-    outcome: { output: { reason: 'candidate-drift' } },
+-  });
+-  expect(recovered.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
+-  expect(recovered.state).toMatchObject({ archived: false, verification_result: 'pending' });
+-});
+-
+ it.each(['archive.prepare', 'archive.execute', 'archive.finalize'])(
+   'rejects implementation drift between %s execution and commit and recovers the original Action',
+   async (stepId) => {
+@@ -9000,41 +8660,6 @@ it.each(['legacy', 'current'])(
+   },
+ );
+ 
+-it.each([1, 2])(
+-  'rejects candidate drift after original gate observation %i before archive binding capture',
+-  async (observation) => {
+-    const { root, runtime, run } = await awaitingArchiveApplication(
+-      'sdk',
+-      undefined,
+-      true,
+-      initializeArchiveGit,
+-    );
+-    const original = nativeSdkChecks.assertNativeSdkCandidateUnchanged;
+-    let calls = 0;
+-    vi.spyOn(nativeSdkChecks, 'assertNativeSdkCandidateUnchanged').mockImplementation(
+-      async (options) => {
+-        await original(options);
+-        if (++calls === observation)
+-          await fs.writeFile(
+-            path.join(root, 'implementation.js'),
+-            'throw new Error("between observations");',
+-          );
+-      },
+-    );
+-    await expect(
+-      runtime.execute({
+-        runId: run.runId,
+-        actionId: run.actions.at(-1)!.id,
+-        executorId: 'comet-native-archive-preflight',
+-        context: { requestId: `observation-drift-${observation}`, projectRoot: root },
+-      }),
+-    ).rejects.toThrow(/OUTCOME_REJECTED/);
+-    const stopped = await runtime.inspect(run.runId);
+-    expect(stopped.state).toMatchObject({ archived: false });
+-    expect(stopped.actions.some((action) => action.stepId === 'archive.execute')).toBe(false);
+-  },
+-);
+-
+ async function interruptArchiveFinalization(
+   point:
+     | 'report'
+@@ -10419,61 +10044,6 @@ it.each(['missing', 'edited'] as const)(
+   },
+ );
+ 
+-it('rejects candidate drift before v3 Archive publication after merging the revalidation Action', async () => {
+-  const prepared = await dispatchedVerifier(
+-    [],
+-    'sdk',
+-    nativeApplication('3'),
+-    true,
+-    undefined,
+-    async (root) => {
+-      await fs.writeFile(path.join(root, 'implementation.js'), 'export const value = true;');
+-    },
+-  );
+-  const { root, runtime, paths } = prepared;
+-  const state = prepared.run.state as NativePortableState;
+-  const run = await succeedLatestAction(
+-    runtime,
+-    prepared.run,
+-    {
+-      candidateId: state.builder_handoff!.candidate_id,
+-      verifierExecutionRef: 'v3-drift-verifier',
+-      response: {
+-        kind: 'final-result',
+-        result: {
+-          iteration: state.loop.iteration,
+-          attempt: state.loop.attempt,
+-          verdict: 'pass',
+-          acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified original implementation.' }],
+-          risks: [],
+-          summary: 'Original candidate passed.',
+-        },
+-      },
+-    },
+-    root,
+-    'v3-drift-result',
+-    'v3-drift-verifier',
+-  );
+-  await fs.writeFile(path.join(root, 'implementation.js'), 'export const value = false;');
+-  const wait = run.waits.at(-1)!;
+-  await runtime.resolveWait({
+-    runId: run.runId,
+-    waitId: wait.id,
+-    proposalHash: wait.proposalHash,
+-    decisionId: 'v3-drift-approved',
+-    choice: 'approved',
+-  });
+-  const archived = await runNativeCli(['archive', run.runId, '--project-root', root, '--json']);
+-  expect(archived.exitCode).toBe(73);
+-  expect((await runtime.inspect(run.runId)).state).toMatchObject({
+-    phase: 'verify',
+-    verification_result: 'pending',
+-  });
+-  expect(
+-    await fs.stat(path.join(paths.specsDir, 'workflow', 'spec.md')).catch(() => null),
+-  ).toBeNull();
+-});
+-
+ it('uses the shared default transition handler for v3 acceptance and Archive preflight', async () => {
+   const application = nativeApplication('3');
+   application.transitionHandler = nativeApplication('1').transitionHandler;

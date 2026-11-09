@@ -251,48 +251,6 @@ describe('Classic guard command', () => {
     expect(result.stderr).toContain('comet check run demo build');
   });
 
-  it('auto-runs the single workspace package build when the root has none', async () => {
-    const dir = await makeProject();
-    const cli = (...args: string[]) =>
-      withClassicCommandContext({ projectRoot: dir, invocationCwd: dir }, () =>
-        runClassicCli(args),
-      );
-    expect(
-      (
-        await cli(
-          'state',
-          'init',
-          'demo',
-          'hotfix',
-          '--isolation',
-          'current',
-          '--runtime',
-          'compat',
-        )
-      ).exitCode,
-    ).toBe(0);
-    const changeDir = path.join(dir, 'openspec/changes/demo');
-    const stateFile = path.join(changeDir, '.comet.yaml');
-    const state = parse(await fs.readFile(stateFile, 'utf8'));
-    await fs.writeFile(stateFile, stringify({ ...state, phase: 'build' }));
-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] work <!-- comet-task:a -->\n');
-    await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
-    await fs.writeFile(
-      path.join(dir, 'package.json'),
-      JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),
-    );
-    await fs.mkdir(path.join(dir, 'packages', 'app'), { recursive: true });
-    await fs.writeFile(
-      path.join(dir, 'packages', 'app', 'package.json'),
-      JSON.stringify({ name: 'app', scripts: { build: 'node -e "process.exit(0)"' } }),
-    );
-    const result = await cli('guard', 'demo', 'build');
-    expect(result.exitCode, result.stderr).toBe(0);
-    expect(result.stderr).toContain(
-      "guard auto-ran the detected command 'npm --prefix packages/app run build'",
-    );
-  });
-
   it('preserves an explicit failed build instead of replacing it with an inferred command', async () => {
     const dir = await makeProject();
     const cli = (...args: string[]) =>
@@ -421,50 +379,6 @@ describe('Classic guard command', () => {
     expect(result.stderr).not.toContain(
       `Next: comet check run legacy-argv build --local -- ${legacyArgv}`,
     );
-  });
-
-  it('lists workspace candidates instead of choosing when several packages build', async () => {
-    const dir = await makeProject();
-    const cli = (...args: string[]) =>
-      withClassicCommandContext({ projectRoot: dir, invocationCwd: dir }, () =>
-        runClassicCli(args),
-      );
-    expect(
-      (
-        await cli(
-          'state',
-          'init',
-          'demo',
-          'hotfix',
-          '--isolation',
-          'current',
-          '--runtime',
-          'compat',
-        )
-      ).exitCode,
-    ).toBe(0);
-    const changeDir = path.join(dir, 'openspec/changes/demo');
-    const stateFile = path.join(changeDir, '.comet.yaml');
-    const state = parse(await fs.readFile(stateFile, 'utf8'));
-    await fs.writeFile(stateFile, stringify({ ...state, phase: 'build' }));
-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] work <!-- comet-task:a -->\n');
-    await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
-    await fs.writeFile(
-      path.join(dir, 'package.json'),
-      JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),
-    );
-    for (const name of ['app', 'lib']) {
-      await fs.mkdir(path.join(dir, 'packages', name), { recursive: true });
-      await fs.writeFile(
-        path.join(dir, 'packages', name, 'package.json'),
-        JSON.stringify({ name, scripts: { build: 'node -e "process.exit(0)"' } }),
-      );
-    }
-    const result = await cli('guard', 'demo', 'build');
-    expect(result.exitCode, result.stderr).toBe(1);
-    expect(result.stderr).toContain('several workspace packages declare one');
-    expect(result.stderr).toContain('packages/app, packages/lib');
-    expect(result.stderr).toContain('npm --prefix packages/app run build');
   });
 
   it('blocks the open guard when artifacts are missing and leaves state unchanged', async () => {

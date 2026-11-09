@@ -148,67 +148,6 @@ describe('Native artifact validation', () => {
     ).toEqual({ valid: true, findings: [] });
   });
 
-  it.each(['```', '~~~'])('ignores %s headings in verification examples', async (marker) => {
-    await fs.writeFile(
-      path.join(changeDir, 'verification.md'),
-      verification.replace(
-        'Auth test covers login.',
-        [marker, '# Conclusion', 'Example only.', marker, 'Auth test covers login.'].join('\n'),
-      ),
-    );
-    expect(await validateNativeVerification(changeDir, 'verification.md')).toEqual({
-      valid: true,
-      findings: [],
-    });
-  });
-
-  it('does not use fenced examples to satisfy required verification sections', async () => {
-    await fs.writeFile(
-      path.join(changeDir, 'verification.md'),
-      '# Acceptance evidence\nEvidence example:\n```text\n' + verification + '```\n',
-    );
-    expect(await validateNativeVerification(changeDir, 'verification.md')).toMatchObject({
-      valid: false,
-      findings: expect.arrayContaining([
-        expect.objectContaining({ code: 'verification-section-missing' }),
-      ]),
-    });
-  });
-
-  it('requires every verification section to be non-empty', async () => {
-    await fs.writeFile(path.join(changeDir, 'verification.md'), verification);
-    expect(await validateNativeVerification(changeDir, 'verification.md')).toEqual({
-      valid: true,
-      findings: [],
-    });
-
-    await fs.writeFile(
-      path.join(changeDir, 'verification.md'),
-      verification.replace('Pass.\n', ''),
-    );
-    expect((await validateNativeVerification(changeDir, 'verification.md')).valid).toBe(false);
-  });
-
-  it('bounds brief and verification reads before Markdown parsing', async () => {
-    await fs.writeFile(
-      path.join(changeDir, 'brief.md'),
-      'x'.repeat(NATIVE_ARTIFACT_VALIDATION_LIMITS.maxFileBytes + 1),
-    );
-    await fs.writeFile(
-      path.join(changeDir, 'verification.md'),
-      'x'.repeat(NATIVE_ARTIFACT_VALIDATION_LIMITS.maxFileBytes + 1),
-    );
-
-    expect(await validateNativeBrief(changeDir, 'brief.md')).toMatchObject({
-      valid: false,
-      findings: [expect.objectContaining({ message: expect.stringContaining('exceeds') })],
-    });
-    expect(await validateNativeVerification(changeDir, 'verification.md')).toMatchObject({
-      valid: false,
-      findings: [expect.objectContaining({ message: expect.stringContaining('exceeds') })],
-    });
-  });
-
   it('validates complete target specs and canonical base hashes', async () => {
     const canonical = '# Authentication\nCurrent behavior.\n';
     const canonicalFile = path.join(paths.specsDir, 'authentication', 'spec.md');

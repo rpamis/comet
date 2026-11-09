@@ -461,6 +461,16 @@ describe('comet guard', () => {
         JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
       );
 
+      const checked = runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
+        'run',
+        'apply-heal',
+        'build',
+        '--',
+        process.execPath,
+        '-e',
+        'process.exit(0)',
+      ]);
+      expect(checked.status, checked.stderr).toBe(0);
       const result = runNode(
         tmpDir,
         guardScript,
@@ -486,7 +496,7 @@ describe('comet guard', () => {
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain('[FAIL] Build passes');
-      expect(result.stderr).toContain('No current Runtime build evidence');
+      expect(result.stderr).toContain('No current Runtime build result');
       expect(result.stderr).toContain(
         'comet check run commandless-build build --local -- <program> [args...]',
       );
@@ -599,7 +609,7 @@ describe('comet guard', () => {
       const result = runNode(tmpDir, guardScript, ['cross-scope', 'build']);
 
       expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain('No current Runtime build evidence');
+      expect(result.stderr).toContain('No current Runtime build result');
     });
 
     it('uses the latest same-run evidence even when an older check succeeded', async () => {
@@ -622,7 +632,7 @@ describe('comet guard', () => {
       const result = runNode(tmpDir, guardScript, ['target-build', 'build']);
 
       expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain('No current Runtime build evidence');
+      expect(result.stderr).toContain('No current Runtime build result');
     });
 
     it('ignores evidence recorded for another run', async () => {
@@ -647,7 +657,7 @@ describe('comet guard', () => {
       const result = runNode(tmpDir, guardScript, ['other-run', 'build']);
 
       expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain('No current Runtime build evidence');
+      expect(result.stderr).toContain('No current Runtime build result');
     });
 
     it('does not let successful stored evidence override an inferred npm failure', async () => {
@@ -662,32 +672,6 @@ describe('comet guard', () => {
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).not.toContain('recorded command-check');
-    });
-
-    it('detects and executes an inferred npm build from the nested invocation cwd', async () => {
-      await createChange(tmpDir, 'nested-inferred-build', buildYaml);
-      await writeFile(
-        path.join(tmpDir, 'package.json'),
-        JSON.stringify({ scripts: { build: 'node -e "process.exit(23)"' } }),
-      );
-      const nested = path.join(tmpDir, 'packages', 'app');
-      await writeFile(path.join(tmpDir, '.gitignore'), 'nested-build-ran\n');
-      await writeFile(
-        path.join(nested, 'package.json'),
-        JSON.stringify({
-          scripts: {
-            build: "node -e \"require('fs').writeFileSync('nested-build-ran', 'ok')\"",
-          },
-        }),
-      );
-
-      const result = runNode(nested, guardScript, ['nested-inferred-build', 'build']);
-
-      expect(result.status, result.stderr).toBe(0);
-      expect(await fs.readFile(path.join(nested, 'nested-build-ran'), 'utf8')).toBe('ok');
-      await expect(fs.access(path.join(tmpDir, 'nested-build-ran'))).rejects.toMatchObject({
-        code: 'ENOENT',
-      });
     });
 
     it('makes COMET_SKIP_BUILD visible instead of reporting an ordinary silent pass', async () => {

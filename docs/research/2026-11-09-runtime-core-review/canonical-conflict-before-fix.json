@@ -1,0 +1,595 @@
+{
+  "before": {
+    "canonicalText": "# Workflow\n\nAnother accepted change owns these bytes.\n",
+    "runId": "sdk-shape",
+    "revision": 19,
+    "state": {
+      "acceptance": [
+        {
+          "id": "A1",
+          "reason": {
+            "text": "Verified the selected workflow.",
+            "truncated": false
+          },
+          "result": "passed",
+          "source": "brief.md",
+          "text": "The selected workflow resumes."
+        }
+      ],
+      "archived": false,
+      "blockers": [],
+      "brief": "brief.md",
+      "builder_handoff": {
+        "acceptance_review": [
+          {
+            "evidence": [
+              "Runtime fixture implements the confirmed behavior for A1."
+            ],
+            "id": "A1",
+            "note": "Fixture self-review covers the implementation and evidence for A1.",
+            "status": "implemented-with-evidence"
+          }
+        ],
+        "addressed_acceptance_ids": [
+          "A1"
+        ],
+        "builder_execution_ref": "builder-session-1",
+        "candidate_id": "6e4e878c881c9ac066e7de461b42707db9d422217e96a735cd42663d5c329e80",
+        "checks": [],
+        "checks_truncated": false,
+        "identity_provider": "skill-coordinated",
+        "iteration": 1,
+        "known_limits": [],
+        "known_limits_truncated": false,
+        "review": null,
+        "submitted_at": "2026-09-24T01:00:00.000Z",
+        "summary": {
+          "text": "Implemented the selected workflow.",
+          "truncated": false
+        }
+      },
+      "created_at": "2026-09-24T00:00:00.000Z",
+      "document_constraints_version": 3,
+      "history": [
+        {
+          "attempt": 1,
+          "completed_at": "2026-11-09T14:57:54.073Z",
+          "goal_cycle": 1,
+          "iteration": 1,
+          "outcome": "pass",
+          "summary": {
+            "text": "All acceptance scenarios passed.",
+            "truncated": false
+          },
+          "unresolved_ids": []
+        }
+      ],
+      "history_overflow": {
+        "dropped_entries": 0,
+        "first_dropped_at": null,
+        "last_dropped_at": null,
+        "outcome_counts": {
+          "blocked": 0,
+          "execution-error": 0,
+          "fail": 0,
+          "pass": 0,
+          "recovery": 0
+        }
+      },
+      "language": "en",
+      "loop": {
+        "attempt": 1,
+        "execution_failure_count": 0,
+        "failed_iteration_count": 0,
+        "goal_cycle": 1,
+        "iteration": 1,
+        "next_action": "archive",
+        "no_progress_count": 0,
+        "previous_unresolved_ids": [],
+        "retry_epoch": 0,
+        "stage": "archive-ready"
+      },
+      "name": "sdk-shape",
+      "phase": "archive",
+      "schema": "comet.native.v4",
+      "spec_changes": [
+        {
+          "capability": "workflow",
+          "operation": "create",
+          "source": "specs/workflow/spec.md"
+        }
+      ],
+      "state_version": 7,
+      "status": "active",
+      "verification": {
+        "assurance": "skill-coordinated",
+        "attempt": 1,
+        "candidate_id": "6e4e878c881c9ac066e7de461b42707db9d422217e96a735cd42663d5c329e80",
+        "checks": [],
+        "completed_at": "2026-11-09T14:57:54.073Z",
+        "identity_provider": "skill-coordinated",
+        "iteration": 1,
+        "risks": [],
+        "risks_truncated": false,
+        "summary": {
+          "text": "All acceptance scenarios passed.",
+          "truncated": false
+        },
+        "verdict": "pass",
+        "verifier_execution_ref": "verifier-session-1"
+      },
+      "verification_report": "verification.md",
+      "verification_result": "pass",
+      "workspace": {
+        "change_branch": null,
+        "finish": null,
+        "isolation": "current",
+        "target_branch": null
+      }
+    },
+    "actions": [
+      {
+        "id": "sdk-shape:1",
+        "stepId": "shape.prepare",
+        "status": "succeeded",
+        "attempt": 1
+      },
+      {
+        "id": "sdk-shape:3",
+        "stepId": "shape.revalidate",
+        "status": "succeeded",
+        "attempt": 1
+      },
+      {
+        "id": "sdk-shape:4",
+        "stepId": "build.builder",
+        "status": "succeeded",
+        "attempt": 1
+      },
+      {
+        "id": "sdk-shape:5",
+        "stepId": "verify.checks",
+        "status": "succeeded",
+        "attempt": 1
+      },
+      {
+        "id": "sdk-shape:6",
+        "stepId": "verify.verifier",
+        "status": "succeeded",
+        "attempt": 1
+      },
+      {
+        "id": "sdk-shape:7",
+        "stepId": "verify.report",
+        "status": "succeeded",
+        "attempt": 1
+      },
+      {
+        "id": "sdk-shape:9",
+        "stepId": "verify.revalidate",
+        "status": "succeeded",
+        "attempt": 1
+      },
+      {
+        "id": "sdk-shape:10",
+        "stepId": "archive.prepare",
+        "status": "succeeded",
+        "attempt": 1
+      },
+      {
+        "id": "sdk-shape:11",
+        "stepId": "archive.execute",
+        "status": "pending",
+        "attempt": 1
+      }
+    ]
+  },
+  "result": {
+    "exitCode": 0,
+    "stdout": "{\"command\":\"archive\",\"exitCode\":0,\"agent\":{\"phase\":\"archive\",\"status\":\"done\",\"stateVersion\":8,\"workspace\":{\"cwd\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\comet-native-sdk-65Dsl6\"},\"continuation\":{\"schema\":\"comet.native.continuation.v2\",\"skill\":\"comet-native\",\"change\":\"sdk-shape\",\"phase\":\"archive\",\"status\":\"done\",\"stateVersion\":8,\"disposition\":\"done\",\"mode\":\"done\",\"requiresUserDecision\":false,\"action\":\"none\",\"commandArgs\":null,\"requiredInputs\":[],\"inputOptions\":[],\"runnerAction\":{\"kind\":\"none\",\"candidateId\":\"6e4e878c881c9ac066e7de461b42707db9d422217e96a735cd42663d5c329e80\",\"iteration\":1,\"attempt\":1},\"userCommunication\":{\"required\":false,\"message\":null,\"suggestedReply\":null,\"agentInstruction\":\"SDK Archive has completed. Finish and verify any Git delivery already authorized by the user before reporting the task complete; Run completion alone does not prove commit, push, or PR delivery.\"},\"cwd\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\comet-native-sdk-65Dsl6\"},\"run\":{\"id\":\"sdk-shape\",\"revision\":24,\"status\":\"completed\"}},\"summary\":\"Change sdk-shape · Archive · complete; acceptance 1/1 passed\",\"next\":{\"instruction\":\"SDK Archive has completed. Finish and verify any Git delivery already authorized by the user before reporting the task complete; Run completion alone does not prove commit, push, or PR delivery.\"},\"data\":{\"change\":\"sdk-shape\",\"completedActions\":[{\"id\":\"sdk-shape:11\",\"stepId\":\"archive.execute\",\"status\":\"succeeded\"},{\"id\":\"sdk-shape:12\",\"stepId\":\"archive.finalize\",\"status\":\"succeeded\"}],\"schema\":\"comet.native.sdk-status.v1\",\"diagnostics\":{\"stateReadable\":true,\"executionReconciled\":true,\"storageSettled\":true,\"healthy\":true,\"issues\":[]},\"runtimeFormat\":\"sdk\",\"name\":\"sdk-shape\",\"language\":\"en\",\"phase\":\"archive\",\"status\":\"done\",\"stateVersion\":8,\"acceptance\":{\"total\":1,\"passed\":1,\"failed\":0,\"blocked\":0,\"pending\":0},\"unresolvedAcceptanceIds\":[],\"verificationResult\":\"pass\",\"candidateId\":\"6e4e878c881c9ac066e7de461b42707db9d422217e96a735cd42663d5c329e80\",\"blockers\":[],\"workspace\":{\"projectRoot\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\comet-native-sdk-65Dsl6\",\"isolation\":\"current\",\"bindingState\":\"aligned\",\"changeBranch\":null,\"targetBranch\":null,\"finish\":null,\"message\":null},\"run\":{\"id\":\"sdk-shape\",\"revision\":24,\"status\":\"completed\",\"history\":{\"settledLimit\":12,\"actions\":{\"total\":10,\"omitted\":0,\"truncated\":false},\"waits\":{\"total\":2,\"omitted\":0,\"truncated\":false},\"evidenceWaits\":{\"total\":0,\"omitted\":0,\"truncated\":false}},\"actions\":[{\"id\":\"sdk-shape:1\",\"stepId\":\"shape.prepare\",\"status\":\"succeeded\",\"attempt\":1,\"inputHash\":\"99f8595175baf09522d605759b3c250d436ebf6bfdefa62a482bc63c9d41bfaa\"},{\"id\":\"sdk-shape:3\",\"stepId\":\"shape.revalidate\",\"status\":\"succeeded\",\"attempt\":1,\"inputHash\":\"b8dcfd650e92ad147c3709c7b4d3da659dc0917d64501c111dd509eb73642c00\"},{\"id\":\"sdk-shape:4\",\"stepId\":\"build.builder\",\"status\":\"succeeded\",\"attempt\":1,\"inputHash\":\"f87161d27358faf3e67086a8d02402c946f1c68bb50e2a8ec83b05a7fd1d9aec\"},{\"id\":\"sdk-shape:5\",\"stepId\":\"verify.checks\",\"status\":\"succeeded\",\"attempt\":1,\"inputHash\":\"3006eaac5b603b0f9b770615a60007cd1bb00fac303697fad1655f771d8d5e5b\"},{\"id\":\"sdk-shape:6\",\"stepId\":\"verify.verifier\",\"status\":\"succeeded\",\"attempt\":1,\"inputHash\":\"07a86b03b18fb022133c7236cf93a5594405f867c5ca238afcf9dc45550164f0\"},{\"id\":\"sdk-shape:7\",\"stepId\":\"verify.report\",\"status\":\"succeeded\",\"attempt\":1,\"inputHash\":\"5a5bac7f64facfc64120a7e23e824ae57af4c61232f050824172fef0ee1b1978\"},{\"id\":\"sdk-shape:9\",\"stepId\":\"verify.revalidate\",\"status\":\"succeeded\",\"attempt\":1,\"inputHash\":\"ba9ac50fed0a328519351a816c697297ffc86d5654ec182886dd554af7bad60b\"},{\"id\":\"sdk-shape:10\",\"stepId\":\"archive.prepare\",\"status\":\"succeeded\",\"attempt\":1,\"inputHash\":\"2bf9fc1387f6a285a83d991a717da049084936fd00195c72ac18706362ae50d0\"},{\"id\":\"sdk-shape:11\",\"stepId\":\"archive.execute\",\"status\":\"succeeded\",\"attempt\":1,\"inputHash\":\"336e72c5b8d62f921f17d361eebdae87bc57753296004232ff695f041ca57352\"},{\"id\":\"sdk-shape:12\",\"stepId\":\"archive.finalize\",\"status\":\"succeeded\",\"attempt\":1,\"inputHash\":\"27a7296bd031534b4021daa40bdd82b8996f912506a48bdfd8b96d1f21255861\"}],\"waits\":[{\"id\":\"sdk-shape:2\",\"stepId\":\"shape.confirm\",\"status\":\"resolved\",\"proposalHash\":\"fa1826273d5400c0ba091c3280a13c69652241b991d5cd8dcfe5d687fb8ae789\",\"choices\":[\"approved\",\"rejected\"]},{\"id\":\"sdk-shape:8\",\"stepId\":\"verify.confirm\",\"status\":\"resolved\",\"proposalHash\":\"81dc122821547eef1764901d2bc61884c6bec4c24d21a00677fb8415979de73a\",\"choices\":[\"approved\",\"rejected\",\"reverify\"]}],\"evidenceWaits\":[]},\"continuation\":{\"schema\":\"comet.native.continuation.v2\",\"skill\":\"comet-native\",\"change\":\"sdk-shape\",\"phase\":\"archive\",\"status\":\"done\",\"stateVersion\":8,\"disposition\":\"done\",\"mode\":\"done\",\"requiresUserDecision\":false,\"action\":\"none\",\"commandArgs\":null,\"requiredInputs\":[],\"inputOptions\":[],\"runnerAction\":{\"kind\":\"none\",\"candidateId\":\"6e4e878c881c9ac066e7de461b42707db9d422217e96a735cd42663d5c329e80\",\"iteration\":1,\"attempt\":1},\"userCommunication\":{\"required\":false,\"message\":null,\"suggestedReply\":null,\"agentInstruction\":\"SDK Archive has completed. Finish and verify any Git delivery already authorized by the user before reporting the task complete; Run completion alone does not prove commit, push, or PR delivery.\"},\"cwd\":\"C:\\\\Users\\\\BENYM\\\\AppData\\\\Local\\\\Temp\\\\comet-native-sdk-65Dsl6\"},\"checkExecutions\":[{\"actionId\":\"sdk-shape:5\",\"attempt\":1,\"owner\":\"stopped\",\"process\":\"stopped\",\"processBoundary\":\"command\",\"phase\":\"completed\",\"execution\":{\"schema\":\"comet.native.sdk-check-execution.v1\",\"executionBinding\":\"3ae361828fb2364c7c0913ddc02b94c91d6ef5e3ca6bae1431a83e21340daae9\",\"runId\":\"sdk-shape\",\"actionId\":\"sdk-shape:5\",\"attempt\":1,\"inputHash\":\"3006eaac5b603b0f9b770615a60007cd1bb00fac303697fad1655f771d8d5e5b\",\"claimToken\":\"10c792b5-5e57-45dc-8c1c-9f1e52b9c411\",\"candidateId\":\"6e4e878c881c9ac066e7de461b42707db9d422217e96a735cd42663d5c329e80\",\"plansHash\":\"4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945\",\"managed\":true,\"phase\":\"completed\",\"terminationUnconfirmed\":false,\"checks\":[],\"outcome\":{\"status\":\"succeeded\",\"output\":{\"candidateId\":\"6e4e878c881c9ac066e7de461b42707db9d422217e96a735cd42663d5c329e80\",\"checks\":[],\"completedAt\":\"2026-11-09T14:57:53.410Z\"}}},\"quiescent\":true,\"recoveryRequired\":false}]}}\n"
+  },
+  "after": {
+    "canonicalText": "# Workflow\nThe selected workflow resumes without losing confirmed work.\n",
+    "runId": "sdk-shape",
+    "revision": 24,
+    "status": "completed",
+    "state": {
+      "acceptance": [
+        {
+          "id": "A1",
+          "reason": {
+            "text": "Verified the selected workflow.",
+            "truncated": false
+          },
+          "result": "passed",
+          "source": "brief.md",
+          "text": "The selected workflow resumes."
+        }
+      ],
+      "archived": true,
+      "blockers": [],
+      "brief": "brief.md",
+      "builder_handoff": {
+        "acceptance_review": [
+          {
+            "evidence": [
+              "Runtime fixture implements the confirmed behavior for A1."
+            ],
+            "id": "A1",
+            "note": "Fixture self-review covers the implementation and evidence for A1.",
+            "status": "implemented-with-evidence"
+          }
+        ],
+        "addressed_acceptance_ids": [
+          "A1"
+        ],
+        "builder_execution_ref": "builder-session-1",
+        "candidate_id": "6e4e878c881c9ac066e7de461b42707db9d422217e96a735cd42663d5c329e80",
+        "checks": [],
+        "checks_truncated": false,
+        "identity_provider": "skill-coordinated",
+        "iteration": 1,
+        "known_limits": [],
+        "known_limits_truncated": false,
+        "review": null,
+        "submitted_at": "2026-09-24T01:00:00.000Z",
+        "summary": {
+          "text": "Implemented the selected workflow.",
+          "truncated": false
+        }
+      },
+      "created_at": "2026-09-24T00:00:00.000Z",
+      "document_constraints_version": 3,
+      "history": [
+        {
+          "attempt": 1,
+          "completed_at": "2026-11-09T14:57:54.073Z",
+          "goal_cycle": 1,
+          "iteration": 1,
+          "outcome": "pass",
+          "summary": {
+            "text": "All acceptance scenarios passed.",
+            "truncated": false
+          },
+          "unresolved_ids": []
+        }
+      ],
+      "history_overflow": {
+        "dropped_entries": 0,
+        "first_dropped_at": null,
+        "last_dropped_at": null,
+        "outcome_counts": {
+          "blocked": 0,
+          "execution-error": 0,
+          "fail": 0,
+          "pass": 0,
+          "recovery": 0
+        }
+      },
+      "language": "en",
+      "loop": {
+        "attempt": 1,
+        "execution_failure_count": 0,
+        "failed_iteration_count": 0,
+        "goal_cycle": 1,
+        "iteration": 1,
+        "next_action": null,
+        "no_progress_count": 0,
+        "previous_unresolved_ids": [],
+        "retry_epoch": 0,
+        "stage": "done"
+      },
+      "name": "sdk-shape",
+      "phase": "archive",
+      "schema": "comet.native.v4",
+      "spec_changes": [
+        {
+          "capability": "workflow",
+          "operation": "create",
+          "source": "specs/workflow/spec.md"
+        }
+      ],
+      "state_version": 8,
+      "status": "done",
+      "verification": {
+        "assurance": "skill-coordinated",
+        "attempt": 1,
+        "candidate_id": "6e4e878c881c9ac066e7de461b42707db9d422217e96a735cd42663d5c329e80",
+        "checks": [],
+        "completed_at": "2026-11-09T14:57:54.073Z",
+        "identity_provider": "skill-coordinated",
+        "iteration": 1,
+        "risks": [],
+        "risks_truncated": false,
+        "summary": {
+          "text": "All acceptance scenarios passed.",
+          "truncated": false
+        },
+        "verdict": "pass",
+        "verifier_execution_ref": "verifier-session-1"
+      },
+      "verification_report": "verification.md",
+      "verification_result": "pass",
+      "workspace": {
+        "change_branch": null,
+        "finish": null,
+        "isolation": "current",
+        "target_branch": null
+      }
+    },
+    "actions": [
+      {
+        "id": "sdk-shape:1",
+        "stepId": "shape.prepare",
+        "status": "succeeded",
+        "attempt": 1,
+        "outcome": {
+          "actionId": "sdk-shape:1",
+          "attempt": 1,
+          "claimToken": "shape-proposal",
+          "inputHash": "99f8595175baf09522d605759b3c250d436ebf6bfdefa62a482bc63c9d41bfaa",
+          "outcomeId": "shape-proposal",
+          "output": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The selected workflow resumes."
+              }
+            ],
+            "children": null,
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "id": "sdk-shape:3",
+        "stepId": "shape.revalidate",
+        "status": "succeeded",
+        "attempt": 1,
+        "outcome": {
+          "actionId": "sdk-shape:3",
+          "attempt": 1,
+          "claimToken": "shape-revalidated",
+          "inputHash": "b8dcfd650e92ad147c3709c7b4d3da659dc0917d64501c111dd509eb73642c00",
+          "outcomeId": "shape-revalidated",
+          "output": {
+            "acceptance": [
+              {
+                "id": "A1",
+                "source": "brief.md",
+                "text": "The selected workflow resumes."
+              }
+            ],
+            "children": null,
+            "specChanges": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ]
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "id": "sdk-shape:4",
+        "stepId": "build.builder",
+        "status": "succeeded",
+        "attempt": 1,
+        "outcome": {
+          "actionId": "sdk-shape:4",
+          "attempt": 1,
+          "claimToken": "builder-candidate",
+          "inputHash": "f87161d27358faf3e67086a8d02402c946f1c68bb50e2a8ec83b05a7fd1d9aec",
+          "outcomeId": "builder-candidate",
+          "output": {
+            "acceptanceReview": [
+              {
+                "evidence": [
+                  "Runtime fixture implements the confirmed behavior for A1."
+                ],
+                "id": "A1",
+                "note": "Fixture self-review covers the implementation and evidence for A1.",
+                "status": "implemented-with-evidence"
+              }
+            ],
+            "addressedAcceptanceIds": [
+              "A1"
+            ],
+            "checks": [],
+            "knownLimits": [],
+            "review": null,
+            "submittedAt": "2026-09-24T01:00:00.000Z",
+            "summary": "Implemented the selected workflow.",
+            "verificationChecks": []
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "id": "sdk-shape:5",
+        "stepId": "verify.checks",
+        "status": "succeeded",
+        "attempt": 1,
+        "outcome": {
+          "actionId": "sdk-shape:5",
+          "attempt": 1,
+          "claimToken": "10c792b5-5e57-45dc-8c1c-9f1e52b9c411",
+          "inputHash": "3006eaac5b603b0f9b770615a60007cd1bb00fac303697fad1655f771d8d5e5b",
+          "outcomeId": "sdk-shape:5:1:executor-result",
+          "output": {
+            "candidateId": "6e4e878c881c9ac066e7de461b42707db9d422217e96a735cd42663d5c329e80",
+            "checks": [],
+            "completedAt": "2026-11-09T14:57:53.410Z"
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "id": "sdk-shape:6",
+        "stepId": "verify.verifier",
+        "status": "succeeded",
+        "attempt": 1,
+        "outcome": {
+          "actionId": "sdk-shape:6",
+          "attempt": 1,
+          "claimToken": "verifier-result",
+          "inputHash": "07a86b03b18fb022133c7236cf93a5594405f867c5ca238afcf9dc45550164f0",
+          "outcomeId": "verifier-result",
+          "output": {
+            "candidateId": "6e4e878c881c9ac066e7de461b42707db9d422217e96a735cd42663d5c329e80",
+            "response": {
+              "kind": "final-result",
+              "result": {
+                "acceptance": [
+                  {
+                    "id": "A1",
+                    "reason": "Verified the selected workflow.",
+                    "result": "passed"
+                  }
+                ],
+                "attempt": 1,
+                "iteration": 1,
+                "risks": [],
+                "summary": "All acceptance scenarios passed.",
+                "verdict": "pass"
+              }
+            },
+            "verifierExecutionRef": "verifier-session-1"
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "id": "sdk-shape:7",
+        "stepId": "verify.report",
+        "status": "succeeded",
+        "attempt": 1,
+        "outcome": {
+          "actionId": "sdk-shape:7",
+          "attempt": 1,
+          "claimToken": "30edf8fa-d026-4f38-a80f-fe478105f874",
+          "inputHash": "5a5bac7f64facfc64120a7e23e824ae57af4c61232f050824172fef0ee1b1978",
+          "outcomeId": "sdk-shape:7:1:executor-result",
+          "output": {
+            "attempt": 1,
+            "candidateId": "6e4e878c881c9ac066e7de461b42707db9d422217e96a735cd42663d5c329e80",
+            "iteration": 1,
+            "reportRef": "docs/comet/changes/sdk-shape/verification.md",
+            "stateVersion": 6
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "id": "sdk-shape:9",
+        "stepId": "verify.revalidate",
+        "status": "succeeded",
+        "attempt": 1,
+        "outcome": {
+          "actionId": "sdk-shape:9",
+          "attempt": 1,
+          "claimToken": "50df0ed6-d2d0-4a00-bfdb-7f9009d7f7bd",
+          "inputHash": "ba9ac50fed0a328519351a816c697297ffc86d5654ec182886dd554af7bad60b",
+          "outcomeId": "sdk-shape:9:1:executor-result",
+          "output": {
+            "attempt": 1,
+            "candidateId": "6e4e878c881c9ac066e7de461b42707db9d422217e96a735cd42663d5c329e80",
+            "iteration": 1,
+            "reportRef": "docs/comet/changes/sdk-shape/verification.md",
+            "stateVersion": 6
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "id": "sdk-shape:10",
+        "stepId": "archive.prepare",
+        "status": "succeeded",
+        "attempt": 1,
+        "outcome": {
+          "actionId": "sdk-shape:10",
+          "attempt": 1,
+          "claimToken": "d92759f6-8a2a-4a85-b021-22ae442078bc",
+          "inputHash": "2bf9fc1387f6a285a83d991a717da049084936fd00195c72ac18706362ae50d0",
+          "outcomeId": "sdk-shape:10:1:executor-result",
+          "output": {
+            "archiveDirRef": "docs/comet/archive/2026-11-09-sdk-shape",
+            "blockers": [],
+            "candidateId": "6e4e878c881c9ac066e7de461b42707db9d422217e96a735cd42663d5c329e80",
+            "capabilityPeers": [],
+            "ready": true,
+            "reportRef": "docs/comet/changes/sdk-shape/verification.md",
+            "reportStateVersion": 6,
+            "requiresReverification": false,
+            "specPreview": [
+              {
+                "capability": "workflow",
+                "operation": "create",
+                "source": "specs/workflow/spec.md"
+              }
+            ],
+            "stateVersion": 7
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "id": "sdk-shape:11",
+        "stepId": "archive.execute",
+        "status": "succeeded",
+        "attempt": 1,
+        "outcome": {
+          "actionId": "sdk-shape:11",
+          "attempt": 1,
+          "claimToken": "35965ef7-69db-4d0d-bbd2-3dbcb955b647",
+          "inputHash": "336e72c5b8d62f921f17d361eebdae87bc57753296004232ff695f041ca57352",
+          "outcomeId": "sdk-shape:11:1:executor-result",
+          "output": {
+            "archiveRef": "2026-11-09-sdk-shape",
+            "specCount": 1,
+            "stateVersion": 7,
+            "transactionId": "e2f0af75-df18-422d-88b7-9d30335e34b7"
+          },
+          "status": "succeeded"
+        }
+      },
+      {
+        "id": "sdk-shape:12",
+        "stepId": "archive.finalize",
+        "status": "succeeded",
+        "attempt": 1,
+        "outcome": {
+          "actionId": "sdk-shape:12",
+          "attempt": 1,
+          "claimToken": "665a5d21-0ecd-46d8-877e-15a7ab44f077",
+          "inputHash": "27a7296bd031534b4021daa40bdd82b8996f912506a48bdfd8b96d1f21255861",
+          "outcomeId": "sdk-shape:12:1:executor-result",
+          "output": {
+            "archiveRef": "2026-11-09-sdk-shape",
+            "change": "sdk-shape",
+            "runId": "sdk-shape",
+            "specs": [
+              {
+                "capability": "workflow",
+                "operation": "create"
+              }
+            ],
+            "stateVersion": 8,
+            "transactionId": "e2f0af75-df18-422d-88b7-9d30335e34b7"
+          },
+          "status": "succeeded"
+        }
+      }
+    ]
+  }
+}

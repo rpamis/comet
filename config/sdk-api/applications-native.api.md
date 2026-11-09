@@ -38,9 +38,6 @@ export interface NativeApplicationOptions {
     extensions: readonly NativeApplicationExtension[];
 }
 
-// @public
-export function nativeExtensionArtifactHashes(root: string, refs: readonly string[]): Promise<Record<string, string>>;
-
 // @public (undocumented)
 export type NativeExtensionScope = 'candidate' | 'parent' | 'child' | 'integration';
 

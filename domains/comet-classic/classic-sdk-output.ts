@@ -22,6 +22,7 @@ import { isClassicSdkCancellationComplete } from './classic-sdk-run-lifecycle.js
 import {
   classicSdkCheckInstruction,
   classicSdkDeliveryCheckInstruction,
+  classicSdkAgentDeliveryCheckInstruction,
   classicSdkNextAction,
   findClassicSdkWorkspace,
 } from './classic-sdk-status.js';
@@ -392,7 +393,12 @@ export function classicSdkContinuation(
     if (canRepairClassicDelivery(run))
       return result({
         mode: 'execute',
-        commandArgs: command('repair-delivery', '--expected-revision', String(run.revision)),
+        commandArgs: command(
+          'repair-delivery',
+          '--expected-revision',
+          String(run.revision),
+          ...(run.workflow.version === '2' ? ['--checks', '<checks-json-file>'] : []),
+        ),
         requiredInputs: ['保留原实现和原命令；仅移除已声明且可再生成的输出'],
         instruction:
           '原交付修复检查已真实失败并停止。修正本机执行条件、核对并移除本次声明的生成物，再在同一 Run 重新检查；原实现变化必须恢复，不重放 Archive，成功后重新取得交付批准。',
@@ -543,7 +549,10 @@ export function classicSdkContinuation(
           mode: 'execute',
           commandArgs: command('next', '--continue'),
           requiredInputs: [],
-          instruction: classicSdkDeliveryCheckInstruction,
+          instruction:
+            run.workflow.version === '2'
+              ? classicSdkAgentDeliveryCheckInstruction
+              : classicSdkDeliveryCheckInstruction,
         });
       const scope = action.stepId.includes('.build.') ? 'build' : 'verify';
       const plans = (run.input as { checkCommands?: Partial<Record<'build' | 'verify', unknown>> })

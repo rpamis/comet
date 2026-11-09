@@ -971,9 +971,9 @@ export async function returnNativePortableChangeToShape(options: {
         action: 'revise-requirements',
       });
       if (options.allowedPhases && !options.allowedPhases.includes(state.phase)) {
-        throw new Error('--revise-requirements is only valid from Verify or Archive');
+        throw new Error('--revise-requirements is not valid from the current phase');
       }
-      if (state.phase === 'shape') return state;
+      if (state.phase === 'shape' && state.status === 'active') return state;
       return returnNativePortableStateToShapeLocked({
         paths: options.paths,
         state,

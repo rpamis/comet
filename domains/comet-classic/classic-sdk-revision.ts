@@ -9,10 +9,14 @@ import {
   type WorkflowRun,
 } from '../engine/runtime.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
+import { readClassicAgentCheckReports } from './classic-sdk-application.js';
 import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
 import { assertClassicArchiveRetryable } from './classic-sdk-archive-manifest.js';
 import { withClassicDeliveryRepair } from './classic-sdk-delivery-repair-application.js';
-import { captureClassicDeliveryRepair } from './classic-sdk-delivery-repair.js';
+import {
+  captureClassicDeliveryRepair,
+  classicDeliveryRepairCheckpointHash,
+} from './classic-sdk-delivery-repair.js';
 import {
   classicArchiveRepairAction,
   classicInterruptedSkill,
@@ -72,6 +76,7 @@ export async function reviseClassicSdkWork(options: {
     | 'refresh-checks';
   expectedRevision: number;
   refreshInput?: RuntimeValue;
+  checksRef?: string;
 }): Promise<WorkflowRun> {
   const { projectRoot, change, name, expectedRevision } = options;
   const { run, state } = await inspectClassicSdkRun(projectRoot, change);
@@ -120,7 +125,15 @@ export async function reviseClassicSdkWork(options: {
     run.workflow.version === '2',
   );
   const deliveryRepair =
-    name === 'repair-delivery' ? await captureClassicDeliveryRepair(projectRoot, run) : null;
+    name === 'repair-delivery'
+      ? await captureClassicDeliveryRepair(
+          projectRoot,
+          run,
+          options.checksRef
+            ? await readClassicAgentCheckReports(projectRoot, options.checksRef)
+            : undefined,
+        )
+      : null;
   const repairingDelivery =
     deliveryRepair || run.commands?.some((command) => command.name === 'repair-delivery');
   const application = repairingDelivery
@@ -169,7 +182,17 @@ export async function reviseClassicSdkWork(options: {
                 }
               : {}),
             ...(name === 'continue-work'
-              ? { interruptedActionId: classicInterruptedSkill(run)?.id ?? '' }
+              ? {
+                  interruptedActionId: classicInterruptedSkill(run)?.id ?? '',
+                  ...(state.archived
+                    ? {
+                        deliveryCheckpointHash: await classicDeliveryRepairCheckpointHash(
+                          projectRoot,
+                          run,
+                        ),
+                      }
+                    : {}),
+                }
               : {}),
           },
     context: { requestId: commandId, projectRoot },

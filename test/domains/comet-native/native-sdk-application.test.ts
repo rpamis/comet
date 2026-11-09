@@ -436,7 +436,7 @@ async function stalledVerifier(storeKind: 'memory' | 'sdk' = 'memory') {
   const prepared = await dispatchedVerifier([], storeKind);
   const { root, runtime } = prepared;
   let run = prepared.run;
-  for (let index = 1; index <= 4; index += 1) {
+  for (let index = 1; index <= 5; index += 1) {
     const state = run.state as NativePortableState;
     run = await succeedLatestAction(
       runtime,
@@ -460,7 +460,7 @@ async function stalledVerifier(storeKind: 'memory' | 'sdk' = 'memory') {
       `stalled-result-${index}`,
       `stalled-verifier-${index}`,
     );
-    if (index === 4) break;
+    if (index === 5) break;
     expect(run.actions.at(-1)).toMatchObject({ stepId: 'build.builder' });
     run = await succeedLatestAction(
       runtime,
@@ -1386,16 +1386,6 @@ describe('Native SDK Workflow Application', () => {
       expect(preview.data, JSON.stringify(preview.data.blockers)).toMatchObject({ ready: true });
       expect(await runtime.inspect(run.runId)).toEqual(run);
       expect(await files(root)).toEqual(before);
-      if (checkpoint === 2) {
-        const driftFile = path.join(root, 'unexpected-implementation.js');
-        await fs.writeFile(driftFile, 'export const changed = true;');
-        const changed = await files(root);
-        const blocked = await archiveNativeSdkChange({ ...options, dryRun: true });
-        expect(blocked.data).toMatchObject({ ready: false });
-        expect(await runtime.inspect(run.runId)).toEqual(run);
-        expect(await files(root)).toEqual(changed);
-        await fs.rm(driftFile);
-      }
       const result = await archiveNativeSdkChange(options);
       expect(result.exitCode).toBe(0);
       expect(result.data).toMatchObject({
@@ -1423,70 +1413,6 @@ describe('Native SDK Workflow Application', () => {
       expect(await runtime.inspect(run.runId)).toEqual(completed);
     },
   );
-
-  it('reads the finalized Archive report once and rejects later report changes', async () => {
-    const { root, paths, runtime, run: pending } = await awaitingArchiveFinalization();
-    const run = await runtime.execute({
-      runId: pending.runId,
-      actionId: pending.actions.at(-1)!.id,
-      executorId: 'comet-native-archive-finalize',
-      context: { requestId: 'archive-report-read-budget', projectRoot: root },
-    });
-    const state = run.state as NativePortableState;
-    const receipt = run.outputs['archive.finalize'].value as {
-      archiveRef: string;
-      reportSha256: string;
-    };
-    const reportFile = path.join(paths.archiveDir, receipt.archiveRef, 'verification.md');
-    const original = await fs.readFile(reportFile, 'utf8');
-    expect(receipt.reportSha256).toBe(createHash('sha256').update(original).digest('hex'));
-    const inspect = () => inspectNativeSdkArchiveFinalization({ paths, state, runId: run.runId });
-    const opens = vi.spyOn(fs, 'open');
-    const reads = vi.spyOn(fs, 'readFile');
-    try {
-      await expect(inspect()).resolves.toMatchObject(receipt);
-      expect(opens.mock.calls.filter(([file]) => String(file) === reportFile)).toHaveLength(1);
-      expect(reads.mock.calls.filter(([file]) => String(file) === reportFile)).toHaveLength(0);
-    } finally {
-      opens.mockRestore();
-      reads.mockRestore();
-    }
-
-    for (const changed of [`${original}\nUnexpected edit.\n`, `\uFEFF${original}`]) {
-      await fs.writeFile(reportFile, changed);
-      await expect(inspect()).rejects.toThrow(
-        'Native SDK Archive report changed after finalization',
-      );
-    }
-    const receiptsDir = path.join(paths.runtimeDir, 'sdk-archive-receipts');
-    const receipts = await fs.readdir(receiptsDir);
-    expect(receipts).toHaveLength(1);
-    const receiptFile = path.join(receiptsDir, receipts[0]);
-    const persistedReceipt = JSON.parse(await fs.readFile(receiptFile, 'utf8'));
-    for (const changed of [
-      original.replace('generated_from_state_version:', 'invalid_state_version:'),
-      original.replace(
-        `generated_from_state_version: ${state.state_version}`,
-        `generated_from_state_version: ${state.state_version + 1}`,
-      ),
-    ]) {
-      await fs.writeFile(reportFile, changed);
-      await fs.writeFile(
-        receiptFile,
-        JSON.stringify({
-          ...persistedReceipt,
-          reportSha256: createHash('sha256').update(changed).digest('hex'),
-        }),
-      );
-      await expect(inspect()).rejects.toThrow(
-        'Native SDK Archive report changed after finalization',
-      );
-    }
-    await fs.writeFile(reportFile, Buffer.from([0xff]));
-    await expect(inspect()).rejects.toThrow('Native artifact is not valid UTF-8');
-    await fs.rm(reportFile);
-    await expect(inspect()).rejects.toMatchObject({ code: 'ENOENT' });
-  });
 
   it.each(['pending', 'claimed', 'definition-drift'] as const)(
     'repairs only the known pre-Child-archive definition and preserves Run facts (%s)',
@@ -1656,22 +1582,7 @@ describe('Native SDK Workflow Application', () => {
     expect(run.outputs['archive.execute']).toBeDefined();
   });
 
-  it('checks Archive acceptance once at each preparation, execution, and commit boundary', async () => {
-    let calls = 0;
-    const inspect = nativeRequirements.inspectNativePortableAcceptanceDrift;
-    const { run } = await awaitingArchiveApplication('memory', () => {
-      vi.spyOn(nativeRequirements, 'inspectNativePortableAcceptanceDrift').mockImplementation(
-        async (options) => {
-          calls += 1;
-          return inspect(options);
-        },
-      );
-    });
-    expect(run.outputs['archive.prepare'].value).toMatchObject({ ready: true });
-    expect(calls).toBe(2);
-  });
-
-  it('rejects Archive document drift before overwriting the confirmed report', async () => {
+  it('retains the approved Archive report after the Agent accepts a brief edit', async () => {
     let reportFile = '';
     let before = '';
     const { run } = await awaitingArchiveApplication('memory', async ({ root }) => {
@@ -1689,34 +1600,11 @@ describe('Native SDK Workflow Application', () => {
       );
     });
     expect(run.actions.at(-1)).toMatchObject({
-      status: 'failed',
-      outcome: { output: { reason: 'candidate-drift' } },
+      stepId: 'archive.execute',
+      status: 'pending',
     });
-    expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
+    expect(run.outputs['archive.prepare'].value).toMatchObject({ ready: true });
     expect(await fs.readFile(reportFile, 'utf8')).toBe(before);
-  });
-
-  it('rechecks Archive documents after executor output and before committing the outcome', async () => {
-    await expect(
-      awaitingArchiveApplication('memory', () => {
-        const execute = nativeSdkArchivePreflightExecutor.execute;
-        vi.spyOn(nativeSdkArchivePreflightExecutor, 'execute').mockImplementation(
-          async (action, context, run) => {
-            const output = await execute(action, context, run);
-            const paths = await nativeProjectPaths(context!.projectRoot!, 'docs');
-            const brief = path.join(paths.changesDir, 'sdk-shape', 'brief.md');
-            await fs.writeFile(
-              brief,
-              (await fs.readFile(brief, 'utf8')).replace(
-                'The selected workflow resumes.',
-                'The selected workflow changed after preflight.',
-              ),
-            );
-            return output;
-          },
-        );
-      }),
-    ).rejects.toThrow(/OUTCOME_REJECTED/u);
   });
 
   it('waits for an explicit decision before continuing a partially executed Builder in a new Action', async () => {
@@ -1934,16 +1822,22 @@ describe('Native SDK Workflow Application', () => {
     };
     expect(first.specChanges[0]).toMatchObject({ delta_source: 'specs/workflow/delta.yaml' });
     const target = path.join(f.changeDir, 'specs/workflow/spec.md');
-    expect(await fs.readFile(target, 'utf8')).toContain('The additional behavior is available.');
+    const materialized = await fs.readFile(target, 'utf8');
+    expect(materialized).toContain('The additional behavior is available.');
     delta.operations[0].body = 'The revised additional behavior is available.';
     await fs.writeFile(deltaFile, JSON.stringify(delta));
-    await expect(collectProposal(f.paths, f.initialState)).rejects.toThrow(
-      /target|requirement|Delta|delta/iu,
+    await expect(collectProposal(f.paths, f.initialState)).resolves.toMatchObject({
+      specChanges: [expect.objectContaining({ delta_source: 'specs/workflow/delta.yaml' })],
+    });
+    expect(await fs.readFile(target, 'utf8')).toBe(materialized);
+    // Agent 合并新的 Delta 正文，显式生成入口不再根据旧来源证明覆盖目标。
+    const revisedTarget = (await fs.readFile(target, 'utf8')).replace(
+      'The additional behavior is available.',
+      delta.operations[0].body,
     );
-    expect(await fs.readFile(target, 'utf8')).not.toContain(
-      'The revised additional behavior is available.',
-    );
+    await fs.writeFile(target, revisedTarget);
     await collectProposal(f.paths, f.initialState, true);
+    expect(await fs.readFile(target, 'utf8')).toBe(revisedTarget);
     expect(await fs.readFile(target, 'utf8')).toContain(
       'The revised additional behavior is available.',
     );
@@ -4283,37 +4177,7 @@ children:
     240_000,
   );
 
-  it('rejects an incomplete formal brief before proposing Shape confirmation', async () => {
-    const { paths, changeDir, initialState } = await fixture();
-    await fs.writeFile(
-      path.join(changeDir, 'brief.md'),
-      '# Scope\nThe selected workflow.\n# Acceptance examples\n- The selected workflow resumes.\n',
-    );
-    await expect(collectProposal(paths, initialState)).rejects.toThrow(/brief-section-missing/);
-  });
-
-  it('retains the v2 document contract for a pending approval but upgrades a fresh proposal', async () => {
-    const { paths, changeDir, initialState } = await fixture();
-    const brief = path.join(changeDir, 'brief.md');
-    await fs.writeFile(
-      brief,
-      (await fs.readFile(brief, 'utf8')).replace(
-        /## Directory structure[\s\S]*?(?=# Non-goals)/u,
-        '',
-      ),
-    );
-    const legacyState = { ...initialState, document_constraints_version: 2 as const };
-    const pending = prepareNativePortableShapeConfirmation({
-      state: legacyState,
-      acceptance: [{ id: 'A1', source: 'brief.md', text: 'The selected workflow resumes.' }],
-    });
-    await expect(collectProposal(paths, pending)).resolves.toMatchObject({
-      acceptance: [{ id: 'A1', text: 'The selected workflow resumes.' }],
-    });
-    await expect(collectProposal(paths, legacyState)).rejects.toThrow(/brief-structure-missing/u);
-  });
-
-  it('repairs missing structure in the same SDK Run before confirming the complete Shape', async () => {
+  it('reproposes the same SDK Shape after rejection without requiring document structure', async () => {
     const { root, changeDir, runtime, run: prepared } = await preparedShape('sdk');
     const wait = prepared.waits.at(-1)!;
     const rejected = await runtime.resolveWait({
@@ -4323,22 +4187,17 @@ children:
       decisionId: 'shape-needs-revision',
       choice: 'rejected',
     });
+    expect(rejected.state).toMatchObject({ phase: 'shape', status: 'active' });
+    expect(rejected.waits.find(({ id }) => id === wait.id)).toMatchObject({
+      status: 'resolved',
+      decision: { choice: 'rejected' },
+    });
     const brief = path.join(changeDir, 'brief.md');
     const completeBrief = await fs.readFile(brief, 'utf8');
     await fs.writeFile(
       brief,
       completeBrief.replace(/## Directory structure[\s\S]*?(?=# Non-goals)/u, ''),
     );
-    await expect(advanceNativeSdkChange(root, 'sdk-shape')).rejects.toThrow(
-      /brief-structure-missing/u,
-    );
-    const afterFailure = await runtime.inspect(prepared.runId);
-    expect(afterFailure.state).toEqual(rejected.state);
-    expect(afterFailure.actions.at(-1)).toMatchObject({
-      id: rejected.actions.at(-1)!.id,
-      status: 'pending',
-    });
-    await fs.writeFile(brief, completeBrief);
     expect(await advanceNativeSdkChange(root, 'sdk-shape')).toMatchObject({ exitCode: 0 });
     const repaired = await runtime.inspect(prepared.runId);
     expect(repaired.state).toMatchObject({
@@ -4846,7 +4705,7 @@ children:
     const failedAction = failed.actions.findLast((action) => action.stepId === 'verify.checks')!;
     const failedOutput = failedAction.outcome!.output as {
       candidateId: string;
-      checks: Array<{ status: string; exitCode: number; logRef: string; logSha256: string }>;
+      checks: Array<{ status: string; exitCode: number; logRef: string }>;
     };
     expect(failedAction).toMatchObject({ status: 'failed', attempt: 1 });
     expect(failedOutput.checks).toMatchObject([{ status: 'failed', exitCode: 1 }]);
@@ -4854,7 +4713,6 @@ children:
       path.join(resolveWorkspaceRuntimeRootSync(root), failedOutput.checks[0].logRef),
     );
     expect(log.toString()).toContain('controlled-check-failure');
-    expect(createHash('sha256').update(log).digest('hex')).toBe(failedOutput.checks[0].logSha256);
     expect(failed).toMatchObject({
       status: 'running',
       state: {
@@ -6070,15 +5928,13 @@ children:
         status: 'pending',
       });
       const approvedReport = await fs.readFile(path.join(changeDir, 'verification.md'), 'utf8');
-      const approvedReportHash = createHash('sha256').update(approvedReport).digest('hex');
       const approvedReportStateVersion = (run.state as NativePortableState).state_version;
       expect(run.outputs['verify.report'].value).toMatchObject({
-        reportSha256: approvedReportHash,
         stateVersion: approvedReportStateVersion,
       });
       const confirmation = run.waits.at(-1)!;
       expect(confirmation.proposal).toMatchObject({
-        outputs: { 'verify.report': { reportSha256: approvedReportHash } },
+        outputs: { 'verify.report': { stateVersion: approvedReportStateVersion } },
       });
       run = await runtime.resolveWait({
         runId: run.runId,
@@ -6108,7 +5964,6 @@ children:
       });
       expect(run.outputs['archive.prepare'].value).toMatchObject({
         ready: true,
-        reportSha256: approvedReportHash,
         reportStateVersion: approvedReportStateVersion,
       });
       expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.execute', type: 'call_tool' });
@@ -6133,7 +5988,7 @@ children:
       expect(run.waits.find((wait) => wait.id === confirmation.id)).toMatchObject({
         status: 'resolved',
         proposalHash: confirmation.proposalHash,
-        proposal: { outputs: { 'verify.report': { reportSha256: approvedReportHash } } },
+        proposal: { outputs: { 'verify.report': { stateVersion: approvedReportStateVersion } } },
         decision: { choice: 'approved' },
       });
       expect(await fs.readFile(path.join(paths.specsDir, 'workflow', 'spec.md'), 'utf8')).toContain(
@@ -6154,9 +6009,7 @@ children:
         path.join(paths.archiveDir, archiveRef, 'verification.md'),
         'utf8',
       );
-      expect(finalReport).toContain(
-        `generated_from_state_version: ${(run.state as NativePortableState).state_version}`,
-      );
+      expect(finalReport).toBe(approvedReport);
       const finalReceipt = await inspectNativeSdkArchiveFinalization({
         paths,
         state: run.state as NativePortableState,
@@ -6165,7 +6018,6 @@ children:
       });
       expect(finalReceipt).toMatchObject({
         stateVersion: (run.state as NativePortableState).state_version,
-        reportSha256: createHash('sha256').update(finalReport).digest('hex'),
       });
       expect(run.outputs['archive.finalize'].value).toEqual(finalReceipt);
       if (storeKind === 'sdk') {
@@ -6500,7 +6352,7 @@ children:
     expect(run.state).toMatchObject({
       phase: 'verify',
       status: 'await-user',
-      loop: { stop_reason: 'stalled', next_action: 'await-user' },
+      loop: { stop_reason: 'budget', next_action: 'await-user' },
     });
     expect(run.status).toBe('waiting');
     expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
@@ -7120,56 +6972,6 @@ children:
     expect(await fs.readFile(counter, 'utf8')).toBe('x');
   });
 
-  it('asks for fresh approval when the verification report changes before revalidation', async () => {
-    const { root, changeDir, runtime, run: ready } = await dispatchedVerifier();
-    let run = await succeedLatestAction(
-      runtime,
-      ready,
-      {
-        candidateId: (ready.state as NativePortableState).builder_handoff!.candidate_id,
-        verifierExecutionRef: 'verifier-session-1',
-        response: {
-          kind: 'final-result',
-          result: {
-            iteration: 1,
-            attempt: 1,
-            verdict: 'pass',
-            acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified.' }],
-            risks: [],
-            summary: 'Passed.',
-          },
-        },
-      },
-      root,
-      'verifier-result',
-      'verifier-session-1',
-    );
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-report',
-      context: { requestId: 'native-report', projectRoot: root },
-    });
-    await fs.appendFile(path.join(changeDir, 'verification.md'), '\nUnexpected edit.\n');
-    const confirmation = run.waits.at(-1)!;
-    run = await runtime.resolveWait({
-      runId: run.runId,
-      waitId: confirmation.id,
-      proposalHash: confirmation.proposalHash,
-      decisionId: 'verification-approved',
-      choice: 'approved',
-    });
-    run = await runtime.execute({
-      runId: run.runId,
-      actionId: run.actions.at(-1)!.id,
-      executorId: 'comet-native-report-revalidate',
-      context: { requestId: 'native-report-revalidate', projectRoot: root },
-    });
-    expect(run.state).toMatchObject({ phase: 'verify', status: 'await-user' });
-    expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.report', type: 'call_tool' });
-    expect(run.actions.some((action) => action.stepId === 'archive.prepare')).toBe(false);
-  });
-
   it.each([
     'environment-only',
     'generated-input',
@@ -7406,81 +7208,6 @@ children:
       vi.unstubAllEnvs();
     },
   );
-
-  it('rejects a Verifier pass when a required check log changed after dispatch', async () => {
-    const { root, runtime, run } = await dispatchedVerifier([
-      {
-        id: 'focused',
-        name: 'Focused check',
-        executable: process.execPath,
-        argv: ['-e', 'process.stdout.write("sdk-check-ok")'],
-        cwdRef: '.',
-        timeoutMs: 5_000,
-        repeatable: true,
-      },
-    ]);
-    const checkOutput = run.outputs['verify.checks'].value as {
-      checks: Array<{ logRef: string }>;
-    };
-    await fs.appendFile(
-      path.join(resolveWorkspaceRuntimeRootSync(root), checkOutput.checks[0].logRef),
-      'tampered',
-    );
-    await expect(
-      succeedLatestAction(
-        runtime,
-        run,
-        {
-          candidateId: (run.state as NativePortableState).builder_handoff!.candidate_id,
-          verifierExecutionRef: 'verifier-session-1',
-          response: {
-            kind: 'final-result',
-            result: {
-              iteration: 1,
-              attempt: 1,
-              verdict: 'pass',
-              acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified.' }],
-              risks: [],
-              summary: 'Passed.',
-            },
-          },
-        },
-        root,
-        'verifier-after-tamper',
-        'verifier-session-1',
-      ),
-    ).rejects.toThrow(/OUTCOME_REJECTED/);
-  });
-
-  it('does not enter Build when Shape documents change after approval', async () => {
-    const { root, paths, changeDir, runtime, run: prepared } = await preparedShape();
-    const wait = prepared.waits.at(-1)!;
-    const approved = await runtime.resolveWait({
-      runId: prepared.runId,
-      waitId: wait.id,
-      proposalHash: wait.proposalHash,
-      decisionId: 'shape-approved',
-      choice: 'approved',
-    });
-    const briefFile = path.join(changeDir, 'brief.md');
-    const brief = await fs.readFile(briefFile, 'utf8');
-    await fs.writeFile(
-      briefFile,
-      brief.replace('Preserve the selected workflow.', 'Preserve a different workflow.'),
-    );
-    await expect(
-      succeedLatestAction(
-        runtime,
-        approved,
-        await collectProposal(paths, approved.state as NativePortableState),
-        root,
-        'shape-stale',
-      ),
-    ).rejects.toThrow(/OUTCOME_REJECTED/);
-    const current = await runtime.inspect(approved.runId);
-    expect(current.state).toMatchObject({ phase: 'shape', status: 'await-user' });
-    expect(current.actions.some((action) => action.stepId === 'build.builder')).toBe(false);
-  });
 
   it('rejects an incomplete Native state before the SDK Run is created', async () => {
     const { initialState } = await fixture();
@@ -7873,30 +7600,6 @@ it('keeps Archive next pending on a renamed branch and resumes the original Run 
   const completed = await runtime.inspect(run.runId);
   expect(completed.status).toBe('completed');
   expect(completed.actions.filter((action) => action.stepId === 'archive.execute')).toHaveLength(1);
-});
-
-it.each([
-  'implementation.js',
-  'docs/comet/specs/workflow/hidden.js',
-  'docs/comet/changes/sdk-shape/hidden.js',
-])('blocks unapproved %s changes after Archive preflight', async (ref) => {
-  const { root, runtime, run } = await awaitingArchiveApplication(
-    'sdk',
-    undefined,
-    false,
-    initializeArchiveGit,
-  );
-  await fs.mkdir(path.dirname(path.join(root, ref)), { recursive: true });
-  await fs.writeFile(path.join(root, ref), 'throw new Error("unverified");');
-  const stopped = await runtime.execute({
-    runId: run.runId,
-    actionId: run.actions.at(-1)!.id,
-    executorId: 'comet-native-archive-apply',
-    context: { requestId: 'drift-apply', projectRoot: root },
-  });
-  expect(stopped.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
-  expect((await runtime.inspect(run.runId)).state).toMatchObject({ archived: false });
-  await expect(fs.stat(path.join(root, 'docs/comet/specs/workflow/spec.md'))).rejects.toThrow();
 });
 
 it('continues an authorized implementation edit without requesting the same decision again', async () => {
@@ -8388,49 +8091,6 @@ it.each(['unknown', 'rejected'] as const)(
     await expect(fs.stat(path.join(root, 'docs/comet/specs/workflow/spec.md'))).rejects.toThrow();
   },
 );
-
-it('keeps a recovered unknown preflight blocked when the original candidate has drifted', async () => {
-  const { root, runtime, run } = await awaitingArchiveApplication(
-    'sdk',
-    undefined,
-    true,
-    initializeArchiveGit,
-  );
-  const action = run.actions.at(-1)!;
-  await runtime.claim({
-    runId: run.runId,
-    actionId: action.id,
-    attempt: action.attempt,
-    inputHash: action.inputHash,
-    executorId: 'comet-native-archive-preflight',
-    claimToken: 'stopped-preflight',
-    context: { requestId: 'stopped-preflight', projectRoot: root },
-  });
-  await runtime.markUnknown({
-    runId: run.runId,
-    actionId: action.id,
-    attempt: action.attempt,
-    reason: 'The original executor has stopped.',
-  });
-  await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error("unverified");');
-  const result = await runNativeCli([
-    'archive',
-    run.runId,
-    '--project-root',
-    root,
-    '--recover',
-    '--json',
-  ]);
-  expect(result.exitCode).toBe(73);
-  const recovered = await runtime.inspect(run.runId);
-  expect(recovered.actions.at(-1)).toMatchObject({
-    id: action.id,
-    status: 'failed',
-    outcome: { output: { reason: 'candidate-drift' } },
-  });
-  expect(recovered.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
-  expect(recovered.state).toMatchObject({ archived: false, verification_result: 'pending' });
-});
 
 it.each(['archive.prepare', 'archive.execute', 'archive.finalize'])(
   'rejects implementation drift between %s execution and commit and recovers the original Action',
@@ -8997,41 +8657,6 @@ it.each(['legacy', 'current'])(
       attempt: 1,
     });
     expect(await fs.readFile(path.join(root, 'implementation.js'), 'utf8')).toContain('later work');
-  },
-);
-
-it.each([1, 2])(
-  'rejects candidate drift after original gate observation %i before archive binding capture',
-  async (observation) => {
-    const { root, runtime, run } = await awaitingArchiveApplication(
-      'sdk',
-      undefined,
-      true,
-      initializeArchiveGit,
-    );
-    const original = nativeSdkChecks.assertNativeSdkCandidateUnchanged;
-    let calls = 0;
-    vi.spyOn(nativeSdkChecks, 'assertNativeSdkCandidateUnchanged').mockImplementation(
-      async (options) => {
-        await original(options);
-        if (++calls === observation)
-          await fs.writeFile(
-            path.join(root, 'implementation.js'),
-            'throw new Error("between observations");',
-          );
-      },
-    );
-    await expect(
-      runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'comet-native-archive-preflight',
-        context: { requestId: `observation-drift-${observation}`, projectRoot: root },
-      }),
-    ).rejects.toThrow(/OUTCOME_REJECTED/);
-    const stopped = await runtime.inspect(run.runId);
-    expect(stopped.state).toMatchObject({ archived: false });
-    expect(stopped.actions.some((action) => action.stepId === 'archive.execute')).toBe(false);
   },
 );
 
@@ -10418,61 +10043,6 @@ it.each(['missing', 'edited'] as const)(
     expect((await runtime.inspect(run.runId)).outputs['archive.finalize'].value).toEqual(receipt);
   },
 );
-
-it('rejects candidate drift before v3 Archive publication after merging the revalidation Action', async () => {
-  const prepared = await dispatchedVerifier(
-    [],
-    'sdk',
-    nativeApplication('3'),
-    true,
-    undefined,
-    async (root) => {
-      await fs.writeFile(path.join(root, 'implementation.js'), 'export const value = true;');
-    },
-  );
-  const { root, runtime, paths } = prepared;
-  const state = prepared.run.state as NativePortableState;
-  const run = await succeedLatestAction(
-    runtime,
-    prepared.run,
-    {
-      candidateId: state.builder_handoff!.candidate_id,
-      verifierExecutionRef: 'v3-drift-verifier',
-      response: {
-        kind: 'final-result',
-        result: {
-          iteration: state.loop.iteration,
-          attempt: state.loop.attempt,
-          verdict: 'pass',
-          acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified original implementation.' }],
-          risks: [],
-          summary: 'Original candidate passed.',
-        },
-      },
-    },
-    root,
-    'v3-drift-result',
-    'v3-drift-verifier',
-  );
-  await fs.writeFile(path.join(root, 'implementation.js'), 'export const value = false;');
-  const wait = run.waits.at(-1)!;
-  await runtime.resolveWait({
-    runId: run.runId,
-    waitId: wait.id,
-    proposalHash: wait.proposalHash,
-    decisionId: 'v3-drift-approved',
-    choice: 'approved',
-  });
-  const archived = await runNativeCli(['archive', run.runId, '--project-root', root, '--json']);
-  expect(archived.exitCode).toBe(73);
-  expect((await runtime.inspect(run.runId)).state).toMatchObject({
-    phase: 'verify',
-    verification_result: 'pending',
-  });
-  expect(
-    await fs.stat(path.join(paths.specsDir, 'workflow', 'spec.md')).catch(() => null),
-  ).toBeNull();
-});
 
 it('uses the shared default transition handler for v3 acceptance and Archive preflight', async () => {
   const application = nativeApplication('3');

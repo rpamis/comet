@@ -25,11 +25,29 @@ import {
 import { resolveClassicRunDirectory } from '../../../domains/comet-classic/classic-runtime-paths.js';
 import { withClassicStateLock } from '../../../domains/comet-classic/classic-store.js';
 import { resolveWorkspaceRuntimeRoot } from '../../../domains/workflow-contract/workspace-runtime.js';
+import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
+import { classicProjectTargetExists } from '../../../domains/comet-classic/classic-protected-path.js';
 import { independentGitEnvironment } from '../../../platform/process/git-environment.js';
 
 vi.mock('node:child_process', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:child_process')>();
   return { ...original, execFileSync: vi.fn(original.execFileSync) };
+});
+
+it('reads an absent optional Runtime record without creating its root', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'classic-missing-runtime-read-'));
+  try {
+    const runtime = resolveWorkspaceRuntimeRootSync(root);
+    expect(
+      await classicProjectTargetExists(root, path.join(runtime, 'classic-delivery/absent.json'), {
+        label: 'Optional delivery authorization',
+        expected: 'file',
+      }),
+    ).toBe(false);
+    await expect(readdir(runtime)).rejects.toMatchObject({ code: 'ENOENT' });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 it('archives documents in a non-Git coordinator without claiming a child repository commit', async () => {

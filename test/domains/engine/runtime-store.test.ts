@@ -402,7 +402,7 @@ async function bundleStore(root: string): Promise<string> {
     format: 'esm',
     platform: 'node',
     banner: {
-      js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
+      js: "import { createRequire as __cometCreateRequire } from 'node:module'; const require = __cometCreateRequire(import.meta.url);",
     },
   });
   return outfile;

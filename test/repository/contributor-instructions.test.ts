@@ -13,9 +13,19 @@ describe('contributor instructions', () => {
     expect(content).toContain('用户明确要求不跑全量时，遵守该范围');
     expect(content).toContain('只有修正了明确原因后才重跑，不盲目重复');
     expect(content).toContain('不要求每个提交机械地运行全部命令');
-    expect(content).toContain(
-      '`app/`、`domains/`、`platform/`、`scripts/`、`test/`、`.github/`、`config/`',
-    );
+    const precommit = content.split('## 提交前检查')[1]?.split('## Commit 规范')[0] ?? '';
+    expect(precommit).not.toBe('');
+    for (const directory of [
+      'app',
+      'domains',
+      'platform',
+      'plugin',
+      'scripts',
+      'test',
+      '.github',
+      'config',
+    ])
+      expect(precommit).toContain('`' + directory + '/`');
   });
 
   it('imports the shared guide from CLAUDE.md instead of duplicating it', async () => {

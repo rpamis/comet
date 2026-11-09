@@ -26,7 +26,7 @@ export interface CreatorRunObservation {
 export function creatorSummary(run: WorkflowRun): {
     runId: string;
     revision: number;
-    status: "failed" | "running" | "cancelled" | "waiting" | "completed";
+    status: "running" | "failed" | "cancelled" | "waiting" | "completed";
     goal: unknown;
     actions: RuntimeAction[];
     waits: RuntimeWait[];
@@ -74,7 +74,7 @@ export function listCreatorRunRecords(projectRoot: string): Promise<CreatorRunOb
 export function listCreatorRuns(projectRoot: string): Promise<{
     runId: string;
     revision: number;
-    status: "failed" | "running" | "cancelled" | "waiting" | "completed";
+    status: "running" | "failed" | "cancelled" | "waiting" | "completed";
     goal: unknown;
     actions: RuntimeAction[];
     waits: RuntimeWait[];

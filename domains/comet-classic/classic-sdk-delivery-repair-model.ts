@@ -13,7 +13,11 @@ export interface ClassicDeliveryRepair {
   policyHash?: string;
   excludedOutputs?: Record<string, string>;
   excludedOutputPaths?: string[];
-  command: { argv: string[]; cwd: string; timeoutMs: number; reusable: false };
+  command?: { argv: string[]; cwd: string; timeoutMs: number; reusable: false };
+  reports?: {
+    checks: Array<{ name: string; result: string; note?: string }>;
+    checksReason?: string;
+  };
 }
 
 export function classicDeliveryRepairRecord(value: unknown): Record<string, unknown> {

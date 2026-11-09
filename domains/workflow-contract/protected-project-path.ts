@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 import {
   hashFileRaceSafe,
@@ -21,11 +22,27 @@ export interface ProtectedProjectPathInspection {
   kind: ProtectedProjectPathKind;
 }
 
+type ProjectReadSession = Awaited<ReturnType<typeof createProtectedProjectReadSession>>;
+const projectReadScopes = new AsyncLocalStorage<Map<string, Promise<ProjectReadSession>>>();
+
+/** 单次只读请求共用父目录观察，全部读取完成后再核对一次目录。 */
+export async function withProtectedProjectReadScope<T>(work: () => Promise<T>): Promise<T> {
+  if (projectReadScopes.getStore()) return work();
+  const sessions = new Map<string, Promise<ProjectReadSession>>();
+  return projectReadScopes.run(sessions, async () => {
+    const result = await work();
+    for (const pending of sessions.values())
+      await (await pending).finish({ allowDirectoryContentChanges: true });
+    return result;
+  });
+}
+
 /** 单次文件观察共用目录身份；叶子仍新鲜读取，返回结果前必须 finish。 */
 export async function createProtectedProjectReadSession(
   projectRoot: string,
   label: string,
   options: {
+    deferDirectoryChecks?: boolean;
     ignoredDirectoryEntries?: (
       directoryRef: string,
     ) => ((entry: import('node:fs').Dirent) => boolean) | undefined;
@@ -155,6 +172,8 @@ export async function createProtectedProjectReadSession(
         verify: async (_checkpoint, context) => {
           if (!isInside(realRoot, context.realPath))
             throw new Error(`${label} resolves outside the project root`);
+          // 只读请求在 finish 统一复核目录；文件描述符与 realpath 仍逐次核对。
+          if (options.deferDirectoryChecks) return;
           let cursor = root;
           const parents = [root];
           for (const segment of path
@@ -559,6 +578,21 @@ async function readProtectedProjectFileUncached(
   maxBytes: number,
   options: Omit<RaceSafeReadOptions, 'verify'> & { label: string },
 ): Promise<RaceSafeReadResult> {
+  const scope = !options.hooks && !options.bigint ? projectReadScopes.getStore() : undefined;
+  if (scope) {
+    const root = path.resolve(projectRoot);
+    let pending = scope.get(root);
+    if (!pending) {
+      pending = createProtectedProjectReadSession(root, options.label, {
+        deferDirectoryChecks: true,
+      }).catch((error) => {
+        scope.delete(root);
+        throw error;
+      });
+      scope.set(root, pending);
+    }
+    return (await pending).read(relativePath, maxBytes, options);
+  }
   const session = await createProtectedProjectReadSession(projectRoot, options.label);
   const result = await session.read(relativePath, maxBytes, options);
   await session.finish({ allowDirectoryContentChanges: true });

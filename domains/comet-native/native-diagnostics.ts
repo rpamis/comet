@@ -18,6 +18,10 @@ import {
   readNativeBaselineManifest,
 } from './native-snapshot.js';
 import { inspectPendingNativeTransition } from './native-transition-journal.js';
+import {
+  inspectNativeTrajectoryTail,
+  NativeTrajectoryRepairRequiredError,
+} from './native-trajectory-recovery.js';
 import type {
   NativeChangeArtifactPaths,
   NativeChangeState,
@@ -287,6 +291,7 @@ export async function inspectNativeStatus(
       error: (error as Error).message,
     };
   }
+  const trajectory = await inspectNativeTrajectoryTail(paths, name);
   return {
     name: state.name,
     artifacts: statusArtifactPaths(paths, state.name),
@@ -296,7 +301,10 @@ export async function inspectNativeStatus(
     verificationResult: state.verification_result,
     specChanges: state.spec_changes.length,
     selected,
-    nextCommand: 'comet native next ' + state.name + ' --summary <migration-summary>',
+    nextCommand:
+      trajectory.status === 'clean'
+        ? 'comet native next ' + state.name + ' --summary <migration-summary>'
+        : null,
     archiveReady: false,
     inspection: {
       freshness: 'stale',
@@ -321,6 +329,9 @@ export async function inspectNativeStatus(
     schema: state.schema,
     migrationRequired: true,
     minimumRuntimeVersion: state.minimum_runtime_version,
+    ...(trajectory.status === 'clean'
+      ? {}
+      : { error: new NativeTrajectoryRepairRequiredError(trajectory).message }),
   };
 }
 

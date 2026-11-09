@@ -1,0 +1,64 @@
+[
+  {
+    "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+    "reason": "Delivery inputs now expose paths, preserving first-commit inclusion and metadata exclusion.",
+    "old": ".toEqual({ 'source.js': 'a'.repeat(64) });",
+    "next": ".toEqual(['source.js']);"
+  },
+  {
+    "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+    "reason": "Retire only automatic byte drift subcase; scoped commit inclusion/omission and dirty Git rejection remain.",
+    "old": "    {\n      name: 'changes verified implementation',\n      files: ['source.js'],\n      accepted: false,\n      changed: true,\n    },",
+    "next": ""
+  },
+  {
+    "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+    "reason": "Recovery retains exact Action and archive destination without requiring retired proof artifacts.",
+    "old": "      completed.actions.find((entry) => entry.id === action.id)?.outcome?.artifacts,\n    ).toHaveLength(1);",
+    "next": "      completed.actions.find((entry) => entry.id === action.id)?.outcome?.output,\n    ).toMatchObject({ archiveDirectory: expect.stringContaining('/archive/') });"
+  },
+  {
+    "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+    "reason": "Retain copied unknown refusal with current actionable diagnostic.",
+    "old": ".rejects.toThrow('不要重放 Archive');",
+    "next": ".rejects.toThrow('原 Archive 准备记录缺失');"
+  },
+  {
+    "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+    "reason": "Retain no-original-receipt refusal with current diagnostic.",
+    "old": ".toContain('缺少原始执行清单');",
+    "next": ".toContain('原 Archive 执行收据缺失');"
+  },
+  {
+    "file": "test/domains/comet-classic/classic-cli-arguments.test.ts",
+    "reason": "Design now points at the formal proposal without derived byte-bound handoff.",
+    "old": "handoffContext: `openspec/changes/${name}/.comet/handoff/design-context.json`,",
+    "next": "handoffContext: `openspec/changes/${name}/proposal.md`,"
+  },
+  {
+    "file": "test/domains/comet-classic/classic-cli-arguments.test.ts",
+    "old": "    const context = JSON.parse(\n      await fs.readFile(path.join(changeDir, '.comet/handoff/design-context.json'), 'utf8'),\n    );\n    expect(context).toMatchObject({\n      change: name,\n      phase: 'design',\n      canonical_spec: 'openspec',\n      context_hash: (next.data as { configuration: { handoffHash: string } }).configuration\n        .handoffHash,\n      files: expect.arrayContaining([\n        expect.objectContaining({ path: `openspec/changes/${name}/tasks.md` }),\n      ]),\n    });\n    const markdown = await fs.readFile(\n      path.join(changeDir, '.comet/handoff/design-context.md'),\n      'utf8',\n    );\n    expect(markdown).toContain(`- Source: openspec/changes/${name}/tasks.md`);\n",
+    "reason": "Retire generated handoff JSON/digest and duplicated Markdown view assertions; exact proposal path and proposal identity/rejection remain."
+  },
+  {
+    "file": "test/domains/comet-classic/classic-cli-arguments.test.ts",
+    "old": "    const handoffFile = path.join(changeDir, '.comet', 'handoff', 'design-context.json');\n    const handoffJson = await fs.readFile(handoffFile, 'utf8');\n    await fs.writeFile(\n      handoffFile,\n      handoffJson.replace(\n        /\"context_hash\": \"[a-f0-9]{64}\"/u,\n        '\"context_hash\": \"' + '0'.repeat(64) + '\"',\n      ),\n    );\n    const tampered = await classicStateCommand(\n      ['complete-design', name, '--design-doc', designRef, '--approval-hash', approvalHash],\n      { ...options(), json: true },\n    );\n    expect(tampered.exitCode).not.toBe(0);\n    expect(tampered.stderr).toMatch(/handoff/i);\n    await fs.writeFile(handoffFile, handoffJson);\n\n",
+    "reason": "Remove retired handoff JSON tamper subcase while preserving rejected proposal revision and accepted current proposal."
+  },
+  {
+    "file": "test/domains/comet-classic/classic-cli-arguments.test.ts",
+    "old": "    const originalPlan = await fs.readFile(path.join(root, planRef), 'utf8');\n    await fs.writeFile(path.join(root, planRef), `${originalPlan}\\nA changed plan\\n`);\n    const drifted = await classicStateCommand(\n      ['continue-plan', name, '--proposal-hash', pauseHash],\n      { ...options(), json: true },\n    );\n    expect(drifted.exitCode).not.toBe(0);\n    expect(\n      (await classicStateCommand(['next', name], { ...options(), json: true })).data,\n    ).toMatchObject({ nextAction: { kind: 'decision', stepId: 'full.build.plan-ready' } });\n    await fs.writeFile(path.join(root, planRef), originalPlan);\n",
+    "reason": "Replace retired plan-byte drift with rejection of a different pause proposal."
+  },
+  {
+    "file": "test/domains/comet-classic/classic-cli-arguments.test.ts",
+    "old": "    const implemented = await classicStateCommand(['complete-build', name], {\n      ...options(),\n      json: true,\n    });\n    expect(implemented.exitCode, implemented.stderr).toBe(0);\n    expect(implemented.data).toMatchObject({\n      phase: 'build',\n      nextAction: { kind: 'action', stepId: 'full.build.check' },\n    });\n    const checked = await classicCheckCommand(\n      ['run', name, 'build', '--', process.execPath, '-e', 'console.log(\"sdk-build-ok\")'],\n      options(),\n    );\n",
+    "reason": "Execute check using platform, submit report to v2, retain plan/implementation once and current Run."
+  },
+  {
+    "file": "test/domains/comet-classic/classic-cli-arguments.test.ts",
+    "reason": "Retired flag and malformed input both reject before artifact lookup.",
+    "old": "    expect(result.stderr).toContain('Usage: comet handoff');",
+    "next": "    expect(result.stderr).toMatch(/Usage: comet handoff|handoff --hash-only 已移除/u);"
+  }
+]

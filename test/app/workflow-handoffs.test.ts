@@ -22,7 +22,7 @@ afterEach(async () => {
   }
 });
 
-it('keeps Verify across a reviewed edit through the built CLI and Router, reports progress, and refreshes byte-bound checks', async () => {
+it('reports live command progress before a Classic CLI check finishes', async () => {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-cli-handoffs-'));
   roots.push(base);
   const root = path.join(base, 'project'),
@@ -78,7 +78,17 @@ it('keeps Verify across a reviewed edit through the built CLI and Router, report
     expect(result.status, result.stderr || result.stdout).toBe(0);
     return { result, body: JSON.parse(result.stdout) };
   };
-  checked('state', 'init', 'demo', 'tweak', '--isolation', 'current', '--json');
+  checked(
+    'state',
+    'init',
+    'demo',
+    'tweak',
+    '--isolation',
+    'current',
+    '--runtime',
+    'compat',
+    '--json',
+  );
   checked('state', 'select', 'demo', '--json');
   const change = path.join(root, 'openspec/changes/demo');
   for (const [name, source] of Object.entries({
@@ -88,8 +98,7 @@ it('keeps Verify across a reviewed edit through the built CLI and Router, report
   }))
     await fs.writeFile(path.join(change, name), source);
   await fs.writeFile(path.join(root, 'worker.py'), 'value = 1\n');
-  const open = checked('guard', 'demo', 'open', '--json').body;
-  checked('guard', 'demo', 'open', '--apply', '--approval-hash', open.data.approvalHash, '--json');
+  checked('guard', 'demo', 'open', '--apply', '--json');
   const marker = path.join(base, 'executions');
   const argv = [
     node,
@@ -111,13 +120,10 @@ it('keeps Verify across a reviewed edit through the built CLI and Router, report
       node,
       [
         path.join(repository, 'bin/comet.js'),
-        'guard',
+        'check',
+        'run',
         'demo',
         'build',
-        '--apply',
-        '--local',
-        '--session',
-        'builder',
         '--json',
         '--',
         ...argv,
@@ -140,102 +146,7 @@ it('keeps Verify across a reviewed edit through the built CLI and Router, report
   expect(live.status, live.stderr || live.stdout).toBe(0);
   expect(live.progressBeforeFinish).toBe(true);
   const build = { body: JSON.parse(live.stdout), result: live };
-  expect(build.body.data.phase).toBe('verify');
+  expect(build.body.data.exitCode).toBe(0);
+  expect(await fs.readFile(marker, 'utf8')).toBe('checked\n');
   expect(build.result.stderr).toContain('[Comet]');
-  const request = {
-    cwd: root,
-    tool_name: 'Write',
-    tool_input: { file_path: path.join(root, 'worker.py'), content: '# Explanation.\nvalue = 1\n' },
-  };
-  const hook = () =>
-    runProcess(
-      node,
-      [
-        path.join(repository, 'assets/skills/comet/scripts/comet-hook-router.mjs'),
-        '--platform',
-        'claude',
-        '--project-root',
-        root,
-      ],
-      JSON.stringify(request),
-    );
-  const denied = hook();
-  expect(denied.status, denied.stderr).toBe(2);
-  expect(denied.stderr).toContain('edit-review show classic demo');
-  expect(denied.stdout).toBe('');
-  const file = path.join(base, 'request.json');
-  await fs.writeFile(file, JSON.stringify(request));
-  const wrong = cli(
-    'edit-review',
-    'claim',
-    'classic',
-    'demo',
-    '--project-root',
-    root,
-    '--session',
-    'builder',
-    '--file',
-    file,
-    '--json',
-  );
-  expect(wrong.status).toBe(1);
-  expect(JSON.parse(wrong.stdout).error).toContain('独立');
-  const claimed = checked(
-    'edit-review',
-    'claim',
-    'classic',
-    'demo',
-    '--project-root',
-    root,
-    '--session',
-    'reviewer',
-    '--file',
-    file,
-    '--json',
-  ).body;
-  expect(claimed.data.originalRequestRef).toBe(file);
-  const record = path.join(base, 'review.json');
-  await fs.writeFile(
-    record,
-    JSON.stringify({
-      ...claimed.data.recordTemplate,
-      decision: 'non-behavioral',
-      summary: 'Only the explanatory comment changes; worker output and acceptance are unchanged.',
-    }),
-  );
-  checked(
-    'edit-review',
-    'record',
-    'classic',
-    'demo',
-    '--project-root',
-    root,
-    '--file',
-    record,
-    '--json',
-  );
-  const allowed = hook();
-  expect(allowed.status, allowed.stderr).toBe(0);
-  if (allowed.stdout.trim())
-    expect(JSON.parse(allowed.stdout).hookSpecificOutput?.permissionDecision).not.toBe('deny');
-  await fs.writeFile(path.join(root, 'worker.py'), request.tool_input.content);
-  expect(checked('state', 'next', 'demo', '--json').body.data.phase).toBe('verify');
-  const report = 'docs/superpowers/reports/verify.md';
-  await fs.mkdir(path.dirname(path.join(root, report)), { recursive: true });
-  await fs.writeFile(path.join(root, report), '# Verification\nThe worker still returns one.\n');
-  const verified = checked(
-    'guard',
-    'demo',
-    'verify',
-    '--report',
-    report,
-    '--apply',
-    '--local',
-    '--json',
-    '--',
-    ...argv,
-  ).body;
-  expect(verified.data.phase).toBe('archive');
-  expect(verified.data.reused).toBe(false);
-  expect(await fs.readFile(marker, 'utf8')).toBe('checked\nchecked\n');
 });

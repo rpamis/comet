@@ -615,7 +615,10 @@ async function inspectActiveNativeChangesOwnedByWorkspace(
         workflows: [],
       });
       const run = await runtime.inspect(sdkOwner.runId);
-      if (run.workflow.id !== 'comet-native' || !['1', '2', '3'].includes(run.workflow.version)) {
+      if (
+        run.workflow.id !== 'comet-native' ||
+        !['1', '2', '3', '4'].includes(run.workflow.version)
+      ) {
         throw new Error(`Native SDK Run ${name} does not match its change ownership`);
       }
       const state = parseNativePortableState(run.state);

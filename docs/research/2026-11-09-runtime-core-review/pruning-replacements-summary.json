@@ -1,0 +1,49 @@
+{
+  "passed": 11,
+  "selected": [
+    {
+      "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+      "name": "continues the same Classic full Verify and Archive through the generated Runtime without content proof"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+      "name": "continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+      "name": "continues the same Classic tweak Verify and Archive through the generated Runtime without content proof"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+      "name": "completes Classic full from an Agent-reviewed design without metadata rules through generated"
+    },
+    {
+      "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+      "name": "continues Native Verify and Archive through the generated Runtime without content proof"
+    },
+    {
+      "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+      "name": "continues the original Native Run through a generated Runtime and parent directory alias"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+      "name": "delivers a tracked migration fence in .comet-state.lock that the archive moves with the change"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+      "name": "delivers a tracked migration fence in .comet-state-transaction.json that the archive moves with the change"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+      "name": "rejects an archive commit that drops a tracked migration fence in .comet-state.lock instead of moving it"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+      "name": "rejects an archive commit that drops a tracked migration fence in .comet-state-transaction.json instead of moving it"
+    },
+    {
+      "file": "test/app/workflow-content-proof-removal.test.ts",
+      "name": "rejects retired classic content-proof commands without creating workflow state"
+    }
+  ]
+}

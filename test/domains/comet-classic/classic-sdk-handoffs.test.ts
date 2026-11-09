@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse, stringify } from 'yaml';
 import {
   hashRuntimeValue,
@@ -207,14 +207,6 @@ describe('Classic SDK profile-aware handoffs', () => {
       expect(missing.exitCode).not.toBe(0);
       expect((await inspectClassicSdkRun(root, 'demo')).run).toEqual(original);
 
-      await fs.appendFile(
-        path.join(changeDir, 'design.md'),
-        'A clarified implementation detail.\n',
-      );
-      const stale = await cli(...apply);
-      expect(stale.exitCode).not.toBe(0);
-      expect(stale.stderr).toContain('changed after approval');
-      expect((await inspectClassicSdkRun(root, 'demo')).run).toEqual(original);
       const approved = await cli(...previewArgs);
       const opened = await cli(
         ...skillCommand(skill, 'guard <change-name> open --apply', approved.data.approvalHash),

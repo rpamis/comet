@@ -80,6 +80,26 @@ jobs:
           flags: unittests
           fail_ci_if_error: false
 
+  core-regression-report:
+    name: Badcase regressions (ubuntu-latest)
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: coverage
+          path: coverage
+      - name: Verify every Linux badcase in the same workflow's completed coverage report
+        run: pnpm test:core-regressions --verify-report coverage/vitest-results.json
+
   core-regressions:
     name: Badcase regressions (${{ matrix.os }}${{ matrix.shards > 1 && format(', shard {0}/{1}', matrix.shard, matrix.shards) || '' }})
     runs-on: ${{ matrix.os }}
@@ -88,9 +108,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            shard: 1
-            shards: 1
           - os: macos-latest
             shard: 1
             shards: 1
@@ -501,6 +518,7 @@ jobs:
       - workflow-lint
       - quality
       - core-regressions
+      - core-regression-report
       - node-compatibility
       - runtime-smoke
       - package-e2e

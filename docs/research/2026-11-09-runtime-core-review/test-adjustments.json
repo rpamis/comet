@@ -1,0 +1,65 @@
+{
+  "authorization": "User request in report:2026-11-09-runtime-core-commit-review explicitly permits correction/removal of outdated tests.",
+  "priorDecision": "docs/research/2026-11-08-agent-managed-workflow-content.zh.md",
+  "baseline": "2e7055cc",
+  "archive": "original-tests.json",
+  "adjustments": [
+    {
+      "kind": "feature-removed",
+      "file": "test/domains/comet-classic/classic-sdk-handoffs.test.ts",
+      "names": [
+        "Classic SDK profile-aware handoffs executes 'skills-zh' 'hotfix' Open approval and Build without redundant previews",
+        "Classic SDK profile-aware handoffs executes 'skills-zh' 'tweak' Open approval and Build without redundant previews",
+        "Classic SDK profile-aware handoffs executes 'skills' 'hotfix' Open approval and Build without redundant previews",
+        "Classic SDK profile-aware handoffs executes 'skills' 'tweak' Open approval and Build without redundant previews"
+      ],
+      "retired": "Appending explanatory prose to design.md automatically invalidates the existing Open approval.",
+      "retained": [
+        "No approval hash cannot advance",
+        "Original Run remains unchanged on rejected input",
+        "Actual proposal approval",
+        "Original Action and definition identity",
+        "Build failure and repair",
+        "Both Chinese and English hotfix/tweak Skill commands"
+      ],
+      "review": "Independent Spec review confirmed the removed eight-line block belongs to the authorized content-invalidation retirement and no active approval or execution assertion was removed.",
+      "execution": {
+        "report": "coverage/review-053/handoffs-final.json",
+        "passed": 20,
+        "failed": 0
+      }
+    },
+    {
+      "kind": "tests-adapted",
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "names": [
+        "Native transition recovery requires explicit doctor takeover before continuing stale transition locks"
+      ],
+      "retired": "PID-based dead-owner inference and automatic removal of another lock before explicit recovery.",
+      "retained": [
+        "Exact record recovery with stop confirmation",
+        "Original journal continuation",
+        "No repeated transition events"
+      ]
+    },
+    {
+      "kind": "feature-removed",
+      "file": "test/domains/comet-classic/classic-agent-cli-contract.test.ts",
+      "oldName": "Classic executable artifact and recovery contract retains broken or wrong-owner registered designs with structured repair details",
+      "newName": "Classic executable artifact and recovery contract keeps the registered design and state while the Agent judges legacy metadata text",
+      "retired": "Treating same-file comet_change frontmatter text as authoritative Runtime ownership.",
+      "retained": [
+        "Same registered design reference",
+        "No state-byte changes on check or recovery",
+        "Original document bytes",
+        "Physical path and Run ownership controls remain in their separate tests"
+      ],
+      "review": "Independent Spec review verified that only metadata text changes, not path, Run, change or workspace. Current and historical registries do not reference this file.",
+      "execution": {
+        "report": "coverage/review-053/agent-cli-contract-final-verified.json",
+        "passed": 6,
+        "failed": 0
+      }
+    }
+  ]
+}

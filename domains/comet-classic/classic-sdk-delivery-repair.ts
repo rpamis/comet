@@ -1,5 +1,16 @@
 import { execFileSync } from 'node:child_process';
-import type { WorkflowRun } from '../engine/runtime.js';
+import path from 'node:path';
+import { parseDocument } from 'yaml';
+import {
+  hashRuntimeValue,
+  portableRunCheckpointProjectionMatches,
+  type WorkflowRun,
+} from '../engine/runtime.js';
+import { readClassicProjectFile } from './classic-protected-path.js';
+import { resolveClassicStateFile } from './classic-state-file.js';
+import { hasClassicManagedRunMarker, parseClassicStateDocument } from './classic-state.js';
+import { readClassicSdkDeliveryCheckpoint } from './classic-sdk-delivery-checkpoint.js';
+import { assertClassicAgentCheckReports } from './classic-sdk-application.js';
 import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
 import { compileCheckPolicyPattern } from './classic-check-manifest.js';
 import { readCheckPolicy } from './classic-check-policy.js';
@@ -36,7 +47,15 @@ export async function assertClassicDeliveryRepairCurrent(
   if (!['ok', 'not-applicable'].includes(branch.status))
     throw new Error('Classic delivery repair requires its approved branch');
   await readClassicArchiveManifest(root, run, original.archive, original.archiveRef);
+  if (run.workflow.version === '2') {
+    if (!repair.reports || repair.command || repair.excludedOutputPaths?.length)
+      throw new Error(
+        'Classic v2 delivery repair requires platform reports and the approved paths',
+      );
+    return { ...original };
+  }
   const checked = record(original.check.outcome!.output);
+  if (!repair.command) throw new Error('Original Verify command is incomplete');
   if (
     JSON.stringify(checked.argv) !== JSON.stringify(repair.command.argv) ||
     checked.cwd !== repair.command.cwd ||
@@ -64,6 +83,7 @@ export async function assertClassicDeliveryRepairCurrent(
 export async function captureClassicDeliveryRepair(
   root: string,
   run: Readonly<WorkflowRun>,
+  reports?: ClassicDeliveryRepair['reports'],
 ): Promise<ClassicDeliveryRepair> {
   if (!canRepairClassicDelivery(run))
     throw new Error(
@@ -71,6 +91,20 @@ export async function captureClassicDeliveryRepair(
     );
   const original = originals(run),
     output = record(original.check.outcome!.output);
+  if (run.workflow.version === '2') {
+    if (!reports)
+      throw new Error('Classic v2 delivery repair requires --checks <checks-json-file>');
+    assertClassicAgentCheckReports(reports);
+    const repair: ClassicDeliveryRepair = {
+      checkpointHash: await classicDeliveryRepairCheckpointHash(root, run),
+      archiveActionId: original.archive.id,
+      checkActionId: original.check.id,
+      reports,
+    };
+    await assertClassicDeliveryRepairCurrent(root, run, repair, 'prepare');
+    return repair;
+  }
+  if (reports) throw new Error('Classic v1 delivery repair uses its original managed check');
   if (
     !Array.isArray(output.argv) ||
     typeof output.cwd !== 'string' ||
@@ -86,6 +120,7 @@ export async function captureClassicDeliveryRepair(
   const policy = await readCheckPolicy(root, command),
     matches = (policy.outputs ?? []).map(compileCheckPolicyPattern);
   const repair: ClassicDeliveryRepair = {
+    checkpointHash: await classicDeliveryRepairCheckpointHash(root, run),
     archiveActionId: original.archive.id,
     checkActionId: original.check.id,
     excludedOutputPaths: deliveryPaths(run).filter((ref) => matches.some((match) => match(ref))),
@@ -93,4 +128,30 @@ export async function captureClassicDeliveryRepair(
   };
   await assertClassicDeliveryRepairCurrent(root, run, repair, 'prepare');
   return repair;
+}
+
+/** Bind the original Run checkpoint, which remains immutable after Git delivery. */
+export async function classicDeliveryRepairCheckpointHash(
+  root: string,
+  run: Readonly<WorkflowRun>,
+) {
+  const original = originals(run);
+  const source = await readClassicProjectFile(
+    root,
+    await resolveClassicStateFile(path.join(root, original.archiveRef)),
+    { label: 'Classic archived delivery checkpoint', maxBytes: Number.MAX_SAFE_INTEGER },
+  );
+  const document = parseDocument(source, { uniqueKeys: true });
+  if (!hasClassicManagedRunMarker(source) || document.errors.length)
+    throw new Error('Classic archived checkpoint is invalid');
+  const data = record(document.toJS());
+  const checkpoint = data.run_checkpoint;
+  if (
+    hashRuntimeValue(parseClassicStateDocument(data).classic) !== hashRuntimeValue(run.state) ||
+    (!portableRunCheckpointProjectionMatches(checkpoint, run as WorkflowRun) &&
+      readClassicSdkDeliveryCheckpoint(checkpoint, run as WorkflowRun, { projection: true }) ===
+        null)
+  )
+    throw new Error('Classic archived checkpoint changed after the authoritative Run was read');
+  return hashRuntimeValue(checkpoint);
 }

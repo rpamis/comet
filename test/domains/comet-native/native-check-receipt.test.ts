@@ -480,24 +480,6 @@ describe('Native scoped check receipts', () => {
     });
   });
 
-  it('marks changed scoped facts stale and never trusts the file outside its projection', async () => {
-    const state = await prepareState('export const value = 2;\n');
-    await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 7;\n');
-
-    const { receipt } = await executeNativeCheckReceipt({ paths, state });
-
-    expect(receipt.status).toBe('failed');
-    expect(receipt.staleReasons).toEqual([
-      'implementation-before-does-not-match-scope',
-      'implementation-after-does-not-match-scope',
-    ]);
-    expect(receipt.issues).toContainEqual({
-      path: 'src/feature.ts',
-      line: 1,
-      kind: 'scope-mismatch',
-    });
-  });
-
   it('detects a same-size replacement between lstat and open before reading its content', async () => {
     const state = await prepareState('export const value = 2;\n');
     const target = path.join(projectRoot, 'src', 'feature.ts');

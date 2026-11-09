@@ -437,12 +437,11 @@ export async function resolveClassicLocalTarget(
           volume,
           path.relative(volume, runtime).replaceAll('\\', '/'),
           { label: 'Classic read-only Runtime root', expected: 'directory' },
-        ).then(() => runtime);
+        ).then((entry) => (entry.exists ? runtime : volume));
         prepared?.set(key, pending);
         void pending.catch(() => prepared?.delete(key));
       }
-      await pending;
-      return { root: runtime, target: absolute };
+      return { root: await pending, target: absolute };
     }
     const current = await resolveWorkspaceRuntimeRoot(projectRoot);
     if (current !== runtime)

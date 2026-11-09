@@ -34,7 +34,6 @@ import { runClassicCli } from '../../domains/comet-classic/classic-cli.js';
 import { prepareClassicWorkspace } from '../../domains/comet-classic/classic-workspace.js';
 import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
 import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
-import { classicOpenEvidenceReceipt } from '../../domains/comet-classic/classic-sdk-application.js';
 import * as taskContext from '../../app/commands/comet-task-context.js';
 
 const repositoryRoot = path.resolve('.');
@@ -1847,127 +1846,6 @@ describe('Runtime JSON command', () => {
       workflow: 'classic',
       change: 'classic-change',
       format: 'compat',
-    });
-  });
-
-  it('reopens Classic full Open when approved artifacts drift before SDK revalidation', async () => {
-    const changeDirRef = 'openspec/changes/classic-example';
-    const changeDir = path.join(projectRoot, ...changeDirRef.split('/'));
-    await fs.mkdir(changeDir, { recursive: true });
-    for (const name of ['proposal.md', 'design.md', 'tasks.md']) {
-      await fs.writeFile(path.join(changeDir, name), `# ${name}\nReady.\n`);
-    }
-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [ ] Build\n');
-    const projected = parseClassicStateDocument({
-      workflow: 'full',
-      phase: 'open',
-      language: 'en',
-      design_doc: null,
-      plan: null,
-      build_mode: null,
-      isolation: null,
-      verify_mode: null,
-      verify_result: 'pending',
-      verified_at: null,
-      archived: false,
-    });
-    if (!projected.classic) throw new Error('Classic fixture was not projected');
-    const builtIn = (request: unknown) =>
-      dispatch(request, { application: 'classic-full', workflow: [], rootDir: undefined });
-    const started = await builtIn({
-      operation: 'start',
-      runId: 'classic-example',
-      workflow: { id: 'comet-classic-full', version: '1' },
-      input: { change: 'classic-example', changeDir: changeDirRef },
-      initialState: projected.classic,
-    });
-    if (started.response.status !== 'succeeded') throw new Error('Classic start failed');
-    const action = started.response.data.actions[0];
-    const claimed = await builtIn({
-      operation: 'claim',
-      runId: 'classic-example',
-      actionId: action.id,
-      attempt: action.attempt,
-      inputHash: action.inputHash,
-      executorId: 'classic-host',
-      claimToken: 'classic-open-claim',
-    });
-    expect(claimed.response.status, JSON.stringify(claimed.response)).toBe('succeeded');
-    const opened = await builtIn({
-      operation: 'record-outcome',
-      runId: 'classic-example',
-      outcome: {
-        actionId: action.id,
-        attempt: action.attempt,
-        inputHash: action.inputHash,
-        claimToken: 'classic-open-claim',
-        outcomeId: 'classic-open-outcome',
-        status: 'succeeded',
-        output: { event: 'open-complete' },
-      },
-    });
-    if (opened.response.status !== 'succeeded') throw new Error('Classic Open failed');
-    const receipt = await classicOpenEvidenceReceipt(projectRoot, changeDirRef);
-    const accepted = await builtIn({
-      operation: 'record-evidence',
-      runId: 'classic-example',
-      evidenceId: opened.response.data.evidenceWaits!.at(-1)!.id,
-      kind: 'classic-open-artifacts',
-      ref: receipt.ref,
-      contentHash: receipt.contentHash,
-      submissionId: 'classic-open-evidence',
-      expectedRevision: opened.response.data.revision,
-    });
-    expect(accepted.response, JSON.stringify(accepted.response)).toMatchObject({
-      status: 'succeeded',
-      data: {
-        state: { phase: 'open' },
-        waits: [
-          {
-            stepId: 'full.open.confirm',
-            status: 'pending',
-            proposal: {
-              outputs: {
-                'full.open.evidence': { contentHash: receipt.contentHash },
-              },
-            },
-          },
-        ],
-      },
-    });
-    if (accepted.response.status !== 'succeeded') throw new Error('Open evidence failed');
-    const confirmation = accepted.response.data.waits.at(-1)!;
-    const approved = await builtIn({
-      operation: 'resolve-wait',
-      runId: 'classic-example',
-      waitId: confirmation.id,
-      proposalHash: confirmation.proposalHash,
-      decisionId: 'classic-open-approved',
-      choice: 'approved',
-    });
-    expect(approved.response).toMatchObject({
-      status: 'succeeded',
-      data: { state: { phase: 'open' } },
-    });
-    if (approved.response.status !== 'succeeded') throw new Error('Open approval failed');
-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '# tasks.md\nChanged after approval.\n');
-    const revalidation = approved.response.data.actions.at(-1)!;
-    const checked = await builtIn({
-      operation: 'execute',
-      runId: 'classic-example',
-      actionId: revalidation.id,
-      executorId: 'comet-classic-open-revalidate',
-    });
-    expect(checked.response).toMatchObject({
-      status: 'succeeded',
-      data: {
-        state: { phase: 'open' },
-        actions: [
-          expect.anything(),
-          { stepId: 'full.open.revalidate', status: 'succeeded' },
-          { stepId: 'full.open', status: 'pending' },
-        ],
-      },
     });
   });
 

@@ -74,7 +74,7 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'decide-archive <change-name> --proposal-hash <sha256> --choice <local|push|pr|reverify|later> (SDK)',
       'reopen-verification <change-name> --expected-revision <number> (SDK; before Archive execution)',
       'repair-archive <change-name> --expected-revision <number> (SDK; stopped failure with unchanged Archive inputs)',
-      'repair-delivery <change-name> --expected-revision <number> (SDK; recheck declared generated outputs after Archive)',
+      'repair-delivery <change-name> --expected-revision <number> [--checks <checks-json-file>] (SDK; repair delivery after Archive)',
       'decide-delivery-repair <change-name> --proposal-hash <hash> --choice <approved|later>',
       'complete-delivery <change-name> --commit <sha> [--pr-url <url>] (SDK)',
       'transition <change-name> <event>',
@@ -296,10 +296,10 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'Verify that the failed Archive left its original inputs and specifications unchanged and created no archive directory, then reopen Open on the same Run. Correct the inputs and obtain fresh approval and verification. Unknown execution results must be reconciled first.',
     ],
     'repair-delivery': [
-      'comet state repair-delivery <change-name> --expected-revision <number>',
+      'comet state repair-delivery <change-name> --expected-revision <number> [--checks <checks-json-file>]',
       '归档已完成、交付尚未完成时，在同一 SDK Run 补充检查输出声明并重新检查。保留原归档、业务批准和执行历史，不重放 OpenSpec。',
-      '在 .comet/check-policy.json 为原 Verify 命令声明 outputs，保持完整输入范围；不支持通过 files 缩小范围。仅允许排除原批准基线未追踪的生成物，原实现和归档内容必须保持一致。',
-      '先核对并移除这些临时生成物。Runtime 必须证明原检查实际重新生成了它们，才会创建新的交付确认；不会自动删除文件、提交或推送。',
+      'v2：由 Agent 平台完成必要检查，通过 --checks 提交与 Build/Verify 相同格式的报告；保留原批准的路径范围，Runtime 不重跑命令。',
+      '旧 v1：在 .comet/check-policy.json 为原 Verify 命令声明 outputs，只排除原批准基线未追踪的生成物。移除这些生成物后沿原命令检查，保持原实现和归档。',
       '随后沿 state next 的原检查请求推进，展示新的交付范围，并取得当前 proposalHash 的明确批准。旧批准不能直接完成本次修复后的交付。',
     ],
     'decide-delivery-repair': [

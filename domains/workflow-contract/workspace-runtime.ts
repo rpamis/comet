@@ -20,7 +20,11 @@ import {
   readFileRaceSafe,
   RaceSafeReadError,
 } from '../../platform/fs/race-safe-read.js';
-import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
+import {
+  diagnoseRecoverableFileLock,
+  repairRecoverableFileLock,
+  withRecoverableFileLock,
+} from '../../platform/fs/recoverable-file-lock.js';
 import {
   resolveWorkspaceRuntimeLocation,
   resolveWorkspaceRuntimeRootSync,
@@ -760,11 +764,25 @@ async function readMigrationJournal(
 }
 
 const migrationLocks = new AsyncLocalStorage<ReadonlySet<string>>();
-async function withMigrationLock<T>(projectRoot: string, work: () => Promise<T>): Promise<T> {
+async function withMigrationLock<T>(
+  projectRoot: string,
+  work: () => Promise<T>,
+  options: { confirmedOwnerStopped?: boolean } = {},
+): Promise<T> {
   const location = resolveWorkspaceRuntimeLocation(projectRoot);
   const file = path.join(location.workspaceRoot, '.runtime-migration-recovery.lock');
   if (migrationLocks.getStore()?.has(file)) return work();
   await ensureAbsoluteDirectory(location.workspaceRoot);
+  if (options.confirmedOwnerStopped) {
+    const record = await diagnoseRecoverableFileLock(file);
+    if (record.token && ['unknown', 'malformed'].includes(record.status)) {
+      const repaired = await repairRecoverableFileLock(file, record.token, options);
+      if (repaired !== 'removed' && repaired !== 'missing')
+        throw new Error(
+          'Runtime migration recovery lock is still held or changed; inspect it again',
+        );
+    }
+  }
   return withRecoverableFileLock(file, () => migrationLocks.run(new Set([file]), work), {
     timeoutMs: 5_000,
   });
@@ -957,7 +975,11 @@ export function repairWorkspaceRuntimeMigration(
   target: string,
   options: WorkspaceRuntimeMigrationOptions,
 ): Promise<boolean> {
-  return withMigrationLock(options.projectRoot, () => repairMigration(source, target, options));
+  return withMigrationLock(
+    options.projectRoot,
+    () => repairMigration(source, target, options),
+    options,
+  );
 }
 
 async function repairMigration(
@@ -1358,8 +1380,10 @@ function coordinatedMigration(
   const key = `${canonicalSource}\0${path.resolve(target)}`;
   const existing = inFlight.get(key);
   if (existing) return existing;
-  const pending = withMigrationLock(options.projectRoot, () =>
-    migrate(source, target, options, directoryOnly),
+  const pending = withMigrationLock(
+    options.projectRoot,
+    () => migrate(source, target, options, directoryOnly),
+    options,
   ).finally(() => {
     if (inFlight.get(key) === pending) inFlight.delete(key);
   });

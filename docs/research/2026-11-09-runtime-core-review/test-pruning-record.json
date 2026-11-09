@@ -1,0 +1,670 @@
+{
+  "source": "report:2026-11-09-test-pruning",
+  "authorization": "User requests removing unnecessary tests to reduce CI cost; retain current behavior and safety coverage.",
+  "base": "2e7055cc667ea9a9f17c101d500ab92caf022fe4",
+  "files": [
+    {
+      "file": "test/domains/comet-native/native-document-constraints.test.ts",
+      "removed": [
+        {
+          "start": 1763,
+          "end": 2254,
+          "name": "requires every brief section to contain real content at the strict boundary",
+          "source": "\n\n  it('requires every brief section to contain real content at the strict boundary', async () => {\n    await fs.writeFile(\n      path.join(root, 'brief.md'),\n      completeBrief.replace('# Decisions\\nNone.', '# Decisions\\n'),\n    );\n\n    await expect(\n      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),\n    ).resolves.toMatchObject({\n      valid: false,\n      findings: [expect.objectContaining({ code: 'brief-section-empty', path: 'brief.md' })],\n    });\n  });"
+        },
+        {
+          "start": 2254,
+          "end": 3466,
+          "name": "accepts explicit no-item statements but rejects template-only content",
+          "source": "\n\n  it('accepts explicit no-item statements but rejects template-only content', async () => {\n    await fs.writeFile(\n      path.join(root, 'brief.md'),\n      completeBrief.replace(\n        '# Constraints and invariants\\nPreserve existing compatibility.',\n        '# Constraints and invariants\\nTODO: fill this in.',\n      ),\n    );\n\n    await expect(\n      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),\n    ).resolves.toMatchObject({\n      valid: false,\n      findings: [expect.objectContaining({ code: 'brief-section-placeholder' })],\n    });\n\n    await fs.writeFile(\n      path.join(root, 'brief.md'),\n      completeBrief.replace('# Outcome\\nShip the documented behavior.', '# Outcome\\n- None.'),\n    );\n    await expect(\n      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),\n    ).resolves.toMatchObject({\n      valid: false,\n      findings: [expect.objectContaining({ code: 'brief-section-empty' })],\n    });\n\n    await fs.writeFile(path.join(root, 'brief.md'), completeBrief);\n    await expect(\n      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),\n    ).resolves.toEqual({\n      valid: true,\n      findings: [],\n    });\n  });"
+        },
+        {
+          "start": 3466,
+          "end": 4301,
+          "name": "requires the directory structure section under Scope at the strict boundary",
+          "source": "\n\n  it('requires the directory structure section under Scope at the strict boundary', async () => {\n    await fs.writeFile(\n      path.join(root, 'brief.md'),\n      completeBrief.replace(\n        '## Directory structure\\n### Created\\nNone.\\n### Modified\\n- The behavior module.\\n### Deleted\\nNone.\\n### Not created\\nNone.\\n',\n        '',\n      ),\n    );\n    await expect(\n      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),\n    ).resolves.toMatchObject({\n      valid: false,\n      findings: [expect.objectContaining({ code: 'brief-structure-missing' })],\n    });\n\n    await fs.writeFile(path.join(root, 'brief.md'), completeBrief);\n    await expect(\n      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),\n    ).resolves.toEqual({\n      valid: true,\n      findings: [],\n    });\n  });"
+        },
+        {
+          "start": 4301,
+          "end": 5137,
+          "name": "accepts only the populated %s / %s category",
+          "source": "\n\n  it.each([\n    ['Directory structure', 'Modified', '- config/defaults.yaml — Adjust the timeout.'],\n    ['目录结构', '修改', '- config/defaults.yaml — 调整默认超时时间。'],\n    ['Directory structure', 'Created', '```text\\nsrc/\\n└─ report.ts — Export reports.\\n```'],\n    ['目录结构', '新建', '```text\\nsrc/\\n└─ report.ts — 导出报告。\\n```'],\n    ['目录结构', '明确不建', '- 独立存储层 — 现有接口已满足需求。'],\n  ])('accepts only the populated %s / %s category', async (section, category, content) => {\n    await fs.writeFile(\n      path.join(root, 'brief.md'),\n      completeBrief.replace(\n        /## Directory structure\\n[\\s\\S]*?(?=# Non-goals)/u,\n        `## ${section}\\n### ${category}\\n${content}\\n`,\n      ),\n    );\n\n    await expect(\n      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),\n    ).resolves.toEqual({ valid: true, findings: [] });\n  });"
+        },
+        {
+          "start": 5137,
+          "end": 6157,
+          "name": "rejects missing or unfilled structure categories: %s",
+          "source": "\n\n  it.each([\n    '',\n    '### Other\\n- src/report.ts — Not a recognized category.\\n',\n    '<!-- ### Modified\\n- src/report.ts — Commented example. -->\\n',\n    '```text\\n### Modified\\n- src/report.ts — Fenced example.\\n```\\n',\n    '### Modified\\n',\n    '### Modified\\n<!-- Fill this later. -->\\n',\n    '### Modified\\nTODO: fill this in.\\n',\n    '### Modified\\n- src/report.ts — Export reports.\\n### Deleted\\n',\n  ])('rejects missing or unfilled structure categories: %s', async (structure) => {\n    await fs.writeFile(\n      path.join(root, 'brief.md'),\n      completeBrief.replace(\n        /## Directory structure\\n[\\s\\S]*?(?=# Non-goals)/u,\n        `## Directory structure\\n${structure}`,\n      ),\n    );\n\n    await expect(\n      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),\n    ).resolves.toMatchObject({\n      valid: false,\n      findings: expect.arrayContaining([\n        expect.objectContaining({ code: 'brief-structure-subsection-missing', path: 'brief.md' }),\n      ]),\n    });\n  });"
+        },
+        {
+          "start": 6157,
+          "end": 6744,
+          "name": "accepts Chinese directory structure headings and fenced tree content",
+          "source": "\n\n  it('accepts Chinese directory structure headings and fenced tree content', async () => {\n    const zhBrief = `# 目标\n交付文档描述的行为。\n# 范围\n仅请求的行为。\n## 目录结构\n### 新建\n\\`\\`\\`\nsrc/\n  ├─ export/ — 组织导出流程\n  └─ reporting/ — 提供导出入口\n\\`\\`\\`\n### 修改\n无\n### 删除\n无\n### 明确不建\n- 独立的数据访问层 — 现有接口已满足需求\n# 非目标\n无\n# 验收示例\n- 行为可用。\n# 约束与不变量\n保持既有兼容性。\n# 决策\n无\n# 待解决问题\n无\n# 验证预期\n运行相关检查。\n`;\n    await fs.writeFile(path.join(root, 'brief.md'), zhBrief);\n    await expect(\n      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),\n    ).resolves.toEqual({\n      valid: true,\n      findings: [],\n    });\n  });"
+        },
+        {
+          "start": 6744,
+          "end": 7760,
+          "name": "ignores fenced examples even when fence markers mix backticks and tildes",
+          "source": "\n\n  it('ignores fenced examples even when fence markers mix backticks and tildes', async () => {\n    const mixedFenceBrief = `# Outcome\nShip the documented behavior.\n# Scope\nThe requested behavior only.\n\nExample of the expected format:\n\n\\`\\`\\`\n## Directory structure\n### Not created\n- example row only\n~~~\n\\`\\`\\`\n\n## Directory structure\n### Created\nNone.\n### Modified\n\\`\\`\\`\nsrc/module/\n  ├─ index.ts — example listing with a tilde line below\n~~~\n\\`\\`\\`\n### Deleted\nNone.\n### Not created\nNone.\n# Non-goals\nNone.\n# Acceptance examples\n- The behavior works.\n# Constraints and invariants\nPreserve existing compatibility.\n# Decisions\nNo product behavior change: documentation-only wording.\n# Open questions\nNone.\n# Verification expectations\nRun the focused Native checks.\n`;\n    await fs.writeFile(path.join(root, 'brief.md'), mixedFenceBrief);\n    await expect(\n      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),\n    ).resolves.toEqual({\n      valid: true,\n      findings: [],\n    });\n  });"
+        },
+        {
+          "start": 7760,
+          "end": 8484,
+          "name": "ignores headings inside %s directory trees",
+          "source": "\n\n  it.each(['```', '~~~', '````'])('ignores headings inside %s directory trees', async (marker) => {\n    const tree = [\n      `${marker}text`,\n      '# src/module/',\n      '## Directory structure',\n      '### Deleted',\n      '  helper — supporting behavior',\n      marker === '````' ? '```' : marker === '```' ? '~~~' : '```',\n      '# Scope',\n      '  another helper — supporting behavior',\n      marker,\n    ].join('\\n');\n    await fs.writeFile(\n      path.join(root, 'brief.md'),\n      completeBrief.replace('### Created\\nNone.', `### Created\\n${tree}`),\n    );\n    await expect(\n      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),\n    ).resolves.toEqual({ valid: true, findings: [] });\n  });"
+        },
+        {
+          "start": 8484,
+          "end": 10141,
+          "name": "applies the directory structure requirement only from constraint version 3",
+          "source": "\n\n  it('applies the directory structure requirement only from constraint version 3', async () => {\n    const projectRoot = path.join(root, 'legacy-version-project');\n    await fs.mkdir(path.join(projectRoot, '.git'), { recursive: true });\n    await writeProjectConfig(projectRoot, defaultProjectConfig('docs', 'en'));\n    const paths = await nativeProjectPaths(projectRoot, 'docs');\n    await ensureNativeDirectories(paths);\n    const state = await createNativePortableChange({\n      paths,\n      name: 'legacy-version-change',\n      language: 'en',\n    });\n    const changeDir = nativePortableChangeDir(paths, state.name);\n    await fs.writeFile(\n      path.join(changeDir, 'brief.md'),\n      completeBrief\n        .replace(\n          '## Directory structure\\n### Created\\nNone.\\n### Modified\\n- The behavior module.\\n### Deleted\\nNone.\\n### Not created\\nNone.\\n',\n          '',\n        )\n        .replace(\n          '# Decisions\\nNone.',\n          '# Decisions\\nNo product behavior change: documentation-only wording.',\n        ),\n    );\n\n    for (const version of [1, 2] as const) {\n      await expect(\n        validateNativePortableDocuments({\n          paths,\n          state: { ...state, document_constraints_version: version },\n          specChanges: [],\n        }),\n      ).resolves.toMatchObject({ valid: true, findings: [] });\n    }\n    await expect(\n      validateNativePortableDocuments({\n        paths,\n        state: { ...state, document_constraints_version: 3 },\n        specChanges: [],\n      }),\n    ).resolves.toMatchObject({\n      valid: false,\n      findings: [expect.objectContaining({ code: 'brief-structure-missing' })],\n    });\n  });"
+        },
+        {
+          "start": 11871,
+          "end": 13511,
+          "name": "rejects placeholder-only product behavior exemptions at the Shape boundary",
+          "source": "\n\n  it('rejects placeholder-only product behavior exemptions at the Shape boundary', async () => {\n    const projectRoot = path.join(root, 'placeholder-exemption-project');\n    await fs.mkdir(path.join(projectRoot, '.git'), { recursive: true });\n    await writeProjectConfig(projectRoot, defaultProjectConfig('docs', 'en'));\n    const paths = await nativeProjectPaths(projectRoot, 'docs');\n    await ensureNativeDirectories(paths);\n    await createNativePortableChange({ paths, name: 'placeholder-exemption', language: 'en' });\n    const changeDir = nativePortableChangeDir(paths, 'placeholder-exemption');\n    for (const reason of [\n      'No product behavior change: TODO',\n      'No product behavior change: TODO: explain later',\n      'No product behavior change: 待补充',\n      'No product behavior change: 不涉及产品行为',\n      '<!-- No product behavior change: explain reason here -->',\n      'No product behavior change: {{reason}}',\n    ]) {\n      await fs.writeFile(\n        path.join(changeDir, 'brief.md'),\n        completeBrief.replace('# Decisions\\nNone.', `# Decisions\\n${reason}`),\n      );\n\n      await expect(\n        nativeNextCommand(['placeholder-exemption', '--summary', 'Prepare Shape'], projectRoot),\n      ).rejects.toThrow(/spec-exemption-missing/u);\n    }\n\n    await fs.writeFile(\n      path.join(changeDir, 'brief.md'),\n      completeBrief.replace(\n        '# Decisions\\nNone.',\n        '# Decisions\\nNo product behavior change: 仅更新说明文档。',\n      ),\n    );\n    await expect(\n      nativeNextCommand(['placeholder-exemption', '--summary', 'Prepare Shape'], projectRoot),\n    ).resolves.toMatchObject({ exitCode: 0 });\n  });"
+        },
+        {
+          "start": 13511,
+          "end": 15054,
+          "name": "blocks the public Shape transition and succeeds after the documented repair",
+          "source": "\n\n  it('blocks the public Shape transition and succeeds after the documented repair', async () => {\n    const projectRoot = path.join(root, 'project');\n    await fs.mkdir(path.join(projectRoot, '.git'), { recursive: true });\n    await writeProjectConfig(projectRoot, defaultProjectConfig('docs', 'en'));\n    const paths = await nativeProjectPaths(projectRoot, 'docs');\n    await ensureNativeDirectories(paths);\n    await createNativePortableChange({ paths, name: 'doc-change', language: 'en' });\n    const changeDir = nativePortableChangeDir(paths, 'doc-change');\n    await fs.writeFile(\n      path.join(changeDir, 'brief.md'),\n      completeBrief.replace('# Decisions\\nNone.', '# Decisions\\n'),\n    );\n\n    await expect(\n      nativeNextCommand(['doc-change', '--summary', 'Prepare Shape'], projectRoot),\n    ).rejects.toThrow(/brief-section-empty[\\s\\S]*rerun the latest continuation command/u);\n\n    await fs.writeFile(\n      path.join(changeDir, 'brief.md'),\n      completeBrief.replace(\n        '# Decisions\\nNone.',\n        '# Decisions\\nNo product behavior change: documentation-only wording.',\n      ),\n    );\n    const prepared = await nativeNextCommand(\n      ['doc-change', '--summary', 'Prepare Shape'],\n      projectRoot,\n    );\n    expect(prepared.exitCode).toBe(0);\n    expect(prepared.data as { state: { status: string } }).toMatchObject({\n      state: { status: 'await-user' },\n    });\n    await expect(readNativePortableChange(paths, 'doc-change')).resolves.toMatchObject({\n      document_constraints_version: 3,\n    });\n  });"
+        }
+      ],
+      "reason": "Machine-enforced brief sections, placeholder semantics and directory templates were explicitly retired. Their now no-op positive variants do not protect current behavior.",
+      "retained": "Five registered Issue516 target Spec identity/path cases remain; explicit blocking and nonempty/path safety remain in native-artifacts and native-agent-content-judgment.",
+      "baselineSource": "2e7055cc667ea9a9f17c101d500ab92caf022fe4:test/domains/comet-native/native-document-constraints.test.ts"
+    },
+    {
+      "file": "test/domains/comet-native/native-check-log-digest.test.ts",
+      "original": "import { createHash } from 'node:crypto';\nimport { promises as fs } from 'node:fs';\nimport os from 'node:os';\nimport path from 'node:path';\nimport { afterEach, describe, expect, it, vi } from 'vitest';\n\nimport { executeNativeCheck } from '../../../domains/comet-native/native-check-executor.js';\n\nconst roots: string[] = [];\nafterEach(async () => {\n  vi.restoreAllMocks();\n  await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));\n});\n\ndescribe('Native streamed check log digests', () => {\n  it.each(['mixed', 'empty', 'spawn-error'] as const)(\n    'hashes the actual %s output bytes without reading the log back',\n    async (kind) => {\n      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-check-log-digest-'));\n      roots.push(root);\n      const runtimeDir = path.join(root, '.comet/runtime/checks');\n      const reads = vi.spyOn(fs, 'readFile');\n      const result = await executeNativeCheck({\n        projectRoot: root,\n        runtimeDir,\n        operationId: 'digest',\n        plan: {\n          id: kind,\n          name: kind,\n          executable:\n            kind === 'spawn-error' ? path.join(root, 'missing-executable') : process.execPath,\n          argv:\n            kind === 'mixed'\n              ? [\n                  '-e',\n                  'for(let i=0;i<64;i++){process.stdout.write(Buffer.alloc(8192,i));process.stderr.write(Buffer.alloc(4096,255-i));}',\n                ]\n              : ['-e', ''],\n          cwdRef: '.',\n          timeoutMs: 10_000,\n          repeatable: true,\n        },\n      });\n      const logFile = path.join(runtimeDir, result.logRef);\n      expect(reads.mock.calls.filter(([file]) => String(file) === logFile)).toHaveLength(0);\n      const bytes = await fs.readFile(logFile);\n      expect(result.logSha256).toBe(createHash('sha256').update(bytes).digest('hex'));\n      expect(result.status).toBe(kind === 'spawn-error' ? 'interrupted' : 'passed');\n      if (kind === 'mixed') expect(bytes.byteLength).toBe(64 * (8192 + 4096));\n      if (kind === 'spawn-error') expect(bytes.toString('utf8')).toContain('failed to start check');\n    },\n  );\n});\n",
+      "removeFile": true,
+      "reason": "Log digest production field was retired; no current consumer. Output capture/spawn failure remain covered by native-check-executor and failure result retained by native-agent-content-judgment.",
+      "baselineSource": "2e7055cc667ea9a9f17c101d500ab92caf022fe4:test/domains/comet-native/native-check-log-digest.test.ts"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "names": [
+        "rejects an incomplete formal brief before proposing Shape confirmation",
+        "retains the v2 document contract for a pending approval but upgrades a fresh proposal"
+      ],
+      "reason": "Fixed brief completeness/structure semantics were retired. Current free-form documents, explicit approval, missing/nonempty paths remain in native-agent-document-judgment and this SDK suite.",
+      "removed": [
+        {
+          "start": 162041,
+          "end": 162977,
+          "name": "retains the v2 document contract for a pending approval but upgrades a fresh proposal",
+          "source": "\n\n  it('retains the v2 document contract for a pending approval but upgrades a fresh proposal', async () => {\n    const { paths, changeDir, initialState } = await fixture();\n    const brief = path.join(changeDir, 'brief.md');\n    await fs.writeFile(\n      brief,\n      (await fs.readFile(brief, 'utf8')).replace(\n        /## Directory structure[\\s\\S]*?(?=# Non-goals)/u,\n        '',\n      ),\n    );\n    const legacyState = { ...initialState, document_constraints_version: 2 as const };\n    const pending = prepareNativePortableShapeConfirmation({\n      state: legacyState,\n      acceptance: [{ id: 'A1', source: 'brief.md', text: 'The selected workflow resumes.' }],\n    });\n    await expect(collectProposal(paths, pending)).resolves.toMatchObject({\n      acceptance: [{ id: 'A1', text: 'The selected workflow resumes.' }],\n    });\n    await expect(collectProposal(paths, legacyState)).rejects.toThrow(/brief-structure-missing/u);\n  });"
+        },
+        {
+          "start": 161609,
+          "end": 162041,
+          "name": "rejects an incomplete formal brief before proposing Shape confirmation",
+          "source": "\n\n  it('rejects an incomplete formal brief before proposing Shape confirmation', async () => {\n    const { paths, changeDir, initialState } = await fixture();\n    await fs.writeFile(\n      path.join(changeDir, 'brief.md'),\n      '# Scope\\nThe selected workflow.\\n# Acceptance examples\\n- The selected workflow resumes.\\n',\n    );\n    await expect(collectProposal(paths, initialState)).rejects.toThrow(/brief-section-missing/);\n  });"
+        }
+      ],
+      "baselineSource": "2e7055cc667ea9a9f17c101d500ab92caf022fe4:test/domains/comet-native/native-sdk-application.test.ts"
+    },
+    {
+      "file": "test/domains/comet-native/native-artifacts.test.ts",
+      "names": [
+        "ignores %s headings in verification examples",
+        "does not use fenced examples to satisfy required verification sections",
+        "requires every verification section to be non-empty",
+        "bounds brief and verification reads before Markdown parsing"
+      ],
+      "reason": "Verification Markdown sections and implicit fixed byte limits were retired. Nonempty reports/path checks and explicit bounded file-reader tests remain.",
+      "removed": [
+        {
+          "start": 6718,
+          "end": 7505,
+          "name": "bounds brief and verification reads before Markdown parsing",
+          "source": "\n\n  it('bounds brief and verification reads before Markdown parsing', async () => {\n    await fs.writeFile(\n      path.join(changeDir, 'brief.md'),\n      'x'.repeat(NATIVE_ARTIFACT_VALIDATION_LIMITS.maxFileBytes + 1),\n    );\n    await fs.writeFile(\n      path.join(changeDir, 'verification.md'),\n      'x'.repeat(NATIVE_ARTIFACT_VALIDATION_LIMITS.maxFileBytes + 1),\n    );\n\n    expect(await validateNativeBrief(changeDir, 'brief.md')).toMatchObject({\n      valid: false,\n      findings: [expect.objectContaining({ message: expect.stringContaining('exceeds') })],\n    });\n    expect(await validateNativeVerification(changeDir, 'verification.md')).toMatchObject({\n      valid: false,\n      findings: [expect.objectContaining({ message: expect.stringContaining('exceeds') })],\n    });\n  });"
+        },
+        {
+          "start": 6208,
+          "end": 6718,
+          "name": "requires every verification section to be non-empty",
+          "source": "\n\n  it('requires every verification section to be non-empty', async () => {\n    await fs.writeFile(path.join(changeDir, 'verification.md'), verification);\n    expect(await validateNativeVerification(changeDir, 'verification.md')).toEqual({\n      valid: true,\n      findings: [],\n    });\n\n    await fs.writeFile(\n      path.join(changeDir, 'verification.md'),\n      verification.replace('Pass.\\n', ''),\n    );\n    expect((await validateNativeVerification(changeDir, 'verification.md')).valid).toBe(false);\n  });"
+        },
+        {
+          "start": 5699,
+          "end": 6208,
+          "name": "does not use fenced examples to satisfy required verification sections",
+          "source": "\n\n  it('does not use fenced examples to satisfy required verification sections', async () => {\n    await fs.writeFile(\n      path.join(changeDir, 'verification.md'),\n      '# Acceptance evidence\\nEvidence example:\\n```text\\n' + verification + '```\\n',\n    );\n    expect(await validateNativeVerification(changeDir, 'verification.md')).toMatchObject({\n      valid: false,\n      findings: expect.arrayContaining([\n        expect.objectContaining({ code: 'verification-section-missing' }),\n      ]),\n    });\n  });"
+        },
+        {
+          "start": 5219,
+          "end": 5699,
+          "name": "ignores %s headings in verification examples",
+          "source": "\n\n  it.each(['```', '~~~'])('ignores %s headings in verification examples', async (marker) => {\n    await fs.writeFile(\n      path.join(changeDir, 'verification.md'),\n      verification.replace(\n        'Auth test covers login.',\n        [marker, '# Conclusion', 'Example only.', marker, 'Auth test covers login.'].join('\\n'),\n      ),\n    );\n    expect(await validateNativeVerification(changeDir, 'verification.md')).toEqual({\n      valid: true,\n      findings: [],\n    });\n  });"
+        }
+      ],
+      "baselineSource": "2e7055cc667ea9a9f17c101d500ab92caf022fe4:test/domains/comet-native/native-artifacts.test.ts"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+      "reason": "Machine content invalidation was explicitly retired; approved path/branch/Run/actual Git checks and current platform-report cases remain. Independently reviewed by Spec.",
+      "removed": [
+        {
+          "start": 34792,
+          "end": 35598,
+          "name": "rejects unapproved archived requirements even when a later commit restores the produced bytes",
+          "source": "\n\nit('rejects unapproved archived requirements even when a later commit restores the produced bytes', async () => {\n  const f = await hotfix();\n  f.commitImplementation();\n  f.commitArchive();\n  const ref = `${f.archiveRef}/proposal.md`;\n  await f.put(ref, '# Unapproved requirement\\n');\n  f.git('add', '--', ref);\n  f.git('commit', '-m', 'unapproved archive requirement');\n  const changed = f.git('rev-parse', 'HEAD');\n  f.git('revert', '--no-edit', changed);\n  const before = (await f.inspect()).run;\n  const rejected = await f.invoke(\n    'state',\n    'complete-delivery',\n    'example',\n    '--commit',\n    f.git('rev-parse', 'HEAD'),\n  );\n  expect(rejected.exitCode).not.toBe(0);\n  expect(rejected.response.stderr).toContain(`${changed}:${ref}`);\n  expect((await f.inspect()).run).toEqual(before);\n});"
+        },
+        {
+          "start": 31972,
+          "end": 32728,
+          "name": "checks the archived proposal through a freshly bundled public runtime",
+          "source": "\n\nit('checks the archived proposal through a freshly bundled public runtime', async () => {\n  const f = await hotfix();\n  const runtime = await publicStateRuntime(f.root);\n  await f.put(`${f.archiveRef}/proposal.md`, '# Unapproved replacement\\n');\n  f.commitImplementation();\n  const commit = f.commitArchive();\n  const result = spawnSync(\n    process.execPath,\n    [runtime, 'complete-delivery', 'example', '--commit', commit, '--json'],\n    { cwd: f.projectRoot, encoding: 'utf8' },\n  );\n  expect(result.stdout, result.stderr || String(result.error)).not.toBe('');\n  expect(result.status).not.toBe(0);\n  expect(JSON.parse(result.stdout).stderr).toContain(`${f.archiveRef}/proposal.md`);\n  expect((await f.inspect()).run.status).not.toBe('completed');\n});"
+        }
+      ],
+      "baselineSource": "2e7055cc667ea9a9f17c101d500ab92caf022fe4:test/domains/comet-classic/classic-sdk-delivery-scope.test.ts"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+      "reason": "Machine content invalidation was explicitly retired; approved path/branch/Run/actual Git checks and current platform-report cases remain. Independently reviewed by Spec.",
+      "removed": [
+        {
+          "start": 90043,
+          "end": 90985,
+          "name": "rejects canonical source drift in Build when the accepted Design document is external",
+          "source": "\n\n  it('rejects canonical source drift in Build when the accepted Design document is external', async () => {\n    const f = await fixture(false, 'full', true);\n    await f.prepareBuild();\n    await f.ok('state', 'submit-plan', 'example', '--plan', f.plan);\n    await fs.appendFile(\n      path.join(f.projectRoot, f.change, 'design.md'),\n      'Unapproved source change.\\n',\n    );\n    await f.put(`${f.change}/tasks.md`, '- [x] Implement the adapter <!-- comet-task:impl -->\\n');\n    const before = (await f.inspect()).run;\n    const blocked = await f.cli('state', 'complete-build', 'example');\n    expect(blocked.exitCode).not.toBe(0);\n    expect(blocked.stderr).toContain('requirements changed after approval');\n    expect((await f.inspect()).run).toEqual(before);\n    const recovery = await f.cli('state', 'check', 'example', 'build', '--recover');\n    expect(recovery.data.recoveryActions[0].commandArgs).toContain('revise-design');\n  });"
+        },
+        {
+          "start": 89112,
+          "end": 90043,
+          "name": "keeps canonical design.md immutable when completing an external Design document",
+          "source": "\n  it('keeps canonical design.md immutable when completing an external Design document', async () => {\n    const f = await fixture(false, 'full', true);\n    const hash = await f.design();\n    await fs.appendFile(\n      path.join(f.projectRoot, f.change, 'design.md'),\n      'Unapproved source change.\\n',\n    );\n    const external = 'docs/superpowers/specs/technical design.md';\n    await f.put(\n      external,\n      '---\\ncomet_change: example\\nrole: technical-design\\ncanonical_spec: openspec\\n---\\n# Technical design\\nKeep the approved adapter.\\n',\n    );\n    const before = (await f.inspect()).run;\n    const blocked = await f.cli(\n      'state',\n      'complete-design',\n      'example',\n      '--design-doc',\n      external,\n      '--approval-hash',\n      hash,\n    );\n    expect(blocked.exitCode).not.toBe(0);\n    expect(blocked.stderr).toContain('revise-design');\n    expect((await f.inspect()).run).toEqual(before);\n  });"
+        },
+        {
+          "start": 87224,
+          "end": 88183,
+          "name": "rejects Design document drift after plan acceptance and reports the legal reapproval command",
+          "source": "\n  it('rejects Design document drift after plan acceptance and reports the legal reapproval command', async () => {\n    const f = await fixture();\n    await f.prepareBuild();\n    await f.ok('state', 'submit-plan', 'example', '--plan', f.plan);\n    const before = (await f.inspect()).run;\n    await fs.appendFile(\n      path.join(f.projectRoot, f.change, 'design.md'),\n      'Change the chosen architecture.\\n',\n    );\n    await f.put(`${f.change}/tasks.md`, '- [x] Implement the adapter <!-- comet-task:impl -->\\n');\n    const complete = await f.cli('state', 'complete-build', 'example');\n    expect(complete.exitCode).not.toBe(0);\n    expect(complete.stderr).toContain('revise-design');\n    expect((await f.inspect()).run).toEqual(before);\n    const recovery = await f.cli('state', 'check', 'example', 'build', '--recover');\n    expect(recovery.exitCode).not.toBe(0);\n    expect(recovery.data.recoveryActions[0].commandArgs).toContain('revise-design');\n  });"
+        }
+      ],
+      "baselineSource": "2e7055cc667ea9a9f17c101d500ab92caf022fe4:test/domains/comet-classic/classic-sdk-revisions.test.ts"
+    },
+    {
+      "file": "test/scripts/classic-baseline-benchmark.test.ts",
+      "removeFile": true,
+      "original": "import { promises as fs } from 'fs';\nimport os from 'os';\nimport path from 'path';\nimport { afterEach, describe, expect, it } from 'vitest';\nimport { runClassicBaselineBenchmark } from '../../scripts/benchmark/classic-baseline-regression.mjs';\n\nconst temporary: string[] = [];\n\nafterEach(async () => {\n  await Promise.all(\n    temporary\n      .splice(0)\n      .map((dir) => fs.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })),\n  );\n});\n\ndescribe('Classic baseline benchmark', () => {\n  it('reports perfect deterministic migration and recovery rates', async () => {\n    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-benchmark-test-'));\n    temporary.push(workspace);\n\n    const report = await runClassicBaselineBenchmark({ workspace });\n\n    expect(report).toMatchObject({\n      scenarios: 7,\n      transitionAccuracy: 1,\n      migrationSuccessRate: 1,\n      idempotencyRate: 1,\n      contractMatchRate: 1,\n    });\n    expect(report.durationMs).toBeGreaterThanOrEqual(0);\n    expect(report.results).toHaveLength(7);\n    expect(report.results.map((result) => result.name)).toEqual([\n      'profile-full',\n      'profile-hotfix',\n      'profile-tweak',\n      'retry-fix',\n      'handoff-resume',\n      'archive-recovery',\n      'malformed-rejection',\n    ]);\n    expect(report.results.slice(0, 4)).toMatchObject(\n      ['open', 'open', 'open', 'build'].map((phase) => ({\n        detail: {\n          migrationGuard: {\n            phase,\n            status: 1,\n            signal: null,\n            controlledOutcome: true,\n            diagnostic: 'BLOCKED — fix failing checks before proceeding to next phase',\n          },\n        },\n      })),\n    );\n  }, 120_000);\n});\n",
+      "reason": "Developer benchmark repeats seven public CLI lifecycle scenarios already covered by profile/guard/handoff/archive cases; it should run only through pnpm benchmark:classic, not once in every complete CI matrix. The benchmark tool remains available and its retired fixture is corrected."
+    },
+    {
+      "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+      "removed": [
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "name": "does not bind success when the command changes its own inputs",
+          "fullName": "Classic executed check evidence does not bind success when the command changes its own inputs",
+          "reason": "Only file/policy/log bytes or execution-time input changes trigger invalidation, snapshot rescans, reruns or refusal. Actual command failure, timeout, unknown execution and command identity are separate retained cases.",
+          "replacement": "classic-agent-content-judgment.test.ts generated Runtime ordinary-edit variants plus blocks Classic Archive when a new real check fails after an accepted pass; preserve classic-executed-checks real failure/timeout and SDK Action binding cases.",
+          "coreDependencies": [],
+          "protected": false,
+          "start": 29021,
+          "end": 29472,
+          "source": "\n\n  it('does not bind success when the command changes its own inputs', async () => {\n    await readyVerify();\n    const result = await cli(\n      'check',\n      'run',\n      'demo',\n      'verify',\n      '--local',\n      '--',\n      process.execPath,\n      '-e',\n      \"require('fs').writeFileSync('input.txt', 'changed')\",\n    );\n    expect(result.exitCode).not.toBe(0);\n    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);\n  });"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "name": "does not resurrect stale evidence when inputs are restored after recovery",
+          "fullName": "Classic executed check evidence does not resurrect stale evidence when inputs are restored after recovery",
+          "reason": "Only file/policy/log bytes or execution-time input changes trigger invalidation, snapshot rescans, reruns or refusal. Actual command failure, timeout, unknown execution and command identity are separate retained cases.",
+          "replacement": "classic-agent-content-judgment.test.ts generated Runtime ordinary-edit variants plus blocks Classic Archive when a new real check fails after an accepted pass; preserve classic-executed-checks real failure/timeout and SDK Action binding cases.",
+          "coreDependencies": [],
+          "protected": false,
+          "start": 28536,
+          "end": 29021,
+          "source": "\n\n  it('does not resurrect stale evidence when inputs are restored after recovery', async () => {\n    await readyVerify();\n    await cli('check', 'run', 'demo', 'verify', '--local', '--', process.execPath, 'check.cjs');\n    await fs.writeFile(path.join(root, 'input.txt'), 'bad');\n    await cli('state', 'check', 'demo', 'verify', '--recover');\n    await fs.writeFile(path.join(root, 'input.txt'), 'good');\n    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);\n  });"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "name": "revalidates each recovery scope against its recorded inputs and refreshes on change",
+          "fullName": "Classic executed check evidence revalidates each recovery scope against its recorded inputs and refreshes on change",
+          "reason": "Only file/policy/log bytes or execution-time input changes trigger invalidation, snapshot rescans, reruns or refusal. Actual command failure, timeout, unknown execution and command identity are separate retained cases.",
+          "replacement": "classic-agent-content-judgment.test.ts generated Runtime ordinary-edit variants plus blocks Classic Archive when a new real check fails after an accepted pass; preserve classic-executed-checks real failure/timeout and SDK Action binding cases.",
+          "coreDependencies": [],
+          "protected": false,
+          "start": 26250,
+          "end": 27456,
+          "source": "\n\n  it('revalidates each recovery scope against its recorded inputs and refreshes on change', async () => {\n    await readyVerify();\n    for (const scope of ['build', 'verify']) {\n      const check = await cli(\n        'check',\n        'run',\n        'demo',\n        scope,\n        '--local',\n        '--',\n        process.execPath,\n        'check.cjs',\n      );\n      expect(check.exitCode, check.stderr).toBe(0);\n    }\n    const scan = vi.spyOn(checkSnapshot, 'collectCheckSnapshot');\n    const first = await cli('state', 'check', 'demo', 'verify', '--recover', '--json');\n    expect(first.exitCode, first.stderr).toBe(0);\n    expect(JSON.parse(first.stdout!).data.evidence.scopes).toEqual({\n      build: 'revalidated',\n      verify: 'revalidated',\n    });\n    // Each scope diffs against its own execution-time manifest.\n    expect(scan).toHaveBeenCalledTimes(2);\n    await fs.writeFile(path.join(root, 'input.txt'), 'bad');\n    const second = await cli('state', 'check', 'demo', 'verify', '--recover', '--json');\n    expect(JSON.parse(second.stdout!).data.evidence.scopes).toEqual({\n      build: 'rerun-required',\n      verify: 'rerun-required',\n    });\n    expect(scan).toHaveBeenCalledTimes(4);\n  });"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "name": "explains invalidated evidence with the changed input paths",
+          "fullName": "Classic executed check evidence explains invalidated evidence with the changed input paths",
+          "reason": "Only file/policy/log bytes or execution-time input changes trigger invalidation, snapshot rescans, reruns or refusal. Actual command failure, timeout, unknown execution and command identity are separate retained cases.",
+          "replacement": "classic-agent-content-judgment.test.ts generated Runtime ordinary-edit variants plus blocks Classic Archive when a new real check fails after an accepted pass; preserve classic-executed-checks real failure/timeout and SDK Action binding cases.",
+          "coreDependencies": [],
+          "protected": false,
+          "start": 25686,
+          "end": 26250,
+          "source": "\n\n  it('explains invalidated evidence with the changed input paths', async () => {\n    await readyVerify();\n    await cli('check', 'run', 'demo', 'verify', '--local', '--', process.execPath, 'check.cjs');\n    await fs.writeFile(path.join(root, 'input.txt'), 'bad');\n    const guard = await cli('guard', 'demo', 'verify');\n    expect(guard.exitCode).not.toBe(0);\n    const text = `${guard.stdout ?? ''}${guard.stderr ?? ''}`;\n    expect(text).toContain('Why:');\n    expect(text).toContain('input.txt');\n    expect(text).toContain('default whole-tree inputs');\n  });"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "name": "reports self-modified input paths and the outputs recovery action",
+          "fullName": "Classic executed check evidence reports self-modified input paths and the outputs recovery action",
+          "reason": "Only file/policy/log bytes or execution-time input changes trigger invalidation, snapshot rescans, reruns or refusal. Actual command failure, timeout, unknown execution and command identity are separate retained cases.",
+          "replacement": "classic-agent-content-judgment.test.ts generated Runtime ordinary-edit variants plus blocks Classic Archive when a new real check fails after an accepted pass; preserve classic-executed-checks real failure/timeout and SDK Action binding cases.",
+          "coreDependencies": [],
+          "protected": false,
+          "start": 14156,
+          "end": 14995,
+          "source": "\n\n  it('reports self-modified input paths and the outputs recovery action', async () => {\n    await readyVerify();\n    const code =\n      'require(\"fs\").writeFileSync(\"build-id.json\", JSON.stringify({ time: Date.now() }))';\n    const result = await cli(\n      'check',\n      'run',\n      'demo',\n      'verify',\n      '--local',\n      '--',\n      process.execPath,\n      '-e',\n      code,\n    );\n\n    expect(result.exitCode).not.toBe(0);\n    expect(result.stderr).toContain('Changed inputs: build-id.json');\n    expect(result.stderr).toContain('outputs');\n    expect(result.stderr).toContain('.comet/check-policy.json');\n\n    const guard = await cli('guard', 'demo', 'verify');\n    expect(guard.exitCode).not.toBe(0);\n    expect(guard.stderr).toContain('Changed inputs: build-id.json');\n    expect(guard.stderr).toContain('outputs');\n  });"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "name": "rejects declaration changes during execution even when source inputs are stable",
+          "fullName": "Classic executed check evidence rejects declaration changes during execution even when source inputs are stable",
+          "reason": "Only file/policy/log bytes or execution-time input changes trigger invalidation, snapshot rescans, reruns or refusal. Actual command failure, timeout, unknown execution and command identity are separate retained cases.",
+          "replacement": "classic-agent-content-judgment.test.ts generated Runtime ordinary-edit variants plus blocks Classic Archive when a new real check fails after an accepted pass; preserve classic-executed-checks real failure/timeout and SDK Action binding cases.",
+          "coreDependencies": [],
+          "protected": false,
+          "start": 13500,
+          "end": 14156,
+          "source": "\n\n  it('rejects declaration changes during execution even when source inputs are stable', async () => {\n    const code = 'require(\"fs\").appendFileSync(\".comet/check-policy.json\", \"\\\\n\")';\n    await fs.writeFile(\n      path.join(root, '.comet/check-policy.json'),\n      JSON.stringify({\n        version: 1,\n        argv: [process.execPath, '-e', code],\n        cwd: '.',\n        files: ['input.txt'],\n        git: 'none',\n      }),\n    );\n    const result = await cli(\n      'check',\n      'run',\n      'demo',\n      'verify',\n      '--local',\n      '--',\n      process.execPath,\n      '-e',\n      code,\n    );\n    expect(result.exitCode).not.toBe(0);\n  });"
+        }
+      ],
+      "reason": "Independent Standards/Spec review confirmed pure retired policies with no effective current or historical regression selector dependencies."
+    },
+    {
+      "file": "test/domains/comet-classic/classic-check-manifest.test.ts",
+      "removed": [
+        {
+          "file": "test/domains/comet-classic/classic-check-manifest.test.ts",
+          "name": "reports added, removed and changed files by content hash only",
+          "fullName": "Classic check manifests reports added, removed and changed files by content hash only",
+          "reason": "Pure old input content-hash diff policy. Keep parser compatibility and input/output glob semantics tests.",
+          "replacement": "Classic Agent edit judgment and real failure cases; no byte-diff equivalent required for feature-removed.",
+          "coreDependencies": [],
+          "protected": false,
+          "start": 1192,
+          "end": 1903,
+          "source": "\n\n  it('reports added, removed and changed files by content hash only', () => {\n    const baseline = [\n      { p: 'kept.js', h: 'a', s: 1, m: '1' },\n      { p: 'removed.js', h: 'b', s: 2, m: '2' },\n      { p: 'changed.js', h: 'c', s: 3, m: '3' },\n    ];\n    const current = [\n      { p: 'kept.js', h: 'a', s: 1, m: '9' },\n      { p: 'changed.js', h: 'd', s: 3, m: '3' },\n      { p: 'added.js', h: 'e', s: 4, m: '4' },\n    ];\n    expect(diffCheckManifests(baseline, current)).toEqual({\n      added: ['added.js'],\n      removed: ['removed.js'],\n      changed: ['changed.js'],\n    });\n    expect(diffCheckManifests(baseline, baseline)).toEqual({\n      added: [],\n      removed: [],\n      changed: [],\n    });\n  });"
+        }
+      ],
+      "reason": "Independent Standards/Spec review confirmed pure retired policies with no effective current or historical regression selector dependencies."
+    },
+    {
+      "file": "test/domains/comet-native/native-check-receipt.test.ts",
+      "removed": [
+        {
+          "file": "test/domains/comet-native/native-check-receipt.test.ts",
+          "name": "marks changed scoped facts stale and never trusts the file outside its projection",
+          "fullName": "Native scoped check receipts marks changed scoped facts stale and never trusts the file outside its projection",
+          "reason": "Only an ordinary source byte edit makes the old projection stale and marks failed, without a real command failure.",
+          "replacement": "native-agent-content-judgment.test.ts generated Runtime edit continuation and real-failed-check preservation.",
+          "coreDependencies": [],
+          "protected": false,
+          "start": 17017,
+          "end": 17694,
+          "source": "\n\n  it('marks changed scoped facts stale and never trusts the file outside its projection', async () => {\n    const state = await prepareState('export const value = 2;\\n');\n    await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 7;\\n');\n\n    const { receipt } = await executeNativeCheckReceipt({ paths, state });\n\n    expect(receipt.status).toBe('failed');\n    expect(receipt.staleReasons).toEqual([\n      'implementation-before-does-not-match-scope',\n      'implementation-after-does-not-match-scope',\n    ]);\n    expect(receipt.issues).toContainEqual({\n      path: 'src/feature.ts',\n      line: 1,\n      kind: 'scope-mismatch',\n    });\n  });"
+        }
+      ],
+      "reason": "Independent Standards/Spec review confirmed pure retired policies with no effective current or historical regression selector dependencies."
+    },
+    {
+      "file": "test/domains/comet-native/native-shape-review-evidence.test.ts",
+      "removed": [
+        {
+          "file": "test/domains/comet-native/native-shape-review-evidence.test.ts",
+          "name": "treats planned line numbers as auxiliary while preserving the test assertion contract",
+          "fullName": "Native Shape original evidence treats planned line numbers as auxiliary while preserving the test assertion contract",
+          "reason": "Explicit old document byte/semantic hash proof or equivalent-edit anchor policy; ordinary edits and their semantic implications now belong to Agent judgment. Cache recovery/read/write safety tests in same file are excluded from this retirement recommendation.",
+          "replacement": "native-agent-document-judgment.test.ts Agent-reviewed document edits and native-agent-content-judgment.test.ts original approval/real-failure preservation.",
+          "coreDependencies": [],
+          "protected": false,
+          "start": 6026,
+          "end": 7024,
+          "source": "\n\n  it('treats planned line numbers as auxiliary while preserving the test assertion contract', () => {\n    const plan =\n      '# Test plan\\n\\n| Test | Line | Assertion |\\n| --- | --- | --- |\\n| worker | planned | stays running |\\n';\n    const approved = nativeShapeArtifactSnapshot('brief.md', plan);\n    const numbered = nativeShapeArtifactSnapshot('brief.md', plan.replace('planned', '12-18'));\n    expect(approved.auxiliary).toEqual([\n      { kind: 'test-plan-line', key: '0/0/1', value: 'planned' },\n    ]);\n    expect(numbered.auxiliary[0].value).toBe('12-18');\n    expect(nativeShapeArtifactContractHash(numbered)).toBe(\n      nativeShapeArtifactContractHash(approved),\n    );\n    for (const changed of [\n      plan.replace('stays running', 'stops'),\n      plan.replace('planned', 'skip this assertion'),\n    ]) {\n      expect(\n        nativeShapeArtifactContractHash(nativeShapeArtifactSnapshot('brief.md', changed)),\n      ).not.toBe(nativeShapeArtifactContractHash(approved));\n    }\n  });"
+        },
+        {
+          "file": "test/domains/comet-native/native-shape-review-evidence.test.ts",
+          "name": "binds equivalent review anchors to their candidate and rejects changed requirements",
+          "fullName": "Native Shape original evidence binds equivalent review anchors to their candidate and rejects changed requirements",
+          "reason": "Explicit old document byte/semantic hash proof or equivalent-edit anchor policy; ordinary edits and their semantic implications now belong to Agent judgment. Cache recovery/read/write safety tests in same file are excluded from this retirement recommendation.",
+          "replacement": "native-agent-document-judgment.test.ts Agent-reviewed document edits and native-agent-content-judgment.test.ts original approval/real-failure preservation.",
+          "coreDependencies": [],
+          "protected": false,
+          "start": 4407,
+          "end": 6026,
+          "source": "\n\n  it('binds equivalent review anchors to their candidate and rejects changed requirements', async () => {\n    const f = await fixture();\n    const scope = {\n      projectRoot: root,\n      runtimeRoot: f.paths.workspaceRuntimeRoot,\n      workflow: 'native' as const,\n      change: f.state.name,\n      candidateKey: 'candidate-one',\n      formalPrefixes: [],\n    };\n    const formatted = original.replaceAll('\\n\\n', '\\n\\n\\n');\n    const changed = '# Worker\\nStop the worker.\\n';\n    const formattedHash = nativeShapeArtifactSnapshot('brief.md', formatted).contentHash;\n    const changedHash = nativeShapeArtifactSnapshot('brief.md', changed).contentHash;\n    await expect(nativeShapeReviewAnchorMatches(scope, f.approved, null)).resolves.toBe(false);\n    await expect(nativeShapeReviewAnchorMatches(scope, f.approved, 'invalid')).resolves.toBe(false);\n    await expect(\n      nativeShapeReviewAnchorMatches(scope, f.approved, f.approved.contentHash),\n    ).resolves.toBe(true);\n    await captureNativeShapeReviewAnchor(scope, f.approved, formatted);\n    await captureNativeShapeReviewAnchor(scope, f.approved, formatted);\n    await expect(nativeShapeReviewAnchorMatches(scope, f.approved, formattedHash)).resolves.toBe(\n      true,\n    );\n    await expect(\n      nativeShapeReviewAnchorMatches(\n        { ...scope, candidateKey: 'candidate-two' },\n        f.approved,\n        formattedHash,\n      ),\n    ).resolves.toBe(false);\n    await captureNativeShapeReviewAnchor(scope, f.approved, changed);\n    await expect(nativeShapeReviewAnchorMatches(scope, f.approved, changedHash)).resolves.toBe(\n      false,\n    );\n  });"
+        },
+        {
+          "file": "test/domains/comet-native/native-shape-review-evidence.test.ts",
+          "name": "does not capture a document edited after its approval snapshot",
+          "fullName": "Native Shape original evidence does not capture a document edited after its approval snapshot",
+          "reason": "Explicit old document byte/semantic hash proof or equivalent-edit anchor policy; ordinary edits and their semantic implications now belong to Agent judgment. Cache recovery/read/write safety tests in same file are excluded from this retirement recommendation.",
+          "replacement": "native-agent-document-judgment.test.ts Agent-reviewed document edits and native-agent-content-judgment.test.ts original approval/real-failure preservation.",
+          "coreDependencies": [],
+          "protected": false,
+          "start": 2441,
+          "end": 2875,
+          "source": "\n\n  it('does not capture a document edited after its approval snapshot', async () => {\n    const f = await fixture();\n    await fs.writeFile(f.file, '# Worker\\nStop the worker.\\n');\n    await expect(captureApprovedShapeOriginals(f.paths, f.state)).rejects.toThrow(\n      'before confirmation',\n    );\n    await expect(readApprovedShapeOriginal(f.paths, f.state, f.approved)).rejects.toMatchObject({\n      code: 'ENOENT',\n    });\n  });"
+        }
+      ],
+      "reason": "Independent Standards/Spec review confirmed pure retired policies with no effective current or historical regression selector dependencies."
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "removed": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "name": "keeps a recovered unknown preflight blocked when the original candidate has drifted",
+          "fullName": "keeps a recovered unknown preflight blocked when the original candidate has drifted",
+          "line": 8362,
+          "reason": "仅因实施文件改动把只读preflight恢复判成candidate-drift；inspectNativeSdkPendingArchiveDrift现在只核对Action/Spec事务绑定，返回null，不再读实施快照。",
+          "replacementFile": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "protectedBy": [],
+          "currentTestExists": true,
+          "originalTextSource": {
+            "ref": "2e7055cc667ea9a9f17c101d500ab92caf022fe4",
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "name": "keeps a recovered unknown preflight blocked when the original candidate has drifted"
+          },
+          "sourceEvidence": [
+            "domains/comet-native/native-sdk-report.ts:acceptedResult",
+            "domains/comet-native/native-sdk-archive.ts:inspectNativeSdkPendingArchiveDrift",
+            "domains/comet-classic/classic-sdk-application.ts:classicDesignEvidenceReceipt/openEvidenceValidator/designEvidenceValidator",
+            "domains/comet-native/native-artifacts.ts:validateNativeBrief"
+          ],
+          "start": 317144,
+          "end": 318544,
+          "source": "\n\nit('keeps a recovered unknown preflight blocked when the original candidate has drifted', async () => {\n  const { root, runtime, run } = await awaitingArchiveApplication(\n    'sdk',\n    undefined,\n    true,\n    initializeArchiveGit,\n  );\n  const action = run.actions.at(-1)!;\n  await runtime.claim({\n    runId: run.runId,\n    actionId: action.id,\n    attempt: action.attempt,\n    inputHash: action.inputHash,\n    executorId: 'comet-native-archive-preflight',\n    claimToken: 'stopped-preflight',\n    context: { requestId: 'stopped-preflight', projectRoot: root },\n  });\n  await runtime.markUnknown({\n    runId: run.runId,\n    actionId: action.id,\n    attempt: action.attempt,\n    reason: 'The original executor has stopped.',\n  });\n  await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error(\"unverified\");');\n  const result = await runNativeCli([\n    'archive',\n    run.runId,\n    '--project-root',\n    root,\n    '--recover',\n    '--json',\n  ]);\n  expect(result.exitCode).toBe(73);\n  const recovered = await runtime.inspect(run.runId);\n  expect(recovered.actions.at(-1)).toMatchObject({\n    id: action.id,\n    status: 'failed',\n    outcome: { output: { reason: 'candidate-drift' } },\n  });\n  expect(recovered.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });\n  expect(recovered.state).toMatchObject({ archived: false, verification_result: 'pending' });\n});"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "name": "asks for fresh approval when the verification report changes before revalidation",
+          "fullName": "Native SDK Workflow Application asks for fresh approval when the verification report changes before revalidation",
+          "line": 7093,
+          "reason": "以追加报告文字自动撤回既有验收并重新要求用户批准；native-sdk-report.acceptedResult已只核对Run结果/批准及真实失败，不再比较报告文件内容。",
+          "replacementFile": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "protectedBy": [],
+          "currentTestExists": true,
+          "originalTextSource": {
+            "ref": "2e7055cc667ea9a9f17c101d500ab92caf022fe4",
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "name": "asks for fresh approval when the verification report changes before revalidation"
+          },
+          "sourceEvidence": [
+            "domains/comet-native/native-sdk-report.ts:acceptedResult",
+            "domains/comet-native/native-sdk-archive.ts:inspectNativeSdkPendingArchiveDrift",
+            "domains/comet-classic/classic-sdk-application.ts:classicDesignEvidenceReceipt/openEvidenceValidator/designEvidenceValidator",
+            "domains/comet-native/native-artifacts.ts:validateNativeBrief"
+          ],
+          "start": 267615,
+          "end": 269478,
+          "source": "\n\n  it('asks for fresh approval when the verification report changes before revalidation', async () => {\n    const { root, changeDir, runtime, run: ready } = await dispatchedVerifier();\n    let run = await succeedLatestAction(\n      runtime,\n      ready,\n      {\n        candidateId: (ready.state as NativePortableState).builder_handoff!.candidate_id,\n        verifierExecutionRef: 'verifier-session-1',\n        response: {\n          kind: 'final-result',\n          result: {\n            iteration: 1,\n            attempt: 1,\n            verdict: 'pass',\n            acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified.' }],\n            risks: [],\n            summary: 'Passed.',\n          },\n        },\n      },\n      root,\n      'verifier-result',\n      'verifier-session-1',\n    );\n    run = await runtime.execute({\n      runId: run.runId,\n      actionId: run.actions.at(-1)!.id,\n      executorId: 'comet-native-report',\n      context: { requestId: 'native-report', projectRoot: root },\n    });\n    await fs.appendFile(path.join(changeDir, 'verification.md'), '\\nUnexpected edit.\\n');\n    const confirmation = run.waits.at(-1)!;\n    run = await runtime.resolveWait({\n      runId: run.runId,\n      waitId: confirmation.id,\n      proposalHash: confirmation.proposalHash,\n      decisionId: 'verification-approved',\n      choice: 'approved',\n    });\n    run = await runtime.execute({\n      runId: run.runId,\n      actionId: run.actions.at(-1)!.id,\n      executorId: 'comet-native-report-revalidate',\n      context: { requestId: 'native-report-revalidate', projectRoot: root },\n    });\n    expect(run.state).toMatchObject({ phase: 'verify', status: 'await-user' });\n    expect(run.actions.at(-1)).toMatchObject({ stepId: 'verify.report', type: 'call_tool' });\n    expect(run.actions.some((action) => action.stepId === 'archive.prepare')).toBe(false);\n  });"
+        }
+      ],
+      "reason": "Independent Standards/Spec review confirmed pure retired policies with no effective current or historical regression selector dependencies."
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+      "removed": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "name": "rejects direct SDK Open evidence when an artifact violates the Run language",
+          "fullName": "Classic workflow application through the public Runtime SDK rejects direct SDK Open evidence when an artifact violates the Run language",
+          "line": 3954,
+          "reason": "仅因正文语言不符期待EVIDENCE_REJECTED；语言/内容语义已交由Agent判断，Action请求身份仍保留。",
+          "replacementFile": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "protectedBy": [],
+          "currentTestExists": true,
+          "originalTextSource": {
+            "ref": "2e7055cc667ea9a9f17c101d500ab92caf022fe4",
+            "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+            "name": "rejects direct SDK Open evidence when an artifact violates the Run language"
+          },
+          "sourceEvidence": [
+            "domains/comet-native/native-sdk-report.ts:acceptedResult",
+            "domains/comet-native/native-sdk-archive.ts:inspectNativeSdkPendingArchiveDrift",
+            "domains/comet-classic/classic-sdk-application.ts:classicDesignEvidenceReceipt/openEvidenceValidator/designEvidenceValidator",
+            "domains/comet-native/native-artifacts.ts:validateNativeBrief"
+          ],
+          "start": 150664,
+          "end": 153179,
+          "source": "\n\n  it('rejects direct SDK Open evidence when an artifact violates the Run language', async () => {\n    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-language-'));\n    temporaryRoots.push(root);\n    const ref = 'docs/openspec/changes/example';\n    const changeDir = path.join(root, ...ref.split('/'));\n    await fs.mkdir(changeDir, { recursive: true });\n    await fs.writeFile(\n      path.join(changeDir, 'proposal.md'),\n      '# 变更提案\\n本次变更需要验证文档语言保持一致，并且在用户确认之前阻止错误语言的提案进入下一个阶段。\\n',\n    );\n    await fs.writeFile(path.join(changeDir, 'design.md'), '# Design\\n');\n    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [ ] Implement the change\\n');\n    const application = classicDomain.defineClassicWorkflowApplication('full');\n    const runtime = createRuntime({\n      store: createMemoryRuntimeStore<WorkflowRun>(),\n      workflows: [application.workflow],\n      transitionHandlers: [application.transitionHandler],\n      evidenceValidators: application.evidenceValidators,\n      validators: application.validators,\n    });\n    let run = await runtime.start({\n      runId: 'classic-language-evidence',\n      workflow: { id: application.workflow.id, version: application.workflow.version },\n      input: { change: 'example', changeDir: ref },\n      initialState: { ...initialClassicState('full'), language: 'en' },\n    });\n    const open = run.actions[0];\n    run = await runtime.claim({\n      runId: run.runId,\n      actionId: open.id,\n      attempt: open.attempt,\n      inputHash: open.inputHash,\n      executorId: 'classic-host',\n      claimToken: 'language-open-claim',\n    });\n    run = await runtime.recordOutcome({\n      runId: run.runId,\n      outcome: {\n        actionId: open.id,\n        attempt: open.attempt,\n        inputHash: open.inputHash,\n        claimToken: 'language-open-claim',\n        outcomeId: 'language-open-outcome',\n        status: 'succeeded',\n        output: { event: 'open-complete' },\n      },\n    });\n    const receipt = await classicDomain.classicOpenEvidenceReceipt(root, ref);\n    await expect(\n      runtime.recordEvidence({\n        runId: run.runId,\n        evidenceId: run.evidenceWaits![0].id,\n        kind: 'classic-open-artifacts',\n        ...receipt,\n        submissionId: 'wrong-language',\n        expectedRevision: run.revision,\n        context: { requestId: 'wrong-language', projectRoot: root },\n      }),\n    ).rejects.toThrow(/EVIDENCE_REJECTED/);\n    expect((await runtime.inspect(run.runId)).state).toMatchObject({ phase: 'open' });\n  });"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "name": "rejects direct SDK Design evidence when the document lacks change metadata",
+          "fullName": "Classic workflow application through the public Runtime SDK rejects direct SDK Design evidence when the document lacks change metadata",
+          "line": 3686,
+          "reason": "仅因设计文档缺少frontmatter/change metadata期待拒绝，属于已撤下模板约束；现行validator只核对Action、ref及可读非空文件。",
+          "replacementFile": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "protectedBy": [],
+          "currentTestExists": true,
+          "originalTextSource": {
+            "ref": "2e7055cc667ea9a9f17c101d500ab92caf022fe4",
+            "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+            "name": "rejects direct SDK Design evidence when the document lacks change metadata"
+          },
+          "sourceEvidence": [
+            "domains/comet-native/native-sdk-report.ts:acceptedResult",
+            "domains/comet-native/native-sdk-archive.ts:inspectNativeSdkPendingArchiveDrift",
+            "domains/comet-classic/classic-sdk-application.ts:classicDesignEvidenceReceipt/openEvidenceValidator/designEvidenceValidator",
+            "domains/comet-native/native-artifacts.ts:validateNativeBrief"
+          ],
+          "start": 140090,
+          "end": 142588,
+          "source": "\n\n  it('rejects direct SDK Design evidence when the document lacks change metadata', async () => {\n    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-design-metadata-'));\n    temporaryRoots.push(root);\n    const designRef = 'docs/design/example.md';\n    await fs.mkdir(path.join(root, 'docs', 'design'), { recursive: true });\n    await fs.writeFile(path.join(root, designRef), '# Design without metadata\\n');\n    const application = classicDomain.defineClassicWorkflowApplication('full');\n    const runtime = createRuntime({\n      store: createMemoryRuntimeStore<WorkflowRun>(),\n      workflows: [application.workflow],\n      transitionHandlers: [application.transitionHandler],\n      evidenceValidators: [\n        openEvidenceValidator,\n        ...application.evidenceValidators.filter(\n          (validator) => validator.id !== 'comet-classic-open-artifacts',\n        ),\n      ],\n      validators: testOutcomeValidators(application),\n    });\n    let run = await runtime.start({\n      runId: 'classic-design-metadata',\n      workflow: { id: application.workflow.id, version: application.workflow.version },\n      input: { change: 'example', changeDir: 'docs/openspec/changes/example' },\n      initialState: { ...initialClassicState('full'), language: 'en' },\n    });\n    run = await completeLatestAction(runtime, run, { event: 'open-complete' }, 'metadata-open');\n    run = await acceptOpenEvidence(runtime, run);\n    run = await completeLatestAction(\n      runtime,\n      run,\n      { proposal: 'Use a versioned adapter' },\n      'metadata-proposal',\n    );\n    const decision = run.waits.at(-1)!;\n    run = await runtime.resolveWait({\n      runId: run.runId,\n      waitId: decision.id,\n      proposalHash: decision.proposalHash,\n      decisionId: 'metadata-approved',\n      choice: 'approved',\n    });\n    run = await completeLatestAction(runtime, run, { designDoc: designRef }, 'metadata-document');\n    const receipt = await classicDomain.classicDesignEvidenceReceipt(root, designRef);\n    await expect(\n      runtime.recordEvidence({\n        runId: run.runId,\n        evidenceId: run.evidenceWaits!.at(-1)!.id,\n        kind: 'classic-design-document',\n        ...receipt,\n        submissionId: 'metadata-missing',\n        expectedRevision: run.revision,\n        context: { requestId: 'metadata-missing', projectRoot: root },\n      }),\n    ).rejects.toThrow(/EVIDENCE_REJECTED/);\n    expect((await runtime.inspect(run.runId)).state).toMatchObject({ phase: 'design' });\n  });"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "name": "captures the current Design document digest for later validation",
+          "fullName": "Classic workflow application through the public Runtime SDK captures the current Design document digest for later validation",
+          "line": 3486,
+          "reason": "全部断言要求classicDesignEvidenceReceipt返回文件sha256。当前函数只返回受保护的非空文件ref，不再返回内容证明。",
+          "replacementFile": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "protectedBy": [],
+          "currentTestExists": true,
+          "originalTextSource": {
+            "ref": "2e7055cc667ea9a9f17c101d500ab92caf022fe4",
+            "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+            "name": "captures the current Design document digest for later validation"
+          },
+          "sourceEvidence": [
+            "domains/comet-native/native-sdk-report.ts:acceptedResult",
+            "domains/comet-native/native-sdk-archive.ts:inspectNativeSdkPendingArchiveDrift",
+            "domains/comet-classic/classic-sdk-application.ts:classicDesignEvidenceReceipt/openEvidenceValidator/designEvidenceValidator",
+            "domains/comet-native/native-artifacts.ts:validateNativeBrief"
+          ],
+          "start": 132123,
+          "end": 133121,
+          "source": "\n\n  it('captures the current Design document digest for later validation', async () => {\n    const receiptFor = (classicDomain as Record<string, unknown>)[\n      'classicDesignEvidenceReceipt'\n    ] as ((root: string, ref: string) => Promise<{ ref: string; contentHash: string }>) | undefined;\n    expect(receiptFor).toBeTypeOf('function');\n    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-design-'));\n    temporaryRoots.push(root);\n    const ref = 'docs/superpowers/specs/design.md';\n    const file = path.join(root, ...ref.split('/'));\n    await fs.mkdir(path.dirname(file), { recursive: true });\n    await fs.writeFile(file, '# Design A\\n');\n    expect(await receiptFor!(root, ref)).toEqual({\n      ref,\n      contentHash: createHash('sha256').update('# Design A\\n').digest('hex'),\n    });\n    await fs.writeFile(file, '# Design B\\n');\n    expect((await receiptFor!(root, ref)).contentHash).toBe(\n      createHash('sha256').update('# Design B\\n').digest('hex'),\n    );\n  });"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "name": "blocks Verify Guard when an accepted report changes before the real check",
+          "fullName": "Classic workflow application through the public Runtime SDK blocks Verify Guard when an accepted report changes before the real check",
+          "line": 2843,
+          "reason": "仅改变已接受报告文本就期待Guard阻止；真实命令与成功/失败仍有独立覆盖。",
+          "replacementFile": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "protectedBy": [],
+          "currentTestExists": true,
+          "originalTextSource": {
+            "ref": "2e7055cc667ea9a9f17c101d500ab92caf022fe4",
+            "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+            "name": "blocks Verify Guard when an accepted report changes before the real check"
+          },
+          "sourceEvidence": [
+            "domains/comet-native/native-sdk-report.ts:acceptedResult",
+            "domains/comet-native/native-sdk-archive.ts:inspectNativeSdkPendingArchiveDrift",
+            "domains/comet-classic/classic-sdk-application.ts:classicDesignEvidenceReceipt/openEvidenceValidator/designEvidenceValidator",
+            "domains/comet-native/native-artifacts.ts:validateNativeBrief"
+          ],
+          "start": 106383,
+          "end": 107665,
+          "source": "\n\n  it('blocks Verify Guard when an accepted report changes before the real check', async () => {\n    const { run, projectRoot } = await reachFullVerifyCheckAction('example', {\n      gitBranch: 'sdk-build',\n      boundBranch: 'sdk-build',\n      fileStore: true,\n    });\n    await registerSdkChangeOwner(projectRoot, {\n      schema: 'comet.change-owner.v1',\n      workflow: 'classic',\n      change: 'example',\n      format: 'sdk',\n      application: 'classic-full',\n      runId: run.runId,\n    });\n    const reportRef = 'docs/superpowers/reports/2026-09-24-example-verify.md';\n    await fs.writeFile(\n      path.join(projectRoot, reportRef),\n      '# Verification\\nChanged after acceptance.\\n',\n    );\n    const blocked = await classicGuardCommand(['example', 'verify', '--report', reportRef], {\n      json: false,\n      invocationCwd: projectRoot,\n      projectRoot,\n    });\n    expect(blocked.exitCode).not.toBe(0);\n    expect(blocked.stderr).toContain('changed after accepted evidence');\n    const current = await classicStateCommand(['next', 'example'], {\n      json: true,\n      invocationCwd: projectRoot,\n      projectRoot,\n    });\n    expect(current.data).toMatchObject({\n      phase: 'verify',\n      nextAction: { kind: 'action', stepId: 'full.verify.check' },\n    });\n  });"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "name": "rejects Verify check evidence when the excluded report changes afterward",
+          "fullName": "Classic workflow application through the public Runtime SDK rejects Verify check evidence when the excluded report changes afterward",
+          "line": 2010,
+          "reason": "选中原收据后仅修改报告文字期待证据失效；原检查收据和Action归属应保留，已取消报告内容自动作废。",
+          "replacementFile": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "protectedBy": [],
+          "currentTestExists": true,
+          "originalTextSource": {
+            "ref": "2e7055cc667ea9a9f17c101d500ab92caf022fe4",
+            "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+            "name": "rejects Verify check evidence when the excluded report changes afterward"
+          },
+          "sourceEvidence": [
+            "domains/comet-native/native-sdk-report.ts:acceptedResult",
+            "domains/comet-native/native-sdk-archive.ts:inspectNativeSdkPendingArchiveDrift",
+            "domains/comet-classic/classic-sdk-application.ts:classicDesignEvidenceReceipt/openEvidenceValidator/designEvidenceValidator",
+            "domains/comet-native/native-artifacts.ts:validateNativeBrief"
+          ],
+          "start": 73551,
+          "end": 74919,
+          "source": "\n\n  it('rejects Verify check evidence when the excluded report changes afterward', async () => {\n    const { runtime, run, projectRoot } = await reachFullVerifyCheckAction(\n      'verify-report-after-check',\n    );\n    const checked = await classicDomain.executeClassicSdkCommandCheck(runtime, {\n      runId: run.runId,\n      projectRoot,\n      argv: [process.execPath, '-e', 'console.log(\"sdk-verify-ok\")'],\n      cwd: '.',\n    });\n    const reportPath = path.join(\n      projectRoot,\n      'docs',\n      'superpowers',\n      'reports',\n      '2026-09-24-example-verify.md',\n    );\n    await fs.writeFile(reportPath, '# Verification\\nCHANGED AFTER CHECK\\n');\n    const output = checked.actions.at(-1)!.outcome!.output as {\n      receiptRef: string;\n      contentHash: string;\n    };\n    await expect(\n      runtime.recordEvidence({\n        runId: checked.runId,\n        evidenceId: checked.evidenceWaits!.at(-1)!.id,\n        kind: 'classic-verify-check',\n        ref: output.receiptRef,\n        contentHash: output.contentHash,\n        submissionId: 'verify-report-after-check-evidence',\n        expectedRevision: checked.revision,\n        context: { requestId: 'verify-report-after-check-evidence', projectRoot },\n      }),\n    ).rejects.toThrow(/EVIDENCE_REJECTED/);\n    expect((await runtime.inspect(checked.runId)).state).toMatchObject({ phase: 'verify' });\n  });"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "name": "rejects a changed Verify report before scheduling its command check",
+          "fullName": "Classic workflow application through the public Runtime SDK rejects a changed Verify report before scheduling its command check",
+          "line": 1899,
+          "reason": "用先前报告文件sha256期待EVIDENCE_REJECTED，依赖退役报告文件摘要；现行SDK Action inputHash归属契约仍保留，不能把本文件摘要断言当Action摘要断言。",
+          "replacementFile": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "protectedBy": [],
+          "currentTestExists": true,
+          "originalTextSource": {
+            "ref": "2e7055cc667ea9a9f17c101d500ab92caf022fe4",
+            "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+            "name": "rejects a changed Verify report before scheduling its command check"
+          },
+          "sourceEvidence": [
+            "domains/comet-native/native-sdk-report.ts:acceptedResult",
+            "domains/comet-native/native-sdk-archive.ts:inspectNativeSdkPendingArchiveDrift",
+            "domains/comet-classic/classic-sdk-application.ts:classicDesignEvidenceReceipt/openEvidenceValidator/designEvidenceValidator",
+            "domains/comet-native/native-artifacts.ts:validateNativeBrief"
+          ],
+          "start": 69139,
+          "end": 70584,
+          "source": "\n\n  it('rejects a changed Verify report before scheduling its command check', async () => {\n    const { runtime, run, projectRoot } = await checkedFullBuildRun('verify-report-drift', true);\n    const verifying = await acceptBuildCheckEvidence(runtime, run, projectRoot);\n    const reportRef = 'docs/superpowers/reports/2026-09-24-example-verify.md';\n    const reportPath = path.join(projectRoot, ...reportRef.split('/'));\n    await fs.mkdir(path.dirname(reportPath), { recursive: true });\n    await fs.writeFile(reportPath, '# Verification\\nPASS\\n');\n    const reported = await completeLatestAction(\n      runtime,\n      verifying,\n      { event: 'verification-ready', verificationReport: reportRef },\n      'verify-report-drift-ready',\n    );\n    const priorHash = createHash('sha256').update('# Verification\\nPASS\\n').digest('hex');\n    await fs.writeFile(reportPath, '# Verification\\nFAIL\\n');\n    await expect(\n      runtime.recordEvidence({\n        runId: reported.runId,\n        evidenceId: reported.evidenceWaits!.at(-1)!.id,\n        kind: 'classic-verification-report',\n        ref: reportRef,\n        contentHash: priorHash,\n        submissionId: 'stale-verify-report',\n        expectedRevision: reported.revision,\n        context: { requestId: 'stale-verify-report', projectRoot },\n      }),\n    ).rejects.toThrow(/EVIDENCE_REJECTED/);\n    expect((await runtime.inspect(reported.runId)).state).toMatchObject({ phase: 'verify' });\n  });"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "name": "rejects a bound report changed after Verify even when the changed report is committed",
+          "fullName": "Classic workflow application through the public Runtime SDK rejects a bound report changed after Verify even when the changed report is committed",
+          "line": 1154,
+          "reason": "已提交的报告追加文字触发拒绝，是退役报告字节绑定；交付仍核对真实Git提交、路径及当前成功结果。",
+          "replacementFile": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "protectedBy": [],
+          "currentTestExists": true,
+          "originalTextSource": {
+            "ref": "2e7055cc667ea9a9f17c101d500ab92caf022fe4",
+            "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+            "name": "rejects a bound report changed after Verify even when the changed report is committed"
+          },
+          "sourceEvidence": [
+            "domains/comet-native/native-sdk-report.ts:acceptedResult",
+            "domains/comet-native/native-sdk-archive.ts:inspectNativeSdkPendingArchiveDrift",
+            "domains/comet-classic/classic-sdk-application.ts:classicDesignEvidenceReceipt/openEvidenceValidator/designEvidenceValidator",
+            "domains/comet-native/native-artifacts.ts:validateNativeBrief"
+          ],
+          "start": 40360,
+          "end": 41242,
+          "source": "\n\n  it('rejects a bound report changed after Verify even when the changed report is committed', async () => {\n    const { runtime, run, projectRoot } =\n      await reachFullArchiveExecuteAction('archive-report-changed');\n    const reportRef = (run.state as ClassicState).verificationReport!;\n    await fs.appendFile(path.join(projectRoot, reportRef), 'Changed after verification.\\n');\n    const { pending, commit } = await commitValidLocalArchive(runtime, run, projectRoot);\n    await expect(\n      completeLatestAction(\n        runtime,\n        pending,\n        { action: 'local', targetBranch: 'sdk-build', commit },\n        'changed-report-outcome',\n        { projectRoot },\n      ),\n    ).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });\n    expect(\n      (await runtime.inspect(run.runId)).actions.at(-1)?.rejectedOutcomes?.at(-1)?.reason,\n    ).toContain(reportRef);\n  });"
+        }
+      ],
+      "reason": "Independent Standards/Spec review confirmed pure retired policies with no effective current or historical regression selector dependencies."
+    },
+    {
+      "file": "test/domains/comet-native/native-flow-friction.test.ts",
+      "removed": [
+        {
+          "file": "test/domains/comet-native/native-flow-friction.test.ts",
+          "name": "still requires confirmation when meaningful constraints change",
+          "fullName": "Native workflow friction regressions still requires confirmation when meaningful constraints change",
+          "line": 359,
+          "reason": "文件正文替换后直接next期待自动回Shape；内容扫描/自动失效已移除，实质需求变化应由Agent显式修订并重新确认。",
+          "replacementFile": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "protectedBy": [],
+          "currentTestExists": true,
+          "originalTextSource": {
+            "ref": "2e7055cc667ea9a9f17c101d500ab92caf022fe4",
+            "file": "test/domains/comet-native/native-flow-friction.test.ts",
+            "name": "still requires confirmation when meaningful constraints change"
+          },
+          "sourceEvidence": [
+            "domains/comet-native/native-sdk-report.ts:acceptedResult",
+            "domains/comet-native/native-sdk-archive.ts:inspectNativeSdkPendingArchiveDrift",
+            "domains/comet-classic/classic-sdk-application.ts:classicDesignEvidenceReceipt/openEvidenceValidator/designEvidenceValidator",
+            "domains/comet-native/native-artifacts.ts:validateNativeBrief"
+          ],
+          "start": 12375,
+          "end": 12774,
+          "source": "\n\n  it('still requires confirmation when meaningful constraints change', async () => {\n    await confirm();\n    await fs.writeFile(\n      path.join(changeDir, 'brief.md'),\n      brief.replace('Preserve the command usage.', 'Change the public command usage.'),\n    );\n    const current = await command(['next', 'tiny', '--summary', 'Continue.']);\n    expect(current.agent?.phase).toBe('shape');\n  });"
+        },
+        {
+          "file": "test/domains/comet-native/native-flow-friction.test.ts",
+          "name": "reports document repair instead of a fictitious concurrent update",
+          "fullName": "Native workflow friction regressions reports document repair instead of a fictitious concurrent update",
+          "line": 115,
+          "reason": "给非空单章节brief期待document-invalid/65，纯固定章节结构策略；现行validateNativeBrief不拒绝这种非空正文。",
+          "replacementFile": "test/domains/comet-native/native-agent-document-judgment.test.ts",
+          "protectedBy": [],
+          "currentTestExists": true,
+          "originalTextSource": {
+            "ref": "2e7055cc667ea9a9f17c101d500ab92caf022fe4",
+            "file": "test/domains/comet-native/native-flow-friction.test.ts",
+            "name": "reports document repair instead of a fictitious concurrent update"
+          },
+          "sourceEvidence": [
+            "domains/comet-native/native-sdk-report.ts:acceptedResult",
+            "domains/comet-native/native-sdk-archive.ts:inspectNativeSdkPendingArchiveDrift",
+            "domains/comet-classic/classic-sdk-application.ts:classicDesignEvidenceReceipt/openEvidenceValidator/designEvidenceValidator",
+            "domains/comet-native/native-artifacts.ts:validateNativeBrief"
+          ],
+          "start": 3389,
+          "end": 3913,
+          "source": "\n\n  it('reports document repair instead of a fictitious concurrent update', async () => {\n    await fs.writeFile(path.join(changeDir, 'brief.md'), '# Outcome\\nCorrect spelling.\\n');\n    const rejected = await command(['next', 'tiny', '--summary', 'Prepare Shape.']);\n    expect(rejected.error?.code).toBe('document-invalid');\n    expect(rejected.exitCode).toBe(65);\n    expect(rejected.summary).not.toMatch(/updated elsewhere|another session/iu);\n    expect(rejected.error?.message).toContain('brief-section-missing');\n  });"
+        }
+      ],
+      "reason": "Independent Standards/Spec review confirmed pure retired policies with no effective current or historical regression selector dependencies."
+    },
+    {
+      "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+      "removed": [
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "name": "requires new evidence after recovery of changed-input checks",
+          "fullName": "Classic executed check evidence requires new evidence after recovery of changed-input checks",
+          "reason": "Only file/policy/log bytes or execution-time input changes trigger invalidation, snapshot rescans, reruns or refusal. Actual command failure, timeout, unknown execution and command identity are separate retained cases.",
+          "replacement": "classic-agent-content-judgment.test.ts generated Runtime ordinary-edit variants plus blocks Classic Archive when a new real check fails after an accepted pass; preserve classic-executed-checks real failure/timeout and SDK Action binding cases.",
+          "coreDependencies": [],
+          "protected": false
+        },
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "name": "requires new evidence after recovery of damaged-log checks",
+          "fullName": "Classic executed check evidence requires new evidence after recovery of damaged-log checks",
+          "reason": "Only file/policy/log bytes or execution-time input changes trigger invalidation, snapshot rescans, reruns or refusal. Actual command failure, timeout, unknown execution and command identity are separate retained cases.",
+          "replacement": "classic-agent-content-judgment.test.ts generated Runtime ordinary-edit variants plus blocks Classic Archive when a new real check fails after an accepted pass; preserve classic-executed-checks real failure/timeout and SDK Action binding cases.",
+          "coreDependencies": [],
+          "protected": false
+        }
+      ],
+      "reason": "Only retire the changed-input/damaged-log parameter variants; retain non-local fresh-execution semantics."
+    }
+  ],
+  "followupRecords": [
+    "docs/research/2026-11-09-runtime-core-review/followup-pruning/root-pruning-followup.json",
+    "docs/research/2026-11-09-runtime-core-review/followup-pruning/managed-guard-pruning.json",
+    "docs/research/2026-11-09-runtime-core-review/followup-pruning/sdk-pruning-followup.json",
+    "docs/research/2026-11-09-runtime-core-review/followup-pruning/app-pruning-followup.json",
+    "docs/research/2026-11-09-runtime-core-review/followup-pruning/native-pruning-followup.json",
+    "docs/research/2026-11-09-runtime-core-review/followup-pruning/classic-pruning-followup.json",
+    "docs/research/2026-11-09-runtime-core-review/followup-pruning/classic-extra-pruning-applied.json"
+  ],
+  "followupRetirementArchive": "docs/research/2026-11-09-runtime-core-review/final-retirements/mapping.json"
+}

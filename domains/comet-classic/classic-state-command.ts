@@ -2909,12 +2909,20 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         subcommand === 'repair-archive'
       ) {
         if (
-          rest.length !== 3 ||
+          (rest.length !== 3 &&
+            !(
+              subcommand === 'repair-delivery' &&
+              rest.length === 5 &&
+              rest[3] === '--checks' &&
+              rest[4]?.trim()
+            )) ||
           rest[1] !== '--expected-revision' ||
           !/^[1-9]\d*$/u.test(rest[2]) ||
           !Number.isSafeInteger(Number(rest[2]))
         ) {
-          fail(`Usage: comet state ${subcommand} <change-name> --expected-revision <revision>`);
+          fail(
+            `Usage: comet state ${subcommand} <change-name> --expected-revision <revision>${subcommand === 'repair-delivery' ? ' [--checks <checks-json-file>]' : ''}`,
+          );
         }
         validateChangeName(rest[0]);
         const workspace = await findClassicSdkWorkspace(classicCommandProjectRoot(), rest[0]);
@@ -2924,6 +2932,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
           change: rest[0],
           name: subcommand,
           expectedRevision: Number(rest[2]),
+          checksRef: rest[4],
         });
         await nextSdk(output, rest[0], run, workspace.projectRoot);
       } else if (subcommand === 'submit-plan' || subcommand === 'continue-plan') {

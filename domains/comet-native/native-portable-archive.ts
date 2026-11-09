@@ -396,6 +396,14 @@ async function applySpecChange(options: {
     throw new Error(`Native ${options.change.operation} spec requires frozen source content`);
   }
 
+  const current = await readOptionalCanonicalSpec(options.paths, options.change.capability);
+  const alreadyApplied = current.exists && current.text === options.change.content;
+  if (options.change.operation === 'create' && current.exists && !alreadyApplied) {
+    throw new Error(
+      `Canonical Native spec conflicts with the pending create: ${options.change.capability}`,
+    );
+  }
+
   const sourceTarget = path.join(
     nativePortableChangeDir(options.paths, options.state.name),
     options.change.source,
@@ -403,8 +411,7 @@ async function applySpecChange(options: {
   await atomicWriteText(sourceTarget, options.change.source_content ?? options.change.content, {
     containedRoot: options.paths.nativeRoot,
   });
-  const current = await readOptionalCanonicalSpec(options.paths, options.change.capability);
-  if (current.exists && current.text === options.change.content) return;
+  if (alreadyApplied) return;
   await fs.mkdir(capabilityDirectory, { recursive: true });
   await atomicWriteText(target, options.change.content, {
     containedRoot: options.paths.nativeRoot,

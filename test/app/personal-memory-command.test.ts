@@ -338,7 +338,7 @@ describe('personal memory commands', () => {
       set: missingRemote,
       json: true,
     });
-    expect(remote).toBe(missingRemote);
+    expect(path.relative(remote!, missingRemote)).toBe('');
     const sync = await personalMemorySyncCommand(root, {
       memoryRoot,
       stateRoot,

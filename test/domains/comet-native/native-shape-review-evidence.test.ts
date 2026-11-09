@@ -56,17 +56,6 @@ describe('Native Shape original evidence', () => {
     expect(await fs.readFile(cached.path, 'utf8')).toBe('unapproved replacement');
   });
 
-  it('does not capture a document edited after its approval snapshot', async () => {
-    const f = await fixture();
-    await fs.writeFile(f.file, '# Worker\nStop the worker.\n');
-    await expect(captureApprovedShapeOriginals(f.paths, f.state)).rejects.toThrow(
-      'before confirmation',
-    );
-    await expect(readApprovedShapeOriginal(f.paths, f.state, f.approved)).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
-  });
-
   it.each(['index', 'history'] as const)(
     'recovers an approved original from Git %s without replacing current edits',
     async (location) => {
@@ -112,63 +101,4 @@ describe('Native Shape original evidence', () => {
       expect(await fs.readFile(f.file, 'utf8')).toBe(edited);
     },
   );
-
-  it('binds equivalent review anchors to their candidate and rejects changed requirements', async () => {
-    const f = await fixture();
-    const scope = {
-      projectRoot: root,
-      runtimeRoot: f.paths.workspaceRuntimeRoot,
-      workflow: 'native' as const,
-      change: f.state.name,
-      candidateKey: 'candidate-one',
-      formalPrefixes: [],
-    };
-    const formatted = original.replaceAll('\n\n', '\n\n\n');
-    const changed = '# Worker\nStop the worker.\n';
-    const formattedHash = nativeShapeArtifactSnapshot('brief.md', formatted).contentHash;
-    const changedHash = nativeShapeArtifactSnapshot('brief.md', changed).contentHash;
-    await expect(nativeShapeReviewAnchorMatches(scope, f.approved, null)).resolves.toBe(false);
-    await expect(nativeShapeReviewAnchorMatches(scope, f.approved, 'invalid')).resolves.toBe(false);
-    await expect(
-      nativeShapeReviewAnchorMatches(scope, f.approved, f.approved.contentHash),
-    ).resolves.toBe(true);
-    await captureNativeShapeReviewAnchor(scope, f.approved, formatted);
-    await captureNativeShapeReviewAnchor(scope, f.approved, formatted);
-    await expect(nativeShapeReviewAnchorMatches(scope, f.approved, formattedHash)).resolves.toBe(
-      true,
-    );
-    await expect(
-      nativeShapeReviewAnchorMatches(
-        { ...scope, candidateKey: 'candidate-two' },
-        f.approved,
-        formattedHash,
-      ),
-    ).resolves.toBe(false);
-    await captureNativeShapeReviewAnchor(scope, f.approved, changed);
-    await expect(nativeShapeReviewAnchorMatches(scope, f.approved, changedHash)).resolves.toBe(
-      false,
-    );
-  });
-
-  it('treats planned line numbers as auxiliary while preserving the test assertion contract', () => {
-    const plan =
-      '# Test plan\n\n| Test | Line | Assertion |\n| --- | --- | --- |\n| worker | planned | stays running |\n';
-    const approved = nativeShapeArtifactSnapshot('brief.md', plan);
-    const numbered = nativeShapeArtifactSnapshot('brief.md', plan.replace('planned', '12-18'));
-    expect(approved.auxiliary).toEqual([
-      { kind: 'test-plan-line', key: '0/0/1', value: 'planned' },
-    ]);
-    expect(numbered.auxiliary[0].value).toBe('12-18');
-    expect(nativeShapeArtifactContractHash(numbered)).toBe(
-      nativeShapeArtifactContractHash(approved),
-    );
-    for (const changed of [
-      plan.replace('stays running', 'stops'),
-      plan.replace('planned', 'skip this assertion'),
-    ]) {
-      expect(
-        nativeShapeArtifactContractHash(nativeShapeArtifactSnapshot('brief.md', changed)),
-      ).not.toBe(nativeShapeArtifactContractHash(approved));
-    }
-  });
 });

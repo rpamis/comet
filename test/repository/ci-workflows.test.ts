@@ -50,10 +50,25 @@ describe('CI workflows', () => {
     expect(matrix.filter((item: { os: string }) => item.os === 'windows-latest')).toEqual(
       [1, 2, 3, 4].map((shard) => ({ os: 'windows-latest', shard, shards: 4 })),
     );
-    for (const os of ['ubuntu-latest', 'macos-latest'])
+    for (const os of ['macos-latest'])
       expect(matrix.filter((item: { os: string }) => item.os === os)).toEqual([
         { os, shard: 1, shards: 1 },
       ]);
+    expect(matrix.some((item: { os: string }) => item.os === 'ubuntu-latest')).toBe(false);
+    const linux = workflow.jobs['core-regression-report'];
+    expect(linux.needs).toBe('quality');
+    expect(
+      linux.steps.some(
+        (step: { run?: string }) =>
+          step.run === 'pnpm test:core-regressions --verify-report coverage/vitest-results.json',
+      ),
+    ).toBe(true);
+    expect(
+      linux.steps.some((step: { uses?: string }) =>
+        step.uses?.startsWith('actions/download-artifact@'),
+      ),
+    ).toBe(true);
+    expect(workflow.jobs['ci-required'].needs).toContain('core-regression-report');
     expect(
       core.steps.some(
         (step: { run?: string }) =>

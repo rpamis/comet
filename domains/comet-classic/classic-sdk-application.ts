@@ -503,20 +503,20 @@ const deliveryOutcomeValidator: RuntimeValidator = {
         archiveRef,
       );
       for (const ref of archiveManifest.optionalPaths) {
+        const moved = ref.startsWith(`${archiveRef}/`)
+          ? `${activeRef}/${ref.slice(archiveRef.length + 1)}`
+          : null;
         const committed = execFileSync('git', ['ls-tree', '-z', 'HEAD', '--', ref], {
           cwd: root,
           encoding: 'utf8',
         });
-        if (committed) archiveManifest.paths.push(ref);
+        if (committed) archiveManifest.paths.push(ref, ...(moved ? [moved] : []));
         else {
           // The deletion of this optional file's active path is approved from the
           // optional file itself. That approval must not cover a commit which drops
           // the file instead of moving it, so require the archived copy whenever the
           // commit records the deletion. An untracked optional file never appears as
           // a deletion, so it stays unaffected.
-          const moved = ref.startsWith(`${archiveRef}/`)
-            ? `${activeRef}/${ref.slice(archiveRef.length + 1)}`
-            : null;
           if (moved && [...commitPaths.values()].some((paths) => paths.includes(moved)))
             throw new Error(
               `Classic archive commit deletes an optional input without committing the archived copy: ${ref}`,

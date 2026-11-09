@@ -1,0 +1,519 @@
+{
+  "cases": [
+    {
+      "id": "native-delta-shape-materialization",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-test-pruning",
+      "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native SDK Workflow Application materializes a Delta target before Shape and refuses independent target edits$",
+          "requiredNames": [
+            "Native SDK Workflow Application materializes a Delta target before Shape and refuses independent target edits"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "keeps a real failed Native check failed after file edits without replay"
+          ],
+          "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay)$"
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "requiredNames": [
+            "Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure",
+            "Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation"
+          ],
+          "namePattern": "^(?:Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure|Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation)$"
+        }
+      ]
+    },
+    {
+      "id": "native-supervisor-referenced-acceptance",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-09-test-pruning",
+      "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "^Native parent and child changes derives referenced v2 acceptance from the current catalog without copying its text$",
+          "requiredNames": [
+            "Native parent and child changes derives referenced v2 acceptance from the current catalog without copying its text"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "^Native parent and child changes accepts a readable v2 acceptance index while retaining the v1 contract$",
+          "requiredNames": [
+            "Native parent and child changes accepts a readable v2 acceptance index while retaining the v1 contract"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run''$",
+          "requiredNames": [
+            "Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run''"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run' with referenced acceptance'$",
+          "requiredNames": [
+            "Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run' with referenced acceptance'"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-task-decomposition.test.ts",
+          "namePattern": "^(?:lets the Agent delegate specification acceptance before any failure while retaining parent-only criteria|reads delegated acceptance from the original parent catalog instead of requiring copied prose|retains unknown-ID and dependency-cycle checks for Agent-selected task decomposition)$",
+          "requiredNames": [
+            "lets the Agent delegate specification acceptance before any failure while retaining parent-only criteria",
+            "reads delegated acceptance from the original parent catalog instead of requiring copied prose",
+            "retains unknown-ID and dependency-cycle checks for Agent-selected task decomposition"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-supervisor-business.test.ts",
+          "namePattern": "^(?:completes Agent-selected Supervisor work through the Native business entry via source|completes Agent-selected Supervisor work through the Native business entry via generated)$",
+          "requiredNames": [
+            "completes Agent-selected Supervisor work through the Native business entry via source",
+            "completes Agent-selected Supervisor work through the Native business entry via generated"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-528-applied-archive-recovery",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-09-test-pruning",
+      "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions$",
+          "requiredNames": [
+            "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "codex-native-apply-patch-command",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-09-test-pruning",
+      "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-entry/hook-adapter.test.ts",
+          "namePattern": "^Comet Hook platform adapter reads native Codex apply_patch commands without interpreting shell commands as patches$",
+          "requiredNames": [
+            "Comet Hook platform adapter reads native Codex apply_patch commands without interpreting shell commands as patches"
+          ]
+        },
+        {
+          "file": "test/domains/skill/plugin-hook.test.ts",
+          "namePattern": "enforces native Codex command patches through the packaged router and preserves legitimate writes",
+          "requiredNames": [
+            "enforces native Codex command patches through the packaged router and preserves legitimate writes"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-174-locale",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-test-pruning",
+      "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/comet-scripts.test.ts",
+          "namePattern": "falls back to the global Comet language when project config omits language|lets project language override the global Comet language",
+          "requiredNames": [
+            "falls back to the global Comet language when project config omits language",
+            "lets project language override the global Comet language"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "namePattern": "^completes Classic full from an Agent-reviewed design without metadata rules through generated$",
+          "requiredNames": [
+            "completes Classic full from an Agent-reviewed design without metadata rules through generated"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-canonical-task-authority-and-legacy-projection",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-test-pruning",
+      "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-tasks.test.ts",
+          "namePattern": "preserves and reports unmapped or extra legacy plan tasks instead of guessing completion|uses canonical plan references without a second progress ledger and preserves legacy plans",
+          "requiredNames": [
+            "preserves and reports unmapped or extra legacy plan tasks instead of guessing completion",
+            "uses canonical plan references without a second progress ledger and preserves legacy plans"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+          "namePattern": "^hotfix approved scope allows public task ID assignment and completion without another scope approval$",
+          "requiredNames": [
+            "hotfix approved scope allows public task ID assignment and completion without another scope approval"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+          "namePattern": "^tweak approved scope allows public task ID assignment and completion without another scope approval$",
+          "requiredNames": [
+            "tweak approved scope allows public task ID assignment and completion without another scope approval"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+          "namePattern": "(?:enters Verify only after a current check and completed mapped tasks)",
+          "requiredNames": [
+            "enters Verify only after a current check and completed mapped tasks"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-299-dag-contract",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-09-test-pruning",
+      "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "^Native parent and child changes accepts a readable v2 acceptance index while retaining the v1 contract$",
+          "requiredNames": [
+            "Native parent and child changes accepts a readable v2 acceptance index while retaining the v1 contract"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "(?:validates declared dependency structure while allowing parent-only acceptance)",
+          "requiredNames": [
+            "validates declared dependency structure while allowing parent-only acceptance"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-plan.test.ts",
+          "namePattern": "dispatches independent children first and waits for both integrations before their dependent child|rejects child facts that do not match the confirmed plan",
+          "requiredNames": [
+            "dispatches independent children first and waits for both integrations before their dependent child",
+            "rejects child facts that do not match the confirmed plan"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-task-decomposition.test.ts",
+          "namePattern": "^(?:lets the Agent delegate specification acceptance before any failure while retaining parent-only criteria|reads delegated acceptance from the original parent catalog instead of requiring copied prose|retains unknown-ID and dependency-cycle checks for Agent-selected task decomposition)$",
+          "requiredNames": [
+            "lets the Agent delegate specification acceptance before any failure while retaining parent-only criteria",
+            "reads delegated acceptance from the original parent catalog instead of requiring copied prose",
+            "retains unknown-ID and dependency-cycle checks for Agent-selected task decomposition"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-314-readable-plan",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-09-test-pruning",
+      "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "^Native parent and child changes accepts a readable v2 acceptance index while retaining the v1 contract$",
+          "requiredNames": [
+            "Native parent and child changes accepts a readable v2 acceptance index while retaining the v1 contract"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "(?:parses children\\.v2 summaries without acceptance ownership fields)",
+          "requiredNames": [
+            "parses children.v2 summaries without acceptance ownership fields"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-supervisor.test.ts",
+          "namePattern": "adds a repair child without rewriting integrated history",
+          "requiredNames": [
+            "adds a repair child without rewriting integrated history"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-372-isolated-status-error",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-test-pruning",
+      "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-status-discovery.test.ts",
+          "namePattern": "reports an unreadable portable copy as a blocked entry instead of failing the page",
+          "requiredNames": [
+            "reports an unreadable portable copy as a blocked entry instead of failing the page"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "namePattern": "^Native parent and child changes retains approval after a children edit and leaves its meaning to the Agent$",
+          "requiredNames": [
+            "Native parent and child changes retains approval after a children edit and leaves its meaning to the Agent"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-430-joint-shape",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-09-test-pruning",
+      "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run''$",
+          "requiredNames": [
+            "Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run''"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-joint-shape-confirmation.test.ts",
+          "namePattern": "does not turn a mode-only reply or a missing mode into full Shape confirmation",
+          "requiredNames": [
+            "does not turn a mode-only reply or a missing mode into full Shape confirmation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-431-file-count-approval",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-test-pruning",
+      "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/skill/sdk-flow-handoffs.test.ts",
+          "namePattern": "routes preset scope checks to the matching Runtime reference without repeating file-count authorization",
+          "requiredNames": [
+            "routes preset scope checks to the matching Runtime reference without repeating file-count authorization"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+          "namePattern": "^hotfix approved scope reconfirms actual requirement revisions explicitly in Build and Verify$",
+          "requiredNames": [
+            "hotfix approved scope reconfirms actual requirement revisions explicitly in Build and Verify"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+          "namePattern": "^hotfix approved scope keeps the original scope decision after neutral edits and rejects a stale SDK proposal$",
+          "requiredNames": [
+            "hotfix approved scope keeps the original scope decision after neutral edits and rejects a stale SDK proposal"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+          "namePattern": "^tweak approved scope reconfirms actual requirement revisions explicitly in Build and Verify$",
+          "requiredNames": [
+            "tweak approved scope reconfirms actual requirement revisions explicitly in Build and Verify"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+          "namePattern": "^tweak approved scope keeps the original scope decision after neutral edits and rejects a stale SDK proposal$",
+          "requiredNames": [
+            "tweak approved scope keeps the original scope decision after neutral edits and rejects a stale SDK proposal"
+          ]
+        }
+      ]
+    }
+  ],
+  "identities": [
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "oldName": "materializes a Delta target before Shape and refuses independent target edits",
+      "fullName": "Native SDK Workflow Application materializes a Delta target before Shape and refuses independent target edits",
+      "migrationKind": "feature-removed",
+      "semantic": "Same Delta materialization and independent user target preservation assertions remain. Missing suite prefix only.",
+      "sourceLine": 1791,
+      "collected": true,
+      "executedByThisReview": false,
+      "replacements": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "name": "Native SDK Workflow Application materializes a Delta target before Shape and refuses independent target edits"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "oldName": "confirms a Supervisor child plan and coordination mode in the same SDK Run",
+      "fullName": "Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run''",
+      "migrationKind": "tests-moved",
+      "semantic": "Same summary-format children/coordination/one SDK Run case; Vitest $suffix interpolation renders the empty value as two apostrophes, and suite prefix is missing.",
+      "sourceLine": 1852,
+      "collected": true,
+      "executedByThisReview": false,
+      "replacements": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "name": "Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run''"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "oldName": "confirms a Supervisor child plan and coordination mode in the same SDK Run with referenced acceptance",
+      "fullName": "Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run' with referenced acceptance'",
+      "migrationKind": "tests-moved",
+      "semantic": "Same referenced-acceptance parameter variant; only Vitest interpolated-name quoting and missing suite prefix differ.",
+      "sourceLine": 1852,
+      "collected": true,
+      "executedByThisReview": false,
+      "replacements": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "name": "Native SDK Workflow Application confirms a Supervisor child plan and coordination mode in the same SDK Run' with referenced acceptance'"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "oldName": "recovers an applied unknown Archive through the public CLI with generated-output changes",
+      "fullName": "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions",
+      "migrationKind": "tests-moved",
+      "semantic": "Current generated-output variant retains original unknown Action/claim/attempt, public Archive --recover, unchanged canonical Spec bytes and mtime, one archive.execute, repeated recovery with unchanged revision. The transaction variant additionally rejects foreign capability edits.",
+      "sourceLine": 9334,
+      "collected": true,
+      "executedByThisReview": false,
+      "replacements": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "name": "recovers an applied unknown Archive without replay after generated-output edits and rejects foreign transactions"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/comet-native/native-children.test.ts",
+      "oldName": "downgrades a drifted children copy to a confirmation prompt instead of blocking status",
+      "fullName": "Native parent and child changes retains approval after a children edit and leaves its meaning to the Agent",
+      "migrationKind": "feature-removed",
+      "semantic": "The old automatic children-byte drift withdrawal was explicitly retired in 5426c4cb..2e7055cc. Current case intentionally asserts confirmed=true and no extra Shape prompt, and still verifies status succeeds. This is a reviewed feature retirement, not an equivalent rename of the old negative expectation.",
+      "sourceLine": 749,
+      "collected": true,
+      "executedByThisReview": false,
+      "replacements": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "name": "Native parent and child changes retains approval after a children edit and leaves its meaning to the Agent"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/comet-native/native-children.test.ts",
+      "oldName": "derives referenced v2 acceptance from the current catalog without copying its text",
+      "fullName": "Native parent and child changes derives referenced v2 acceptance from the current catalog without copying its text",
+      "migrationKind": "tests-moved",
+      "semantic": "Same current catalog reference derivation, required ID coverage and missing catalog rejection; suite prefix missing only.",
+      "sourceLine": 457,
+      "collected": true,
+      "executedByThisReview": false,
+      "replacements": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "name": "Native parent and child changes derives referenced v2 acceptance from the current catalog without copying its text"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/comet-native/native-children.test.ts",
+      "oldName": "accepts a readable v2 acceptance index while retaining the v1 contract",
+      "fullName": "Native parent and child changes accepts a readable v2 acceptance index while retaining the v1 contract",
+      "migrationKind": "tests-moved",
+      "semantic": "Same readable v2 index compatibility and v1 contract assertions; suite prefix missing only.",
+      "sourceLine": 427,
+      "collected": true,
+      "executedByThisReview": false,
+      "replacements": [
+        {
+          "file": "test/domains/comet-native/native-children.test.ts",
+          "name": "Native parent and child changes accepts a readable v2 acceptance index while retaining the v1 contract"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/comet-entry/hook-adapter.test.ts",
+      "oldName": "reads native Codex apply_patch commands without interpreting shell commands as patches",
+      "fullName": "Comet Hook platform adapter reads native Codex apply_patch commands without interpreting shell commands as patches",
+      "migrationKind": "tests-moved",
+      "semantic": "Same object/string tool_input command parsing, correct write target/patch and Bash command refusal; suite prefix missing only.",
+      "sourceLine": 88,
+      "collected": true,
+      "executedByThisReview": false,
+      "replacements": [
+        {
+          "file": "test/domains/comet-entry/hook-adapter.test.ts",
+          "name": "Comet Hook platform adapter reads native Codex apply_patch commands without interpreting shell commands as patches"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+      "oldName": "keeps accepted Build plan authority stable across task completion, but detects changed requirements",
+      "migrationKind": "feature-removed",
+      "replacements": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+          "name": "hotfix approved scope allows public task ID assignment and completion without another scope approval"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+          "name": "tweak approved scope allows public task ID assignment and completion without another scope approval"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/comet-classic/classic-cli-arguments.test.ts",
+      "oldName": "blocks Classic SDK Open when the proposal language differs from the change language",
+      "migrationKind": "feature-removed",
+      "replacements": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "name": "completes Classic full from an Agent-reviewed design without metadata rules through generated"
+        }
+      ]
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+      "oldName": "binds scope confirmation to the proposed artifacts before continuing the same preset",
+      "migrationKind": "feature-removed",
+      "replacements": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+          "name": "hotfix approved scope reconfirms actual requirement revisions explicitly in Build and Verify"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+          "name": "hotfix approved scope keeps the original scope decision after neutral edits and rejects a stale SDK proposal"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+          "name": "tweak approved scope reconfirms actual requirement revisions explicitly in Build and Verify"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+          "name": "tweak approved scope keeps the original scope decision after neutral edits and rejects a stale SDK proposal"
+        }
+      ]
+    }
+  ]
+}

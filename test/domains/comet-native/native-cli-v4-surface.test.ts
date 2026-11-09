@@ -253,7 +253,9 @@ describe('Native v4 public CLI surface', () => {
     const resumed = json(
       await runNativeCli(['next', 'portable-sdk', '--json', '--project-root', restoredRoot]),
     );
-    expect(resumed.error?.message).toMatch(/Native shape document checks failed/);
+    expect(resumed.error?.message).toMatch(
+      /Native change must define at least one acceptance criterion/,
+    );
     const status = json(
       await runNativeCli(['status', 'portable-sdk', '--json', '--project-root', restoredRoot]),
     );

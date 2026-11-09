@@ -679,6 +679,7 @@ export function createClassicSdkStateStore(
           (action) =>
             action.type === 'call_tool' &&
             action.ref === 'classic-check' &&
+            next.workflow.version !== '2' &&
             ['succeeded', 'failed'].includes(action.status) &&
             action.outcome,
         );

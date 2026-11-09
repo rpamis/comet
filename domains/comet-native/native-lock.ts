@@ -151,7 +151,7 @@ export async function inspectNativeProjectLocks(
       throw error;
     });
   const files = entries
-    .filter((entry) => entry.name.endsWith('.lock') && entry.name !== '.recovery.lock')
+    .filter((entry) => entry.name.endsWith('.lock'))
     .map((entry) => ({ file: path.join(directory, entry.name), kind: 'lock' as const }));
   const coordinator = path.join(directory, '.coordinator');
   const old = await fs.readdir(coordinator).catch((error: NodeJS.ErrnoException) => {

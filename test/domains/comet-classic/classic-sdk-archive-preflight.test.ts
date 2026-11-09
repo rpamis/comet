@@ -15,6 +15,18 @@ import { createClassicSdkStateStore } from '../../../domains/comet-classic/class
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
 import { createRuntime } from '../../../domains/engine/runtime.js';
 
+// This suite restores original managed checks; new v2 Runs have platform-report coverage.
+vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
+    >();
+  return {
+    ...actual,
+    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
+  };
+});
+
 const roots: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();

@@ -344,26 +344,6 @@ describe('Native Archive inspection', () => {
     });
   });
 
-  it('changes the preflight hash and blocks when implementation becomes stale', async () => {
-    const before = await inspectNativeArchivePreflight({
-      paths,
-      name: state.name,
-      now: new Date('2026-07-17T03:00:00.000Z'),
-    });
-    await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 3;\n');
-
-    const after = await inspectNativeArchivePreflight({
-      paths,
-      name: state.name,
-      now: new Date('2026-07-17T03:00:00.000Z'),
-    });
-
-    expect(after.ready).toBe(false);
-    expect(after.findingCodes).toContain('verification-evidence-stale');
-    expect(after.findingCodes).toContain('verification-implementation-stale');
-    expect(after.preflightHash).not.toBe(before.preflightHash);
-  });
-
   it('binds an existing archive target and pending journal into readiness', async () => {
     await fs.mkdir(path.join(paths.archiveDir, '2026-07-17-archive-preview'), {
       recursive: true,

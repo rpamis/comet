@@ -43,6 +43,15 @@ function changedPaths(root: string) {
     ),
   ];
 }
+async function excludedImplementationRoots(root: string): Promise<string[]> {
+  const layout = await resolveClassicLayout(root);
+  return [
+    '.comet',
+    layout.openSpecRoot,
+    layout.superpowersRoot,
+    ...(await classicForeignChangeRoots(root)),
+  ].map((ref) => (path.isAbsolute(ref) ? path.relative(root, ref).replaceAll('\\', '/') : ref));
+}
 interface WorkspaceBaseline {
   runId: string;
   revision: number;
@@ -87,11 +96,7 @@ export async function collectClassicSdkDeliveryInputs(
   run?: Readonly<WorkflowRun>,
 ): Promise<string[]> {
   if (!isGitWorkTree(root)) return [];
-  const layout = await resolveClassicLayout(root),
-    foreign = await classicForeignChangeRoots(root);
-  const excluded = ['.comet', layout.openSpecRoot, layout.superpowersRoot, ...foreign].map((ref) =>
-    path.isAbsolute(ref) ? path.relative(root, ref).replaceAll('\\', '/') : ref,
-  );
+  const excluded = await excludedImplementationRoots(root);
   const policy = identity
       ? await readCheckPolicy(root, identity)
       : { files: undefined, outputs: undefined },
@@ -136,7 +141,10 @@ export async function assertClassicSdkDeliveryInputs(
     deliveryPaths?: string[];
     deliveryInputs?: Record<string, string>;
   };
-  const paths = [...(output.deliveryPaths ?? Object.keys(output.deliveryInputs ?? {}))];
+  const excluded = output.deliveryPaths ? [] : await excludedImplementationRoots(root);
+  const paths = (output.deliveryPaths ?? Object.keys(output.deliveryInputs ?? {})).filter(
+    (ref) => !isClassicInputUnderRoot(ref, excluded),
+  );
   const report = run.evidenceWaits
     ?.slice()
     .reverse()

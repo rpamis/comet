@@ -26,6 +26,9 @@ export const classicSdkCheckInstruction =
 export const classicSdkDeliveryCheckInstruction =
   '交付修复检查已固定原 Verify 命令。将 data.continuation.request 原样保存为 JSON 文件，按 data.continuation.commandArgs 调用 runtime dispatch；不使用 check run 或 check rerun 重新登记检查。Runtime 仍校验原命令、输入和收据，不重放 Archive。检查成功后展示新交付范围，结束当前回复并等待用户针对本范围的实际回答。使用 --json 时解析完整 stdout，stderr 单独保留。';
 
+export const classicSdkAgentDeliveryCheckInstruction =
+  '提交本次交付修复的 Agent 平台检查报告，保留原 Run、归档和批准的路径，不运行受管命令或重放 Archive。随后展示交付范围并取得当前提案的明确批准。';
+
 /** 仅投影本次读取或提交的 Run；后续操作仍须重新校验版本与证据。 */
 export function classicSdkNextAction(run: WorkflowRun) {
   if (run.status === 'completed') return { kind: 'done' } as const;
@@ -55,7 +58,9 @@ export function classicSdkNextAction(run: WorkflowRun) {
       ...(ref === 'classic-check'
         ? {
             instruction: action.stepId.endsWith('.delivery.check')
-              ? classicSdkDeliveryCheckInstruction
+              ? run.workflow.version === '2'
+                ? classicSdkAgentDeliveryCheckInstruction
+                : classicSdkDeliveryCheckInstruction
               : classicSdkCheckInstruction,
           }
         : {}),

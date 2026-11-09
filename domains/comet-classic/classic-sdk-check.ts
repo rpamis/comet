@@ -271,7 +271,9 @@ export function classicSdkCheckCommand(
   const prepared = classicSdkCheckPreparationInput(run, action);
   if (prepared) return { runId: run.runId, projectRoot, ...prepared.command };
   if (isClassicDeliveryRepairCheck(run, action)) {
-    return { runId: run.runId, projectRoot, ...classicDeliveryRepairForAction(action).command };
+    const command = classicDeliveryRepairForAction(action).command;
+    if (!command) throw new Error('Classic platform reports do not contain a managed command');
+    return { runId: run.runId, projectRoot, ...command };
   }
   const refresh = classicSdkCheckRefreshInput(run, action);
   if (refresh) {

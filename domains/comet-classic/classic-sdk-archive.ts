@@ -385,12 +385,8 @@ export async function recoverClassicSdkArchive(
     if (completed) {
       const archiveRef = (completed.outcome?.output as { archiveDirectory: string })
         .archiveDirectory;
-      try {
-        await readClassicArchiveManifest(projectRoot, run, completed, archiveRef);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        await recoverClassicArchiveManifest(projectRoot, run, completed, archiveRef);
-      }
+      await recoverClassicArchiveManifest(projectRoot, run, completed, archiveRef);
+      await readClassicArchiveManifest(projectRoot, run, completed, archiveRef);
       return run;
     }
   }

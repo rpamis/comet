@@ -4,7 +4,6 @@ import { syncBuiltinESMExports } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { collectCheckSnapshot } from '../../../domains/comet-classic/classic-check-snapshot.js';
 import {
   assertClassicSdkDeliveryFileInputs,
   collectClassicSdkDeliveryInputs,
@@ -24,13 +23,7 @@ describe('Classic SDK declared delivery inputs', () => {
       '.comet/check-policy.json',
       JSON.stringify({ version: 2, commands: [{ ...identity, files, outputs }] }),
     );
-    const snapshot = await collectCheckSnapshot(
-      root,
-      path.join(root, 'openspec/changes/example'),
-      identity,
-      { verificationReport: null },
-    );
-    return collectClassicSdkDeliveryInputs(root, snapshot.manifest, identity);
+    return collectClassicSdkDeliveryInputs(root, '', identity);
   };
 
   beforeEach(async () => {
@@ -86,28 +79,22 @@ describe('Classic SDK declared delivery inputs', () => {
     git('rm', '--', 'src/obsolete.js', 'src/nested/obsolete.js');
     await put('source.js', 'updated\n');
     await put('src/kept.js');
-    expect(await inputs(['source.js', pattern])).toEqual({
-      'source.js': expect.stringMatching(/^[a-f0-9]{64}$/u),
-      'src/kept.js': expect.stringMatching(/^[a-f0-9]{64}$/u),
-      'src/obsolete.js': 'missing',
-      'src/nested/obsolete.js': 'missing',
-    });
+    expect(await inputs(['source.js', pattern])).toEqual([
+      'source.js',
+      'src/kept.js',
+      'src/nested/obsolete.js',
+      'src/obsolete.js',
+    ]);
   });
 
   it('keeps deleted descendants when the declared directory no longer exists', async () => {
     git('rm', '-r', '--', 'src');
-    expect(await inputs(['src'])).toMatchObject({
-      'src/obsolete.js': 'missing',
-      'src/nested/obsolete.js': 'missing',
-    });
+    expect(await inputs(['src'])).toEqual(['src/nested/obsolete.js', 'src/obsolete.js']);
   });
 
   it('does not include sibling paths or files outside the declared directory', async () => {
     git('rm', '-r', '--', 'src', 'src-other', 'src.js', 'source.js');
-    expect(Object.keys((await inputs(['src']))!)).toEqual([
-      'src/nested/obsolete.js',
-      'src/obsolete.js',
-    ]);
+    expect(await inputs(['src'])).toEqual(['src/nested/obsolete.js', 'src/obsolete.js']);
   });
 
   it('preserves exact-file and glob output exclusions for staged deletions', async () => {
@@ -115,14 +102,14 @@ describe('Classic SDK declared delivery inputs', () => {
     git('add', '--all');
     git('commit', '-m', 'add sibling file');
     git('rm', '-r', '--', 'src');
-    expect(await inputs(['src'], ['src/obsolete.js', 'src/nested/**'])).toEqual({
-      'src/obsolete.js.map': 'missing',
-    });
+    expect(await inputs(['src'], ['src/obsolete.js', 'src/nested/**'])).toEqual([
+      'src/obsolete.js.map',
+    ]);
   });
 
   it('keeps literal files exact and globs within their declared path segments', async () => {
     git('rm', '-r', '--', 'src');
-    expect(await inputs(['src/obsolete.js'])).toEqual({ 'src/obsolete.js': 'missing' });
-    expect(await inputs(['src/*.js'])).toEqual({ 'src/obsolete.js': 'missing' });
+    expect(await inputs(['src/obsolete.js'])).toEqual(['src/obsolete.js']);
+    expect(await inputs(['src/*.js'])).toEqual(['src/obsolete.js']);
   });
 });

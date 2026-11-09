@@ -112,15 +112,6 @@ describe('Native workflow friction regressions', () => {
     }
   }
 
-  it('reports document repair instead of a fictitious concurrent update', async () => {
-    await fs.writeFile(path.join(changeDir, 'brief.md'), '# Outcome\nCorrect spelling.\n');
-    const rejected = await command(['next', 'tiny', '--summary', 'Prepare Shape.']);
-    expect(rejected.error?.code).toBe('document-invalid');
-    expect(rejected.exitCode).toBe(65);
-    expect(rejected.summary).not.toMatch(/updated elsewhere|another session/iu);
-    expect(rejected.error?.message).toContain('brief-section-missing');
-  });
-
   it('accepts a focused four-section brief without inventing optional material', async () => {
     await fs.writeFile(
       path.join(changeDir, 'brief.md'),
@@ -354,16 +345,6 @@ None.
       ),
     ).not.toThrow();
     expect((await command(['status', 'tiny'])).agent?.phase).toBe('verify');
-  });
-
-  it('still requires confirmation when meaningful constraints change', async () => {
-    await confirm();
-    await fs.writeFile(
-      path.join(changeDir, 'brief.md'),
-      brief.replace('Preserve the command usage.', 'Change the public command usage.'),
-    );
-    const current = await command(['next', 'tiny', '--summary', 'Continue.']);
-    expect(current.agent?.phase).toBe('shape');
   });
 
   it.each([false, true])(

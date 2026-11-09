@@ -6,11 +6,14 @@ import {
   type RuntimeValidator,
   type WorkflowRun,
 } from '../engine/runtime.js';
+import { isDeepStrictEqual } from 'node:util';
 import type { ClassicWorkflowApplication } from './classic-sdk-application.js';
 import { assertClassicSdkCheckReceipt } from './classic-sdk-check-record.js';
 import { createClassicSdkCheckExecutor } from './classic-sdk-check.js';
 import {
   classicDeliveryRepairForAction,
+  classicDeliveryRepairInputs,
+  type ClassicDeliveryRepair,
   isClassicDeliveryRepairCheck,
   classicDeliveryRepairRecord as record,
 } from './classic-sdk-delivery-repair-model.js';
@@ -51,7 +54,11 @@ export function withClassicDeliveryRepair<
             reason: 'Classic delivery repair no longer matches its authoritative source Run',
           };
       }
-      const actual = await captureClassicDeliveryRepair(context.projectRoot, sourceRun ?? run);
+      const actual = await captureClassicDeliveryRepair(
+        context.projectRoot,
+        sourceRun ?? run,
+        (request.deliveryRepair as unknown as ClassicDeliveryRepair).reports,
+      );
       const accepted = hashRuntimeValue(actual) === hashRuntimeValue(request.deliveryRepair);
       return {
         accepted,
@@ -73,10 +80,25 @@ export function withClassicDeliveryRepair<
           accepted: false,
           reason: 'Classic delivery repair check has the wrong execution owner',
         };
-      await assertClassicSdkCheckReceipt(context.projectRoot, run, action, {
-        status: outcome.status,
-        output: outcome.output,
-      });
+      if (run.workflow.version === '2') {
+        const repair = classicDeliveryRepairForAction(action);
+        if (
+          outcome.status !== 'succeeded' ||
+          !isDeepStrictEqual(outcome.output, {
+            ...repair.reports,
+            deliveryPaths: classicDeliveryRepairInputs(run, repair),
+          })
+        )
+          return {
+            accepted: false,
+            reason: 'Classic delivery repair reports differ from the submitted reports',
+          };
+      } else {
+        await assertClassicSdkCheckReceipt(context.projectRoot, run, action, {
+          status: outcome.status,
+          output: outcome.output,
+        });
+      }
       if (outcome.status === 'succeeded') {
         await assertClassicDeliveryRepairCurrent(
           context.projectRoot,
@@ -102,11 +124,22 @@ export function withClassicDeliveryRepair<
         classicDeliveryRepairForAction(action),
         'prepare',
       );
-      await createClassicSdkCheckExecutor(context.projectRoot).preflight!(action, context, run);
+      if (run.workflow.version !== '2')
+        await createClassicSdkCheckExecutor(context.projectRoot).preflight!(action, context, run);
     },
     async execute(action, context, run) {
       if (!context?.projectRoot || !run)
         throw new Error('Classic delivery repair requires its project');
+      if (run.workflow.version === '2') {
+        const repair = classicDeliveryRepairForAction(action);
+        return {
+          status: 'succeeded' as const,
+          output: {
+            ...repair.reports,
+            deliveryPaths: classicDeliveryRepairInputs(run, repair),
+          },
+        };
+      }
       return createClassicSdkCheckExecutor(context.projectRoot).execute(action, context, run);
     },
   };

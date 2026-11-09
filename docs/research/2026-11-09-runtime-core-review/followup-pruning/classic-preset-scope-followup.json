@@ -1,0 +1,82 @@
+{
+  "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+  "change": "Bind these persisted v1 preset-contract fixtures to the v1 managed-check factory; default v2 Agent reports are covered by classic-agent-checks.test.ts and classic-agent-content-judgment.test.ts.",
+  "productionChanged": false,
+  "testsDeleted": [],
+  "assertionsRemoved": [],
+  "namesChanged": [],
+  "mapping": {
+    "previousRequiredName": "binds scope confirmation to the proposed artifacts before continuing the same preset",
+    "retainedBehavior": [
+      "Explicit approval for actual scope revisions in Build and Verify",
+      "Reject stale SDK proposal while accepting neutral edits",
+      "Task IDs and known persisted definition upgrades remain covered"
+    ],
+    "selectors": [
+      "hotfix approved scope reconfirms actual requirement revisions explicitly in Build and Verify",
+      "hotfix approved scope keeps the original scope decision after neutral edits and rejects a stale SDK proposal",
+      "tweak approved scope reconfirms actual requirement revisions explicitly in Build and Verify",
+      "tweak approved scope keeps the original scope decision after neutral edits and rejects a stale SDK proposal"
+    ]
+  },
+  "validation": [
+    {
+      "report": "coverage/repair-053/classic-preset-scope-current.json",
+      "passed": 4,
+      "failed": 0,
+      "tests": [
+        {
+          "fullName": "hotfix approved scope reconfirms actual requirement revisions explicitly in Build and Verify",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "fullName": "hotfix approved scope keeps the original scope decision after neutral edits and rejects a stale SDK proposal",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "fullName": "tweak approved scope reconfirms actual requirement revisions explicitly in Build and Verify",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "fullName": "tweak approved scope keeps the original scope decision after neutral edits and rejects a stale SDK proposal",
+          "status": "passed",
+          "failures": []
+        }
+      ]
+    },
+    {
+      "report": "coverage/repair-053/classic-preset-scope-legacy.json",
+      "passed": 4,
+      "failed": 0,
+      "tests": [
+        {
+          "fullName": "hotfix approved scope allows public task ID assignment and completion without another scope approval",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "fullName": "hotfix approved scope upgrades a known previous definition without rewriting completed Actions after neutral edits",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "fullName": "tweak approved scope allows public task ID assignment and completion without another scope approval",
+          "status": "passed",
+          "failures": []
+        },
+        {
+          "fullName": "tweak approved scope upgrades a known previous definition without rewriting completed Actions after neutral edits",
+          "status": "passed",
+          "failures": []
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "No full suite or Eval executed",
+    "These tests intentionally retain v1 persisted Run coverage; they do not prove v2 current checks reporting behavior"
+  ]
+}

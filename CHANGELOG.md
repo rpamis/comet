@@ -33,6 +33,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Cancelled Native history**: Diagnose closed, cancelled legacy Runs after their active documents are removed, while retaining checks for active projections, execution stops and storage integrity ([#542](https://github.com/rpamis/comet/issues/542)).
 - **CLI execution through Electron**: Parse Node-style CLI arguments explicitly when desktop agents run Comet through Electron, so Dashboard and other CLI commands do not reject the script path as an unknown command.
 
+### Removed
+
+- **Native extension content proofs**: Remove `nativeExtensionArtifactHashes` from the Native application SDK. Extension checks use Agent platform reports instead of project-file digests.
+
 ## What's Changed [0.5.2] - 2026-11-06
 
 ### Added
@@ -52,7 +56,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Formal document edits**: Changed briefs, Specs, Design Docs, and plans are judged against the approved original text obtained through `comet edit-review prepare-applied`. An unchanged contract keeps the original approval, phase, and acceptance items; only a material change to the goal, acceptance criteria, approach, or authorization requests the affected decisions.
 - **Accepted results before Archive**: After acceptance but before delivery, ordinary documentation changes keep the report and the accepted results. `comet edit-review refresh-checks` reruns only the affected checks and then continues the original archive. Repeated edits and byte-identical rewrites retain the original document and check evidence, including one-time operations; a changed delivery goal or authorization still requires the corresponding decision.
 - **Native Git staging decoupling**: Staging, unstaging, and empty commits no longer rebuild the implementation candidate unconditionally. Only checks that explicitly depend on Git identities recheck them; unchanged bytes continue the original action.
-- **Edit-continuation performance**: Share protected-file reads within a request, batch input hashing, and widen Git status observation instead of rescanning unchanged inputs, shortening the edit-to-continue path for Native and Classic.
+- **Read performance**: Share parent-directory observations within each Dashboard request and local project knowledge search, then verify them before returning results. Keep file reads fresh across requests and reject replaced directories while reducing repeated filesystem operations.
 
 ### Fixed
 

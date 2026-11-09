@@ -142,7 +142,12 @@ it('rejects a dependency manifest redirected outside its package', () => {
 
 it('round-trips spaces, commas, quotes and Windows backslashes in NODE_OPTIONS', () => {
   const { root } = fixture();
-  const file = path.join(root, 'C:\\Program Files\\odd "comma, package\\');
+  const file = path.join(
+    root,
+    process.platform === 'win32'
+      ? 'Program Files/comma, package/file.txt'
+      : 'C:\\Program Files\\odd "comma, package\\',
+  );
   write(file, 'allowed');
   const secret = path.join(root, 'secret');
   write(secret, 'denied');

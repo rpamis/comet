@@ -149,6 +149,7 @@ describe('continuous badcase registration', () => {
     const entry = catalog.cases[0] as Record<string, any>;
     entry.testMigration.supersededBy = {
       ...first,
+      kind: 'feature-removed',
       tests: [
         {
           file: 'test/app/replacement.test.ts',

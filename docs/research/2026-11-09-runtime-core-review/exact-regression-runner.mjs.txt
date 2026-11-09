@@ -1,0 +1,29 @@
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { workflowRegressionEntries } from '../../scripts/lint/workflow-regressions.mjs';
+import { coreRegressionArgs, assertCoreRegressionResult } from '../../scripts/lint/core-regressions.mjs';
+
+const root = process.cwd();
+const catalog = JSON.parse(readFileSync('config/workflow-regressions.json', 'utf8'));
+const cases = catalog.cases.filter((item) => item.sources.includes('report:2026-11-09-runtime-core-commit-review'));
+if (cases.length !== 9) throw new Error('Expected the nine declared review cases');
+const entries = workflowRegressionEntries({ ...catalog, cases });
+mkdirSync('coverage/review-053/exact', { recursive: true });
+const results = [];
+for (const entry of entries) {
+  const reportFile = path.resolve('coverage/review-053/exact', entry.id + '.json');
+  console.log(entry.id);
+  const run = spawnSync(process.execPath, [path.resolve('node_modules/vitest/vitest.mjs'), ...coreRegressionArgs(entry, reportFile)], { cwd: root, stdio: 'inherit', windowsHide: true });
+  try {
+    if (run.error) throw run.error;
+    if (run.status !== 0) throw new Error('Vitest exited ' + run.status);
+    const report = JSON.parse(readFileSync(reportFile, 'utf8'));
+    const passed = assertCoreRegressionResult(entry, report, { projectRoot: root });
+    results.push({ id: entry.id, status: 'passed', passed, report: reportFile });
+  } catch (error) {
+    results.push({ id: entry.id, status: 'failed', error: String(error), report: reportFile });
+  }
+}
+writeFileSync('coverage/review-053/exact-summary.json', JSON.stringify({ entries: results, passedGroups: results.filter((entry) => entry.status === 'passed').length, failedGroups: results.filter((entry) => entry.status === 'failed').length }, null, 2) + '\n');
+if (results.some((entry) => entry.status !== 'passed')) process.exitCode = 1;

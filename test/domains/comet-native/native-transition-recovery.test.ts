@@ -44,6 +44,7 @@ import {
 } from '../../../domains/comet-native/native-transition-journal.js';
 import { appendNativeTrajectoryEvent } from '../../../domains/comet-native/native-trajectory.js';
 import { repairNativeTrajectoryTail } from '../../../domains/comet-native/native-trajectory-recovery.js';
+import { repairNativeProjectLock } from '../../../domains/comet-native/native-lock.js';
 import type {
   NativeChangeState,
   NativeProjectPaths,
@@ -1408,7 +1409,7 @@ describe('Native transition recovery', () => {
       value: { change: { phase: 'build' } },
     });
     expect(secondResult).toMatchObject({ status: 'rejected' });
-    expect((secondResult as { error: Error }).error.message).toContain('lock is already held');
+    expect((secondResult as { error: Error }).error.message).toContain('Native lock is busy');
   });
 
   it('writes the prepared journal before the first trajectory event', async () => {
@@ -1462,6 +1463,7 @@ describe('Native transition recovery', () => {
 
     expect(await inspectNativeStatus(paths, 'recover-transition')).toMatchObject({
       nextCommand: null,
+      error: expect.stringContaining('incomplete final line'),
     });
     await expect(
       advanceNativeChange({
@@ -1537,6 +1539,7 @@ describe('Native transition recovery', () => {
     expect(await fs.readFile(trajectoryFile, 'utf8')).toBe(before);
     expect(await inspectNativeStatus(paths, 'recover-transition')).toMatchObject({
       nextCommand: null,
+      error: expect.stringContaining('trajectory is invalid'),
     });
   });
 
@@ -1586,8 +1589,6 @@ describe('Native transition recovery', () => {
     const rootLockFile = path.join(paths.locksDir, 'root-move.lock');
     const staleOwner = {
       id: 'stale-transition-owner',
-      pid: 2_147_483_647,
-      hostname: os.hostname(),
       createdAt: '2026-07-15T00:00:00.000Z',
       operation: 'advance recover-transition',
     };
@@ -1597,10 +1598,12 @@ describe('Native transition recovery', () => {
     ]);
 
     await expect(continueNativeTransition(paths, 'recover-transition')).rejects.toThrow(
-      /already held/u,
+      /Legacy lock requires confirmation/u,
     );
     await expect(fs.access(lockFile)).resolves.toBeUndefined();
-    await expect(fs.access(rootLockFile)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.access(rootLockFile)).resolves.toBeUndefined();
+    await repairNativeProjectLock(paths, 'stale-transition-owner', true);
+    await repairNativeProjectLock(paths, 'stale-root-owner', true);
 
     const repaired = await doctorNativeProject({
       paths,
@@ -1610,7 +1613,6 @@ describe('Native transition recovery', () => {
     });
     expect(repaired.findings).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ code: 'stale-recovery-lock-removed', severity: 'info' }),
         expect.objectContaining({ code: 'transition-recovered', severity: 'info' }),
       ]),
     );

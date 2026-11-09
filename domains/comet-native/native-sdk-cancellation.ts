@@ -345,7 +345,7 @@ export async function isNativeSdkChangeCancellationComplete(
   }).inspect(owner.runId);
   if (
     run.workflow.id !== 'comet-native' ||
-    !['1', '2', '3'].includes(run.workflow.version) ||
+    !['1', '2', '3', '4'].includes(run.workflow.version) ||
     run.runId !== name ||
     parseNativePortableState(run.state).name !== name ||
     (run.input as { name?: unknown; artifactRootRef?: unknown } | null)?.name !== name ||

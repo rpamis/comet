@@ -23,26 +23,11 @@ afterEach(async () => {
 it.each(
   [
     {
-      profile: 'full',
-      fail: false,
-      name: 'continues the same Classic full Verify and Archive after ordinary edits without content proof',
-    },
-    {
-      profile: 'hotfix',
-      fail: false,
-      name: 'continues the same Classic hotfix Verify and Archive after ordinary edits without content proof',
-    },
-    {
-      profile: 'tweak',
-      fail: false,
-      name: 'continues the same Classic tweak Verify and Archive after ordinary edits without content proof',
-    },
-    {
       profile: 'tweak',
       fail: true,
       name: 'blocks Classic Archive when a new real check fails after an accepted pass',
     },
-    ...(['source', 'generated'] as const).map((entry) => ({
+    ...(['generated'] as const).map((entry) => ({
       profile: 'full',
       fail: false,
       generated: entry === 'generated',

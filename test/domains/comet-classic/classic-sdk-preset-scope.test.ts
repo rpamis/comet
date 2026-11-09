@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 import { defineWorkflow, hashRuntimeValue } from '../../../domains/engine/runtime.js';
@@ -12,6 +12,18 @@ import {
 } from '../../../domains/comet-classic/classic-sdk-revision-application.js';
 import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
+
+// These persisted preset definitions retain v1 managed checks; v2 reports have separate CLI coverage.
+vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
+    >();
+  return {
+    ...actual,
+    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
+  };
+});
 
 const roots: string[] = [];
 

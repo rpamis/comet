@@ -24,10 +24,6 @@ afterEach(async () => {
 
 it.each(
   [
-    {
-      fail: false,
-      name: 'continues the same Native Verify after an Agent accepts an ordinary edit without content proof',
-    },
     { fail: true, name: 'keeps a real failed Native check failed after file edits without replay' },
     {
       fail: false,
@@ -38,11 +34,6 @@ it.each(
       fail: false,
       afterPass: true,
       name: 'blocks Native Archive when a new real check fails after an accepted pass',
-    },
-    {
-      fail: false,
-      alias: true,
-      name: 'continues the original Native Run through a parent directory alias',
     },
     {
       fail: false,

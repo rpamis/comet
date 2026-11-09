@@ -830,18 +830,19 @@ export async function nativeNextCommand(
     if (
       !repairParentPlan &&
       !expectedContinuation &&
+      current.phase !== 'shape' &&
       current.phase !== 'verify' &&
       current.phase !== 'archive'
     ) {
       throw new NativeUsageError(
-        '--revise-requirements requires Verify, Archive, or a failed Supervisor parent Build',
+        '--revise-requirements requires Shape, Verify, Archive, or a failed Supervisor parent Build',
       );
     }
     state = await returnNativePortableChangeToShape({
       paths: configured.paths,
       name,
       reason: summary,
-      allowedPhases: repairParentPlan ? ['build'] : ['verify', 'archive'],
+      allowedPhases: repairParentPlan ? ['build'] : ['shape', 'verify', 'archive'],
       expectedContinuation,
       ...(repairParentPlan ? { keepFailureBudget: true } : {}),
     });

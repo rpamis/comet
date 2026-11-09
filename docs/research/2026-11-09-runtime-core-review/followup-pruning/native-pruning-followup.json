@@ -1,0 +1,176 @@
+{
+  "scope": "Only assigned Native tests and test/app/native-runtime-dispatch.test.ts; production/catalog/frozen evidence untouched",
+  "source": "report:2026-11-08-agent-managed-workflow-content",
+  "removed": {
+    "sdkDeclarations": 5,
+    "sdkExpandedCases": 8,
+    "extraDeclarations": 5,
+    "totalExpandedCases": 13,
+    "details": [
+      {
+        "name": "rejects a Verifier pass when a required check log changed after dispatch",
+        "reason": "Rejects a real passed check only because its log bytes change; log content proof retired. Real failed/timeout/unknown check cases retained."
+      },
+      {
+        "name": "checks Archive acceptance once at each preparation, execution, and commit boundary",
+        "reason": "Counts calls to removed document content-drift inspector; the repeated inspector policy is explicitly retired."
+      },
+      {
+        "name": "reads the finalized Archive report once and rejects later report changes",
+        "reason": "Treats finalized human report edits, generated metadata edits and missing view as archive truth through reportSha256. Structured receipt/Run identity is tested separately."
+      },
+      {
+        "name": "rejects candidate drift after original gate observation %i before archive binding capture",
+        "reason": "Both variants spy on the retired candidate fingerprint gate and create a normal implementation file solely to trigger automatic invalidation."
+      },
+      {
+        "name": "blocks unapproved %s changes after Archive preflight",
+        "reason": "All three variants only create an ordinary hidden implementation file and expect automatic content-drift stop; no canonical spec.md conflict, user authorization change, request identity corruption or actual failed command is triggered."
+      },
+      {
+        "file": "test/domains/comet-native/native-diagnostics.test.ts",
+        "name": "reports contract drift after approval and requires a fresh confirmation",
+        "reason": "Only ordinary source/document bytes or old static content-scope diagnostic makes an accepted contract/check/Shape stale and requires automatic refresh. No actual process failure, request identity change, unsafe path or canonical publication conflict is triggered."
+      },
+      {
+        "file": "test/domains/comet-native/native-issue-handoff.test.ts",
+        "name": "still rejects source drift after an otherwise complete handoff",
+        "reason": "Only ordinary source/document bytes or old static content-scope diagnostic makes an accepted contract/check/Shape stale and requires automatic refresh. No actual process failure, request identity change, unsafe path or canonical publication conflict is triggered."
+      },
+      {
+        "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+        "name": "reports and repairs pending Shape confirmation drift before it is confirmed",
+        "reason": "Only ordinary source/document bytes or old static content-scope diagnostic makes an accepted contract/check/Shape stale and requires automatic refresh. No actual process failure, request identity change, unsafe path or canonical publication conflict is triggered."
+      },
+      {
+        "file": "test/domains/comet-native/native-findings.test.ts",
+        "name": "routes stale implementation scope back to Build without a user decision",
+        "reason": "Only ordinary source/document bytes or old static content-scope diagnostic makes an accepted contract/check/Shape stale and requires automatic refresh. No actual process failure, request identity change, unsafe path or canonical publication conflict is triggered."
+      },
+      {
+        "file": "test/domains/comet-native/native-archive-inspection.test.ts",
+        "name": "changes the preflight hash and blocks when implementation becomes stale",
+        "reason": "Only ordinary source/document bytes or old static content-scope diagnostic makes an accepted contract/check/Shape stale and requires automatic refresh. No actual process failure, request identity change, unsafe path or canonical publication conflict is triggered."
+      }
+    ],
+    "protectionAudit": "Imported effective CORE_REGRESSIONS; all deleted names checked by matching file plus active selector and no active protected match.",
+    "originals": [
+      "coverage/repair-053/native-followup-retired-nodes.json",
+      "coverage/repair-053/native-followup-extra-pruned-files.json",
+      "coverage/repair-053/native-followup-prior-files.json"
+    ]
+  },
+  "adjusted": [
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "names": [
+        "keeps a stalled Verify Run waiting so the user can revise requirements or implementation",
+        "returns a stalled Verify Run to Build only after the matching user decision",
+        "offers a proposal-bound repair command for a persisted stalled SDK Run"
+      ],
+      "reason": "Retired unchanged-acceptance-set stagnation heuristic. Perform 5 actual failed iterations and stop at existing default failure budget instead of restoring progress inference. Original approval, same Run, stale proposal refusal and exact decision transitions retained."
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "names": [
+        "repairs a real failed Runtime check with a new candidate and preserves receipts through Archive"
+      ],
+      "reason": "Remove retired logSha256 type and current-log hash comparison only. Preserve actual exit1/log failure text, repair/new candidate, original receipts and full Archive."
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "names": [
+        "completes Archive from persisted checkpoint 2 without replaying completed Actions"
+      ],
+      "reason": "Remove ordinary newly-created implementation-file automatic invalidation subblock. Keep read-only preview/state/files, original complete Action facts, exactly 3 Archive steps and repeated completion."
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "names": [
+        "requires user confirmation before Archiving an independently verified Skill-coordinated pass (memory)",
+        "requires user confirmation before Archiving an independently verified Skill-coordinated pass (sdk)"
+      ],
+      "reason": "Remove retired report SHA fields from receipt/proposal comparisons. Preserve report stateVersion, original approved report bytes, real confirmation and receipt, cross-device checkpoint restoration, migrated-history identity and corrupted receipt refusal. Human view is preserved rather than requiring regenerated state_version metadata."
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "oldName": "repairs missing structure in the same SDK Run before confirming the complete Shape",
+      "newName": "reproposes the same SDK Shape after rejection without requiring document structure",
+      "reason": "Remove static directory-structure rejection only; preserve rejected original Wait/decision, same Run re-proposal, new Wait and real approval before Build."
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "oldName": "rejects Archive document drift before overwriting the confirmed report",
+      "newName": "retains the approved Archive report after the Agent accepts a brief edit",
+      "reason": "Remove normal Brief-edit automatic preflight failure expectation, retain unchanged approved report and accepted preflight/pending exact Archive Action."
+    },
+    {
+      "file": "test/app/native-runtime-dispatch.test.ts",
+      "names": [
+        "executes managed Build checks through public receipt dispatch and resumes the Builder",
+        "waits for acceptance directly after a v3 Verifier result without a report Action",
+        "preserves v3 acceptance when the report view fails and retries it on next"
+      ],
+      "reason": "v3 helper incorrectly invoked new default v4. Explicitly create supported legacy3 Run through existing helper; preserve all managed compatibility, user acceptance and view recovery assertions."
+    },
+    {
+      "file": "test/app/native-runtime-dispatch.test.ts",
+      "names": [
+        "preserves complete claimed inputs, state, identity and result template without repeating the Run history"
+      ],
+      "reason": "Fresh short Run has only 3 Actions; content-proof removal reduced full response, so compact<full/2+1024 is not a meaningful history metric. Keep complete current Action/state/claim/result equality, reject top-level Run/history/commands/action history, reject full serialized historical Action duplication, retain details/inspection full-Run recovery. No new numeric threshold or synthetic history."
+    }
+  ],
+  "protectedRetirementCandidates": [
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "names": [
+        "Native SDK Workflow Application rechecks Archive documents after executor output and before committing the outcome",
+        "Native SDK Workflow Application does not enter Build when Shape documents change after approval",
+        "rejects candidate drift before v3 Archive publication after merging the revalidation Action"
+      ],
+      "coreIds": [
+        "history-domains-comet-native-native-sdk-application"
+      ],
+      "reason": "Pure ordinary Brief/source edit automatic invalidation, but active historical group still requires old names. Left untouched; parent must append reviewed feature-removed migration preserving original evidence."
+    },
+    {
+      "file": "test/app/native-runtime-dispatch.test.ts",
+      "name": "Native dispatch CLI presentation recovers a rejected Builder after formal Spec drift through the original failure receipt and reconfirms the same change",
+      "coreIds": [
+        "registered-native-531-builder-batch-validation"
+      ],
+      "reason": "Shape content drift rejection trigger retired; keep original failed-outcome receipt, claim identity and user-initiated requirements revision in equivalent tests. Left untouched for parent migration; managed Build compatibility case is retained and now passes."
+    }
+  ],
+  "verification": {
+    "finalPassingReports": [
+      {
+        "report": "native-followup-budget-failure.json",
+        "passed": 4
+      },
+      {
+        "report": "native-followup-approval-document.json",
+        "passed": 4
+      },
+      {
+        "report": "native-followup-approval-checkpoint.json",
+        "passed": 1,
+        "note": "Only checkpoint2 counted; earlier approval failures in this report superseded by subsequent passing report"
+      },
+      {
+        "report": "native-followup-dispatch-legacy3.json",
+        "passed": 3
+      },
+      {
+        "report": "native-followup-dispatch-compact.json",
+        "passed": 1
+      }
+    ],
+    "distinctFinalPassingTests": 13,
+    "format": "Prettier check for all 7 files passed; git diff --check passed; TypeScript syntax parsing 7 files passed.",
+    "earlierFailures": "Approval report SHA/version expectations and v4-v3 helper experiment failures retained in diagnostic reports; not counted as final passing results.",
+    "limitations": "No whole native-sdk-application file, full repository suite, Eval, model, real HOME Runtime or context-worker availability validation. Existing optional source context worker .js unavailable; target tests exercised documented fallback."
+  },
+  "remaining": "Many native-sdk-application failures remain mixed safety/recovery vs retired content proofs; no blanket deletion or green-suite claim. Canonical overwrite testcase left unchanged; parent fixes production separately. Root transaction/quarantine/unknown execution tests retained."
+}

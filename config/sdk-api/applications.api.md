@@ -959,7 +959,7 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
             hash: string;
         };
         definitionHashes: Record<string, string>;
-        status: "failed" | "running" | "cancelled" | "waiting" | "completed";
+        status: "running" | "failed" | "cancelled" | "waiting" | "completed";
         sequence: number;
     };
     name: string;
@@ -1667,7 +1667,7 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
         hash: string;
     };
     definitionHashes: Record<string, string>;
-    status: "failed" | "running" | "cancelled" | "waiting" | "completed";
+    status: "running" | "failed" | "cancelled" | "waiting" | "completed";
     sequence: number;
 };
 

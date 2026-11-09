@@ -21,6 +21,7 @@ import {
 } from '../../domains/workflow-contract/change-runtime-owner.js';
 import { nativeProjectPaths } from '../../domains/comet-native/native-paths.js';
 import { fixtureAcceptanceReview } from '../helpers/native-builder-acceptance-review.js';
+import { createLegacyNativeSdkChange } from '../helpers/native-legacy-sdk-change.js';
 import { nativeSdkReportExecutor } from '../../domains/comet-native/native-sdk-report.js';
 import type { RuntimeAction } from '../../domains/engine/runtime.js';
 import * as taskContext from '../../app/commands/comet-task-context.js';
@@ -174,16 +175,7 @@ async function builderFixture(version: '1' | '3' = '1') {
   await fs.mkdir(path.join(root, '.git'));
   const name = 'compact-handoff';
   if (version === '3') {
-    const created = await runNativeCli([
-      'new',
-      name,
-      '--runtime',
-      'sdk',
-      '--project-root',
-      root,
-      '--json',
-    ]);
-    expect(created.exitCode, created.stderr).toBe(0);
+    await createLegacyNativeSdkChange(root, name, '3');
   } else {
     // 用真实旧版定义创建兼容样例，保留旧协议断言。
     const config = defaultProjectConfig('docs', 'en');
@@ -618,114 +610,6 @@ describe('Native dispatch CLI presentation', () => {
       outcome: { outcomeId: 'builder-original-failure', output },
     });
   });
-  it('recovers a rejected Builder after formal Spec drift through the original failure receipt and reconfirms the same change', async () => {
-    const f = await builderFixture();
-    await cli(f.root, f.requestFile);
-    const before = await inspectNativeSdkRun(f.root, f.name);
-    const spec = path.join(f.root, 'docs/comet/changes', f.name, 'specs/workflow/spec.md');
-    await fs.writeFile(spec, '# Workflow\nThe workflow resumes and records an audit event.\n');
-    await fs.writeFile(
-      f.requestFile,
-      JSON.stringify({
-        operation: 'record-outcome',
-        runId: f.name,
-        outcome: {
-          actionId: f.request.actionId,
-          attempt: f.request.attempt,
-          inputHash: f.request.inputHash,
-          claimToken: f.request.claimToken,
-          outcomeId: 'rejected-candidate',
-          status: 'succeeded',
-          output: {
-            summary: 'Implemented the fixture.',
-            addressedAcceptanceIds: ['A1'],
-            acceptanceReview: fixtureAcceptanceReview(['A1']),
-            checks: [],
-            knownLimits: [],
-            review: null,
-            submittedAt: new Date().toISOString(),
-            verificationChecks: [],
-          },
-        },
-      }),
-    );
-    const rejected = await runtimeDispatchCommand(
-      { application: 'native', projectRoot: f.root, request: f.requestFile },
-      { output: 'compact' },
-    );
-    expect(rejected.response.status).toBe('failed');
-    const recovery = rejected.response.recovery as {
-      code: string;
-      affectedPaths: string[];
-      request: { outcome: { actionId: string; claimToken: string; status: string } };
-      recoveryArgs: string[];
-    };
-    expect(recovery).toMatchObject({
-      code: 'shape-drift',
-      affectedPaths: [spec],
-      request: {
-        operation: 'record-outcome',
-        runId: f.name,
-        outcome: {
-          actionId: f.request.actionId,
-          claimToken: f.request.claimToken,
-          status: 'failed',
-        },
-      },
-    });
-    const rejectedRun = (await inspectNativeSdkRun(f.root, f.name)).run;
-    expect(rejectedRun.state).toEqual(before.run.state);
-    expect(rejectedRun.actions.map(({ id }) => id)).toEqual(before.run.actions.map(({ id }) => id));
-    expect(rejectedRun.actions.find(({ id }) => id === f.request.actionId)).toMatchObject({
-      status: 'running',
-      claim: { token: f.request.claimToken },
-      rejectedOutcomes: [{ code: 'OUTCOME_REJECTED' }],
-    });
-    await fs.writeFile(f.requestFile, JSON.stringify(recovery.request));
-    const previousExitCode = process.exitCode;
-    const logged = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    try {
-      await runRuntimeCli(
-        recovery.recoveryArgs
-          .slice(1)
-          .map((arg) => (arg === '<failure-outcome-request-json-file>' ? f.requestFile : arg)),
-      );
-      expect(process.exitCode, JSON.stringify(logged.mock.calls)).toBe(0);
-    } finally {
-      logged.mockRestore();
-      process.exitCode = previousExitCode;
-    }
-    const once = (await inspectNativeSdkRun(f.root, f.name)).run;
-    expect(
-      (
-        await runtimeDispatchCommand({
-          application: 'native',
-          projectRoot: f.root,
-          request: f.requestFile,
-        })
-      ).response.status,
-    ).toBe('succeeded');
-    expect((await inspectNativeSdkRun(f.root, f.name)).run).toEqual(once);
-    const status = JSON.parse(
-      (await runNativeCli(['status', f.name, '--project-root', f.root, '--json'])).stdout!,
-    );
-    const revise = status.data.continuation.commandAlternatives.find(
-      (entry: { name: string }) => entry.name === 'revise-requirements',
-    );
-    expect(revise).toBeDefined();
-    const args = revise.commandArgs
-      .slice(2)
-      .map((arg: string) =>
-        arg === '<summary>' ? 'The user explicitly requests reconfirming the edited Spec.' : arg,
-      );
-    const revised = await runNativeCli(args);
-    expect(revised.exitCode, revised.stdout || revised.stderr).toBe(0);
-    const after = await inspectNativeSdkRun(f.root, f.name);
-    expect(after.run.runId).toBe(before.run.runId);
-    expect(after.state.phase).toBe('shape');
-    expect(after.state.archived).toBe(false);
-    expect(after.run.actions.find(({ id }) => id === f.request.actionId)?.status).toBe('failed');
-  });
   it('does not disclose a Builder failure receipt to a rejected outcome with another claim', async () => {
     const f = await builderFixture();
     await cli(f.root, f.requestFile);
@@ -865,16 +749,22 @@ describe('Native dispatch CLI presentation', () => {
     });
     expect(compact.data.continuation).not.toHaveProperty('contextRequest');
     expect(compact.data.activeActions[0].contextRequest).not.toHaveProperty('instruction');
-    for (const key of ['actions', 'outputs', 'actionContexts', 'waits'])
+    for (const key of [
+      'run',
+      'history',
+      'commands',
+      'actions',
+      'outputs',
+      'actionContexts',
+      'waits',
+    ])
       expect(compact.data).not.toHaveProperty(key);
     const serialized = (value: unknown) =>
       JSON.stringify(value, (_key, item) =>
         typeof item === 'string' ? item.replaceAll(root, '<project-root>') : item,
       );
-    expect(Buffer.byteLength(serialized(compact.data))).toBeLessThan(
-      // 当前 Action 的具体结果契约可增加固定正文，历史仍不得重复返回。
-      Buffer.byteLength(serialized(committed)) / 2 + 1024,
-    );
+    for (const historical of committed.actions.filter(({ id }) => id !== action.id))
+      expect(serialized(compact.data)).not.toContain(serialized(historical));
     const sdk = await runtimeDispatchCommand({
       application: 'native',
       projectRoot: root,

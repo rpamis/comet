@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { parse } from 'yaml';
 import { resolveClassicRunDirectoryForRead } from '../../dist/domains/comet-classic/classic-runtime-paths.js';
+import { readRunState, writeRunState } from '../../dist/domains/engine/state.js';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(SCRIPT_PATH), '..', '..');
@@ -251,7 +252,7 @@ async function handoffResumeScenario(workspace) {
 
   const first = run(directory, ['handoff', name, 'design', '--write']);
   const initial = await readState(changeDir);
-  const actionId = `classic-handoff:${initial.handoff_hash}`;
+  const actionId = 'classic-handoff:benchmark-interrupted';
   await fs.writeFile(
     path.join(await runtimeDirectory(changeDir), initial.pending_ref),
     JSON.stringify(
@@ -259,13 +260,14 @@ async function handoffResumeScenario(workspace) {
         id: actionId,
         stepId: initial.current_step,
         type: 'handoff',
-        ref: initial.handoff_hash,
+        ref: null,
       },
       null,
       2,
     ) + '\n',
   );
-  state(directory, 'set', name, 'pending', actionId);
+  const runDirectory = await runtimeDirectory(changeDir);
+  await writeRunState(runDirectory, { ...(await readRunState(runDirectory)), pending: actionId });
   const resumed = run(directory, ['handoff', name, 'design', '--write']);
   const recovered = await readState(changeDir);
   const trajectory = (
@@ -296,8 +298,8 @@ async function handoffResumeScenario(workspace) {
       migrationSuccess: recovered.classic_migration === 1 && recovered.pending === null,
       idempotent: repeated.status === 0 && recoveredBytes === repeatedBytes && recoveries === 1,
       contractMatch:
-        typeof recovered.handoff_hash === 'string' &&
-        recovered.handoff_context.endsWith('design-context.json'),
+        recovered.handoff_hash === null &&
+        recovered.handoff_context === `openspec/changes/${name}/proposal.md`,
     },
     { currentStep: recovered.current_step, recoveries },
   );

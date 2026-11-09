@@ -1,0 +1,7524 @@
+{
+  "scope": "Standard Vitest configuration, two diagnostic segments; not a uniform final-candidate full pass",
+  "interruption": "First process/session disappeared without a JSON summary; completed real-file headers were retained, fake test/scripts/example.test.ts output excluded, only remaining99 files resumed.",
+  "eligibleFiles": 748,
+  "firstSegmentFiles": 649,
+  "resumedFiles": 99,
+  "testCountsExcludeUncollectedFiles": true,
+  "finalCandidateFullPass": false,
+  "totals": {
+    "files": 748,
+    "passedFiles": 618,
+    "failedFiles": 128,
+    "skippedFiles": 2,
+    "totalTests": 9668,
+    "passedTests": 8909,
+    "failedTests": 643,
+    "skippedTests": 116,
+    "todoTests": 0
+  },
+  "files": [
+    {
+      "file": "test/app/application-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/application-distribution.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/application-eval-exit.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/application-eval.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/application-status.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/classic-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 25,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/cli-electron.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/cli-eval-options.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/cli-help.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 39,
+      "passed": 39,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/cli-lazy-actions.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/cli-query-import-budget.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/cli-smoke.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 8,
+      "passed": 7,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/cli-startup.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 30,
+      "passed": 30,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/comet-banner.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/comet-daemon-router-timeout.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 29,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 5,
+      "todo": 0
+    },
+    {
+      "file": "test/app/comet-daemon-router.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/comet-task-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/comet-task-context-process.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/comet-task-learning-receipt.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/compact-output.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/creator-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/daemon-read-cache.test.ts",
+      "segment": "completed-resume",
+      "status": "failed",
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/daemon-server.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/dashboard-command.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/doctor-classic-discovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/doctor-sdk-readonly.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/doctor-zcode-global.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/doctor.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 73,
+      "passed": 73,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/eval-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 47,
+      "passed": 47,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/eval-run-lifecycle.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/eval-static-collect.integration.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 2,
+      "passed": 1,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/fast-runtime-router.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/init-e2e.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 104,
+      "passed": 104,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/init.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/minimax-code-cli.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/native-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/native-compact-built-cli.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/native-runtime-dispatch.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 18,
+      "passed": 13,
+      "failed": 5,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/native-verification-cli.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/native-verification-policy-removal.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/personal-memory-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 9,
+      "passed": 8,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/platform-select-prompt-interactive.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/project-knowledge-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/project-scope-selection.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/report-application-cli.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/resume-probe-command-branches.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/resume-probe.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/runtime-application-compact.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/runtime-application.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 22,
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/runtime-cli-routing.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/runtime-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 58,
+      "passed": 53,
+      "failed": 1,
+      "skipped": 4,
+      "todo": 0
+    },
+    {
+      "file": "test/app/runtime-inspect-work-budget.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/runtime-query.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/runtime-wait-reason.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/skill-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/status-history.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/status.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/task-facade.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/uninstall.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 133,
+      "passed": 133,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/update-user-content.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/update.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 127,
+      "passed": 127,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/walkthrough-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/workflow-activation-cli.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/workflow-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/workflow-content-proof-removal.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/workflow-handoffs.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/app/workflow-select-prompt-interactive.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/agent-learning/agent-learning.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 39,
+      "passed": 39,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/agent-learning/context-application-store.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/agent-learning/context-usage.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/agent-learning/learning-budget.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/bundle-candidates.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/bundle-cli-e2e.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/bundle-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/bundle-compiler.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/bundle-distribute.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/bundle-eval-run-result.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/bundle-eval.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/bundle-hash.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/bundle-load.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/bundle-locale.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/bundle-next-action.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/bundle-platform.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/bundle-publish.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/bundle-review-summary.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/bundle-validate.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 16,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/comet-any-skill-contract.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/comet-any-skill.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/comet-bundle-compatibility.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/eval-manifest-runtime.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/legacy-creator-exit.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/publish-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/bundle/user-facing.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-agent-checks.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-agent-cli-contract.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 6,
+      "passed": 5,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-agent-command-selection.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-application.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 34,
+      "passed": 31,
+      "failed": 3,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-archive-scan-performance.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 14,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-archive.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 26,
+      "passed": 24,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-artifact-requirements.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 11,
+      "passed": 10,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-branch-binding.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 28,
+      "passed": 28,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-check-defaults.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 9,
+      "passed": 7,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-check-index.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-check-manifest.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 26,
+      "passed": 26,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-check-policy.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 18,
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-cli-arguments.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 59,
+      "passed": 36,
+      "failed": 23,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-cli-config-errors.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-cli-help.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-command-checks.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 23,
+      "passed": 23,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-command-context.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-compact-output.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-contract.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 13,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 12,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-current-change.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-diagnostics.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-evidence.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 47,
+      "passed": 28,
+      "failed": 19,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-experience.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-guard.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 21,
+      "passed": 19,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-handoff-performance.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-handoff-windows.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-handoff.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-hook-guard.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 81,
+      "passed": 72,
+      "failed": 8,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-intent-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-intent.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-layout-initialization.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 22,
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-layout.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 42,
+      "passed": 39,
+      "failed": 3,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-migrate.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-openspec-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-output-language.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-paths.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-progress.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 64,
+      "passed": 40,
+      "failed": 24,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-project-config.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-protected-consumers.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-readonly-state.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 28,
+      "passed": 27,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-recovery-contract.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 18,
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-recovery-read-performance.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-resolver.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 30,
+      "passed": 30,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-resume-probe-budget.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-resume-probe-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-resume-probe.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-root-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-root-move.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 47,
+      "passed": 44,
+      "failed": 3,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-runtime-evals.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-runtime-home.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-runtime.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 28,
+      "passed": 26,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-script-entry.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-application.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 99,
+      "passed": 69,
+      "failed": 30,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-archive-legacy-manifest.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-archive-preflight.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 18,
+      "passed": 0,
+      "failed": 16,
+      "skipped": 2,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-cancellation.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-delivery-checkpoint.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 18,
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-delivery-inputs.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 7,
+      "passed": 1,
+      "failed": 6,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 41,
+      "passed": 25,
+      "failed": 16,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-design-performance.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 4,
+      "passed": 1,
+      "failed": 3,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-execution-origin.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-handoffs.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-legacy-check-continuation.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 5,
+      "passed": 4,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-multi-change.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-output.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 32,
+      "passed": 31,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-preset-scope.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 16,
+      "passed": 8,
+      "failed": 8,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-read-performance.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-readonly.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-rebind.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-recovery-summary.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-revisions.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 32,
+      "passed": 12,
+      "failed": 20,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-state-file.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 18,
+      "passed": 15,
+      "failed": 3,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-state-recovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 19,
+      "passed": 16,
+      "failed": 3,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-state-store-history.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 80,
+      "passed": 79,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-spec-paths.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 5,
+      "passed": 3,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-state-config.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 13,
+      "passed": 12,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-state-events.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-state-filename.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 6,
+      "passed": 2,
+      "failed": 2,
+      "skipped": 2,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-state.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 31,
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-tasks.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-workspace-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/classic-workspace.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 17,
+      "passed": 16,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/comet-classic-package.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts-guard.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 20,
+      "passed": 13,
+      "failed": 7,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts-hook-guard.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts-recovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 222,
+      "passed": 196,
+      "failed": 26,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/application-hook-readonly.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/comet-entry-skill.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/current-selection-repair.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/current-selection.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 3,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/entry-runtime.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 16,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/hook-adapter.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 67,
+      "passed": 67,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/hook-allow-path-symlinks.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 39,
+      "passed": 16,
+      "failed": 23,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/hook-entry-work-budget.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/hook-project-root.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/hook-router-entry.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/hook-router-runtime.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/hook-router.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 36,
+      "passed": 36,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/hook-sdk-work-budget.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 4,
+      "passed": 3,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/init-workflow.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 31,
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/plugin-context.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/project-activation.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/project-sdk-status.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 23,
+      "passed": 18,
+      "failed": 5,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/project-status.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 22,
+      "passed": 21,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/resolve-entry.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/resume-probe-intent.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/resume-probe.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 35,
+      "passed": 34,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/standalone-terminal-hook.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/task-learning.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-entry/workflow-learning-receipt.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 9,
+      "passed": 6,
+      "failed": 2,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-memory/dashboard-diagnostics.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-memory/git-sync.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-memory/management-pagination.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-memory/memory-experience.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-memory/personal-memory.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 75,
+      "passed": 75,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-memory/provider-config.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-memory/provider.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-memory/review-contract.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 28,
+      "passed": 28,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-acceptance-boundaries.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-acceptance.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 45,
+      "passed": 45,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-active-discovery-concurrency.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-active-read-scope.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 2,
+      "passed": 0,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-agent-checks.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-agent-document-judgment.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-agent-supervisor-business.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 2,
+      "passed": 0,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-agent-task-decomposition.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-application.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-cas.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-command-recovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-content.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-inspection.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-legacy-overlay.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-preflight.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 16,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-recovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-archive-transaction.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-archive.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-artifact-language.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 10,
+      "passed": 8,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-artifacts.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 13,
+      "passed": 10,
+      "failed": 3,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-atomic-file.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-bounded-file.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-build-evidence.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-cancel.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-candidate-review-example.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-canonical-hash.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 16,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-capability-discovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 8,
+      "passed": 7,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-change.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 54,
+      "passed": 52,
+      "failed": 0,
+      "skipped": 2,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-check-branches.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-check-executor-termination.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 16,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-check-executor.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-check-log-digest.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 3,
+      "passed": 0,
+      "failed": 3,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-check-owner-recovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-check-receipt.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 17,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 2,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-check-registration.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-check-without-pid.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-check.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 6,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 5,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-checkpoint-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-checkpoint-journal.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-checkpoint-parser.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-children.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-cli-entry.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-cli-shared.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 63,
+      "passed": 49,
+      "failed": 14,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-cli.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 32,
+      "passed": 32,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-command-modules.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-command-recovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 15,
+      "passed": 12,
+      "failed": 3,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-compact-output.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-concurrency.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-config.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 40,
+      "passed": 39,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-confirmed-transition-helper.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-conflict-inspection.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 3,
+      "passed": 2,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-conflict-radar.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 18,
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-contract-files.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-contract.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-delta-spec.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-diagnostics.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 18,
+      "passed": 11,
+      "failed": 7,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-doctor-v4.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 16,
+      "passed": 12,
+      "failed": 4,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-doctor.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 13,
+      "passed": 10,
+      "failed": 3,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-document-constraints-compatibility.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-document-constraints.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 32,
+      "passed": 15,
+      "failed": 17,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-evidence-command-branches.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-evidence-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-evidence-projection.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-evidence-retention.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 12,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-evidence-storage.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 18,
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-evidence-transitions.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 10,
+      "passed": 8,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-experience.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-file-identity.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-findings.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-flow-efficiency.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-flow-friction.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 30,
+      "passed": 15,
+      "failed": 15,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-git-provenance.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-guards.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 5,
+      "passed": 4,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-hook-guard-concurrency.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-hook-guard.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 44,
+      "passed": 37,
+      "failed": 7,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-init-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-input-contract.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-issue-handoff.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 11,
+      "passed": 8,
+      "failed": 3,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-issue-runtime.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 3,
+      "passed": 1,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-joint-shape-confirmation.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 10,
+      "passed": 5,
+      "failed": 5,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-legacy-archive-read.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-local-execution.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-lock-concurrency.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 4,
+      "passed": 2,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-lock-without-pid.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-lock.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 15,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 2,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-loop-runtime.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 29,
+      "passed": 29,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-managed-run-marker.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-output-language.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 27,
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-parallel-worktree.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 2,
+      "passed": 1,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-paths.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 22,
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-phase1-matrix.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 5,
+      "passed": 2,
+      "failed": 1,
+      "skipped": 2,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-acceptance.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-archive.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 46,
+      "passed": 41,
+      "failed": 5,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-child-overflow.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-delta.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 8,
+      "passed": 6,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration-runtime.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 12,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-migration.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-recovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 31,
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-state.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 7,
+      "passed": 5,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-status.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-transactions.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 12,
+      "passed": 11,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-portable-verification.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-progress-checkpoint.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 25,
+      "passed": 24,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-protected-file.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-pull-request-finish.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-receipt-fence.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 4,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-receipt-refresh.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-reliability-regressions.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 5,
+      "passed": 4,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-repair-runtime.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-repair-stagnation.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-repair-transitions.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 10,
+      "passed": 6,
+      "failed": 2,
+      "skipped": 2,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-resume-view.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 4,
+      "passed": 0,
+      "failed": 4,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-revision.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-root-command.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-root-move.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 18,
+      "passed": 5,
+      "failed": 13,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-root-recovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 11,
+      "passed": 0,
+      "failed": 11,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-run-store.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 4,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-schema-migration.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-script-entry.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 206,
+      "passed": 124,
+      "failed": 80,
+      "skipped": 2,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-archive-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 36,
+      "passed": 36,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-blocked-recovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 27,
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-cancellation-managed.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 3,
+      "passed": 2,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-cancellation.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 10,
+      "passed": 3,
+      "failed": 7,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-cancelled-history.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-check-termination.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 23,
+      "passed": 23,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-cleanup-current-round.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-completion.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-definition-selection.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-doctor-ownership.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-edit-review.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 2,
+      "passed": 0,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-history.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 39,
+      "passed": 39,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-host-claims.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-read-performance.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 34,
+      "passed": 29,
+      "failed": 0,
+      "skipped": 5,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-readonly-lock.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 13,
+      "passed": 10,
+      "failed": 2,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-requirements-recovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 13,
+      "passed": 9,
+      "failed": 4,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-state-recovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-status-observation.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 3,
+      "passed": 1,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-archive-materials.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-plan.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-portability.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-revise.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 11,
+      "passed": 9,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 14,
+      "passed": 11,
+      "failed": 3,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-verification-inputs.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-select-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-selection.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-sensitive-paths.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-shape-incremental.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-shape-materialization.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 4,
+      "passed": 2,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-shape-review-evidence.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-shape-target-replacement.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-skill.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 28,
+      "passed": 28,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-snapshot.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 82,
+      "passed": 73,
+      "failed": 0,
+      "skipped": 9,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-spec-rebase.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-spec-sync-recovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-specs.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-state-document.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 31,
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-status-cancellation-concurrency.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-status-discovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-status-v4-discovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 5,
+      "passed": 4,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-supervisor-check-process.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-supervisor-integration-execution.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-supervisor-legacy-diagnostics.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 2,
+      "passed": 1,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-supervisor.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 26,
+      "passed": 24,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-transaction.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 22,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-evidence.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 42,
+      "passed": 40,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-transitions.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 17,
+      "passed": 16,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-user-options.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-v4-regression-eval.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-verification-evidence.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-verification-receipt-runtime.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-verification-receipt.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-verification-report-v2.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-verification-runtime.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-verification-scope.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 34,
+      "passed": 34,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-verifier-context.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-verifier-protocol.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-verifier-start.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-wave-b-cli.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 3,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-workspace-config.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 2,
+      "passed": 1,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-workspace-finish-branches.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-workspace-finish-git-ignore.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-workspace-finish.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-workspace-preparation.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-workspace.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-plugin/context-retrieval.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-plugin/plugin-capabilities.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-plugin/plugin-integration.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 38,
+      "passed": 38,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-plugin/plugin-runtime.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/comet-plugin/plugin-sdk.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/any-pagination-callbacks.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/application-archives.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/application-collector.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 22,
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/application-data.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 24,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/application-definition-integration.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/application-definition.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/application-delivery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/application-server.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/change-traces.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/classic-refresh-callbacks.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/classic-status-presentation.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/collector.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 47,
+      "passed": 44,
+      "failed": 2,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/dashboard-data.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/dashboard-e2e-config.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/dashboard-index-store.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/default-plugin-host-defaults.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/default-plugin-host-options.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/default-plugin-host.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/demo-locale.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/demo.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/eval-collector.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/eval-demo.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/eval-server.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/font-scale.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/git.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/i18n.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/index-reconciler.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/markdown-preview.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/mcp-cli-setup.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/mcp-embed.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/mcp-server.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/memory-callbacks.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/native-adapter.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/native-collector.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/native-legacy-adapter.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/native-status-presentation.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/native-web-source.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/navigation.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/observability-time-range.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/observation-drawer-focus.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/plugin-host.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/plugin-server.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/project-config-settings.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/project-directory.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/project-root.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/runtime-insights.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/runtime-performance.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/server.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 16,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/source-version.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/summary-index.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/task-parser.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/update-service.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/verify-parser.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/view-state.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/web-source.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 40,
+      "passed": 36,
+      "failed": 0,
+      "skipped": 4,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/web-state.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/website-demo-language.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/dashboard/workspace.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/engine-evals.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/engine-foundation.integration.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/engine-guardrails.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/engine-loop.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/engine-manual-run.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/engine-resolver.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/engine-run-store.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/engine-schema-compat.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/engine-standalone-run.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/engine-state.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/engine-storage-layout.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/portable-run-checkpoint.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-action.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 25,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-cancellation.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-checkpoint-recovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 16,
+      "passed": 15,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-child-recovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 22,
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-children.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-compact-query.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-compat.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-core-ownership.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-errors.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-example.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-execution.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-failed-retry.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-handlers.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-history-storage.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-json.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 16,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-performance.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-pool-write-amplification.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-projection-trust.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-protocol-adversarial.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-run-validation.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-schema.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-service.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-special-keys.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-store-compaction.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 34,
+      "passed": 31,
+      "failed": 1,
+      "skipped": 2,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-store-discovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 17,
+      "passed": 16,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-store-history.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 31,
+      "passed": 30,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-store.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 20,
+      "passed": 15,
+      "failed": 5,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-transition.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 29,
+      "passed": 29,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-until-blocked.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/runtime-wait-reason.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/engine/workflow-definition.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 51,
+      "passed": 51,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/agent-learning-eval.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/application-eval-task-set.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/application-eval.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 34,
+      "passed": 33,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/builtin-datasets.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/dataset-downloads.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/eval-archives.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/eval-container-cleanup.integration.test.ts",
+      "segment": "completed-resume",
+      "status": "skipped",
+      "total": 2,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 2,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/eval-container-cleanup.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 22,
+      "passed": 15,
+      "failed": 7,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/eval-evidence-contract.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 7,
+      "passed": 6,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/eval-process-cleanup-proof.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/eval-run-freshness.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/eval-run-manager.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/eval-run-presets.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/eval-run-preview.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/eval-run-retry.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/eval-run-sources.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 6,
+      "passed": 5,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/eval-run-store.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 46,
+      "passed": 44,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/eval-run-worker.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/eval-stop-watchdog.test.ts",
+      "segment": "completed-resume",
+      "status": "skipped",
+      "total": 7,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 7,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/eval-user-settings.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 18,
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/semantic-memory-eval.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/standalone-context.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/standalone-static-collect.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 94,
+      "passed": 43,
+      "failed": 51,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/eval/user-environment.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/integrations/codegraph.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 28,
+      "passed": 28,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/integrations/openspec.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 71,
+      "passed": 71,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/integrations/superpowers.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 37,
+      "passed": 37,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/project-knowledge/capability-discovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/project-knowledge/host-review.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/project-knowledge/project-knowledge-agent-ab.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/project-knowledge/project-knowledge-index.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 41,
+      "passed": 41,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/project-knowledge/project-knowledge-learning.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/project-knowledge/project-knowledge-provider-contract.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/project-knowledge/project-knowledge-query-cost.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 7,
+      "passed": 6,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/project-knowledge/project-knowledge-records.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/project-knowledge/project-knowledge-retrieval-eval.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/project-knowledge/project-knowledge-retrieval.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/project-knowledge/project-knowledge-store.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 29,
+      "passed": 29,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/project-knowledge/project-knowledge.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 58,
+      "passed": 58,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/project-knowledge/project-learning.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/project-knowledge/project-memory.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/change-walkthrough-contract.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/classic-context-compression-contract.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/classic-layout-skill-contract.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/classic-sdk-skill-routing.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 37,
+      "passed": 37,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/comet-memory-skill.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/comet-open-batch-completion.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/comet-open-english-batch-completion.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/comet-open-recovery-semantics.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/comet-review-skill.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/dsh-hooks.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/internal-skills.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/managed-markdown.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/native-sdk-skill-routing.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/native-source-coverage-contract.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 10,
+      "passed": 9,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/omp-hook-bridge.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/platform-inspect.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 99,
+      "passed": 99,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/plugin-hook.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/plugin-integration.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/plugin-migration.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/plugin-skill-cli.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/project-hook-projection.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/project-instructions.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 18,
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/sdk-flow-handoffs.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/sdk-warm-continuation.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/skill-cli-e2e.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/skill-discovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/skill-find.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/skill-install.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/skill-inventory.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/skill-load.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 33,
+      "passed": 33,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/skill-preferences.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/skill-snapshot.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/skill-validate.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/skills.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 161,
+      "passed": 156,
+      "failed": 5,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/symlink-install.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 24,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/uninstall.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 29,
+      "passed": 29,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/workflow-content-proof-removal.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/skill/workflow-optimization-contract.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 63,
+      "passed": 63,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/application-definition.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/application-hook.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/application.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 37,
+      "passed": 37,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/artifact-contract.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 5,
+      "passed": 3,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/artifact-validator.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/builtin-imports.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/checkpoint-recovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/cross-application-scope.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 20,
+      "passed": 19,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/delivery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/evaluation-evidence.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 25,
+      "passed": 23,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/external-recovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/host-delivery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/install-record.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/markdown-resources.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/report-application.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/report-hook.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/run-trace.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/run-view.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/skill-adapter.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/skill-work.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/storage-discovery.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/storage-index.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-application/workspace-scope.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/change-runtime-owner-history.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 39,
+      "passed": 38,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/change-runtime-owner.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/change-walkthrough.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 17,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/classic-check-timeout.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/compact-output.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/contained-atomic-write-strict.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/contained-atomic-write.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-impact.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 36,
+      "passed": 36,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/edit-review.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 18,
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/global-config.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/hook-target-scope.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/hook-write-policy.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/neutral-document-path.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/output-envelope.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/project-gitignore.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/protected-path-computation.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/workflow-contract.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 58,
+      "passed": 57,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/workspace-runtime-legacy-lock.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/workspace-runtime-repair-failure.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-contract/workspace-runtime.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 64,
+      "passed": 64,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-creation/creator-eval.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 15,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-creation/creator.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 33,
+      "passed": 33,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-generation/application-rule.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-generation/artifact-verification.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-generation/compiler-documents.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 26,
+      "passed": 26,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-generation/compiler-performance.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-generation/compiler.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 6,
+      "passed": 5,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-generation/examples.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-generation/skill-invocation.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-generation/standalone-hook.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/domains/workflow-generation/standalone.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/application-host.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 24,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/application-runtime.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 10,
+      "passed": 9,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/codex-plugin-cli.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/comet-command.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/detect.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 55,
+      "passed": 55,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/dsh-profiles.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/external-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/file-system.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 25,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/fs/lock-without-pid.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/git-commit-paths.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/git-environment.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/git-process.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/git-worktree-cache.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/git-worktree.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/hook-command.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/hook-read-cache.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/hook-write-proposals.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/http/bounded-request.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/platform-select-prompt.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/platform-targets.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/plugin-store.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 2,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/portable-path.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/process/comet-daemon.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/process/node-cli-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/process/operation-budget.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/process/owned-command-termination.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/process/process-identity.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/process/ripgrep.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/process/runtime-dependency-permissions.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 9,
+      "passed": 7,
+      "failed": 2,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/process/runtime-metrics.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/process/runtime-performance.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/process/runtime-trace.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/process/spawn-command.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/process/stdin-read.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/process/terminate-process-tree-windows.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/process/windows-process-broker.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/process/windows-process-identity.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/project-identity.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/project-knowledge-storage.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/project-registry.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 24,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/project-worktree-root.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/race-safe-read.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 15,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 4,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/recoverable-file-lock.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 16,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 1,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/runtime-contract.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/runtime-metrics.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/shell-quote.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/skill-root-owner.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/sqlite.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/strip-bom.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/trusted-readonly-file.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/version-loading.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/version.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/platform/workspace-runtime.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 19,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 2,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/ci-workflows.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 31,
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/classic-layout-documentation.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/classic-runtime-assets.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/cli-build-fixtures.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/comet-entry-runtime-assets.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 11,
+      "passed": 10,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/comet-test-utils.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/contributor-instructions.test.ts",
+      "segment": "completed-resume",
+      "status": "failed",
+      "total": 2,
+      "passed": 1,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/coverage-config.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/coverage-runtime.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 2,
+      "passed": 1,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/dependency-boundaries.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/development-agent-rules.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 6,
+      "passed": 5,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/file-symlink-fixture.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/hook-compile-cache.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/native-agent-runtime-retirement.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/native-boundaries.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/native-runtime-assets.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/native-self-contained.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 3,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/package-scripts.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/project-rules-removed.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/readme.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/release-metadata.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/repository-layout.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/sdk-formal-case.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/skill-openai-yaml.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/repository/test-environment.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/architecture-lint.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 25,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/badcase-registration.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "failed",
+      "total": 18,
+      "passed": 17,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/classic-baseline-benchmark.test.ts",
+      "segment": "completed-resume",
+      "status": "failed",
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/codex-plugin-build.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/core-regression-evidence.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/core-regressions.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 16,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/dsh-plugin-build.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/gitignore-top-level.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/historical-regressions.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/native-facade-build.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/npm-readme.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/postinstall.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/prepublish-check.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 36,
+      "passed": 36,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/project-knowledge-eval-host.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/project-knowledge-retrieval-metrics.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/release-prepare.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/runtime-build-location.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/runtime-coldstart-benchmark.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/runtime-schema-generation.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/sdk-api.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/sdk-fixtures.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/transient-file-write.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/verify-changed.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/verify-release.test.ts",
+      "segment": "interrupted-diagnostic",
+      "status": "passed",
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "file": "test/scripts/workflow-scale-benchmark.test.ts",
+      "segment": "completed-resume",
+      "status": "passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "todo": 0
+    }
+  ],
+  "resumeFailures": [
+    {
+      "file": "test/app/daemon-read-cache.test.ts",
+      "name": "reuses only Git observations while Native documents remain fresh between daemon requests",
+      "error": "AssertionError: expected 14 to be 13 // Object.is equality\n    at D:/Project/Comet-runtime-review-053/test/app/daemon-read-cache.test.ts:81:53\n    at file:///D:/Project/Comet/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+    },
+    {
+      "file": "test/repository/contributor-instructions.test.ts",
+      "name": "contributor instructions keeps risk-based verification guidance in the shared AGENTS guide",
+      "error": "AssertionError: expected '## 回复语言\\n\\n必须采用中文回答用户\\n\\n## 充分相信Agent…' to contain '`app/`、`domains/`、`platform/`、`script…'\n    at D:/Project/Comet-runtime-review-053/test/repository/contributor-instructions.test.ts:16:21\n    at file:///D:/Project/Comet/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+    },
+    {
+      "file": "test/scripts/classic-baseline-benchmark.test.ts",
+      "name": "Classic baseline benchmark reports perfect deterministic migration and recovery rates",
+      "error": "AssertionError: expected { scenarios: 7, …(6) } to match object { scenarios: 7, …(4) }\n(2 matching properties omitted from actual)\n    at Proxy.<anonymous> (file:///D:/Project/Comet/node_modules/.pnpm/@vitest+expect@4.1.12/node_modules/@vitest/expect/dist/index.js:1283:10)\n    at Proxy.<anonymous> (file:///D:/Project/Comet/node_modules/.pnpm/@vitest+expect@4.1.12/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file:///D:/Project/Comet/node_modules/.pnpm/chai@6.2.2/node_modules/chai/index.js:1700:25)\n    at D:/Project/Comet-runtime-review-053/test/scripts/classic-baseline-benchmark.test.ts:24:20\n    at file:///D:/Project/Comet/node_modules/.pnpm/@vitest+runner@4.1.12/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+    }
+  ],
+  "excluded": [
+    "context-compression-benchmark.test.ts",
+    "context-execution-benchmark.test.ts",
+    "classic-openspec-upstream.test.ts without COMET_TEST_OPENSPEC_PACKAGE"
+  ]
+}
