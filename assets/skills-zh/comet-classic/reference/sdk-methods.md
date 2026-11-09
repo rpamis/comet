@@ -1,5 +1,7 @@
 # Classic SDK 执行方法
 
+新内置 Run 的 `checksMode: agent` 使用平台检查报告与 `--checks <checks-json-file>`，按当前 Build/Verify Skill 执行；本参考中的受管命令和收据只适用于旧 Run 的 `checksMode: runtime`。方法、批准、计划和完整验收要求继续适用。
+
 仅在 `runtimeFormat: sdk` 时读取当前阶段的章节。阶段命令、Action、Wait 和输入模板以主 Skill 与最新 continuation 为准；本参考说明实际工作和完成条件。
 
 所有产物与外部 Skill 输入使用当前 configuration.language。每次阶段入口、接收新 Agent 和上下文恢复，先按 [任务上下文协议](scripts.md#任务上下文与产物语言) 使用当前 continuation 或已领取 Action 的 `contextRequest`；派发子任务时一并交付阶段、任务范围、实际工作区和有效配置。保留已有事实与有效证据。

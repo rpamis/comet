@@ -2964,8 +2964,19 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
             });
         await nextSdk(output, rest[0], run, workspace.projectRoot);
       } else if (subcommand === 'complete-build') {
-        if (rest.length !== 1 && !(rest.length === 3 && rest[1] === '--session' && rest[2]?.trim()))
-          fail('Usage: comet state complete-build <change-name> [--session <execution-reference>]');
+        const completionOptions: Record<string, string> = {};
+        for (let i = 1; i < rest.length; i += 2) {
+          if (
+            !['--session', '--checks'].includes(rest[i]) ||
+            !rest[i + 1]?.trim() ||
+            rest[i + 1].startsWith('--') ||
+            completionOptions[rest[i]]
+          )
+            fail(
+              'Usage: comet state complete-build <change-name> [--session <execution-reference>] [--checks <checks-json-file>]',
+            );
+          completionOptions[rest[i]] = rest[i + 1];
+        }
         validateChangeName(rest[0]);
         const projectRoot = classicCommandProjectRoot();
         const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
@@ -2977,7 +2988,8 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         const run = await completeClassicSdkBuild({
           projectRoot: workspace.projectRoot,
           change: rest[0],
-          sessionId: rest[2],
+          sessionId: completionOptions['--session'],
+          checksRef: completionOptions['--checks'],
         });
         await nextSdk(output, rest[0], run, workspace.projectRoot);
       } else if (subcommand === 'transition') {

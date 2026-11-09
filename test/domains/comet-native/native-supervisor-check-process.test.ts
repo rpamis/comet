@@ -136,7 +136,10 @@ describe('Supervisor check process recovery', () => {
     const execute = vi
       .spyOn(checkExecutor, 'executeNativeCheck')
       .mockImplementation(async ({ onSpawn }) => {
-        await onSpawn?.({ pid: 2147483000, signal: new AbortController().signal });
+        await onSpawn?.({
+          instanceId: 'original-check-instance',
+          signal: new AbortController().signal,
+        });
         throw failure;
       });
     await expect(executeNativeSupervisorChecks(options)).rejects.toBe(failure);
@@ -145,7 +148,7 @@ describe('Supervisor check process recovery', () => {
     const execution = preserved.children[0].task!.checkExecution!;
     expect(execution).toMatchObject({
       status: 'running',
-      activeProcess: { status: 'running', checkId: 'slow', pid: 2147483000 },
+      activeProcess: { status: 'running', checkId: 'slow', instanceId: 'original-check-instance' },
       checkStates: [{ id: 'slow', status: 'running', executionCount: 1 }],
     });
     await expect(
@@ -155,7 +158,6 @@ describe('Supervisor check process recovery', () => {
     execution.ownerPid = 2147483001;
     preserved.children[1].task!.checkExecution!.ownerPid = 2147483001;
     await writeNativeSupervisorState(paths, preserved);
-    vi.spyOn(checkExecutor, 'inspectNativeCheckProcessTreeLiveness').mockResolvedValue('unknown');
     await expect(executeNativeSupervisorChecks(options)).resolves.toMatchObject({
       status: 'running',
       operationId: execution.operationId,

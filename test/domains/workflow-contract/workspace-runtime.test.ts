@@ -233,7 +233,10 @@ describe('workspace runtime resolution and migration', () => {
     expect(await isWorkspaceRuntimeMigrationFence(legacy, target)).toBe(true);
     expect(isWorkspaceRuntimeMigrationFenceSync(legacy, target)).toBe(true);
     expect(await fs.readdir(path.dirname(legacy))).toEqual(['runtime']);
-    expect(await fs.readdir(path.dirname(target))).toEqual(['runtime']);
+    expect(await fs.readdir(path.dirname(target))).toEqual([
+      '.runtime-migration-recovery.lock.sqlite',
+      'runtime',
+    ]);
     await expect(fs.mkdir(path.join(legacy, 'old-writer'), { recursive: true })).rejects.toThrow();
     expect(await resolveWorkspaceRuntimeRoot(project)).toBe(target);
   });
@@ -651,7 +654,7 @@ describe('workspace runtime resolution and migration', () => {
     expect(await fs.readFile(path.join(target, 'one.log'), 'utf8')).toBe('one');
   });
 
-  it('refuses recovery when the old owner belongs to another host', async () => {
+  it('recovers a stopped migration without host or PID binding', async () => {
     await write(path.join(legacy, 'one.log'), 'one');
     const target = resolveWorkspaceRuntimeRootSync(project);
     await expect(
@@ -668,8 +671,8 @@ describe('workspace runtime resolution and migration', () => {
     const journal = JSON.parse(await fs.readFile(journalFile, 'utf8'));
     journal.hostname = 'another-machine';
     await fs.writeFile(journalFile, JSON.stringify(journal));
-    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('无法确认退出');
-    expect(await fs.readFile(path.join(journal.backup, 'one.log'), 'utf8')).toBe('one');
+    expect(await resolveWorkspaceRuntimeRoot(project)).toBe(target);
+    expect(await fs.readFile(path.join(target, 'one.log'), 'utf8')).toBe('one');
   });
 
   it('refuses recovery after copied evidence is changed or a conflicting target appears', async () => {

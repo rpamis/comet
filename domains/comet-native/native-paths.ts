@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   resolveWorkspaceRuntimeRoot,
   resolveWorkspaceRuntimeRootSync,
@@ -108,6 +109,14 @@ export async function resolveArtifactRoot(projectRoot: string, value: string): P
   return lexical;
 }
 
+const preparedNativeMigrations = new AsyncLocalStorage<Map<string, Promise<void>>>();
+/** A CLI invocation prepares each legacy location once; actual path and file operations remain checked. */
+export function withNativePathPreparation<T>(work: () => Promise<T>): Promise<T> {
+  return preparedNativeMigrations.getStore()
+    ? work()
+    : preparedNativeMigrations.run(new Map(), work);
+}
+
 export async function nativeProjectPaths(
   projectRoot: string,
   artifactRootRef: string,
@@ -153,17 +162,17 @@ export async function nativeProjectPaths(
   if (options.readOnly) return paths;
   if (options.change) assertNativeRuntimeChangeName(options.change);
   const migrationKey = `${workspaceRuntimeRoot}\0${nativeRoot}\0${options.change ?? '*'}`;
-  let migration = runtimeMigrationInspections.get(migrationKey);
+  const prepared = preparedNativeMigrations.getStore();
+  const inspections = prepared ?? runtimeMigrationInspections;
+  let migration = inspections.get(migrationKey);
   if (!migration) {
     migration = migrateNativeChangeRuntimeDirectories(paths, options.change);
-    runtimeMigrationInspections.set(migrationKey, migration);
+    inspections.set(migrationKey, migration);
   }
   try {
     await migration;
   } finally {
-    if (runtimeMigrationInspections.get(migrationKey) === migration) {
-      runtimeMigrationInspections.delete(migrationKey);
-    }
+    if (!prepared && inspections.get(migrationKey) === migration) inspections.delete(migrationKey);
   }
   return paths;
 }

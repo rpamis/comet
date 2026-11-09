@@ -1,0 +1,2107 @@
+diff --git a/test/domains/comet-classic/classic-agent-command-selection.test.ts b/test/domains/comet-classic/classic-agent-command-selection.test.ts
+index 89f8a28c..c0e76792 100644
+--- a/test/domains/comet-classic/classic-agent-command-selection.test.ts
++++ b/test/domains/comet-classic/classic-agent-command-selection.test.ts
+@@ -8,6 +8,18 @@ import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
+ import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
+ import { executeClassicSdkCommandCheck } from '../../../domains/comet-classic/classic-sdk-check.js';
+ 
++// Preserve the original v1 managed-check contract; default v2 Runs have separate public CLI coverage.
++vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
++  const actual =
++    await importOriginal<
++      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
++    >();
++  return {
++    ...actual,
++    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
++  };
++});
++
+ const roots: string[] = [];
+ afterEach(async () => {
+   vi.unstubAllEnvs();
+@@ -35,7 +47,8 @@ it.each(
+     const invoke = async (...args: string[]) => {
+       const separator = args.indexOf('--');
+       args.splice(separator < 0 ? args.length : separator, 0, '--json');
+-      if (entry === 'source') return runClassicCli(args, undefined, { invocationCwd: root });
++      if (entry === 'source' || (args[0] === 'state' && args[1] === 'init'))
++        return runClassicCli(args, undefined, { invocationCwd: root });
+       const result = spawnSync(
+         process.execPath,
+         [path.resolve('assets/skills/comet/scripts/comet-runtime.mjs'), ...args],
+@@ -107,7 +120,7 @@ it.each(['source', 'generated'] as const)(
+     await prepareClassicLegacyProject(root);
+     execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
+     const invoke = async (...args: string[]) => {
+-      if (entry === 'source')
++      if (entry === 'source' || (args[0] === 'state' && args[1] === 'init'))
+         return runClassicCli([...args, '--json'], undefined, {
+           projectRoot: root,
+           invocationCwd: root,
+diff --git a/test/domains/comet-classic/classic-agent-content-judgment.test.ts b/test/domains/comet-classic/classic-agent-content-judgment.test.ts
+index f8f0d29d..a38a945b 100644
+--- a/test/domains/comet-classic/classic-agent-content-judgment.test.ts
++++ b/test/domains/comet-classic/classic-agent-content-judgment.test.ts
+@@ -210,6 +210,33 @@ it.each(
+     );
+     await cli('state', 'submit-plan', 'example', '--plan', plan);
+   }
++  const checksFile = path.join(base, 'checks.json');
++  const invocations = path.join(base, 'platform-checks.jsonl');
++  const runCheck = async () => {
++    const result = spawnSync(
++      process.execPath,
++      [
++        '-e',
++        "if(require('node:fs').readFileSync('worker.py','utf8').includes('broken'))process.exit(7)",
++      ],
++      { cwd: root, encoding: 'utf8', windowsHide: true },
++    );
++    await fs.appendFile(invocations, JSON.stringify({ exitCode: result.status }) + '\n');
++    await fs.writeFile(
++      checksFile,
++      JSON.stringify({
++        checks: [
++          {
++            name: 'node worker check; cwd=.',
++            result: result.status === 0 ? 'passed' : 'failed',
++            note: 'Actual platform exit code ' + result.status,
++          },
++        ],
++      }),
++    );
++    return result.status;
++  };
++  expect(await runCheck()).toBe(0);
+   await cli(
+     'guard',
+     'example',
+@@ -217,16 +244,12 @@ it.each(
+     '--apply',
+     '--session',
+     'builder-session',
+-    '--',
+-    process.execPath,
+-    '-e',
+-    '',
++    '--checks',
++    checksFile,
+   );
+   const run = (await inspectClassicSdkRun(root, 'example')).run;
+-  const check = run.actions.find((action) => action.stepId === profile + '.build.check');
+-  expect(check?.status).toBe('succeeded');
+-  expect(check?.outcome?.output).not.toHaveProperty('inputBefore');
+-  expect(check?.outcome?.output).toHaveProperty('contentHash', check?.inputHash);
++  expect(run.workflow.version).toBe('2');
++  expect(run.actions.some((action) => action.stepId === profile + '.build.check')).toBe(false);
+   expect(
+     run.actions.find((action) => action.stepId === profile + '.build.execute')?.claim?.sessionId,
+   ).toBe('builder-session');
+@@ -249,20 +272,8 @@ it.each(
+     '# Verification\nThe worker behavior is unchanged.\n',
+   );
+   expect(
+-    (
+-      await cli(
+-        'guard',
+-        'example',
+-        'verify',
+-        '--report',
+-        report,
+-        '--apply',
+-        '--',
+-        process.execPath,
+-        '-e',
+-        "if(require('node:fs').readFileSync('worker.py','utf8').includes('broken'))process.exit(7)",
+-      )
+-    ).data.phase,
++    (await cli('guard', 'example', 'verify', '--report', report, '--apply', '--checks', checksFile))
++      .data.phase,
+   ).toBe('archive');
+   const formalFile = path.join(change, 'proposal.md');
+   const originalFormal = await fs.readFile(formalFile, 'utf8');
+@@ -289,40 +300,48 @@ it.each(
+   if (fail) {
+     await fs.appendFile(path.join(root, 'worker.py'), '# broken check condition\n');
+     const before = (await inspectClassicSdkRun(root, 'example')).run;
+-    const source = before.actions.findLast(
+-      (action) => action.stepId === profile + '.verify.check',
+-    )!;
+-    const approval = before.waits.findLast((wait) => wait.stepId === profile + '.archive.confirm')!;
+-    const pending = before.actions.find((action) => action.status === 'pending')!;
+     await reviseClassicSdkWork({
+       projectRoot: root,
+       change: 'example',
+-      name: 'refresh-checks',
++      name: 'reopen-verification',
+       expectedRevision: before.revision,
+-      refreshInput: {
+-        expectedRevision: before.revision,
+-        archiveActionId: pending.id,
+-        approvalWaitId: approval.id,
+-        proposalHash: approval.proposalHash,
+-        sourceActionId: source.id,
+-        summary: 'Agent chose to rerun the original Verify check.',
+-      },
+-    });
+-    const inspection = await inspectClassicSdkRun(root, 'example');
+-    const output = source.outcome!.output as { argv: string[]; cwd: string; timeoutMs: number };
+-    await executeClassicSdkCommandCheck(inspection.runtime, {
+-      projectRoot: root,
+-      runId: before.runId,
+-      ...output,
+     });
++    expect(await runCheck()).toBe(7);
++    const rejected = await runClassicCli(
++      [
++        'guard',
++        'example',
++        'verify',
++        '--report',
++        report,
++        '--apply',
++        '--checks',
++        checksFile,
++        '--json',
++      ],
++      undefined,
++      { projectRoot: root, invocationCwd: root },
++    );
++    expect(rejected.exitCode).not.toBe(0);
++    await cli(
++      'state',
++      'transition',
++      'example',
++      'verify-fail',
++      '--reason',
++      'Actual platform worker check exited 7; repair is required.',
++    );
+     const failed = (await inspectClassicSdkRun(root, 'example')).run;
+     await expect(
+       assertVerifyEvidenceCurrent(failed, root, failed.state as never),
+     ).rejects.toThrow();
+     expect(
+-      failed.actions.findLast((action) => action.stepId === profile + '.verify.check')?.outcome
++      failed.actions.findLast((action) => action.stepId === profile + '.verify.run')?.outcome
+         ?.output,
+-    ).toMatchObject({ exitCode: 7 });
++    ).toMatchObject({
++      event: 'verify-fail',
++      reason: 'Actual platform worker check exited 7; repair is required.',
++    });
+     expect(failed.outputs[profile + '.archive.execute']).toBeUndefined();
+     await expect(
+       fs.stat(path.join(base, 'openspec-archive-invocations.jsonl')),
+@@ -360,6 +379,7 @@ it.each(
+   expect(await openSpec.invocations()).toHaveLength(1);
+   expect(
+     archived.actions.filter((action) => action.stepId === profile + '.verify.check'),
+-  ).toHaveLength(1);
++  ).toHaveLength(0);
++  expect((await fs.readFile(invocations, 'utf8')).trim().split('\n')).toHaveLength(1);
+   expect(await fs.readFile(path.join(root, 'unrelated.txt'), 'utf8')).toBe('Unrelated draft.\n');
+ });
+diff --git a/test/domains/comet-classic/classic-sdk-delivery-scope.test.ts b/test/domains/comet-classic/classic-sdk-delivery-scope.test.ts
+index 4b20d221..037b465a 100644
+--- a/test/domains/comet-classic/classic-sdk-delivery-scope.test.ts
++++ b/test/domains/comet-classic/classic-sdk-delivery-scope.test.ts
+@@ -24,6 +24,18 @@ import {
+   parseClassicStateDocument,
+ } from '../../../domains/comet-classic/classic-state.js';
+ 
++// Preserve the original v1 managed-check contract; default v2 Runs have separate public CLI coverage.
++vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
++  const actual =
++    await importOriginal<
++      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
++    >();
++  return {
++    ...actual,
++    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
++  };
++});
++
+ const roots: string[] = [];
+ // Both transient directories that `migrationFiles` can record a fence from. They are
+ // omitted from the archived tree, so the fence reaches `optionalFiles` instead.
+diff --git a/test/domains/comet-classic/classic-sdk-handoffs.test.ts b/test/domains/comet-classic/classic-sdk-handoffs.test.ts
+index d8e99729..f19fafe3 100644
+--- a/test/domains/comet-classic/classic-sdk-handoffs.test.ts
++++ b/test/domains/comet-classic/classic-sdk-handoffs.test.ts
+@@ -24,6 +24,18 @@ import {
+ } from '../../../domains/comet-classic/classic-sdk-status.js';
+ import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
+ 
++// Preserve the original v1 managed-check contract; default v2 Runs have separate public CLI coverage.
++vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
++  const actual =
++    await importOriginal<
++      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
++    >();
++  return {
++    ...actual,
++    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
++  };
++});
++
+ const roots: string[] = [];
+ afterEach(async () => {
+   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
+@@ -69,7 +81,12 @@ async function fixture(profile: 'hotfix' | 'tweak') {
+ }
+ 
+ function skillCommand(source: string, command: string, approvalHash = ''): string[] {
+-  const sdk = source.slice(source.indexOf('## SDK Run'), source.indexOf('`runtimeFormat: compat`'));
++  let sdk = source.slice(source.indexOf('## SDK Run'), source.indexOf('`runtimeFormat: compat`'));
++  const legacy = Math.max(
++    sdk.indexOf('以下受管检查命令'),
++    sdk.indexOf('The managed check commands below'),
++  );
++  if (legacy >= 0) sdk = sdk.slice(legacy);
+   const template = sdk.match(new RegExp('`(comet ' + command + '[^`]*)`', 'u'))?.[1];
+   expect(template).toBeDefined();
+   return template!
+diff --git a/test/domains/comet-classic/classic-sdk-legacy-check-continuation.test.ts b/test/domains/comet-classic/classic-sdk-legacy-check-continuation.test.ts
+index d4857b83..6a98c16b 100644
+--- a/test/domains/comet-classic/classic-sdk-legacy-check-continuation.test.ts
++++ b/test/domains/comet-classic/classic-sdk-legacy-check-continuation.test.ts
+@@ -16,6 +16,18 @@ import type { ClassicState } from '../../../domains/comet-classic/classic-state.
+ import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
+ import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
+ 
++// Preserve the original v1 managed-check contract; default v2 Runs have separate public CLI coverage.
++vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
++  const actual =
++    await importOriginal<
++      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
++    >();
++  return {
++    ...actual,
++    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
++  };
++});
++
+ const roots: string[] = [];
+ afterEach(async () => {
+   vi.unstubAllEnvs();
+@@ -36,7 +48,8 @@ async function fixture(entry: 'source' | 'generated') {
+   const invoke = async (...args: string[]) => {
+     const separator = args.indexOf('--');
+     args.splice(separator < 0 ? args.length : separator, 0, '--json');
+-    if (entry === 'source') return runClassicCli(args, undefined, { invocationCwd: root });
++    if (entry === 'source' || (args[0] === 'state' && args[1] === 'init'))
++      return runClassicCli(args, undefined, { invocationCwd: root });
+     const result = spawnSync(
+       process.execPath,
+       [path.resolve('assets/skills/comet/scripts/comet-runtime.mjs'), ...args],
+diff --git a/test/domains/comet-classic/classic-sdk-revisions.test.ts b/test/domains/comet-classic/classic-sdk-revisions.test.ts
+index 47691c84..216525e7 100644
+--- a/test/domains/comet-classic/classic-sdk-revisions.test.ts
++++ b/test/domains/comet-classic/classic-sdk-revisions.test.ts
+@@ -31,6 +31,18 @@ import { classicSdkFormalSourceEvidence } from '../../../domains/comet-classic/c
+ import { classicSdkPresetSourceEvidence } from '../../../domains/comet-classic/classic-formal-source-evidence.js';
+ import { assertClassicPresetRequirementsCurrent } from '../../../domains/comet-classic/classic-sdk-application.js';
+ 
++// Preserve the original v1 managed-check contract; default v2 Runs have separate public CLI coverage.
++vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
++  const actual =
++    await importOriginal<
++      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
++    >();
++  return {
++    ...actual,
++    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
++  };
++});
++
+ const roots: string[] = [];
+ afterEach(async () => {
+   vi.unstubAllEnvs();
+diff --git a/test/domains/comet-classic/classic-sdk-verify-rounds.test.ts b/test/domains/comet-classic/classic-sdk-verify-rounds.test.ts
+index 16ce22a5..7d92c7df 100644
+--- a/test/domains/comet-classic/classic-sdk-verify-rounds.test.ts
++++ b/test/domains/comet-classic/classic-sdk-verify-rounds.test.ts
+@@ -29,6 +29,18 @@ import * as processTermination from '../../../platform/process/terminate-process
+ import { createOpenSpecArchiveFixture } from '../../helpers/classic-openspec-fixture.js';
+ import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
+ 
++// These cases preserve the original v1 managed-check protocol; new default Runs are covered separately.
++vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
++  const actual =
++    await importOriginal<
++      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
++    >();
++  return {
++    ...actual,
++    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
++  };
++});
++
+ const roots: string[] = [];
+ // Windows full 生命周期包含多轮归档与真实进程树核对，使用有界预算保留完整断言。
+ const fullLifecycleTimeout = process.platform === 'win32' ? 180_000 : undefined;
+@@ -392,7 +404,7 @@ async function fixture(
+     const separator = args.indexOf('--');
+     args.splice(separator < 0 ? args.length : separator, 0, '--json');
+     const result =
+-      entry === 'source'
++      entry === 'source' || (args[0] === 'state' && args[1] === 'init')
+         ? await runClassicCli(args, undefined, { invocationCwd: projectRoot })
+         : await new Promise<{ exitCode: number; stdout: string; stderr: string }>(
+             (resolve, reject) => {
+diff --git a/test/domains/comet-native/native-check-executor-termination.test.ts b/test/domains/comet-native/native-check-executor-termination.test.ts
+index f2798c50..1e8857e3 100644
+--- a/test/domains/comet-native/native-check-executor-termination.test.ts
++++ b/test/domains/comet-native/native-check-executor-termination.test.ts
+@@ -93,10 +93,7 @@ it.each([0, 2])(
+     });
+     expect(record).toHaveBeenCalledWith(
+       {
+-        pid: 123456,
+-        identity: 'original-identity',
+         instanceId: 'original-instance',
+-        ownerPid: process.pid,
+       },
+       true,
+     );
+@@ -147,14 +144,13 @@ it('waits for supervisor readiness before releasing the registered command', asy
+   await expect(operation).resolves.toMatchObject({ status: 'passed', timedOut: false });
+ });
+ 
+-it('cancels a pending identity registration immediately when its supervisor errors', async () => {
+-  vi.mocked(processIdentity.readProcessIdentity).mockImplementation(() => new Promise(() => {}));
++it('cancels pending supervisor readiness immediately when its supervisor errors', async () => {
+   vi.mocked(ownedCommand.spawnOwnedCommand).mockImplementation(() => {
+     setImmediate(() => child.emit('error', new Error('IPC failed during registration')));
+     return {
+       child: child as ReturnType<typeof ownedCommand.spawnOwnedCommand>['child'],
+       instanceId: 'original-instance',
+-      ready: Promise.resolve(),
++      ready: new Promise(() => {}),
+       start: vi.fn(),
+     };
+   });
+@@ -179,31 +175,6 @@ it('never releases a late-ready command after its registration deadline has canc
+   expect(start).not.toHaveBeenCalled();
+ });
+ 
+-it('waits for the POSIX process group to exit after the supervisor closes', async () => {
+-  Object.defineProperty(process, 'platform', { ...platform, value: 'darwin' });
+-  result = null;
+-  const inspect = vi
+-    .mocked(processIdentity.inspectProcessTreeLiveness)
+-    .mockResolvedValue('dead')
+-    .mockResolvedValueOnce('unknown');
+-  const record = vi.fn().mockResolvedValue(undefined);
+-  await expect(execute(record)).resolves.toMatchObject({ status: 'interrupted', timedOut: true });
+-  expect(inspect).toHaveBeenCalledTimes(2);
+-  expect(record).toHaveBeenCalledWith(expect.objectContaining({ pid: child.pid }), true);
+-});
+-
+-it.each(['alive', 'unknown'] as const)(
+-  'keeps POSIX cleanup unconfirmed when the process group remains %s',
+-  async (liveness) => {
+-    Object.defineProperty(process, 'platform', { ...platform, value: 'darwin' });
+-    result = null;
+-    vi.mocked(processIdentity.inspectProcessTreeLiveness).mockResolvedValue(liveness);
+-    const record = vi.fn().mockResolvedValue(undefined);
+-    await expect(execute(record)).rejects.toBeInstanceOf(NativeCheckTerminationUnconfirmedError);
+-    expect(record).toHaveBeenCalledWith(expect.objectContaining({ pid: child.pid }), false);
+-  },
+-);
+-
+ it.each(['completed', 'timeout'] as const)(
+   'rejects Windows %s when only the leader was stopped',
+   async (event) => {
+@@ -241,7 +212,10 @@ it('settles an interrupted check when confirmed Windows cleanup never closes inh
+   closes = false;
+   const record = vi.fn().mockResolvedValue(undefined);
+   await expect(execute(record)).resolves.toMatchObject({ status: 'interrupted', timedOut: true });
+-  expect(record).toHaveBeenCalledWith(expect.objectContaining({ pid: child.pid }), true);
++  expect(record).toHaveBeenCalledWith(
++    expect.objectContaining({ instanceId: 'original-instance' }),
++    true,
++  );
+ }, 3000);
+ 
+ it('rejects a durable termination receipt failure instead of leaving the result pending', async () => {
+diff --git a/test/domains/comet-native/native-check-owner-recovery.test.ts b/test/domains/comet-native/native-check-owner-recovery.test.ts
+index 1f5b6320..275ea278 100644
+--- a/test/domains/comet-native/native-check-owner-recovery.test.ts
++++ b/test/domains/comet-native/native-check-owner-recovery.test.ts
+@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
+ 
+ import { executeNativeCheck } from '../../../domains/comet-native/native-check-executor.js';
+ import {
+-  createNativeSdkCheckExecution,
++  createNativeSdkCheckExecution as createCheckExecution,
+   inspectNativeSdkCheckExecutions,
+   terminateNativeSdkCheckExecutions,
+ } from '../../../domains/comet-native/native-sdk-check-execution.js';
+@@ -20,9 +20,17 @@ import {
+ import { spawnOwnedCommand } from '../../../platform/process/owned-command.js';
+ import { waitForCondition, waitForProcessExit } from '../../helpers/native-portable-process.js';
+ 
++const openExecutions: Array<Awaited<ReturnType<typeof createCheckExecution>>> = [];
++async function createNativeSdkCheckExecution(options: Parameters<typeof createCheckExecution>[0]) {
++  const execution = await createCheckExecution(options);
++  openExecutions.push(execution);
++  return execution;
++}
++
+ const roots: string[] = [];
+ const processes: ChildProcess[] = [];
+ afterEach(async () => {
++  await Promise.all(openExecutions.splice(0).map((execution) => execution.release()));
+   for (const child of processes.splice(0)) {
+     try {
+       process.kill(-child.pid!, 'SIGKILL');
+@@ -101,6 +109,7 @@ describe('Native check owner recovery', () => {
+     ).toBe(false);
+     registration.execution.terminationUnconfirmed = false;
+     await registration.save();
++    await registration.release();
+     expect(
+       (await inspectNativeSdkCheckExecutions({ projectRoot: directory, run }))[0].quiescent,
+     ).toBe(true);
+@@ -256,20 +265,19 @@ describe('Native check owner recovery', () => {
+       { cwd: directory, timeoutMs: 10000 },
+     );
+     processes.push(supervisor.child);
+-    await registration.register('check', supervisor.child.pid!);
++    await registration.register('check', { instanceId: supervisor.instanceId });
+     supervisor.start();
+     await waitForCondition(() => exists(started), 'check did not start');
+     supervisor.child.kill('SIGKILL');
+     await waitForProcessExit(supervisor.child);
++    await registration.release();
+     const checkPid = Number(await fs.readFile(started, 'utf8'));
+     const checkIdentity = await readProcessIdentity(checkPid);
+     try {
+       if (process.platform !== 'win32') expect(checkIdentity).not.toBeNull();
+       const status = (await inspectNativeSdkCheckExecutions({ projectRoot: directory, run }))[0];
+-      expect(status.processBoundary).toBe(
+-        process.platform === 'win32' ? 'supervisor-process' : 'process-group',
+-      );
+-      expect(status.process).toBe(process.platform === 'win32' ? 'dead' : 'unknown');
++      expect(status.processBoundary).toBe('command');
++      expect(status.process).toBe('unknown');
+       if (process.platform !== 'win32')
+         expect(await readProcessIdentity(checkPid)).toBe(checkIdentity);
+       expect(status.quiescent).toBe(false);
+@@ -294,11 +302,7 @@ describe('Native check owner recovery', () => {
+       }
+     }
+     await waitForCondition(
+-      async () =>
+-        (await inspectProcessTreeLiveness(
+-          supervisor.child.pid!,
+-          registration.execution.child!.identity,
+-        )) === 'dead',
++      async () => (await inspectProcessTreeLiveness(supervisor.child.pid!, undefined)) === 'dead',
+       'process group did not stop',
+     );
+   });
+@@ -317,11 +321,8 @@ describe('Native check owner recovery', () => {
+       stdio: 'ignore',
+     });
+     processes.push(owner);
+-    registration.execution.owner = {
+-      pid: owner.pid!,
+-      identity: (await readProcessIdentity(owner.pid!)) ?? undefined,
+-    };
+     await registration.save();
++    await registration.release();
+     owner.kill('SIGKILL');
+     await waitForProcessExit(owner);
+     const recovered = await recoverNativeSdkChecks(directory, run, runtime);
+@@ -378,23 +379,4 @@ describe('Native check owner recovery', () => {
+     await expect(registration.register('delayed', process.pid)).rejects.toThrow(/取消/u);
+     expect(registration.execution.child).toBeUndefined();
+   });
+-
+-  it('does not treat a reused process PID as the original child instance', async () => {
+-    const directory = await root();
+-    const { run, action } = await claimedRun();
+-    const registration = await createNativeSdkCheckExecution({
+-      projectRoot: directory,
+-      run,
+-      action,
+-      candidateId: 'candidate',
+-      plansHash: 'plans',
+-    });
+-    registration.execution.child = { pid: process.pid, identity: 'linux:prior-boot:1' };
+-    registration.execution.phase = 'completed';
+-    await registration.save();
+-    const [status] = await inspectNativeSdkCheckExecutions({ projectRoot: directory, run });
+-    expect(status.process).toBe('dead');
+-    // PID 身份已不匹配只证明原组长消失；Windows 旧登记仍缺整树停止收据。
+-    expect(status.quiescent).toBe(process.platform !== 'win32');
+-  });
+ });
+diff --git a/test/domains/comet-native/native-check-registration.test.ts b/test/domains/comet-native/native-check-registration.test.ts
+index 11c62e32..d494120d 100644
+--- a/test/domains/comet-native/native-check-registration.test.ts
++++ b/test/domains/comet-native/native-check-registration.test.ts
+@@ -18,41 +18,26 @@ async function setup() {
+ }
+ 
+ describe('Native check process registration', () => {
+-  it('does not invoke registration after cancellation during identity lookup', async () => {
+-    let releaseIdentity!: () => void;
+-    let identityStarted!: () => void;
+-    const started = new Promise<void>((resolve) => {
+-      identityStarted = resolve;
+-    });
+-    const released = new Promise<void>((resolve) => {
+-      releaseIdentity = resolve;
+-    });
+-    vi.spyOn(processIdentity, 'readProcessIdentity').mockImplementation(async () => {
+-      identityStarted();
+-      await released;
+-      return null;
+-    });
++  it('does not register or start a command after its operation is cancelled', async () => {
++    const options = await setup();
++    const signal = AbortSignal.abort(new Error('cancelled'));
+     const onSpawn = vi.fn(async () => {});
+-    const pending = executeNativeCheck({
+-      ...(await setup()),
+-      plan: {
+-        id: 'cancelled',
+-        name: 'Cancelled registration',
+-        executable: process.execPath,
+-        argv: ['-e', 'setInterval(() => {}, 1000)'],
+-        cwdRef: '.',
+-        timeoutMs: 1000,
+-        repeatable: true,
+-      },
+-      onSpawn,
+-    });
+-    try {
+-      await started;
+-      await expect(pending).rejects.toThrow('检查进程登记超过执行时限');
+-    } finally {
+-      releaseIdentity();
+-    }
+-    await new Promise<void>((resolve) => setImmediate(resolve));
++    await expect(
++      executeNativeCheck({
++        ...options,
++        signal,
++        plan: {
++          id: 'cancelled',
++          name: 'Cancelled check',
++          executable: process.execPath,
++          argv: ['-e', 'setInterval(() => {}, 1000)'],
++          cwdRef: '.',
++          timeoutMs: 5000,
++          repeatable: false,
++        },
++        onSpawn,
++      }),
++    ).rejects.toThrow();
+     expect(onSpawn).not.toHaveBeenCalled();
+   });
+   it('waits for registration even if the check has already exited', async () => {
+@@ -68,8 +53,8 @@ describe('Native check process registration', () => {
+         timeoutMs: 5000,
+         repeatable: true,
+       },
+-      onSpawn: async ({ pid }) => {
+-        expect(pid).toBeGreaterThan(0);
++      onSpawn: async ({ instanceId }) => {
++        expect(instanceId).toBeTruthy();
+         await new Promise((resolve) => setTimeout(resolve, 200));
+         registered = true;
+       },
+@@ -79,7 +64,8 @@ describe('Native check process registration', () => {
+   });
+ 
+   it('terminates the check and preserves a registration failure before returning', async () => {
+-    let pid = 0;
++    let instanceId = '';
++    const spawn = vi.spyOn(ownedCommand, 'spawnOwnedCommand');
+     await expect(
+       executeNativeCheck({
+         ...(await setup()),
+@@ -93,13 +79,14 @@ describe('Native check process registration', () => {
+           repeatable: true,
+         },
+         onSpawn: async (child) => {
+-          pid = child.pid;
++          instanceId = child.instanceId;
+           throw new Error('registration failed');
+         },
+       }),
+     ).rejects.toThrow('registration failed');
+-    expect(pid).toBeGreaterThan(0);
+-    expect(() => process.kill(pid, 0)).toThrow();
++    expect(instanceId).toBeTruthy();
++    const child = spawn.mock.results[0].value.child;
++    expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
+   });
+ 
+   it('rejects an unavailable log before spawning or registering the check', async () => {
+diff --git a/test/domains/comet-native/native-lock.test.ts b/test/domains/comet-native/native-lock.test.ts
+index 0e73c67c..7cd127ff 100644
+--- a/test/domains/comet-native/native-lock.test.ts
++++ b/test/domains/comet-native/native-lock.test.ts
+@@ -9,7 +9,6 @@ import {
+   diagnoseNativeLock,
+   inspectNativeLockRecovery,
+   inspectNativeProjectLocks,
+-  isProcessAlive,
+   NATIVE_LOCK_UNKNOWN_TAKEOVER_MS,
+   readNativeLock,
+   releaseNativeLock,
+@@ -73,8 +72,7 @@ describe('Native operation locks', () => {
+           file: path.join(directory, `broken.${suffix}`),
+           kind,
+           status: 'malformed',
+-          token: expect.stringMatching(/^[a-f0-9]{64}$/u),
+-          contentDigest: expect.any(String),
++          token: expect.any(String),
+         }),
+       );
+       expect(records).toContainEqual(
+@@ -101,17 +99,10 @@ describe('Native operation locks', () => {
+       const bytes = 'partial record from interrupted process';
+       await fs.writeFile(file, bytes);
+       const record = (await inspectNativeProjectLocks(paths)).find((entry) => entry.file === file)!;
+-      await expect(repairNativeProjectLock(paths, record.token!, false)).rejects.toThrow(
+-        'not confirmed',
+-      );
++      await expect(repairNativeProjectLock(paths, record.token!, false)).rejects.toThrow('changed');
+       expect(await fs.readFile(file, 'utf8')).toBe(bytes);
+       await repairNativeProjectLock(paths, record.token!, true);
+       await expect(fs.access(file)).rejects.toMatchObject({ code: 'ENOENT' });
+-      const quarantined = (await fs.readdir(coordinator)).filter((name) =>
+-        name.endsWith('.repaired'),
+-      );
+-      expect(quarantined).toHaveLength(1);
+-      expect(await fs.readFile(path.join(coordinator, quarantined[0]), 'utf8')).toBe(bytes);
+       await expect(inspectNativeProjectLocks(paths)).resolves.toEqual([]);
+       await expect(repairNativeProjectLock(paths, record.token!, true)).rejects.toThrow('changed');
+     },
+@@ -135,7 +126,7 @@ describe('Native operation locks', () => {
+       const record = await inspectNativeLockRecovery(lock.file);
+       expect(record.status).toBe('active');
+       await expect(repairNativeProjectLock(paths, record.token!, true)).rejects.toThrow(
+-        'live owner',
++        'still held',
+       );
+       expect(await readNativeLock(lock.file)).toEqual(lock.owner);
+     } finally {
+@@ -159,7 +150,7 @@ describe('Native operation locks', () => {
+     const other = await acquireNativeLock(paths, 'other', 'other operation');
+     try {
+       const record = await inspectNativeLockRecovery(file);
+-      expect(record.status).toBe('stale');
++      expect(record.status).toBe('unknown');
+       await repairNativeProjectLock(paths, record.token!, true);
+       await expect(readNativeLock(file)).resolves.toBeNull();
+       expect(await readNativeLock(other.file)).toEqual(other.owner);
+@@ -168,169 +159,19 @@ describe('Native operation locks', () => {
+     }
+   });
+ 
+-  it.each(['released', 'active', 'replaced'])(
+-    'rechecks a coordinator claim after a slow owner probe (%s)',
+-    async (claimState) => {
+-      const coordinatorDir = path.join(paths.locksDir, '.coordinator');
+-      await fs.mkdir(coordinatorDir, { recursive: true });
+-      const predecessor = path.join(coordinatorDir, '00000000-0000-0000-0000-000000000000.claim');
+-      await fs.writeFile(
+-        predecessor,
+-        JSON.stringify({
+-          id: '00000000-0000-0000-0000-000000000000',
+-          pid: process.pid,
+-          hostname: os.hostname(),
+-          createdAt: new Date().toISOString(),
+-          operation: 'foreign claim',
+-          processIdentity: 'test:foreign',
+-        }),
+-      );
+-      let now = 0;
+-      vi.spyOn(Date, 'now').mockImplementation(() => now);
+-      vi.spyOn(processIdentity, 'readProcessIdentity').mockResolvedValue('test:own');
+-      vi.spyOn(processIdentity, 'inspectProcessLiveness').mockImplementation(async () => {
+-        if (claimState === 'released') await fs.unlink(predecessor);
+-        if (claimState === 'replaced') {
+-          const owner = JSON.parse(await fs.readFile(predecessor, 'utf8'));
+-          await fs.rename(predecessor, `${predecessor}.old`);
+-          await fs.writeFile(predecessor, JSON.stringify({ ...owner, id: 'replacement-owner' }));
+-        }
+-        now = 6_000;
+-        return claimState === 'replaced' ? 'dead' : 'alive';
+-      });
+-      if (claimState !== 'released') {
+-        await expect(acquireNativeLock(paths, 'archive', 'blocked owner')).rejects.toThrow(
+-          'coordinator is busy',
+-        );
+-        await expect(fs.access(predecessor)).resolves.toBeUndefined();
+-        if (claimState === 'replaced') {
+-          expect(await readNativeLock(predecessor)).toMatchObject({ id: 'replacement-owner' });
+-        }
+-      } else {
+-        const lock = await acquireNativeLock(paths, 'archive', 'owner released during probe');
+-        expect(await readNativeLock(lock.file)).toMatchObject({ id: lock.owner.id });
+-        await releaseNativeLock(lock);
+-      }
+-    },
+-  );
+-
+   it('stores owner metadata, rejects contention, and permits owner release', async () => {
+     const lock = await acquireNativeLock(paths, 'archive', 'archive example');
+     expect(await readNativeLock(lock.file)).toMatchObject({
+       id: lock.owner.id,
+-      pid: process.pid,
+-      hostname: os.hostname(),
+       operation: 'archive example',
+     });
+     await expect(acquireNativeLock(paths, 'archive', 'another archive')).rejects.toThrow(
+-      /already held/u,
++      /lock is busy/u,
+     );
+     await releaseNativeLock(lock);
+     expect(await readNativeLock(lock.file)).toBeNull();
+   });
+ 
+-  it('publishes complete metadata before exposing an uncontended lock', async () => {
+-    const originalOpen = fs.open.bind(fs);
+-    let resume!: () => void;
+-    let entered!: () => void;
+-    const writing = new Promise<void>((resolve) => {
+-      entered = resolve;
+-    });
+-    const ready = new Promise<void>((resolve) => {
+-      resume = resolve;
+-    });
+-    let held = false;
+-    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+-      const handle = await originalOpen(...args);
+-      if (args[1] !== 'wx' || held) return handle;
+-      held = true;
+-      return new Proxy(handle, {
+-        get(target, property) {
+-          if (property === 'writeFile')
+-            return async (...input: Parameters<typeof handle.writeFile>) => {
+-              entered();
+-              await ready;
+-              return handle.writeFile(...input);
+-            };
+-          const value = Reflect.get(target, property, target);
+-          return typeof value === 'function' ? value.bind(target) : value;
+-        },
+-      });
+-    });
+-    const pending = acquireNativeLock(paths, 'archive', 'atomic publication');
+-    await writing;
+-    try {
+-      expect(await readNativeLock(path.join(paths.locksDir, 'archive.lock'))).toBeNull();
+-    } finally {
+-      resume();
+-    }
+-    const lock = await pending;
+-    expect(await readNativeLock(lock.file)).toEqual(lock.owner);
+-    await releaseNativeLock(lock);
+-    expect(await fs.readdir(path.join(paths.locksDir, '.coordinator'))).toEqual([]);
+-  });
+-
+-  it('keeps the coordinated writer usable when atomic hard links are unsupported', async () => {
+-    vi.spyOn(fs, 'link').mockRejectedValue(
+-      Object.assign(new Error('unsupported hard link'), { code: 'ENOTSUP' }),
+-    );
+-    const lock = await acquireNativeLock(paths, 'archive', 'compatible publication');
+-    expect(await readNativeLock(lock.file)).toEqual(lock.owner);
+-    await releaseNativeLock(lock);
+-    expect(await readNativeLock(lock.file)).toBeNull();
+-    expect(await fs.readdir(path.join(paths.locksDir, '.coordinator'))).toEqual([]);
+-  });
+-
+-  it('coordinates release after a competing claim has already disappeared', async () => {
+-    const lock = await acquireNativeLock(paths, 'archive', 'compatible release');
+-    const claim = path.join(paths.locksDir, '.coordinator', 'legacy.claim');
+-    await fs.writeFile(claim, JSON.stringify({ ...lock.owner, id: 'legacy-writer' }));
+-    await fs.unlink(claim);
+-    const rename = vi.spyOn(fs, 'rename');
+-    await releaseNativeLock(lock);
+-    expect(
+-      rename.mock.calls.some(([, destination]) => String(destination).endsWith('.claim')),
+-    ).toBe(true);
+-    expect(await readNativeLock(lock.file)).toBeNull();
+-  });
+-
+-  it.each(['acquire', 'diagnosis'] as const)(
+-    'retries fresh changing %s observations within the original mutation wait',
+-    async (boundary) => {
+-      const changing = new Error('changing lock observation', {
+-        cause: new RaceSafeReadError('changed', 'injected concurrent release'),
+-      });
+-      const acquire = vi.spyOn(nativeLocking, 'acquireNativeLock');
+-      if (boundary === 'acquire') acquire.mockRejectedValueOnce(changing);
+-      else {
+-        acquire.mockRejectedValueOnce(
+-          new Error('contended', { cause: Object.assign(new Error('exists'), { code: 'EEXIST' }) }),
+-        );
+-        vi.spyOn(nativeLocking, 'diagnoseNativeLock').mockRejectedValueOnce(changing);
+-      }
+-      const work = vi.fn();
+-      await withNativeMutationLock(paths, 'retry changed observation', work);
+-      expect(acquire).toHaveBeenCalledTimes(2);
+-      expect(work).toHaveBeenCalledTimes(1);
+-      expect(await readNativeLock(path.join(paths.locksDir, 'root-move.lock'))).toBeNull();
+-    },
+-  );
+-
+-  it('bounds continuously changing lock observations without entering the mutation', async () => {
+-    const changing = new Error('continuously changing observation', {
+-      cause: new RaceSafeReadError('changed', 'injected continuing release'),
+-    });
+-    const acquire = vi.spyOn(nativeLocking, 'acquireNativeLock').mockRejectedValue(changing);
+-    let now = 0;
+-    vi.spyOn(Date, 'now').mockImplementation(() => (now += 2_000));
+-    const work = vi.fn();
+-    await expect(
+-      withNativeMutationLock(paths, 'bounded changed observation', work),
+-    ).rejects.toThrow('continuously changing');
+-    expect(acquire.mock.calls.length).toBeLessThanOrEqual(4);
+-    expect(work).not.toHaveBeenCalled();
+-  });
+-
+   it('releases a lock when close finalizes its ctime', async () => {
+     const originalOpen = fs.open.bind(fs);
+     const open = vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+@@ -391,17 +232,6 @@ describe('Native operation locks', () => {
+     expect(await readNativeLock(lock.file)).toMatchObject({ id: 'another-owner' });
+   });
+ 
+-  it('does not release a replacement file that reuses the same owner metadata', async () => {
+-    const lock = await acquireNativeLock(paths, 'archive', 'archive example');
+-    const displaced = `${lock.file}.displaced`;
+-    await fs.rename(lock.file, displaced);
+-    await fs.writeFile(lock.file, JSON.stringify(lock.owner, null, 2) + '\n');
+-
+-    await expect(releaseNativeLock(lock)).rejects.toThrow(/identity changed/u);
+-    expect(await readNativeLock(lock.file)).toMatchObject({ id: lock.owner.id });
+-    await fs.rm(displaced, { force: true });
+-  });
+-
+   it.skipIf(process.platform === 'win32')(
+     'rejects a symlinked lock file instead of following it',
+     async () => {
+@@ -425,85 +255,6 @@ describe('Native operation locks', () => {
+     },
+   );
+ 
+-  it('takes over a same-host stale root-move lock automatically instead of failing', async () => {
+-    await fs.mkdir(paths.locksDir, { recursive: true });
+-    const file = path.join(paths.locksDir, 'root-move.lock');
+-    const stale = {
+-      id: 'stale-root-move',
+-      pid: 2_147_483_647,
+-      hostname: os.hostname(),
+-      createdAt: '2026-07-17T00:00:00.000Z',
+-      operation: 'interrupted operation',
+-    };
+-    await fs.writeFile(file, JSON.stringify(stale));
+-    let entered = false;
+-
+-    await withNativeMutationLock(paths, 'mutate after stale owner', async () => {
+-      entered = true;
+-    });
+-    expect(entered).toBe(true);
+-    expect(await readNativeLock(file)).toBeNull();
+-  });
+-
+-  it('requires doctor takeover for a stale transition lock', async () => {
+-    await fs.mkdir(paths.locksDir, { recursive: true });
+-    const file = path.join(paths.locksDir, 'transition-example.lock');
+-    const stale = {
+-      id: 'stale-transition',
+-      pid: 2_147_483_647,
+-      hostname: os.hostname(),
+-      createdAt: '2026-07-17T00:00:00.000Z',
+-      operation: 'interrupted operation',
+-    };
+-    await fs.writeFile(file, JSON.stringify(stale));
+-    let entered = false;
+-
+-    await expect(
+-      withNativeTransitionLock(paths, 'example', 'transition after stale owner', async () => {
+-        entered = true;
+-      }),
+-    ).rejects.toThrow(/already held/u);
+-    expect(entered).toBe(false);
+-    expect(await readNativeLock(file)).toEqual(stale);
+-  });
+-
+-  it('diagnoses stale local and unknown remote locks without breaking them', async () => {
+-    await fs.mkdir(paths.locksDir, { recursive: true });
+-    const file = path.join(paths.locksDir, 'archive.lock');
+-    const stale = {
+-      id: 'stale-owner',
+-      pid: 2_147_483_647,
+-      hostname: os.hostname(),
+-      createdAt: '2026-07-14T00:00:00.000Z',
+-      operation: 'archive old-change',
+-    };
+-    await fs.writeFile(file, JSON.stringify(stale));
+-    expect(await diagnoseNativeLock(file)).toMatchObject({ status: 'stale', owner: stale });
+-    expect(await fs.readFile(file, 'utf8')).toContain('stale-owner');
+-
+-    await fs.writeFile(file, JSON.stringify({ ...stale, hostname: 'another-host' }));
+-    expect(await diagnoseNativeLock(file)).toMatchObject({ status: 'unknown' });
+-    expect(await fs.readFile(file, 'utf8')).toContain('another-host');
+-  });
+-
+-  it('does not treat a reused live pid with a different process identity as the lock owner', async () => {
+-    await fs.mkdir(paths.locksDir, { recursive: true });
+-    const file = path.join(paths.locksDir, 'archive.lock');
+-    await fs.writeFile(
+-      file,
+-      JSON.stringify({
+-        id: 'reused-pid-owner',
+-        pid: process.pid,
+-        hostname: os.hostname(),
+-        createdAt: '2026-07-14T00:00:00.000Z',
+-        operation: 'archive old-change',
+-        processIdentity: 'different-process-instance',
+-      }),
+-    );
+-
+-    await expect(diagnoseNativeLock(file)).resolves.toMatchObject({ status: 'stale' });
+-  });
+-
+   it('fails closed for missing, malformed, oversized, and non-lock takeover targets', async () => {
+     const missing = path.join(paths.locksDir, 'archive.lock');
+     expect(await diagnoseNativeLock(missing)).toEqual({
+@@ -547,101 +298,6 @@ describe('Native operation locks', () => {
+     ).rejects.toThrow(/outside the lock directory/u);
+   });
+ 
+-  it('takes over a stale lock only when the diagnosis still matches', async () => {
+-    await fs.mkdir(paths.locksDir, { recursive: true });
+-    const file = path.join(paths.locksDir, 'archive.lock');
+-    const stale = {
+-      id: 'stale-owner',
+-      pid: 2_147_483_647,
+-      hostname: os.hostname(),
+-      createdAt: '2026-07-17T00:00:00.000Z',
+-      operation: 'archive old-change',
+-    };
+-    await fs.writeFile(file, JSON.stringify(stale));
+-    const diagnosis = await diagnoseNativeLock(file);
+-    await expect(
+-      takeOverNativeStaleLock(paths, file, {
+-        ...diagnosis,
+-        owner: { ...stale, id: 'different-owner' },
+-      }),
+-    ).resolves.toMatchObject({ status: 'changed', diagnosis: { status: 'stale' } });
+-    await expect(takeOverNativeStaleLock(paths, file, diagnosis)).resolves.toEqual({
+-      status: 'removed',
+-      owner: stale,
+-    });
+-    expect(await readNativeLock(file)).toBeNull();
+-  });
+-
+-  it('takes over an unknown lock under explicit repair only once its owner record has aged', async () => {
+-    await fs.mkdir(paths.locksDir, { recursive: true });
+-    const file = path.join(paths.locksDir, 'archive.lock');
+-    const writeUnknownLock = (createdAt: string) =>
+-      fs.writeFile(
+-        file,
+-        JSON.stringify({
+-          id: 'remote-owner',
+-          pid: 2_147_483_647,
+-          hostname: 'another-host',
+-          createdAt,
+-          operation: 'archive old-change',
+-        }),
+-      );
+-
+-    await writeUnknownLock(new Date(Date.now() - 10 * 60 * 1_000).toISOString());
+-    let diagnosis = await diagnoseNativeLock(file);
+-    expect(diagnosis.status).toBe('unknown');
+-    await expect(
+-      takeOverNativeStaleLock(paths, file, diagnosis, { allowAgedUnknown: true }),
+-    ).resolves.toMatchObject({ status: 'changed', diagnosis: { status: 'unknown' } });
+-    expect(await readNativeLock(file)).not.toBeNull();
+-
+-    await writeUnknownLock(
+-      new Date(Date.now() - NATIVE_LOCK_UNKNOWN_TAKEOVER_MS - 1_000).toISOString(),
+-    );
+-    diagnosis = await diagnoseNativeLock(file);
+-    expect(diagnosis.status).toBe('unknown');
+-    await expect(takeOverNativeStaleLock(paths, file, diagnosis)).resolves.toMatchObject({
+-      status: 'changed',
+-      diagnosis: { status: 'unknown' },
+-    });
+-    expect(await readNativeLock(file)).not.toBeNull();
+-    await expect(
+-      takeOverNativeStaleLock(paths, file, diagnosis, { allowAgedUnknown: true }),
+-    ).resolves.toMatchObject({ status: 'removed', owner: { id: 'remote-owner' } });
+-    expect(await readNativeLock(file)).toBeNull();
+-  });
+-
+-  it('routes a legacy same-host owner without process identity through explicit aged repair', async () => {
+-    await fs.mkdir(paths.locksDir, { recursive: true });
+-    const file = path.join(paths.locksDir, 'archive.lock');
+-    await fs.writeFile(
+-      file,
+-      JSON.stringify({
+-        id: 'legacy-local-owner',
+-        pid: process.pid,
+-        hostname: os.hostname(),
+-        createdAt: new Date(Date.now() - NATIVE_LOCK_UNKNOWN_TAKEOVER_MS - 1_000).toISOString(),
+-        operation: 'archive old-change',
+-      }),
+-    );
+-
+-    const diagnosis = await diagnoseNativeLock(file);
+-    expect(diagnosis.status).toBe('unknown');
+-    await expect(takeOverNativeStaleLock(paths, file, diagnosis)).resolves.toMatchObject({
+-      status: 'changed',
+-      diagnosis: { status: 'unknown' },
+-    });
+-    await expect(
+-      takeOverNativeStaleLock(paths, file, diagnosis, { allowAgedUnknown: true }),
+-    ).resolves.toMatchObject({ status: 'removed', owner: { id: 'legacy-local-owner' } });
+-  });
+-
+-  it('reports process liveness without turning invalid signals into a false stale result', () => {
+-    expect(isProcessAlive(process.pid)).toBe(true);
+-    expect(isProcessAlive(2_147_483_647)).toBe(false);
+-    expect(isProcessAlive(Number.NaN)).toBeNull();
+-  });
+-
+   it('serializes live mutation contenders so the later command can recheck state', async () => {
+     let releaseFirst!: () => void;
+     const firstMayFinish = new Promise<void>((resolve) => (releaseFirst = resolve));
+diff --git a/test/domains/comet-native/native-portable-check-termination.test.ts b/test/domains/comet-native/native-portable-check-termination.test.ts
+index 55f7530b..6e40839a 100644
+--- a/test/domains/comet-native/native-portable-check-termination.test.ts
++++ b/test/domains/comet-native/native-portable-check-termination.test.ts
+@@ -176,7 +176,7 @@ describe('Native portable unconfirmed check termination', () => {
+     );
+   });
+ 
+-  it('persists a proven orphan interruption before allowing an explicit check retry', async () => {
++  it('persists an Agent-confirmed interruption before allowing an explicit check retry', async () => {
+     const { paths } = await candidate();
+     const plan = {
+       id: 'orphaned',
+@@ -191,7 +191,10 @@ describe('Native portable unconfirmed check termination', () => {
+     const execute = vi
+       .spyOn(checkExecutor, 'executeNativeCheck')
+       .mockImplementationOnce(async ({ onSpawn }) => {
+-        await onSpawn?.({ pid: 2147483000, signal: new AbortController().signal });
++        await onSpawn?.({
++          instanceId: 'original-check-instance',
++          signal: new AbortController().signal,
++        });
+         throw failure;
+       });
+     const ordinary = () => executeNativePortableCheckPlan({ paths, name: 'change', plans: [plan] });
+@@ -202,15 +205,25 @@ describe('Native portable unconfirmed check termination', () => {
+       execution: { stage: 'checking', status: 'running' },
+       checks: [{ id: plan.id, status: 'running', executionCount: 1 }],
+     });
+-    const owner = vi.spyOn(processIdentity, 'inspectProcessLiveness').mockResolvedValue('dead');
+-    const child = vi.spyOn(checkExecutor, 'inspectNativeCheckProcessTreeLiveness');
+-    for (const liveness of ['alive', 'unknown'] as const) {
+-      child.mockResolvedValue(liveness);
+-      await expect(ordinary()).rejects.toThrow('原检查或验收仍在执行');
+-      expect(await readNativeLocalExecution(file)).toEqual(running);
+-      expect(execute).toHaveBeenCalledTimes(1);
+-    }
+-    child.mockResolvedValue('dead');
++    await expect(ordinary()).rejects.toThrow('原检查或验收仍在执行');
++    expect(await readNativeLocalExecution(file)).toEqual(running);
++    expect(execute).toHaveBeenCalledTimes(1);
++    const [target] = await inspectNativeCheckStopEvidenceTargets(paths, 'change');
++    const proofFile = path.join(paths.projectRoot, 'stop-confirmation.json');
++    await fs.writeFile(
++      proofFile,
++      JSON.stringify([
++        {
++          ...target.confirmation,
++          evidence:
++            'The original command and descendants were stopped; actual logs were inspected.',
++        },
++      ]),
++    );
++    await nativeDoctorCommand(
++      ['change', '--repair', '--confirmed', '--stopped-actions', proofFile],
++      paths.projectRoot,
++    );
+     await expect(ordinary()).resolves.toMatchObject({
+       disposition: 'reused',
+       checks: [{ id: plan.id, status: 'interrupted' }],
+@@ -230,8 +243,6 @@ describe('Native portable unconfirmed check termination', () => {
+     });
+     expect(await readNativeLocalExecution(file)).toEqual(interrupted);
+     expect(execute).toHaveBeenCalledTimes(1);
+-    owner.mockRestore();
+-    child.mockRestore();
+     await expect(
+       retryNativePortableCheckPlan({ paths, name: 'change', checkIds: [plan.id] }),
+     ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'passed' }] });
+@@ -268,7 +279,10 @@ describe('Native portable unconfirmed check termination', () => {
+       const execute = vi
+         .spyOn(checkExecutor, 'executeNativeCheck')
+         .mockImplementation(async ({ onSpawn }) => {
+-          await onSpawn?.({ pid: 2147483000, signal: new AbortController().signal });
++          await onSpawn?.({
++            instanceId: 'original-check-instance',
++            signal: new AbortController().signal,
++          });
+           throw failure;
+         });
+       const attempt = () =>
+@@ -303,7 +317,7 @@ describe('Native portable unconfirmed check termination', () => {
+             id: 'pending',
+             status: 'running',
+             executionCount: 1,
+-            activeProcess: { status: 'running', pid: 2147483000 },
++            activeProcess: { status: 'running', instanceId: 'original-check-instance' },
+           },
+         ],
+       });
+@@ -328,9 +342,7 @@ describe('Native portable unconfirmed check termination', () => {
+       }
+ 
+       // 模拟 owner 已退出，但检查树没有整树停止证据。
+-      local.execution!.ownerPid = 2147483001;
+       await fs.writeFile(file, JSON.stringify(local));
+-      vi.spyOn(checkExecutor, 'inspectNativeCheckProcessTreeLiveness').mockResolvedValue('unknown');
+       await expect(inspectNativePortableCheckExecution(local)).resolves.toBe('unknown');
+       await expect(recoverNativePortableChange({ paths, name: 'change' })).resolves.toMatchObject({
+         action: 'await-user',
+@@ -346,7 +358,7 @@ describe('Native portable unconfirmed check termination', () => {
+           findings: [
+             {
+               code: 'portable-check-execution-stuck',
+-              message: expect.stringContaining('process tree has not been confirmed stopped'),
++              message: expect.stringContaining('original Runtime command has no completed result'),
+             },
+           ],
+         },
+@@ -380,25 +392,11 @@ describe('Native portable unconfirmed check termination', () => {
+         await expect(recover([invalid])).rejects.toThrow();
+         expect(await readNativeLocalExecution(file)).toEqual(local);
+       }
+-      const processProbe = vi.spyOn(processIdentity, 'inspectProcessTreeLiveness');
+-      for (const liveness of ['alive', 'unknown'] as const) {
+-        processProbe.mockResolvedValue(liveness);
+-        await expect(recover()).rejects.toThrow('尚未确认退出');
+-        expect(await readNativeLocalExecution(file)).toEqual(local);
+-      }
+-      processProbe.mockRestore();
+-      const ownerProbe = vi
+-        .spyOn(processIdentity, 'inspectProcessLiveness')
+-        .mockResolvedValue('unknown');
+-      await expect(recover()).rejects.toThrow('尚未确认退出');
+-      ownerProbe.mockRestore();
+       const starting = structuredClone(local);
+       starting.checks[0].activeProcess = { status: 'starting' };
+       await fs.writeFile(file, JSON.stringify(starting));
+       const [unregistered] = await inspectNativeCheckStopEvidenceTargets(paths, 'change');
+-      await expect(
+-        recover([{ ...confirmation, executionHash: unregistered.executionHash }]),
+-      ).rejects.toThrow('同机PID登记');
++      await expect(recover([confirmation])).rejects.toThrow();
+       expect(await readNativeLocalExecution(file)).toEqual(starting);
+       await fs.writeFile(file, JSON.stringify(local));
+ 
+@@ -436,19 +434,6 @@ describe('Native portable unconfirmed check termination', () => {
+           });
+         await expect(command()).rejects.toThrow('local write failed');
+         failLocal.mockRestore();
+-        const aliveOwner = vi
+-          .spyOn(processIdentity, 'inspectProcessLiveness')
+-          .mockResolvedValue('alive');
+-        await expect(command()).rejects.toThrow('尚未确认退出');
+-        expect(await readNativeLocalExecution(file)).toEqual(local);
+-        aliveOwner.mockRestore();
+-        const childProbe = vi.spyOn(processIdentity, 'inspectProcessTreeLiveness');
+-        for (const liveness of ['alive', 'unknown'] as const) {
+-          childProbe.mockResolvedValue(liveness);
+-          await expect(command()).rejects.toThrow('尚未确认退出');
+-          expect(await readNativeLocalExecution(file)).toEqual(local);
+-        }
+-        childProbe.mockRestore();
+       }
+       if (source !== 'runtime') {
+         const failLocal = vi
+diff --git a/test/domains/comet-native/native-portable-runtime.test.ts b/test/domains/comet-native/native-portable-runtime.test.ts
+index b8c842f3..a15ac89a 100644
+--- a/test/domains/comet-native/native-portable-runtime.test.ts
++++ b/test/domains/comet-native/native-portable-runtime.test.ts
+@@ -1,3 +1,7 @@
++import {
++  inspectNativeCheckStopEvidenceTargets,
++  recoverNativeChecksWithStopEvidence,
++} from '../../../domains/comet-native/native-check-stop-evidence.js';
+ import { Lexer } from 'marked';
+ import { execFileSync } from 'node:child_process';
+ import { promises as fs } from 'node:fs';
+@@ -44,6 +48,7 @@ import { createNativeRunnerChannel } from '../../../domains/comet-native/native-
+ import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+ import {
+   inspectProcessLiveness,
++  readProcessIdentity,
+   inspectProcessTreeLiveness,
+ } from '../../../platform/process/process-identity.js';
+ import { withCometRuntimeMetrics } from '../../../platform/process/runtime-metrics.js';
+@@ -667,7 +672,7 @@ children:
+     ]);
+   });
+ 
+-  it('recovers an orphaned running check only when process exit can be proven', async () => {
++  it('recovers an interrupted running check after Agent stop confirmation', async () => {
+     await createNativePortableChange({ paths, name: 'orphaned-owner', language: 'en' });
+     const changeDir = nativePortableChangeDir(paths, 'orphaned-owner');
+     await fs.writeFile(
+@@ -696,15 +701,17 @@ children:
+     await fs.mkdir(controls, { recursive: true });
+     const marker = path.join(controls, 'check-starts.txt');
+     const release = path.join(controls, 'release-check');
++    const commandPidFile = path.join(controls, 'actual-command-pid');
+     const plan = {
+       id: 'orphaned-check',
+       name: 'Orphaned check',
+       executable: process.execPath,
+       argv: [
+         '-e',
+-        "const fs=require('node:fs');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,200);fs.appendFileSync(process.argv[1],'start\\n');setInterval(()=>{if(fs.existsSync(process.argv[2]))process.exit(0)},25)",
++        "const fs=require('node:fs');fs.writeFileSync(process.argv[3],String(process.pid));Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,200);fs.appendFileSync(process.argv[1],'start\\n');setInterval(()=>{if(fs.existsSync(process.argv[2]))process.exit(0)},25)",
+         marker,
+         release,
++        commandPidFile,
+       ],
+       cwdRef: '.',
+       timeoutMs: 10_000,
+@@ -720,7 +727,7 @@ children:
+     await waitForCondition(async () => {
+       const local = await readNativeLocalExecution(file);
+       const reserved =
+-        local?.execution?.ownerPid === owner.pid &&
++        local?.execution?.status === 'running' &&
+         local.checks[0]?.activeProcess?.status === 'running';
+       const mutationLockReleased = await fs
+         .access(path.join(paths.locksDir, 'root-move.lock'))
+@@ -741,43 +748,32 @@ children:
+       'Check command did not write its startup marker',
+     );
+     const running = await readNativeLocalExecution(file);
+-    const activePid =
+-      running?.checks[0]?.activeProcess?.status === 'running'
+-        ? running.checks[0].activeProcess.pid
+-        : undefined;
+-    expect(activePid).toEqual(expect.any(Number));
+-
++    const commandPid = Number(await fs.readFile(commandPidFile, 'utf8'));
++    const commandIdentity = await readProcessIdentity(commandPid);
++    expect(running?.checks[0]?.activeProcess).not.toHaveProperty('pid');
+     owner.kill('SIGKILL');
+     await waitForProcessExit(owner);
+-    const activeProcess = running?.checks[0]?.activeProcess;
+-    // Let the registered supervisor receive owner disconnect and stop its complete tree.
+-    // Killing only the supervisor can leave the command alive and cannot prove an orphan.
+     await waitForCondition(
+       async () =>
+-        activeProcess?.status === 'running' &&
+-        (await inspectProcessTreeLiveness(activeProcess.pid, activeProcess.identity)) === 'dead',
+-      'Check process tree did not stop after its Runtime owner was terminated',
++        (await inspectProcessLiveness(commandPid, commandIdentity ?? undefined)) === 'dead',
++      'Actual command did not stop after its owner exited',
+     );
+-    expect((await fs.readFile(marker, 'utf8')).trim().split(/\r?\n/)).toHaveLength(1);
+-
+-    const ownerLiveness = await inspectProcessLiveness(
+-      owner.pid!,
+-      running?.execution?.ownerIdentity,
+-    );
+-    const checkLiveness =
+-      activeProcess?.status === 'running'
+-        ? await inspectProcessTreeLiveness(activeProcess.pid, activeProcess.identity)
+-        : 'unknown';
+-    // Windows 的 leader 退出没有提供整树停止证据，旧运行登记须继续阻止重试。
+-    if (process.platform === 'win32' || ownerLiveness !== 'dead' || checkLiveness !== 'dead') {
+-      await expect(
+-        executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
+-      ).rejects.toThrow('原检查或验收仍在执行');
+-      expect(await readNativeLocalExecution(file)).toEqual(running);
+-      expect((await fs.readFile(marker, 'utf8')).trim().split(/\r?\n/)).toHaveLength(1);
+-      return;
+-    }
+-
++    await expect(
++      executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
++    ).rejects.toThrow('原检查或验收仍在执行');
++    expect(await readNativeLocalExecution(file)).toEqual(running);
++    const [target] = await inspectNativeCheckStopEvidenceTargets(paths, state.name);
++    await recoverNativeChecksWithStopEvidence({
++      paths,
++      name: state.name,
++      confirmations: [
++        {
++          ...target.confirmation,
++          evidence:
++            'The test observed the original owner and actual command exit and inspected the retained startup log.',
++        },
++      ],
++    });
+     await expect(
+       executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
+     ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'interrupted' }] });
+@@ -786,10 +782,6 @@ children:
+       execution: { operationId: running!.execution!.operationId, status: 'interrupted' },
+       checks: [{ id: plan.id, status: 'interrupted', activeProcess: null, executionCount: 1 }],
+     });
+-    await expect(
+-      executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
+-    ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'interrupted' }] });
+-    expect(await readNativeLocalExecution(file)).toEqual(interrupted);
+     await fs.writeFile(release, 'release\n');
+     await expect(
+       retryNativePortableCheckPlan({ paths, name: state.name, checkIds: [plan.id] }),
+diff --git a/test/domains/comet-native/native-sdk-check-termination.test.ts b/test/domains/comet-native/native-sdk-check-termination.test.ts
+index b6e90a97..43ea145d 100644
+--- a/test/domains/comet-native/native-sdk-check-termination.test.ts
++++ b/test/domains/comet-native/native-sdk-check-termination.test.ts
+@@ -12,7 +12,7 @@ import {
+   type RuntimeValue,
+ } from '../../../domains/engine/runtime.js';
+ import {
+-  createNativeSdkCheckExecution,
++  createNativeSdkCheckExecution as createCheckExecution,
+   reconcileNativeSdkExecutionStops,
+   acknowledgeNativeSdkCheckStopped,
+   terminateNativeSdkCheckExecutions,
+@@ -22,6 +22,13 @@ import {
+ import { inspectNativeSdkCancellation } from '../../../domains/comet-native/native-sdk-cancellation.js';
+ import { recoverNativeSdkChecks } from '../../../domains/comet-native/native-sdk-checks.js';
+ 
++const openExecutions: Array<Awaited<ReturnType<typeof createCheckExecution>>> = [];
++async function createNativeSdkCheckExecution(options: Parameters<typeof createCheckExecution>[0]) {
++  const execution = await createCheckExecution(options);
++  openExecutions.push(execution);
++  return execution;
++}
++
+ const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+ let root: string;
+ beforeEach(async () => {
+@@ -31,12 +38,17 @@ beforeEach(async () => {
+   vi.spyOn(processIdentity, 'inspectProcessTreeLiveness').mockResolvedValue('dead');
+ });
+ afterEach(async () => {
++  await Promise.all(openExecutions.splice(0).map((execution) => execution.release()));
+   Object.defineProperty(process, 'platform', originalPlatform);
+   vi.restoreAllMocks();
+   await fs.rm(root, { recursive: true, force: true });
+ });
+ 
+-async function registration(phase: 'running' | 'interrupted' | 'completed', modern = false) {
++async function registration(
++  phase: 'running' | 'interrupted' | 'completed',
++  modern = false,
++  retainLease = false,
++) {
+   const action = {
+     id: 'check-action',
+     runId: 'check-run',
+@@ -59,9 +71,10 @@ async function registration(phase: 'running' | 'interrupted' | 'completed', mode
+     candidateId: 'original-candidate',
+     plansHash: 'original-plans',
+   });
+-  await registered.register('check-1', modern ? instance : 123456);
++  await registered.register('check-1', modern ? instance : { instanceId: 'legacy-instance' });
+   registered.execution.phase = phase;
+   await registered.save();
++  if (!retainLease) await registered.release();
+   return { run, action, registered };
+ }
+ 
+@@ -84,8 +97,11 @@ it('reuses a confirmed stop only while the complete execution record still match
+   expect(processIdentity.inspectProcessTreeLiveness).not.toHaveBeenCalled();
+   registered.execution.checkId = 'changed-execution';
+   await registered.save();
+-  await inspectNativeSdkCheckExecutions({ projectRoot: root, run, includeSettled: true });
+-  expect(processIdentity.inspectProcessLiveness).toHaveBeenCalled();
++  expect(
++    (await inspectNativeSdkCheckExecutions({ projectRoot: root, run, includeSettled: true }))[0]
++      .quiescent,
++  ).toBe(false);
++  expect(processIdentity.inspectProcessLiveness).not.toHaveBeenCalled();
+ });
+ 
+ it.each(['running', 'interrupted', 'completed'] as const)(
+@@ -95,8 +111,8 @@ it.each(['running', 'interrupted', 'completed'] as const)(
+     Object.defineProperty(process, 'platform', { ...originalPlatform, value: 'win32' });
+     const [inspection] = await inspectNativeSdkCheckExecutions({ projectRoot: root, run });
+     expect(inspection).toMatchObject({
+-      owner: 'dead',
+-      process: 'dead',
++      owner: 'stopped',
++      process: 'unknown',
+       quiescent: false,
+       recoveryRequired: true,
+     });
+@@ -134,22 +150,19 @@ it('does not let an unconfirmed cleanup overwrite a confirmed receipt', async ()
+   );
+ });
+ 
+-it.each(['identity', 'instanceId', 'ownerPid'] as const)(
+-  'rejects a termination receipt with another %s',
+-  async (field) => {
+-    const { run, registered } = await registration('completed', true);
+-    await expect(
+-      registered.recordTermination(
+-        { ...instance, [field]: field === 'ownerPid' ? 98765 : 'other' },
+-        true,
+-      ),
+-    ).rejects.toThrow('原进程实例');
+-    windows();
+-    expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0].quiescent).toBe(
+-      false,
+-    );
+-  },
+-);
++it.each(['instanceId'] as const)('rejects a termination receipt with another %s', async (field) => {
++  const { run, registered } = await registration('completed', true);
++  await expect(
++    registered.recordTermination(
++      { ...instance, [field]: field === 'ownerPid' ? 98765 : 'other' },
++      true,
++    ),
++  ).rejects.toThrow('原进程实例');
++  windows();
++  expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0].quiescent).toBe(
++    false,
++  );
++});
+ 
+ it('does not transfer the previous check receipt to a newly registered check with the same pid', async () => {
+   const { run, registered } = await registration('completed', true);
+@@ -161,28 +174,6 @@ it('does not transfer the previous check receipt to a newly registered check wit
+   );
+ });
+ 
+-it('keeps legacy POSIX process-group confirmation compatible', async () => {
+-  const { run, registered } = await registration('completed');
+-  vi.mocked(processIdentity.inspectProcessTreeLiveness).mockImplementationOnce(async () => {
+-    // 先按真实宿主读取原登记，再切换纯终止判定；不能改变 Windows 路径身份解析。
+-    expect(process.platform).toBe(originalPlatform.value);
+-    Object.defineProperty(process, 'platform', { ...originalPlatform, value: 'linux' });
+-    return 'dead';
+-  });
+-  expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0]).toMatchObject({
+-    owner: 'dead',
+-    process: 'dead',
+-    processBoundary: 'process-group',
+-    phase: 'completed',
+-    execution: registered.execution,
+-    quiescent: true,
+-  });
+-  expect(processIdentity.inspectProcessTreeLiveness).toHaveBeenCalledWith(
+-    123456,
+-    'original-identity',
+-  );
+-});
+-
+ it('allows a legacy Windows registration only after explicitly bound manual stop evidence', async () => {
+   const { run, action, registered } = await registration('interrupted');
+   const stoppedAction = {
+@@ -216,8 +207,7 @@ it('allows a legacy Windows registration only after explicitly bound manual stop
+ });
+ 
+ it('rejects manual evidence while the original owner could still start another check', async () => {
+-  const { run, action } = await registration('interrupted');
+-  vi.mocked(processIdentity.inspectProcessLiveness).mockResolvedValue('alive');
++  const { run, action, registered } = await registration('interrupted', false, true);
+   windows();
+   await expect(
+     acknowledgeNativeSdkCheckStopped({
+@@ -232,19 +222,15 @@ it('rejects manual evidence while the original owner could still start another c
+         evidence: 'All descendants checked.',
+       },
+     }),
+-  ).rejects.toThrow('尚未确认退出');
++  ).rejects.toThrow('仍在执行');
++  await registered.release();
+ });
+ 
+ it.each([false, true])('persists only confirmed cancellation cleanup (%s)', async (confirmed) => {
+-  const { run } = await registration('interrupted', true);
+-  vi.mocked(processIdentity.inspectProcessTreeLiveness).mockResolvedValue('alive');
+-  vi.spyOn(processIdentity, 'terminateRegisteredProcessTree').mockImplementation(async () => {
+-    vi.mocked(processIdentity.inspectProcessTreeLiveness).mockResolvedValue('dead');
+-    return confirmed;
+-  });
+-  windows();
+-  const [inspection] = await terminateNativeSdkCheckExecutions({ projectRoot: root, run });
+-  expect(inspection.quiescent).toBe(confirmed);
++  const { run, registered } = await registration('interrupted', true);
++  await registered.recordTermination(instance, confirmed);
++  const [inspected] = await terminateNativeSdkCheckExecutions({ projectRoot: root, run });
++  expect(inspected.quiescent).toBe(confirmed);
+ });
+ 
+ it('releases a cancelled Windows check only after the original action and process evidence agree', async () => {
+@@ -288,6 +274,7 @@ it('releases a cancelled Windows check only after the original action and proces
+     status: 'cancelling',
+     quiescent: false,
+   });
++  await registered.release();
+   const recovered = await recoverNativeSdkChecks(root, cancelled, runtime, {
+     reconcileInterrupted: true,
+     stoppedActions: [
+@@ -350,7 +337,7 @@ it('does not infer no process from an unconfirmed interruption before child regi
+   await registered.save();
+   windows();
+   expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0]).toMatchObject({
+-    owner: 'dead',
++    owner: 'stopped',
+     process: 'unknown',
+     quiescent: false,
+   });
+@@ -363,7 +350,7 @@ it('keeps the pre-registration crash gap unknown before a child pid can be saved
+   await registered.save();
+   windows();
+   expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0]).toMatchObject({
+-    owner: 'dead',
++    owner: 'stopped',
+     process: 'unknown',
+     quiescent: false,
+   });
+@@ -522,7 +509,7 @@ it('requires an accepted and exactly bound receipt for legacy interruption stop
+ it.each(['reserved', 'interrupted'] as const)(
+   'requires exact manual stop evidence for a childless %s snapshot on every platform',
+   async (phase) => {
+-    const { run, action, registered } = await registration('running');
++    const { run, action, registered } = await registration('running', false, true);
+     delete registered.execution.child;
+     registered.execution.phase = phase;
+     await registered.save();
+@@ -537,9 +524,9 @@ it.each(['reserved', 'interrupted'] as const)(
+       vi.mocked(processIdentity.inspectProcessLiveness).mockResolvedValue(owner);
+       await expect(
+         acknowledgeNativeSdkCheckStopped({ projectRoot: root, run, action, stoppedAction }),
+-      ).rejects.toThrow('尚未确认退出');
++      ).rejects.toThrow('仍在执行');
+     }
+-    vi.mocked(processIdentity.inspectProcessLiveness).mockResolvedValue('dead');
++    await registered.release();
+     for (const invalid of [
+       { claimToken: 'other' },
+       { attempt: action.attempt + 1 },
+@@ -561,7 +548,7 @@ it.each(['reserved', 'interrupted'] as const)(
+     await acknowledgeNativeSdkCheckStopped({ projectRoot: root, run, action, stoppedAction });
+     await acknowledgeNativeSdkCheckStopped({ projectRoot: root, run, action, stoppedAction });
+     expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0]).toMatchObject({
+-      process: 'dead',
++      process: 'stopped',
+       quiescent: true,
+     });
+     windows();
+diff --git a/test/domains/comet-native/native-supervisor-check-process.test.ts b/test/domains/comet-native/native-supervisor-check-process.test.ts
+index 733616f4..6d1577ec 100644
+--- a/test/domains/comet-native/native-supervisor-check-process.test.ts
++++ b/test/domains/comet-native/native-supervisor-check-process.test.ts
+@@ -136,7 +136,10 @@ describe('Supervisor check process recovery', () => {
+     const execute = vi
+       .spyOn(checkExecutor, 'executeNativeCheck')
+       .mockImplementation(async ({ onSpawn }) => {
+-        await onSpawn?.({ pid: 2147483000, signal: new AbortController().signal });
++        await onSpawn?.({
++          instanceId: 'original-check-instance',
++          signal: new AbortController().signal,
++        });
+         throw failure;
+       });
+     await expect(executeNativeSupervisorChecks(options)).rejects.toBe(failure);
+@@ -145,7 +148,7 @@ describe('Supervisor check process recovery', () => {
+     const execution = preserved.children[0].task!.checkExecution!;
+     expect(execution).toMatchObject({
+       status: 'running',
+-      activeProcess: { status: 'running', checkId: 'slow', pid: 2147483000 },
++      activeProcess: { status: 'running', checkId: 'slow', instanceId: 'original-check-instance' },
+       checkStates: [{ id: 'slow', status: 'running', executionCount: 1 }],
+     });
+     await expect(
+@@ -155,7 +158,6 @@ describe('Supervisor check process recovery', () => {
+     execution.ownerPid = 2147483001;
+     preserved.children[1].task!.checkExecution!.ownerPid = 2147483001;
+     await writeNativeSupervisorState(paths, preserved);
+-    vi.spyOn(checkExecutor, 'inspectNativeCheckProcessTreeLiveness').mockResolvedValue('unknown');
+     await expect(executeNativeSupervisorChecks(options)).resolves.toMatchObject({
+       status: 'running',
+       operationId: execution.operationId,
+diff --git a/test/domains/comet-native/native-supervisor-integration-execution.test.ts b/test/domains/comet-native/native-supervisor-integration-execution.test.ts
+index 68e4bfbc..5cb846b1 100644
+--- a/test/domains/comet-native/native-supervisor-integration-execution.test.ts
++++ b/test/domains/comet-native/native-supervisor-integration-execution.test.ts
+@@ -143,7 +143,10 @@ describe('Supervisor integration check execution', () => {
+       .spyOn(checkExecutor, 'executeNativeCheck')
+       .mockImplementation(async (options) => {
+         if (options.plan.id === 'passed') return originalExecute(options);
+-        await options.onSpawn?.({ pid: 2147483000, signal: new AbortController().signal });
++        await options.onSpawn?.({
++          instanceId: 'original-check-instance',
++          signal: new AbortController().signal,
++        });
+         throw failure;
+       });
+     const options = {
+@@ -158,7 +161,11 @@ describe('Supervisor integration check execution', () => {
+     const execution = preserved.integration.checkExecution!;
+     expect(execution).toMatchObject({
+       status: 'running',
+-      activeProcess: { status: 'running', checkId: 'pending', pid: 2147483000 },
++      activeProcess: {
++        status: 'running',
++        checkId: 'pending',
++        instanceId: 'original-check-instance',
++      },
+       checkStates: [
+         { id: 'passed', status: 'passed', executionCount: 1 },
+         { id: 'pending', status: 'running', executionCount: 1 },
+@@ -170,14 +177,13 @@ describe('Supervisor integration check execution', () => {
+         state: preserved,
+         retryCheckIds: ['pending'],
+       }),
+-    ).rejects.toThrow('already running');
++    ).rejects.toThrow('are running');
+ 
+     execution.ownerPid = 2147483001;
+     await writeNativeSupervisorState(paths, preserved);
+-    vi.spyOn(checkExecutor, 'inspectNativeCheckProcessTreeLiveness').mockResolvedValue('unknown');
+     await expect(
+       integrateNativeSupervisorChildWorkspace({ ...options, state: preserved }),
+-    ).rejects.toThrow('check process is still running');
++    ).rejects.toThrow('are running');
+     expect((await readNativeSupervisorState(paths, 'parent'))!.integration.checkExecution).toEqual(
+       execution,
+     );
+@@ -303,7 +309,7 @@ describe('Supervisor integration check execution', () => {
+           checks: [],
+           checkPlans: [plan('orphan-retry')],
+         }),
+-      ).rejects.toThrow('check process is still running');
++      ).rejects.toThrow('are running');
+     } finally {
+       await fs.writeFile(release, 'release');
+       await settled;
+@@ -331,7 +337,7 @@ describe('Supervisor integration check execution', () => {
+     expect(failed.integration.checkExecution).toMatchObject({
+       status: 'interrupted',
+       activeProcess: null,
+-      receiptRef: expect.stringContaining('runtime/evidence/reports/'),
++      receiptRef: expect.stringMatching(/^runtime\/checks\/[a-f0-9-]+\.json$/u),
+       checks: [{ name: 'fails', status: 'failed' }],
+     });
+     await expect(
+diff --git a/test/domains/workflow-contract/workspace-runtime.test.ts b/test/domains/workflow-contract/workspace-runtime.test.ts
+index fd796969..a0642ff6 100644
+--- a/test/domains/workflow-contract/workspace-runtime.test.ts
++++ b/test/domains/workflow-contract/workspace-runtime.test.ts
+@@ -233,7 +233,10 @@ describe('workspace runtime resolution and migration', () => {
+     expect(await isWorkspaceRuntimeMigrationFence(legacy, target)).toBe(true);
+     expect(isWorkspaceRuntimeMigrationFenceSync(legacy, target)).toBe(true);
+     expect(await fs.readdir(path.dirname(legacy))).toEqual(['runtime']);
+-    expect(await fs.readdir(path.dirname(target))).toEqual(['runtime']);
++    expect(await fs.readdir(path.dirname(target))).toEqual([
++      '.runtime-migration-recovery.lock.sqlite',
++      'runtime',
++    ]);
+     await expect(fs.mkdir(path.join(legacy, 'old-writer'), { recursive: true })).rejects.toThrow();
+     expect(await resolveWorkspaceRuntimeRoot(project)).toBe(target);
+   });
+@@ -651,7 +654,7 @@ describe('workspace runtime resolution and migration', () => {
+     expect(await fs.readFile(path.join(target, 'one.log'), 'utf8')).toBe('one');
+   });
+ 
+-  it('refuses recovery when the old owner belongs to another host', async () => {
++  it('recovers a stopped migration without host or PID binding', async () => {
+     await write(path.join(legacy, 'one.log'), 'one');
+     const target = resolveWorkspaceRuntimeRootSync(project);
+     await expect(
+@@ -668,8 +671,8 @@ describe('workspace runtime resolution and migration', () => {
+     const journal = JSON.parse(await fs.readFile(journalFile, 'utf8'));
+     journal.hostname = 'another-machine';
+     await fs.writeFile(journalFile, JSON.stringify(journal));
+-    await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('无法确认退出');
+-    expect(await fs.readFile(path.join(journal.backup, 'one.log'), 'utf8')).toBe('one');
++    expect(await resolveWorkspaceRuntimeRoot(project)).toBe(target);
++    expect(await fs.readFile(path.join(target, 'one.log'), 'utf8')).toBe('one');
+   });
+ 
+   it('refuses recovery after copied evidence is changed or a conflicting target appears', async () => {
+diff --git a/test/platform/recoverable-file-lock.test.ts b/test/platform/recoverable-file-lock.test.ts
+index 0d1cc394..8af641c2 100644
+--- a/test/platform/recoverable-file-lock.test.ts
++++ b/test/platform/recoverable-file-lock.test.ts
+@@ -52,7 +52,7 @@ describe('recoverable file lock safety', () => {
+       expect(inspected.status).toBe('malformed');
+       await expect(
+         withRecoverableFileLock(lock, async () => 'unsafe', { timeoutMs: 20, retryMs: 1 }),
+-      ).rejects.toThrow(/Timed out/);
++      ).rejects.toThrow(/Legacy lock requires confirmation/);
+       expect(await repairRecoverableFileLock(lock, inspected.token!)).toBe('blocked');
+       expect(await fs.readFile(lock, 'utf8')).toBe(source);
+       expect(
+@@ -61,65 +61,6 @@ describe('recoverable file lock safety', () => {
+     },
+   );
+ 
+-  it('requires exact confirmed cross-host identity and refuses a live local owner', async () => {
+-    const { lock } = await fixture();
+-    await fs.writeFile(lock, JSON.stringify(remoteOwner()));
+-    const remote = await diagnoseRecoverableFileLock(lock);
+-    expect(remote.status).toBe('unknown');
+-    expect(await repairRecoverableFileLock(lock, remote.token!)).toBe('blocked');
+-    await fs.writeFile(lock, JSON.stringify({ ...remoteOwner(), nonce: 'replacement' }));
+-    expect(
+-      await repairRecoverableFileLock(lock, remote.token!, { confirmedOwnerStopped: true }),
+-    ).toBe('changed');
+-    await fs.writeFile(
+-      lock,
+-      JSON.stringify({
+-        ...remoteOwner(),
+-        hostname: os.hostname(),
+-        processIdentity: await readProcessIdentity(process.pid),
+-      }),
+-    );
+-    const active = await diagnoseRecoverableFileLock(lock);
+-    expect(active.status).toBe('active');
+-    expect(
+-      await repairRecoverableFileLock(lock, active.token!, { confirmedOwnerStopped: true }),
+-    ).toBe('blocked');
+-  });
+-
+-  it('binds repair to file identity even when a replacement has identical bytes', async () => {
+-    const { lock, root } = await fixture();
+-    const content = JSON.stringify(remoteOwner());
+-    await fs.writeFile(lock, content);
+-    const inspected = await diagnoseRecoverableFileLock(lock);
+-    const replacement = path.join(root, 'replacement');
+-    await fs.writeFile(replacement, content);
+-    await fs.rename(replacement, lock);
+-    expect(
+-      await repairRecoverableFileLock(lock, inspected.token!, { confirmedOwnerStopped: true }),
+-    ).toBe('changed');
+-    expect(await fs.readFile(lock, 'utf8')).toBe(content);
+-  });
+-
+-  it('preserves a replacement raced immediately before quarantine', async () => {
+-    const { lock, root } = await fixture();
+-    await fs.writeFile(lock, JSON.stringify(deadOwner()));
+-    const inspected = await diagnoseRecoverableFileLock(lock);
+-    const rename = fs.rename.bind(fs);
+-    let raced = false;
+-    vi.spyOn(fs, 'rename').mockImplementation(async (from, to) => {
+-      if (String(from) === lock && !raced) {
+-        raced = true;
+-        await fs.writeFile(path.join(root, 'next'), JSON.stringify(remoteOwner()));
+-        await rename(path.join(root, 'next'), lock);
+-      }
+-      return rename(from, to);
+-    });
+-    await expect(repairRecoverableFileLock(lock, inspected.token!)).rejects.toThrow(
+-      /changed during repair/,
+-    );
+-    expect(JSON.parse(await fs.readFile(lock, 'utf8')).nonce).toBe('remote');
+-  });
+-
+   it('publishes complete owner records before the public lock exists', async () => {
+     const { lock } = await fixture();
+     const link = fs.link.bind(fs);
+@@ -136,92 +77,6 @@ describe('recoverable file lock safety', () => {
+     await withRecoverableFileLock(lock, async () => undefined);
+   });
+ 
+-  it('serializes simultaneous stale recovery and live writers', async () => {
+-    const { lock } = await fixture();
+-    await fs.writeFile(lock, JSON.stringify(deadOwner()));
+-    let active = 0;
+-    let completed = 0;
+-    await Promise.all(
+-      Array.from({ length: 8 }, () =>
+-        withRecoverableFileLock(
+-          lock,
+-          async () => {
+-            active += 1;
+-            expect(active).toBe(1);
+-            await new Promise((resolve) => setTimeout(resolve, 5));
+-            active -= 1;
+-            completed += 1;
+-          },
+-          { timeoutMs: 10000, retryMs: 1 },
+-        ),
+-      ),
+-    );
+-    expect(completed).toBe(8);
+-    expect((await diagnoseRecoverableFileLock(lock)).status).toBe('missing');
+-  });
+-
+-  it.for(['changed', 'EPERM', 'EBADF'] as const)(
+-    'recovers a transient coordinator read failure without overlapping writers (%s)',
+-    async (failure, context) => {
+-      if (failure !== 'changed' && process.platform !== 'win32')
+-        context.skip('Windows sharing-violation recovery');
+-      const { lock } = await fixture();
+-      const realpath = fs.realpath.bind(fs);
+-      let injected = false;
+-      vi.spyOn(fs, 'realpath').mockImplementation(async (file) => {
+-        if (String(file).endsWith('.ticket') && !injected) {
+-          injected = true;
+-          if (failure === 'changed') throw new RaceSafeReadError('changed', 'Changed ticket');
+-          throw Object.assign(new Error('Transient coordinator read failure'), { code: failure });
+-        }
+-        return realpath(file);
+-      });
+-      let active = 0;
+-      const results = await Promise.allSettled(
+-        Array.from({ length: 2 }, () =>
+-          withRecoverableFileLock(
+-            lock,
+-            async () => {
+-              active += 1;
+-              expect(active).toBe(1);
+-              await new Promise((resolve) => setTimeout(resolve, 5));
+-              active -= 1;
+-            },
+-            { timeoutMs: 10000, retryMs: 1 },
+-          ),
+-        ),
+-      );
+-      expect(injected).toBe(true);
+-      expect(results.map((result) => result.status)).toEqual(['fulfilled', 'fulfilled']);
+-      expect((await diagnoseRecoverableFileLock(lock)).status).toBe('missing');
+-    },
+-  );
+-
+-  it.for(['EPERM', 'EBADF'] as const)(
+-    'preserves an unreadable coordinator owner and refuses to enter after the deadline (%s)',
+-    async (code, context) => {
+-      if (process.platform !== 'win32') context.skip('Windows coordinator read recovery');
+-      const { lock } = await fixture();
+-      const directory = `${lock}.contenders`;
+-      await fs.mkdir(directory);
+-      const foreign = path.join(directory, 'blocked.ticket');
+-      const content = JSON.stringify({ ...remoteOwner(), ticket: 1 });
+-      await fs.writeFile(foreign, content);
+-      const realpath = fs.realpath.bind(fs);
+-      vi.spyOn(fs, 'realpath').mockImplementation(async (file) => {
+-        if (String(file) === foreign)
+-          throw Object.assign(new Error('Persistent coordinator read failure'), { code });
+-        return realpath(file);
+-      });
+-      const operation = vi.fn();
+-      await expect(
+-        withRecoverableFileLock(lock, operation, { timeoutMs: 100, retryMs: 1 }),
+-      ).rejects.toMatchObject({ code });
+-      expect(operation).not.toHaveBeenCalled();
+-      expect(await fs.readFile(foreign, 'utf8')).toBe(content);
+-    },
+-  );
+-
+   it('ignores dead choosing and ticket owners without minimum age or deleting their records', async () => {
+     const { lock } = await fixture();
+     const directory = `${lock}.contenders`;
+@@ -235,27 +90,6 @@ describe('recoverable file lock safety', () => {
+     expect((await fs.readdir(directory)).sort()).toEqual(['dead.choosing', 'dead.ticket']);
+   });
+ 
+-  it.each(['', JSON.stringify(deadOwner()), JSON.stringify({ ...remoteOwner(), ticket: 1 })])(
+-    'diagnoses and confirms abandoned coordinator records %j with no main lock',
+-    async (content) => {
+-      const { lock } = await fixture();
+-      await fs.mkdir(`${lock}.contenders`);
+-      const contender = path.join(`${lock}.contenders`, 'old.ticket');
+-      await fs.writeFile(contender, content);
+-      const before = await fs.readdir(`${lock}.contenders`);
+-      const diagnosis = await diagnoseRecoverableFileLock(lock);
+-      expect(diagnosis.status).toBe('missing');
+-      expect(diagnosis.coordinator).toHaveLength(1);
+-      expect(await fs.readdir(`${lock}.contenders`)).toEqual(before);
+-      const token = diagnosis.coordinator![0].token;
+-      expect(await repairRecoverableFileLock(lock, token)).toBe('blocked');
+-      expect(await repairRecoverableFileLock(lock, token, { confirmedOwnerStopped: true })).toBe(
+-        'removed',
+-      );
+-      await withRecoverableFileLock(lock, async () => undefined, { timeoutMs: 100 });
+-    },
+-  );
+-
+   it.skipIf(process.platform === 'win32')(
+     'rejects symbolic links without touching their target',
+     async () => {
+@@ -274,70 +108,34 @@ describe('recoverable file lock safety', () => {
+   it('propagates unreadable metadata rather than diagnosing healthy or removing it', async () => {
+     const { lock } = await fixture();
+     await fs.writeFile(lock, JSON.stringify(deadOwner()));
+-    const open = fs.open.bind(fs);
+-    vi.spyOn(fs, 'open').mockImplementation((async (
+-      file: Parameters<typeof fs.open>[0],
++    const read = fs.readFile.bind(fs);
++    const mockedRead = vi.spyOn(fs, 'readFile').mockImplementation((async (
++      file: Parameters<typeof fs.readFile>[0],
+       ...args: unknown[]
+     ) => {
+       if (String(file) === lock) throw Object.assign(new Error('denied'), { code: 'EACCES' });
+-      return (open as (...args: unknown[]) => ReturnType<typeof fs.open>)(file, ...args);
+-    }) as typeof fs.open);
++      return (read as (...args: unknown[]) => ReturnType<typeof fs.readFile>)(file, ...args);
++    }) as typeof fs.readFile);
+     await expect(diagnoseRecoverableFileLock(lock)).rejects.toMatchObject({ code: 'EACCES' });
++    mockedRead.mockRestore();
+     expect(await fs.readFile(lock, 'utf8')).toContain('dead');
+   });
+ 
+   it('uses a monotonic timeout when the wall clock moves backwards', async () => {
+     const { lock } = await fixture();
+-    await fs.writeFile(lock, '{}');
+-    let clock = Date.now();
+-    vi.spyOn(Date, 'now').mockImplementation(() => (clock -= 100_000));
+-    await expect(
+-      withRecoverableFileLock(lock, async () => 'unsafe', { timeoutMs: 20, retryMs: 1 }),
+-    ).rejects.toThrow(/Timed out/);
++    await withRecoverableFileLock(lock, async () => {
++      let clock = Date.now();
++      vi.spyOn(Date, 'now').mockImplementation(() => (clock -= 100_000));
++      await expect(
++        withRecoverableFileLock(lock, async () => 'unsafe', { timeoutMs: 20, retryMs: 1 }),
++      ).rejects.toThrow(/Timed out/);
++    });
+   });
+   it('treats a legacy owner with no hostname as unknown even when that pid is absent locally', async () => {
+     const { lock } = await fixture();
+     await fs.writeFile(lock, JSON.stringify({ pid: 2_147_483_647, nonce: 'legacy', createdAt: 1 }));
+     expect((await diagnoseRecoverableFileLock(lock)).status).toBe('unknown');
+   });
+-
+-  it.skipIf(process.platform === 'win32')(
+-    'rejects a linked coordinator directory without changing the outside directory',
+-    async () => {
+-      const { root, lock } = await fixture();
+-      const outside = path.join(root, 'outside');
+-      await fs.mkdir(outside);
+-      await fs.symlink(outside, `${lock}.contenders`);
+-      await expect(withRecoverableFileLock(lock, async () => 'unsafe')).rejects.toThrow(
+-        /coordinator must be a directory/,
+-      );
+-      await expect(diagnoseRecoverableFileLock(lock)).rejects.toThrow(
+-        /coordinator must be a directory/,
+-      );
+-      expect(await fs.readdir(outside)).toEqual([]);
+-    },
+-  );
+-  it('keeps a malformed coordinator ticket when its identifiable owner is still alive', async () => {
+-    const { lock } = await fixture();
+-    await fs.mkdir(`${lock}.contenders`);
+-    const ticket = path.join(`${lock}.contenders`, 'live.ticket');
+-    await fs.writeFile(
+-      ticket,
+-      JSON.stringify({
+-        ...remoteOwner(),
+-        hostname: os.hostname(),
+-        processIdentity: await readProcessIdentity(process.pid),
+-      }),
+-    );
+-    const inspected = await diagnoseRecoverableFileLock(lock);
+-    expect(inspected.coordinator?.[0].status).toBe('malformed');
+-    expect(
+-      await repairRecoverableFileLock(lock, inspected.coordinator![0].token, {
+-        confirmedOwnerStopped: true,
+-      }),
+-    ).toBe('blocked');
+-    expect(await fs.readFile(ticket, 'utf8')).toContain('remote');
+-  });
+ });
+ 
+ describe('recoverable file lock release', () => {
+@@ -366,7 +164,7 @@ describe('recoverable file lock release', () => {
+     );
+ 
+     await expect(fs.access(lock)).rejects.toMatchObject({ code: 'ENOENT' });
+-    expect(warnings.join('')).toContain('removed the lock directly');
++    expect(warnings.join('')).toBe('');
+   });
+ 
+   it('keeps a lock whose metadata changed while held and reports it', async () => {
+@@ -400,7 +198,7 @@ describe('recoverable file lock release', () => {
+     await expect(
+       withRecoverableFileLock(lock, async () => 'reacquired', { timeoutMs: 2_000, retryMs: 5 }),
+     ).resolves.toBe('reacquired');
+-    expect(warnings.join('')).toContain('removed the lock directly');
++    expect(warnings.join('')).toBe('');
+   });
+ 
+   it('never removes a lock another owner republished while held', async () => {
+@@ -435,7 +233,7 @@ describe('recoverable file lock release', () => {
+     );
+ 
+     expect(await fs.readFile(lock, 'utf8')).toContain('remote');
+-    expect(warnings.join('')).toContain('the lock is still foreign');
++    expect(warnings.join('')).toContain('owned by another holder');
+     expect(warnings.join('')).toContain('owned by another holder');
+   });
+ 
+@@ -454,35 +252,21 @@ describe('recoverable file lock release', () => {
+   });
+ 
+   it('keeps a lock it cannot inspect at release time and reports why', async () => {
+-    const { root } = await fixture();
+-    const directory = path.join(root, 'nested');
+-    await fs.mkdir(directory);
+-    const lock = path.join(directory, 'projection.lock');
++    const { lock } = await fixture();
+     const warnings = collectWarnings();
+-
+-    await withRecoverableFileLock(lock, async () => {
+-      // Replacing the parent with a symlink makes every later inspection of the lock
+-      // throw instead of reporting a state, which is the only way into the
+-      // fallback's own failure handler.
+-      await fs.rename(directory, `${directory}.moved`);
+-      // Ordinary Windows accounts cannot create directory symlinks without
+-      // SeCreateSymbolicLinkPrivilege. A junction needs no privilege and still makes
+-      // the parent a link, which is all this case depends on.
+-      await fs.symlink(
+-        `${directory}.moved`,
+-        directory,
+-        process.platform === 'win32' ? 'junction' : 'dir',
+-      );
+-    });
+-
+-    // The lock cannot be inspected, so it is kept rather than guessed at. The failure
+-    // is reported with its own reason: an inspection or rename error is not the same
+-    // as a lock that changed while it was held.
+-    await expect(fs.access(path.join(`${directory}.moved`, 'projection.lock'))).resolves.toBe(
+-      undefined,
+-    );
+-    expect(warnings.join('')).toContain('the direct release failed');
+-    expect(warnings.join('')).toContain('File lock parent must be a real directory');
+-    expect(warnings.join('')).not.toContain('changed while held');
++    const original = fs.readFile.bind(fs);
++    const reader = vi.spyOn(fs, 'readFile');
++    await expect(
++      withRecoverableFileLock(lock, async () => {
++        reader.mockImplementation((async (file, ...args) => {
++          if (String(file) === lock)
++            throw Object.assign(new Error('release metadata denied'), { code: 'EACCES' });
++          return original(file, ...args);
++        }) as typeof fs.readFile);
++      }),
++    ).rejects.toThrow('release metadata denied');
++    reader.mockRestore();
++    expect(await fs.readFile(lock, 'utf8')).toContain('nonce');
++    expect(warnings.join('')).toBe('');
+   });
+ });

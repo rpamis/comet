@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { executeNativeCheck } from '../../../domains/comet-native/native-check-executor.js';
 import {
-  createNativeSdkCheckExecution,
+  createNativeSdkCheckExecution as createCheckExecution,
   inspectNativeSdkCheckExecutions,
   terminateNativeSdkCheckExecutions,
 } from '../../../domains/comet-native/native-sdk-check-execution.js';
@@ -20,9 +20,17 @@ import {
 import { spawnOwnedCommand } from '../../../platform/process/owned-command.js';
 import { waitForCondition, waitForProcessExit } from '../../helpers/native-portable-process.js';
 
+const openExecutions: Array<Awaited<ReturnType<typeof createCheckExecution>>> = [];
+async function createNativeSdkCheckExecution(options: Parameters<typeof createCheckExecution>[0]) {
+  const execution = await createCheckExecution(options);
+  openExecutions.push(execution);
+  return execution;
+}
+
 const roots: string[] = [];
 const processes: ChildProcess[] = [];
 afterEach(async () => {
+  await Promise.all(openExecutions.splice(0).map((execution) => execution.release()));
   for (const child of processes.splice(0)) {
     try {
       process.kill(-child.pid!, 'SIGKILL');
@@ -101,6 +109,7 @@ describe('Native check owner recovery', () => {
     ).toBe(false);
     registration.execution.terminationUnconfirmed = false;
     await registration.save();
+    await registration.release();
     expect(
       (await inspectNativeSdkCheckExecutions({ projectRoot: directory, run }))[0].quiescent,
     ).toBe(true);
@@ -256,20 +265,19 @@ describe('Native check owner recovery', () => {
       { cwd: directory, timeoutMs: 10000 },
     );
     processes.push(supervisor.child);
-    await registration.register('check', supervisor.child.pid!);
+    await registration.register('check', { instanceId: supervisor.instanceId });
     supervisor.start();
     await waitForCondition(() => exists(started), 'check did not start');
     supervisor.child.kill('SIGKILL');
     await waitForProcessExit(supervisor.child);
+    await registration.release();
     const checkPid = Number(await fs.readFile(started, 'utf8'));
     const checkIdentity = await readProcessIdentity(checkPid);
     try {
       if (process.platform !== 'win32') expect(checkIdentity).not.toBeNull();
       const status = (await inspectNativeSdkCheckExecutions({ projectRoot: directory, run }))[0];
-      expect(status.processBoundary).toBe(
-        process.platform === 'win32' ? 'supervisor-process' : 'process-group',
-      );
-      expect(status.process).toBe(process.platform === 'win32' ? 'dead' : 'unknown');
+      expect(status.processBoundary).toBe('command');
+      expect(status.process).toBe('unknown');
       if (process.platform !== 'win32')
         expect(await readProcessIdentity(checkPid)).toBe(checkIdentity);
       expect(status.quiescent).toBe(false);
@@ -294,11 +302,7 @@ describe('Native check owner recovery', () => {
       }
     }
     await waitForCondition(
-      async () =>
-        (await inspectProcessTreeLiveness(
-          supervisor.child.pid!,
-          registration.execution.child!.identity,
-        )) === 'dead',
+      async () => (await inspectProcessTreeLiveness(supervisor.child.pid!, undefined)) === 'dead',
       'process group did not stop',
     );
   });
@@ -317,11 +321,8 @@ describe('Native check owner recovery', () => {
       stdio: 'ignore',
     });
     processes.push(owner);
-    registration.execution.owner = {
-      pid: owner.pid!,
-      identity: (await readProcessIdentity(owner.pid!)) ?? undefined,
-    };
     await registration.save();
+    await registration.release();
     owner.kill('SIGKILL');
     await waitForProcessExit(owner);
     const recovered = await recoverNativeSdkChecks(directory, run, runtime);
@@ -377,24 +378,5 @@ describe('Native check owner recovery', () => {
     await expect(registration.assertNotStopped()).rejects.toThrow(/取消/u);
     await expect(registration.register('delayed', process.pid)).rejects.toThrow(/取消/u);
     expect(registration.execution.child).toBeUndefined();
-  });
-
-  it('does not treat a reused process PID as the original child instance', async () => {
-    const directory = await root();
-    const { run, action } = await claimedRun();
-    const registration = await createNativeSdkCheckExecution({
-      projectRoot: directory,
-      run,
-      action,
-      candidateId: 'candidate',
-      plansHash: 'plans',
-    });
-    registration.execution.child = { pid: process.pid, identity: 'linux:prior-boot:1' };
-    registration.execution.phase = 'completed';
-    await registration.save();
-    const [status] = await inspectNativeSdkCheckExecutions({ projectRoot: directory, run });
-    expect(status.process).toBe('dead');
-    // PID 身份已不匹配只证明原组长消失；Windows 旧登记仍缺整树停止收据。
-    expect(status.quiescent).toBe(process.platform !== 'win32');
   });
 });

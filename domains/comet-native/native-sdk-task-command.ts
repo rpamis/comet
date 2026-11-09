@@ -20,7 +20,7 @@ import { collectNativeSdkShapeProposal } from './native-sdk-application.js';
 import { nativeSdkTaskResultTemplate } from './native-sdk-continuation.js';
 import { advanceNativeSdkChange } from './native-sdk-next.js';
 import { nativeSdkRequiresIndependentReview } from './native-sdk-review.js';
-import { projectNativeSdkStatus } from './native-sdk-status.js';
+import { projectNativeSdkStatus, projectNativeSdkTaskStatus } from './native-sdk-status.js';
 import { supervisorAcceptanceScope } from './native-supervisor-model.js';
 
 interface NativeTaskOptions {
@@ -152,15 +152,16 @@ async function projectTaskResult(
 ): Promise<DispatchResult> {
   const state = parseNativePortableState(run.state);
   const artifactRootRef = (run.input as { artifactRootRef: string }).artifactRootRef;
-  const priorStatus = advanced?.data as { schema?: string } | undefined;
-  const status = (
-    priorStatus?.schema === 'comet.native.sdk-status.v1'
-      ? advanced!.data
-      : await projectNativeSdkStatus(
-          { projectRoot: options.projectRoot, name: options.name, details: options.details },
-          { run, state, artifactRootRef, application: null },
-        )
-  ) as Awaited<ReturnType<typeof projectNativeSdkStatus>>;
+  const priorStatus = advanced?.data as
+    { schema?: string; warning?: { code: string; message: string } } | undefined;
+  const status = options.details
+    ? await projectNativeSdkStatus(
+        { projectRoot: options.projectRoot, name: options.name, details: true },
+        { run, state, artifactRootRef, application: null },
+      )
+    : priorStatus?.schema === 'comet.native.sdk-status.v1'
+      ? (advanced!.data as Awaited<ReturnType<typeof projectNativeSdkStatus>>)
+      : await projectNativeSdkTaskStatus(options, run, state);
   const available = run.actions.filter(
     (entry) => ordinaryTask(entry) && ['pending', 'running'].includes(entry.status),
   );
@@ -387,7 +388,11 @@ async function projectTaskResult(
     next: waitingForAcceptance
       ? { askUser: continuation.userCommunication.message, commandArgs: acceptanceCommand }
       : { commandArgs, instruction: summary },
-    ...('warning' in status ? { warning: status.warning } : {}),
+    ...('warning' in status
+      ? { warning: status.warning }
+      : priorStatus?.warning
+        ? { warning: priorStatus.warning }
+        : {}),
     ...(blocked ? { recovery: continuation.recovery, blockers: status.blockers } : {}),
     detailsCommandArgs: [
       'comet',
@@ -449,12 +454,18 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
     decision?: Parameters<typeof advanceNativeSdkChange>[2],
   ): Promise<DispatchResult> => {
     try {
-      return await advanceNativeSdkChange(options.projectRoot, options.name, decision, {
-        run,
-        state: parseNativePortableState(run.state),
-        artifactRootRef: (run.input as { artifactRootRef: string }).artifactRootRef,
-        application: owned.application,
-      });
+      return await advanceNativeSdkChange(
+        options.projectRoot,
+        options.name,
+        decision,
+        {
+          run,
+          state: parseNativePortableState(run.state),
+          artifactRootRef: (run.input as { artifactRootRef: string }).artifactRootRef,
+          application: owned.application,
+        },
+        true,
+      );
     } catch (error) {
       if (!reported) throw error;
       return {

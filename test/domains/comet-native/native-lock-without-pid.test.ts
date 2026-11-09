@@ -11,6 +11,7 @@ import {
   acquireNativeLock,
   releaseNativeLock,
   diagnoseNativeLock,
+  withNativeLockRecovery,
 } from '../../../domains/comet-native/native-lock.js';
 
 const roots: string[] = [];
@@ -36,4 +37,34 @@ it('keeps Native mutation exclusion without binding a PID or probing a thread', 
   }
   expect((await diagnoseNativeLock(lock.file)).status).toBe('missing');
   expect(probe).not.toHaveBeenCalled();
+});
+
+it('keeps ordinary lock acquisition outside a running Native recovery section', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-recovery-no-pid-'));
+  roots.push(root);
+  const paths = await nativeProjectPaths(root, 'docs');
+  await ensureNativeDirectories(paths);
+  let release!: () => void;
+  let ready!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const restoring = withNativeLockRecovery([paths], 'Restore the original Action', async () => {
+    ready();
+    await held;
+  });
+  await entered;
+  let acquired = false;
+  const writing = acquireNativeLock(paths, 'root-move', 'Another operation').then(async (lock) => {
+    acquired = true;
+    await releaseNativeLock(lock);
+  });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  expect(acquired).toBe(false);
+  release();
+  await Promise.all([restoring, writing]);
+  expect(acquired).toBe(true);
 });

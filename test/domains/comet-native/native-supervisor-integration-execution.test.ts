@@ -143,7 +143,10 @@ describe('Supervisor integration check execution', () => {
       .spyOn(checkExecutor, 'executeNativeCheck')
       .mockImplementation(async (options) => {
         if (options.plan.id === 'passed') return originalExecute(options);
-        await options.onSpawn?.({ pid: 2147483000, signal: new AbortController().signal });
+        await options.onSpawn?.({
+          instanceId: 'original-check-instance',
+          signal: new AbortController().signal,
+        });
         throw failure;
       });
     const options = {
@@ -158,7 +161,11 @@ describe('Supervisor integration check execution', () => {
     const execution = preserved.integration.checkExecution!;
     expect(execution).toMatchObject({
       status: 'running',
-      activeProcess: { status: 'running', checkId: 'pending', pid: 2147483000 },
+      activeProcess: {
+        status: 'running',
+        checkId: 'pending',
+        instanceId: 'original-check-instance',
+      },
       checkStates: [
         { id: 'passed', status: 'passed', executionCount: 1 },
         { id: 'pending', status: 'running', executionCount: 1 },
@@ -170,14 +177,13 @@ describe('Supervisor integration check execution', () => {
         state: preserved,
         retryCheckIds: ['pending'],
       }),
-    ).rejects.toThrow('already running');
+    ).rejects.toThrow('are running');
 
     execution.ownerPid = 2147483001;
     await writeNativeSupervisorState(paths, preserved);
-    vi.spyOn(checkExecutor, 'inspectNativeCheckProcessTreeLiveness').mockResolvedValue('unknown');
     await expect(
       integrateNativeSupervisorChildWorkspace({ ...options, state: preserved }),
-    ).rejects.toThrow('check process is still running');
+    ).rejects.toThrow('are running');
     expect((await readNativeSupervisorState(paths, 'parent'))!.integration.checkExecution).toEqual(
       execution,
     );
@@ -303,7 +309,7 @@ describe('Supervisor integration check execution', () => {
           checks: [],
           checkPlans: [plan('orphan-retry')],
         }),
-      ).rejects.toThrow('check process is still running');
+      ).rejects.toThrow('are running');
     } finally {
       await fs.writeFile(release, 'release');
       await settled;
@@ -331,7 +337,7 @@ describe('Supervisor integration check execution', () => {
     expect(failed.integration.checkExecution).toMatchObject({
       status: 'interrupted',
       activeProcess: null,
-      receiptRef: expect.stringContaining('runtime/evidence/reports/'),
+      receiptRef: expect.stringMatching(/^runtime\/checks\/[a-f0-9-]+\.json$/u),
       checks: [{ name: 'fails', status: 'failed' }],
     });
     await expect(

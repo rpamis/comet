@@ -34,7 +34,12 @@ export function classicDeliveryRepairOriginals(
   const check = run.actions
     .slice()
     .reverse()
-    .find((a) => a.stepId === `${profile}.verify.check` && a.status === 'succeeded');
+    .find(
+      (a) =>
+        a.stepId ===
+          profile + (run.workflow.version === '2' ? '.archive.preflight' : '.verify.check') &&
+        a.status === 'succeeded',
+    );
   if (
     !archive?.outcome ||
     !check?.outcome ||

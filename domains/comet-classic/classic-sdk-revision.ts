@@ -116,6 +116,8 @@ export async function reviseClassicSdkWork(options: {
     true,
     true,
     run,
+    run.workflow.version !== '2',
+    run.workflow.version === '2',
   );
   const deliveryRepair =
     name === 'repair-delivery' ? await captureClassicDeliveryRepair(projectRoot, run) : null;

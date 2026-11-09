@@ -76,12 +76,10 @@ export interface NativeSupervisorTask {
     operationId: string;
     key: string;
     status: 'running' | 'completed' | 'interrupted';
-    ownerPid: number;
-    ownerIdentity?: string;
     activeProcess?:
       | null
       | { status: 'starting'; checkId: string }
-      | { status: 'running'; checkId: string; pid: number; identity?: string };
+      | { status: 'running'; checkId: string; instanceId?: string };
     startedAt: string;
     expiresAt?: string;
     receiptRef?: string;

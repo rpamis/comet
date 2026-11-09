@@ -12,7 +12,7 @@ import {
   type RuntimeValue,
 } from '../../../domains/engine/runtime.js';
 import {
-  createNativeSdkCheckExecution,
+  createNativeSdkCheckExecution as createCheckExecution,
   reconcileNativeSdkExecutionStops,
   acknowledgeNativeSdkCheckStopped,
   terminateNativeSdkCheckExecutions,
@@ -21,6 +21,13 @@ import {
 
 import { inspectNativeSdkCancellation } from '../../../domains/comet-native/native-sdk-cancellation.js';
 import { recoverNativeSdkChecks } from '../../../domains/comet-native/native-sdk-checks.js';
+
+const openExecutions: Array<Awaited<ReturnType<typeof createCheckExecution>>> = [];
+async function createNativeSdkCheckExecution(options: Parameters<typeof createCheckExecution>[0]) {
+  const execution = await createCheckExecution(options);
+  openExecutions.push(execution);
+  return execution;
+}
 
 const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!;
 let root: string;
@@ -31,12 +38,17 @@ beforeEach(async () => {
   vi.spyOn(processIdentity, 'inspectProcessTreeLiveness').mockResolvedValue('dead');
 });
 afterEach(async () => {
+  await Promise.all(openExecutions.splice(0).map((execution) => execution.release()));
   Object.defineProperty(process, 'platform', originalPlatform);
   vi.restoreAllMocks();
   await fs.rm(root, { recursive: true, force: true });
 });
 
-async function registration(phase: 'running' | 'interrupted' | 'completed', modern = false) {
+async function registration(
+  phase: 'running' | 'interrupted' | 'completed',
+  modern = false,
+  retainLease = false,
+) {
   const action = {
     id: 'check-action',
     runId: 'check-run',
@@ -59,9 +71,10 @@ async function registration(phase: 'running' | 'interrupted' | 'completed', mode
     candidateId: 'original-candidate',
     plansHash: 'original-plans',
   });
-  await registered.register('check-1', modern ? instance : 123456);
+  await registered.register('check-1', modern ? instance : { instanceId: 'legacy-instance' });
   registered.execution.phase = phase;
   await registered.save();
+  if (!retainLease) await registered.release();
   return { run, action, registered };
 }
 
@@ -84,8 +97,11 @@ it('reuses a confirmed stop only while the complete execution record still match
   expect(processIdentity.inspectProcessTreeLiveness).not.toHaveBeenCalled();
   registered.execution.checkId = 'changed-execution';
   await registered.save();
-  await inspectNativeSdkCheckExecutions({ projectRoot: root, run, includeSettled: true });
-  expect(processIdentity.inspectProcessLiveness).toHaveBeenCalled();
+  expect(
+    (await inspectNativeSdkCheckExecutions({ projectRoot: root, run, includeSettled: true }))[0]
+      .quiescent,
+  ).toBe(false);
+  expect(processIdentity.inspectProcessLiveness).not.toHaveBeenCalled();
 });
 
 it.each(['running', 'interrupted', 'completed'] as const)(
@@ -95,8 +111,8 @@ it.each(['running', 'interrupted', 'completed'] as const)(
     Object.defineProperty(process, 'platform', { ...originalPlatform, value: 'win32' });
     const [inspection] = await inspectNativeSdkCheckExecutions({ projectRoot: root, run });
     expect(inspection).toMatchObject({
-      owner: 'dead',
-      process: 'dead',
+      owner: 'stopped',
+      process: 'unknown',
       quiescent: false,
       recoveryRequired: true,
     });
@@ -134,22 +150,19 @@ it('does not let an unconfirmed cleanup overwrite a confirmed receipt', async ()
   );
 });
 
-it.each(['identity', 'instanceId', 'ownerPid'] as const)(
-  'rejects a termination receipt with another %s',
-  async (field) => {
-    const { run, registered } = await registration('completed', true);
-    await expect(
-      registered.recordTermination(
-        { ...instance, [field]: field === 'ownerPid' ? 98765 : 'other' },
-        true,
-      ),
-    ).rejects.toThrow('原进程实例');
-    windows();
-    expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0].quiescent).toBe(
-      false,
-    );
-  },
-);
+it.each(['instanceId'] as const)('rejects a termination receipt with another %s', async (field) => {
+  const { run, registered } = await registration('completed', true);
+  await expect(
+    registered.recordTermination(
+      { ...instance, [field]: field === 'ownerPid' ? 98765 : 'other' },
+      true,
+    ),
+  ).rejects.toThrow('原进程实例');
+  windows();
+  expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0].quiescent).toBe(
+    false,
+  );
+});
 
 it('does not transfer the previous check receipt to a newly registered check with the same pid', async () => {
   const { run, registered } = await registration('completed', true);
@@ -158,28 +171,6 @@ it('does not transfer the previous check receipt to a newly registered check wit
   windows();
   expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0].quiescent).toBe(
     false,
-  );
-});
-
-it('keeps legacy POSIX process-group confirmation compatible', async () => {
-  const { run, registered } = await registration('completed');
-  vi.mocked(processIdentity.inspectProcessTreeLiveness).mockImplementationOnce(async () => {
-    // 先按真实宿主读取原登记，再切换纯终止判定；不能改变 Windows 路径身份解析。
-    expect(process.platform).toBe(originalPlatform.value);
-    Object.defineProperty(process, 'platform', { ...originalPlatform, value: 'linux' });
-    return 'dead';
-  });
-  expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0]).toMatchObject({
-    owner: 'dead',
-    process: 'dead',
-    processBoundary: 'process-group',
-    phase: 'completed',
-    execution: registered.execution,
-    quiescent: true,
-  });
-  expect(processIdentity.inspectProcessTreeLiveness).toHaveBeenCalledWith(
-    123456,
-    'original-identity',
   );
 });
 
@@ -216,8 +207,7 @@ it('allows a legacy Windows registration only after explicitly bound manual stop
 });
 
 it('rejects manual evidence while the original owner could still start another check', async () => {
-  const { run, action } = await registration('interrupted');
-  vi.mocked(processIdentity.inspectProcessLiveness).mockResolvedValue('alive');
+  const { run, action, registered } = await registration('interrupted', false, true);
   windows();
   await expect(
     acknowledgeNativeSdkCheckStopped({
@@ -232,19 +222,15 @@ it('rejects manual evidence while the original owner could still start another c
         evidence: 'All descendants checked.',
       },
     }),
-  ).rejects.toThrow('尚未确认退出');
+  ).rejects.toThrow('仍在执行');
+  await registered.release();
 });
 
 it.each([false, true])('persists only confirmed cancellation cleanup (%s)', async (confirmed) => {
-  const { run } = await registration('interrupted', true);
-  vi.mocked(processIdentity.inspectProcessTreeLiveness).mockResolvedValue('alive');
-  vi.spyOn(processIdentity, 'terminateRegisteredProcessTree').mockImplementation(async () => {
-    vi.mocked(processIdentity.inspectProcessTreeLiveness).mockResolvedValue('dead');
-    return confirmed;
-  });
-  windows();
-  const [inspection] = await terminateNativeSdkCheckExecutions({ projectRoot: root, run });
-  expect(inspection.quiescent).toBe(confirmed);
+  const { run, registered } = await registration('interrupted', true);
+  await registered.recordTermination(instance, confirmed);
+  const [inspected] = await terminateNativeSdkCheckExecutions({ projectRoot: root, run });
+  expect(inspected.quiescent).toBe(confirmed);
 });
 
 it('releases a cancelled Windows check only after the original action and process evidence agree', async () => {
@@ -288,6 +274,7 @@ it('releases a cancelled Windows check only after the original action and proces
     status: 'cancelling',
     quiescent: false,
   });
+  await registered.release();
   const recovered = await recoverNativeSdkChecks(root, cancelled, runtime, {
     reconcileInterrupted: true,
     stoppedActions: [
@@ -350,7 +337,7 @@ it('does not infer no process from an unconfirmed interruption before child regi
   await registered.save();
   windows();
   expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0]).toMatchObject({
-    owner: 'dead',
+    owner: 'stopped',
     process: 'unknown',
     quiescent: false,
   });
@@ -363,7 +350,7 @@ it('keeps the pre-registration crash gap unknown before a child pid can be saved
   await registered.save();
   windows();
   expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0]).toMatchObject({
-    owner: 'dead',
+    owner: 'stopped',
     process: 'unknown',
     quiescent: false,
   });
@@ -522,7 +509,7 @@ it('requires an accepted and exactly bound receipt for legacy interruption stop 
 it.each(['reserved', 'interrupted'] as const)(
   'requires exact manual stop evidence for a childless %s snapshot on every platform',
   async (phase) => {
-    const { run, action, registered } = await registration('running');
+    const { run, action, registered } = await registration('running', false, true);
     delete registered.execution.child;
     registered.execution.phase = phase;
     await registered.save();
@@ -537,9 +524,9 @@ it.each(['reserved', 'interrupted'] as const)(
       vi.mocked(processIdentity.inspectProcessLiveness).mockResolvedValue(owner);
       await expect(
         acknowledgeNativeSdkCheckStopped({ projectRoot: root, run, action, stoppedAction }),
-      ).rejects.toThrow('尚未确认退出');
+      ).rejects.toThrow('仍在执行');
     }
-    vi.mocked(processIdentity.inspectProcessLiveness).mockResolvedValue('dead');
+    await registered.release();
     for (const invalid of [
       { claimToken: 'other' },
       { attempt: action.attempt + 1 },
@@ -561,7 +548,7 @@ it.each(['reserved', 'interrupted'] as const)(
     await acknowledgeNativeSdkCheckStopped({ projectRoot: root, run, action, stoppedAction });
     await acknowledgeNativeSdkCheckStopped({ projectRoot: root, run, action, stoppedAction });
     expect((await inspectNativeSdkCheckExecutions({ projectRoot: root, run }))[0]).toMatchObject({
-      process: 'dead',
+      process: 'stopped',
       quiescent: true,
     });
     windows();

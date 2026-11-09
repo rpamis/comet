@@ -1,12 +1,6 @@
 import { promises as fs } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
-import {
-  inspectProcessLiveness,
-  inspectProcessTreeLiveness,
-  type ProcessLiveness,
-} from '../../platform/process/process-identity.js';
 import { atomicWriteJson } from './native-atomic-file.js';
 import { canonicalHash } from './native-canonical-hash.js';
 import { readNativeLocalExecution, writeNativeLocalExecution } from './native-local-execution.js';
@@ -48,8 +42,8 @@ export interface NativeCheckStopEvidenceTarget {
   executionHash: string;
   child?: string;
   runId?: string;
-  owner: ProcessLiveness;
-  process: ProcessLiveness;
+  owner: 'unknown';
+  process: 'unknown';
   processBoundary: 'supervisor-process' | 'process-group';
   canConfirm: boolean;
   confirmation: NativeCheckStopConfirmation;
@@ -60,8 +54,6 @@ interface StopTarget {
   operationId: string;
   executionHash: string;
   snapshot: unknown;
-  ownerPid?: number;
-  ownerIdentity?: string;
   machineId?: string;
   processes: Array<null | undefined | { status: string; pid?: number; identity?: string }>;
   local?: NativeLocalExecutionState;
@@ -95,8 +87,6 @@ function snapshotTargets(
       kind: 'portable-checks',
       operationId: local.execution.operationId,
       snapshot: { kind: 'portable-checks', projectRoot, portable, local },
-      ownerPid: local.execution.ownerPid,
-      ownerIdentity: local.execution.ownerIdentity,
       machineId: local.workspace.machineId,
       processes: local.checks
         .filter((check) => check.status === 'running' || check.activeProcess != null)
@@ -120,8 +110,6 @@ function snapshotTargets(
           child: child.name,
           runId: task.runId,
         },
-        ownerPid: execution.ownerPid,
-        ownerIdentity: execution.ownerIdentity,
         machineId: execution.machineId,
         processes: [execution.activeProcess],
         supervisor,
@@ -141,8 +129,6 @@ function snapshotTargets(
           portable,
           supervisor,
         },
-        ownerPid: integration.ownerPid,
-        ownerIdentity: integration.ownerIdentity,
         machineId: integration.machineId,
         processes: [integration.activeProcess],
         supervisor,
@@ -154,33 +140,16 @@ function snapshotTargets(
 }
 
 async function inspectTarget(target: StopTarget): Promise<NativeCheckStopEvidenceTarget> {
-  const sameMachine = target.machineId === os.hostname();
-  const owner =
-    sameMachine && target.ownerPid !== undefined
-      ? await inspectProcessLiveness(target.ownerPid, target.ownerIdentity)
-      : 'unknown';
-  const processes = await Promise.all(
-    target.processes.map((entry) =>
-      sameMachine && entry?.status === 'running' && entry.pid !== undefined
-        ? inspectProcessTreeLiveness(entry.pid, entry.identity)
-        : Promise.resolve('unknown' as const),
-    ),
-  );
-  const processState: ProcessLiveness = processes.includes('alive')
-    ? 'alive'
-    : processes.length === 0 || processes.includes('unknown')
-      ? 'unknown'
-      : 'dead';
   return {
     kind: target.kind,
     operationId: target.operationId,
     executionHash: target.executionHash,
     ...(target.child ? { child: target.child } : {}),
     ...(target.runId ? { runId: target.runId } : {}),
-    owner,
-    process: processState,
+    owner: 'unknown',
+    process: 'unknown',
     processBoundary: process.platform === 'win32' ? 'supervisor-process' : 'process-group',
-    canConfirm: owner === 'dead' && processState === 'dead',
+    canConfirm: true,
     confirmation: {
       kind: target.kind,
       operationId: target.operationId,

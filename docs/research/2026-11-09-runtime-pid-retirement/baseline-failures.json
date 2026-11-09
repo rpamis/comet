@@ -1,0 +1,303 @@
+{
+  "baseline": "7f016b28",
+  "classic": [
+    {
+      "file": "classic-sdk-delivery-scope.test.ts",
+      "name": "requires delivery of an initial draft modified during the change",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected +0 not to be +0 // Object.is equality",
+      "baselineFailure": "AssertionError: expected +0 not to be +0 // Object.is equality"
+    },
+    {
+      "file": "classic-sdk-delivery-scope.test.ts",
+      "name": "does not trust a workspace baseline supplied through public dispatch start",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "TypeError: Cannot convert undefined or null to object",
+      "baselineFailure": "TypeError: Cannot convert undefined or null to object"
+    },
+    {
+      "file": "classic-sdk-delivery-scope.test.ts",
+      "name": "keeps parked Native Shape and Classic drafts out of hotfix delivery inputs under docs",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "TypeError: Cannot convert undefined or null to object",
+      "baselineFailure": "TypeError: Cannot convert undefined or null to object"
+    },
+    {
+      "file": "classic-sdk-delivery-scope.test.ts",
+      "name": "keeps parked Native Shape and Classic drafts out of hotfix delivery inputs under specifications/custom",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "TypeError: Cannot convert undefined or null to object",
+      "baselineFailure": "TypeError: Cannot convert undefined or null to object"
+    },
+    {
+      "file": "classic-sdk-delivery-scope.test.ts",
+      "name": "recovers polluted 0.5.0 delivery inputs only under their original manifest and configuration binding",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "TypeError: The \"path\" argument must be of type string. Received undefined",
+      "baselineFailure": "TypeError: The \"path\" argument must be of type string. Received undefined"
+    },
+    {
+      "file": "classic-sdk-delivery-scope.test.ts",
+      "name": "rejects proposal changes after Archive execution without claiming or replaying delivery",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected +0 not to be +0 // Object.is equality",
+      "baselineFailure": "AssertionError: expected +0 not to be +0 // Object.is equality"
+    },
+    {
+      "file": "classic-sdk-delivery-scope.test.ts",
+      "name": "rejects manifest changes after Archive execution without claiming or replaying delivery",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected +0 not to be +0 // Object.is equality",
+      "baselineFailure": "AssertionError: expected +0 not to be +0 // Object.is equality"
+    },
+    {
+      "file": "classic-sdk-delivery-scope.test.ts",
+      "name": "checks the archived proposal through a freshly bundled public runtime",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected +0 not to be +0 // Object.is equality",
+      "baselineFailure": "AssertionError: expected +0 not to be +0 // Object.is equality"
+    },
+    {
+      "file": "classic-sdk-delivery-scope.test.ts",
+      "name": "restores the original archive manifest in the same Run without replaying OpenSpec",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "Error: ENOENT: no such file or directory, open 'C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-delivery-scope-BwkJJU\\project\\openspec\\changes\\archive\\2026-11-09-example\\.comet\\archive-manifest.json'",
+      "baselineFailure": "Error: ENOENT: no such file or directory, open 'C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-delivery-scope-pl0Plo\\project\\openspec\\changes\\archive\\2026-11-09-example\\.comet\\archive-manifest.json'"
+    },
+    {
+      "file": "classic-sdk-delivery-scope.test.ts",
+      "name": "rejects a replaced archive manifest symlink and keeps the same Run pending",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "Error: EPERM: operation not permitted, symlink 'C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-delivery-scope-8mkdW5\\manifest-copy.json' -> 'C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-delivery-scope-8mkdW5\\project\\openspec\\changes\\archive\\2026-11-09-example\\.comet\\archive-manifest.json'",
+      "baselineFailure": "Error: EPERM: operation not permitted, symlink 'C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-delivery-scope-L2qSkm\\manifest-copy.json' -> 'C:\\Users\\BENYM\\AppData\\Local\\Temp\\classic-delivery-scope-L2qSkm\\project\\openspec\\changes\\archive\\2026-11-09-example\\.comet\\archive-manifest.json'"
+    },
+    {
+      "file": "classic-sdk-delivery-scope.test.ts",
+      "name": "rejects unapproved archived requirements even when a later commit restores the produced bytes",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected +0 not to be +0 // Object.is equality",
+      "baselineFailure": "AssertionError: expected +0 not to be +0 // Object.is equality"
+    },
+    {
+      "file": "classic-sdk-delivery-scope.test.ts",
+      "name": "checks unapproved active-source history before its final archive deletion",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected +0 not to be +0 // Object.is equality",
+      "baselineFailure": "AssertionError: expected +0 not to be +0 // Object.is equality"
+    },
+    {
+      "file": "classic-sdk-delivery-scope.test.ts",
+      "name": "delivers a tracked migration fence in .comet-state.lock that the archive moves with the change",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "TypeError: Cannot convert undefined or null to object",
+      "baselineFailure": "TypeError: Cannot convert undefined or null to object"
+    },
+    {
+      "file": "classic-sdk-delivery-scope.test.ts",
+      "name": "delivers a tracked migration fence in .comet-state-transaction.json that the archive moves with the change",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "TypeError: Cannot convert undefined or null to object",
+      "baselineFailure": "TypeError: Cannot convert undefined or null to object"
+    },
+    {
+      "file": "classic-sdk-delivery-scope.test.ts",
+      "name": "rejects an archive commit whose migrated fence in .comet-state.lock no longer matches the recorded digest",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected '\\u001b[31mClassic 交付提交范围包含未批准的路径：open…' to contain 'Classic verified implementation chang…'",
+      "baselineFailure": "AssertionError: expected '\\u001b[31mClassic 交付提交范围包含未批准的路径：open…' to contain 'Classic verified implementation chang…'"
+    },
+    {
+      "file": "classic-sdk-delivery-scope.test.ts",
+      "name": "rejects an archive commit whose migrated fence in .comet-state-transaction.json no longer matches the recorded digest",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected '\\u001b[31mClassic 交付提交范围包含未批准的路径：open…' to contain 'Classic verified implementation chang…'",
+      "baselineFailure": "AssertionError: expected '\\u001b[31mClassic 交付提交范围包含未批准的路径：open…' to contain 'Classic verified implementation chang…'"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic candidate revisions resumes an actual implementation revision from verify with declared inputs, retaining only B",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "Error: Native/Classic 内容证明协议已移除。由当前 Agent 判断实际修改，使用原 workflow 的继续、修订或检查入口；无需 observe、record 或指纹。",
+      "baselineFailure": "Error: Native/Classic 内容证明协议已移除。由当前 Agent 判断实际修改，使用原 workflow 的继续、修订或检查入口；无需 observe、record 或指纹。"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic candidate revisions resumes an actual implementation revision from archive with declared inputs, retaining only B",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "Error: Native/Classic 内容证明协议已移除。由当前 Agent 判断实际修改，使用原 workflow 的继续、修订或检查入口；无需 observe、record 或指纹。",
+      "baselineFailure": "Error: Native/Classic 内容证明协议已移除。由当前 Agent 判断实际修改，使用原 workflow 的继续、修订或检查入口；无需 observe、record 或指纹。"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic candidate revisions resumes an actual implementation revision from archive with default inputs, retaining only B",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "Error: Native/Classic 内容证明协议已移除。由当前 Agent 判断实际修改，使用原 workflow 的继续、修订或检查入口；无需 observe、record 或指纹。",
+      "baselineFailure": "Error: Native/Classic 内容证明协议已移除。由当前 Agent 判断实际修改，使用原 workflow 的继续、修订或检查入口；无需 observe、record 或指纹。"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic candidate revisions completes full delivery when repair approval changes only the committed archive checkpoint",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: {\"command\":\"state\",\"exitCode\":70,\"agent\":{\"phase\":null,\"status\":null,\"stateVersion\":null,\"workspace\":{\"cwd\":null},\"continuation\":null},\"data\":{\"issues\":[{\"code\":\"CLASSIC_COMMAND_FAILED\",\"message\":\"Classic SDK Run example does not match its archived delivery checkpoint; restore the original checkpoint and reconcile delivery on the same Run without changing its Archive or Verify history\"}]},\"stderr\":\"\\u001b[31mClassic SDK Run example does not match its archived delivery checkpoint; restore the original checkpoint and reconcile delivery on the same Run without changing its Archive or Verify history\\u001b[0m\"}: expected 70 to be +0 // Object.is equality",
+      "baselineFailure": "AssertionError: {\"command\":\"state\",\"exitCode\":70,\"agent\":{\"phase\":null,\"status\":null,\"stateVersion\":null,\"workspace\":{\"cwd\":null},\"continuation\":null},\"data\":{\"issues\":[{\"code\":\"CLASSIC_COMMAND_FAILED\",\"message\":\"Classic SDK Run example does not match its archived delivery checkpoint; restore the original checkpoint and reconcile delivery on the same Run without changing its Archive or Verify history\"}]},\"stderr\":\"\\u001b[31mClassic SDK Run example does not match its archived delivery checkpoint; restore the original checkpoint and reconcile delivery on the same Run without changing its Archive or Verify history\\u001b[0m\"}: expected 70 to be +0 // Object.is equality"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic candidate revisions repairs late declared check outputs after Archive without replaying Archive or committing generated files",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: {\"command\":\"state\",\"exitCode\":70,\"agent\":{\"phase\":null,\"status\":null,\"stateVersion\":null,\"workspace\":{\"cwd\":null},\"continuation\":null},\"data\":{\"issues\":[{\"code\":\"CLASSIC_COMMAND_FAILED\",\"message\":\"Classic SDK Run example does not match its archived delivery checkpoint; restore the original checkpoint and reconcile delivery on the same Run without changing its Archive or Verify history\"}]},\"stderr\":\"\\u001b[31mClassic SDK Run example does not match its archived delivery checkpoint; restore the original checkpoint and reconcile delivery on the same Run without changing its Archive or Verify history\\u001b[0m\"}: expected 70 to be +0 // Object.is equality",
+      "baselineFailure": "AssertionError: {\"command\":\"state\",\"exitCode\":70,\"agent\":{\"phase\":null,\"status\":null,\"stateVersion\":null,\"workspace\":{\"cwd\":null},\"continuation\":null},\"data\":{\"issues\":[{\"code\":\"CLASSIC_COMMAND_FAILED\",\"message\":\"Classic SDK Run example does not match its archived delivery checkpoint; restore the original checkpoint and reconcile delivery on the same Run without changing its Archive or Verify history\"}]},\"stderr\":\"\\u001b[31mClassic SDK Run example does not match its archived delivery checkpoint; restore the original checkpoint and reconcile delivery on the same Run without changing its Archive or Verify history\\u001b[0m\"}: expected 70 to be +0 // Object.is equality"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic candidate revisions revises the accepted plan from Archive before side effects and rejects the old delivery approval",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "Error: Native/Classic 内容证明协议已移除。由当前 Agent 判断实际修改，使用原 workflow 的继续、修订或检查入口；无需 observe、record 或指纹。",
+      "baselineFailure": "Error: Native/Classic 内容证明协议已移除。由当前 Agent 判断实际修改，使用原 workflow 的继续、修订或检查入口；无需 observe、record 或指纹。"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic candidate revisions revises changed Design from Verify and preserves completed implementation and Build configuration",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "Error: Native/Classic 内容证明协议已移除。由当前 Agent 判断实际修改，使用原 workflow 的继续、修订或检查入口；无需 observe、record 或指纹。",
+      "baselineFailure": "Error: Native/Classic 内容证明协议已移除。由当前 Agent 判断实际修改，使用原 workflow 的继续、修订或检查入口；无需 observe、record 或指纹。"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic candidate revisions stabilizes missing task IDs before Design approval and keeps later task scope protected",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected +0 not to be +0 // Object.is equality",
+      "baselineFailure": "AssertionError: expected +0 not to be +0 // Object.is equality"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic candidate revisions does not assign new task IDs through an already approved Design proposal",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected +0 not to be +0 // Object.is equality",
+      "baselineFailure": "AssertionError: expected +0 not to be +0 // Object.is equality"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic candidate revisions reproposes changed requirements atomically, rejects old decisions, and resumes the known old builtin Run",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected +0 not to be +0 // Object.is equality",
+      "baselineFailure": "AssertionError: expected +0 not to be +0 // Object.is equality"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic candidate revisions revises a plan from execute or plan-ready (pause=false), binding the new candidate and rejecting stale handles",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected +0 not to be +0 // Object.is equality",
+      "baselineFailure": "AssertionError: expected +0 not to be +0 // Object.is equality"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic candidate revisions revises a plan from execute or plan-ready (pause=true), binding the new candidate and rejecting stale handles",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected +0 not to be +0 // Object.is equality",
+      "baselineFailure": "AssertionError: expected +0 not to be +0 // Object.is equality"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic candidate revisions routes task scope changes through a fresh Design approval while preserving configured Build and task IDs",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected +0 not to be +0 // Object.is equality",
+      "baselineFailure": "AssertionError: expected +0 not to be +0 // Object.is equality"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic candidate revisions requires new Design approval for changed legacy requirements and never accepts a forged definition hash",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected +0 not to be +0 // Object.is equality",
+      "baselineFailure": "AssertionError: expected +0 not to be +0 // Object.is equality"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic candidate revisions preserves archive references after revised-plan delivery",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected { …(30) } to match object { …(4) }",
+      "baselineFailure": "AssertionError: expected { …(30) } to match object { …(4) }"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic candidate revisions rejects Design document drift after plan acceptance and reports the legal reapproval command",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected +0 not to be +0 // Object.is equality",
+      "baselineFailure": "AssertionError: expected +0 not to be +0 // Object.is equality"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic candidate revisions keeps canonical design.md immutable when completing an external Design document",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected +0 not to be +0 // Object.is equality",
+      "baselineFailure": "AssertionError: expected +0 not to be +0 // Object.is equality"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic candidate revisions rejects canonical source drift in Build when the accepted Design document is external",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected +0 not to be +0 // Object.is equality",
+      "baselineFailure": "AssertionError: expected +0 not to be +0 // Object.is equality"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic upgraded preset archive recovery recovers hotfix after a moved running Archive on cold start",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected '原 Archive 准备记录缺失；不能重复执行或补造成功' to contain '缺少原始执行清单'",
+      "baselineFailure": "AssertionError: expected '原 Archive 准备记录缺失；不能重复执行或补造成功' to contain '缺少原始执行清单'"
+    },
+    {
+      "file": "classic-sdk-revisions.test.ts",
+      "name": "Classic upgraded preset archive recovery recovers hotfix after a moved unknown Archive on cold start",
+      "currentStatus": "failed",
+      "baselineStatus": "failed",
+      "currentFailure": "AssertionError: expected '原 Archive 准备记录缺失；不能重复执行或补造成功' to contain '缺少原始执行清单'",
+      "baselineFailure": "AssertionError: expected '原 Archive 准备记录缺失；不能重复执行或补造成功' to contain '缺少原始执行清单'"
+    }
+  ],
+  "native": [
+    {
+      "file": "native-sdk-application.test.ts",
+      "name": "preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check",
+      "candidateStatus": "failed",
+      "baselineStatus": "failed",
+      "candidateFailure": "expected exitCode 73; received 0",
+      "baselineFailure": "expected exitCode 73; received 0"
+    }
+  ]
+}

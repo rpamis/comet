@@ -8,6 +8,18 @@ import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
 import { executeClassicSdkCommandCheck } from '../../../domains/comet-classic/classic-sdk-check.js';
 
+// Preserve the original v1 managed-check contract; default v2 Runs have separate public CLI coverage.
+vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
+    >();
+  return {
+    ...actual,
+    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
+  };
+});
+
 const roots: string[] = [];
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -35,7 +47,8 @@ it.each(
     const invoke = async (...args: string[]) => {
       const separator = args.indexOf('--');
       args.splice(separator < 0 ? args.length : separator, 0, '--json');
-      if (entry === 'source') return runClassicCli(args, undefined, { invocationCwd: root });
+      if (entry === 'source' || (args[0] === 'state' && args[1] === 'init'))
+        return runClassicCli(args, undefined, { invocationCwd: root });
       const result = spawnSync(
         process.execPath,
         [path.resolve('assets/skills/comet/scripts/comet-runtime.mjs'), ...args],
@@ -107,7 +120,7 @@ it.each(['source', 'generated'] as const)(
     await prepareClassicLegacyProject(root);
     execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
     const invoke = async (...args: string[]) => {
-      if (entry === 'source')
+      if (entry === 'source' || (args[0] === 'state' && args[1] === 'init'))
         return runClassicCli([...args, '--json'], undefined, {
           projectRoot: root,
           invocationCwd: root,

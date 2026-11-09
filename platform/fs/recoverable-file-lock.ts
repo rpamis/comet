@@ -6,6 +6,7 @@ import { openSqliteDatabase } from './sqlite.js';
 import { remainingOperationMs, throwIfOperationAborted } from '../process/operation-budget.js';
 
 export interface RecoverableFileLockOwner {
+  readonly protocolVersion?: 2;
   readonly nonce: string;
   readonly createdAt: number;
   readonly operation?: string;
@@ -31,12 +32,14 @@ export interface RecoverableFileLockDiagnosis {
 
 async function metadata(
   file: string,
-): Promise<{ owner: RecoverableFileLockOwner | null; token: string } | null> {
+): Promise<{ owner: RecoverableFileLockOwner | null; token: string; legacy: boolean } | null> {
   let content: string;
+  let recordIdentity: string;
   try {
     const stat = await fs.lstat(file);
     if (!stat.isFile() || stat.isSymbolicLink())
       throw new Error('File lock metadata must be a regular file: ' + file);
+    recordIdentity = [stat.dev, stat.ino, stat.size, stat.mtimeMs].join(':');
     content = await fs.readFile(file, 'utf8');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
@@ -52,15 +55,17 @@ async function metadata(
         owner: {
           nonce,
           createdAt,
+          ...(value.protocolVersion === 2 ? { protocolVersion: 2 as const } : {}),
           ...(typeof value.operation === 'string' ? { operation: value.operation } : {}),
         },
         token: nonce,
+        legacy: value.protocolVersion !== 2,
       };
     }
   } catch {
     /* Old malformed metadata is never a process identity. */
   }
-  return { owner: null, token: 'unparsed' };
+  return { owner: null, token: recordIdentity!, legacy: true };
 }
 
 async function openTransaction(file: string) {
@@ -115,12 +120,18 @@ export async function acquireRecoverableFileLock(
     await new Promise((resolve) => setTimeout(resolve, options.retryMs ?? 20));
   }
   const owner: RecoverableFileLockOwner = {
+    protocolVersion: 2,
     nonce: randomUUID(),
     createdAt: Date.now(),
     ...(options.operation ? { operation: options.operation } : {}),
   };
   try {
-    if (await metadata(file)) await fs.unlink(file);
+    const previous = await metadata(file);
+    if (previous?.legacy)
+      throw new Error(
+        'Legacy lock requires confirmation that its previous operation stopped: ' + file,
+      );
+    if (previous) await fs.unlink(file);
     await fs.writeFile(file, JSON.stringify(owner), { mode: 0o600, flag: 'wx' });
   } catch (error) {
     closeTransaction(database);
@@ -130,13 +141,29 @@ export async function acquireRecoverableFileLock(
   return {
     owner,
     async release() {
-      if (released) return;
+      if (released) return true;
       released = true;
+      let unchanged = true;
       try {
-        if ((await metadata(file))?.token === owner.nonce) await fs.unlink(file);
+        const current = await metadata(file);
+        if (current?.token === owner.nonce) {
+          if (
+            current.owner?.createdAt === owner.createdAt &&
+            current.owner.operation === owner.operation
+          )
+            await fs.unlink(file);
+          else {
+            unchanged = false;
+            process.stderr.write('[comet] lock metadata changed while held; kept ' + file + '\n');
+          }
+        } else if (current) {
+          unchanged = false;
+          process.stderr.write('[comet] lock owned by another holder; kept ' + file + '\n');
+        }
       } finally {
         closeTransaction(database);
       }
+      return unchanged;
     },
   };
 }
@@ -152,7 +179,11 @@ export async function diagnoseRecoverableFileLock(
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT')
       return record
-        ? { status: record.owner ? 'stale' : 'malformed', ...record }
+        ? {
+            status: record.owner ? 'unknown' : 'malformed',
+            owner: record.owner,
+            token: record.token,
+          }
         : { status: 'missing', owner: null, token: null };
     throw error;
   }
@@ -161,7 +192,11 @@ export async function diagnoseRecoverableFileLock(
     return { status: 'active', owner: record?.owner ?? null, token: record?.token ?? null };
   closeTransaction(database);
   return record
-    ? { status: record.owner ? 'stale' : 'malformed', ...record }
+    ? {
+        status: record.owner ? (record.legacy ? 'unknown' : 'stale') : 'malformed',
+        owner: record.owner,
+        token: record.token,
+      }
     : { status: 'missing', owner: null, token: null };
 }
 
@@ -180,7 +215,7 @@ export async function repairRecoverableFileLock(
     const current = await metadata(file);
     if (!current) return 'missing';
     if (current.token !== expectedToken) return 'changed';
-    if (!current.owner && !options.confirmedOwnerStopped) return 'blocked';
+    if (current.legacy && !options.confirmedOwnerStopped) return 'blocked';
     await fs.unlink(file);
     return 'removed';
   } finally {
@@ -194,9 +229,21 @@ export async function withRecoverableFileLock<T>(
   options: RecoverableFileLockOptions = {},
 ): Promise<T> {
   const lock = await acquireRecoverableFileLock(file, options);
+  let value: T;
   try {
-    return await operation();
-  } finally {
-    await lock.release();
+    value = await operation();
+  } catch (error) {
+    try {
+      await lock.release();
+    } catch (cleanup) {
+      process.stderr.write(
+        '[comet] lock cleanup failed; preserved the original operation error: ' +
+          String(cleanup) +
+          '\n',
+      );
+    }
+    throw error;
   }
+  await lock.release();
+  return value;
 }

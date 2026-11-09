@@ -52,7 +52,7 @@ import {
   recoverNativeSdkImplementationRevision,
 } from './native-sdk-revise.js';
 import { createNativeSdkStateStore } from './native-sdk-state-store.js';
-import { projectNativeSdkStatus } from './native-sdk-status.js';
+import { projectNativeSdkStatus, projectNativeSdkTaskStatus } from './native-sdk-status.js';
 import { inspectNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
 import {
   nativeSdkChildVerifierRetryWaits,
@@ -147,6 +147,7 @@ async function sdkNextResult(
   run: WorkflowRun,
   artifactRootRef: string,
   application: Awaited<ReturnType<typeof inspectNativeSdkRun>>['application'],
+  taskProjection = false,
 ): Promise<DispatchResult> {
   const state = parseNativePortableState(run.state);
   let warning: { code: string; message: string } | undefined;
@@ -163,10 +164,12 @@ async function sdkNextResult(
   return success('next', {
     ...(warning ? { warning } : {}),
     change: name,
-    ...(await projectNativeSdkStatus(
-      { projectRoot, name },
-      { run, state, artifactRootRef, application },
-    )),
+    ...(taskProjection && !application
+      ? await projectNativeSdkTaskStatus({ projectRoot, name }, run, state)
+      : await projectNativeSdkStatus(
+          { projectRoot, name },
+          { run, state, artifactRootRef, application },
+        )),
   });
 }
 
@@ -204,12 +207,16 @@ export async function advanceNativeSdkChange(
         expectedAction: 'continue-builder' | 'resolve-verifier-blocker';
       },
   initial?: Awaited<ReturnType<typeof inspectNativeSdkRun>>,
+  taskProjection = false,
 ): Promise<DispatchResult> {
   let { run, state, artifactRootRef, application } =
     initial ?? (await inspectNativeSdkRun(projectRoot, name));
   const originalRun = run;
   const nextResult = async (...args: Parameters<typeof sdkNextResult>) => ({
-    ...(await sdkNextResult(...args)),
+    ...(await sdkNextResult(
+      ...(args.slice(0, 5) as [string, string, WorkflowRun, string, typeof application]),
+      taskProjection,
+    )),
     workflowCompleted: hasNativeCompletedWork(originalRun, args[2]),
   });
   // 已授权的内置归档沿用同一推进入口，避免 next 再执行一套归档前置检查。
@@ -464,7 +471,7 @@ export async function advanceNativeSdkChange(
       }),
       choice: 'continue',
     });
-    return advanceNativeSdkChange(projectRoot, name);
+    return advanceNativeSdkChange(projectRoot, name, undefined, undefined, taskProjection);
   }
   if (decision?.expectedAction === 'revise-requirements') {
     const shapeWait = run.waits.find(

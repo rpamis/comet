@@ -9,14 +9,9 @@ import {
 } from '../../platform/paths/git-worktree.js';
 import { resolvePortablePath } from '../../platform/paths/portable-path.js';
 import { runGitCommand } from '../../platform/process/git.js';
-import {
-  processInstanceMayBeAlive,
-  readProcessIdentity,
-} from '../../platform/process/process-identity.js';
 import { atomicWriteJson } from './native-atomic-file.js';
 import {
   executeNativeCheck,
-  inspectNativeCheckProcessTreeLiveness,
   isNativeCheckTerminationUnconfirmedError,
   preflightNativeCheckPlans,
   type NativeCheckPlan,
@@ -270,27 +265,9 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
       const state = persisted ?? options.state;
       const previous = state.integration.checkExecution;
       if (previous?.status === 'running') {
-        if (await processInstanceMayBeAlive(previous.ownerPid, previous.ownerIdentity)) {
-          throw new Error(
-            'Native Supervisor integration checks are already running; wait for the original execution',
-          );
-        }
-        if (previous.activeProcess === undefined || previous.activeProcess?.status === 'starting') {
-          throw new Error(
-            'Native Supervisor integration check launch was interrupted; inspect the original check process before retrying',
-          );
-        }
-        if (
-          previous.activeProcess &&
-          (await inspectNativeCheckProcessTreeLiveness(
-            previous.activeProcess.pid,
-            previous.activeProcess.identity,
-          )) !== 'dead'
-        ) {
-          throw new Error(
-            'Native Supervisor integration check process is still running or its process tree has not been confirmed stopped after its owner exited; inspect the original execution before retrying',
-          );
-        }
+        throw new Error(
+          'Native Supervisor integration checks are running or have an unfinished operation; confirm its actual result or submit stopped-check evidence before retrying',
+        );
       }
       if (state.stateVersion !== options.state.stateVersion) {
         throw new Error('Native Supervisor state changed before integration; reload status first');
@@ -482,8 +459,6 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
           candidateCommit: child.verifiedCommit,
           integrationCommit,
           status: 'running',
-          ownerPid: process.pid,
-          ownerIdentity: (await readProcessIdentity(process.pid)) ?? undefined,
           startedAt: new Date().toISOString(),
           activeProcess: null,
           machineId,
@@ -580,12 +555,11 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
         runtimeDir: nativePreferredChangeRuntimeDir(options.paths, state.parent),
         operationId,
         plan,
-        onSpawn: async ({ pid }) =>
+        onSpawn: async ({ instanceId }) =>
           recordActiveProcess({
             status: 'running',
             checkId: plan.id,
-            pid,
-            identity: (await readProcessIdentity(pid)) ?? undefined,
+            instanceId,
           }),
       });
       await recordCheckResult(result);

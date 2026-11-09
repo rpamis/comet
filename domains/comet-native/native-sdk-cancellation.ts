@@ -83,7 +83,7 @@ export async function inspectNativeSdkQuiescence(options: {
       const requiresRegistrationRecovery = managed.some(
         (execution) =>
           !execution.quiescent &&
-          execution.owner === 'dead' &&
+          execution.owner === 'stopped' &&
           execution.execution !== undefined &&
           !execution.execution.child,
       );

@@ -1,3 +1,4 @@
+import { readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -2373,4 +2374,182 @@ export function classicSdkEvidenceInputHash(run: Readonly<WorkflowRun>, stepId: 
     .find((entry) => entry.stepId === stepId);
   if (!action) throw new Error('Classic evidence has no originating Action');
   return action.inputHash;
+}
+
+/** New built-in Runs accept checks executed and reported by the Agent platform. */
+export function defineClassicAgentWorkflowApplication(
+  profile: ClassicProfile,
+): ClassicWorkflowApplication {
+  const base = defineClassicWorkflowApplication(profile);
+  const steps = { ...base.workflow.steps };
+  const removed = new Set(
+    Object.keys(steps).filter((id) => /\.(build|verify)\.check(?:\.evidence)?$/u.test(id)),
+  );
+  for (const id of removed) delete steps[id];
+  const checks = {
+    type: 'array',
+    items: {
+      type: 'object',
+      required: ['name', 'result'],
+      additionalProperties: false,
+      properties: {
+        name: { type: 'string', minLength: 1 },
+        result: { enum: ['passed', 'failed', 'not-run'] },
+        note: { type: 'string', minLength: 1 },
+      },
+    },
+  };
+  for (const [id, step] of Object.entries(steps)) {
+    if (id.endsWith('.archive.preflight')) {
+      const schema = step.outputSchema as { properties?: Record<string, RuntimeValue> };
+      steps[id] = {
+        ...step,
+        outputSchema: {
+          ...schema,
+          properties: {
+            ...schema.properties,
+            deliveryPaths: { type: 'array', items: { type: 'string', minLength: 1 } },
+          },
+        },
+      };
+    }
+    if (!id.endsWith('.build.execute') && !id.endsWith('.verify.run')) continue;
+    const schema = step.outputSchema as {
+      required?: string[];
+      properties?: Record<string, unknown>;
+    };
+    steps[id] = {
+      ...step,
+      outputSchema: {
+        ...schema,
+        required: schema.required ?? [],
+        properties: {
+          ...schema.properties,
+          checks,
+          checksReason: { type: 'string', minLength: 1 },
+        },
+      },
+    };
+  }
+  const transitionHandler: WorkflowTransitionHandler = {
+    ...base.transitionHandler,
+    version: '2',
+    apply(context) {
+      const { run, event } = context;
+      if (
+        event.kind === 'action-outcome' &&
+        event.outcome.status === 'succeeded' &&
+        (event.stepId.endsWith('.build.execute') || event.stepId.endsWith('.verify.run'))
+      ) {
+        const output = event.outcome.output as {
+          event?: string;
+          checks?: Array<{ name: string; result: string; note?: string }>;
+          checksReason?: string;
+        };
+        if (['build-complete', 'verification-ready'].includes(output.event ?? '')) {
+          assertClassicAgentCheckReports(output);
+        }
+        if (output.event === 'build-complete') {
+          const state = applyClassicTransition(
+            run.state as unknown as ClassicState,
+            'build-complete',
+          );
+          return {
+            state: state.classic as unknown as RuntimeValue,
+            next: [event.stepId.replace('.build.execute', '.verify.run')],
+          };
+        }
+      }
+      if (event.kind === 'evidence-recorded' && event.stepId.endsWith('.verify.report.evidence')) {
+        if (event.ref !== (run.state as unknown as ClassicState).verificationReport)
+          throw new Error('Classic Verify evidence does not match the selected report');
+        const state = applyClassicTransition(run.state as unknown as ClassicState, 'verify-pass');
+        return {
+          state: state.classic as unknown as RuntimeValue,
+          next: [event.stepId.replace('.verify.report.evidence', '.archive.prepare')],
+        };
+      }
+      return base.transitionHandler.apply(context);
+    },
+  };
+  return {
+    ...base,
+    transitionHandler,
+    workflow: {
+      ...base.workflow,
+      version: '2',
+      steps,
+      transitionHandler: { id: transitionHandler.id, version: transitionHandler.version },
+      transitions: [
+        ...(base.workflow.transitions ?? []).filter(
+          (edge) => !removed.has(edge.from) && !removed.has(edge.to),
+        ),
+        ...Object.keys(steps)
+          .filter((id) => id.endsWith('.build.execute'))
+          .map((from) => ({ from, to: from.replace('.build.execute', '.verify.run') })),
+        ...Object.keys(steps)
+          .filter((id) => id.endsWith('.verify.report.evidence'))
+          .map((from) => ({
+            from,
+            to: from.replace('.verify.report.evidence', '.archive.prepare'),
+          })),
+      ],
+    },
+  };
+}
+
+/** Reports are validated when submitted, and bound to the accepted Verify Action. */
+export function assertClassicAgentCheckReports(output: {
+  checks?: Array<{ name: string; result: string; note?: string }>;
+  checksReason?: string;
+}): void {
+  if (
+    !Array.isArray(output.checks) ||
+    (!output.checks.length && !output.checksReason?.trim()) ||
+    output.checks.some(
+      (check) =>
+        !check.name?.trim() ||
+        !['passed', 'not-run'].includes(check.result) ||
+        (check.result === 'not-run' && !check.note?.trim()),
+    )
+  ) {
+    throw new Error(
+      'Classic completion requires actual check reports; explain checks not run and resolve failed checks before acceptance',
+    );
+  }
+}
+
+export async function readClassicAgentCheckReports(projectRoot: string, ref: string) {
+  const value = JSON.parse(
+    (
+      await readFileRaceSafe(path.resolve(projectRoot, ref), Number.MAX_SAFE_INTEGER, {
+        label: 'Classic check reports',
+      })
+    ).bytes.toString('utf8'),
+  ) as { checks?: Array<{ name: string; result: string; note?: string }>; checksReason?: string };
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    Object.keys(value).some((key) => !['checks', 'checksReason'].includes(key)) ||
+    !Array.isArray(value.checks) ||
+    (value.checksReason !== undefined && typeof value.checksReason !== 'string') ||
+    value.checks.some(
+      (check) =>
+        !check ||
+        typeof check !== 'object' ||
+        typeof check.name !== 'string' ||
+        typeof check.result !== 'string' ||
+        (check.note !== undefined && typeof check.note !== 'string') ||
+        Object.keys(check).some((key) => !['name', 'result', 'note'].includes(key)),
+    )
+  )
+    throw new Error(
+      'Classic checks file must contain checks with name/result/note and optional checksReason',
+    );
+  assertClassicAgentCheckReports(value);
+  return {
+    checks: value.checks,
+    ...(value.checksReason === undefined ? {} : { checksReason: value.checksReason }),
+  };
 }

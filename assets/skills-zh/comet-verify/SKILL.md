@@ -11,6 +11,12 @@ description: '验证 Classic change 并记录结果。在用户调用 /comet-ver
 
 ## SDK Run 路径
 
+当前响应的 `data.checksMode: agent` 表示新内置 Run。使用平台工具执行必要检查，读取真实结果，将检查报告保存为 JSON：`{"checks":[{"name":"命令、目录与检查名称","result":"passed","note":"实际结果与日志引用"}]}`。没有适用检查时使用空 `checks` 并填写 `checksReason`；未执行项使用 `not-run` 并在 `note` 写原因，失败项修复后再验收。Runtime 不重复执行这些命令，不要求普通检查收据。旧 Run 的 `checksMode: runtime` 和固定应用继续原协议。
+
+新 Run 先按全部验收项核对实现并保存报告，用 `comet guard <change-name> verify --report <report-ref> --apply --checks <checks-json-file>` 提交实际验收。发现实现问题时先用当前 Verify Action 报告失败并回到 Build，再修复。 沿用同次响应的 continuation；验收合格后仍等待当前用户的归档与交付决定。
+
+以下受管检查命令仅用于 `checksMode: runtime` 的旧 Run；阶段准备、批准、计划和任务完成要求也适用于新 Run。
+
 首次完整验证按 SDK 方法参考直接通过 `comet check run <change-name> verify --report <report-ref> --local -- <program> [args...]` 执行；先声明最终报告路径，读取真实收据后继续核验并写报告，不先执行同一完整命令。外部状态或不可重复检查不加 `--local`。之后仍执行 Guard 提交，首次检查本身不推进阶段。
 
 首次进入当前 SDK 阶段、换 Agent 或恢复上下文时，读取[阶段入口与恢复](../comet-classic/reference/sdk-methods.md#阶段入口与恢复)及该参考的当前阶段章节；本会话已有且仍有效时直接复用。下文按当前阶段执行；`nextAction.kind` 的恢复路由只适用于没有 continuation mode 的旧响应。

@@ -1,3 +1,5 @@
+import type { WorkflowRun } from '../engine/runtime.js';
+import type { NativePortableState } from './native-portable-types.js';
 import path from 'node:path';
 import { withGitWorktreeReadScope } from '../../platform/paths/git-worktree.js';
 import { applicationSkillWork } from '../workflow-application/index.js';
@@ -47,6 +49,38 @@ export async function inspectNativeSdkStatus(options: {
   });
   return projectNativeSdkStatus(options, inspection);
 }
+
+/** Business continuation without serializing the full diagnostic/history status packet. */
+async function projectNativeSdkTaskStatusOnce(
+  options: { projectRoot: string; name: string },
+  run: WorkflowRun,
+  state: NativePortableState,
+) {
+  const checkExecutionObservation =
+    run.workflow.version === '4'
+      ? []
+      : await inspectNativeSdkCheckExecutions({ projectRoot: options.projectRoot, run });
+  const cancellation = await inspectNativeSdkCancellation({
+    projectRoot: options.projectRoot,
+    run,
+    checkExecutionObservation,
+  });
+  const warning = await nativeSdkArchivedReportWarning(options.projectRoot, run);
+  return {
+    blockers: nativePortableStateSummary(state).blockers,
+    ...(warning ? { warning } : {}),
+    ...(await projectNativeSdkContinuation({
+      run,
+      state,
+      projectRoot: options.projectRoot,
+      cancellationObservation: cancellation,
+      checkExecutionObservation,
+    })),
+  };
+}
+
+export const projectNativeSdkTaskStatus: typeof projectNativeSdkTaskStatusOnce = (...args) =>
+  withGitWorktreeReadScope(() => projectNativeSdkTaskStatusOnce(...args));
 
 /** Project one inspected or committed Run without synchronizing its state file again. */
 export const projectNativeSdkStatus: typeof projectNativeSdkStatusOnce = (...args) =>

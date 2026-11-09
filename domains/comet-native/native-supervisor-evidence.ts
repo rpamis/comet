@@ -10,12 +10,7 @@ import { nativeWorkspaceIsClean } from './native-workspace-config.js';
 
 import { runGitCommand } from '../../platform/process/git.js';
 import {
-  processInstanceMayBeAlive,
-  readProcessIdentity,
-} from '../../platform/process/process-identity.js';
-import {
   executeNativeCheck,
-  inspectNativeCheckProcessTreeLiveness,
   isNativeCheckTerminationUnconfirmedError,
   preflightNativeCheckPlans,
   type NativeCheckPlan,
@@ -202,19 +197,8 @@ export async function executeNativeSupervisorChecks(options: {
         sameNativeSupervisorCheckPlans(previous?.plans, options.plans);
       const key = sameBinding ? previous!.key : randomUUID();
       if (previous?.status === 'running') {
-        const alive = await processInstanceMayBeAlive(previous.ownerPid, previous.ownerIdentity);
-        // An expired lease cannot prove a live owner stopped; never start overlapping checks.
-        const expiresAt =
-          Date.parse(previous.expiresAt ?? '') || Date.parse(previous.startedAt) + 30000;
-        if (alive && !(Date.now() < expiresAt))
-          throw new Error(
-            'Native Supervisor check lease expired while owner PID is alive; inspect the original execution before retrying',
-          );
-        if (alive && previous.key !== key)
-          throw new Error('Native Supervisor check plan is already running with different inputs');
         const active = previous.activeProcess;
         const completedStates =
-          sameBinding &&
           active === null &&
           previous.checkStates?.length &&
           previous.checkStates.every(({ status }) => status === 'passed' || status === 'failed') &&
@@ -229,33 +213,22 @@ export async function executeNativeSupervisorChecks(options: {
             });
             state!.stateVersion += 1;
             await writeNativeSupervisorState(options.paths, state!);
-            return { task: structuredClone(task), execute: false, key: previous.key };
+            if (sameBinding)
+              return { task: structuredClone(task), execute: false, key: previous.key };
           } catch {
             previous.status = 'running';
           }
         }
-        if (alive) return { task: structuredClone(task), execute: false };
-        if (active === undefined || active?.status === 'starting') {
-          throw new Error(
-            `Native Supervisor check process registration is incomplete. Check logs in ${path.join(nativePreferredChangeRuntimeDir(options.paths, options.parent), 'logs', 'checks')} for operation ${previous.operationId}; stop any remaining check process in ${task.projectRoot}, then submit supervisor-cancel for child ${options.child} and runId ${task.runId}, and dispatch a new Verifier for the preserved candidate.`,
-          );
-        }
-        if (
-          active &&
-          (await inspectNativeCheckProcessTreeLiveness(active.pid, active.identity)) !== 'dead'
-        ) {
-          if (!(Date.now() < expiresAt)) {
+        if (previous.status === 'running') {
+          if (active === undefined || active?.status === 'starting')
             throw new Error(
-              `Native Supervisor check ${active.checkId} process tree for PID ${active.pid} has not been confirmed stopped after its owner exited and lease expired; inspect and stop the original check process tree before recovery for ${options.child}.`,
+              'Native Supervisor check startup is incomplete; inspect the original operation, then submit supervisor-cancel for this child and runId after confirming it stopped.',
             );
-          }
-          return { task: structuredClone(task), execute: false };
-        }
-        previous.status = 'interrupted';
-        for (const check of previous.checkStates ?? []) {
-          if (check.status === 'planned' || check.status === 'running') {
-            check.status = 'interrupted';
-          }
+          if (sameBinding)
+            return { task: structuredClone(task), execute: false, key: previous.key };
+          throw new Error(
+            'Native Supervisor checks have an unfinished operation; confirm its actual result or submit stopped-check evidence before changing the plan',
+          );
         }
       }
       if (requestedRetryIds) {
@@ -312,8 +285,6 @@ export async function executeNativeSupervisorChecks(options: {
         operationId: randomUUID(),
         key,
         status: 'running',
-        ownerPid: process.pid,
-        ownerIdentity: (await readProcessIdentity(process.pid)) ?? undefined,
         activeProcess: null,
         startedAt: new Date().toISOString(),
         expiresAt: new Date(
@@ -411,12 +382,11 @@ export async function executeNativeSupervisorChecks(options: {
         runtimeDir,
         operationId,
         plan,
-        onSpawn: async ({ pid }) => {
+        onSpawn: async ({ instanceId }) => {
           await updateProcess({
             status: 'running',
             checkId: plan.id,
-            pid,
-            identity: (await readProcessIdentity(pid)) ?? undefined,
+            instanceId,
           });
         },
       });

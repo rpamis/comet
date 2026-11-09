@@ -1,3 +1,4 @@
+import { collectClassicSdkDeliveryInputs } from './classic-sdk-delivery-inputs.js';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -12,6 +13,7 @@ import type {
 import { liveGitBranch } from './classic-branch-binding.js';
 import {
   assertClassicBuildReady,
+  assertClassicAgentCheckReports,
   assertClassicPresetRequirementsCurrent,
 } from './classic-sdk-application.js';
 import { classicArchiveDocumentOutputs } from './classic-sdk-archive-documents.js';
@@ -148,6 +150,29 @@ export async function assertVerifyEvidenceCurrent(
       (wait) =>
         wait.stepId === state.workflow + '.verify.report.evidence' && wait.status === 'resolved',
     )?.receipt;
+  if (run.workflow.version === '2') {
+    const latest = [...run.actions]
+      .reverse()
+      .find((action) => action.stepId === state.workflow + '.verify.run');
+    const output = latest?.outcome?.output as
+      | {
+          event?: string;
+          verificationReport?: string;
+          checks?: Array<{ name: string; result: string; note?: string }>;
+          checksReason?: string;
+        }
+      | undefined;
+    if (
+      !report ||
+      report.ref !== state.verificationReport ||
+      latest?.status !== 'succeeded' ||
+      output?.event !== 'verification-ready' ||
+      output.verificationReport !== state.verificationReport
+    )
+      throw new Error('Classic Archive requires the latest accepted Verify report');
+    assertClassicAgentCheckReports(output);
+    return;
+  }
   const evidence = run.evidenceWaits
     ?.slice()
     .reverse()
@@ -235,6 +260,9 @@ export async function runClassicSdkArchivePreflight(
       targetBranch: approved.targetBranch,
       verifiedBranch: branch,
       baseCommit,
+      ...(run.workflow.version === '2'
+        ? { deliveryPaths: await collectClassicSdkDeliveryInputs(projectRoot, '', null, run) }
+        : {}),
       ...(approved.remote ? { remote: approved.remote, remoteIdentity } : {}),
       ...(approved.prBaseBranch ? { prBaseBranch: approved.prBaseBranch } : {}),
     },

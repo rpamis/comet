@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { resolveClassicStateFile } from './classic-state-file.js';
 import { promises as fs } from 'node:fs';
 import { CLASSIC_CHANGE_ID_PATTERN } from './classic-state.js';
@@ -21,6 +22,12 @@ import {
   resolveWorkspaceRuntimeRoot,
   resolveWorkspaceRuntimeRootSync,
 } from '../workflow-contract/workspace-runtime.js';
+
+const preparedRuns = new AsyncLocalStorage<Map<string, Promise<string>>>();
+
+export function withClassicRuntimePreparation<T>(work: () => Promise<T>): Promise<T> {
+  return preparedRuns.getStore() ? work() : preparedRuns.run(new Map(), work);
+}
 
 /** 本机执行记录；handoff、delivery 和正式审计仍随 change 保存。 */
 export const CLASSIC_LOCAL_RECORDS = new Set([
@@ -317,6 +324,23 @@ export async function resolveClassicRunDirectory(
   projectRoot?: string,
 ): Promise<string> {
   const root = projectRoot ?? (await discoverClassicProject(changeDir));
+  const prepared = preparedRuns.getStore();
+  if (!prepared) return prepareClassicRunDirectory(changeDir, root);
+  const key = JSON.stringify([resolveWorkspaceRuntimeRootSync(root), path.resolve(changeDir)]);
+  let pending = prepared.get(key);
+  if (!pending) {
+    pending = prepareClassicRunDirectory(changeDir, root);
+    prepared.set(key, pending);
+    void pending.catch(() => prepared.delete(key));
+  }
+  return pending;
+}
+
+async function prepareClassicRunDirectory(
+  changeDir: string,
+  projectRoot?: string,
+): Promise<string> {
+  const root = projectRoot ?? (await discoverClassicProject(changeDir));
   const changeRef = path.relative(root, changeDir).replaceAll('\\', '/');
   if (changeRef) {
     const directory = await inspectProtectedProjectPath(root, changeRef, {
@@ -404,16 +428,21 @@ export async function resolveClassicLocalTarget(
       !path.isAbsolute(runtimeRelative))
   ) {
     if (options.migrate === false) {
-      const volume = path.parse(runtime).root;
-      await inspectProtectedProjectPath(
-        volume,
-        path.relative(volume, absolute).replaceAll('\\', '/'),
-        {
-          label: 'Classic read-only local target',
-          expected: 'any',
-        },
-      );
-      return { root: volume, target: absolute };
+      const key = JSON.stringify(['read-root', runtime]);
+      const prepared = preparedRuns.getStore();
+      let pending = prepared?.get(key);
+      if (!pending) {
+        const volume = path.parse(runtime).root;
+        pending = inspectProtectedProjectPath(
+          volume,
+          path.relative(volume, runtime).replaceAll('\\', '/'),
+          { label: 'Classic read-only Runtime root', expected: 'directory' },
+        ).then(() => runtime);
+        prepared?.set(key, pending);
+        void pending.catch(() => prepared?.delete(key));
+      }
+      await pending;
+      return { root: runtime, target: absolute };
     }
     const current = await resolveWorkspaceRuntimeRoot(projectRoot);
     if (current !== runtime)

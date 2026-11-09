@@ -154,20 +154,24 @@ function parseCheck(value: unknown, index: number): NativeLocalCheckState {
         ['starting', 'running'] as const,
         `${label}.activeProcess.status`,
       );
-      rejectUnknown(activeRoot, new Set(['status', 'pid', 'identity']), `${label}.activeProcess`);
+      rejectUnknown(
+        activeRoot,
+        new Set(['status', 'instanceId', 'pid', 'identity']),
+        `${label}.activeProcess`,
+      );
       if (activeStatus === 'starting') {
         if (Object.hasOwn(activeRoot, 'pid') || Object.hasOwn(activeRoot, 'identity')) {
           throw new Error(`${label}.activeProcess starting state cannot contain process identity`);
         }
         activeProcess = { status: 'starting' };
       } else {
-        const pid = integerValue(activeRoot.pid, `${label}.activeProcess.pid`, 1);
         activeProcess = {
           status: 'running',
-          pid,
-          ...(Object.hasOwn(activeRoot, 'identity')
-            ? { identity: stringValue(activeRoot.identity, `${label}.activeProcess.identity`) }
-            : {}),
+          ...(activeRoot.instanceId === undefined
+            ? {}
+            : {
+                instanceId: stringValue(activeRoot.instanceId, `${label}.activeProcess.instanceId`),
+              }),
         };
       }
     }
@@ -298,17 +302,6 @@ export function parseNativeLocalExecution(value: unknown): NativeLocalExecutionS
             verifierStartedAt: timestampValue(
               executionRoot.verifierStartedAt,
               'Native local execution.verifierStartedAt',
-            ),
-          }
-        : {}),
-      ...(Object.hasOwn(executionRoot, 'ownerPid')
-        ? { ownerPid: integerValue(executionRoot.ownerPid, 'Native local execution.ownerPid', 1) }
-        : {}),
-      ...(Object.hasOwn(executionRoot, 'ownerIdentity')
-        ? {
-            ownerIdentity: stringValue(
-              executionRoot.ownerIdentity,
-              'Native local execution.ownerIdentity',
             ),
           }
         : {}),

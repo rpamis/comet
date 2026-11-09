@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { readClassicSdkDeliveryCheckpoint } from './classic-sdk-delivery-checkpoint.js';
 import { runWithoutClassicOperationObservations } from './classic-command-context.js';
 import { isClassicSdkApprovedUpgrade } from './classic-sdk-profile.js';
@@ -76,6 +77,57 @@ export async function readClassicSdkRunRecord(
   }).read(runId);
 }
 
+const deferredProjections = new AsyncLocalStorage<Map<string, () => Promise<unknown>>>();
+/** Batch internal SDK transitions; publish before external work and when the CLI returns. */
+export async function withClassicStateProjections<T>(work: () => Promise<T>): Promise<T> {
+  if (deferredProjections.getStore()) return work();
+  const pending = new Map<string, () => Promise<unknown>>();
+  return deferredProjections.run(pending, async () => {
+    const flush = async () => {
+      const errors: unknown[] = [];
+      for (const publish of pending.values()) {
+        try {
+          await publish();
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      return errors;
+    };
+    let result: T;
+    try {
+      result = await work();
+    } catch (error) {
+      for (const failure of await flush())
+        process.stderr.write(
+          '[comet] projection cleanup failed; preserved the original operation error: ' +
+            String(failure) +
+            '\n',
+        );
+      throw error;
+    }
+    const errors = await flush();
+    for (const failure of errors.slice(1))
+      process.stderr.write('[comet] projection publish failed: ' + String(failure) + '\n');
+    if (errors.length) throw errors[0];
+    return result;
+  });
+}
+function classicProjectionBoundary(run: WorkflowRun): boolean {
+  return (
+    ['completed', 'cancelled', 'failed'].includes(run.status) ||
+    run.waits.some((wait) => wait.status === 'pending') ||
+    run.actions.some(
+      (action) =>
+        ['pending', 'running', 'unknown'].includes(action.status) &&
+        (action.type === 'invoke_skill' ||
+          action.status === 'unknown' ||
+          (action.type === 'call_tool' &&
+            !['classic-open-revalidate', 'classic-archive-preflight'].includes(action.ref ?? ''))),
+    )
+  );
+}
+
 interface ProjectionMarker {
   schema: 'comet.classic.sdk-state-projection.v1';
   runId: string;
@@ -113,16 +165,21 @@ export function createClassicSdkStateStore(
   projectionRead = false,
 ): RuntimeStore<WorkflowRun> {
   const initialRuntimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
+  let runtimePrepared = false;
   const boundRuntimeRoot = async (readOnly = options.readOnly) => {
     const stale = () =>
       new Error('Classic workspace identity changed; recreate the Runtime store before continuing');
     if (resolveWorkspaceRuntimeRootSync(projectRoot) !== initialRuntimeRoot) throw stale();
-    const current = readOnly ? initialRuntimeRoot : await resolveWorkspaceRuntimeRoot(projectRoot);
+    const current =
+      readOnly || runtimePrepared
+        ? initialRuntimeRoot
+        : await resolveWorkspaceRuntimeRoot(projectRoot);
     if (
       current !== initialRuntimeRoot ||
       resolveWorkspaceRuntimeRootSync(projectRoot) !== initialRuntimeRoot
     )
       throw stale();
+    if (!readOnly) runtimePrepared = true;
     return current;
   };
   const store = observeWorkflowRunStore(
@@ -134,6 +191,7 @@ export function createClassicSdkStateStore(
       }),
   );
   const projectionDir = 'state-projections/classic';
+  const projectionKey = (runId: string) => JSON.stringify([initialRuntimeRoot, runId]);
 
   function recoveryRequired(runId: string, reason: string): never {
     if (options.identity) {
@@ -566,6 +624,10 @@ export function createClassicSdkStateStore(
   return {
     queryScope: store.queryScope,
     async read(runId) {
+      if (!options.identity && deferredProjections.getStore()?.has(projectionKey(runId))) {
+        await boundRuntimeRoot(true);
+        return store.read(runId);
+      }
       if (!options.readOnly) {
         await boundRuntimeRoot(true);
         try {
@@ -635,7 +697,21 @@ export function createClassicSdkStateStore(
           }
         }
         const committed = await store.compareAndSwap(runId, expectedRevision, next);
-        if (committed && expectedRevision !== null) await syncStateFile(runId, false);
+        if (committed && expectedRevision !== null) {
+          const deferred = deferredProjections.getStore();
+          const key = projectionKey(runId);
+          if (
+            deferred &&
+            !options.identity &&
+            next.workflow.version === '2' &&
+            !classicProjectionBoundary(next)
+          ) {
+            deferred.set(key, () => syncStateFile(runId, false));
+          } else {
+            deferred?.delete(key);
+            await syncStateFile(runId, false);
+          }
+        }
         return committed;
       });
     },

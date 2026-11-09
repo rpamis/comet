@@ -18,41 +18,26 @@ async function setup() {
 }
 
 describe('Native check process registration', () => {
-  it('does not invoke registration after cancellation during identity lookup', async () => {
-    let releaseIdentity!: () => void;
-    let identityStarted!: () => void;
-    const started = new Promise<void>((resolve) => {
-      identityStarted = resolve;
-    });
-    const released = new Promise<void>((resolve) => {
-      releaseIdentity = resolve;
-    });
-    vi.spyOn(processIdentity, 'readProcessIdentity').mockImplementation(async () => {
-      identityStarted();
-      await released;
-      return null;
-    });
+  it('does not register or start a command after its operation is cancelled', async () => {
+    const options = await setup();
+    const signal = AbortSignal.abort(new Error('cancelled'));
     const onSpawn = vi.fn(async () => {});
-    const pending = executeNativeCheck({
-      ...(await setup()),
-      plan: {
-        id: 'cancelled',
-        name: 'Cancelled registration',
-        executable: process.execPath,
-        argv: ['-e', 'setInterval(() => {}, 1000)'],
-        cwdRef: '.',
-        timeoutMs: 1000,
-        repeatable: true,
-      },
-      onSpawn,
-    });
-    try {
-      await started;
-      await expect(pending).rejects.toThrow('检查进程登记超过执行时限');
-    } finally {
-      releaseIdentity();
-    }
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await expect(
+      executeNativeCheck({
+        ...options,
+        signal,
+        plan: {
+          id: 'cancelled',
+          name: 'Cancelled check',
+          executable: process.execPath,
+          argv: ['-e', 'setInterval(() => {}, 1000)'],
+          cwdRef: '.',
+          timeoutMs: 5000,
+          repeatable: false,
+        },
+        onSpawn,
+      }),
+    ).rejects.toThrow();
     expect(onSpawn).not.toHaveBeenCalled();
   });
   it('waits for registration even if the check has already exited', async () => {
@@ -68,8 +53,8 @@ describe('Native check process registration', () => {
         timeoutMs: 5000,
         repeatable: true,
       },
-      onSpawn: async ({ pid }) => {
-        expect(pid).toBeGreaterThan(0);
+      onSpawn: async ({ instanceId }) => {
+        expect(instanceId).toBeTruthy();
         await new Promise((resolve) => setTimeout(resolve, 200));
         registered = true;
       },
@@ -79,7 +64,8 @@ describe('Native check process registration', () => {
   });
 
   it('terminates the check and preserves a registration failure before returning', async () => {
-    let pid = 0;
+    let instanceId = '';
+    const spawn = vi.spyOn(ownedCommand, 'spawnOwnedCommand');
     await expect(
       executeNativeCheck({
         ...(await setup()),
@@ -93,13 +79,14 @@ describe('Native check process registration', () => {
           repeatable: true,
         },
         onSpawn: async (child) => {
-          pid = child.pid;
+          instanceId = child.instanceId;
           throw new Error('registration failed');
         },
       }),
     ).rejects.toThrow('registration failed');
-    expect(pid).toBeGreaterThan(0);
-    expect(() => process.kill(pid, 0)).toThrow();
+    expect(instanceId).toBeTruthy();
+    const child = spawn.mock.results[0].value.child;
+    expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
   });
 
   it('rejects an unavailable log before spawning or registering the check', async () => {

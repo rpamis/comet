@@ -1,19 +1,16 @@
+import { watch } from 'node:fs';
 import {
   resolveWorkspaceRuntimeRoot,
   resolveWorkspaceRuntimeRootSync,
 } from '../workflow-contract/workspace-runtime.js';
 import path from 'node:path';
-import type { OwnedProcessInstance } from '../../platform/process/owned-command.js';
-import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
-import { inspectWindowsProcessPresence } from '../../platform/process/windows-process-identity.js';
-
+import type { NativeCheckInstance } from './native-check-executor.js';
 import {
-  inspectProcessLiveness,
-  terminateRegisteredProcessTree,
-  inspectProcessTreeLiveness,
-  readProcessIdentity,
-  type ProcessLiveness,
-} from '../../platform/process/process-identity.js';
+  withRecoverableFileLock,
+  acquireRecoverableFileLock,
+  diagnoseRecoverableFileLock,
+} from '../../platform/fs/recoverable-file-lock.js';
+
 import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
 import {
   ensureProtectedProjectDirectory,
@@ -56,10 +53,7 @@ export function nativeSdkCheckStorageRef(ref: string): string {
 }
 
 interface ProcessInstance {
-  pid: number;
-  identity?: string;
-  instanceId?: string;
-  ownerPid?: number;
+  instanceId: string;
 }
 export interface NativeSdkCheckExecution {
   schema: 'comet.native.sdk-check-execution.v1';
@@ -71,7 +65,8 @@ export interface NativeSdkCheckExecution {
   claimToken: string;
   candidateId: string;
   plansHash: string;
-  owner: ProcessInstance;
+  /** New executions hold an OS-released transaction for their active lifetime. */
+  managed?: true;
   child?: ProcessInstance;
   checkId?: string;
   phase: 'reserved' | 'running' | 'completed' | 'interrupted';
@@ -85,6 +80,24 @@ function executionRef(run: Readonly<WorkflowRun>, action: Readonly<RuntimeAction
   // 同一 Action 的所有尝试共享防重放记录；不能用新的 attempt 覆盖已执行证据。
   return `${nativeSdkCheckRuntimeRef(run)}/executions/${hashRuntimeValue(action.id)}.json`;
 }
+
+function executionLockFile(
+  projectRoot: string,
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+): string {
+  return (
+    path.join(
+      resolveWorkspaceRuntimeRootSync(projectRoot),
+      ...executionRef(run, action).split('/'),
+    ) + '.active.lock'
+  );
+}
+
+const legacyExecutionBindings = new WeakMap<
+  NativeSdkCheckExecution,
+  { childBinding: string; executionHash: string }
+>();
 
 async function readExecution(
   projectRoot: string,
@@ -114,16 +127,34 @@ async function readExecution(
     value.attempt !== action.attempt ||
     value.inputHash !== action.inputHash ||
     portableClaimToken(value.claimToken) !== portableClaimToken(action.claim?.token ?? '') ||
-    !Number.isSafeInteger(value.owner?.pid) ||
-    value.owner.pid < 1 ||
     !['reserved', 'running', 'completed', 'interrupted'].includes(value.phase) ||
     !Array.isArray(value.checks) ||
     (value.terminationUnconfirmed !== undefined &&
-      typeof value.terminationUnconfirmed !== 'boolean') ||
-    (value.child && (!Number.isSafeInteger(value.child.pid) || value.child.pid < 1))
+      typeof value.terminationUnconfirmed !== 'boolean')
   ) {
     throw new Error('Native 检查执行记录不匹配原 Action；保留原证据并核对，不能重新执行');
   }
+  if (Object.hasOwn(value, 'owner')) {
+    const child = value.child as unknown as
+      { pid?: number; identity?: string; instanceId?: string; ownerPid?: number } | undefined;
+    legacyExecutionBindings.set(value, {
+      childBinding: hashRuntimeValue({
+        child: child
+          ? {
+              pid: child.pid ?? null,
+              identity: child.identity ?? null,
+              instanceId: child.instanceId ?? null,
+              ownerPid: child.ownerPid ?? null,
+            }
+          : null,
+        checkId: value.checkId ?? null,
+      }),
+      executionHash: hashRuntimeValue(value as unknown as RuntimeValue),
+    });
+  }
+  // Retire legacy process identities at the boundary; they never authorize recovery.
+  delete (value as unknown as Record<string, unknown>).owner;
+  if (value.child) value.child = { instanceId: value.child.instanceId ?? 'legacy' };
   return value;
 }
 
@@ -148,16 +179,8 @@ function actionBinding(execution: NativeSdkCheckExecution): string {
 }
 
 function childBinding(execution: NativeSdkCheckExecution): string {
-  const child = execution.child;
   return hashRuntimeValue({
-    child: child
-      ? {
-          pid: child.pid,
-          identity: child.identity ?? null,
-          instanceId: child.instanceId ?? null,
-          ownerPid: child.ownerPid ?? null,
-        }
-      : null,
+    child: execution.child?.instanceId ?? null,
     checkId: execution.checkId ?? null,
   });
 }
@@ -192,12 +215,14 @@ function matchesTerminationReceipt(
     receipt?.schema === 'comet.native.sdk-check-termination.v1' &&
     receipt.confirmed === true &&
     receipt.actionBinding === actionBinding(execution) &&
-    receipt.childBinding === childBinding(execution) &&
+    (receipt.childBinding === childBinding(execution) ||
+      receipt.childBinding === legacyExecutionBindings.get(execution)?.childBinding) &&
     (receipt.source === 'process-tree' ||
       (receipt.source === 'stopped-action' &&
         typeof receipt.evidence === 'string' &&
         receipt.evidence.trim().length > 0 &&
-        receipt.executionHash === hashRuntimeValue(execution as unknown as RuntimeValue)))
+        (receipt.executionHash === hashRuntimeValue(execution as unknown as RuntimeValue) ||
+          receipt.executionHash === legacyExecutionBindings.get(execution)?.executionHash)))
   );
 }
 
@@ -242,7 +267,7 @@ async function recordTerminationReceipt(options: {
   });
 }
 
-/** 缺失 PID 或旧 Windows 登记只能凭绑定原领取和执行快照的停止事实恢复。 */
+/** Agent 确认实际命令已停止后，绑定原领取保存停止事实。 */
 export async function acknowledgeNativeSdkCheckStopped(options: {
   projectRoot: string;
   run: Readonly<WorkflowRun>;
@@ -263,24 +288,9 @@ export async function acknowledgeNativeSdkCheckStopped(options: {
     throw new Error('Native 检查停止证据不匹配原领取身份');
   }
   const execution = await readExecution(projectRoot, run, action);
-  const childState = execution?.child
-    ? await inspectProcessTreeLiveness(execution.child.pid, execution.child.identity)
-    : 'dead';
-  // 旧记录没有创建身份，EPERM 不能证明仍是原执行。明确停止声明与新鲜系统枚举
-  // 一并绑定原执行快照；不杀裸 PID，也不把这一人工核对用于自动接管。
-  const legacyAbsent =
-    execution?.child &&
-    !execution.child.identity &&
-    process.platform === 'win32' &&
-    childState === 'unknown' &&
-    (await inspectWindowsProcessPresence(execution.child.pid)) === 'absent';
-  if (
-    !execution ||
-    (await inspectProcessLiveness(execution.owner.pid, execution.owner.identity)) !== 'dead' ||
-    (childState !== 'dead' && !legacyAbsent)
-  ) {
-    throw new Error('Native 检查原领取方或监管进程尚未确认退出；不能提交人工停止证据');
-  }
+  if (!execution) throw new Error('Native 检查缺少原执行记录；保留原 Action 结果');
+  const lease = await diagnoseRecoverableFileLock(executionLockFile(projectRoot, run, action));
+  if (lease.status === 'active') throw new Error('原检查仍在执行；先请求停止并等待当前执行结束');
   await requestNativeSdkCheckStop(options);
   await recordTerminationReceipt({ ...options, execution, evidence: stopped.evidence });
 }
@@ -311,16 +321,45 @@ export async function createNativeSdkCheckExecution(options: {
     claimToken: action.claim.token,
     candidateId: options.candidateId,
     plansHash: options.plansHash,
-    owner: { pid: process.pid, identity: (await readProcessIdentity(process.pid)) ?? undefined },
+    managed: true,
     phase: 'reserved',
     terminationUnconfirmed: true,
     checks: [],
   };
-  await atomicWriteContainedText(file, JSON.stringify(execution), {
-    containedRoot: runtimeRoot,
-    exclusive: true,
-    requireAtomicPublication: true,
+  const lease = await acquireRecoverableFileLock(executionLockFile(projectRoot, run, action), {
+    timeoutMs: 0,
+    operation: action.id,
   });
+  try {
+    await atomicWriteContainedText(file, JSON.stringify(execution), {
+      containedRoot: runtimeRoot,
+      exclusive: true,
+      requireAtomicPublication: true,
+    });
+  } catch (error) {
+    await lease.release();
+    throw error;
+  }
+  const stopController = new AbortController();
+  const observeStop = async () => {
+    try {
+      if (await hasNativeSdkCheckStopRequest({ projectRoot, run, action }))
+        stopController.abort(new Error('原检查已请求停止'));
+    } catch (error) {
+      stopController.abort(error);
+    }
+  };
+  let stopWatcher: ReturnType<typeof watch>;
+  try {
+    stopWatcher = watch(path.dirname(file), { persistent: false }, (_event, name) => {
+      if (name?.toString() === path.basename(file) + '.stop') void observeStop();
+    });
+    stopWatcher.on('error', (error) => stopController.abort(error));
+    await observeStop();
+  } catch (error) {
+    await lease.release();
+    throw error;
+  }
   const assertNotStopped = async () => {
     const stop = await inspectProtectedProjectPath(
       runtimeRoot,
@@ -340,32 +379,23 @@ export async function createNativeSdkCheckExecution(options: {
   };
   return {
     execution,
+    signal: stopController.signal as AbortSignal,
+    release: async () => {
+      stopWatcher.close();
+      await lease.release();
+    },
     assertNotStopped,
     save,
-    async recordTermination(instance: OwnedProcessInstance, confirmed: boolean) {
+    async recordTermination(instance: NativeCheckInstance, confirmed: boolean) {
       if (!confirmed) return;
       if (childBinding({ ...execution, child: instance }) !== childBinding(execution))
         throw new Error('Native 检查停止证据不匹配原进程实例');
       await recordTerminationReceipt({ projectRoot, run, action, execution });
     },
-    async register(checkId: string, child: number | OwnedProcessInstance, signal?: AbortSignal) {
+    async register(checkId: string, child: NativeCheckInstance, signal?: AbortSignal) {
       signal?.throwIfAborted();
       await assertNotStopped();
-      const pid = typeof child === 'number' ? child : child.pid;
-      const identity =
-        typeof child === 'number'
-          ? ((await readProcessIdentity(pid)) ?? undefined)
-          : child.identity;
-      signal?.throwIfAborted();
-      execution.child =
-        typeof child === 'number'
-          ? { pid, ...(identity === undefined ? {} : { identity }) }
-          : {
-              pid,
-              instanceId: child.instanceId,
-              ownerPid: child.ownerPid,
-              ...(identity === undefined ? {} : { identity }),
-            };
+      execution.child = { instanceId: child.instanceId };
       execution.checkId = checkId;
       execution.phase = 'running';
       await save();
@@ -378,10 +408,10 @@ export async function createNativeSdkCheckExecution(options: {
 export interface NativeSdkCheckExecutionInspection {
   actionId: string;
   attempt: number;
-  owner: ProcessLiveness;
-  process: ProcessLiveness;
+  owner: 'active' | 'stopped' | 'unknown';
+  process: 'stopped' | 'unknown';
   /** 仅描述平台可观察的受管边界；不证明主动脱组的后代已停止。 */
-  processBoundary: 'process-group' | 'supervisor-process' | 'unknown';
+  processBoundary: 'command' | 'unknown';
   phase: NativeSdkCheckExecution['phase'] | 'missing' | 'invalid';
   quiescent: boolean;
   recoveryRequired: boolean;
@@ -441,7 +471,7 @@ export function hasNativeSdkPortableStopEvidence(
   );
 }
 
-/** 将本机已核验的进程停止事实提交到 Run，便于复制工作区后独立核验。 */
+/** 将原命令的实际停止结果提交到 Run，便于继续原 Action。 */
 export async function reconcileNativeSdkExecutionStops(
   projectRoot: string,
   initial: WorkflowRun,
@@ -511,89 +541,63 @@ export async function inspectNativeSdkCheckExecutions(options: {
               recoveryRequired: !hasNativeSdkPortableStopEvidence(run, action),
               reason: '检查缺少持久进程登记，无法确认它是否仍在执行',
             };
-          // 已持久化的停止事实绑定完整执行记录，记录变化后重新核对进程。
-          if (
-            hasNativeSdkPortableStopEvidence(run, action) &&
-            action.executionStop?.evidence ===
-              `Runtime 已确认原受管执行停止；执行记录摘要 ${hashRuntimeValue(execution as unknown as RuntimeValue)}`
-          ) {
-            return {
-              ...base,
-              owner: 'unknown' as const,
-              process: 'dead' as const,
-              processBoundary:
-                globalThis.process.platform === 'win32'
-                  ? ('supervisor-process' as const)
-                  : ('process-group' as const),
-              phase: execution.phase,
-              execution,
-              quiescent: true,
-              recoveryRequired: false,
-            };
-          }
-          const owner = await inspectProcessLiveness(execution.owner.pid, execution.owner.identity);
+          const lease = execution.managed
+            ? await diagnoseRecoverableFileLock(executionLockFile(projectRoot, run, action))
+            : null;
+          const active = lease?.status === 'active';
           const receipt = await readTerminationReceipt(projectRoot, run, action);
-          // 无 PID 不能证明从未启动；只有死亡 owner 的明确停止事实可关闭登记间隙。
-          const acknowledged =
-            owner === 'dead' &&
-            receipt?.source === 'stopped-action' &&
-            matchesTerminationReceipt(receipt, execution);
-          const process = acknowledged
-            ? 'dead'
-            : execution.child
-              ? await inspectProcessTreeLiveness(execution.child.pid, execution.child.identity)
-              : acknowledged ||
-                  (!execution.terminationUnconfirmed &&
-                    (['reserved', 'interrupted'].includes(execution.phase) ||
-                      (execution.phase === 'completed' &&
-                        execution.checks.every(
-                          (check) =>
-                            check !== null &&
-                            typeof check === 'object' &&
-                            !Array.isArray(check) &&
-                            check.reusedFrom !== null &&
-                            typeof check.reusedFrom === 'object' &&
-                            !Array.isArray(check.reusedFrom),
-                        ))))
-                ? 'dead'
-                : 'unknown';
-          const treeConfirmed =
-            !execution.child ||
-            globalThis.process.platform !== 'win32' ||
-            (matchesTerminationReceipt(receipt, execution) &&
-              (receipt?.source !== 'stopped-action' || owner === 'dead'));
+          const portableStopped =
+            hasNativeSdkPortableStopEvidence(run, action) &&
+            (!action.executionStop?.evidence.startsWith(
+              'Runtime 已确认原受管执行停止；执行记录摘要 ',
+            ) ||
+              action.executionStop.evidence ===
+                'Runtime 已确认原受管执行停止；执行记录摘要 ' +
+                  hashRuntimeValue(execution as unknown as RuntimeValue) ||
+              action.executionStop.evidence ===
+                'Runtime 已确认原受管执行停止；执行记录摘要 ' +
+                  legacyExecutionBindings.get(execution)?.executionHash);
           const quiescent =
-            treeConfirmed &&
-            process === 'dead' &&
-            (owner === 'dead' || ['completed', 'interrupted'].includes(execution.phase));
+            !active &&
+            Boolean(
+              portableStopped ||
+              matchesTerminationReceipt(receipt, execution) ||
+              (execution.managed &&
+                execution.terminationUnconfirmed === false &&
+                ['completed', 'interrupted'].includes(execution.phase) &&
+                (execution.phase === 'interrupted' ||
+                  execution.child ||
+                  execution.checks.every(
+                    (check) =>
+                      check !== null &&
+                      typeof check === 'object' &&
+                      !Array.isArray(check) &&
+                      check.reusedFrom !== null &&
+                      typeof check.reusedFrom === 'object' &&
+                      !Array.isArray(check.reusedFrom),
+                  ))),
+            );
           return {
             ...base,
-            owner,
-            process,
-            processBoundary:
-              globalThis.process.platform === 'win32'
-                ? ('supervisor-process' as const)
-                : ('process-group' as const),
+            owner: active
+              ? ('active' as const)
+              : lease
+                ? ('stopped' as const)
+                : ('unknown' as const),
+            process: quiescent ? ('stopped' as const) : ('unknown' as const),
+            processBoundary: 'command' as const,
             phase: execution.phase,
             execution,
             quiescent,
-            ...(!execution.child && execution.terminationUnconfirmed && !acknowledged
+            recoveryRequired:
+              !active &&
+              !(quiescent && ['succeeded', 'failed', 'cancelled'].includes(action.status)),
+            ...(!active && !quiescent
               ? {
                   reason:
-                    '检查在监管进程 PID 登记完成前中断；确认原领取方及全部后代已停止后，以原领取身份提交 doctor --repair --confirmed --stopped-actions；此前不能验收或重试',
+                    '原命令结果尚未确认；核对保留日志及实际副作用，确认停止后沿用原 Action 恢复，不能自动重跑。',
                 }
-              : !treeConfirmed
-                ? { reason: 'Windows 检查缺少整树停止证据；组长退出不能证明后代已停止' }
-                : {}),
-            recoveryRequired:
-              !(
-                ['succeeded', 'failed', 'cancelled'].includes(action.status) &&
-                quiescent &&
-                (owner === 'alive' || hasNativeSdkPortableStopEvidence(run, action))
-              ) &&
-              (owner !== 'alive' ||
-                execution.phase === 'completed' ||
-                execution.phase === 'interrupted'),
+              : {}),
           };
         } catch (error) {
           return {
@@ -664,7 +668,7 @@ export async function hasNativeSdkCheckStopRequest(options: {
   );
 }
 
-/** 先阻止后续启动，再仅清理仍匹配已登记创建身份的进程树。 */
+/** 请求原执行器停止；恢复方不按历史 PID 终止其他进程。 */
 export async function terminateNativeSdkCheckExecutions(options: {
   projectRoot: string;
   run: Readonly<WorkflowRun>;
@@ -673,13 +677,6 @@ export async function terminateNativeSdkCheckExecutions(options: {
   for (const item of inspections) {
     const action = options.run.actions.find((entry) => entry.id === item.actionId)!;
     await requestNativeSdkCheckStop({ ...options, action });
-    if (
-      item.execution?.child &&
-      item.process === 'alive' &&
-      (await terminateRegisteredProcessTree(item.execution.child))
-    ) {
-      await recordTerminationReceipt({ ...options, action, execution: item.execution });
-    }
   }
   return inspectNativeSdkCheckExecutions(options);
 }

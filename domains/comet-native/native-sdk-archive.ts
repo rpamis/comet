@@ -147,6 +147,22 @@ async function archivePreflightOutput(
   return inspectArchivePreflightOutput(run, action, projectRoot);
 }
 
+const preparedArchive = new Map<string, Awaited<ReturnType<typeof archivePreflightOutput>>>();
+function preflightKey(
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+  projectRoot: string,
+) {
+  return JSON.stringify([
+    projectRoot,
+    run.runId,
+    run.revision,
+    action.id,
+    action.attempt,
+    action.claim?.token,
+  ]);
+}
+
 export const nativeSdkArchivePreflightExecutor: RuntimeExecutor = {
   id: 'comet-native-archive-preflight',
   capabilities: [],
@@ -158,6 +174,7 @@ export const nativeSdkArchivePreflightExecutor: RuntimeExecutor = {
     let output;
     try {
       output = await archivePreflightOutput(run, action, context.projectRoot);
+      preparedArchive.set(preflightKey(run, action, context.projectRoot), output);
     } catch (error) {
       if (!(error instanceof NativeSdkCheckResultError)) throw error;
       return {
@@ -187,7 +204,10 @@ export const nativeSdkArchivePreflightValidator: RuntimeValidator = {
     if (outcome.status === 'failed' && output?.ready === false && outcome.event === undefined)
       return { accepted: true };
     try {
-      const expected = await archivePreflightOutput(run, action, context.projectRoot);
+      const key = preflightKey(run, action, context.projectRoot);
+      const prepared = preparedArchive.get(key);
+      preparedArchive.delete(key);
+      const expected = prepared ?? (await archivePreflightOutput(run, action, context.projectRoot));
       if (
         hashRuntimeValue(outcome.output) !==
           hashRuntimeValue(expected as unknown as RuntimeValue) ||

@@ -67,9 +67,7 @@ function assertSupervisorState(value: unknown): asserts value is NativeSuperviso
       !execution.operationId ||
       !execution.key ||
       !execution.child ||
-      !['running', 'completed', 'interrupted'].includes(execution.status) ||
-      !Number.isSafeInteger(execution.ownerPid) ||
-      execution.ownerPid <= 0
+      !['running', 'completed', 'interrupted'].includes(execution.status)
     ) {
       throw new Error('Native Supervisor integration check execution is invalid');
     }
@@ -221,11 +219,18 @@ export async function readNativeSupervisorState(
           }>;
         }
       ).children) {
-        child.contractRef ??= child.contractHash;
-        if (child.task) child.task.contractRef ??= child.task.contractHash;
+        if (child.contractRef === undefined && typeof child.contractHash === 'string')
+          child.contractRef = child.contractHash;
+        if (
+          child.task &&
+          child.task.contractRef === undefined &&
+          typeof child.task.contractHash === 'string'
+        )
+          child.task.contractRef = child.task.contractHash;
       }
     }
     assertSupervisorState(parsed);
+    retireProcessIdentities(parsed);
     if (
       parsed.children.some(
         (child) => !child.acceptanceScope || (child.task && !child.task.acceptance),
@@ -309,11 +314,29 @@ export async function activeNativeSupervisorTaskNames(
   return state?.children.filter(({ task }) => task !== null).map(({ name }) => name) ?? [];
 }
 
+function retireProcessIdentities(state: NativeSupervisorState): void {
+  for (const execution of [
+    state.integration.checkExecution,
+    ...state.children.map((child) => child.task?.checkExecution),
+  ]) {
+    if (!execution) continue;
+    const legacy = execution as unknown as Record<string, unknown>;
+    delete legacy.ownerPid;
+    delete legacy.ownerIdentity;
+    if (execution.activeProcess) {
+      const active = execution.activeProcess as unknown as Record<string, unknown>;
+      delete active.pid;
+      delete active.identity;
+    }
+  }
+}
+
 export async function writeNativeSupervisorState(
   paths: Pick<NativeProjectPaths, 'changesRuntimeDir'>,
   state: NativeSupervisorState,
 ): Promise<void> {
   assertSupervisorState(state);
+  retireProcessIdentities(state);
   await fs.mkdir(paths.changesRuntimeDir, { recursive: true });
   await atomicWriteJson(nativeSupervisorStateFile(paths, state.parent), state, {
     containedRoot: paths.changesRuntimeDir,

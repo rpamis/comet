@@ -2,12 +2,7 @@ import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  inspectProcessLiveness,
-  readProcessIdentity,
-} from '../../platform/process/process-identity.js';
-import {
   executeNativeCheck,
-  inspectNativeCheckProcessTreeLiveness,
   isNativeCheckTerminationUnconfirmedError,
   nativeCheckInvocationKey,
   nativeCheckPlanKey,
@@ -150,37 +145,15 @@ export function sameNativeCheckCommands(
   );
 }
 
-export type NativePortableCheckExecutionLiveness =
-  'not-running' | 'running' | 'orphaned' | 'unknown';
+export type NativePortableCheckExecutionLiveness = 'not-running' | 'unknown';
 
-/**
- * Inspect the owner and active child recorded for a local Runtime check operation.
- * Missing identity metadata remains unknown so a stale overlay can never trigger a
- * second check while the original process might still be alive.
- */
+/** An unfinished operation requires actual results or explicit stop confirmation, never PID inference. */
 export async function inspectNativePortableCheckExecution(
   local: NativeLocalExecutionState,
 ): Promise<NativePortableCheckExecutionLiveness> {
   const execution = local.execution;
   if (execution === null || execution.status !== 'running') return 'not-running';
-  if (execution.ownerPid === undefined) return 'unknown';
-  // 探测失败保持 unknown；Doctor 仅可接管没有未确认检查进程的 owner 登记。
-  const ownerLiveness = await inspectProcessLiveness(execution.ownerPid, execution.ownerIdentity);
-  if (ownerLiveness === 'alive') return 'running';
-
-  let unknown = ownerLiveness === 'unknown';
-  for (const check of local.checks) {
-    if (check.status !== 'running') continue;
-    const active = check.activeProcess;
-    if (!active || active.status === 'starting') {
-      unknown = true;
-      continue;
-    }
-    const liveness = await inspectNativeCheckProcessTreeLiveness(active.pid, active.identity);
-    if (liveness === 'alive') return 'running';
-    if (liveness === 'unknown') unknown = true;
-  }
-  return unknown ? 'unknown' : 'orphaned';
+  return 'unknown';
 }
 
 function localCheck(
@@ -373,7 +346,12 @@ async function reserveNativePortableCheckPlan(options: {
       plans: NativeCheckPlan[];
       inputDiagnostics: string[];
     }
-  | { kind: 'reuse'; state: NativePortableState; checks: NativePortableCheckSummary[] }
+  | {
+      kind: 'reuse';
+      state: NativePortableState;
+      checks: NativePortableCheckSummary[];
+      disposition?: 'executed' | 'reused';
+    }
 > {
   return withNativeMutationLock(
     options.paths,
@@ -395,7 +373,7 @@ async function reserveNativePortableCheckPlan(options: {
       if (!state.builder_handoff) throw new Error('Native checks require a Builder result');
       const file = nativeLocalExecutionFile(options.paths, state.name);
       const existing = await readNativeLocalExecution(file);
-      let local =
+      const local =
         existing?.change === state.name &&
         existing.candidateId === state.builder_handoff.candidate_id
           ? existing
@@ -405,26 +383,25 @@ async function reserveNativePortableCheckPlan(options: {
               branch: currentBranch(options.projectRoot),
             });
       if (
-        local.execution?.status === 'running' ||
-        local.checks.some((check) => check.activeProcess !== null || check.status === 'running')
-      ) {
-        if (
-          local.execution?.stage !== 'checking' ||
-          local.execution.actor !== 'runtime' ||
-          (await inspectNativePortableCheckExecution(local)) !== 'orphaned'
-        )
-          throw new Error('原检查或验收仍在执行；保留原执行，先等待或核对停止结果');
-        local = {
-          ...local,
-          execution: { ...local.execution, status: 'interrupted' },
-          checks: local.checks.map((check) =>
-            check.status === 'planned' || check.status === 'running'
-              ? { ...check, status: 'interrupted', activeProcess: null }
-              : check,
-          ),
+        !options.plans.length &&
+        local.execution !== null &&
+        (local.execution.status === 'completed' || local.execution.stage === 'verifying') &&
+        local.checks.every((check) => check.status !== 'running' && check.activeProcess == null)
+      )
+        return {
+          kind: 'reuse' as const,
+          state,
+          checks: authoritativePortableChecks({
+            local,
+            projectRoot: options.projectRoot,
+            supplied: [],
+          }),
         };
-        await writeNativeLocalExecution(file, local, { containedRoot: options.paths.runtimeDir });
-      }
+      if (
+        local.execution?.status === 'running' ||
+        local.checks.some((check) => check.activeProcess != null || check.status === 'running')
+      )
+        throw new Error('原检查或验收仍在执行；保留原执行，先等待或核对停止结果');
       if (
         !options.retryCheckIds?.length &&
         sameNativeCheckCommands(local, options.plans, options.projectRoot) &&
@@ -483,7 +460,6 @@ async function reserveNativePortableCheckPlan(options: {
       delete record.inputFingerprintGate;
       delete record.candidateInputFingerprintGate;
       delete record.rawInputRef;
-      const ownerIdentity = await readProcessIdentity(process.pid);
       const next: NativeLocalExecutionState = {
         ...record,
         basedOnStateVersion: state.state_version,
@@ -496,8 +472,6 @@ async function reserveNativePortableCheckPlan(options: {
           status: execute.length ? 'running' : 'completed',
           startedAt: new Date().toISOString(),
           requestCheckRounds: 0,
-          ownerPid: process.pid,
-          ...(ownerIdentity ? { ownerIdentity } : {}),
         },
         checks,
       };
@@ -505,6 +479,7 @@ async function reserveNativePortableCheckPlan(options: {
       if (!execute.length)
         return {
           kind: 'reuse' as const,
+          disposition: local.execution === null ? ('executed' as const) : ('reused' as const),
           state,
           checks: authoritativePortableChecks({
             local: next,
@@ -578,7 +553,12 @@ export async function executeNativePortableCheckPlan(options: {
     return true;
   });
   const reservation = await reserveNativePortableCheckPlan({ ...options, plans, projectRoot });
-  if (reservation.kind === 'reuse') return { ...reservation, disposition: 'reused' };
+  if (reservation.kind === 'reuse')
+    return {
+      state: reservation.state,
+      checks: reservation.checks,
+      disposition: reservation.disposition ?? 'reused',
+    };
   const operationId = reservation.local.execution!.operationId;
   const runtimeDir = nativePreferredChangeRuntimeDir(options.paths, reservation.state.name);
   try {
@@ -608,8 +588,7 @@ export async function executeNativePortableCheckPlan(options: {
         runtimeDir,
         operationId,
         plan,
-        onSpawn: async ({ pid }) => {
-          const identity = await readProcessIdentity(pid);
+        onSpawn: async ({ instanceId }) => {
           await updateReservedNativeCheckPlan({
             paths: options.paths,
             state: reservation.state,
@@ -620,7 +599,7 @@ export async function executeNativePortableCheckPlan(options: {
                 check.id === plan.id
                   ? {
                       ...check,
-                      activeProcess: { status: 'running', pid, ...(identity ? { identity } : {}) },
+                      activeProcess: { status: 'running', instanceId },
                     }
                   : check,
               ),
@@ -1036,8 +1015,7 @@ export async function executeReservedVerifierRequestedChecks(options: {
         runtimeDir,
         operationId: options.reservation.local.execution!.operationId,
         plan,
-        onSpawn: async ({ pid }) => {
-          const identity = await readProcessIdentity(pid);
+        onSpawn: async ({ instanceId }) => {
           await updateReservedVerifierRequestedChecks({
             paths: options.paths,
             reservation: options.reservation,
@@ -1049,8 +1027,7 @@ export async function executeReservedVerifierRequestedChecks(options: {
                       ...check,
                       activeProcess: {
                         status: 'running' as const,
-                        pid,
-                        ...(identity ? { identity } : {}),
+                        instanceId,
                       },
                     }
                   : check,

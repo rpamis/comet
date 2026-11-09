@@ -93,10 +93,7 @@ it.each([0, 2])(
     });
     expect(record).toHaveBeenCalledWith(
       {
-        pid: 123456,
-        identity: 'original-identity',
         instanceId: 'original-instance',
-        ownerPid: process.pid,
       },
       true,
     );
@@ -147,14 +144,13 @@ it('waits for supervisor readiness before releasing the registered command', asy
   await expect(operation).resolves.toMatchObject({ status: 'passed', timedOut: false });
 });
 
-it('cancels a pending identity registration immediately when its supervisor errors', async () => {
-  vi.mocked(processIdentity.readProcessIdentity).mockImplementation(() => new Promise(() => {}));
+it('cancels pending supervisor readiness immediately when its supervisor errors', async () => {
   vi.mocked(ownedCommand.spawnOwnedCommand).mockImplementation(() => {
     setImmediate(() => child.emit('error', new Error('IPC failed during registration')));
     return {
       child: child as ReturnType<typeof ownedCommand.spawnOwnedCommand>['child'],
       instanceId: 'original-instance',
-      ready: Promise.resolve(),
+      ready: new Promise(() => {}),
       start: vi.fn(),
     };
   });
@@ -178,31 +174,6 @@ it('never releases a late-ready command after its registration deadline has canc
   await new Promise((resolve) => setImmediate(resolve));
   expect(start).not.toHaveBeenCalled();
 });
-
-it('waits for the POSIX process group to exit after the supervisor closes', async () => {
-  Object.defineProperty(process, 'platform', { ...platform, value: 'darwin' });
-  result = null;
-  const inspect = vi
-    .mocked(processIdentity.inspectProcessTreeLiveness)
-    .mockResolvedValue('dead')
-    .mockResolvedValueOnce('unknown');
-  const record = vi.fn().mockResolvedValue(undefined);
-  await expect(execute(record)).resolves.toMatchObject({ status: 'interrupted', timedOut: true });
-  expect(inspect).toHaveBeenCalledTimes(2);
-  expect(record).toHaveBeenCalledWith(expect.objectContaining({ pid: child.pid }), true);
-});
-
-it.each(['alive', 'unknown'] as const)(
-  'keeps POSIX cleanup unconfirmed when the process group remains %s',
-  async (liveness) => {
-    Object.defineProperty(process, 'platform', { ...platform, value: 'darwin' });
-    result = null;
-    vi.mocked(processIdentity.inspectProcessTreeLiveness).mockResolvedValue(liveness);
-    const record = vi.fn().mockResolvedValue(undefined);
-    await expect(execute(record)).rejects.toBeInstanceOf(NativeCheckTerminationUnconfirmedError);
-    expect(record).toHaveBeenCalledWith(expect.objectContaining({ pid: child.pid }), false);
-  },
-);
 
 it.each(['completed', 'timeout'] as const)(
   'rejects Windows %s when only the leader was stopped',
@@ -241,7 +212,10 @@ it('settles an interrupted check when confirmed Windows cleanup never closes inh
   closes = false;
   const record = vi.fn().mockResolvedValue(undefined);
   await expect(execute(record)).resolves.toMatchObject({ status: 'interrupted', timedOut: true });
-  expect(record).toHaveBeenCalledWith(expect.objectContaining({ pid: child.pid }), true);
+  expect(record).toHaveBeenCalledWith(
+    expect.objectContaining({ instanceId: 'original-instance' }),
+    true,
+  );
 }, 3000);
 
 it('rejects a durable termination receipt failure instead of leaving the result pending', async () => {

@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { classicSdkEvidenceInputHash } from './classic-sdk-application.js';
+import {
+  classicSdkEvidenceInputHash,
+  readClassicAgentCheckReports,
+} from './classic-sdk-application.js';
 import { canReopenClassicVerification } from './classic-sdk-revision-application.js';
 import { inspectClassicSdkRevisionReadiness } from './classic-sdk-revision-readiness.js';
 
@@ -433,6 +436,7 @@ export async function classicSdkBuildGuard(options: {
   argv?: string[];
   checkCwd?: string;
   checkTimeoutMs?: number;
+  checksRef?: string;
   reusable?: boolean;
   sessionId?: string;
 }): Promise<ClassicCommandResult> {
@@ -510,6 +514,27 @@ export async function classicSdkBuildGuard(options: {
     );
   }
   if (!apply) return guardResult(change, 'build', projectRoot, null, undefined, run, guardAttempt);
+  if (run.workflow.version === '2') {
+    if (argv?.length)
+      throw new Error(
+        'Run checks with platform tools and submit --checks; Runtime does not repeat them',
+      );
+    const completed = await completeClassicSdkBuild({
+      projectRoot,
+      change,
+      sessionId: options.sessionId,
+      checksRef: options.checksRef,
+    });
+    return guardResult(
+      change,
+      (completed.state as unknown as ClassicState).phase,
+      projectRoot,
+      null,
+      undefined,
+      completed,
+      guardAttempt,
+    );
+  }
   if (!argv?.length) {
     return guardResult(
       change,
@@ -535,7 +560,7 @@ export async function classicSdkBuildGuard(options: {
     'build',
     {
       projectRoot,
-      argv,
+      argv: argv!,
       cwd,
       timeoutMs: options.checkTimeoutMs,
       reusable: options.reusable,
@@ -594,6 +619,7 @@ export async function classicSdkVerifyGuard(options: {
   argv?: string[];
   checkCwd?: string;
   checkTimeoutMs?: number;
+  checksRef?: string;
   reusable?: boolean;
 }): Promise<ClassicCommandResult> {
   const { projectRoot, invocationCwd, change, reportRef, apply, argv } = options;
@@ -681,7 +707,7 @@ export async function classicSdkVerifyGuard(options: {
     );
   }
   if (!apply) return guardResult(change, 'verify', projectRoot, null, undefined, run, guardAttempt);
-  if (!argv?.length) {
+  if (!argv?.length && run.workflow.version !== '2') {
     return guardResult(
       change,
       'verify',
@@ -692,6 +718,20 @@ export async function classicSdkVerifyGuard(options: {
       guardAttempt,
     );
   }
+  const reports =
+    run.workflow.version === '2' && verifyAction
+      ? await readClassicAgentCheckReports(
+          projectRoot,
+          options.checksRef ??
+            (() => {
+              throw new Error('Classic Verify requires --checks <checks-json-file>');
+            })(),
+        )
+      : {};
+  if (run.workflow.version === '2' && argv?.length)
+    throw new Error(
+      'Run checks with platform tools and submit --checks; Runtime does not repeat them',
+    );
   const context = { requestId: randomUUID(), projectRoot };
   if (verifyAction) {
     const claimToken = randomUUID();
@@ -714,7 +754,7 @@ export async function classicSdkVerifyGuard(options: {
         claimToken,
         outcomeId: randomUUID(),
         status: 'succeeded',
-        output: { event: 'verification-ready', verificationReport: receipt.ref },
+        output: { event: 'verification-ready', verificationReport: receipt.ref, ...reports },
       },
       context,
     });
@@ -723,7 +763,7 @@ export async function classicSdkVerifyGuard(options: {
     (wait) => wait.stepId === `${profile}.verify.report.evidence` && wait.status === 'pending',
   );
   if (pendingReport) {
-    await runtime.recordEvidence({
+    run = await runtime.recordEvidence({
       runId: run.runId,
       expectedRevision: run.revision,
       evidenceId: pendingReport.id,
@@ -734,6 +774,16 @@ export async function classicSdkVerifyGuard(options: {
       context,
     });
   }
+  if (run.workflow.version === '2')
+    return guardResult(
+      change,
+      (run.state as unknown as ClassicState).phase,
+      projectRoot,
+      null,
+      undefined,
+      run,
+      guardAttempt,
+    );
   const cwd = sdkCheckCwd(projectRoot, invocationCwd, options.checkCwd);
   // 检查前仍重新读取；检查返回后只投影刚提交的 Run，不再同步一次状态。
   const {
@@ -746,7 +796,7 @@ export async function classicSdkVerifyGuard(options: {
     'verify',
     {
       projectRoot,
-      argv,
+      argv: argv!,
       cwd,
       timeoutMs: options.checkTimeoutMs,
       reusable: options.reusable,

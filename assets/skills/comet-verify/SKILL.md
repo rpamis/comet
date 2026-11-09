@@ -11,6 +11,12 @@ After entry returns layout, follow the [shared phase entry](../comet-classic/ref
 
 ## SDK Run path
 
+A response with `data.checksMode: agent` identifies a new built-in Run. Execute necessary checks with platform tools, read the actual results, and save a JSON report: `{"checks":[{"name":"command, working directory and check name","result":"passed","note":"actual result and log reference"}]}`. If no check applies, use an empty `checks` array and explain `checksReason`. Report omitted checks as `not-run` with a reason in `note`; resolve failed checks before acceptance. Runtime does not repeat these commands or require ordinary check receipts. Legacy Runs with `checksMode: runtime` and fixed applications retain their original protocol.
+
+For new Runs, review the implementation against every acceptance item and save the report. Submit actual acceptance with `comet guard <change-name> verify --report <report-ref> --apply --checks <checks-json-file>`. If implementation needs repair, report failure through the current Verify Action and return to Build before changing it. Follow the continuation in the same response. Successful verification still waits for the current user archive and delivery decision.
+
+The managed check commands below apply only to legacy Runs with `checksMode: runtime`. Phase preparation, approvals, plans and task completion still apply to new Runs.
+
 Verify owns the single final integration code review for the whole change. Reuse applicable task reviews and inspect the integrated result against all confirmed requirements.
 
 Run the first complete verification through `comet check run <change-name> verify --report <report-ref> --local -- <program> [args...]` as described in SDK execution methods. Declare the final report path first, inspect the real receipt, finish acceptance, and write the report without first running the same command separately. Omit `--local` for external-state or nonrepeatable checks. Submit Guard afterward; this first check does not advance the phase.

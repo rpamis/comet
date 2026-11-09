@@ -29,6 +29,18 @@ import * as processTermination from '../../../platform/process/terminate-process
 import { createOpenSpecArchiveFixture } from '../../helpers/classic-openspec-fixture.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
+// These cases preserve the original v1 managed-check protocol; new default Runs are covered separately.
+vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
+    >();
+  return {
+    ...actual,
+    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
+  };
+});
+
 const roots: string[] = [];
 // Windows full 生命周期包含多轮归档与真实进程树核对，使用有界预算保留完整断言。
 const fullLifecycleTimeout = process.platform === 'win32' ? 180_000 : undefined;
@@ -392,7 +404,7 @@ async function fixture(
     const separator = args.indexOf('--');
     args.splice(separator < 0 ? args.length : separator, 0, '--json');
     const result =
-      entry === 'source'
+      entry === 'source' || (args[0] === 'state' && args[1] === 'init')
         ? await runClassicCli(args, undefined, { invocationCwd: projectRoot })
         : await new Promise<{ exitCode: number; stdout: string; stderr: string }>(
             (resolve, reject) => {

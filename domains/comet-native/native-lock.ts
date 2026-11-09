@@ -119,6 +119,12 @@ export async function diagnoseNativeLock(file: string): Promise<NativeLockDiagno
   };
 }
 export async function inspectNativeLockRecovery(file: string): Promise<NativeLockRecovery> {
+  const stat = await fs.lstat(file).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (stat && !stat.isFile())
+    return { file, status: 'malformed', owner: null, identity: null, token: null };
   const diagnosis = await diagnoseRecoverableFileLock(file);
   let record: Awaited<ReturnType<typeof snapshot>> = null;
   try {
@@ -154,7 +160,7 @@ export async function inspectNativeProjectLocks(
   });
   files.push(
     ...old
-      .filter((name) => name.endsWith('.claim'))
+      .filter((name) => name.endsWith('.claim') && name !== '.protocol-v2.claim')
       .map((name) => ({ file: path.join(coordinator, name), kind: 'coordinator' as 'lock' })),
   );
   const result: NativeLockRecovery[] = [];
@@ -194,8 +200,12 @@ export async function withNativeLockRecovery<T>(
     if (held?.has(key)) return enter(index + 1);
     return withRecoverableFileLock(
       path.join(key, '.recovery.lock'),
-      () => recovery.run(new Set([...(held ?? []), key]), () => enter(index + 1)),
-      { operation },
+      () =>
+        recovery.run(new Set([...(held ?? []), key]), async () => {
+          await prepareLockProtocol(entry);
+          return enter(index + 1);
+        }),
+      { operation, timeoutMs: 5000 },
     );
   };
   return enter(0);
@@ -204,13 +214,49 @@ export async function acquireNativeLock(
   paths: NativeProjectPaths,
   name: string,
   operation: string,
+  options: { timeoutMs?: number } = {},
+): Promise<NativeLock> {
+  return withNativeLockRecovery([paths], operation, () =>
+    acquireNativeOperationLock(paths, name, operation, options.timeoutMs),
+  );
+}
+
+async function prepareLockProtocol(paths: Paths): Promise<void> {
+  const directory = await resolveContainedNativePath(
+    paths.runtimeDir,
+    path.join(paths.locksDir, '.coordinator'),
+  );
+  await fs.mkdir(directory, { recursive: true });
+  const marker = '.protocol-v2.claim';
+  const legacyClaims = async () =>
+    (await fs.readdir(directory)).filter((name) => name.endsWith('.claim') && name !== marker);
+  if ((await legacyClaims()).length)
+    throw new Error('Legacy Native lock operations require confirmed recovery before upgrading');
+  try {
+    await fs.writeFile(
+      path.join(directory, marker),
+      JSON.stringify({ schema: 'comet.native.lock.v2' }),
+      { flag: 'wx' },
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
+  if ((await legacyClaims()).length)
+    throw new Error('Legacy Native lock operations changed during protocol upgrade');
+}
+
+async function acquireNativeOperationLock(
+  paths: NativeProjectPaths,
+  name: string,
+  operation: string,
+  timeoutMs = 0,
 ): Promise<NativeLock> {
   if (!/^[a-z][a-z0-9-]*$/u.test(name)) throw new Error('Invalid Native lock name: ' + name);
   const locksDir = await resolveContainedNativePath(paths.runtimeDir, paths.locksDir);
   const file = path.join(locksDir, name + '.lock');
   let handle: Awaited<ReturnType<typeof acquireRecoverableFileLock>>;
   try {
-    handle = await acquireRecoverableFileLock(file, { timeoutMs: 0, operation });
+    handle = await acquireRecoverableFileLock(file, { timeoutMs, operation });
   } catch (error) {
     if (/Timed out waiting for file lock/u.test(String(error)))
       throw new NativeLockBusyError(file, await readNativeLock(file), error);
@@ -234,7 +280,7 @@ export async function releaseNativeLock(lock: NativeLock): Promise<void> {
     throw new Error('Native lock handle is not active');
   }
   try {
-    await handle.release();
+    if (!(await handle.release())) throw new Error('Native lock ownership changed');
   } finally {
     handles.delete(lock);
   }
@@ -249,13 +295,15 @@ export async function takeOverNativeStaleLock(
   paths: NativeProjectPaths,
   file: string,
   expected?: NativeLockDiagnosis,
-  _options: NativeLockTakeoverOptions = {},
+  options: NativeLockTakeoverOptions = {},
 ): Promise<NativeStaleLockTakeover> {
   const contained = await resolveContainedNativePath(paths.runtimeDir, file);
   if (path.resolve(path.dirname(contained)) !== path.resolve(paths.locksDir))
-    throw new Error('Native lock recovery target is outside its directory');
+    throw new Error('Native lock recovery target is outside the lock directory');
   const current = await diagnoseNativeLock(contained);
   if (current.status === 'missing') return { status: 'missing' };
+  if (current.status === 'unknown' && !options.allowAgedUnknown)
+    return { status: 'changed', diagnosis: current };
   if (current.status === 'active' || (expected && expected.owner?.id !== current.owner?.id))
     return { status: 'changed', diagnosis: current };
   const record = await diagnoseRecoverableFileLock(contained);

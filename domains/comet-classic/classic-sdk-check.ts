@@ -3,7 +3,6 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { samePath } from '../../platform/paths/git-worktree.js';
 import { spawnOwnedCommand } from '../../platform/process/owned-command.js';
-import { inspectProcessTreeLiveness } from '../../platform/process/process-identity.js';
 import { reportCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
 import { observeRuntimeOperation } from '../../platform/process/runtime-performance.js';
 import { terminateProcessTreeConfirmed } from '../../platform/process/terminate-process-tree.js';
@@ -166,17 +165,6 @@ async function runCommand(
       }),
     ]);
     clearTimeout(closeTimer);
-    // SIGKILL 成功只证明信号已发出；等待残留进程不再具备写入能力。
-    const deadline = Date.now() + 2000;
-    while (stopConfirmed && child.pid) {
-      const liveness = await inspectProcessTreeLiveness(child.pid).catch(() => 'unknown' as const);
-      if (liveness === 'dead') break;
-      if (Date.now() >= deadline) {
-        stopConfirmed = false;
-        break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
   }
   if (!stopConfirmed) {
     child.stdout.destroy();

@@ -10,6 +10,7 @@ import {
 } from '../engine/runtime.js';
 import {
   defineClassicWorkflowApplication,
+  defineClassicAgentWorkflowApplication,
   type ClassicWorkflowApplication,
 } from './classic-sdk-application.js';
 import { assertClassicArchiveRetryable } from './classic-sdk-archive-manifest.js';
@@ -348,8 +349,12 @@ export function classicSdkRevisionApplication(
   workContinuation = true,
   sourceRun?: Readonly<WorkflowRun>,
   checkRefresh = true,
+  agentChecks = false,
 ) {
-  const base = defineClassicWorkflowApplication(profile);
+  if (agentChecks) checkRefresh = false;
+  const base = agentChecks
+    ? defineClassicAgentWorkflowApplication(profile)
+    : defineClassicWorkflowApplication(profile);
   const continuationValidator: RuntimeCommandValidator = {
     ...workContinuationValidator,
     async validate(context) {
@@ -372,7 +377,10 @@ export function classicSdkRevisionApplication(
   };
   const fullOpen =
     archiveRepair && verification === 'full' && profile !== 'full'
-      ? defineClassicWorkflowApplication('full').workflow
+      ? (agentChecks
+          ? defineClassicAgentWorkflowApplication('full')
+          : defineClassicWorkflowApplication('full')
+        ).workflow
       : null;
   return {
     ...base,
@@ -585,7 +593,13 @@ export function classicSdkApplicationForRun(
           (run!.state as unknown as ClassicState).workflow,
         ) as T)
       : application;
-  const base = configured({ ...defineClassicWorkflowApplication(profile), commandValidators: [] });
+  const agentChecks = run?.workflow.version === '2';
+  const base = configured({
+    ...(agentChecks
+      ? defineClassicAgentWorkflowApplication(profile)
+      : defineClassicWorkflowApplication(profile)),
+    commandValidators: [],
+  });
   // 正常 Run 精确匹配原定义后直接返回；旧定义仍按下方完整兼容路径识别。
   if (!run || run.workflow.hash === hashRuntimeValue(defineWorkflow(base.workflow))) return base;
   const withoutCheckRefresh = <T extends { workflow: DefineWorkflowOptions }>(application: T) => {
@@ -602,6 +616,12 @@ export function classicSdkApplicationForRun(
       classicSdkRevisionApplication(
         profile,
         effective === 'full' && profile !== 'full' ? 'full' : true,
+        true,
+        true,
+        true,
+        undefined,
+        !agentChecks,
+        agentChecks,
       ),
       effective,
     ),
@@ -647,6 +667,9 @@ export function classicSdkApplicationForRun(
               archiveRepair,
               buildContinuation,
               workContinuation,
+              undefined,
+              !agentChecks,
+              agentChecks,
             ),
           );
           if (run?.workflow.hash === hashRuntimeValue(defineWorkflow(application.workflow)))

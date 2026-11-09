@@ -31,6 +31,18 @@ import { classicSdkFormalSourceEvidence } from '../../../domains/comet-classic/c
 import { classicSdkPresetSourceEvidence } from '../../../domains/comet-classic/classic-formal-source-evidence.js';
 import { assertClassicPresetRequirementsCurrent } from '../../../domains/comet-classic/classic-sdk-application.js';
 
+// Preserve the original v1 managed-check contract; default v2 Runs have separate public CLI coverage.
+vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
+    >();
+  return {
+    ...actual,
+    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
+  };
+});
+
 const roots: string[] = [];
 afterEach(async () => {
   vi.unstubAllEnvs();

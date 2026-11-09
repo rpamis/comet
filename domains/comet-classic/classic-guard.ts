@@ -966,6 +966,20 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
       const sdkWorkspace =
         localOwner?.format === 'compat' ? null : await findClassicSdkWorkspace(projectRoot, change);
       if (sdkWorkspace) {
+        let checksRef: string | undefined;
+        const checksIndex = args.indexOf('--checks');
+        const checksSeparator = args.indexOf('--');
+        if (checksIndex >= 0 && (checksSeparator < 0 || checksIndex < checksSeparator)) {
+          checksRef = args[checksIndex + 1];
+          if (
+            !['build', 'verify'].includes(phase) ||
+            !checksRef ||
+            checksRef.startsWith('--') ||
+            sdkWorkspace.run.workflow.version !== '2'
+          )
+            throw new GuardFailure('--checks requires a new built-in Classic Build or Verify');
+          args = args.filter((_, index) => index !== checksIndex && index !== checksIndex + 1);
+        }
         const sessionIndex = args.indexOf('--session');
         const sessionSeparator = args.indexOf('--');
         let sessionId: string | undefined;
@@ -1060,7 +1074,7 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
           let argv = separator === 3 ? args.slice(separator + 1) : undefined;
           let checkCwd: string | undefined = requestedCheckCwd;
           let checkTimeoutMs: number | undefined = requestedCheckTimeoutMs;
-          if (apply && !argv) {
+          if (apply && !argv && sdkWorkspace.run.workflow.version !== '2') {
             const pendingReceipt = sdkWorkspace.run.evidenceWaits?.some(
               (wait) =>
                 wait.stepId === `${sdkWorkspace.state.workflow}.build.check.evidence` &&
@@ -1100,6 +1114,7 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
             apply,
             reusable,
             sessionId,
+            checksRef,
             ...(argv ? { argv } : {}),
             ...(checkCwd ? { checkCwd } : {}),
             ...(checkTimeoutMs === undefined ? {} : { checkTimeoutMs }),
@@ -1122,7 +1137,7 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
           let argv = separator === 5 ? args.slice(separator + 1) : undefined;
           let checkCwd: string | undefined = requestedCheckCwd;
           let checkTimeoutMs: number | undefined = requestedCheckTimeoutMs;
-          if (apply && !argv) {
+          if (apply && !argv && sdkWorkspace.run.workflow.version !== '2') {
             const pendingReceipt = sdkWorkspace.run.evidenceWaits?.some(
               (wait) =>
                 wait.stepId === `${sdkWorkspace.state.workflow}.verify.check.evidence` &&
@@ -1159,6 +1174,7 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
             reportRef: args[3],
             apply,
             reusable,
+            checksRef,
             ...(argv ? { argv } : {}),
             ...(checkCwd ? { checkCwd } : {}),
             ...(checkTimeoutMs === undefined ? {} : { checkTimeoutMs }),

@@ -635,10 +635,15 @@ export function classicSdkContinuation(
       requiredInputs = ['plan-ref: 引用当前 Design Doc 和 task IDs 的真实计划'];
       preparation = '先完成当前计划；仅用户明确要求计划完成后暂停时添加 --pause。';
     } else if (action.stepId.endsWith('.build.execute')) {
-      commandArgs = command('complete-build');
+      commandArgs = command(
+        'complete-build',
+        ...(run.workflow.version === '2' ? ['--checks', '<checks-json-file>'] : []),
+      );
       requiredInputs = ['当前计划任务的真实实现、必要审查和 tasks.md 完成记录'];
       preparation =
-        '先完成实现与任务验收，只补尚未完成任务的完成记录；已有稳定 ID 且已 completed 的任务不得重复 task-complete。缺少 ID 时先读取或补齐，不猜测或使用 None。再提交 Build 完成；后续检查仍由 Runtime 核对，有效收据可复用。';
+        run.workflow.version === '2'
+          ? '完成实现、任务记录和必要审查，在平台执行检查，将实际 checks 报告保存到 JSON 后提交。空检查列表必须填写 checksReason。'
+          : '先完成实现与任务验收，只补尚未完成任务的完成记录；已有稳定 ID 且已 completed 的任务不得重复 task-complete。缺少 ID 时先读取或补齐，不猜测或使用 None。再提交 Build 完成；后续检查仍由 Runtime 核对，有效收据可复用。';
     } else if (action.stepId.endsWith('.verify.run')) {
       const priorCheck = inheritedCheck(run);
       commandArgs = [
@@ -658,7 +663,28 @@ export function classicSdkContinuation(
         'report-ref: 真实验证与独立审查报告',
         ...(priorCheck ? [] : ['program 与 args: 当前完整验证命令']),
       ];
-      preparation = '先完成独立验证并保存真实报告；Guard 会预检报告、执行检查并绑定收据。';
+      if (run.workflow.version === '2') {
+        commandArgs = [
+          'comet',
+          'guard',
+          change,
+          'verify',
+          '--report',
+          '<report-ref>',
+          '--apply',
+          '--checks',
+          '<checks-json-file>',
+          '--json',
+        ];
+        requiredInputs = [
+          'report-ref: 当前真实验收报告',
+          'checks-json-file: 平台执行的 checks 报告；未执行时说明原因',
+        ];
+      }
+      preparation =
+        run.workflow.version === '2'
+          ? '在平台执行必要检查，保存实际报告与检查结果。Guard 提交当前验收，不重复执行命令。'
+          : '先完成独立验证并保存真实报告；Guard 会预检报告、执行检查并绑定收据。';
     } else if (action.stepId.endsWith('.archive.prepare')) {
       commandArgs = command('propose-archive', '--summary', '<delivery-summary>');
       requiredInputs = [
@@ -744,6 +770,7 @@ export async function classicSdkEntryData(
   const base = {
     change,
     runtimeFormat: 'sdk' as const,
+    checksMode: run.workflow.version === '2' ? ('agent' as const) : ('runtime' as const),
     phase: state.phase,
     nextAction:
       observation.openApprovalHash &&

@@ -637,9 +637,18 @@ export async function inspectNativeUnownedHookTargets(
   if (request.intent !== 'write' || request.targets.length === 0) return null;
   const config = await readHookProjectConfig(projectRoot);
   if (!config || !(config.workflows ?? [config.default_workflow]).includes('native')) return null;
+  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root, {
+    readOnly: true,
+  });
+  if (
+    request.targets.every(
+      (target) =>
+        !nativeUnownedTargetDecision(projectRoot, paths, path.resolve(projectRoot, target)),
+    )
+  )
+    return null;
   const context = await activeNativeContext(projectRoot);
   if (!context) return null;
-  const paths = context.paths;
   const registeredChanges = new Set(context.changes.map(({ state }) => state.name));
   const decisions: NativeHookGuardResult[] = [];
   for (const targetPath of request.targets) {

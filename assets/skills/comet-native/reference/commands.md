@@ -1,5 +1,7 @@
 # Native command and execution reference
 
+Runtime no longer uses PID, process creation identity or thread binding to decide recovery. Process exit releases the local transaction lock; retire legacy lock metadata once after confirming the original operation stopped. Preserve the original Run, actual results and logs after interruption. For unknown outcomes, inspect side effects and explicitly confirm stopping before reconciling the original Action. Do not kill historical PIDs or automatically replay commands. Removing PID eliminates that recovery dependency; partially completed Git or file operations still require reconciliation.
+
 Read only the sections needed for the current operation. Supervisor coordination, memory integration, and exception handling each have their own triggers.
 
 ## SDK Run

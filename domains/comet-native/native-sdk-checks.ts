@@ -122,7 +122,7 @@ interface NativeSdkCheckResult {
 interface NativeSdkCheckInterruption {
   kind: 'execution-unknown' | 'completed-input-drift';
   stoppedAction: Omit<RuntimeStoppedAction, 'claimToken'>;
-  processBoundary: 'process-group' | 'supervisor-process' | 'unknown';
+  processBoundary: 'process-group' | 'supervisor-process' | 'command' | 'unknown';
   candidateId: string;
   plansHash: string;
   executionHash: string | null;
@@ -936,6 +936,7 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
           runtimeDir,
           operationId,
           plan,
+          signal: registration.signal,
           onSpawn: ({ signal, ...instance }) => registration.register(plan.id, instance, signal),
           onTerminated: (instance, confirmed) =>
             registration.recordTermination(instance, confirmed),
@@ -980,6 +981,8 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
         isNativeCheckTerminationUnconfirmedError(error);
       await registration.save();
       throw error;
+    } finally {
+      await registration.release();
     }
   },
 };
@@ -1176,7 +1179,7 @@ async function validateInterruptedCheckOutcome(
     item.execution &&
     interruption.kind === 'execution-unknown' &&
     !item.execution.outcome &&
-    (item.owner === 'dead' || item.phase === 'interrupted') &&
+    (item.owner === 'stopped' || item.phase === 'interrupted') &&
     item.execution.candidateId === candidateId &&
     item.execution.plansHash === interruption.plansHash &&
     interruption.executionHash === hashRuntimeValue(item.execution as unknown as RuntimeValue) &&
@@ -1598,7 +1601,7 @@ export async function recoverNativeSdkChecks(
         (item.quiescent &&
           item.execution &&
           !item.execution.outcome &&
-          (item.owner === 'dead' || item.phase === 'interrupted')))
+          (item.owner === 'stopped' || item.phase === 'interrupted')))
     ) {
       assertStoppedAction(action, stoppedActions[0]);
       await requestNativeSdkCheckStop({ projectRoot, run, action });
@@ -1651,7 +1654,7 @@ export async function recoverNativeSdkChecks(
       });
       continue;
     }
-    if (action.status === 'running' && item.owner !== 'alive') {
+    if (action.status === 'running' && item.owner !== 'active') {
       run = await runtime.markUnknown({
         runId: run.runId,
         expectedRevision: run.revision,

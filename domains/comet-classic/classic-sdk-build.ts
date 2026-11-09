@@ -1,3 +1,4 @@
+import { readClassicAgentCheckReports } from './classic-sdk-application.js';
 import { randomUUID } from 'node:crypto';
 import { classicSdkEvidenceInputHash } from './classic-sdk-application.js';
 
@@ -406,6 +407,7 @@ export async function completeClassicSdkBuild(options: {
   projectRoot: string;
   change: string;
   sessionId?: string;
+  checksRef?: string;
 }): Promise<WorkflowRun> {
   const { projectRoot, change } = options;
   const { run, state, runtime, profile } = await inspectClassicSdkRun(projectRoot, change);
@@ -434,6 +436,16 @@ export async function completeClassicSdkBuild(options: {
     (!options.sessionId.trim() || options.sessionId.includes('\0'))
   )
     throw new Error('Classic Builder session must be a nonempty execution reference');
+  const reports =
+    run.workflow.version === '2'
+      ? await readClassicAgentCheckReports(
+          projectRoot,
+          options.checksRef ??
+            (() => {
+              throw new Error('Classic Build requires --checks <checks-json-file>');
+            })(),
+        )
+      : {};
   const claimToken = randomUUID();
   const claimed = await runtime.claim({
     runId: run.runId,
@@ -455,7 +467,7 @@ export async function completeClassicSdkBuild(options: {
       claimToken,
       outcomeId: randomUUID(),
       status: 'succeeded',
-      output: { event: 'build-complete' },
+      output: { event: 'build-complete', ...reports },
     },
     context: { requestId: randomUUID(), projectRoot },
   });

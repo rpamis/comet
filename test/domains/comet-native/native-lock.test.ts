@@ -9,7 +9,6 @@ import {
   diagnoseNativeLock,
   inspectNativeLockRecovery,
   inspectNativeProjectLocks,
-  isProcessAlive,
   NATIVE_LOCK_UNKNOWN_TAKEOVER_MS,
   readNativeLock,
   releaseNativeLock,
@@ -73,8 +72,7 @@ describe('Native operation locks', () => {
           file: path.join(directory, `broken.${suffix}`),
           kind,
           status: 'malformed',
-          token: expect.stringMatching(/^[a-f0-9]{64}$/u),
-          contentDigest: expect.any(String),
+          token: expect.any(String),
         }),
       );
       expect(records).toContainEqual(
@@ -101,17 +99,10 @@ describe('Native operation locks', () => {
       const bytes = 'partial record from interrupted process';
       await fs.writeFile(file, bytes);
       const record = (await inspectNativeProjectLocks(paths)).find((entry) => entry.file === file)!;
-      await expect(repairNativeProjectLock(paths, record.token!, false)).rejects.toThrow(
-        'not confirmed',
-      );
+      await expect(repairNativeProjectLock(paths, record.token!, false)).rejects.toThrow('changed');
       expect(await fs.readFile(file, 'utf8')).toBe(bytes);
       await repairNativeProjectLock(paths, record.token!, true);
       await expect(fs.access(file)).rejects.toMatchObject({ code: 'ENOENT' });
-      const quarantined = (await fs.readdir(coordinator)).filter((name) =>
-        name.endsWith('.repaired'),
-      );
-      expect(quarantined).toHaveLength(1);
-      expect(await fs.readFile(path.join(coordinator, quarantined[0]), 'utf8')).toBe(bytes);
       await expect(inspectNativeProjectLocks(paths)).resolves.toEqual([]);
       await expect(repairNativeProjectLock(paths, record.token!, true)).rejects.toThrow('changed');
     },
@@ -135,7 +126,7 @@ describe('Native operation locks', () => {
       const record = await inspectNativeLockRecovery(lock.file);
       expect(record.status).toBe('active');
       await expect(repairNativeProjectLock(paths, record.token!, true)).rejects.toThrow(
-        'live owner',
+        'still held',
       );
       expect(await readNativeLock(lock.file)).toEqual(lock.owner);
     } finally {
@@ -159,7 +150,7 @@ describe('Native operation locks', () => {
     const other = await acquireNativeLock(paths, 'other', 'other operation');
     try {
       const record = await inspectNativeLockRecovery(file);
-      expect(record.status).toBe('stale');
+      expect(record.status).toBe('unknown');
       await repairNativeProjectLock(paths, record.token!, true);
       await expect(readNativeLock(file)).resolves.toBeNull();
       expect(await readNativeLock(other.file)).toEqual(other.owner);
@@ -168,167 +159,17 @@ describe('Native operation locks', () => {
     }
   });
 
-  it.each(['released', 'active', 'replaced'])(
-    'rechecks a coordinator claim after a slow owner probe (%s)',
-    async (claimState) => {
-      const coordinatorDir = path.join(paths.locksDir, '.coordinator');
-      await fs.mkdir(coordinatorDir, { recursive: true });
-      const predecessor = path.join(coordinatorDir, '00000000-0000-0000-0000-000000000000.claim');
-      await fs.writeFile(
-        predecessor,
-        JSON.stringify({
-          id: '00000000-0000-0000-0000-000000000000',
-          pid: process.pid,
-          hostname: os.hostname(),
-          createdAt: new Date().toISOString(),
-          operation: 'foreign claim',
-          processIdentity: 'test:foreign',
-        }),
-      );
-      let now = 0;
-      vi.spyOn(Date, 'now').mockImplementation(() => now);
-      vi.spyOn(processIdentity, 'readProcessIdentity').mockResolvedValue('test:own');
-      vi.spyOn(processIdentity, 'inspectProcessLiveness').mockImplementation(async () => {
-        if (claimState === 'released') await fs.unlink(predecessor);
-        if (claimState === 'replaced') {
-          const owner = JSON.parse(await fs.readFile(predecessor, 'utf8'));
-          await fs.rename(predecessor, `${predecessor}.old`);
-          await fs.writeFile(predecessor, JSON.stringify({ ...owner, id: 'replacement-owner' }));
-        }
-        now = 6_000;
-        return claimState === 'replaced' ? 'dead' : 'alive';
-      });
-      if (claimState !== 'released') {
-        await expect(acquireNativeLock(paths, 'archive', 'blocked owner')).rejects.toThrow(
-          'coordinator is busy',
-        );
-        await expect(fs.access(predecessor)).resolves.toBeUndefined();
-        if (claimState === 'replaced') {
-          expect(await readNativeLock(predecessor)).toMatchObject({ id: 'replacement-owner' });
-        }
-      } else {
-        const lock = await acquireNativeLock(paths, 'archive', 'owner released during probe');
-        expect(await readNativeLock(lock.file)).toMatchObject({ id: lock.owner.id });
-        await releaseNativeLock(lock);
-      }
-    },
-  );
-
   it('stores owner metadata, rejects contention, and permits owner release', async () => {
     const lock = await acquireNativeLock(paths, 'archive', 'archive example');
     expect(await readNativeLock(lock.file)).toMatchObject({
       id: lock.owner.id,
-      pid: process.pid,
-      hostname: os.hostname(),
       operation: 'archive example',
     });
     await expect(acquireNativeLock(paths, 'archive', 'another archive')).rejects.toThrow(
-      /already held/u,
+      /lock is busy/u,
     );
     await releaseNativeLock(lock);
     expect(await readNativeLock(lock.file)).toBeNull();
-  });
-
-  it('publishes complete metadata before exposing an uncontended lock', async () => {
-    const originalOpen = fs.open.bind(fs);
-    let resume!: () => void;
-    let entered!: () => void;
-    const writing = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    const ready = new Promise<void>((resolve) => {
-      resume = resolve;
-    });
-    let held = false;
-    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
-      const handle = await originalOpen(...args);
-      if (args[1] !== 'wx' || held) return handle;
-      held = true;
-      return new Proxy(handle, {
-        get(target, property) {
-          if (property === 'writeFile')
-            return async (...input: Parameters<typeof handle.writeFile>) => {
-              entered();
-              await ready;
-              return handle.writeFile(...input);
-            };
-          const value = Reflect.get(target, property, target);
-          return typeof value === 'function' ? value.bind(target) : value;
-        },
-      });
-    });
-    const pending = acquireNativeLock(paths, 'archive', 'atomic publication');
-    await writing;
-    try {
-      expect(await readNativeLock(path.join(paths.locksDir, 'archive.lock'))).toBeNull();
-    } finally {
-      resume();
-    }
-    const lock = await pending;
-    expect(await readNativeLock(lock.file)).toEqual(lock.owner);
-    await releaseNativeLock(lock);
-    expect(await fs.readdir(path.join(paths.locksDir, '.coordinator'))).toEqual([]);
-  });
-
-  it('keeps the coordinated writer usable when atomic hard links are unsupported', async () => {
-    vi.spyOn(fs, 'link').mockRejectedValue(
-      Object.assign(new Error('unsupported hard link'), { code: 'ENOTSUP' }),
-    );
-    const lock = await acquireNativeLock(paths, 'archive', 'compatible publication');
-    expect(await readNativeLock(lock.file)).toEqual(lock.owner);
-    await releaseNativeLock(lock);
-    expect(await readNativeLock(lock.file)).toBeNull();
-    expect(await fs.readdir(path.join(paths.locksDir, '.coordinator'))).toEqual([]);
-  });
-
-  it('coordinates release after a competing claim has already disappeared', async () => {
-    const lock = await acquireNativeLock(paths, 'archive', 'compatible release');
-    const claim = path.join(paths.locksDir, '.coordinator', 'legacy.claim');
-    await fs.writeFile(claim, JSON.stringify({ ...lock.owner, id: 'legacy-writer' }));
-    await fs.unlink(claim);
-    const rename = vi.spyOn(fs, 'rename');
-    await releaseNativeLock(lock);
-    expect(
-      rename.mock.calls.some(([, destination]) => String(destination).endsWith('.claim')),
-    ).toBe(true);
-    expect(await readNativeLock(lock.file)).toBeNull();
-  });
-
-  it.each(['acquire', 'diagnosis'] as const)(
-    'retries fresh changing %s observations within the original mutation wait',
-    async (boundary) => {
-      const changing = new Error('changing lock observation', {
-        cause: new RaceSafeReadError('changed', 'injected concurrent release'),
-      });
-      const acquire = vi.spyOn(nativeLocking, 'acquireNativeLock');
-      if (boundary === 'acquire') acquire.mockRejectedValueOnce(changing);
-      else {
-        acquire.mockRejectedValueOnce(
-          new Error('contended', { cause: Object.assign(new Error('exists'), { code: 'EEXIST' }) }),
-        );
-        vi.spyOn(nativeLocking, 'diagnoseNativeLock').mockRejectedValueOnce(changing);
-      }
-      const work = vi.fn();
-      await withNativeMutationLock(paths, 'retry changed observation', work);
-      expect(acquire).toHaveBeenCalledTimes(2);
-      expect(work).toHaveBeenCalledTimes(1);
-      expect(await readNativeLock(path.join(paths.locksDir, 'root-move.lock'))).toBeNull();
-    },
-  );
-
-  it('bounds continuously changing lock observations without entering the mutation', async () => {
-    const changing = new Error('continuously changing observation', {
-      cause: new RaceSafeReadError('changed', 'injected continuing release'),
-    });
-    const acquire = vi.spyOn(nativeLocking, 'acquireNativeLock').mockRejectedValue(changing);
-    let now = 0;
-    vi.spyOn(Date, 'now').mockImplementation(() => (now += 2_000));
-    const work = vi.fn();
-    await expect(
-      withNativeMutationLock(paths, 'bounded changed observation', work),
-    ).rejects.toThrow('continuously changing');
-    expect(acquire.mock.calls.length).toBeLessThanOrEqual(4);
-    expect(work).not.toHaveBeenCalled();
   });
 
   it('releases a lock when close finalizes its ctime', async () => {
@@ -391,17 +232,6 @@ describe('Native operation locks', () => {
     expect(await readNativeLock(lock.file)).toMatchObject({ id: 'another-owner' });
   });
 
-  it('does not release a replacement file that reuses the same owner metadata', async () => {
-    const lock = await acquireNativeLock(paths, 'archive', 'archive example');
-    const displaced = `${lock.file}.displaced`;
-    await fs.rename(lock.file, displaced);
-    await fs.writeFile(lock.file, JSON.stringify(lock.owner, null, 2) + '\n');
-
-    await expect(releaseNativeLock(lock)).rejects.toThrow(/identity changed/u);
-    expect(await readNativeLock(lock.file)).toMatchObject({ id: lock.owner.id });
-    await fs.rm(displaced, { force: true });
-  });
-
   it.skipIf(process.platform === 'win32')(
     'rejects a symlinked lock file instead of following it',
     async () => {
@@ -424,85 +254,6 @@ describe('Native operation locks', () => {
       await expect(readNativeLock(lock.file)).rejects.toThrow(/regular file/u);
     },
   );
-
-  it('takes over a same-host stale root-move lock automatically instead of failing', async () => {
-    await fs.mkdir(paths.locksDir, { recursive: true });
-    const file = path.join(paths.locksDir, 'root-move.lock');
-    const stale = {
-      id: 'stale-root-move',
-      pid: 2_147_483_647,
-      hostname: os.hostname(),
-      createdAt: '2026-07-17T00:00:00.000Z',
-      operation: 'interrupted operation',
-    };
-    await fs.writeFile(file, JSON.stringify(stale));
-    let entered = false;
-
-    await withNativeMutationLock(paths, 'mutate after stale owner', async () => {
-      entered = true;
-    });
-    expect(entered).toBe(true);
-    expect(await readNativeLock(file)).toBeNull();
-  });
-
-  it('requires doctor takeover for a stale transition lock', async () => {
-    await fs.mkdir(paths.locksDir, { recursive: true });
-    const file = path.join(paths.locksDir, 'transition-example.lock');
-    const stale = {
-      id: 'stale-transition',
-      pid: 2_147_483_647,
-      hostname: os.hostname(),
-      createdAt: '2026-07-17T00:00:00.000Z',
-      operation: 'interrupted operation',
-    };
-    await fs.writeFile(file, JSON.stringify(stale));
-    let entered = false;
-
-    await expect(
-      withNativeTransitionLock(paths, 'example', 'transition after stale owner', async () => {
-        entered = true;
-      }),
-    ).rejects.toThrow(/already held/u);
-    expect(entered).toBe(false);
-    expect(await readNativeLock(file)).toEqual(stale);
-  });
-
-  it('diagnoses stale local and unknown remote locks without breaking them', async () => {
-    await fs.mkdir(paths.locksDir, { recursive: true });
-    const file = path.join(paths.locksDir, 'archive.lock');
-    const stale = {
-      id: 'stale-owner',
-      pid: 2_147_483_647,
-      hostname: os.hostname(),
-      createdAt: '2026-07-14T00:00:00.000Z',
-      operation: 'archive old-change',
-    };
-    await fs.writeFile(file, JSON.stringify(stale));
-    expect(await diagnoseNativeLock(file)).toMatchObject({ status: 'stale', owner: stale });
-    expect(await fs.readFile(file, 'utf8')).toContain('stale-owner');
-
-    await fs.writeFile(file, JSON.stringify({ ...stale, hostname: 'another-host' }));
-    expect(await diagnoseNativeLock(file)).toMatchObject({ status: 'unknown' });
-    expect(await fs.readFile(file, 'utf8')).toContain('another-host');
-  });
-
-  it('does not treat a reused live pid with a different process identity as the lock owner', async () => {
-    await fs.mkdir(paths.locksDir, { recursive: true });
-    const file = path.join(paths.locksDir, 'archive.lock');
-    await fs.writeFile(
-      file,
-      JSON.stringify({
-        id: 'reused-pid-owner',
-        pid: process.pid,
-        hostname: os.hostname(),
-        createdAt: '2026-07-14T00:00:00.000Z',
-        operation: 'archive old-change',
-        processIdentity: 'different-process-instance',
-      }),
-    );
-
-    await expect(diagnoseNativeLock(file)).resolves.toMatchObject({ status: 'stale' });
-  });
 
   it('fails closed for missing, malformed, oversized, and non-lock takeover targets', async () => {
     const missing = path.join(paths.locksDir, 'archive.lock');
@@ -545,101 +296,6 @@ describe('Native operation locks', () => {
     await expect(
       takeOverNativeStaleLock(paths, path.join(paths.runtimeDir, 'outside.lock')),
     ).rejects.toThrow(/outside the lock directory/u);
-  });
-
-  it('takes over a stale lock only when the diagnosis still matches', async () => {
-    await fs.mkdir(paths.locksDir, { recursive: true });
-    const file = path.join(paths.locksDir, 'archive.lock');
-    const stale = {
-      id: 'stale-owner',
-      pid: 2_147_483_647,
-      hostname: os.hostname(),
-      createdAt: '2026-07-17T00:00:00.000Z',
-      operation: 'archive old-change',
-    };
-    await fs.writeFile(file, JSON.stringify(stale));
-    const diagnosis = await diagnoseNativeLock(file);
-    await expect(
-      takeOverNativeStaleLock(paths, file, {
-        ...diagnosis,
-        owner: { ...stale, id: 'different-owner' },
-      }),
-    ).resolves.toMatchObject({ status: 'changed', diagnosis: { status: 'stale' } });
-    await expect(takeOverNativeStaleLock(paths, file, diagnosis)).resolves.toEqual({
-      status: 'removed',
-      owner: stale,
-    });
-    expect(await readNativeLock(file)).toBeNull();
-  });
-
-  it('takes over an unknown lock under explicit repair only once its owner record has aged', async () => {
-    await fs.mkdir(paths.locksDir, { recursive: true });
-    const file = path.join(paths.locksDir, 'archive.lock');
-    const writeUnknownLock = (createdAt: string) =>
-      fs.writeFile(
-        file,
-        JSON.stringify({
-          id: 'remote-owner',
-          pid: 2_147_483_647,
-          hostname: 'another-host',
-          createdAt,
-          operation: 'archive old-change',
-        }),
-      );
-
-    await writeUnknownLock(new Date(Date.now() - 10 * 60 * 1_000).toISOString());
-    let diagnosis = await diagnoseNativeLock(file);
-    expect(diagnosis.status).toBe('unknown');
-    await expect(
-      takeOverNativeStaleLock(paths, file, diagnosis, { allowAgedUnknown: true }),
-    ).resolves.toMatchObject({ status: 'changed', diagnosis: { status: 'unknown' } });
-    expect(await readNativeLock(file)).not.toBeNull();
-
-    await writeUnknownLock(
-      new Date(Date.now() - NATIVE_LOCK_UNKNOWN_TAKEOVER_MS - 1_000).toISOString(),
-    );
-    diagnosis = await diagnoseNativeLock(file);
-    expect(diagnosis.status).toBe('unknown');
-    await expect(takeOverNativeStaleLock(paths, file, diagnosis)).resolves.toMatchObject({
-      status: 'changed',
-      diagnosis: { status: 'unknown' },
-    });
-    expect(await readNativeLock(file)).not.toBeNull();
-    await expect(
-      takeOverNativeStaleLock(paths, file, diagnosis, { allowAgedUnknown: true }),
-    ).resolves.toMatchObject({ status: 'removed', owner: { id: 'remote-owner' } });
-    expect(await readNativeLock(file)).toBeNull();
-  });
-
-  it('routes a legacy same-host owner without process identity through explicit aged repair', async () => {
-    await fs.mkdir(paths.locksDir, { recursive: true });
-    const file = path.join(paths.locksDir, 'archive.lock');
-    await fs.writeFile(
-      file,
-      JSON.stringify({
-        id: 'legacy-local-owner',
-        pid: process.pid,
-        hostname: os.hostname(),
-        createdAt: new Date(Date.now() - NATIVE_LOCK_UNKNOWN_TAKEOVER_MS - 1_000).toISOString(),
-        operation: 'archive old-change',
-      }),
-    );
-
-    const diagnosis = await diagnoseNativeLock(file);
-    expect(diagnosis.status).toBe('unknown');
-    await expect(takeOverNativeStaleLock(paths, file, diagnosis)).resolves.toMatchObject({
-      status: 'changed',
-      diagnosis: { status: 'unknown' },
-    });
-    await expect(
-      takeOverNativeStaleLock(paths, file, diagnosis, { allowAgedUnknown: true }),
-    ).resolves.toMatchObject({ status: 'removed', owner: { id: 'legacy-local-owner' } });
-  });
-
-  it('reports process liveness without turning invalid signals into a false stale result', () => {
-    expect(isProcessAlive(process.pid)).toBe(true);
-    expect(isProcessAlive(2_147_483_647)).toBe(false);
-    expect(isProcessAlive(Number.NaN)).toBeNull();
   });
 
   it('serializes live mutation contenders so the later command can recheck state', async () => {

@@ -7,15 +7,7 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 
-import {
-  spawnOwnedCommand,
-  type OwnedProcessInstance,
-} from '../../platform/process/owned-command.js';
-import {
-  inspectProcessTreeLiveness,
-  readProcessIdentity,
-  type ProcessLiveness,
-} from '../../platform/process/process-identity.js';
+import { spawnOwnedCommand } from '../../platform/process/owned-command.js';
 import { observeRuntimeOperation } from '../../platform/process/runtime-performance.js';
 import {
   assertSafeWindowsBatchArguments,
@@ -52,13 +44,9 @@ export function isNativeCheckTerminationUnconfirmedError(error: unknown): boolea
   return error instanceof NativeCheckTerminationUnconfirmedError;
 }
 
-/** Windows 的死亡组长不证明其后代停止；历史登记没有整树停止收据。 */
-export async function inspectNativeCheckProcessTreeLiveness(
-  pid: number,
-  identity?: string,
-): Promise<ProcessLiveness> {
-  const state = await inspectProcessTreeLiveness(pid, identity);
-  return process.platform === 'win32' && state === 'dead' ? 'unknown' : state;
+/** 本次命令实例；恢复不依赖历史 PID 或进程创建时间。 */
+export interface NativeCheckInstance {
+  instanceId: string;
 }
 
 export interface NativeCheckPlan {
@@ -286,8 +274,9 @@ async function executeNativeCheckOperation(options: {
   operationId: string;
   plan: NativeCheckPlan;
   now?: () => Date;
-  onSpawn?: (child: OwnedProcessInstance & { signal: AbortSignal }) => Promise<void>;
-  onTerminated?: (child: OwnedProcessInstance, confirmed: boolean) => Promise<void>;
+  signal?: AbortSignal;
+  onSpawn?: (child: NativeCheckInstance & { signal: AbortSignal }) => Promise<void>;
+  onTerminated?: (child: NativeCheckInstance, confirmed: boolean) => Promise<void>;
 }): Promise<NativeExecutedCheck> {
   const { plan } = options;
   safeSegment(options.operationId, 'Native check operation ID');
@@ -323,8 +312,7 @@ async function executeNativeCheckOperation(options: {
     let timedOut = false;
     let supervisorInterrupted = false;
     let supervisorResult: { exitCode: number | null; signal: NodeJS.Signals | null } | null = null;
-    let childIdentity: string | undefined;
-    let instance: OwnedProcessInstance | undefined;
+    let instance: NativeCheckInstance | undefined;
     let termination: Promise<boolean> | undefined;
     let terminationCause: unknown;
     let pipeCloseDeadline: NodeJS.Timeout | undefined;
@@ -425,11 +413,7 @@ async function executeNativeCheckOperation(options: {
           clearTimeout(timer);
         // Windows 的 opt-in 监管器等 owner 执行 taskkill /T，再退出。
         // POSIX 监管器自行终止进程组，close 后仍核验整个进程组。
-        if (
-          process.platform === 'win32' &&
-          ['completed', 'interrupted', 'spawn-error'].includes(message.type ?? '')
-        )
-          void stop();
+        if (['completed', 'interrupted', 'spawn-error'].includes(message.type ?? '')) void stop();
       },
     );
     child.stdout.pipe(stream, { end: false });
@@ -446,22 +430,12 @@ async function executeNativeCheckOperation(options: {
       }
       if (child.pid !== undefined) void stop();
     });
-    const processStopped = async () => {
-      const stopped = termination ? await termination : false;
-      if (!child.pid) return true;
-      if (process.platform === 'win32') return stopped;
-      // 监管器的 close 可能早于同组后代退出；有限复查，不把组长退出当作整组停止。
-      const deadline = Date.now() + 1_000;
-      for (;;) {
-        if ((await inspectProcessTreeLiveness(child.pid, childIdentity)) === 'dead') return true;
-        if (Date.now() >= deadline) return false;
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      }
-    };
+    const processStopped = async () => !child.pid || (termination ? await termination : false);
     const finishCheck = (exitCode: number | null, signal: NodeJS.Signals | null) => {
       if (closed) return;
       closed = true;
       clearTimeout(pipeCloseDeadline);
+      options.signal?.removeEventListener('abort', onAbort);
       if (registrationSettled) clearTimeout(timer);
       const completed = (options.now ?? (() => new Date()))();
       void registration
@@ -526,22 +500,22 @@ async function executeNativeCheckOperation(options: {
       // The close listener rejects only once the process is gone and any pending
       // registration has settled, even though this log stream is already destroyed.
     });
+    const onAbort = () => {
+      supervisorInterrupted = true;
+      registrationController.abort();
+      if (!registrationSettled) cancelRegistration?.(new Error('原检查已请求停止'));
+      void stop();
+    };
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+    if (options.signal?.aborted) onAbort();
     // Register after all lifecycle listeners are installed. A fast child can close
     // while its identity is being persisted; a failed registration must not orphan it.
     if (child.pid !== undefined) {
-      const pid = child.pid;
       registration = Promise.race([
         Promise.resolve().then(async () => {
           await ready;
           registrationController.signal.throwIfAborted();
-          childIdentity = (await readProcessIdentity(pid)) ?? undefined;
-          registrationController.signal.throwIfAborted();
-          instance = {
-            pid,
-            ...(childIdentity === undefined ? {} : { identity: childIdentity }),
-            instanceId,
-            ownerPid: process.pid,
-          };
+          instance = { instanceId };
           await options.onSpawn?.({ ...instance, signal: registrationController.signal });
         }),
         registrationDeadline,

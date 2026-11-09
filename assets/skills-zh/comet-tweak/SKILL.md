@@ -26,6 +26,12 @@ Tweak 为 Comet 五阶段流程提供一组预设配置。它通过 OpenSpec 完
 
 ## SDK Run 路径
 
+当前响应的 `data.checksMode: agent` 表示新内置 Run。使用平台工具执行必要检查，读取真实结果，将检查报告保存为 JSON：`{"checks":[{"name":"命令、目录与检查名称","result":"passed","note":"实际结果与日志引用"}]}`。没有适用检查时使用空 `checks` 并填写 `checksReason`；未执行项使用 `not-run` 并在 `note` 写原因，失败项修复后再验收。Runtime 不重复执行这些命令，不要求普通检查收据。旧 Run 的 `checksMode: runtime` 和固定应用继续原协议。
+
+新 Run 沿用当前批准、配置和任务计划完成实现与必要审查，再用 `comet state complete-build <change-name> --checks <checks-json-file>` 提交结果；需要记录实际 Builder 会话时加 `--session <builder-execution-ref>`。只对 full Run 执行现有配置、Design 和计划步骤，hotfix/tweak 保留自己的范围与升级决定。 沿用同次响应的 continuation；验收合格后仍等待当前用户的归档与交付决定。
+
+以下受管检查命令仅用于 `checksMode: runtime` 的旧 Run；阶段准备、批准、计划和任务完成要求也适用于新 Run。
+
 首次进入当前 SDK 阶段、换 Agent 或恢复上下文时，读取[阶段入口与恢复](../comet-classic/reference/sdk-methods.md#阶段入口与恢复)及该参考的当前阶段章节；本会话已有且仍有效时直接复用。下文按当前阶段执行；`nextAction.kind` 的恢复路由只适用于没有 continuation mode 的旧响应。
 
 开始或恢复时，优先复用当前有效结果中的 `agent.continuation` / `data.nextAction` 及已绑定的 change、工作区、phase 和 Run revision，按已知的 `data.runtimeFormat` 路由。只有冷恢复、外部状态变化或缺少这些信息时，才运行 `comet state next <change-name> --json`。`sdk` 只按本节推进；SDK 方法参考的适用条件、OpenSpec apply 方法、升级判定和文件数授权规则仍适用，状态与证据通过本节命令提交。若 `nextAction.kind` 为 `reconcile`，运行 `comet state check <change-name> <phase> --recover --json` 核对原 Action；结果未明时不重做实现、检查或归档。

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   constants,
@@ -11,7 +12,6 @@ import {
   realpathSync,
   type BigIntStats,
 } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { decodeJsonValueMaps } from '../../platform/fs/json-value-pool.js';
 
@@ -21,10 +21,6 @@ import {
   RaceSafeReadError,
 } from '../../platform/fs/race-safe-read.js';
 import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
-import {
-  inspectProcessLiveness,
-  readProcessIdentity,
-} from '../../platform/process/process-identity.js';
 import {
   resolveWorkspaceRuntimeLocation,
   resolveWorkspaceRuntimeRootSync,
@@ -73,9 +69,7 @@ interface MigrationJournal extends MigrationFence {
   stage: string;
   contentHash: string;
   sourceIdentity: string;
-  pid: number;
-  hostname: string;
-  processIdentity?: string;
+  protocolVersion?: 2;
 }
 
 interface Entry {
@@ -94,6 +88,8 @@ export interface WorkspaceRuntimeMigrationOptions {
   sourceRoot?: string;
   /** 便携副本中的异工作区 fence 不代表本机数据；不读取其中记录的目标。 */
   ignoreForeignWorkspaceFence?: boolean;
+  /** Explicit recovery of an interrupted legacy migration; never inferred from a PID. */
+  confirmedOwnerStopped?: boolean;
   /** 测试故障注入；任何异常都保留 journal 和已存在的数据副本。 */
   testHooks?: {
     afterJournal?: () => void | Promise<void>;
@@ -757,20 +753,21 @@ async function readMigrationJournal(
     typeof value.contentHash !== 'string' ||
     !/^[a-f0-9]{64}$/u.test(value.contentHash) ||
     typeof value.sourceIdentity !== 'string' ||
-    !value.sourceIdentity ||
-    !Number.isSafeInteger(value.pid) ||
-    Number(value.pid) < 1 ||
-    typeof value.hostname !== 'string' ||
-    (value.processIdentity !== undefined && typeof value.processIdentity !== 'string')
+    !value.sourceIdentity
   )
     throw new Error(`Runtime 迁移记录无效，拒绝自动恢复：${file}`);
   return value as MigrationJournal;
 }
 
-async function canRecover(journal: MigrationJournal): Promise<boolean> {
-  if (journal.hostname !== os.hostname()) return false;
-  if (journal.pid === process.pid && failedMigrations.has(journal.id)) return true;
-  return (await inspectProcessLiveness(journal.pid, journal.processIdentity)) === 'dead';
+const migrationLocks = new AsyncLocalStorage<ReadonlySet<string>>();
+async function withMigrationLock<T>(projectRoot: string, work: () => Promise<T>): Promise<T> {
+  const location = resolveWorkspaceRuntimeLocation(projectRoot);
+  const file = path.join(location.workspaceRoot, '.runtime-migration-recovery.lock');
+  if (migrationLocks.getStore()?.has(file)) return work();
+  await ensureAbsoluteDirectory(location.workspaceRoot);
+  return withRecoverableFileLock(file, () => migrationLocks.run(new Set([file]), work), {
+    timeoutMs: 5_000,
+  });
 }
 
 async function assertBoundSnapshot(
@@ -955,7 +952,15 @@ export async function recordFailedMigrationRepair(
   }
 }
 
-export async function repairWorkspaceRuntimeMigration(
+export function repairWorkspaceRuntimeMigration(
+  source: string,
+  target: string,
+  options: WorkspaceRuntimeMigrationOptions,
+): Promise<boolean> {
+  return withMigrationLock(options.projectRoot, () => repairMigration(source, target, options));
+}
+
+async function repairMigration(
   source: string,
   target: string,
   options: WorkspaceRuntimeMigrationOptions,
@@ -976,107 +981,92 @@ export async function repairWorkspaceRuntimeMigration(
   )
     throw new Error('Runtime 迁移恢复路径超出当前 workspace 的受管范围');
   if (!(await assertPath(sourceRoot, path.dirname(source), 'directory'))) return false;
-  let journal = await readMigrationJournal(source, target, location.projectRoot);
+  const journal = await readMigrationJournal(source, target, location.projectRoot);
   if (!journal) return false;
-  const deadline = Date.now() + 5_000;
-  while (!(await canRecover(journal))) {
-    if (
-      journal.hostname !== os.hostname() ||
-      journal.pid === process.pid ||
-      (await inspectProcessLiveness(journal.pid, journal.processIdentity)) !== 'alive' ||
-      Date.now() >= deadline
-    )
-      throw new Error(
-        `Runtime 迁移未完成，owner 仍活跃或无法确认退出；保留记录：${journalPath(source)}`,
-      );
-    await new Promise((resolve) => setTimeout(resolve, 25));
+  if (
+    journal.protocolVersion !== 2 &&
+    !options.confirmedOwnerStopped &&
+    !failedMigrations.has(journal.id)
+  )
+    throw new Error(
+      '旧 Runtime 迁移尚未结束；先确认原迁移操作已停止，再用 confirmedOwnerStopped 恢复原记录：' +
+        journalPath(source),
+    );
+  await ensureAbsoluteDirectory(location.workspaceRoot);
+  return withMigrationLock(options.projectRoot, async () => {
     const current = await readMigrationJournal(source, target, location.projectRoot);
     if (!current) return true;
-    journal = current;
-  }
-  await ensureAbsoluteDirectory(location.workspaceRoot);
-  const recoveryLock = path.join(location.workspaceRoot, '.runtime-migration-recovery.lock');
-  return withRecoverableFileLock(
-    recoveryLock,
-    async () => {
-      const current = await readMigrationJournal(source, target, location.projectRoot);
-      if (!current) return true;
-      if (!(await canRecover(current))) throw new Error('Runtime 迁移 owner 已改变，不能恢复');
-      await assertPath(location.dataRoot, path.dirname(target), 'directory');
-      await assertPath(sourceRoot, current.backup);
-      await assertPath(location.dataRoot, current.stage);
-      await assertPath(location.dataRoot, target);
-      let backup = await statOrNull(current.backup);
-      const stage = await statOrNull(current.stage);
-      const published = await statOrNull(target);
-      const fenced = await isWorkspaceRuntimeMigrationFence(source, target);
-      if (!backup && !fenced) {
-        if (stage || published) throw new Error('Runtime 迁移源与目标同时存在，拒绝自动恢复');
-        await inspectSiblingWriters(sourceRoot, source);
-        await assertBoundSnapshot(source, current, true);
-        await fs.rename(source, current.backup);
-        backup = await fs.lstat(current.backup, { bigint: true });
-      }
-      if (!fenced) {
-        if (!backup) throw new Error('Runtime 迁移原数据和备份均缺失，不能恢复');
-        await assertBoundSnapshot(current.backup, current, true);
-        const sourceStat = await statOrNull(source);
-        const emptyFileFence =
-          current.kind === 'file' &&
-          sourceStat?.isDirectory() &&
-          (await fs.readdir(source)).length === 0;
-        if (sourceStat && !emptyFileFence)
-          throw new Error('Runtime 旧路径在迁移后出现新内容，不能恢复');
-        await writeMigrationFence(current, sourceRoot);
-      }
-      const fenceStat = await fs.lstat(source);
-      const fence = parseFence(
-        await readJson(fenceStat.isDirectory() ? path.join(source, FENCE_MARKER) : source),
-      );
-      if (fence?.workspaceId !== current.workspaceId || fence.kind !== current.kind)
-        throw new Error('Runtime 迁移 fence 与记录不一致');
-      if (published && stage) throw new Error('Runtime 迁移目标和暂存副本同时存在，拒绝覆盖');
-      let original: Entry[] | null = null;
-      if (backup) original = await assertBoundSnapshot(current.backup, current, true);
-      if (!published) {
-        if (!original) throw new Error('Runtime 迁移备份缺失，不能发布');
-        if (stage) {
-          try {
-            await assertBoundSnapshot(current.stage, current, false);
-          } catch {
-            await rebuildPartialStage(current.backup, current.stage, original);
-            await assertBoundSnapshot(current.stage, current, false);
-          }
-        } else {
-          await copySnapshot(current.backup, current.stage, original);
+    await assertPath(location.dataRoot, path.dirname(target), 'directory');
+    await assertPath(sourceRoot, current.backup);
+    await assertPath(location.dataRoot, current.stage);
+    await assertPath(location.dataRoot, target);
+    let backup = await statOrNull(current.backup);
+    const stage = await statOrNull(current.stage);
+    const published = await statOrNull(target);
+    const fenced = await isWorkspaceRuntimeMigrationFence(source, target);
+    if (!backup && !fenced) {
+      if (stage || published) throw new Error('Runtime 迁移源与目标同时存在，拒绝自动恢复');
+      await inspectSiblingWriters(sourceRoot, source);
+      await assertBoundSnapshot(source, current, true);
+      await fs.rename(source, current.backup);
+      backup = await fs.lstat(current.backup, { bigint: true });
+    }
+    if (!fenced) {
+      if (!backup) throw new Error('Runtime 迁移原数据和备份均缺失，不能恢复');
+      await assertBoundSnapshot(current.backup, current, true);
+      const sourceStat = await statOrNull(source);
+      const emptyFileFence =
+        current.kind === 'file' &&
+        sourceStat?.isDirectory() &&
+        (await fs.readdir(source)).length === 0;
+      if (sourceStat && !emptyFileFence)
+        throw new Error('Runtime 旧路径在迁移后出现新内容，不能恢复');
+      await writeMigrationFence(current, sourceRoot);
+    }
+    const fenceStat = await fs.lstat(source);
+    const fence = parseFence(
+      await readJson(fenceStat.isDirectory() ? path.join(source, FENCE_MARKER) : source),
+    );
+    if (fence?.workspaceId !== current.workspaceId || fence.kind !== current.kind)
+      throw new Error('Runtime 迁移 fence 与记录不一致');
+    if (published && stage) throw new Error('Runtime 迁移目标和暂存副本同时存在，拒绝覆盖');
+    let original: Entry[] | null = null;
+    if (backup) original = await assertBoundSnapshot(current.backup, current, true);
+    if (!published) {
+      if (!original) throw new Error('Runtime 迁移备份缺失，不能发布');
+      if (stage) {
+        try {
+          await assertBoundSnapshot(current.stage, current, false);
+        } catch {
+          await rebuildPartialStage(current.backup, current.stage, original);
           await assertBoundSnapshot(current.stage, current, false);
         }
-        if (
-          unchangedManifest(original) !==
-          unchangedManifest(await snapshotTree(current.backup, true))
-        )
-          throw new Error('Runtime 迁移备份在恢复中发生变化');
-        await assertPath(location.dataRoot, path.dirname(target), 'directory');
-        if (await statOrNull(target)) throw new Error('Runtime 迁移目标在恢复中出现，拒绝覆盖');
-        await fs.rename(current.stage, target);
-        await syncDirectory(path.dirname(target));
+      } else {
+        await copySnapshot(current.backup, current.stage, original);
+        await assertBoundSnapshot(current.stage, current, false);
       }
-      await assertBoundSnapshot(target, current, false);
-      if (original) {
-        if (
-          unchangedManifest(original) !==
-          unchangedManifest(await snapshotTree(current.backup, true))
-        )
-          throw new Error('Runtime 迁移备份在清理前发生变化');
-        await fs.rm(current.backup, { recursive: true });
-      }
-      await fs.unlink(journalPath(source));
-      await syncDirectory(path.dirname(source));
-      failedMigrations.delete(current.id);
-      return true;
-    },
-    { timeoutMs: 5_000 },
-  );
+      if (
+        unchangedManifest(original) !== unchangedManifest(await snapshotTree(current.backup, true))
+      )
+        throw new Error('Runtime 迁移备份在恢复中发生变化');
+      await assertPath(location.dataRoot, path.dirname(target), 'directory');
+      if (await statOrNull(target)) throw new Error('Runtime 迁移目标在恢复中出现，拒绝覆盖');
+      await fs.rename(current.stage, target);
+      await syncDirectory(path.dirname(target));
+    }
+    await assertBoundSnapshot(target, current, false);
+    if (original) {
+      if (
+        unchangedManifest(original) !== unchangedManifest(await snapshotTree(current.backup, true))
+      )
+        throw new Error('Runtime 迁移备份在清理前发生变化');
+      await fs.rm(current.backup, { recursive: true });
+    }
+    await fs.unlink(journalPath(source));
+    await syncDirectory(path.dirname(source));
+    failedMigrations.delete(current.id);
+    return true;
+  });
 }
 
 async function migrate(
@@ -1141,11 +1131,7 @@ async function migrate(
     stage: path.join(path.dirname(target), `.${path.basename(target)}.comet-runtime-stage-${id}`),
     contentHash: createHash('sha256').update(contentManifest(before)).digest('hex'),
     sourceIdentity: before[0].identity,
-    pid: process.pid,
-    hostname: os.hostname(),
-    ...((await readProcessIdentity(process.pid))
-      ? { processIdentity: (await readProcessIdentity(process.pid))! }
-      : {}),
+    protocolVersion: 2,
   };
   const journalFile = journalPath(source);
   try {
@@ -1372,7 +1358,9 @@ function coordinatedMigration(
   const key = `${canonicalSource}\0${path.resolve(target)}`;
   const existing = inFlight.get(key);
   if (existing) return existing;
-  const pending = migrate(source, target, options, directoryOnly).finally(() => {
+  const pending = withMigrationLock(options.projectRoot, () =>
+    migrate(source, target, options, directoryOnly),
+  ).finally(() => {
     if (inFlight.get(key) === pending) inFlight.delete(key);
   });
   inFlight.set(key, pending);
@@ -1396,8 +1384,36 @@ export function migrateWorkspaceRuntimeDirectory(
   return coordinatedMigration(source, target, options, true);
 }
 
+const runtimePreparation = new AsyncLocalStorage<Map<string, Promise<string>>>();
+
+/** Reuse directory preparation within one CLI call; file reads and write boundaries remain fresh. */
+export function withWorkspaceRuntimePreparation<T>(work: () => Promise<T>): Promise<T> {
+  return runtimePreparation.getStore() ? work() : runtimePreparation.run(new Map(), work);
+}
+
+export async function resolveWorkspaceRuntimeRoot(
+  projectRoot: string,
+  options: { confirmedOwnerStopped?: boolean } = {},
+): Promise<string> {
+  const prepared = runtimePreparation.getStore();
+  if (!prepared) return prepareWorkspaceRuntimeRoot(projectRoot, options);
+  const target =
+    resolveWorkspaceRuntimeRootSync(projectRoot) +
+    (options.confirmedOwnerStopped ? ':confirmed' : '');
+  let pending = prepared.get(target);
+  if (!pending) {
+    pending = prepareWorkspaceRuntimeRoot(projectRoot, options);
+    prepared.set(target, pending);
+    void pending.catch(() => prepared.delete(target));
+  }
+  return pending;
+}
+
 /** 操作前统一调用：校验用户级目录，迁移旧树，并保留阻断旧版写入的兼容标记。 */
-export async function resolveWorkspaceRuntimeRoot(projectRoot: string): Promise<string> {
+async function prepareWorkspaceRuntimeRoot(
+  projectRoot: string,
+  options: { confirmedOwnerStopped?: boolean },
+): Promise<string> {
   const location = resolveWorkspaceRuntimeLocation(projectRoot);
   const source = path.join(location.projectRoot, '.comet', 'runtime');
   if (
@@ -1432,6 +1448,7 @@ export async function resolveWorkspaceRuntimeRoot(projectRoot: string): Promise<
   try {
     await repairWorkspaceRuntimeMigration(source, location.runtimeRoot, {
       projectRoot: location.projectRoot,
+      confirmedOwnerStopped: options.confirmedOwnerStopped,
     });
   } catch (error) {
     await recordFailedMigrationRepair(source, location, error);

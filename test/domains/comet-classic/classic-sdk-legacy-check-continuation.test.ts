@@ -16,6 +16,18 @@ import type { ClassicState } from '../../../domains/comet-classic/classic-state.
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
+// Preserve the original v1 managed-check contract; default v2 Runs have separate public CLI coverage.
+vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
+    >();
+  return {
+    ...actual,
+    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
+  };
+});
+
 const roots: string[] = [];
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -36,7 +48,8 @@ async function fixture(entry: 'source' | 'generated') {
   const invoke = async (...args: string[]) => {
     const separator = args.indexOf('--');
     args.splice(separator < 0 ? args.length : separator, 0, '--json');
-    if (entry === 'source') return runClassicCli(args, undefined, { invocationCwd: root });
+    if (entry === 'source' || (args[0] === 'state' && args[1] === 'init'))
+      return runClassicCli(args, undefined, { invocationCwd: root });
     const result = spawnSync(
       process.execPath,
       [path.resolve('assets/skills/comet/scripts/comet-runtime.mjs'), ...args],

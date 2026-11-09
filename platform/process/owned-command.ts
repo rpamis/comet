@@ -31,9 +31,9 @@ const stop = (reason) => {
   stopping = true;
   if (reason !== 'completed') send({ type: 'interrupted', reason });
   // Eval 的 owner 必须在监管器仍存活时确认 taskkill；不要同时自杀造成竞态。
-  if (process.platform === 'win32' && ownerConfirmsTermination && process.connected) {
+  if (ownerConfirmsTermination && process.connected) {
     // 调用方仍在线时给系统整树核对留出期限；断连仍立即清理，不能先退出丢失原 PID 身份。
-    setTimeout(terminate, 30000);
+    setTimeout(terminate, reason === 'timeout' ? 250 : 30000);
     return;
   }
   terminate();

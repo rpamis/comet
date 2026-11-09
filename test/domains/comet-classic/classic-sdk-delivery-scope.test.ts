@@ -24,6 +24,18 @@ import {
   parseClassicStateDocument,
 } from '../../../domains/comet-classic/classic-state.js';
 
+// Preserve the original v1 managed-check contract; default v2 Runs have separate public CLI coverage.
+vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
+    >();
+  return {
+    ...actual,
+    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
+  };
+});
+
 const roots: string[] = [];
 // Both transient directories that `migrationFiles` can record a fence from. They are
 // omitted from the archived tree, so the fence reaches `optionalFiles` instead.

@@ -1,3 +1,4 @@
+import { resolveWorkspaceRuntimeRoot } from '../workflow-contract/workspace-runtime.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { RuntimeStoppedAction } from '../engine/runtime.js';
@@ -73,7 +74,6 @@ import { inspectNativeProjectLocks, repairNativeProjectLock } from './native-loc
 import { recordNativeVerifierExecutionError } from './native-loop-runtime.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { archiveNativePortableChange } from './native-portable-archive.js';
-import { inspectNativePortableCheckExecution } from './native-portable-checks.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import {
   hasIncompleteNativePortableMigration,
@@ -146,20 +146,16 @@ async function portableCheckExecutionFinding(
   }
   if (local?.execution?.stage !== 'checking' || local.execution.actor !== 'runtime') return null;
   if (local.execution.status !== 'running') return null;
-  const liveness = await inspectNativePortableCheckExecution(local);
-  if (liveness === 'running') return null;
-  const unconfirmedProcess =
-    liveness === 'unknown' &&
-    local.checks.some((check) => check.status === 'running' || check.activeProcess != null);
+  const unconfirmedProcess = local.checks.some(
+    (check) => check.status === 'running' || check.activeProcess != null,
+  );
   const message =
-    liveness === 'orphaned'
-      ? `Native Runtime check operation ${local.execution.operationId} has no live owner or active check process`
-      : `Native Runtime check operation ${local.execution.operationId} is running, but its owner process identity is unavailable`;
+    'The original Runtime command has no completed result; inspect its logs and actual side effects';
   return {
     severity: 'error',
     code: 'portable-check-execution-stuck',
     message: unconfirmedProcess
-      ? `${name}: Native Runtime check operation ${local.execution.operationId} process tree has not been confirmed stopped; preserve its execution record. Doctor --repair cannot safely recover this check without process-tree termination evidence.`
+      ? `${name}: ${message}. Confirm the stopped original operation with doctor --repair --confirmed --stopped-actions before retrying.`
       : `${name}: ${message}; run comet native doctor ${name} --repair to recover it`,
     path: nativeLocalExecutionFile(paths, name),
     ...(unconfirmedProcess ? {} : { repair: 'recover' as const }),
@@ -623,6 +619,8 @@ export async function nativeDoctorCommand(
       throw new NativeUsageError('--stopped-actions 必须包含原执行停止确认的非空数组');
     stoppedActions = value as RuntimeStoppedAction[];
   }
+  if (repair && confirmed)
+    await resolveWorkspaceRuntimeRoot(projectRoot, { confirmedOwnerStopped: true });
   const paths = await doctorPaths(projectRoot);
   const projectLocks = await inspectNativeProjectLocks(paths);
   if (lockToken && projectLocks.some((lock) => lock.token === lockToken)) {
@@ -986,8 +984,8 @@ export async function nativeDoctorCommand(
                 (process.platform === 'win32' &&
                   !check.quiescent &&
                   check.execution?.child &&
-                  check.owner === 'dead' &&
-                  check.process === 'dead');
+                  check.owner === 'stopped' &&
+                  check.process === 'stopped');
               return {
                 code: 'sdk-check-execution-recovery-required',
                 ...check,
@@ -1414,7 +1412,7 @@ export async function nativeDoctorCommand(
       });
     }
     const stoppedSupervisor = checkStopTargets.filter(
-      (target) => target.kind !== 'portable-checks' && target.owner !== 'alive',
+      (target) => target.kind !== 'portable-checks',
     );
     if (stoppedSupervisor.length > 0) {
       const result = await inspectNativePortableStatus({ paths, name, details: true });

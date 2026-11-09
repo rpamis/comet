@@ -31,6 +31,41 @@ describe('Comet Hook Router', () => {
     await writeProjectConfig(root, config);
   }
 
+  it('allows unselected neutral docs without inspecting damaged historical Runs', async () => {
+    await configureBoth();
+    const listNative = vi.fn(async () => {
+      throw new Error('old archived projection is damaged');
+    });
+    const listClassic = vi.fn(async () => {
+      throw new Error('historical recovery must stay explicit');
+    });
+    const decision = await inspectCometHook(
+      root,
+      { intent: 'write', targets: [path.join(root, 'docs/research/note.md')] },
+      {
+        listNative,
+        listClassic,
+        inspectNative: vi.fn(),
+        inspectClassic: vi.fn(),
+      },
+    );
+    expect(decision.allowed).toBe(true);
+    expect(listNative).not.toHaveBeenCalled();
+    expect(listClassic).not.toHaveBeenCalled();
+    const protectedWrite = await inspectCometHook(
+      root,
+      { intent: 'write', targets: [path.join(root, 'comet/changes/demo/brief.md')] },
+      {
+        listNative,
+        listClassic,
+        inspectNative: vi.fn(),
+        inspectClassic: vi.fn(),
+      },
+    );
+    expect(protectedWrite.allowed).toBe(false);
+    expect(listNative).toHaveBeenCalled();
+  });
+
   it('stays neutral for an unknown write target without reading Comet state', async () => {
     const listNative = vi.fn(async () => {
       throw new Error('Native state must not be read');

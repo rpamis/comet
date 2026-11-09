@@ -1,3 +1,7 @@
+import {
+  inspectNativeCheckStopEvidenceTargets,
+  recoverNativeChecksWithStopEvidence,
+} from '../../../domains/comet-native/native-check-stop-evidence.js';
 import { Lexer } from 'marked';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
@@ -44,6 +48,7 @@ import { createNativeRunnerChannel } from '../../../domains/comet-native/native-
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 import {
   inspectProcessLiveness,
+  readProcessIdentity,
   inspectProcessTreeLiveness,
 } from '../../../platform/process/process-identity.js';
 import { withCometRuntimeMetrics } from '../../../platform/process/runtime-metrics.js';
@@ -667,7 +672,7 @@ children:
     ]);
   });
 
-  it('recovers an orphaned running check only when process exit can be proven', async () => {
+  it('recovers an interrupted running check after Agent stop confirmation', async () => {
     await createNativePortableChange({ paths, name: 'orphaned-owner', language: 'en' });
     const changeDir = nativePortableChangeDir(paths, 'orphaned-owner');
     await fs.writeFile(
@@ -696,15 +701,17 @@ children:
     await fs.mkdir(controls, { recursive: true });
     const marker = path.join(controls, 'check-starts.txt');
     const release = path.join(controls, 'release-check');
+    const commandPidFile = path.join(controls, 'actual-command-pid');
     const plan = {
       id: 'orphaned-check',
       name: 'Orphaned check',
       executable: process.execPath,
       argv: [
         '-e',
-        "const fs=require('node:fs');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,200);fs.appendFileSync(process.argv[1],'start\\n');setInterval(()=>{if(fs.existsSync(process.argv[2]))process.exit(0)},25)",
+        "const fs=require('node:fs');fs.writeFileSync(process.argv[3],String(process.pid));Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,200);fs.appendFileSync(process.argv[1],'start\\n');setInterval(()=>{if(fs.existsSync(process.argv[2]))process.exit(0)},25)",
         marker,
         release,
+        commandPidFile,
       ],
       cwdRef: '.',
       timeoutMs: 10_000,
@@ -720,7 +727,7 @@ children:
     await waitForCondition(async () => {
       const local = await readNativeLocalExecution(file);
       const reserved =
-        local?.execution?.ownerPid === owner.pid &&
+        local?.execution?.status === 'running' &&
         local.checks[0]?.activeProcess?.status === 'running';
       const mutationLockReleased = await fs
         .access(path.join(paths.locksDir, 'root-move.lock'))
@@ -741,43 +748,32 @@ children:
       'Check command did not write its startup marker',
     );
     const running = await readNativeLocalExecution(file);
-    const activePid =
-      running?.checks[0]?.activeProcess?.status === 'running'
-        ? running.checks[0].activeProcess.pid
-        : undefined;
-    expect(activePid).toEqual(expect.any(Number));
-
+    const commandPid = Number(await fs.readFile(commandPidFile, 'utf8'));
+    const commandIdentity = await readProcessIdentity(commandPid);
+    expect(running?.checks[0]?.activeProcess).not.toHaveProperty('pid');
     owner.kill('SIGKILL');
     await waitForProcessExit(owner);
-    const activeProcess = running?.checks[0]?.activeProcess;
-    // Let the registered supervisor receive owner disconnect and stop its complete tree.
-    // Killing only the supervisor can leave the command alive and cannot prove an orphan.
     await waitForCondition(
       async () =>
-        activeProcess?.status === 'running' &&
-        (await inspectProcessTreeLiveness(activeProcess.pid, activeProcess.identity)) === 'dead',
-      'Check process tree did not stop after its Runtime owner was terminated',
+        (await inspectProcessLiveness(commandPid, commandIdentity ?? undefined)) === 'dead',
+      'Actual command did not stop after its owner exited',
     );
-    expect((await fs.readFile(marker, 'utf8')).trim().split(/\r?\n/)).toHaveLength(1);
-
-    const ownerLiveness = await inspectProcessLiveness(
-      owner.pid!,
-      running?.execution?.ownerIdentity,
-    );
-    const checkLiveness =
-      activeProcess?.status === 'running'
-        ? await inspectProcessTreeLiveness(activeProcess.pid, activeProcess.identity)
-        : 'unknown';
-    // Windows 的 leader 退出没有提供整树停止证据，旧运行登记须继续阻止重试。
-    if (process.platform === 'win32' || ownerLiveness !== 'dead' || checkLiveness !== 'dead') {
-      await expect(
-        executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
-      ).rejects.toThrow('原检查或验收仍在执行');
-      expect(await readNativeLocalExecution(file)).toEqual(running);
-      expect((await fs.readFile(marker, 'utf8')).trim().split(/\r?\n/)).toHaveLength(1);
-      return;
-    }
-
+    await expect(
+      executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
+    ).rejects.toThrow('原检查或验收仍在执行');
+    expect(await readNativeLocalExecution(file)).toEqual(running);
+    const [target] = await inspectNativeCheckStopEvidenceTargets(paths, state.name);
+    await recoverNativeChecksWithStopEvidence({
+      paths,
+      name: state.name,
+      confirmations: [
+        {
+          ...target.confirmation,
+          evidence:
+            'The test observed the original owner and actual command exit and inspected the retained startup log.',
+        },
+      ],
+    });
     await expect(
       executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
     ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'interrupted' }] });
@@ -786,10 +782,6 @@ children:
       execution: { operationId: running!.execution!.operationId, status: 'interrupted' },
       checks: [{ id: plan.id, status: 'interrupted', activeProcess: null, executionCount: 1 }],
     });
-    await expect(
-      executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
-    ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'interrupted' }] });
-    expect(await readNativeLocalExecution(file)).toEqual(interrupted);
     await fs.writeFile(release, 'release\n');
     await expect(
       retryNativePortableCheckPlan({ paths, name: state.name, checkIds: [plan.id] }),

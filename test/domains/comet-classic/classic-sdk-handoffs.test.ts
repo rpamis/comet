@@ -24,6 +24,18 @@ import {
 } from '../../../domains/comet-classic/classic-sdk-status.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
+// Preserve the original v1 managed-check contract; default v2 Runs have separate public CLI coverage.
+vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
+    >();
+  return {
+    ...actual,
+    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
+  };
+});
+
 const roots: string[] = [];
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
@@ -69,7 +81,12 @@ async function fixture(profile: 'hotfix' | 'tweak') {
 }
 
 function skillCommand(source: string, command: string, approvalHash = ''): string[] {
-  const sdk = source.slice(source.indexOf('## SDK Run'), source.indexOf('`runtimeFormat: compat`'));
+  let sdk = source.slice(source.indexOf('## SDK Run'), source.indexOf('`runtimeFormat: compat`'));
+  const legacy = Math.max(
+    sdk.indexOf('以下受管检查命令'),
+    sdk.indexOf('The managed check commands below'),
+  );
+  if (legacy >= 0) sdk = sdk.slice(legacy);
   const template = sdk.match(new RegExp('`(comet ' + command + '[^`]*)`', 'u'))?.[1];
   expect(template).toBeDefined();
   return template!

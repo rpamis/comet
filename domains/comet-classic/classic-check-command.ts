@@ -164,6 +164,10 @@ export async function executeClassicSdkCheckCommand(
     timeoutMs: requestedTimeout,
     reusable = false,
   } = options;
+  if (inspected.run.workflow.version === '2')
+    throw new Error(
+      'Run ordinary checks with Agent platform tools and submit --checks during Build or Verify; this Run has no managed check step',
+    );
   const timeoutMs = await resolveClassicCheckTimeout(projectRoot, requestedTimeout);
   if (inspected.state.phase !== scope) {
     throw new Error(`Classic SDK change ${name} is in ${inspected.state.phase}, not ${scope}`);

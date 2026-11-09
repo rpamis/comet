@@ -210,6 +210,33 @@ it.each(
     );
     await cli('state', 'submit-plan', 'example', '--plan', plan);
   }
+  const checksFile = path.join(base, 'checks.json');
+  const invocations = path.join(base, 'platform-checks.jsonl');
+  const runCheck = async () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        '-e',
+        "if(require('node:fs').readFileSync('worker.py','utf8').includes('broken'))process.exit(7)",
+      ],
+      { cwd: root, encoding: 'utf8', windowsHide: true },
+    );
+    await fs.appendFile(invocations, JSON.stringify({ exitCode: result.status }) + '\n');
+    await fs.writeFile(
+      checksFile,
+      JSON.stringify({
+        checks: [
+          {
+            name: 'node worker check; cwd=.',
+            result: result.status === 0 ? 'passed' : 'failed',
+            note: 'Actual platform exit code ' + result.status,
+          },
+        ],
+      }),
+    );
+    return result.status;
+  };
+  expect(await runCheck()).toBe(0);
   await cli(
     'guard',
     'example',
@@ -217,16 +244,12 @@ it.each(
     '--apply',
     '--session',
     'builder-session',
-    '--',
-    process.execPath,
-    '-e',
-    '',
+    '--checks',
+    checksFile,
   );
   const run = (await inspectClassicSdkRun(root, 'example')).run;
-  const check = run.actions.find((action) => action.stepId === profile + '.build.check');
-  expect(check?.status).toBe('succeeded');
-  expect(check?.outcome?.output).not.toHaveProperty('inputBefore');
-  expect(check?.outcome?.output).toHaveProperty('contentHash', check?.inputHash);
+  expect(run.workflow.version).toBe('2');
+  expect(run.actions.some((action) => action.stepId === profile + '.build.check')).toBe(false);
   expect(
     run.actions.find((action) => action.stepId === profile + '.build.execute')?.claim?.sessionId,
   ).toBe('builder-session');
@@ -249,20 +272,8 @@ it.each(
     '# Verification\nThe worker behavior is unchanged.\n',
   );
   expect(
-    (
-      await cli(
-        'guard',
-        'example',
-        'verify',
-        '--report',
-        report,
-        '--apply',
-        '--',
-        process.execPath,
-        '-e',
-        "if(require('node:fs').readFileSync('worker.py','utf8').includes('broken'))process.exit(7)",
-      )
-    ).data.phase,
+    (await cli('guard', 'example', 'verify', '--report', report, '--apply', '--checks', checksFile))
+      .data.phase,
   ).toBe('archive');
   const formalFile = path.join(change, 'proposal.md');
   const originalFormal = await fs.readFile(formalFile, 'utf8');
@@ -289,40 +300,48 @@ it.each(
   if (fail) {
     await fs.appendFile(path.join(root, 'worker.py'), '# broken check condition\n');
     const before = (await inspectClassicSdkRun(root, 'example')).run;
-    const source = before.actions.findLast(
-      (action) => action.stepId === profile + '.verify.check',
-    )!;
-    const approval = before.waits.findLast((wait) => wait.stepId === profile + '.archive.confirm')!;
-    const pending = before.actions.find((action) => action.status === 'pending')!;
     await reviseClassicSdkWork({
       projectRoot: root,
       change: 'example',
-      name: 'refresh-checks',
+      name: 'reopen-verification',
       expectedRevision: before.revision,
-      refreshInput: {
-        expectedRevision: before.revision,
-        archiveActionId: pending.id,
-        approvalWaitId: approval.id,
-        proposalHash: approval.proposalHash,
-        sourceActionId: source.id,
-        summary: 'Agent chose to rerun the original Verify check.',
-      },
     });
-    const inspection = await inspectClassicSdkRun(root, 'example');
-    const output = source.outcome!.output as { argv: string[]; cwd: string; timeoutMs: number };
-    await executeClassicSdkCommandCheck(inspection.runtime, {
-      projectRoot: root,
-      runId: before.runId,
-      ...output,
-    });
+    expect(await runCheck()).toBe(7);
+    const rejected = await runClassicCli(
+      [
+        'guard',
+        'example',
+        'verify',
+        '--report',
+        report,
+        '--apply',
+        '--checks',
+        checksFile,
+        '--json',
+      ],
+      undefined,
+      { projectRoot: root, invocationCwd: root },
+    );
+    expect(rejected.exitCode).not.toBe(0);
+    await cli(
+      'state',
+      'transition',
+      'example',
+      'verify-fail',
+      '--reason',
+      'Actual platform worker check exited 7; repair is required.',
+    );
     const failed = (await inspectClassicSdkRun(root, 'example')).run;
     await expect(
       assertVerifyEvidenceCurrent(failed, root, failed.state as never),
     ).rejects.toThrow();
     expect(
-      failed.actions.findLast((action) => action.stepId === profile + '.verify.check')?.outcome
+      failed.actions.findLast((action) => action.stepId === profile + '.verify.run')?.outcome
         ?.output,
-    ).toMatchObject({ exitCode: 7 });
+    ).toMatchObject({
+      event: 'verify-fail',
+      reason: 'Actual platform worker check exited 7; repair is required.',
+    });
     expect(failed.outputs[profile + '.archive.execute']).toBeUndefined();
     await expect(
       fs.stat(path.join(base, 'openspec-archive-invocations.jsonl')),
@@ -360,6 +379,7 @@ it.each(
   expect(await openSpec.invocations()).toHaveLength(1);
   expect(
     archived.actions.filter((action) => action.stepId === profile + '.verify.check'),
-  ).toHaveLength(1);
+  ).toHaveLength(0);
+  expect((await fs.readFile(invocations, 'utf8')).trim().split('\n')).toHaveLength(1);
   expect(await fs.readFile(path.join(root, 'unrelated.txt'), 'utf8')).toBe('Unrelated draft.\n');
 });

@@ -16,7 +16,6 @@ import {
 } from './native-local-execution.js';
 import { returnNativeCandidateToBuild } from './native-loop-runtime.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
-import { inspectNativePortableCheckExecution } from './native-portable-checks.js';
 import {
   ensureNativePortableReport,
   nativeLocalExecutionFile,
@@ -245,7 +244,6 @@ export async function recoverNativePortableChange(options: {
         inspected.local?.execution?.status !== 'completed';
       if (operationWasInterrupted && inspected.local?.execution?.status === 'running') {
         const execution = inspected.local.execution;
-        const liveness = await inspectNativePortableCheckExecution(inspected.local);
         const externallyOwnedVerifier =
           execution.stage === 'verifying' &&
           execution.actor === 'verifier' &&
@@ -254,15 +252,11 @@ export async function recoverNativePortableChange(options: {
           (check) => check.status === 'running' || check.activeProcess != null,
         );
         const mayRecoverUnknownRuntimeCheck =
-          liveness === 'unknown' &&
           options.recoverUnknownRuntimeCheck === true &&
           execution.stage === 'checking' &&
           execution.actor === 'runtime' &&
           !hasUnconfirmedCheck;
-        if (
-          externallyOwnedVerifier ||
-          (liveness !== 'orphaned' && !mayRecoverUnknownRuntimeCheck)
-        ) {
+        if (externallyOwnedVerifier || !mayRecoverUnknownRuntimeCheck) {
           return {
             state,
             local: inspected.local,
@@ -272,11 +266,9 @@ export async function recoverNativePortableChange(options: {
               ? execution.verifierStartedAt === undefined && execution.requestCheckRounds === 0
                 ? `Native Verifier execution ${execution.executionId} is registered but never confirmed startup; if the task did not start, record an explicit Verifier failure before retrying it.`
                 : `Native Verifier execution ${execution.executionId} remains owned by its host task; record an explicit Verifier failure before retrying it.`
-              : liveness === 'unknown'
-                ? hasUnconfirmedCheck
-                  ? 'The Native Runtime check process tree could not be proven to have exited; its execution record must be preserved and Doctor --repair cannot safely retry it.'
-                  : 'The Native Runtime check owner could not be proven to have exited; inspect the overlay or run Doctor with --repair to take over explicitly.'
-                : 'The Native Runtime check operation is still owned by a live process; wait for it to finish before recovering it.',
+              : hasUnconfirmedCheck
+                ? 'The original Runtime check has no completed result. Inspect its logs and actual side effects, then submit stop confirmation for the original operation before retrying.'
+                : 'The Runtime operation did not save a final result. Use Doctor --repair after reviewing the retained execution; no PID or thread rebinding is required.',
           };
         }
       }

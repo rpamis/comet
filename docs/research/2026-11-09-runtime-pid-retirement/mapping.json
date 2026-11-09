@@ -1,0 +1,260 @@
+{
+  "authorization": "report:2026-11-09-runtime-pid-removal",
+  "cases": [
+    {
+      "id": "recoverable-file-lock-release-after-coordinator-failure",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-runtime-pid-removal",
+      "record": "docs/research/2026-11-09-runtime-pid-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/platform/fs/lock-without-pid.test.ts",
+          "namePattern": "^(?:releases the transaction after the writer exits without a PID lookup or doctor repair|retires a confirmed legacy operation without binding its PID to the replacement|serializes writers without probing or persisting a process identity|serializes independent processes without process ownership records)$",
+          "requiredNames": [
+            "releases the transaction after the writer exits without a PID lookup or doctor repair",
+            "retires a confirmed legacy operation without binding its PID to the replacement",
+            "serializes writers without probing or persisting a process identity",
+            "serializes independent processes without process ownership records"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "recoverable-file-lock-release-outcome-reported",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-09-runtime-pid-removal",
+      "record": "docs/research/2026-11-09-runtime-pid-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/platform/recoverable-file-lock.test.ts",
+          "namePattern": "keeps a lock whose metadata changed while held and reports it",
+          "requiredNames": [
+            "recoverable file lock release keeps a lock whose metadata changed while held and reports it"
+          ]
+        },
+        {
+          "file": "test/platform/recoverable-file-lock.test.ts",
+          "namePattern": "never removes a lock another owner republished while held",
+          "requiredNames": [
+            "recoverable file lock release never removes a lock another owner republished while held"
+          ]
+        },
+        {
+          "file": "test/platform/recoverable-file-lock.test.ts",
+          "namePattern": "never removes a lock another owner republished while the coordinator is unusable",
+          "requiredNames": [
+            "recoverable file lock release never removes a lock another owner republished while the coordinator is unusable"
+          ]
+        },
+        {
+          "file": "test/platform/recoverable-file-lock.test.ts",
+          "namePattern": "keeps a lock it cannot inspect at release time and reports why",
+          "requiredNames": [
+            "recoverable file lock release keeps a lock it cannot inspect at release time and reports why"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "workflow-simplification-t09-native-short-lock",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-runtime-pid-removal",
+      "record": "docs/research/2026-11-09-runtime-pid-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/platform/fs/lock-without-pid.test.ts",
+          "namePattern": "^(?:releases the transaction after the writer exits without a PID lookup or doctor repair|retires a confirmed legacy operation without binding its PID to the replacement|serializes writers without probing or persisting a process identity|serializes independent processes without process ownership records)$",
+          "requiredNames": [
+            "releases the transaction after the writer exits without a PID lookup or doctor repair",
+            "retires a confirmed legacy operation without binding its PID to the replacement",
+            "serializes writers without probing or persisting a process identity",
+            "serializes independent processes without process ownership records"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-lock-without-pid.test.ts",
+          "namePattern": "^(?:keeps Native mutation exclusion without binding a PID or probing a thread|keeps ordinary lock acquisition outside a running Native recovery section)$",
+          "requiredNames": [
+            "keeps Native mutation exclusion without binding a PID or probing a thread",
+            "keeps ordinary lock acquisition outside a running Native recovery section"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-lock.test.ts",
+          "namePattern": "^(?:Native operation locks does not release a lock whose ownership changed|Native operation locks serializes live mutation contenders so the later command can recheck state)$",
+          "requiredNames": [
+            "Native operation locks does not release a lock whose ownership changed",
+            "Native operation locks serializes live mutation contenders so the later command can recheck state"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-confirmed-stop-probe-reuse",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-09-runtime-pid-removal",
+      "record": "docs/research/2026-11-09-runtime-pid-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-check-termination.test.ts",
+          "namePattern": "^reuses a confirmed stop only while the complete execution record still matches$",
+          "requiredNames": [
+            "reuses a confirmed stop only while the complete execution record still matches"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-all-reused-checks-without-child",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-09-runtime-pid-removal",
+      "record": "docs/research/2026-11-09-runtime-pid-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-owner-recovery.test.ts",
+          "namePattern": "^Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown$",
+          "requiredNames": [
+            "Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check$",
+          "requiredNames": [
+            "preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-agent-edit-continuation",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-09-runtime-pid-removal",
+      "record": "docs/research/2026-11-09-runtime-pid-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "namePattern": "^(?:continues the same Classic full Verify and Archive after ordinary edits without content proof|continues the same Classic hotfix Verify and Archive after ordinary edits without content proof|continues the same Classic tweak Verify and Archive after ordinary edits without content proof|continues the same Classic full Verify and Archive through the generated Runtime without content proof|continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof|continues the same Classic tweak Verify and Archive through the generated Runtime without content proof|blocks Classic Archive when a new real check fails after an accepted pass)$",
+          "requiredNames": [
+            "continues the same Classic full Verify and Archive after ordinary edits without content proof",
+            "continues the same Classic hotfix Verify and Archive after ordinary edits without content proof",
+            "continues the same Classic tweak Verify and Archive after ordinary edits without content proof",
+            "continues the same Classic full Verify and Archive through the generated Runtime without content proof",
+            "continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof",
+            "continues the same Classic tweak Verify and Archive through the generated Runtime without content proof",
+            "blocks Classic Archive when a new real check fails after an accepted pass"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agent-classic-freeform-design",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-09-runtime-pid-removal",
+      "record": "docs/research/2026-11-09-runtime-pid-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "namePattern": "^(?:completes Classic full from an Agent-reviewed design without metadata rules through source|completes Classic full from an Agent-reviewed design without metadata rules through generated)$",
+          "requiredNames": [
+            "completes Classic full from an Agent-reviewed design without metadata rules through source",
+            "completes Classic full from an Agent-reviewed design without metadata rules through generated"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agent-classic-source-handoff",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-09-runtime-pid-removal",
+      "record": "docs/research/2026-11-09-runtime-pid-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-handoff.test.ts",
+          "namePattern": "^(?:Classic handoff command rejects a nested handoff junction without writing outside the project|Classic handoff command references original requirements without generating a default handoff copy|Classic handoff command generates one complete optional handoff view without advancing the original Run|Classic handoff command refreshes the design handoff from the build phase after a Spec Patch|Classic handoff command reconciles a matching pending handoff and records recovery once)$",
+          "requiredNames": [
+            "Classic handoff command rejects a nested handoff junction without writing outside the project",
+            "Classic handoff command references original requirements without generating a default handoff copy",
+            "Classic handoff command generates one complete optional handoff view without advancing the original Run",
+            "Classic handoff command refreshes the design handoff from the build phase after a Spec Patch",
+            "Classic handoff command reconciles a matching pending handoff and records recovery once"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "namePattern": "^(?:completes Classic full from an Agent-reviewed design without metadata rules through source|completes Classic full from an Agent-reviewed design without metadata rules through generated)$",
+          "requiredNames": [
+            "completes Classic full from an Agent-reviewed design without metadata rules through source",
+            "completes Classic full from an Agent-reviewed design without metadata rules through generated"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-portable-orphan-interruption-persistence",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-runtime-pid-removal",
+      "record": "docs/research/2026-11-09-runtime-pid-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+          "namePattern": "^(?:Native portable unconfirmed check termination persists an Agent-confirmed interruption before allowing an explicit check retry)$",
+          "requiredNames": [
+            "Native portable unconfirmed check termination persists an Agent-confirmed interruption before allowing an explicit check retry"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path recovers an interrupted running check after Agent stop confirmation)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path recovers an interrupted running check after Agent stop confirmation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-proven-orphan-check-explicit-retry",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-09-runtime-pid-removal",
+      "record": "docs/research/2026-11-09-runtime-pid-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-check-termination.test.ts",
+          "namePattern": "^(?:Native portable unconfirmed check termination persists an Agent-confirmed interruption before allowing an explicit check retry|Native portable unconfirmed check termination preserves the registered process and blocks retries for runtime checks|Native portable unconfirmed check termination preserves the registered process and blocks retries for verifier checks|Native portable unconfirmed check termination preserves the registered process and blocks retries for legacy-verifier checks)$",
+          "requiredNames": [
+            "Native portable unconfirmed check termination persists an Agent-confirmed interruption before allowing an explicit check retry",
+            "Native portable unconfirmed check termination preserves the registered process and blocks retries for runtime checks",
+            "Native portable unconfirmed check termination preserves the registered process and blocks retries for verifier checks",
+            "Native portable unconfirmed check termination preserves the registered process and blocks retries for legacy-verifier checks"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-runtime.test.ts",
+          "namePattern": "^(?:Native portable Runtime vertical path returns a retry action for an interrupted check and reruns it explicitly|Native portable Runtime vertical path recovers an interrupted running check after Agent stop confirmation|Native portable Runtime vertical path does not infer that an external Verifier ended when its dispatch process exits|Native portable Runtime vertical path returns an interrupted non-repeatable check to Build before exposing retry)$",
+          "requiredNames": [
+            "Native portable Runtime vertical path returns a retry action for an interrupted check and reruns it explicitly",
+            "Native portable Runtime vertical path recovers an interrupted running check after Agent stop confirmation",
+            "Native portable Runtime vertical path does not infer that an external Verifier ended when its dispatch process exits",
+            "Native portable Runtime vertical path returns an interrupted non-repeatable check to Build before exposing retry"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-supervisor-startup-errors",
+      "kind": "tests-moved",
+      "authorization": "report:2026-11-09-runtime-pid-removal",
+      "record": "docs/research/2026-11-09-runtime-pid-retirement.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-executor-termination.test.ts",
+          "namePattern": "stops immediately on a supervisor error instead of converting it into a command timeout|cancels pending supervisor readiness immediately when its supervisor errors",
+          "requiredNames": [
+            "stops immediately on a supervisor error instead of converting it into a command timeout",
+            "cancels pending supervisor readiness immediately when its supervisor errors"
+          ]
+        }
+      ]
+    }
+  ]
+}

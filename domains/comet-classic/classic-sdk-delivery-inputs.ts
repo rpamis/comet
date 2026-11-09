@@ -83,7 +83,7 @@ async function initialPaths(root: string, run?: Readonly<WorkflowRun>) {
 export async function collectClassicSdkDeliveryInputs(
   root: string,
   _manifest: string,
-  identity: CheckIdentity,
+  identity: CheckIdentity | null,
   run?: Readonly<WorkflowRun>,
 ): Promise<string[]> {
   if (!isGitWorkTree(root)) return [];
@@ -92,7 +92,9 @@ export async function collectClassicSdkDeliveryInputs(
   const excluded = ['.comet', layout.openSpecRoot, layout.superpowersRoot, ...foreign].map((ref) =>
     path.isAbsolute(ref) ? path.relative(root, ref).replaceAll('\\', '/') : ref,
   );
-  const policy = await readCheckPolicy(root, identity),
+  const policy = identity
+      ? await readCheckPolicy(root, identity)
+      : { files: undefined, outputs: undefined },
     patterns = policy.files?.map(compileCheckPolicyInputPattern),
     outputs = policy.outputs?.map(compileCheckPolicyPattern) ?? [],
     baseline = await initialPaths(root, run);
@@ -122,7 +124,12 @@ export async function assertClassicSdkDeliveryInputs(
     ? run.actions.find((action) => action.id === repairCheckId)
     : [...run.actions]
         .reverse()
-        .find((action) => action.stepId === state.workflow + '.verify.check');
+        .find(
+          (action) =>
+            action.stepId ===
+            state.workflow +
+              (run.workflow.version === '2' ? '.archive.preflight' : '.verify.check'),
+        );
   if (check?.status !== 'succeeded' || check.outcome?.status !== 'succeeded')
     throw new Error('Classic 交付需要当前成功的 Verify 检查');
   const output = check.outcome.output as {

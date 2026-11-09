@@ -176,7 +176,7 @@ describe('Native portable unconfirmed check termination', () => {
     );
   });
 
-  it('persists a proven orphan interruption before allowing an explicit check retry', async () => {
+  it('persists an Agent-confirmed interruption before allowing an explicit check retry', async () => {
     const { paths } = await candidate();
     const plan = {
       id: 'orphaned',
@@ -191,7 +191,10 @@ describe('Native portable unconfirmed check termination', () => {
     const execute = vi
       .spyOn(checkExecutor, 'executeNativeCheck')
       .mockImplementationOnce(async ({ onSpawn }) => {
-        await onSpawn?.({ pid: 2147483000, signal: new AbortController().signal });
+        await onSpawn?.({
+          instanceId: 'original-check-instance',
+          signal: new AbortController().signal,
+        });
         throw failure;
       });
     const ordinary = () => executeNativePortableCheckPlan({ paths, name: 'change', plans: [plan] });
@@ -202,15 +205,25 @@ describe('Native portable unconfirmed check termination', () => {
       execution: { stage: 'checking', status: 'running' },
       checks: [{ id: plan.id, status: 'running', executionCount: 1 }],
     });
-    const owner = vi.spyOn(processIdentity, 'inspectProcessLiveness').mockResolvedValue('dead');
-    const child = vi.spyOn(checkExecutor, 'inspectNativeCheckProcessTreeLiveness');
-    for (const liveness of ['alive', 'unknown'] as const) {
-      child.mockResolvedValue(liveness);
-      await expect(ordinary()).rejects.toThrow('原检查或验收仍在执行');
-      expect(await readNativeLocalExecution(file)).toEqual(running);
-      expect(execute).toHaveBeenCalledTimes(1);
-    }
-    child.mockResolvedValue('dead');
+    await expect(ordinary()).rejects.toThrow('原检查或验收仍在执行');
+    expect(await readNativeLocalExecution(file)).toEqual(running);
+    expect(execute).toHaveBeenCalledTimes(1);
+    const [target] = await inspectNativeCheckStopEvidenceTargets(paths, 'change');
+    const proofFile = path.join(paths.projectRoot, 'stop-confirmation.json');
+    await fs.writeFile(
+      proofFile,
+      JSON.stringify([
+        {
+          ...target.confirmation,
+          evidence:
+            'The original command and descendants were stopped; actual logs were inspected.',
+        },
+      ]),
+    );
+    await nativeDoctorCommand(
+      ['change', '--repair', '--confirmed', '--stopped-actions', proofFile],
+      paths.projectRoot,
+    );
     await expect(ordinary()).resolves.toMatchObject({
       disposition: 'reused',
       checks: [{ id: plan.id, status: 'interrupted' }],
@@ -230,8 +243,6 @@ describe('Native portable unconfirmed check termination', () => {
     });
     expect(await readNativeLocalExecution(file)).toEqual(interrupted);
     expect(execute).toHaveBeenCalledTimes(1);
-    owner.mockRestore();
-    child.mockRestore();
     await expect(
       retryNativePortableCheckPlan({ paths, name: 'change', checkIds: [plan.id] }),
     ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'passed' }] });
@@ -268,7 +279,10 @@ describe('Native portable unconfirmed check termination', () => {
       const execute = vi
         .spyOn(checkExecutor, 'executeNativeCheck')
         .mockImplementation(async ({ onSpawn }) => {
-          await onSpawn?.({ pid: 2147483000, signal: new AbortController().signal });
+          await onSpawn?.({
+            instanceId: 'original-check-instance',
+            signal: new AbortController().signal,
+          });
           throw failure;
         });
       const attempt = () =>
@@ -303,7 +317,7 @@ describe('Native portable unconfirmed check termination', () => {
             id: 'pending',
             status: 'running',
             executionCount: 1,
-            activeProcess: { status: 'running', pid: 2147483000 },
+            activeProcess: { status: 'running', instanceId: 'original-check-instance' },
           },
         ],
       });
@@ -328,9 +342,7 @@ describe('Native portable unconfirmed check termination', () => {
       }
 
       // 模拟 owner 已退出，但检查树没有整树停止证据。
-      local.execution!.ownerPid = 2147483001;
       await fs.writeFile(file, JSON.stringify(local));
-      vi.spyOn(checkExecutor, 'inspectNativeCheckProcessTreeLiveness').mockResolvedValue('unknown');
       await expect(inspectNativePortableCheckExecution(local)).resolves.toBe('unknown');
       await expect(recoverNativePortableChange({ paths, name: 'change' })).resolves.toMatchObject({
         action: 'await-user',
@@ -346,7 +358,7 @@ describe('Native portable unconfirmed check termination', () => {
           findings: [
             {
               code: 'portable-check-execution-stuck',
-              message: expect.stringContaining('process tree has not been confirmed stopped'),
+              message: expect.stringContaining('original Runtime command has no completed result'),
             },
           ],
         },
@@ -380,25 +392,11 @@ describe('Native portable unconfirmed check termination', () => {
         await expect(recover([invalid])).rejects.toThrow();
         expect(await readNativeLocalExecution(file)).toEqual(local);
       }
-      const processProbe = vi.spyOn(processIdentity, 'inspectProcessTreeLiveness');
-      for (const liveness of ['alive', 'unknown'] as const) {
-        processProbe.mockResolvedValue(liveness);
-        await expect(recover()).rejects.toThrow('尚未确认退出');
-        expect(await readNativeLocalExecution(file)).toEqual(local);
-      }
-      processProbe.mockRestore();
-      const ownerProbe = vi
-        .spyOn(processIdentity, 'inspectProcessLiveness')
-        .mockResolvedValue('unknown');
-      await expect(recover()).rejects.toThrow('尚未确认退出');
-      ownerProbe.mockRestore();
       const starting = structuredClone(local);
       starting.checks[0].activeProcess = { status: 'starting' };
       await fs.writeFile(file, JSON.stringify(starting));
       const [unregistered] = await inspectNativeCheckStopEvidenceTargets(paths, 'change');
-      await expect(
-        recover([{ ...confirmation, executionHash: unregistered.executionHash }]),
-      ).rejects.toThrow('同机PID登记');
+      await expect(recover([confirmation])).rejects.toThrow();
       expect(await readNativeLocalExecution(file)).toEqual(starting);
       await fs.writeFile(file, JSON.stringify(local));
 
@@ -436,19 +434,6 @@ describe('Native portable unconfirmed check termination', () => {
           });
         await expect(command()).rejects.toThrow('local write failed');
         failLocal.mockRestore();
-        const aliveOwner = vi
-          .spyOn(processIdentity, 'inspectProcessLiveness')
-          .mockResolvedValue('alive');
-        await expect(command()).rejects.toThrow('尚未确认退出');
-        expect(await readNativeLocalExecution(file)).toEqual(local);
-        aliveOwner.mockRestore();
-        const childProbe = vi.spyOn(processIdentity, 'inspectProcessTreeLiveness');
-        for (const liveness of ['alive', 'unknown'] as const) {
-          childProbe.mockResolvedValue(liveness);
-          await expect(command()).rejects.toThrow('尚未确认退出');
-          expect(await readNativeLocalExecution(file)).toEqual(local);
-        }
-        childProbe.mockRestore();
       }
       if (source !== 'runtime') {
         const failLocal = vi
