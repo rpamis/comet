@@ -33624,6 +33624,32 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-interrupted-check-owner-confirmation",
+      "sources": ["report:2026-11-10-failed-case-followup"],
+      "behavior": "Windows受管检查超时后保留原监管器供调用方确认整树终止；合法中断重试仍沿原候选回Build修复。",
+      "coverageLevel": "public-cli",
+      "reproduction": "在47d07e03的原Native CLI重试用例中，仅将第三次中断的真实终止调用延迟600ms，前两次正常；监管器250ms后抢先退出，第三次next返回65且停在Verify。独立真实进程复现也显示原监管器在调用方核对前退出。",
+      "expected": "Windows保持原监管器直到实际整树终止确认，POSIX继续快速自清理。原成功检查执行一次，中断检查执行三次，随后回Build/repair。",
+      "forbidden": "把未确认终止当成功、按已退出进程的裸PID杀树、重放一次性成功检查、改变检查的10秒时限，或让POSIX等待Windows确认窗口。",
+      "rootCause": "f6776924将超时后的确认等待统一缩为250ms，Windows监管器可能在调用方实际taskkill确认前自行退出，丢失原ChildProcess身份并触发未确认终止。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-cli-v4-surface.test.ts",
+          "namePattern": "offers retry-checks when a repeatable handoff verification check is interrupted",
+          "requiredNames": [
+            "Native v4 public CLI surface offers retry-checks when a repeatable handoff verification check is interrupted"
+          ]
+        },
+        {
+          "file": "test/platform/process/owned-command-termination.test.ts",
+          "namePattern": "超时后 Windows 等待原调用方核对，POSIX 仍能自行停止进程组",
+          "requiredNames": [
+            "受管命令的整树终止证明 超时后 Windows 等待原调用方核对，POSIX 仍能自行停止进程组"
+          ]
+        }
+      ]
     }
   ],
   "historicalTestMigrations": [

@@ -11,7 +11,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { parse, stringify } from 'yaml';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as termination from '../../../platform/process/terminate-process-tree.js';
 
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import {
@@ -78,6 +79,7 @@ describe('Native v4 public CLI surface', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
@@ -3397,6 +3399,14 @@ Run applicable focused checks.
     const name = 'handoff-runtime-check-interrupted';
     await prepareBuild(name, ['First behavior works.'], 'zh-CN');
 
+    const terminate = termination.terminateProcessTreeConfirmed;
+    let stopCalls = 0;
+    vi.spyOn(termination, 'terminateProcessTreeConfirmed').mockImplementation(async (child) => {
+      // Delay only the third interruption; the real Windows tree termination must still succeed.
+      if (++stopCalls === 4) await new Promise((resolve) => setTimeout(resolve, 600));
+      return terminate(child);
+    });
+
     const checked = await runnerStep(name, {
       ...builderHandoff(['A1']),
       verification_checks: [
@@ -3454,7 +3464,7 @@ Run applicable focused checks.
     const exhausted = await runnerStep(name, inputTemplate(retried, 'runner-input'));
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const local = await readNativeLocalExecution(nativeLocalExecutionFile(paths, name));
-    expect(exhausted, JSON.stringify({ exhausted, local })).toMatchObject({
+    expect(exhausted, JSON.stringify({ exhausted, local, stopCalls })).toMatchObject({
       exitCode: 0,
       data: {
         state: { phase: 'build', loop: { stage: 'repairing' } },
@@ -3471,6 +3481,7 @@ Run applicable focused checks.
         }),
       ]),
     );
+    expect(stopCalls).toBe(4);
   });
 
   it('rejects delayed generic Verifier errors and unavailable messages from an older attempt', async () => {

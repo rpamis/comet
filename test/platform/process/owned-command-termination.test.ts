@@ -128,6 +128,27 @@ describe('受管命令的整树终止证明', () => {
     expect(await terminateProcessTreeConfirmed(owned.child)).toBe(true);
     await untilDead(owned.child.pid!);
   });
+  it('超时后 Windows 等待原调用方核对，POSIX 仍能自行停止进程组', async () => {
+    const owned = spawnOwnedCommand(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], {
+      cwd: directory,
+      timeoutMs: 500,
+      confirmTermination: true,
+    });
+    processes.push(owned.child);
+    const timedOut = new Promise<void>((resolve) => {
+      owned.child.on('message', (message: { type?: string; reason?: string }) => {
+        if (message.type === 'interrupted' && message.reason === 'timeout') resolve();
+      });
+    });
+    await owned.ready;
+    owned.start();
+    await timedOut;
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    if (platform.value === 'win32') expect(await alive(owned.child.pid!)).toBe(true);
+    else await untilDead(owned.child.pid!);
+    expect(await terminateProcessTreeConfirmed(owned.child)).toBe(true);
+    await untilDead(owned.child.pid!);
+  });
   it('POSIX 自清理后的短暂 EPERM 只有在整组消失后才能确认停止', async () => {
     Object.defineProperty(process, 'platform', { ...platform, value: 'darwin' });
     const pid = 2147483002;
