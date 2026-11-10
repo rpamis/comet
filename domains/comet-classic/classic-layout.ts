@@ -102,7 +102,6 @@ export function classicLayoutPaths(
 export async function readClassicArtifactLayout(
   projectRoot: string,
 ): Promise<ClassicArtifactLayout> {
-  await assertClassicConfigPhysical(projectRoot);
   const document = await readWorkflowProjectConfigDocument(projectRoot, {
     allowPartialProject: true,
     allowMissingNativeFields: true,

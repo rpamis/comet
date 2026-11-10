@@ -1,0 +1,546 @@
+{
+  "observations": [
+    {
+      "phase": "pre-review-three-alternating-samples",
+      "baseline": "9acb00ff61220f1bbeea5bf46dd190438f3f9a77",
+      "method": "Three alternating samples of actual generated public CLIs; isolated fixture approval only; no model/Eval. Instrumentation overhead included.",
+      "records": [
+        {
+          "variant": "baseline",
+          "workflow": "native",
+          "label": "0-baseline-shape",
+          "ms": 689.6679000000001,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 1,
+            "stat": 2,
+            "lstat": 820,
+            "lstatSync": 51,
+            "realpath": 610,
+            "open": 31,
+            "readdir": 6,
+            "mkdir": 1,
+            "writeFile": 1,
+            "rename": 1,
+            "readFile": 1,
+            "access": 2
+          },
+          "checkpointOpens": 4,
+          "statusCalls": 0
+        },
+        {
+          "variant": "baseline",
+          "workflow": "native",
+          "label": "0-baseline-repeat",
+          "ms": 535.6292000000001,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 1,
+            "stat": 2,
+            "lstat": 522,
+            "lstatSync": 45,
+            "realpath": 370,
+            "open": 19,
+            "readdir": 4,
+            "access": 2
+          },
+          "checkpointOpens": 2,
+          "statusCalls": 0
+        },
+        {
+          "variant": "baseline",
+          "workflow": "classic",
+          "label": "0-baseline-propose",
+          "ms": 12059.6274,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 11,
+            "lstat": 4171,
+            "realpath": 2782,
+            "open": 138,
+            "readdir": 32,
+            "access": 18,
+            "lstatSync": 594,
+            "stat": 8,
+            "mkdir": 160,
+            "readFile": 19,
+            "rename": 8,
+            "writeFile": 13,
+            "statSync": 10
+          },
+          "checkpointOpens": 8,
+          "statusCalls": 5
+        },
+        {
+          "variant": "optimized",
+          "workflow": "native",
+          "label": "0-optimized-shape",
+          "ms": 635.6275000000023,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 1,
+            "stat": 2,
+            "lstat": 707,
+            "lstatSync": 48,
+            "realpath": 519,
+            "open": 28,
+            "readdir": 5,
+            "mkdir": 1,
+            "writeFile": 1,
+            "rename": 1,
+            "readFile": 1,
+            "access": 2
+          },
+          "checkpointOpens": 3,
+          "statusCalls": 0
+        },
+        {
+          "variant": "optimized",
+          "workflow": "native",
+          "label": "0-optimized-repeat",
+          "ms": 461.0106999999989,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 1,
+            "stat": 2,
+            "lstat": 409,
+            "lstatSync": 42,
+            "realpath": 279,
+            "open": 16,
+            "readdir": 3,
+            "access": 2
+          },
+          "checkpointOpens": 1,
+          "statusCalls": 0
+        },
+        {
+          "variant": "optimized",
+          "workflow": "classic",
+          "label": "0-optimized-propose",
+          "ms": 7122.863100000002,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 5,
+            "lstat": 3520,
+            "realpath": 2343,
+            "open": 117,
+            "readdir": 26,
+            "access": 12,
+            "lstatSync": 474,
+            "stat": 8,
+            "mkdir": 160,
+            "readFile": 19,
+            "rename": 8,
+            "writeFile": 13,
+            "statSync": 4
+          },
+          "checkpointOpens": 8,
+          "statusCalls": 2
+        },
+        {
+          "variant": "optimized",
+          "workflow": "native",
+          "label": "1-optimized-shape",
+          "ms": 630.5746999999974,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 1,
+            "stat": 2,
+            "lstat": 707,
+            "lstatSync": 48,
+            "realpath": 519,
+            "open": 28,
+            "readdir": 5,
+            "mkdir": 1,
+            "writeFile": 1,
+            "rename": 1,
+            "readFile": 1,
+            "access": 2
+          },
+          "checkpointOpens": 3,
+          "statusCalls": 0
+        },
+        {
+          "variant": "optimized",
+          "workflow": "native",
+          "label": "1-optimized-repeat",
+          "ms": 464.23919999999634,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 1,
+            "stat": 2,
+            "lstat": 409,
+            "lstatSync": 42,
+            "realpath": 279,
+            "open": 16,
+            "readdir": 3,
+            "access": 2
+          },
+          "checkpointOpens": 1,
+          "statusCalls": 0
+        },
+        {
+          "variant": "optimized",
+          "workflow": "classic",
+          "label": "1-optimized-propose",
+          "ms": 5486.445,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 5,
+            "lstat": 3520,
+            "realpath": 2343,
+            "open": 117,
+            "readdir": 26,
+            "access": 12,
+            "lstatSync": 474,
+            "stat": 8,
+            "mkdir": 160,
+            "readFile": 19,
+            "rename": 8,
+            "writeFile": 13,
+            "statSync": 4
+          },
+          "checkpointOpens": 8,
+          "statusCalls": 2
+        },
+        {
+          "variant": "baseline",
+          "workflow": "native",
+          "label": "1-baseline-shape",
+          "ms": 644.2618000000075,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 1,
+            "stat": 2,
+            "lstat": 820,
+            "lstatSync": 51,
+            "realpath": 610,
+            "open": 31,
+            "readdir": 6,
+            "mkdir": 1,
+            "writeFile": 1,
+            "rename": 1,
+            "readFile": 1,
+            "access": 2
+          },
+          "checkpointOpens": 4,
+          "statusCalls": 0
+        },
+        {
+          "variant": "baseline",
+          "workflow": "native",
+          "label": "1-baseline-repeat",
+          "ms": 486.1906000000017,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 1,
+            "stat": 2,
+            "lstat": 522,
+            "lstatSync": 45,
+            "realpath": 370,
+            "open": 19,
+            "readdir": 4,
+            "access": 2
+          },
+          "checkpointOpens": 2,
+          "statusCalls": 0
+        },
+        {
+          "variant": "baseline",
+          "workflow": "classic",
+          "label": "1-baseline-propose",
+          "ms": 10930.450300000011,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 11,
+            "lstat": 4171,
+            "realpath": 2782,
+            "open": 138,
+            "readdir": 32,
+            "access": 18,
+            "lstatSync": 594,
+            "stat": 8,
+            "mkdir": 160,
+            "readFile": 19,
+            "rename": 8,
+            "writeFile": 13,
+            "statSync": 10
+          },
+          "checkpointOpens": 8,
+          "statusCalls": 5
+        },
+        {
+          "variant": "baseline",
+          "workflow": "native",
+          "label": "2-baseline-shape",
+          "ms": 670.1671999999962,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 1,
+            "stat": 2,
+            "lstat": 820,
+            "lstatSync": 51,
+            "realpath": 610,
+            "open": 31,
+            "readdir": 6,
+            "mkdir": 1,
+            "writeFile": 1,
+            "rename": 1,
+            "readFile": 1,
+            "access": 2
+          },
+          "checkpointOpens": 4,
+          "statusCalls": 0
+        },
+        {
+          "variant": "baseline",
+          "workflow": "native",
+          "label": "2-baseline-repeat",
+          "ms": 491.8049000000028,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 1,
+            "stat": 2,
+            "lstat": 522,
+            "lstatSync": 45,
+            "realpath": 370,
+            "open": 19,
+            "readdir": 4,
+            "access": 2
+          },
+          "checkpointOpens": 2,
+          "statusCalls": 0
+        },
+        {
+          "variant": "baseline",
+          "workflow": "classic",
+          "label": "2-baseline-propose",
+          "ms": 11593.805300000007,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 11,
+            "lstat": 4171,
+            "realpath": 2782,
+            "open": 138,
+            "readdir": 32,
+            "access": 18,
+            "lstatSync": 594,
+            "stat": 8,
+            "mkdir": 160,
+            "readFile": 19,
+            "rename": 8,
+            "writeFile": 13,
+            "statSync": 10
+          },
+          "checkpointOpens": 8,
+          "statusCalls": 5
+        },
+        {
+          "variant": "optimized",
+          "workflow": "native",
+          "label": "2-optimized-shape",
+          "ms": 664.4719000000041,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 1,
+            "stat": 2,
+            "lstat": 707,
+            "lstatSync": 48,
+            "realpath": 519,
+            "open": 28,
+            "readdir": 5,
+            "mkdir": 1,
+            "writeFile": 1,
+            "rename": 1,
+            "readFile": 1,
+            "access": 2
+          },
+          "checkpointOpens": 3,
+          "statusCalls": 0
+        },
+        {
+          "variant": "optimized",
+          "workflow": "native",
+          "label": "2-optimized-repeat",
+          "ms": 454.26699999999255,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 1,
+            "stat": 2,
+            "lstat": 409,
+            "lstatSync": 42,
+            "realpath": 279,
+            "open": 16,
+            "readdir": 3,
+            "access": 2
+          },
+          "checkpointOpens": 1,
+          "statusCalls": 0
+        },
+        {
+          "variant": "optimized",
+          "workflow": "classic",
+          "label": "2-optimized-propose",
+          "ms": 5567.647400000016,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 5,
+            "lstat": 3520,
+            "realpath": 2343,
+            "open": 117,
+            "readdir": 26,
+            "access": 12,
+            "lstatSync": 474,
+            "stat": 8,
+            "mkdir": 160,
+            "readFile": 19,
+            "rename": 8,
+            "writeFile": 13,
+            "statSync": 4
+          },
+          "checkpointOpens": 8,
+          "statusCalls": 2
+        }
+      ]
+    },
+    {
+      "phase": "final-runtime-call-count-smoke",
+      "baseline": "9acb00ff61220f1bbeea5bf46dd190438f3f9a77",
+      "method": "Alternating actual generated public CLIs; isolated fixture approval only; no model/Eval. Instrumentation overhead included.",
+      "records": [
+        {
+          "variant": "baseline",
+          "workflow": "native",
+          "label": "0-baseline-shape",
+          "ms": 751.9209000000001,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 1,
+            "stat": 2,
+            "lstat": 820,
+            "lstatSync": 51,
+            "realpath": 610,
+            "open": 31,
+            "readdir": 6,
+            "mkdir": 1,
+            "writeFile": 1,
+            "rename": 1,
+            "readFile": 1,
+            "access": 2
+          },
+          "checkpointOpens": 4,
+          "statusCalls": 0
+        },
+        {
+          "variant": "baseline",
+          "workflow": "native",
+          "label": "0-baseline-repeat",
+          "ms": 539.9091000000003,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 1,
+            "stat": 2,
+            "lstat": 522,
+            "lstatSync": 45,
+            "realpath": 370,
+            "open": 19,
+            "readdir": 4,
+            "access": 2
+          },
+          "checkpointOpens": 2,
+          "statusCalls": 0
+        },
+        {
+          "variant": "baseline",
+          "workflow": "classic",
+          "label": "0-baseline-propose",
+          "ms": 12629.029900000001,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 11,
+            "lstat": 4171,
+            "realpath": 2782,
+            "open": 138,
+            "readdir": 32,
+            "access": 18,
+            "lstatSync": 594,
+            "stat": 8,
+            "mkdir": 160,
+            "readFile": 19,
+            "rename": 8,
+            "writeFile": 13,
+            "statSync": 10
+          },
+          "checkpointOpens": 8,
+          "statusCalls": 5
+        },
+        {
+          "variant": "optimized",
+          "workflow": "native",
+          "label": "0-optimized-shape",
+          "ms": 677.1422999999995,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 1,
+            "stat": 2,
+            "lstat": 707,
+            "lstatSync": 48,
+            "realpath": 519,
+            "open": 28,
+            "readdir": 5,
+            "mkdir": 1,
+            "writeFile": 1,
+            "rename": 1,
+            "readFile": 1,
+            "access": 2
+          },
+          "checkpointOpens": 3,
+          "statusCalls": 0
+        },
+        {
+          "variant": "optimized",
+          "workflow": "native",
+          "label": "0-optimized-repeat",
+          "ms": 568.7531000000017,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 1,
+            "stat": 2,
+            "lstat": 409,
+            "lstatSync": 42,
+            "realpath": 279,
+            "open": 16,
+            "readdir": 3,
+            "access": 2
+          },
+          "checkpointOpens": 1,
+          "statusCalls": 0
+        },
+        {
+          "variant": "optimized",
+          "workflow": "classic",
+          "label": "0-optimized-propose",
+          "ms": 5520.4398,
+          "counts": {
+            "realpathSync": 3,
+            "readFileSync": 5,
+            "lstat": 3499,
+            "realpath": 2322,
+            "open": 117,
+            "readdir": 26,
+            "access": 12,
+            "lstatSync": 474,
+            "stat": 8,
+            "mkdir": 160,
+            "readFile": 19,
+            "rename": 8,
+            "writeFile": 13,
+            "statSync": 4
+          },
+          "checkpointOpens": 8,
+          "statusCalls": 2
+        }
+      ]
+    }
+  ]
+}

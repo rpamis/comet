@@ -1109,7 +1109,7 @@ async function transitionLocked(output: CommandOutput, name: string, event: stri
 async function nextSdkEntry(
   output: CommandOutput,
   name: string,
-  inspected: { run: WorkflowRun; projectRoot: string },
+  inspected: Parameters<typeof sdkEntryData>[1],
   details = false,
 ): Promise<void> {
   const data = await sdkEntryData(name, inspected, details);
@@ -1156,7 +1156,9 @@ async function next(
   const sdkWorkspace =
     owner?.format === 'compat'
       ? null
-      : await findClassicSdkWorkspace(classicCommandProjectRoot(), name);
+      : await findClassicSdkWorkspace(classicCommandProjectRoot(), name, {
+          owner: owner?.format === 'sdk' ? owner : undefined,
+        });
   if (sdkWorkspace) {
     if (continueRun) {
       const advanced = await advanceClassicSdkChange(sdkWorkspace.projectRoot, name, sdkWorkspace);
@@ -2628,7 +2630,9 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         );
         if (!wait) fail('ERROR: Classic SDK Design proposal did not create a pending decision');
         output.data = {
-          ...(await sdkEntryData(rest[0], { run, projectRoot: workspace.projectRoot })),
+          ...(await sdkEntryData(rest[0], { run, projectRoot: workspace.projectRoot }, false, {
+            submittedDesign: run,
+          })),
           wait: { id: wait.id, proposalHash: wait.proposalHash, choices: wait.choices },
         };
         output.stdout.push(`Design proposal recorded for ${rest[0]}; user approval is pending.`);

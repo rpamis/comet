@@ -134,14 +134,7 @@ const designHandoffValidator: RuntimeValidator = {
         const source = await classicOpenEvidenceReceipt(context.projectRoot, input.changeDir, {
           run,
         });
-        const requirements = await classicOpenEvidenceReceipt(
-          context.projectRoot,
-          input.changeDir,
-          {
-            designRequirements: true,
-            run,
-          },
-        );
+        const requirements = source;
         if (
           output.sourceEvidence?.ref !== source.ref ||
           output.requirementsEvidence?.ref !== requirements.ref

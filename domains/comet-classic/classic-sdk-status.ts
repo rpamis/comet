@@ -8,6 +8,7 @@ import { createRuntime, type WorkflowRun, type WorkflowRuntime } from '../engine
 import {
   readChangeRuntimeOwner,
   readSdkChangeOwner,
+  type SdkChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import { resolveClassicChangeRuntimeOwner } from './classic-runtime-ownership.js';
@@ -98,18 +99,21 @@ export function classicSdkNextAction(run: WorkflowRun) {
 export async function inspectClassicSdkRun(
   projectRoot: string,
   name: string,
-  options: { readOnly?: boolean; allowBranchRebind?: boolean } = {},
+  options: { readOnly?: boolean; allowBranchRebind?: boolean; owner?: SdkChangeOwner } = {},
 ): Promise<{
   run: WorkflowRun;
   state: ClassicState;
   runtime: WorkflowRuntime;
   profile: ClassicProfile;
+  owner: SdkChangeOwner;
 }> {
   await inspectClassicStateFileCandidates(projectRoot, name);
   const directory = (await resolveClassicChangeDirectory(name, projectRoot)).directory;
-  const owner = await readSdkChangeOwner(projectRoot, 'classic', name, {
-    readOnly: options.readOnly,
-  });
+  const owner =
+    options.owner ??
+    (await readSdkChangeOwner(projectRoot, 'classic', name, {
+      readOnly: options.readOnly,
+    }));
   if (!owner) throw new Error(`Classic change ${name} is not owned by an SDK Run`);
   if (!['classic-full', 'classic-hotfix', 'classic-tweak'].includes(owner.application))
     throw new Error(
@@ -177,7 +181,7 @@ export async function inspectClassicSdkRun(
   ) {
     throw new Error(`Classic SDK Run ${name} does not match its change ownership`);
   }
-  return { run, state, runtime, profile: effectiveProfile };
+  return { run, state, runtime, profile: effectiveProfile, owner };
 }
 
 type ClassicSdkWorkspace = Awaited<ReturnType<typeof inspectClassicSdkRun>> & {
@@ -187,20 +191,28 @@ type ClassicSdkWorkspace = Awaited<ReturnType<typeof inspectClassicSdkRun>> & {
 export async function findClassicSdkWorkspace(
   projectRoot: string,
   name: string,
-  options: { readOnly?: boolean } = {},
+  options: { readOnly?: boolean; owner?: SdkChangeOwner } = {},
 ): Promise<ClassicSdkWorkspace | null> {
   const requestedRoot = path.resolve(projectRoot);
-  if (await readSdkChangeOwner(requestedRoot, 'classic', name, { readOnly: true })) {
+  const owner =
+    options.owner ?? (await readSdkChangeOwner(requestedRoot, 'classic', name, { readOnly: true }));
+  if (owner) {
     return {
       projectRoot: requestedRoot,
-      ...(await inspectClassicSdkRun(requestedRoot, name, options)),
+      ...(await inspectClassicSdkRun(requestedRoot, name, { ...options, owner })),
     };
   }
   const candidates: ClassicSdkWorkspace[] = [];
   for (const worktree of listGitWorktrees(requestedRoot)) {
     if (samePath(worktree.root, requestedRoot)) continue;
-    if (!(await readSdkChangeOwner(worktree.root, 'classic', name, { readOnly: true }))) continue;
-    const inspected = await inspectClassicSdkRun(worktree.root, name, options);
+    const worktreeOwner = await readSdkChangeOwner(worktree.root, 'classic', name, {
+      readOnly: true,
+    });
+    if (!worktreeOwner) continue;
+    const inspected = await inspectClassicSdkRun(worktree.root, name, {
+      ...options,
+      owner: worktreeOwner,
+    });
     if (
       inspected.state.isolation !== 'worktree' ||
       !inspected.state.boundBranch ||

@@ -128,10 +128,7 @@ export async function proposeClassicSdkDesign(options: {
       const sourceEvidence = await classicOpenEvidenceReceipt(projectRoot, input.changeDir, {
         run,
       });
-      const requirementsEvidence = await classicOpenEvidenceReceipt(projectRoot, input.changeDir, {
-        designRequirements: true,
-        run,
-      });
+      const requirementsEvidence = sourceEvidence;
       const handoff = await resolveClassicDesignContext({
         projectRoot,
         run,

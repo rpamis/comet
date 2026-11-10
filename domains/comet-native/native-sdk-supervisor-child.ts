@@ -9,7 +9,7 @@ import {
   nativeSdkSupervisorChildCheckSummaries,
 } from './native-sdk-checks.js';
 import { nativeSdkRequiresIndependentReview } from './native-sdk-review.js';
-import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
+import { currentNativeSdkSupervisorContract } from './native-sdk-supervisor-prepare.js';
 import { supervisorAcceptanceScope } from './native-supervisor-model.js';
 import { nativeSupervisorChildWorktree } from './native-supervisor-workspace.js';
 import {
@@ -33,7 +33,7 @@ export const nativeSdkSupervisorBuilderValidator: RuntimeValidator = {
     }
     try {
       const state = parseNativePortableState(run.state);
-      const plan = await currentNativeSdkSupervisorPlan(run, context.projectRoot);
+      const plan = await currentNativeSdkSupervisorContract(run, context.projectRoot);
       const activation = (action.input as { activation?: Record<string, unknown> }).activation;
       const output = outcome.output as Record<string, unknown> | null;
       if (
@@ -103,7 +103,7 @@ export const nativeSdkSupervisorVerifierValidator: RuntimeValidator = {
     }
     try {
       const state = parseNativePortableState(run.state);
-      const plan = await currentNativeSdkSupervisorPlan(run, context.projectRoot);
+      const plan = await currentNativeSdkSupervisorContract(run, context.projectRoot);
       const activation = (action.input as { activation?: Record<string, unknown> }).activation;
       const output = outcome.output as Record<string, unknown> | null;
       const evidence = output?.evidence as Record<string, unknown> | null | undefined;

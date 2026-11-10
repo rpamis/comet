@@ -1,0 +1,173 @@
+{
+  "baseline": "9acb00ff61220f1bbeea5bf46dd190438f3f9a77",
+  "selectedCaseIds": [
+    "native-archived-crlf-portable-receipt",
+    "native-archived-completion-receipt-projection",
+    "native-archived-legacy-no-definition-upgrade",
+    "native-archived-checkpoint-cross-branch",
+    "native-archived-owner-run-recovery",
+    "classic-openspec-final-status-single-query",
+    "classic-design-source-observation-budget",
+    "classic-next-owner-git-observation-budget",
+    "native-task-run-response-observation-budget",
+    "native-v4-no-unused-check-plan-derivation",
+    "native-supervisor-target-resolution-boundary"
+  ],
+  "groups": [
+    {
+      "id": "registered-native-archived-crlf-portable-receipt",
+      "caseIds": [
+        "native-archived-crlf-portable-receipt",
+        "native-archived-completion-receipt-projection",
+        "native-archived-legacy-no-definition-upgrade",
+        "native-archived-checkpoint-cross-branch",
+        "native-archived-owner-run-recovery",
+        "native-task-run-response-observation-budget",
+        "native-v4-no-unused-check-plan-derivation",
+        "native-docker-syntax-scope",
+        "native-agent-platform-check-reports",
+        "native-agent-report-single-read"
+      ],
+      "passed": 14,
+      "requiredCases": [
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "accepts platform check reports and completes authorized Archive without Runtime check actions (source)",
+          "exact": true
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "accepts platform check reports and completes authorized Archive without Runtime check actions (bundle)",
+          "exact": true
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "keeps active Native recovery bound to its original branch",
+          "exact": true
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "projects a repeated current-session task once without advancing or replacing its claim",
+          "exact": true
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "claims Shape using the inspected Run without a redundant checkpoint read",
+          "exact": true
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "projects once when a Builder report claims Verify and retains the committed session and result template",
+          "exact": true
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "retains an explicit independent review requirement",
+          "exact": true
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "does not derive legacy Runtime check plans for a v4 task template",
+          "exact": true
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "does not pass acceptance with a failed platform check",
+          "exact": true
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "does not pass acceptance with a not-run platform check",
+          "exact": true
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "waits for user acceptance and rejects another session reporting the original task",
+          "exact": true
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "dispatches the Verifier directly when the user requests another review",
+          "exact": true
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "preserves the original agent task as unknown when recovering a v4 checkpoint",
+          "exact": true
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "name": "reads the submitted platform report once before committing its result",
+          "exact": true
+        }
+      ]
+    },
+    {
+      "id": "registered-classic-openspec-final-status-single-query",
+      "caseIds": ["classic-openspec-final-status-single-query"],
+      "passed": 2,
+      "requiredCases": [
+        {
+          "file": "test/domains/comet-classic/classic-openspec-command.test.ts",
+          "name": "Classic OpenSpec adapter validates completed status files in the same adapter invocation without another subprocess",
+          "exact": true
+        },
+        {
+          "file": "test/domains/comet-classic/classic-artifact-requirements.test.ts",
+          "name": "Classic OpenSpec artifact adapter reuses only the current status graph and still detects missing actual files",
+          "exact": true
+        }
+      ]
+    },
+    {
+      "id": "registered-classic-design-source-observation-budget",
+      "caseIds": [
+        "classic-design-source-observation-budget",
+        "classic-next-owner-git-observation-budget"
+      ],
+      "passed": 2,
+      "requiredCases": [
+        {
+          "file": "test/domains/comet-classic/classic-workflow-performance.test.ts",
+          "name": "validates Design sources once per prepare and submit boundary and rereads on the next command",
+          "exact": true
+        },
+        {
+          "file": "test/domains/comet-classic/classic-workflow-performance.test.ts",
+          "name": "reads Classic ownership once for next and avoids Git probes without branch isolation",
+          "exact": true
+        }
+      ]
+    },
+    {
+      "id": "history-domains-comet-native-native-agent-supervisor-business",
+      "caseIds": [
+        "native-299-real-integration-parent-verify",
+        "native-supervisor-target-resolution-boundary",
+        "native-supervisor-referenced-acceptance",
+        "agent-native-supervisor-business"
+      ],
+      "passed": 2,
+      "requiredCases": [
+        {
+          "file": "test/domains/comet-native/native-agent-supervisor-business.test.ts",
+          "name": "completes Agent-selected Supervisor work through the Native business entry via source"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-supervisor-business.test.ts",
+          "name": "completes Agent-selected Supervisor work through the Native business entry via generated"
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-supervisor-business.test.ts",
+          "name": "completes Agent-selected Supervisor work through the Native business entry via source",
+          "exact": true
+        },
+        {
+          "file": "test/domains/comet-native/native-agent-supervisor-business.test.ts",
+          "name": "completes Agent-selected Supervisor work through the Native business entry via generated",
+          "exact": true
+        }
+      ]
+    }
+  ]
+}

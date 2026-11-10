@@ -12,7 +12,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
-- **Workflow recovery and latency**: Remove PID and process-creation bindings from Native and Classic locks and check recovery. Process exit releases workflow locks, and current executors handle stop requests without operating on historical PIDs. Keep confirmed legacy stop receipts and original results; reconcile unknown side effects before retrying. Prepare Runtime paths once per command, batch internal transitions, shorten Native task responses, and avoid historical Run discovery for unselected neutral documentation edits.
+- **Workflow recovery and latency**: Remove PID and process-creation bindings from Native and Classic locks and check recovery. Process exit releases workflow locks, and current executors handle stop requests without operating on historical PIDs. Keep confirmed legacy stop receipts and original results; reconcile unknown side effects before retrying. Prepare Runtime paths once per command, batch internal transitions, shorten Native task responses, and avoid historical Run discovery for unselected neutral documentation edits. Reduce repeated Run reads, task projections, Git probes, and OpenSpec queries within each command. Classic validates completed OpenSpec artifacts against actual files in the same status call; portable checkpoints and fresh recovery checks remain intact.
 
 - **Agent checks**: New built-in Native and Classic Runs accept actual checks performed with Agent platform tools. Native hands Builder results directly to the Verifier, including Supervisor children and parent acceptance; Classic accepts check reports through `--checks` during Build and Verify. Remove ordinary managed-check rounds and receipts while retaining user approval, requested independent review, complete acceptance, Git delivery, Archive recovery, and existing Run and fixed-application protocols.
 
@@ -28,6 +28,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Archived Native recovery**: Repair completed Native history after switching branches without upgrading its accepted workflow definition or repeating completed work. Restore a lost local Run while retaining its archived owner, original completion receipt, and portable checkpoint, including Windows line endings; active changes still require their original workspace binding.
 - **Project update preservation**: Keep custom ignore rules, their precedence, and user-authored YAML comments when updating managed project configuration ([#540](https://github.com/rpamis/comet/issues/540)).
 - **ZCode Hook diagnostics**: Recognize valid user-level Hooks, repair disabled or duplicate entries, and preserve them during project updates instead of replacing them with project Hooks that ZCode does not execute ([#541](https://github.com/rpamis/comet/issues/541)).
 - **Cancelled Native history**: Diagnose closed, cancelled legacy Runs after their active documents are removed, while retaining checks for active projections, execution stops and storage integrity ([#542](https://github.com/rpamis/comet/issues/542)).

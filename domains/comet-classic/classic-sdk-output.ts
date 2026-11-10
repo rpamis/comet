@@ -1,6 +1,12 @@
 import type { RuntimeAction, RuntimeValue, WorkflowRun } from '../engine/runtime.js';
 import type { CliActionContinuation } from '../workflow-contract/output-envelope.js';
-import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
+import type { SdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import {
+  evaluateBranchBinding,
+  isGitWorkTree,
+  liveGitBranch,
+  requiresBranchBinding,
+} from './classic-branch-binding.js';
 import { isClassicSdkRejectedBuildProposal } from './classic-build-configuration.js';
 import { resolveClassicChangeDirectory } from './classic-paths.js';
 import { classicRecoveryContext } from './classic-recovery.js';
@@ -768,9 +774,9 @@ function classicSdkDeliverySummary(run: WorkflowRun) {
 /** 查询与写入共用同一响应；使用调用方已经读取或提交的 Run，绝不再次 inspect 推进状态。 */
 export async function classicSdkEntryData(
   change: string,
-  inspected: { run: WorkflowRun; projectRoot: string },
+  inspected: { run: WorkflowRun; projectRoot: string; owner?: SdkChangeOwner },
   details = false,
-  observation: { openApprovalHash?: string } = {},
+  observation: { openApprovalHash?: string; submittedDesign?: WorkflowRun } = {},
 ) {
   const { run, projectRoot } = inspected;
   const state = run.state as unknown as ClassicState;
@@ -796,14 +802,23 @@ export async function classicSdkEntryData(
   };
   try {
     const { directory } = await resolveClassicChangeDirectory(change, projectRoot);
-    const revisionIssues = await inspectClassicSdkRevisionReadiness(projectRoot, run);
+    const revisionIssues = await inspectClassicSdkRevisionReadiness(projectRoot, run, observation);
+    const currentBranch =
+      !['completed', 'cancelled'].includes(run.status) && requiresBranchBinding(state.isolation)
+        ? liveGitBranch(projectRoot)
+        : null;
     const branch = ['completed', 'cancelled'].includes(run.status)
       ? null
       : evaluateBranchBinding({
           isolation: state.isolation,
           boundBranch: state.boundBranch,
-          currentBranch: liveGitBranch(projectRoot),
-          gitWorkTree: isGitWorkTree(projectRoot),
+          currentBranch,
+          gitWorkTree:
+            requiresBranchBinding(state.isolation) &&
+            state.boundBranch === null &&
+            currentBranch === null
+              ? isGitWorkTree(projectRoot)
+              : true,
         });
     if (branch?.status === 'drift')
       revisionIssues.unshift({
@@ -827,10 +842,11 @@ export async function classicSdkEntryData(
       : null;
     return {
       ...base,
-      diagnostics: await inspectClassicSdkRunDiagnostics(projectRoot, run).then((diagnostics) =>
-        revisionIssues.length
-          ? { ...diagnostics, healthy: false, issues: [...diagnostics.issues, ...revisionIssues] }
-          : diagnostics,
+      diagnostics: await inspectClassicSdkRunDiagnostics(projectRoot, run, inspected.owner).then(
+        (diagnostics) =>
+          revisionIssues.length
+            ? { ...diagnostics, healthy: false, issues: [...diagnostics.issues, ...revisionIssues] }
+            : diagnostics,
       ),
       ...(revisionIssues.length
         ? {

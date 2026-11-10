@@ -8,7 +8,7 @@ import {
   recordClassicArchiveRequirements,
   classicArchivedRequirementsProblems,
 } from '../../../domains/comet-classic/classic-artifact-requirements.js';
-import * as openspec from '../../../domains/comet-classic/classic-openspec-command.js';
+import * as openspec from '../../../domains/comet-classic/classic-openspec-execution.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { withClassicCommandContext } from '../../../domains/comet-classic/classic-command-context.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
@@ -63,6 +63,23 @@ describe('Classic OpenSpec artifact adapter', () => {
       .spyOn(openspec, 'executeClassicOpenSpec')
       .mockResolvedValue({ exitCode: 0, stdout: JSON.stringify(data) });
   }
+
+  it('reuses only the current status graph and still detects missing actual files', async () => {
+    const upstream = mockStatus();
+    const observed = status();
+    expect((await readClassicArtifactRequirements(root, directory, observed)).problems).toEqual([]);
+    expect(upstream).not.toHaveBeenCalled();
+    await fs.writeFile(path.join(directory, 'tasks.md'), '');
+    expect(
+      (await readClassicArtifactRequirements(root, directory, observed)).problems.join('\n'),
+    ).toContain('missing or empty');
+    expect(upstream).not.toHaveBeenCalled();
+    await readClassicArtifactRequirements(root, directory);
+    expect(upstream).toHaveBeenCalledTimes(1);
+    await expect(
+      readClassicArtifactRequirements(root, directory, { ...observed, changeRoot: root }),
+    ).rejects.toThrow('outside');
+  });
 
   it.each(['off', 'beta'])(
     'accepts explicitly skipped specs and optional design through Open and %s handoff',

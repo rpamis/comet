@@ -15,11 +15,14 @@ export async function inspectNativeSdkSupervisorRecovery(
   run: Readonly<WorkflowRun>,
   projectRoot: string,
 ): Promise<{ actionId: string; attempt: number; proposalHash: string } | null> {
-  const state = parseNativePortableState(run.state);
   if (
     run.workflow.id !== 'comet-native' ||
     run.workflow.version !== '1' ||
-    run.status !== 'completed' ||
+    run.status !== 'completed'
+  )
+    return null;
+  const state = parseNativePortableState(run.state);
+  if (
     state.phase !== 'build' ||
     state.status !== 'active' ||
     state.archived ||

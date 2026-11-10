@@ -252,6 +252,9 @@ export async function inspectNativeSdkDefinitionUpgrade(
   const saved = await store.read(name);
   const previous = previousDefinitions.find((candidate) => nativeSdkMatchesRun(candidate, saved));
   if (!saved || !previous || nativeSdkMatchesRun(workflow, saved)) return null;
+  // An archived terminal Run has no work to upgrade. Keep its accepted definition
+  // and receipts when inspecting or repairing history from a later branch.
+  if (saved.status === 'completed' && parseNativePortableState(saved.state).archived) return null;
   const previousHash = saved.workflow.hash;
   const transitionHandler = implementation.transitionHandlers?.find(
     (handler) =>

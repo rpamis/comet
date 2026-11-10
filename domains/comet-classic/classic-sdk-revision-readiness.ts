@@ -11,7 +11,11 @@ import type { ClassicState } from './classic-state.js';
 import { classicVerificationReportReceipt } from './classic-verification-report.js';
 
 /** 只读取当前候选的漂移；历史轮次不作为当前恢复的前置条件。 */
-export async function inspectClassicSdkRevisionReadiness(projectRoot: string, run: WorkflowRun) {
+export async function inspectClassicSdkRevisionReadiness(
+  projectRoot: string,
+  run: WorkflowRun,
+  observation: { submittedDesign?: WorkflowRun } = {},
+) {
   const state = run.state as unknown as ClassicState;
   const change = run.runId;
   const input = run.input as { changeDir: string };
@@ -60,6 +64,7 @@ export async function inspectClassicSdkRevisionReadiness(projectRoot: string, ru
   if (
     state.workflow === 'full' &&
     state.phase === 'design' &&
+    observation.submittedDesign !== run &&
     !run.actions.some(
       (action) => action.stepId === 'full.design.handoff' && action.status === 'pending',
     )

@@ -1,12 +1,21 @@
 import path from 'node:path';
 import { createFileRuntimeStore, type WorkflowRun } from '../engine/runtime.js';
 import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
-import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import {
+  readSdkChangeOwner,
+  type SdkChangeOwner,
+} from '../workflow-contract/change-runtime-owner.js';
 import { readWorkflowApplicationStorageDisposition } from '../workflow-application/index.js';
 
 /** 各只读入口共用的诊断；等待用户批准或正常执行不属于状态损坏。 */
-export async function inspectClassicSdkRunDiagnostics(projectRoot: string, run: WorkflowRun) {
-  const owner = await readSdkChangeOwner(projectRoot, 'classic', run.runId, { readOnly: true });
+export async function inspectClassicSdkRunDiagnostics(
+  projectRoot: string,
+  run: WorkflowRun,
+  observedOwner?: SdkChangeOwner,
+) {
+  const owner =
+    observedOwner ??
+    (await readSdkChangeOwner(projectRoot, 'classic', run.runId, { readOnly: true }));
   const disposition =
     owner && !['classic-full', 'classic-hotfix', 'classic-tweak'].includes(owner.application)
       ? await readWorkflowApplicationStorageDisposition(projectRoot, owner.application, run.runId)

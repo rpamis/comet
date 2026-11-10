@@ -146,7 +146,7 @@ import {
   selectNativeSdkReadyChildren,
 } from './native-sdk-supervisor-plan.js';
 import {
-  currentNativeSdkSupervisorPlan,
+  currentNativeSdkSupervisorContract,
   nativeSdkSupervisorChildPrepareExecutor,
   nativeSdkSupervisorChildPrepareValidator,
   nativeSdkSupervisorPrepareExecutor,
@@ -1006,10 +1006,10 @@ const supervisorParentBuilderValidator: RuntimeValidator = {
       return { accepted: false, reason: 'Native Supervisor parent Builder lacks its project' };
     }
     try {
-      const plan = await currentNativeSdkSupervisorPlan(run, context.projectRoot);
+      const plan = await currentNativeSdkSupervisorContract(run, context.projectRoot);
 
       const input = (action.input as { activation?: Record<string, unknown> }).activation;
-      const state = parseNativePortableState(run.state);
+      const state = plan.state;
       const worktree = nativeSupervisorIntegrationWorktree(context.projectRoot, state.name);
       const branch = nativeSupervisorIntegrationBranch(state.name);
       const candidateCommit = nativeSdkSupervisorParentCandidateCommit(action, outcome);
@@ -1047,14 +1047,6 @@ const supervisorParentBuilderValidator: RuntimeValidator = {
         input.integrationCommit,
         candidateCommit,
       ]);
-      const config = await readProjectConfig(context.projectRoot);
-      if (
-        !config ||
-        config.native.artifact_root !== (run.input as { artifactRootRef?: unknown }).artifactRootRef
-      ) {
-        throw new Error('Native artifact root changed after Run creation');
-      }
-
       if (run.workflow.version === '4') return { accepted: true };
       builderCandidateState(run, action, outcome);
       const checks = nativeSdkCheckPlans(outcome.output);

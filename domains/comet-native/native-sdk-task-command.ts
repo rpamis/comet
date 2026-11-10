@@ -17,7 +17,10 @@ import type { NativePortableState } from './native-portable-types.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { loadOwnedNativeSdkRuntime } from './native-runtime-ownership.js';
 import { collectNativeSdkShapeProposal } from './native-sdk-application.js';
-import { nativeSdkTaskResultTemplate } from './native-sdk-continuation.js';
+import {
+  nativeSdkTaskResultTemplate,
+  nativeSdkActionContextRequest,
+} from './native-sdk-continuation.js';
 import { advanceNativeSdkChange } from './native-sdk-next.js';
 import { nativeSdkRequiresIndependentReview } from './native-sdk-review.js';
 import { projectNativeSdkStatus, projectNativeSdkTaskStatus } from './native-sdk-status.js';
@@ -149,6 +152,7 @@ async function projectTaskResult(
   options: NativeTaskOptions,
   run: WorkflowRun,
   advanced?: DispatchResult,
+  observedStatus?: Awaited<ReturnType<typeof projectNativeSdkTaskStatus>>,
 ): Promise<DispatchResult> {
   const state = parseNativePortableState(run.state);
   const artifactRootRef = (run.input as { artifactRootRef: string }).artifactRootRef;
@@ -159,9 +163,11 @@ async function projectTaskResult(
         { projectRoot: options.projectRoot, name: options.name, details: true },
         { run, state, artifactRootRef, application: null },
       )
-    : priorStatus?.schema === 'comet.native.sdk-status.v1'
-      ? (advanced!.data as Awaited<ReturnType<typeof projectNativeSdkStatus>>)
-      : await projectNativeSdkTaskStatus(options, run, state);
+    : observedStatus
+      ? observedStatus
+      : priorStatus?.schema === 'comet.native.sdk-status.v1'
+        ? (advanced!.data as Awaited<ReturnType<typeof projectNativeSdkStatus>>)
+        : await projectNativeSdkTaskStatus(options, run, state);
   const available = run.actions.filter(
     (entry) => ordinaryTask(entry) && ['pending', 'running'].includes(entry.status),
   );
@@ -277,9 +283,11 @@ async function projectTaskResult(
         verifierTask(currentTask) &&
         builderSession(run, currentTask) !== options.sessionId
           ? {
-              contextRequest: (
-                status as { activeActions?: Array<{ id: string; contextRequest?: unknown }> }
-              ).activeActions?.find((entry) => entry.id === currentTask.id)?.contextRequest,
+              contextRequest: nativeSdkActionContextRequest(
+                currentTask,
+                state,
+                options.projectRoot,
+              ),
             }
           : {}),
         ...(run.workflow.version === '4' && currentTask.stepId === 'supervisor.child.verifier'
@@ -450,6 +458,9 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
   let reported: RuntimeAction | undefined;
   let reportedByIndependentVerifier = false;
   let repeated = false;
+  let advancementObservation:
+    | { run: WorkflowRun; status: Awaited<ReturnType<typeof projectNativeSdkTaskStatus>> }
+    | undefined;
   const advance = async (
     decision?: Parameters<typeof advanceNativeSdkChange>[2],
   ): Promise<DispatchResult> => {
@@ -465,6 +476,9 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
           application: owned.application,
         },
         true,
+        (current, status) => {
+          advancementObservation = { run: current, status };
+        },
       );
     } catch (error) {
       if (!reported) throw error;
@@ -597,7 +611,12 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
         proposalHash: wait.proposalHash,
         summary: options.acceptOnPass.trim(),
       });
-      return taskResult(options, await owned.runtime.inspect(options.name), advanced);
+      return taskResult(
+        options,
+        advancementObservation?.run ?? (await owned.runtime.inspect(options.name)),
+        advanced,
+        advancementObservation?.status,
+      );
     }
   }
   const awaitingShapeInput =
@@ -606,7 +625,7 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
       (entry) => entry.stepId === 'shape.prepare' && ['pending', 'running'].includes(entry.status),
     );
   const advanced = repeated || awaitingShapeInput ? undefined : await advance();
-  run = await owned.runtime.inspect(options.name);
+  if (advanced) run = advancementObservation?.run ?? (await owned.runtime.inspect(options.name));
   const pending = run.actions.filter((entry) => ordinaryTask(entry) && entry.status === 'pending');
   const reportedChild = reported ? activation(reported)?.child : undefined;
   const nextTask =
@@ -666,11 +685,7 @@ export async function advanceNativeSdkTask(options: NativeTaskOptions): Promise<
       context: { requestId: `native-task-${selected.id}`, projectRoot: options.projectRoot },
     });
   }
-  return taskResult(
-    options,
-    run,
-    selected && run.actions.find((entry) => entry.id === selected.id)?.status === 'running'
-      ? undefined
-      : advanced,
-  );
+  // A successful claim changes only its execution identity. Domain state, decisions,
+  // diagnostics and report warnings are the same observation; task fields use the committed Run.
+  return taskResult(options, run, advanced, advancementObservation?.status);
 }

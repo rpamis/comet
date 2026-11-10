@@ -142,7 +142,7 @@ function nativeSdkOutcomeOutput(
     ...(run.workflow.version !== '1' ? { repeatable: true } : {}),
   };
   const inheritedChecks = new Map<string, ReturnType<typeof nativeSdkCheckPlans>[number]>();
-  if (['3', '4'].includes(run.workflow.version) && action.stepId === 'build.builder') {
+  if (run.workflow.version === '3' && action.stepId === 'build.builder') {
     for (const previous of run.actions.slice(
       0,
       run.actions.findIndex(({ id }) => id === action.id),
@@ -310,8 +310,9 @@ function nativeSdkOutcomeAlternatives(
   action: RuntimeAction,
   state: NativePortableState,
 ) {
+  if (action.type !== 'handoff' || run.workflow.version === '4') return undefined;
   const request = nativeSdkOutcomeRequest(run, action, state);
-  if (!request || action.type !== 'handoff' || run.workflow.version === '4') return undefined;
+  if (!request) return undefined;
   const checks =
     action.stepId === 'verify.verifier'
       ? [
@@ -857,6 +858,36 @@ export async function projectNativeSdkContinuation(
     : projection;
 }
 
+/** Task and diagnostic responses use the same context for the committed claim. */
+export function nativeSdkActionContextRequest(
+  action: RuntimeAction,
+  state: NativePortableState,
+  projectRoot: string,
+) {
+  const input = action.input as {
+    worktree?: unknown;
+    child?: string;
+    acceptance?: Array<{ text: string }>;
+    activation?: { worktree?: unknown; child?: string; acceptance?: Array<{ text: string }> };
+  } | null;
+  const scope = input?.activation ?? input;
+  const worktree = scope?.worktree;
+  return nativeTaskContextRequest({
+    name: state.name,
+    phase: action.ref?.includes('verifier') ? 'verify' : 'build',
+    language: state.language,
+    projectRoot: typeof worktree === 'string' ? worktree : projectRoot,
+    sessionId: action.claim?.sessionId,
+    task: [
+      state.name,
+      ...(scope?.child ? [scope.child] : []),
+      ...(scope?.acceptance ?? (scope?.child ? [] : state.acceptance)).map(({ text }) => text),
+    ]
+      .join('\n')
+      .slice(0, 4000),
+  });
+}
+
 async function projectNativeSdkContinuationValue(options: {
   run: WorkflowRun;
   state: NativePortableState;
@@ -877,30 +908,6 @@ async function projectNativeSdkContinuationValue(options: {
     suggestedReply: null,
     agentInstruction: instruction,
   });
-  const actionContextRequest = (action: RuntimeAction) => {
-    const input = action.input as {
-      worktree?: unknown;
-      child?: string;
-      acceptance?: Array<{ text: string }>;
-      activation?: { worktree?: unknown; child?: string; acceptance?: Array<{ text: string }> };
-    } | null;
-    const scope = input?.activation ?? input;
-    const worktree = scope?.worktree;
-    return nativeTaskContextRequest({
-      name: state.name,
-      phase: action.ref?.includes('verifier') ? 'verify' : 'build',
-      language: state.language,
-      projectRoot: typeof worktree === 'string' ? worktree : projectRoot,
-      sessionId: action.claim?.sessionId,
-      task: [
-        state.name,
-        ...(scope?.child ? [scope.child] : []),
-        ...(scope?.acceptance ?? (scope?.child ? [] : state.acceptance)).map(({ text }) => text),
-      ]
-        .join('\n')
-        .slice(0, 4000),
-    });
-  };
   const base: NativePortableContinuation = {
     schema: 'comet.native.continuation.v2',
     skill: 'comet-native',
@@ -1015,7 +1022,7 @@ async function projectNativeSdkContinuationValue(options: {
           : sdkCommandArgs(['comet', 'native', 'next', state.name], projectRoot),
       ...(action.type === 'handoff'
         ? {
-            contextRequest: actionContextRequest(action),
+            contextRequest: nativeSdkActionContextRequest(action, state, projectRoot),
             ...(action.ref?.includes('verifier')
               ? {
                   sessionRequirements: {
@@ -1725,7 +1732,9 @@ async function projectNativeSdkContinuationValue(options: {
             ref: action.ref,
             claim: action.claim,
             ...(action.reason ? { reason: action.reason } : {}),
-            ...(action.type === 'handoff' ? { contextRequest: actionContextRequest(action) } : {}),
+            ...(action.type === 'handoff'
+              ? { contextRequest: nativeSdkActionContextRequest(action, state, projectRoot) }
+              : {}),
             commandArgs: dispatchCommandArgs,
             ...(run.workflow.version !== '1'
               ? { resultRequest: nativeSdkResultRequest(run, action, state) }

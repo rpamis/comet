@@ -18,7 +18,7 @@ import {
   prepareNativeSupervisorIntegrationWorkspace,
 } from './native-supervisor-workspace.js';
 
-export async function currentNativeSdkSupervisorPlan(
+export async function currentNativeSdkSupervisorContract(
   run: Readonly<WorkflowRun>,
   projectRoot: string,
 ) {
@@ -48,9 +48,18 @@ export async function currentNativeSdkSupervisorPlan(
     );
   const targetBranch = state.workspace.change_branch ?? state.workspace.target_branch;
   if (!targetBranch) throw new Error('Native SDK Supervisor requires a bound Git target branch');
-  const targetCommit = resolveGitRef(projectRoot, targetBranch);
+  return { state, config, contract, targetBranch };
+}
+
+/** Resolve the live target only for preparation and integration that consume its commit. */
+export async function currentNativeSdkSupervisorPlan(
+  run: Readonly<WorkflowRun>,
+  projectRoot: string,
+) {
+  const plan = await currentNativeSdkSupervisorContract(run, projectRoot);
+  const targetCommit = resolveGitRef(projectRoot, plan.targetBranch);
   if (!targetCommit) throw new Error('Native SDK Supervisor target branch has no commit');
-  return { state, config, contract, targetBranch, targetCommit };
+  return { ...plan, targetCommit };
 }
 
 function childPreparationInput(action: Readonly<RuntimeAction>): {

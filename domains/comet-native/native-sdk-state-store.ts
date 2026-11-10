@@ -417,7 +417,7 @@ export function createNativeSdkStateStore(
     ) {
       throw new Error(`Native portable Run checkpoint for ${runId} does not match its state`);
     }
-    if (!options.allowBranchRebind)
+    if (!options.allowBranchRebind && !(state.archived && saved.status === 'completed'))
       assertPortableWorkspaceBindingCurrent(projectRoot, {
         isolation: state.workspace.isolation,
         changeBranch: state.workspace.change_branch,
@@ -456,14 +456,21 @@ export function createNativeSdkStateStore(
         `Native RuntimeStore cannot restore checkpoint revision ${revision}; use a store with restoreCheckpoint support or restore the original Run history`,
       );
     }
-    await registerSdkChangeOwner(projectRoot, {
-      schema: COMET_CHANGE_OWNER_SCHEMA,
-      workflow: 'native',
-      change: runId,
-      format: 'sdk',
-      application: options.identity?.id ?? 'native',
-      runId,
-    });
+    const application = options.identity?.id ?? 'native';
+    const archivedOwner =
+      state.archived && saved.status === 'completed'
+        ? await readSdkChangeOwner(projectRoot, 'native', runId, { readOnly: true })
+        : null;
+    // A lost local Run does not reopen an already archived, matching owner.
+    if (archivedOwner?.application !== application || archivedOwner.runId !== runId)
+      await registerSdkChangeOwner(projectRoot, {
+        schema: COMET_CHANGE_OWNER_SCHEMA,
+        workflow: 'native',
+        change: runId,
+        format: 'sdk',
+        application,
+        runId,
+      });
     if (revision === 1 && !interrupted) await store.compareAndSwap(runId, null, restored);
     else await store.restoreCheckpoint!(runId, interrupted ? 1 : null, restored);
     return store.read(runId);
@@ -710,7 +717,16 @@ export function createNativeSdkStateStore(
           isDeepStrictEqual(currentCheckpoint, expectedCheckpoint) ||
           isDeepStrictEqual(currentCheckpoint, encodedCheckpoint);
       }
-      const archiveReceipt = currentDocument?.['archive_receipt'];
+      const committedArchiveReceipt =
+        !options.identity && state.archived && run.status === 'completed'
+          ? run.outputs['archive.finalize']?.value
+          : undefined;
+      const archiveReceipt =
+        currentDocument?.['archive_receipt'] === undefined
+          ? committedArchiveReceipt
+          : currentDocument['archive_receipt'];
+      const missingArchiveReceipt =
+        committedArchiveReceipt !== undefined && currentDocument?.['archive_receipt'] === undefined;
       const unresolvedFinalization = run.actions.some(
         (action) => action.stepId === 'archive.finalize',
       );
@@ -718,7 +734,8 @@ export function createNativeSdkStateStore(
         !current ||
         !sameState(current, state) ||
         !hasNativeManagedRunMarkerText(currentSource ?? '') ||
-        !checkpointMatches
+        !checkpointMatches ||
+        missingArchiveReceipt
       ) {
         if (readOnly)
           throw new NativeProjectionRepairRequiredError(

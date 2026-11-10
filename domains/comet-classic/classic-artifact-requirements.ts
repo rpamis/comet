@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { parseDocument } from 'yaml';
-import { executeClassicOpenSpec } from './classic-openspec-command.js';
+import { executeClassicOpenSpec } from './classic-openspec-execution.js';
 import { collectClassicSpecFiles } from './classic-paths.js';
 import {
   classicProjectFileNonempty,
@@ -144,6 +144,7 @@ export function requiredArtifactClosure(status: unknown): Artifact[] {
 export async function readClassicArtifactRequirements(
   root: string,
   changeDir: string,
+  observedStatus?: unknown,
 ): Promise<ClassicArtifactRequirements> {
   const metadataFile = path.join(changeDir, '.openspec.yaml');
   if (
@@ -152,6 +153,8 @@ export async function readClassicArtifactRequirements(
       expected: 'file',
     }))
   ) {
+    if (observedStatus !== undefined)
+      throw new Error('OpenSpec change metadata is missing; cannot validate its status');
     return {
       source: 'legacy',
       required: ['proposal', 'design', 'tasks'],
@@ -168,17 +171,23 @@ export async function readClassicArtifactRequirements(
     throw new Error(`Invalid OpenSpec metadata: ${metadata.errors[0].message}`);
 
   const specFiles = await collectClassicSpecFiles(root, path.join(changeDir, 'specs'));
-  const response = await executeClassicOpenSpec(
-    ['status', '--change', path.basename(changeDir), '--json'],
-    root,
-  );
-  if (response.exitCode !== 0)
+  const response =
+    observedStatus === undefined
+      ? await executeClassicOpenSpec(
+          ['status', '--change', path.basename(changeDir), '--json'],
+          root,
+        )
+      : undefined;
+  if (response && response.exitCode !== 0)
     throw new Error(
       `Cannot inspect OpenSpec artifact requirements: ${response.stderr ?? response.exitCode}`,
     );
   let status: Record<string, unknown>;
   try {
-    status = JSON.parse(response.stdout ?? '');
+    status = (response ? JSON.parse(response.stdout ?? '') : observedStatus) as Record<
+      string,
+      unknown
+    >;
   } catch {
     throw new Error('Unsupported OpenSpec status: expected JSON');
   }

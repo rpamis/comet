@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { parseDocument } from 'yaml';
+import { hasNativeManagedRunMarker } from './native-state-document.js';
 import { readCurrentLocalExecution } from './native-portable-checks.js';
 import { isNativeSdkChangeCancellationComplete } from './native-sdk-cancellation.js';
 
@@ -799,7 +800,7 @@ async function writePortableArchiveReceipt(
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
     throw error;
   }
-  if (!source.startsWith('# comet-execution: managed-run\n')) {
+  if (!hasNativeManagedRunMarker(source)) {
     return; // External SDK stores do not project a built-in portable state file.
   }
   const document = parseDocument(source, { uniqueKeys: true });
@@ -818,7 +819,7 @@ async function readPortableArchiveReceipt(
     ref: path.relative(paths.nativeRoot, file).replaceAll('\\', '/'),
     maxBytes: null,
   });
-  if (!source.text.startsWith('# comet-execution: managed-run\n')) {
+  if (!hasNativeManagedRunMarker(source.text)) {
     throw new Error('Native SDK Archive portable receipt has no managed Run');
   }
   const document = parseDocument(source.text, { uniqueKeys: true });

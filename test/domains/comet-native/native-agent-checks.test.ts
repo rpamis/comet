@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { spawnSync } from 'node:child_process';
+import { parseDocument } from 'yaml';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import {
   createNativeSdkRuntime,
@@ -10,7 +11,21 @@ import {
 } from '../../../domains/comet-native/native-runtime-ownership.js';
 import { loadOwnedNativeSdkRuntime } from '../../../domains/comet-native/native-runtime-ownership.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
+import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
+import * as sdkStatus from '../../../domains/comet-native/native-sdk-status.js';
+import * as sdkChecks from '../../../domains/comet-native/native-sdk-checks.js';
+import { nativeSdkTaskResultTemplate } from '../../../domains/comet-native/native-sdk-continuation.js';
+import * as stateStores from '../../../domains/comet-native/native-sdk-state-store.js';
+import { inspectNativeSdkDefinitionUpgrade } from '../../../domains/comet-native/native-runtime-ownership.js';
+import { defineNativeWorkflowApplication } from '../../../domains/comet-native/native-sdk-application.js';
+import { nativeSdkLegacyDefinitions } from '../../../domains/comet-native/native-sdk-definition.js';
+import {
+  createFileRuntimeStore,
+  defineWorkflow,
+  hashRuntimeValue,
+} from '../../../domains/engine/runtime.js';
+import * as sdkReport from '../../../domains/comet-native/native-sdk-report.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -29,10 +44,20 @@ it('creates an agent-managed Native Run without a project content snapshot', asy
   expect(run.actions.some((action) => action.stepId.includes('checks'))).toBe(false);
 });
 
-async function builderFixture(boundary: 'source' | 'bundle' = 'source') {
+async function builderFixture(boundary: 'source' | 'bundle' = 'source', branch?: string) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-agent-report-'));
   roots.push(root);
-  await fs.mkdir(path.join(root, '.git'));
+  if (branch) {
+    for (const args of [
+      ['init', '-b', branch],
+      ['config', 'user.name', 'Fixture'],
+      ['config', 'user.email', 'fixture@example.invalid'],
+      ['commit', '--allow-empty', '-m', 'baseline'],
+    ]) {
+      const git = spawnSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true });
+      expect(git.status, git.stderr).toBe(0);
+    }
+  } else await fs.mkdir(path.join(root, '.git'));
   const name = 'agent-report';
   const cli = async (args: string[]) => {
     const argv = [...args, '--project-root', root, '--json'];
@@ -91,10 +116,123 @@ async function builderFixture(boundary: 'source' | 'bundle' = 'source') {
   return { root, name, cli, submit, runtime, builder: builder.envelope.data };
 }
 
+it('projects a repeated current-session task once without advancing or replacing its claim', async () => {
+  const f = await builderFixture();
+  const before = await f.runtime.inspect(f.name);
+  const projection = vi.spyOn(sdkStatus, 'projectNativeSdkTaskStatus');
+  const result = await f.cli(['next', f.name, '--session', 'actual-agent']);
+  expect(result.exitCode, result.stdout).toBe(0);
+  expect(result.envelope.data.task).toMatchObject({
+    actionId: f.builder.task.actionId,
+    session: 'actual-agent',
+    status: 'running',
+  });
+  expect((await f.runtime.inspect(f.name)).revision).toBe(before.revision);
+  expect(projection).toHaveBeenCalledTimes(1);
+});
+
+it('claims Shape using the inspected Run without a redundant checkpoint read', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-shape-read-'));
+  roots.push(root);
+  await fs.mkdir(path.join(root, '.git'));
+  expect(
+    (await runNativeCli(['new', 'shape-read', '--project-root', root, '--json'])).exitCode,
+  ).toBe(0);
+  const open = vi.spyOn(fs, 'open');
+  const result = await runNativeCli([
+    'next',
+    'shape-read',
+    '--session',
+    'actual-shaper',
+    '--project-root',
+    root,
+    '--json',
+  ]);
+  expect(result.exitCode, result.stdout).toBe(0);
+  expect(JSON.parse(result.stdout).data.task).toMatchObject({
+    role: 'shape',
+    session: 'actual-shaper',
+    status: 'running',
+  });
+  const checkpointReads = open.mock.calls.filter(
+    ([file, flags]) => String(file).endsWith('checkpoint.json') && flags === 'r',
+  );
+  expect(checkpointReads.length).toBeLessThanOrEqual(3);
+  open.mockClear();
+  const repeated = await runNativeCli([
+    'next',
+    'shape-read',
+    '--session',
+    'actual-shaper',
+    '--project-root',
+    root,
+    '--json',
+  ]);
+  expect(repeated.exitCode, repeated.stdout).toBe(0);
+  expect(JSON.parse(repeated.stdout).data.task.actionId).toBe(
+    JSON.parse(result.stdout).data.task.actionId,
+  );
+  expect(
+    open.mock.calls.filter(
+      ([file, flags]) => String(file).endsWith('checkpoint.json') && flags === 'r',
+    ).length,
+  ).toBeLessThanOrEqual(1);
+});
+
+it('does not derive legacy Runtime check plans for a v4 task template', async () => {
+  const f = await builderFixture();
+  const run = await f.runtime.inspect(f.name);
+  const builder = run.actions.find((action) => action.id === f.builder.task.actionId)!;
+  const previous = {
+    ...builder,
+    id: 'previous-builder',
+    status: 'succeeded',
+    outcome: { status: 'succeeded', output: { verificationChecks: [] } },
+  } as typeof builder;
+  const plans = vi.spyOn(sdkChecks, 'nativeSdkCheckPlans');
+  const template = nativeSdkTaskResultTemplate(
+    { ...run, actions: [previous, ...run.actions] },
+    builder,
+  );
+  expect(template.output).not.toHaveProperty('verificationChecks');
+  expect(plans).not.toHaveBeenCalled();
+});
+
+it('projects once when a Builder report claims Verify and retains the committed session and result template', async () => {
+  const f = await builderFixture();
+  const projection = vi.spyOn(sdkStatus, 'projectNativeSdkTaskStatus');
+  vi.spyOn(sdkReport, 'refreshNativeSdkVerificationReport').mockRejectedValueOnce(
+    new Error('fixture report publication unavailable'),
+  );
+  const built = await f.submit(f.builder.task.actionId, {
+    summary: 'Implemented.',
+    addressedAcceptanceIds: ['A1'],
+    checks: [],
+    knownLimits: [],
+  });
+  expect(built.exitCode, built.stdout).toBe(0);
+  expect(built.envelope.data.task).toMatchObject({
+    role: 'verify',
+    status: 'running',
+    session: 'actual-agent',
+    readOnly: true,
+  });
+  expect(built.envelope.data.resultTemplate.output.response.kind).toBe('final-result');
+  expect(built.envelope.data.warning).toEqual({
+    code: 'NATIVE_REPORT_PENDING',
+    message: 'fixture report publication unavailable',
+  });
+  const run = await f.runtime.inspect(f.name);
+  expect(
+    run.actions.find((action) => action.id === built.envelope.data.task.actionId)?.claim?.sessionId,
+  ).toBe('actual-agent');
+  expect(projection).toHaveBeenCalledTimes(1);
+});
+
 it.each(['source', 'bundle'] as const)(
   'accepts platform check reports and completes authorized Archive without Runtime check actions (%s)',
   async (boundary) => {
-    const f = await builderFixture(boundary);
+    const f = await builderFixture(boundary, 'archive-origin');
     expect(f.builder.resultTemplate.output).not.toHaveProperty('verificationChecks');
     const checks = [
       {
@@ -134,9 +272,140 @@ it.each(['source', 'bundle'] as const)(
       ),
     ).toBe(false);
     expect(JSON.stringify(run.state)).toContain('original platform log retained');
+    const changed = spawnSync('git', ['switch', '-c', 'after-archive'], {
+      cwd: f.root,
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    expect(changed.status, changed.stderr).toBe(0);
+    if (boundary === 'source') {
+      // Read-only compatibility observation: completed archives keep their original definition.
+      // The fixture is never persisted or used to manufacture a workflow transition.
+      const definition = defineWorkflow(
+        nativeSdkLegacyDefinitions(defineNativeWorkflowApplication().workflow)[0],
+      );
+      const hash = hashRuntimeValue(definition);
+      const legacy = {
+        ...run,
+        workflow: { id: definition.id, version: definition.version, hash },
+        definitionHashes: {
+          ...run.definitionHashes,
+          [JSON.stringify([definition.id, definition.version])]: hash,
+        },
+      };
+      const projectionRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), 'native-legacy-archive-projection-'),
+      );
+      roots.push(projectionRoot);
+      await fs.mkdir(path.join(projectionRoot, '.comet'));
+      await fs.copyFile(
+        path.join(f.root, '.comet/config.yaml'),
+        path.join(projectionRoot, '.comet/config.yaml'),
+      );
+      const receipt = run.outputs['archive.finalize'].value as { archiveRef: string };
+      const projectionDir = path.join(projectionRoot, 'docs/comet/archive', receipt.archiveRef);
+      await fs.cp(path.join(f.root, 'docs/comet/archive', receipt.archiveRef), projectionDir, {
+        recursive: true,
+      });
+      const projectionFile = path.join(projectionDir, 'comet-state.yaml');
+      const document = parseDocument(await fs.readFile(projectionFile, 'utf8'));
+      document.delete('archive_receipt'); // Simulate a legacy projection; authority remains read-only.
+      await fs.writeFile(projectionFile, document.toString());
+      const writeRun = vi.fn();
+      await createNativeSdkStateStore(projectionRoot, {
+        store: { read: async () => legacy, compareAndSwap: writeRun },
+      }).read(f.name);
+      expect(
+        parseDocument(await fs.readFile(projectionFile, 'utf8'))
+          .get('archive_receipt', true)
+          ?.toJSON(),
+      ).toEqual(receipt);
+      expect(writeRun).not.toHaveBeenCalled();
+      const invalidReceipt = parseDocument(await fs.readFile(projectionFile, 'utf8'));
+      invalidReceipt.set('archive_receipt', null);
+      invalidReceipt.delete('run_checkpoint');
+      await fs.writeFile(projectionFile, invalidReceipt.toString());
+      await createNativeSdkStateStore(projectionRoot, {
+        store: { read: async () => legacy, compareAndSwap: writeRun },
+      }).read(f.name);
+      expect(
+        parseDocument(await fs.readFile(projectionFile, 'utf8')).toJS().archive_receipt,
+      ).toBeNull();
+      expect(writeRun).not.toHaveBeenCalled();
+      const commit = vi.fn();
+      const store = vi
+        .spyOn(stateStores, 'createNativeSdkStateStore')
+        .mockReturnValue({ read: async () => legacy, compareAndSwap: commit } as ReturnType<
+          typeof stateStores.createNativeSdkStateStore
+        >);
+      try {
+        expect(await inspectNativeSdkDefinitionUpgrade(f.root, f.name, true)).toBeNull();
+        expect(commit).not.toHaveBeenCalled();
+      } finally {
+        store.mockRestore();
+      }
+    }
+    const beforeArchive = await f.cli(['status', f.name]);
+    expect(beforeArchive.exitCode, beforeArchive.stdout).toBe(0);
+    const archiveDir = path.join(f.root, 'docs/comet/archive');
+    const [archiveName] = await fs.readdir(archiveDir);
+    const checkpointFile = path.join(archiveDir, archiveName, 'comet-state.yaml');
+    // Git may convert YAML to CRLF on another Windows checkout.
+    await fs.writeFile(
+      checkpointFile,
+      (await fs.readFile(checkpointFile, 'utf8')).replace(/\r?\n/gu, '\r\n'),
+    );
+    const checkpoint = await fs.readFile(checkpointFile, 'utf8');
+    const ids = run.actions.map((action) => action.id);
+    await fs.rm(path.join(resolveWorkspaceRuntimeRootSync(f.root), 'sdk-runs/native'), {
+      recursive: true,
+    });
+    const paths = await nativeProjectPaths(f.root, 'docs', { change: f.name, readOnly: true });
+    await fs.rm(path.join(paths.runtimeDir, 'sdk-archive-receipts'), {
+      recursive: true,
+      force: true,
+    });
+    const repaired = await f.cli(['doctor', f.name, '--repair', '--confirmed']);
+    expect(repaired.exitCode, repaired.stdout).toBe(0);
+    const resumed = await f.runtime.inspect(f.name);
+    expect(resumed.status).toBe('completed');
+    expect(resumed.actions.map((action) => action.id)).toEqual(ids);
+    expect(resumed.state).toEqual(run.state);
+    expect(
+      await createFileRuntimeStore({
+        rootDir: path.join(resolveWorkspaceRuntimeRootSync(f.root), 'sdk-runs/native'),
+      }).readPartitionMetadata(f.name),
+    ).toBe('closed');
+    expect(await fs.readFile(checkpointFile, 'utf8')).toBe(checkpoint);
+    expect((await f.cli(['doctor', f.name])).envelope.data.healthy).toBe(true);
   },
   120_000,
 );
+
+it('keeps active Native recovery bound to its original branch', async () => {
+  const f = await builderFixture('source', 'build-origin');
+  const original = await f.runtime.inspect(f.name);
+  const file = path.join(f.root, 'docs/comet/changes', f.name, 'comet-state.yaml');
+  const checkpoint = await fs.readFile(file, 'utf8');
+  const changed = spawnSync('git', ['switch', '-c', 'unrelated-branch'], {
+    cwd: f.root,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  expect(changed.status, changed.stderr).toBe(0);
+  await fs.rm(path.join(resolveWorkspaceRuntimeRootSync(f.root), 'sdk-runs/native'), {
+    recursive: true,
+  });
+  const rejected = await f.cli(['doctor', f.name, '--repair', '--confirmed']);
+  expect(rejected.exitCode).not.toBe(0);
+  expect(rejected.stdout).toContain('does not match the current branch');
+  expect(await fs.readFile(file, 'utf8')).toBe(checkpoint);
+  expect(
+    original.actions.some(
+      (action) => action.status === 'running' && action.claim?.sessionId === 'actual-agent',
+    ),
+  ).toBe(true);
+});
 
 it.each(['failed', 'not-run'])(
   'does not pass acceptance with a %s platform check',
@@ -225,6 +494,14 @@ it('retains an explicit independent review requirement', async () => {
     session: 'independent-reviewer',
     requireIndependentReview: true,
   });
+  const detailed = await f.cli(['next', f.name, '--session', 'independent-reviewer', '--details']);
+  expect(detailed.exitCode, detailed.stdout).toBe(0);
+  const current = detailed.envelope.data.details.activeActions.find(
+    (action: { id: string }) => action.id === received.envelope.data.task.actionId,
+  );
+  expect(received.envelope.data.task.contextRequest).toEqual(current.contextRequest);
+  expect(detailed.envelope.data.task.contextRequest).toEqual(current.contextRequest);
+  expect(current.claim.sessionId).toBe('independent-reviewer');
 });
 
 it('reads the submitted platform report once before committing its result', async () => {

@@ -761,6 +761,8 @@ export async function nativeDoctorCommand(
           });
         }
         const state = parseNativePortableState(run.state);
+        if (state.archived && run.status === 'completed')
+          await settleNativeSdkCompletion({ projectRoot, run });
         const diagnosed = await nativeDoctorCommand([name], projectRoot);
         return {
           ...diagnosed,

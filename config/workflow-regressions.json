@@ -2,6 +2,232 @@
   "schema": "comet.release.bad-cases.v1",
   "cases": [
     {
+      "id": "native-archived-crlf-portable-receipt",
+      "behavior": "Native归档Portable经Windows Git转换为CRLF后，丢失本地Run和收据仍可恢复并封存历史。",
+      "sources": ["report:2026-11-10-comet-any-sdk-archived-recovery"],
+      "coverageLevel": "public-cli",
+      "reproduction": "完整归档后换分支，将Portable转CRLF，删除本地Run及独立归档收据；旧reader把合法managed-run首行误判为无归属。",
+      "expected": "沿用既有首行归属校验，保留checkpoint字节、Run、Action和原结果，恢复为closed历史。",
+      "forbidden": "仅因换行转换拒绝恢复、误认非managed文件、重放Archive或改变已接受结果。",
+      "rootCause": "归档收据读写重复硬编码LF首行，没有复用已支持CRLF的统一归属函数。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "namePattern": "accepts platform check reports and completes authorized Archive without Runtime check actions",
+          "requiredNames": [
+            "accepts platform check reports and completes authorized Archive without Runtime check actions (source)",
+            "accepts platform check reports and completes authorized Archive without Runtime check actions (bundle)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archived-completion-receipt-projection",
+      "behavior": "旧Native已完成归档投影缺少完成收据时，从原Run的finalize结果补回Portable；已有无效收据不覆盖。",
+      "sources": ["report:2026-11-10-comet-any-sdk-archived-recovery"],
+      "coverageLevel": "public-cli",
+      "reproduction": "真实comet-any-sdk本机历史已封存且独立收据存在，但Portable无archive_receipt，新工作区首次恢复无法通过历史封存收据检查。",
+      "expected": "保留原Run结果和事务，将原finalize收据投影至缺失字段；首次恢复后完成历史封存。",
+      "forbidden": "重放Archive、制造新完成结果、覆盖已有无效收据或改写权威Run。",
+      "rootCause": "旧投影未携带原完成收据，历史只读路径使用本地独立收据掩盖了跨设备缺项。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "namePattern": "accepts platform check reports and completes authorized Archive without Runtime check actions",
+          "requiredNames": [
+            "accepts platform check reports and completes authorized Archive without Runtime check actions (source)",
+            "accepts platform check reports and completes authorized Archive without Runtime check actions (bundle)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archived-legacy-no-definition-upgrade",
+      "behavior": "已完成归档的 Native 旧 Run 修复投影时保留原定义，不因后续分支变化再次升级。",
+      "sources": ["report:2026-11-10-comet-any-sdk-archived-recovery"],
+      "coverageLevel": "public-cli",
+      "reproduction": "原 comet-any-sdk 已归档且 local Run completed，但 doctor 修复会尝试升级旧定义并在045→053绑定处失败。",
+      "expected": "doctor 沿原 Run 修复投影，保留已接受结果与旧定义；未完成任务仍保留原升级路径。",
+      "forbidden": "重开已完成实现、改写原定义身份或重放检查与归档。",
+      "rootCause": "历史诊断将已完成 Run 也纳入执行定义升级。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "namePattern": "accepts platform check reports and completes authorized Archive without Runtime check actions|keeps active Native recovery bound to its original branch",
+          "requiredNames": [
+            "accepts platform check reports and completes authorized Archive without Runtime check actions (source)",
+            "accepts platform check reports and completes authorized Archive without Runtime check actions (bundle)",
+            "keeps active Native recovery bound to its original branch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archived-checkpoint-cross-branch",
+      "behavior": "已完成归档的 Native checkpoint 可在后续分支恢复，活跃 Run 仍绑定原分支。",
+      "sources": ["report:2026-11-10-comet-any-sdk-archived-recovery"],
+      "coverageLevel": "public-cli",
+      "reproduction": "完成归档后换分支并丢失本地 Run，doctor 在纯历史恢复时仍要求回原分支。",
+      "expected": "恢复原完成 Run、Action ID、状态和 checkpoint，不推进原任务。",
+      "forbidden": "活跃 Build 跨分支恢复或再次运行归档。",
+      "rootCause": "冷恢复对终态历史与仍可执行任务共用分支要求。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "namePattern": "accepts platform check reports and completes authorized Archive without Runtime check actions|keeps active Native recovery bound to its original branch",
+          "requiredNames": [
+            "accepts platform check reports and completes authorized Archive without Runtime check actions (source)",
+            "accepts platform check reports and completes authorized Archive without Runtime check actions (bundle)",
+            "keeps active Native recovery bound to its original branch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archived-owner-run-recovery",
+      "behavior": "已归档 Native owner 保持历史身份，丢失本地 Run 时可以按原 checkpoint 恢复。",
+      "sources": ["report:2026-11-10-comet-any-sdk-archived-recovery"],
+      "coverageLevel": "public-cli",
+      "reproduction": "已有 history owner、Run 数据丢失后，恢复试图重新注册 active owner而失败。",
+      "expected": "复用同应用和Run身份的已归档owner，恢复后仍在历史。",
+      "forbidden": "重新激活归档需求或接受其他应用的归属。",
+      "rootCause": "恢复入口无条件注册owner，未区分已完成历史。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "namePattern": "accepts platform check reports and completes authorized Archive without Runtime check actions|keeps active Native recovery bound to its original branch",
+          "requiredNames": [
+            "accepts platform check reports and completes authorized Archive without Runtime check actions (source)",
+            "accepts platform check reports and completes authorized Archive without Runtime check actions (bundle)",
+            "keeps active Native recovery bound to its original branch"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-openspec-final-status-single-query",
+      "behavior": "Classic 完成产物后复用本次 status 的完整依赖图，实际文件缺失仍阻塞。",
+      "coverageLevel": "public-cli",
+      "reproduction": "OpenSpec 状态声称必需产物完成；过去还要另调 artifacts 再查询一次 status。",
+      "expected": "同次调用完成闭包与实际文件校验；独立命令重查当前状态。",
+      "forbidden": "只凭 done 或旧会话闭包继续；空文件或越界路径被接受。",
+      "rootCause": "产物生成循环叠加 artifacts 与 status 两套查询。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-openspec-command.test.ts",
+          "namePattern": "validates completed status files in the same adapter invocation without another subprocess",
+          "requiredNames": [
+            "Classic OpenSpec adapter validates completed status files in the same adapter invocation without another subprocess"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-artifact-requirements.test.ts",
+          "namePattern": "reuses only the current status graph and still detects missing actual files",
+          "requiredNames": [
+            "Classic OpenSpec artifact adapter reuses only the current status graph and still detects missing actual files"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-10-final-workflow-performance"]
+    },
+    {
+      "id": "classic-design-source-observation-budget",
+      "behavior": "Classic Design 准备与提交各查询一次来源，成功响应不再重复查询，后续命令重新读取。",
+      "coverageLevel": "public-cli",
+      "reproduction": "提交 Design 提案的同一操作启动五次 OpenSpec status。",
+      "expected": "准备和提交两次独立校验；下一命令发现缺失文件。",
+      "forbidden": "跨命令复用来源观察，或跳过提交边界校验。",
+      "rootCause": "两个等价 receipt 分别查询，并为成功响应再查询。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-workflow-performance.test.ts",
+          "namePattern": "validates Design sources once per prepare and submit boundary and rereads on the next command",
+          "requiredNames": [
+            "validates Design sources once per prepare and submit boundary and rereads on the next command"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-10-final-workflow-performance"]
+    },
+    {
+      "id": "classic-next-owner-git-observation-budget",
+      "behavior": "Classic next 沿当前入口传递已验证归属，不为无分支隔离的需求运行 Git 探测。",
+      "coverageLevel": "public-cli",
+      "reproduction": "无隔离的 next 逐层重读 owner 并探测 Git 分支与工作树。",
+      "expected": "归属只在边界读取；输出健康且保持 Open。",
+      "forbidden": "省略实际绑定分支的漂移判断或混用其他工作树归属。",
+      "rootCause": "内部消费者重新推导同一归属和不适用的 Git 信息。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-workflow-performance.test.ts",
+          "namePattern": "reads Classic ownership once for next and avoids Git probes without branch isolation",
+          "requiredNames": [
+            "reads Classic ownership once for next and avoids Git probes without branch isolation"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-10-final-workflow-performance"]
+    },
+    {
+      "id": "native-task-run-response-observation-budget",
+      "behavior": "Native 正常领取与重复 next 不丢弃已读取或已提交的 Run，同次任务响应只投影一次。",
+      "coverageLevel": "public-cli",
+      "reproduction": "Shape 首次/重复 next 读取四/两次 checkpoint；重复 Builder next 投影两次任务响应。",
+      "expected": "Shape 三/一次 checkpoint 读取；一次 TaskStatus；原会话和 Action 保留，warning 与独立上下文正确。",
+      "forbidden": "重复 next 推进 revision、替换 claim、丢失 warning 或独立会话身份。",
+      "rootCause": "推进返回的 Run 与任务响应被丢弃后重新查询。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "namePattern": "projects a repeated current-session task once without advancing or replacing its claim|claims Shape using the inspected Run without a redundant checkpoint read|projects once when a Builder report claims Verify and retains the committed session and result template|retains an explicit independent review requirement",
+          "requiredNames": [
+            "projects a repeated current-session task once without advancing or replacing its claim",
+            "claims Shape using the inspected Run without a redundant checkpoint read",
+            "projects once when a Builder report claims Verify and retains the committed session and result template",
+            "retains an explicit independent review requirement"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-10-final-workflow-performance"]
+    },
+    {
+      "id": "native-v4-no-unused-check-plan-derivation",
+      "behavior": "Native v4 任务模板不推导已撤下的 Runtime 检查计划。",
+      "coverageLevel": "runtime",
+      "reproduction": "为 v4 Builder 模板遍历历史并解析旧检查计划，随后丢弃解析结果。",
+      "expected": "v4 模板保留实际检查报告且不解析旧计划。",
+      "forbidden": "恢复旧检查计划要求或修改历史 Run。",
+      "rootCause": "v3/v4 共用旧推导分支而 v4 不消费结果。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-checks.test.ts",
+          "namePattern": "does not derive legacy Runtime check plans for a v4 task template",
+          "requiredNames": ["does not derive legacy Runtime check plans for a v4 task template"]
+        }
+      ],
+      "sources": ["report:2026-11-10-final-workflow-performance"]
+    },
+    {
+      "id": "native-supervisor-target-resolution-boundary",
+      "behavior": "Supervisor Child 验证不读取未使用的父目标 commit，集成仍在写入前拒绝缺失或不兼容的实时目标。",
+      "coverageLevel": "runtime",
+      "reproduction": "Child/Parent 验证重复解析父目标 commit；减负后须证明集成边界保持有效。",
+      "expected": "Child 不查询父目标，真实准备与集成继续解析；目标缺失或分叉时 HEAD、工作区和 Run 不变，恢复目标后正常完成。",
+      "forbidden": "在无效目标上合并、重复归档或跳过候选/祖先绑定。",
+      "rootCause": "同一个 plan helper 同时读取合同和只有集成消费的实时 commit。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-supervisor-business.test.ts",
+          "namePattern": "completes Agent-selected Supervisor work through the Native business entry via source|completes Agent-selected Supervisor work through the Native business entry via generated",
+          "requiredNames": [
+            "completes Agent-selected Supervisor work through the Native business entry via source",
+            "completes Agent-selected Supervisor work through the Native business entry via generated"
+          ]
+        }
+      ],
+      "sources": ["report:2026-11-10-final-workflow-performance"]
+    },
+    {
       "id": "native-agent-edit-continuation",
       "behavior": "Native 普通编辑不自动使实际检查和用户批准失效，真实失败仍保留。",
       "sources": ["report:2026-11-08-agent-managed-workflow-content"],

@@ -4,6 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import * as gitWorktree from '../../../platform/paths/git-worktree.js';
+import { defineNativeWorkflowApplication } from '../../../domains/comet-native/native-sdk-application.js';
+import { nativeSdkSupervisorIntegrateExecutor } from '../../../domains/comet-native/native-sdk-supervisor-integrate.js';
 import { inspectNativeSdkRun } from '../../../domains/comet-native/native-runtime-ownership.js';
 
 const roots: string[] = [];
@@ -137,6 +140,33 @@ it.each(['source', 'generated'] as const)(
       );
       git(worktree, 'add', child + '.txt', child + '-checks');
       git(worktree, 'commit', '-m', child + ' implementation');
+      if (entry === 'source') {
+        const { run } = await inspectNativeSdkRun(root, name);
+        const action = run.actions.find((item) => item.id === task.task.actionId)!;
+        const validator = defineNativeWorkflowApplication('4').validators.find(
+          (item) => item.id === 'native-supervisor-builder-outcome',
+        )!;
+        const refs = vi.spyOn(gitWorktree, 'resolveGitRef');
+        const validated = await validator.validate({
+          run,
+          action,
+          outcome: {
+            outcomeId: 'validation-budget',
+            actionId: action.id,
+            attempt: action.attempt,
+            inputHash: action.inputHash,
+            claimToken: action.claim!.token,
+            status: 'succeeded',
+            output: { candidateCommit: git(worktree, 'rev-parse', 'HEAD'), verificationChecks: [] },
+          },
+          context: { requestId: 'validation-budget', projectRoot: root },
+        });
+        expect(validated).toMatchObject({ accepted: true });
+        expect(
+          refs.mock.calls.filter(([cwd]) => path.resolve(cwd) === path.resolve(root)),
+        ).toHaveLength(0);
+        refs.mockRestore();
+      }
       await fs.writeFile(
         resultFile,
         JSON.stringify({
@@ -251,6 +281,43 @@ it.each(['source', 'generated'] as const)(
         await fs.writeFile(marker, 'Platform condition repaired\n');
         expect(spawnSync(process.execPath, checkArgs, { cwd: worktree }).status).toBe(0);
         checks[0].result = 'passed';
+      }
+      if (entry === 'source' && child === 'api') {
+        const originalPreflight = nativeSdkSupervisorIntegrateExecutor.preflight!;
+        vi.spyOn(nativeSdkSupervisorIntegrateExecutor, 'preflight').mockImplementationOnce(
+          async function (action, context, run) {
+            const integration = (action.input as { activation: { integrationWorktree: string } })
+              .activation.integrationWorktree;
+            const head = git(integration, 'rev-parse', 'HEAD');
+            const status = git(integration, 'status', '--porcelain');
+            const target = git(root, 'rev-parse', 'main');
+            await originalPreflight.call(this, action, context, run);
+            try {
+              git(root, 'update-ref', '-d', 'refs/heads/main');
+              await expect(originalPreflight.call(this, action, context, run)).rejects.toThrow(
+                'target branch has no commit',
+              );
+              expect(git(integration, 'rev-parse', 'HEAD')).toBe(head);
+              expect(git(integration, 'status', '--porcelain')).toBe(status);
+              git(root, 'update-ref', 'refs/heads/main', target);
+              const divergent = git(
+                root,
+                'commit-tree',
+                target + '^{tree}',
+                '-m',
+                'isolated divergent target',
+              );
+              git(root, 'update-ref', 'refs/heads/main', divergent);
+              await expect(originalPreflight.call(this, action, context, run)).rejects.toThrow();
+              expect(git(integration, 'rev-parse', 'HEAD')).toBe(head);
+              expect(git(integration, 'status', '--porcelain')).toBe(status);
+              expect((await inspectNativeSdkRun(root, name)).run.revision).toBe(run!.revision);
+            } finally {
+              git(root, 'update-ref', 'refs/heads/main', target);
+            }
+            await originalPreflight.call(this, action, context, run);
+          },
+        );
       }
       await fs.writeFile(resultFile, JSON.stringify({ status: 'succeeded', output }));
       await cli(

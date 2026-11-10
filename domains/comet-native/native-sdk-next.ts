@@ -208,17 +208,26 @@ export async function advanceNativeSdkChange(
       },
   initial?: Awaited<ReturnType<typeof inspectNativeSdkRun>>,
   taskProjection = false,
+  observeTaskResult?: (
+    run: WorkflowRun,
+    status: Awaited<ReturnType<typeof projectNativeSdkTaskStatus>>,
+  ) => void,
 ): Promise<DispatchResult> {
   let { run, state, artifactRootRef, application } =
     initial ?? (await inspectNativeSdkRun(projectRoot, name));
   const originalRun = run;
-  const nextResult = async (...args: Parameters<typeof sdkNextResult>) => ({
-    ...(await sdkNextResult(
+  const nextResult = async (...args: Parameters<typeof sdkNextResult>) => {
+    const result = await sdkNextResult(
       ...(args.slice(0, 5) as [string, string, WorkflowRun, string, typeof application]),
       taskProjection,
-    )),
-    workflowCompleted: hasNativeCompletedWork(originalRun, args[2]),
-  });
+    );
+    if (taskProjection && !args[4])
+      observeTaskResult?.(
+        args[2],
+        result.data as Awaited<ReturnType<typeof projectNativeSdkTaskStatus>>,
+      );
+    return { ...result, workflowCompleted: hasNativeCompletedWork(originalRun, args[2]) };
+  };
   // 已授权的内置归档沿用同一推进入口，避免 next 再执行一套归档前置检查。
   if (
     !decision &&
@@ -471,7 +480,14 @@ export async function advanceNativeSdkChange(
       }),
       choice: 'continue',
     });
-    return advanceNativeSdkChange(projectRoot, name, undefined, undefined, taskProjection);
+    return advanceNativeSdkChange(
+      projectRoot,
+      name,
+      undefined,
+      undefined,
+      taskProjection,
+      observeTaskResult,
+    );
   }
   if (decision?.expectedAction === 'revise-requirements') {
     const shapeWait = run.waits.find(
@@ -518,7 +534,14 @@ export async function advanceNativeSdkChange(
         }),
         choice: 'rejected',
       });
-      return advanceNativeSdkChange(projectRoot, name);
+      return advanceNativeSdkChange(
+        projectRoot,
+        name,
+        undefined,
+        undefined,
+        taskProjection,
+        observeTaskResult,
+      );
     }
     const commandId = hashRuntimeValue({
       runId: run.runId,
@@ -708,7 +731,14 @@ export async function advanceNativeSdkChange(
       choice,
       reason: decision.summary.trim(),
     });
-    return advanceNativeSdkChange(projectRoot, name);
+    return advanceNativeSdkChange(
+      projectRoot,
+      name,
+      undefined,
+      undefined,
+      taskProjection,
+      observeTaskResult,
+    );
   }
   if (decision?.expectedAction === 'confirm-shape') {
     const wait = run.waits.find(
@@ -742,7 +772,14 @@ export async function advanceNativeSdkChange(
       }),
       choice: decision.coordinationMode ?? 'approved',
     });
-    return advanceNativeSdkChange(projectRoot, name);
+    return advanceNativeSdkChange(
+      projectRoot,
+      name,
+      undefined,
+      undefined,
+      taskProjection,
+      observeTaskResult,
+    );
   }
   if (
     run.waits.some(

@@ -150,7 +150,7 @@ In Agent JSON mode, read upstream fields from `data.upstream.data`. Execute only
 **Generate artifacts from OpenSpec state:**
 
 1. Reuse the status from Step 2's compatibility check for the first iteration, and the refreshed status from the preceding write for later iterations. Rerun `comet classic openspec --agent-json -- status --change "<name>" --json` only on recovery or external artifact changes, reading the full upstream JSON from `data.upstream.data`.
-2. Expand the full dependency closure of `applyRequires` plus proposal/tasks. Once every item is `done` or legitimately `skipped`, run `comet state artifacts <name> --json` and exit the loop only if it passes. A completed top-level tasks artifact cannot hide incomplete dependencies. `isComplete` is diagnostic.
+2. Expand the full dependency closure of `applyRequires` plus proposal/tasks. Once every item is `done` or legitimately `skipped`, the adapter validates the complete closure and actual files in that same status call. Exit the loop only when the call succeeds and `data.artifactRequirements.problems` is empty. A completed top-level tasks artifact cannot hide incomplete dependencies. `isComplete` is diagnostic.
 3. From unfinished artifacts with `status: "ready"`, prioritize those that advance the `applyRequires` dependency closure, following CLI order. Do not hard-code generation order or assume the schema contains only proposal/design/tasks.
 4. Get current instructions for each ready `<artifact-id>`:
 
@@ -165,7 +165,7 @@ In Agent JSON mode, read upstream fields from `data.upstream.data`. Execute only
    - Apply `context` and `rules` as constraints; **do not copy them into the artifact**.
    - Write to `resolvedOutputPath`. For wildcard outputs, create every actual file required by the instruction.
    - Confirm the actual output files returned by the CLI exist and are nonempty.
-6. After each artifact is created, validate the closure locally with `comet state artifacts <name> --json` (no OpenSpec subprocess); refresh status once only when it reports a missing dependency or ordering error, or when new live instructions are needed, then recheck paths and the full dependency closure. Do not regenerate `done` items. Process only newly ready items in the closure, not unrelated optional artifacts.
+6. After creating each artifact and confirming its actual output files exist and are nonempty, execute the status command in the instructions response's `data.nextAction` to read updated dependencies and ready items. Do not insert `state artifacts` into this loop; it remains available for separate diagnosis and queries OpenSpec again. Do not regenerate `done` items. Process only newly ready items in the closure, not unrelated optional artifacts.
 
 **Handle failures and blocked dependencies:** If `applyRequires` is incomplete but no required dependency is ready, report the relevant `blocked` artifacts and their `missingDeps`, then stop. Do not guess order or skip dependencies. Also stop and report the OpenSpec error if adapter `status` / `instructions` fails, returns invalid JSON, escapes the repository, or lacks a usable `resolvedOutputPath`. Do not substitute a hard-coded document structure.
 
@@ -198,15 +198,15 @@ Continue to Step 4 when it passes. On failure, the script reports the specific c
 1. First run `comet state next <name> --json` to identify ownership. Reuse an SDK Run; retain the original flow for `runtimeFormat: compat`. Only when there is no Run, ownership record, or state file under either name may you prepare the workspace and run `comet state init <name> full --isolation <selected-isolation>`. Stop on malformed state or ownership conflicts. Then select and run `comet state check <name> open`.
 2. Run `comet classic openspec --agent-json -- status --change "<name>" --json` and recheck `changeRoot`, core IDs, `applyRequires`, `artifacts`, and `missingDeps`.
 3. `done`: keep the artifact unchanged and do not regenerate it.
-4. `ready`: fetch its instructions with `comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json`, write the artifact accordingly, then validate the closure locally with `comet state artifacts <name> --json` instead of refreshing status.
-5. `blocked`: follow `missingDeps` and complete dependencies in the `applyRequires` closure first. Validate with `comet state artifacts <name> --json` after each dependency and refresh status only when it reports a new problem; do not generate a blocked artifact directly.
-6. Repeat until the full required closure is done or legitimately skipped and `comet state artifacts <name> --json` passes.
+4. `ready`: fetch its instructions with `comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json`, write the artifact accordingly, check its actual outputs, then refresh status through `data.nextAction`.
+5. `blocked`: follow `missingDeps` and complete dependencies in the `applyRequires` closure first, then refresh status. Do not generate a blocked artifact directly.
+6. Repeat until the full required closure is done or legitimately skipped and this status call succeeds with `data.artifactRequirements.problems: []`.
 
 If required dependencies cannot progress, list the relevant blocked artifacts and `missingDeps`, then stop and report. Existing directories or three fixed files do not replace the CLI's checks. Conversely, an optional artifact outside `applyRequires` must not block implementation merely because `isComplete: false`.
 
 ### 4. Check content completeness
 
-Use the most recent successful `comet state artifacts <name> --json` result to check required artifacts. Rerun it after file or schema changes. Do not enter Step 5 or run the phase guard while any issue remains.
+Use `data.artifactRequirements` from the most recent successful status call to check required artifacts. Rerun status after file or schema changes and on cold recovery; a closure saved from a previous session does not replace current checks. Do not enter Step 5 or run the phase guard while any issue remains.
 
 Then inspect content: proposal must cover the problem, goals, scope, and non-goals; design must cover high-level decisions and data flow; tasks must be explicit. If the schema returns specs or other artifacts, check their content against their instructions too. The presence of proposal, design, and tasks does not make other required content optional.
 

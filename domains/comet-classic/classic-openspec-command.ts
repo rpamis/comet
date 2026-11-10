@@ -1,11 +1,9 @@
+import { executeClassicOpenSpec } from './classic-openspec-execution.js';
+export { executeClassicOpenSpec } from './classic-openspec-execution.js';
 import { resolveClassicChangeDirectory } from './classic-paths.js';
 import path from 'node:path';
-import { spawnSync } from 'child_process';
 
-import {
-  assertNodeCliCommandAvailable,
-  resolveNodeCliCommand,
-} from '../../platform/process/node-cli-command.js';
+import { assertNodeCliCommandAvailable } from '../../platform/process/node-cli-command.js';
 import { projectCliAgentObservation } from '../workflow-contract/output-envelope.js';
 import {
   listSdkChangeNames,
@@ -130,65 +128,6 @@ export async function assertClassicOpenSpecAvailable(startPath = process.cwd()):
   }
 }
 
-export async function executeClassicOpenSpec(
-  args: readonly string[],
-  startPath = process.cwd(),
-): Promise<ClassicCommandResult & { executionStarted?: false; executionCompleted?: boolean }> {
-  const openSpecArgs = normalizedArguments(args);
-  if (openSpecArgs.length === 0) {
-    return {
-      exitCode: 64,
-      stderr: 'Usage: comet classic openspec -- <openspec-args...>',
-    };
-  }
-
-  const projectRoot = await discoverClassicProject(startPath);
-  const layout = await assertClassicLayoutWritable(projectRoot);
-  await assertClassicOpenSpecRootHealthy(projectRoot, layout);
-  const command = process.env.COMET_OPENSPEC || 'openspec';
-  let launch: ReturnType<typeof resolveNodeCliCommand>;
-  try {
-    assertNodeCliCommandAvailable(command, openSpecArgs, { cwd: layout.openSpecBase });
-    launch = resolveNodeCliCommand(command, openSpecArgs, { cwd: layout.openSpecBase });
-  } catch (error) {
-    // 启动器或其 Node 入口在领取后消失时，尚未调用 spawnSync。
-    return {
-      exitCode: (error as NodeJS.ErrnoException).code === 'ENOENT' ? 127 : 70,
-      executionStarted: false,
-      stderr: error instanceof Error ? error.message : String(error),
-    };
-  }
-  const result = spawnSync(launch.command, launch.args, {
-    cwd: layout.openSpecBase,
-    encoding: 'utf8',
-    shell: false,
-    windowsHide: true,
-    // A wedged OpenSpec process must not hang the whole comet command with it.
-    timeout: 120_000,
-    ...(launch.env ? { env: launch.env } : {}),
-  });
-  if (result.error) {
-    const code = (result.error as NodeJS.ErrnoException).code;
-    return {
-      exitCode: code === 'ENOENT' ? 127 : 70,
-      // 只接受操作系统确认未启动的错误；退出码或错误文本不能证明没有副作用。
-      ...(result.pid === 0 && ['ENOENT', 'EACCES', 'ENOTDIR', 'ENOEXEC'].includes(code ?? '')
-        ? { executionStarted: false as const }
-        : {}),
-      stdout: result.stdout || undefined,
-      stderr:
-        result.stderr ||
-        (code === 'ENOENT' ? `OpenSpec CLI not found: ${command}` : result.error.message),
-    };
-  }
-  return {
-    exitCode: result.status ?? 1,
-    executionCompleted: result.status !== null && result.signal === null,
-    stdout: result.stdout || undefined,
-    stderr: result.stderr || undefined,
-  };
-}
-
 async function agentOpenSpec(args: string[]): Promise<ClassicCommandResult> {
   const forwarded = normalizedArguments(args.slice(1));
   const root = await discoverClassicProject(process.cwd());
@@ -255,6 +194,17 @@ async function agentOpenSpec(args: string[]): Promise<ClassicCommandResult> {
         (artifact) => artifact.id === id && ['done', 'skipped'].includes(String(artifact.status)),
       ),
     );
+  // The successful status response belongs to this invocation. Reuse its graph,
+  // while reading the required files now; no graph or completion cache is persisted.
+  const upstreamResult = result;
+  const artifactRequirements =
+    result.exitCode === 0 && forwarded[0] === 'status' && complete && change
+      ? await (
+          await import('./classic-artifact-requirements.js')
+        ).readClassicArtifactRequirements(root, path.join(layout.changesDir, change), status)
+      : undefined;
+  if (artifactRequirements?.problems.length)
+    result = { ...result, exitCode: 1, stderr: artifactRequirements.problems.join('\n') };
   const nextArgs = change
     ? ready && forwarded[0] === 'status'
       ? ['instructions', String(ready.id), '--change', change, '--json']
@@ -265,6 +215,7 @@ async function agentOpenSpec(args: string[]): Promise<ClassicCommandResult> {
     workspace: { projectRoot: root },
     ...(capabilityDiscovery === null ? {} : { capabilityDiscovery }),
     ...(associationPath === undefined ? {} : { associationPath }),
+    ...(artifactRequirements ? { artifactRequirements } : {}),
     issues:
       result.exitCode === 0
         ? []
@@ -279,20 +230,17 @@ async function agentOpenSpec(args: string[]): Promise<ClassicCommandResult> {
           ],
     upstream: {
       cwd: layout.openSpecBase,
-      exitCode: result.exitCode,
+      exitCode: upstreamResult.exitCode,
       data: upstream,
       stdout: result.stdout ?? '',
-      stderr: result.stderr ?? '',
+      stderr: upstreamResult.stderr ?? '',
     },
     nextAction:
-      result.exitCode === 0 && nextArgs
+      result.exitCode === 0 && nextArgs && !artifactRequirements
         ? {
             kind: 'openspec',
             cwd: root,
-            argv:
-              forwarded[0] === 'status' && complete
-                ? ['comet', 'state', 'artifacts', change!, '--json']
-                : ['comet', 'classic', 'openspec', '--agent-json', '--', ...nextArgs],
+            argv: ['comet', 'classic', 'openspec', '--agent-json', '--', ...nextArgs],
             reason:
               forwarded[0] === 'instructions'
                 ? 'Complete the instructed artifact, then refresh status using this action.'

@@ -160,6 +160,51 @@ describe('Classic OpenSpec adapter', () => {
     );
   });
 
+  it('validates completed status files in the same adapter invocation without another subprocess', async () => {
+    const directory = path.join(projectRoot, 'docs/openspec/changes/demo');
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(path.join(directory, '.openspec.yaml'), 'schema: spec-driven\n');
+    await fs.writeFile(path.join(directory, 'proposal.md'), '# Proposal\n');
+    await fs.writeFile(path.join(directory, 'tasks.md'), '- [ ] Implement\n');
+    mockedSpawnSync.mockReturnValue({
+      pid: 1,
+      output: [],
+      stderr: '',
+      status: 0,
+      signal: null,
+      stdout: JSON.stringify({
+        changeRoot: directory,
+        applyRequires: ['tasks'],
+        artifacts: ['proposal', 'tasks'].map((id) => ({
+          id,
+          status: 'done',
+          requires: [],
+          outputPath: `${id}.md`,
+        })),
+      }),
+    });
+    const invoke = () =>
+      runClassicCli(['openspec', '--agent-json', '--', 'status', '--change', 'demo', '--json']);
+    const complete = await invoke();
+    expect(complete.exitCode, complete.stdout).toBe(0);
+    expect(JSON.parse(complete.stdout!).data).toMatchObject({
+      artifactRequirements: { problems: [], required: ['tasks', 'proposal'] },
+      nextAction: null,
+    });
+    expect(mockedSpawnSync).toHaveBeenCalledTimes(1);
+    await fs.writeFile(path.join(directory, 'tasks.md'), '');
+    const missing = await invoke();
+    expect(missing.exitCode).toBe(1);
+    expect(JSON.parse(missing.stdout!).data).toMatchObject({
+      upstream: { exitCode: 0 },
+      nextAction: null,
+    });
+    expect(JSON.parse(missing.stdout!).data.artifactRequirements.problems.join('\n')).toContain(
+      'missing or empty',
+    );
+    expect(mockedSpawnSync).toHaveBeenCalledTimes(2);
+  });
+
   it('returns executable adapter next actions while preserving the raw upstream context', async () => {
     mockedSpawnSync.mockReturnValue({
       pid: 1,
