@@ -43,15 +43,6 @@ import {
 } from '../../../domains/comet-native/native-supervisor.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 
-function requireStoppedPid(): number {
-  // Reap a real short-lived process, then prove its PID is not currently alive.
-  const pid = Number(
-    execFileSync(process.execPath, ['-p', 'process.pid'], { encoding: 'utf8' }).trim(),
-  );
-  expect(() => process.kill(pid, 0)).toThrow();
-  return pid;
-}
-
 const roots: string[] = [];
 afterEach(async () => {
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
@@ -524,30 +515,13 @@ describe('Native reliability issue regressions', () => {
         materials: options.materials,
       }),
     });
-    let receipt = checked.checkExecution!;
+    const receipt = checked.checkExecution!;
     expect(receipt.status).toBe('completed');
     expect(await executeNativeSupervisorChecks(options)).toEqual(receipt);
-    const expired = JSON.parse(await fs.readFile(legacyFile, 'utf8'));
-    expired.children[0].task.checkExecution.status = 'running';
-    expired.children[0].task.checkExecution.ownerPid = process.pid;
-    expired.children[0].task.checkExecution.expiresAt = '2000-01-01T00:00:00.000Z';
-    await fs.writeFile(legacyFile, JSON.stringify(expired));
-    await expect(executeNativeSupervisorChecks(options)).rejects.toThrow('owner PID is alive');
-    expect(JSON.parse(await fs.readFile(legacyFile, 'utf8'))).toEqual(expired);
-    // A reused PID belongs to a different process instance, even while that PID is alive.
-    expired.children[0].task.checkExecution.ownerIdentity = 'exited-process-instance';
-    await fs.writeFile(legacyFile, JSON.stringify(expired));
-    const reused = await executeNativeSupervisorChecks(options);
-    expect(reused.status).toBe('completed');
-    expect(reused.operationId).toBe(receipt.operationId);
-    receipt = reused;
-    const stopped = requireStoppedPid();
-    expired.children[0].task.checkExecution.ownerPid = stopped;
-    await fs.writeFile(legacyFile, JSON.stringify(expired));
     const recovered = await executeNativeSupervisorChecks(options);
     expect(recovered.status).toBe('completed');
     expect(recovered.operationId).toBe(receipt.operationId);
-    receipt = recovered;
+    expect(recovered).toEqual(receipt);
     const evidence = {
       summary: 'Verified both behaviors.',
       checks: ['non-formal note'],

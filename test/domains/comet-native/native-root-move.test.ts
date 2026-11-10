@@ -43,6 +43,32 @@ describe('Native artifact root moves', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
+  it('moves an initialized root through the generated Runtime while SQLite coordination files persist', async () => {
+    const entry = path.resolve('assets/skills/comet-native/scripts/comet-native-runtime.mjs');
+    const command = (...args: string[]) =>
+      JSON.parse(
+        execFileSync(process.execPath, [entry, ...args, '--project-root', projectRoot, '--json'], {
+          encoding: 'utf8',
+          windowsHide: true,
+        }),
+      );
+    expect(command('init', '--root', 'docs', '--language', 'en').exitCode).toBe(0);
+    const paths = await nativeProjectPaths(projectRoot, 'docs', { readOnly: true });
+    expect(command('root', 'move', 'artifacts/native').exitCode).toBe(0);
+    expect((await readProjectConfig(projectRoot))?.native.artifact_root).toBe('artifacts/native');
+    await expect(fs.access(path.join(projectRoot, 'docs/comet'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    expect((await fs.stat(path.join(projectRoot, 'artifacts/native/comet'))).isDirectory()).toBe(
+      true,
+    );
+    expect((await fs.readdir(paths.locksDir)).filter((name) => name.endsWith('.lock'))).toEqual([]);
+    expect((await fs.readdir(paths.locksDir)).some((name) => name.endsWith('.lock.sqlite'))).toBe(
+      true,
+    );
+    expect(command('doctor').data).toMatchObject({ healthy: true, findings: [] });
+  });
+
   it('audits historical transactions even when the active transaction directory is absent', async () => {
     await seedNativeRoot(projectRoot, 'docs');
     const paths = await nativeProjectPaths(projectRoot, 'docs');
@@ -97,7 +123,7 @@ describe('Native artifact root moves', () => {
       projectRoot,
       '--json',
     ]);
-    expect(next.dispatch.error?.code).toBe('document-invalid');
+    expect(next.dispatch.error?.code).toBe('invalid-data');
     expect((await readProjectConfig(projectRoot))?.native.pending_root_move).toBeUndefined();
     await expect(fs.access(path.join(projectRoot, 'artifacts/comet'))).rejects.toThrow();
   });
@@ -589,7 +615,7 @@ describe('Native artifact root moves', () => {
     const archiveGlobalLock = await acquireNativeLock(paths, 'root-move', 'archive active-change');
     try {
       await expect(moveNativeRoot({ projectRoot, toArtifactRoot: 'docs' })).rejects.toThrow(
-        /already held/u,
+        /Native lock is busy/u,
       );
     } finally {
       await releaseNativeLock(archiveGlobalLock);

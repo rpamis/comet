@@ -15,7 +15,12 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { doctorNativeProject } from '../../../domains/comet-native/native-doctor.js';
-import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
+import {
+  acquireNativeLock,
+  inspectNativeProjectLocks,
+  releaseNativeLock,
+  repairNativeProjectLock,
+} from '../../../domains/comet-native/native-lock.js';
 import {
   nativeChangeRuntimeDir,
   nativeProjectPaths,
@@ -102,24 +107,6 @@ describe('Native doctor', () => {
       }),
     );
     await expect(fs.stat(selection)).resolves.toMatchObject({ size: 16 * 1024 + 1 });
-  });
-
-  it('reports malformed user-authored state and artifacts without modifying them', async () => {
-    const state = await createNativeChange({
-      paths,
-      name: 'incomplete-change',
-      language: 'en',
-      verificationProtocol: 'legacy-v1',
-    });
-    const briefFile = path.join(nativeChangeDir(paths, state.name), 'brief.md');
-    const briefBefore = await fs.readFile(briefFile, 'utf8');
-    const result = await doctorNativeProject({ paths, repair: true });
-
-    expect(result.healthy).toBe(false);
-    expect(result.findings).toContainEqual(
-      expect.objectContaining({ code: 'brief-section-empty', severity: 'error' }),
-    );
-    expect(await fs.readFile(briefFile, 'utf8')).toBe(briefBefore);
   });
 
   it('migrates legacy Git-backed workspace metadata to process-free v2 identities', async () => {
@@ -304,12 +291,49 @@ Run focused tests.
     expect(await isWorkspaceRuntimeMigrationFence(legacy, preferred)).toBe(true);
   });
 
-  it('diagnoses live and stale locks and only removes a proven stale lock', async () => {
+  it('diagnoses and repairs released SQLite metadata without deleting its reusable database', async () => {
+    const lease = await acquireNativeLock(paths, 'archive', 'archive interrupted-change');
+    const original = await fs.readFile(lease.file, 'utf8');
+    expect(JSON.parse(original)).toMatchObject({ protocolVersion: 2 });
+    await releaseNativeLock(lease);
+    await expect(fs.access(lease.file)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await fs.stat(lease.file + '.sqlite')).isFile()).toBe(true);
+
+    // Recreate only the original metadata left when a writer exits after releasing its transaction.
+    await fs.writeFile(lease.file, original);
+    const inspected = await doctorNativeProject({ paths });
+    expect(inspected.healthy).toBe(false);
+    expect(inspected.findings).toContainEqual(
+      expect.objectContaining({ code: 'lock-stale', severity: 'warning', path: lease.file }),
+    );
+    expect(await fs.readFile(lease.file, 'utf8')).toBe(original);
+
+    const repaired = await doctorNativeProject({ paths, repair: true });
+    expect(repaired.healthy).toBe(true);
+    expect(repaired.findings).toContainEqual(
+      expect.objectContaining({ code: 'stale-lock-removed', severity: 'info', path: lease.file }),
+    );
+    await expect(fs.access(lease.file)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await fs.stat(lease.file + '.sqlite')).isFile()).toBe(true);
+    const next = await acquireNativeLock(paths, 'archive', 'archive resumed-change');
+    await releaseNativeLock(next);
+    await expect(fs.access(next.file)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('preserves active and unknown locks until the exact stopped owner is confirmed', async () => {
     const live = await acquireNativeLock(paths, 'archive', 'archive live-change');
     try {
       expect((await doctorNativeProject({ paths })).findings).toContainEqual(
         expect.objectContaining({ code: 'lock-active', severity: 'warning' }),
       );
+      const active = (await inspectNativeProjectLocks(paths)).find(
+        (entry) => entry.file === live.file,
+      )!;
+      const activeSource = await fs.readFile(live.file, 'utf8');
+      await expect(repairNativeProjectLock(paths, active.token!, true)).rejects.toThrow(
+        /held|changed/u,
+      );
+      expect(await fs.readFile(live.file, 'utf8')).toBe(activeSource);
     } finally {
       await releaseNativeLock(live);
     }
@@ -326,10 +350,17 @@ Run focused tests.
         operation: 'archive stale-change',
       }),
     );
+    const original = await fs.readFile(staleFile, 'utf8');
     const repaired = await doctorNativeProject({ paths, repair: true });
-    expect(repaired.findings).toContainEqual(
-      expect.objectContaining({ code: 'stale-lock-removed', severity: 'info' }),
-    );
+    expect(await fs.readFile(staleFile, 'utf8')).toBe(original);
+    expect(repaired.healthy).toBe(false);
+    const unknown = (await inspectNativeProjectLocks(paths)).find(
+      (entry) => entry.file === staleFile,
+    )!;
+    expect(unknown).toMatchObject({ status: 'unknown', token: expect.any(String) });
+    await expect(repairNativeProjectLock(paths, unknown.token!, false)).rejects.toThrow(/confirm/u);
+    expect(await fs.readFile(staleFile, 'utf8')).toBe(original);
+    await repairNativeProjectLock(paths, unknown.token!, true);
     await expect(fs.access(staleFile)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
@@ -385,6 +416,14 @@ Run focused tests.
       expect.objectContaining({ code: 'root-move-incomplete', severity: 'error' }),
     );
     expect((await readProjectConfig(projectRoot))?.native.pending_root_move).toBeTruthy();
+    const rootMoveFile = path.join(paths.locksDir, 'root-move.lock');
+    const originalLock = await fs.readFile(rootMoveFile, 'utf8');
+    const unknown = (await inspectNativeProjectLocks(paths)).find(
+      (entry) => entry.file === rootMoveFile,
+    )!;
+    await expect(repairNativeProjectLock(paths, unknown.token!, false)).rejects.toThrow(/confirm/u);
+    expect(await fs.readFile(rootMoveFile, 'utf8')).toBe(originalLock);
+    await repairNativeProjectLock(paths, unknown.token!, true);
 
     const repaired = await doctorNativeProject({
       paths,
@@ -393,9 +432,6 @@ Run focused tests.
     });
     expect(repaired.findings).toContainEqual(
       expect.objectContaining({ code: 'root-move-recovered', severity: 'info' }),
-    );
-    expect(repaired.findings).toContainEqual(
-      expect.objectContaining({ code: 'stale-recovery-lock-removed', severity: 'info' }),
     );
     expect(await readProjectConfig(projectRoot)).toEqual({
       ...defaultProjectConfig('.'),

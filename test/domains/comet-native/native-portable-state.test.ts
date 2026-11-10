@@ -120,12 +120,12 @@ describe('Native portable state', () => {
     await writeNativePortableState(file, parent, { containedRoot: root });
     await expect(readNativePortableState(file)).resolves.toMatchObject({
       shape_confirmation_hash: 'b'.repeat(64),
-      children_contract_hash: 'a'.repeat(64),
+      children_contract_ref: 'a'.repeat(64),
       coordination_mode: 'multi-session',
     });
-    expect(() =>
-      parseNativePortableState({ ...ordinary, children_contract_hash: 'not-a-hash' }),
-    ).toThrow(/children contract hash/iu);
+    expect(() => parseNativePortableState({ ...ordinary, children_contract_ref: '' })).toThrow(
+      /children approval reference/iu,
+    );
     expect(() =>
       parseNativePortableState({ ...ordinary, shape_confirmation_hash: 'not-a-hash' }),
     ).toThrow(/Shape confirmation hash/iu);
@@ -134,14 +134,14 @@ describe('Native portable state', () => {
     );
   });
 
-  it('requires a concrete delta base hash instead of accepting null', () => {
+  it('accepts a Delta without requiring the retired content base hash', () => {
     const state = createNativePortableState({
       name: 'delta-state',
       language: 'en',
       createdAt: '2026-08-09T00:00:00.000Z',
     });
 
-    expect(() =>
+    expect(
       parseNativePortableState({
         ...state,
         spec_changes: [
@@ -154,7 +154,17 @@ describe('Native portable state', () => {
           },
         ],
       }),
-    ).toThrow('non-null base_hash');
+    ).toMatchObject({
+      spec_changes: [
+        {
+          capability: 'authentication',
+          operation: 'modify',
+          source: 'specs/authentication/spec.md',
+          delta_source: 'specs/authentication/delta.yaml',
+          base_hash: null,
+        },
+      ],
+    });
   });
 
   it('keeps only 50 history entries and folds older facts into a non-decision overflow', () => {

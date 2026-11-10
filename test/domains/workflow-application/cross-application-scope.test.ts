@@ -15,6 +15,7 @@ import {
 } from '../../../domains/workflow-application/index.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { createScopeCycleApplication } from '../../helpers/workflow-application.js';
+import * as fileLocks from '../../../platform/fs/recoverable-file-lock.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -430,20 +431,23 @@ it('retains the write-ahead claim if the app disappears immediately after the wr
   const alpha = await fixture(project, 'alpha');
   const beta = await fixture(project, 'beta');
   const stale = portable(alpha.run);
-  const rename = fs.rename.bind(fs);
+  const withLock = fileLocks.withRecoverableFileLock;
   let saved: WorkflowRun | undefined;
-  vi.spyOn(fs, 'rename').mockImplementation(async (source, destination) => {
-    await rename(source, destination);
-    if (
-      !saved &&
-      String(destination).startsWith(appDirectory(project)) &&
-      String(destination).endsWith('checkpoint.json')
-    ) {
-      saved = portable((await alpha.loaded.store.read(alpha.run.runId))!);
-      await fs.rm(appDirectory(project), { recursive: true });
-      throw new Error('lost app after writer CAS');
-    }
-  });
+  vi.spyOn(fileLocks, 'withRecoverableFileLock').mockImplementation(
+    async (file, operation, options) => {
+      const result = await withLock(file, operation, options);
+      if (!saved && file.startsWith(appDirectory(project)) && file.endsWith('.write.lock')) {
+        const current = (await alpha.loaded.store.read(alpha.run.runId))!;
+        if (current.actions.at(-1)?.status === 'running') {
+          saved = portable(current);
+          // Run 的 SQLite 事务已关闭，应用 holder 索引尚未收敛。
+          await fs.rm(appDirectory(project), { recursive: true });
+          throw new Error('lost app after writer CAS');
+        }
+      }
+      return result;
+    },
+  );
   await expect(
     alpha.runtime.claim({ ...alpha.request, claimToken: 'write-ahead-owner' }),
   ).rejects.toThrow();

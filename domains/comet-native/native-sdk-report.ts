@@ -117,11 +117,18 @@ export async function nativeSdkArchivedReportWarning(
   const reportRef = path
     .relative(projectRoot, path.join(paths.archiveDir, finalized.archiveRef, 'verification.md'))
     .replaceAll('\\', '/');
-  const report = await inspectProtectedProjectPath(projectRoot, reportRef, {
-    label: 'Native archived verification view',
-    expected: 'file',
-  });
-  return report.exists
+  let available = false;
+  try {
+    available = (
+      await inspectProtectedProjectPath(projectRoot, reportRef, {
+        label: 'Native archived verification view',
+        expected: 'file',
+      })
+    ).exists;
+  } catch {
+    // A completed Run keeps its accepted result when its reading view is unavailable.
+  }
+  return available
     ? undefined
     : {
         code: 'NATIVE_REPORT_PENDING',

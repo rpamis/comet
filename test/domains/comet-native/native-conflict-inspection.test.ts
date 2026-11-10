@@ -120,9 +120,10 @@ describe('Native conflict radar collection', () => {
       findingCodes: ['native-change-conflict'],
     });
     const status = await inspectNativeStatus(paths, 'alpha-change', { details: true });
-    expect(status.findings).toContainEqual(
-      expect.objectContaining({ code: 'native-change-conflict' }),
-    );
+    expect(status).toMatchObject({
+      migrationRequired: true,
+      inspection: { codes: ['legacy-content-proof-removed'] },
+    });
   });
 
   it('fails closed when a visible change points at invalid scope evidence', async () => {

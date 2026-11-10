@@ -135,7 +135,13 @@ async function inspectFile(
   const file = trajectoryFile(paths, name);
   await resolveContainedNativePath(nativeStorageRoot(paths, file), file);
   const runtimeDir = nativeChangeRuntimeDir(paths, name);
-  const content = await readNativeTrajectoryText(runtimeDir, NATIVE_RUN_STORAGE.trajectoryRef);
+  const content = await readNativeTrajectoryText(
+    runtimeDir,
+    NATIVE_RUN_STORAGE.trajectoryRef,
+  ).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
   return content === null
     ? { status: 'clean', file }
     : analyzeTrajectory(file, Buffer.from(content));

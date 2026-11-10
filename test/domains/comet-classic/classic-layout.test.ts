@@ -369,7 +369,9 @@ describe('Classic project discovery boundaries', () => {
       if (relative === '.comet') await directoryLink(target, link);
       else await fs.symlink(target, link, 'file');
 
-      await expect(discoverClassicProject(nested)).rejects.toThrow(/symbolic link.*junction/u);
+      await expect(discoverClassicProject(nested)).rejects.toThrow(
+        relative === '.comet/config.yaml' ? /regular file/u : /symbolic link.*junction/u,
+      );
     },
   );
 

@@ -68,7 +68,6 @@ import {
   readNativePortableTransaction,
 } from '../../../domains/comet-native/native-portable-transactions.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
-import { runNativeEditReviewCommand } from '../../../domains/comet-native/native-edit-review-command.js';
 import { readNativeLocalExecution } from '../../../domains/comet-native/native-local-execution.js';
 import { nativeLocalExecutionFile } from '../../../domains/comet-native/native-portable-storage.js';
 
@@ -796,16 +795,18 @@ describe('Native portable Archive', () => {
     const target = path.join(paths.specsDir, 'sample', 'spec.md');
     const published = await fs.readFile(target, 'utf8');
     await fs.appendFile(target, '\nUser edit after publication.\n');
-    await expect(archiveNativePortableChange({ paths, name: state.name })).rejects.toThrow(
-      /changed|变化|不匹配/,
-    );
-    expect(
-      await readNativePortableTransaction(paths, { change: state.name, kind: 'archive' }),
-    ).toEqual(transaction);
-    expect(await readNativePortableChange(paths, state.name)).toEqual(accepted);
-    await fs.writeFile(target, published);
+    const editedCanonical = await fs.readFile(target, 'utf8');
     const result = await archiveNativePortableChange({ paths, name: state.name });
+    expect(result.transactionId).toBe(transaction?.journal.id);
     expect(result.state.archived).toBe(true);
+    expect(await fs.readFile(target, 'utf8')).toBe(editedCanonical);
+    expect(result.state.state_version).toBe(accepted.state_version + 1);
+    expect(editedCanonical).toBe(published + '\nUser edit after publication.\n');
+    await expect(nativeArchiveCommand([state.name, '--confirmed'], root)).resolves.toMatchObject({
+      exitCode: 0,
+      data: { archived: true },
+    });
+    expect(await fs.readFile(target, 'utf8')).toBe(editedCanonical);
   });
 
   it('resumes an interrupted approved check without losing its source or replaying the completed request', async () => {
@@ -936,6 +937,7 @@ describe('Native portable Archive', () => {
         cwdRef: '.',
         timeoutMs: 10000,
         repeatable: true,
+        reusable: index === 1,
       }));
       const original = await executeNativePortableCheckPlan({ paths, name, plans });
       const originalLocal = (await readNativeLocalExecution(
@@ -943,38 +945,10 @@ describe('Native portable Archive', () => {
       ))!;
       for (let save = 0; save < 10; save++)
         await fs.writeFile(path.join(root, 'left.unknown'), `explanation ${save}`);
-      await expect(executeNativePortableCheckPlan({ paths, name, plans })).rejects.toThrow(
-        '当前 Agent',
-      );
-      const observed = (await runNativeEditReviewCommand({
-        projectRoot: root,
-        name,
-        operation: 'observe',
-        sessionId: 'current-agent',
-      })) as {
-        recordTemplate: Record<string, unknown>;
-        availableChecks: Array<{ actionId: string; checkId: string }>;
-      };
-      const file = `${root}-judgment.json`;
-      try {
-        const retained = observed.availableChecks.find((check) => check.checkId === 'check-1')!;
-        await fs.writeFile(
-          file,
-          JSON.stringify({
-            ...observed.recordTemplate,
-            decision: 'non-behavioral',
-            summary: 'Explanation preserves behavior. Only the left check needs refreshing.',
-            retainedChecks: [{ actionId: retained.actionId, checkId: retained.checkId }],
-          }),
-        );
-        await runNativeEditReviewCommand({ projectRoot: root, name, operation: 'record', file });
-      } finally {
-        await fs.rm(file, { force: true });
-      }
       const refreshed = await executeNativePortableCheckPlan({ paths, name, plans });
       const currentLocal = (await readNativeLocalExecution(nativeLocalExecutionFile(paths, name)))!;
       expect(await fs.readFile(counter, 'utf8')).toBe('010');
-      expect(currentLocal.checks[1].rawInput).toEqual(originalLocal.checks[1].rawInput);
+      expect(currentLocal.checks[1]).toEqual(originalLocal.checks[1]);
       expect(currentLocal.checks[0].executionCount).toBe(2);
       expect(currentLocal.checks[1].executionCount).toBe(1);
       expect(refreshed.state.state_version).toBe(original.state.state_version);
@@ -1008,9 +982,6 @@ describe('Native portable Archive', () => {
         }),
       });
       state = await confirmNativePortableSkillCoordinatedPass({ paths, name });
-      expect(
-        (await readNativeLocalExecution(nativeLocalExecutionFile(paths, name)))?.rawInputRef,
-      ).toBe(state.builder_handoff?.raw_input_ref);
       expect(await inspectNativePortableArchive({ paths, name })).toMatchObject({ ready: true });
       const accepted = await readNativePortableChange(paths, name);
       const report = await fs.readFile(
@@ -1018,63 +989,14 @@ describe('Native portable Archive', () => {
         'utf8',
       );
       await fs.writeFile(path.join(root, 'left.unknown'), 'accepted explanation updated');
-      await expect(archiveNativePortableChange({ paths, name })).rejects.toThrow(
-        /当前 Agent|需要新的复核/,
-      );
-      expect(
-        await readNativePortableTransaction(paths, { change: name, kind: 'archive' }),
-      ).toBeNull();
-      const afterAccept = (await runNativeEditReviewCommand({
-        projectRoot: root,
+      const selectedPlans = plans.map((plan) => ({ ...plan, reusable: true }));
+      await executeNativePortableCheckPlan({
+        paths,
         name,
-        operation: 'observe',
-        sessionId: 'current-agent',
-      })) as {
-        recordTemplate: Record<string, unknown>;
-        availableChecks: Array<{ actionId: string; checkId: string }>;
-        observation: { refreshInputTemplate: Record<string, unknown> };
-      };
-      const supplement = `${root}-supplement.json`;
-      try {
-        const retained = afterAccept.availableChecks.find((check) => check.checkId === 'check-1')!;
-        await fs.writeFile(
-          supplement,
-          JSON.stringify({
-            ...afterAccept.recordTemplate,
-            decision: 'non-behavioral',
-            summary: 'Accepted behavior remains unchanged; refresh the left read check.',
-            retainedChecks: [{ actionId: retained.actionId, checkId: retained.checkId }],
-          }),
-        );
-        await runNativeEditReviewCommand({
-          projectRoot: root,
-          name,
-          operation: 'record',
-          file: supplement,
-        });
-        await fs.writeFile(
-          supplement,
-          JSON.stringify({
-            ...afterAccept.observation.refreshInputTemplate,
-            checkIds: ['check-0'],
-            summary: 'Only refresh left; preserve accepted result.',
-          }),
-        );
-        await runNativeEditReviewCommand({
-          projectRoot: root,
-          name,
-          operation: 'refresh-checks',
-          file: supplement,
-        });
-        await runNativeEditReviewCommand({
-          projectRoot: root,
-          name,
-          operation: 'refresh-checks',
-          file: supplement,
-        });
-      } finally {
-        await fs.rm(supplement, { force: true });
-      }
+        plans: selectedPlans,
+        retryCheckIds: ['check-0'],
+      });
+      await executeNativePortableCheckPlan({ paths, name, plans: selectedPlans });
       expect(await fs.readFile(counter, 'utf8')).toBe('0100');
       expect(await readNativePortableChange(paths, name)).toEqual(accepted);
       expect(
@@ -1396,32 +1318,7 @@ children:
     await expect(fs.readFile(externalSpec, 'utf8')).resolves.toBe('# Must remain\n');
   });
 
-  it('returns an archive-ready change to Shape when formal requirements drift', async () => {
-    const config = defaultProjectConfig('docs', 'en');
-    await writeProjectConfig(root, {
-      ...config,
-      native: { ...config.native, document_writes: 'revert' },
-    });
-    const state = await archiveReady('archive-formal-drift');
-    await fs.writeFile(
-      path.join(nativePortableChangeDir(paths, state.name), 'brief.md'),
-      '# Acceptance examples\n- The canonical behavior is updated.\n- A new requirement is added.\n',
-    );
-
-    await expect(archiveNativePortableChange({ paths, name: state.name })).rejects.toThrow(
-      'returned to Shape',
-    );
-    await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
-      phase: 'shape',
-      verification_result: 'pending',
-      builder_handoff: null,
-    });
-    await expect(fs.stat(path.join(paths.specsDir, 'sample', 'spec.md'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
-  });
-
-  it('clears a pre-Archive workspace finish journal when verification becomes stale', async () => {
+  it('settles the original workspace finish journal after a later canonical edit', async () => {
     const config = defaultProjectConfig('docs', 'en');
     await writeProjectConfig(root, {
       ...config,
@@ -1468,8 +1365,11 @@ children:
 
     await expect(nativeArchiveCommand([state.name, '--confirmed'], root)).resolves.toMatchObject({
       exitCode: 0,
-      data: { archived: false, recovery: { action: 'reverify' } },
+      data: { archived: true },
     });
+    expect(await fs.readFile(path.join(paths.specsDir, 'sample', 'spec.md'), 'utf8')).toBe(
+      '# Sample\n\nThe canonical behavior changed after verification.\n',
+    );
     await expect(
       fs.stat(path.join(paths.transactionsDir, `workspace-finish-${state.name}.json`)),
     ).rejects.toMatchObject({ code: 'ENOENT' });
@@ -1612,7 +1512,7 @@ children:
     });
   });
 
-  it('does not treat an old remove journal as safe merely because the target is absent', async () => {
+  it('resumes an already applied remove journal without replaying deletion', async () => {
     await fs.mkdir(path.join(paths.specsDir, 'sample'), { recursive: true });
     await fs.writeFile(path.join(paths.specsDir, 'sample', 'spec.md'), '# Obsolete behavior\n');
     await createNativePortableChange({ paths, name: 'legacy-remove-journal', language: 'en' });
@@ -1655,14 +1555,17 @@ children:
       { containedRoot: paths.runtimeDir },
     );
 
+    const recreated = path.join(paths.specsDir, 'sample', 'spec.md');
+    await fs.mkdir(path.dirname(recreated), { recursive: true });
+    await fs.writeFile(recreated, '# Recreated by another author\n');
     await expect(nativeArchiveCommand([state.name, '--dry-run'], root)).resolves.toMatchObject({
       exitCode: 0,
-      data: {
-        archived: false,
-        ready: false,
-        recovery: { action: 'reverify' },
-      },
+      data: { ready: true },
     });
+    expect((await archiveNativePortableChange({ paths, name: state.name })).transactionId).toBe(
+      transaction.journal.id,
+    );
+    expect(await fs.readFile(recreated, 'utf8')).toBe('# Recreated by another author\n');
   });
 
   it('reports interrupted Archive transactions in named and project-wide Doctor and repairs them', async () => {

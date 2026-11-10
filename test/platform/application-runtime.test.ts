@@ -121,7 +121,13 @@ it('rejects a namespace replaced while reading ownership metadata without publis
     }
     return originalOpen(...args);
   });
-  await expect(ensureApplicationRuntimeDependency(root)).rejects.toThrow(/changed|变化/);
+  const operation = ensureApplicationRuntimeDependency(root);
+  if (process.platform === 'win32') {
+    // Windows keeps the namespace in place while the SQLite writer owns its database.
+    await expect(operation).rejects.toMatchObject({ code: 'EPERM' });
+    expect(await fs.realpath(destination())).toBe(await applicationRuntimeRoot());
+  } else await expect(operation).rejects.toThrow(/changed|变化/);
+  expect(replaced).toBe(true);
   expect(await fs.readdir(outside)).toEqual([path.basename(owner())]);
 });
 it('rejects oversized ownership metadata before reading it', async () => {

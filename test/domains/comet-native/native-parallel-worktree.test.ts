@@ -344,52 +344,8 @@ describe('Native parallel linked-worktree Runtime', () => {
     } else {
       expect(guard.exitCode, guard.stderr).toBe(0);
       expect(guard.data).toMatchObject({ allowed: true, phase: 'verify' });
-      expect(guard.stdout).toContain('comet edit-review observe native');
     }
-    const { runNativeEditReviewCommand } =
-      await import('../../../domains/comet-native/native-edit-review-command.js');
-    const reviewFile = path.join(
-      resolveWorkspaceRuntimeRootSync(editedWorktree.root),
-      'test-edit-review.json',
-    );
-    await fs.writeFile(
-      reviewFile,
-      JSON.stringify({
-        tool_name: 'Write',
-        tool_input: { file_path: BUSINESS_SOURCE, content: userSource },
-      }),
-    );
-    if (documentWrites === 'allow')
-      await fs.writeFile(path.join(editedWorktree.root, BUSINESS_SOURCE), userSource);
-    const proposal = await runNativeEditReviewCommand({
-      projectRoot: editedWorktree.root,
-      name: editedWorktree.name,
-      ...(documentWrites === 'revert'
-        ? { operation: 'prepare' as const, file: reviewFile }
-        : { operation: 'observe' as const, sessionId: 'parallel-edit-agent' }),
-    });
-    if (documentWrites === 'revert')
-      await fs.writeFile(path.join(editedWorktree.root, BUSINESS_SOURCE), userSource);
-    else {
-      expect(proposal.proposal).toMatchObject({ applied: true, judgment: 'agent' });
-      expect(proposal.recordTemplate).toBeDefined();
-    }
-    await fs.writeFile(
-      reviewFile,
-      JSON.stringify({
-        ...(documentWrites === 'allow' ? proposal.recordTemplate : {}),
-        proposalHash: proposal.proposal!.proposalHash,
-        decision: 'implementation-changed',
-        summary: 'The exported business value changes; rebuild the candidate.',
-      }),
-    );
-    await runNativeEditReviewCommand({
-      projectRoot: editedWorktree.root,
-      name: editedWorktree.name,
-      operation: 'record',
-      file: reviewFile,
-      confirmed: documentWrites === 'revert',
-    });
+    await fs.writeFile(path.join(editedWorktree.root, BUSINESS_SOURCE), userSource);
 
     assertCompleted(
       await runNativeCommand(
@@ -432,8 +388,17 @@ describe('Native parallel linked-worktree Runtime', () => {
     for (const { root } of worktrees) {
       const locks = path.join(resolveWorkspaceRuntimeRootSync(root), 'native', 'locks');
       const lockEntries = await readDirectoryOrEmpty(locks);
-      expect(lockEntries.filter((entry) => entry !== '.coordinator')).toEqual([]);
-      expect(await readDirectoryOrEmpty(path.join(locks, '.coordinator'))).toEqual([]);
+      expect(
+        lockEntries.filter(
+          (entry) =>
+            entry !== '.coordinator' && !/\.lock\.sqlite(?:-journal|-wal|-shm)?$/u.test(entry),
+        ),
+      ).toEqual([]);
+      expect(
+        (await readDirectoryOrEmpty(path.join(locks, '.coordinator'))).filter(
+          (entry) => entry !== '.protocol-v2.claim',
+        ),
+      ).toEqual([]);
       expect(
         await readDirectoryOrEmpty(
           path.join(resolveWorkspaceRuntimeRootSync(root), 'native', 'transactions'),

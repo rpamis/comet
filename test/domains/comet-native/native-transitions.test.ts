@@ -327,28 +327,10 @@ describe('Native guarded transitions', () => {
     await writeNativeChange(paths, { ...shaped.change, approval: 'implicit' });
     expect(await inspectNativeStatus(paths, 'advance-change')).toMatchObject({
       phase: 'build',
-      nextCommand:
-        'comet native next advance-change --summary "<summary>" --artifact "<project-relative-path>" --confirmed',
-      continuation: {
-        command:
-          'comet native next advance-change --summary "<summary>" --artifact "<project-relative-path>" --confirmed',
-        commandArgs: [
-          'comet',
-          'native',
-          'next',
-          'advance-change',
-          '--summary',
-          '<summary>',
-          '--artifact',
-          '<project-relative-path>',
-          '--confirmed',
-        ],
-        requiredInputs: [
-          'summary',
-          'artifact-or-no-code-reason',
-          'shared-understanding-confirmation',
-        ],
-      },
+      migrationRequired: true,
+      inspection: { codes: ['legacy-content-proof-removed'] },
+      nextCommand: 'comet native next advance-change --summary <migration-summary>',
+      continuation: null,
     });
     await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export const feature = true;\n');
 

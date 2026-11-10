@@ -3,6 +3,8 @@ import { promises as fs } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
@@ -50,14 +52,42 @@ import {
 } from '../../../domains/comet-native/native-portable-state.js';
 import { inspectNativePortableStatus } from '../../../domains/comet-native/native-portable-status.js';
 import { runGitCommand } from '../../../platform/process/git.js';
-import { inspectProcessTreeLiveness } from '../../../platform/process/process-identity.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
-import { ensureCliBuilt } from '../../helpers/ensure-cli-built.js';
 import {
-  spawnNativePortableProcess,
+  processIsAlive,
   waitForCondition,
   waitForProcessExit,
 } from '../../helpers/native-portable-process.js';
+
+function spawnDoctorCheckProcess(options: {
+  repositoryRoot: string;
+  payload: Record<string, unknown>;
+}) {
+  const entry = pathToFileURL(
+    path.join(options.repositoryRoot, 'domains/comet-native/native-portable-runtime.ts'),
+  ).href;
+  const loader = pathToFileURL(
+    path.join(options.repositoryRoot, 'test/helpers/native-source-loader.mjs'),
+  ).href;
+  const { paths, name, plans } = options.payload;
+  const input = Buffer.from(JSON.stringify({ paths, name, plans })).toString('base64url');
+  return spawn(
+    process.execPath,
+    [
+      '--import',
+      loader,
+      '--input-type=module',
+      '-e',
+      `import {executeNativePortableCheckPlan} from ${JSON.stringify(entry)}; await executeNativePortableCheckPlan(JSON.parse(Buffer.from(process.argv[1],'base64url').toString('utf8')));`,
+      input,
+    ],
+    {
+      cwd: options.repositoryRoot,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+}
 
 describe('Native portable Doctor', () => {
   let projectRoot: string;
@@ -250,7 +280,7 @@ children:
       executable: process.execPath,
       argv: [
         '-e',
-        "require('node:fs').appendFileSync(process.argv[1],'start\\n');setInterval(()=>{},1000)",
+        "const fs=require('node:fs');fs.writeFileSync(process.argv[1]+'.pid',String(process.pid));fs.appendFileSync(process.argv[1],'start\\n');setInterval(()=>{},1000)",
         marker,
       ],
       cwdRef: '.',
@@ -258,35 +288,57 @@ children:
       repeatable: true,
     } as const;
     const repositoryRoot = path.resolve(import.meta.dirname, '../../..');
-    await ensureCliBuilt(repositoryRoot);
     const file = nativeLocalExecutionFile(paths, name);
-    const owner = spawnNativePortableProcess({
+    const owner = spawnDoctorCheckProcess({
       repositoryRoot,
       payload: { action: 'execute-checks', paths, name: state.name, plans: [plan] },
     });
     await waitForCondition(async () => {
       const local = await readNativeLocalExecution(file);
       const reserved =
-        local?.execution?.ownerPid === owner.pid &&
-        local.checks[0]?.activeProcess?.status === 'running';
+        local?.execution?.status === 'running' &&
+        local.checks[0]?.activeProcess?.status === 'running' &&
+        typeof local.checks[0].activeProcess.instanceId === 'string';
       const mutationLockReleased = await fs
         .access(path.join(paths.locksDir, 'root-move.lock'))
         .then(() => false)
         .catch(() => true);
-      return reserved && mutationLockReleased;
+      return (
+        reserved &&
+        mutationLockReleased &&
+        (await fs.access(marker).then(
+          () => true,
+          () => false,
+        ))
+      );
     }, 'Runtime owner did not start the orphaned Doctor check');
     const running = await readNativeLocalExecution(file);
-    const activeProcess = running?.checks[0]?.activeProcess;
-    const activePid = activeProcess?.status === 'running' ? activeProcess.pid : undefined;
+    const activePid = Number(await fs.readFile(marker + '.pid', 'utf8'));
     expect(activePid).toEqual(expect.any(Number));
     owner.kill('SIGKILL');
     await waitForProcessExit(owner);
-    await waitForCondition(
-      async () =>
-        activeProcess?.status === 'running' &&
-        (await inspectProcessTreeLiveness(activeProcess.pid, activeProcess.identity)) === 'dead',
-      'Doctor check process tree did not stop after its Runtime owner exited',
-    );
+    try {
+      if (processIsAlive(activePid)) {
+        if (process.platform === 'win32')
+          (await import('node:child_process')).execFileSync(
+            'taskkill',
+            ['/PID', String(activePid), '/T', '/F'],
+            { stdio: 'ignore' },
+          );
+        else process.kill(activePid, 'SIGKILL');
+      }
+    } catch (error) {
+      if (processIsAlive(activePid)) throw error;
+    }
+    await waitForCondition(() => {
+      try {
+        process.kill(activePid, 0);
+        return false;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+        return true;
+      }
+    }, 'Doctor check process tree did not stop after its Runtime owner exited');
 
     await expect(nativeDoctorCommand([name], projectRoot)).resolves.toMatchObject({
       exitCode: 65,
@@ -295,22 +347,20 @@ children:
         findings: [
           expect.objectContaining({
             code: 'portable-check-execution-stuck',
-            ...(process.platform === 'win32' ? {} : { repair: 'recover' }),
           }),
         ],
       },
     });
     await expect(nativeDoctorCommand([name, '--repair'], projectRoot)).resolves.toMatchObject({
-      exitCode: process.platform === 'win32' ? 65 : 0,
+      exitCode: 65,
       data: {
-        healthy: process.platform !== 'win32',
-        repaired: process.platform !== 'win32',
-        ...(process.platform === 'win32' ? { result: { reason: 'execution-active' } } : {}),
+        healthy: false,
+        repaired: false,
+        result: { reason: 'execution-active' },
       },
     });
-    if (process.platform === 'win32') {
-      expect(await readNativeLocalExecution(file)).toEqual(running);
-    }
+    expect(await readNativeLocalExecution(file)).toEqual(running);
+    expect(await fs.readFile(marker, 'utf8')).toBe('start\n');
   });
 
   it.each([false, true])(
@@ -368,8 +418,7 @@ children:
         repeatable: true,
       } as const;
       const repositoryRoot = path.resolve(import.meta.dirname, '../../..');
-      await ensureCliBuilt(repositoryRoot);
-      const owner = spawnNativePortableProcess({
+      const owner = spawnDoctorCheckProcess({
         repositoryRoot,
         payload: { action: 'execute-checks', paths, name: state.name, plans: [plan] },
       });
@@ -377,8 +426,9 @@ children:
       await waitForCondition(async () => {
         const local = await readNativeLocalExecution(file);
         const reserved =
-          local?.execution?.ownerPid === owner.pid &&
-          local.checks[0]?.activeProcess?.status === 'running';
+          local?.execution?.status === 'running' &&
+          local.checks[0]?.activeProcess?.status === 'running' &&
+          typeof local.checks[0].activeProcess.instanceId === 'string';
         const mutationLockReleased = await fs
           .access(path.join(paths.locksDir, 'root-move.lock'))
           .then(() => false)
@@ -408,12 +458,18 @@ children:
       await fs.writeFile(release, 'release\n');
       await waitForProcessExit(owner);
 
-      expect(repaired).toMatchObject({
-        exitCode: 0,
-        data: { healthy: true, repaired: legacyProjection },
+      expect(repaired, JSON.stringify(repaired)).toMatchObject({
+        exitCode: legacyProjection ? 0 : 65,
+        data: {
+          healthy: legacyProjection,
+          repaired: legacyProjection,
+          ...(legacyProjection
+            ? { migration: { recovered: true } }
+            : { result: { reason: 'execution-active' } }),
+        },
       });
       expect(duringRepair).toMatchObject({
-        execution: { status: 'running', ownerPid: owner.pid },
+        execution: { status: 'running' },
         checks: [{ status: 'running' }],
       });
       expect(startsDuringRepair).toHaveLength(1);

@@ -1365,7 +1365,7 @@ Run focused Native checks.
         );
         if (archiveMode === 'cross-device-tampered') {
           expect(finalized.exitCode).not.toBe(0);
-          expect(finalized.error?.message).toMatch(/receipt|Spec/i);
+          expect(finalized.error?.message).toMatch(/completion record|receipt|Spec/i);
           return;
         }
         expect(finalized.exitCode, finalized.error?.message).toBe(0);
@@ -1481,7 +1481,6 @@ Run focused Native checks.
           knownLimits: [],
           review: null,
           submittedAt: new Date().toISOString(),
-          verificationChecks: [],
         },
       },
       context,
@@ -1518,74 +1517,6 @@ Run focused Native checks.
       },
     });
     expect((await inspectNativeSdkRun(projectRoot, 'sdk-revise')).state.phase).toBe('shape');
-  });
-
-  it('keeps the SDK Shape approval pending when documents drift before confirmation', async () => {
-    const created = json(
-      await runNativeCli(['new', 'sdk-stale', '--runtime', 'sdk', '--json', ...projectArgs()]),
-    );
-    expect(created.exitCode).toBe(0);
-    const paths = await nativeProjectPaths(projectRoot, 'docs');
-    const changeDir = path.join(paths.changesDir, 'sdk-stale');
-    const brief = `# Outcome
-Ship the selected workflow.
-# Scope
-Preserve the selected workflow.
-## Directory structure
-### Modified
-- src/ — preserve workflow recovery behavior.
-# Non-goals
-None.
-# Acceptance examples
-- The selected workflow resumes.
-# Constraints and invariants
-Preserve existing compatibility.
-# Decisions
-None.
-# Open questions
-None.
-# Verification expectations
-Run focused Native checks.
-`;
-    await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
-    await fs.mkdir(path.join(changeDir, 'specs', 'workflow'), { recursive: true });
-    await fs.writeFile(
-      path.join(changeDir, 'specs', 'workflow', 'spec.md'),
-      '# Workflow\nThe selected workflow resumes without losing confirmed work.\n',
-    );
-    const prepared = json(await runNativeCli(['next', 'sdk-stale', '--json', ...projectArgs()]));
-    expect(prepared.exitCode).toBe(0);
-    await fs.writeFile(
-      path.join(changeDir, 'brief.md'),
-      brief.replace('Ship the selected workflow.', 'Ship a different workflow.'),
-    );
-
-    const confirmed = json(
-      await runNativeCli([
-        'next',
-        'sdk-stale',
-        '--confirmed',
-        '--summary',
-        'User approved the earlier Shape.',
-        '--expected-state-version',
-        '2',
-        '--expected-action',
-        'confirm-shape',
-        '--json',
-        ...projectArgs(),
-      ]),
-    );
-    expect(confirmed, confirmed.error?.message).toMatchObject({
-      exitCode: 73,
-      error: { code: 'conflict' },
-    });
-    const status = json(await runNativeCli(['status', 'sdk-stale', '--json', ...projectArgs()]));
-    expect(status).toMatchObject({
-      exitCode: 0,
-      data: {
-        run: { waits: [expect.objectContaining({ stepId: 'shape.confirm', status: 'pending' })] },
-      },
-    });
   });
 
   it('returns all ready Supervisor Child Actions after the public SDK Shape confirmation', async () => {
@@ -1699,7 +1630,7 @@ children:
       exitCode: 0,
       data: {
         phase: 'build',
-        pendingAction: { stepId: 'supervisor.prepare' },
+        pendingAction: { stepId: 'supervisor.child.builder' },
       },
     });
     expect((await inspectNativeSdkRun(projectRoot, 'sdk-supervisor')).state.coordination_mode).toBe(
@@ -1726,8 +1657,8 @@ children:
       exitCode: 0,
       data: {
         pendingActions: [
-          { stepId: 'supervisor.child.prepare', mechanism: 'runtime-dispatch' },
-          { stepId: 'supervisor.child.prepare', mechanism: 'runtime-dispatch' },
+          { stepId: 'supervisor.child.builder', mechanism: 'runtime-dispatch' },
+          { stepId: 'supervisor.child.builder', mechanism: 'runtime-dispatch' },
         ],
       },
     });
@@ -1738,11 +1669,16 @@ children:
       exitCode: 0,
       data: {
         pendingActions: [
-          { stepId: 'supervisor.child.prepare', mechanism: 'runtime-dispatch' },
+          { stepId: 'supervisor.child.builder', mechanism: 'runtime-dispatch' },
           { stepId: 'supervisor.child.builder', mechanism: 'runtime-dispatch' },
         ],
       },
     });
+    const resumed = (await inspectNativeSdkRun(projectRoot, 'sdk-supervisor')).run;
+    expect(resumed.actions.filter(({ stepId }) => stepId === 'supervisor.prepare')).toHaveLength(1);
+    expect(
+      resumed.actions.filter(({ stepId }) => stepId === 'supervisor.child.prepare'),
+    ).toHaveLength(2);
   });
 
   it('shows the joint SDK Supervisor confirmation command in public help', async () => {
@@ -2042,7 +1978,7 @@ Run applicable focused checks.
     expect(next.stdout).toContain('--accept-result');
     expect(next.stdout).toContain('--revise-implementation');
     expect(next.stdout).toContain('--revise-requirements');
-    expect(next.stdout).toContain('renewing a pending Shape proposal');
+    expect(next.stdout).toContain('Renew a pending Shape proposal');
     expect(next.stdout).toContain('ordinary Builder explicitly failed');
     expect(next.stdout).toContain('The new Shape still requires explicit approval');
     expect(next.stdout).not.toContain('--return-to-shape');
@@ -2105,9 +2041,7 @@ Run applicable focused checks.
       requiredInputs: ['summary'],
       userCommunication: { required: false, suggestedReply: null },
     });
-    expect(result.data?.continuation.userCommunication.agentInstruction).toContain(
-      'prepare-shape-confirmation',
-    );
+    expect(result.data?.continuation.userCommunication.agentInstruction).toContain('continuation');
     expect(result.data?.continuation.userCommunication.agentInstruction).not.toContain(
       '--confirmed',
     );
@@ -3289,6 +3223,7 @@ Run applicable focused checks.
       cwdRef: '.',
       timeoutMs: 10_000,
       repeatable: true,
+      reusable: true,
     };
     await prepareBuild(name, ['First behavior works.'], 'zh-CN');
     await runnerStep(name, builderHandoff(['A1']));
@@ -3359,6 +3294,7 @@ Run applicable focused checks.
       cwdRef: '.',
       timeoutMs: 10_000,
       repeatable: true,
+      reusable: true,
     };
     await prepareBuild(name, ['First behavior works.'], 'zh-CN');
 
@@ -3376,7 +3312,6 @@ Run applicable focused checks.
           loop: { stage: 'verify-ready', next_action: 'await-verifier-result' },
         },
         checks: [expect.objectContaining({ id: 'runtime-pass', status: 'passed' })],
-        runtimeCheckExecution: { disposition: 'executed' },
         continuation: {
           action: 'await-verifier',
         },
@@ -3517,15 +3452,15 @@ Run applicable focused checks.
       data: { continuation: { action: 'retry-checks' } },
     });
     const exhausted = await runnerStep(name, inputTemplate(retried, 'runner-input'));
-    expect(exhausted).toMatchObject({
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const local = await readNativeLocalExecution(nativeLocalExecutionFile(paths, name));
+    expect(exhausted, JSON.stringify({ exhausted, local })).toMatchObject({
       exitCode: 0,
       data: {
         state: { phase: 'build', loop: { stage: 'repairing' } },
         continuation: { action: 'repair' },
       },
     });
-    const paths = await nativeProjectPaths(projectRoot, 'docs');
-    const local = await readNativeLocalExecution(nativeLocalExecutionFile(paths, name));
     expect(local?.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: 'runtime-pass', status: 'passed', executionCount: 1 }),
@@ -3799,6 +3734,7 @@ Run applicable focused checks.
           cwdRef: '.',
           timeoutMs: 10_000,
           repeatable: true,
+          reusable: true,
         },
       ],
     };
@@ -3929,7 +3865,7 @@ Run applicable focused checks.
         reason: 'Attempt explicit Verify/Archive recovery while Build is current',
         allowedPhases: ['verify', 'archive'],
       }),
-    ).rejects.toThrow('--revise-requirements is only valid from Verify or Archive');
+    ).rejects.toThrow('--revise-requirements is not valid from the current phase');
 
     const shown = json(await runNativeCli(['show', name, '--json', ...projectArgs()]));
     expect(shown).toMatchObject({
@@ -3974,7 +3910,7 @@ Run applicable focused checks.
       JSON.stringify(concurrent),
     ).toEqual([0, 65]);
     expect(concurrent.find(({ exitCode }) => exitCode === 65)?.error?.message).toMatch(
-      /already in progress|Verify ready state|原检查仍运行或结果不明/iu,
+      /already in progress|Verify ready state|原检查仍运行或结果不明|原检查或验收仍在执行/iu,
     );
     expect(await fs.readFile(counter, 'utf8')).toBe('1');
 
@@ -4048,7 +3984,7 @@ Run applicable focused checks.
     );
     expect(result).toMatchObject({
       exitCode: 64,
-      error: { message: expect.stringContaining('not available for this change') },
+      error: { message: expect.stringContaining('Native 内容证明检查已移除') },
     });
     expect(result.error?.message).toContain('comet native status check-guidance --json');
     expect((await runNativeCli(['check', '--help'])).exitCode).toBe(0);
@@ -4060,7 +3996,7 @@ Run applicable focused checks.
     const checked = json(await runNativeCli(['check', 'sdk-check', '--json', ...projectArgs()]));
     expect(checked).toMatchObject({
       exitCode: 64,
-      error: { message: expect.stringContaining('not available for this change') },
+      error: { message: expect.stringContaining('Native 内容证明检查已移除') },
     });
     expect(checked.error?.message).toContain('comet native status sdk-check --json');
     expect((await inspectNativeSdkRun(projectRoot, 'sdk-check')).state.phase).toBe('shape');

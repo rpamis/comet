@@ -62,6 +62,7 @@ describe('Native issue handoff regressions', () => {
       cwdRef: '.',
       timeoutMs: 10000,
       repeatable: true,
+      reusable: true,
     };
   }
   function response(dispatch: any, result: any) {

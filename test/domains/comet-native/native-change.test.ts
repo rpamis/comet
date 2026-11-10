@@ -352,34 +352,6 @@ describe('Native change store', () => {
     });
   });
 
-  it.skip('fails at change creation when the baseline snapshot is incomplete', async () => {
-    const config = defaultProjectConfig('.');
-    config.native.snapshot.max_total_bytes = 5 * 1024 * 1024;
-    await writeProjectConfig(projectRoot, config);
-    await fs.writeFile(
-      path.join(projectRoot, 'oversized-baseline.bin'),
-      Buffer.alloc(5 * 1024 * 1024 + 1, 0x61),
-    );
-
-    await expect(
-      createNativeChange({
-        paths,
-        name: 'incomplete-baseline',
-        language: 'en',
-        verificationProtocol: 'legacy-v1',
-      }),
-    ).rejects.toMatchObject({
-      name: 'NativeBaselineIncompleteError',
-      code: 'native-baseline-incomplete',
-      omittedCount: 1,
-      samplePaths: ['oversized-baseline.bin'],
-      sampleTruncated: false,
-    });
-    await expect(
-      fs.access(path.join(paths.changesDir, 'incomplete-baseline')),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
-  });
-
   it('creates a complete baseline for a file larger than the legacy per-file limit', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     await fs.writeFile(
@@ -407,49 +379,6 @@ describe('Native change store', () => {
           size: 5 * 1024 * 1024 + 1,
         }),
       ],
-    });
-  });
-
-  it.skip('creates a complete baseline after the project raises the total snapshot budget', async () => {
-    const config = defaultProjectConfig('.');
-    config.native.snapshot.max_total_bytes = 1024;
-    await writeProjectConfig(projectRoot, config);
-    await fs.writeFile(path.join(projectRoot, 'dataset.bin'), Buffer.alloc(1025, 0x61));
-
-    await expect(
-      createNativeChange({
-        paths,
-        name: 'budget-too-small',
-        language: 'en',
-        verificationProtocol: 'legacy-v1',
-      }),
-    ).rejects.toMatchObject({
-      name: 'NativeBaselineIncompleteError',
-      effectiveLimits: expect.objectContaining({
-        maxFileBytes: 1024,
-        maxTotalBytes: 1024,
-      }),
-    });
-
-    config.native.snapshot.max_total_bytes = 2048;
-    await writeProjectConfig(projectRoot, config);
-    const state = await createNativeChange({
-      paths,
-      name: 'budget-raised',
-      language: 'en',
-      verificationProtocol: 'legacy-v1',
-    });
-
-    expect(await readNativeBaselineManifest(paths, state.name)).toMatchObject({
-      complete: true,
-      limits: {
-        maxFiles: 10_000,
-        maxFileBytes: 2048,
-        maxTotalBytes: 2048,
-        maxManifestBytes: expect.any(Number),
-        maxDurationMs: 60_000,
-      },
-      entries: [expect.objectContaining({ path: 'dataset.bin', size: 1025 })],
     });
   });
 

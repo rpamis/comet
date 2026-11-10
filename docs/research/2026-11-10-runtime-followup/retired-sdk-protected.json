@@ -1,0 +1,116 @@
+{
+  "catalogPending": true,
+  "retired": [
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "name": "preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check",
+      "kind": "feature-removed",
+      "authorization": "Parent explicitly authorized removal after preserving full source, original selector and raw/effective references; catalog migration remains parent-owned.",
+      "reason": "Only rejection trigger was removal of rawInput content proof. Existing complete once-only receipt/reverify and stopped unknown-execution cases retain real side-effect safety.",
+      "original": "it('preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check', async () => {\n  const { root, store, run, counter } = await passedOneShotReverify(true);\n  const wait = run.waits.at(-1)!;\n  const rejected = await advanceNativeSdkChange(root, run.runId, {\n    expectedAction: 'retry-verifier',\n    expectedStateVersion: (run.state as NativePortableState).state_version,\n    proposalHash: wait.proposalHash,\n    summary: 'Please reverify',\n  });\n  expect(rejected.exitCode).toBe(73);\n  expect(rejected.data.continuation).not.toBeNull();\n  expect(rejected.data.continuation.commandAlternatives.map(({ name }) => name)).not.toContain(\n    'retry-verifier',\n  );\n  const final = await store.read(run.runId);\n  expect(final).toEqual(run);\n  expect(final!.waits.at(-1)).toMatchObject({ id: wait.id, status: 'pending' });\n  expect((final!.state as NativePortableState).verification_result).toBe('pass');\n  expect(await fs.readFile(counter, 'utf8')).toBe('once\\n');\n});",
+      "protection": {
+        "name": "preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check",
+        "effective": [
+          "history-domains-comet-native-native-sdk-application"
+        ],
+        "raw": [
+          {
+            "source": "config/workflow-regressions.json",
+            "path": "config/workflow-regressions.json.cases.30.tests.0",
+            "requiredNames": [
+              "preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check",
+              "reuses a proven Verifier-added one-shot receipt during explicit reverify without replaying its effect"
+            ],
+            "namePattern": "preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check|reuses a proven Verifier-added one-shot receipt during explicit reverify without replaying its effect"
+          },
+          {
+            "source": "config/workflow-regressions.json",
+            "path": "config/workflow-regressions.json.cases.274.tests.1",
+            "requiredNames": [
+              "preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check"
+            ],
+            "namePattern": "^preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check$"
+          },
+          {
+            "source": "config/workflow-regressions.json",
+            "path": "config/workflow-regressions.json.cases.274.testMigration.tests.1",
+            "requiredNames": [
+              "preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check"
+            ],
+            "namePattern": "^preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check$"
+          }
+        ]
+      },
+      "replacement": [
+        "Native SDK Workflow Application reuses a completed non-repeatable Runtime check requested by the Verifier",
+        "preserves completed one-shot checks while revising edited Archive-ready code"
+      ],
+      "unusedHelperOriginal": "async function passedOneShotReverify(legacy = false) {\n  const application = nativeApplication();\n  const counterRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'native-reverify-one-shot-'));\n  roots.push(counterRoot);\n  const counter = path.join(counterRoot, 'executions.txt');\n  const {\n    root,\n    runtime,\n    store,\n    run: ready,\n  } = await dispatchedVerifier([], 'sdk', application, true, undefined, initializeArchiveGit);\n  const candidateId = (ready.state as NativePortableState).builder_handoff!.candidate_id;\n  let run = await succeedLatestAction(\n    runtime,\n    ready,\n    {\n      candidateId,\n      verifierExecutionRef: 'v1',\n      response: {\n        kind: 'request-checks',\n        iteration: 1,\n        attempt: 1,\n        checks: [\n          {\n            id: 'oneshot',\n            name: 'oneshot',\n            executable: process.execPath,\n            argv: ['-e', 'require(\"fs\").appendFileSync(process.argv[1],\"once\\\\n\")', counter],\n            cwdRef: '.',\n            timeoutMs: 5000,\n            repeatable: false,\n          },\n        ],\n      },\n    },\n    root,\n    'request',\n    'v1',\n  );\n  run = await runtime.execute({\n    runId: run.runId,\n    actionId: run.actions.at(-1)!.id,\n    executorId: 'comet-native-checks',\n    context: { requestId: 'checks', projectRoot: root },\n  });\n  run = await succeedLatestAction(\n    runtime,\n    run,\n    {\n      candidateId,\n      verifierExecutionRef: 'v1',\n      response: {\n        kind: 'final-result',\n        result: {\n          iteration: 1,\n          attempt: 1,\n          verdict: 'pass',\n          acceptance: [{ id: 'A1', result: 'passed', reason: 'Passed.' }],\n          risks: [],\n          summary: 'Passed.',\n        },\n      },\n    },\n    root,\n    'pass',\n    'v1',\n  );\n  run = await runtime.execute({\n    runId: run.runId,\n    actionId: run.actions.at(-1)!.id,\n    executorId: 'comet-native-report',\n    context: { requestId: 'report', projectRoot: root },\n  });\n  if (legacy) {\n    // 构造缺少原始输入证明的兼容快照；不伪造批准或正常阶段推进。\n    const snapshot = structuredClone(run);\n    for (const action of snapshot.actions) {\n      if (action.stepId !== 'verify.requested-checks' || !action.outcome) continue;\n      delete (action.outcome.output as Record<string, unknown>).rawInput;\n      const receipt = action.receipts.find(\n        ({ outcomeId }) => outcomeId === action.outcome!.outcomeId,\n      )!;\n      receipt.hash = hashRuntimeValue(action.outcome);\n    }\n    snapshot.revision += 1;\n    expect(await store.compareAndSwap(run.runId, run.revision, snapshot)).toBe(true);\n    run = await runtime.inspect(run.runId);\n  }\n  return { root, runtime, store, run, counter };\n}"
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "name": "blocks tracked implementation drift at Archive preflight and offers the original Verify repair path",
+      "kind": "feature-removed",
+      "authorization": "Parent explicitly authorized removal after preserving full source, original selector and raw/effective references; catalog migration remains parent-owned.",
+      "reason": "Only failure trigger was ordinary implementation byte edits automatically invalidating acceptance. Agent now explicitly requests revision; original real-check failure and archive recovery remain covered.",
+      "original": "it('blocks tracked implementation drift at Archive preflight and offers the original Verify repair path', async () => {\n  const prepared = await awaitingArchiveApplication('sdk', undefined, true, initializeArchiveGit);\n  const { root, runtime } = prepared;\n  await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error(\"unverified\");');\n  const result = await runNativeCli(['archive', 'sdk-shape', '--project-root', root, '--json']);\n  const run = await runtime.inspect(prepared.run.runId);\n  expect(run.state).toMatchObject({\n    phase: 'verify',\n    status: 'await-user',\n    archived: false,\n    verification_result: 'pending',\n  });\n  expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });\n  expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.prepare', status: 'failed' });\n  expect(result.exitCode).toBe(73);\n  const wait = run.waits.at(-1)!;\n  const repaired = await runtime.resolveWait({\n    runId: run.runId,\n    waitId: wait.id,\n    proposalHash: wait.proposalHash,\n    choice: 'repair',\n    decisionId: 'repair-drift',\n  });\n  expect(repaired.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'pending' });\n});",
+      "protection": {
+        "name": "blocks tracked implementation drift at Archive preflight and offers the original Verify repair path",
+        "effective": [
+          "history-domains-comet-native-native-sdk-application"
+        ],
+        "raw": [
+          {
+            "source": "config/workflow-regressions.json",
+            "path": "config/workflow-regressions.json.historicalTestMigrations.21.testMigration.tests.0",
+            "requiredNames": [
+              "blocks tracked implementation drift at Archive preflight and offers the original Verify repair path"
+            ],
+            "namePattern": "(?:blocks tracked implementation drift at Archive preflight and offers the original Verify repair path)"
+          },
+          {
+            "source": "config/historical-workflow-regressions.json",
+            "path": "config/historical-workflow-regressions.json.issues.48.cases.2.tests.0",
+            "requiredNames": [
+              "blocks tracked implementation drift at Archive preflight and offers the original Verify repair path",
+              "rechecks Archive documents after executor output and before committing the outcome"
+            ],
+            "namePattern": "blocks tracked implementation drift at Archive preflight and offers the original Verify repair path|rechecks Archive documents after executor output and before committing the outcome"
+          }
+        ]
+      },
+      "replacement": [
+        "continues an authorized implementation edit without requesting the same decision again",
+        "recovers a returned but rejected archive.execute through the public Archive command"
+      ]
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-application.test.ts",
+      "name": "upgrades a legacy failed Archive drift into the original Verify repair Wait",
+      "kind": "feature-removed",
+      "authorization": "Parent explicitly authorized removal after preserving full source, original selector and raw/effective references; catalog migration remains parent-owned.",
+      "reason": "Only failure trigger was ordinary implementation byte edits automatically invalidating acceptance. Agent now explicitly requests revision; original real-check failure and archive recovery remain covered.",
+      "original": "it('upgrades a legacy failed Archive drift into the original Verify repair Wait', async () => {\n  const prepared = await awaitingArchiveApplication(\n    'sdk',\n    async ({ root }) => {\n      await fs.writeFile(path.join(root, 'implementation.js'), 'throw new Error(\"changed\");');\n    },\n    false,\n    initializeArchiveGit,\n    legacyArchiveApplication(),\n  );\n  expect(prepared.run.status).toBe('failed');\n  expect(prepared.run.state).toMatchObject({ phase: 'archive', archived: false });\n  expect(\n    await inspectNativeSdkDefinitionUpgrade(prepared.root, prepared.run.runId, true),\n  ).toMatchObject({ ready: true, repaired: true });\n  await advanceNativeSdkChange(prepared.root, prepared.run.runId);\n  // load 会预读首个快照；跨另一条 command 推进后应重新加载，不能拿旧实例作最新查询。\n  const { runtime } = await loadOwnedNativeSdkRuntime(prepared.root, prepared.run.runId);\n  const run = await runtime.inspect(prepared.run.runId);\n  expect(run.state).toMatchObject({\n    phase: 'verify',\n    status: 'await-user',\n    verification_result: 'pending',\n  });\n  expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });\n});",
+      "protection": {
+        "name": "upgrades a legacy failed Archive drift into the original Verify repair Wait",
+        "effective": [
+          "history-domains-comet-native-native-sdk-application"
+        ],
+        "raw": [
+          {
+            "source": "config/workflow-regressions.json",
+            "path": "config/workflow-regressions.json.cases.208.tests.0",
+            "requiredNames": [
+              "upgrades a legacy failed Archive drift into the original Verify repair Wait"
+            ],
+            "namePattern": "upgrades a legacy failed Archive drift into the original Verify repair Wait"
+          }
+        ]
+      },
+      "replacement": [
+        "continues an authorized implementation edit without requesting the same decision again",
+        "recovers a returned but rejected archive.execute through the public Archive command"
+      ]
+    }
+  ]
+}

@@ -222,7 +222,7 @@ function collectTargets(input: Record<string, unknown>, args: unknown): string[]
     }
   }
   if (typeof args === 'string') targets.push(...patchTargets(args));
-  return normalizeCometHookTargets(targets);
+  return targets;
 }
 
 function collectWriteProposals(args: unknown): CometHookWriteProposal[] {
@@ -337,7 +337,8 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
     typeof rawArgs.command === 'string'
       ? { ...rawArgs, patch: rawArgs.command }
       : rawArgs;
-  const targets = collectTargets(input, args);
+  const rawTargets = collectTargets(input, args);
+  const targets = normalizeCometHookTargets(rawTargets);
   const writes = collectWriteProposals(args);
   const rawWorkingDirectory = readWorkingDirectory(input);
   const cwd = rawWorkingDirectory ? path.resolve(rawWorkingDirectory) : undefined;
@@ -350,6 +351,16 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
       targets: [],
       toolName: null,
       ...(task ? { task } : {}),
+      ...(cwd ? { cwd } : {}),
+      ...(rawCwd ? { rawCwd } : {}),
+      ...(sessionId ? { sessionId } : {}),
+    };
+  }
+  if (rawTargets.length > 0 && targets.length === 0) {
+    return {
+      intent: 'non-write',
+      targets,
+      toolName,
       ...(cwd ? { cwd } : {}),
       ...(rawCwd ? { rawCwd } : {}),
       ...(sessionId ? { sessionId } : {}),

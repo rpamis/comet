@@ -794,8 +794,10 @@ it('rejects a replaced archive manifest symlink and keeps the same Run pending',
   const before = (await f.inspect()).run;
   const rejected = await f.invoke('state', 'complete-delivery', 'example', '--commit', commit);
   expect(rejected.exitCode).not.toBe(0);
-  expect(rejected.response.stderr).toContain('symbolic link');
+  expect(rejected.response.stderr).toMatch(/symbolic link|regular file/u);
   expect((await f.inspect()).run).toEqual(before);
+  expect(await fs.readFile(outside)).toEqual(original);
+  expect((await fs.lstat(file)).isSymbolicLink()).toBe(true);
 });
 
 it.each(['local', 'push'] as const)(

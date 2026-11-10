@@ -120,7 +120,7 @@ describe('Native capability association during change creation', () => {
     const data = result.data as {
       capabilityDiscovery?: { associationDraft?: { status: string; capability: string } };
       associationPath?: string;
-      deltaProposal?: { specSource: string; deltaSource: string; baseHash: string };
+      deltaProposal?: { specSource: string; deltaSource: string };
     };
     expect(data.capabilityDiscovery?.associationDraft).toMatchObject({
       status: 'explicit',
@@ -143,7 +143,6 @@ describe('Native capability association during change creation', () => {
       specSource: 'specs/authentication/spec.md',
       deltaSource: 'specs/authentication/delta.yaml',
     });
-    expect(data.deltaProposal?.baseHash).toMatch(/^[a-f0-9]{64}$/);
     await expect(
       fs.readFile(
         path.join(

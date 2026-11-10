@@ -164,7 +164,7 @@ describe('Native cancellation lifecycle', () => {
     await fs.writeFile(lock, JSON.stringify(owner));
     await expect(
       f.runtime.cancel({ runId: f.name, reason: 'Cancel while root cleanup is blocked' }),
-    ).rejects.toThrow(/Native lock is already held/);
+    ).rejects.toThrow(/Legacy lock requires confirmation/);
     expect(await f.runtime.inspect(f.name)).toEqual(before);
     // 旧版本可能已经提交取消；保留该故障恢复覆盖，而不是绕过新的提交前保护。
     const application = nativeSdkApplicationForRun(before);
@@ -192,7 +192,13 @@ describe('Native cancellation lifecycle', () => {
       cancellation: {
         quiescent: true,
         cleanupRequired: true,
-        cleanup: { rootMoveLock: { status: 'unknown', owner, minimumUnknownOwnerAgeMs: 900000 } },
+        cleanup: {
+          rootMoveLock: {
+            status: 'unknown',
+            owner: { id: owner.id, createdAt: owner.createdAt, operation: owner.operation },
+            minimumUnknownOwnerAgeMs: 0,
+          },
+        },
       },
       continuation: {
         disposition: 'blocked',
@@ -226,7 +232,7 @@ describe('Native cancellation lifecycle', () => {
     expect(await listActiveNativeHookChanges(f.root)).toEqual([
       expect.objectContaining({ name: f.name }),
     ]);
-    expect(status.data.cancellation.cleanup.rootMoveLock.remainingMs).toBeGreaterThan(850000);
+    expect(status.data.cancellation.cleanup.rootMoveLock.remainingMs).toBe(0);
     const doctor = await f.cli(['doctor', f.name]);
     expect(doctor.data.healthy).toBe(false);
     expect(

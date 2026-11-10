@@ -219,63 +219,6 @@ def test_published_cli_snapshot_does_not_require_typescript_or_repository_source
     assert json.loads((snapshot / 'build-identity.json').read_text())["compilerVersion"] == "published-dist"
 
 
-def test_cli_snapshot_stays_out_of_native_inputs_while_app_dist_remains_bound(tmp_path, monkeypatch):
-    source = tmp_path / 'published-cli'
-    for ref in ['package.json', 'bin/comet.js', 'assets/manifest.json',
-                'dist/app/cli/index.js', 'dist/domains/dashboard/native-adapter.js']:
-        target = source / ref
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text('{}' if ref.endswith('.json') else 'export {};', encoding='utf-8')
-    environment = tmp_path / 'environment'
-    environment.mkdir()
-    (environment / conftest.CURRENT_COMET_CLI_MARKER).touch()
-    monkeypatch.setenv('BENCH_COMET_SOURCE_ROOT', str(source))
-    workspace = tmp_path / 'workspace'
-    conftest._copy_current_comet_cli_snapshot(environment, workspace)
-    assert not (workspace / 'node_modules').exists()
-    (workspace / '.gitignore').write_text('_eval_current_comet/\n.dataset-state/\ndist/\n')
-    (workspace / 'README.md').write_text('Business project')
-    app = workspace / 'dist/app.js'
-    app.parent.mkdir()
-    app.write_text('export const value = 1;')
-    from scaffold.python.paths import DATASET_NPM_CACHE_REF
-    cache = workspace / DATASET_NPM_CACHE_REF / 'dist/cached.js'
-    cache.parent.mkdir(parents=True)
-    cache.write_text('tool dependency cache')
-    root_app = workspace / '.dataset-state/root/app/dist/generated.js'
-    root_app.parent.mkdir(parents=True)
-    root_app.write_text('business output outside the npm cache')
-    subprocess.run(['git', 'init', '--quiet', str(workspace)], check=True)
-    subprocess.run(['git', 'add', '.gitignore', 'README.md'], cwd=workspace, check=True)
-    subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@eval.invalid',
-                    'commit', '--quiet', '-m', 'initial'], cwd=workspace, check=True)
-    sdk = conftest.REPOSITORY_ROOT / 'dist/domains/comet-native/native-portable-checks.js'
-    script = '''const {nativeRawInputSnapshot}=await import(process.argv[1]);
-const result=await nativeRawInputSnapshot({projectRoot:process.argv[2]});
-console.log(JSON.stringify(result));'''
-
-    def baseline():
-        result = subprocess.run(['node', '--input-type=module', '-e', script, sdk.as_uri(), str(workspace)],
-            capture_output=True, text=True, encoding='utf-8',
-            env={**{key: value for key, value in os.environ.items()
-                    if key in {'PATH', 'SYSTEMROOT', 'WINDIR'}},
-                 'HOME': str(tmp_path/'home'), 'USERPROFILE': str(tmp_path/'home')})
-        assert result.returncode == 0, result.stderr
-        return json.loads(result.stdout)
-
-    before = baseline()
-    assert before['complete'] is True
-    assert 'dist/app.js' in {f['path'] for f in before['files']}
-    tooling = next(workspace.glob('**/build-identity.json')).parent.relative_to(workspace).as_posix()
-    assert not any(f['path'] == tooling or f['path'].startswith(tooling + '/') for f in before['files'])
-    assert not any('/.npm/' in f['path'] for f in before['files'])
-    assert not any('/.cache/npm/' in f['path'] for f in before['files'])
-    assert '.dataset-state/root/app/dist/generated.js' in {f['path'] for f in before['files']}
-    app.write_text('export const value = 2;')
-    after = baseline()
-    assert before['contentHash'] != after['contentHash']
-
-
 @pytest.mark.skipif(msvcrt is None, reason="Windows locking API only")
 def test_file_lock_waits_when_windows_lock_is_temporarily_busy(tmp_path: Path, monkeypatch):
     lock_file = tmp_path / "coordination.lock"

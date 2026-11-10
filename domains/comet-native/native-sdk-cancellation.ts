@@ -248,7 +248,7 @@ export async function inspectNativeSdkCancellation(options: {
               : null,
         };
         if (lock.status !== 'missing')
-          cleanup.reason = `Current selection release is blocked by the ${lock.status} root mutation lock. Confirm the owner stopped before explicit root doctor repair; the existing unknown-owner age protection is retained.`;
+          cleanup.reason = `Current selection release is blocked by the ${lock.status} root mutation lock. Confirm the owner stopped before explicit root doctor repair.`;
       }
     } catch (error) {
       cleanup.reason = `Current selection release needs root diagnosis: ${error instanceof Error ? error.message : String(error)}`;

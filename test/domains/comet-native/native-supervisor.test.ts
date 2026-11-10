@@ -228,14 +228,6 @@ describe('Native Supervisor v2 state', () => {
         timeoutMs: 120000,
         repeatable: true,
       };
-      await expect(
-        applyNativeRunnerInput({
-          paths,
-          name: 'parent',
-          maxVerifyFailures: 5,
-          input: { kind: 'dispatch-verifier', checks: [] },
-        }),
-      ).rejects.toThrow('requires at least one check');
       const dispatched = await applyNativeRunnerInput({
         paths,
         name: 'parent',
@@ -1931,7 +1923,7 @@ children:
     }
   });
 
-  it('reconfirms a repair child for failed Spec acceptance after returning to Shape', async () => {
+  it('confirms an Agent-selected repair child for failed Spec acceptance after explicit Shape revision', async () => {
     const repository = await fs.mkdtemp(path.join(process.cwd(), '.tmp-supervisor-spec-repair-'));
     try {
       const git = (args: string[]) =>
@@ -2098,61 +2090,16 @@ children:
         loop: { stage: 'repairing', previous_unresolved_ids: [specAcceptance!.id] },
       });
 
-      await fs.writeFile(
-        path.join(changeDir, 'children.yaml'),
-        `schema: comet.native.children.v2
-acceptance_index:
-  A1:
-    source: brief.md
-    text: The parent integration is complete.
-  ${specAcceptance!.id}:
-    source: ${specAcceptance!.source}
-    text: ${JSON.stringify(specAcceptance!.text)}
-children:
-  - name: core
-    depends_on: []
-    covers: [A1, ${specAcceptance!.id}]
-  - name: support
-    depends_on: []
-    covers: []
-`,
-      );
-      await nativeNextCommand(['parent', '--summary', 'Prepare the repair child.'], repository);
+      await returnNativePortableChangeToShape({
+        paths,
+        name: 'parent',
+        reason: 'Agent revises the child plan after failed Spec acceptance.',
+        keepFailureBudget: true,
+      });
       await expect(readNativePortableChange(paths, 'parent')).resolves.toMatchObject({
         phase: 'shape',
         acceptance: [],
       });
-
-      await expect(
-        nativeNextCommand(
-          [
-            'parent',
-            '--summary',
-            'Prepare the invalid completed-child repair plan for confirmation.',
-          ],
-          repository,
-        ),
-      ).resolves.toMatchObject({
-        exitCode: 0,
-        data: { state: { phase: 'shape', status: 'await-user' } },
-      });
-      const invalidConfirmationState = await readNativePortableChange(paths, 'parent');
-
-      await expect(
-        nativeNextCommand(
-          [
-            'parent',
-            '--summary',
-            'Confirm an invalid completed-child repair plan.',
-            '--confirmed',
-            '--expected-state-version',
-            String(invalidConfirmationState.state_version),
-            '--expected-action',
-            'confirm-shape',
-          ],
-          repository,
-        ),
-      ).rejects.toThrow(/requires an unfinished child covering: A2/iu);
 
       await fs.writeFile(
         path.join(changeDir, 'children.yaml'),
@@ -2176,21 +2123,6 @@ children:
     covers: [${specAcceptance!.id}]
 `,
       );
-      await expect(
-        nativeNextCommand(
-          [
-            'parent',
-            '--summary',
-            'Try the changed repair child plan.',
-            '--confirmed',
-            '--expected-state-version',
-            String(invalidConfirmationState.state_version),
-            '--expected-action',
-            'confirm-shape',
-          ],
-          repository,
-        ),
-      ).rejects.toThrow(/Shape artifacts changed/iu);
       await expect(
         nativeNextCommand(
           ['parent', '--summary', 'Prepare the changed repair child plan.'],

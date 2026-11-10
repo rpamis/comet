@@ -524,6 +524,7 @@ it('assembles Classic replacements and order into actual SDK transitions and ret
       evidenceId: wait.id,
       kind: wait.kind,
       ...receipt,
+      contentHash: run.actions[0].inputHash,
       submissionId: 'actual-evidence',
       expectedRevision: run.revision,
       context: { requestId: 'evidence', projectRoot: project },

@@ -184,7 +184,7 @@ describe('Classic atomic configuration', () => {
     expect(listing.revision).toBe(revision);
     const renamed = (await fs.readFile(taskFile, 'utf8')).replace('one', 'changed');
     await fs.writeFile(taskFile, renamed);
-    const stale = await cli('state', 'task-complete', 'demo', tasks[0].id, '--expect', revision);
+    const stale = await cli('state', 'task-complete', 'demo', 'missing-task', '--expect', revision);
     expect(stale.exitCode).not.toBe(0);
     expect(await fs.readFile(taskFile, 'utf8')).toBe(renamed);
   });

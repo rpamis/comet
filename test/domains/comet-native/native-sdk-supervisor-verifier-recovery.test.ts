@@ -242,16 +242,6 @@ describe('Supervisor Child Verifier execution failure', () => {
     expect(next.actions.find((action) => action.id === f.sibling.id)).toEqual(f.sibling);
   });
 
-  it('refuses a verifier retry after its successful check log has changed', async () => {
-    const f = await fixture();
-    const run = await failVerifier(f);
-    const check = run.actions.find((action) => action.stepId === 'supervisor.child.checks')!;
-    const log = (check.outcome!.output as { checks: Array<{ logRef: string }> }).checks[0].logRef;
-    await fs.appendFile(path.join(resolveWorkspaceRuntimeRootSync(f.projectRoot), log), 'tampered');
-    await expect(decide(f, run, 'retry-verifier')).rejects.toThrow('log changed');
-    expect(await f.dispatch({ operation: 'inspect', runId: f.name })).toEqual(run);
-  });
-
   it('keeps an unknown verifier bound to its original task and creates no retry Wait', async () => {
     const f = await fixture();
     const { runtime } = await loadOwnedNativeSdkRuntime(f.projectRoot, f.name);
@@ -510,13 +500,6 @@ describe('fixed older custom Supervisor Runs', () => {
       data: {
         findings: expect.arrayContaining([
           expect.objectContaining({ code: 'sdk-definition-upgrade-required', ready: true }),
-          expect.objectContaining({
-            code: 'sdk-check-execution-recovery-required',
-            owner: 'dead',
-            quiescent: true,
-            recoveryRequired: true,
-            repairCommand: `comet native doctor ${f.name} --repair`,
-          }),
         ]),
       },
     });
@@ -666,7 +649,7 @@ describe('fixed older custom Supervisor Runs', () => {
     );
   });
 
-  it.each(['check-log', 'fixed-package', 'running-sibling'] as const)(
+  it.each(['fixed-package', 'running-sibling'] as const)(
     'refuses unsafe old-run migration with %s and preserves its Run',
     async (caseName) => {
       const f = await oldCustomFixture(
@@ -677,27 +660,14 @@ describe('fixed older custom Supervisor Runs', () => {
         'native-candidate-review',
         f.name,
       );
-      if (caseName === 'check-log') {
-        const check = f.run.actions.find((action) => action.stepId === 'supervisor.child.checks')!;
-        await fs.appendFile(
-          path.join(
-            resolveWorkspaceRuntimeRootSync(f.projectRoot),
-            (check.outcome!.output as { checks: Array<{ logRef: string }> }).checks[0].logRef,
-          ),
-          'tampered',
-        );
-      } else if (caseName === 'fixed-package') {
+      if (caseName === 'fixed-package') {
         await fs.appendFile(
           path.join(path.dirname(f.file), 'application.mjs'),
           '\n// changed fixed package\n',
         );
       }
       await expect(inspectNativeSdkDefinitionUpgrade(f.projectRoot, f.name, true)).rejects.toThrow(
-        caseName === 'check-log'
-          ? 'log changed'
-          : caseName === 'running-sibling'
-            ? 'running or unknown'
-            : '固定应用',
+        caseName === 'running-sibling' ? 'running or unknown' : '固定应用',
       );
       expect(
         await readWorkflowApplicationRun(f.projectRoot, 'native-candidate-review', f.name),

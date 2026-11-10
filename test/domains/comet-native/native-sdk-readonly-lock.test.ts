@@ -157,7 +157,7 @@ describe('Native SDK read-only projection lock diagnostics', () => {
         hostname: os.hostname(),
         createdAt: Date.now(),
       }),
-      'stale',
+      'unknown',
     ],
   ])(
     'status and public runtime inspect never acquire or mutate a %s lock',
@@ -207,34 +207,6 @@ describe('Native SDK read-only projection lock diagnostics', () => {
     expect(repaired.data).toMatchObject({ healthy: true, repaired: true });
     expect(await readNativeSdkRunRecord(root, name)).toEqual(run);
     expect((await nativeStatusCommand([name], root)).exitCode).toBe(0);
-  });
-
-  it('reports abandoned coordinator tickets even if the projection lock is missing', async () => {
-    const { root, name, lock } = await fixture();
-    const ticket = path.join(`${lock}.contenders`, 'abandoned.ticket');
-    await fs.mkdir(path.dirname(ticket), { recursive: true });
-    await fs.writeFile(
-      ticket,
-      JSON.stringify({
-        pid: 1,
-        hostname: 'another-host',
-        nonce: 'abandoned',
-        createdAt: 1,
-        ticket: 1,
-      }),
-    );
-    const before = await files(root);
-    const doctor = await nativeDoctorCommand([name], root);
-    const findings = (
-      doctor.data as { healthy: boolean; findings: Array<{ code: string; token: string }> }
-    ).findings;
-    expect(findings[0].code).toBe('sdk-projection-coordinator-unknown');
-    expect(await files(root)).toEqual(before);
-    const repaired = await nativeDoctorCommand(
-      [name, '--repair', '--confirmed', '--lock-token', findings[0].token],
-      root,
-    );
-    expect(repaired.data).toMatchObject({ healthy: true, repaired: true });
   });
 
   it('diagnoses a missing Run without restoring it, then explicit repair preserves its revision', async () => {

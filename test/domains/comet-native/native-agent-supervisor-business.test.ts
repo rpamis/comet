@@ -191,43 +191,69 @@ it.each(['source', 'generated'] as const)(
       });
       expect(task.task.acceptance).toHaveLength(1);
       const repairExpected = child === (entry === 'source' ? 'api' : 'ui');
-      const integrationChecks = repairExpected
-        ? [
-            {
-              id: 'integration-ready',
-              name: 'Integration readiness',
-              executable: process.execPath,
-              argv: [
-                '-e',
-                "process.exit(require('node:fs').existsSync('../integration-ready.txt')?0:1)",
-              ],
-              cwdRef: child + '-checks',
-              timeoutMs: 10000,
-              repeatable: true,
-            },
-          ]
-        : [];
-      await fs.writeFile(
-        resultFile,
-        JSON.stringify({
-          status: 'succeeded',
-          output: {
-            candidateCommit: task.resultTemplate.output.candidateCommit,
-            verdict: 'pass',
-            evidence: {
-              summary: 'Observed the requested child output.',
-              checks: [],
-              acceptance: task.task.acceptance.map((item: { id: string }) => ({
-                id: item.id,
-                result: 'passed',
-                reason: 'Observed ' + child + '.txt.',
-              })),
-            },
-            integrationChecks,
-          },
-        }),
-      );
-      let completed = await cli(
+      const checks: Array<{ name: string; result: 'passed' | 'failed' }> = [];
+      const output = {
+        candidateCommit: task.resultTemplate.output.candidateCommit,
+        verdict: 'pass',
+        evidence: {
+          summary: 'Observed the requested child output.',
+          checks,
+          acceptance: task.task.acceptance.map((item: { id: string }) => ({
+            id: item.id,
+            result: 'passed',
+            reason: 'Observed ' + child + '.txt.',
+          })),
+        },
+      };
+      if (repairExpected) {
+        const marker = path.join(base, child + '-integration-ready');
+        const checkArgs = [
+          '-e',
+          'process.exit(require("node:fs").existsSync(' + JSON.stringify(marker) + ')?0:7)',
+        ];
+        expect(spawnSync(process.execPath, checkArgs, { cwd: worktree }).status).toBe(7);
+        checks.push({ name: 'Actual platform integration readiness', result: 'failed' });
+        await fs.writeFile(resultFile, JSON.stringify({ status: 'succeeded', output }));
+        const before = (await inspectNativeSdkRun(root, name)).run;
+        const rejected = await invoke(
+          'next',
+          name,
+          '--session',
+          reviewSession,
+          '--action',
+          task.task.actionId,
+          '--result',
+          resultFile,
+        );
+        expect(rejected.exitCode).not.toBe(0);
+        const afterRejected = (await inspectNativeSdkRun(root, name)).run;
+        expect(afterRejected.state).toEqual(before.state);
+        expect(afterRejected.waits).toEqual(before.waits);
+        expect(afterRejected.actions.map((action) => action.id)).toEqual(
+          before.actions.map((action) => action.id),
+        );
+        const original = before.actions.find((action) => action.id === task.task.actionId)!;
+        const retained = afterRejected.actions.find((action) => action.id === original.id)!;
+        expect(retained).toMatchObject({
+          id: original.id,
+          attempt: original.attempt,
+          inputHash: original.inputHash,
+          status: 'running',
+          claim: original.claim,
+        });
+        expect(retained.outcome).toBeUndefined();
+        expect(retained.rejectedOutcomes?.at(-1)?.outcome).toMatchObject({
+          actionId: original.id,
+          attempt: original.attempt,
+          inputHash: original.inputHash,
+          output: { evidence: { checks: [{ result: 'failed' }] } },
+        });
+        await fs.writeFile(marker, 'Platform condition repaired\n');
+        expect(spawnSync(process.execPath, checkArgs, { cwd: worktree }).status).toBe(0);
+        checks[0].result = 'passed';
+      }
+      await fs.writeFile(resultFile, JSON.stringify({ status: 'succeeded', output }));
+      await cli(
         'next',
         name,
         '--session',
@@ -237,57 +263,6 @@ it.each(['source', 'generated'] as const)(
         '--result',
         resultFile,
       );
-      if (repairExpected) {
-        expect(completed.task).toMatchObject({
-          role: 'integration-repair',
-          child,
-          readOnly: false,
-        });
-        const pending = await inspectNativeSdkRun(root, name);
-        const repair = pending.run.actions.find((action) => action.id === completed.task.actionId)!;
-        const original = (
-          repair.input as { activation: { worktree: string; integrationWorktree: string } }
-        ).activation;
-        expect(completed.workspace.projectRoot).toBe(original.integrationWorktree);
-        expect(completed.workspace.projectRoot).not.toBe(worktree);
-        if (child === 'ui') expect(completed.task.session).toBeNull();
-        if (!completed.task.session)
-          completed = await cli(
-            'next',
-            name,
-            '--session',
-            child + '-builder',
-            '--action',
-            completed.task.actionId,
-          );
-        await fs.writeFile(
-          path.join(completed.workspace.projectRoot, 'integration-ready.txt'),
-          'Integration repaired\n',
-        );
-        git(completed.workspace.projectRoot, 'add', 'integration-ready.txt');
-        git(completed.workspace.projectRoot, 'commit', '-m', 'repair integration readiness');
-        await fs.writeFile(
-          resultFile,
-          JSON.stringify({
-            status: 'succeeded',
-            output: {
-              summary: 'Repaired the actual failed integration check.',
-              integrationCommit: git(completed.workspace.projectRoot, 'rev-parse', 'HEAD'),
-              integrationChecks,
-            },
-          }),
-        );
-        await cli(
-          'next',
-          name,
-          '--session',
-          child + '-builder',
-          '--action',
-          completed.task.actionId,
-          '--result',
-          resultFile,
-        );
-      }
     }
     task = await cli('next', name, '--session', 'parent-agent');
     expect(task.task).toMatchObject({ role: 'build', scope: 'parent' });

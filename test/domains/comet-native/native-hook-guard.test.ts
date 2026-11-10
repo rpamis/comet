@@ -39,7 +39,6 @@ import {
   inspectNativeSdkRun,
 } from '../../../domains/comet-native/native-runtime-ownership.js';
 import { runWithHookReadCache } from '../../../platform/process/hook-read-cache.js';
-import * as portableRuntime from '../../../domains/comet-native/native-portable-runtime.js';
 
 function passedReview(reviewerExecutionRef: string) {
   return {
@@ -138,57 +137,6 @@ describe('Native phase Hook guard', () => {
       expect(
         await inspectNativeHookGuard(projectRoot, writeRequest('src/index.ts'), state.name),
       ).toMatchObject({ allowed: true, phase: 'build' });
-    });
-  });
-
-  it('discards the selected Hook snapshot before returning a candidate to Build', async () => {
-    await useRevertPolicy();
-    await writeProjectConfig(projectRoot, defaultProjectConfig());
-    const { paths, state } = await portableBuild('hook-invalidates', 'docs');
-    await fs.writeFile(path.join(projectRoot, 'AGENTS.md'), 'Run checks.\n');
-    await submitNativePortableBuilderCandidate({
-      paths,
-      name: state.name,
-      input: {
-        identity: createNativeRunnerChannel().captureExecutionIdentity({
-          identityProvider: 'test-host',
-          executionRef: 'hook-builder',
-        }),
-        candidateId: 'hook-candidate',
-        summary: 'Implemented the requested behavior.',
-        addressedAcceptanceIds: ['A1'],
-        acceptanceReview: fixtureAcceptanceReview(['A1']),
-      },
-    });
-    const returnToBuild = portableRuntime.returnNativePortableChangeToBuild;
-    vi.spyOn(portableRuntime, 'returnNativePortableChangeToBuild').mockImplementationOnce(
-      async (options) => {
-        // A nested observer may populate another snapshot while the mutation is pending.
-        expect(await resolveActiveNativeHookChange(projectRoot, state.name)).toMatchObject({
-          phase: 'verify',
-        });
-        return returnToBuild(options);
-      },
-    );
-    await runWithHookReadCache(async () => {
-      expect(await resolveActiveNativeHookChange(projectRoot, state.name)).toMatchObject({
-        phase: 'verify',
-      });
-      expect(
-        await inspectNativeHookGuard(
-          projectRoot,
-          {
-            intent: 'write',
-            targets: ['AGENTS.md'],
-            toolName: 'Write',
-            writes: [{ path: 'AGENTS.md', content: 'Skip checks.\n' }],
-          },
-          state.name,
-        ),
-      ).toMatchObject({ allowed: true, phase: 'build' });
-      expect(await resolveActiveNativeHookChange(projectRoot, state.name)).toMatchObject({
-        phase: 'build',
-      });
     });
   });
 
@@ -375,17 +323,6 @@ describe('Native phase Hook guard', () => {
           checks: [],
           knownLimits: [],
           submittedAt: new Date().toISOString(),
-          verificationChecks: [
-            {
-              id: 'focused',
-              name: 'Focused check',
-              executable: process.execPath,
-              argv: ['-e', 'process.exit(0)'],
-              cwdRef: '.',
-              timeoutMs: 5_000,
-              repeatable: true,
-            },
-          ],
         },
       },
       context,
@@ -420,7 +357,7 @@ describe('Native phase Hook guard', () => {
     );
     await expect(
       inspectNativeHookGuard(projectRoot, commentRequest, 'sdk-guard'),
-    ).resolves.toMatchObject({ allowed: true, phase: 'verify' });
+    ).resolves.toMatchObject({ allowed: false, phase: 'verify' });
     expect((await inspectNativeSdkRun(projectRoot, 'sdk-guard')).run).toEqual(beforeComment.run);
     await expect(
       inspectNativeHookGuard(
@@ -576,7 +513,6 @@ describe('Native phase Hook guard', () => {
     });
     await expect(readNativePortableChange(paths, 'portable-parent')).resolves.toMatchObject({
       phase: 'build',
-      children_contract_hash: expect.stringMatching(/^[a-f0-9]{64}$/u),
     });
   });
 
@@ -621,7 +557,7 @@ describe('Native phase Hook guard', () => {
     ).resolves.toMatchObject({
       allowed: false,
       phase: 'verify',
-      reason: expect.stringContaining('edit-review show native'),
+      reason: expect.stringContaining('implementation writes are only allowed in Build'),
     });
     await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
       phase: 'verify',
@@ -702,7 +638,7 @@ describe('Native phase Hook guard', () => {
     });
   });
 
-  it('keeps every Native formal artifact protected under the default docs artifact root', async () => {
+  it('preserves the Verify candidate across formal edits and protects Runtime and published Specs under docs', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
     const { paths, state } = await portableBuild('docs-artifact-verify', 'docs');
     const runner = createNativeRunnerChannel();
@@ -732,16 +668,15 @@ describe('Native phase Hook guard', () => {
       phase: 'verify',
       reason: expect.stringContaining('neutral document'),
     });
-    // Neutral documentation inside the artifact tree never applies: the brief
-    // is a formal requirement write and returns the change to Shape.
+    // Formal edits retain progress; the Agent obtains any affected requirement decision.
     await expect(
       inspectNativeHookGuard(projectRoot, writeRequest(path.join(changeDir, 'brief.md'))),
     ).resolves.toMatchObject({
       allowed: true,
-      phase: 'shape',
-      reason: expect.stringContaining('returned to Shape'),
+      phase: 'verify',
+      reason: expect.stringContaining('保留当前批准'),
     });
-    // Runtime-owned state stays denied even in Shape.
+    // Runtime-owned state remains denied.
     await expect(
       inspectNativeHookGuard(projectRoot, writeRequest(path.join(changeDir, 'comet-state.yaml'))),
     ).resolves.toMatchObject({
@@ -760,7 +695,7 @@ describe('Native phase Hook guard', () => {
     });
   });
 
-  it('reverts portable Verify document writes to Build under native.document_writes: revert', async () => {
+  it('preserves Verify until explicit revision under native.document_writes: revert', async () => {
     const defaults = defaultProjectConfig('.');
     await writeProjectConfig(projectRoot, {
       ...defaults,
@@ -787,12 +722,12 @@ describe('Native phase Hook guard', () => {
     await expect(
       inspectNativeHookGuard(projectRoot, writeRequest('README.md')),
     ).resolves.toMatchObject({
-      allowed: true,
-      phase: 'build',
-      reason: expect.stringContaining('candidate was invalidated'),
+      allowed: false,
+      phase: 'verify',
+      reason: expect.stringContaining('commandAlternative'),
     });
     await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
-      phase: 'build',
+      phase: 'verify',
     });
   });
 
@@ -812,25 +747,6 @@ describe('Native phase Hook guard', () => {
     ).resolves.toMatchObject({
       allowed: false,
       reason: expect.stringContaining('commandAlternative'),
-    });
-  });
-
-  it('returns a portable Build change to Shape before allowing formal requirement edits', async () => {
-    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
-    const { paths, state } = await portableBuild('portable-shape-write');
-    const childrenRef = path
-      .relative(projectRoot, path.join(nativePortableChangeDir(paths, state.name), 'children.yaml'))
-      .replaceAll('\\', '/');
-    await expect(
-      inspectNativeHookGuard(projectRoot, writeRequest(childrenRef)),
-    ).resolves.toMatchObject({
-      allowed: true,
-      phase: 'shape',
-      reason: expect.stringContaining('requirements changed'),
-    });
-    await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
-      phase: 'shape',
-      acceptance: [],
     });
   });
 

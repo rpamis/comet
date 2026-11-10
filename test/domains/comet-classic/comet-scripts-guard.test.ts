@@ -682,7 +682,7 @@ describe('comet guard', () => {
       });
 
       expect(result.status).toBe(0);
-      expect(result.stderr).toContain('SKIPPED via COMET_SKIP_BUILD=1');
+      expect(result.stderr).toContain('SKIPPED via explicit COMET_SKIP_BUILD=1');
     });
   });
 });

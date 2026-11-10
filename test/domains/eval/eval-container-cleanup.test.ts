@@ -2,6 +2,7 @@ import { evalMatrix } from '../../helpers/eval-matrix.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { resolveWindowsCommand } from '../../../platform/process/spawn-command.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   evalProjectIdentity,
@@ -324,7 +325,17 @@ fs.writeFileSync(record+'.tmp',JSON.stringify({pid:process.pid,role:'fixture-cli
 const result=spawnSync('bash',${JSON.stringify([bashPath(shell), bashPath(path.resolve('eval/scaffold/shell/docker.sh')), bashPath(project)])},{stdio:'inherit'}); process.exit(result.status ?? 1);`,
   );
   vi.spyOn(os, 'homedir').mockReturnValue(path.join(project, 'home'));
-  vi.stubEnv('PATH', fakebin + path.delimiter + process.env.PATH);
+  const bashDirectory =
+    process.platform === 'win32'
+      ? path.resolve(
+          path.dirname(resolveWindowsCommand('git', process.env, process.cwd())),
+          '../bin',
+        )
+      : '';
+  vi.stubEnv(
+    'PATH',
+    [fakebin, bashDirectory, process.env.PATH].filter(Boolean).join(path.delimiter),
+  );
   vi.stubEnv('FAKE_DOCKER_ROOT', project);
   vi.stubEnv('HOME', path.join(project, 'home'));
   vi.stubEnv('USERPROFILE', path.join(project, 'home'));

@@ -130,8 +130,12 @@ it.each(['source', 'generated'] as const)(
     );
     await fs.writeFile(f.file, independent);
     const result = await f.invoke('next', 'new-delta');
-    expect(result.exitCode).not.toBe(0);
-    expect(result.output.error.message).toMatch(/target Spec does not match delta result/u);
+    expect(result.exitCode, result.stdout).toBe(0);
+    expect(result.output.agent).toMatchObject({ phase: 'shape', status: 'await-user' });
+    expect(result.output.agent.continuation).toMatchObject({
+      action: 'confirm-shape',
+      requiresUserDecision: true,
+    });
     expect(await fs.readFile(f.file, 'utf8')).toBe(independent);
     await expect(
       fs.lstat(path.join(f.root, 'docs/comet/specs/workflow/spec.md')),

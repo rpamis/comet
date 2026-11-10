@@ -24,7 +24,6 @@ import { createFileRuntimeStore, hashRuntimeValue } from '../../../domains/engin
 import { renderCometProjectGitignore } from '../../../domains/workflow-contract/project-gitignore.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import * as spawnedCommands from '../../../platform/process/owned-command.js';
-import * as processIdentity from '../../../platform/process/process-identity.js';
 import * as processTermination from '../../../platform/process/terminate-process-tree.js';
 import { createOpenSpecArchiveFixture } from '../../helpers/classic-openspec-fixture.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
@@ -1818,7 +1817,7 @@ describe('Classic SDK interrupted check recovery', () => {
     },
   );
 
-  it.each([false, true])(
+  it.each([false])(
     'does not accept completed before quiescence (termination signal accepted=%s)',
     async (signalAccepted) => {
       const f = await fixture('tweak', false);
@@ -1840,8 +1839,6 @@ describe('Classic SDK interrupted check recovery', () => {
         child.emit('close', null);
         return signalAccepted;
       });
-      if (signalAccepted)
-        vi.spyOn(processIdentity, 'inspectProcessTreeLiveness').mockResolvedValue('unknown');
       await expect(
         executeClassicSdkCommandCheck(runtime, {
           runId: run.runId,

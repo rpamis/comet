@@ -93,6 +93,10 @@ async function supervisor() {
       },
     );
     if (result.error) throw result.error;
+    if (!result.stdout.trim())
+      throw new Error(
+        `Native CLI returned no JSON: ${JSON.stringify({ status: result.status, signal: result.signal, stderr: result.stderr })}`,
+      );
     return {
       exitCode: result.status,
       response: JSON.parse(result.stdout),
@@ -921,10 +925,14 @@ it('reintegrates an already included Child after public Shape reconfirmation (sa
   const sourceFile = path.join(repeatedArchive.directory, 'archive-source.md');
   await fs.unlink(briefFile);
   await fs.appendFile(sourceFile, 'unbound material edit\n');
-  await expect(f.restoreArchiveMaterials(run, repeatedArchive.integration, false)).rejects.toThrow(
-    'material conflict: archive-source.md',
+  expect(await f.restoreArchiveMaterials(run, repeatedArchive.integration, false)).toMatchObject({
+    archives: [{ archiveActionId: repeatedArchive.archive.id, missing: ['brief.md'] }],
+  });
+  expect(await fs.readFile(sourceFile, 'utf8')).toBe(
+    repeatedArchive.files['archive-source.md'].toString('utf8') + 'unbound material edit\n',
   );
-  await expect(fs.access(briefFile)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(await fs.readFile(briefFile)).toEqual(repeatedArchive.committedFiles['brief.md']);
+  await fs.unlink(briefFile);
   await fs.writeFile(sourceFile, repeatedArchive.files['archive-source.md']);
   expect(await f.restoreArchiveMaterials(run, repeatedArchive.integration)).toMatchObject({
     archives: [{ archiveActionId: repeatedArchive.archive.id, missing: ['brief.md'] }],
@@ -1015,8 +1023,7 @@ it('preserves integrated and uncommitted Child work, then rechecks every Child i
   const integration = path.join(f.project, '.worktrees', f.name + '-integration');
   const left = path.join(f.project, '.worktrees', f.name + '-left');
   const heads = [left, rightRoot, integration].map((root) => f.git(root, ['rev-parse', 'HEAD']));
-  const oldShapeHash = (run.state as { shape_confirmation_hash: string }).shape_confirmation_hash;
-  const oldContractHash = (run.state as { children_contract_hash: string }).children_contract_hash;
+  const oldStateVersion = (run.state as { state_version: number }).state_version;
   const oldFacts = run.actions.filter((a) => a.status === 'succeeded');
   const originalArchive = await f.archiveSnapshot(run, 'left');
   const result = f.revise(run);
@@ -1044,11 +1051,8 @@ it('preserves integrated and uncommitted Child work, then rechecks every Child i
     '\n# Actual host acceptance\nClaude Code only; product Codex support remains.\n',
   );
   revised = await f.confirmAgain();
-  expect((revised.state as { shape_confirmation_hash: string }).shape_confirmation_hash).not.toBe(
-    oldShapeHash,
-  );
-  expect((revised.state as { children_contract_hash: string }).children_contract_hash).toBe(
-    oldContractHash,
+  expect((revised.state as { state_version: number }).state_version).toBeGreaterThan(
+    oldStateVersion,
   );
   revised = await f.next();
   expect(revised.outputs['supervisor.prepare'].value).toMatchObject({

@@ -126,11 +126,15 @@ describe('Native evidence-bound phase transitions', () => {
         text: 'The evidence-bound behavior works.',
       }),
     ]);
-    await expect(inspectNativeStatus(paths, 'evidence-change', { details: true })).resolves.toEqual(
-      expect.objectContaining({
-        acceptancePage: built.preparedScope?.acceptancePage,
-      }),
-    );
+    await expect(
+      inspectNativeStatus(paths, 'evidence-change', { details: true }),
+    ).resolves.toMatchObject({
+      phase: 'verify',
+      migrationRequired: true,
+      inspection: { codes: ['legacy-content-proof-removed'] },
+      nextCommand: 'comet native next evidence-change --summary <migration-summary>',
+      continuation: null,
+    });
 
     await writeVerification();
     const verified = await advanceNativeChange({
@@ -165,12 +169,10 @@ describe('Native evidence-bound phase transitions', () => {
     expect(preflight.findingCodes).toContain('verification-evidence-stale');
     await expect(inspectNativeStatus(paths, 'evidence-change')).resolves.toMatchObject({
       phase: 'archive',
-      nextCommand: 'comet native next evidence-change --summary "<summary>"',
-      continuation: {
-        disposition: 'continue',
-        action: 'advance-phase',
-        command: 'comet native next evidence-change --summary "<summary>"',
-      },
+      migrationRequired: true,
+      inspection: { codes: ['legacy-content-proof-removed'] },
+      nextCommand: 'comet native next evidence-change --summary <migration-summary>',
+      continuation: null,
     });
 
     const retreated = await advanceNativeChange({
@@ -206,22 +208,11 @@ describe('Native evidence-bound phase transitions', () => {
     const status = await inspectNativeStatus(paths, 'evidence-change', { details: true });
     expect(status).toMatchObject({
       phase: 'verify',
-      nextCommand: 'comet native next evidence-change --summary "<summary>"',
-      continuation: {
-        disposition: 'continue',
-        action: 'advance-phase',
-        command: 'comet native next evidence-change --summary "<summary>"',
-        requiresUserDecision: false,
-      },
-      findings: expect.arrayContaining([
-        expect.objectContaining({
-          code: 'verification-contract-stale',
-          retryCommand: 'comet native next evidence-change --summary "<summary>"',
-          requiresUserDecision: false,
-        }),
-      ]),
+      migrationRequired: true,
+      inspection: { codes: ['legacy-content-proof-removed'] },
+      nextCommand: 'comet native next evidence-change --summary <migration-summary>',
+      continuation: null,
     });
-    expect(status.findingSummary.codes).not.toContain('contract-changed-after-approval');
 
     const retreated = await advanceNativeChange({
       paths,

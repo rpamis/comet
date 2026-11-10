@@ -99,6 +99,47 @@ jobs:
           path: coverage
       - name: Verify every Linux badcase in the same workflow's completed coverage report
         run: pnpm test:core-regressions --verify-report coverage/vitest-results.json
+      - name: Verify Linux Runtime coverage in the same workflow report
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { assertCoreRegressionReport } from './scripts/lint/core-regressions.mjs';
+          const files = [
+            'test/domains/comet-native/native-parallel-worktree.test.ts',
+            'test/platform/workspace-runtime.test.ts',
+            'test/domains/workflow-contract/workspace-runtime.test.ts',
+            'test/domains/skill/dsh-hooks.test.ts',
+            'test/platform/dsh-profiles.test.ts',
+            'test/domains/comet-entry/hook-adapter.test.ts',
+            'test/domains/comet-entry/hook-router-runtime.test.ts',
+            'test/platform/process/process-identity.test.ts',
+            'test/platform/process/spawn-command.test.ts',
+            'test/platform/process/node-cli-command.test.ts',
+            'test/platform/process/owned-command-termination.test.ts',
+            'test/domains/comet-native/native-check-registration.test.ts',
+            'test/domains/comet-native/native-check-executor.test.ts',
+            'test/domains/comet-native/native-check-executor-termination.test.ts',
+            'test/domains/comet-native/native-portable-check-termination.test.ts',
+            'test/domains/comet-native/native-sdk-check-termination.test.ts',
+            'test/domains/comet-native/native-supervisor-check-process.test.ts',
+            'test/domains/comet-native/native-supervisor-integration-execution.test.ts',
+            'test/domains/comet-native/native-supervisor-legacy-diagnostics.test.ts',
+            'test/domains/comet-classic/comet-scripts.test.ts',
+            'test/repository/native-runtime-assets.test.ts',
+            'test/repository/comet-entry-runtime-assets.test.ts',
+            'test/app/cli-smoke.test.ts',
+            'test/domains/eval/eval-container-cleanup.test.ts',
+            'test/domains/eval/eval-process-cleanup-proof.test.ts',
+            'test/app/eval-run-lifecycle.test.ts',
+          ];
+          const report = JSON.parse(readFileSync('coverage/vitest-results.json', 'utf8'));
+          assertCoreRegressionReport(
+            files.map((file) => ({ id: `linux-runtime:${file}`, files: [file], requiredNames: [], minimumPassed: 1 })),
+            report,
+            { projectRoot: process.cwd(), platform: process.platform },
+          );
+          console.log(`Reused the successful quality report for ${files.length} Linux Runtime files.`);
+          NODE
 
   core-regressions:
     name: Badcase regressions (${{ matrix.os }}${{ matrix.shards > 1 && format(', shard {0}/{1}', matrix.shard, matrix.shards) || '' }})
@@ -182,6 +223,7 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm build
       - name: Verify external OpenSpec CLI compatibility
+        if: matrix.shard == 1
         run: pnpm test:openspec-upstream
       - name: Run the complete Node 22 suite
         id: node22-tests
@@ -211,13 +253,16 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm build
-      - run: pnpm test:native-parallel
+      - if: matrix.os != 'ubuntu-latest'
+        run: pnpm test:native-parallel
       - name: Workspace Runtime identity and storage regressions
+        if: matrix.os != 'ubuntu-latest'
         run: >-
           pnpm exec vitest run
           test/platform/workspace-runtime.test.ts
           test/domains/workflow-contract/workspace-runtime.test.ts
       - name: DSH Hook installation and denial regressions
+        if: matrix.os != 'ubuntu-latest'
         run: >-
           pnpm exec vitest run
           test/domains/skill/dsh-hooks.test.ts
@@ -225,6 +270,7 @@ jobs:
           test/domains/comet-entry/hook-adapter.test.ts
           test/domains/comet-entry/hook-router-runtime.test.ts
       - name: Native check process and recovery regressions
+        if: matrix.os != 'ubuntu-latest'
         run: >-
           pnpm exec vitest run
           test/platform/process/process-identity.test.ts
@@ -240,8 +286,10 @@ jobs:
           test/domains/comet-native/native-supervisor-integration-execution.test.ts
           test/domains/comet-native/native-supervisor-legacy-diagnostics.test.ts
           --maxWorkers=1
-      - run: pnpm test:runtime-smoke
+      - if: matrix.os != 'ubuntu-latest'
+        run: pnpm test:runtime-smoke
       - name: Verify Eval stop and cleanup recovery on the host platform
+        if: matrix.os != 'ubuntu-latest'
         run: >-
           pnpm exec vitest run
           test/domains/eval/eval-container-cleanup.test.ts

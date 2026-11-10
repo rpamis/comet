@@ -1,0 +1,844 @@
+{
+  "recordedAt": "2026-11-10T02:02:08.923Z",
+  "status": "Prepared read-only proposal; do not apply while the frozen full run is active.",
+  "authorization": "User explicitly confirmed tests/code for retired features may be removed. Parent will authorize actual source edits after the current full run.",
+  "priorReview": "coverage/repair-053-followup/legacy/explicit-skips-review.json",
+  "patch": {
+    "file": "coverage/repair-053-followup/legacy/retired-code-cleanup.patch",
+    "checkOnly": {
+      "exitCode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    "proposedTree": "coverage/repair-053-followup/legacy/retired-cleanup-proposal",
+    "originalTree": "coverage/repair-053-followup/legacy/retired-cleanup-original",
+    "applied": false
+  },
+  "scope": {
+    "pureRetiredSkipCount": 13,
+    "mixedLegacyDuplicateSkipCount": 3,
+    "retainedMixedRepairSkips": 2,
+    "initialZeroProductionInboundModules": [
+      "domains/comet-native/native-checkpoint-command.ts",
+      "domains/comet-native/native-receipt-command.ts",
+      "domains/comet-native/native-edit-review.ts",
+      "domains/comet-classic/classic-edit-review.ts"
+    ],
+    "privateHelpersOnlyReferencedByDeletedModules": [
+      "domains/comet-native/native-edit-review-scope.ts",
+      "domains/comet-native/native-receipt-refresh.ts"
+    ]
+  },
+  "mixedReplacementEvidence": [
+    {
+      "file": "test/domains/comet-native/native-phase1-matrix.test.ts",
+      "line": 232,
+      "type": "it.skip",
+      "title": "returns Verify failure to Build and blocks concurrent overlapping changes at archive",
+      "fullName": "Comet Native Phase 1 behavior matrix returns Verify failure to Build and blocks concurrent overlapping changes at archive",
+      "source": "\n\n  it.skip('returns Verify failure to Build and blocks concurrent overlapping changes at archive', async () => {\n    const projectRoot = await project();\n    const paths = await initialize(projectRoot, 'docs');\n    const canonical = path.join(paths.specsDir, 'sentence-counting', 'spec.md');\n    await fs.mkdir(path.dirname(canonical), { recursive: true });\n    await fs.writeFile(canonical, '# Sentence counting\\nOriginal behavior.\\n');\n    const baseHash = await sha256File(canonical);\n\n    await prepareChange({\n      projectRoot,\n      paths,\n      name: 'first-sentence-change',\n      specChange: {\n        capability: 'sentence-counting',\n        operation: 'replace',\n        source: 'specs/sentence-counting/spec.md',\n        base_hash: baseHash,\n      },\n      proposed: '# Sentence counting\\nFirst target behavior.\\n',\n      failVerificationFirst: true,\n    });\n    await prepareChange({\n      projectRoot,\n      paths,\n      name: 'second-sentence-change',\n      specChange: {\n        capability: 'sentence-counting',\n        operation: 'replace',\n        source: 'specs/sentence-counting/spec.md',\n        base_hash: baseHash,\n      },\n      proposed: '# Sentence counting\\nSecond target behavior.\\n',\n    });\n    await expect(\n      inspectNativeChangeConflicts(paths, 'first-sentence-change'),\n    ).resolves.toMatchObject({\n      definiteConflictCount: 1,\n      findingCodes: ['native-change-conflict'],\n    });\n    const first = json(\n      await runNativeCli([\n        'archive',\n        'first-sentence-change',\n        '--dry-run',\n        '--json',\n        '--project-root',\n        projectRoot,\n      ]),\n    );\n    const second = json(\n      await runNativeCli([\n        'archive',\n        'second-sentence-change',\n        '--dry-run',\n        '--json',\n        '--project-root',\n        projectRoot,\n      ]),\n    );\n    expect(first).toMatchObject({\n      exitCode: 0,\n      data: {\n        ready: false,\n        findingCodes: expect.arrayContaining(['native-change-conflict']),\n      },\n    });\n    expect(second).toMatchObject({\n      exitCode: 0,\n      data: {\n        ready: false,\n        findingCodes: expect.arrayContaining(['native-change-conflict']),\n      },\n    });\n    const blockedCommit = json(\n      await runNativeCli([\n        'archive',\n        'first-sentence-change',\n        '--expect-preflight',\n        (first.data as { preflightHash: string }).preflightHash,\n        '--json',\n        '--project-root',\n        projectRoot,\n      ]),\n    );\n    expect(blockedCommit).toMatchObject({ exitCode: 73, error: { code: 'conflict' } });\n    expect(await fs.readFile(canonical, 'utf8')).toContain('Original behavior');\n  }, 120_000);",
+      "blame": "b8f63347f (benym 2026-08-10 15:11:28 +0800 232)   it.skip('returns Verify failure to Build and blocks concurrent overlapping changes at archive', async () => {",
+      "protection": {
+        "raw": [],
+        "effective": []
+      },
+      "replacements": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "name": "returns a failed independent Verifier result to Build for a new candidate",
+          "presentInCurrentSource": true,
+          "evidence": "Source mapping only in this review; no new execution.",
+          "executedEvidence": [
+            {
+              "report": "D:/Project/Comet/coverage/runtime-review-053-59b5c58b/recheck-results.json",
+              "file": "D:/Project/Comet-runtime-review-053/test/domains/comet-native/native-sdk-application.test.ts",
+              "name": "Native SDK Workflow Application returns a failed independent Verifier result to Build for a new candidate"
+            }
+          ],
+          "currentFrozenModuleEvidence": [],
+          "coverageStatus": "executed-passed-reference"
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "name": "keeps Archive ready while requiring one explicit serial capability choice",
+          "presentInCurrentSource": true,
+          "evidence": "Source mapping only in this review; no new execution.",
+          "executedEvidence": [
+            {
+              "report": "D:/Project/Comet/coverage/runtime-review-053-59b5c58b/recheck-results.json",
+              "file": "D:/Project/Comet-runtime-review-053/test/domains/comet-native/native-portable-archive.test.ts",
+              "name": "Native portable Archive keeps Archive ready while requiring one explicit serial capability choice"
+            }
+          ],
+          "currentFrozenModuleEvidence": [],
+          "coverageStatus": "executed-passed-reference"
+        },
+        {
+          "file": "test/domains/comet-native/native-archive-recovery.test.ts",
+          "name": "continues after all staged specs were prepared",
+          "presentInCurrentSource": true,
+          "evidence": "Source mapping only in this review; no new execution.",
+          "executedEvidence": [
+            {
+              "report": "coverage/repair-053-followup/full-frozen/test/domains/comet-native/native-archive-recovery.test.ts.json",
+              "file": "D:/Project/Comet-runtime-followup-053/test/domains/comet-native/native-archive-recovery.test.ts",
+              "name": "Native archive recovery continues after all staged specs were prepared"
+            }
+          ],
+          "currentFrozenModuleEvidence": [
+            {
+              "report": "coverage/repair-053-followup/full-frozen/test/domains/comet-native/native-archive-recovery.test.ts.json",
+              "file": "D:/Project/Comet-runtime-followup-053/test/domains/comet-native/native-archive-recovery.test.ts",
+              "name": "Native archive recovery continues after all staged specs were prepared"
+            }
+          ],
+          "coverageStatus": "executed-passed-reference"
+        },
+        {
+          "file": "test/domains/comet-native/native-archive-recovery.test.ts",
+          "name": "rolls back after one canonical spec was replaced",
+          "presentInCurrentSource": true,
+          "evidence": "Source mapping only in this review; no new execution.",
+          "executedEvidence": [
+            {
+              "report": "coverage/repair-053-followup/full-frozen/test/domains/comet-native/native-archive-recovery.test.ts.json",
+              "file": "D:/Project/Comet-runtime-followup-053/test/domains/comet-native/native-archive-recovery.test.ts",
+              "name": "Native archive recovery rolls back after one canonical spec was replaced"
+            }
+          ],
+          "currentFrozenModuleEvidence": [
+            {
+              "report": "coverage/repair-053-followup/full-frozen/test/domains/comet-native/native-archive-recovery.test.ts.json",
+              "file": "D:/Project/Comet-runtime-followup-053/test/domains/comet-native/native-archive-recovery.test.ts",
+              "name": "Native archive recovery rolls back after one canonical spec was replaced"
+            }
+          ],
+          "coverageStatus": "executed-passed-reference"
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "name": "blocks other mutations after an interrupted spec apply and lets Archive resume itself",
+          "presentInCurrentSource": true,
+          "evidence": "Source mapping only in this review; no new execution.",
+          "executedEvidence": [
+            {
+              "report": "D:/Project/Comet/coverage/runtime-review-053-59b5c58b/recheck-results.json",
+              "file": "D:/Project/Comet-runtime-review-053/test/domains/comet-native/native-portable-archive.test.ts",
+              "name": "Native portable Archive blocks other mutations after an interrupted spec apply and lets Archive resume itself"
+            }
+          ],
+          "currentFrozenModuleEvidence": [],
+          "coverageStatus": "executed-passed-reference"
+        }
+      ],
+      "recommendation": "remove-legacy-mixed-duplicate-only-after-reviewing-current-replacements",
+      "reason": "Uses legacy-v1 public next/preflight-hash/archive matrix. Failure-to-Build, overlap/order refusal, continuation and rollback remain meaningful but are exercised by the separately named current/legacy compatibility tests; do not delete these invariants merely because they are skipped."
+    },
+    {
+      "file": "test/domains/comet-native/native-phase1-matrix.test.ts",
+      "line": 320,
+      "type": "it.skip",
+      "title": "continues and rolls back interrupted archive transactions deterministically",
+      "fullName": "Comet Native Phase 1 behavior matrix continues and rolls back interrupted archive transactions deterministically",
+      "source": "\n\n  it.skip('continues and rolls back interrupted archive transactions deterministically', async () => {\n    const projectRoot = await project();\n    const paths = await initialize(projectRoot);\n\n    await prepareChange({\n      projectRoot,\n      paths,\n      name: 'continue-archive',\n      specChange: {\n        capability: 'continue-capability',\n        operation: 'create',\n        source: 'specs/continue-capability/spec.md',\n        base_hash: null,\n      },\n      proposed: '# Continue capability\\nTarget behavior.\\n',\n    });\n    let continueTransaction = '';\n    const continueNow = new Date();\n    const continuePreflightHash = await readyNativeArchivePreflight({\n      paths,\n      name: 'continue-archive',\n      now: continueNow,\n    });\n    await expect(\n      archiveNativeChange({\n        paths,\n        name: 'continue-archive',\n        expectedPreflightHash: continuePreflightHash,\n        now: continueNow,\n        hooks: {\n          afterPrepared(journal) {\n            continueTransaction = journal.id;\n          },\n          afterOperation(_operation, completed) {\n            if (completed === 1) throw new Error('interrupt continue archive');\n          },\n        },\n      }),\n    ).rejects.toThrow('interrupt continue archive');\n    expect(\n      (\n        await recoverArchiveTransaction({\n          paths,\n          transactionId: continueTransaction,\n          strategy: 'continue',\n        })\n      ).status,\n    ).toBe('committed');\n\n    await prepareChange({\n      projectRoot,\n      paths,\n      name: 'rollback-archive',\n      specChange: {\n        capability: 'rollback-capability',\n        operation: 'create',\n        source: 'specs/rollback-capability/spec.md',\n        base_hash: null,\n      },\n      proposed: '# Rollback capability\\nTarget behavior.\\n',\n    });\n    let rollbackTransaction = '';\n    const rollbackNow = new Date();\n    const rollbackPreflightHash = await readyNativeArchivePreflight({\n      paths,\n      name: 'rollback-archive',\n      now: rollbackNow,\n    });\n    await expect(\n      archiveNativeChange({\n        paths,\n        name: 'rollback-archive',\n        expectedPreflightHash: rollbackPreflightHash,\n        now: rollbackNow,\n        hooks: {\n          afterPrepared(journal) {\n            rollbackTransaction = journal.id;\n          },\n          afterOperation(_operation, completed) {\n            if (completed === 1) throw new Error('interrupt rollback archive');\n          },\n        },\n      }),\n    ).rejects.toThrow('interrupt rollback archive');\n    expect(\n      (\n        await recoverArchiveTransaction({\n          paths,\n          transactionId: rollbackTransaction,\n          strategy: 'rollback',\n        })\n      ).status,\n    ).toBe('rolled-back');\n    expect((await readNativeChange(paths, 'rollback-archive')).phase).toBe('archive');\n    await expect(\n      fs.access(path.join(paths.specsDir, 'rollback-capability', 'spec.md')),\n    ).rejects.toMatchObject({ code: 'ENOENT' });\n  }, 120_000);",
+      "blame": "b8f63347f (benym 2026-08-10 15:11:28 +0800 320)   it.skip('continues and rolls back interrupted archive transactions deterministically', async () => {",
+      "protection": {
+        "raw": [],
+        "effective": []
+      },
+      "replacements": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "name": "returns a failed independent Verifier result to Build for a new candidate",
+          "presentInCurrentSource": true,
+          "evidence": "Source mapping only in this review; no new execution.",
+          "executedEvidence": [
+            {
+              "report": "D:/Project/Comet/coverage/runtime-review-053-59b5c58b/recheck-results.json",
+              "file": "D:/Project/Comet-runtime-review-053/test/domains/comet-native/native-sdk-application.test.ts",
+              "name": "Native SDK Workflow Application returns a failed independent Verifier result to Build for a new candidate"
+            }
+          ],
+          "currentFrozenModuleEvidence": [],
+          "coverageStatus": "executed-passed-reference"
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "name": "keeps Archive ready while requiring one explicit serial capability choice",
+          "presentInCurrentSource": true,
+          "evidence": "Source mapping only in this review; no new execution.",
+          "executedEvidence": [
+            {
+              "report": "D:/Project/Comet/coverage/runtime-review-053-59b5c58b/recheck-results.json",
+              "file": "D:/Project/Comet-runtime-review-053/test/domains/comet-native/native-portable-archive.test.ts",
+              "name": "Native portable Archive keeps Archive ready while requiring one explicit serial capability choice"
+            }
+          ],
+          "currentFrozenModuleEvidence": [],
+          "coverageStatus": "executed-passed-reference"
+        },
+        {
+          "file": "test/domains/comet-native/native-archive-recovery.test.ts",
+          "name": "continues after all staged specs were prepared",
+          "presentInCurrentSource": true,
+          "evidence": "Source mapping only in this review; no new execution.",
+          "executedEvidence": [
+            {
+              "report": "coverage/repair-053-followup/full-frozen/test/domains/comet-native/native-archive-recovery.test.ts.json",
+              "file": "D:/Project/Comet-runtime-followup-053/test/domains/comet-native/native-archive-recovery.test.ts",
+              "name": "Native archive recovery continues after all staged specs were prepared"
+            }
+          ],
+          "currentFrozenModuleEvidence": [
+            {
+              "report": "coverage/repair-053-followup/full-frozen/test/domains/comet-native/native-archive-recovery.test.ts.json",
+              "file": "D:/Project/Comet-runtime-followup-053/test/domains/comet-native/native-archive-recovery.test.ts",
+              "name": "Native archive recovery continues after all staged specs were prepared"
+            }
+          ],
+          "coverageStatus": "executed-passed-reference"
+        },
+        {
+          "file": "test/domains/comet-native/native-archive-recovery.test.ts",
+          "name": "rolls back after one canonical spec was replaced",
+          "presentInCurrentSource": true,
+          "evidence": "Source mapping only in this review; no new execution.",
+          "executedEvidence": [
+            {
+              "report": "coverage/repair-053-followup/full-frozen/test/domains/comet-native/native-archive-recovery.test.ts.json",
+              "file": "D:/Project/Comet-runtime-followup-053/test/domains/comet-native/native-archive-recovery.test.ts",
+              "name": "Native archive recovery rolls back after one canonical spec was replaced"
+            }
+          ],
+          "currentFrozenModuleEvidence": [
+            {
+              "report": "coverage/repair-053-followup/full-frozen/test/domains/comet-native/native-archive-recovery.test.ts.json",
+              "file": "D:/Project/Comet-runtime-followup-053/test/domains/comet-native/native-archive-recovery.test.ts",
+              "name": "Native archive recovery rolls back after one canonical spec was replaced"
+            }
+          ],
+          "coverageStatus": "executed-passed-reference"
+        },
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "name": "blocks other mutations after an interrupted spec apply and lets Archive resume itself",
+          "presentInCurrentSource": true,
+          "evidence": "Source mapping only in this review; no new execution.",
+          "executedEvidence": [
+            {
+              "report": "D:/Project/Comet/coverage/runtime-review-053-59b5c58b/recheck-results.json",
+              "file": "D:/Project/Comet-runtime-review-053/test/domains/comet-native/native-portable-archive.test.ts",
+              "name": "Native portable Archive blocks other mutations after an interrupted spec apply and lets Archive resume itself"
+            }
+          ],
+          "currentFrozenModuleEvidence": [],
+          "coverageStatus": "executed-passed-reference"
+        }
+      ],
+      "recommendation": "remove-legacy-mixed-duplicate-only-after-reviewing-current-replacements",
+      "reason": "Uses legacy-v1 public next/preflight-hash/archive matrix. Failure-to-Build, overlap/order refusal, continuation and rollback remain meaningful but are exercised by the separately named current/legacy compatibility tests; do not delete these invariants merely because they are skipped."
+    },
+    {
+      "file": "test/domains/comet-native/native-wave-b-cli.test.ts",
+      "line": 121,
+      "type": "it.skip",
+      "title": "returns revision conflicts with exit 73 and decision findings with stable fields",
+      "fullName": "Native Wave B CLI contract (legacy) returns revision conflicts with exit 73 and decision findings with stable fields",
+      "source": "\n\n  it.skip('returns revision conflicts with exit 73 and decision findings with stable fields', async () => {\n    await runNativeCli([\n      'checkpoint',\n      'cold-resume',\n      '--summary',\n      'First checkpoint',\n      '--next-action',\n      'Continue',\n      '--expect-revision',\n      '1',\n      ...projectArgs(),\n    ]);\n    const conflict = json(\n      await runNativeCli([\n        'checkpoint',\n        'cold-resume',\n        '--summary',\n        'Different checkpoint',\n        '--next-action',\n        'Continue elsewhere',\n        '--expect-revision',\n        '1',\n        '--json',\n        ...projectArgs(),\n      ]),\n    );\n    expect(conflict).toMatchObject({\n      command: 'checkpoint',\n      exitCode: 73,\n      data: {\n        change: 'cold-resume',\n        expectedRevision: 1,\n        actualRevision: 2,\n        outcome: 'revision-conflict',\n      },\n      error: { code: 'conflict' },\n    });\n\n    const paths = await nativeProjectPaths(projectRoot, 'docs');\n    const briefFile = path.join(paths.changesDir, 'cold-resume', 'brief.md');\n    const source = await fs.readFile(briefFile, 'utf8');\n    await fs.writeFile(\n      briefFile,\n      source\n        .replace('# Outcome\\n', '# Outcome\\nA clear outcome.\\n')\n        .replace('# Scope\\n', '# Scope\\nA bounded scope.\\n')\n        .replace('# Non-goals\\n', '# Non-goals\\nNo unrelated work.\\n')\n        .replace('# Acceptance examples\\n', '# Acceptance examples\\n- It works.\\n')\n        .replace('# Open questions\\n', '# Open questions\\n- [blocking] Which behavior?\\n'),\n    );\n    const blocked = json(\n      await runNativeCli([\n        'next',\n        'cold-resume',\n        '--summary',\n        'Try to proceed',\n        '--json',\n        ...projectArgs(),\n      ]),\n    );\n    expect(blocked).toMatchObject({\n      exitCode: 65,\n      data: {\n        findings: [\n          {\n            code: 'brief-blocking-question',\n            severity: 'error',\n            path: 'docs/comet/changes/cold-resume/brief.md',\n            requiredAction: 'answer-blocking-question',\n            retryCommand: 'comet native next cold-resume --summary \"<summary>\"',\n            repairCommand: null,\n            requiresUserDecision: true,\n          },\n        ],\n        continuation: {\n          disposition: 'await-user',\n          requiresUserDecision: true,\n        },\n      },\n    });\n  });",
+      "blame": "b8f63347f (benym 2026-08-10 15:11:28 +0800 121)   it.skip('returns revision conflicts with exit 73 and decision findings with stable fields', async () => {",
+      "protection": {
+        "raw": [],
+        "effective": []
+      },
+      "replacements": [
+        {
+          "file": "test/domains/comet-native/native-wave-b-cli.test.ts",
+          "name": "rejects the retired checkpoint command instead of invoking the v4 Runtime",
+          "presentInCurrentSource": true,
+          "evidence": "Source mapping only in this review; no new execution.",
+          "executedEvidence": [],
+          "currentFrozenModuleEvidence": [],
+          "coverageStatus": "no-passed-report-found"
+        },
+        {
+          "file": "test/domains/comet-native/native-diagnostics.test.ts",
+          "name": "pages a bounded status list and rejects stale or tampered cursors",
+          "presentInCurrentSource": true,
+          "evidence": "Source mapping only in this review; no new execution.",
+          "executedEvidence": [
+            {
+              "report": "coverage/repair-053-followup/legacy/replacement-coverage.json",
+              "file": "D:/Project/Comet-runtime-followup-053/test/domains/comet-native/native-diagnostics.test.ts",
+              "name": "Native status diagnostics pages a bounded status list and rejects stale or tampered cursors"
+            },
+            {
+              "report": "D:/Project/Comet/coverage/runtime-review-053-59b5c58b/recheck-results.json",
+              "file": "D:/Project/Comet-runtime-review-053/test/domains/comet-native/native-diagnostics.test.ts",
+              "name": "Native status diagnostics pages a bounded status list and rejects stale or tampered cursors"
+            }
+          ],
+          "currentFrozenModuleEvidence": [],
+          "coverageStatus": "executed-passed-reference"
+        },
+        {
+          "file": "test/domains/comet-native/native-guards.test.ts",
+          "name": "does not let a confirmation flag bypass a blocking decision",
+          "covers": "A literal [blocking] user decision remains a blocker even when confirmation is supplied; resolving the actual question restores the valid path.",
+          "presentInCurrentSource": true,
+          "executedEvidence": [],
+          "coverageStatus": "source-mapped-pending-post-cleanup-selection"
+        },
+        {
+          "file": "test/domains/comet-native/native-findings.test.ts",
+          "name": "reserves user-decision pauses for explicit clarification decisions",
+          "covers": "Actual brief blocking questions require answer-blocking-question and requiresUserDecision:true; model work does not become an artificial user decision.",
+          "presentInCurrentSource": true,
+          "executedEvidence": [],
+          "coverageStatus": "source-mapped-pending-post-cleanup-selection"
+        }
+      ],
+      "recommendation": "remove-legacy-mixed-duplicate-only-after-reviewing-current-replacements",
+      "reason": "The checkpoint CAS envelope is retired, but explicit blocking user decisions remain meaningful. Current portable Shape test must retain early-confirmation/blocker refusal.",
+      "mappingCorrection": "The portable Shape-boundary test alone does not demonstrate semantic [blocking] handling. Guard and findings cases explicitly cover the meaningful retained blocker/decision behavior; retired checkpoint CAS transport remains removed."
+    }
+  ],
+  "files": [
+    {
+      "file": "test/domains/comet-native/native-change.test.ts",
+      "action": "edit",
+      "originalLines": 677,
+      "proposedLines": 606
+    },
+    {
+      "file": "test/domains/comet-native/native-check.test.ts",
+      "action": "edit",
+      "originalLines": 387,
+      "proposedLines": 47
+    },
+    {
+      "file": "test/domains/comet-native/native-phase1-matrix.test.ts",
+      "action": "edit",
+      "originalLines": 523,
+      "proposedLines": 185
+    },
+    {
+      "file": "test/domains/comet-native/native-receipt-fence.test.ts",
+      "action": "edit",
+      "originalLines": 246,
+      "proposedLines": 40
+    },
+    {
+      "file": "test/domains/comet-native/native-wave-b-cli.test.ts",
+      "action": "edit",
+      "originalLines": 214,
+      "proposedLines": 41
+    },
+    {
+      "file": "domains/comet-native/native-checkpoint-command.ts",
+      "action": "delete",
+      "originalLines": 45,
+      "proposedLines": 0
+    },
+    {
+      "file": "domains/comet-native/native-receipt-command.ts",
+      "action": "delete",
+      "originalLines": 147,
+      "proposedLines": 0
+    },
+    {
+      "file": "domains/comet-native/native-edit-review.ts",
+      "action": "delete",
+      "originalLines": 238,
+      "proposedLines": 0
+    },
+    {
+      "file": "domains/comet-classic/classic-edit-review.ts",
+      "action": "delete",
+      "originalLines": 747,
+      "proposedLines": 0
+    },
+    {
+      "file": "domains/comet-native/native-edit-review-scope.ts",
+      "action": "delete",
+      "originalLines": 48,
+      "proposedLines": 0
+    },
+    {
+      "file": "domains/comet-native/native-receipt-refresh.ts",
+      "action": "delete",
+      "originalLines": 350,
+      "proposedLines": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-checkpoint-command.test.ts",
+      "action": "delete",
+      "originalLines": 64,
+      "proposedLines": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-receipt-refresh.test.ts",
+      "action": "delete",
+      "originalLines": 532,
+      "proposedLines": 0
+    },
+    {
+      "file": "test/domains/comet-native/native-command-modules.test.ts",
+      "action": "edit",
+      "originalLines": 244,
+      "proposedLines": 31
+    },
+    {
+      "file": "test/domains/comet-native/native-verifier-context.test.ts",
+      "action": "edit",
+      "originalLines": 85,
+      "proposedLines": 75
+    },
+    {
+      "file": "test/domains/comet-classic/classic-handoff-windows.test.ts",
+      "action": "edit",
+      "originalLines": 101,
+      "proposedLines": 85
+    }
+  ],
+  "callGraph": "coverage/repair-053-followup/legacy/retired-code-callgraph.json",
+  "safeProductionDeletionBoundary": [
+    {
+      "file": "domains/comet-native/native-checkpoint-command.ts",
+      "initialProductionIncoming": [],
+      "productionIncomingAfterPlannedDeletion": [],
+      "sdkBarrelReexport": false,
+      "necessaryMigrationRead": false,
+      "testCallers": [
+        {
+          "from": "test/domains/comet-native/native-checkpoint-command.test.ts",
+          "to": "domains/comet-native/native-checkpoint-command.ts",
+          "kind": "import",
+          "typeOnly": false
+        }
+      ]
+    },
+    {
+      "file": "domains/comet-native/native-receipt-command.ts",
+      "initialProductionIncoming": [],
+      "productionIncomingAfterPlannedDeletion": [],
+      "sdkBarrelReexport": false,
+      "necessaryMigrationRead": false,
+      "testCallers": [
+        {
+          "from": "test/domains/comet-native/native-command-modules.test.ts",
+          "to": "domains/comet-native/native-receipt-command.ts",
+          "kind": "import",
+          "typeOnly": false
+        }
+      ]
+    },
+    {
+      "file": "domains/comet-native/native-edit-review.ts",
+      "initialProductionIncoming": [],
+      "productionIncomingAfterPlannedDeletion": [],
+      "sdkBarrelReexport": false,
+      "necessaryMigrationRead": false,
+      "testCallers": [
+        {
+          "from": "test/domains/comet-native/native-verifier-context.test.ts",
+          "to": "domains/comet-native/native-edit-review.ts",
+          "kind": "import",
+          "typeOnly": false
+        }
+      ]
+    },
+    {
+      "file": "domains/comet-classic/classic-edit-review.ts",
+      "initialProductionIncoming": [],
+      "productionIncomingAfterPlannedDeletion": [],
+      "sdkBarrelReexport": false,
+      "necessaryMigrationRead": false,
+      "testCallers": [
+        {
+          "from": "test/domains/comet-classic/classic-handoff-windows.test.ts",
+          "to": "domains/comet-classic/classic-edit-review.ts",
+          "kind": "import-type",
+          "typeOnly": true
+        }
+      ]
+    },
+    {
+      "file": "domains/comet-native/native-edit-review-scope.ts",
+      "initialProductionIncoming": [
+        {
+          "from": "domains/comet-native/native-edit-review.ts",
+          "to": "domains/comet-native/native-edit-review-scope.ts",
+          "kind": "import",
+          "typeOnly": false
+        },
+        {
+          "from": "domains/comet-native/native-edit-review.ts",
+          "to": "domains/comet-native/native-edit-review-scope.ts",
+          "kind": "re-export",
+          "typeOnly": false
+        }
+      ],
+      "productionIncomingAfterPlannedDeletion": [],
+      "sdkBarrelReexport": false,
+      "necessaryMigrationRead": false,
+      "testCallers": []
+    },
+    {
+      "file": "domains/comet-native/native-receipt-refresh.ts",
+      "initialProductionIncoming": [
+        {
+          "from": "domains/comet-native/native-receipt-command.ts",
+          "to": "domains/comet-native/native-receipt-refresh.ts",
+          "kind": "import",
+          "typeOnly": false
+        }
+      ],
+      "productionIncomingAfterPlannedDeletion": [],
+      "sdkBarrelReexport": false,
+      "necessaryMigrationRead": false,
+      "testCallers": [
+        {
+          "from": "test/domains/comet-native/native-receipt-refresh.test.ts",
+          "to": "domains/comet-native/native-receipt-refresh.ts",
+          "kind": "import",
+          "typeOnly": false
+        },
+        {
+          "from": "test/domains/comet-native/native-receipt-refresh.test.ts",
+          "to": "domains/comet-native/native-receipt-refresh.ts",
+          "kind": "import",
+          "typeOnly": false
+        }
+      ]
+    }
+  ],
+  "staticRegistration": {
+    "checked": [
+      "config/repository-layout.json",
+      "assets/manifest.json",
+      "package.json",
+      "scripts/build/build-native-runtime.mjs",
+      "scripts/build/build-classic-runtime.mjs",
+      "scripts/build/build-entry-runtime.mjs"
+    ],
+    "matchingDeletionEntries": [],
+    "note": "No stale declaration is invented. The four root modules and two private helpers have no explicit layout/runtime-entry/asset manifest registration to remove; generated runtime entries remain intact. Package ./* wildcard exists, but none is re-exported by documented SDK/Native/Classic barrels; do not remove compatibility barrels or their exported helpers in this cleanup.",
+    "packageWildcard": "./*"
+  },
+  "testProtection": {
+    "rawSelectors": [
+      {
+        "location": "config/workflow-regressions.json/cases/11/tests/0",
+        "file": "test/domains/comet-native/native-verifier-context.test.ts",
+        "namePattern": "^delivers current review material once on claim and refuses material from changed bytes through (runtime|public-cli)$",
+        "requiredNames": [
+          "delivers current review material once on claim and refuses material from changed bytes through runtime",
+          "delivers current review material once on claim and refuses material from changed bytes through public-cli"
+        ]
+      },
+      {
+        "location": "config/workflow-regressions.json/cases/12/tests/0",
+        "file": "test/domains/comet-native/native-verifier-context.test.ts",
+        "namePattern": "^delivers current review material once on claim and refuses material from changed bytes through (runtime|public-cli)$",
+        "requiredNames": [
+          "delivers current review material once on claim and refuses material from changed bytes through runtime",
+          "delivers current review material once on claim and refuses material from changed bytes through public-cli"
+        ]
+      },
+      {
+        "location": "config/workflow-regressions.json/cases/12/tests/1",
+        "file": "test/domains/comet-native/native-verifier-context.test.ts",
+        "namePattern": "^binds the original task and rejects a passing review that omits or contradicts it in (standard|bugfree)$",
+        "requiredNames": [
+          "binds the original task and rejects a passing review that omits or contradicts it in standard",
+          "binds the original task and rejects a passing review that omits or contradicts it in bugfree"
+        ]
+      },
+      {
+        "location": "config/workflow-regressions.json/cases/18/tests/0",
+        "file": "test/domains/comet-native/native-verifier-context.test.ts",
+        "namePattern": "^delivers current review material once on claim and refuses material from changed bytes through (runtime|public-cli)$",
+        "requiredNames": [
+          "delivers current review material once on claim and refuses material from changed bytes through runtime",
+          "delivers current review material once on claim and refuses material from changed bytes through public-cli"
+        ]
+      },
+      {
+        "location": "config/workflow-regressions.json/cases/18/tests/1",
+        "file": "test/domains/comet-native/native-verifier-context.test.ts",
+        "namePattern": "^continues independent semantic review after a repair with new candidate identity$",
+        "requiredNames": [
+          "continues independent semantic review after a repair with new candidate identity"
+        ]
+      },
+      {
+        "location": "config/workflow-regressions.json/cases/19/tests/0",
+        "file": "test/domains/comet-native/native-verifier-context.test.ts",
+        "namePattern": "^does not require absent project instructions and observes newly added rules through (runtime|public-cli)$",
+        "requiredNames": [
+          "does not require absent project instructions and observes newly added rules through runtime",
+          "does not require absent project instructions and observes newly added rules through public-cli"
+        ]
+      },
+      {
+        "location": "config/workflow-regressions.json/cases/20/tests/0",
+        "file": "test/domains/comet-native/native-verifier-context.test.ts",
+        "namePattern": "^surfaces an unapplied formal edit before dispatching a bugfree verifier through (runtime|public-cli)$",
+        "requiredNames": [
+          "surfaces an unapplied formal edit before dispatching a bugfree verifier through runtime",
+          "surfaces an unapplied formal edit before dispatching a bugfree verifier through public-cli"
+        ]
+      },
+      {
+        "location": "config/workflow-regressions.json/cases/20/testMigration/tests/0",
+        "file": "test/domains/comet-native/native-verifier-context.test.ts",
+        "namePattern": "^surfaces an unapplied formal edit before dispatching an independent verifier through runtime$",
+        "requiredNames": [
+          "surfaces an unapplied formal edit before dispatching an independent verifier through runtime"
+        ]
+      },
+      {
+        "location": "config/workflow-regressions.json/cases/20/testMigration/tests/1",
+        "file": "test/domains/comet-native/native-verifier-context.test.ts",
+        "namePattern": "^surfaces an unapplied formal edit before dispatching an independent verifier through public-cli$",
+        "requiredNames": [
+          "surfaces an unapplied formal edit before dispatching an independent verifier through public-cli"
+        ]
+      },
+      {
+        "location": "config/workflow-regressions.json/cases/332/tests/0",
+        "file": "test/domains/comet-native/native-verifier-context.test.ts",
+        "namePattern": "shows live check input changes and returns a bound refresh request without manual protocol fields",
+        "requiredNames": [
+          "shows live check input changes and returns a bound refresh request without manual protocol fields"
+        ]
+      },
+      {
+        "location": "config/workflow-regressions.json/cases/332/tests/1",
+        "file": "test/domains/comet-native/native-verifier-context.test.ts",
+        "namePattern": "does not offer a refresh template that would replay a one-time check",
+        "requiredNames": [
+          "does not offer a refresh template that would replay a one-time check"
+        ]
+      },
+      {
+        "location": "config/workflow-regressions.json/cases/335/tests/0",
+        "file": "test/domains/comet-native/native-verifier-context.test.ts",
+        "namePattern": "binds the original task and rejects a passing review that omits or contradicts it in standard",
+        "requiredNames": [
+          "binds the original task and rejects a passing review that omits or contradicts it in standard"
+        ]
+      },
+      {
+        "location": "config/workflow-regressions.json/cases/335/tests/1",
+        "file": "test/domains/comet-native/native-verifier-context.test.ts",
+        "namePattern": "binds the original task and rejects a passing review that omits or contradicts it in bugfree",
+        "requiredNames": [
+          "binds the original task and rejects a passing review that omits or contradicts it in bugfree"
+        ]
+      },
+      {
+        "location": "config/workflow-regressions.json/cases/335/testMigration/tests/0",
+        "file": "test/domains/comet-native/native-verifier-context.test.ts",
+        "namePattern": "^binds the original task and rejects a passing review that omits or contradicts it$",
+        "requiredNames": [
+          "binds the original task and rejects a passing review that omits or contradicts it"
+        ]
+      }
+    ],
+    "effectiveCoreCount": 251,
+    "protectedDeletedFiles": [],
+    "note": "Protected native-verifier-context test remains unchanged in body and name. Only unused imports from obsolete proof helpers are removed. Explicit-skip audit found no raw/effective protected names among the 16 removal candidates."
+  },
+  "retain": [
+    {
+      "files": [
+        "domains/comet-native/native-resume-view.ts",
+        "domains/comet-native/native-progress-checkpoint.ts"
+      ],
+      "reason": "Still publicly re-exported from domains/comet-native/index.ts. Not zero production/export references, despite no active checkpoint CLI dispatch."
+    },
+    {
+      "files": [
+        "domains/comet-native/native-checkpoint-journal.ts",
+        "domains/comet-native/native-checkpoint-storage.ts",
+        "domains/comet-native/native-transition-journal.ts",
+        "domains/comet-native/native-repair-runtime.ts",
+        "domains/comet-native/native-repair-integration.ts",
+        "domains/comet-native/native-repair-stagnation.ts"
+      ],
+      "reason": "Doctor, migration, archive and pending-state recovery still read or replay original checkpoint/transition/repair history. Do not remove old-data readers or original Run/transaction safety."
+    },
+    {
+      "files": [
+        "domains/comet-native/native-shape-review-evidence.ts"
+      ],
+      "reason": "native-next-command still imports captureApprovedShapeOriginals for the actual migration path."
+    },
+    {
+      "files": [
+        "domains/workflow-contract/edit-review.ts"
+      ],
+      "reason": "Type imports remain in current Native/Classic SDK output/application types and migration code. Runtime implementations may become unused after this closure, but deleting or splitting this type contract is excluded pending a separate API-compatible review."
+    },
+    {
+      "files": [
+        "platform/process/process-identity.ts",
+        "platform/process/windows-process-identity.ts"
+      ],
+      "reason": "Runtime Eval cleanup/manager/entry, plugin store, owned command and worker boundaries still use them. Native PID recovery retirement does not retire real owned process termination/cleanup."
+    },
+    {
+      "files": [
+        "domains/comet-native/native-lock.ts"
+      ],
+      "reason": "Age helper is still publicly exported by Native barrel; the zero age compatibility constant still feeds cancellation output. No deletion proposed without API migration."
+    },
+    {
+      "files": [
+        "domains/comet-native/native-edit-review-command.ts",
+        "domains/comet-classic/classic-edit-review-command.ts",
+        "domains/comet-native/native-check-command.ts"
+      ],
+      "reason": "Current public command routes explicitly reject retired operations. Keep actionable usage denials rather than reintroducing old implementations or changing command-not-found behavior."
+    }
+  ],
+  "repairSkipsRetained": [
+    {
+      "name": "persists a third-failure stop and records exactly one explicit override",
+      "currentDependency": "domains/comet-native/index.ts exports advanceNativeChange; native-transitions calls repair Build/failure integration, and native-transition-journal replays the durable repair projection. This legacy Runtime API/history contract still enforces one matching override and exhaustion. Current v4 public CLI does not accept the old override flags.",
+      "gap": "Existing repair-runtime/stagnation unit tests cover matching/exhausted overrides and interrupted active tests cover history; no equivalent full durable config/CLI path was proved in this read-only task. Retain the pending integration test for explicit fixture migration."
+    },
+    {
+      "name": "hard-stops at five alternating failures and preserves the count when config increases",
+      "currentDependency": "native.max_verify_failures remains public config. native-sdk-application reads bound maxVerifyFailures and calls native-loop-runtime failure-budget logic; legacy exported advanceNativeChange also enforces the configured budget and durable historical count.",
+      "gap": "Retain configuration-increase/count-preservation assertions for migration; do not erase them as content proof."
+    }
+  ],
+  "helperCleanup": [
+    {
+      "file": "test/domains/comet-native/native-check.test.ts",
+      "conditionalOn": "All five retired check skip blocks removed.",
+      "exclusive": [
+        "prepareVerifyChange",
+        "runtimeDir",
+        "brief",
+        "readNativeChange/nativeChangeDir/createNativeChange imports",
+        "verification evidence/receipt readers and nativeVerificationFixtureReport",
+        "Native paths used only by legacy helper"
+      ],
+      "retain": [
+        "single active retired-command rejection",
+        "json envelope helper or inline equivalent",
+        "minimal isolated project root"
+      ],
+      "note": "Existing beforeEach writes feature.ts and config solely to support retired check scaffolding; simplify only after verifying the remaining public usage-boundary test in the later implementation phase."
+    },
+    {
+      "file": "test/domains/comet-native/native-receipt-fence.test.ts",
+      "conditionalOn": "All four retired receipt-fence skip blocks removed.",
+      "exclusive": [
+        "entire Git/snapshot/Build evidence/acceptanceId/state setup",
+        "prepareNativeBuildEvidence/loadNativeVerificationReceiptContext/imports",
+        "brief and legacy NativeChangeState/NativeProjectPaths"
+      ],
+      "retain": [
+        "single active retired receipt command rejection",
+        "isolated project root/name and JSON envelope"
+      ],
+      "note": "Its sole active usage rejection currently runs the full legacy Git/build-proof fixture, so helper removal can reduce actual CI work."
+    },
+    {
+      "file": "test/domains/comet-native/native-wave-b-cli.test.ts",
+      "conditionalOn": "All three legacy checkpoint envelope skip blocks removed after blocking-decision replacement review.",
+      "exclusive": [
+        "Git init + createNativeChange legacy snapshot setup",
+        "nativeProjectPaths/createNativeChange imports"
+      ],
+      "retain": [
+        "single active retired checkpoint rejection",
+        "minimal isolated root/JSON helper"
+      ]
+    },
+    {
+      "file": "test/domains/comet-native/native-phase1-matrix.test.ts",
+      "conditionalOn": "Parent accepts the two mixed legacy matrix skips as duplicates with named replacements.",
+      "exclusive": [
+        "prepareChange helper",
+        "BRIEF constant",
+        "archiveNativeChange/recoverArchiveTransaction imports",
+        "readNativeChange/writeNativeChange imports",
+        "sha256File",
+        "NativeSpecChange type",
+        "nativeVerificationFixtureReport",
+        "readyNativeArchivePreflight"
+      ],
+      "retain": [
+        "initialize/project/json helpers",
+        "active root-move/init/malformed-state/config tests",
+        "createNativeChange/nativeChangeDir used by active malformed-state case"
+      ]
+    },
+    {
+      "file": "test/domains/comet-native/native-repair-transitions.test.ts",
+      "conditionalOn": "No removal recommended in this pass.",
+      "exclusive": [],
+      "retain": [
+        "all shared repair helpers because active tests use them",
+        "both pending mixed integration tests"
+      ],
+      "note": "Do not remove runNativeCli import or shared helpers merely to eliminate skip text; these tests need explicit migration decisions first."
+    }
+  ],
+  "additionalExclusiveCleanup": [
+    {
+      "file": "test/domains/comet-native/native-command-modules.test.ts",
+      "action": "Remove only receipt issuance/refresh tests and their exclusive mocks/fixtures; retain retired Native spec mutation rejection."
+    },
+    {
+      "file": "test/domains/comet-native/native-verifier-context.test.ts",
+      "action": "Remove now-unused proof imports and former build/CLI helpers. Preserve the original-task/independent-Verifier rejection and accepted result body exactly."
+    },
+    {
+      "file": "test/domains/comet-classic/classic-handoff-windows.test.ts",
+      "action": "Remove obsolete classic/shared edit-review mocks and the mock-only originals array/assertion. Preserve forward/backslash resolution, formal proposal ref and complete Spec rendering assertions."
+    }
+  ],
+  "minimalChecksAfterApply": [
+    "Run only the surviving check/receipt/checkpoint usage rejection tests, surviving native-phase1 matrix tests, native-change large-file/no-budget test, Native command-module spec denial, protected Native verifier-context case and Classic handoff Windows case.",
+    "Run TypeScript noEmit, affected Prettier and lint/architecture to detect missing imports or stale layout declarations.",
+    "Run pnpm build (build.js cleans dist before compiling so removed private modules do not remain in package output), pnpm check:generated and pnpm check:sdk-api. Do not update SDK API reports to bless accidental removals.",
+    "Validate CORE required-name collection and review raw/effective registry mapping. No automatic new repository-wide run is implied by deleting unreachable code; retain the current frozen full-run evidence as the pre-cleanup baseline and report the targeted post-cleanup boundary separately."
+  ],
+  "checksActuallyRun": [
+    "Read-only AST dependency graph over 790 production source/script files and test imports.",
+    "Imported effective CORE registry (251 groups), plus raw workflow and historical catalogs; no tests executed.",
+    "Formatted only ignored proposed copies and ran git apply --check against the prepared patch; actual source/test/config/generated/frozen evidence stayed unchanged."
+  ],
+  "limits": [
+    "Replacement passing reports can precede the final current full summary; per-module frozen reports are labelled explicitly. No running module or incomplete test report is treated as a pass.",
+    "Generated/installed package verification is planned after apply, not yet executed. No real model Eval or real Hook run."
+  ],
+  "mappingCorrection": {
+    "recordedAt": "2026-11-10T02:19:10.642Z",
+    "reason": "Use actual blocking-decision behavior rather than treating a general Shape boundary test as sufficient semantic coverage.",
+    "blockers": [
+      {
+        "file": "test/domains/comet-native/native-guards.test.ts",
+        "name": "does not let a confirmation flag bypass a blocking decision",
+        "covers": "A literal [blocking] user decision remains a blocker even when confirmation is supplied; resolving the actual question restores the valid path.",
+        "presentInCurrentSource": true,
+        "executedEvidence": [],
+        "coverageStatus": "source-mapped-pending-post-cleanup-selection"
+      },
+      {
+        "file": "test/domains/comet-native/native-findings.test.ts",
+        "name": "reserves user-decision pauses for explicit clarification decisions",
+        "covers": "Actual brief blocking questions require answer-blocking-question and requiresUserDecision:true; model work does not become an artificial user decision.",
+        "presentInCurrentSource": true,
+        "executedEvidence": [],
+        "coverageStatus": "source-mapped-pending-post-cleanup-selection"
+      }
+    ]
+  }
+}

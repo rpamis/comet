@@ -203,7 +203,7 @@ export async function diagnoseRecoverableFileLock(
 export async function repairRecoverableFileLock(
   file: string,
   expectedToken: string,
-  options: { confirmedOwnerStopped?: boolean } = {},
+  options: { confirmedOwnerStopped?: boolean; preserveAs?: string } = {},
 ): Promise<'removed' | 'missing' | 'changed' | 'blocked'> {
   file = path.resolve(file);
   const record = await metadata(file);
@@ -216,7 +216,8 @@ export async function repairRecoverableFileLock(
     if (!current) return 'missing';
     if (current.token !== expectedToken) return 'changed';
     if (current.legacy && !options.confirmedOwnerStopped) return 'blocked';
-    await fs.unlink(file);
+    if (options.preserveAs) await fs.rename(file, options.preserveAs);
+    else await fs.unlink(file);
     return 'removed';
   } finally {
     closeTransaction(database);

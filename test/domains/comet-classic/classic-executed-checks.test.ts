@@ -345,7 +345,7 @@ describe('Classic executed check evidence', () => {
     );
   }
 
-  it('reuses declared inputs through Guard but rejects policy changes and missing logs', async () => {
+  it('reuses matching command evidence without policy-byte or log-file proofs', async () => {
     await readyVerify();
     const policy = path.join(root, '.comet/check-policy.json');
     await fs.writeFile(
@@ -374,7 +374,7 @@ describe('Classic executed check evidence', () => {
     await fs.writeFile(path.join(root, 'unrelated.md'), 'unrelated');
     expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
     await fs.appendFile(policy, '\n');
-    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+    expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
     const fresh = await cli(
       'check',
       'run',
@@ -387,13 +387,14 @@ describe('Classic executed check evidence', () => {
       'check.cjs',
     );
     expect(fresh.exitCode, fresh.stderr).toBe(0);
+    expect(JSON.parse(fresh.stdout!).data.reused).toBe(true);
     await fs.unlink(
       (await resolveClassicLocalTarget(
         root,
         path.join(root, JSON.parse(fresh.stdout!).data.logRef),
       ))!.target,
     );
-    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+    expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
   });
 
   it('rejects manually attested success at both verification entry points', async () => {
@@ -412,7 +413,7 @@ describe('Classic executed check evidence', () => {
     expect((await cli('state', 'transition', 'demo', 'verify-pass')).exitCode).not.toBe(0);
   });
 
-  it('reuses unchanged local evidence but rejects a changed input and direct transition', async () => {
+  it('reuses local evidence but rejects an explicitly rerun failing check and direct transition', async () => {
     await readyVerify();
     expect(
       (await cli('check', 'run', 'demo', 'verify', '--local', '--', process.execPath, 'check.cjs'))
@@ -421,6 +422,9 @@ describe('Classic executed check evidence', () => {
     expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
     expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
     await fs.writeFile(path.join(root, 'input.txt'), 'bad');
+    expect(
+      (await cli('check', 'run', 'demo', 'verify', '--', process.execPath, 'check.cjs')).exitCode,
+    ).not.toBe(0);
     expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
     expect((await cli('state', 'transition', 'demo', 'verify-pass')).exitCode).not.toBe(0);
   });
@@ -444,7 +448,11 @@ describe('Classic executed check evidence', () => {
     await fs.writeFile(path.join(dir, 'tasks.md'), '- [x] implement\n');
     expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
     await fs.writeFile(path.join(root, 'input.txt'), 'bad');
+    expect(
+      (await cli('check', 'run', 'demo', 'verify', '--', process.execPath, 'check.cjs')).exitCode,
+    ).not.toBe(0);
     expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+    expect((await cli('state', 'transition', 'demo', 'verify-pass')).exitCode).not.toBe(0);
   });
 
   it('revalidates local evidence on cold recovery and returns structured context', async () => {

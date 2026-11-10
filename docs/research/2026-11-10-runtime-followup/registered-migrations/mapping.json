@@ -1,0 +1,221 @@
+{
+  "cases": [
+    {
+      "id": "native-legacy-archive-drift-repair-wait",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-runtime-remaining-failures",
+      "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "continues an authorized implementation edit without requesting the same decision again|recovers a returned but rejected archive\\.execute through the public Archive command",
+          "requiredNames": [
+            "continues an authorized implementation edit without requesting the same decision again",
+            "recovers a returned but rejected archive.execute through the public Archive command"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-compat-batched-edit-and-approved-refresh",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-runtime-remaining-failures",
+      "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "Native portable Archive continues Compat after batched unknown-language edits and retains only the Agent-selected real check",
+          "requiredNames": [
+            "Native portable Archive continues Compat after batched unknown-language edits and retains only the Agent-selected real check"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-compat-approved-check-refresh",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-runtime-remaining-failures",
+      "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "namePattern": "blocks Classic Archive when a new real check fails after an accepted pass",
+          "requiredNames": [
+            "blocks Classic Archive when a new real check fails after an accepted pass"
+          ]
+        },
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "namePattern": "reuses local evidence but rejects an explicitly rerun failing check and direct transition",
+          "requiredNames": [
+            "Classic executed check evidence reuses local evidence but rejects an explicitly rerun failing check and direct transition"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-applied-spec-transaction-preserved",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-runtime-remaining-failures",
+      "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "Native portable Archive preserves the original Archive transaction when an applied Spec is edited before resume",
+          "requiredNames": [
+            "Native portable Archive preserves the original Archive transaction when an applied Spec is edited before resume"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-all-reused-checks-without-child",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-runtime-remaining-failures",
+      "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-owner-recovery.test.ts",
+          "namePattern": "Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown",
+          "requiredNames": [
+            "Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reuses a completed non-repeatable Runtime check requested by the Verifier|preserves completed one-shot checks while revising edited Archive-ready code",
+          "requiredNames": [
+            "Native SDK Workflow Application reuses a completed non-repeatable Runtime check requested by the Verifier",
+            "preserves completed one-shot checks while revising edited Archive-ready code"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-240-archive-freshness",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-runtime-remaining-failures",
+      "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "continues Native Verify and Archive through the generated Runtime without content proof|blocks Native Archive when a new real check fails after an accepted pass|keeps a real failed Native check failed after file edits without replay",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof",
+            "blocks Native Archive when a new real check fails after an accepted pass",
+            "keeps a real failed Native check failed after file edits without replay"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "recovers a returned but rejected archive\\.execute through the public Archive command|Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure|Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation",
+          "requiredNames": [
+            "recovers a returned but rejected archive.execute through the public Archive command",
+            "Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure",
+            "Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-389-child-evidence-retry",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-runtime-remaining-failures",
+      "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "namePattern": "preserves a real custom application failure and receipts, advances its sibling, and retries only its review|keeps an unknown verifier bound to its original task and creates no retry Wait",
+          "requiredNames": [
+            "preserves a real custom application failure and receipts, advances its sibling, and retries only its review",
+            "keeps an unknown verifier bound to its original task and creates no retry Wait"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-290-manual-review",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-runtime-remaining-failures",
+      "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+          "namePattern": "continues Native Verify and Archive through the generated Runtime without content proof",
+          "requiredNames": [
+            "continues Native Verify and Archive through the generated Runtime without content proof"
+          ]
+        },
+        {
+          "file": "test/app/native-runtime-dispatch.test.ts",
+          "namePattern": "rejects a Builder identity before claiming a Verifier and accepts an independent retry",
+          "requiredNames": [
+            "rejects a Builder identity before claiming a Verifier and accepts an independent retry"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-unreadable-report",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-runtime-remaining-failures",
+      "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "preserves the completed Run and warns when its archived report view is not a file",
+          "requiredNames": [
+            "preserves the completed Run and warns when its archived report view is not a file (version=1)",
+            "preserves the completed Run and warns when its archived report view is not a file (version=3)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-root-home-cache-input-discovery",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-runtime-remaining-failures",
+      "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "^keeps Eval CLI tooling snapshots separate from dataset home caches$",
+          "requiredNames": [
+            "keeps Eval CLI tooling snapshots separate from dataset home caches"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-cli-tooling-candidate-inputs",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-runtime-remaining-failures",
+      "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "^keeps Eval CLI tooling snapshots separate from dataset home caches$",
+          "requiredNames": [
+            "keeps Eval CLI tooling snapshots separate from dataset home caches"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-legacy-eperm-stop-recovery",
+      "kind": "feature-removed",
+      "authorization": "report:2026-11-10-runtime-remaining-failures",
+      "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reconciles legacy interruptions using explicit stop evidence and the original execution lease",
+          "requiredNames": [
+            "Native protocol simplification reconciles legacy interruptions using explicit stop evidence and the original execution lease (lease=released)",
+            "Native protocol simplification reconciles legacy interruptions using explicit stop evidence and the original execution lease (lease=held)"
+          ]
+        }
+      ]
+    }
+  ]
+}

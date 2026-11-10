@@ -494,7 +494,10 @@ Run focused tests.
       await inspectNativeStatus(paths, 'resume-work'),
       await inspectNativeStatus(paths, 'resume-work', { details: true }),
     ]);
-    expect(statusSource).toContain('[REDACTED]');
+    expect(JSON.parse(statusSource)).toEqual([
+      expect.objectContaining({ migrationRequired: true, checkpoint: null }),
+      expect.objectContaining({ migrationRequired: true, checkpoint: null }),
+    ]);
     expect(statusSource).not.toMatch(
       /abc\.def\.ghi|dXNlcjpwYXNz|json-token|sk-secret-value|token-value|hunter2|hidden|user:pass/u,
     );

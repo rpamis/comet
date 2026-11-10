@@ -1057,32 +1057,6 @@ describe('Comet entry resume probe v2', () => {
     });
   });
 
-  it('does not auto-resume a Native change whose artifacts fail validation', async () => {
-    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
-    await createNative(projectRoot, 'invalid-brief');
-    const paths = await nativeProjectPaths(projectRoot, '.');
-    await fs.writeFile(
-      path.join(nativeChangeDir(paths, 'invalid-brief'), 'brief.md'),
-      '# Scope\nOnly a scope remains.\n',
-      'utf8',
-    );
-
-    const probe = await resolveCometEntryResumeProbe(projectRoot, input('继续 invalid-brief'));
-
-    expect(probe).toMatchObject({
-      workflow: 'native',
-      action: 'ask_user',
-      reasonCode: 'native-change-invalid',
-      changeName: 'invalid-brief',
-      phase: 'shape',
-      nextCommand: null,
-    });
-    expect(probe.evidence).toContainEqual({
-      source: 'state',
-      quote: 'finding: brief-section-missing',
-    });
-  });
-
   it('does not resume while a Native artifact-root move is incomplete', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     await createNative(projectRoot, 'moving-change');

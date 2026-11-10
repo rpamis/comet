@@ -256,7 +256,7 @@ it('rejects symlink history entries and directories instead of hiding an active 
   await expect(listSdkChangePartitions(root, 'native')).rejects.toThrow(
     'Invalid native change runtime owner entry',
   );
-  await expect(closeSdkChangeOwner(root, owner)).rejects.toThrow('symbolic link');
+  await expect(closeSdkChangeOwner(root, owner)).rejects.toThrow('regular file');
   await fs.unlink(path.join(runtimeRoot, historyRef));
   await fs.rmdir(historyDirectory);
   await fs.symlink(

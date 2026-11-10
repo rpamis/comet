@@ -1,0 +1,106 @@
+{
+  "retirementCandidates": [
+    {
+      "file": "test/domains/comet-native/native-hook-guard.test.ts",
+      "fullName": "Native phase Hook guard discards the selected Hook snapshot before returning a candidate to Build",
+      "original": {
+        "title": "discards the selected Hook snapshot before returning a candidate to Build",
+        "code": "it('discards the selected Hook snapshot before returning a candidate to Build', async () => {\n    await useRevertPolicy();\n    await writeProjectConfig(projectRoot, defaultProjectConfig());\n    const { paths, state } = await portableBuild('hook-invalidates', 'docs');\n    await fs.writeFile(path.join(projectRoot, 'AGENTS.md'), 'Run checks.\\n');\n    await submitNativePortableBuilderCandidate({\n      paths,\n      name: state.name,\n      input: {\n        identity: createNativeRunnerChannel().captureExecutionIdentity({\n          identityProvider: 'test-host',\n          executionRef: 'hook-builder',\n        }),\n        candidateId: 'hook-candidate',\n        summary: 'Implemented the requested behavior.',\n        addressedAcceptanceIds: ['A1'],\n        acceptanceReview: fixtureAcceptanceReview(['A1']),\n      },\n    });\n    const returnToBuild = portableRuntime.returnNativePortableChangeToBuild;\n    vi.spyOn(portableRuntime, 'returnNativePortableChangeToBuild').mockImplementationOnce(\n      async (options) => {\n        // A nested observer may populate another snapshot while the mutation is pending.\n        expect(await resolveActiveNativeHookChange(projectRoot, state.name)).toMatchObject({\n          phase: 'verify',\n        });\n        return returnToBuild(options);\n      },\n    );\n    await runWithHookReadCache(async () => {\n      expect(await resolveActiveNativeHookChange(projectRoot, state.name)).toMatchObject({\n        phase: 'verify',\n      });\n      expect(\n        await inspectNativeHookGuard(\n          projectRoot,\n          {\n            intent: 'write',\n            targets: ['AGENTS.md'],\n            toolName: 'Write',\n            writes: [{ path: 'AGENTS.md', content: 'Skip checks.\\n' }],\n          },\n          state.name,\n        ),\n      ).toMatchObject({ allowed: true, phase: 'build' });\n      expect(await resolveActiveNativeHookChange(projectRoot, state.name)).toMatchObject({\n        phase: 'build',\n      });\n    });\n  })",
+        "line": 144
+      },
+      "effectiveProtection": [],
+      "rawProtection": [],
+      "reason": "Old automatic return-to-Build/Shape on a file write is retired. Keep explicit Runtime revision, current candidate, protected Runtime paths and published Specs.",
+      "action": "Removed after explicit parent authorization; complete original body preserved; parent handles the protected log-retry catalog migration",
+      "replacement": []
+    },
+    {
+      "file": "test/domains/comet-native/native-hook-guard.test.ts",
+      "fullName": "Native phase Hook guard returns a portable Build change to Shape before allowing formal requirement edits",
+      "original": {
+        "title": "returns a portable Build change to Shape before allowing formal requirement edits",
+        "code": "it('returns a portable Build change to Shape before allowing formal requirement edits', async () => {\n    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));\n    const { paths, state } = await portableBuild('portable-shape-write');\n    const childrenRef = path\n      .relative(projectRoot, path.join(nativePortableChangeDir(paths, state.name), 'children.yaml'))\n      .replaceAll('\\\\', '/');\n    await expect(\n      inspectNativeHookGuard(projectRoot, writeRequest(childrenRef)),\n    ).resolves.toMatchObject({\n      allowed: true,\n      phase: 'shape',\n      reason: expect.stringContaining('requirements changed'),\n    });\n    await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({\n      phase: 'shape',\n      acceptance: [],\n    });\n  })",
+        "line": 818
+      },
+      "effectiveProtection": [],
+      "rawProtection": [],
+      "reason": "Old automatic return-to-Build/Shape on a file write is retired. Keep explicit Runtime revision, current candidate, protected Runtime paths and published Specs.",
+      "action": "Removed after explicit parent authorization; complete original body preserved; parent handles the protected log-retry catalog migration",
+      "replacement": []
+    },
+    {
+      "file": "test/domains/comet-native/native-joint-shape-confirmation.test.ts",
+      "fullName": "Native joint Supervisor Shape decision rejects the joint decision after formal drift",
+      "original": {
+        "title": "rejects the joint decision after %s drift",
+        "code": "it.each(['formal', 'children', 'mode', 'state'] as const)(\n    'rejects the joint decision after %s drift',\n    async (drift) => {\n      const { root, dir } = await shape();\n      const prepared = await cli(root, ['next', 'joint-shape', '--summary', 'Ready']);\n      const args = command(prepared, 'multi-session');\n      if (drift === 'formal')\n        await fs.appendFile(\n          path.join(dir, 'brief.md'),\n          '\\n# Constraints and invariants\\nAlso change the shared output.\\n',\n        );\n      if (drift === 'children') {\n        const file = path.join(dir, 'children.yaml');\n        await fs.writeFile(\n          file,\n          (await fs.readFile(file, 'utf8')).replace(\n            'name: beta\\n    depends_on: []',\n            'name: beta\\n    depends_on: [alpha]',\n          ),\n        );\n      }\n      if (drift === 'mode') {\n        await fs.appendFile(\n          nativePortableStateFile(await nativeProjectPaths(root, 'docs'), 'joint-shape'),\n          '\\ncoordination_mode: multi-session\\n',\n        );\n      }\n      if (drift === 'state')\n        args[args.indexOf('--expected-state-version') + 1] = String(\n          prepared.data.state.state_version - 1,\n        );\n      expect((await cli(root, args, false)).exitCode).not.toBe(0);\n      expect((await cli(root, ['status', 'joint-shape'])).data.phase).toBe('shape');\n    },\n  )",
+        "line": 180
+      },
+      "effectiveProtection": [],
+      "rawProtection": [],
+      "reason": "Old implicit byte/state-signature drift invalidation is retired. Keep exact expected-state-version mismatch and selected-mode conflict decisions.",
+      "action": "Removed after explicit parent authorization; complete original body preserved; parent handles the protected log-retry catalog migration",
+      "replacement": []
+    },
+    {
+      "file": "test/domains/comet-native/native-joint-shape-confirmation.test.ts",
+      "fullName": "Native joint Supervisor Shape decision rejects the joint decision after children drift",
+      "original": {
+        "title": "rejects the joint decision after %s drift",
+        "code": "it.each(['formal', 'children', 'mode', 'state'] as const)(\n    'rejects the joint decision after %s drift',\n    async (drift) => {\n      const { root, dir } = await shape();\n      const prepared = await cli(root, ['next', 'joint-shape', '--summary', 'Ready']);\n      const args = command(prepared, 'multi-session');\n      if (drift === 'formal')\n        await fs.appendFile(\n          path.join(dir, 'brief.md'),\n          '\\n# Constraints and invariants\\nAlso change the shared output.\\n',\n        );\n      if (drift === 'children') {\n        const file = path.join(dir, 'children.yaml');\n        await fs.writeFile(\n          file,\n          (await fs.readFile(file, 'utf8')).replace(\n            'name: beta\\n    depends_on: []',\n            'name: beta\\n    depends_on: [alpha]',\n          ),\n        );\n      }\n      if (drift === 'mode') {\n        await fs.appendFile(\n          nativePortableStateFile(await nativeProjectPaths(root, 'docs'), 'joint-shape'),\n          '\\ncoordination_mode: multi-session\\n',\n        );\n      }\n      if (drift === 'state')\n        args[args.indexOf('--expected-state-version') + 1] = String(\n          prepared.data.state.state_version - 1,\n        );\n      expect((await cli(root, args, false)).exitCode).not.toBe(0);\n      expect((await cli(root, ['status', 'joint-shape'])).data.phase).toBe('shape');\n    },\n  )",
+        "line": 180
+      },
+      "effectiveProtection": [],
+      "rawProtection": [],
+      "reason": "Old implicit byte/state-signature drift invalidation is retired. Keep exact expected-state-version mismatch and selected-mode conflict decisions.",
+      "action": "Removed after explicit parent authorization; complete original body preserved; parent handles the protected log-retry catalog migration",
+      "replacement": []
+    },
+    {
+      "file": "test/domains/comet-native/native-joint-shape-confirmation.test.ts",
+      "fullName": "Native joint Supervisor Shape decision rejects the joint decision after mode drift",
+      "original": {
+        "title": "rejects the joint decision after %s drift",
+        "code": "it.each(['formal', 'children', 'mode', 'state'] as const)(\n    'rejects the joint decision after %s drift',\n    async (drift) => {\n      const { root, dir } = await shape();\n      const prepared = await cli(root, ['next', 'joint-shape', '--summary', 'Ready']);\n      const args = command(prepared, 'multi-session');\n      if (drift === 'formal')\n        await fs.appendFile(\n          path.join(dir, 'brief.md'),\n          '\\n# Constraints and invariants\\nAlso change the shared output.\\n',\n        );\n      if (drift === 'children') {\n        const file = path.join(dir, 'children.yaml');\n        await fs.writeFile(\n          file,\n          (await fs.readFile(file, 'utf8')).replace(\n            'name: beta\\n    depends_on: []',\n            'name: beta\\n    depends_on: [alpha]',\n          ),\n        );\n      }\n      if (drift === 'mode') {\n        await fs.appendFile(\n          nativePortableStateFile(await nativeProjectPaths(root, 'docs'), 'joint-shape'),\n          '\\ncoordination_mode: multi-session\\n',\n        );\n      }\n      if (drift === 'state')\n        args[args.indexOf('--expected-state-version') + 1] = String(\n          prepared.data.state.state_version - 1,\n        );\n      expect((await cli(root, args, false)).exitCode).not.toBe(0);\n      expect((await cli(root, ['status', 'joint-shape'])).data.phase).toBe('shape');\n    },\n  )",
+        "line": 180
+      },
+      "effectiveProtection": [],
+      "rawProtection": [],
+      "reason": "Old implicit byte/state-signature drift invalidation is retired. Keep exact expected-state-version mismatch and selected-mode conflict decisions.",
+      "action": "Removed after explicit parent authorization; complete original body preserved; parent handles the protected log-retry catalog migration",
+      "replacement": []
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "fullName": "Supervisor Child Verifier execution failure refuses a verifier retry after its successful check log has changed",
+      "original": {
+        "title": "refuses a verifier retry after its successful check log has changed",
+        "code": "it('refuses a verifier retry after its successful check log has changed', async () => {\n    const f = await fixture();\n    const run = await failVerifier(f);\n    const check = run.actions.find((action) => action.stepId === 'supervisor.child.checks')!;\n    const log = (check.outcome!.output as { checks: Array<{ logRef: string }> }).checks[0].logRef;\n    await fs.appendFile(path.join(resolveWorkspaceRuntimeRootSync(f.projectRoot), log), 'tampered');\n    await expect(decide(f, run, 'retry-verifier')).rejects.toThrow('log changed');\n    expect(await f.dispatch({ operation: 'inspect', runId: f.name })).toEqual(run);\n  })",
+        "line": 245
+      },
+      "effectiveProtection": [
+        "history-domains-comet-native-native-sdk-supervisor-verifier-recovery"
+      ],
+      "rawProtection": [
+        "issue-389-child-evidence-retry"
+      ],
+      "reason": "File-log digest is retired. Keep original failed/unknown verifier identity and approved retry, fixed application package integrity, and running/unknown sibling migration refusal.",
+      "action": "Removed after explicit parent authorization; complete original body preserved; parent handles the protected log-retry catalog migration",
+      "replacement": []
+    },
+    {
+      "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+      "fullName": "fixed older custom Supervisor Runs refuses unsafe old-run migration with check-log and preserves its Run",
+      "original": {
+        "title": "refuses unsafe old-run migration with %s and preserves its Run",
+        "code": "it.each(['check-log', 'fixed-package', 'running-sibling'] as const)(\n    'refuses unsafe old-run migration with %s and preserves its Run',\n    async (caseName) => {\n      const f = await oldCustomFixture(\n        caseName === 'running-sibling' ? 'running-builder' : 'pending',\n      );\n      const before = await readWorkflowApplicationRun(\n        f.projectRoot,\n        'native-candidate-review',\n        f.name,\n      );\n      if (caseName === 'check-log') {\n        const check = f.run.actions.find((action) => action.stepId === 'supervisor.child.checks')!;\n        await fs.appendFile(\n          path.join(\n            resolveWorkspaceRuntimeRootSync(f.projectRoot),\n            (check.outcome!.output as { checks: Array<{ logRef: string }> }).checks[0].logRef,\n          ),\n          'tampered',\n        );\n      } else if (caseName === 'fixed-package') {\n        await fs.appendFile(\n          path.join(path.dirname(f.file), 'application.mjs'),\n          '\\n// changed fixed package\\n',\n        );\n      }\n      await expect(inspectNativeSdkDefinitionUpgrade(f.projectRoot, f.name, true)).rejects.toThrow(\n        caseName === 'check-log'\n          ? 'log changed'\n          : caseName === 'running-sibling'\n            ? 'running or unknown'\n            : '固定应用',\n      );\n      expect(\n        await readWorkflowApplicationRun(f.projectRoot, 'native-candidate-review', f.name),\n      ).toEqual(before);\n    },\n  )",
+        "line": 669
+      },
+      "effectiveProtection": [],
+      "rawProtection": [],
+      "reason": "File-log digest is retired. Keep original failed/unknown verifier identity and approved retry, fixed application package integrity, and running/unknown sibling migration refusal.",
+      "action": "Removed after explicit parent authorization; complete original body preserved; parent handles the protected log-retry catalog migration",
+      "replacement": []
+    }
+  ]
+}

@@ -966,7 +966,7 @@ describe('skills', () => {
 
           await expect(
             createWorkingDirs(tmpDir, 'en', 'docs', initialization.initializationPermit),
-          ).rejects.toThrow(/symbolic link or junction/iu);
+          ).rejects.toThrow(/symbolic link(?:, junction or invalid directory| or junction)/iu);
           await expect(fs.access(path.join(outsideRoot, ...escapedWrite))).rejects.toMatchObject({
             code: 'ENOENT',
           });
@@ -2880,7 +2880,7 @@ describe('skills', () => {
       expect(zhDesign).toContain(
         '必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户明确确认设计方案',
       );
-      expect(zhDesign).toContain('brainstorming 引用这些需求，只讨论尚未解决的技术选择');
+      expect(zhDesign).toContain('沿用已确认需求，只澄清尚未解决的技术决定');
       expect(zhDesign).not.toContain('跳过重复上下文探索，直接进入设计提问');
       expect(zhOpen).toContain('comet-classic/reference/workspace.md');
       expect(zhOpen).toContain('推荐理由不能代替用户选择');
@@ -3193,6 +3193,10 @@ describe('skills', () => {
 
   describe('English Comet workflow safeguards', () => {
     it('matches the Chinese workflow decision-point requirements', async () => {
+      const enSdkMethods = await fs.readFile(
+        path.resolve('assets/skills/comet-classic/reference/sdk-methods.md'),
+        'utf8',
+      );
       const enComet = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-classic');
       const enOpenMain = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-open');
       expect(enOpenMain).toContain('](reference/batch-changes.md)');
@@ -3338,7 +3342,7 @@ describe('skills', () => {
       expect
         .soft(enDesign)
         .toContain(
-          'discuss only unresolved technical choices; do not ask again about confirmed requirements',
+          'retain confirmed requirements, and clarify only unresolved technical decisions',
         );
       expect(enDesign).not.toContain('Skip redundant context exploration');
       expect(enBuild).toContain('Confirm the execution strategy before writing a plan.');
@@ -3590,10 +3594,15 @@ describe('skills', () => {
       expect
         .soft(enVerify)
         .toContain('Verify owns the single final integration code review for the whole change');
-      expect(enVerify).toContain('dispatch an independent reviewer');
+      expect(enVerify).toContain('SDK execution methods');
+      expect(enSdkMethods).toContain(
+        'Standard or thorough review requires an independent reviewer',
+      );
       expect
-        .soft(enVerify)
-        .toContain('check results, and repairs, focusing on correctness, security, and edge cases');
+        .soft(enSdkMethods)
+        .toContain(
+          'actual diff scope, compilation and relevant tests, security, goals, every acceptance scenario',
+        );
       expect(enVerify).toContain('no CRITICAL or IMPORTANT issues');
       expect
         .soft(enVerify)
@@ -3652,15 +3661,11 @@ describe('skills', () => {
       expect(enBuild).not.toContain('using-git-worktrees');
       expect(enBuild).not.toContain('native `EnterWorktree` tool');
       expect.soft(enBuild).toContain('load Superpowers `brainstorming` through the Skill tool');
-      expect
-        .soft(enDesign)
-        .toContain(
-          "The script generates and records the pack using the `context_compression` snapshot in the change's `.comet.yaml`",
-        );
-      expect(enDesign).toContain('The default `context_compression: off` generates');
-      expect(enDesign).toContain('For context_compression: beta, use:');
-      expect(enDesign).toContain('<classic-change-dir>/.comet/handoff/spec-context.md');
-      expect(enDesign).toContain('In beta mode, `spec-context.json` is structurally valid');
+      expect(enDesign).toContain('without copying artifact bodies');
+      expect(enDesign).toContain('`handoff_context` references the original proposal');
+      expect(enDesign).toContain(
+        'An optional handoff view aids reading; original files and user records remain authoritative',
+      );
       expect
         .soft(enDesign)
         .toContain('Keep `brainstorm-summary.md` updated throughout brainstorming');
@@ -3940,9 +3945,7 @@ describe('skills', () => {
       ]) {
         expect(zhDispatch, `zh dispatch should not bind to ${forbidden}`).not.toContain(forbidden);
       }
-      expect(zhDispatch).toContain(
-        'comet state task-complete <name> <task-id> --expect <revision> --json',
-      );
+      expect(zhDispatch).toContain('comet state task-complete <name> <task-id> --json');
       expect(zhDispatch).toContain('不能只换成新 revision 就盲目重试');
       expect(zhDispatch).toContain('不要求每个小任务都单独创建一次进度提交');
       expect(zhDispatch).toContain('不能擅自丢弃旧计划中额外存在的实际任务');
@@ -4033,7 +4036,7 @@ describe('skills', () => {
         '<classic-change-dir>/.comet/rulings.md',
         'Expanding scope, changing specifications or acceptance, accepting important defects, security exceptions, and external side effects still require user authorization',
         'before upstream temporary files are cleaned',
-        'comet state task-complete <name> <task-id> --expect <revision> --json',
+        'comet state task-complete <name> <task-id> --json',
         'rather than blindly retrying with a new revision',
         'without mechanical per-microtask progress commits',
         'genuine extra tasks are not silently discarded',

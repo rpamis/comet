@@ -174,7 +174,7 @@ it('preserves a live project lock even when its exact token is submitted with st
   expect(data.recovery).toMatchObject({
     code: 'lock-active',
     recoveryArgs: null,
-    owner: { pid: process.pid },
+    owner: { id: lock.owner.id },
   });
   const rejected = await runNativeCli([
     'doctor',
@@ -197,6 +197,7 @@ it('preserves a live project lock even when its exact token is submitted with st
 it('rejects a replaced lock token and preserves malformed lock bytes when explicit recovery quarantines them', async () => {
   const { root, paths } = await project();
   const lock = await acquireNativeLock(paths, 'archive', 'interrupted archive');
+  await releaseNativeLock(lock);
   await fs.writeFile(lock.file, '{partial-first');
   const first = JSON.parse(
     (await runNativeCli(['doctor', '--project-root', root, '--json'])).stdout!,
@@ -226,6 +227,7 @@ it('requires the exact stopped-owner decision for an aged unknown project lock a
   const paths = await nativeProjectPaths(root, 'docs');
   await ensureNativeDirectories(paths);
   const lock = await acquireNativeLock(paths, 'archive', 'archive on another machine');
+  await releaseNativeLock(lock);
   const content = JSON.stringify({
     ...lock.owner,
     hostname: 'another-machine',
@@ -243,7 +245,7 @@ it('requires the exact stopped-owner decision for an aged unknown project lock a
   expect(recovery).toMatchObject({
     code: 'lock-owner-unknown',
     affectedPaths: [lock.file],
-    owner: { hostname: 'another-machine' },
+    owner: { id: lock.owner.id },
   });
   expect(recovery.recoveryArgs).toContain('--lock-token');
   const repaired = await runNativeCli(recovery.recoveryArgs.slice(2));

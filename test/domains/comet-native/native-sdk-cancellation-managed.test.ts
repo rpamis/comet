@@ -129,6 +129,10 @@ it('keeps a cancelled managed check occupied after its group stops until the ori
   registration.execution.terminationUnconfirmed = false;
   await registration.save();
   const cancelled = await runtime.cancel({ runId: claimed.runId, reason: 'Stop the task' });
+  const active = await inspectNativeSdkCancellation({ projectRoot: root, run: cancelled });
+  expect(active).toMatchObject({ status: 'cancelling', quiescent: false });
+  expect(active!.outstandingActions[0].acknowledgementRequest).toBeUndefined();
+  await registration.release();
   const waiting = await inspectNativeSdkCancellation({ projectRoot: root, run: cancelled });
   expect(waiting).toMatchObject({ status: 'cancelling', quiescent: false });
   const request = waiting!.outstandingActions[0].acknowledgementRequest!;

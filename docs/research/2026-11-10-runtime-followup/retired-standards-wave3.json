@@ -1,0 +1,464 @@
+{
+  "retirementCandidates": [
+    {
+      "file": "test/domains/comet-classic/classic-archive.test.ts",
+      "fullName": "Classic archive command supplements the accepted Compat check in the original Run without replay (failure=false)",
+      "protectedBy": [
+        "history-domains-comet-classic-classic-archive"
+      ],
+      "reason": "Entire old supplemental observe/record/refresh-checks flow relies on retired automatic content invalidation and collectCheckSnapshot; preserve ordinary actual failed check/Archive no-replay coverage elsewhere. Both parameter variants currently CORE protected; do not remove until audited migration.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "fullName": "blocks Classic Archive when a new real check fails after an accepted pass"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "fullName": "Classic executed check evidence reuses local evidence but rejects an explicitly rerun failing check and direct transition"
+        }
+      ],
+      "original": {
+        "title": "supplements the accepted Compat check in the original Run without replay (failure=%s)",
+        "code": "it.each([false, true])(\n    'supplements the accepted Compat check in the original Run without replay (failure=%s)',\n    async (failure) => {\n      const dir = await makeProject();\n      const previous = process.cwd();\n      const previousOpenSpec = process.env.COMET_OPENSPEC;\n      const counter = `${dir}-check-count`;\n      process.chdir(dir);\n      const cli = async (...args: string[]) => {\n        const result = await runClassicCli(args);\n        expect(result.exitCode, result.stderr).toBe(0);\n        return result;\n      };\n      try {\n        await cli('state', 'init', 'demo', 'hotfix', '--runtime', 'compat');\n        const changeDir = path.join(dir, 'openspec/changes/demo');\n        await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\\nPreserve behavior.\\n');\n        await fs.writeFile(path.join(changeDir, 'design.md'), '# Design\\nPreserve behavior.\\n');\n        await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] Preserve behavior\\n');\n        await fs.writeFile(path.join(dir, 'explanation.unknown'), 'original explanation');\n        await fs.writeFile(\n          path.join(changeDir, 'verification-report.md'),\n          '# Verification\\nBehavior checked.\\n',\n        );\n        const fake = await fakeOpenSpec(dir, 'success');\n        process.env.COMET_OPENSPEC = fake.command;\n        await cli('state', 'transition', 'demo', 'open-complete');\n        await cli('state', 'set', 'demo', 'isolation', 'current');\n        await cli(\n          'state',\n          'set',\n          'demo',\n          'verification_report',\n          'openspec/changes/demo/verification-report.md',\n        );\n        const command = `const fs=require('node:fs'); fs.appendFileSync(${JSON.stringify(counter)},'x'); process.exit(fs.readFileSync('explanation.unknown','utf8').includes('FAIL')?7:0)`;\n        await cli(\n          'check',\n          'run',\n          'demo',\n          'build',\n          '--local',\n          '--',\n          process.execPath,\n          '-e',\n          command,\n        );\n        await cli('guard', 'demo', 'build', '--apply');\n        await cli(\n          'state',\n          'set',\n          'demo',\n          'verification_report',\n          'openspec/changes/demo/verification-report.md',\n        );\n        await cli(\n          'check',\n          'run',\n          'demo',\n          'verify',\n          '--local',\n          '--',\n          process.execPath,\n          '-e',\n          `${command}; //verify`,\n        );\n        await cli('guard', 'demo', 'verify', '--apply');\n        await cli('state', 'transition', 'demo', 'archive-confirm');\n        const accepted = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');\n        const report = await fs.readFile(path.join(changeDir, 'verification-report.md'), 'utf8');\n        const originalCount = await fs.readFile(counter, 'utf8');\n        await fs.writeFile(\n          path.join(dir, 'explanation.unknown'),\n          failure ? 'FAIL documentation check' : 'revised explanation',\n        );\n        const refused = await runClassicCli(['archive', 'demo']);\n        expect(refused.exitCode).not.toBe(0);\n        expect(await fs.stat(fake.log).catch(() => null)).toBeNull();\n        const observed = (await runClassicEditReviewCommand({\n          projectRoot: dir,\n          name: 'demo',\n          operation: 'observe',\n          sessionId: 'current-agent',\n        })) as {\n          recordTemplate: Record<string, unknown>;\n          observation: { refreshInputTemplate: Record<string, unknown> };\n        };\n        const file = `${dir}-supplement.json`;\n        temporary.push(file);\n        await fs.writeFile(\n          file,\n          JSON.stringify({\n            ...observed.recordTemplate,\n            decision: 'non-behavioral',\n            summary: 'Explanation preserves accepted behavior; refresh documentation check.',\n            retainedCheckActionIds: [],\n          }),\n        );\n        await runClassicEditReviewCommand({\n          projectRoot: dir,\n          name: 'demo',\n          operation: 'record',\n          file,\n        });\n        await fs.writeFile(\n          file,\n          JSON.stringify({\n            ...observed.observation.refreshInputTemplate,\n            summary: 'Only refresh original documentation check.',\n          }),\n        );\n        if (!failure) {\n          const originalAppend = runStore.appendTrajectory;\n          const append = vi\n            .spyOn(runStore, 'appendTrajectory')\n            .mockImplementation(async (...args) => {\n              await originalAppend(...args);\n              if (args[2].type === 'command_check_started') {\n                append.mockRestore();\n                vi.spyOn(checkSnapshots, 'collectCheckSnapshot').mockRejectedValueOnce(\n                  new Error('supplemental input capture interrupted before launch'),\n                );\n              }\n            });\n          await expect(\n            runClassicEditReviewCommand({\n              projectRoot: dir,\n              name: 'demo',\n              operation: 'refresh-checks',\n              file,\n            }),\n          ).rejects.toThrow('before launch');\n          expect(await fs.readFile(counter, 'utf8')).toBe(originalCount);\n          const resumed = (await runClassicEditReviewCommand({\n            projectRoot: dir,\n            name: 'demo',\n            operation: 'observe',\n            sessionId: 'current-agent',\n          })) as { observation: { refreshInputTemplate: Record<string, unknown> } };\n          expect(resumed.observation.refreshInputTemplate).toEqual(\n            observed.observation.refreshInputTemplate,\n          );\n        }\n        const refreshed = (await runClassicEditReviewCommand({\n          projectRoot: dir,\n          name: 'demo',\n          operation: 'refresh-checks',\n          file,\n        })) as { check: { exitCode: number; action: { id: string } } };\n        const repeated = (await runClassicEditReviewCommand({\n          projectRoot: dir,\n          name: 'demo',\n          operation: 'refresh-checks',\n          file,\n        })) as typeof refreshed;\n        expect(refreshed.check.exitCode).toBe(failure ? 7 : 0);\n        expect(repeated.check.action.id).toBe(refreshed.check.action.id);\n        expect(await fs.readFile(counter, 'utf8')).toBe(`${originalCount}x`);\n        expect(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')).toBe(accepted);\n        expect(await fs.readFile(path.join(changeDir, 'verification-report.md'), 'utf8')).toBe(\n          report,\n        );\n        const archived = await runClassicCli(['archive', 'demo']);\n        expect(archived.exitCode, archived.stderr).toBe(failure ? 70 : 0);\n        if (failure) expect(await fs.stat(fake.log).catch(() => null)).toBeNull();\n        else expect((await fs.readFile(fake.log, 'utf8')).trim().split('\\n')).toHaveLength(1);\n      } finally {\n        process.chdir(previous);\n        if (previousOpenSpec === undefined) delete process.env.COMET_OPENSPEC;\n        else process.env.COMET_OPENSPEC = previousOpenSpec;\n        await fs.rm(counter, { force: true });\n      }\n    },\n    // 为 Windows 多轮真实命令预留等待时间；超时后仍须确认原执行已停止。\n    process.platform === 'win32' ? 300_000 : 120_000,\n  )",
+        "line": 185
+      },
+      "action": "protected original retained; parent owns audited migration"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-archive.test.ts",
+      "fullName": "Classic archive command supplements the accepted Compat check in the original Run without replay (failure=true)",
+      "protectedBy": [
+        "history-domains-comet-classic-classic-archive"
+      ],
+      "reason": "Entire old supplemental observe/record/refresh-checks flow relies on retired automatic content invalidation and collectCheckSnapshot; preserve ordinary actual failed check/Archive no-replay coverage elsewhere. Both parameter variants currently CORE protected; do not remove until audited migration.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "fullName": "blocks Classic Archive when a new real check fails after an accepted pass"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+          "fullName": "Classic executed check evidence reuses local evidence but rejects an explicitly rerun failing check and direct transition"
+        }
+      ],
+      "original": {
+        "title": "supplements the accepted Compat check in the original Run without replay (failure=%s)",
+        "code": "it.each([false, true])(\n    'supplements the accepted Compat check in the original Run without replay (failure=%s)',\n    async (failure) => {\n      const dir = await makeProject();\n      const previous = process.cwd();\n      const previousOpenSpec = process.env.COMET_OPENSPEC;\n      const counter = `${dir}-check-count`;\n      process.chdir(dir);\n      const cli = async (...args: string[]) => {\n        const result = await runClassicCli(args);\n        expect(result.exitCode, result.stderr).toBe(0);\n        return result;\n      };\n      try {\n        await cli('state', 'init', 'demo', 'hotfix', '--runtime', 'compat');\n        const changeDir = path.join(dir, 'openspec/changes/demo');\n        await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\\nPreserve behavior.\\n');\n        await fs.writeFile(path.join(changeDir, 'design.md'), '# Design\\nPreserve behavior.\\n');\n        await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] Preserve behavior\\n');\n        await fs.writeFile(path.join(dir, 'explanation.unknown'), 'original explanation');\n        await fs.writeFile(\n          path.join(changeDir, 'verification-report.md'),\n          '# Verification\\nBehavior checked.\\n',\n        );\n        const fake = await fakeOpenSpec(dir, 'success');\n        process.env.COMET_OPENSPEC = fake.command;\n        await cli('state', 'transition', 'demo', 'open-complete');\n        await cli('state', 'set', 'demo', 'isolation', 'current');\n        await cli(\n          'state',\n          'set',\n          'demo',\n          'verification_report',\n          'openspec/changes/demo/verification-report.md',\n        );\n        const command = `const fs=require('node:fs'); fs.appendFileSync(${JSON.stringify(counter)},'x'); process.exit(fs.readFileSync('explanation.unknown','utf8').includes('FAIL')?7:0)`;\n        await cli(\n          'check',\n          'run',\n          'demo',\n          'build',\n          '--local',\n          '--',\n          process.execPath,\n          '-e',\n          command,\n        );\n        await cli('guard', 'demo', 'build', '--apply');\n        await cli(\n          'state',\n          'set',\n          'demo',\n          'verification_report',\n          'openspec/changes/demo/verification-report.md',\n        );\n        await cli(\n          'check',\n          'run',\n          'demo',\n          'verify',\n          '--local',\n          '--',\n          process.execPath,\n          '-e',\n          `${command}; //verify`,\n        );\n        await cli('guard', 'demo', 'verify', '--apply');\n        await cli('state', 'transition', 'demo', 'archive-confirm');\n        const accepted = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');\n        const report = await fs.readFile(path.join(changeDir, 'verification-report.md'), 'utf8');\n        const originalCount = await fs.readFile(counter, 'utf8');\n        await fs.writeFile(\n          path.join(dir, 'explanation.unknown'),\n          failure ? 'FAIL documentation check' : 'revised explanation',\n        );\n        const refused = await runClassicCli(['archive', 'demo']);\n        expect(refused.exitCode).not.toBe(0);\n        expect(await fs.stat(fake.log).catch(() => null)).toBeNull();\n        const observed = (await runClassicEditReviewCommand({\n          projectRoot: dir,\n          name: 'demo',\n          operation: 'observe',\n          sessionId: 'current-agent',\n        })) as {\n          recordTemplate: Record<string, unknown>;\n          observation: { refreshInputTemplate: Record<string, unknown> };\n        };\n        const file = `${dir}-supplement.json`;\n        temporary.push(file);\n        await fs.writeFile(\n          file,\n          JSON.stringify({\n            ...observed.recordTemplate,\n            decision: 'non-behavioral',\n            summary: 'Explanation preserves accepted behavior; refresh documentation check.',\n            retainedCheckActionIds: [],\n          }),\n        );\n        await runClassicEditReviewCommand({\n          projectRoot: dir,\n          name: 'demo',\n          operation: 'record',\n          file,\n        });\n        await fs.writeFile(\n          file,\n          JSON.stringify({\n            ...observed.observation.refreshInputTemplate,\n            summary: 'Only refresh original documentation check.',\n          }),\n        );\n        if (!failure) {\n          const originalAppend = runStore.appendTrajectory;\n          const append = vi\n            .spyOn(runStore, 'appendTrajectory')\n            .mockImplementation(async (...args) => {\n              await originalAppend(...args);\n              if (args[2].type === 'command_check_started') {\n                append.mockRestore();\n                vi.spyOn(checkSnapshots, 'collectCheckSnapshot').mockRejectedValueOnce(\n                  new Error('supplemental input capture interrupted before launch'),\n                );\n              }\n            });\n          await expect(\n            runClassicEditReviewCommand({\n              projectRoot: dir,\n              name: 'demo',\n              operation: 'refresh-checks',\n              file,\n            }),\n          ).rejects.toThrow('before launch');\n          expect(await fs.readFile(counter, 'utf8')).toBe(originalCount);\n          const resumed = (await runClassicEditReviewCommand({\n            projectRoot: dir,\n            name: 'demo',\n            operation: 'observe',\n            sessionId: 'current-agent',\n          })) as { observation: { refreshInputTemplate: Record<string, unknown> } };\n          expect(resumed.observation.refreshInputTemplate).toEqual(\n            observed.observation.refreshInputTemplate,\n          );\n        }\n        const refreshed = (await runClassicEditReviewCommand({\n          projectRoot: dir,\n          name: 'demo',\n          operation: 'refresh-checks',\n          file,\n        })) as { check: { exitCode: number; action: { id: string } } };\n        const repeated = (await runClassicEditReviewCommand({\n          projectRoot: dir,\n          name: 'demo',\n          operation: 'refresh-checks',\n          file,\n        })) as typeof refreshed;\n        expect(refreshed.check.exitCode).toBe(failure ? 7 : 0);\n        expect(repeated.check.action.id).toBe(refreshed.check.action.id);\n        expect(await fs.readFile(counter, 'utf8')).toBe(`${originalCount}x`);\n        expect(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')).toBe(accepted);\n        expect(await fs.readFile(path.join(changeDir, 'verification-report.md'), 'utf8')).toBe(\n          report,\n        );\n        const archived = await runClassicCli(['archive', 'demo']);\n        expect(archived.exitCode, archived.stderr).toBe(failure ? 70 : 0);\n        if (failure) expect(await fs.stat(fake.log).catch(() => null)).toBeNull();\n        else expect((await fs.readFile(fake.log, 'utf8')).trim().split('\\n')).toHaveLength(1);\n      } finally {\n        process.chdir(previous);\n        if (previousOpenSpec === undefined) delete process.env.COMET_OPENSPEC;\n        else process.env.COMET_OPENSPEC = previousOpenSpec;\n        await fs.rm(counter, { force: true });\n      }\n    },\n    // 为 Windows 多轮真实命令预留等待时间；超时后仍须确认原执行已停止。\n    process.platform === 'win32' ? 300_000 : 120_000,\n  )",
+        "line": 185
+      },
+      "action": "protected original retained; parent owns audited migration"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-artifact-requirements.test.ts",
+      "fullName": "Classic OpenSpec artifact adapter reuses upstream observations only inside one operation and refreshes after content or schema changes",
+      "protectedBy": [],
+      "reason": "Expected operation cache invalidated by content/schema fingerprints was removed; current upstream reads are fresh. Do not restore hashing to match old call counts.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/classic-artifact-requirements.test.ts",
+          "fullName": "Classic OpenSpec artifact adapter accepts explicitly skipped specs and optional design through Open and off handoff"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-artifact-requirements.test.ts",
+          "fullName": "Classic OpenSpec artifact adapter accepts explicitly skipped specs and optional design through Open and beta handoff"
+        }
+      ],
+      "original": {
+        "title": "reuses upstream observations only inside one operation and refreshes after content or schema changes",
+        "code": "it('reuses upstream observations only inside one operation and refreshes after content or schema changes', async () => {\n    const query = mockStatus();\n    await withClassicCommandContext({ projectRoot: root, invocationCwd: root }, async () => {\n      await readClassicArtifactRequirements(root, directory);\n      await readClassicArtifactRequirements(root, directory);\n      expect(query).toHaveBeenCalledTimes(1);\n      const file = path.join(directory, 'proposal.md');\n      const stat = await fs.stat(file);\n      await fs.writeFile(file, '# Proposal\\nUpdated current requirements.\\n');\n      await fs.utimes(file, stat.atime, stat.mtime);\n      await readClassicArtifactRequirements(root, directory);\n      expect(query).toHaveBeenCalledTimes(2);\n      await fs.mkdir(path.join(root, 'openspec/schemas'));\n      await readClassicArtifactRequirements(root, directory);\n      await readClassicArtifactRequirements(root, directory);\n      expect(query).toHaveBeenCalledTimes(4);\n    });\n    await readClassicArtifactRequirements(root, directory);\n    expect(query).toHaveBeenCalledTimes(5);\n  })",
+        "line": 66
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-hook-guard.test.ts",
+      "fullName": "Classic non-behavioral Verify edits keeps Agent guidance outside the neutral-document whitelist",
+      "protectedBy": [],
+      "reason": "Old per-byte neutral whitelist, implicit edit-review approval, or Verify write denial was retired. Current Guard preserves stage and delegates semantic impact to Agent; protected paths/selection/phase checks remain elsewhere.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "fullName": "continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof"
+        }
+      ],
+      "original": {
+        "title": "keeps Agent guidance outside the neutral-document whitelist",
+        "code": "it('keeps Agent guidance outside the neutral-document whitelist', async () => {\n    const root = await makeProject();\n    await seedChange(root, 'guidance-edit', 'verify', { workflow: 'hotfix', isolation: 'current' });\n    await fs.writeFile(path.join(root, 'AGENTS.md'), 'Ask before deployment.\\n');\n    const decision = await inspectClassicHookGuard(\n      root,\n      'guidance-edit',\n      parseCometHookRequest(\n        JSON.stringify({\n          tool_name: 'Write',\n          tool_input: {\n            file_path: path.join(root, 'AGENTS.md'),\n            content: 'Deploy without asking.\\n',\n          },\n        }),\n      ),\n    );\n    expect(decision.allowed).toBe(false);\n  })",
+        "line": 49
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-hook-guard.test.ts",
+      "fullName": "Classic non-behavioral Verify edits keeps Verify while reviewing worker.py in context and allows only that proposal",
+      "protectedBy": [],
+      "reason": "Old per-byte neutral whitelist, implicit edit-review approval, or Verify write denial was retired. Current Guard preserves stage and delegates semantic impact to Agent; protected paths/selection/phase checks remain elsewhere.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "fullName": "continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof"
+        }
+      ],
+      "original": {
+        "title": "keeps Verify while reviewing %s in context and allows only that proposal",
+        "code": "it.each([\n    ['worker.py', 'value = 1\\n', '# explanation\\nvalue = 1\\n'],\n    [\n      'worker.ts',\n      'export function value() { return 1; }',\n      'export function value() { const result = 1; return result; }',\n    ],\n    ['labels.json', '{\"ready\":\"Ready\"}', '{\"ready\":\"Ready to continue\"}'],\n    ['labels.csv', 'ready,Ready\\n', 'ready,Ready to continue\\n'],\n    ['status-text', 'Ready\\n', 'Ready to continue\\n'],\n  ])(\n    'keeps Verify while reviewing %s in context and allows only that proposal',\n    async (ref, before, after) => {\n      const root = await makeProject();\n      await seedChange(root, 'review-edit', 'verify', { workflow: 'hotfix', isolation: 'current' });\n      const target = path.join(root, ref);\n      await fs.writeFile(target, before);\n      const request = parseCometHookRequest(\n        JSON.stringify({\n          tool_name: 'Write',\n          tool_input: { file_path: target, content: after },\n        }),\n      );\n      const denied = await inspectClassicHookGuard(root, 'review-edit', request);\n      expect(denied).toMatchObject({ allowed: false, phase: 'verify' });\n      expect(denied.reason).toContain('edit-review show classic');\n      const hookInput = JSON.stringify({\n        tool_name: 'Write',\n        tool_input: { file_path: target, content: after },\n      });\n      const bundledDenied = run(root, 'hook-guard', [], hookInput);\n      expect(bundledDenied.status, bundledDenied.stderr).toBe(2);\n      expect(bundledDenied.stdout + bundledDenied.stderr).toContain('edit-review show classic');\n      const { runClassicEditReviewCommand } =\n        await import('../../../domains/comet-classic/classic-edit-review-command.js');\n      const shown = await runClassicEditReviewCommand({\n        projectRoot: root,\n        name: 'review-edit',\n        operation: 'show',\n      });\n      const reviews = (shown as { reviews: { proposalHash: string }[] }).reviews;\n      expect(reviews).toHaveLength(1);\n      const file = `${root}-review.json`;\n      try {\n        await fs.writeFile(\n          file,\n          JSON.stringify({\n            proposalHash: reviews[0].proposalHash,\n            decision: 'non-behavioral',\n            summary: 'Reviewed the exact diff and its consumers; acceptance behavior is unchanged.',\n          }),\n        );\n        await expect(\n          runClassicEditReviewCommand({\n            projectRoot: root,\n            name: 'review-edit',\n            operation: 'record',\n            file,\n          }),\n        ).rejects.toThrow('--confirmed');\n        await runClassicEditReviewCommand({\n          projectRoot: root,\n          name: 'review-edit',\n          operation: 'record',\n          file,\n          confirmed: true,\n        });\n      } finally {\n        await fs.rm(file, { force: true });\n      }\n      expect(await inspectClassicHookGuard(root, 'review-edit', request)).toMatchObject({\n        allowed: true,\n        phase: 'verify',\n      });\n      const bundledAllowed = run(root, 'hook-guard', [], hookInput);\n      expect(bundledAllowed.status, bundledAllowed.stderr).toBe(0);\n      expect(\n        await inspectClassicHookGuard(\n          root,\n          'review-edit',\n          parseCometHookRequest(\n            JSON.stringify({\n              tool_name: 'Write',\n              tool_input: { file_path: target, content: after + '\\nUnreviewed follow-up' },\n            }),\n          ),\n        ),\n      ).toMatchObject({ allowed: false, phase: 'verify' });\n    },\n  )",
+        "line": 68
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-hook-guard.test.ts",
+      "fullName": "Classic non-behavioral Verify edits keeps Verify while reviewing worker.ts in context and allows only that proposal",
+      "protectedBy": [],
+      "reason": "Old per-byte neutral whitelist, implicit edit-review approval, or Verify write denial was retired. Current Guard preserves stage and delegates semantic impact to Agent; protected paths/selection/phase checks remain elsewhere.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "fullName": "continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof"
+        }
+      ],
+      "original": {
+        "title": "keeps Verify while reviewing %s in context and allows only that proposal",
+        "code": "it.each([\n    ['worker.py', 'value = 1\\n', '# explanation\\nvalue = 1\\n'],\n    [\n      'worker.ts',\n      'export function value() { return 1; }',\n      'export function value() { const result = 1; return result; }',\n    ],\n    ['labels.json', '{\"ready\":\"Ready\"}', '{\"ready\":\"Ready to continue\"}'],\n    ['labels.csv', 'ready,Ready\\n', 'ready,Ready to continue\\n'],\n    ['status-text', 'Ready\\n', 'Ready to continue\\n'],\n  ])(\n    'keeps Verify while reviewing %s in context and allows only that proposal',\n    async (ref, before, after) => {\n      const root = await makeProject();\n      await seedChange(root, 'review-edit', 'verify', { workflow: 'hotfix', isolation: 'current' });\n      const target = path.join(root, ref);\n      await fs.writeFile(target, before);\n      const request = parseCometHookRequest(\n        JSON.stringify({\n          tool_name: 'Write',\n          tool_input: { file_path: target, content: after },\n        }),\n      );\n      const denied = await inspectClassicHookGuard(root, 'review-edit', request);\n      expect(denied).toMatchObject({ allowed: false, phase: 'verify' });\n      expect(denied.reason).toContain('edit-review show classic');\n      const hookInput = JSON.stringify({\n        tool_name: 'Write',\n        tool_input: { file_path: target, content: after },\n      });\n      const bundledDenied = run(root, 'hook-guard', [], hookInput);\n      expect(bundledDenied.status, bundledDenied.stderr).toBe(2);\n      expect(bundledDenied.stdout + bundledDenied.stderr).toContain('edit-review show classic');\n      const { runClassicEditReviewCommand } =\n        await import('../../../domains/comet-classic/classic-edit-review-command.js');\n      const shown = await runClassicEditReviewCommand({\n        projectRoot: root,\n        name: 'review-edit',\n        operation: 'show',\n      });\n      const reviews = (shown as { reviews: { proposalHash: string }[] }).reviews;\n      expect(reviews).toHaveLength(1);\n      const file = `${root}-review.json`;\n      try {\n        await fs.writeFile(\n          file,\n          JSON.stringify({\n            proposalHash: reviews[0].proposalHash,\n            decision: 'non-behavioral',\n            summary: 'Reviewed the exact diff and its consumers; acceptance behavior is unchanged.',\n          }),\n        );\n        await expect(\n          runClassicEditReviewCommand({\n            projectRoot: root,\n            name: 'review-edit',\n            operation: 'record',\n            file,\n          }),\n        ).rejects.toThrow('--confirmed');\n        await runClassicEditReviewCommand({\n          projectRoot: root,\n          name: 'review-edit',\n          operation: 'record',\n          file,\n          confirmed: true,\n        });\n      } finally {\n        await fs.rm(file, { force: true });\n      }\n      expect(await inspectClassicHookGuard(root, 'review-edit', request)).toMatchObject({\n        allowed: true,\n        phase: 'verify',\n      });\n      const bundledAllowed = run(root, 'hook-guard', [], hookInput);\n      expect(bundledAllowed.status, bundledAllowed.stderr).toBe(0);\n      expect(\n        await inspectClassicHookGuard(\n          root,\n          'review-edit',\n          parseCometHookRequest(\n            JSON.stringify({\n              tool_name: 'Write',\n              tool_input: { file_path: target, content: after + '\\nUnreviewed follow-up' },\n            }),\n          ),\n        ),\n      ).toMatchObject({ allowed: false, phase: 'verify' });\n    },\n  )",
+        "line": 68
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-hook-guard.test.ts",
+      "fullName": "Classic non-behavioral Verify edits keeps Verify while reviewing labels.json in context and allows only that proposal",
+      "protectedBy": [],
+      "reason": "Old per-byte neutral whitelist, implicit edit-review approval, or Verify write denial was retired. Current Guard preserves stage and delegates semantic impact to Agent; protected paths/selection/phase checks remain elsewhere.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "fullName": "continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof"
+        }
+      ],
+      "original": {
+        "title": "keeps Verify while reviewing %s in context and allows only that proposal",
+        "code": "it.each([\n    ['worker.py', 'value = 1\\n', '# explanation\\nvalue = 1\\n'],\n    [\n      'worker.ts',\n      'export function value() { return 1; }',\n      'export function value() { const result = 1; return result; }',\n    ],\n    ['labels.json', '{\"ready\":\"Ready\"}', '{\"ready\":\"Ready to continue\"}'],\n    ['labels.csv', 'ready,Ready\\n', 'ready,Ready to continue\\n'],\n    ['status-text', 'Ready\\n', 'Ready to continue\\n'],\n  ])(\n    'keeps Verify while reviewing %s in context and allows only that proposal',\n    async (ref, before, after) => {\n      const root = await makeProject();\n      await seedChange(root, 'review-edit', 'verify', { workflow: 'hotfix', isolation: 'current' });\n      const target = path.join(root, ref);\n      await fs.writeFile(target, before);\n      const request = parseCometHookRequest(\n        JSON.stringify({\n          tool_name: 'Write',\n          tool_input: { file_path: target, content: after },\n        }),\n      );\n      const denied = await inspectClassicHookGuard(root, 'review-edit', request);\n      expect(denied).toMatchObject({ allowed: false, phase: 'verify' });\n      expect(denied.reason).toContain('edit-review show classic');\n      const hookInput = JSON.stringify({\n        tool_name: 'Write',\n        tool_input: { file_path: target, content: after },\n      });\n      const bundledDenied = run(root, 'hook-guard', [], hookInput);\n      expect(bundledDenied.status, bundledDenied.stderr).toBe(2);\n      expect(bundledDenied.stdout + bundledDenied.stderr).toContain('edit-review show classic');\n      const { runClassicEditReviewCommand } =\n        await import('../../../domains/comet-classic/classic-edit-review-command.js');\n      const shown = await runClassicEditReviewCommand({\n        projectRoot: root,\n        name: 'review-edit',\n        operation: 'show',\n      });\n      const reviews = (shown as { reviews: { proposalHash: string }[] }).reviews;\n      expect(reviews).toHaveLength(1);\n      const file = `${root}-review.json`;\n      try {\n        await fs.writeFile(\n          file,\n          JSON.stringify({\n            proposalHash: reviews[0].proposalHash,\n            decision: 'non-behavioral',\n            summary: 'Reviewed the exact diff and its consumers; acceptance behavior is unchanged.',\n          }),\n        );\n        await expect(\n          runClassicEditReviewCommand({\n            projectRoot: root,\n            name: 'review-edit',\n            operation: 'record',\n            file,\n          }),\n        ).rejects.toThrow('--confirmed');\n        await runClassicEditReviewCommand({\n          projectRoot: root,\n          name: 'review-edit',\n          operation: 'record',\n          file,\n          confirmed: true,\n        });\n      } finally {\n        await fs.rm(file, { force: true });\n      }\n      expect(await inspectClassicHookGuard(root, 'review-edit', request)).toMatchObject({\n        allowed: true,\n        phase: 'verify',\n      });\n      const bundledAllowed = run(root, 'hook-guard', [], hookInput);\n      expect(bundledAllowed.status, bundledAllowed.stderr).toBe(0);\n      expect(\n        await inspectClassicHookGuard(\n          root,\n          'review-edit',\n          parseCometHookRequest(\n            JSON.stringify({\n              tool_name: 'Write',\n              tool_input: { file_path: target, content: after + '\\nUnreviewed follow-up' },\n            }),\n          ),\n        ),\n      ).toMatchObject({ allowed: false, phase: 'verify' });\n    },\n  )",
+        "line": 68
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-hook-guard.test.ts",
+      "fullName": "Classic non-behavioral Verify edits keeps Verify while reviewing labels.csv in context and allows only that proposal",
+      "protectedBy": [],
+      "reason": "Old per-byte neutral whitelist, implicit edit-review approval, or Verify write denial was retired. Current Guard preserves stage and delegates semantic impact to Agent; protected paths/selection/phase checks remain elsewhere.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "fullName": "continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof"
+        }
+      ],
+      "original": {
+        "title": "keeps Verify while reviewing %s in context and allows only that proposal",
+        "code": "it.each([\n    ['worker.py', 'value = 1\\n', '# explanation\\nvalue = 1\\n'],\n    [\n      'worker.ts',\n      'export function value() { return 1; }',\n      'export function value() { const result = 1; return result; }',\n    ],\n    ['labels.json', '{\"ready\":\"Ready\"}', '{\"ready\":\"Ready to continue\"}'],\n    ['labels.csv', 'ready,Ready\\n', 'ready,Ready to continue\\n'],\n    ['status-text', 'Ready\\n', 'Ready to continue\\n'],\n  ])(\n    'keeps Verify while reviewing %s in context and allows only that proposal',\n    async (ref, before, after) => {\n      const root = await makeProject();\n      await seedChange(root, 'review-edit', 'verify', { workflow: 'hotfix', isolation: 'current' });\n      const target = path.join(root, ref);\n      await fs.writeFile(target, before);\n      const request = parseCometHookRequest(\n        JSON.stringify({\n          tool_name: 'Write',\n          tool_input: { file_path: target, content: after },\n        }),\n      );\n      const denied = await inspectClassicHookGuard(root, 'review-edit', request);\n      expect(denied).toMatchObject({ allowed: false, phase: 'verify' });\n      expect(denied.reason).toContain('edit-review show classic');\n      const hookInput = JSON.stringify({\n        tool_name: 'Write',\n        tool_input: { file_path: target, content: after },\n      });\n      const bundledDenied = run(root, 'hook-guard', [], hookInput);\n      expect(bundledDenied.status, bundledDenied.stderr).toBe(2);\n      expect(bundledDenied.stdout + bundledDenied.stderr).toContain('edit-review show classic');\n      const { runClassicEditReviewCommand } =\n        await import('../../../domains/comet-classic/classic-edit-review-command.js');\n      const shown = await runClassicEditReviewCommand({\n        projectRoot: root,\n        name: 'review-edit',\n        operation: 'show',\n      });\n      const reviews = (shown as { reviews: { proposalHash: string }[] }).reviews;\n      expect(reviews).toHaveLength(1);\n      const file = `${root}-review.json`;\n      try {\n        await fs.writeFile(\n          file,\n          JSON.stringify({\n            proposalHash: reviews[0].proposalHash,\n            decision: 'non-behavioral',\n            summary: 'Reviewed the exact diff and its consumers; acceptance behavior is unchanged.',\n          }),\n        );\n        await expect(\n          runClassicEditReviewCommand({\n            projectRoot: root,\n            name: 'review-edit',\n            operation: 'record',\n            file,\n          }),\n        ).rejects.toThrow('--confirmed');\n        await runClassicEditReviewCommand({\n          projectRoot: root,\n          name: 'review-edit',\n          operation: 'record',\n          file,\n          confirmed: true,\n        });\n      } finally {\n        await fs.rm(file, { force: true });\n      }\n      expect(await inspectClassicHookGuard(root, 'review-edit', request)).toMatchObject({\n        allowed: true,\n        phase: 'verify',\n      });\n      const bundledAllowed = run(root, 'hook-guard', [], hookInput);\n      expect(bundledAllowed.status, bundledAllowed.stderr).toBe(0);\n      expect(\n        await inspectClassicHookGuard(\n          root,\n          'review-edit',\n          parseCometHookRequest(\n            JSON.stringify({\n              tool_name: 'Write',\n              tool_input: { file_path: target, content: after + '\\nUnreviewed follow-up' },\n            }),\n          ),\n        ),\n      ).toMatchObject({ allowed: false, phase: 'verify' });\n    },\n  )",
+        "line": 68
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-hook-guard.test.ts",
+      "fullName": "Classic non-behavioral Verify edits keeps Verify while reviewing status-text in context and allows only that proposal",
+      "protectedBy": [],
+      "reason": "Old per-byte neutral whitelist, implicit edit-review approval, or Verify write denial was retired. Current Guard preserves stage and delegates semantic impact to Agent; protected paths/selection/phase checks remain elsewhere.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "fullName": "continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof"
+        }
+      ],
+      "original": {
+        "title": "keeps Verify while reviewing %s in context and allows only that proposal",
+        "code": "it.each([\n    ['worker.py', 'value = 1\\n', '# explanation\\nvalue = 1\\n'],\n    [\n      'worker.ts',\n      'export function value() { return 1; }',\n      'export function value() { const result = 1; return result; }',\n    ],\n    ['labels.json', '{\"ready\":\"Ready\"}', '{\"ready\":\"Ready to continue\"}'],\n    ['labels.csv', 'ready,Ready\\n', 'ready,Ready to continue\\n'],\n    ['status-text', 'Ready\\n', 'Ready to continue\\n'],\n  ])(\n    'keeps Verify while reviewing %s in context and allows only that proposal',\n    async (ref, before, after) => {\n      const root = await makeProject();\n      await seedChange(root, 'review-edit', 'verify', { workflow: 'hotfix', isolation: 'current' });\n      const target = path.join(root, ref);\n      await fs.writeFile(target, before);\n      const request = parseCometHookRequest(\n        JSON.stringify({\n          tool_name: 'Write',\n          tool_input: { file_path: target, content: after },\n        }),\n      );\n      const denied = await inspectClassicHookGuard(root, 'review-edit', request);\n      expect(denied).toMatchObject({ allowed: false, phase: 'verify' });\n      expect(denied.reason).toContain('edit-review show classic');\n      const hookInput = JSON.stringify({\n        tool_name: 'Write',\n        tool_input: { file_path: target, content: after },\n      });\n      const bundledDenied = run(root, 'hook-guard', [], hookInput);\n      expect(bundledDenied.status, bundledDenied.stderr).toBe(2);\n      expect(bundledDenied.stdout + bundledDenied.stderr).toContain('edit-review show classic');\n      const { runClassicEditReviewCommand } =\n        await import('../../../domains/comet-classic/classic-edit-review-command.js');\n      const shown = await runClassicEditReviewCommand({\n        projectRoot: root,\n        name: 'review-edit',\n        operation: 'show',\n      });\n      const reviews = (shown as { reviews: { proposalHash: string }[] }).reviews;\n      expect(reviews).toHaveLength(1);\n      const file = `${root}-review.json`;\n      try {\n        await fs.writeFile(\n          file,\n          JSON.stringify({\n            proposalHash: reviews[0].proposalHash,\n            decision: 'non-behavioral',\n            summary: 'Reviewed the exact diff and its consumers; acceptance behavior is unchanged.',\n          }),\n        );\n        await expect(\n          runClassicEditReviewCommand({\n            projectRoot: root,\n            name: 'review-edit',\n            operation: 'record',\n            file,\n          }),\n        ).rejects.toThrow('--confirmed');\n        await runClassicEditReviewCommand({\n          projectRoot: root,\n          name: 'review-edit',\n          operation: 'record',\n          file,\n          confirmed: true,\n        });\n      } finally {\n        await fs.rm(file, { force: true });\n      }\n      expect(await inspectClassicHookGuard(root, 'review-edit', request)).toMatchObject({\n        allowed: true,\n        phase: 'verify',\n      });\n      const bundledAllowed = run(root, 'hook-guard', [], hookInput);\n      expect(bundledAllowed.status, bundledAllowed.stderr).toBe(0);\n      expect(\n        await inspectClassicHookGuard(\n          root,\n          'review-edit',\n          parseCometHookRequest(\n            JSON.stringify({\n              tool_name: 'Write',\n              tool_input: { file_path: target, content: after + '\\nUnreviewed follow-up' },\n            }),\n          ),\n        ),\n      ).toMatchObject({ allowed: false, phase: 'verify' });\n    },\n  )",
+        "line": 68
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-hook-guard.test.ts",
+      "fullName": "Classic hook guard command blocks implementation writes during verify so repairs return through build",
+      "protectedBy": [],
+      "reason": "Old per-byte neutral whitelist, implicit edit-review approval, or Verify write denial was retired. Current Guard preserves stage and delegates semantic impact to Agent; protected paths/selection/phase checks remain elsewhere.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "fullName": "continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof"
+        }
+      ],
+      "original": {
+        "title": "blocks implementation writes during verify so repairs return through build",
+        "code": "it('blocks implementation writes during verify so repairs return through build', async () => {\n    const dir = await makeProject();\n    await seedChange(dir, 'verify-change', 'verify');\n\n    const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'feature.ts')));\n\n    expect(result.status).toBe(2);\n    expect(result.stderr).toContain('Current phase: verify');\n    expect(result.stderr).toContain('comet state transition verify-change verify-fail');\n  })",
+        "line": 919
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-hook-guard.test.ts",
+      "fullName": "Classic hook guard command blocks tasks updates during verify so task state is repaired in build",
+      "protectedBy": [],
+      "reason": "Old per-byte neutral whitelist, implicit edit-review approval, or Verify write denial was retired. Current Guard preserves stage and delegates semantic impact to Agent; protected paths/selection/phase checks remain elsewhere.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "fullName": "continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof"
+        }
+      ],
+      "original": {
+        "title": "blocks tasks updates during verify so task state is repaired in build",
+        "code": "it('blocks tasks updates during verify so task state is repaired in build', async () => {\n    const dir = await makeProject();\n    await seedChange(dir, 'verify-tasks', 'verify');\n\n    const result = run(\n      dir,\n      'hook-guard',\n      [],\n      hookInput(path.join(dir, 'openspec', 'changes', 'verify-tasks', 'tasks.md')),\n    );\n\n    expect(result.status).toBe(2);\n    expect(result.stderr).toContain('Current phase: verify');\n    expect(result.stderr).toContain('verification reports and state updates only');\n    expect(result.stderr).toContain('comet state transition verify-tasks verify-fail');\n  })",
+        "line": 930
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    },
+    {
+      "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+      "fullName": "Classic SDK interrupted check recovery does not accept completed before quiescence (termination signal accepted=true)",
+      "protectedBy": [],
+      "reason": "Only signalAccepted=true variant depends on removed inspectProcessTreeLiveness PID uncertainty check. Keep signalAccepted=false termination-failure safety variant intact.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "fullName": "Classic SDK interrupted check recovery does not accept completed before quiescence (termination signal accepted=false)"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "fullName": "Classic SDK interrupted check recovery keeps a Windows-style unconfirmed tree stop blocked (close=true)"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "fullName": "Classic SDK interrupted check recovery keeps a Windows-style unconfirmed tree stop blocked (close=false)"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-sdk-verify-rounds.test.ts",
+          "fullName": "Classic SDK interrupted check recovery keeps old interrupted claims blocked when command and receipt records are unavailable"
+        }
+      ],
+      "original": {
+        "title": "does not accept completed before quiescence (termination signal accepted=%s)",
+        "code": "it.each([false, true])(\n    'does not accept completed before quiescence (termination signal accepted=%s)',\n    async (signalAccepted) => {\n      const f = await fixture('tweak', false);\n      await f.cli('state', 'complete-build', 'example');\n      const { runtime, run } = await f.inspect();\n      const child = Object.assign(new EventEmitter(), {\n        stdout: new PassThrough(),\n        stderr: new PassThrough(),\n        pid: 123456,\n        kill: vi.fn(() => true),\n        unref: vi.fn(),\n      });\n      vi.spyOn(spawnedCommands, 'spawnOwnedCommand').mockReturnValue({\n        child,\n        start: () => child.emit('message', { type: 'completed', exitCode: 0 }),\n        instanceId: 'test-supervisor',\n      } as unknown as ReturnType<typeof spawnedCommands.spawnOwnedCommand>);\n      vi.spyOn(processTermination, 'terminateProcessTreeConfirmed').mockImplementation(async () => {\n        child.emit('close', null);\n        return signalAccepted;\n      });\n      if (signalAccepted)\n        vi.spyOn(processIdentity, 'inspectProcessTreeLiveness').mockResolvedValue('unknown');\n      await expect(\n        executeClassicSdkCommandCheck(runtime, {\n          runId: run.runId,\n          projectRoot: f.projectRoot,\n          argv: [process.execPath, '-e', 'process.exit(0)'],\n        }),\n      ).rejects.toThrow('进程树尚未确认停止');\n      const cold = (await f.inspect()).run;\n      expect(cold.actions.at(-1)).toMatchObject({ status: 'unknown', ref: 'classic-check' });\n      expect(cold.actions.at(-1)!.outcome).toBeUndefined();\n      expect(await inspectClassicSdkActionRecovery(f.projectRoot, cold)).toMatchObject({\n        status: 'stop-unconfirmed',\n        blocked: true,\n      });\n      expect(\n        (\n          await inspectCometHook(f.projectRoot, {\n            intent: 'write',\n            toolName: 'Write',\n            targets: [path.join(f.projectRoot, 'source.js')],\n          })\n        ).allowed,\n      ).toBe(false);\n    },\n  )",
+        "line": 1821
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "fullName": "comet script contracts keeps comet-hook-guard blocked messages in English",
+      "protectedBy": [],
+      "reason": "Retired language dominance/frontmatter/copy-proof policy or static whole-source Unicode scanning. Preserve actual language configuration precedence, formal handoff ref/path existence, and current CLI behavior through replacement coverage.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/comet-scripts.test.ts",
+          "fullName": "comet scripts falls back to the global Comet language when project config omits language"
+        },
+        {
+          "file": "test/domains/comet-classic/comet-scripts.test.ts",
+          "fullName": "comet scripts lets project language override the global Comet language"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "fullName": "completes Classic full from an Agent-reviewed design without metadata rules through generated",
+          "execution": "Prior task evidence; not rerun in this wave"
+        }
+      ],
+      "original": {
+        "title": "keeps comet-hook-guard blocked messages in English",
+        "code": "it('keeps comet-hook-guard blocked messages in English', async () => {\n    const hookSource = await fs.readFile(\n      path.resolve('domains', 'comet-classic', 'classic-hook-guard.ts'),\n      'utf-8',\n    );\n\n    expect(hookSource).toContain('Current phase:');\n    expect(hookSource).toContain('Target file:');\n    expect(hookSource).toContain('does not allow source writes');\n    // Diagnostics that surface to the hook must stay ASCII/English.\n    expect(hookSource).not.toMatch(/[一-龥]/);\n  })",
+        "line": 189
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "fullName": "comet scripts blocks open guard when Chinese workflow artifacts are clearly English",
+      "protectedBy": [],
+      "reason": "Retired language dominance/frontmatter/copy-proof policy or static whole-source Unicode scanning. Preserve actual language configuration precedence, formal handoff ref/path existence, and current CLI behavior through replacement coverage.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/comet-scripts.test.ts",
+          "fullName": "comet scripts falls back to the global Comet language when project config omits language"
+        },
+        {
+          "file": "test/domains/comet-classic/comet-scripts.test.ts",
+          "fullName": "comet scripts lets project language override the global Comet language"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "fullName": "completes Classic full from an Agent-reviewed design without metadata rules through generated",
+          "execution": "Prior task evidence; not rerun in this wave"
+        }
+      ],
+      "original": {
+        "title": "blocks open guard when Chinese workflow artifacts are clearly English",
+        "code": "it('blocks open guard when Chinese workflow artifacts are clearly English', async () => {\n    await createChange(\n      tmpDir,\n      'zh-english-artifacts',\n      [\n        'workflow: full',\n        'language: zh-CN',\n        'phase: open',\n        'context_compression: off',\n        'build_mode: null',\n        'build_pause: null',\n        'subagent_dispatch: null',\n        'tdd_mode: null',\n        'review_mode: off',\n        'isolation: null',\n        'verify_mode: null',\n        'auto_transition: true',\n        'design_doc: null',\n        'plan: null',\n        'verify_result: pending',\n        'verified_at: null',\n        'archived: false',\n        '',\n      ].join('\\n'),\n      '- [ ] Implement the feature and validate the generated documentation language\\n',\n    );\n    const englishBody =\n      'This document explains the feature goals, implementation approach, expected behavior, acceptance scenarios, boundaries, risks, and verification strategy for the workflow.\\n';\n    await writeFile(\n      path.join(tmpDir, 'openspec', 'changes', 'zh-english-artifacts', 'proposal.md'),\n      englishBody,\n    );\n    await writeFile(\n      path.join(tmpDir, 'openspec', 'changes', 'zh-english-artifacts', 'design.md'),\n      englishBody,\n    );\n\n    const result = runNode(tmpDir, guardScript, ['zh-english-artifacts', 'open']);\n\n    expect(result.status).not.toBe(0);\n    expect(result.stderr).toContain('[FAIL] proposal.md matches configured language');\n    expect(result.stderr).toContain('configured language is zh-CN');\n  })",
+        "line": 1456
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "fullName": "comet scripts uses the global Comet language in guards when change and project values are absent",
+      "protectedBy": [],
+      "reason": "Retired language dominance/frontmatter/copy-proof policy or static whole-source Unicode scanning. Preserve actual language configuration precedence, formal handoff ref/path existence, and current CLI behavior through replacement coverage.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/comet-scripts.test.ts",
+          "fullName": "comet scripts falls back to the global Comet language when project config omits language"
+        },
+        {
+          "file": "test/domains/comet-classic/comet-scripts.test.ts",
+          "fullName": "comet scripts lets project language override the global Comet language"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "fullName": "completes Classic full from an Agent-reviewed design without metadata rules through generated",
+          "execution": "Prior task evidence; not rerun in this wave"
+        }
+      ],
+      "original": {
+        "title": "uses the global Comet language in guards when change and project values are absent",
+        "code": "it('uses the global Comet language in guards when change and project values are absent', async () => {\n    const fakeHome = path.join(tmpDir, 'fake-home');\n    await writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'classic:\\n  language: zh-CN\\n');\n    await createChange(\n      tmpDir,\n      'global-zh-english-artifacts',\n      [\n        'workflow: full',\n        'language: null',\n        'phase: open',\n        'context_compression: off',\n        'build_mode: null',\n        'build_pause: null',\n        'subagent_dispatch: null',\n        'tdd_mode: null',\n        'review_mode: off',\n        'isolation: null',\n        'verify_mode: null',\n        'auto_transition: true',\n        'design_doc: null',\n        'plan: null',\n        'verify_result: pending',\n        'verified_at: null',\n        'archived: false',\n        '',\n      ].join('\\n'),\n      '- [ ] Implement the feature and validate the generated documentation language\\n',\n    );\n    const englishBody =\n      'This document explains the feature goals, implementation approach, expected behavior, acceptance scenarios, boundaries, risks, and verification strategy for the workflow.\\n';\n    await writeFile(\n      path.join(tmpDir, 'openspec', 'changes', 'global-zh-english-artifacts', 'proposal.md'),\n      englishBody,\n    );\n    await writeFile(\n      path.join(tmpDir, 'openspec', 'changes', 'global-zh-english-artifacts', 'design.md'),\n      englishBody,\n    );\n\n    const result = runNode(tmpDir, guardScript, ['global-zh-english-artifacts', 'open'], {\n      HOME: fakeHome,\n      USERPROFILE: fakeHome,\n    });\n\n    expect(result.status).not.toBe(0);\n    expect(result.stderr).toContain('configured language is zh-CN');\n  })",
+        "line": 1500
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "fullName": "comet scripts allows Chinese workflow artifacts with English technical terms",
+      "protectedBy": [],
+      "reason": "Retired language dominance/frontmatter/copy-proof policy or static whole-source Unicode scanning. Preserve actual language configuration precedence, formal handoff ref/path existence, and current CLI behavior through replacement coverage.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/comet-scripts.test.ts",
+          "fullName": "comet scripts falls back to the global Comet language when project config omits language"
+        },
+        {
+          "file": "test/domains/comet-classic/comet-scripts.test.ts",
+          "fullName": "comet scripts lets project language override the global Comet language"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "fullName": "completes Classic full from an Agent-reviewed design without metadata rules through generated",
+          "execution": "Prior task evidence; not rerun in this wave"
+        }
+      ],
+      "original": {
+        "title": "allows Chinese workflow artifacts with English technical terms",
+        "code": "it('allows Chinese workflow artifacts with English technical terms', async () => {\n    await createChange(\n      tmpDir,\n      'zh-mixed-artifacts',\n      [\n        'workflow: full',\n        'language: zh-CN',\n        'phase: open',\n        'context_compression: off',\n        'build_mode: null',\n        'build_pause: null',\n        'subagent_dispatch: null',\n        'tdd_mode: null',\n        'review_mode: off',\n        'isolation: null',\n        'verify_mode: null',\n        'auto_transition: true',\n        'design_doc: null',\n        'plan: null',\n        'verify_result: pending',\n        'verified_at: null',\n        'archived: false',\n        '',\n      ].join('\\n'),\n      '- [ ] 实现 language guard 并验证 OpenSpec artifact\\n',\n    );\n    const mixedBody =\n      '本文档说明 language guard 的目标、范围、验收场景和验证方式。OpenSpec、Superpowers、Markdown 等英文术语可以保留，但正文必须以中文为主。\\n';\n    await writeFile(\n      path.join(tmpDir, 'openspec', 'changes', 'zh-mixed-artifacts', 'proposal.md'),\n      mixedBody,\n    );\n    await writeFile(\n      path.join(tmpDir, 'openspec', 'changes', 'zh-mixed-artifacts', 'design.md'),\n      mixedBody,\n    );\n\n    const result = runNode(tmpDir, guardScript, ['zh-mixed-artifacts', 'open']);\n\n    expect(result.status).toBe(0);\n    expect(result.stderr).toContain('[PASS] proposal.md matches configured language');\n  })",
+        "line": 1584
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "fullName": "comet scripts blocks open guard when English workflow artifacts are clearly Chinese",
+      "protectedBy": [],
+      "reason": "Retired language dominance/frontmatter/copy-proof policy or static whole-source Unicode scanning. Preserve actual language configuration precedence, formal handoff ref/path existence, and current CLI behavior through replacement coverage.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/comet-scripts.test.ts",
+          "fullName": "comet scripts falls back to the global Comet language when project config omits language"
+        },
+        {
+          "file": "test/domains/comet-classic/comet-scripts.test.ts",
+          "fullName": "comet scripts lets project language override the global Comet language"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "fullName": "completes Classic full from an Agent-reviewed design without metadata rules through generated",
+          "execution": "Prior task evidence; not rerun in this wave"
+        }
+      ],
+      "original": {
+        "title": "blocks open guard when English workflow artifacts are clearly Chinese",
+        "code": "it('blocks open guard when English workflow artifacts are clearly Chinese', async () => {\n    await createChange(\n      tmpDir,\n      'en-chinese-artifacts',\n      [\n        'workflow: full',\n        'language: en',\n        'phase: open',\n        'context_compression: off',\n        'build_mode: null',\n        'build_pause: null',\n        'subagent_dispatch: null',\n        'tdd_mode: null',\n        'review_mode: off',\n        'isolation: null',\n        'verify_mode: null',\n        'auto_transition: true',\n        'design_doc: null',\n        'plan: null',\n        'verify_result: pending',\n        'verified_at: null',\n        'archived: false',\n        '',\n      ].join('\\n'),\n      '- [ ] Implement the feature and validate the generated documentation language\\n',\n    );\n    const chineseBody =\n      '本文档说明了这个功能的目标范围预期行为验收场景边界条件风险以及针对这次工作流的验证策略等相关内容。\\n';\n    await writeFile(\n      path.join(tmpDir, 'openspec', 'changes', 'en-chinese-artifacts', 'proposal.md'),\n      chineseBody,\n    );\n    await writeFile(\n      path.join(tmpDir, 'openspec', 'changes', 'en-chinese-artifacts', 'design.md'),\n      chineseBody,\n    );\n\n    const result = runNode(tmpDir, guardScript, ['en-chinese-artifacts', 'open']);\n\n    expect(result.status).not.toBe(0);\n    expect(result.stderr).toContain('[FAIL] proposal.md matches configured language');\n    expect(result.stderr).toContain('configured language is en');\n  })",
+        "line": 1627
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "fullName": "comet scripts excludes fenced code blocks from the language dominance check",
+      "protectedBy": [],
+      "reason": "Retired language dominance/frontmatter/copy-proof policy or static whole-source Unicode scanning. Preserve actual language configuration precedence, formal handoff ref/path existence, and current CLI behavior through replacement coverage.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/comet-scripts.test.ts",
+          "fullName": "comet scripts falls back to the global Comet language when project config omits language"
+        },
+        {
+          "file": "test/domains/comet-classic/comet-scripts.test.ts",
+          "fullName": "comet scripts lets project language override the global Comet language"
+        },
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "fullName": "completes Classic full from an Agent-reviewed design without metadata rules through generated",
+          "execution": "Prior task evidence; not rerun in this wave"
+        }
+      ],
+      "original": {
+        "title": "excludes fenced code blocks from the language dominance check",
+        "code": "it('excludes fenced code blocks from the language dominance check', async () => {\n    await createChange(\n      tmpDir,\n      'zh-code-block-artifacts',\n      [\n        'workflow: full',\n        'language: zh-CN',\n        'phase: open',\n        'context_compression: off',\n        'build_mode: null',\n        'build_pause: null',\n        'subagent_dispatch: null',\n        'tdd_mode: null',\n        'review_mode: off',\n        'isolation: null',\n        'verify_mode: null',\n        'auto_transition: true',\n        'design_doc: null',\n        'plan: null',\n        'verify_result: pending',\n        'verified_at: null',\n        'archived: false',\n        '',\n      ].join('\\n'),\n      '- [ ] 实现 language guard 并验证 OpenSpec artifact\\n',\n    );\n    const bodyWithLargeCodeBlock = [\n      '本文档说明 language guard 的目标、范围、验收场景和验证方式，正文以中文为主。',\n      '',\n      '```bash',\n      'npx vitest run test/domains/comet-classic/comet-scripts.test.ts --reporter verbose --coverage --watch=false',\n      'export COMET_LANGUAGE=en COMET_CONTEXT_COMPRESSION=beta COMET_AUTO_TRANSITION=true',\n      'find . -name \"*.test.ts\" -not -path \"./node_modules/*\" -print0 | xargs -0 grep -l language',\n      '```',\n      '',\n    ].join('\\n');\n    await writeFile(\n      path.join(tmpDir, 'openspec', 'changes', 'zh-code-block-artifacts', 'proposal.md'),\n      bodyWithLargeCodeBlock,\n    );\n    await writeFile(\n      path.join(tmpDir, 'openspec', 'changes', 'zh-code-block-artifacts', 'design.md'),\n      bodyWithLargeCodeBlock,\n    );\n\n    const result = runNode(tmpDir, guardScript, ['zh-code-block-artifacts', 'open']);\n\n    expect(result.status).toBe(0);\n    expect(result.stderr).toContain('[PASS] proposal.md matches configured language');\n  })",
+        "line": 1671
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "fullName": "comet scripts accepts design doc frontmatter after a BOM and leading blank lines",
+      "protectedBy": [],
+      "reason": "Retired language dominance/frontmatter/copy-proof policy or static whole-source Unicode scanning. Preserve actual language configuration precedence, formal handoff ref/path existence, and current CLI behavior through replacement coverage.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "fullName": "continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof"
+        }
+      ],
+      "original": {
+        "title": "accepts design doc frontmatter after a BOM and leading blank lines",
+        "code": "it('accepts design doc frontmatter after a BOM and leading blank lines', async () => {\n    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');\n    await createChange(\n      tmpDir,\n      'frontmatter-prefix',\n      [\n        'workflow: full',\n        'phase: design',\n        'build_mode: null',\n        'build_pause: null',\n        'tdd_mode: null',\n        'isolation: null',\n        'verify_mode: null',\n        'design_doc: null',\n        'plan: null',\n        'verify_result: pending',\n        'verified_at: null',\n        'archived: false',\n        'auto_transition: true',\n        '',\n      ].join('\\n'),\n    );\n    runNode(tmpDir, handoffScript, ['frontmatter-prefix', 'design', '--write']);\n    await writeFile(\n      path.join(tmpDir, 'docs', 'superpowers', 'specs', 'frontmatter-prefix-design.md'),\n      [\n        '\\uFEFF',\n        '',\n        '---',\n        'comet_change: frontmatter-prefix',\n        'role: technical-design',\n        'canonical_spec: openspec',\n        '---',\n        '',\n      ].join('\\n'),\n    );\n    runNode(tmpDir, stateScript, [\n      'set',\n      'frontmatter-prefix',\n      'design_doc',\n      'docs/superpowers/specs/frontmatter-prefix-design.md',\n    ]);\n\n    const result = runNode(tmpDir, guardScript, ['frontmatter-prefix', 'design']);\n\n    expect(result.status).toBe(0);\n    expect(result.stderr).toContain('[PASS] Design Doc frontmatter links current change');\n    expect(result.stderr).toContain('[PASS] Design Doc declares OpenSpec as canonical spec');\n  })",
+        "line": 1946
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    },
+    {
+      "file": "test/domains/comet-classic/comet-scripts.test.ts",
+      "fullName": "comet scripts comet-hook-guard.mjs — phase write guard blocks source code writes in verify phase",
+      "protectedBy": [],
+      "reason": "Old per-byte neutral whitelist, implicit edit-review approval, or Verify write denial was retired. Current Guard preserves stage and delegates semantic impact to Agent; protected paths/selection/phase checks remain elsewhere.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+          "fullName": "continues the same Classic hotfix Verify and Archive through the generated Runtime without content proof"
+        }
+      ],
+      "original": {
+        "title": "blocks source code writes in verify phase",
+        "code": "it('blocks source code writes in verify phase', async () => {\n      await writeFile(\n        path.join(tmpDir, '.comet', 'config.yaml'),\n        canonicalProjectConfig(['document_evidence: strict']),\n      );\n      await createChange(\n        tmpDir,\n        'test-hook',\n        [\n          'workflow: full',\n          'phase: verify',\n          'context_compression: off',\n          'build_mode: executing-plans',\n          'build_pause: null',\n          'subagent_dispatch: null',\n          'tdd_mode: tdd',\n          'isolation: branch',\n          'verify_mode: light',\n          'base_ref: null',\n          'design_doc: docs/superpowers/specs/test.md',\n          'plan: docs/superpowers/plans/test.md',\n          'verify_result: pending',\n          'verification_report: null',\n          'branch_status: pending',\n          'created_at: 2026-06-06',\n          'verified_at: null',\n          'archived: false',\n          'handoff_context: null',\n          'handoff_hash: null',\n          '',\n        ].join('\\n'),\n      );\n\n      const srcDir = path.join(tmpDir, 'src');\n      await fs.mkdir(srcDir, { recursive: true });\n      const targetFile = path.join(srcDir, 'fix.ts');\n\n      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));\n\n      expect(result.status).toBe(2);\n      expect(result.stderr).toContain('Current phase: verify');\n      expect(result.stderr).toContain(\n        'comet state transition test-hook verify-fail, then retry the implementation edit in Build',\n      );\n    })",
+        "line": 5629
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    },
+    {
+      "file": "test/domains/comet-entry/resume-probe.test.ts",
+      "fullName": "Comet entry resume probe v2 does not auto-resume a Native change whose artifacts fail validation",
+      "protectedBy": [],
+      "reason": "Old brief-section template blocks automatic resume; ordinary free-form brief contents are now Agent-owned. Corrupt state/missing runtime/move-incomplete resume refusal cases remain.",
+      "replacement": [
+        {
+          "file": "test/domains/comet-entry/resume-probe.test.ts",
+          "fullName": "Comet entry resume probe v2 does not return a resume command for a corrupt Native target"
+        }
+      ],
+      "original": {
+        "title": "does not auto-resume a Native change whose artifacts fail validation",
+        "code": "it('does not auto-resume a Native change whose artifacts fail validation', async () => {\n    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));\n    await createNative(projectRoot, 'invalid-brief');\n    const paths = await nativeProjectPaths(projectRoot, '.');\n    await fs.writeFile(\n      path.join(nativeChangeDir(paths, 'invalid-brief'), 'brief.md'),\n      '# Scope\\nOnly a scope remains.\\n',\n      'utf8',\n    );\n\n    const probe = await resolveCometEntryResumeProbe(projectRoot, input('继续 invalid-brief'));\n\n    expect(probe).toMatchObject({\n      workflow: 'native',\n      action: 'ask_user',\n      reasonCode: 'native-change-invalid',\n      changeName: 'invalid-brief',\n      phase: 'shape',\n      nextCommand: null,\n    });\n    expect(probe.evidence).toContainEqual({\n      source: 'state',\n      quote: 'finding: brief-section-missing',\n    });\n  })",
+        "line": 1060
+      },
+      "action": "removed with explicit parent authorization; full original body retained here"
+    }
+  ]
+}

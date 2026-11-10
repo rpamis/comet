@@ -118,10 +118,14 @@ describe('legacy Supervisor diagnostic recovery', () => {
         '--project-root',
         root,
       ]);
-      expect(next.exitCode, next.stdout).toBe(0);
-      expect(JSON.parse(next.stdout!)).not.toHaveProperty('error');
-      if (problem === 'missing') expect(JSON.parse(next.stdout!).data.state.phase).toBe('shape');
-      else expect(next.stdout).toContain('restore children.yaml and retry next');
+      if (problem === 'missing') {
+        expect(next.exitCode, next.stdout).toBe(65);
+        expect(JSON.parse(next.stdout!).error.message).toContain('confirmed children contract');
+      } else {
+        expect(next.exitCode, next.stdout).toBe(0);
+        expect(JSON.parse(next.stdout!)).not.toHaveProperty('error');
+        expect(next.stdout).toContain('restore children.yaml and retry next');
+      }
       expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
       await fs.writeFile(
         childrenFile,

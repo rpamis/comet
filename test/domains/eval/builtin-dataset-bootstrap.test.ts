@@ -68,9 +68,8 @@ it('preserves dataset-bound Dockerfiles when preparing image inputs', () => {
   );
 });
 
-it('keeps Eval CLI tooling outside Native inputs while binding application generated files', async () => {
+it('keeps Eval CLI tooling snapshots separate from dataset home caches', async () => {
   await ensureCliBuilt(path.resolve('.'));
-  scaffold('test_conftest_helpers.py', 'cli_snapshot_stays_out_of_native_inputs', 1);
   scaffold('test_builtin_datasets.py', 'current_cli_dependency_snapshot', 2);
   scaffold('test_builtin_datasets.py', 'dataset_root_home_cache', 2);
 }, 35_000);

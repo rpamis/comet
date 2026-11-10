@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
@@ -180,7 +181,19 @@ export async function repairNativeProjectLock(
     throw new Error(
       'Native lock changed; inspect doctor and confirm the interrupted operation before recovery',
     );
-  const result = await repairRecoverableFileLock(current.file, token, { confirmedOwnerStopped });
+  let preserveAs: string | undefined;
+  if (current.status === 'malformed') {
+    const directory = await resolveContainedNativePath(
+      paths.runtimeDir,
+      path.join(paths.locksDir, '.coordinator'),
+    );
+    await fs.mkdir(directory, { recursive: true });
+    preserveAs = path.join(directory, randomUUID() + '.repaired');
+  }
+  const result = await repairRecoverableFileLock(current.file, token, {
+    confirmedOwnerStopped,
+    preserveAs,
+  });
   if (result !== 'removed' && result !== 'missing')
     throw new Error('Native lock is still held or changed; preserve the current operation');
 }
@@ -289,7 +302,7 @@ export function nativeLockOwnerAgeMs(owner: NativeLockOwner | null, now = Date.n
   return owner ? Math.max(0, now - Date.parse(owner.createdAt)) : 0;
 }
 export interface NativeLockTakeoverOptions {
-  allowAgedUnknown?: boolean;
+  confirmedOwnerStopped?: boolean;
 }
 export async function takeOverNativeStaleLock(
   paths: NativeProjectPaths,
@@ -302,13 +315,13 @@ export async function takeOverNativeStaleLock(
     throw new Error('Native lock recovery target is outside the lock directory');
   const current = await diagnoseNativeLock(contained);
   if (current.status === 'missing') return { status: 'missing' };
-  if (current.status === 'unknown' && !options.allowAgedUnknown)
+  if (current.status === 'unknown' && !options.confirmedOwnerStopped)
     return { status: 'changed', diagnosis: current };
   if (current.status === 'active' || (expected && expected.owner?.id !== current.owner?.id))
     return { status: 'changed', diagnosis: current };
   const record = await diagnoseRecoverableFileLock(contained);
   const result = await repairRecoverableFileLock(contained, record.token!, {
-    confirmedOwnerStopped: true,
+    confirmedOwnerStopped: options.confirmedOwnerStopped ?? current.status === 'stale',
   });
   return result === 'missing'
     ? { status: 'missing' }

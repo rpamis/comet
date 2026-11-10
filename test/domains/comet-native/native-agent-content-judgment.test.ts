@@ -201,7 +201,14 @@ it.each(
   expect(decision).toMatchObject({ allowed: true, phase: 'verify' });
   await fs.writeFile(path.join(root, 'worker.py'), after);
   await cli('next', 'demo');
-  expect((await inspect()).state.phase).toBe('verify');
+  const afterEdit = await inspect();
+  expect(afterEdit.state.phase).toBe('verify');
+  if (generated && !alias) {
+    expect(afterEdit.run.actions).toEqual(before.run.actions);
+    expect(afterEdit.state.builder_handoff?.candidate_id).toBe(
+      before.state.builder_handoff?.candidate_id,
+    );
+  }
   await expect(
     nativeSdkCurrentCheckSummaries({ run: (await inspect()).run, projectRoot: root }),
   ).resolves.toHaveLength(1);

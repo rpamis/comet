@@ -55,7 +55,8 @@ describe('Native phase guards', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
-  it('blocks incomplete Shape without mutating state', async () => {
+  it('blocks an empty Shape brief without mutating state', async () => {
+    await fs.writeFile(path.join(changeDir, 'brief.md'), '');
     const result = await inspectNativeGuard({
       paths,
       state,
@@ -64,7 +65,7 @@ describe('Native phase guards', () => {
     });
     expect(result.valid).toBe(false);
     expect(result.findings).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: 'brief-section-empty' })]),
+      expect.arrayContaining([expect.objectContaining({ code: 'brief-empty' })]),
     );
     expect(result.findings).not.toContainEqual(
       expect.objectContaining({ code: 'shape-confirmation-required' }),

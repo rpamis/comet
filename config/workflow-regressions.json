@@ -1117,7 +1117,38 @@
             "The same frozen product completed both original-task workflows: comet-eval-9c5f74e3-4133-448a-99d2-82e0fa6cf1bd and comet-eval-71a200a2-0576-4aed-9b4a-28cac3da03a5. Each original reward was 10/14, mode proof matched, and no reference access or input/assembly mismatch was recorded. This verifies the harness boundary, not full task correctness."
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "退休Native原始输入快照和contentHash绑定；Eval CLI的只读安装、缓存与业务字节搬迁、原工作目录和业务存储仍由四个真实Python断言覆盖。保留原报告及历史容器证据，不将旧Native内容证明当作当前能力。",
+        "authorization": "report:2026-11-10-runtime-remaining-failures",
+        "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+            "namePattern": "^keeps Eval CLI tooling snapshots separate from dataset home caches$",
+            "requiredNames": ["keeps Eval CLI tooling snapshots separate from dataset home caches"]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/registry.json",
+            "sha256": "e6d702047aec141307700160678ed08b49244c8bc35c2f5f128018648206ed06"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/tests.json",
+            "sha256": "a3efabe9ea2def260224301a176b44f5948a4d9f9910c1a7ea2be0fc49ee087d"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/mapping.json",
+            "sha256": "3a5e285a24256e181f3bda43825826fb6010cbf77491f723bbdf081910793df2"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/patch.patch",
+            "sha256": "238e8ab4e60fa6cadae98a3e3a041574eb70bc5a10f01de7d578625d87ececcf"
+          }
+        }
+      }
     },
     {
       "id": "eval-dataset-bound-environment-preservation",
@@ -1173,7 +1204,38 @@
             "The same frozen product completed both original-task workflows: comet-eval-9c5f74e3-4133-448a-99d2-82e0fa6cf1bd and comet-eval-71a200a2-0576-4aed-9b4a-28cac3da03a5. Each original reward was 10/14, mode proof matched, and no reference access or input/assembly mismatch was recorded. This verifies the harness boundary, not full task correctness."
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "退休Native原始输入快照和contentHash绑定；Eval CLI的只读安装、缓存与业务字节搬迁、原工作目录和业务存储仍由四个真实Python断言覆盖。保留原报告及历史容器证据，不将旧Native内容证明当作当前能力。",
+        "authorization": "report:2026-11-10-runtime-remaining-failures",
+        "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+            "namePattern": "^keeps Eval CLI tooling snapshots separate from dataset home caches$",
+            "requiredNames": ["keeps Eval CLI tooling snapshots separate from dataset home caches"]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/registry.json",
+            "sha256": "e6d702047aec141307700160678ed08b49244c8bc35c2f5f128018648206ed06"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/tests.json",
+            "sha256": "a3efabe9ea2def260224301a176b44f5948a4d9f9910c1a7ea2be0fc49ee087d"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/mapping.json",
+            "sha256": "3a5e285a24256e181f3bda43825826fb6010cbf77491f723bbdf081910793df2"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/patch.patch",
+            "sha256": "238e8ab4e60fa6cadae98a3e3a041574eb70bc5a10f01de7d578625d87ececcf"
+          }
+        }
+      }
     },
     {
       "id": "eval-dataset-input-quality-exclusion",
@@ -2885,7 +2947,41 @@
             "Native protocol simplification reconciles legacy EPERM only with explicit stop evidence and Windows enumeration unknown"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "退休Windows PID枚举判定，两个旧present/unknown参数已是同一持锁路径。保留legacy元数据、原claim、明确停止证明、持锁拒绝、释放后沿原Action修复和候选不变；只删除一次重复执行。",
+        "authorization": "report:2026-11-10-runtime-remaining-failures",
+        "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "reconciles legacy interruptions using explicit stop evidence and the original execution lease",
+            "requiredNames": [
+              "Native protocol simplification reconciles legacy interruptions using explicit stop evidence and the original execution lease (lease=released)",
+              "Native protocol simplification reconciles legacy interruptions using explicit stop evidence and the original execution lease (lease=held)"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/registry.json",
+            "sha256": "e6d702047aec141307700160678ed08b49244c8bc35c2f5f128018648206ed06"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/tests.json",
+            "sha256": "a3efabe9ea2def260224301a176b44f5948a4d9f9910c1a7ea2be0fc49ee087d"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/mapping.json",
+            "sha256": "3a5e285a24256e181f3bda43825826fb6010cbf77491f723bbdf081910793df2"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/patch.patch",
+            "sha256": "238e8ab4e60fa6cadae98a3e3a041574eb70bc5a10f01de7d578625d87ececcf"
+          }
+        }
+      }
     },
     {
       "id": "native-531-builder-batch-validation",
@@ -12628,7 +12724,41 @@
             "reports a non-file verification path without offering Archive or changing the Run"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "已完成Run的阅读视图不再决定Archive推进；只读诊断报告路径类型警告且保留目录原文、原批准和归档收据。执行期必需报告失败仍按旧协议拒绝。",
+        "authorization": "report:2026-11-10-runtime-remaining-failures",
+        "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "preserves the completed Run and warns when its archived report view is not a file",
+            "requiredNames": [
+              "preserves the completed Run and warns when its archived report view is not a file (version=1)",
+              "preserves the completed Run and warns when its archived report view is not a file (version=3)"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/registry.json",
+            "sha256": "e6d702047aec141307700160678ed08b49244c8bc35c2f5f128018648206ed06"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/tests.json",
+            "sha256": "a3efabe9ea2def260224301a176b44f5948a4d9f9910c1a7ea2be0fc49ee087d"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/mapping.json",
+            "sha256": "3a5e285a24256e181f3bda43825826fb6010cbf77491f723bbdf081910793df2"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/patch.patch",
+            "sha256": "238e8ab4e60fa6cadae98a3e3a041574eb70bc5a10f01de7d578625d87ececcf"
+          }
+        }
+      }
     },
     {
       "id": "manual-recovery-native-archive-formal-comment",
@@ -13639,7 +13769,41 @@
             "upgrades a legacy failed Archive drift into the original Verify repair Wait"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户要求清理不必要测试；保留原登记与完整旧测试，撤下内容字节自动失效、补充证明和PID推断策略。替代覆盖保留原Run/Action/批准、真实失败、一次性检查不重放、未知执行不重试及实际事务恢复。",
+        "authorization": "report:2026-11-10-runtime-remaining-failures",
+        "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "continues an authorized implementation edit without requesting the same decision again|recovers a returned but rejected archive\\.execute through the public Archive command",
+            "requiredNames": [
+              "continues an authorized implementation edit without requesting the same decision again",
+              "recovers a returned but rejected archive.execute through the public Archive command"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/registry.json",
+            "sha256": "e6d702047aec141307700160678ed08b49244c8bc35c2f5f128018648206ed06"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/tests.json",
+            "sha256": "a3efabe9ea2def260224301a176b44f5948a4d9f9910c1a7ea2be0fc49ee087d"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/mapping.json",
+            "sha256": "3a5e285a24256e181f3bda43825826fb6010cbf77491f723bbdf081910793df2"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/patch.patch",
+            "sha256": "238e8ab4e60fa6cadae98a3e3a041574eb70bc5a10f01de7d578625d87ececcf"
+          }
+        }
+      }
     },
     {
       "id": "native-cancellation-pending-cleanup-diagnostic",
@@ -15312,7 +15476,40 @@
             "052 current candidate: real model acceptance has not run. Deterministic Runtime evidence does not replace it."
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户要求清理不必要测试；保留原登记与完整旧测试，撤下内容字节自动失效、补充证明和PID推断策略。替代覆盖保留原Run/Action/批准、真实失败、一次性检查不重放、未知执行不重试及实际事务恢复。",
+        "authorization": "report:2026-11-10-runtime-remaining-failures",
+        "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-portable-archive.test.ts",
+            "namePattern": "Native portable Archive continues Compat after batched unknown-language edits and retains only the Agent-selected real check",
+            "requiredNames": [
+              "Native portable Archive continues Compat after batched unknown-language edits and retains only the Agent-selected real check"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/registry.json",
+            "sha256": "e6d702047aec141307700160678ed08b49244c8bc35c2f5f128018648206ed06"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/tests.json",
+            "sha256": "a3efabe9ea2def260224301a176b44f5948a4d9f9910c1a7ea2be0fc49ee087d"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/mapping.json",
+            "sha256": "3a5e285a24256e181f3bda43825826fb6010cbf77491f723bbdf081910793df2"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/patch.patch",
+            "sha256": "238e8ab4e60fa6cadae98a3e3a041574eb70bc5a10f01de7d578625d87ececcf"
+          }
+        }
+      }
     },
     {
       "id": "native-sdk-approved-selective-check-refresh",
@@ -15831,7 +16028,47 @@
             "052 current candidate: real model acceptance has not run. Deterministic Runtime evidence does not replace it."
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户要求清理不必要测试；保留原登记与完整旧测试，撤下内容字节自动失效、补充证明和PID推断策略。替代覆盖保留原Run/Action/批准、真实失败、一次性检查不重放、未知执行不重试及实际事务恢复。",
+        "authorization": "report:2026-11-10-runtime-remaining-failures",
+        "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-classic/classic-agent-content-judgment.test.ts",
+            "namePattern": "blocks Classic Archive when a new real check fails after an accepted pass",
+            "requiredNames": [
+              "blocks Classic Archive when a new real check fails after an accepted pass"
+            ]
+          },
+          {
+            "file": "test/domains/comet-classic/classic-executed-checks.test.ts",
+            "namePattern": "reuses local evidence but rejects an explicitly rerun failing check and direct transition",
+            "requiredNames": [
+              "Classic executed check evidence reuses local evidence but rejects an explicitly rerun failing check and direct transition"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/registry.json",
+            "sha256": "e6d702047aec141307700160678ed08b49244c8bc35c2f5f128018648206ed06"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/tests.json",
+            "sha256": "a3efabe9ea2def260224301a176b44f5948a4d9f9910c1a7ea2be0fc49ee087d"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/mapping.json",
+            "sha256": "3a5e285a24256e181f3bda43825826fb6010cbf77491f723bbdf081910793df2"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/patch.patch",
+            "sha256": "238e8ab4e60fa6cadae98a3e3a041574eb70bc5a10f01de7d578625d87ececcf"
+          }
+        }
+      }
     },
     {
       "id": "platform-same-inode-content-read-race",
@@ -16965,7 +17202,40 @@
             "Native portable Archive preserves the original Archive transaction when an applied Spec is edited before resume"
           ]
         }
-      ]
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户要求清理不必要测试；保留原登记与完整旧测试，撤下内容字节自动失效、补充证明和PID推断策略。替代覆盖保留原Run/Action/批准、真实失败、一次性检查不重放、未知执行不重试及实际事务恢复。",
+        "authorization": "report:2026-11-10-runtime-remaining-failures",
+        "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-portable-archive.test.ts",
+            "namePattern": "Native portable Archive preserves the original Archive transaction when an applied Spec is edited before resume",
+            "requiredNames": [
+              "Native portable Archive preserves the original Archive transaction when an applied Spec is edited before resume"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/registry.json",
+            "sha256": "e6d702047aec141307700160678ed08b49244c8bc35c2f5f128018648206ed06"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/tests.json",
+            "sha256": "a3efabe9ea2def260224301a176b44f5948a4d9f9910c1a7ea2be0fc49ee087d"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/mapping.json",
+            "sha256": "3a5e285a24256e181f3bda43825826fb6010cbf77491f723bbdf081910793df2"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/patch.patch",
+            "sha256": "238e8ab4e60fa6cadae98a3e3a041574eb70bc5a10f01de7d578625d87ececcf"
+          }
+        }
+      }
     },
     {
       "id": "workflow-formal-review-source-retirement",
@@ -20642,6 +20912,47 @@
           "tests": {
             "file": "docs/research/2026-11-09-runtime-pid-retirement/tests.json",
             "sha256": "6f6f8ef360c9ed4feb44be79e2eaf98ec04fe068887e53e3df92b19d0837d63b"
+          }
+        },
+        "supersededBy": {
+          "kind": "feature-removed",
+          "reason": "用户要求清理不必要测试；保留原登记与完整旧测试，撤下内容字节自动失效、补充证明和PID推断策略。替代覆盖保留原Run/Action/批准、真实失败、一次性检查不重放、未知执行不重试及实际事务恢复。",
+          "authorization": "report:2026-11-10-runtime-remaining-failures",
+          "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+          "tests": [
+            {
+              "file": "test/domains/comet-native/native-check-owner-recovery.test.ts",
+              "namePattern": "Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown",
+              "requiredNames": [
+                "Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown"
+              ]
+            },
+            {
+              "file": "test/domains/comet-native/native-sdk-application.test.ts",
+              "namePattern": "reuses a completed non-repeatable Runtime check requested by the Verifier|preserves completed one-shot checks while revising edited Archive-ready code",
+              "requiredNames": [
+                "Native SDK Workflow Application reuses a completed non-repeatable Runtime check requested by the Verifier",
+                "preserves completed one-shot checks while revising edited Archive-ready code"
+              ]
+            }
+          ],
+          "evidence": {
+            "registry": {
+              "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/registry.json",
+              "sha256": "e6d702047aec141307700160678ed08b49244c8bc35c2f5f128018648206ed06"
+            },
+            "tests": {
+              "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/tests.json",
+              "sha256": "a3efabe9ea2def260224301a176b44f5948a4d9f9910c1a7ea2be0fc49ee087d"
+            },
+            "mapping": {
+              "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/mapping.json",
+              "sha256": "3a5e285a24256e181f3bda43825826fb6010cbf77491f723bbdf081910793df2"
+            },
+            "patch": {
+              "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/patch.patch",
+              "sha256": "238e8ab4e60fa6cadae98a3e3a041574eb70bc5a10f01de7d578625d87ececcf"
+            }
           }
         }
       }
@@ -33088,6 +33399,231 @@
           "namePattern": "^(?:bounds repeated ancestor checks without reusing source content across queries|rejects an ancestor replaced by an in-project link after the index snapshot)$"
         }
       ]
+    },
+    {
+      "id": "native-root-move-released-sqlite-sidecars",
+      "behavior": "Native 正常 SQLite 协调文件不阻塞 root move，真实操作锁仍阻塞。",
+      "sources": ["report:2026-11-10-runtime-remaining-failures"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在隔离项目公开 init 后直接 root move；旧 bundle 返回73，doctor却健康。",
+      "expected": "公开迁移成功，SQLite文件保留，中断恢复沿原事务继续。",
+      "forbidden": "把正常SQLite数据库当未知锁；忽略真实未释放的.lock元数据。",
+      "rootCause": "root move枚举锁目录时未区分持久数据库与持有者元数据。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-root-move.test.ts",
+          "namePattern": "moves an initialized root through the generated Runtime while SQLite coordination files persist|moves \\. to docs with file-by-file hash equivalence|moves docs to artifacts/native with file-by-file hash equivalence|serializes root moves with archive operations through the global lock|refuses to copy any unresolved operation lock into the destination root",
+          "requiredNames": [
+            "Native artifact root moves moves an initialized root through the generated Runtime while SQLite coordination files persist",
+            "Native artifact root moves moves . to docs with file-by-file hash equivalence",
+            "Native artifact root moves moves docs to artifacts/native with file-by-file hash equivalence",
+            "Native artifact root moves serializes root moves with archive operations through the global lock",
+            "Native artifact root moves refuses to copy any unresolved operation lock into the destination root"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-optional-archive-view-render-failure",
+      "behavior": "可选报告视图渲染失败后，v3/v4仍保存已接受Run与原归档收据。",
+      "sources": ["report:2026-11-10-runtime-remaining-failures"],
+      "coverageLevel": "public-cli",
+      "reproduction": "验收成功后删除verification.md，模拟报告renderer抛错，执行原Archive。",
+      "expected": "沿原事务完成，保留原批准与收据。",
+      "forbidden": "可选view错误阻塞已完成验收，重放检查或覆盖已有用户报告。",
+      "rootCause": "finalize未使用已有optionalView协议，派生视图错误直接中断。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "completes v3 Archive with a missing report when view rendering fails and preserves its receipt|completes v3 Archive with a edited report when view rendering fails and preserves its receipt",
+          "requiredNames": [
+            "completes v3 Archive with a missing report when view rendering fails and preserves its receipt",
+            "completes v3 Archive with a edited report when view rendering fails and preserves its receipt"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-optional-archived-view-path-warning",
+      "behavior": "已完成归档的阅读视图被目录占用时，所有协议只读返回报告未就绪提示且不跟随或覆盖目录。",
+      "sources": ["report:2026-11-10-runtime-remaining-failures"],
+      "coverageLevel": "public-cli",
+      "reproduction": "公开Archive前把verification.md替换为带用户文件的目录。",
+      "expected": "原Run、批准与归档receipt完成，目录原文保留，返回warning。",
+      "forbidden": "完成归档后以阅读view类型错误伪报CLI失败；读写该目录外部内容。",
+      "rootCause": "完成Run后的阅读视图诊断将路径类型错误重新抛出，导致已提交归档伪报失败。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "preserves the completed Run and warns when its archived report view is not a file",
+          "requiredNames": [
+            "preserves the completed Run and warns when its archived report view is not a file (version=1)",
+            "preserves the completed Run and warns when its archived report view is not a file (version=3)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-reused-store-portable-runtime-recovery",
+      "behavior": "Classic同一个store在本机Runtime目录丢失后可从便携状态恢复。",
+      "sources": ["report:2026-11-10-runtime-remaining-failures"],
+      "coverageLevel": "runtime",
+      "reproduction": "原store完成读写后删除本机Runtime目录，分别从active/archived状态再次读取。",
+      "expected": "保留原Run状态、语言、归档身份以及现代/legacy状态文件名。",
+      "forbidden": "因目录准备缓存而ENOENT；新建不同Run或写出第二种状态文件。",
+      "rootCause": "runtimePrepared缓存未在本机目录丢失后的投影建立边界恢复。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-state-filename.test.ts",
+          "namePattern": "reads, writes and restores SDK comet-state\\.yaml in place, including after Archive|reads, writes and restores SDK \\.comet\\.yaml in place, including after Archive",
+          "requiredNames": [
+            "Classic state filename compatibility reads, writes and restores SDK comet-state.yaml in place, including after Archive",
+            "Classic state filename compatibility reads, writes and restores SDK .comet.yaml in place, including after Archive"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-doctor-no-implicit-unknown-owner-confirmation",
+      "behavior": "普通Doctor修复不能推断未知锁原执行已停止。",
+      "sources": ["report:2026-11-10-runtime-remaining-failures"],
+      "coverageLevel": "runtime",
+      "reproduction": "写入无活跃SQLite lease的legacy未知锁，执行ordinary doctor --repair，再按精确token明确确认。",
+      "expected": "ordinary修复保留原文，未确认拒绝；精确停止确认后恢复；活跃lease始终拒绝。",
+      "forbidden": "将普通repair或文件年龄作为停止确认，自动删除未知锁。",
+      "rootCause": "兼容takeover入口把allowAgedUnknown转换成confirmedOwnerStopped=true。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-doctor.test.ts",
+          "namePattern": "preserves active and unknown locks until the exact stopped owner is confirmed",
+          "requiredNames": [
+            "Native doctor preserves active and unknown locks until the exact stopped owner is confirmed"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-malformed-lock-preserves-repair-evidence",
+      "behavior": "精确确认损坏锁后隔离保存原字节，旧token不能删替换者。",
+      "sources": ["report:2026-11-10-runtime-remaining-failures"],
+      "coverageLevel": "public-cli",
+      "reproduction": "诊断损坏元数据后替换字节；先执行旧命令，再执行新token恢复。",
+      "expected": "旧token拒绝，当前损坏记录保存为.repaired且锁解除。",
+      "forbidden": "丢失损坏现场、删除活跃锁或旧token删新记录。",
+      "rootCause": "SQLite修复沿用了直接unlink，丢失原Native隔离保存契约。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-command-recovery.test.ts",
+          "namePattern": "rejects a replaced lock token and preserves malformed lock bytes when explicit recovery quarantines them|preserves a live project lock even when its exact token is submitted with stopped-owner confirmation",
+          "requiredNames": [
+            "rejects a replaced lock token and preserves malformed lock bytes when explicit recovery quarantines them",
+            "preserves a live project lock even when its exact token is submitted with stopped-owner confirmation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-prepared-delta-preserves-independent-canonical-edit",
+      "behavior": "待执行Delta恢复时保留正式Spec中的独立新增条目。",
+      "sources": ["report:2026-11-10-runtime-remaining-failures"],
+      "coverageLevel": "runtime",
+      "reproduction": "准备cursor=0的modify事务后，为正式Spec新增Profile，再恢复Archive；旧源码丢失Profile。",
+      "expected": "原事务ID完成，Password修改与Profile同时保留，重复公开恢复不改正文。",
+      "forbidden": "用冻结整篇正文覆盖当前Spec或重放已完成副作用。",
+      "rootCause": "applySpecChange写冻结合并文本，没有把原Delta应用到当前正式Spec。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-delta.test.ts",
+          "namePattern": "resumes a prepared Delta transaction without overwriting an independent canonical addition",
+          "requiredNames": [
+            "Native portable delta integration resumes a prepared Delta transaction without overwriting an independent canonical addition"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hook-resource-only-events-preserve-native-state",
+      "behavior": "资源地址事件在Verify/Archive放行，混合真实文件写入仍受阶段约束。",
+      "sources": ["report:2026-11-10-runtime-remaining-failures"],
+      "coverageLevel": "public-cli",
+      "reproduction": "通过生成Hook Router提交agent:/与proc:/资源事件，再提交包含真实src路径的混合请求。",
+      "expected": "资源only不改变状态；混合写入被拒且已接受结果保持。",
+      "forbidden": "将资源地址当未知文件写阻塞；忽略混合真实文件或隐式撤回批准。",
+      "rootCause": "归一化丢弃资源地址后没有保留原事件明确只有资源目标的事实。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-issue-runtime.test.ts",
+          "namePattern": "preserves completed acceptance in verify for resource targets but invalidates real mixed writes|preserves completed acceptance in archive for resource targets but invalidates real mixed writes",
+          "requiredNames": [
+            "packaged Runtime issue regressions preserves completed acceptance in verify for resource targets but invalidates real mixed writes",
+            "packaged Runtime issue regressions preserves completed acceptance in archive for resource targets but invalidates real mixed writes"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-archive-manifest-link-refusal",
+      "behavior": "Classic交付不能把被替换成符号链接的归档清单提交并结案。",
+      "sources": ["report:2026-11-10-runtime-remaining-failures"],
+      "coverageLevel": "public-cli",
+      "reproduction": "将实际archive-manifest.json换为指向外部原文副本的文件链接，再执行complete-delivery。",
+      "expected": "拒绝交付，原Run保持pending，不跟随链接。",
+      "forbidden": "仅相信本机receipt里的路径，提交真实归档中的链接并结案。",
+      "rootCause": "移除内容证明时遗漏真实sidecar的受保护文件路径检查。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-delivery-scope.test.ts",
+          "namePattern": "rejects a replaced archive manifest symlink and keeps the same Run pending",
+          "requiredNames": [
+            "rejects a replaced archive manifest symlink and keeps the same Run pending"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-missing-trajectory-runtime-diagnostics",
+      "behavior": "本机legacy日志目录丢失时仍报告原change迁移指引；存在的中间坏JSON不被当作无日志。",
+      "sources": ["report:2026-11-10-runtime-remaining-failures"],
+      "coverageLevel": "runtime",
+      "reproduction": "创建legacy change后移除整个本机change Runtime目录，读取只读status；旧源码在读取trajectory父链时抛ENOENT。",
+      "expected": "原change仍可发现且返回迁移指引；已有损坏历史仍拒绝自动截断。",
+      "forbidden": "目录缺失让全项目诊断抛错，或吞掉存在日志中的损坏内容。",
+      "rootCause": "轨迹读取只处理文件缺失，没有处理已丢失的Runtime父目录。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-diagnostics.test.ts",
+          "namePattern": "keeps a change discoverable when its whole local Runtime is missing",
+          "requiredNames": [
+            "Native status diagnostics keeps a change discoverable when its whole local Runtime is missing"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-transition-recovery.test.ts",
+          "namePattern": "never truncates a malformed middle trajectory line",
+          "requiredNames": [
+            "Native transition recovery never truncates a malformed middle trajectory line"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-delivery-continuation-command-args",
+      "sources": ["report:2026-11-10-runtime-remaining-failures"],
+      "coverageLevel": "runtime",
+      "behavior": "Classic交付复核展示可执行的原continuation命令和Action。",
+      "reproduction": "原批准上下文较大时读取delivery.check的next响应。",
+      "expected": "提示读取commandArgs并执行state next --continue，保留原Action、Run和批准上下文。",
+      "forbidden": "指向不存在的data.continuation.request，或创建另一Run重做已批准交付。",
+      "rootCause": "delivery-check提示仍指向已退出响应结构的request字段。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-sdk-output.test.ts",
+          "namePattern": "shows the original delivery recheck request before large approval context",
+          "requiredNames": [
+            "Classic next-step source projection shows the original delivery recheck request before large approval context"
+          ]
+        }
+      ]
     }
   ],
   "historicalTestMigrations": [
@@ -35245,6 +35781,50 @@
             "file": "docs/research/2026-11-09-runtime-core-review/final-retirements/tests.patch",
             "sha256": "5ecd9aec68776ccd9856eab444931ecb42ea31493028f7dbf3447a9df06ee748"
           }
+        },
+        "supersededBy": {
+          "kind": "feature-removed",
+          "reason": "用户要求清理不必要测试；保留原登记与完整旧测试，撤下内容字节自动失效、补充证明和PID推断策略。替代覆盖保留原Run/Action/批准、真实失败、一次性检查不重放、未知执行不重试及实际事务恢复。",
+          "authorization": "report:2026-11-10-runtime-remaining-failures",
+          "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+          "tests": [
+            {
+              "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+              "namePattern": "continues Native Verify and Archive through the generated Runtime without content proof|blocks Native Archive when a new real check fails after an accepted pass|keeps a real failed Native check failed after file edits without replay",
+              "requiredNames": [
+                "continues Native Verify and Archive through the generated Runtime without content proof",
+                "blocks Native Archive when a new real check fails after an accepted pass",
+                "keeps a real failed Native check failed after file edits without replay"
+              ]
+            },
+            {
+              "file": "test/domains/comet-native/native-sdk-application.test.ts",
+              "namePattern": "recovers a returned but rejected archive\\.execute through the public Archive command|Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure|Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation",
+              "requiredNames": [
+                "recovers a returned but rejected archive.execute through the public Archive command",
+                "Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure",
+                "Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation"
+              ]
+            }
+          ],
+          "evidence": {
+            "registry": {
+              "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/registry.json",
+              "sha256": "e6d702047aec141307700160678ed08b49244c8bc35c2f5f128018648206ed06"
+            },
+            "tests": {
+              "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/tests.json",
+              "sha256": "a3efabe9ea2def260224301a176b44f5948a4d9f9910c1a7ea2be0fc49ee087d"
+            },
+            "mapping": {
+              "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/mapping.json",
+              "sha256": "3a5e285a24256e181f3bda43825826fb6010cbf77491f723bbdf081910793df2"
+            },
+            "patch": {
+              "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/patch.patch",
+              "sha256": "238e8ab4e60fa6cadae98a3e3a041574eb70bc5a10f01de7d578625d87ececcf"
+            }
+          }
         }
       }
     },
@@ -35540,6 +36120,86 @@
           "patch": {
             "file": "docs/research/2026-11-09-runtime-core-review/selector-migrations/tests.patch",
             "sha256": "cab72c8bc125b96b0c9125d9f41c008428fb13cd5fc2c56212aca2d77f8f6f04"
+          }
+        }
+      }
+    },
+    {
+      "id": "issue-389-child-evidence-retry",
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "用户要求清理不必要测试；保留原登记与完整旧测试，撤下内容字节自动失效、补充证明和PID推断策略。替代覆盖保留原Run/Action/批准、真实失败、一次性检查不重放、未知执行不重试及实际事务恢复。",
+        "authorization": "report:2026-11-10-runtime-remaining-failures",
+        "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+            "namePattern": "preserves a real custom application failure and receipts, advances its sibling, and retries only its review|keeps an unknown verifier bound to its original task and creates no retry Wait",
+            "requiredNames": [
+              "preserves a real custom application failure and receipts, advances its sibling, and retries only its review",
+              "keeps an unknown verifier bound to its original task and creates no retry Wait"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/registry.json",
+            "sha256": "e6d702047aec141307700160678ed08b49244c8bc35c2f5f128018648206ed06"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/tests.json",
+            "sha256": "a3efabe9ea2def260224301a176b44f5948a4d9f9910c1a7ea2be0fc49ee087d"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/mapping.json",
+            "sha256": "3a5e285a24256e181f3bda43825826fb6010cbf77491f723bbdf081910793df2"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/patch.patch",
+            "sha256": "238e8ab4e60fa6cadae98a3e3a041574eb70bc5a10f01de7d578625d87ececcf"
+          }
+        }
+      }
+    },
+    {
+      "id": "issue-290-manual-review",
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "退休observe/record包装；已有generated编辑续行补充Action与candidate恒等断言，并复用Builder会话不能领取正式Verifier、独立会话可领取的公开反例。保留原Run、候选、批准和独立验收身份。",
+        "authorization": "report:2026-11-10-runtime-remaining-failures",
+        "record": "docs/research/2026-11-10-runtime-followup.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+            "namePattern": "continues Native Verify and Archive through the generated Runtime without content proof",
+            "requiredNames": [
+              "continues Native Verify and Archive through the generated Runtime without content proof"
+            ]
+          },
+          {
+            "file": "test/app/native-runtime-dispatch.test.ts",
+            "namePattern": "rejects a Builder identity before claiming a Verifier and accepts an independent retry",
+            "requiredNames": [
+              "rejects a Builder identity before claiming a Verifier and accepts an independent retry"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/registry.json",
+            "sha256": "e6d702047aec141307700160678ed08b49244c8bc35c2f5f128018648206ed06"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/tests.json",
+            "sha256": "a3efabe9ea2def260224301a176b44f5948a4d9f9910c1a7ea2be0fc49ee087d"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/mapping.json",
+            "sha256": "3a5e285a24256e181f3bda43825826fb6010cbf77491f723bbdf081910793df2"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-10-runtime-followup/registered-migrations/patch.patch",
+            "sha256": "238e8ab4e60fa6cadae98a3e3a041574eb70bc5a10f01de7d578625d87ececcf"
           }
         }
       }

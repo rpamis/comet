@@ -65,23 +65,6 @@ describe('Native artifact language', () => {
     expect(enTemplate.slice(scopeStart, nextHeading)).toContain('## Directory structure\n');
   });
 
-  it.each(['en', 'zh-CN'] as const)(
-    'does not treat the %s template guidance as completed directory structure',
-    async (language) => {
-      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-blank-template-'));
-      roots.push(root);
-      await fs.writeFile(path.join(root, 'brief.md'), nativeBriefTemplate(language));
-      await expect(
-        validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),
-      ).resolves.toMatchObject({
-        valid: false,
-        findings: expect.arrayContaining([
-          expect.objectContaining({ code: 'brief-structure-subsection-missing' }),
-        ]),
-      });
-    },
-  );
-
   it('matches bilingual directory structure headings', () => {
     expect(isNativeBriefStructureHeading('目录结构')).toBe(true);
     expect(isNativeBriefStructureHeading('Directory structure')).toBe(true);

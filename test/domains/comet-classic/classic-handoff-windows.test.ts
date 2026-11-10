@@ -8,24 +8,10 @@ import {
 const memory = vi.hoisted(() => ({
   files: new Map<string, string>(),
   specs: [] as string[],
-  originals: [] as string[],
 }));
 vi.mock('../../../domains/comet-classic/classic-store.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../domains/comet-classic/classic-store.js')>()),
   readClassicState: async () => ({ classic: { workflow: 'full', phase: 'design' } }),
-}));
-vi.mock('../../../domains/comet-classic/classic-edit-review.js', async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import('../../../domains/comet-classic/classic-edit-review.js')
-  >()),
-  classicFormalEditReviewScope: async () => ({ workflow: 'classic', change: 'demo' }),
-}));
-vi.mock('../../../domains/workflow-contract/edit-review.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../../domains/workflow-contract/edit-review.js')>()),
-  readApprovedEditOriginalForEvidence: async () => null,
-  rememberApprovedEditOriginal: async (_scope: unknown, file: string) => {
-    memory.originals.push(file);
-  },
 }));
 vi.mock('path', async () => {
   const { win32 } = await vi.importActual<typeof import('node:path')>('node:path');
@@ -65,7 +51,6 @@ vi.mock(
 beforeEach(() => {
   memory.files.clear();
   memory.specs = [];
-  memory.originals = [];
 });
 
 describe('Classic beta handoff Windows paths', () => {
@@ -95,6 +80,5 @@ describe('Classic beta handoff Windows paths', () => {
     expect(markdown).toContain('## Requirement: Windows acceptance');
     expect(markdown).toContain('### Scenario: Login succeeds');
     expect(markdown).not.toContain('No delta spec files found.');
-    expect(memory.originals).toEqual([]);
   });
 });

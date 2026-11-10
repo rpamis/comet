@@ -16,6 +16,7 @@ import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { withClassicCommandContext } from '../../../domains/comet-classic/classic-command-context.js';
 import {
   classicOpenEvidenceReceipt,
+  defineClassicAgentWorkflowApplication,
   defineClassicWorkflowApplication,
 } from '../../../domains/comet-classic/classic-sdk-application.js';
 import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
@@ -61,7 +62,9 @@ async function fixture(custom = false) {
         runtimeVersion: '0.4.5',
       }
     : undefined;
-  const application = defineClassicWorkflowApplication('hotfix');
+  const application = custom
+    ? defineClassicWorkflowApplication('hotfix')
+    : defineClassicAgentWorkflowApplication('hotfix');
   const store = createClassicSdkStateStore(root, { identity });
   const runtime = createRuntime({
     ...application,
@@ -196,6 +199,7 @@ describe('Classic trusted checkpoint recovery', () => {
         evidenceId: run.evidenceWaits![0].id,
         kind: 'classic-open-artifacts',
         ...(await classicOpenEvidenceReceipt(f.root, 'openspec/changes/demo')),
+        contentHash: action.inputHash,
         submissionId: 'open-evidence',
         expectedRevision: run.revision,
         context: { requestId: 'open-evidence', projectRoot: f.root },

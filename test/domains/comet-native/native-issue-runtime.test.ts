@@ -119,6 +119,7 @@ describe('packaged Runtime issue regressions', () => {
       cwdRef: '.',
       timeoutMs: 10_000,
       repeatable: true,
+      reusable: true,
     };
     const handedOff = await input({ ...handoff(), verification_checks: [plan] }, true);
     expect(handedOff.exitCode).toBe(0);
@@ -222,20 +223,9 @@ describe('packaged Runtime issue regressions', () => {
           tool_name: 'write',
           tool_input: { targets: ['file://%broken', 'agent:/Main', 'src/new-file.ts'] },
         },
-        phase === 'verify' ? 2 : 0,
+        2,
       );
-      expect(invoke(['show', name]).data.state).toMatchObject(
-        phase === 'verify'
-          ? { phase: 'verify' }
-          : {
-              phase: 'build',
-              verification_result: 'pending',
-              acceptance: [
-                { id: 'A1', result: 'pending' },
-                { id: 'A2', result: 'pending' },
-              ],
-            },
-      );
+      expect(invoke(['show', name]).data.state).toEqual(before);
     },
   );
 });

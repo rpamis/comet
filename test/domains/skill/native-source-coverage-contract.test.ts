@@ -82,7 +82,7 @@ describe('Native 中文源文档完整覆盖契约', () => {
   it('记录来源状态，并由 Spec 和验收项共同覆盖全部需求', async () => {
     const artifacts = await readNativeAsset(nativeZhRoot, 'reference/artifacts.md');
 
-    expect(artifacts).toContain('`brief.md` 保存 Native 的需求澄清记录');
+    expect(artifacts).toContain('先在 `brief.md` 保存覆盖边界、边界内的完整来源需求和覆盖状态');
     expect(artifacts).toContain('`# Scope` 下建立 `## Source coverage`');
     expect(artifacts).toContain('来源覆盖表');
     expect(artifacts).toContain('来源位置');

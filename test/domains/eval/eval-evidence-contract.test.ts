@@ -205,7 +205,7 @@ from pathlib import Path
 from scaffold.python.logging import save_report
 root=Path(sys.argv[1])
 for file in list((root/'reports').glob('*.json')):
-    report=json.loads(file.read_text());file.unlink()
+    report=json.loads(file.read_text(encoding='utf-8'));file.unlink()
     report['events_summary']['prompt']='x'*(2*1024*1024)+'尾部检索'
     save_report(root,report['name'],1,report)
 `,
@@ -219,9 +219,11 @@ for file in list((root/'reports').glob('*.json')):
       await setEvalBaseline(project, 'producer');
       const read = vi.spyOn(fs, 'readFile');
       expect((await readEvalCasePage(project, 'producer', { limit: 1 })).items).toHaveLength(1);
-      expect(read.mock.calls.filter(([file]) => String(file).includes('/reports/'))).toHaveLength(
-        1,
-      );
+      expect(
+        read.mock.calls.filter(
+          ([file]) => path.dirname(String(file)) === path.join(root, 'reports'),
+        ),
+      ).toHaveLength(1);
       read.mockRestore();
       expect((await readEvalCasePage(project, 'producer', { q: '尾部检索' })).total).toBe(5);
       const manifest = JSON.parse(

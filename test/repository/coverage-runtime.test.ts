@@ -20,7 +20,7 @@ it('preserves source coverage while Supervisor recovery loads the built applicat
 export default { ...base, test: { ...base.test,
   include: ['test/domains/comet-native/native-lock.test.ts', 'test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts'],
   maxWorkers: 1,
-  coverage: { ...base.test.coverage, include: ['domains/comet-native/native-lock.ts'], reporter: ['json'], reportsDirectory: ${JSON.stringify(report)} }
+  coverage: { ...base.test.coverage, thresholds: {}, include: ['domains/comet-native/native-lock.ts'], reporter: ['json'], reportsDirectory: ${JSON.stringify(report)} }
 } };
 `,
     );

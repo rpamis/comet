@@ -118,6 +118,8 @@ async function assertNoOtherLocks(paths: NativeProjectPaths, ownedLock: string):
   for (const entry of await fs.readdir(paths.locksDir, { withFileTypes: true })) {
     const file = path.join(paths.locksDir, entry.name);
     if (path.resolve(file) === path.resolve(ownedLock)) continue;
+    // SQLite files remain after release; the lock record identifies an owner.
+    if (entry.isFile() && /\.lock\.sqlite(?:-journal|-wal|-shm)?$/u.test(entry.name)) continue;
     if (entry.isFile() || entry.isSymbolicLink()) {
       throw new Error(`Native lock must be diagnosed before moving the root: ${file}`);
     }

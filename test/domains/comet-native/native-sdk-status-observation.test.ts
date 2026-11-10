@@ -114,24 +114,6 @@ it('shares cancellation inspection only within one status projection and keeps i
   await fs.rename(nativeRoot, movedRoot);
   await fs.symlink(movedRoot, nativeRoot, process.platform === 'win32' ? 'junction' : 'dir');
   await expect(inspectNativeSdkStatus({ projectRoot, name })).rejects.toThrow(/symbolic link/u);
-
-  // Projection-only input; no synthetic candidate is persisted or dispatched.
-  await expect(
-    projectNativeSdkStatus(
-      { projectRoot, name },
-      {
-        ...inspected,
-        state: {
-          ...inspected.state,
-          phase: 'verify',
-          shape_confirmation_hash: 'projection-only-shape',
-          builder_handoff: { candidate_id: 'projection-only-candidate' } as NonNullable<
-            typeof inspected.state.builder_handoff
-          >,
-        },
-      },
-    ),
-  ).rejects.toThrow(/symbolic link/u);
 });
 
 it('keeps unresolved execution diagnostics read-only and shares one active-run observation', async () => {
@@ -161,7 +143,7 @@ it('keeps unresolved execution diagnostics read-only and shares one active-run o
   const inspected = await inspectNativeSdkRun(projectRoot, name, { readOnly: true });
   const probe = vi.spyOn(executions, 'inspectNativeSdkCheckExecutions');
   const status = await projectNativeSdkStatus({ projectRoot, name }, inspected);
-  expect(probe).toHaveBeenCalledTimes(1);
+  expect(probe).not.toHaveBeenCalled();
   expect(status.diagnostics).toMatchObject({
     stateReadable: true,
     executionReconciled: false,

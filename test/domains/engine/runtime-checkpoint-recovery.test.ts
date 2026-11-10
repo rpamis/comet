@@ -52,10 +52,7 @@ describe.each(['memory', 'file'])('%s RuntimeStore checkpoint restoration', (kin
     expect((await reopen().read(checkpoint.runId))?.revision).toBe(18);
     if (kind === 'file') {
       const runDir = runDirectory(rootDir);
-      expect((await fs.readdir(runDir)).sort()).toEqual([
-        '.write.lock.contenders',
-        'checkpoint.json',
-      ]);
+      expect((await fs.readdir(runDir)).sort()).toEqual(['.write.lock.sqlite', 'checkpoint.json']);
       expect(
         JSON.parse(await fs.readFile(path.join(runDir, 'checkpoint.json'), 'utf8')).record.revision,
       ).toBe(18);

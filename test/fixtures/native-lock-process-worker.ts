@@ -43,13 +43,13 @@ const paths = await nativeProjectPaths(projectRoot, '.');
 const lockFile = path.join(paths.locksDir, `${lockName}.lock`);
 if (mode === 'takeover') {
   const diagnosis = await diagnoseNativeLock(lockFile);
-  if (diagnosis.status !== 'stale' || !diagnosis.owner || !diagnosis.identity) {
-    throw new Error(`Expected a stale lock before the barrier, received ${diagnosis.status}`);
+  if (diagnosis.status !== 'unknown' || !diagnosis.owner || !diagnosis.identity) {
+    throw new Error(`Expected an unknown legacy lock before the barrier, received ${diagnosis.status}`);
   }
   await fs.writeFile(readyFile, 'ready\n');
   await waitFor(goFile);
   if (role === 'late') await waitFor(`${goFile}.primary`);
-  const takeover = await takeOverNativeStaleLock(paths, lockFile, diagnosis);
+  const takeover = await takeOverNativeStaleLock(paths, lockFile, diagnosis, { confirmedOwnerStopped: true });
   let acquired: NativeLock | null = null;
   try {
     acquired = await acquireNativeLock(paths, lockName, `${role} takeover contender`);

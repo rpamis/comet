@@ -240,7 +240,7 @@ describe('SDK ownership in shared project status', () => {
       async (...args) => {
         const result = await original(...args);
         if (args[1] === '.change-owner-partitions.json') tokens += 1;
-        if (/^change-(?:owners|owner-history)\/native\//u.test(args[1])) bodies.push(args[1]);
+        if (args[1].startsWith('change-owner-records/native/')) bodies.push(args[1]);
         return result;
       },
     );
@@ -288,7 +288,7 @@ describe('SDK ownership in shared project status', () => {
     vi.spyOn(protectedOwnerFiles, 'readProtectedProjectFile').mockImplementation(
       async (...args) => {
         const result = await original(...args);
-        if (args[1] === 'change-owners/native/batch-race.json') {
+        if (args[1] === 'change-owner-records/native/batch-race.json') {
           reads += 1;
           if (reads === 1)
             await registerSdkChangeOwner(root, {
@@ -333,7 +333,7 @@ describe('SDK ownership in shared project status', () => {
         async (...args) => {
           const result = await original(...args);
           if (args[1] === '.change-owner-partitions.json') tokens += 1;
-          if (args[1].startsWith('change-owners/classic/')) bodies.push(args[1]);
+          if (args[1].startsWith('change-owner-records/classic/')) bodies.push(args[1]);
           return result;
         },
       );

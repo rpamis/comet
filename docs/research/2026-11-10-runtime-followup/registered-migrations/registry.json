@@ -1,0 +1,389 @@
+{
+  "cases": [
+    {
+      "id": "native-legacy-archive-drift-repair-wait",
+      "sources": [
+        "https://github.com/rpamis/comet/actions/runs/40459417300/job/122040652959"
+      ],
+      "behavior": "旧失败 Archive 迁移后继续原 Run 的 Verify 修复步骤。",
+      "coverageLevel": "runtime",
+      "reproduction": "原迁移成功产生 verify.stop ready token 后，诊断仍以 Archive 候选漂移阻止该 token 执行。",
+      "expected": "保留原失败记录和审批，进入同一 Run 的 Verify 修复等待。",
+      "forbidden": "重新归档，复用失效验收，或一直停在没有恢复入口的状态。",
+      "rootCause": "诊断把已经转入 Verify 的旧归档失败仍作为当前 Archive 阻塞。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "upgrades a legacy failed Archive drift into the original Verify repair Wait",
+          "requiredNames": [
+            "upgrades a legacy failed Archive drift into the original Verify repair Wait"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-compat-batched-edit-and-approved-refresh",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "Compat 十次保存合并判断后仅补受影响检查，接受后补检查保留报告、批准和执行来源。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时 Compat change 经真实 Shape、Builder、检查、独立 Verifier 和接受，编辑后直接归档被拒绝；观察并判断后两次相同补检查请求只执行一次。",
+      "expected": "A 检查更新，B 原收据与执行次数保留，原状态和报告不变，最终可归档。",
+      "forbidden": "未判断直接归档、B 重跑、重复请求重复副作用、替换原验收报告。",
+      "rootCause": "Compat 证据恢复按整体候选重建，接受后的补检查缺少原地路径。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "continues Compat after batched unknown-language edits and retains only the Agent-selected real check",
+          "requiredNames": [
+            "Native portable Archive continues Compat after batched unknown-language edits and retains only the Agent-selected real check"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 current candidate: real model acceptance has not run. Deterministic Runtime evidence does not replace it."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "classic-compat-approved-check-refresh",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "Classic Compat 接受后补原检查保留 Run、报告与批准，相同请求不重放，失败阻止实际归档。",
+      "coverageLevel": "runtime",
+      "reproduction": "临时项目使用公开命令处理器正常 Open、Build、Verify、archive-confirm；说明编辑先阻止归档，再由当前 Agent 判断和补检查，重复相同请求。",
+      "expected": "补检查执行一次，状态和报告不变；成功可归档，失败时 OpenSpec 归档进程不启动。",
+      "forbidden": "未判断新内容被直接接受、重复副作用、失败后沿用旧成功。",
+      "rootCause": "原 Compat 检查执行没有请求幂等与原报告接受证据，归档没有重新消费原实际检查。",
+      "tests": [
+        {
+          "file": "test/domains/comet-classic/classic-archive.test.ts",
+          "namePattern": "supplements the accepted Compat check in the original Run without replay",
+          "requiredNames": [
+            "Classic archive command supplements the accepted Compat check in the original Run without replay (failure=false)",
+            "Classic archive command supplements the accepted Compat check in the original Run without replay (failure=true)"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "real-model-eval",
+          "status": "pending",
+          "evidence": [
+            "052 current candidate: real model acceptance has not run. Deterministic Runtime evidence does not replace it."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-applied-spec-transaction-preserved",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "behavior": "Native Archive 已应用 Spec 后出现额外编辑时保留原事务并阻止覆盖编辑。",
+      "coverageLevel": "runtime",
+      "reproduction": "运行隔离真实 Runtime 回归，核对候选、报告、原执行与副作用计数。",
+      "expected": "按原事务诊断实际冲突；恢复原已应用内容后继续，不重新应用已完成步骤。",
+      "forbidden": "删除原事务重开归档，覆盖用户内容或重复执行已完成步骤。",
+      "rootCause": "原执行身份或事务来源未贯穿编辑后的续行边界。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-portable-archive.test.ts",
+          "namePattern": "Native portable Archive preserves the original Archive transaction when an applied Spec is edited before resume",
+          "requiredNames": [
+            "Native portable Archive preserves the original Archive transaction when an applied Spec is edited before resume"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-all-reused-checks-without-child",
+      "behavior": "全部检查均复用原成功收据且没有创建子进程时可完成；未登记的真实启动与终止不明确仍阻塞",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-check-owner-recovery.test.ts",
+          "namePattern": "^Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown$",
+          "requiredNames": [
+            "Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown"
+          ]
+        },
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check$",
+          "requiredNames": [
+            "preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check"
+          ]
+        }
+      ],
+      "reproduction": "原Verifier后加一次性检查通过后选择重新独立验收，新检查全部复用、没有child；Windows旧判定把非空checks当成可能启动过进程并拒绝提交。",
+      "expected": "完整复用登记可确认quiescent，原执行收据及结果保留，一次性命令计数始终为1；新输入不可复用。",
+      "forbidden": "将terminationUnconfirmed或有真实执行但没有child登记的情况当成停止，或重复执行一次性命令。",
+      "rootCause": "无child完成分支只接受空checks，没有区分全部引用原收据与新进程执行。",
+      "sources": [
+        "report:2026-10-28-052-lightweight-edit-continuation"
+      ],
+      "coverageLevel": "runtime",
+      "testMigration": {
+        "kind": "tests-moved",
+        "reason": "Preserve the original business behavior while adapting check reports, lifecycle fixtures and assertions to PID-free execution; archive every original assertion.",
+        "authorization": "report:2026-11-09-runtime-pid-removal",
+        "record": "docs/research/2026-11-09-runtime-pid-retirement.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-check-owner-recovery.test.ts",
+            "namePattern": "^Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown$",
+            "requiredNames": [
+              "Native check owner recovery recognizes completed receipt reuse without a child but keeps an unregistered launch unknown"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "^preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check$",
+            "requiredNames": [
+              "preserves the original pass and Wait when reverify includes a Verifier-added non-repeatable check"
+            ]
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/registry.json",
+            "sha256": "cd525ad933feaca15abaebbaa79527d0f7db2b6561855d55744a6523b481c68b"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/tests.patch",
+            "sha256": "729be0c5e84760f5f030667e5936e059fb713adfa29e39b2671550dc308d95df"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/mapping.json",
+            "sha256": "2b263e7005367fcb2b73a57afd96bf1723dacc7039ca0e8f1daa5af4b8c1109b"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-runtime-pid-retirement/tests.json",
+            "sha256": "6f6f8ef360c9ed4feb44be79e2eaf98ec04fe068887e53e3df92b19d0837d63b"
+          }
+        }
+      }
+    },
+    {
+      "id": "native-240-archive-freshness",
+      "behavior": "Verify 后源文件或报告改变时 Archive 不得复用旧通过",
+      "status": "covered",
+      "reason": "SDK Archive 执行与提交边界都有实际输入核验。",
+      "coverageLayer": "SDK and Compat",
+      "evidence": [
+        "https://github.com/rpamis/comet/issues/240"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "blocks tracked implementation drift at Archive preflight and offers the original Verify repair path|rechecks Archive documents after executor output and before committing the outcome",
+          "requiredNames": [
+            "blocks tracked implementation drift at Archive preflight and offers the original Verify repair path",
+            "rechecks Archive documents after executor output and before committing the outcome"
+          ]
+        }
+      ],
+      "testMigration": {
+        "kind": "feature-removed",
+        "reason": "Retire automatic document/candidate byte invalidation and command inference. Preserve real failures, original claim/Run, explicit user decisions, approved delivery and generated Runtime continuation. This does not declare the retired automatic trigger fixed.",
+        "authorization": "report:2026-11-09-test-pruning",
+        "record": "docs/research/2026-11-09-runtime-review-repair.zh.md",
+        "tests": [
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "namePattern": "(?:blocks tracked implementation drift at Archive preflight and offers the original Verify repair path)",
+            "requiredNames": [
+              "blocks tracked implementation drift at Archive preflight and offers the original Verify repair path"
+            ]
+          },
+          {
+            "file": "test/domains/comet-native/native-agent-content-judgment.test.ts",
+            "requiredNames": [
+              "continues Native Verify and Archive through the generated Runtime without content proof",
+              "keeps a real failed Native check failed after file edits without replay"
+            ],
+            "namePattern": "^(?:continues Native Verify and Archive through the generated Runtime without content proof|keeps a real failed Native check failed after file edits without replay)$"
+          },
+          {
+            "file": "test/domains/comet-native/native-sdk-application.test.ts",
+            "requiredNames": [
+              "Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure",
+              "Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation"
+            ],
+            "namePattern": "^(?:Native SDK Workflow Application reproposes the same SDK Shape after rejection without requiring document structure|Native SDK Workflow Application keeps a stalled Verify Run waiting so the user can revise requirements or implementation)$"
+          }
+        ],
+        "evidence": {
+          "registry": {
+            "file": "docs/research/2026-11-09-runtime-core-review/final-retirements/registry.json",
+            "sha256": "4845b34ebd08093043da91362e1be2a4307a94cd304ab8f712767a268eafad1b"
+          },
+          "tests": {
+            "file": "docs/research/2026-11-09-runtime-core-review/final-retirements/tests.json",
+            "sha256": "ae7822e0ba61e40673b283ee0589649c07e50db68f1c27ef055f30a1e9b04102"
+          },
+          "mapping": {
+            "file": "docs/research/2026-11-09-runtime-core-review/final-retirements/mapping.json",
+            "sha256": "9cfffeca21078a0869cafde16dbed4b825385c9ba7d8a28518bfe0ec65b7a6e3"
+          },
+          "patch": {
+            "file": "docs/research/2026-11-09-runtime-core-review/final-retirements/tests.patch",
+            "sha256": "5ecd9aec68776ccd9856eab444931ecb42ea31493028f7dbf3447a9df06ee748"
+          }
+        }
+      }
+    },
+    {
+      "id": "issue-389-child-evidence-retry",
+      "behavior": "Child验证失败后保留真实检查回执，日志变更不能复用，未知执行不另启重复任务。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "sdk",
+      "evidence": [
+        "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-supervisor-verifier-recovery.test.ts",
+          "namePattern": "refuses a verifier retry after its successful check log has changed|keeps an unknown verifier bound to its original task and creates no retry Wait",
+          "requiredNames": [
+            "refuses a verifier retry after its successful check log has changed",
+            "keeps an unknown verifier bound to its original task and creates no retry Wait"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-290-manual-review",
+      "behavior": "手动独立审查可执行，但不冒充正式 Native Verifier 或改变候选批准。",
+      "status": "covered",
+      "reason": "0.5.0 保留此行为；所列确定性测试直接断言该契约。covered 表示已映射，不表示本次清单审计已执行。",
+      "coverageLayer": "sdk",
+      "evidence": [
+        "test/domains/comet-native/native-sdk-edit-review.test.ts"
+      ],
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-edit-review.test.ts",
+          "namePattern": "reviews a generic edit in an independent session without claiming the formal Native Verifier",
+          "requiredNames": [
+            "reviews a generic edit in an independent session without claiming the formal Native Verifier"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "manual-recovery-native-unreadable-report",
+      "sources": [
+        "report:2026-10-27-manual-workflow-recovery"
+      ],
+      "behavior": "验证报告无法正常读取时状态准确说明阻塞。",
+      "coverageLevel": "runtime",
+      "reproduction": "将验证报告路径替换成目录，旧只读检查忽略错误并显示可归档。",
+      "expected": "报告实际读取错误，保留当前 Run 和文件。",
+      "forbidden": "提供归档命令或隐瞒读取失败。",
+      "rootCause": "候选检查将非漂移的文件系统错误转换成空结果。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reports a non-file verification path without offering Archive or changing the Run",
+          "requiredNames": [
+            "reports a non-file verification path without offering Archive or changing the Run"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-root-home-cache-input-discovery",
+      "sources": [
+        "report:2026-11-05-eval-root-cache-discovery"
+      ],
+      "behavior": "Keep the image npm content cache outside Native project input discovery while preserving all other root-home business inputs.",
+      "coverageLevel": "runtime",
+      "reproduction": "The round-5 zero-model container archived successfully after its 240-second host wait expired; native next --accept-result spent minutes traversing .dataset-state/root/.npm/_cacache, observed in its live file descriptors. The final check snapshot had only 16 files.",
+      "expected": "Relocate only npm _cacache with byte-preserving execution and scoring mounts. Keep other /root business generated inputs bound and keep /root benchmark workdirs unchanged; legacy layouts remain readable.",
+      "forbidden": "Deleting cache bytes, excluding an entire root-home mirror, changing Native exclusions, hiding business generated inputs or grading different candidates.",
+      "rootCause": "The image root-home mirror was inside the project under an ordinary ignored directory, forcing generated-input discovery to traverse its package cache.",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "^keeps Eval CLI tooling outside Native inputs while binding application generated files$",
+          "requiredNames": [
+            "keeps Eval CLI tooling outside Native inputs while binding application generated files"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "container-runtime",
+          "status": "verified",
+          "evidence": [
+            "Round-five final-layout preflight at .comet/eval/launches/2026-11-05-bugfree-hard-confirmation-r5c/preflight-bugfree-20261105-050308.json verified unchanged assembly, readonly CLI, actual npm cache bind bytes, 16 check inputs and original scoring with matching mode proof. The zero-model fixture did not implement the benchmark.",
+            "The same frozen product completed both original-task workflows: comet-eval-9c5f74e3-4133-448a-99d2-82e0fa6cf1bd and comet-eval-71a200a2-0576-4aed-9b4a-28cac3da03a5. Each original reward was 10/14, mode proof matched, and no reference access or input/assembly mismatch was recorded. This verifies the harness boundary, not full task correctness."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eval-cli-tooling-candidate-inputs",
+      "sources": [
+        "report:2026-11-04-bugfree-verify-overhead"
+      ],
+      "behavior": "Install the frozen Eval CLI as tooling under Eval state so Native generated-input discovery excludes it while preserving business generated-file checks and readonly CLI bindings.",
+      "coverageLevel": "runtime",
+      "reproduction": "The round-4 hard-task check snapshot had 727 files, including 705 from _eval_current_comet; two actual checks took 290 ms while the enclosing command took over a minute. The public Native SDK baseline regression included CLI dist files before repair.",
+      "expected": "Keep the CLI source and release identity bound, preserve readonly mounts for workdir aliases, retain all business dist inputs and candidate storage, and leave the project's node_modules namespace available to the original task.",
+      "forbidden": "Adding Native ignore exceptions for application inputs, hiding business dist changes, losing build identity or readonly mounts, or reserving the original task's root node_modules as a controller path.",
+      "rootCause": "The harness placed its CLI dist tree in the candidate root where Native correctly discovered it as ignored generated application input.",
+      "tests": [
+        {
+          "file": "test/domains/eval/builtin-dataset-bootstrap.test.ts",
+          "namePattern": "^keeps Eval CLI tooling outside Native inputs while binding application generated files$",
+          "requiredNames": [
+            "keeps Eval CLI tooling outside Native inputs while binding application generated files"
+          ]
+        }
+      ],
+      "additionalAcceptance": [
+        {
+          "layer": "container-runtime",
+          "status": "verified",
+          "evidence": [
+            "Round-five final-layout preflight at .comet/eval/launches/2026-11-05-bugfree-hard-confirmation-r5c/preflight-bugfree-20261105-050308.json verified unchanged assembly, readonly CLI, actual npm cache bind bytes, 16 check inputs and original scoring with matching mode proof. The zero-model fixture did not implement the benchmark.",
+            "The same frozen product completed both original-task workflows: comet-eval-9c5f74e3-4133-448a-99d2-82e0fa6cf1bd and comet-eval-71a200a2-0576-4aed-9b4a-28cac3da03a5. Each original reward was 10/14, mode proof matched, and no reference access or input/assembly mismatch was recorded. This verifies the harness boundary, not full task correctness."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-531-legacy-eperm-stop-recovery",
+      "sources": [
+        "https://github.com/rpamis/comet/issues/531"
+      ],
+      "behavior": "旧Windows检查无进程创建身份且PID探测unknown时，原领取方已死、明确停止证明及新鲜系统枚举均匹配才允许对账。",
+      "coverageLevel": "public-cli",
+      "reproduction": "为原领取登记无identity的旧PID并模拟EPERM对应unknown；基线07bd301b即便有明确停止证明仍永久拒绝。",
+      "expected": "doctor --repair --confirmed --stopped-actions 保留原失败及候选，不重跑检查；PID存在、枚举失败或领取不匹配时继续拒绝。",
+      "forbidden": "按年龄自动接管、杀死复用PID、把原未知检查记为通过、用旧快照确认新执行停止。",
+      "rootCause": "人工停止证据仍强制裸PID探测为dead，且已绑定停止收据没有结束旧PID的unknown探测。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "reconciles legacy EPERM only with explicit stop evidence and Windows enumeration",
+          "requiredNames": [
+            "Native protocol simplification reconciles legacy EPERM only with explicit stop evidence and Windows enumeration absent",
+            "Native protocol simplification reconciles legacy EPERM only with explicit stop evidence and Windows enumeration present",
+            "Native protocol simplification reconciles legacy EPERM only with explicit stop evidence and Windows enumeration unknown"
+          ]
+        }
+      ]
+    }
+  ]
+}

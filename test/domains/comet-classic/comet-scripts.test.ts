@@ -78,6 +78,20 @@ async function createChange(
   return changeDir;
 }
 
+function recordSuccessfulBuild(tmpDir: string, name: string) {
+  const checked = runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
+    'run',
+    name,
+    'build',
+    '--local',
+    '--',
+    process.execPath,
+    '-e',
+    'process.exit(0)',
+  ]);
+  expect(checked.status, checked.stderr).toBe(0);
+}
+
 async function prepareBuildEvidence(tmpDir: string, name: string) {
   const file = path.join(tmpDir, 'openspec', 'changes', name, '.comet.yaml');
   const document = parseDocument(await fs.readFile(file, 'utf8'));
@@ -91,17 +105,7 @@ async function prepareBuildEvidence(tmpDir: string, name: string) {
     );
   }
   await fs.writeFile(file, document.toString());
-  const checked = runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
-    'run',
-    name,
-    'build',
-    '--local',
-    '--',
-    process.execPath,
-    '-e',
-    'process.exit(0)',
-  ]);
-  expect(checked.status, checked.stderr).toBe(0);
+  recordSuccessfulBuild(tmpDir, name);
 }
 
 async function createFakeOpenSpecArchive(
@@ -184,19 +188,6 @@ describe('comet script contracts', () => {
       expect(source).not.toContain("from './comet-runtime.mjs'");
       expect(source).not.toMatch(/(?:spawn|execFile)(?:Sync)?\([^)]*['"](?:grep|awk|sed)['"]/u);
     }
-  });
-
-  it('keeps comet-hook-guard blocked messages in English', async () => {
-    const hookSource = await fs.readFile(
-      path.resolve('domains', 'comet-classic', 'classic-hook-guard.ts'),
-      'utf-8',
-    );
-
-    expect(hookSource).toContain('Current phase:');
-    expect(hookSource).toContain('Target file:');
-    expect(hookSource).toContain('does not allow source writes');
-    // Diagnostics that surface to the hook must stay ASCII/English.
-    expect(hookSource).not.toMatch(/[一-龥]/);
   });
 });
 
@@ -1453,98 +1444,6 @@ describe('comet scripts', () => {
     expect(result.stderr).toContain('[FAIL] Build passes');
   });
 
-  it('blocks open guard when Chinese workflow artifacts are clearly English', async () => {
-    await createChange(
-      tmpDir,
-      'zh-english-artifacts',
-      [
-        'workflow: full',
-        'language: zh-CN',
-        'phase: open',
-        'context_compression: off',
-        'build_mode: null',
-        'build_pause: null',
-        'subagent_dispatch: null',
-        'tdd_mode: null',
-        'review_mode: off',
-        'isolation: null',
-        'verify_mode: null',
-        'auto_transition: true',
-        'design_doc: null',
-        'plan: null',
-        'verify_result: pending',
-        'verified_at: null',
-        'archived: false',
-        '',
-      ].join('\n'),
-      '- [ ] Implement the feature and validate the generated documentation language\n',
-    );
-    const englishBody =
-      'This document explains the feature goals, implementation approach, expected behavior, acceptance scenarios, boundaries, risks, and verification strategy for the workflow.\n';
-    await writeFile(
-      path.join(tmpDir, 'openspec', 'changes', 'zh-english-artifacts', 'proposal.md'),
-      englishBody,
-    );
-    await writeFile(
-      path.join(tmpDir, 'openspec', 'changes', 'zh-english-artifacts', 'design.md'),
-      englishBody,
-    );
-
-    const result = runNode(tmpDir, guardScript, ['zh-english-artifacts', 'open']);
-
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('[FAIL] proposal.md matches configured language');
-    expect(result.stderr).toContain('configured language is zh-CN');
-  });
-
-  it('uses the global Comet language in guards when change and project values are absent', async () => {
-    const fakeHome = path.join(tmpDir, 'fake-home');
-    await writeFile(path.join(fakeHome, '.comet', 'config.yaml'), 'classic:\n  language: zh-CN\n');
-    await createChange(
-      tmpDir,
-      'global-zh-english-artifacts',
-      [
-        'workflow: full',
-        'language: null',
-        'phase: open',
-        'context_compression: off',
-        'build_mode: null',
-        'build_pause: null',
-        'subagent_dispatch: null',
-        'tdd_mode: null',
-        'review_mode: off',
-        'isolation: null',
-        'verify_mode: null',
-        'auto_transition: true',
-        'design_doc: null',
-        'plan: null',
-        'verify_result: pending',
-        'verified_at: null',
-        'archived: false',
-        '',
-      ].join('\n'),
-      '- [ ] Implement the feature and validate the generated documentation language\n',
-    );
-    const englishBody =
-      'This document explains the feature goals, implementation approach, expected behavior, acceptance scenarios, boundaries, risks, and verification strategy for the workflow.\n';
-    await writeFile(
-      path.join(tmpDir, 'openspec', 'changes', 'global-zh-english-artifacts', 'proposal.md'),
-      englishBody,
-    );
-    await writeFile(
-      path.join(tmpDir, 'openspec', 'changes', 'global-zh-english-artifacts', 'design.md'),
-      englishBody,
-    );
-
-    const result = runNode(tmpDir, guardScript, ['global-zh-english-artifacts', 'open'], {
-      HOME: fakeHome,
-      USERPROFILE: fakeHome,
-    });
-
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('configured language is zh-CN');
-  });
-
   it('fails closed before language checks when .comet/config.yaml is malformed', async () => {
     await writeFile(
       path.join(tmpDir, '.comet', 'config.yaml'),
@@ -1579,144 +1478,6 @@ describe('comet scripts', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toMatch(/invalid YAML|flow sequence/iu);
-  });
-
-  it('allows Chinese workflow artifacts with English technical terms', async () => {
-    await createChange(
-      tmpDir,
-      'zh-mixed-artifacts',
-      [
-        'workflow: full',
-        'language: zh-CN',
-        'phase: open',
-        'context_compression: off',
-        'build_mode: null',
-        'build_pause: null',
-        'subagent_dispatch: null',
-        'tdd_mode: null',
-        'review_mode: off',
-        'isolation: null',
-        'verify_mode: null',
-        'auto_transition: true',
-        'design_doc: null',
-        'plan: null',
-        'verify_result: pending',
-        'verified_at: null',
-        'archived: false',
-        '',
-      ].join('\n'),
-      '- [ ] 实现 language guard 并验证 OpenSpec artifact\n',
-    );
-    const mixedBody =
-      '本文档说明 language guard 的目标、范围、验收场景和验证方式。OpenSpec、Superpowers、Markdown 等英文术语可以保留，但正文必须以中文为主。\n';
-    await writeFile(
-      path.join(tmpDir, 'openspec', 'changes', 'zh-mixed-artifacts', 'proposal.md'),
-      mixedBody,
-    );
-    await writeFile(
-      path.join(tmpDir, 'openspec', 'changes', 'zh-mixed-artifacts', 'design.md'),
-      mixedBody,
-    );
-
-    const result = runNode(tmpDir, guardScript, ['zh-mixed-artifacts', 'open']);
-
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain('[PASS] proposal.md matches configured language');
-  });
-
-  it('blocks open guard when English workflow artifacts are clearly Chinese', async () => {
-    await createChange(
-      tmpDir,
-      'en-chinese-artifacts',
-      [
-        'workflow: full',
-        'language: en',
-        'phase: open',
-        'context_compression: off',
-        'build_mode: null',
-        'build_pause: null',
-        'subagent_dispatch: null',
-        'tdd_mode: null',
-        'review_mode: off',
-        'isolation: null',
-        'verify_mode: null',
-        'auto_transition: true',
-        'design_doc: null',
-        'plan: null',
-        'verify_result: pending',
-        'verified_at: null',
-        'archived: false',
-        '',
-      ].join('\n'),
-      '- [ ] Implement the feature and validate the generated documentation language\n',
-    );
-    const chineseBody =
-      '本文档说明了这个功能的目标范围预期行为验收场景边界条件风险以及针对这次工作流的验证策略等相关内容。\n';
-    await writeFile(
-      path.join(tmpDir, 'openspec', 'changes', 'en-chinese-artifacts', 'proposal.md'),
-      chineseBody,
-    );
-    await writeFile(
-      path.join(tmpDir, 'openspec', 'changes', 'en-chinese-artifacts', 'design.md'),
-      chineseBody,
-    );
-
-    const result = runNode(tmpDir, guardScript, ['en-chinese-artifacts', 'open']);
-
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('[FAIL] proposal.md matches configured language');
-    expect(result.stderr).toContain('configured language is en');
-  });
-
-  it('excludes fenced code blocks from the language dominance check', async () => {
-    await createChange(
-      tmpDir,
-      'zh-code-block-artifacts',
-      [
-        'workflow: full',
-        'language: zh-CN',
-        'phase: open',
-        'context_compression: off',
-        'build_mode: null',
-        'build_pause: null',
-        'subagent_dispatch: null',
-        'tdd_mode: null',
-        'review_mode: off',
-        'isolation: null',
-        'verify_mode: null',
-        'auto_transition: true',
-        'design_doc: null',
-        'plan: null',
-        'verify_result: pending',
-        'verified_at: null',
-        'archived: false',
-        '',
-      ].join('\n'),
-      '- [ ] 实现 language guard 并验证 OpenSpec artifact\n',
-    );
-    const bodyWithLargeCodeBlock = [
-      '本文档说明 language guard 的目标、范围、验收场景和验证方式，正文以中文为主。',
-      '',
-      '```bash',
-      'npx vitest run test/domains/comet-classic/comet-scripts.test.ts --reporter verbose --coverage --watch=false',
-      'export COMET_LANGUAGE=en COMET_CONTEXT_COMPRESSION=beta COMET_AUTO_TRANSITION=true',
-      'find . -name "*.test.ts" -not -path "./node_modules/*" -print0 | xargs -0 grep -l language',
-      '```',
-      '',
-    ].join('\n');
-    await writeFile(
-      path.join(tmpDir, 'openspec', 'changes', 'zh-code-block-artifacts', 'proposal.md'),
-      bodyWithLargeCodeBlock,
-    );
-    await writeFile(
-      path.join(tmpDir, 'openspec', 'changes', 'zh-code-block-artifacts', 'design.md'),
-      bodyWithLargeCodeBlock,
-    );
-
-    const result = runNode(tmpDir, guardScript, ['zh-code-block-artifacts', 'open']);
-
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain('[PASS] proposal.md matches configured language');
   });
 
   it('fails closed in guard when project config has an invalid language value', async () => {
@@ -1800,24 +1561,10 @@ describe('comet scripts', () => {
     ]).stdout.trim();
 
     expect(handoff.status).toBe(0);
-    expect(contextPath).toBe('openspec/changes/handoff-change/.comet/handoff/design-context.json');
-    expect(contextHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(contextPath).toBe('openspec/changes/handoff-change/proposal.md');
+    expect(contextHash).toBe('null');
     await expect(fs.stat(path.join(tmpDir, contextPath))).resolves.toBeDefined();
-    const contextMarkdown = await fs.readFile(
-      path.join(
-        tmpDir,
-        'openspec',
-        'changes',
-        'handoff-change',
-        '.comet',
-        'handoff',
-        'design-context.md',
-      ),
-      'utf-8',
-    );
-    expect(contextMarkdown).toContain('Mode: compact');
-    expect(contextMarkdown).toContain('Source: openspec/changes/handoff-change/proposal.md');
-    expect(contextMarkdown).toContain('SHA256:');
+    expect(await fs.readFile(path.join(tmpDir, contextPath), 'utf8')).toBe('proposal\n');
 
     await writeFile(
       path.join(tmpDir, 'docs', 'superpowers', 'specs', 'handoff-design.md'),
@@ -1841,9 +1588,10 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toContain('[PASS] design handoff context exists');
-    expect(result.stderr).toContain('[PASS] design handoff markdown is traceable');
-    expect(result.stderr).toContain('[PASS] Design Doc frontmatter links current change');
-    expect(result.stderr).toContain('[PASS] Design Doc declares OpenSpec as canonical spec');
+    expect(result.stderr).toContain('[PASS] design_doc is recorded for full workflow');
+    expect(result.stderr).toContain(
+      '[PASS] Design Doc (docs/superpowers/specs/handoff-design.md) exists',
+    );
   });
 
   it('accepts handoff source paths containing regular expression metacharacters', async () => {
@@ -1882,7 +1630,12 @@ describe('comet scripts', () => {
       'delta spec\n',
     );
 
-    const handoff = runNode(tmpDir, handoffScript, ['regex-source-path', 'design', '--write']);
+    const handoff = runNode(tmpDir, handoffScript, [
+      'regex-source-path',
+      'design',
+      '--write',
+      '--full',
+    ]);
     expect(handoff.status).toBe(0);
 
     await writeFile(
@@ -1907,7 +1660,13 @@ describe('comet scripts', () => {
     const result = runNode(tmpDir, guardScript, ['regex-source-path', 'design']);
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stderr).toContain('[PASS] design handoff markdown is traceable');
+    expect(result.stderr).toContain('[PASS] design handoff context exists');
+    expect(
+      await fs.readFile(
+        path.join(tmpDir, 'openspec/changes/regex-source-path/.comet/handoff/design-context.md'),
+        'utf8',
+      ),
+    ).toContain('specs/capability[/spec.md');
   });
 
   it('reads comet yaml fields without including trailing comments', async () => {
@@ -1941,56 +1700,6 @@ describe('comet scripts', () => {
     expect(phase.stdout.trim()).toBe('design');
     expect(validate.status, validate.stderr).toBe(0);
     expect(handoff.status).toBe(0);
-  });
-
-  it('accepts design doc frontmatter after a BOM and leading blank lines', async () => {
-    const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
-    await createChange(
-      tmpDir,
-      'frontmatter-prefix',
-      [
-        'workflow: full',
-        'phase: design',
-        'build_mode: null',
-        'build_pause: null',
-        'tdd_mode: null',
-        'isolation: null',
-        'verify_mode: null',
-        'design_doc: null',
-        'plan: null',
-        'verify_result: pending',
-        'verified_at: null',
-        'archived: false',
-        'auto_transition: true',
-        '',
-      ].join('\n'),
-    );
-    runNode(tmpDir, handoffScript, ['frontmatter-prefix', 'design', '--write']);
-    await writeFile(
-      path.join(tmpDir, 'docs', 'superpowers', 'specs', 'frontmatter-prefix-design.md'),
-      [
-        '\uFEFF',
-        '',
-        '---',
-        'comet_change: frontmatter-prefix',
-        'role: technical-design',
-        'canonical_spec: openspec',
-        '---',
-        '',
-      ].join('\n'),
-    );
-    runNode(tmpDir, stateScript, [
-      'set',
-      'frontmatter-prefix',
-      'design_doc',
-      'docs/superpowers/specs/frontmatter-prefix-design.md',
-    ]);
-
-    const result = runNode(tmpDir, guardScript, ['frontmatter-prefix', 'design']);
-
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain('[PASS] Design Doc frontmatter links current change');
-    expect(result.stderr).toContain('[PASS] Design Doc declares OpenSpec as canonical spec');
   });
 
   it('generates a full-mode design handoff when --full is passed', async () => {
@@ -2123,6 +1832,7 @@ describe('comet scripts', () => {
       JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
     );
 
+    recordSuccessfulBuild(tmpDir, 'full-current-isolation');
     const guard = runNode(tmpDir, guardScript, ['full-current-isolation', 'build']);
     const transition = runNode(tmpDir, stateScript, [
       'transition',
@@ -2204,6 +1914,7 @@ describe('comet scripts', () => {
       JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
     );
 
+    recordSuccessfulBuild(tmpDir, 'hotfix-no-tdd');
     const result = runNode(tmpDir, guardScript, ['hotfix-no-tdd', 'build']);
 
     expect(result.status).toBe(0);
@@ -2593,6 +2304,7 @@ describe('comet scripts', () => {
       JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
     );
 
+    recordSuccessfulBuild(tmpDir, 'direct-full-override');
     const result = runNode(tmpDir, guardScript, ['direct-full-override', 'build']);
 
     expect(result.status).toBe(0);
@@ -2672,6 +2384,7 @@ describe('comet scripts', () => {
       JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
     );
 
+    recordSuccessfulBuild(tmpDir, 'subagent-confirmed');
     const result = runNode(tmpDir, guardScript, ['subagent-confirmed', 'build']);
 
     expect(result.status).toBe(0);
@@ -2753,6 +2466,7 @@ describe('comet scripts', () => {
       JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
     );
 
+    recordSuccessfulBuild(tmpDir, 'legacy-command-fields');
     const result = runNode(tmpDir, guardScript, ['legacy-command-fields', 'build']);
     const migrated = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
 
@@ -2805,6 +2519,7 @@ describe('comet scripts', () => {
       JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
     );
 
+    recordSuccessfulBuild(tmpDir, 'root-configured-build');
     const result = runNode(tmpDir, guardScript, ['root-configured-build', 'build']);
 
     expect(result.status).toBe(0);
@@ -5624,52 +5339,6 @@ describe('comet scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(0);
-    });
-
-    it('blocks source code writes in verify phase', async () => {
-      await writeFile(
-        path.join(tmpDir, '.comet', 'config.yaml'),
-        canonicalProjectConfig(['document_evidence: strict']),
-      );
-      await createChange(
-        tmpDir,
-        'test-hook',
-        [
-          'workflow: full',
-          'phase: verify',
-          'context_compression: off',
-          'build_mode: executing-plans',
-          'build_pause: null',
-          'subagent_dispatch: null',
-          'tdd_mode: tdd',
-          'isolation: branch',
-          'verify_mode: light',
-          'base_ref: null',
-          'design_doc: docs/superpowers/specs/test.md',
-          'plan: docs/superpowers/plans/test.md',
-          'verify_result: pending',
-          'verification_report: null',
-          'branch_status: pending',
-          'created_at: 2026-06-06',
-          'verified_at: null',
-          'archived: false',
-          'handoff_context: null',
-          'handoff_hash: null',
-          '',
-        ].join('\n'),
-      );
-
-      const srcDir = path.join(tmpDir, 'src');
-      await fs.mkdir(srcDir, { recursive: true });
-      const targetFile = path.join(srcDir, 'fix.ts');
-
-      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
-
-      expect(result.status).toBe(2);
-      expect(result.stderr).toContain('Current phase: verify');
-      expect(result.stderr).toContain(
-        'comet state transition test-hook verify-fail, then retry the implementation edit in Build',
-      );
     });
 
     it('blocks source code writes in archive phase', async () => {

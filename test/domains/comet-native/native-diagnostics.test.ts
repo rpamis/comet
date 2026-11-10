@@ -13,7 +13,9 @@ import {
   listNativeStatusPage,
   NATIVE_STATUS_PAGE_LIMITS,
 } from '../../../domains/comet-native/native-diagnostics.js';
+import { readNativeWorkspaceIdentity } from '../../../domains/comet-native/native-workspace.js';
 import { nativeContinuation } from '../../../domains/comet-native/native-continuation.js';
+import { nativeTransitionJournalFile } from '../../../domains/comet-native/native-transition-journal.js';
 import {
   nativeChangeRuntimeDir,
   nativeProjectPaths,
@@ -124,7 +126,7 @@ describe('Native status diagnostics', () => {
     });
   });
 
-  it('blocks status when a workspace binding cannot be parsed safely', async () => {
+  it('exposes an invalid workspace binding without treating legacy status as an approval', async () => {
     const state = await createNativeChange({
       paths,
       name: 'invalid-workspace',
@@ -139,17 +141,17 @@ describe('Native status diagnostics', () => {
     await expect(inspectNativeStatus(paths, state.name)).resolves.toMatchObject({
       name: state.name,
       phase: 'shape',
-      nextCommand: null,
-      findingSummary: {
-        errors: expect.any(Number),
-        codes: expect.arrayContaining(['workspace-binding-invalid']),
-      },
-      continuation: {
-        disposition: 'blocked',
-        action: 'none',
-        requiredInputs: expect.arrayContaining(['repair-workspace-binding']),
-      },
+      archiveReady: false,
+      continuation: null,
+      workspace: { bindingState: 'invalid' },
     });
+    await expect(readNativeWorkspaceIdentity(paths, state.name)).rejects.toThrow();
+    expect(
+      await fs.readFile(
+        path.join(nativeChangeRuntimeDir(paths, state.name), 'workspace.json'),
+        'utf8',
+      ),
+    ).toBe('{"schema":"comet.native.workspace.v3","isolation":"invalid"}\n');
   });
 
   it('does not route an Archive binding failure to receipt refresh', () => {
@@ -328,7 +330,8 @@ describe('Native status diagnostics', () => {
     expect(statuses[0]).toMatchObject({
       phase: 'shape',
       selected: false,
-      nextCommand: 'comet native next alpha-change --summary "<summary>" --confirmed',
+      nextCommand: 'comet native next alpha-change --summary <migration-summary>',
+      migrationRequired: true,
     });
     expect(statuses[1]).toMatchObject({ selected: true });
     expect(JSON.stringify(statuses)).not.toMatch(/openspec|superpowers|comet classic/iu);
@@ -405,7 +408,7 @@ describe('Native status diagnostics', () => {
     );
   });
 
-  it('only marks Archive ready after brief, spec, and verification checks pass', async () => {
+  it('requires legacy migration before Archive despite a prior verification report', async () => {
     await validChange('ready-change');
     const changeDir = nativeChangeDir(paths, 'ready-change');
     await advanceNativeChange({
@@ -439,14 +442,15 @@ describe('Native status diagnostics', () => {
 
     const readyStatus = await inspectNativeStatus(paths, 'ready-change');
     expect(readyStatus).toMatchObject({
-      archiveReady: true,
-      nextCommand: 'comet native archive ready-change --dry-run',
+      archiveReady: false,
+      migrationRequired: true,
+      nextCommand: 'comet native next ready-change --summary <migration-summary>',
     });
     expect(readyStatus).not.toHaveProperty('error');
     await fs.rm(path.join(changeDir, 'verification.md'));
     expect(await inspectNativeStatus(paths, 'ready-change')).toMatchObject({
       archiveReady: false,
-      nextCommand: 'comet native next ready-change --summary "<summary>"',
+      nextCommand: 'comet native next ready-change --summary <migration-summary>',
     });
   });
 
@@ -462,7 +466,7 @@ describe('Native status diagnostics', () => {
     expect((await listNativeStatus(paths)).map((status) => status.name)).toEqual(['native-only']);
   });
 
-  it('reports a pending ordinary transition without changing it', async () => {
+  it('requires legacy migration without changing a pending ordinary transition', async () => {
     await validChange('pending-transition');
     await expect(
       advanceNativeChange({
@@ -477,13 +481,17 @@ describe('Native status diagnostics', () => {
       }),
     ).rejects.toThrow('interrupt transition');
 
+    const journalFile = nativeTransitionJournalFile(paths, 'pending-transition');
+    const pendingJournal = await fs.readFile(journalFile, 'utf8');
     expect(await inspectNativeStatus(paths, 'pending-transition')).toMatchObject({
       phase: 'shape',
-      error: 'Native phase transition recovery is pending',
+      migrationRequired: true,
+      nextCommand: 'comet native next pending-transition --summary <migration-summary>',
     });
+    expect(await fs.readFile(journalFile, 'utf8')).toBe(pendingJournal);
   });
 
-  it('reports a missing Run state after a change has started', async () => {
+  it('keeps legacy migration guidance when an old Run state is missing', async () => {
     await validChange('missing-run');
     await advanceNativeChange({
       paths,
@@ -494,7 +502,8 @@ describe('Native status diagnostics', () => {
 
     expect(await inspectNativeStatus(paths, 'missing-run')).toMatchObject({
       phase: 'build',
-      error: 'Native change references a missing Run state',
+      migrationRequired: true,
+      nextCommand: 'comet native next missing-run --summary <migration-summary>',
     });
   });
 
@@ -511,8 +520,8 @@ describe('Native status diagnostics', () => {
       name: 'missing-runtime',
       phase: 'build',
       runtime: { status: 'missing', layout: 'missing' },
-      nextCommand: 'comet native next missing-runtime --summary "<summary>"',
-      findingSummary: { codes: ['runtime-missing'], warnings: 1, errors: 0 },
+      nextCommand: 'comet native next missing-runtime --summary <migration-summary>',
+      migrationRequired: true,
     });
   });
 });

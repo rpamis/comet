@@ -397,7 +397,13 @@ async function applySpecChange(options: {
   }
 
   const current = await readOptionalCanonicalSpec(options.paths, options.change.capability);
-  const alreadyApplied = current.exists && current.text === options.change.content;
+  const content = options.change.delta_content
+    ? mergeNativeDeltaAgainstCurrent({
+        currentMarkdown: current.text,
+        delta: parseNativeDelta(options.change.delta_content),
+      }).markdown
+    : options.change.content;
+  const alreadyApplied = current.exists && current.text === content;
   if (options.change.operation === 'create' && current.exists && !alreadyApplied) {
     throw new Error(
       `Canonical Native spec conflicts with the pending create: ${options.change.capability}`,
@@ -413,7 +419,7 @@ async function applySpecChange(options: {
   });
   if (alreadyApplied) return;
   await fs.mkdir(capabilityDirectory, { recursive: true });
-  await atomicWriteText(target, options.change.content, {
+  await atomicWriteText(target, content, {
     containedRoot: options.paths.nativeRoot,
   });
 }
@@ -889,8 +895,13 @@ export async function finalizeNativeSdkArchive(options: {
           throw new Error('Native Archive layout contradicts its transaction');
         const report = path.join(activeDir, 'verification.md');
         if (!(await exists(report))) {
-          if (options.derivedReport) await options.derivedReport.write(report);
-          else await writeNativeVerificationReport({ file: report, state });
+          try {
+            if (options.derivedReport) await options.derivedReport.write(report);
+            else await writeNativeVerificationReport({ file: report, state });
+          } catch (error) {
+            // SDK v3/v4 keep the accepted Run result even when its optional view cannot render.
+            if (!options.derivedReport?.optionalView) throw error;
+          }
         }
         transaction = { ...transaction, status: 'report-aligned' };
         await writeTransaction(paths, transaction);

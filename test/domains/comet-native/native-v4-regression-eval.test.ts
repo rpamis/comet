@@ -100,6 +100,7 @@ process.stderr.write('e'.repeat(size));
       cwdRef: '.',
       timeoutMs: 10_000,
       repeatable: true,
+      reusable: true,
     };
   }
 

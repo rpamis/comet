@@ -223,7 +223,7 @@ describe('Comet project status', () => {
             {
               name: 'native-only',
               phase: 'shape',
-              nextCommand: 'comet native next native-only --summary "<summary>" --confirmed',
+              nextCommand: 'comet native next native-only --summary <migration-summary>',
             },
           ],
         },
@@ -248,7 +248,7 @@ describe('Comet project status', () => {
             {
               name: 'native-only',
               phase: 'shape',
-              nextCommand: 'comet native next native-only --summary "<summary>" --confirmed',
+              nextCommand: 'comet native next native-only --summary <migration-summary>',
             },
           ],
         },

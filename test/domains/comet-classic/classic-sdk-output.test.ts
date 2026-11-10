@@ -82,21 +82,19 @@ describe('Classic next-step source projection', () => {
     const continuation = classicSdkContinuation(run, root, 'demo');
     expect(continuation).toMatchObject({
       mode: 'execute',
-      request: {
-        operation: 'execute',
-        runId: 'demo',
-        expectedRevision: 7,
-        actionId: 'action-1',
-        executorId: 'comet-classic-check',
+      commandArgs: ['comet', 'state', 'next', 'demo', '--continue', '--json'],
+      current: {
+        actions: [{ id: 'action-1', inputHash: run.actions[0].inputHash }],
       },
     });
     const serialized = JSON.stringify(continuation);
-    expect(serialized.indexOf('"request":')).toBeLessThan(
+    expect(serialized.indexOf(JSON.stringify(continuation.commandArgs))).toBeLessThan(
       serialized.indexOf('LARGE_APPROVAL_CONTEXT_'),
     );
     expect(serialized).toContain('LARGE_APPROVAL_CONTEXT_');
-    expect(classicSdkNextAction(run)?.instruction).toContain('data.continuation.request');
-    expect(continuation.instruction).toContain('data.continuation.request');
+    expect(classicSdkNextAction(run)?.instruction).toContain('data.continuation.commandArgs');
+    expect(continuation.instruction).toContain('state next --continue');
+    expect(continuation.instruction).not.toContain('data.continuation.request');
     expect(run).toEqual(before);
   });
 

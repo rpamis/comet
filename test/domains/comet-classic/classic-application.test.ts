@@ -931,7 +931,7 @@ it('retains the interrupted Action and rejects artifact drift before a downstrea
       event: 'verification-ready',
       verificationReport: 'docs/superpowers/reports/example.md',
     }),
-  ).rejects.toThrow(/工件已变化/);
+  ).rejects.toThrow(/Source is not ready/u);
   expect((await f.runtime.inspect('example')).actions.at(-1)?.status).toBe('pending');
   await fs.writeFile(path.join(f.projectRoot, 'source.js'), 'export const ready = true;\n');
   await f.work({ event: 'verify-fail', reason: 'Domain assessment requires repair' });
@@ -1135,28 +1135,15 @@ it('recovers the fixed Classic Application through public CLI across processes a
     status: 'pending',
   });
 }, 90000);
-it('requires fresh original domain evidence after artifact changes even when a new review reports current hashes', async () => {
+it('returns to Build in the same Run when the Agent requests repair after source edits', async () => {
   const f = await fixture('tweak');
   await f.reachReview();
   await fs.writeFile(
     path.join(f.projectRoot, 'source.js'),
     'export const ready = true; // changed after original check\n',
   );
-  await expect(f.work(await f.reviewOutput())).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
-  await f.refresh();
-  const action = f.run.actions.at(-1)!;
-  f.run = await f.runtime.recordOutcome({
-    runId: 'example',
-    outcome: {
-      actionId: action.id,
-      attempt: action.attempt,
-      inputHash: action.inputHash,
-      claimToken: action.claim!.token,
-      outcomeId: 'repair-current-source',
-      status: 'succeeded',
-      output: await f.reviewOutput('repair'),
-    },
-  });
+  await f.work(await f.reviewOutput('repair'));
+  expect(f.run.runId).toBe('example');
   expect(f.run.actions.at(-1)).toMatchObject({ stepId: 'tweak.build.execute', status: 'pending' });
 }, 90000);
 it('repairs a drifted accepted candidate in the same Run through an explicit composition command', async () => {
@@ -1286,7 +1273,7 @@ it.each(['hotfix', 'tweak'] as const)(
   },
   90000,
 );
-it('rejects changed full Design sources before continuation and renews the confirmation in the same Run', async () => {
+it('renews full Design confirmation in the same Run after an explicit requirement revision', async () => {
   const f = await fixture('full');
   await f.reachReview();
   await f.work(await f.reviewOutput());
@@ -1294,12 +1281,6 @@ it('rejects changed full Design sources before continuation and renews the confi
     path.join(f.projectRoot, 'docs/openspec/changes/example/proposal.md'),
     '# Proposal\nThe accepted requirement has changed.\n',
   );
-  await expect(
-    f.work({
-      event: 'verification-ready',
-      verificationReport: 'docs/superpowers/reports/stale.md',
-    }),
-  ).rejects.toThrow(/设计来源已变化/);
   f.run = await f.runtime.inspect('example');
   f.run = await f.runtime.dispatchCommand({
     runId: 'example',

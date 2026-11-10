@@ -2,10 +2,22 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { readCheckPolicy } from '../../../domains/comet-classic/classic-check-policy.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
+
+// Retain public timeout behavior for persisted v1 managed-check Runs; v2 uses Agent reports.
+vi.mock('../../../domains/comet-classic/classic-sdk-application.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../../domains/comet-classic/classic-sdk-application.js')
+    >();
+  return {
+    ...actual,
+    defineClassicAgentWorkflowApplication: actual.defineClassicWorkflowApplication,
+  };
+});
 
 let root: string;
 const identity = { argv: [process.execPath, 'check.cjs'], cwd: '.' };

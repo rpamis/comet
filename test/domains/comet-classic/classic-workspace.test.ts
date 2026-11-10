@@ -301,7 +301,7 @@ describe('Classic workspace preparation and routing', () => {
     );
   });
 
-  it('runs an inferred SDK Build check in the linked worktree when invoked from the primary worktree', async () => {
+  it('submits a platform SDK Build check from the linked worktree when invoked from the primary worktree', async () => {
     const name = 'sdk-linked-build';
     const prepared = await prepareClassicWorkspace({
       projectRoot: root,
@@ -341,12 +341,25 @@ describe('Classic workspace preparation and routing', () => {
     );
     expect(opened.exitCode, opened.stderr).toBe(0);
     await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] Implement the change\n');
-    await fs.writeFile(
-      path.join(prepared.projectRoot, 'package.json'),
-      JSON.stringify({ scripts: { build: 'node -e "console.log(\'linked-build-ok\')"' } }),
+    execFileSync(
+      process.execPath,
+      ['-e', "require('node:fs').writeFileSync('platform-check-cwd.txt', process.cwd())"],
+      { cwd: prepared.projectRoot },
     );
-
-    const built = await classicGuardCommand([name, 'build', '--apply'], primaryOptions);
+    expect(
+      await fs.readFile(path.join(prepared.projectRoot, 'platform-check-cwd.txt'), 'utf8'),
+    ).toBe(prepared.projectRoot);
+    const checks = path.join(prepared.projectRoot, 'platform-checks.json');
+    await fs.writeFile(
+      checks,
+      JSON.stringify({
+        checks: [{ name: 'Actual linked-worktree command exited 0', result: 'passed' }],
+      }),
+    );
+    const built = await classicGuardCommand(
+      [name, 'build', '--apply', '--checks', checks],
+      primaryOptions,
+    );
     expect(built.exitCode, built.stderr).toBe(0);
     expect(built.data).toMatchObject({ change: name, phase: 'verify' });
     expect((await classicStateCommand(['get', name, 'phase'], primaryOptions)).stdout).toBe(

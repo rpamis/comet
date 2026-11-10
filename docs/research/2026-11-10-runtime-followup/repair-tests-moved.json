@@ -1,0 +1,54 @@
+{
+  "status": "Prepared proposal only; not applied and no tests run.",
+  "file": "test/domains/comet-native/native-repair-transitions.test.ts",
+  "patch": "coverage/repair-053-followup/legacy/repair-skips-migration.patch",
+  "checkOnly": {
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "draft": "coverage/repair-053-followup/legacy/repair-skips-migration-draft.json",
+  "original": "coverage/repair-053-followup/legacy/repair-skips-proposal/original.ts",
+  "proposed": "coverage/repair-053-followup/legacy/repair-skips-proposal/proposed.ts",
+  "mapping": [
+    {
+      "kind": "tests-moved",
+      "from": "Native repair stagnation transitions persists a third-failure stop and records exactly one explicit override",
+      "to": "Native repair stagnation transitions persists a third-failure stop and records exactly one explicit override",
+      "reason": "Restore the existing case as an active real Runtime API integration test. Deprecated CLI/status transport assertions become committed history and direct Build guard results.",
+      "preserved": [
+        "Third failure stop and Build fail state",
+        "Wrong signature rejection",
+        "Original Run identity across all steps",
+        "Exactly one persisted override and unchanged prior failure entries",
+        "Explicit matching second override cannot create another record",
+        "Implementation edits cannot reset exhausted history"
+      ]
+    },
+    {
+      "kind": "tests-moved",
+      "from": "Native repair stagnation transitions hard-stops at five alternating failures and preserves the count when config increases",
+      "to": "Native repair stagnation transitions hard-stops at five failures even when code changes and gap signatures alternate",
+      "reason": "Merge the missing same-Run configuration increase and sixth-failure ceiling assertions into the existing active five-failure test; remove only the duplicate setup/five-failure loop.",
+      "removedSkippedSource": "\n\n  it.skip('hard-stops at five alternating failures and preserves the count when config increases', async () => {\n    let finalResult: Awaited<ReturnType<typeof failVerify>> | null = null;\n    for (let attempt = 1; attempt <= 5; attempt += 1) {\n      finalResult = await failVerify(\n        `Verification failure ${attempt}.`,\n        undefined,\n        Array.from({ length: 6 - attempt }, (_, index) => `check-${index + 1}`),\n      );\n      if (attempt < 5) {\n        expect(finalResult.next).toBe('auto');\n        await leaveBuild(`Repair attempt ${attempt} is ready.`);\n      }\n    }\n\n    expect(finalResult).toMatchObject({\n      next: 'manual',\n      change: { phase: 'build' },\n      repair: {\n        disposition: 'hard-stop',\n        totalRepairFailures: 5,\n        remainingIterations: 0,\n      },\n      findings: [expect.objectContaining({ code: 'repair-iteration-limit' })],\n      continuation: {\n        disposition: 'await-user',\n        requiresUserDecision: true,\n        requiredInputs: ['repair-continuation-decision'],\n      },\n    });\n    await fs.writeFile(path.join(projectRoot, 'src', 'feature.ts'), 'export const value = 99;\\n');\n    const stillStopped = await leaveBuild('Implementation changed after the hard stop.');\n    expect(stillStopped).toMatchObject({\n      next: 'manual',\n      change: { phase: 'build' },\n      continuation: {\n        disposition: 'await-user',\n        requiresUserDecision: true,\n        requiredInputs: ['repair-continuation-decision'],\n      },\n    });\n\n    const config = defaultProjectConfig('.');\n    config.native.max_verify_failures = 6;\n    await writeProjectConfig(projectRoot, config);\n    const progressed = await runNativeCli([\n      'next',\n      'repair-change',\n      '--summary',\n      'The configured contract budget now permits one more attempt.',\n      '--artifact',\n      'src/feature.ts',\n      '--json',\n      '--project-root',\n      projectRoot,\n    ]);\n    expect(progressed.exitCode).toBe(0);\n    const progressedData = JSON.parse(progressed.stdout!);\n    expect(progressedData.data).toMatchObject({\n      change: { phase: 'verify', verification_result: 'pending' },\n    });\n    const freshEpisode = await failVerify(\n      'The changed implementation consumes the sixth contract failure.',\n      undefined,\n      'third-check',\n    );\n    expect(progressed).toMatchObject({\n      exitCode: 0,\n    });\n    expect(freshEpisode).toMatchObject({\n      next: 'manual',\n      repair: { disposition: 'hard-stop', totalRepairFailures: 6, remainingIterations: 0 },\n    });\n  }, 60_000);",
+      "preserved": [
+        "Alternating five failure signatures cannot reset total count",
+        "Code edit before config increase remains stopped",
+        "Only max_verify_failures changes from five to six",
+        "Original five committed failures and Run identity remain intact after Verify re-entry",
+        "Sixth failed check hard-stops with total six and zero remaining",
+        "Further retry does not create extra failure/override history"
+      ]
+    }
+  ],
+  "notes": [
+    "No feature-removed claim is made for either valid behavior; both remain explicitly covered as tests-moved.",
+    "Removed the now-unused runNativeCli import and added the existing readNativeChange API reader. No product Runtime implementation, CLI flags, hash algorithm or API contract is changed.",
+    "Current source and all frozen full-run inputs remain untouched. Patch application/targeted verification belongs after the current full run."
+  ],
+  "minimalCommand": "pnpm exec vitest run test/domains/comet-native/native-repair-transitions.test.ts -t 'persists a third-failure stop and records exactly one explicit override|hard-stops at five failures even when code changes and gap signatures alternate|recovers an interrupted manual stop exactly once' --maxWorkers=1",
+  "limits": [
+    "git apply --check only proves the patch matches current source; it does not prove proposed test outcomes.",
+    "Existing source supports the chosen Runtime API path, but newly activated/extended assertions must be run and any discrepancy diagnosed after the freeze."
+  ]
+}

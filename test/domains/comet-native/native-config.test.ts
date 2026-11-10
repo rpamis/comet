@@ -143,7 +143,7 @@ describe('Native project configuration', () => {
       }
 
       await expect(writeProjectConfig(projectRoot, defaultProjectConfig('docs'))).rejects.toThrow(
-        /symbolic link or junction|real directory/iu,
+        /symbolic link, junction or invalid directory|real directory/iu,
       );
       await expect(fs.access(path.join(outsideRoot, 'config.yaml'))).rejects.toMatchObject({
         code: 'ENOENT',
@@ -166,7 +166,7 @@ describe('Native project configuration', () => {
       }
 
       await expect(writeProjectConfig(projectRoot, defaultProjectConfig('docs'))).rejects.toThrow(
-        /symbolic link or junction/iu,
+        /symbolic link, junction or invalid directory/iu,
       );
       await expect(fs.readFile(outsideConfig, 'utf8')).resolves.toBe('keep: true\n');
     } finally {

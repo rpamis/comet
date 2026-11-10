@@ -24,7 +24,7 @@ export const classicSdkCheckInstruction =
   '执行当前检查 Action；Runtime 会绑定原命令、输入快照和收据，并校验后续证据。默认单次真实执行；--local 不是执行位置开关，而是允许确定性检查复用。任务要求每阶段真实执行、命令有副作用或读取外部状态时，禁止添加 --local；只有任务允许且完整输入和执行条件确定时才显式选择复用。使用 --json 时解析完整 stdout，stderr 单独保留，不合并后截断解析。';
 
 export const classicSdkDeliveryCheckInstruction =
-  '交付修复检查已固定原 Verify 命令。将 data.continuation.request 原样保存为 JSON 文件，按 data.continuation.commandArgs 调用 runtime dispatch；不使用 check run 或 check rerun 重新登记检查。Runtime 仍校验原命令、输入和收据，不重放 Archive。检查成功后展示新交付范围，结束当前回复并等待用户针对本范围的实际回答。使用 --json 时解析完整 stdout，stderr 单独保留。';
+  '交付修复检查已固定原 Verify 命令。按 data.continuation.commandArgs 执行 state next --continue，使用当前 Run 的原 Action、命令和收据继续检查；不使用 check run 或 check rerun 重新登记检查，不重放 Archive。检查成功后展示新交付范围，结束当前回复并等待用户针对本范围的实际回答。使用 --json 时解析完整 stdout，stderr 单独保留。';
 
 export const classicSdkAgentDeliveryCheckInstruction =
   '提交本次交付修复的 Agent 平台检查报告，保留原 Run、归档和批准的路径，不运行受管命令或重放 Archive。随后展示交付范围并取得当前提案的明确批准。';

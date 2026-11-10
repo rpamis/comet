@@ -290,7 +290,7 @@ describe('Native portable delta integration', () => {
     ).resolves.toContain('authentication.profile');
   });
 
-  it('keeps Archive dry-run preview-only when a delta needs re-verification', async () => {
+  it('keeps Archive dry-run preview-only after an independent canonical Delta edit', async () => {
     const name = 'dry-run-rebase-preview';
     const deltaText = `schema: comet.native.delta.v1\ncapability: authentication\nbase_hash: ${sha256(baseline)}\nbase_version: 1\nlegacy_hash: ${nativeLegacySectionHash(baseline)}\noperations:\n  - id: authentication.sms\n    operation: add\n    title: SMS login\n    body: SMS login MUST be available.\n`;
     const shaped = await prepareChange(name, deltaText, { 'authentication.profile': null });
@@ -308,9 +308,8 @@ describe('Native portable delta integration', () => {
     await expect(nativeArchiveCommand([name, '--dry-run'], root)).resolves.toMatchObject({
       exitCode: 0,
       data: {
-        archived: false,
-        ready: false,
-        recovery: { action: 'reverify' },
+        ready: true,
+        requiresReverification: false,
       },
     });
     await expect(readNativePortableChange(paths, name)).resolves.toMatchObject({
@@ -326,7 +325,7 @@ describe('Native portable delta integration', () => {
     ).resolves.toBe(beforeDelta);
   });
 
-  it('discards a prepared Archive transaction when its canonical delta base changes', async () => {
+  it('resumes a prepared Delta transaction without overwriting an independent canonical addition', async () => {
     const name = 'prepared-transaction-rebase';
     const passwordSection =
       '## Requirement: authentication.password Password login\n\nPassword behavior.\n\n';
@@ -376,13 +375,25 @@ describe('Native portable delta integration', () => {
       `${baseline}## Requirement: authentication.profile Profile\n\nProfile behavior.\n\n`,
     );
 
-    await expect(archiveNativePortableChange({ paths, name })).rejects.toThrow(
-      /fresh verification/iu,
-    );
-    await expect(readNativePortableChange(paths, name)).resolves.toMatchObject({
-      phase: 'verify',
-      verification_result: 'pending',
+    const resumed = await archiveNativePortableChange({ paths, name });
+    expect(resumed).toMatchObject({
+      transactionId: transaction.id,
+      state: { phase: 'archive', status: 'done', archived: true },
     });
+    const canonical = await fs.readFile(
+      path.join(paths.specsDir, 'authentication', 'spec.md'),
+      'utf8',
+    );
+    expect(canonical).toContain('Password behavior with a session check.');
+    expect(canonical).toContain('authentication.profile');
+    expect(canonical).toContain('Profile behavior.');
+    await expect(nativeArchiveCommand([name, '--confirmed'], root)).resolves.toMatchObject({
+      exitCode: 0,
+      data: { archived: true },
+    });
+    expect(await fs.readFile(path.join(paths.specsDir, 'authentication', 'spec.md'), 'utf8')).toBe(
+      canonical,
+    );
     await expect(
       fs.stat(nativePortableTransactionFile(paths, { kind: 'archive', change: name })),
     ).rejects.toMatchObject({ code: 'ENOENT' });

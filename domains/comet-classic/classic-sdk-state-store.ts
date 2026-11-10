@@ -614,9 +614,19 @@ export function createClassicSdkStateStore(
       return run;
     };
     if (options.readOnly) return synchronize();
-    await ensureProtectedProjectDirectory(runtimeRoot, projectionDir, {
-      label: 'Classic SDK state projection directory',
-    });
+    try {
+      await ensureProtectedProjectDirectory(runtimeRoot, projectionDir, {
+        label: 'Classic SDK state projection directory',
+      });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      // A reused store may restore a portable Run after its local Runtime directory was removed.
+      runtimePrepared = false;
+      await boundRuntimeRoot();
+      await ensureProtectedProjectDirectory(runtimeRoot, projectionDir, {
+        label: 'Classic SDK state projection directory',
+      });
+    }
     const lockFile = path.join(runtimeRoot, projectionDir, `${runId}.lock`);
     return withRecoverableFileLock(lockFile, synchronize, { timeoutMs: 5_000 });
   }

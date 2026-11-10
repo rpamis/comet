@@ -322,6 +322,10 @@ export async function readClassicArchiveManifest(
   stateFiles: string[];
   optionalPaths: string[];
 }> {
+  await inspectProtectedProjectPath(root, archiveRef + '/' + manifestName, {
+    label: 'Classic Archive manifest',
+    expected: 'file',
+  });
   const recorded = await (await receiptStore(root)).read(executionKey(run, action));
   const portable = (action.outcome?.output as { archiveManifest?: unknown } | undefined)
     ?.archiveManifest;
