@@ -662,14 +662,21 @@ def _model_execution_config() -> dict[str, str | None]:
 
 def _capture_execution_identity(test_dir: Path, *, model: str | None, interaction):
     """Capture an immutable image/tool identity and a safe report payload."""
+    agent = _resolve_eval_agent(_plugin.config).agent if _plugin else "claude-code"
+    _build_docker_image_with_lock(
+        test_dir,
+        agent if agent != "claude-code" else None,
+        environment=getattr(_plugin.config, "_comet_execution_env", None) if _plugin else None,
+    )
     result = run_shell(
         "docker.sh",
         "execution-identity",
         str(test_dir),
         "--agent",
-        _resolve_eval_agent(_plugin.config).agent if _plugin else "claude-code",
+        agent,
         timeout=300,
         check=False,
+        terminate_process_tree=True,
     )
     if result.returncode != 0:
         raise RuntimeError("Could not verify eval Docker/agent execution identity")
