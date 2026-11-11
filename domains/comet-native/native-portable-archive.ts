@@ -1,3 +1,4 @@
+import type { RuntimeStore, WorkflowRun } from '../engine/runtime.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -1297,5 +1298,41 @@ export async function archiveNativePortableChange(options: {
       };
     },
     { allowedPortableTransaction: { kind: 'archive', change: options.name } },
+  );
+}
+
+/** Commit a recovered prewrite failure only while no Archive writer has started. */
+export async function commitNativeSdkArchiveFailure(options: {
+  projectRoot: string;
+  store: RuntimeStore<WorkflowRun>;
+  runId: string;
+  expectedRevision: number | null;
+  next: WorkflowRun;
+  actionId: string;
+  state: NativePortableState;
+}): Promise<boolean> {
+  const { projectRoot, store, runId, expectedRevision, next, actionId, state } = options;
+  const paths = await nativeProjectPaths(
+    projectRoot,
+    (next.input as { artifactRootRef: string }).artifactRootRef,
+  );
+  return withNativeMutationLock(
+    paths,
+    `commit SDK Archive failure ${runId}`,
+    async () => {
+      const current = await store.read(runId);
+      if (current?.revision !== expectedRevision) return false;
+      const previous = current.actions.find((action) => action.id === actionId);
+      if (
+        previous?.status === 'unknown' &&
+        (await readNativePortableTransaction(paths, { kind: 'archive', change: state.name }))
+      ) {
+        throw new Error(
+          'Native Archive has a transaction; recover its actual progress with archive --recover',
+        );
+      }
+      return store.compareAndSwap(runId, expectedRevision, next);
+    },
+    { allowedPortableTransaction: { kind: 'archive', change: state.name } },
   );
 }
