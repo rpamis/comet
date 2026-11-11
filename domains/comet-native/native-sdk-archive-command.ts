@@ -277,6 +277,8 @@ async function archiveNativeSdkChangeValue(options: {
         projectRoot: options.projectRoot,
       });
     }
+    const recoveredFailed =
+      run.actions.find((entry) => entry.id === action.id)?.status === 'failed';
     const result = success('archive', {
       change: options.name,
       recoveredAction: { id: action.id, stepId: action.stepId },
@@ -284,8 +286,9 @@ async function archiveNativeSdkChangeValue(options: {
         ? {
             historicalRecovery: true,
             currentImplementationRevalidated: false,
-            recoveryMessage:
-              '沿原 Specs 事务补记原 Action；没有重新运行检查，也未重新验收当前文件。',
+            recoveryMessage: recoveredFailed
+              ? '已补记原归档执行在写入前的失败结果；请按当前 Verify 修复入口继续。'
+              : '沿原 Specs 事务补记原 Action；没有重新运行检查，也未重新验收当前文件。',
           }
         : {}),
       ...(action.stepId === 'archive.finalize'
@@ -300,13 +303,16 @@ async function archiveNativeSdkChangeValue(options: {
         : {}),
       ...(await inspectNativeSdkStatus(options)),
     });
-    return run.actions.find((entry) => entry.id === action.id)?.status === 'failed'
+    return recoveredFailed
       ? {
           ...result,
           exitCode: 73,
           error: {
             code: 'blocked',
-            message: '原归档预检已恢复为未通过；请按当前 Verify 修复入口继续。',
+            message:
+              action.stepId === 'archive.prepare'
+                ? '原归档预检已恢复为未通过；请按当前 Verify 修复入口继续。'
+                : '原归档执行已恢复为失败；请按当前 Verify 修复入口继续。',
           },
         }
       : result;

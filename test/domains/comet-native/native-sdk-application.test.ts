@@ -67,7 +67,9 @@ import {
 import { archiveNativeSdkChange } from '../../../domains/comet-native/native-sdk-archive-command.js';
 import {
   nativeSdkArchiveApplyExecutor,
+  nativeSdkArchiveApplyValidator,
   recoverNativeSdkArchiveOutcome,
+  recoverCancelledNativeSdkArchive,
   nativeSdkArchiveFinalizeExecutor,
   nativeSdkArchivePreflightExecutor,
   nativeSdkArchivePreflightValidator,
@@ -8017,7 +8019,7 @@ it.for(['untracked-update', 'non-git-update'])(
     await fs.symlink(backupRef, linked, 'file');
     await expectArchiveFailure(
       archiveNativeSdkChange({ ...fixture.options, legacySpecBackup: linked }),
-      /symbolic|symlink/i,
+      /must be a regular file/i,
     );
   },
 );
@@ -8807,9 +8809,11 @@ async function expectArchivePrewriteFilesAbsent(
   f: Awaited<ReturnType<typeof claimedArchiveBeforeWrite>>,
 ) {
   const name = (f.run.state as NativePortableState).name;
-  await expect(
-    fs.access(path.join(f.paths.transactionsDir, `portable-archive-${name}.json`)),
-  ).rejects.toMatchObject({ code: 'ENOENT' });
+  for (const key of new Set([name, f.run.runId])) {
+    await expect(
+      fs.access(path.join(f.paths.transactionsDir, `portable-archive-${key}.json`)),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  }
   await expect(fs.access(path.join(f.paths.specsDir, 'workflow/spec.md'))).rejects.toMatchObject({
     code: 'ENOENT',
   });
@@ -8844,6 +8848,9 @@ it('recovers a rejected Archive prewrite failure through the CLI without creatin
   ]);
   const response = recovered.dispatch;
   expect(response.exitCode).toBe(73);
+  expect(response.error?.message).toContain('归档执行');
+  expect(response.error?.message).not.toContain('预检');
+  expect(response.data.recoveryMessage).not.toContain('沿原 Specs 事务');
   const run = await f.runtime.inspect(f.run.runId);
   expect(run.actions.find((action) => action.id === f.action.id)).toMatchObject({
     status: 'failed',
@@ -9129,6 +9136,42 @@ it('recovers Archive transactions by change name when the Run ID differs', async
     status: 'succeeded',
     outcome: { output: applied.output },
   });
+});
+
+it('recovers a cancelled Archive transaction by change name when the Run ID differs', async () => {
+  const f = await awaitingArchiveApplication();
+  const name = (f.run.state as NativePortableState).name;
+  expect(f.run.runId).not.toBe(name);
+  const applied = await f.runtime.execute({
+    runId: f.run.runId,
+    actionId: f.run.actions.at(-1)!.id,
+    executorId: nativeSdkArchiveApplyExecutor.id,
+    context: { requestId: 'cancel-different-run-id', projectRoot: f.root },
+  });
+  const cancelled = await reconcileNativeSdkExecutionStops(
+    f.root,
+    await f.runtime.cancel({ runId: applied.runId, reason: 'Legacy cancellation' }),
+    f.runtime,
+  );
+  expect(cancelled.status).toBe('cancelled');
+  expect(await fs.readdir(f.paths.transactionsDir)).toContain(`portable-archive-${name}.json`);
+  const receipt = await recoverCancelledNativeSdkArchive({ projectRoot: f.root, run: cancelled });
+  expect(receipt.transactionId).toBe(
+    (
+      applied.actions.find((action) => action.stepId === 'archive.execute')!.outcome!.output as {
+        transactionId: string;
+      }
+    ).transactionId,
+  );
+  expect((await f.runtime.inspect(applied.runId)).status).toBe('cancelled');
+  for (const key of [name, applied.runId]) {
+    await expect(
+      fs.access(path.join(f.paths.transactionsDir, `portable-archive-${key}.json`)),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  }
+  expect(await recoverCancelledNativeSdkArchive({ projectRoot: f.root, run: cancelled })).toEqual(
+    receipt,
+  );
 });
 
 it('rejects cancellation before committing when applied Archive Specs still have a transaction', async () => {
@@ -11003,3 +11046,51 @@ it.each([false, true])(
   },
   120_000,
 );
+
+it('rejects Archive prewrite recovery when a transaction appears before its commit', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  await rejectLegacyArchiveFailure(f);
+  await f.runtime.markUnknown({
+    runId: f.run.runId,
+    actionId: f.action.id,
+    attempt: f.action.attempt,
+    reason: 'Recover the rejected executor result',
+  });
+  const validate = nativeSdkArchiveApplyValidator.validate;
+  const spy = vi
+    .spyOn(nativeSdkArchiveApplyValidator, 'validate')
+    .mockImplementation(async (input) => {
+      const result = await validate(input);
+      if (input.outcome.status === 'failed' && result.accepted) {
+        // A previously claimed executor completes after the no-transaction check.
+        await nativeSdkArchiveApplyExecutor.execute(f.action, f.context, f.run);
+      }
+      return result;
+    });
+  try {
+    await expect(
+      recoverNativeSdkArchiveOutcome({
+        runtime: f.runtime,
+        runId: f.run.runId,
+        projectRoot: f.root,
+      }),
+    ).rejects.toThrow('Native Archive has a transaction');
+  } finally {
+    spy.mockRestore();
+  }
+  const current = await f.runtime.inspect(f.run.runId);
+  expect(current.actions.find((action) => action.id === f.action.id)?.status).toBe('unknown');
+  const { readNativePortableTransaction } =
+    await import('../../../domains/comet-native/native-portable-transactions.js');
+  const transaction = await readNativePortableTransaction(f.paths, {
+    kind: 'archive',
+    change: (f.run.state as NativePortableState).name,
+  });
+  expect(transaction?.journal.status).toBe('specs-applied');
+  const recovered = await recoverNativeSdkArchiveOutcome({
+    runtime: f.runtime,
+    runId: f.run.runId,
+    projectRoot: f.root,
+  });
+  expect(recovered.actions.find((action) => action.id === f.action.id)?.status).toBe('succeeded');
+});

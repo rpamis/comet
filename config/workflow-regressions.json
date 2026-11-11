@@ -33689,6 +33689,44 @@
           "requiredNames": ["recovers Archive transactions by change name when the Run ID differs"]
         }
       ]
+    },
+    {
+      "id": "native-cancelled-archive-recovery-change-name",
+      "behavior": "取消归档恢复按 change 名称查找原事务，Run ID 不同也能收尾且保留取消终态。",
+      "sources": ["https://github.com/rpamis/comet/pull/549#discussion_r4534747591"],
+      "coverageLevel": "runtime",
+      "reproduction": "使用 Run ID 与 change 名称不同的真实 Runtime 执行归档写入，以旧取消语义留下事务，再执行取消归档恢复。",
+      "expected": "收尾原 change 事务并可重复读取原收据，Run 保持 cancelled。",
+      "forbidden": "按 Run ID 漏掉事务，创建错误名称的事务或重新调度已取消 Run。",
+      "rootCause": "取消恢复分支仍将 run.runId 当作以 state.name 命名的事务键。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^recovers a cancelled Archive transaction by change name when the Run ID differs$",
+          "requiredNames": [
+            "recovers a cancelled Archive transaction by change name when the Run ID differs"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-prewrite-recovery-commit-race",
+      "behavior": "旧失败恢复与归档事务写入共享提交边界，已有事务优先恢复真实进度。",
+      "sources": ["https://github.com/rpamis/comet/pull/549#discussion_r4534747584"],
+      "coverageLevel": "runtime",
+      "reproduction": "在失败 validator 接受后、Run CAS 前调用持原 claim 的延迟执行器写入归档事务，再继续失败提交。",
+      "expected": "拒绝失败提交，原 Action 保留 unknown，并允许从已有事务恢复成功。",
+      "forbidden": "Specs 已应用却把原 Action 收尾为失败并进入修复路线。",
+      "rootCause": "无事务校验与失败状态 CAS 之间没有与归档写入共用 mutation lock。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^rejects Archive prewrite recovery when a transaction appears before its commit$",
+          "requiredNames": [
+            "rejects Archive prewrite recovery when a transaction appears before its commit"
+          ]
+        }
+      ]
     }
   ],
   "historicalTestMigrations": [

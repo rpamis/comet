@@ -667,7 +667,7 @@ export async function recoverCancelledNativeSdkArchive(options: {
   const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, { readOnly: true });
   const transaction = await readNativePortableTransaction(paths, {
     kind: 'archive',
-    change: run.runId,
+    change: parseNativePortableState(run.state).name,
   });
   if (transaction && options.readOnly)
     throw new Error('取消归档仍有待收尾事务；只读诊断不能代替显式恢复');

@@ -32,3 +32,14 @@
 同一恢复断言在未修改的 053 源码上失败（Action 实际为 unknown），无记录的对照通过。修复后同一断言通过。夹具通过真实 Runtime 提交旧执行器格式的失败并保存真实拒绝记录；没有手工伪造正常流程状态。由于 053 已删除旧输入检查，本次未重新执行 0.5.2 的瞬时文件变化复现，夹具模拟的是遗留失败回报边界。 Run ID/change 名称回归未单独在未修改基线上执行；证据为原查找键与事务保存键的差异，以及修复后真实 Runtime 的事务恢复断言。
 
 最终相关回归 18 passed / 0 failed（5 项新增、13 项既有案例）。定向测试分别覆盖源码 Runtime 和构建后的 `bin/comet.js`；未执行全量测试、完整安装包 E2E、真实平台 Hook 或模型 Eval。这些层级不能由定向测试代替。
+
+## PR 审查补充回归
+
+失败恢复提交与事务写入共用 Native mutation lock。锁内重新读取原 revision 和事务：若延迟执行器已先写入事务，失败提交会停止，原 Action 保持 unknown，随后按事务的实际进度恢复。该边界不增加文件指纹，也不改变普通 Runtime 的领取协议。
+
+取消后的归档恢复同样使用 change 名称定位事务，保留 cancelled 终态。响应分别标识预检失败与归档执行失败；无事务的失败补记不会声称已经恢复 Specs 事务。
+
+以下两项在本次修复前失败、修复后通过：
+
+- `native-archive-prewrite-recovery-commit-race` → `rejects Archive prewrite recovery when a transaction appears before its commit`：在校验与 CAS 之间写入真实事务，阻止失败提交，并继续恢复原成功结果。
+- `native-cancelled-archive-recovery-change-name` → `recovers a cancelled Archive transaction by change name when the Run ID differs`：旧取消流程留下的事务按 change 名称收尾，重复恢复返回原收据。

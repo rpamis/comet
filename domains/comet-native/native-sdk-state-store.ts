@@ -1,3 +1,4 @@
+import { commitNativeSdkArchiveFailure } from './native-portable-archive.js';
 import { observeWorkflowRunStore } from '../workflow-application/run-trace.js';
 import {
   resolveWorkspaceRuntimeRoot,
@@ -852,10 +853,28 @@ export function createNativeSdkStateStore(
         )
           throw error;
       }
+      const commit = () => store.compareAndSwap(runId, expectedRevision, next);
+      const failedArchive = [...next.actions]
+        .reverse()
+        .find((action) => action.stepId === 'archive.execute' && action.status === 'failed');
+      const previousRun = failedArchive ? await store.read(runId) : null;
+      const recoveringArchiveFailure = previousRun?.actions.some(
+        (action) => action.id === failedArchive?.id && action.status === 'unknown',
+      );
       const committed =
         next.status === 'cancelled'
           ? await commitNativeSdkCancellation({ projectRoot, store, runId, expectedRevision, next })
-          : await store.compareAndSwap(runId, expectedRevision, next);
+          : recoveringArchiveFailure
+            ? await commitNativeSdkArchiveFailure({
+                projectRoot,
+                store,
+                runId,
+                expectedRevision,
+                next,
+                actionId: failedArchive!.id,
+                state,
+              })
+            : await commit();
       if (committed) {
         if (['3', '4'].includes(next.workflow.version)) await syncBoundaryCheckpoint(next, true);
         else await syncStateFile(runId, true);
