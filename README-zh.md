@@ -49,16 +49,6 @@
   </tr>
   <tr>
     <td width="25%" align="center" valign="middle">
-      <a href="https://runapi.host/register?aff=u7wr">
-        <img src="https://github.com/rpamis/comet/blob/master/img/RunApi.jpg" alt="RunApi Sponsor" width="180">
-      </a>
-    </td>
-    <td width="75%" align="left" valign="middle">
-      RunAPI 是高效稳定的 AI 模型 API 中转平台，一个 API Key 即可访问 OpenAI、Claude、Gemini、DeepSeek、Grok 等 150+ 主流模型，低至 1 折，极其稳定，可以无缝兼容 Claude Code、OpenClaw 等工具。<a href="https://runapi.host/register?aff=u7wr">点此链接注册！</a>
-    </td>
-  </tr>
-  <tr>
-    <td width="25%" align="center" valign="middle">
       <a href="https://cubence.com?source=comet">
         <img src="https://github.com/rpamis/comet/blob/master/img/Cubence.png" alt="Cubence Sponsor" width="180">
       </a>

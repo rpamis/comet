@@ -51,17 +51,6 @@ This project is supported by sponsors including [PackyCode](https://www.packyapi
   </tr>
   <tr>
     <td width="25%" align="center" valign="middle">
-      <a href="https://runapi.host/register?aff=u7wr">
-        <img src="https://github.com/rpamis/comet/blob/master/img/RunApi.jpg" alt="RunAPI Sponsor" width="180">
-      </a>
-    </td>
-    <td width="75%" align="left" valign="middle">
-      <p>RunAPI is a fast, reliable AI model API gateway. Access over 150 leading models, including OpenAI, Claude, Gemini, DeepSeek, and Grok, with a single API key and discounts of up to 90%. It works seamlessly with tools such as Claude Code and OpenClaw.</p>
-      <p><a href="https://runapi.host/register?aff=u7wr">Registry in here</a></p>
-    </td>
-  </tr>
-  <tr>
-    <td width="25%" align="center" valign="middle">
       <a href="https://cubence.com?source=comet">
         <img src="https://github.com/rpamis/comet/blob/master/img/Cubence.png" alt="Cubence Sponsor" width="180">
       </a>
