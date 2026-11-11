@@ -67,6 +67,7 @@ import {
 import { archiveNativeSdkChange } from '../../../domains/comet-native/native-sdk-archive-command.js';
 import {
   nativeSdkArchiveApplyExecutor,
+  recoverNativeSdkArchiveOutcome,
   nativeSdkArchiveFinalizeExecutor,
   nativeSdkArchivePreflightExecutor,
   nativeSdkArchivePreflightValidator,
@@ -8746,6 +8747,388 @@ it('recovers original archive history after a subsequent legitimate archive chan
   expect((await f.runtime.inspect(a.runId)).outputs['archive.finalize']).toEqual(
     recoveredRun.outputs['archive.finalize'],
   );
+});
+
+async function claimedArchiveBeforeWrite() {
+  const f = await verifiedV3Candidate();
+  const wait = f.run.waits.at(-1)!;
+  let run = await f.runtime.resolveWait({
+    runId: f.run.runId,
+    waitId: wait.id,
+    proposalHash: wait.proposalHash,
+    decisionId: 'prewrite-archive-approved',
+    choice: 'approved',
+  });
+  const context = { requestId: 'prewrite-archive', projectRoot: f.root };
+  run = await f.runtime.execute({
+    runId: run.runId,
+    actionId: run.actions.at(-1)!.id,
+    executorId: 'comet-native-archive-preflight',
+    context,
+  });
+  const action = run.actions.at(-1)!;
+  expect(action).toMatchObject({ stepId: 'archive.execute', status: 'pending' });
+  run = await f.runtime.claim({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: nativeSdkArchiveApplyExecutor.id,
+    claimToken: 'prewrite-archive-claim',
+    context,
+  });
+  return { ...f, run, action: run.actions.at(-1)!, context };
+}
+
+async function rejectLegacyArchiveFailure(
+  f: Awaited<ReturnType<typeof claimedArchiveBeforeWrite>>,
+) {
+  // Inject the released executor's result; the real Runtime persists the rejection.
+  const outcome = {
+    actionId: f.action.id,
+    attempt: f.action.attempt,
+    inputHash: f.action.inputHash,
+    claimToken: f.action.claim!.token,
+    outcomeId: `${f.action.id}:${f.action.attempt}:executor-result`,
+    status: 'failed' as const,
+    output: {
+      ready: false,
+      reason: 'candidate-drift',
+      message: 'Candidate inputs were temporarily unreadable.',
+    },
+  };
+  await expect(
+    f.runtime.recordOutcome({ runId: f.run.runId, context: f.context, outcome }),
+  ).rejects.toThrow('OUTCOME_REJECTED');
+  return outcome;
+}
+
+async function expectArchivePrewriteFilesAbsent(
+  f: Awaited<ReturnType<typeof claimedArchiveBeforeWrite>>,
+) {
+  const name = (f.run.state as NativePortableState).name;
+  await expect(
+    fs.access(path.join(f.paths.transactionsDir, `portable-archive-${name}.json`)),
+  ).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(fs.access(path.join(f.paths.specsDir, 'workflow/spec.md'))).rejects.toMatchObject({
+    code: 'ENOENT',
+  });
+}
+
+async function runArchivePrewriteCli(projectRoot: string, args: string[]) {
+  if (!process.env.COMET_TEST_PACKAGE_ROOT) return nativeDomain.runNativeCliDetailed(args);
+  const result = spawnSync(
+    process.execPath,
+    [path.join(process.env.COMET_TEST_PACKAGE_ROOT, 'bin/comet.js'), 'native', ...args],
+    {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      env: { ...process.env, COMET_DAEMON: 'off' },
+    },
+  );
+  expect(result.error).toBeUndefined();
+  return { dispatch: JSON.parse(result.stdout) };
+}
+it('recovers a rejected Archive prewrite failure through the CLI without creating a transaction', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  const outcome = await rejectLegacyArchiveFailure(f);
+  const rejected = await f.runtime.inspect(f.run.runId);
+  expect(rejected.actions.at(-1)?.rejectedOutcomes).toHaveLength(1);
+  const recovered = await runArchivePrewriteCli(f.root, [
+    'archive',
+    f.run.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  const response = recovered.dispatch;
+  expect(response.exitCode).toBe(73);
+  const run = await f.runtime.inspect(f.run.runId);
+  expect(run.actions.find((action) => action.id === f.action.id)).toMatchObject({
+    status: 'failed',
+    attempt: f.action.attempt,
+    inputHash: f.action.inputHash,
+    outcome: { status: 'failed', output: outcome.output },
+  });
+  expect(run.state).toMatchObject({ phase: 'verify', status: 'await-user', archived: false });
+  expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
+  expect(run.actions.filter((action) => action.stepId === 'archive.execute')).toHaveLength(1);
+  await expectArchivePrewriteFilesAbsent(f);
+  const repeated = await runArchivePrewriteCli(f.root, [
+    'archive',
+    f.run.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(repeated.dispatch.exitCode).toBe(73);
+  expect((await f.runtime.inspect(f.run.runId)).actions).toEqual(run.actions);
+  await expectArchivePrewriteFilesAbsent(f);
+
+  const continuation = response.agent?.continuation ?? response.data.continuation;
+  const repair = continuation.commandAlternatives.find(
+    (item: { name: string }) => item.name === 'revise-implementation',
+  );
+  expect(repair).toBeDefined();
+  const repaired = await runArchivePrewriteCli(
+    f.root,
+    repair.commandArgs
+      .slice(2)
+      .map((arg: string) =>
+        arg === '<summary>'
+          ? 'Reverify the restored candidate after the recorded prewrite failure.'
+          : arg,
+      ),
+  );
+  expect(repaired.dispatch.exitCode, JSON.stringify(repaired.dispatch)).toBe(0);
+  let current = await f.runtime.inspect(f.run.runId);
+  expect(current.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'pending' });
+  current = await succeedLatestAction(
+    f.runtime,
+    current,
+    {
+      summary: 'Revalidated the restored implementation.',
+      addressedAcceptanceIds: ['A1'],
+      acceptanceReview: fixtureAcceptanceReview(['A1']),
+      checks: [],
+      knownLimits: [],
+      review: null,
+      submittedAt: new Date().toISOString(),
+      verificationChecks: [],
+    },
+    f.root,
+    'prewrite-repair-builder',
+    'builder-session-1',
+  );
+  current = await f.runtime.execute({
+    runId: current.runId,
+    actionId: current.actions.at(-1)!.id,
+    executorId: 'comet-native-checks',
+    context: f.context,
+  });
+  const state = current.state as NativePortableState;
+  current = await succeedLatestAction(
+    f.runtime,
+    current,
+    {
+      candidateId: state.builder_handoff!.candidate_id,
+      verifierExecutionRef: 'prewrite-repair-verifier',
+      response: {
+        kind: 'final-result',
+        result: {
+          iteration: state.loop.iteration,
+          attempt: state.loop.attempt,
+          verdict: 'pass',
+          acceptance: [
+            { id: 'A1', result: 'passed', reason: 'The restored implementation was reverified.' },
+          ],
+          risks: [],
+          summary: 'Reverification passed.',
+        },
+      },
+    },
+    f.root,
+    'prewrite-repair-verified',
+    'prewrite-repair-verifier',
+  );
+  const approval = current.waits.at(-1)!;
+  expect(approval).toMatchObject({ stepId: 'verify.confirm', status: 'pending' });
+  await f.runtime.resolveWait({
+    runId: current.runId,
+    waitId: approval.id,
+    proposalHash: approval.proposalHash,
+    decisionId: 'prewrite-repair-approved',
+    choice: 'approved',
+  });
+  const completed = await runArchivePrewriteCli(f.root, [
+    'archive',
+    current.runId,
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(completed.dispatch.exitCode, JSON.stringify(completed.dispatch)).toBe(0);
+  current = await f.runtime.inspect(f.run.runId);
+  expect(current.status).toBe('completed');
+  expect(current.actions.find((action) => action.id === f.action.id)?.status).toBe('failed');
+  expect(
+    current.actions.filter(
+      (action) => action.stepId === 'archive.execute' && action.status === 'succeeded',
+    ),
+  ).toHaveLength(1);
+});
+
+it('keeps legacy Archive recovery blocked without a rejected prewrite failure', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  await f.runtime.markUnknown({
+    runId: f.run.runId,
+    actionId: f.action.id,
+    attempt: f.action.attempt,
+    reason: 'Executor result lost',
+  });
+  const result = await runArchivePrewriteCli(f.root, [
+    'archive',
+    f.run.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(result.dispatch.exitCode).not.toBe(0);
+  expect((await f.runtime.inspect(f.run.runId)).actions.at(-1)?.status).toBe('unknown');
+  await expectArchivePrewriteFilesAbsent(f);
+});
+
+it('rejects mismatched legacy Archive failure identities and preflight candidates', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  const outcome = await rejectLegacyArchiveFailure(f);
+  const run = await f.runtime.markUnknown({
+    runId: f.run.runId,
+    actionId: f.action.id,
+    attempt: f.action.attempt,
+    reason: 'Legacy executor returned',
+  });
+  const validator = f.application.validators.find(
+    (entry) => entry.id === 'comet-native-archive-apply-outcome',
+  )!;
+  for (const field of [
+    'actionId',
+    'attempt',
+    'inputHash',
+    'claimToken',
+    'outcomeId',
+    'status',
+    'event',
+  ] as const) {
+    const changed = structuredClone(run);
+    const action = changed.actions.at(-1)!;
+    Object.assign(action.rejectedOutcomes![0].outcome, {
+      [field]: field === 'attempt' ? 999 : 'foreign',
+    });
+    expect(
+      (await validator.validate({ run: changed, action, outcome, context: f.context })).accepted,
+      field,
+    ).toBe(false);
+  }
+  const changed = structuredClone(run);
+  (changed.outputs['archive.prepare'].value as Record<string, RuntimeValue>).candidateId =
+    'another-candidate';
+  expect(
+    (
+      await validator.validate({
+        run: changed,
+        action: changed.actions.at(-1)!,
+        outcome,
+        context: f.context,
+      })
+    ).accepted,
+  ).toBe(false);
+  expect(
+    (
+      await validator.validate({
+        run,
+        action: run.actions.at(-1)!,
+        outcome: { ...outcome, output: { ...outcome.output, message: 'Changed failure' } },
+        context: f.context,
+      })
+    ).accepted,
+  ).toBe(false);
+  expect(await f.runtime.inspect(run.runId)).toEqual(run);
+  await expectArchivePrewriteFilesAbsent(f);
+});
+
+it('recovers an existing Archive transaction instead of a rejected prewrite failure', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  const outcome = await rejectLegacyArchiveFailure(f);
+  const applied = await nativeSdkArchiveApplyExecutor.execute(f.action, f.context, f.run);
+  expect(applied.status).toBe('succeeded');
+  const run = await f.runtime.markUnknown({
+    runId: f.run.runId,
+    actionId: f.action.id,
+    attempt: f.action.attempt,
+    reason: 'Original writer stopped after applying Specs',
+  });
+  const validator = f.application.validators.find(
+    (entry) => entry.id === 'comet-native-archive-apply-outcome',
+  )!;
+  expect(
+    (await validator.validate({ run, action: run.actions.at(-1)!, outcome, context: f.context }))
+      .accepted,
+  ).toBe(false);
+  const result = await runArchivePrewriteCli(f.root, [
+    'archive',
+    f.run.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(result.dispatch.exitCode, JSON.stringify(result.dispatch)).toBe(0);
+  const finalized = await runArchivePrewriteCli(f.root, [
+    'archive',
+    f.run.runId,
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(finalized.dispatch.exitCode, JSON.stringify(finalized.dispatch)).toBe(0);
+  const completed = await f.runtime.inspect(run.runId);
+  expect(completed.status).toBe('completed');
+  expect(completed.actions.find((action) => action.id === f.action.id)).toMatchObject({
+    status: 'succeeded',
+    outcome: { output: applied.output },
+  });
+  expect(completed.actions.filter((action) => action.stepId === 'archive.execute')).toHaveLength(1);
+});
+
+it('recovers Archive transactions by change name when the Run ID differs', async () => {
+  const f = await awaitingArchiveApplication();
+  expect(f.run.runId).not.toBe((f.run.state as NativePortableState).name);
+  const action = f.run.actions.at(-1)!;
+  const context = { requestId: 'different-run-id', projectRoot: f.root };
+  const claimed = await f.runtime.claim({
+    runId: f.run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: nativeSdkArchiveApplyExecutor.id,
+    claimToken: 'different-run-id',
+    context,
+  });
+  const current = claimed.actions.at(-1)!;
+  const applied = await nativeSdkArchiveApplyExecutor.execute(current, context, claimed);
+  await expect(
+    f.runtime.recordOutcome({
+      runId: f.run.runId,
+      context,
+      outcome: {
+        actionId: current.id,
+        attempt: current.attempt,
+        inputHash: current.inputHash,
+        claimToken: current.claim!.token,
+        outcomeId: `${current.id}:${current.attempt}:executor-result`,
+        status: 'failed',
+        output: { ready: false, reason: 'candidate-drift', message: 'Legacy failure' },
+      },
+    }),
+  ).rejects.toThrow('OUTCOME_REJECTED');
+  await f.runtime.markUnknown({
+    runId: f.run.runId,
+    actionId: current.id,
+    attempt: current.attempt,
+    reason: 'Writer stopped',
+  });
+  const recovered = await recoverNativeSdkArchiveOutcome({
+    runtime: f.runtime,
+    runId: f.run.runId,
+    projectRoot: f.root,
+  });
+  expect(recovered.actions.find((entry) => entry.id === current.id)).toMatchObject({
+    status: 'succeeded',
+    outcome: { output: applied.output },
+  });
 });
 
 it('rejects cancellation before committing when applied Archive Specs still have a transaction', async () => {

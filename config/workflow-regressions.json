@@ -33650,6 +33650,45 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-archive-prewrite-rejection-recovery",
+      "behavior": "旧 Run 的事务创建前失败被拒后，公开归档恢复命令补记原失败，保留修复与重新验收入口。",
+      "sources": ["report:2026-11-11-native-archive-prewrite-race"],
+      "coverageLevel": "public-cli",
+      "reproduction": "在 053 基线 9acb00ff 上通过真实 Runtime 保存旧执行器 candidate-drift 失败的拒绝记录，再执行 native archive --recover；原 Action 仍为 unknown。",
+      "expected": "无事务且原失败身份匹配时将原 Action 收尾为 failed；重复恢复不写入，修复、验收和接受后可正常归档。",
+      "forbidden": "凭空恢复无失败记录的未知执行；接受错误身份、候选或修改后的失败；用失败覆盖已有事务；将失败改成成功或重复归档。",
+      "rootCause": "053 删除候选内容检查后仍只按冻结事务恢复 archive.execute，未处理旧版本保存的无事务失败回报。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(?:recovers a rejected Archive prewrite failure through the CLI without creating a transaction|keeps legacy Archive recovery blocked without a rejected prewrite failure|rejects mismatched legacy Archive failure identities and preflight candidates|recovers an existing Archive transaction instead of a rejected prewrite failure)$",
+          "requiredNames": [
+            "recovers a rejected Archive prewrite failure through the CLI without creating a transaction",
+            "keeps legacy Archive recovery blocked without a rejected prewrite failure",
+            "rejects mismatched legacy Archive failure identities and preflight candidates",
+            "recovers an existing Archive transaction instead of a rejected prewrite failure"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-recovery-change-name",
+      "behavior": "Run ID 与 change 名称不同时仍按原 change 查找归档事务，不能把已有事务当成事务创建前失败。",
+      "sources": ["report:2026-11-11-native-archive-prewrite-race"],
+      "coverageLevel": "runtime",
+      "reproduction": "创建 Run ID 不同于 change 名称的 Run，执行原归档写入后保留一个被拒失败，再恢复未知 Action。",
+      "expected": "找到原 change 的事务并保留实际成功结果。",
+      "forbidden": "因按 Run ID 查找而遗漏原事务，转而补记失败或重复写入。",
+      "rootCause": "恢复入口首次查找使用 run.runId，实际事务以 state.name 保存。",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^recovers Archive transactions by change name when the Run ID differs$",
+          "requiredNames": ["recovers Archive transactions by change name when the Run ID differs"]
+        }
+      ]
     }
   ],
   "historicalTestMigrations": [

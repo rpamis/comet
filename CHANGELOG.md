@@ -28,6 +28,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Legacy Native Archive recovery**: Settle a previously rejected prewrite failure on its original Action when no Archive transaction exists, preserving the failure and the repair path instead of leaving the Run blocked on a missing transaction.
+
 - **Project update preservation**: Keep custom ignore rules, their precedence, and user-authored YAML comments when updating managed project configuration ([#540](https://github.com/rpamis/comet/issues/540)).
 - **ZCode Hook diagnostics**: Recognize valid user-level Hooks, repair disabled or duplicate entries, and preserve them during project updates instead of replacing them with project Hooks that ZCode does not execute ([#541](https://github.com/rpamis/comet/issues/541)).
 - **Cancelled Native history**: Diagnose closed, cancelled legacy Runs after their active documents are removed, while retaining checks for active projections, execution stops and storage integrity ([#542](https://github.com/rpamis/comet/issues/542)).

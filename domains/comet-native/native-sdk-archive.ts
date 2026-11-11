@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { inspectNativeSdkQuiescence } from './native-sdk-cancellation.js';
 import type { NativeSdkCheckExecutionInspection } from './native-sdk-check-execution.js';
 import {
@@ -316,6 +317,31 @@ export const nativeSdkArchiveApplyExecutor: RuntimeExecutor = {
   },
 };
 
+/** 旧执行器已返回的失败只能用于收尾原 Action，不重新执行归档。 */
+function rejectedArchivePrewriteFailure(action: Readonly<RuntimeAction>) {
+  if (action.status !== 'unknown') return undefined;
+  return action.rejectedOutcomes?.find(({ outcome }) => {
+    const output = outcome.output;
+    return (
+      outcome.actionId === action.id &&
+      outcome.attempt === action.attempt &&
+      outcome.inputHash === action.inputHash &&
+      outcome.claimToken === action.claim?.token &&
+      outcome.outcomeId === `${action.id}:${action.attempt}:executor-result` &&
+      outcome.status === 'failed' &&
+      outcome.event === undefined &&
+      output !== null &&
+      typeof output === 'object' &&
+      !Array.isArray(output) &&
+      output.ready === false &&
+      output.reason === 'candidate-drift' &&
+      typeof output.message === 'string' &&
+      output.message.trim().length > 0 &&
+      Object.keys(output).length === 3
+    );
+  })?.outcome.output;
+}
+
 export const nativeSdkArchiveApplyValidator: RuntimeValidator = {
   id: 'comet-native-archive-apply-outcome',
   version: '1',
@@ -328,6 +354,21 @@ export const nativeSdkArchiveApplyValidator: RuntimeValidator = {
       return { accepted: false, reason: 'Native Archive Specs were not applied by the Runtime' };
     }
     try {
+      if (outcome.status === 'failed') {
+        const rejected = rejectedArchivePrewriteFailure(action);
+        if (!rejected || !isDeepStrictEqual(outcome.output, rejected))
+          return {
+            accepted: false,
+            reason: 'Native Archive lacks a matching rejected prewrite failure',
+          };
+        const { state, paths } = await archiveApplyBinding(run, action, context.projectRoot);
+        if (await readNativePortableTransaction(paths, { kind: 'archive', change: state.name }))
+          return {
+            accepted: false,
+            reason: 'Native Archive has a transaction; recover its actual progress',
+          };
+        return { accepted: true };
+      }
       const recovering = action.status === 'unknown';
       const { state, paths } = await archiveApplyBinding(
         run,
@@ -509,24 +550,31 @@ export async function recoverNativeSdkArchiveOutcome(options: {
     );
     const prior = await readNativePortableTransaction(transactionPaths, {
       kind: 'archive',
-      change: run.runId,
+      change: parseNativePortableState(run.state).name,
     });
-    const recovering = prior?.kind === 'archive' && prior.journal.status === 'specs-applied';
-    const bound = await archiveApplyBinding(run, action, options.projectRoot, recovering);
-    const { state, paths } = bound;
-    const transaction = await readNativePortableTransaction(paths, {
-      kind: 'archive',
-      change: state.name,
-    });
-    if (transaction?.kind !== 'archive') {
-      throw new Error('Native SDK Archive recovery has no frozen Spec transaction');
+    const rejected = rejectedArchivePrewriteFailure(action);
+    if (!prior && rejected) {
+      // 保留原失败；后续修复、验收和接受由原 workflow 处理。
+      output = rejected;
+      status = 'failed';
+    } else {
+      const recovering = prior?.kind === 'archive' && prior.journal.status === 'specs-applied';
+      const bound = await archiveApplyBinding(run, action, options.projectRoot, recovering);
+      const { state, paths } = bound;
+      const transaction = await readNativePortableTransaction(paths, {
+        kind: 'archive',
+        change: state.name,
+      });
+      if (transaction?.kind !== 'archive') {
+        throw new Error('Native SDK Archive recovery has no frozen Spec transaction');
+      }
+      if (transaction.journal.status === 'prepared') {
+        await applyNativeSdkArchiveSpecs(bound);
+      }
+      output = {
+        ...(await inspectNativeSdkArchiveSpecs({ paths, state })),
+      } as unknown as RuntimeValue;
     }
-    if (transaction.journal.status === 'prepared') {
-      await applyNativeSdkArchiveSpecs(bound);
-    }
-    output = {
-      ...(await inspectNativeSdkArchiveSpecs({ paths, state })),
-    } as unknown as RuntimeValue;
   } else {
     if (action.claim.executorId !== nativeSdkArchiveFinalizeExecutor.id) {
       throw new Error('Native SDK Archive recovery belongs to another executor');
