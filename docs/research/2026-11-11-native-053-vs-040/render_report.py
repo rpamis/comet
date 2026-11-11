@@ -464,7 +464,7 @@ body += section(
             for group in display_groups
         ],
     )
-    + "<p>主模型参数为 deepseek-flash[1M]，cc-switch 的快速和默认模型映射到 deepseek-v4-flash 系列。不同标签保留在原始用量中，不强行合并；历史 MiMo 组不参与同配置主比较。</p>",
+    + "<p>主模型参数为 deepseek-flash[1M]，快速和默认模型映射到 deepseek-v4-flash 系列。不同标签保留在原始用量中，不强行合并；历史 MiMo 组不参与同配置主比较。</p>",
 )
 body += section(
     "context",
@@ -616,9 +616,9 @@ boundaries = [
     ),
     (
         "模型配置" if args.baseline else "模型不同",
-        "本轮两组使用同一 cc-switch DeepSeek 配置，包括主模型和快速模型映射；具体标签与工具版本见上表。历史 MiMo 组仅作参考。"
+        "本轮两组使用同一 DeepSeek 配置，包括主模型和快速模型映射；具体标签与工具版本见上表。历史 MiMo 组仅作参考。"
         if args.baseline
-        else "本轮使用 cc-switch 的 DeepSeek 配置；历史两组原始轨迹出现 "
+        else "本轮使用 DeepSeek 配置；历史两组原始轨迹出现 "
         + escape(", ".join(b["models"]))
         + "。",
     ),
