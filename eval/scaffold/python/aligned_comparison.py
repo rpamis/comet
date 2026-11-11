@@ -68,7 +68,6 @@ _RUNNER_FILES = (
     "scaffold/docker/agent-overlay.Dockerfile",
 )
 _CONTROLLER_FILES = (
-    "scaffold/python/agent_environment.py",
     "scaffold/python/builtin_datasets.py",
     "scaffold/python/dataset_score.py",
     "scaffold/python/install_claude.py",
@@ -78,6 +77,7 @@ _CONTROLLER_FILES = (
     "scaffold/python/treatments.py",
     "scaffold/python/profiles.py",
     "scaffold/python/manifests.py",
+    "scaffold/python/native_eval.py",
     "scaffold/python/utils.py",
     "scaffold/python/agents.py",
     "scaffold/python/logging.py",

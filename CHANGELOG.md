@@ -31,7 +31,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
-- **Eval image preparation**: Honor the selected Claude Code version in legacy task images without editing their fixtures. Finish image preparation before reading execution identity, and let parallel workers wait for the configured build budget instead of failing while a permitted cold build is still running.
+- **Eval image preparation**: Finish image preparation before reading execution identity, and let parallel workers wait for the configured build budget instead of failing while a permitted cold build is still running.
 - **Native Archive directory moves**: Retry brief file-sharing errors when moving a change into the archive, while preserving the original transaction for recovery if the directory remains unavailable.
 - **Classic tool responses**: Keep complete Run history out of default compact dispatch replies, so earlier proposals and execution records do not repeatedly consume Agent context. Preserve current decisions, claim context, and full inspection through `inspect` or `--details`.
 - **Archived Native recovery**: Repair completed Native history after switching branches without upgrading its accepted workflow definition or repeating completed work. Restore a lost local Run while retaining its archived owner, original completion receipt, and portable checkpoint, including Windows line endings; active changes still require their original workspace binding.

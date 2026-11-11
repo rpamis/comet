@@ -59,10 +59,27 @@ Docker 构建锁的等待预算与该次构建预算相同；普通构建仍为 
 
 原始评分、轨迹和控制台仍保存在各 Run 与 `coverage/native-053-vs-040-20261111/`；报告只导出计数、用量和评分，不导出工具命令或凭据。
 
-## 同模型重跑 040
+## 已确认的新对照：Native 0.4.0-rc.1
 
-用户随后明确要求重跑 040，使模型配置一致。范围沿用同一 16 题 × 3 次，共 48 个新样本、4 并发。Native 不再重跑；历史 040 和旧 Native 继续保留作参考。
+用户进一步明确目标为 **0.4.0-rc.1 的 Native**。主对照改为 Native 0.5.3 与 Native 0.4.0-rc.1，两组使用相同 cc-switch DeepSeek 主模型、快速模型映射、Claude Code 2.1.318、16 题 × 3 次与 4 个执行器。053 的 48 份评分不再重跑；历史 MiMo 数据保留作参考。
 
-冻结对象为 `eval/local/skills/benchmarks/040-beta/` 的 `0.4.0-beta.1`：8 个 Comet Skill、配套 `.mjs` 与 Classic Runtime，以及原 treatment 指定的 OpenSpec / Superpowers 依赖快照。依赖仅作为隔离评估对象安装，控制本任务的 Agent 不加载这些旧依赖 Skill。冻结 Skill、Runtime、业务输入和验证器均不修改，不使用当前 Classic 替代旧版。
+控制器曾将“040”误读为旧 Classic，并做了无模型准备和一次静态收集。没有启动 Classic 模型评估，不能给它记任何新模型成绩。准备中的两个 npm 下载曾报 ECONNRESET，日志保留；6 个环境完成了工具版本验收。用户纠正后已结束准备控制进程，残留的底层构建随后自行完成；确认没有对应活动客户端或构建。Classic 专用实验清单和版本替换实现已撤回。
 
-旧环境有硬编码的 Claude Code `latest`。harness 现在只在临时副本中将其改用已有 `CLAUDE_CODE_VERSION` 参数，并在会话预构建与实际工作区使用相同转换。未指定版本时保留原始行为。新增快速回归在修复前 2 失败、1 对照通过；修复后相关 **91 项通过**，Ruff 通过。镜像正在做无模型预检，要求实际 Claude Code 为 `2.1.318`、OpenSpec 为 `1.3.1`，且没有当前 `comet` CLI 混入。完成准备后才启动 040 模型评估。
+固定来源是 npm 的 `@rpamis/comet@0.4.0-rc.1` 已发布包，压缩包 7,064,048 字节，解包后 28,384,354 字节。Git tag 对应 `0c7f87ba`；发布包中的 Native 19 个文件与 tag 逐字节一致，没有修改原始 Skill、Runtime 或业务用例。
+
+rc.1 的 Native 使用公开 `comet native` CLI。评估通过已有 `BENCH_COMET_SOURCE_ROOT` 读取已发布的 bin/dist/assets 快照，使用 `published-dist` 路径而不重新编译旧源码。镜像安装 rc.1 自己声明的依赖和 overrides，避免混用 053 的 commander 等依赖。Node 使用 22，Claude Code 固定 2.1.318；当前 053 CLI 不作为 rc.1 的执行入口。
+
+`native-040-rc1.yaml` 选择原来的 16 题；`treatments/comet/native_040_rc1.yaml` 指向缓存中的冻结 Native Skill。通过已有 `BENCH_TREATMENTS_DIR` 加载实验 treatment。前置提示只约定版本和 Native 对应阶段，保留 rc.1 自身的批准、独立审查、Verify 与 Archive 协议，没有套用 053 的 SDK owner 或同会话验收规则。
+
+新增两项快速回归在改动前失败，完成适配后相关检查 135 通过、1 跳过；跳过项是在当前 Windows 环境中不能创建文件符号链接的检查，未当作通过。Ruff 与 architecture 检查通过。16 个任务环境均完成实际无模型预检：Node 22.23.4、Claude Code 2.1.318、Comet 0.4.0-rc.1，native 命令帮助退出 0。rc.1 模型样本尚未启动。
+
+复现时先把 `@rpamis/comet@0.4.0-rc.1` 解包至 `coverage/native-053-vs-040-20261111/native-040-rc1-package/package/`，再临时注入 cc-switch 的 DeepSeek 凭据和模型映射。凭据不写入命令行、配置文件或报告。普通准备与静态收集不等于模型运行；新的模型评估仍需用户明确请求。
+
+```powershell
+$env:BENCH_COMET_SOURCE_ROOT = (Resolve-Path 'coverage/native-053-vs-040-20261111/native-040-rc1-package/package').Path
+$env:BENCH_TREATMENTS_DIR = (Resolve-Path 'docs/research/2026-11-11-native-053-vs-040/treatments').Path
+$env:BENCH_CC_VERSION = '2.1.318'
+$env:BENCH_LLM_JUDGE = '0'
+$env:PYTEST_ADDOPTS = '--treatment=COMET_NATIVE_040_RC1 --count=3 -n 4 -k test_task_treatment'
+node bin/comet.js eval --project . --manifest docs/research/2026-11-11-native-053-vs-040/native-040-rc1.yaml --agent claude-code --model 'deepseek-flash[1M]' --base-url https://api.deepseek.com/anthropic --html
+```

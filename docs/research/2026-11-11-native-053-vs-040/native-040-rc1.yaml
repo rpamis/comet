@@ -1,10 +1,10 @@
 apiVersion: comet.eval/v1alpha1
 kind: SkillEvalManifest
 metadata:
-  name: classic-040-deepseek
+  name: native-040-rc1-deepseek
 skill:
-  name: comet
-  source: ../../../eval/local/skills/benchmarks/040-beta/comet
+  name: comet-native
+  source: ../../../coverage/native-053-vs-040-20261111/native-040-rc1-package/package/assets/skills/comet-native
 evaluation:
   recommendedTasks:
     - comet-agent-memory-routing

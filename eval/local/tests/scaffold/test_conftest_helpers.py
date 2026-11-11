@@ -1484,7 +1484,9 @@ def test_prebuild_docker_image_allows_a_cold_image_build_to_run_for_fifteen_minu
     ]
 
 
-@pytest.mark.parametrize("treatment", ["COMET_NATIVE_SDK_CURRENT", "COMET_CLASSIC_DOCS_LAYOUT"])
+@pytest.mark.parametrize(
+    "treatment", ["COMET_NATIVE_SDK_CURRENT", "COMET_NATIVE_040_RC1", "COMET_CLASSIC_DOCS_LAYOUT"]
+)
 def test_session_prebuild_defers_current_native_to_its_prepared_case_workspace(
     tmp_path, monkeypatch, treatment
 ):
@@ -1514,7 +1516,9 @@ def test_session_prebuild_defers_current_native_to_its_prepared_case_workspace(
     next(fixture)
     with pytest.raises(StopIteration):
         next(fixture)
-    assert calls == ([] if treatment == "COMET_NATIVE_SDK_CURRENT" else [environment])
+    assert calls == (
+        [] if treatment in {"COMET_NATIVE_SDK_CURRENT", "COMET_NATIVE_040_RC1"} else [environment]
+    )
 
 
 def test_docker_build_lock_wait_uses_the_same_budget_as_the_cold_build(tmp_path, monkeypatch):

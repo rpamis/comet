@@ -1,0 +1,16 @@
+COMET_NATIVE_040_RC1:
+  description: Published 0.4.0-rc.1 Native workflow with its original CLI and Runtime
+  claude_md: |
+    Begin by invoking /comet-native as the only workflow Skill. Use the pinned
+    0.4.0-rc.1 Comet CLI and that release's Native Runtime. Preserve its own
+    approval, independent review, verification, and archive protocol. Initialize
+    artifact_root docs and leave a terminal verified Native archive, unless the
+    business task explicitly requests an active execution boundary.
+  skills:
+    - name: comet-native
+      source: path
+      path: ../coverage/native-053-vs-040-20261111/native-040-rc1-package/package/assets/skills/comet-native
+      profile: generic
+      required_skills:
+        - comet-native
+      require_skill_invocation: true
