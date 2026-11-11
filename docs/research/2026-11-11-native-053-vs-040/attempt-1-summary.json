@@ -1,0 +1,19 @@
+{
+  "runId": "comet-eval-10f01cd3-40a7-4670-bd0c-2f7c0bdc4536",
+  "status": "setup-failed",
+  "expectedCases": 48,
+  "setupErrors": 48,
+  "modelRuns": 0,
+  "reports": 0,
+  "rawFiles": 0,
+  "elapsedSeconds": 632.89,
+  "exitCode": 1,
+  "mainModel": "deepseek-flash[1M]",
+  "candidateCommit": "4234fcab998aeca0e66ab4e78801725d66ba7cd0",
+  "fixCommit": "82038f67",
+  "failures": [
+    "legacy raw prebuild bypassed current Native environment adaptation",
+    "cold build lock wait was shorter than its allowed build budget",
+    "npm ECONNRESET in the raw legacy image build"
+  ]
+}
