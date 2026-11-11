@@ -17,6 +17,7 @@ Usage:
 import sys
 import uuid
 import time
+from pathlib import Path
 
 import pytest
 import conftest
@@ -31,6 +32,7 @@ from scaffold.python.case_selection import (
     assert_selected_case_identity,
 )
 from scaffold.python.native_eval import (
+    current_native_environment,
     adapt_checks_for_native,
     adapt_prompt_for_native,
     filter_control_workflow_checks as _filter_control_workflow_checks,
@@ -511,6 +513,22 @@ def test_task_treatment(task_name, treatment_name):
     treatment_cfg = treatments[treatment_name]
     skill_hints = treatment_cfg.skills[0] if treatment_cfg.skills else {}
     validators = task.load_validators()
+    if (
+        treatment_name == "COMET_NATIVE_SDK_CURRENT"
+        and task.config.evaluation.native_terminal == "archive"
+        and not (task.environment_dir / ".include-current-comet-cli").is_file()
+    ):
+        from scaffold.python.utils import make_execution_validator
+        from scaffold.python.validation import native_sdk
+
+        validators.append(
+            make_execution_validator(
+                validation_dir=Path(native_sdk.__file__).parent,
+                test_scripts="native_sdk.py",
+                target_artifacts=[],
+                timeout=120,
+            )
+        )
 
     skills = build_treatment_skills(treatment_cfg.skills) if treatment_cfg.skills else {}
     skill_sources = [
@@ -548,20 +566,21 @@ def test_task_treatment(task_name, treatment_name):
         target_profile=target_profile,
     )
     interaction = conftest._resolve_interaction_config(task, profile_name, fixtures.request_config)
-    fixtures.setup_test_context(
-        skills=treatment.skills,
-        claude_md=conftest._build_eval_claude_md(profile_name, treatment.claude_md),
-        environment_dir=task.environment_dir,
-        workspace_dir=task.workspace_dir,
-    )
+    with current_native_environment(task.environment_dir, treatment_name) as environment:
+        fixtures.setup_test_context(
+            skills=treatment.skills,
+            claude_md=conftest._build_eval_claude_md(profile_name, treatment.claude_md),
+            environment_dir=environment,
+            workspace_dir=task.workspace_dir,
+        )
     # 在模型启动前读取控制器准备的真实 CLI 身份，不从模型生成的产物推断。
     from scaffold.python.release_gate import read_json
 
     from scaffold.python.paths import CURRENT_COMET_SNAPSHOT_REF
 
-    build_identity_file = fixtures.test_dir / CURRENT_COMET_SNAPSHOT_REF / 'build-identity.json'
+    build_identity_file = fixtures.test_dir / CURRENT_COMET_SNAPSHOT_REF / "build-identity.json"
     if not build_identity_file.exists():
-        build_identity_file = fixtures.test_dir / '_eval_current_comet/build-identity.json'
+        build_identity_file = fixtures.test_dir / "_eval_current_comet/build-identity.json"
     current_comet_build = read_json(build_identity_file) if build_identity_file.exists() else None
     selected_agent = conftest._resolve_eval_agent(fixtures.request_config).agent
     selected_adapter = get_agent_adapter(selected_agent)

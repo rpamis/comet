@@ -4,8 +4,55 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from contextlib import contextmanager
+import shutil
+import tempfile
 
 from scaffold.python.validation.native_workflow import validate_native_workflow
+
+
+@contextmanager
+def current_native_environment(environment_dir: Path, treatment_name: str):
+    """Install current CLI tooling around unchanged canonical business fixtures."""
+    marker = ".include-current-comet-cli"
+    if treatment_name != "COMET_NATIVE_SDK_CURRENT" or (environment_dir / marker).is_file():
+        yield environment_dir
+        return
+    reference = (
+        Path(__file__).resolve().parents[2] / "local/tasks/comet-native-workflow/environment"
+    )
+    with tempfile.TemporaryDirectory(prefix="comet-native-sdk-environment-") as temporary:
+        prepared = Path(temporary)
+        shutil.copytree(environment_dir, prepared, dirs_exist_ok=True)
+        for name in (marker, "current-comet.sh", "current-comet-package.json"):
+            shutil.copyfile(reference / name, prepared / name)
+        dockerfile = prepared / "Dockerfile"
+        content = dockerfile.read_text(encoding="utf-8")
+        # The old empty Classic scaffold is workflow setup, not a business input.
+        content = content.replace(
+            "RUN mkdir -p openspec/changes", "# Native has no Classic scaffold"
+        )
+        if "ARG CLAUDE_CODE_VERSION=" not in content:
+            content = content.replace(
+                "WORKDIR /workspace", "ARG CLAUDE_CODE_VERSION=latest\nWORKDIR /workspace", 1
+            )
+        content = content.replace(
+            "@anthropic-ai/claude-code@latest",
+            "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}",
+        )
+        content += """
+USER root
+COPY --from=node:22-bookworm-slim /usr/local/ /usr/local/
+COPY current-comet-package.json /opt/comet-cli/package.json
+RUN npm install --prefix /opt/comet-cli --omit=dev --ignore-scripts && \
+    mkdir -p /opt/comet-current && \
+    ln -s /opt/comet-cli/node_modules /opt/comet-current/node_modules
+COPY current-comet.sh /usr/local/bin/comet
+RUN chmod 0755 /usr/local/bin/comet
+USER agent
+"""
+        dockerfile.write_text(content, encoding="utf-8")
+        yield prepared
 
 
 NATIVE_CLARIFICATION_MODES = {

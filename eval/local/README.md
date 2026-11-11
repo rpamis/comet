@@ -36,6 +36,17 @@ Classic 的 SDK 阶段轨迹按所属 Run 中成功的 Action 顺序校验，不
 
 将 Native 与 0.4.0 基线按相同的 16 个 canonical Comet 任务、每任务 3 次对齐运行：
 
+当前 SDK 使用固定任务清单和公共 CLI。下面的 `PYTEST_ADDOPTS` 只选择 Native treatment、三次重复和四个并行执行器；不会增加其他任务。实际模型、端点与凭据按本轮授权配置，凭据仅通过进程环境提供。
+
+```powershell
+$env:PYTEST_ADDOPTS='--treatment=COMET_NATIVE_SDK_CURRENT --count=3 -n 4 -k test_task_treatment'
+node bin/comet.js eval --manifest docs/research/2026-11-11-native-053-vs-040/eval.yaml --project . --agent claude-code --model '<model>' --base-url '<url>' --html
+```
+
+该命令从仓库根运行。当前 SDK 的旧任务环境在临时目录补充 Node 22 和当前 checkout CLI，原业务文件、任务提示及业务验证器保留；空的 Classic scaffold 不注入 Native。额外验证器在同一容器中读取原 owner、Run 和归档 checkpoint，检查完成状态及最终归档 Action。已经提供当前 CLI 的任务和历史 treatment 不做环境转换。
+
+以下是旧 beta17 treatment 的历史命令；不能据此声明当前 SDK 已通过：
+
 ```bash
 uv run pytest local/tests/tasks/test_tasks.py::test_task_treatment \
   --treatment=COMET_NATIVE_PHASE1 --count=3 -n 4 \
