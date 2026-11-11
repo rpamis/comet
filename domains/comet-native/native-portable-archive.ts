@@ -816,63 +816,65 @@ export async function applyNativeSdkArchiveSpecs(options: {
   checkCapabilityOwners?: boolean;
   derivedReport?: boolean;
 }): Promise<NativePortableArchiveTransaction> {
-  const { paths, state } = options;
   return withNativeMutationLock(
-    paths,
-    `apply SDK Archive specs ${state.name}`,
-    async () => {
-      assertArchiveReady(state);
-      let transaction = await readTransaction(paths, state.name);
-      if (!transaction) {
-        const preflight = await inspectNativePortableArchive({
-          paths,
-          name: state.name,
-          state,
-          verificationReportStateVersion: options.verificationReportStateVersion,
-          checkCapabilityOwners: options.checkCapabilityOwners,
-          derivedReport: options.derivedReport,
-        });
-        if (!preflight.ready) {
-          throw new Error(
-            `Native SDK Archive preflight is blocked: ${preflight.blockers.join('; ')}`,
-          );
-        }
-        transaction = {
-          schema: NATIVE_PORTABLE_ARCHIVE_TRANSACTION_SCHEMA,
-          id: randomUUID(),
-          change: state.name,
-          start_state_version: state.state_version,
-          archive_ref: archiveRef(state),
-          status: 'prepared',
-          next_spec_index: 0,
-          spec_changes: await freezeArchiveSpecChanges(paths, state),
-          created_at: new Date().toISOString(),
-        };
-        await writeTransaction(paths, transaction);
-      } else {
-        assertTransactionState(transaction, state);
-        await assertNativeEditReviewsComplete(paths, state);
-        if (transaction.status === 'prepared')
-          await assertAppliedSpecsUnchanged(paths, transaction);
-      }
-      if (transaction.status === 'prepared') {
-        for (
-          let index = transaction.next_spec_index;
-          index < transaction.spec_changes.length;
-          index += 1
-        ) {
-          await applySpecChange({ paths, state, change: transaction.spec_changes[index] });
-          transaction = { ...transaction, next_spec_index: index + 1 };
-          await writeTransaction(paths, transaction);
-        }
-        transaction = { ...transaction, status: 'specs-applied' };
-        await writeTransaction(paths, transaction);
-      }
-      await assertAppliedSpecsUnchanged(paths, transaction);
-      return transaction;
-    },
-    { allowedPortableTransaction: { kind: 'archive', change: state.name } },
+    options.paths,
+    `apply SDK Archive specs ${options.state.name}`,
+    () => applyNativeSdkArchiveSpecsLocked(options),
+    { allowedPortableTransaction: { kind: 'archive', change: options.state.name } },
   );
+}
+
+/** 调用方必须持有 Native mutation lock，使执行失败证据与事务创建互斥。 */
+export async function applyNativeSdkArchiveSpecsLocked(
+  options: Parameters<typeof applyNativeSdkArchiveSpecs>[0],
+): Promise<NativePortableArchiveTransaction> {
+  const { paths, state } = options;
+  assertArchiveReady(state);
+  let transaction = await readTransaction(paths, state.name);
+  if (!transaction) {
+    const preflight = await inspectNativePortableArchive({
+      paths,
+      name: state.name,
+      state,
+      verificationReportStateVersion: options.verificationReportStateVersion,
+      checkCapabilityOwners: options.checkCapabilityOwners,
+      derivedReport: options.derivedReport,
+    });
+    if (!preflight.ready) {
+      throw new Error(`Native SDK Archive preflight is blocked: ${preflight.blockers.join('; ')}`);
+    }
+    transaction = {
+      schema: NATIVE_PORTABLE_ARCHIVE_TRANSACTION_SCHEMA,
+      id: randomUUID(),
+      change: state.name,
+      start_state_version: state.state_version,
+      archive_ref: archiveRef(state),
+      status: 'prepared',
+      next_spec_index: 0,
+      spec_changes: await freezeArchiveSpecChanges(paths, state),
+      created_at: new Date().toISOString(),
+    };
+    await writeTransaction(paths, transaction);
+  } else {
+    assertTransactionState(transaction, state);
+    await assertNativeEditReviewsComplete(paths, state);
+    if (transaction.status === 'prepared') await assertAppliedSpecsUnchanged(paths, transaction);
+  }
+  if (transaction.status === 'prepared') {
+    for (
+      let index = transaction.next_spec_index;
+      index < transaction.spec_changes.length;
+      index += 1
+    ) {
+      await applySpecChange({ paths, state, change: transaction.spec_changes[index] });
+      transaction = { ...transaction, next_spec_index: index + 1 };
+      await writeTransaction(paths, transaction);
+    }
+    transaction = { ...transaction, status: 'specs-applied' };
+    await writeTransaction(paths, transaction);
+  }
+  await assertAppliedSpecsUnchanged(paths, transaction);
+  return transaction;
 }
 
 export async function inspectNativeSdkArchiveSpecs(options: {

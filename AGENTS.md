@@ -167,6 +167,7 @@ pnpm test           # 仅在满足“测试”章节的全量条件时
 
 ## Native 与 Entry runtime 规范
 
+- `native-sdk-archive.ts` 是已审核的 Native mutation lock 入口：在同一锁内保存写入前失败证据或调用 `applyNativeSdkArchiveSpecsLocked` 创建事务，禁止锁内调用再次获取同一锁的归档门面。
 - Native 运行时源码与每命令 entry 位于 `domains/comet-native/`，修改后必须运行 `pnpm build:native-runtime` 同步 `comet-native-runtime.mjs` 和所有 `comet-native-*.mjs` 命令 bundle
 - `native-portable-delta-rebase.ts` 负责 Delta 重合并及其原输入绑定；`native-portable-requirements.ts` 保留正式材料读取与需求校验，不反向依赖检查执行模块。
 - `comet-native-hook-guard.mjs` 是 Native Guard 的自包含命令 bundle，不作为平台 Hook 直接安装；Native 主流程与 Guard 都不得依赖外部 Skill

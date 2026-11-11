@@ -102,6 +102,7 @@ import {
   type RuntimeStateValidator,
   type RuntimeExecutor,
   type WorkflowRun,
+  type RuntimeValue,
   type WorkflowTransitionHandler,
   hashRuntimeValue,
 } from '../../../domains/engine/runtime.js';
@@ -11970,6 +11971,29 @@ it.each([
   },
 );
 
+async function runArchivePrewriteCli(projectRoot: string, args: string[]) {
+  if (!process.env.COMET_TEST_PACKAGE_ROOT) return nativeDomain.runNativeCliDetailed(args);
+  const result = spawnSync(
+    process.execPath,
+    [path.join(process.env.COMET_TEST_PACKAGE_ROOT, 'bin/comet.js'), 'native', ...args],
+    { cwd: projectRoot, encoding: 'utf8', env: { ...process.env, COMET_DAEMON: 'off' } },
+  );
+  expect(result.error).toBeUndefined();
+  return { dispatch: JSON.parse(result.stdout) };
+}
+
+async function expectArchivePrewriteFilesAbsent(
+  f: Awaited<ReturnType<typeof claimedArchiveBeforeWrite>>,
+) {
+  const name = (f.run.state as NativePortableState).name;
+  await expect(
+    fs.stat(path.join(f.paths.transactionsDir, `portable-archive-${name}.json`)),
+  ).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(fs.stat(path.join(f.paths.specsDir, 'workflow/spec.md'))).rejects.toMatchObject({
+    code: 'ENOENT',
+  });
+}
+
 async function claimedArchiveBeforeWrite() {
   const f = await verifiedV3Candidate();
   const wait = f.run.waits.at(-1)!;
@@ -12032,10 +12056,7 @@ it('records an Archive prewrite failure after the candidate becomes stable again
   });
   expect(run.state).toMatchObject({ phase: 'verify', status: 'await-user', archived: false });
   expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
-  await expect(
-    fs.stat(path.join(f.paths.transactionsDir, `portable-archive-${f.run.runId}.json`)),
-  ).rejects.toThrow();
-  await expect(fs.stat(path.join(f.paths.specsDir, 'workflow/spec.md'))).rejects.toThrow();
+  await expectArchivePrewriteFilesAbsent(f);
 });
 
 it('recovers a rejected Archive prewrite failure through the CLI without creating a transaction', async () => {
@@ -12055,26 +12076,15 @@ it('recovers a rejected Archive prewrite failure through the CLI without creatin
   releasedValidator.mockRestore();
   const rejected = await f.runtime.inspect(f.run.runId);
   expect(rejected.actions.at(-1)?.rejectedOutcomes).toHaveLength(1);
-  const recovered = spawnSync(
-    process.execPath,
-    [
-      path.resolve('bin/comet.js'),
-      'native',
-      'archive',
-      f.run.runId,
-      '--recover',
-      '--project-root',
-      f.root,
-      '--json',
-    ],
-    {
-      cwd: f.root,
-      encoding: 'utf8',
-      env: { ...process.env, COMET_DAEMON: 'off' },
-    },
-  );
-  expect(recovered.error).toBeUndefined();
-  const response = JSON.parse(recovered.stdout);
+  const recovered = await runArchivePrewriteCli(f.root, [
+    'archive',
+    f.run.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  const response = recovered.dispatch;
   expect(response.exitCode).toBe(73);
   const run = await f.runtime.inspect(f.run.runId);
   expect(run.actions.find((action) => action.id === f.action.id)).toMatchObject({
@@ -12086,56 +12096,35 @@ it('recovers a rejected Archive prewrite failure through the CLI without creatin
   expect(run.state).toMatchObject({ phase: 'verify', status: 'await-user', archived: false });
   expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
   expect(run.actions.filter((action) => action.stepId === 'archive.execute')).toHaveLength(1);
-  await expect(
-    fs.stat(path.join(f.paths.transactionsDir, `portable-archive-${f.run.runId}.json`)),
-  ).rejects.toThrow();
-  await expect(fs.stat(path.join(f.paths.specsDir, 'workflow/spec.md'))).rejects.toThrow();
-  const repeated = spawnSync(
-    process.execPath,
-    [
-      path.resolve('bin/comet.js'),
-      'native',
-      'archive',
-      f.run.runId,
-      '--recover',
-      '--project-root',
-      f.root,
-      '--json',
-    ],
-    {
-      cwd: f.root,
-      encoding: 'utf8',
-      env: { ...process.env, COMET_DAEMON: 'off' },
-    },
-  );
-  expect(repeated.error).toBeUndefined();
+  await expectArchivePrewriteFilesAbsent(f);
+  const repeated = await runArchivePrewriteCli(f.root, [
+    'archive',
+    f.run.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(repeated.dispatch.exitCode).toBe(73);
   expect((await f.runtime.inspect(f.run.runId)).actions).toEqual(run.actions);
+  await expectArchivePrewriteFilesAbsent(f);
 
   const continuation = response.agent?.continuation ?? response.data.continuation;
   const repair = continuation.commandAlternatives.find(
     (item: { name: string }) => item.name === 'revise-implementation',
   );
   expect(repair).toBeDefined();
-  const repaired = spawnSync(
-    process.execPath,
-    [
-      path.resolve('bin/comet.js'),
-      ...repair.commandArgs
-        .slice(1)
-        .map((arg: string) =>
-          arg === '<summary>'
-            ? 'Reverify the restored candidate after the recorded prewrite failure.'
-            : arg,
-        ),
-    ],
-    {
-      cwd: f.root,
-      encoding: 'utf8',
-      env: { ...process.env, COMET_DAEMON: 'off' },
-    },
+  const repaired = await runArchivePrewriteCli(
+    f.root,
+    repair.commandArgs
+      .slice(2)
+      .map((arg: string) =>
+        arg === '<summary>'
+          ? 'Reverify the restored candidate after the recorded prewrite failure.'
+          : arg,
+      ),
   );
-  expect(repaired.error).toBeUndefined();
-  expect(JSON.parse(repaired.stdout).exitCode, repaired.stdout).toBe(0);
+  expect(repaired.dispatch.exitCode, JSON.stringify(repaired.dispatch)).toBe(0);
   let current = await f.runtime.inspect(f.run.runId);
   expect(current.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'pending' });
   current = await succeedLatestAction(
@@ -12195,25 +12184,14 @@ it('recovers a rejected Archive prewrite failure through the CLI without creatin
     decisionId: 'prewrite-repair-approved',
     choice: 'approved',
   });
-  const completed = spawnSync(
-    process.execPath,
-    [
-      path.resolve('bin/comet.js'),
-      'native',
-      'archive',
-      current.runId,
-      '--project-root',
-      f.root,
-      '--json',
-    ],
-    {
-      cwd: f.root,
-      encoding: 'utf8',
-      env: { ...process.env, COMET_DAEMON: 'off' },
-    },
-  );
-  expect(completed.error).toBeUndefined();
-  expect(JSON.parse(completed.stdout).exitCode, completed.stdout).toBe(0);
+  const completed = await runArchivePrewriteCli(f.root, [
+    'archive',
+    current.runId,
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(completed.dispatch.exitCode, JSON.stringify(completed.dispatch)).toBe(0);
   current = await f.runtime.inspect(f.run.runId);
   expect(current.status).toBe('completed');
   expect(current.actions.find((action) => action.id === f.action.id)?.status).toBe('failed');
@@ -12232,29 +12210,18 @@ it('does not infer an Archive prewrite failure from a missing transaction alone'
     attempt: f.action.attempt,
     reason: 'Original process stopped with no result evidence',
   });
-  const response = spawnSync(
-    process.execPath,
-    [
-      path.resolve('bin/comet.js'),
-      'native',
-      'archive',
-      f.run.runId,
-      '--recover',
-      '--project-root',
-      f.root,
-      '--json',
-    ],
-    {
-      cwd: f.root,
-      encoding: 'utf8',
-      env: { ...process.env, COMET_DAEMON: 'off' },
-    },
-  );
-  expect(response.error).toBeUndefined();
-  expect(JSON.parse(response.stdout).exitCode).not.toBe(0);
+  const response = await runArchivePrewriteCli(f.root, [
+    'archive',
+    f.run.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(response.dispatch.exitCode).not.toBe(0);
   const run = await f.runtime.inspect(f.run.runId);
   expect(run.actions.find((action) => action.id === f.action.id)).toEqual(unknown.actions.at(-1));
-  await expect(fs.stat(path.join(f.paths.specsDir, 'workflow/spec.md'))).rejects.toThrow();
+  await expectArchivePrewriteFilesAbsent(f);
 });
 
 it('rejects an Archive prewrite failure after a transaction has applied Specs', async () => {
@@ -12263,7 +12230,7 @@ it('rejects an Archive prewrite failure after a transaction has applied Specs', 
   expect(applied.status).toBe('succeeded');
   const transactionFile = path.join(
     f.paths.transactionsDir,
-    `portable-archive-${f.run.runId}.json`,
+    `portable-archive-${(f.run.state as NativePortableState).name}.json`,
   );
   const specFile = path.join(f.paths.specsDir, 'workflow/spec.md');
   const transaction = await fs.readFile(transactionFile);
@@ -12322,5 +12289,155 @@ it('rejects an Archive prewrite failure with a different preflight candidate', a
   });
   expect(validation.accepted).toBe(false);
   expect(await f.runtime.inspect(f.run.runId)).toEqual(f.run);
-  await expect(fs.stat(path.join(f.paths.specsDir, 'workflow/spec.md'))).rejects.toThrow();
+  await expectArchivePrewriteFilesAbsent(f);
+});
+
+it.each(['before-commit', 'after-commit'] as const)(
+  'does not publish Specs when an Archive prewrite failure is redelivered %s',
+  async (timing) => {
+    const f = await claimedArchiveBeforeWrite();
+    const outcome = await archiveFailureBeforeRestoringInputs(f);
+    let duplicate: Awaited<ReturnType<typeof nativeSdkArchiveApplyExecutor.execute>> | undefined;
+    const validator = f.application.validators.find(
+      (entry) => entry.id === 'comet-native-archive-apply-outcome',
+    )!;
+    const validate = validator.validate.bind(validator);
+    if (timing === 'before-commit') {
+      vi.spyOn(validator, 'validate').mockImplementationOnce(async (input) => {
+        const result = await validate(input);
+        expect(result.accepted).toBe(true);
+        duplicate = await nativeSdkArchiveApplyExecutor.execute(f.action, f.context, f.run);
+        return result;
+      });
+    }
+    const run = await f.runtime.recordOutcome({ runId: f.run.runId, context: f.context, outcome });
+    if (timing === 'after-commit')
+      duplicate = await nativeSdkArchiveApplyExecutor.execute(f.action, f.context, f.run);
+    expect(duplicate).toEqual({ status: 'failed', output: outcome.output });
+    expect(run.actions.find((action) => action.id === f.action.id)?.status).toBe('failed');
+    expect(run.state).toMatchObject({ phase: 'verify', status: 'await-user', archived: false });
+    await expectArchivePrewriteFilesAbsent(f);
+  },
+);
+
+it('rejects and cannot recover a fabricated Archive prewrite failure without executor evidence', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  await expect(
+    f.runtime.recordOutcome({
+      runId: f.run.runId,
+      context: f.context,
+      outcome: {
+        actionId: f.action.id,
+        attempt: f.action.attempt,
+        inputHash: f.action.inputHash,
+        claimToken: f.action.claim!.token,
+        outcomeId: `${f.action.id}:${f.action.attempt}:executor-result`,
+        status: 'failed',
+        output: { ready: false, reason: 'candidate-drift', message: 'Fabricated drift' },
+      },
+    }),
+  ).rejects.toThrow('OUTCOME_REJECTED');
+  const { dispatch } = await runArchivePrewriteCli(f.root, [
+    'archive',
+    f.run.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(dispatch.exitCode).toBe(73);
+  expect(dispatch.error?.message).toContain('matching executor prewrite evidence');
+  const run = await f.runtime.inspect(f.run.runId);
+  expect(run.actions.find((action) => action.id === f.action.id)?.status).toBe('unknown');
+  expect(run.state).toMatchObject({ phase: 'archive', status: 'active', archived: false });
+  await expectArchivePrewriteFilesAbsent(f);
+});
+
+it('rejects an Archive prewrite failure that differs from executor evidence', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  const outcome = await archiveFailureBeforeRestoringInputs(f);
+  await expect(
+    f.runtime.recordOutcome({
+      runId: f.run.runId,
+      context: f.context,
+      outcome: {
+        ...outcome,
+        outcomeId: 'altered-prewrite-failure',
+        output: {
+          ...(outcome.output as Record<string, RuntimeValue>),
+          message: 'A different failure',
+        },
+      },
+    }),
+  ).rejects.toThrow('OUTCOME_REJECTED');
+  const run = await f.runtime.recordOutcome({ runId: f.run.runId, context: f.context, outcome });
+  expect(run.actions.find((action) => action.id === f.action.id)?.outcome?.output).toEqual(
+    outcome.output,
+  );
+  await expectArchivePrewriteFilesAbsent(f);
+});
+
+it('keeps a legacy rejected Archive prewrite failure without executor evidence blocked', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  const outcome = await archiveFailureBeforeRestoringInputs(f);
+  // Model a released executor's missing receipt without fabricating normal Run transitions.
+  const evidenceDir = path.join(f.paths.runtimeDir, 'archive-prewrite-failures');
+  for (const name of await fs.readdir(evidenceDir)) await fs.unlink(path.join(evidenceDir, name));
+  const validator = f.application.validators.find(
+    (entry) => entry.id === 'comet-native-archive-apply-outcome',
+  )!;
+  const releasedValidator = vi.spyOn(validator, 'validate').mockResolvedValueOnce({
+    accepted: false,
+    reason: 'Unexpected Native Archive apply event',
+  });
+  await expect(
+    f.runtime.recordOutcome({ runId: f.run.runId, context: f.context, outcome }),
+  ).rejects.toThrow('OUTCOME_REJECTED');
+  releasedValidator.mockRestore();
+  const { dispatch } = await runArchivePrewriteCli(f.root, [
+    'archive',
+    f.run.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(dispatch.exitCode).toBe(73);
+  expect(dispatch.error?.message).toContain(
+    'rejected outcomes alone cannot prove an earlier failure',
+  );
+  const run = await f.runtime.inspect(f.run.runId);
+  expect(run.actions.find((action) => action.id === f.action.id)).toMatchObject({
+    status: 'unknown',
+    rejectedOutcomes: [{ outcome: { output: outcome.output } }],
+  });
+  expect(run.state).toMatchObject({ phase: 'archive', status: 'active', archived: false });
+  await expectArchivePrewriteFilesAbsent(f);
+});
+
+it('recovers an Archive prewrite failure from executor evidence when its result was lost', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  const outcome = await archiveFailureBeforeRestoringInputs(f);
+  await f.runtime.markUnknown({
+    runId: f.run.runId,
+    actionId: f.action.id,
+    attempt: f.action.attempt,
+    reason: 'Original executor stopped after saving its prewrite failure',
+  });
+  const { dispatch } = await runArchivePrewriteCli(f.root, [
+    'archive',
+    f.run.runId,
+    '--recover',
+    '--project-root',
+    f.root,
+    '--json',
+  ]);
+  expect(dispatch.exitCode).toBe(73);
+  const run = await f.runtime.inspect(f.run.runId);
+  expect(run.actions.find((action) => action.id === f.action.id)).toMatchObject({
+    status: 'failed',
+    outcome: { output: outcome.output },
+  });
+  expect(run.state).toMatchObject({ phase: 'verify', status: 'await-user', archived: false });
+  await expectArchivePrewriteFilesAbsent(f);
 });

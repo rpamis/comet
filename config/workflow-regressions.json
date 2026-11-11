@@ -10918,6 +10918,66 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-archive-prewrite-duplicate-delivery",
+      "sources": ["https://github.com/rpamis/comet/pull/547#discussion_r4533317386"],
+      "behavior": "Keep a failed Archive claim from publishing Specs when the same execution is redelivered before or after the failed-outcome commit.",
+      "coverageLevel": "runtime",
+      "reproduction": "On 59245d31, both deterministic duplicate deliveries publish Specs and return succeeded after an actual prewrite failure. The same tests pass after shared-lock execution and immutable failure evidence.",
+      "expected": "Both deliveries return the original failure and no change-derived Archive transaction or canonical Spec exists.",
+      "forbidden": "An Action committed as failed while a late delivery creates an Archive transaction or publishes Specs.",
+      "rootCause": "Outcome validation and transaction creation were independent; the executor did not retain a terminal prewrite result for its claim.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^does not publish Specs when an Archive prewrite failure is redelivered (before-commit|after-commit)$",
+          "requiredNames": [
+            "does not publish Specs when an Archive prewrite failure is redelivered before-commit",
+            "does not publish Specs when an Archive prewrite failure is redelivered after-commit"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-prewrite-executor-evidence",
+      "sources": ["https://github.com/rpamis/comet/pull/547#discussion_r4533317399"],
+      "behavior": "Accept only the exact executor-recorded prewrite failure; fabricated output and legacy rejected output without execution evidence must not move an Archive candidate to Verify.",
+      "coverageLevel": "public-cli",
+      "reproduction": "On 59245d31, both fabricated and modified failure output are accepted by Runtime. The same rejection assertions pass with durable executor evidence. A legacy missing-evidence fixture is explicitly kept blocked through public CLI recovery.",
+      "expected": "Reject fabricated or modified failures; CLI recovery leaves a missing-evidence legacy Action unknown without Specs or a transaction, while an authentic original result remains acceptable.",
+      "forbidden": "Treat a claim, rejected outcome, or known rejection message alone as proof of a past executor observation.",
+      "rootCause": "The validator accepted any correctly shaped failed output with matching preflight and no current transaction.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(rejects and cannot recover a fabricated Archive prewrite failure without executor evidence|rejects an Archive prewrite failure that differs from executor evidence|keeps a legacy rejected Archive prewrite failure without executor evidence blocked)$",
+          "requiredNames": [
+            "rejects and cannot recover a fabricated Archive prewrite failure without executor evidence",
+            "rejects an Archive prewrite failure that differs from executor evidence",
+            "keeps a legacy rejected Archive prewrite failure without executor evidence blocked"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-prewrite-lost-result",
+      "sources": ["https://github.com/rpamis/comet/pull/547#discussion_r4533317399"],
+      "behavior": "Recover an executor-recorded prewrite failure even when the process lost its outcome before Runtime received a rejected result.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Execute a real candidate drift, restore the original input, mark the original action unknown before submitting any outcome, and invoke Archive recovery.",
+      "expected": "Recover only the durable original failure and return to Verify without replaying Archive or creating a transaction.",
+      "forbidden": "Require a fabricated rejected outcome before using bound executor evidence, or treat missing evidence as permission to write.",
+      "rootCause": "Recovery previously required a rejected outcome rather than authoritative executor evidence.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^recovers an Archive prewrite failure from executor evidence when its result was lost$",
+          "requiredNames": [
+            "recovers an Archive prewrite failure from executor evidence when its result was lost"
+          ]
+        }
+      ]
     }
   ]
 }

@@ -28,6 +28,7 @@ import {
 import {
   hashProtectedProjectFile,
   inspectProtectedProjectPath,
+  readProtectedProjectFile,
 } from '../workflow-contract/protected-project-path.js';
 import {
   type RuntimeAction,
@@ -42,6 +43,7 @@ import { readProjectConfig } from './native-config.js';
 import { nativeProjectPaths } from './native-paths.js';
 import {
   applyNativeSdkArchiveSpecs,
+  applyNativeSdkArchiveSpecsLocked,
   finalizeNativeSdkArchive,
   inspectNativePortableArchive,
   inspectNativeSdkArchiveFinalization,
@@ -58,6 +60,9 @@ import {
   nativeShapeArtifactSnapshot,
 } from './native-shape-semantics.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
+import { withNativeMutationLock } from './native-mutation-lock.js';
+import { atomicWriteJson } from './native-atomic-file.js';
+import type { NativeProjectPaths } from './native-types.js';
 import { approvedEditFingerprint, inspectEditReviews } from '../workflow-contract/edit-review.js';
 
 export const NATIVE_SDK_ARCHIVE_STEPS = [
@@ -763,32 +768,112 @@ export async function inspectNativeSdkPendingArchiveDrift(options: {
   }
 }
 
+/** 同一 claim 的失败与事务创建共享锁；失败证据一旦保存，迟到投递只回放原结果。 */
 export const nativeSdkArchiveApplyExecutor: RuntimeExecutor = {
   id: 'comet-native-archive-apply',
   capabilities: [],
   supports: (action) => action.type === 'call_tool' && action.ref === 'native-archive',
   async execute(action, context, run) {
     if (!context?.projectRoot || !run) throw new Error('Native Archive requires a bound SDK Run');
-    let bound: Awaited<ReturnType<typeof archiveApplyBinding>>;
-    try {
-      bound = await archiveApplyBinding(run, action, context.projectRoot);
-    } catch (error) {
-      const output = await archiveUnappliedDrift(run, context.projectRoot, error);
-      if (!output) throw error;
-      return { status: 'failed', output };
-    }
-    const transaction = await applyNativeSdkArchiveSpecs(bound);
-    return {
-      status: 'succeeded',
-      output: {
-        transactionId: transaction.id,
-        archiveRef: transaction.archive_ref,
-        stateVersion: transaction.start_state_version,
-        specCount: transaction.spec_changes.length,
+    const projectRoot = context.projectRoot;
+    const { paths, state } = await archiveApplyPreflightBinding(run, action, projectRoot);
+    return withNativeMutationLock(
+      paths,
+      `execute SDK Archive ${state.name}`,
+      async () => {
+        const recorded = await readArchivePrewriteFailure(paths, run, action);
+        if (recorded) {
+          await assertArchiveHasNoTransaction(paths, state.name);
+          return { status: 'failed', output: recorded };
+        }
+        let bound: Awaited<ReturnType<typeof archiveApplyBinding>>;
+        try {
+          bound = await archiveApplyBinding(run, action, projectRoot);
+        } catch (error) {
+          const output = await archiveUnappliedDrift(run, projectRoot, error);
+          if (!output) throw error;
+          const identity = archivePrewriteIdentity(run, action);
+          await atomicWriteJson(
+            path.join(paths.runtimeDir, archivePrewriteRef(identity)),
+            { ...identity, output },
+            { containedRoot: paths.runtimeDir, exclusive: true },
+          );
+          return { status: 'failed', output };
+        }
+        const transaction = await applyNativeSdkArchiveSpecsLocked(bound);
+        return {
+          status: 'succeeded',
+          output: {
+            transactionId: transaction.id,
+            archiveRef: transaction.archive_ref,
+            stateVersion: transaction.start_state_version,
+            specCount: transaction.spec_changes.length,
+          },
+        };
       },
-    };
+      { allowedPortableTransaction: { kind: 'archive', change: state.name } },
+    );
   },
 };
+
+/** 证据绑定原执行和预检，不允许另一候选、claim 或尝试消费同一失败。 */
+function archivePrewriteIdentity(run: Readonly<WorkflowRun>, action: Readonly<RuntimeAction>) {
+  if (!action.claim || action.claim.executorId !== nativeSdkArchiveApplyExecutor.id)
+    throw new Error('Native Archive prewrite evidence requires the original Runtime claim');
+  return {
+    schema: 'comet.native.archive-prewrite-failure.v1',
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    claimToken: action.claim.token,
+    preflightHash: hashRuntimeValue(run.outputs['archive.prepare']?.value ?? null),
+  };
+}
+
+function archivePrewriteRef(identity: ReturnType<typeof archivePrewriteIdentity>) {
+  return `archive-prewrite-failures/${hashRuntimeValue(identity)}.json`;
+}
+
+/** 只读取执行器的持久证据；拒收记录本身不能证明过去实际观察过漂移。 */
+async function readArchivePrewriteFailure(
+  paths: NativeProjectPaths,
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+): Promise<RuntimeValue | null> {
+  const identity = archivePrewriteIdentity(run, action);
+  let file;
+  try {
+    file = await readProtectedProjectFile(
+      paths.runtimeDir,
+      archivePrewriteRef(identity),
+      1024 * 1024,
+      {
+        label: 'Native Archive prewrite failure evidence',
+      },
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+  const receipt = JSON.parse(file.bytes.toString('utf8'));
+  if (
+    !receipt ||
+    typeof receipt !== 'object' ||
+    Array.isArray(receipt) ||
+    !isArchivePrewriteFailure(receipt.output) ||
+    hashRuntimeValue(receipt) !== hashRuntimeValue({ ...identity, output: receipt.output })
+  )
+    throw new Error(
+      'Native Archive prewrite failure evidence does not match the original execution',
+    );
+  return receipt.output;
+}
+
+async function assertArchiveHasNoTransaction(paths: NativeProjectPaths, change: string) {
+  if (await readNativePortableTransaction(paths, { kind: 'archive', change }))
+    throw new Error('Native Archive has a transaction; a prewrite failure cannot settle it');
+}
 
 function isArchivePrewriteFailure(output: RuntimeValue | undefined) {
   if (!output || typeof output !== 'object' || Array.isArray(output)) return false;
@@ -810,8 +895,12 @@ async function validateArchivePrewriteFailure(
   if (!isArchivePrewriteFailure(output)) throw new Error('Invalid Native Archive prewrite failure');
   // 失败只结束原执行；保留原预检与批准绑定，不要求瞬时读取错误再次发生。
   const { state, paths } = await archiveApplyPreflightBinding(run, action, projectRoot);
-  if (await readNativePortableTransaction(paths, { kind: 'archive', change: state.name }))
-    throw new Error('Native Archive has a transaction; a prewrite failure cannot settle it');
+  await assertArchiveHasNoTransaction(paths, state.name);
+  const recorded = await readArchivePrewriteFailure(paths, run, action);
+  if (!recorded || hashRuntimeValue(recorded) !== hashRuntimeValue(output))
+    throw new Error(
+      'Native Archive lacks matching executor prewrite evidence; preserve the original Run and inspect it with native doctor before choosing recovery',
+    );
 }
 
 export const nativeSdkArchiveApplyValidator: RuntimeValidator = {
@@ -856,13 +945,6 @@ export const nativeSdkArchiveApplyValidator: RuntimeValidator = {
         ? { accepted: true }
         : { accepted: false, reason: 'Native Archive Spec application changed before commit' };
     } catch (error) {
-      const drift = await archiveUnappliedDrift(run, context.projectRoot, error);
-      if (
-        drift &&
-        outcome.status === 'failed' &&
-        hashRuntimeValue(outcome.output) === hashRuntimeValue(drift)
-      )
-        return { accepted: true };
       return { accepted: false, reason: error instanceof Error ? error.message : String(error) };
     }
   },
@@ -1094,24 +1176,12 @@ export async function recoverNativeSdkArchiveOutcome(options: {
       change: parseNativePortableState(run.state).name,
     });
     if (!prior) {
-      const rejected = action.rejectedOutcomes
-        ?.slice()
-        .reverse()
-        .find(
-          ({ outcome }) =>
-            outcome.actionId === action.id &&
-            outcome.attempt === action.attempt &&
-            outcome.inputHash === action.inputHash &&
-            outcome.claimToken === action.claim!.token &&
-            outcome.event === undefined &&
-            outcome.status === 'failed' &&
-            isArchivePrewriteFailure(outcome.output),
-        );
-      if (!rejected)
+      const recorded = await readArchivePrewriteFailure(transactionPaths, run, action);
+      if (!recorded)
         throw new Error(
-          'Native SDK Archive recovery has no frozen Spec transaction or bound prewrite failure',
+          'Native SDK Archive recovery has no frozen Spec transaction or matching executor prewrite evidence; rejected outcomes alone cannot prove an earlier failure. Preserve the original Run and inspect it with native doctor before choosing recovery',
         );
-      output = rejected.outcome.output;
+      output = recorded;
       await validateArchivePrewriteFailure(run, action, output, options.projectRoot);
       status = 'failed';
     } else {
