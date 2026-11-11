@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## Unreleased
+
+### Fixed
+
+- **Native Archive prewrite failures**: Preserve a failure recorded before transaction creation when inputs stabilize before validation. Recover an identity-bound rejected failure through `native archive --recover` into the existing Verify repair flow, without creating or replaying a Spec transaction. Missing transactions without original failure evidence remain blocked.
+
 ## What's Changed [0.5.2] - 2026-11-06
 
 ### Added

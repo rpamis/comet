@@ -11969,3 +11969,358 @@ it.each([
     });
   },
 );
+
+async function claimedArchiveBeforeWrite() {
+  const f = await verifiedV3Candidate();
+  const wait = f.run.waits.at(-1)!;
+  let run = await f.runtime.resolveWait({
+    runId: f.run.runId,
+    waitId: wait.id,
+    proposalHash: wait.proposalHash,
+    decisionId: 'prewrite-archive-approved',
+    choice: 'approved',
+  });
+  const context = { requestId: 'prewrite-archive', projectRoot: f.root };
+  run = await f.runtime.execute({
+    runId: run.runId,
+    actionId: run.actions.at(-1)!.id,
+    executorId: 'comet-native-archive-preflight',
+    context,
+  });
+  const action = run.actions.at(-1)!;
+  expect(action).toMatchObject({ stepId: 'archive.execute', status: 'pending' });
+  run = await f.runtime.claim({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: nativeSdkArchiveApplyExecutor.id,
+    claimToken: 'prewrite-archive-claim',
+    context,
+  });
+  return { ...f, run, action: run.actions.at(-1)!, context };
+}
+
+async function archiveFailureBeforeRestoringInputs(
+  f: Awaited<ReturnType<typeof claimedArchiveBeforeWrite>>,
+) {
+  const transient = path.join(f.root, 'transient-implementation.ts');
+  await fs.writeFile(transient, 'export const changed = true;\n');
+  const result = await nativeSdkArchiveApplyExecutor.execute(f.action, f.context, f.run);
+  expect(result).toMatchObject({
+    status: 'failed',
+    output: { ready: false, reason: 'candidate-drift' },
+  });
+  await fs.unlink(transient);
+  return {
+    actionId: f.action.id,
+    attempt: f.action.attempt,
+    inputHash: f.action.inputHash,
+    claimToken: f.action.claim!.token,
+    outcomeId: `${f.action.id}:${f.action.attempt}:executor-result`,
+    ...result,
+  };
+}
+
+it('records an Archive prewrite failure after the candidate becomes stable again', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  const outcome = await archiveFailureBeforeRestoringInputs(f);
+  const run = await f.runtime.recordOutcome({ runId: f.run.runId, context: f.context, outcome });
+  expect(run.actions.find((action) => action.id === f.action.id)).toMatchObject({
+    status: 'failed',
+    outcome: { status: 'failed', output: outcome.output },
+  });
+  expect(run.state).toMatchObject({ phase: 'verify', status: 'await-user', archived: false });
+  expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
+  await expect(
+    fs.stat(path.join(f.paths.transactionsDir, `portable-archive-${f.run.runId}.json`)),
+  ).rejects.toThrow();
+  await expect(fs.stat(path.join(f.paths.specsDir, 'workflow/spec.md'))).rejects.toThrow();
+});
+
+it('recovers a rejected Archive prewrite failure through the CLI without creating a transaction', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  const outcome = await archiveFailureBeforeRestoringInputs(f);
+  // Preserve the released validator's rejection as a real Runtime receipt, not a fabricated Run.
+  const validator = f.application.validators.find(
+    (entry) => entry.id === 'comet-native-archive-apply-outcome',
+  )!;
+  const releasedValidator = vi.spyOn(validator, 'validate').mockResolvedValueOnce({
+    accepted: false,
+    reason: 'Unexpected Native Archive apply event',
+  });
+  await expect(
+    f.runtime.recordOutcome({ runId: f.run.runId, context: f.context, outcome }),
+  ).rejects.toThrow('OUTCOME_REJECTED');
+  releasedValidator.mockRestore();
+  const rejected = await f.runtime.inspect(f.run.runId);
+  expect(rejected.actions.at(-1)?.rejectedOutcomes).toHaveLength(1);
+  const recovered = spawnSync(
+    process.execPath,
+    [
+      path.resolve('bin/comet.js'),
+      'native',
+      'archive',
+      f.run.runId,
+      '--recover',
+      '--project-root',
+      f.root,
+      '--json',
+    ],
+    {
+      cwd: f.root,
+      encoding: 'utf8',
+      env: { ...process.env, COMET_DAEMON: 'off' },
+    },
+  );
+  expect(recovered.error).toBeUndefined();
+  const response = JSON.parse(recovered.stdout);
+  expect(response.exitCode).toBe(73);
+  const run = await f.runtime.inspect(f.run.runId);
+  expect(run.actions.find((action) => action.id === f.action.id)).toMatchObject({
+    status: 'failed',
+    attempt: f.action.attempt,
+    inputHash: f.action.inputHash,
+    outcome: { status: 'failed', output: outcome.output },
+  });
+  expect(run.state).toMatchObject({ phase: 'verify', status: 'await-user', archived: false });
+  expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
+  expect(run.actions.filter((action) => action.stepId === 'archive.execute')).toHaveLength(1);
+  await expect(
+    fs.stat(path.join(f.paths.transactionsDir, `portable-archive-${f.run.runId}.json`)),
+  ).rejects.toThrow();
+  await expect(fs.stat(path.join(f.paths.specsDir, 'workflow/spec.md'))).rejects.toThrow();
+  const repeated = spawnSync(
+    process.execPath,
+    [
+      path.resolve('bin/comet.js'),
+      'native',
+      'archive',
+      f.run.runId,
+      '--recover',
+      '--project-root',
+      f.root,
+      '--json',
+    ],
+    {
+      cwd: f.root,
+      encoding: 'utf8',
+      env: { ...process.env, COMET_DAEMON: 'off' },
+    },
+  );
+  expect(repeated.error).toBeUndefined();
+  expect((await f.runtime.inspect(f.run.runId)).actions).toEqual(run.actions);
+
+  const continuation = response.agent?.continuation ?? response.data.continuation;
+  const repair = continuation.commandAlternatives.find(
+    (item: { name: string }) => item.name === 'revise-implementation',
+  );
+  expect(repair).toBeDefined();
+  const repaired = spawnSync(
+    process.execPath,
+    [
+      path.resolve('bin/comet.js'),
+      ...repair.commandArgs
+        .slice(1)
+        .map((arg: string) =>
+          arg === '<summary>'
+            ? 'Reverify the restored candidate after the recorded prewrite failure.'
+            : arg,
+        ),
+    ],
+    {
+      cwd: f.root,
+      encoding: 'utf8',
+      env: { ...process.env, COMET_DAEMON: 'off' },
+    },
+  );
+  expect(repaired.error).toBeUndefined();
+  expect(JSON.parse(repaired.stdout).exitCode, repaired.stdout).toBe(0);
+  let current = await f.runtime.inspect(f.run.runId);
+  expect(current.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'pending' });
+  current = await succeedLatestAction(
+    f.runtime,
+    current,
+    {
+      summary: 'Revalidated the restored implementation.',
+      addressedAcceptanceIds: ['A1'],
+      acceptanceReview: fixtureAcceptanceReview(['A1']),
+      checks: [],
+      knownLimits: [],
+      review: null,
+      submittedAt: new Date().toISOString(),
+      verificationChecks: [],
+    },
+    f.root,
+    'prewrite-repair-builder',
+    'builder-session-1',
+  );
+  current = await f.runtime.execute({
+    runId: current.runId,
+    actionId: current.actions.at(-1)!.id,
+    executorId: 'comet-native-checks',
+    context: f.context,
+  });
+  const state = current.state as NativePortableState;
+  current = await succeedLatestAction(
+    f.runtime,
+    current,
+    {
+      candidateId: state.builder_handoff!.candidate_id,
+      verifierExecutionRef: 'prewrite-repair-verifier',
+      response: {
+        kind: 'final-result',
+        result: {
+          iteration: state.loop.iteration,
+          attempt: state.loop.attempt,
+          verdict: 'pass',
+          acceptance: [
+            { id: 'A1', result: 'passed', reason: 'The restored implementation was reverified.' },
+          ],
+          risks: [],
+          summary: 'Reverification passed.',
+        },
+      },
+    },
+    f.root,
+    'prewrite-repair-verified',
+    'prewrite-repair-verifier',
+  );
+  const approval = current.waits.at(-1)!;
+  expect(approval).toMatchObject({ stepId: 'verify.confirm', status: 'pending' });
+  await f.runtime.resolveWait({
+    runId: current.runId,
+    waitId: approval.id,
+    proposalHash: approval.proposalHash,
+    decisionId: 'prewrite-repair-approved',
+    choice: 'approved',
+  });
+  const completed = spawnSync(
+    process.execPath,
+    [
+      path.resolve('bin/comet.js'),
+      'native',
+      'archive',
+      current.runId,
+      '--project-root',
+      f.root,
+      '--json',
+    ],
+    {
+      cwd: f.root,
+      encoding: 'utf8',
+      env: { ...process.env, COMET_DAEMON: 'off' },
+    },
+  );
+  expect(completed.error).toBeUndefined();
+  expect(JSON.parse(completed.stdout).exitCode, completed.stdout).toBe(0);
+  current = await f.runtime.inspect(f.run.runId);
+  expect(current.status).toBe('completed');
+  expect(current.actions.find((action) => action.id === f.action.id)?.status).toBe('failed');
+  expect(
+    current.actions.filter(
+      (action) => action.stepId === 'archive.execute' && action.status === 'succeeded',
+    ),
+  ).toHaveLength(1);
+});
+
+it('does not infer an Archive prewrite failure from a missing transaction alone', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  const unknown = await f.runtime.markUnknown({
+    runId: f.run.runId,
+    actionId: f.action.id,
+    attempt: f.action.attempt,
+    reason: 'Original process stopped with no result evidence',
+  });
+  const response = spawnSync(
+    process.execPath,
+    [
+      path.resolve('bin/comet.js'),
+      'native',
+      'archive',
+      f.run.runId,
+      '--recover',
+      '--project-root',
+      f.root,
+      '--json',
+    ],
+    {
+      cwd: f.root,
+      encoding: 'utf8',
+      env: { ...process.env, COMET_DAEMON: 'off' },
+    },
+  );
+  expect(response.error).toBeUndefined();
+  expect(JSON.parse(response.stdout).exitCode).not.toBe(0);
+  const run = await f.runtime.inspect(f.run.runId);
+  expect(run.actions.find((action) => action.id === f.action.id)).toEqual(unknown.actions.at(-1));
+  await expect(fs.stat(path.join(f.paths.specsDir, 'workflow/spec.md'))).rejects.toThrow();
+});
+
+it('rejects an Archive prewrite failure after a transaction has applied Specs', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  const applied = await nativeSdkArchiveApplyExecutor.execute(f.action, f.context, f.run);
+  expect(applied.status).toBe('succeeded');
+  const transactionFile = path.join(
+    f.paths.transactionsDir,
+    `portable-archive-${f.run.runId}.json`,
+  );
+  const specFile = path.join(f.paths.specsDir, 'workflow/spec.md');
+  const transaction = await fs.readFile(transactionFile);
+  const spec = await fs.readFile(specFile);
+  await expect(
+    f.runtime.recordOutcome({
+      runId: f.run.runId,
+      context: f.context,
+      outcome: {
+        actionId: f.action.id,
+        attempt: f.action.attempt,
+        inputHash: f.action.inputHash,
+        claimToken: f.action.claim!.token,
+        outcomeId: 'false-prewrite-failure',
+        status: 'failed',
+        output: {
+          ready: false,
+          reason: 'candidate-drift',
+          message: 'Inputs were temporarily unreadable',
+        },
+      },
+    }),
+  ).rejects.toThrow('OUTCOME_REJECTED');
+  expect(await fs.readFile(transactionFile)).toEqual(transaction);
+  expect(await fs.readFile(specFile)).toEqual(spec);
+  const accepted = await f.runtime.recordOutcome({
+    runId: f.run.runId,
+    context: f.context,
+    outcome: {
+      actionId: f.action.id,
+      attempt: f.action.attempt,
+      inputHash: f.action.inputHash,
+      claimToken: f.action.claim!.token,
+      outcomeId: 'actual-archive-result',
+      ...applied,
+    },
+  });
+  expect(accepted.actions.at(-1)).toMatchObject({ stepId: 'archive.finalize', status: 'pending' });
+});
+
+it('rejects an Archive prewrite failure with a different preflight candidate', async () => {
+  const f = await claimedArchiveBeforeWrite();
+  const outcome = await archiveFailureBeforeRestoringInputs(f);
+  // An invalid input fixture must not let failure handling bypass candidate/approval binding.
+  const changed = structuredClone(f.run);
+  (changed.outputs['archive.prepare'].value as Record<string, RuntimeValue>).candidateId =
+    'another-candidate';
+  const validator = f.application.validators.find(
+    (entry) => entry.id === 'comet-native-archive-apply-outcome',
+  )!;
+  const validation = await validator.validate({
+    run: changed,
+    action: f.action,
+    outcome,
+    context: f.context,
+  });
+  expect(validation.accepted).toBe(false);
+  expect(await f.runtime.inspect(f.run.runId)).toEqual(f.run);
+  await expect(fs.stat(path.join(f.paths.specsDir, 'workflow/spec.md'))).rejects.toThrow();
+});

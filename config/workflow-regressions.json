@@ -10877,6 +10877,47 @@
           ]
         }
       ]
+    },
+    {
+      "id": "native-archive-prewrite-failure-settlement",
+      "sources": ["report:2026-11-11-native-archive-prewrite-race"],
+      "behavior": "Record an Archive failure before transaction creation even when the candidate is stable again at outcome validation.",
+      "coverageLevel": "runtime",
+      "reproduction": "Execute Archive against changed input, restore the original bytes before recording the failed outcome; the baseline rejects it as Unexpected Native Archive apply event.",
+      "expected": "The original Action is failed and returns to the existing Verify repair wait without publishing Specs.",
+      "forbidden": "Rejecting a valid failure because a transient input error no longer repeats, or accepting a prewrite failure for an existing transaction or another candidate.",
+      "rootCause": "The outcome validator reran the mutable candidate check and only accepted failure when the same check threw again.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(records an Archive prewrite failure after the candidate becomes stable again|rejects an Archive prewrite failure after a transaction has applied Specs|rejects an Archive prewrite failure with a different preflight candidate)$",
+          "requiredNames": [
+            "records an Archive prewrite failure after the candidate becomes stable again",
+            "rejects an Archive prewrite failure after a transaction has applied Specs",
+            "rejects an Archive prewrite failure with a different preflight candidate"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "native-archive-prewrite-rejection-recovery",
+      "sources": ["report:2026-11-11-native-archive-prewrite-race"],
+      "behavior": "Recover an identity-bound rejected prewrite failure through the public Archive CLI without inventing or replaying a Spec transaction.",
+      "coverageLevel": "public-cli",
+      "reproduction": "Persist the released validator rejection through Runtime, then invoke bin/comet.js native archive --recover; the baseline leaves the original Action unknown with no frozen Spec transaction.",
+      "expected": "The CLI records the original failure, exposes Verify repair, and permits a newly verified and approved candidate to archive once.",
+      "forbidden": "Treating a missing transaction alone as proof of failure, repeating side effects, or reporting the failed candidate as archived.",
+      "rootCause": "Archive recovery assumed every interrupted apply had already created a frozen transaction.",
+      "tests": [
+        {
+          "file": "test/domains/comet-native/native-sdk-application.test.ts",
+          "namePattern": "^(recovers a rejected Archive prewrite failure through the CLI without creating a transaction|does not infer an Archive prewrite failure from a missing transaction alone)$",
+          "requiredNames": [
+            "recovers a rejected Archive prewrite failure through the CLI without creating a transaction",
+            "does not infer an Archive prewrite failure from a missing transaction alone"
+          ]
+        }
+      ]
     }
   ]
 }
