@@ -17,7 +17,7 @@
 
 公共 `comet eval` 调度了准确的 48 项与 4 个执行器；pytest 实际结果为 **48 setup errors**，耗时 632.89 秒，CLI 退出 1。全部错误发生在 `prebuild_docker_image` 会话夹具中，业务任务函数尚未进入；没有模型运行、业务评分或逐样本 report。不能把它写成模型 0/48 或 Native 准确率 0%。
 
-原 Run、48 项 expected matrix、Dashboard 状态与完整控制台日志均保留。Run 状态为 `interrupted`；结束后没有该实验的活动容器。控制台日志位于 `coverage/native-053-vs-040-20261111/eval-console.log`。
+原 Run、48 项 expected matrix、Dashboard 状态与完整控制台日志均保留。结束后观察到 Run 状态为 `interrupted`，没有该实验的活动容器。第一轮的脱敏控制台日志位于 `coverage/native-053-vs-040-20261111/attempt-1-console.txt`。
 
 两个独立准备行为：
 
@@ -43,4 +43,26 @@ Docker 构建锁的等待预算与该次构建预算相同；普通构建仍为 
 - 两组原始轨迹中的模型为 `mimo-v2.5` / `mimo-v2.5-pro`，本轮所选模型为 `deepseek-flash[1M]`。不同模型和时段的结果只能作历史对照，不能把差异单独归因于 Native 精简。
 - 旧 Native 的 `comet-observability-env-template / r3` 保存了有效 result，耗时 115.64 秒；当前解析器再次对完整 JSON 字符串脱敏时会丢掉该 result。离线报告改为先解析已经保存的 JSON，再提取结构化事件；没有修改历史文件或正在执行的 Eval。恢复后 Native 原报告的 48/48 耗时分母可复算，040 有 47 条可观测耗时。
 
-当前没有新的模型成绩，最终 HTML 对照报告尚未生成；统计脚本已准备，不能把旧成绩填入新 Native 一列。
+## 第二轮与已授权补齐
+
+用户明确授权第二轮沿用同一 48 项与 4 并发。实验 `comet-eval-e045fc18-7b27-4dc4-a4da-96b94d973d52` 使用提交 `054952b8`，最终为 **44 passed、4 failed**，耗时 4446.02 秒，CLI 退出 1；44 份实际模型评分全部严格通过。
+
+4 个失败均在模型启动前发生：`agent-memory-routing`、`dependency-confusion`、`graph-execution-review`、`layered-streaming-fix` 的 r1。原始异常均为 `docker.sh execution-identity` 超出 300 秒；这个只读身份查询隐式触发了冷构建。Windows 杀掉外层 Bash 后，Docker 子进程仍持有输出管道，导致异常直到底层构建结束才返回。4 项没有模型原始轨迹或评分，不计作模型答错。
+
+修复 `be8de941` 先通过已有构建入口准备镜像，再读取身份；身份查询沿用 300 秒，只管理自己的进程树。原代码下新增 2 项回归失败，修复后相邻检查 **283 通过、6 跳过**，耗时 160.32 秒；跳过项依赖未缓存的专用 Classic/Native 镜像。Ruff 检查与格式检查通过。真实无模型容器预检成功读取身份。修复在隔离工作树验证，第二轮结束后才合入并推送 `053`，没有改动正在执行的候选。
+
+用户另行明确授权仅补上述 4 项 r1，各 1 次。补齐实验 `comet-eval-04c215f0-3983-451f-b718-801e71d81f0b` 使用 `be8de941`，结果 **4 passed**，耗时 343.80 秒，CLI 退出 0。原批次和原失败记录保留，没有覆盖已执行的模型样本。
+
+合并得到准确的 **16 题 × 3 次、48 份真实模型评分**：strict pass@1、pass@3、pass^3 均为 100%，业务检查 48/48。累计模型耗时 48/48 可观测，均值 159.7765 秒、中位数 148.129 秒；这些数值不包含镜像准备。全部受测产品构建保持相同，只有补齐所用的 harness 修复不同。
+
+主模型参数为 `deepseek-flash[1M]`。cc-switch 同时把快速模型和默认模型映射到 `deepseek-v4-flash` 系列；3 个 Native 样本的轨迹同时报告了 `deepseek-flash[1m]` 和 `deepseek-v4-flash`。报告保留实际模型标签，不把不同标签强行合并成单一模型证明。
+
+原始评分、轨迹和控制台仍保存在各 Run 与 `coverage/native-053-vs-040-20261111/`；报告只导出计数、用量和评分，不导出工具命令或凭据。
+
+## 同模型重跑 040
+
+用户随后明确要求重跑 040，使模型配置一致。范围沿用同一 16 题 × 3 次，共 48 个新样本、4 并发。Native 不再重跑；历史 040 和旧 Native 继续保留作参考。
+
+冻结对象为 `eval/local/skills/benchmarks/040-beta/` 的 `0.4.0-beta.1`：8 个 Comet Skill、配套 `.mjs` 与 Classic Runtime，以及原 treatment 指定的 OpenSpec / Superpowers 依赖快照。依赖仅作为隔离评估对象安装，控制本任务的 Agent 不加载这些旧依赖 Skill。冻结 Skill、Runtime、业务输入和验证器均不修改，不使用当前 Classic 替代旧版。
+
+旧环境有硬编码的 Claude Code `latest`。harness 现在只在临时副本中将其改用已有 `CLAUDE_CODE_VERSION` 参数，并在会话预构建与实际工作区使用相同转换。未指定版本时保留原始行为。新增快速回归在修复前 2 失败、1 对照通过；修复后相关 **91 项通过**，Ruff 通过。镜像正在做无模型预检，要求实际 Claude Code 为 `2.1.318`、OpenSpec 为 `1.3.1`，且没有当前 `comet` CLI 混入。完成准备后才启动 040 模型评估。

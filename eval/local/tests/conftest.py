@@ -43,6 +43,7 @@ from scaffold.python import (
     save_report,
 )
 from scaffold.python.agents import get_agent_adapter, resolve_agent, validate_agent_capabilities
+from scaffold.python.agent_environment import pinned_claude_environment
 from scaffold.python.paths import CURRENT_COMET_SNAPSHOT_REF
 from scaffold.python.auto_tasks import AutoTaskError, ensure_generated_manifest, find_project_root
 from scaffold.python.eval_context import (
@@ -1872,11 +1873,12 @@ def prebuild_docker_image(request):
     tasks_dir = PROJECT_ROOT / "tasks"
     for env_dir in _docker_environment_dirs_for_request(request, tasks_dir):
         selected_agent = _resolve_eval_agent(request.config).agent
-        image = _build_docker_image_with_lock(
-            env_dir,
-            selected_agent if selected_agent != "claude-code" else None,
-            environment=getattr(request.config, "_comet_execution_env", None),
-        )
+        with pinned_claude_environment(env_dir, os.environ.get("BENCH_CC_VERSION")) as prepared:
+            image = _build_docker_image_with_lock(
+                prepared,
+                selected_agent if selected_agent != "claude-code" else None,
+                environment=getattr(request.config, "_comet_execution_env", None),
+            )
         if not image:
             raise RuntimeError(f"任务镜像预构建失败：{env_dir}")
         print(f"\nPre-built Docker image: {image}")
@@ -2080,8 +2082,11 @@ def setup_test_context(test_dir):
             _copy_workspace(workspace_dir)
 
         if environment_dir and environment_dir.exists():
-            _copy_environment(environment_dir)
-            _copy_trusted_native_runtime_snapshot(environment_dir, test_dir, skills)
+            with pinned_claude_environment(
+                environment_dir, os.environ.get("BENCH_CC_VERSION")
+            ) as prepared:
+                _copy_environment(prepared)
+                _copy_trusted_native_runtime_snapshot(prepared, test_dir, skills)
 
         if claude_md:
             with tempfile.NamedTemporaryFile(

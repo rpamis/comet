@@ -1,0 +1,31 @@
+{
+  "experiment": "comet-eval-e045fc18-7b27-4dc4-a4da-96b94d973d52",
+  "candidateCommit": "054952b83f3d272e3a43dd0446288bc4666ae88a",
+  "plannedCases": 48,
+  "scoredModelSamples": 44,
+  "strictPasses": 44,
+  "unstartedHarnessFailures": 4,
+  "pytestPassed": 44,
+  "pytestFailed": 4,
+  "elapsedSeconds": 4446.02,
+  "exitCode": 1,
+  "failure": "Docker execution-identity exceeded 300 seconds during cold build",
+  "missingSlots": [
+    {
+      "task": "comet-agent-memory-routing",
+      "rep": 1
+    },
+    {
+      "task": "comet-dependency-confusion",
+      "rep": 1
+    },
+    {
+      "task": "comet-graph-execution-review",
+      "rep": 1
+    },
+    {
+      "task": "comet-layered-streaming-fix",
+      "rep": 1
+    }
+  ]
+}
