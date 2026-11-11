@@ -19,7 +19,8 @@ def test_current_native_environment_preserves_business_files_and_original(tmp_pa
         assert (prepared / "business.py").read_bytes() == b"original business input\n"
         assert (prepared / ".include-current-comet-cli").is_file()
         content = (prepared / "Dockerfile").read_text()
-        assert "--from=node:22-bookworm-slim" in content
+        assert content.startswith("FROM node:22-bookworm-slim AS comet_eval_tools")
+        assert "COPY --from=comet_eval_tools /usr/local/ /usr/local/" in content
         assert "RUN mkdir -p openspec/changes" not in content
         assert content.rstrip().endswith("USER agent")
         assert (prepared / "current-comet.sh").is_file()

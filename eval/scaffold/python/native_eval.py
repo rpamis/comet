@@ -40,18 +40,37 @@ def current_native_environment(environment_dir: Path, treatment_name: str):
             "@anthropic-ai/claude-code@latest",
             "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}",
         )
-        content += """
-USER root
-COPY --from=node:22-bookworm-slim /usr/local/ /usr/local/
+        # Install once in a shared stage, before task-specific COPY instructions.
+        tooling = """FROM node:22-bookworm-slim AS comet_eval_tools
+ARG CLAUDE_CODE_VERSION=latest
 COPY current-comet-package.json /opt/comet-cli/package.json
-RUN npm install --prefix /opt/comet-cli --omit=dev --ignore-scripts && \
-    mkdir -p /opt/comet-current && \
-    ln -s /opt/comet-cli/node_modules /opt/comet-current/node_modules
+RUN npm install --prefix /opt/comet-cli --omit=dev --ignore-scripts
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
+
+"""
+        lines = []
+        skip = False
+        for line in content.splitlines():
+            if skip or (
+                line.startswith("RUN npm install -g @")
+                and any(
+                    package in line
+                    for package in ("@fission-ai/openspec", "@anthropic-ai/claude-code")
+                )
+            ):
+                skip = line.rstrip().endswith("\\")
+                continue
+            lines.append(line.replace("nodejs npm", ""))
+            if line.startswith("FROM "):
+                lines.extend(
+                    """COPY --from=comet_eval_tools /usr/local/ /usr/local/
+COPY --from=comet_eval_tools /opt/comet-cli /opt/comet-cli
+RUN mkdir -p /opt/comet-current && ln -s /opt/comet-cli/node_modules /opt/comet-current/node_modules
 COPY current-comet.sh /usr/local/bin/comet
 RUN chmod 0755 /usr/local/bin/comet
-USER agent
-"""
-        dockerfile.write_text(content, encoding="utf-8")
+""".splitlines()
+                )
+        dockerfile.write_text(tooling + "\n".join(lines) + "\n", encoding="utf-8")
         yield prepared
 
 
