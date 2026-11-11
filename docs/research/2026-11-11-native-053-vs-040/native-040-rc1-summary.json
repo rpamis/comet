@@ -1,0 +1,31 @@
+{
+  "experiment": "comet-eval-bc573d77-335e-499e-b22f-18a29ca4fe54",
+  "candidateCommit": "777bacd4d1ecfc077e6f1d0cdf4dabfa6411775b",
+  "plannedCases": 48,
+  "scoredModelSamples": 48,
+  "strictPasses": 48,
+  "unstartedHarnessFailures": 0,
+  "pytestPassed": 48,
+  "pytestFailed": 0,
+  "elapsedSeconds": 3621.02,
+  "exitCode": 0,
+  "agentVersions": ["2.1.318 (Claude Code)"],
+  "modelRoutingIdentities": [
+    "sha256:6cc7b096bb497782bf0a8f6523f8f8b6e1d47b9dcc3d804a0ec59267ca40995e"
+  ],
+  "actualModelLabels": ["deepseek-flash[1m]", "deepseek-v4-flash"],
+  "currentCometBuild": {
+    "schema": "comet.eval.current-comet-build.v1",
+    "sourceHash": "191abd0e4b1028c2d5265d589ebc2e23d3337c543b8c495892db35f5756d79c3",
+    "sourceFileCount": 1814,
+    "snapshotHash": "957cfc83aa2230502cc30886171f045c30b81d7342537183c0d6539d8612c520",
+    "snapshotFileCount": 1813,
+    "packageHash": "14a991b3267c3be3854ebb21a14760526122c13dc3334a35c3962792d06d9fb0",
+    "assetsHash": "7286c563655fcdb44c52c6b23378520c8108e11320a0b96179730c96192ae261",
+    "assetsFileCount": 145,
+    "manifestHash": "cf98687216c545c660a9299f265fce328eb483f18966049fef5a4543e64760b7",
+    "entryHash": "2684412b4502e4ec614f8bc00c0eb926fedc411608c58a5241f035382c9e8975",
+    "nativeAdapterHash": "41c6131cbb6d76d4be6407d3c71309adb7a4e8d7aebb218ff3895b054624b473",
+    "compilerVersion": "published-dist"
+  }
+}

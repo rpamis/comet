@@ -275,10 +275,10 @@ metrics = [
     ("模型启动 / 恢复次数", "subject_invocations", 2),
     ("Agent 轮次", "num_turns", 2),
     ("工具调用", "tools", 2),
-    ("累计模型耗时（秒）", "duration_seconds", 1),
+    ("累计 Agent 执行耗时（秒）", "duration_seconds", 1),
     ("非缓存输入 Token", "input_tokens", 0),
     ("输出 Token", "output_tokens", 0),
-    ("总 Token（含缓存读取）", "total_tokens", 0),
+    ("可观测 Token 总量（含缓存读取）", "total_tokens", 0),
     ("CLI 估算成本（美元）", "total_cost_usd", 3),
 ]
 
@@ -356,7 +356,7 @@ style = re.search(
     ).read_text(encoding="utf-8"),
     re.S,
 )[1]
-style += "\nsmall{color:var(--muted)}td{vertical-align:top}details{margin:16px 0}summary{cursor:pointer}code{overflow-wrap:anywhere}.badge-pass{color:var(--pass)}.badge-fail{color:var(--fail)}.badge-unknown{color:var(--muted)}.chart-value{min-width:88px}.matrix-mark{display:inline-block;min-width:1.4em;font-weight:700}header p{max-width:75ch}.missing-label{display:block;font:12px sans-serif;color:var(--muted);text-align:center;line-height:20px}"
+style += "\nsmall{color:var(--muted)}td{vertical-align:top}details{margin:16px 0}summary{cursor:pointer}code{overflow-wrap:anywhere}.badge-pass{color:var(--pass)}.badge-fail{color:var(--fail)}.badge-unknown{color:var(--muted)}.chart-value{min-width:0}.matrix-mark{display:inline-block;min-width:1.4em;font-weight:700}header p{max-width:75ch}.missing-label{display:block;font:12px sans-serif;color:var(--muted);text-align:center;line-height:20px}"
 title = (
     "Native 0.5.3 与 Native 0.4.0-rc.1 同配置评估"
     if args.baseline
@@ -387,14 +387,14 @@ if run_meta.get("status") in {"running", "queued", "preparing"}:
     body += '<p role="status"><strong>评估运行中 · 中间预览</strong>。当前缺少评分的格子包括尚未执行的样本；最终结果以本轮结束后的版本为准。</p>'
 cards = [
     (
-        "Native strict pass@1",
+        "Native 0.5.3 strict pass@1",
         rate(a["pass1"]),
         f"{baseline_short} {rate(b['pass1'])}；缺少评分时不估算完整通过率",
     ),
-    ("Native pass@3", rate(a["pass3"]), f"{baseline_short} {rate(b['pass3'])}"),
-    ("Native pass^3", rate(a["all3"]), f"{baseline_short} {rate(b['all3'])}"),
+    ("Native 0.5.3 pass@3", rate(a["pass3"]), f"{baseline_short} {rate(b['pass3'])}"),
+    ("Native 0.5.3 pass^3", rate(a["all3"]), f"{baseline_short} {rate(b['all3'])}"),
     (
-        "Native 平均累计模型耗时",
+        "Native 0.5.3 平均累计 Agent 执行耗时",
         number(a["durationMean"]) + "s",
         f"可观测 {a['durationCount']}/48；{baseline_short} {number(b['durationMean'])}s",
     ),
@@ -409,7 +409,7 @@ body += section(
     )
     + "</div>",
 )
-chart = '<article class="figure"><div class="figure-head"><h3 class="figure-title">pass@1、pass@3 与 pass^3</h3><span class="figure-note">百分比，越高越好</span></div><div class="legend"><span style="--legend-color:var(--native)">Native 0.5.3 / DeepSeek</span><span style="--legend-color:var(--classic)">0.4.0 Classic / MiMo</span></div><div class="chart" role="img" aria-label="三项通过率的历史对照">'
+chart = '<article class="figure"><div class="figure-head"><h3 class="figure-title">pass@1、pass@3 与 pass^3</h3><span class="figure-note">百分比，越高越好</span></div><div class="legend"><span style="--legend-color:var(--native)">Native 0.5.3 / DeepSeek</span><span style="--legend-color:var(--classic)">0.4.0 Classic / MiMo</span></div><div class="chart" role="img" aria-label="三项通过率对照">'
 chart = chart.replace("0.4.0 Classic / MiMo", baseline_caption)
 for label, key in [("pass@1", "pass1"), ("pass@3", "pass3"), ("pass^3", "all3")]:
     native_bar = (
@@ -448,7 +448,7 @@ body += section(
         ["指标", "Native / DeepSeek", baseline_caption, "相对差异", "可观测配对"],
         eff_rows,
     )
-    + '<p class="caption">成本来自 CLI 估算，不是供应商账单，不能据此证明实际费用的减少比例。累计模型耗时累加每个样本全部顶层 result，不含 Docker 准备与业务验证。</p>',
+    + '<p class="caption">成本来自 CLI 估算，不是供应商账单。Token 统计覆盖保存的受测 Agent 调用，完整 workflow（含独立子 Agent）的总量不可观测。累计 Agent 执行耗时累加每个样本全部顶层 result.duration_ms，包含模型调用、Agent 工具执行和续行，保留结束判断造成的额外调用；不含 Docker 准备和 Agent 退出后的业务验证。</p>',
 )
 body += section(
     "models",
@@ -488,20 +488,20 @@ body += section(
             for g in display_groups
         ],
     )
-    + '<p class="caption">逐消息 usage 的覆盖率不同，保留各自可观测结果，不据此计算工作流之间的上下文提升比例。</p>',
+    + '<p class="caption">按各组保存的逐消息 usage 计算峰值，并列出可观测分母。这是本批次的上下文观测值，不代表其他任务的上下文上限。</p>',
 )
 latency_max = (
     max((g[key] or 0) for g in (a, b) for key in ("durationMean", "durationMedian"))
     or 1
 )
-latency = '<article class="figure"><div class="figure-head"><h3 class="figure-title">累计模型耗时的平均值与中位数</h3><span class="figure-note">秒；同一零点刻度，越低越好</span></div><div class="legend"><span style="--legend-color:var(--native)">Native / DeepSeek</span><span style="--legend-color:var(--classic)">Classic / MiMo</span></div><div class="chart" role="img" aria-label="累计模型耗时的历史对照">'
+latency = '<article class="figure"><div class="figure-head"><h3 class="figure-title">累计 Agent 执行耗时的平均值与中位数</h3><span class="figure-note">秒；同一零点刻度，越低越好</span></div><div class="legend"><span style="--legend-color:var(--native)">Native / DeepSeek</span><span style="--legend-color:var(--classic)">Classic / MiMo</span></div><div class="chart" role="img" aria-label="累计 Agent 执行耗时对照">'
 latency = latency.replace("Classic / MiMo", baseline_caption)
 for label, key in [("平均值", "durationMean"), ("中位数", "durationMedian")]:
     latency += f'<div class="chart-row"><div class="chart-label">{label}</div><div class="bar-pair"><div class="track"><div class="bar" style="--value:{(a[key] or 0) / latency_max * 100}%;--color:var(--native)"></div></div><div class="track"><div class="bar" style="--value:{(b[key] or 0) / latency_max * 100}%;--color:var(--classic)"></div></div></div><div class="chart-value">{number(a[key])}<br>{number(b[key])}</div></div>'
 latency += '</div><p class="caption">仅使用可观测的累计 result duration。耗时受模型、时段与运行环境共同影响。</p></article>'
 body += section(
     "latency",
-    "累计模型耗时",
+    "累计 Agent 执行耗时",
     latency
     + table(
         ["组别", "可观测样本", "平均（秒）", "中位数（秒）"],
@@ -595,7 +595,7 @@ if args.baseline:
         "原报告历史参考",
         "<details><summary>展开 MiMo 历史结果（未重跑，不参与主比较）</summary>"
         + table(
-            ["历史组别", "严格通过", "pass@3", "pass^3", "平均累计模型耗时"],
+            ["历史组别", "严格通过", "pass@3", "pass^3", "平均累计 Agent 执行耗时"],
             [
                 [
                     escape(group["label"]),
@@ -630,13 +630,17 @@ boundaries = [
     ),
     (
         "执行条件",
-        "本次两组使用同一机器、相同 Agent 版本与模型映射，但在不同窗口执行，且保留各自流程依赖；没有完全控制服务负载。历史参考来自 2026-07，其执行身份不能完整复原。"
+        "本次两组使用同一机器、相同 Agent 版本与模型映射；用户确认均由评估器以 auto_user 模拟，上限 12 轮。两组在不同窗口执行，保留各自流程依赖，未完全控制服务负载。历史参考来自 2026-07，其执行身份不能完整复原。"
         if args.baseline
         else "历史数据来自 2026-07，本轮来自 2026-11。Agent 版本、机器环境和服务负载没有在同一窗口中控制；旧轨迹不能完整证明全部执行身份或历史输入逐字节一致。",
     ),
     (
         "全部结果保留",
         "矩阵固定为每组计划 48 次与 16 题，不筛去低分、环境失败或 flagged 样本。评分缺失标为未知，不推算完整通过率。逐样本质量标记保留在附带 JSON。",
+    ),
+    (
+        "验证范围",
+        "通过表示满足这 16 题的确定性业务与流程检查，未使用 LLM Judge；不能据此证明其他任务的质量相同。本任务未重新执行全仓测试、完整安装验收或独立真实桌面平台 Hook 验收。",
     ),
     (
         "可追溯来源",
